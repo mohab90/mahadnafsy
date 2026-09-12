@@ -3,8 +3,8 @@ import { Activity, Database, Download, Search, Trash2 } from 'lucide-react';
 import { useSiteData, useEnsureLectures } from '../../../context/SiteDataContext';
 import { DataTable, type Column } from '../../../components/shared/DataTable';
 import type { ActivityLogItem } from '../../../types';
-import { confirmDialog } from '../../../components/shared/confirmDialog';
-import { promptDialog } from '../../../components/shared/promptDialog';
+import { confirmDialog } from '../../../../shared/ui/confirmDialog';
+import { promptDialog } from '../../../../shared/ui/promptDialog';
 
 interface Props {
   isSalesOnly: boolean;

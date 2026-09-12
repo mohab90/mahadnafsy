@@ -13,8 +13,8 @@ import type { NotifyFn } from '../CrmSettingsModal';
 import type { ConvertLeadModalState } from './ConvertLeadModal';
 import { buildCsv } from './leadCsvUtils';
 import type { TabKey } from '../../navigation';
-import { confirmDialog } from '../../../../components/shared/confirmDialog';
-import { promptDialog } from '../../../../components/shared/promptDialog';
+import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
+import { promptDialog } from '../../../../../shared/ui/promptDialog';
 
 type AsyncReload = () => Promise<void>;
 type StatusTimer = ReturnType<typeof setTimeout>;

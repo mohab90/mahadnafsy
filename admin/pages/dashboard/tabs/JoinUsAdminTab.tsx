@@ -8,11 +8,11 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 // people applying for one.
 const JobPostingsPanel = React.lazy(() => import('./JobPostingsPanel'));
 import type { JoinUsApplication } from '../../../types';
-import PromptModal from '../../../components/shared/PromptModal';
+import PromptModal from '../../../../shared/ui/PromptModal';
 import {
   EXPERIENCE_ORDER, EXPERIENCE_YEARS, branchLabel, fmtDateTime, matchesMinExperience, yearsLabel,
 } from './hr-sections/applicantLabels';
-import { confirmDialog } from '../../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 
 type Status = 'new' | 'reviewed' | 'accepted' | 'rejected';
 type Kind = 'instructor' | 'consultant' | 'staff';

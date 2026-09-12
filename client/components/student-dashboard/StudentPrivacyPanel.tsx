@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Download, ShieldCheck, Trash2 } from 'lucide-react';
 import { mysqlClient } from '../../lib/mysqlapi';
+import { confirmDialog } from '../../../shared/ui/confirmDialog';
 
 type PrivacyRequest = Awaited<ReturnType<typeof mysqlClient.getMyPrivacyRequests>>[number];
 
@@ -31,7 +32,15 @@ export const StudentPrivacyPanel: React.FC = () => {
   };
 
   const requestErasure = async () => {
-    if (!window.confirm('طلب المحو يعطّل الحساب نهائيًا بعد المراجعة. هل تريد الاستمرار؟')) return;
+    // The browser's own confirm: left-to-right, English buttons, and no way to
+    // say what «تأكيد» means. The admin has had a real RTL dialog for a while;
+    // it lives in shared/ui now, so the customer gets it too.
+    const confirmed = await confirmDialog({
+      title: 'طلب محو البيانات',
+      message: 'طلب المحو يعطّل الحساب نهائيًا بعد المراجعة. هل تريد الاستمرار؟',
+      confirmLabel: 'تأكيد الطلب',
+    });
+    if (!confirmed) return;
     setBusy('erase');
     setMessage('');
     try {

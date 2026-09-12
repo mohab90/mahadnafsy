@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { LoginHistoryPanel } from './client-db/LoginHistoryPanel';
 import { LoginAccountsPanel } from './client-db/LoginAccountsPanel';
 import { toDialable } from '../../../lib/whatsappLink';
-import { confirmDialog } from '../../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 import { isRawCourse, rawCourseText } from './leads/leadCourseLabel';
 import { toEgp } from '../../../lib/money';
 

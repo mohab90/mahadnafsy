@@ -5,7 +5,7 @@ import {
 import {
   mysqlAdmin, type InboxConversation, type InboxMessage,
 } from '../../../../lib/mysqlapi';
-import { promptDialog } from '../../../../components/shared/promptDialog';
+import { promptDialog } from '../../../../../shared/ui/promptDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 

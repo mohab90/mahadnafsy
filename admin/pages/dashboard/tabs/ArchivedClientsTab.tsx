@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Archive, RotateCcw, Search, AlertCircle } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import { confirmDialog } from '../../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 
 // Deleting a customer archives them — payments, orders and enrolments are all
 // kept — and the screen says "تمت أرشفة العميل". But every list in the system

@@ -1,5 +1,6 @@
 import React from 'react';
-import { CreditCard, X } from 'lucide-react';
+import { CreditCard } from 'lucide-react';
+import { Modal } from '../../../shared/ui/Modal';
 
 import type { Course, PaymentHistoryEntry, SubscriberItem } from '../../types';
 
@@ -31,24 +32,21 @@ export const UnifiedClientPaymentDetailModal: React.FC<UnifiedClientPaymentDetai
   confirmedHistory,
   onClose,
 }) => {
-  if (!open || !subscriber) return null;
+  if (!subscriber) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col" dir="rtl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow">
-              <CreditCard size={18} />
-            </div>
-            <div>
-              <p className="font-extrabold text-gray-900 text-sm">التفاصيل المالية</p>
-              <p className="text-[11px] text-gray-400">{clientName}</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500"><X size={16} /></button>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="التفاصيل المالية"
+      subtitle={clientName}
+      icon={(
+        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow">
+          <CreditCard size={18} />
         </div>
-        <div className="overflow-y-auto p-5 space-y-4">
+      )}
+    >
+        <div className="space-y-4">
           <div className="grid grid-cols-3 gap-2 text-center">
             {paidTotals.EGP > 0 && (
               <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-100">
@@ -117,7 +115,6 @@ export const UnifiedClientPaymentDetailModal: React.FC<UnifiedClientPaymentDetai
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 };

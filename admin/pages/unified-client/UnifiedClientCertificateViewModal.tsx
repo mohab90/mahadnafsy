@@ -1,5 +1,7 @@
 import React from 'react';
-import { Printer, X } from 'lucide-react';
+import { Printer } from 'lucide-react';
+
+import { Modal } from '../../../shared/ui/Modal';
 
 import type { Course, SubscriberCertificate, SubscriberItem } from '../../types';
 
@@ -26,19 +28,15 @@ export const UnifiedClientCertificateViewModal: React.FC<UnifiedClientCertificat
   const certCourse = courses.find(c => c.id === cert.courseId);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" dir="rtl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-lg shadow">🏆</div>
-            <div>
-              <p className="font-extrabold text-gray-900 text-sm">شهادة إتمام الكورس</p>
-              <p className="text-[11px] text-gray-400">{clientName}</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500"><X size={16} /></button>
-        </div>
-        <div className="p-5 space-y-4">
+    <Modal
+      open
+      onClose={onClose}
+      title="شهادة إتمام الكورس"
+      subtitle={clientName}
+      icon={<div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-lg shadow">🏆</div>}
+      size="sm"
+    >
+        <div className="space-y-4">
           <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-5 text-center space-y-3">
             <div className="text-4xl">🏆</div>
             <div>
@@ -56,7 +54,6 @@ export const UnifiedClientCertificateViewModal: React.FC<UnifiedClientCertificat
             <Printer size={16} /> طباعة الشهادة
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 };

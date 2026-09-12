@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { CheckCircle2, RefreshCw, Save, ShieldAlert, XCircle } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
-import { confirmDialog } from '../../../components/shared/confirmDialog';
-import { promptDialog } from '../../../components/shared/promptDialog';
+import { confirmDialog } from '../../../../shared/ui/confirmDialog';
+import { promptDialog } from '../../../../shared/ui/promptDialog';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: Notify; }

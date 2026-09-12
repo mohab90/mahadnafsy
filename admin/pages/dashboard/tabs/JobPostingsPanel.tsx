@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Briefcase, Plus, Trash2, Pencil, X, Loader2, ExternalLink, Users } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { JobApplicantsPanel } from './JobApplicantsPanel';
-import { confirmDialog } from '../../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Job { id: string; title: string; branch: string | null; employment_type: string; description: string | null; requirements: string | null; salary_min: number | null; salary_max: number | null; status: string; applicant_count?: number; created_at?: string; }

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useSiteData } from '../../../context/SiteDataContext';
-import { confirmDialog } from '../../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 
 const ContactsTab: React.FC = () => {
   const { contactMessages, updateContactMessage, deleteContactMessage } = useSiteData();

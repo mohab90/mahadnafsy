@@ -3,7 +3,7 @@ import { CheckCircle2, Phone, Mail, Users, RefreshCw, XCircle, Loader2, Filter, 
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { useSiteData } from '../../../context/SiteDataContext';
 import type { LeadItem } from '../../../types';
-import { confirmDialog } from '../../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 

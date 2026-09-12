@@ -26,7 +26,7 @@ const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
  * Where the count stood when the ratchet was set. Lower it as dialogs move
  * across; never raise it. Raising it is the one edit this test exists to stop.
  */
-const HAND_ROLLED_CEILING = 57;
+const HAND_ROLLED_CEILING = 54;
 
 function componentFiles() {
   const out = [];
@@ -38,7 +38,11 @@ function componentFiles() {
       else if (entry.name.endsWith('.tsx')) out.push(full);
     }
   };
-  for (const app of ['admin', 'client']) walk(path.join(ROOT, app));
+  // shared/ counts too. Moving a hand-rolled dialog into shared/ui makes it
+  // reachable by both apps, which is progress — but it does not stop it being
+  // hand-rolled, and a scan that skipped the directory would report the move
+  // as six dialogs migrated.
+  for (const app of ['admin', 'client', 'shared']) walk(path.join(ROOT, app));
   return out.map(f => path.relative(ROOT, f).split(path.sep).join('/'));
 }
 
@@ -55,7 +59,7 @@ test('the count of hand-rolled dialogs only goes down', () => {
   // And the shared one is actually in use, so the ceiling is not being met by
   // deleting dialogs instead of migrating them.
   const adopters = files.filter(rel => /from ['"][^'"]*shared\/ui\/Modal['"]/.test(read(rel)));
-  assert.ok(adopters.length >= 5, `expected the migrated dialogs, saw ${adopters.length}`);
+  assert.ok(adopters.length >= 9, `expected the migrated dialogs, saw ${adopters.length}`);
 });
 
 test('the shared dialog does what the hand-rolled ones mostly did not', () => {

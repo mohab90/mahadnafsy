@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Building2, Plus, EyeOff, Eye, Save } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import { promptDialog } from '../../../components/shared/promptDialog';
+import { promptDialog } from '../../../../shared/ui/promptDialog';
 
 // Branches drive the pickers on booking, payment, lead capture and course
 // interest, and until now they could only be changed in the database: the API

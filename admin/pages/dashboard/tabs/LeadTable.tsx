@@ -7,7 +7,7 @@ import { BRANCH_ENUM_LABELS, ROTTEN_CFG, STATUS_CFG, getRottenLevel } from './le
 import { crmStatusLabels } from '../dashboardShared';
 import { toDialable } from '../../../lib/whatsappLink';
 import { courseBadgeLabel, isRawCourse } from './leads/leadCourseLabel';
-import { confirmDialog } from '../../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 
 const LEAD_STATUS_CFG = STATUS_CFG;
 

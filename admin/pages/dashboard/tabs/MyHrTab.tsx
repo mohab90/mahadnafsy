@@ -4,7 +4,7 @@ import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { ActivityLogItem, AuthUser, StaffMember } from '../../../types';
-import { confirmDialog } from '../../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type MyHrSection = 'overview' | 'activity' | 'performance' | 'leaves' | 'messages';

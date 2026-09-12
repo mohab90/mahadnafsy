@@ -18,7 +18,7 @@ import {
 } from '../leadUtils';
 import { TagInput } from './LeadInputs';
 import { ScoreBadge, getScoreBreakdown, LeadJourneyTimeline } from './LeadScoreAndTimeline';
-import { confirmDialog } from '../../../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 
 
 export function QuickEditPanel({ lead, onClose, onSave, courses, bundles, notify, instituteBranches }: {

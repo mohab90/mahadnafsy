@@ -14,7 +14,7 @@ import {
   CreditCard, 
 } from 'lucide-react';
 import { useSiteData, useEnsureLectures } from '../context/SiteDataContext';
-import { confirmDialog } from '../components/shared/confirmDialog';
+import { confirmDialog } from '../../shared/ui/confirmDialog';
 import { useUnifiedClientActiveTab, type UnifiedClientTab } from './unified-client/useUnifiedClientActiveTab';
 import { buildUnifiedClientTabs, UnifiedClientTabs } from './unified-client/UnifiedClientTabs';
 import { useUnifiedClientPaymentProofs } from './unified-client/useUnifiedClientPaymentProofs';

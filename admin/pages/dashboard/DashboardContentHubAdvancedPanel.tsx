@@ -2,7 +2,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { ExternalLink, Plus, Save, Trash2, X } from 'lucide-react';
 import { contentEditorFor, type ContentEditorHome } from './contentFields';
 import type { TabKey } from './navigation';
-import { confirmDialog } from '../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../shared/ui/confirmDialog';
 
 type ContentMap = Record<string, string>;
 type NotifyFn = (type: 'success' | 'error' | 'info' | 'warning', message: string) => void;

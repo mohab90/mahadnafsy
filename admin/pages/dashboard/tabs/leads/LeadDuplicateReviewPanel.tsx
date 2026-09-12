@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { GitMerge, RefreshCw, RotateCcw } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { NotifyFn } from '../CrmSettingsModal';
-import { confirmDialog } from '../../../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 
 interface DuplicateLead {
   id: string;

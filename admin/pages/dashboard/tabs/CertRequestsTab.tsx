@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Search, Star, Trash2, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { Course, SubscriberItem } from '../../../types';
-import { confirmDialog } from '../../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 

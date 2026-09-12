@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle, Edit2, Globe, Plus, RefreshCw, Send, Trash2, XCircle } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import { confirmDialog } from '../../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type EventType = 'new_lead' | 'lead_converted' | 'new_subscriber' | 'new_payment' | 'new_order' | 'refund_requested' | 'new_consultation' | 'new_contact' | 'new_join_us';

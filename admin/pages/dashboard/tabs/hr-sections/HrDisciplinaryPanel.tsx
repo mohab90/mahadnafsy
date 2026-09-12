@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Gavel, Plus, Trash2, Check, ShieldAlert } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { StaffMember } from '../../../../types';
-import { confirmDialog } from '../../../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 
 // The disciplinary API (list / issue / amend / resolve / withdraw) has been
 // live the whole time with nothing in the admin app calling it — while the

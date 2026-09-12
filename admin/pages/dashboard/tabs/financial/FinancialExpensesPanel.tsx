@@ -3,7 +3,7 @@ import { Plus, Wallet } from 'lucide-react';
 import type { ExpenseItem } from '../../../../types';
 import { ExpenseForm } from './ExpenseForm';
 import { ExpenseTable } from './ExpenseTable';
-import { confirmDialog } from '../../../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 
 type ExpenseDraft = Omit<ExpenseItem, 'id' | 'createdAt'>;
 

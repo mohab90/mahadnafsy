@@ -39,7 +39,7 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { DaqqiNewRoundModal } from './daqqi/DaqqiNewRoundModal';
 import { DaqqiAddClientsModal } from './daqqi/DaqqiAddClientsModal';
 import { DaqqiRoundRow } from './daqqi/DaqqiRoundRow';
-import { confirmDialog } from '../../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 // The same payment screen as everywhere else. A booking taken at the Daqqi
 // desk used to open a separate 623-line copy of it.
 const PaymentModal = React.lazy(() => import('../../../components/PaymentModal'));

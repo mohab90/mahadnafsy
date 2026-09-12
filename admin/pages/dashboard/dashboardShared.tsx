@@ -8,7 +8,7 @@ import {
 } from '../../constants/permissions';
 import type { TabKey } from './navigation';
 import { toDialable } from '../../lib/whatsappLink';
-import { confirmDialog } from '../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../shared/ui/confirmDialog';
 
 const PERMISSION_LABELS: Record<StaffPermission, string> = {
   // Dashboard overview

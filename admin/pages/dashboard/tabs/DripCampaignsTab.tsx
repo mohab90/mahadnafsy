@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { useCrmData } from '../../../context/siteDataSlices';
-import { confirmDialog } from '../../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 type EnrollmentStatus = 'active' | 'paused' | 'completed' | 'unenrolled' | 'failed' | 'unsubscribed';

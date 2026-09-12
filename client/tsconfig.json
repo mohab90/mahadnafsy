@@ -28,6 +28,8 @@
       ],
       "react": ["node_modules/@types/react/index.d.ts"],
       "react/*": ["node_modules/@types/react/*"],
+      "react-dom": ["node_modules/@types/react-dom/index.d.ts"],
+      "react-dom/*": ["node_modules/@types/react-dom/*"],
       "lucide-react": ["node_modules/lucide-react/dist/lucide-react.d.ts"],
       "dompurify": ["node_modules/dompurify/dist/purify.cjs.d.ts"]
     },

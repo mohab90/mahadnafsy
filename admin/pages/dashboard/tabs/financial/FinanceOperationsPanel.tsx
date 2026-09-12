@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Building2, CheckCircle2, Download, FileText, Landmark, Plus, RefreshCw, TrendingUp, WalletCards, XCircle } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
-import { promptDialog } from '../../../../components/shared/promptDialog';
+import { promptDialog } from '../../../../../shared/ui/promptDialog';
 
 type Notify = (message: string, type?: 'success' | 'error') => void;
 type Currency = 'EGP' | 'SAR' | 'USD';

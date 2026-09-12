@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { BookOpen, Plus, X, Eye, EyeOff, RefreshCw } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import { confirmDialog } from '../../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 

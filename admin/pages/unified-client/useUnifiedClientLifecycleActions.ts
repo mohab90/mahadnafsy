@@ -4,7 +4,7 @@ import { currencyForBranch } from '../../lib/branchCurrency';
 import type { LeadItem, SubscriberCertificate, SubscriberItem } from '../../types';
 import { generatePromoCode } from './constants';
 import { useUnifiedClientCertificateState } from './useUnifiedClientCertificateState';
-import { alertDialog, promptDialog } from '../../components/shared/promptDialog';
+import { alertDialog, promptDialog } from '../../../shared/ui/promptDialog';
 
 interface Params {
   lead?: LeadItem;

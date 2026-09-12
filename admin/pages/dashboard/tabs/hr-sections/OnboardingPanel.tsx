@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, ClipboardCheck, Loader2, Plus, Trash2 } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
-import { confirmDialog } from '../../../../components/shared/confirmDialog';
-import { promptDialog } from '../../../../components/shared/promptDialog';
+import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
+import { promptDialog } from '../../../../../shared/ui/promptDialog';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 type Template = { id: string; name: string; role?: string; description?: string; task_count: number };

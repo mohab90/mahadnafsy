@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { KeyRound } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { Card, Field, Input, NotifyFn, SaveBar, SectionHeader, Toggle, setNested } from './saasConnectorUi';
-import { promptDialog } from '../../../components/shared/promptDialog';
+import { promptDialog } from '../../../../shared/ui/promptDialog';
 
 type OtpConfig = Record<string, any>;
 

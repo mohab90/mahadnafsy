@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { CheckCircle, CheckCircle2, Eye, FileText, Plus, XCircle } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import { confirmDialog } from '../../../components/shared/confirmDialog';
-import { promptDialog } from '../../../components/shared/promptDialog';
+import { confirmDialog } from '../../../../shared/ui/confirmDialog';
+import { promptDialog } from '../../../../shared/ui/promptDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 

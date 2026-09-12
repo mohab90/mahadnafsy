@@ -1,7 +1,7 @@
 import { DashboardCommunityShell } from './DashboardCommunityShell';
 import type { CommunityEventItem, CommunityLibraryItem, CommunityPostItem, CommunityVideoItem } from '../../types';
 import { useCommunityDrafts } from './hooks/useCommunityDrafts';
-import { confirmDialog } from '../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../shared/ui/confirmDialog';
 
 type CommunityAdminTab = 'pending' | 'posts' | 'library' | 'videos' | 'events' | 'comments';
 type CommunityPostDraft = Pick<CommunityPostItem, 'title' | 'body' | 'tag' | 'authorName' | 'authorRole' | 'authorImage'> & { pinned: boolean };

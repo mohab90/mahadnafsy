@@ -3,7 +3,7 @@ import { Megaphone, Send, Users, Building2, UserRound, Check } from 'lucide-reac
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import type { StaffMember } from '../../types';
 import { fmtNum } from './types';
-import { confirmDialog } from '../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../shared/ui/confirmDialog';
 
 type Audiences = {
   total: number;

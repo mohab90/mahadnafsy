@@ -4,7 +4,7 @@ import {
   Phone, Plus, RefreshCw, Trash2, UserCheck, UserPlus, X, XCircle,
 } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import PromptModal from '../../../components/shared/PromptModal';
+import PromptModal from '../../../../shared/ui/PromptModal';
 import HireModal from './interviews-sections/HireModal';
 import {
   PHONE_RESULTS, branchLabel, fmtDateTime, matchesMinExperience, yearsLabel,
@@ -12,7 +12,7 @@ import {
 import InterviewFilters, {
   InterviewFilterState, emptyInterviewFilters, interviewFiltersActive, isPastInterview,
 } from './interviews-sections/InterviewFilters';
-import { confirmDialog } from '../../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }

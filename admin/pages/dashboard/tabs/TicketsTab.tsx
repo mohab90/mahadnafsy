@@ -4,8 +4,8 @@ import { Ticket, Plus, Search, MessageSquare, Clock, CheckCircle, AlertCircle, X
 import { useCrmData } from '../../../context/siteDataSlices';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { useStaticData } from '../../../context/siteDataSlices';
-import { confirmDialog } from '../../../components/shared/confirmDialog';
-import { promptDialog } from '../../../components/shared/promptDialog';
+import { confirmDialog } from '../../../../shared/ui/confirmDialog';
+import { promptDialog } from '../../../../shared/ui/promptDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }

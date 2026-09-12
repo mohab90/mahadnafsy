@@ -6,7 +6,7 @@ import { useBranches } from '../../../hooks/useBranches';
 import PaymentModal, { type PaymentDraft } from '../../../components/PaymentModal';
 import { createClientPaymentDraft } from '../../../lib/clientActionDrafts';
 import { currencyForBranch } from '../../../lib/branchCurrency';
-import { confirmDialog } from '../../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }

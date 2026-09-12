@@ -21,7 +21,7 @@ import { ROLE_LABELS } from './staff-profile/staffProfileConstants';
 import StaffAttendancePanel from './staff-profile/StaffAttendancePanel';
 import StaffSettingsPanel from './staff-profile/StaffSettingsPanel';
 import { toEgp } from '../lib/money';
-import { confirmDialog } from '../components/shared/confirmDialog';
+import { confirmDialog } from '../../shared/ui/confirmDialog';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const toEGP = (amt: number, cur: string) =>

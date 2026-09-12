@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { NotificationBroadcast } from '../../../types';
 import { useSiteData } from '../../../context/SiteDataContext';
-import { confirmDialog } from '../../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 
 const NotificationsAdminTab: React.FC = () => {
   const { notifications, addNotification, updateNotification, deleteNotification } = useSiteData();

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { DoorOpen, Check, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
-import { promptDialog } from '../../../../components/shared/promptDialog';
+import { promptDialog } from '../../../../../shared/ui/promptDialog';
 
 // Staff can file a resignation and the API stores and lists it — but nothing
 // in the admin app ever read /admin/hr/resignations, so a submitted request sat

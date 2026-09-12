@@ -6,8 +6,8 @@ import {
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../../context/SiteDataContext';
 import { AddRefundModal } from './AddRefundModal';
-import { confirmDialog } from '../../../../components/shared/confirmDialog';
-import { promptDialog } from '../../../../components/shared/promptDialog';
+import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
+import { promptDialog } from '../../../../../shared/ui/promptDialog';
 
 // A refund is a money decision with a story: which course, at which branch, how
 // much of it the customer had actually paid, how much they asked back, when

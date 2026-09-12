@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import { coursePaymentState } from './coursePaymentState';
 import type { SubscriberItem } from '../../types';
-import { confirmDialog } from '../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../shared/ui/confirmDialog';
 
 interface Params {
   subscriber?: SubscriberItem;

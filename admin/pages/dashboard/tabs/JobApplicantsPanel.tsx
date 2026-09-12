@@ -6,7 +6,7 @@ import {
 
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { EXPERIENCE_YEARS as YEARS, BRANCH_LABELS as BRANCHES, STAGE_LABELS as STAGES } from "./hr-sections/applicantLabels";
-import { promptDialog } from '../../../components/shared/promptDialog';
+import { promptDialog } from '../../../../shared/ui/promptDialog';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 

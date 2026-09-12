@@ -25,8 +25,8 @@ import {
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { hasPermission, type PermissionKey, type RoleKey } from '../../../constants/permissions';
-import { confirmDialog } from '../../../components/shared/confirmDialog';
-import { promptDialog } from '../../../components/shared/promptDialog';
+import { confirmDialog } from '../../../../shared/ui/confirmDialog';
+import { promptDialog } from '../../../../shared/ui/promptDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type InboxSource = 'ticket' | 'contact' | 'refund' | 'join_instructor' | 'join_consultant' | 'join_staff';

@@ -3,7 +3,7 @@ import { Plus } from 'lucide-react';
 import { DiscountRule } from '../../../../types';
 import { useStaticData } from '../../../../context/siteDataSlices';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
-import { confirmDialog } from '../../../../components/shared/confirmDialog';
+import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 import { isExpiryActive } from '../../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
