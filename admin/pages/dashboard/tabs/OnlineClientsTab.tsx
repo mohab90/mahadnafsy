@@ -12,7 +12,8 @@ import type {
 } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { normBranchId } from '../dashboardShared';
-import { type PaymentDraft } from '../../../components/PaymentModal';
+import PaymentModal, { blankPaymentDraft, type PaymentDraft } from '../../../components/PaymentModal';
+import { createClientWithPayment } from '../../../lib/createClientWithPayment';
 import SectionCustomTabs from './SectionCustomTabs';
 
 // Kept beside the component so the URL parser and the tab strip agree on what
@@ -139,9 +140,22 @@ export default function OnlineClientsTab({
   const [daqqiHousingFilter, setDaqqiHousingFilter] = useState<'all'|'housed'|'unhoused'>('all');
   const [daqqiRoundFilter, setDaqqiRoundFilter] = useState('');
   const [daqqiReceptionFilter, setDaqqiReceptionFilter] = useState('');
-  const [daqqiBranchNewSubDraft, setDaqqiBranchNewSubDraft] = useState<{name:string;phone:string;email:string;courseIds:string[];courseExpected:string;amount:string;currency:'EGP'|'SAR'|'USD';paymentMethod:string;transactionId:string;date:string;note:string;bookingType:'new_booking'|'installment';}>({name:'',phone:'',email:'',courseIds:[],courseExpected:'',amount:'',currency:'EGP',paymentMethod:'',transactionId:'',date:new Date().toISOString().slice(0,10),note:'',bookingType:'new_booking'});
-  const [daqqiBranchNewSubSaving, setDaqqiBranchNewSubSaving] = useState(false);
-  const daqqiBranchNewSubReset = () => setDaqqiBranchNewSubDraft({name:'',phone:'',email:'',courseIds:[],courseExpected:'',amount:'',currency:'EGP',paymentMethod:'',transactionId:'',date:new Date().toISOString().slice(0,10),note:'',bookingType:'new_booking'});
+  // One draft for the shared booking screen. This was a hand-rolled object of
+  // twelve fields — a third spelling of the same form.
+  const [newClientDraft, setNewClientDraft] = useState<PaymentDraft>(blankPaymentDraft({ branch: 'DAQQI' }));
+  // Creating the customer and recording the money in one place, through the
+  // endpoint that journals it. This screen used to post the payment itself and
+  // the Daqqi desk wrote it onto the subscriber record — two spellings, one of
+  // which never reached the books.
+  const handleNewDaqqiClient = async (draft: PaymentDraft) => {
+    const result = await createClientWithPayment(draft, { branch: draft.branch || 'DAQQI', source: 'reception' });
+    const fresh = await mysqlAdmin.listAllSubscribers();
+    setSalesOwnSubscribers(fresh as unknown as SubscriberItem[]);
+    notify(result.approvalRequired ? 'info' : 'success',
+      result.approvalRequired
+        ? `✅ تم إضافة ${(draft.name || '').trim()} والدفعة بانتظار اعتماد المالية`
+        : `✅ تم إضافة ${(draft.name || '').trim()} بنجاح`);
+  };
   const [daqqiSettingsOpen, setDaqqiSettingsOpen] = useState(false);
   const [daqqiHousingModal, setDaqqiHousingModal] = useState<SubscriberItem|null>(null);
   const [daqqiHousingRoundId, setDaqqiHousingRoundId] = useState('');
@@ -613,206 +627,18 @@ export default function OnlineClientsTab({
                     const pmList: string[] = parsePaymentMethods(content['finance.payment_methods']);
                     return (
                     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" dir="rtl"
-                      onClick={e=>{if(e.target===e.currentTarget){setOmNewSubOpen(false);omNewSubReset();daqqiBranchNewSubReset();}}}>
+                      onClick={e=>{if(e.target===e.currentTarget){setOmNewSubOpen(false);omNewSubReset();setNewClientDraft(blankPaymentDraft({ branch: 'DAQQI' }));}}}>
                       {isDaqqiClientsTab ? (
-                        /* ══════════ مشترك جديد — فرع الدقي ══════════ */
-                        <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-                          {/* Header */}
-                          <div className="flex items-center justify-between px-5 py-4 bg-gradient-to-l from-indigo-600 to-indigo-700 text-white">
-                            <div>
-                              <h3 className="font-extrabold text-base">🏢 عميل دقي جديد</h3>
-                              <p className="text-xs text-indigo-200 mt-0.5">إضافة عميل لفرع الدقي</p>
-                            </div>
-                            <button onClick={()=>{setOmNewSubOpen(false);daqqiBranchNewSubReset();}} className="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10"><X size={20}/></button>
-                          </div>
-                          <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
-                            {/* بيانات العميل */}
-                            <div>
-                              <p className="text-xs font-extrabold text-gray-500 uppercase mb-2 flex items-center gap-1">👤 بيانات العميل</p>
-                              <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                  <label className="block text-xs font-bold text-gray-600 mb-1">الاسم الكامل *</label>
-                                  <input type="text" value={daqqiBranchNewSubDraft.name} onChange={e=>setDaqqiBranchNewSubDraft(d=>({...d,name:e.target.value}))}
-                                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200" placeholder="اسم العميل" />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-bold text-gray-600 mb-1">رقم الهاتف *</label>
-                                  <input type="tel" value={daqqiBranchNewSubDraft.phone} onChange={e=>setDaqqiBranchNewSubDraft(d=>({...d,phone:e.target.value}))}
-                                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200" placeholder="+201xxxxxxxxx" dir="ltr" />
-                                </div>
-                              </div>
-                              <div className="mt-2">
-                                <label className="block text-xs font-bold text-gray-600 mb-1">البريد الإلكتروني (اختياري)</label>
-                                <input type="email" value={daqqiBranchNewSubDraft.email} onChange={e=>setDaqqiBranchNewSubDraft(d=>({...d,email:e.target.value}))}
-                                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200" placeholder="email@example.com" dir="ltr" />
-                              </div>
-                            </div>
-                            {/* الكورسات */}
-                            <div>
-                              <p className="text-xs font-extrabold text-gray-500 uppercase mb-2 flex items-center gap-1">🎓 الكورسات (اختياري)</p>
-                              <div className="border border-gray-200 rounded-xl overflow-hidden">
-                                <div className="max-h-44 overflow-y-auto divide-y divide-gray-100">
-                                  {[
-                                    ...bundles.map(b => ({ id: `bundle:${b.id}`, label: `📌 ${b.titleAr||b.title}`, price: b.price?.EGP||0, isBun: true })),
-                                    ...courses.map(c => ({ id: c.id, label: `🎓 ${c.titleAr||c.title}`, price: c.price?.EGP||0, isBun: false })),
-                                  ].map(item => {
-                                    const sel = daqqiBranchNewSubDraft.courseIds.includes(item.id);
-                                    return (
-                                      <label key={item.id} className={`flex items-center gap-2 px-3 py-2 cursor-pointer transition text-xs ${sel?'bg-indigo-50':' hover:bg-gray-50'}`}>
-                                        <input type="checkbox" checked={sel} onChange={e=>{
-                                          setDaqqiBranchNewSubDraft(d=>({...d,courseIds:e.target.checked?[...d.courseIds,item.id]:d.courseIds.filter(id=>id!==item.id)}));
-                                        }} className="accent-indigo-600 w-3.5 h-3.5"/>
-                                        <span className="flex-1 font-medium text-gray-800">{item.label}</span>
-                                        {item.price>0 && <span className="text-emerald-600 font-bold">{item.price.toLocaleString()} ج.م</span>}
-                                      </label>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                              {daqqiBranchNewSubDraft.courseIds.length > 0 && (
-                                <div className="mt-2">
-                                  <label className="block text-xs font-bold text-gray-600 mb-1">المبلغ المتوقع الإجمالي</label>
-                                  <input type="number" min="0" value={daqqiBranchNewSubDraft.courseExpected}
-                                    onChange={e=>setDaqqiBranchNewSubDraft(d=>({...d,courseExpected:e.target.value}))}
-                                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200" placeholder="0 ج.م" />
-                                </div>
-                              )}
-                            </div>
-                            {/* الدفعة الأولى */}
-                            <div className="bg-gradient-to-l from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-3 space-y-3">
-                              <p className="text-xs font-extrabold text-emerald-700 flex items-center gap-1">💳 دفعة أولى (اختياري)</p>
-                              <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                  <label className="block text-[11px] font-bold text-gray-600 mb-1">المبلغ</label>
-                                  <input type="number" min="0" value={daqqiBranchNewSubDraft.amount}
-                                    onChange={e=>setDaqqiBranchNewSubDraft(d=>({...d,amount:e.target.value}))}
-                                    className="w-full border border-emerald-200 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200" placeholder="0" />
-                                </div>
-                                <div>
-                                  <label className="block text-[11px] font-bold text-gray-600 mb-1">العملة</label>
-                                  <select value={daqqiBranchNewSubDraft.currency} onChange={e=>setDaqqiBranchNewSubDraft(d=>({...d,currency:e.target.value as 'EGP'|'SAR'|'USD'}))}
-                                    className="w-full border border-emerald-200 rounded-xl px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-200">
-                                    <option value="EGP">ج.م — جنيه مصري</option>
-                                    <option value="SAR">ر.س — ريال سعودي</option>
-                                    <option value="USD">$ — دولار</option>
-                                  </select>
-                                </div>
-                              </div>
-                              <div>
-                                <label className="block text-[11px] font-bold text-gray-600 mb-1">طريقة الدفع</label>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {pmList.map(pm=>(
-                                    <button key={pm} type="button" onClick={()=>setDaqqiBranchNewSubDraft(d=>({...d,paymentMethod:d.paymentMethod===pm?'':pm}))}
-                                      className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border transition ${daqqiBranchNewSubDraft.paymentMethod===pm?'bg-indigo-600 text-white border-indigo-600':'border-gray-200 text-gray-700 hover:bg-gray-100'}`}>
-                                      {pm}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                              <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                  <label className="block text-[11px] font-bold text-gray-600 mb-1">تاريخ الدفع</label>
-                                  <input type="date" value={daqqiBranchNewSubDraft.date}
-                                    onChange={e=>setDaqqiBranchNewSubDraft(d=>({...d,date:e.target.value}))}
-                                    className="w-full border border-emerald-200 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200" />
-                                </div>
-                                <div>
-                                  <label className="block text-[11px] font-bold text-gray-600 mb-1">رقم الإيصال</label>
-                                  <input type="text" value={daqqiBranchNewSubDraft.transactionId}
-                                    onChange={e=>setDaqqiBranchNewSubDraft(d=>({...d,transactionId:e.target.value}))}
-                                    className="w-full border border-emerald-200 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200" placeholder="اختياري" />
-                                </div>
-                              </div>
-                            </div>
-                            <div>
-                              <label className="block text-xs font-bold text-gray-600 mb-1">ملاحظات</label>
-                              <textarea value={daqqiBranchNewSubDraft.note} onChange={e=>setDaqqiBranchNewSubDraft(d=>({...d,note:e.target.value}))}
-                                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 resize-none" rows={2} placeholder="أي ملاحظات..." />
-                            </div>
-                          </div>
-                          <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 bg-gray-50">
-                            <button onClick={()=>{setOmNewSubOpen(false);daqqiBranchNewSubReset();}} className="px-4 py-2 text-sm rounded-xl border border-gray-200 hover:bg-gray-100">إلغاء</button>
-                            <button disabled={daqqiBranchNewSubSaving || !daqqiBranchNewSubDraft.name.trim() || !daqqiBranchNewSubDraft.phone.trim() || (Number(daqqiBranchNewSubDraft.amount) > 0 && (!daqqiBranchNewSubDraft.paymentMethod || daqqiBranchNewSubDraft.courseIds.length === 0))}
-                              onClick={async()=>{
-                                if (!daqqiBranchNewSubDraft.name.trim() || !daqqiBranchNewSubDraft.phone.trim()) return;
-                                setDaqqiBranchNewSubSaving(true);
-                                try {
-                                  const amount = Number(daqqiBranchNewSubDraft.amount);
-                                  if (!Number.isFinite(amount) || amount < 0) throw new Error('قيمة الدفعة غير صحيحة');
-                                  if (amount > 0 && (!daqqiBranchNewSubDraft.paymentMethod || daqqiBranchNewSubDraft.courseIds.length === 0)) {
-                                    throw new Error('اختر الكورس وطريقة الدفع قبل تسجيل الدفعة');
-                                  }
-                                  const courseExpected = Number(daqqiBranchNewSubDraft.courseExpected);
-                                  const primarySelection = daqqiBranchNewSubDraft.courseIds[0] || '';
-                                  let approvalRequired = false;
-                                  if (amount > 0) {
-                                    if (!primarySelection) throw new Error('اختر كورس أو باقة لربط الدفعة');
-                                    if (daqqiBranchNewSubDraft.courseIds.length !== 1) {
-                                      throw new Error('كل دفعة جديدة لازم ترتبط بكورس أو باقة واحدة فقط');
-                                    }
-                                    const result = await mysqlAdmin.adminPost<{
-                                      ok: boolean; subscriberId: string; approvalRequired?: boolean;
-                                    }>('/admin/subscriber-payments', {
-                                      subscriber: {
-                                        name: daqqiBranchNewSubDraft.name.trim(),
-                                        phone: daqqiBranchNewSubDraft.phone.trim(),
-                                        email: daqqiBranchNewSubDraft.email.trim(),
-                                        branch: 'DAQQI',
-                                        notes: daqqiBranchNewSubDraft.note || undefined,
-                                        source: 'reception',
-                                      },
-                                      payment: {
-                                        amount,
-                                        currency: daqqiBranchNewSubDraft.currency,
-                                        paymentType: 'course',
-                                        isInstallment: false,
-                                        ...(primarySelection.startsWith('bundle:')
-                                          ? { bundleId: primarySelection.slice(7) }
-                                          : { courseId: primarySelection }),
-                                        courseExpected: courseExpected || undefined,
-                                        paymentMethod: daqqiBranchNewSubDraft.paymentMethod || undefined,
-                                        transactionId: daqqiBranchNewSubDraft.transactionId || undefined,
-                                        at: daqqiBranchNewSubDraft.date,
-                                        note: daqqiBranchNewSubDraft.note || undefined,
-                                        source: 'reception',
-                                        branch: 'DAQQI',
-                                      },
-                                    });
-                                    approvalRequired = !!result.approvalRequired;
-                                  } else {
-                                    const newSub = {
-                                      id:`daqqi-${Date.now()}`,
-                                      name:daqqiBranchNewSubDraft.name.trim(),
-                                      phone:daqqiBranchNewSubDraft.phone.trim(),
-                                      email:daqqiBranchNewSubDraft.email.trim(),
-                                      branch:'DAQQI' as BranchType,
-                                      status:'active',
-                                      enrolledCourseIds:[],
-                                      courseAccess:{},
-                                      paymentHistory:[],
-                                      createdAt:new Date().toISOString().slice(0,10),
-                                      clientCode:'',
-                                      notes:daqqiBranchNewSubDraft.note||'',
-                                    } as unknown as SubscriberItem;
-                                    const added = await addSubscriber(newSub);
-                                    if (!added) throw new Error('العميل موجود بالفعل');
-                                  }
-                                  const fresh = await mysqlAdmin.listAllSubscribers();
-                                  setSalesOwnSubscribers(fresh as unknown as SubscriberItem[]);
-                                  notify('success', approvalRequired
-                                    ? `✅ تم إضافة ${daqqiBranchNewSubDraft.name.trim()} والدفعة بانتظار اعتماد المالية`
-                                    : `✅ تم إضافة ${daqqiBranchNewSubDraft.name.trim()} بنجاح`);
-                                  setOmNewSubOpen(false); daqqiBranchNewSubReset();
-                                } catch(err:unknown) {
-                                  const message = err instanceof Error ? err.message : String(err);
-                                  notify('error', '❌ فشل الإضافة: ' + message);
-                                } finally { setDaqqiBranchNewSubSaving(false); }
-                              }}
-                              className="px-5 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 disabled:opacity-50 transition">
-                              {daqqiBranchNewSubSaving ? '⏳ جاري الإضافة...' : '✅ إضافة العميل'}
-                            </button>
-                          </div>
-                        </div>
+                        /* عميل دقي جديد — نفس شاشة الحجز والدفع المستخدمة في كل مكان.
+                           كانت نسخة مكتوبة هنا بحقولها الخاصة، وتوأمها في مكتب الدقي. */
+                        <PaymentModal
+                          mode="new"
+                          subject={{ id: '', name: '' }}
+                          draft={newClientDraft}
+                          setDraft={setNewClientDraft}
+                          onSubmit={handleNewDaqqiClient}
+                          onClose={() => { setOmNewSubOpen(false); setNewClientDraft(blankPaymentDraft({ branch: 'DAQQI' })); }}
+                        />
                       ) : (
                       /* ══════════ مشترك جديد — أونلاين ══════════ */
                       <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">

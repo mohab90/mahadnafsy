@@ -33,7 +33,6 @@ const codeOnly = source => source
   .join('\n');
 const RECEIPTS = [
   ['components/PaymentModal.tsx', 'payModalPrintReceipt'],
-  ['pages/dashboard/tabs/daqqi/DaqqiNewClientModals.tsx', 'daqqiPrintReceipt'],
 ];
 
 test('no print rule hides the receipt by hiding body\'s children', () => {
@@ -58,9 +57,13 @@ test('each receipt is revealed by visibility, which a descendant can override', 
   }
 });
 
-test('the scan is reading both receipts', () => {
+test('the scan is reading the receipt', () => {
   // An empty RECEIPTS list would pass every assertion above.
-  assert.equal(RECEIPTS.length, 2);
+  //
+  // There were two: PaymentModal's and the Daqqi desk's own, printed by its own
+  // copy of the payment screen. That copy is gone — every booking anywhere
+  // opens PaymentModal now, so there is one receipt to check.
+  assert.equal(RECEIPTS.length, 1);
   for (const [rel] of RECEIPTS) {
     assert.ok(fs.existsSync(path.join(ADMIN, ...rel.split('/'))), `${rel} is missing`);
   }

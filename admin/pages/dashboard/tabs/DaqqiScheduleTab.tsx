@@ -14,13 +14,8 @@ import type {
 import { DaqqiScheduleHeader } from './daqqi/DaqqiScheduleHeader';
 import { DaqqiCommunicationModal } from './daqqi/DaqqiCommunicationModal';
 import { DaqqiRoundEditorModal } from './daqqi/DaqqiRoundEditorModal';
-import {
-  DaqqiNewClientModal,
-  DaqqiNewClientReceiptModal,
-  type DaqqiNewClientDraft,
-  type DaqqiNewClientReceipt,
-} from './daqqi/DaqqiNewClientModals';
-import type { PaymentDraft } from '../../../components/PaymentModal';
+import { blankPaymentDraft, type PaymentDraft } from '../../../components/PaymentModal';
+import { createClientWithPayment } from '../../../lib/createClientWithPayment';
 import { useDaqqiPaymentState } from './daqqi/useDaqqiPaymentState';
 import { useDaqqiViewFilters } from './daqqi/useDaqqiViewFilters';
 import {
@@ -67,7 +62,7 @@ interface Props {
 const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, roundsOverride, hideCreateRound, requirePaymentApproval, onRoundUpdate, onRoundCreate, createRoundRef, branchFilter }) => {
   const navigate = useNavigate();
   const {
-    courses, bundles, therapists, staffMembers, subscribers: ctxSubscribers, updateSubscriber, addSubscriber, recordSubscriberPayment,
+    courses, bundles, therapists, staffMembers, subscribers: ctxSubscribers, updateSubscriber, addSubscriber, recordSubscriberPayment, reloadSubscribers,
     daqqiRounds: ctxRounds, addDaqqiRound: ctxAddDaqqiRound, updateDaqqiRound: ctxUpdateDaqqiRound,
     deleteDaqqiRound, transferDaqqiAttendee, bulkSetDaqqiRounds, content, authUser, isAdmin,
   } = useSiteData();
@@ -152,7 +147,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
   const [daqqiToskeenSubId, setDaqqiToskeenSubId] = useState<string | null>(null);
   const [daqqiCommModal, setDaqqiCommModal] = useState<{ subscriberId: string; subscriberName: string; phone: string } | null>(null);
   const [daqqiAddClientModal, setDaqqiAddClientModal] = useState(false);
-  const [daqqiNewClientPrintReceipt, setDaqqiNewClientPrintReceipt] = useState<DaqqiNewClientReceipt | null>(null);
+  const [newClientDraft, setNewClientDraft] = useState<PaymentDraft>(blankPaymentDraft({ branch: 'DAQQI' }));
 
   const daqqiBranchIds = parseDaqqiBranchIds(content);
   const daqqiSubs = subscribers.filter(s => {
@@ -506,81 +501,22 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
     notify('success', 'تم تسجيل التواصل بنجاح.');
   };
 
-  const handleDaqqiAddNewClient = async (draft: DaqqiNewClientDraft) => {
-    if (!draft.name.trim() || !draft.phone.trim()) {
-      notify('error', 'الاسم والهاتف مطلوبان.');
-      return;
-    }
-    const amount = Number(draft.amount);
-    const courseIds = draft.courseIds;
-    const courseAccessMap: Record<string, { mode: 'full' }> = {};
-    courseIds.forEach(cid => { courseAccessMap[cid] = { mode: 'full' }; });
-    const newSub: any = {
-      id: `daqqi-client-${Date.now()}`,
-      name: draft.name.trim(),
-      phone: draft.phone.trim(),
-      email: draft.email.trim(),
-      branch: 'daqqi',
-      status: 'active' as const,
-      enrolledCourseIds: courseIds,
-      paymentHistory: [],
-      courseAccess: courseAccessMap,
-      createdAt: new Date().toISOString().slice(0, 10),
-      clientCode: '',
-    };
-    if (amount > 0) {
-      const entry: PaymentHistoryEntry = {
-        id: `dq-pay-${Date.now()}`,
-        amount,
-        currency: draft.currency,
-        paymentType: draft.paymentType,
-        isInstallment: draft.bookingType === 'installment',
-        courseId: draft.paymentType === 'course' ? (courseIds[0] || '') : '',
-        note: [draft.note, draft.transactionId].filter(Boolean).join(' | ') || undefined,
-        paymentMethod: draft.paymentMethod || undefined,
-        at: draft.date,
-      };
-      newSub.paymentHistory = [entry];
-    }
-    let ok = false;
-    try {
-      ok = await addSubscriber(newSub);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      notify('error', `فشل إضافة العميل: ${msg}`);
-      return;
-    }
-    if (!ok) {
-      notify('error', 'العميل موجود بالفعل (هاتف أو إيميل مكرر).');
-      return;
-    }
-    // Track the new subscriber's ID so it appears immediately in the filtered view
-    if (subscribersOverride) {
-      setLocallyAddedSubIds(prev => { const n = new Set(prev); n.add(newSub.id); return n; });
-    }
-    notify('success', 'تم إضافة العميل بنجاح.');
-    // Show print receipt if payment was made
-    if (Number(draft.amount) > 0) {
-      const courseLabels = draft.courseIds.map(cid => {
-        if (cid.startsWith('bundle:')) {
-          const b = bundles.find(bx => bx.id === cid.replace('bundle:', ''));
-          return b?.title || cid;
-        }
-        const c = courses.find(cx => cx.id === cid);
-        return c?.titleAr || c?.title || cid;
-      });
-      setDaqqiNewClientPrintReceipt({
-        name: draft.name.trim(),
-        phone: draft.phone.trim(),
-        courses: courseLabels,
-        amount: Number(draft.amount),
-        currency: draft.currency,
-        method: draft.paymentMethod || '—',
-        bookingType: draft.bookingType,
-        date: draft.date,
-      });
-    }
-    setDaqqiAddClientModal(false);
+  // Was: build a paymentHistory array in the browser and hand it to
+  // saveSubscriber. That wrote the money onto the subscriber record and
+  // nowhere else — no payments row, no journal line, no approval step — so
+  // cash taken at this desk never reached the books. It goes through the same
+  // endpoint as every other booking now.
+  //
+  // PaymentModal owns closing and the receipt, so neither happens here.
+  const handleDaqqiAddNewClient = async (draft: PaymentDraft) => {
+    const result = await createClientWithPayment(draft, { branch: draft.branch || 'DAQQI', source: 'reception' });
+    await reloadSubscribers();
+    notify(
+      result.approvalRequired ? 'info' : 'success',
+      result.approvalRequired
+        ? 'تم إضافة العميل وإرسال الدفعة للمراجعة ✓ — بانتظار موافقة المدير'
+        : result.paid ? 'تم إضافة العميل وتسجيل الدفعة بنجاح.' : 'تم إضافة العميل بنجاح.',
+    );
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -843,19 +779,17 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
         handleAddClientsToRound={handleAddClientsToRound}
       />
 
-      <DaqqiNewClientModal
-        open={daqqiAddClientModal}
-        content={content}
-        courses={courses}
-        bundles={bundles}
-        onClose={() => setDaqqiAddClientModal(false)}
-        onSubmit={handleDaqqiAddNewClient}
-      />
-
-      <DaqqiNewClientReceiptModal
-        receipt={daqqiNewClientPrintReceipt}
-        onClose={() => setDaqqiNewClientPrintReceipt(null)}
-      />
+      {daqqiAddClientModal && (
+        <PaymentModal
+          mode="new"
+          subject={{ id: '', name: '' }}
+          draft={newClientDraft}
+          setDraft={setNewClientDraft}
+          onSubmit={handleDaqqiAddNewClient}
+          onClose={() => { setDaqqiAddClientModal(false); setNewClientDraft(blankPaymentDraft({ branch: 'DAQQI' })); }}
+          requirePaymentApproval={requirePaymentApproval}
+        />
+      )}
 
 
       <DaqqiRoundEditorModal

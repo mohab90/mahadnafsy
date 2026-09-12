@@ -30,10 +30,14 @@ export interface PaymentDraft {
   date: string;
   note: string;
   extraItems: ExtraPayItem[];
-  // Lead-only
+  // Lead mode, and 'new' mode, which is a lead-shaped customer who does not
+  // exist in the system yet.
   branch?: string;
   email?: string;
   nationalId?: string;
+  // 'new' mode only: the person is being created by this form.
+  name?: string;
+  phone?: string;
 }
 
 export interface ExtraPayItem {
@@ -68,6 +72,8 @@ export const blankPaymentDraft = (opts?: {
   branch: opts?.branch,
   email: opts?.email,
   nationalId: '',
+  name: '',
+  phone: '',
 });
 
 // ── PrintReceipt sub-component ─────────────────────────────────────────────
@@ -202,7 +208,15 @@ interface SubjectInfo {
 interface BranchOption { id: string; label: string; }
 
 interface PaymentModalProps {
-  mode: 'lead' | 'subscriber';
+  /**
+   * 'subscriber' — an existing customer pays.
+   * 'lead'     — a lead pays and becomes one.
+   * 'new'      — the person does not exist yet: this form creates them and
+   *              takes the first payment. Two screens had their own copy of
+   *              that (the Daqqi desk and عملاء الأونلاين) and they disagreed
+   *              about the fields, the rules and where the money went.
+   */
+  mode: 'lead' | 'subscriber' | 'new';
   subject: SubjectInfo;
   draft: PaymentDraft;
   setDraft: (d: PaymentDraft) => void;
@@ -241,6 +255,11 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
   const d = draft;
   const set = (partial: Partial<PaymentDraft>) => setDraft({ ...d, ...partial });
+
+  // Who this payment is for. In 'new' mode they do not exist yet, so it is
+  // whoever is being typed into the form.
+  const personName = mode === 'new' ? (d.name || '').trim() : subject.name;
+  const personPhone = mode === 'new' ? (d.phone || '').trim() : subject.phone;
 
   // ── Helpers ────────────────────────────────────────────────────────────
   const sysPrice = (courseId: string): number => {
@@ -373,7 +392,13 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
   const paymentMethods: string[] = parsePaymentMethods(content['finance.payment_methods']);
 
-  const isValid = _amtPaid > 0 && !!d.paymentMethod && (mode === 'lead' ? !!d.branch : true);
+  // In 'new' mode the amount may be zero — enrolling a customer without
+  // taking money yet is a real thing the desk does — but a name and a number
+  // are not optional, because they are the only way to find the person again.
+  const hasIdentity = !!(d.name || '').trim() && !!(d.phone || '').trim();
+  const isValid = mode === 'new'
+    ? hasIdentity && (_amtPaid === 0 || (!!d.paymentMethod && !!d.courseId))
+    : _amtPaid > 0 && !!d.paymentMethod && (mode === 'lead' ? !!d.branch : true);
 
   // ── Build print data ───────────────────────────────────────────────────
   const buildPrintData = (): PrintData => {
@@ -384,8 +409,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     const staffName = authUser?.displayName || authUser?.email?.split('@')[0] || 'موظف';
     const label = courseLabel(d.courseId) || d.paymentType;
     return {
-      subName: subject.name,
-      phone: subject.phone,
+      subName: personName,
+      phone: personPhone,
       courseName: label,
       items: [
         { label, amount: _amtPaid, currency: d.currency },
@@ -462,9 +487,9 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
               <div className="bg-white/20 rounded-xl p-2"><CreditCard size={20} className="text-white" /></div>
               <div>
                 <h4 className="font-extrabold text-white text-base leading-tight">
-                  {mode === 'lead' ? 'حجز عميل' : 'تسجيل دفعة'}
+                  {mode === 'lead' ? 'حجز عميل' : mode === 'new' ? 'عميل جديد + حجز' : 'تسجيل دفعة'}
                 </h4>
-                <p className="text-red-100 text-xs mt-0.5">{subject.name}</p>
+                <p className="text-red-100 text-xs mt-0.5">{personName || 'عميل جديد'}</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -947,7 +972,56 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
             </div>
           )}
 
-          {/* ── 7: Lead-only: branch selector ── */}
+          {/* ── 7: new-customer identity ── */}
+          {mode === 'new' && (
+            <div className="space-y-3 border border-indigo-100 bg-indigo-50/40 rounded-xl p-3">
+              <p className="text-[11px] font-bold text-indigo-700">بيانات العميل الجديد</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">الاسم <span className="text-red-500">*</span></label>
+                  <input
+                    type="text" value={d.name || ''}
+                    onChange={e => set({ name: e.target.value })}
+                    className={`w-full border-2 rounded-xl px-3 py-2 text-sm font-semibold ${!(d.name || '').trim() ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white'}`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">الهاتف <span className="text-red-500">*</span></label>
+                  <input
+                    type="tel" dir="ltr" value={d.phone || ''}
+                    onChange={e => set({ phone: e.target.value })}
+                    className={`w-full border-2 rounded-xl px-3 py-2 text-sm font-mono ${!(d.phone || '').trim() ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white'}`}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1.5">البريد الإلكتروني <span className="text-gray-400 font-normal">(اختياري)</span></label>
+                  <input
+                    type="email" dir="ltr" placeholder="email@example.com"
+                    value={d.email || ''}
+                    onChange={e => set({ email: e.target.value })}
+                    className={`w-full border rounded-xl px-3 py-2 text-sm font-mono ${d.email && !d.email.includes('@') ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
+                  />
+                </div>
+                {branchOptions.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1.5">الفرع</label>
+                    <select
+                      value={d.branch || ''}
+                      onChange={e => set({ branch: e.target.value })}
+                      className="w-full border-2 border-gray-200 bg-white rounded-xl px-3 py-2 text-sm font-semibold"
+                    >
+                      <option value="">— اختر الفرع —</option>
+                      {branchOptions.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── 7b: Lead-only: branch selector ── */}
           {mode === 'lead' && (
             <div>
               <label className="block text-xs font-bold text-gray-700 mb-1.5">الفرع <span className="text-red-500">*</span></label>
@@ -1073,11 +1147,11 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
               disabled={!isValid || submitting}
               className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white rounded-2xl text-sm font-extrabold disabled:opacity-40 transition-all shadow-sm flex items-center justify-center gap-2 shadow-lg shadow-red-100"
             >
-              <CreditCard size={16} /> {submitting ? 'جارٍ الحفظ...' : 'تسجيل الدفعة'}
+              <CreditCard size={16} /> {submitting ? 'جارٍ الحفظ...' : (mode === 'new' && _amtPaid === 0 ? 'إضافة العميل' : 'تسجيل الدفعة')}
             </button>
             <button
               onClick={() => { void handleSubmit(true); }}
-              disabled={!isValid || submitting}
+              disabled={!isValid || submitting || _amtPaid === 0}
               className="flex-1 py-3 bg-gray-800 hover:bg-gray-900 text-white rounded-2xl text-sm font-extrabold disabled:opacity-40 transition-all shadow-sm flex items-center justify-center gap-2"
             >
               🖨️ {submitting ? 'جارٍ الحفظ...' : 'تسجيل وطباعة'}

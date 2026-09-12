@@ -103,7 +103,6 @@ test('the payment methods the settings screen writes are the ones the dialogs re
 
   for (const screen of [
     'admin/components/PaymentModal.tsx',
-    'admin/pages/dashboard/tabs/daqqi/DaqqiNewClientModals.tsx',
     'admin/pages/dashboard/tabs/financial/PaymentReviewPanel.tsx',
   ]) {
     const source = codeOnly(read(screen));

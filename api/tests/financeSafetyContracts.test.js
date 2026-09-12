@@ -227,7 +227,18 @@ test('account onboarding and finance screens keep payments in the ledger-backed 
   assert.match(auth, /paymentBundleId/);
   assert.match(auth, /if \(firstPaymentStatus === 'paid'\)[\s\S]{0,250}postPaymentJournal/);
   assert.match(onlineClients, /firstPayment:[\s\S]{0,1000}courseExpected/);
-  assert.match(onlineClients, /adminPost<[\s\S]{0,220}\/admin\/subscriber-payments/);
+  // The Daqqi-branch half of this screen used to post the payment itself. It
+  // calls the shared helper now — the one the Daqqi desk also calls — so a
+  // booking taken at either place reaches the ledger the same way.
+  assert.match(onlineClients, /createClientWithPayment\(draft, \{ branch/);
+  const newClientHelper = read('admin/lib/createClientWithPayment.ts');
+  assert.match(newClientHelper, /adminPost<[\s\S]{0,300}\/admin\/subscriber-payments/);
+  const daqqiDesk = read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx');
+  assert.match(daqqiDesk, /createClientWithPayment\(draft, \{ branch/);
+  // It used to build a paymentHistory array and hand it to saveSubscriber,
+  // which writes the money onto the subscriber row and nowhere else — no
+  // payments row, no journal line, no approval step.
+  assert.doesNotMatch(daqqiDesk, /newSub\.paymentHistory = \[entry\]/);
   assert.doesNotMatch(onlineClients, /تم إنشاء العميل لكن الدفعة لم تُسجل/);
   assert.match(subscriberPayments, /if \(createFromDraft\)[\s\S]{0,2200}INSERT INTO subscribers/);
   assert.match(subscriberPayments, /await conn\.commit\(\)/);

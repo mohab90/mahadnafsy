@@ -135,17 +135,12 @@ test('there is one payment screen, and every booking button opens it', () => {
   };
   walk(path.join(ROOT, 'admin'));
 
-  // One payment form, plus two "create the customer and take their first
-  // payment" forms. Those two do a job PaymentModal does not — the person does
-  // not exist yet — but their payment half is a third and fourth spelling of
-  // the same fields, and they are a copy of each other. Pinned by name so a
-  // fifth cannot appear quietly; folding their payment half into PaymentModal
-  // is still open work.
-  assert.deepEqual(declaring.sort(), [
-    'admin/components/PaymentModal.tsx',
-    'admin/pages/dashboard/tabs/OnlineClientsTab.tsx',
-    'admin/pages/dashboard/tabs/daqqi/DaqqiNewClientModals.tsx',
-  ], 'another payment form exists, so the same booking looks different depending on where it was started');
+  // One. There were four: this one, the Daqqi desk's copy of it, and two
+  // "create the customer and take their first payment" forms — one at the desk
+  // and one in عملاء الأونلاين — which were copies of each other. The three
+  // copies are gone; creating a customer is PaymentModal's `new` mode.
+  assert.deepEqual(declaring, ['admin/components/PaymentModal.tsx'],
+    'another payment form exists, so the same booking looks different depending on where it was started');
 
   // The Daqqi desk's own copy is gone, along with its second receipt.
   assert.ok(!exists('admin/pages/dashboard/tabs/daqqi/DaqqiPayModal.tsx'));
@@ -167,4 +162,46 @@ test('there is one payment screen, and every booking button opens it', () => {
   const state = codeOnly(read('admin/pages/dashboard/tabs/daqqi/useDaqqiPaymentState.ts'));
   assert.ok(state.includes('...blankPaymentDraft(),'));
   assert.ok(!state.includes('bookingDiscount'), 'the dead field is back');
+});
+
+test('every booking and payment button opens that one screen', () => {
+  // The user's actual requirement: whether the booking starts on the client
+  // page, in the client database, from a lead, in عملاء الأونلاين, at the Daqqi
+  // desk or in the accounts, it is the same form.
+  //
+  // Each of these renders PaymentModal. A screen that grew its own payment
+  // fields instead would be caught by the single-form test above; this one
+  // catches a screen that stopped opening it at all.
+  const openers = [
+    'admin/pages/dashboard/DashboardPaymentOverlays.tsx',        // قاعدة البيانات
+    'admin/pages/dashboard/tabs/leads/LeadModalsHost.tsx',       // العملاء المحتملين
+    'admin/pages/dashboard/tabs/RegistrationsTab.tsx',           // التسجيلات
+    'admin/pages/unified-client/UnifiedClientModalsHost.tsx',    // صفحة العميل
+    'admin/pages/unified-client/UnifiedClientSubscriberPaymentsPanel.tsx',
+    'admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx',           // الدقي
+    'admin/pages/dashboard/tabs/OnlineClientsTab.tsx',           // الأونلاين
+  ];
+  for (const rel of openers) {
+    const source = codeOnly(read(rel));
+    assert.match(source, /<PaymentModal/, `${rel} no longer opens the shared payment screen`);
+  }
+
+  // The three modes it answers to, so a caller cannot invent a fourth.
+  const modal = codeOnly(read('admin/components/PaymentModal.tsx'));
+  assert.ok(modal.includes("mode: 'lead' | 'subscriber' | 'new';"));
+
+  // Creating a customer and taking their first payment goes through the one
+  // helper, and that helper goes through the endpoint that journals it.
+  const helper = codeOnly(read('admin/lib/createClientWithPayment.ts'));
+  assert.ok(helper.includes("'/admin/subscriber-payments'"),
+    'the first payment bypasses the endpoint that records it in the books');
+
+  // Payment methods come from one setting, read through one helper, on every
+  // screen that offers them — so the list cannot differ by screen.
+  for (const rel of ['admin/components/PaymentModal.tsx', 'admin/pages/dashboard/tabs/FinancialTab.tsx',
+    'admin/pages/dashboard/tabs/OrdersTab.tsx', 'admin/pages/dashboard/tabs/financial/PaymentReviewPanel.tsx']) {
+    const source = codeOnly(read(rel));
+    assert.match(source, /parsePaymentMethods\(/, `${rel} builds its own payment-method list`);
+    assert.ok(!/DEFAULT_PAYMENT_METHODS\s*=/.test(source), `${rel} carries its own hardcoded list`);
+  }
 });
