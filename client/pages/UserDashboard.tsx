@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useVisibleInterval } from '../../shared/useVisibleInterval';
 import {
   BookOpen, Award, LogOut, User, CheckCircle,
   Bell, Settings, MessageSquare, CreditCard, Play, Edit3,
@@ -208,14 +209,23 @@ const UserDashboard: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subscribers]);
 
-  // ── Heartbeat: report online presence every 30s ──────────────────────────
-  useEffect(() => {
-    if (!authUser) return;
-    const fire = () => mysqlClient.heartbeat(authUser.displayName || authUser.email || '').catch(() => {});
-    fire();
-    const id = setInterval(fire, 30_000);
-    return () => clearInterval(id);
-  }, [authUser?.uid]);
+  // ── Heartbeat: report online presence ────────────────────────────────────
+  //
+  // This was the busiest endpoint on the server — 3,970 calls in a day, more
+  // than three times the health check — because it fired every 30 seconds for
+  // every signed-in tab whether or not anyone was looking at it. Each call
+  // writes presence and updates the session's address on the users row, so a
+  // dashboard left open in a background tab wrote to the database 2,880 times
+  // a day to report that nobody was there.
+  //
+  // The interval now matches what "online" means: listOnlineUsers counts
+  // anyone seen in the last two minutes, so a beat a minute still leaves a
+  // spare if one request is dropped.
+  useVisibleInterval(
+    () => { void mysqlClient.heartbeat(authUser?.displayName || authUser?.email || '').catch(() => {}); },
+    60_000,
+    !!authUser,
+  );
 
   const handleLogout = () => {
     logout();

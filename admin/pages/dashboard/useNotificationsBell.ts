@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { mysqlAdmin } from '../../lib/mysqlapi';
+import { useVisibleInterval } from '../../../shared/useVisibleInterval';
 
 export type NotifRow = { id: string; type: string; title: string; message: string; read_at: string | null; created_at: string };
 
 /**
- * In-app notifications bell: 60s polling for authorised admin/staff users +
+ * In-app notifications bell: 60s polling while the tab is in front, for
  * click-outside-to-close. Extracted verbatim from Dashboard.tsx — the block was
  * already contiguous, so the internal hook order is identical to before.
  */
@@ -14,20 +15,13 @@ export function useNotificationsBell(enabled: boolean) {
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = React.useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!enabled) return;
-    const loadNotifs = () => {
-      mysqlAdmin.getNotifications().then(res => {
-        const r = res as { rows: NotifRow[]; unread: number };
-        setNotifRows(r.rows || []);
-        setNotifUnread(r.unread || 0);
-      }).catch(() => {});
-    };
-    loadNotifs();
-    const iv = setInterval(loadNotifs, 60000);
-    return () => clearInterval(iv);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled]);
+  useVisibleInterval(() => {
+    mysqlAdmin.getNotifications().then(res => {
+      const r = res as { rows: NotifRow[]; unread: number };
+      setNotifRows(r.rows || []);
+      setNotifUnread(r.unread || 0);
+    }).catch(() => {});
+  }, 60000, enabled);
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {

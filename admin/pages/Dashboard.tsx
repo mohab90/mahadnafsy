@@ -524,7 +524,7 @@ const Dashboard: React.FC = () => {
   // rep's dashboard only ever reflects data as of page load / their last manual action.
   useEffect(() => {
     let cancelled = false;
-    const pollId = setInterval(() => { if (!cancelled) void fetchSalesData(); }, 2 * 60 * 1000);
+    const pollId = setInterval(() => { if (document.visibilityState !== 'visible') return; if (!cancelled) void fetchSalesData(); }, 2 * 60 * 1000);
     const onVisible = () => {
       if (!cancelled && document.visibilityState === 'visible') void fetchSalesData();
     };

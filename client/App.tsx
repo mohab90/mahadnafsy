@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, Link } f
 import Header from './components/Header';
 import Footer from './components/Footer';
 import Home from './pages/Home';
+import { useVisibleInterval } from '../shared/useVisibleInterval';
 
 // ── Lazily-loaded pages ────────────────────────────────────────────────────────
 const UserDashboard = React.lazy(() => import('./pages/UserDashboard'));
@@ -333,15 +334,12 @@ const ScrollToTop = () => {
  *  hosting from suspending the Node.js process between requests */
 const ServerKeepalive: React.FC = () => {
   const API = import.meta.env.VITE_API_URL || '/api';
-  useEffect(() => {
-    const ping = () => {
-      fetch(`${API}/health`, { method: 'GET', cache: 'no-store' })
-        .catch(() => { /* silent — watchdog will restart if truly down */ });
-    };
-    ping(); // immediate ping on mount
-    const id = setInterval(ping, 5 * 60 * 1000); // then every 5 min
-    return () => clearInterval(id);
-  }, []);
+  // A keepalive for a tab nobody is looking at keeps nothing alive: it was
+  // 1,197 health calls a day across the two apps, most from backgrounded tabs.
+  useVisibleInterval(() => {
+    fetch(`${API}/health`, { method: 'GET', cache: 'no-store' })
+      .catch(() => { /* silent — watchdog will restart if truly down */ });
+  }, 5 * 60 * 1000);
   return null;
 };
 

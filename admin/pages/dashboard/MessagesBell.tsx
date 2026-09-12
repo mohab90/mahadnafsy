@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { MessageSquare, Send, Users, X } from 'lucide-react';
 import { adminAuthHeaders } from '../../lib/adminAuthHeaders';
+import { useVisibleInterval } from '../../../shared/useVisibleInterval';
 
 type Notify = (kind: 'success' | 'error' | 'warning' | 'info', message: string) => void;
 
@@ -46,11 +47,9 @@ export default function MessagesBell({
     }
   }, [mode]);
 
-  useEffect(() => {
-    void refreshCount();
-    const t = setInterval(() => { void refreshCount(); }, 120000);
-    return () => clearInterval(t);
-  }, [refreshCount]);
+  // A background tab counted unread messages every two minutes for nobody,
+  // and came back to a fresh count anyway.
+  useVisibleInterval(() => { void refreshCount(); }, 120000);
 
   // Click-away, same behaviour as the notifications dropdown beside it.
   useEffect(() => {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useVisibleInterval } from '../../../../shared/useVisibleInterval';
 import {
   Activity,
   AlertTriangle,
@@ -85,7 +86,6 @@ export default function ServerMonitorTab({ notify }: { notify: NotifyFn }) {
   const [auditRows, setAuditRows] = useState<unknown[]>([]);
   const [loading, setLoading] = useState(false);
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
 
   const fetchStatus = useCallback(async (silent = false) => {
@@ -111,12 +111,8 @@ export default function ServerMonitorTab({ notify }: { notify: NotifyFn }) {
     }
   }, [notify]);
 
-  // Auto-refresh every 30s
-  useEffect(() => {
-    fetchStatus();
-    intervalRef.current = setInterval(() => fetchStatus(true), 30_000);
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [fetchStatus]);
+  // Auto-refresh every 30s, while somebody is watching it.
+  useVisibleInterval(() => { void fetchStatus(true); }, 30_000);
 
   // Scroll to bottom of log when it updates
   useEffect(() => {

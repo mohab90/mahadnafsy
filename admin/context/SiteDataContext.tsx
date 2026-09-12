@@ -421,7 +421,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     load();
 
     // Poll every 5 minutes so newly-granted courses appear without re-login
-    const pollId = setInterval(() => { if (!cancelled) refreshMySubscriber(); }, 5 * 60 * 1000);
+    const pollId = setInterval(() => { if (document.visibilityState !== 'visible') return; if (!cancelled) refreshMySubscriber(); }, 5 * 60 * 1000);
 
     // Refresh when the browser tab regains focus
     const onVisible = () => { if (!cancelled && document.visibilityState === 'visible') refreshMySubscriber(); };

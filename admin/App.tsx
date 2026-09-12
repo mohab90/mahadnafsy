@@ -4,6 +4,7 @@ import { SiteDataProvider, useSiteData } from './context/SiteDataContext';
 import { AuthProvider } from './context/AuthContext';
 import ErrorBoundary from '../shared/ui/ErrorBoundary';
 import { ToastProvider } from '../shared/ui/Toast';
+import { useVisibleInterval } from '../shared/useVisibleInterval';
 import { mysqlClient } from './lib/mysqlapi';
 
 // ── Lazily-loaded admin pages ────────────────────────────────────────────────
@@ -65,15 +66,13 @@ const ScrollToTop: React.FC = () => {
   return null;
 };
 
-/** Server keepalive — pings /api/health every 5 minutes */
+/** Server keepalive — pings /api/health every 5 minutes, while the tab is in front. */
 const ServerKeepalive: React.FC = () => {
   const API = import.meta.env.VITE_API_URL || '/api';
-  React.useEffect(() => {
-    const ping = () => fetch(`${API}/health`, { method: 'GET', cache: 'no-store' }).catch(() => {});
-    ping();
-    const id = setInterval(ping, 5 * 60 * 1000);
-    return () => clearInterval(id);
-  }, []);
+  useVisibleInterval(
+    () => { void fetch(`${API}/health`, { method: 'GET', cache: 'no-store' }).catch(() => {}); },
+    5 * 60 * 1000,
+  );
   return null;
 };
 

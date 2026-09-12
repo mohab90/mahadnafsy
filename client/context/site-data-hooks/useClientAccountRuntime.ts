@@ -83,7 +83,7 @@ export function useClientAccountRuntime({
       })
       .catch(() => { if (!cancelled) setMySubscriberLoaded(true); });
 
-    const pollId = setInterval(() => { if (!cancelled) refreshMySubscriber(); }, 5 * 60 * 1000);
+    const pollId = setInterval(() => { if (document.visibilityState !== 'visible') return; if (!cancelled) refreshMySubscriber(); }, 5 * 60 * 1000);
     const onVisible = () => {
       if (!cancelled && document.visibilityState === 'visible') refreshMySubscriber();
     };
