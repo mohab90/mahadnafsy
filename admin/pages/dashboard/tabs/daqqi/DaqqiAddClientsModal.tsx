@@ -6,6 +6,7 @@
 import type { Course, Bundle, SubscriberItem, DaqqiRound } from '../../../../types';
 import { isEnrolledInCourse } from './daqqiScheduleUtils';
 import { isCollected } from '../../../../lib/money';
+import { Modal } from '../../../../../shared/ui/Modal';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -50,10 +51,19 @@ export function DaqqiAddClientsModal({
         return isEnrolledInCourse(bundles, s.enrolledCourseIds || [], addRound!.courseId);
       });
       return (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => { setDaqqiAddClientsRoundId(''); setDaqqiAddClientsSel(new Set()); setDaqqiAddClientsCourseSel({}); }}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-auto p-6" dir="rtl" onClick={e => e.stopPropagation()}>
-            <h4 className="font-extrabold text-gray-900 text-lg mb-1">إضافة عملاء للروند</h4>
-            <p className="text-sm text-gray-500 mb-4">{addCourse?.titleAr || addCourse?.title || addRound?.courseId} — {addRound?.code}</p>
+        <Modal
+          open
+          onClose={() => { setDaqqiAddClientsRoundId(''); setDaqqiAddClientsSel(new Set()); setDaqqiAddClientsCourseSel({}); }}
+          title="إضافة عملاء للروند"
+          subtitle={`${addCourse?.titleAr || addCourse?.title || addRound?.courseId} — ${addRound?.code}`}
+          size="xl"
+          footer={(
+            <>
+              <button onClick={() => { setDaqqiAddClientsRoundId(''); setDaqqiAddClientsSel(new Set()); setDaqqiAddClientsCourseSel({}); }} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm hover:bg-gray-200">إلغاء</button>
+              <button onClick={handleAddClientsToRound} disabled={daqqiAddClientsSel.size === 0} className="px-5 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 disabled:opacity-40 transition">إضافة ({daqqiAddClientsSel.size})</button>
+            </>
+          )}
+        >
             <div className="flex items-center justify-between mb-3">
               <label className="flex items-center gap-2 text-xs font-bold text-gray-600 cursor-pointer">
                 <input type="checkbox" checked={daqqiAddClientsSel.size === available.length && available.length > 0} onChange={e => setDaqqiAddClientsSel(e.target.checked ? new Set(available.map(s => s.id)) : new Set())} />
@@ -128,11 +138,6 @@ export function DaqqiAddClientsModal({
                 })}
               </div>
             )}
-            <div className="flex gap-3">
-              <button onClick={handleAddClientsToRound} disabled={daqqiAddClientsSel.size === 0} className="flex-1 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 disabled:opacity-40 transition">إضافة ({daqqiAddClientsSel.size})</button>
-              <button onClick={() => { setDaqqiAddClientsRoundId(''); setDaqqiAddClientsSel(new Set()); setDaqqiAddClientsCourseSel({}); }} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm hover:bg-gray-200">إلغاء</button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       );
 }

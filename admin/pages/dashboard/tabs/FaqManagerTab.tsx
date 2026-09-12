@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { BookOpen, Plus, X, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { Modal } from '../../../../shared/ui/Modal';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 
@@ -91,13 +92,13 @@ export default function FaqManagerTab({ notify }: { notify: NotifyFn }) {
       ))}
 
       {formOpen && (
-        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setFormOpen(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[88vh] flex flex-col" dir="rtl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
-              <h3 className="font-bold text-gray-900">{draft.id ? 'تعديل سؤال' : 'سؤال جديد'}</h3>
-              <button onClick={() => setFormOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
-            </div>
-            <div className="p-5 space-y-3 overflow-y-auto">
+        <Modal
+          open
+          onClose={() => setFormOpen(false)}
+          title={draft.id ? 'تعديل سؤال' : 'سؤال جديد'}
+          layer="over"
+        >
+            <div className="space-y-3">
               <input value={draft.question} onChange={e => setDraft(d => ({ ...d, question: e.target.value }))}
                 placeholder="السؤال" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
               <textarea value={draft.answer} onChange={e => setDraft(d => ({ ...d, answer: e.target.value }))}
@@ -114,8 +115,7 @@ export default function FaqManagerTab({ notify }: { notify: NotifyFn }) {
               </label>
               <button onClick={save} className="w-full bg-rose-500 text-white py-2 rounded-xl text-sm hover:bg-rose-600">{draft.id ? 'حفظ التعديل' : 'إضافة'}</button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

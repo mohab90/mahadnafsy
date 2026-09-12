@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Loader2, Plus, Settings, Trash2, X } from 'lucide-react';
+import { Loader2, Plus, Settings, Trash2 } from 'lucide-react';
+import { Modal } from '../../../../shared/ui/Modal';
 
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import {
@@ -71,20 +72,29 @@ export default function SectionTabsSettingsModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div dir="rtl" onClick={event => event.stopPropagation()}
-        className="w-full max-w-2xl max-h-[88vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
-        <div className="sticky top-0 flex items-center justify-between border-b border-gray-100 bg-white px-5 py-4">
-          <h3 className="flex items-center gap-2 text-base font-extrabold text-gray-900">
-            <Settings size={18} className="text-primary-600" />
-            إعدادات {SECTION_LABELS[section]}
-          </h3>
-          <button onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
-            <X size={18} />
+    <Modal
+      open
+      onClose={onClose}
+      title={`إعدادات ${SECTION_LABELS[section]}`}
+      icon={<Settings size={18} className="text-primary-600" />}
+      size="lg"
+      footer={(
+        <>
+          <button onClick={onClose} className="rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-200">
+            إلغاء
           </button>
-        </div>
-
-        <div className="space-y-4 p-5">
+          <button
+            onClick={save}
+            disabled={saving || loading}
+            className="flex items-center justify-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-primary-700 disabled:opacity-50"
+          >
+            {saving && <Loader2 size={15} className="animate-spin" />}
+            حفظ
+          </button>
+        </>
+      )}
+    >
+        <div className="space-y-4">
           <p className="rounded-xl bg-gray-50 px-3 py-2 text-xs leading-relaxed text-gray-600">
             التابات دي بتظهر جوه القسم نفسه. كل تاب بيشتغل على نفس عملاء القسم — اللي بيتغيّر
             هو اللي بيظهر فيه، ولو حدّدت مصدر هيشتغل على عملاء المصدر ده بس.
@@ -170,20 +180,6 @@ export default function SectionTabsSettingsModal({
           )}
         </div>
 
-        <div className="sticky bottom-0 flex gap-3 border-t border-gray-100 bg-white px-5 py-4">
-          <button
-            onClick={save}
-            disabled={saving || loading}
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 text-sm font-bold text-white transition hover:bg-primary-700 disabled:opacity-50"
-          >
-            {saving && <Loader2 size={15} className="animate-spin" />}
-            حفظ
-          </button>
-          <button onClick={onClose} className="rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-200">
-            إلغاء
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

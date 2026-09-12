@@ -1,4 +1,4 @@
-import { X } from 'lucide-react';
+import { Modal } from '../../../../shared/ui/Modal';
 import type { SubscriberItem } from '../../../types';
 
 export type OnlineClientConvertType = 'finished' | 'paused' | 'refunded' | 'daqqi' | 'leads' | 'online' | '';
@@ -52,16 +52,10 @@ export function OnlineClientConvertModal({
     || convertType === '';
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" dir="rtl" onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-orange-50">
-          <div>
-            <h3 className="font-extrabold text-gray-900">🔄 تحويل العميل</h3>
-            <p className="text-xs text-gray-500 mt-0.5">{row.name}</p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={20} /></button>
-        </div>
-        <div className="p-5">
+    // No Modal footer here: the buttons only exist once a type is chosen, and
+    // they belong with the step that shows them.
+    <Modal open onClose={onClose} title="🔄 تحويل العميل" subtitle={row.name} size="sm">
+        <div>
           {!convertType ? (
             <div className="space-y-2">
               <p className="text-sm font-bold text-gray-700 mb-3">اختر نوع التحويل:</p>
@@ -151,7 +145,6 @@ export function OnlineClientConvertModal({
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

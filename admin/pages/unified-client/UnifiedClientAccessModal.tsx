@@ -1,5 +1,6 @@
 import React from 'react';
-import { BookOpen, Shield, X } from 'lucide-react';
+import { BookOpen, Shield } from 'lucide-react';
+import { Modal } from '../../../shared/ui/Modal';
 
 import type { Course, CourseAccessSetting, SubscriberItem } from '../../types';
 import { normalizeAccess } from './constants';
@@ -43,27 +44,22 @@ export function UnifiedClientAccessModal({
   onClose,
 }: UnifiedClientAccessModalProps) {
 
-  if (!open || !subscriber || !canManageCourseAccess) return null;
+  if (!subscriber || !canManageCourseAccess) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()} dir="rtl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-violet-100 flex items-center justify-center">
-              <Shield size={18} className="text-violet-600" />
-            </div>
-            <div>
-              <h2 className="font-extrabold text-gray-900 text-base">صلاحية الفيديوهات</h2>
-              <p className="text-xs text-gray-400">{subscriber.name} - {subscriber.enrolledCourseIds.length} كورس مسجل</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 transition">
-            <X size={16} />
-          </button>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="صلاحية الفيديوهات"
+      subtitle={`${subscriber.name} - ${subscriber.enrolledCourseIds.length} كورس مسجل`}
+      icon={(
+        <div className="w-9 h-9 rounded-xl bg-violet-100 flex items-center justify-center">
+          <Shield size={18} className="text-violet-600" />
         </div>
-
-        <div className="overflow-y-auto p-5 space-y-4">
+      )}
+      size="lg"
+    >
+        <div className="space-y-4">
           {subscriber.enrolledCourseIds.length === 0 ? (
             <div className="text-center py-12 text-gray-400">
               <BookOpen size={40} className="mx-auto mb-3 text-gray-200" />
@@ -162,7 +158,6 @@ export function UnifiedClientAccessModal({
             );
           })}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

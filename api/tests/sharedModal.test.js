@@ -26,7 +26,7 @@ const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
  * Where the count stood when the ratchet was set. Lower it as dialogs move
  * across; never raise it. Raising it is the one edit this test exists to stop.
  */
-const HAND_ROLLED_CEILING = 50;
+const HAND_ROLLED_CEILING = 45;
 
 /** Dialogs still on a stacking level they invented. Same rule: down, never up. */
 const OWN_STACKING_CEILING = 7;
@@ -62,7 +62,7 @@ test('the count of hand-rolled dialogs only goes down', () => {
   // And the shared one is actually in use, so the ceiling is not being met by
   // deleting dialogs instead of migrating them.
   const adopters = files.filter(rel => /from ['"][^'"]*shared\/ui\/Modal['"]/.test(read(rel)));
-  assert.ok(adopters.length >= 13, `expected the migrated dialogs, saw ${adopters.length}`);
+  assert.ok(adopters.length >= 18, `expected the migrated dialogs, saw ${adopters.length}`);
 });
 
 test('the shared dialog does what the hand-rolled ones mostly did not', () => {
