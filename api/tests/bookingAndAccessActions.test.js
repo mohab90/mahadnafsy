@@ -164,6 +164,75 @@ test('there is one payment screen, and every booking button opens it', () => {
   assert.ok(!state.includes('bookingDiscount'), 'the dead field is back');
 });
 
+test('no second screen records a customer payment', () => {
+  // The earlier test recognises a payment form by its booking type. That missed
+  // two: «تسجيل دخل» in الحسابات and «مدفوع قديم» on the client page both used
+  // `isInstallment: boolean` instead, so neither was caught while both wrote a
+  // payment against a customer. This looks for the behaviour rather than a
+  // field name: a component that lets someone set a payment method *and* an
+  // amount is a payment form, whatever it calls its draft.
+  const forms = [];
+  const walk = dir => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === 'node_modules' || entry.name === 'dist') continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) { walk(full); continue; }
+      if (!entry.name.endsWith('.tsx')) continue;
+      const rel = path.relative(ROOT, full).split(path.sep).join('/');
+      const source = codeOnly(read(rel));
+      const setsMethod = /(paymentMethod|\bmethod):\s*(e|event)\.target\.value/.test(source)
+        || /set\w*\(\{\s*paymentMethod/.test(source)
+        || /\.\.\.\w+,\s*(paymentMethod|method):/.test(source);
+      const setsAmount = /(amount|amountPaid):\s*(e|event)\.target\.value/.test(source)
+        || /set\w*\(\{\s*amount/.test(source)
+        || /\.\.\.\w+,\s*amount(Paid)?:/.test(source);
+      if (setsMethod && setsAmount) forms.push(rel);
+    }
+  };
+  walk(path.join(ROOT, 'admin'));
+
+  assert.deepEqual(forms.sort(), [
+    // The one screen every booking and every customer payment opens.
+    'admin/components/PaymentModal.tsx',
+    // «مشترك أونلاين جديد» — not a booking screen. It creates a *login*:
+    // password, per-course access type and video count, referral, and an
+    // optional first payment, all in one POST /admin/create-account that
+    // inserts the payments row and posts the journal inside one transaction.
+    // Its money is recorded correctly; splitting it to reuse PaymentModal
+    // would turn one atomic call into two and drop those fields.
+    'admin/pages/dashboard/tabs/OnlineClientsTab.tsx',
+    // An incoming bank transfer, recorded as an order of type 'transfer' with a
+    // free-text sender — «غير محدد» when blank. It is institute income with no
+    // customer attached, which is why it is not this screen.
+    'admin/pages/dashboard/tabs/OrdersTab.tsx',
+  ], 'a second screen records customer payments, so the same money is entered two different ways');
+
+  // The three that used to be here are gone, each folded into PaymentModal.
+  for (const rel of [
+    'admin/pages/dashboard/tabs/daqqi/DaqqiPayModal.tsx',
+    'admin/pages/dashboard/tabs/daqqi/DaqqiNewClientModals.tsx',
+    'admin/pages/dashboard/tabs/financial/IncomeModal.tsx',
+    'admin/pages/unified-client/UnifiedClientLegacyPaymentModal.tsx',
+  ]) {
+    assert.ok(!exists(rel), rel + ' is back');
+  }
+
+  // الحسابات picks the customer inside the shared screen rather than in a
+  // dialog of its own, and «مدفوع قديم» is that same screen with the note
+  // filled in — its own dialog recorded no payment method at all and stamped
+  // today as the date, for a payment that by definition was not made today.
+  const financial = codeOnly(read('admin/pages/dashboard/tabs/FinancialTab.tsx'));
+  assert.match(financial, /<PaymentModal/);
+  assert.match(financial, /subjectOptions=\{incomeSubjectOptions\}/);
+  const clientPayments = codeOnly(read('admin/pages/unified-client/useUnifiedClientPayments.ts'));
+  assert.match(clientPayments, /openLegacyPaymentForm = \(\) => openSubscriberPaymentForm\(\{ note:/);
+
+  // Nothing is valid until the screen knows whose payment it is.
+  const modal = codeOnly(read('admin/components/PaymentModal.tsx'));
+  assert.ok(modal.includes('const subjectChosen = !subjectOptions || !!subject.id;'));
+  assert.ok(modal.includes('const isValid = !subjectChosen ? false'));
+});
+
 test('every booking and payment button opens that one screen', () => {
   // The user's actual requirement: whether the booking starts on the client
   // page, in the client database, from a lead, in عملاء الأونلاين, at the Daqqi

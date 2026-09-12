@@ -16,7 +16,8 @@ import type { PermissionKey, RoleKey } from '../../../constants/permissions';
 import { useSubscriberStats } from '../hooks/useSubscriberStats';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { PaymentHistoryEntry, ExpenseItem } from '../../../types';
-import { branchMatches, createBlankIncomeDraft, type FinancialSubTab } from './financial/financialTabUtils';
+import { branchMatches, type FinancialSubTab } from './financial/financialTabUtils';
+import { blankPaymentDraft, type PaymentDraft } from '../../../components/PaymentModal';
 import { parsePaymentMethods } from '../../../lib/paymentMethods';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -30,7 +31,7 @@ const FinancialInstallmentsPanel = React.lazy(() => import('./financial/Financia
 const FinancialOverviewPanel = React.lazy(() => import('./financial/FinancialOverviewPanel').then(module => ({ default: module.FinancialOverviewPanel })));
 const FinancialProfitLossPanel = React.lazy(() => import('./financial/FinancialProfitLossPanel').then(module => ({ default: module.FinancialProfitLossPanel })));
 const FinancialRefundsPanel = React.lazy(() => import('./financial/FinancialRefundsPanel'));
-const IncomeModal = React.lazy(() => import('./financial/IncomeModal').then(module => ({ default: module.IncomeModal })));
+const PaymentModal = React.lazy(() => import('../../../components/PaymentModal'));
 const MonthlyRevenuePanel = React.lazy(() => import('./financial/MonthlyRevenuePanel').then(module => ({ default: module.MonthlyRevenuePanel })));
 const OutstandingPanel = React.lazy(() => import('./financial/OutstandingPanel').then(module => ({ default: module.OutstandingPanel })));
 const ReconciliationPanel = React.lazy(() => import('./financial/ReconciliationPanel'));
@@ -193,36 +194,47 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
     } catch { /* ignore */ }
     finally { setLoadingDbPayments(false); }
   };
-  const [incomeDraft, setIncomeDraft] = useState(createBlankIncomeDraft);
+  const [incomeSubjectId, setIncomeSubjectId] = useState('');
+  const [incomeDraft, setIncomeDraft] = useState<PaymentDraft>(blankPaymentDraft);
 
-  const handleAddIncome = async () => {
-    if (!incomeDraft.subscriberId || !incomeDraft.amount) return;
-    const sub = subscribers.find((s) => s.id === incomeDraft.subscriberId);
-    if (!sub) return;
-    const entry: PaymentHistoryEntry = {
-      id: `inc-${Date.now()}`, amount: incomeDraft.amount, currency: incomeDraft.currency,
-      note: [incomeDraft.note, incomeDraft.transactionId].filter(Boolean).join(' | ') || undefined,
-      paymentMethod: incomeDraft.paymentMethod || undefined,
-      fromAccountNumber: incomeDraft.fromAccountNumber || undefined,
-      source: 'staff' as const,
-      paymentType: incomeDraft.paymentType,
-      courseId: incomeDraft.courseId || undefined,
-      isInstallment: incomeDraft.isInstallment || false,
-      at: incomeDraft.date,
+  // Who the money is for. The picker lives inside the shared screen now, so
+  // this is just the chosen row.
+  const incomeSubjectOptions = subscribers.map(sub => ({ id: sub.id, name: sub.name, clientCode: sub.clientCode }));
+  const incomeSubject = (() => {
+    const sub = subscribers.find(candidate => candidate.id === incomeSubjectId);
+    if (!sub) return { id: '', name: '' };
+    return {
+      id: sub.id, name: sub.name, phone: sub.phone, email: sub.email, branch: sub.branch,
+      enrolledCourseIds: sub.enrolledCourseIds,
+      paymentHistory: sub.paymentHistory,
+      extraCertificateRequests: sub.extraCertificateRequests,
     };
-    try {
-      const result = await recordSubscriberPayment(sub.id, entry as unknown as Record<string, unknown>);
-      notify(
-        'success',
-        result.approvalRequired
-          ? 'تم تسجيل الدفعة كمعلّقة وتنتظر اعتماد الإدارة المالية.'
-          : 'تم تسجيل الدخل وحفظ القيد المحاسبي بنجاح.',
-      );
-      setIsIncomeFormOpen(false);
-      setIncomeDraft(createBlankIncomeDraft());
-    } catch (error) {
-      notify('error', error instanceof Error ? error.message : 'تعذر تسجيل الدفعة.');
-    }
+  })();
+
+  // PaymentModal owns closing and the receipt; this only saves.
+  const handleAddIncome = async (draft: PaymentDraft) => {
+    const sub = subscribers.find(candidate => candidate.id === incomeSubjectId);
+    if (!sub) throw new Error('اختر العميل أولاً');
+    const entry: PaymentHistoryEntry = {
+      id: `inc-${Date.now()}`,
+      amount: Number(draft.amount) || 0,
+      currency: draft.currency,
+      note: [draft.note, draft.transactionId].filter(Boolean).join(' | ') || undefined,
+      paymentMethod: draft.paymentMethod || undefined,
+      fromAccountNumber: draft.fromAccountNumber || undefined,
+      source: 'staff' as const,
+      paymentType: draft.paymentType,
+      courseId: draft.courseId || undefined,
+      isInstallment: draft.bookingType === 'installment',
+      at: draft.date,
+    };
+    const result = await recordSubscriberPayment(sub.id, entry as unknown as Record<string, unknown>);
+    notify(
+      result.approvalRequired ? 'info' : 'success',
+      result.approvalRequired
+        ? 'تم تسجيل الدفعة كمعلّقة وتنتظر اعتماد الإدارة المالية.'
+        : 'تم تسجيل الدخل وحفظ القيد المحاسبي بنجاح.',
+    );
   };
 
   const today = new Date().toISOString().slice(0, 10);
@@ -413,7 +425,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
             </button>}
           </div>
           <button
-            onClick={() => { setIsIncomeFormOpen(true); setIncomeDraft(createBlankIncomeDraft()); }}
+            onClick={() => { setIsIncomeFormOpen(true); setIncomeSubjectId(''); setIncomeDraft(blankPaymentDraft()); }}
             className="flex items-center gap-1.5 bg-emerald-600 text-white px-3 py-2 rounded-xl text-sm font-bold hover:bg-emerald-700 transition">
             <Plus size={14} /> إضافة دخل
           </button>
@@ -425,15 +437,20 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
         </div>
       </div>
 
+      {/* «تسجيل دخل» is a customer payment like any other. It had its own
+          eleven-field form here — the same fields as the shared screen, minus
+          the discount and the receipt — so the accountant saw a different
+          dialog from the one the desk uses for the same money. */}
       {isIncomeFormOpen && (
-        <IncomeModal
-          incomeDraft={incomeDraft}
-          setIncomeDraft={setIncomeDraft}
-          subscribers={subscribers}
-          courses={courses}
-          paymentMethods={PAYMENT_METHODS}
-          onSave={handleAddIncome}
-          onClose={() => setIsIncomeFormOpen(false)}
+        <PaymentModal
+          mode="subscriber"
+          subject={incomeSubject}
+          subjectOptions={incomeSubjectOptions}
+          onSubjectChange={(id) => setIncomeSubjectId(id)}
+          draft={incomeDraft}
+          setDraft={setIncomeDraft}
+          onSubmit={handleAddIncome}
+          onClose={() => { setIsIncomeFormOpen(false); setIncomeSubjectId(''); setIncomeDraft(blankPaymentDraft()); }}
         />
       )}
 

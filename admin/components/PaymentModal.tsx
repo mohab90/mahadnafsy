@@ -226,6 +226,16 @@ interface PaymentModalProps {
   onClose: () => void;
   requirePaymentApproval?: boolean;
   branchOptions?: BranchOption[];
+  /**
+   * Who this payment could be for, when the screen was not opened from a
+   * particular customer. الحسابات → «تسجيل دخل» starts from the money and
+   * picks the person; every other entry point already knows them.
+   *
+   * Given, and with no subject.id yet, the screen renders the picker itself
+   * rather than a second dialog in front of it.
+   */
+  subjectOptions?: { id: string; name: string; clientCode?: string }[];
+  onSubjectChange?: (id: string) => void;
   instituteName?: string;
   branchLabel?: string;
 }
@@ -240,6 +250,7 @@ const certTypeLabels: Record<string, string> = {
 const PaymentModal: React.FC<PaymentModalProps> = ({
   mode, subject, draft, setDraft, onSubmit, onClose,
   requirePaymentApproval, branchOptions = [], instituteName = 'معهد الدراسات النفسية',
+  subjectOptions, onSubjectChange,
   branchLabel,
 }) => {
   const { courses, bundles, content, authUser } = useStaticData();
@@ -396,7 +407,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   // taking money yet is a real thing the desk does — but a name and a number
   // are not optional, because they are the only way to find the person again.
   const hasIdentity = !!(d.name || '').trim() && !!(d.phone || '').trim();
-  const isValid = mode === 'new'
+  const subjectChosen = !subjectOptions || !!subject.id;
+  const isValid = !subjectChosen ? false : mode === 'new'
     ? hasIdentity && (_amtPaid === 0 || (!!d.paymentMethod && !!d.courseId))
     : _amtPaid > 0 && !!d.paymentMethod && (mode === 'lead' ? !!d.branch : true);
 
@@ -969,6 +981,23 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* ── 0: who is this for, when the screen did not start from them ── */}
+          {subjectOptions && (
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1.5">العميل <span className="text-red-500">*</span></label>
+              <select
+                value={subject.id}
+                onChange={e => onSubjectChange?.(e.target.value)}
+                className={`w-full border-2 rounded-xl px-3 py-2 text-sm font-semibold ${!subject.id ? 'border-red-400 bg-red-50 text-red-700' : 'border-gray-200 bg-white'}`}
+              >
+                <option value="">— اختر العميل —</option>
+                {subjectOptions.map(o => (
+                  <option key={o.id} value={o.id}>{o.clientCode ? `${o.clientCode} — ${o.name}` : o.name}</option>
+                ))}
+              </select>
             </div>
           )}
 

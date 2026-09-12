@@ -47,7 +47,6 @@ test('AddLeadModal uses it and gives it the panel', () => {
 // sixty overlays.
 const WIRED = [
   'pages/dashboard/tabs/financial/AddRefundModal.tsx',
-  'pages/dashboard/tabs/financial/IncomeModal.tsx',
   'pages/dashboard/tabs/hr-sections/StaffOnboardModal.tsx',
   'pages/dashboard/tabs/interviews-sections/HireModal.tsx',
   'components/PaymentModal.tsx',

@@ -9,7 +9,6 @@ const UnifiedClientExtraCertificateModal = React.lazy(() => import('./UnifiedCli
 // bespoke form living only on the client page, which is why "حجز" and "تسجيل
 // دفعة" here showed different fields and different data from everywhere else.
 const PaymentModal = React.lazy(() => import('../../components/PaymentModal'));
-const UnifiedClientLegacyPaymentModal = React.lazy(() => import('./UnifiedClientLegacyPaymentModal').then(module => ({ default: module.UnifiedClientLegacyPaymentModal })));
 const UnifiedClientPaymentDetailModal = React.lazy(() => import('./UnifiedClientPaymentDetailModal').then(module => ({ default: module.UnifiedClientPaymentDetailModal })));
 
 type ModalProps<T extends React.ElementType> = React.ComponentProps<T>;
@@ -22,7 +21,6 @@ export interface UnifiedClientModalsHostProps {
   convert?: ModalProps<typeof UnifiedClientConvertModal>;
   extraCertificate?: ModalProps<typeof UnifiedClientExtraCertificateModal>;
   leadPayment?: ModalProps<typeof PaymentModal>;
-  legacyPayment?: ModalProps<typeof UnifiedClientLegacyPaymentModal>;
   paymentDetail?: ModalProps<typeof UnifiedClientPaymentDetailModal>;
 }
 
@@ -35,7 +33,6 @@ export function UnifiedClientModalsHost(props: UnifiedClientModalsHostProps) {
       {props.communication && <UnifiedClientCommunicationModal {...props.communication} />}
       {props.leadPayment && <PaymentModal {...props.leadPayment} />}
       {props.extraCertificate && <UnifiedClientExtraCertificateModal {...props.extraCertificate} />}
-      {props.legacyPayment && <UnifiedClientLegacyPaymentModal {...props.legacyPayment} />}
       {props.certificateView && <UnifiedClientCertificateViewModal {...props.certificateView} />}
       {props.paymentDetail && <UnifiedClientPaymentDetailModal {...props.paymentDetail} />}
     </React.Suspense>

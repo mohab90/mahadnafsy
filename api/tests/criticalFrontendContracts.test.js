@@ -705,7 +705,12 @@ test('unified client finance computes balances and certificates in the branch se
   assert.match(payments, /payment\.currency === settlementCurrency/);
   assert.match(payments, /expectedTotals\?\.\[settlementCurrency\]/);
   assert.match(payments, /subPaidTotals\[settlementCurrency\]/);
-  assert.match(payments, /currency: settlementCurrency/);
+  // The «مدفوع قديم» dialog used to write `currency: settlementCurrency`
+  // itself. It is the shared payment screen now, opened through
+  // createClientPaymentDraft, which derives the same currency from the same
+  // branch — asserted on the line above this block. One rule, one place.
+  assert.match(payments, /openLegacyPaymentForm = \(\) => openSubscriberPaymentForm\(/);
+  assert.match(payments, /createClientPaymentDraft\(\{\s*\n\s*branch: subscriber\?\.branch,/);
   assert.match(lifecycle, /currency: currencyForBranch\(subscriber\.branch\)/);
   assert.match(clientsTable, /p\.currency === branchCurrency/);
   assert.match(clientsTable, /price\?\.\[branchCurrency\]/);

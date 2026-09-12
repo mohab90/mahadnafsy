@@ -136,14 +136,13 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
     showLeadPayForm, setShowLeadPayForm, leadPayDraft, setLeadPayDraft,
     showSubPayForm, setShowSubPayForm, payModalDraft, setPayModalDraft,
     showPayDetailModal, setShowPayDetailModal,
-    showLegacyPayForm, setShowLegacyPayForm, legacyPayDraft, setLegacyPayDraft,
     subInstallmentPlans,
     todayStr: _todayStr, soon3Str: _soon3Str, instOverdueCount, instSoonCount,
     leadPayments, leadPaidEGP, enrolledCourse, leadRemaining,
     subHistory, confirmedHistory, subPaidTotals, bookingMap, bookedCourseIds,
     subRemainingEGP, discountBase,
     settlementCurrency, settlementLabel,
-    handleAddLeadPayment, handlePayModalSubmit, handleAddLegacyPayment,
+    handleAddLeadPayment, handlePayModalSubmit, openLegacyPaymentForm,
     openSubscriberPaymentForm,
     openLeadPaymentForm,
   } = paymentState;
@@ -363,7 +362,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
             onAddCommunication={() => { setActiveTab('communications'); setShowAddComm(true); }}
             onSubscriberPayment={() => { setActiveTab('payments'); openSubscriberPaymentForm(); }}
             onLeadPayment={openLeadPaymentForm}
-            onLegacyPayment={() => setShowLegacyPayForm(true)}
+            onLegacyPayment={openLegacyPaymentForm}
             onExtraCertificate={() => { setActiveTab('certificates'); setShowExtraCertForm(true); resetExtraCertDraft(); }}
             onInstallmentPlan={() => setActiveTab('installments')}
             onEdit={() => { setEditing(!editing); setActiveTab('edit'); }}
@@ -622,7 +621,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
       </div>
 
       {(showAccessModal || showContactPopup || showConvertModal
-        || showAddComm || showLeadPayForm || showExtraCertForm || showLegacyPayForm
+        || showAddComm || showLeadPayForm || showExtraCertForm
         || Boolean(viewCertId) || showPayDetailModal) && (
         <React.Suspense fallback={null}>
           <UnifiedClientModalsHost
@@ -667,11 +666,6 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
               settlementLabel,
               setDraft: setExtraCertDraft, onSubmit: handleAddExtraCertRequest,
               onClose: () => setShowExtraCertForm(false),
-            } : undefined}
-            legacyPayment={showLegacyPayForm && isSub ? {
-              open: true, clientName, courses, bundles, legacyPayDraft, setLegacyPayDraft,
-              settlementLabel,
-              onSubmit: handleAddLegacyPayment, onClose: () => setShowLegacyPayForm(false),
             } : undefined}
             certificateView={viewCertId ? {
               certificateId: viewCertId, certificates: activeSubCerts, subscriber,

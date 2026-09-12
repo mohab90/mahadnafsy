@@ -31,33 +31,6 @@ export const paymentTypeLabels: Record<PaymentItemType, string> = {
   other: 'أخرى',
 };
 
-export interface IncomeDraft {
-  subscriberId: string;
-  amount: number;
-  currency: Currency;
-  paymentType: PaymentItemType;
-  paymentMethod: string;
-  transactionId: string;
-  fromAccountNumber: string;
-  date: string;
-  note: string;
-  courseId: string;
-  isInstallment: boolean;
-}
-
-export const createBlankIncomeDraft = (): IncomeDraft => ({
-  subscriberId: '',
-  amount: 0,
-  currency: 'EGP',
-  paymentType: 'course',
-  paymentMethod: '',
-  transactionId: '',
-  fromAccountNumber: '',
-  date: new Date().toISOString().slice(0, 10),
-  note: '',
-  courseId: '',
-  isInstallment: false,
-});
 
 export const normalizeBranchId = (value?: string | null) =>
   String(value || '').trim().toUpperCase().replace(/[-\s]/g, '_');

@@ -66,10 +66,6 @@ export function useUnifiedClientPayments(params: Params) {
     email: subscriber?.email,
   }));
   const [showPayDetailModal, setShowPayDetailModal] = useState(false);
-  const [showLegacyPayForm, setShowLegacyPayForm] = useState(false);
-  const [legacyPayDraft, setLegacyPayDraft] = useState({
-    courseId: '', courseExpected: '', amountPaid: '', note: '',
-  });
   const [serverInstallmentPlans, setServerInstallmentPlans] = useState<InstallmentPlan[]>([]);
 
   useEffect(() => {
@@ -268,36 +264,24 @@ export function useUnifiedClientPayments(params: Params) {
     }
   };
 
-  const handleAddLegacyPayment = async () => {
-    const expected = Number(legacyPayDraft.courseExpected);
-    const paid = Number(legacyPayDraft.amountPaid);
-    if (!legacyPayDraft.courseId || !expected || paid <= 0 || !subscriber) return;
-    try {
-      await recordSubscriberPayment(subscriber.id, {
-        id: `pay-${Date.now()}`,
-        amount: paid,
-        currency: settlementCurrency,
-        paymentType: 'course' as PaymentItemType,
-        isInstallment: false,
-        courseId: legacyPayDraft.courseId,
-        courseExpected: expected,
-        note: ['مدفوع قديماً', legacyPayDraft.note].filter(Boolean).join(' — '),
-        at: today(),
-      });
-      setShowLegacyPayForm(false);
-      setLegacyPayDraft({ courseId: '', courseExpected: '', amountPaid: '', note: '' });
-    } catch (error) {
-      persistenceError('legacyPayment', error);
-    }
-  };
 
-  const openSubscriberPaymentForm = () => {
-    setPayModalDraft(createClientPaymentDraft({
-      branch: subscriber?.branch,
-      email: subscriber?.email,
-    }));
+  const openSubscriberPaymentForm = (opts?: { note?: string }) => {
+    setPayModalDraft({
+      ...createClientPaymentDraft({
+        branch: subscriber?.branch,
+        email: subscriber?.email,
+      }),
+      ...(opts?.note ? { note: opts.note } : {}),
+    });
     setShowSubPayForm(true);
   };
+
+  // «مدفوع قديم» — a payment made before this system existed. It is a
+  // subscriber payment with an older date, so it is the same screen with the
+  // note filled in. Its own dialog recorded no payment method at all and
+  // stamped today as the date, for a payment that by definition was not made
+  // today; the shared screen asks for both.
+  const openLegacyPaymentForm = () => openSubscriberPaymentForm({ note: 'مدفوع قديماً' });
 
   const openLeadPaymentForm = () => {
     setLeadPayDraft(createClientPaymentDraft({
@@ -313,7 +297,6 @@ export function useUnifiedClientPayments(params: Params) {
     showLeadPayForm, setShowLeadPayForm, leadPayDraft, setLeadPayDraft,
     showSubPayForm, setShowSubPayForm, payModalDraft, setPayModalDraft,
     showPayDetailModal, setShowPayDetailModal,
-    showLegacyPayForm, setShowLegacyPayForm, legacyPayDraft, setLegacyPayDraft,
     subInstallmentPlans: serverInstallmentPlans,
     todayStr, soon3Str, instOverdueCount, instSoonCount,
     leadPayments, leadPaidEGP, enrolledCourse, leadRemaining,
@@ -321,7 +304,7 @@ export function useUnifiedClientPayments(params: Params) {
     subExpectedEGP, subRemainingEGP,
     discountBase: subExpectedEGP || subPaidTotals[settlementCurrency],
     settlementCurrency, settlementLabel,
-    handleAddLeadPayment, handlePayModalSubmit, handleAddLegacyPayment,
+    handleAddLeadPayment, handlePayModalSubmit, openLegacyPaymentForm,
     openSubscriberPaymentForm,
     openLeadPaymentForm,
   };
