@@ -1,4 +1,5 @@
 import React from 'react';
+import { Modal } from '../../../../../shared/ui/Modal';
 import { useNavigate } from 'react-router-dom';
 import {
   ExternalLink, MessageSquareText, Phone, Receipt, RefreshCw, Trash2, Wallet,
@@ -496,15 +497,14 @@ export function ClientsTable({
       </table>
       {filteredLength === 0 && <p className="text-sm text-gray-500 mt-3">لا يوجد عملاء مطابقين للبحث.</p>}
       {accessRow && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={()=>setAccessRow(null)}>
-          <div onClick={e=>e.stopPropagation()} className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-5" dir="rtl">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-extrabold text-gray-800">صلاحية الكورسات — {accessRow.name}</h3>
-              <button onClick={()=>setAccessRow(null)} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
-            </div>
+    <Modal
+      open
+      onClose={() => setAccessRow(null)}
+      title={`صلاحية الكورسات — ${accessRow.name}`}
+      size="lg"
+    >
             <ClientCourseAccessPanel subscriberId={accessRow.id} notify={notify} />
-          </div>
-        </div>
+    </Modal>
       )}
     </div>
   );

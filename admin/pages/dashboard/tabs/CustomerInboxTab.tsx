@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Modal } from '../../../../shared/ui/Modal';
 import { useNavigate } from 'react-router-dom';
 import {
   Briefcase,
@@ -624,20 +625,15 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
         const raw = (item.raw || {}) as Record<string, any>;
         const isClosed = ['done', 'closed', 'rejected'].includes(item.status);
         return (
-          <div className="fixed inset-0 z-50 flex justify-start bg-black/40" onClick={(e) => { if (e.target === e.currentTarget) closeDetail(); }}>
-            <div className="flex h-full w-full max-w-xl flex-col bg-white shadow-2xl" dir="rtl">
-              {/* header */}
-              <div className="flex items-start justify-between gap-3 border-b border-slate-100 p-5">
-                <div className="flex items-start gap-3">
-                  <span className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-50 text-indigo-600"><Icon size={18} /></span>
-                  <div>
-                    <p className="text-[11px] font-bold text-slate-400">{meta.label} · {fmtDate(item.createdAt)}</p>
-                    <h3 className="text-lg font-extrabold text-slate-900">{item.title}</h3>
-                    <p className="mt-0.5 text-sm text-slate-600">{item.person}{item.contact ? ` · ${item.contact}` : ''}</p>
-                  </div>
-                </div>
-                <button onClick={closeDetail} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X size={18} /></button>
-              </div>
+    <Modal
+      open
+      onClose={closeDetail}
+      title={item.title}
+      subtitle={`${meta.label} · ${item.person}`}
+      align="drawer"
+      size="lg"
+      bodyClassName="p-0"
+    >
 
               {/* body */}
               <div className="flex-1 space-y-4 overflow-y-auto p-5">
@@ -800,19 +796,18 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                   )}
                 </div>
               </div>
-            </div>
-          </div>
+    </Modal>
         );
       })()}
 
       {/* Canned responses management modal */}
       {cannedManageOpen && (
-        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => { setCannedManageOpen(false); setCannedDraft({ title: '', body: '' }); }}>
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[85vh] flex flex-col" dir="rtl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
-              <h3 className="font-bold text-slate-900">إدارة الردود الجاهزة</h3>
-              <button onClick={() => { setCannedManageOpen(false); setCannedDraft({ title: '', body: '' }); }} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>
-            </div>
+    <Modal
+      open
+      onClose={() => { setCannedManageOpen(false); }}
+      title="إدارة الردود الجاهزة"
+      layer="over"
+    >
             <div className="p-5 space-y-3 overflow-y-auto">
               <div className="space-y-2 border border-slate-100 rounded-xl p-3 bg-slate-50">
                 <p className="text-xs font-semibold text-slate-500">{cannedDraft.id ? 'تعديل رد' : 'إضافة رد جديد'}</p>
@@ -841,8 +836,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                 ))}
               </div>
             </div>
-          </div>
-        </div>
+    </Modal>
       )}
     </div>
   );

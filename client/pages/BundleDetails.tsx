@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useEscapeKey } from '../../shared/ui/useEscapeKey';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   CheckCircle, Award, ArrowRight, PlayCircle, Briefcase, TrendingUp,
@@ -42,6 +43,9 @@ const BundleDetails: React.FC = () => {
   const [bundleLeadNotice, setBundleLeadNotice] = useState('');
 
   const [certModalOpen, setCertModalOpen] = useState(false);
+  // A certificate on a dark ground is a viewer, not a dialog — a white panel
+  // with a header row would be wrong. Escape is right for both.
+  useEscapeKey(() => setCertModalOpen(false), certModalOpen);
   const [videoModalOpen, setVideoModalOpen] = useState(false);
 
   // Match by id OR slug

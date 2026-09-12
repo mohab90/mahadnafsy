@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import { Modal } from '../../shared/ui/Modal';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Star, Shield, Users, BookOpen, MessageCircle, X, CalendarDays, Globe2, BriefcaseBusiness } from 'lucide-react';
 import { instituteWhatsApp } from '../lib/whatsappLink';
@@ -47,14 +48,12 @@ const InstructorDetails: React.FC = () => {
   return (
     <div className="bg-gray-50 min-h-screen pb-20 relative">
       {isBookingModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden">
-            <div className="bg-gray-50 p-4 border-b flex justify-between items-center">
-              <h3 className="font-bold text-gray-800">حجز موعد مع {instructor.name}</h3>
-              <button onClick={() => setIsBookingModalOpen(false)} className="text-gray-500 hover:text-red-600 transition">
-                <X size={24} />
-              </button>
-            </div>
+    <Modal
+      open
+      onClose={() => setIsBookingModalOpen(false)}
+      title={`حجز موعد مع ${instructor.name}`}
+      size="lg"
+    >
 
             <div className="p-6">
               <div className="flex items-center gap-4 mb-6 bg-primary-50 p-4 rounded-xl border border-primary-100">
@@ -108,8 +107,7 @@ const InstructorDetails: React.FC = () => {
                 تأكيد الحجز والدفع
               </button>
             </div>
-          </div>
-        </div>
+    </Modal>
       )}
 
       <div className="h-64 bg-gray-900 relative">

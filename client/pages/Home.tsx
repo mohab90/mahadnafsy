@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useEscapeKey } from '../../shared/ui/useEscapeKey';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Check, CheckCircle, Clock, Video, Users, Star, Play, Award, ChevronRight, Quote, Send, BookOpen, GraduationCap, Phone, Briefcase } from 'lucide-react';
 import { LeadItem } from '../types';
@@ -47,6 +48,8 @@ const Home: React.FC = () => {
     const [offerLeadBranch, setOfferLeadBranch] = useState('');
     const [offerLeadNotice, setOfferLeadNotice] = useState('');
   const [showVideoModal, setShowVideoModal] = useState(false);
+  // A video lightbox. It sat on z-[9999], the highest number in either app.
+  useEscapeKey(() => setShowVideoModal(false), showVideoModal);
   const currencySymbol = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
   const timer = use24hCountdown(content['offer.timerStartedAt'] || undefined);
 

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Modal } from '../../../shared/ui/Modal';
 import { CheckCircle, X } from 'lucide-react';
 
 import type { Course, CourseQuiz, QuizAttempt, SubscriberItem } from '../../types';
@@ -137,15 +138,14 @@ export function StudentQuizTab({
       )}
 
       {quizModal && activeQuizData && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4" dir="rtl">
-          <div className="my-8 w-full max-w-2xl rounded-3xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between rounded-t-3xl bg-gradient-to-r from-primary-700 to-primary-900 px-6 py-5 text-white">
-              <div>
-                <p className="text-base font-extrabold">{activeQuizData.title}</p>
-                <p className="mt-0.5 text-xs text-primary-200">{activeQuizData.questions.length} سؤال - النجاح {activeQuizData.passingScore}%</p>
-              </div>
-              <button onClick={() => setQuizModal(null)} className="text-white/60 hover:text-white"><X size={22} /></button>
-            </div>
+    <Modal
+      open
+      onClose={() => setQuizModal(null)}
+      title={activeQuizData.title}
+      subtitle={`${activeQuizData.questions.length} سؤال`}
+      tone="violet"
+      size="lg"
+    >
 
             <div className="p-6">
               {quizSubmitted ? (
@@ -206,8 +206,7 @@ export function StudentQuizTab({
                 </div>
               )}
             </div>
-          </div>
-        </div>
+    </Modal>
       )}
     </div>
   );

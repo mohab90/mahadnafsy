@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Modal } from '../../../../shared/ui/Modal';
 import { useSearchParams } from 'react-router-dom';
 import { parsePaymentMethods } from '../../../lib/paymentMethods';
 import {
@@ -626,8 +627,7 @@ export default function OnlineClientsTab({
                   {omNewSubOpen && (() => {
                     const pmList: string[] = parsePaymentMethods(content['finance.payment_methods']);
                     return (
-                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" dir="rtl"
-                      onClick={e=>{if(e.target===e.currentTarget){setOmNewSubOpen(false);omNewSubReset();setNewClientDraft(blankPaymentDraft({ branch: 'DAQQI' }));}}}>
+                    <>
                       {isDaqqiClientsTab ? (
                         /* عميل دقي جديد — نفس شاشة الحجز والدفع المستخدمة في كل مكان.
                            كانت نسخة مكتوبة هنا بحقولها الخاصة، وتوأمها في مكتب الدقي. */
@@ -640,17 +640,18 @@ export default function OnlineClientsTab({
                           onClose={() => { setOmNewSubOpen(false); setNewClientDraft(blankPaymentDraft({ branch: 'DAQQI' })); }}
                         />
                       ) : (
-                      /* ══════════ مشترك جديد — أونلاين ══════════ */
-                      <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-                        {/* Header */}
-                        <div className="flex items-center justify-between px-5 py-4 bg-gradient-to-l from-emerald-600 to-teal-600 text-white">
-                          <div>
-                            <h3 className="font-extrabold text-base">🌐 مشترك أونلاين جديد</h3>
-                            <p className="text-xs text-emerald-100 mt-0.5">إنشاء حساب عميل أونلاين</p>
-                          </div>
-                          <button onClick={()=>{setOmNewSubOpen(false);omNewSubReset();}} className="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10"><X size={20}/></button>
-                        </div>
-                        <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+                      /* مشترك أونلاين جديد — إنشاء حساب دخول:
+                         باسورد، وصلاحية كل كورس، وأول دفعة في نداء واحد. */
+                      <Modal
+                        open
+                        onClose={() => { setOmNewSubOpen(false); omNewSubReset(); }}
+                        title="🌐 مشترك أونلاين جديد"
+                        subtitle="إنشاء حساب عميل أونلاين"
+                        tone="emerald"
+                        size="md"
+                        align="sheet"
+                      >
+                        <div className="space-y-4">
                           {/* بيانات الحساب */}
                           <div>
                             <p className="text-xs font-extrabold text-gray-500 uppercase mb-2">👤 بيانات الحساب</p>
@@ -839,9 +840,9 @@ export default function OnlineClientsTab({
                             {omNewSubSaving ? '⏳ جاري الإنشاء...' : '✅ إنشاء الحساب'}
                           </button>
                         </div>
-                      </div>
+                      </Modal>
                       )} {/* end isDaqqiClientsTab ternary */}
-                    </div>
+                    </>
                     );
                   })()}
 

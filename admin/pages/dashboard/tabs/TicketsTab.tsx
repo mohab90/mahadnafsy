@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { Modal } from '../../../../shared/ui/Modal';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Ticket, Plus, Search, MessageSquare, Clock, CheckCircle, AlertCircle, XCircle, Star, X, Send, TrendingUp, Zap, ExternalLink, Download } from 'lucide-react';
 import { useCrmData } from '../../../context/siteDataSlices';
@@ -494,12 +495,11 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
 
       {/* Create modal */}
       {showCreate && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-5" dir="rtl">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-gray-800 text-lg">إنشاء تذكرة جديدة</h3>
-              <button onClick={() => setShowCreate(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
-            </div>
+    <Modal
+      open
+      onClose={() => setShowCreate(false)}
+      title="إنشاء تذكرة جديدة"
+    >
             <div className="space-y-3">
               <input value={draft.title || ''} onChange={e => setDraft(p => ({ ...p, title: e.target.value }))}
                 placeholder="عنوان المشكلة *" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
@@ -532,8 +532,7 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
                 <button onClick={() => setShowCreate(false)} className="flex-1 bg-gray-100 text-gray-600 py-2 rounded-xl font-bold text-sm hover:bg-gray-200">إلغاء</button>
               </div>
             </div>
-          </div>
-        </div>
+    </Modal>
       )}
 
       {/* Filters */}

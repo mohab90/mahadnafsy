@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Modal } from '../../shared/ui/Modal';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useVisibleInterval } from '../../shared/useVisibleInterval';
 import {
@@ -929,17 +930,14 @@ const UserDashboard: React.FC = () => {
 
           {/* Installment payment modal */}
           {installModal && (
-            <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" dir="rtl" onClick={e => { if (e.target === e.currentTarget && !installIframeUrl) { setInstallModal(null); setInstallIframeUrl(''); } }}>
-              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
-                <div className="bg-amber-600 text-white px-6 py-4 flex items-center justify-between">
-                  <div>
-                    <p className="font-extrabold text-base">دفع قسط</p>
-                    <p className="text-amber-100 text-xs mt-0.5 line-clamp-1">{installModal.courseTitle}</p>
-                  </div>
-                  <button onClick={() => { setInstallModal(null); setInstallIframeUrl(''); setInstallError(''); }} className="text-amber-100 hover:text-white transition">
-                    <X size={22} />
-                  </button>
-                </div>
+    <Modal
+      open
+      onClose={() => { setInstallModal(null); setInstallIframeUrl(''); setInstallError(''); }}
+      title="دفع قسط"
+      subtitle={installModal.courseTitle}
+      tone="amber"
+      size="sm"
+    >
                 <div className="p-6 space-y-4">
                   {installIframeUrl === 'whatsapp_sent' ? (
                     <div className="text-center space-y-4 py-4">
@@ -989,8 +987,7 @@ const UserDashboard: React.FC = () => {
                     </>
                   )}
                 </div>
-              </div>
-            </div>
+    </Modal>
           )}
 
           {/* ════ ACCOUNT SUB-NAV ════ */}

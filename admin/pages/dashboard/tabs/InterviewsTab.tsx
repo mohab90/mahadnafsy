@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Modal } from '../../../../shared/ui/Modal';
 import {
   Building2, CalendarCheck, CalendarClock, GraduationCap, Briefcase,
   Phone, Plus, RefreshCw, Trash2, UserCheck, UserPlus, X, XCircle,
@@ -136,12 +137,16 @@ const AddInterviewModal: React.FC<{ notify: NotifyFn; onClose: () => void; onAdd
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <form onClick={e => e.stopPropagation()} onSubmit={submit} className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl space-y-3" dir="rtl">
-        <div className="flex items-center justify-between">
-          <h3 className="flex items-center gap-2 text-base font-bold text-gray-900"><UserPlus size={18} className="text-violet-600" /> إضافة انترفيو مباشر</h3>
-          <button type="button" onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"><X size={16} /></button>
-        </div>
+    // The form stays inside the body so its submit button keeps working —
+    // Modal renders its footer outside the form.
+    <Modal
+      open
+      onClose={onClose}
+      title="إضافة انترفيو"
+      icon={<UserPlus size={18} className="text-violet-600" />}
+      size="sm"
+    >
+      <form onSubmit={submit} className="space-y-3">
         <p className="text-xs text-gray-500">لإضافة مرشح وصل لك مباشرة (توصية، LinkedIn، ...) — بدون المرور بطلبات الانضمام. يدخل الآن في مرحلة المقابلة مباشرة.</p>
 
         <div>
@@ -217,7 +222,7 @@ const AddInterviewModal: React.FC<{ notify: NotifyFn; onClose: () => void; onAdd
           <Plus size={15} /> {saving ? 'جارٍ الإضافة...' : 'إضافة للمقابلة'}
         </button>
       </form>
-    </div>
+    </Modal>
   );
 };
 
@@ -421,9 +426,13 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
       {/* A letter on its own does not say why, and the reason is what the second
           interviewer actually reads — so it is asked for with the grade. */}
       {contactFor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setContactFor(null)}>
-          <div onClick={e => e.stopPropagation()} className="w-full max-w-xs space-y-2 rounded-2xl bg-white p-4 shadow-2xl" dir="rtl">
-            <h3 className="text-sm font-bold text-gray-900">نتيجة التواصل — {contactFor.name}</h3>
+    <Modal
+      open
+      onClose={() => setContactFor(null)}
+      title={`نتيجة التواصل — ${contactFor.name}`}
+      subtitle="اختار اللي حصل في المكالمة"
+      size="sm"
+    >
             <p className="text-[11px] text-gray-500">اختار اللي حصل في المكالمة.</p>
             <button disabled={busyId === contactFor.id} onClick={() => markNoAnswer(contactFor)}
               className="w-full rounded-xl bg-gray-100 px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-200 disabled:opacity-40">
@@ -439,8 +448,7 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
             </button>
             <button onClick={() => setContactFor(null)}
               className="w-full rounded-xl px-3 py-2 text-xs font-bold text-gray-400 hover:bg-gray-50">إلغاء</button>
-          </div>
-        </div>
+    </Modal>
       )}
       {rejectFor && (
         <PromptModal

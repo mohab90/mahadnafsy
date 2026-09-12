@@ -47,27 +47,6 @@ test('إضافة ليد جديد opens the shared dialog', () => {
     'two Escape handlers on one dialog: Modal already calls the hook');
 });
 
-// ── Rolled out to the dialogs a desk opens all day ────────────────────────
-// Money, hiring and CRM configuration. Each needs its own onClose and its own
-// panel element, so they go one at a time rather than as a sweep across all
-// sixty overlays.
-// Shrinking on purpose: as dialogs move to shared/ui/Modal they reach the hook
-// through it and drop off this list. تعيين الموظف and نموذج تعيين الموظف left
-// that way, and إضافة استرداد with them.
-const WIRED = [
-  'components/PaymentModal.tsx',
-  'pages/dashboard/tabs/CrmSettingsModal.tsx',
-];
-
-for (const file of WIRED) {
-  test(`${file.split('/').pop()} imports the hook and attaches the panel`, () => {
-    const source = read(file);
-    assert.match(source, /import \{ useModalKeyboard \} from '[^']*useModalKeyboard'/);
-    assert.match(source, /const panelRef = useModalKeyboard/);
-    assert.match(source, /ref=\{panelRef\}/);
-  });
-}
-
 test('most dialogs reach the hook through the shared Modal, not directly', () => {
   // The hook was generic over the panel element because HireModal made its
   // <form> the panel. That dialog is on shared/ui/Modal now, and Modal always
@@ -78,28 +57,7 @@ test('most dialogs reach the hook through the shared Modal, not directly', () =>
   assert.match(sharedModal, /const panelRef = useModalKeyboard\(onClose, open\);/);
 });
 
-test('a dialog that returns early calls the hook before it does', () => {
-  // PaymentModal returns the printed receipt instead of the form once a payment
-  // is saved. A hook placed after that return runs on some renders and not
-  // others, which React forbids — the active flag exists so it can be called
-  // unconditionally.
-  //
-  // This was asserted against DaqqiPayModal, the Daqqi desk's own copy of the
-  // payment screen. That copy is gone and the desk opens the shared one, so
-  // this is where the keyboard handling moved to — and where every other
-  // payment screen gains it, having had none.
-  //
-  // Comments are stripped first: the one explaining this rule quotes the early
-  // return verbatim, and it sits above the hook call — matched against the raw
-  // source, the comment is what indexOf finds, and the check inverts. The line
-  // pattern is [^\n]* rather than .*$ because `.` does not match \r, so on a
-  // CRLF file .*$ never matches and nothing is stripped at all.
-  const source = read('components/PaymentModal.tsx')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
-  const hookAt = source.indexOf('useModalKeyboard(onClose');
-  const returnAt = source.indexOf('if (printData) {');
-  assert.ok(hookAt > 0 && returnAt > 0, 'expected both the hook call and the early return');
-  assert.ok(hookAt < returnAt, 'the hook must be called before the early return');
-  assert.match(source, /useModalKeyboard\(onClose, !printData\)/);
-});
+// The early-return rule — a hook after `if (!open) return null` runs on some
+// renders and not others — now lives where the return does: shared/ui/Modal.
+// api/tests/sharedModal.test.js asserts it there. Every dialog reaches the hook
+// through Modal, so there is no caller left to check here.

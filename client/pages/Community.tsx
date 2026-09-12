@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useEscapeKey } from '../../shared/ui/useEscapeKey';
+import { Modal } from '../../shared/ui/Modal';
 import {
   Users, BookOpen, MessageSquare, Calendar, Download, FileText,
   Heart, MessageCircle, Share2, MoreHorizontal, Play, Video,
@@ -72,6 +74,8 @@ const Community: React.FC = () => {
   const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
   const [showNewPostModal, setShowNewPostModal] = useState(false);
   const [showVideoModal, setShowVideoModal] = useState<string | null>(null);
+  // A video lightbox, like the one on the home page.
+  useEscapeKey(() => setShowVideoModal(null), showVideoModal !== null);
   const [newPost, setNewPost] = useState({ title: '', body: '', tag: 'نقاش عام' });
   const [postSubmitted, setPostSubmitted] = useState(false);
   const [expandedPost, setExpandedPost] = useState<string | null>(null);
@@ -634,14 +638,11 @@ const Community: React.FC = () => {
 
       {/* New Post / Edit Modal */}
       {showNewPostModal && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => { setShowNewPostModal(false); setEditingPostId(null); setPostSubmitted(false); }}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-5 border-b border-gray-100 flex-shrink-0">
-              <h3 className="font-bold text-gray-900 text-lg">
-                {editingPostId ? 'تعديل المشاركة' : 'مشاركة في ساحة النقاش'}
-              </h3>
-              <button onClick={() => { setShowNewPostModal(false); setEditingPostId(null); setPostSubmitted(false); }} className="text-gray-400 hover:text-gray-600 transition p-1.5 rounded-lg hover:bg-gray-100"><X size={20} /></button>
-            </div>
+    <Modal
+      open
+      onClose={() => { setShowNewPostModal(false); setEditingPostId(null); }}
+      title={editingPostId ? 'تعديل المشاركة' : 'مشاركة في ساحة النقاش'}
+    >
 
             <div className="overflow-y-auto flex-1">
               {actionError && <div role="alert" className="mx-5 mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</div>}
@@ -678,8 +679,7 @@ const Community: React.FC = () => {
                 </div>
               )}
             </div>
-          </div>
-        </div>
+    </Modal>
       )}
 
       {/* Video Modal */}

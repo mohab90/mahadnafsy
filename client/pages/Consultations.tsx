@@ -3,6 +3,7 @@ import { Zap, Star, Shield, Clock, ChevronLeft, Search, Filter, UserCheck, Lock,
 import { useNavigate } from 'react-router-dom';
 import { Therapist } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
+import { useEscapeKey } from '../../shared/ui/useEscapeKey';
 import { formatAvailabilitySlot, getTherapistActiveSlots, getTherapistSessionPrice, isConsultationEnabled, meetingProviderLabels } from '../lib/consultations';
 import { cdnImg } from '../lib/img';
 import { cairoDateOnly } from '../../shared/cairoDate';
@@ -17,6 +18,12 @@ const Consultations: React.FC = () => {
     const [selectedDate, setSelectedDate] = useState('');
     const [selectedSessionType, setSelectedSessionType] = useState<'individual' | 'couple' | 'family'>('individual');
     const [bookingStep, setBookingStep] = useState(0);
+    // Escape closes the booking dialog. Left as a hand-rolled overlay on
+    // purpose: this file's JSX nesting does not follow its indentation — the
+    // booking overlay and the therapist list below it sit inside one conditional
+    // — so restructuring it wants a proper read, not a line edit on a live
+    // booking page. The accessibility gap is closed either way.
+    useEscapeKey(() => setBookingStep(0), bookingStep === 1);
 
     const currencySymbol = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
 

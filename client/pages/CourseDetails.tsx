@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useEscapeKey } from '../../shared/ui/useEscapeKey';
 import { useParams, useNavigate } from 'react-router-dom';
 import { LeadItem } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
@@ -282,6 +283,9 @@ const CourseDetails: React.FC = () => {
   // ── Upsell popup: show when enrolled user opens a lecture ─────────────────
   const [showUpsell, setShowUpsell] = useState(false);
   const [certModalOpen, setCertModalOpen] = useState(false);
+  // A certificate on a dark ground is a viewer, not a dialog — a white panel
+  // with a header row would be wrong. Escape is right for both.
+  useEscapeKey(() => setCertModalOpen(false), certModalOpen);
   const [completionCert, setCompletionCert] = useState<string | null>(null);
 
   // Bundles containing this course (for upsell)

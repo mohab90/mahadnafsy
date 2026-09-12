@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useEscapeKey } from '../../shared/ui/useEscapeKey';
 import { X, Printer } from 'lucide-react';
 import QRCode from 'qrcode';
 import { useSiteData } from '../context/SiteDataContext';
@@ -22,6 +23,9 @@ const CourseCertificate: React.FC<CourseCertificateProps> = ({
   studentName, studentNameEn, courseName, courseNameEn,
   certNumber, issuedAt, onClose,
 }) => {
+  // The certificate itself, full-bleed on a dark ground. A viewer, not a
+  // dialog — but Escape closes it now, which it did not.
+  useEscapeKey(onClose);
   const { content } = useSiteData();
   const LOGO_URL = content['institute.logo'] || FALLBACK_LOGO;
   const certName  = (studentNameEn || studentName).toUpperCase();

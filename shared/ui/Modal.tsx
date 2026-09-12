@@ -65,6 +65,12 @@ export interface ModalProps {
    * content own its own spacing. Everything else should leave this alone.
    */
   bodyClassName?: string;
+  /**
+   * A control that belongs in the header rather than the body — the payment
+   * screen keeps its currency selector there, beside the customer's name,
+   * because it changes what every figure below it means.
+   */
+  headerExtra?: ReactNode;
   children: ReactNode;
 }
 
@@ -127,6 +133,7 @@ export function Modal({
   closeOnBackdrop = true,
   panelClassName = '',
   bodyClassName = 'p-5',
+  headerExtra,
   children,
 }: ModalProps) {
   // Called before the early return and told whether it is live: a hook placed
@@ -164,6 +171,8 @@ export function Modal({
                 )}
               </div>
             </div>
+            <div className="flex items-center gap-2 shrink-0">
+            {headerExtra}
             {!hideClose && (
               <button
                 type="button"
@@ -174,6 +183,7 @@ export function Modal({
                 <X size={16} />
               </button>
             )}
+            </div>
           </div>
         )}
 

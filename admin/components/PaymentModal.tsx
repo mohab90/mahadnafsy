@@ -11,7 +11,7 @@ import type {
 } from '../types';
 import { parsePaymentMethods } from '../lib/paymentMethods';
 import { isCollected } from '../lib/money';
-import { useModalKeyboard } from '../../shared/ui/useModalKeyboard';
+import { Modal } from '../../shared/ui/Modal';
 
 // ── Shared draft type ──────────────────────────────────────────────────────
 export interface PaymentDraft {
@@ -260,7 +260,6 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   // now they are the same screen, it belongs here. Called before the printData
   // early return below, and told whether it is live — a hook after a return
   // runs on some renders and not others.
-  const panelRef = useModalKeyboard(onClose, !printData);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
@@ -482,64 +481,50 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const isBookOrCarneh = d.paymentType === 'book' || d.paymentType === 'carneh';
 
   return (
-    <div
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-      onClick={onClose}
+    // The header keeps the currency selector — it changes what every figure
+    // below it means, so it belongs beside the customer's name rather than in
+    // the form. The paid/remaining/total bar moves to the top of the body: it
+    // is information about the customer, not part of the dialog's chrome.
+    <Modal
+      open
+      onClose={onClose}
+      title={mode === 'lead' ? 'حجز عميل' : mode === 'new' ? 'عميل جديد + حجز' : 'تسجيل دفعة'}
+      subtitle={personName || (mode === 'new' ? 'عميل جديد' : undefined)}
+      icon={<CreditCard size={20} className="text-white" />}
+      tone="red"
+      align="sheet"
+      bodyClassName="px-5 py-4"
+      headerExtra={(
+        <div>
+          <p className="text-red-200 text-[10px] font-medium mb-0.5 text-center">العملة</p>
+          <select
+            value={d.currency}
+            onChange={e => set({ currency: e.target.value as 'EGP' | 'SAR' | 'USD' })}
+            className="bg-white/20 border border-white/30 text-white rounded-lg px-2 py-1.5 text-sm font-bold"
+          >
+            <option value="EGP" className="text-gray-900 bg-white">ج.م</option>
+            <option value="SAR" className="text-gray-900 bg-white">ر.س</option>
+            <option value="USD" className="text-gray-900 bg-white">$</option>
+          </select>
+        </div>
+      )}
     >
-      <div
-        ref={panelRef}
-        className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg max-h-[95vh] overflow-auto"
-        dir="rtl"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* ── Header ── */}
-        <div className="bg-gradient-to-l from-red-700 to-red-500 px-5 py-4 rounded-t-3xl sm:rounded-t-2xl sticky top-0 z-10">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="bg-white/20 rounded-xl p-2"><CreditCard size={20} className="text-white" /></div>
-              <div>
-                <h4 className="font-extrabold text-white text-base leading-tight">
-                  {mode === 'lead' ? 'حجز عميل' : mode === 'new' ? 'عميل جديد + حجز' : 'تسجيل دفعة'}
-                </h4>
-                <p className="text-red-100 text-xs mt-0.5">{personName || 'عميل جديد'}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <div>
-                <p className="text-red-200 text-[10px] font-medium mb-0.5 text-center">العملة</p>
-                <select
-                  value={d.currency}
-                  onChange={e => set({ currency: e.target.value as 'EGP' | 'SAR' | 'USD' })}
-                  className="bg-white/20 border border-white/30 text-white rounded-lg px-2 py-1.5 text-sm font-bold"
-                >
-                  <option value="EGP" className="text-gray-900 bg-white">ج.م</option>
-                  <option value="SAR" className="text-gray-900 bg-white">ر.س</option>
-                  <option value="USD" className="text-gray-900 bg-white">$</option>
-                </select>
-              </div>
-              <button onClick={onClose} className="text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-lg p-1.5 transition">
-                <X size={18} />
-              </button>
-            </div>
-          </div>
+        <div className="space-y-4">
           {/* Payment stats bar (subscriber only) */}
           {mode === 'subscriber' && payTotalExpected > 0 && (
-            <div className="flex gap-2 mt-3">
+            <div className="flex gap-2 mb-1">
               {[
                 { label: 'مدفوع', value: `${payTotalPaid.toLocaleString()} ج` },
                 { label: 'متبقي', value: payRemaining > 0 ? `${payRemaining.toLocaleString()} ج` : '✅ مكتمل' },
                 { label: 'إجمالي', value: `${payTotalExpected.toLocaleString()} ج` },
               ].map(item => (
-                <div key={item.label} className="flex-1 bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-center">
-                  <p className="text-[10px] text-red-100 font-semibold">{item.label}</p>
-                  <p className="text-sm font-extrabold text-white">{item.value}</p>
+                <div key={item.label} className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-center">
+                  <p className="text-[10px] text-gray-500 font-semibold">{item.label}</p>
+                  <p className="text-sm font-extrabold text-gray-900">{item.value}</p>
                 </div>
               ))}
             </div>
           )}
-        </div>
-
-        <div className="px-5 py-4 space-y-4">
           {/* ── 1: Booking type chips ── */}
           <div className="grid grid-cols-2 gap-3">
             {[{ v: 'new_booking', ic: '🆕', lb: 'حجز جديد' }, { v: 'installment', ic: '💳', lb: 'قسط' }].map(opt => (
@@ -1192,8 +1177,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
             >إلغاء</button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 };
 

@@ -11,8 +11,9 @@
 // behaviour to carry across, and a bad sweep across sixty-five money and CRM
 // screens is worse than the inconsistency.
 //
-// So this is a ratchet: the count may fall, never rise. A new screen that hand-
-// rolls its own overlay fails here, and so does a migration that regresses.
+// It was a ratchet — count may fall, never rise — while the migration ran. The
+// migration is finished, so it is an allowlist now: these twelve by name, each
+// with the reason it is not a Modal, and nothing else.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -23,10 +24,43 @@ const ROOT = path.join(__dirname, '..', '..');
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 /**
- * Where the count stood when the ratchet was set. Lower it as dialogs move
- * across; never raise it. Raising it is the one edit this test exists to stop.
+ * The only files allowed to build their own full-screen overlay, and why.
+ *
+ * Adding to this list is the edit this test exists to make deliberate: if a new
+ * screen needs an overlay, it almost certainly wants shared/ui/Modal.
  */
-const HAND_ROLLED_CEILING = 22;
+const NOT_A_DIALOG = {
+  // The receipt's markup is load-bearing for the @media print rules, which hide
+  // body's children and position #payModalPrintReceipt at the page origin.
+  // Modal's extra wrappers are exactly what breaks that.
+  'admin/components/PaymentModal.tsx': 'the printed receipt inside it',
+
+  // Media and documents on a dark ground. Modal gives a white panel with a
+  // header row — right for a form, wrong for a photo or a certificate. All of
+  // these close on Escape through shared/ui/useEscapeKey instead.
+  'client/components/CourseCertificate.tsx': 'the certificate, full-bleed',
+  'client/pages/CourseDetails.tsx': 'a certificate preview',
+  'client/pages/BundleDetails.tsx': 'a certificate preview',
+  'client/pages/Home.tsx': 'a video lightbox',
+  'client/pages/Community.tsx': 'a video lightbox',
+  'client/pages/course-details-sections/GallerySection.tsx': 'an image lightbox',
+  'client/pages/course-details-sections/PromoVideoSection.tsx': 'a video lightbox',
+
+  // This file's JSX nesting does not follow its indentation — the booking
+  // overlay and the therapist list below it sit inside one conditional — so
+  // restructuring it wants a proper read rather than a line edit on a live
+  // booking page. Escape works; the overlay is still its own.
+  'client/pages/Consultations.tsx': 'tangled JSX, flagged for a proper read',
+
+  // The dimmed ground a lazily-loaded dialog appears on. Not a dialog.
+  'shared/ui/ModalFallback.tsx': 'the loading veil itself',
+
+  // The primitives. Both already have role="dialog", aria-modal, Escape,
+  // Enter-to-submit and a focused field; wrapping them in Modal would put two
+  // Escape handlers on one dialog.
+  'shared/ui/confirmDialog.tsx': 'a primitive, already complete',
+  'shared/ui/promptDialog.tsx': 'a primitive, already complete',
+};
 
 /** Dialogs still on a stacking level they invented. Same rule: down, never up. */
 const OWN_STACKING_CEILING = 6;
@@ -49,20 +83,26 @@ function componentFiles() {
   return out.map(f => path.relative(ROOT, f).split(path.sep).join('/'));
 }
 
-test('the count of hand-rolled dialogs only goes down', () => {
+test('only the twelve named surfaces build their own overlay', () => {
   const files = componentFiles();
   // Denominator: a walk that stopped matching would report a clean bill.
   assert.ok(files.length > 300, `expected both component trees, saw ${files.length}`);
 
   const handRolled = files.filter(rel => /className=.fixed inset-0[^"`]*bg-black\//.test(read(rel)));
-  assert.ok(handRolled.length <= HAND_ROLLED_CEILING,
-    `${handRolled.length} dialogs still build their own backdrop, up from ${HAND_ROLLED_CEILING}. `
-    + 'Use shared/ui/Modal rather than raising the ceiling.');
+  const unexpected = handRolled.filter(rel => !(rel in NOT_A_DIALOG));
+  assert.deepEqual(unexpected, [],
+    'these build their own overlay: ' + unexpected.join(', ')
+    + '. Use shared/ui/Modal, or add it to NOT_A_DIALOG with the reason.');
 
-  // And the shared one is actually in use, so the ceiling is not being met by
-  // deleting dialogs instead of migrating them.
+  // And the allowlist has not outlived its entries — a name left behind after
+  // its file was migrated would quietly permit a regression later.
+  const stale = Object.keys(NOT_A_DIALOG).filter(rel => !handRolled.includes(rel));
+  assert.deepEqual(stale, [], 'these no longer build an overlay and can leave the list: ' + stale.join(', '));
+
+  // The shared one is actually in use, so the list is not being satisfied by
+  // deleting dialogs rather than migrating them.
   const adopters = files.filter(rel => /from ['"][^'"]*shared\/ui\/Modal['"]/.test(read(rel)));
-  assert.ok(adopters.length >= 38, `expected the migrated dialogs, saw ${adopters.length}`);
+  assert.ok(adopters.length >= 50, `expected the migrated dialogs, saw ${adopters.length}`);
 });
 
 test('the shared dialog does what the hand-rolled ones mostly did not', () => {

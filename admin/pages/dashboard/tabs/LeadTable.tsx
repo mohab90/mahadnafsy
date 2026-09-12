@@ -1,4 +1,5 @@
 import React from 'react';
+import { Modal } from '../../../../shared/ui/Modal';
 import { ExternalLink, Eye, EyeOff, Phone, Trash2, Wallet } from 'lucide-react';
 import { useResizableCols } from '../../../components/useResizableCols';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -519,9 +520,12 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
 
       {/* ── Contact log modal ── */}
       {contactRow && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setContactRow(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" dir="rtl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-gray-900 mb-4">تسجيل تواصل — {contactRow.name}</h3>
+    <Modal
+      open
+      onClose={() => setContactRow(null)}
+      title="تسجيل تواصل"
+      size="sm"
+    >
             <div className="space-y-3">
               {/* Status selector */}
               <div>
@@ -616,8 +620,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                 <button onClick={() => setContactRow(null)} className="flex-1 py-2.5 bg-gray-200 text-gray-700 rounded-xl text-sm hover:bg-gray-300">إلغاء</button>
               </div>
             </div>
-          </div>
-        </div>
+    </Modal>
       )}
 
       {/* ── Contact History modal ── */}
@@ -632,13 +635,12 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
           note: { label: 'ملاحظة', icon: '📝', color: 'bg-gray-50 border-gray-200 text-gray-700' },
         };
         return (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setHistoryRow(null)}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6" dir="rtl" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-gray-900">تاريخ التواصل — {liveHistoryRow.name}</h3>
-                <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">{(liveHistoryRow.communications || []).length} سجل</span>
-                <button onClick={() => setHistoryRow(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none mr-2">×</button>
-              </div>
+    <Modal
+      open
+      onClose={() => setHistoryRow(null)}
+      title="تاريخ التواصل"
+      subtitle={liveHistoryRow.name}
+    >
               {(liveHistoryRow.communications || []).length === 0 ? (
                 <p className="text-gray-400 text-sm text-center py-8">لا توجد سجلات تواصل بعد</p>
               ) : (
@@ -687,8 +689,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                 </button>}
                 <button onClick={() => setHistoryRow(null)} className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-xl text-sm hover:bg-gray-300">إغلاق</button>
               </div>
-            </div>
-          </div>
+    </Modal>
         );
       })()}
 
@@ -757,18 +758,12 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
           },
         ];
         return (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setWaMenuRow(null)}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto" dir="rtl" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="font-bold text-gray-900 flex items-center gap-2">📩 مكتبة رسائل واتساب</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {waMenuRow.name} — <span dir="ltr">{waMenuRow.phone}</span>
-                    {waCourseName !== 'برامجنا' && <span className="mr-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-1.5 py-0.5">{waCourseName}</span>}
-                  </p>
-                </div>
-                <button onClick={() => setWaMenuRow(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
-              </div>
+    <Modal
+      open
+      onClose={() => setWaMenuRow(null)}
+      title="رسائل واتساب جاهزة"
+      subtitle={`${waMenuRow.name} — ${waMenuRow.phone}`}
+    >
               <div className="space-y-4">
                 {templates.map(cat => (
                   <div key={cat.cat}>
@@ -808,8 +803,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                   </a>
                 </div>
               </div>
-            </div>
-          </div>
+    </Modal>
         );
       })()}
 
