@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Plus, RefreshCw, Settings, Wifi, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import { useModalKeyboard } from '../../../components/shared/useModalKeyboard';
+import { useModalKeyboard } from '../../../../shared/ui/useModalKeyboard';
 
 export type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 export type GSheet = { id: string; name: string; sheetId: string; gid: string; autoSync: boolean; defaultCourse?: string };

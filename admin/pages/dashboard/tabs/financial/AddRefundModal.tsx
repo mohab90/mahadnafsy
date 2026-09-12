@@ -3,7 +3,7 @@ import { Loader2, RotateCcw, Search, X } from 'lucide-react';
 import { useCrmData } from '../../../../context/siteDataSlices';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { SubscriberItem } from '../../../../types';
-import { useModalKeyboard } from '../../../../components/shared/useModalKeyboard';
+import { useModalKeyboard } from '../../../../../shared/ui/useModalKeyboard';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 

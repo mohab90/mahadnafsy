@@ -5,7 +5,7 @@ import {
   type PermissionKey, type RoleKey,
 } from '../../../../constants/permissions';
 import { useBranches } from '../../../../hooks/useBranches';
-import { useModalKeyboard } from '../../../../components/shared/useModalKeyboard';
+import { useModalKeyboard } from '../../../../../shared/ui/useModalKeyboard';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 

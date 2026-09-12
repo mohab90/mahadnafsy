@@ -16,9 +16,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const ADMIN = path.join(__dirname, '..', '..', 'admin');
+const ROOT = path.join(__dirname, '..', '..');
+const ADMIN = path.join(ROOT, 'admin');
 const read = rel => fs.readFileSync(path.join(ADMIN, ...rel.split('/')), 'utf8');
-const hook = read('components/shared/useModalKeyboard.ts');
+// The hook moved to shared/ui so the client's fourteen dialogs can reach it
+// too; shared/ui/Modal is built on it.
+const hook = fs.readFileSync(path.join(ROOT, 'shared', 'ui', 'useModalKeyboard.ts'), 'utf8');
 
 test('the shared hook closes on Escape and moves focus into the panel', () => {
   assert.match(hook, /event\.key !== 'Escape'/);

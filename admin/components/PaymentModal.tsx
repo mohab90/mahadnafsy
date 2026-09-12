@@ -11,7 +11,7 @@ import type {
 } from '../types';
 import { parsePaymentMethods } from '../lib/paymentMethods';
 import { isCollected } from '../lib/money';
-import { useModalKeyboard } from './shared/useModalKeyboard';
+import { useModalKeyboard } from '../../shared/ui/useModalKeyboard';
 
 // ── Shared draft type ──────────────────────────────────────────────────────
 export interface PaymentDraft {

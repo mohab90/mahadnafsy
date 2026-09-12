@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { MessageCircle, Phone, X } from 'lucide-react';
+import { MessageCircle, Phone } from 'lucide-react';
+import { Modal } from '../../../../../shared/ui/Modal';
 import type { CommunicationRecord } from '../../../../types';
 import { toDialable } from '../../../../lib/whatsappLink';
 
@@ -35,17 +36,23 @@ export function DaqqiCommunicationModal({ target, onClose, onSubmit }: Props) {
   if (!target) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" dir="rtl" onClick={(event) => event.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h4 className="font-extrabold text-gray-900 text-lg flex items-center gap-2">
-              <Phone size={18} className="text-purple-600" /> تسجيل تواصل
-            </h4>
-            <p className="text-xs text-gray-500 mt-0.5">{target.subscriberName}</p>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} /></button>
-        </div>
+    <Modal
+      open
+      onClose={onClose}
+      title="تسجيل تواصل"
+      subtitle={target.subscriberName}
+      icon={<Phone size={18} className="text-purple-600" />}
+      size="sm"
+      footer={(
+        <>
+          <button onClick={onClose} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl text-sm hover:bg-gray-200">إلغاء</button>
+          <button onClick={() => onSubmit(type, note)} disabled={!note.trim()}
+            className="px-5 py-2 bg-purple-600 text-white rounded-xl text-sm font-bold hover:bg-purple-700 disabled:opacity-40 transition">
+            تسجيل التواصل
+          </button>
+        </>
+      )}
+    >
         <div className="space-y-3">
           <div>
             <label className="block text-xs font-bold text-gray-600 mb-2">نوع التواصل</label>
@@ -77,14 +84,6 @@ export function DaqqiCommunicationModal({ target, onClose, onSubmit }: Props) {
             </button>
           </div>
         </div>
-        <div className="flex gap-3 mt-5">
-          <button onClick={() => onSubmit(type, note)} disabled={!note.trim()}
-            className="flex-1 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-bold hover:bg-purple-700 disabled:opacity-40 transition">
-            تسجيل التواصل
-          </button>
-          <button onClick={onClose} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm hover:bg-gray-200">إلغاء</button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

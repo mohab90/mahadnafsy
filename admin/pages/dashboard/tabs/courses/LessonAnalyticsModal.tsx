@@ -1,4 +1,4 @@
-import { X } from 'lucide-react';
+import { Modal } from '../../../../../shared/ui/Modal';
 import type { Course } from '../../../../types';
 
 export type LessonAnalyticsRow = {
@@ -20,18 +20,11 @@ export function LessonAnalyticsModal({ course, rows, loading, onClose }: Props) 
   const totalViews = rows.reduce((sum, row) => sum + row.view_count, 0);
 
   return (
-    <div className="fixed inset-0 z-[300] bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden" onClick={(event) => event.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <div>
-            <h3 className="font-bold text-gray-900">مشاهدات المحاضرات</h3>
-            {course && <p className="text-xs text-gray-400">{course.title}</p>}
-          </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 grid place-items-center">
-            <X size={14} />
-          </button>
-        </div>
-        <div className="overflow-y-auto p-5">
+    // layer="over": this opens from inside the course editor, which is itself
+    // a dialog. It used z-[300] — a third stacking level invented for one
+    // screen; two is what the shared dialog offers and what this needs.
+    <Modal open onClose={onClose} title="مشاهدات المحاضرات" subtitle={course?.title} size="lg" layer="over">
+        <div>
           {loading ? (
             <div className="text-center py-10 text-gray-400">جارٍ التحميل...</div>
           ) : rows.length === 0 ? (
@@ -54,7 +47,6 @@ export function LessonAnalyticsModal({ course, rows, loading, onClose }: Props) 
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

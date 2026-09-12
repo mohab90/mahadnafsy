@@ -8,7 +8,7 @@ import { useState } from 'react';
 import { Plus, Tag, UserPlus, X } from 'lucide-react';
 import type { LeadItem, LeadStatus, CommunicationRecord, Course, Bundle } from '../../../../types';
 import { EMPTY_LEAD_DRAFT } from '../crmConstants';
-import { useModalKeyboard } from '../../../../components/shared/useModalKeyboard';
+import { useModalKeyboard } from '../../../../../shared/ui/useModalKeyboard';
 import { courseBadgeLabel, isRawCourse } from './leadCourseLabel';
 import {
   BRANCH_ENUM_LABELS,

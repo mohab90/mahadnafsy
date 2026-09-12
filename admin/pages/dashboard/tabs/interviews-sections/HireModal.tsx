@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { UserCheck, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { ROLE_LABELS } from '../../../../constants/permissions';
-import { useModalKeyboard } from '../../../../components/shared/useModalKeyboard';
+import { useModalKeyboard } from '../../../../../shared/ui/useModalKeyboard';
 
 /**
  * The hire form.
