@@ -9,6 +9,7 @@ import { ChevronRight } from 'lucide-react';
 import { DAQQI_DAYS_OF_WEEK as daysOfWeek, DAQQI_TIME_SLOTS as timeSlotsList } from './daqqiScheduleConfig';
 import type { DaqqiDraftType } from './daqqiScheduleUtils';
 import { isEnrolledInCourse } from './daqqiScheduleUtils';
+import { isCollected } from '../../../../lib/money';
 
 
 export function DaqqiNewRoundModal({
@@ -165,7 +166,7 @@ export function DaqqiNewRoundModal({
                             تحديد الكل
                           </label>
                           {displayList.map(s => {
-                            const paid = (s.paymentHistory || []).reduce((sum, p) => p.currency === 'EGP' ? sum + Number(p.amount) : sum, 0);
+                            const paid = (s.paymentHistory || []).reduce((sum, p) => isCollected(p) && p.currency === 'EGP' ? sum + Number(p.amount) : sum, 0);
                             const cp = roundCourse?.price?.EGP ?? 0;
                             const enrolledNames = enrolledLabels(courses, bundles, s.enrolledCourseIds || []);
                             const bookingDate = (s.createdAt || '').slice(0, 10);

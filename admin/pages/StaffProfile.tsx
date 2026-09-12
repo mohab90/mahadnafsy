@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowRight, Phone, Mail, BarChart3, Activity, CreditCard, Settings, ChevronRight, Clock, Trash2, LayoutDashboard, MessageSquare, ListChecks, Trophy } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import { toDialable } from '../lib/whatsappLink';
+import { isCollected } from '../lib/money';
 import { mysqlAdmin } from '../lib/mysqlapi';
 import StaffTimelineChart from './staff-profile/StaffTimelineChart';
 import StaffTodayStrip from './staff-profile/StaffTodayStrip';
@@ -120,7 +121,7 @@ const StaffProfile: React.FC = () => {
     const isTM = (d: string) => { if (!d) return false; const x = new Date(d); return x.getMonth() === now.getMonth() && x.getFullYear() === now.getFullYear(); };
 
     const allPayments = assignedSubs.flatMap(sub =>
-      (sub.paymentHistory || []).map(p => ({ ...p, subName: sub.name, subId: sub.id, subCode: sub.clientCode }))
+      (sub.paymentHistory || []).filter(isCollected).map(p => ({ ...p, subName: sub.name, subId: sub.id, subCode: sub.clientCode }))
     );
     const toRevEGP = (list: typeof allPayments) => Math.round(list.reduce((s, p) => s + toEGP(p.amount, p.currency), 0));
 

@@ -6,6 +6,7 @@ import type {
 import type { PaymentDraft } from '../../components/PaymentModal';
 import type { TabKey } from './navigation';
 import { normBranchId } from './dashboardShared';
+import { isCollected } from '../../lib/money';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import { priceForCurrency } from './dashboardHelpers';
 
@@ -230,9 +231,13 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
       if (curAccess.mode === 'full') continue;
 
       const plan = (updated.installmentPlans || []).find(p => p.courseId === cid);
+      // isCollected first: this comparison decides whether the customer gets
+      // the whole course. Counting a refunded payment towards the plan total
+      // unlocks content they were given their money back for.
       const totalPaid = (updated.paymentHistory || [])
         .filter(p =>
-          p.courseId === cid
+          isCollected(p)
+          && p.courseId === cid
           && (p.paymentType === 'course' || !p.paymentType)
           && (!plan || p.currency === plan.currency)
         )

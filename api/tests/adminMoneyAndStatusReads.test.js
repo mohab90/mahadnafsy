@@ -11,10 +11,13 @@ const path = require('node:path');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8');
+const ROOT = path.join(__dirname, '..', '..');
+const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+// [^\n]* rather than .*$ — `.` does not match \r, so on a CRLF file .*$ never
+// matches and a full-line comment is never stripped at all.
 const codeOnly = source => source
   .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/(^|[^:])\/\/.*$/gm, '$1');
+  .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 
 const schema = read('api/schema.sql');
 
@@ -23,16 +26,49 @@ test('a refunded payment is never counted as money collected', () => {
   // positive amount, so a sum with no status predicate keeps counting it.
   assert.match(read('api/lib/refunds.js'), /UPDATE payments SET status='refunded'/);
 
-  const guarded = [
-    ['admin/pages/dashboard/tabs/onlineClientsUtils.ts', 'isCollected(payment)'],
-    ['admin/pages/dashboard/tabs/financial/useFinancialCommissionsData.ts', "payment.status === 'paid'"],
-    ['admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx', "p.status === 'paid'"],
-    ['admin/pages/dashboard/hooks/useOverviewDerived.ts', "p.status === 'paid'"],
-    ['admin/pages/dashboard/tabs/ClientDbTab.tsx', "p.status === 'paid'"],
-  ];
-  for (const [file, needle] of guarded) {
-    assert.ok(codeOnly(read(file)).includes(needle), `${file} must exclude uncollected payments`);
+  // This used to be a hand-written list of five files. It was found to be
+  // incomplete by reading the deployed bundle: ten more sums existed outside
+  // it — the monthly revenue tile, a sales rep's own revenue, commissions,
+  // «إجمالي المحصّل», a staff member's revenue, the outstanding-balance
+  // widget, «متبقي» on the two screens that add a client to a Dokki round, and
+  // the comparison that decides whether an instalment plan is fully paid and
+  // the whole course unlocks.
+  //
+  // So it finds them now instead of listing them. A new sum over paymentHistory
+  // that does not ask whether the money was collected fails here.
+  const walk = (dir, out = []) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === 'node_modules' || entry.name === 'dist') continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full, out);
+      else if (/\.tsx?$/.test(entry.name)) out.push(full);
+    }
+    return out;
+  };
+
+  let paymentSums = 0;
+  const unguarded = [];
+  for (const file of walk(path.join(ROOT, 'admin'))) {
+    const rel = path.relative(ROOT, file).split(path.sep).join('/');
+    const source = codeOnly(fs.readFileSync(file, 'utf8'));
+    for (const match of source.matchAll(/paymentHistory/g)) {
+      // A window wide enough to hold the filter, the reduce and the guard.
+      const window = source.slice(match.index, match.index + 380);
+      if (!/\.reduce\(/.test(window)) continue;              // not a sum
+      if (!/p\.amount|payment\.amount/.test(window)) continue; // not a sum of money
+      paymentSums += 1;
+      // isRefundable is the opposite question, asked by the refund dialog:
+      // that one lists refundable payments on purpose.
+      if (/isCollected|status === 'paid'|isRefundable/.test(window)) continue;
+      unguarded.push(`${rel}:${source.slice(0, match.index).split('\n').length}`);
+    }
   }
+
+  // Denominator, so a scan that stopped matching is visible rather than
+  // reported as a clean bill.
+  assert.ok(paymentSums >= 18, `expected the admin's payment sums, found ${paymentSums}`);
+  assert.deepEqual(unguarded, [],
+    'these sum payments without asking whether the money was collected: ' + unguarded.join(', '));
 
   // The Dokki roster writes its figure onto the round attendee, so a wrong one
   // survives the click. Each of its sums is guarded.

@@ -11,7 +11,7 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { useSubscriberStats } from '../hooks/useSubscriberStats';
 import { useCrmData } from '../../../context/siteDataSlices';
 import type { TabKey } from '../navigation';
-import { toEgp } from '../../../lib/money';
+import { isCollected, toEgp } from '../../../lib/money';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -123,7 +123,7 @@ export default function OverviewTab({
                 const myConverted = myLeads.filter(l => l.status === 'converted').length;
                 const myLost = myLeads.filter(l => ['lost','not_interested_hidden'].includes(l.status || '')).length;
                 const mySubs = salesOwnSubscribers;
-                const myRevenueSubs = mySubs.flatMap(s => s.paymentHistory || []).reduce((acc, p) => {
+                const myRevenueSubs = mySubs.flatMap(s => (s.paymentHistory || []).filter(isCollected)).reduce((acc, p) => {
                   const egp = toEgp(p.amount, p.currency);
                   const month = (p.at || '').slice(0, 7);
                   const thisMonth = new Date().toISOString().slice(0, 7);
@@ -324,14 +324,14 @@ export default function OverviewTab({
                     {(() => {
                       const pendingSubs = mySubs.filter(s => {
                         const expEGP = s.expectedTotals?.EGP ||
-                          (s.paymentHistory || []).filter(p => !p.isInstallment && p.currency === 'EGP').reduce((a, p) => a + (p.courseExpected || 0), 0);
+                          (s.paymentHistory || []).filter(p => isCollected(p) && !p.isInstallment && p.currency === 'EGP').reduce((a, p) => a + (p.courseExpected || 0), 0);
                         if (!expEGP) return false;
-                        const paidEGP = (s.paymentHistory || []).filter(p => !p.isInstallment && p.currency === 'EGP').reduce((a, p) => a + (Number(p.amount) || 0), 0);
+                        const paidEGP = (s.paymentHistory || []).filter(p => isCollected(p) && !p.isInstallment && p.currency === 'EGP').reduce((a, p) => a + (Number(p.amount) || 0), 0);
                         return paidEGP < expEGP;
                       }).map(s => {
                         const expEGP = s.expectedTotals?.EGP ||
-                          (s.paymentHistory || []).filter(p => !p.isInstallment && p.currency === 'EGP').reduce((a, p) => a + (p.courseExpected || 0), 0);
-                        const paidEGP = (s.paymentHistory || []).filter(p => !p.isInstallment && p.currency === 'EGP').reduce((a, p) => a + (Number(p.amount) || 0), 0);
+                          (s.paymentHistory || []).filter(p => isCollected(p) && !p.isInstallment && p.currency === 'EGP').reduce((a, p) => a + (p.courseExpected || 0), 0);
+                        const paidEGP = (s.paymentHistory || []).filter(p => isCollected(p) && !p.isInstallment && p.currency === 'EGP').reduce((a, p) => a + (Number(p.amount) || 0), 0);
                         return { ...s, _remaining: expEGP - paidEGP };
                       }).sort((a, b) => b._remaining - a._remaining);
                       if (pendingSubs.length === 0) return null;
@@ -426,7 +426,7 @@ export default function OverviewTab({
                 const collMonthRevOv  = allPayments.filter(p=>(p.at||'').slice(0,7)===thisMonthStr2).reduce((s,p)=>s+toEGP(p),0);
                 // Total remaining across all subs
                 const collTotalRemOv  = allSubs.reduce((sum,s)=>{
-                  const hist=s.paymentHistory||[];
+                  const hist=(s.paymentHistory||[]).filter(isCollected);
                   const cpMap:Record<string,number>={};
                   hist.forEach(p=>{ if(p.courseId&&p.courseExpected&&!cpMap[p.courseId]) cpMap[p.courseId]=Number(p.courseExpected)||0; });
                   const exp=Object.values(cpMap).reduce((a,b)=>a+b,0);
@@ -656,7 +656,7 @@ export default function OverviewTab({
                 const totalTodayRevOm = allPaymentsOm.filter(p=>(p.at||''). slice(0,10)===todayStrOm).reduce((s,p)=>s+toEGPOm(p),0);
                 const totalAllRevOm   = allPaymentsOm.reduce((s,p)=>s+toEGPOm(p),0);
                 const totalRemOm = allSubsOm.reduce((sum,s)=>{
-                  const hist=s.paymentHistory||[];
+                  const hist=(s.paymentHistory||[]).filter(isCollected);
                   const cpMap:Record<string,number>={};
                   hist.forEach(p=>{ if(p.courseId&&p.courseExpected&&!cpMap[p.courseId]) cpMap[p.courseId]=Number(p.courseExpected)||0; });
                   const exp=Object.values(cpMap).reduce((a,b)=>a+b,0);
@@ -676,7 +676,7 @@ export default function OverviewTab({
                   const mWeekRev  = mAllPayments.filter(p=>(p.at||''). slice(0,10)>=thisWeekStartOm).reduce((s,p)=>s+toEGPOm(p),0);
                   const mTodayRev = mAllPayments.filter(p=>(p.at||''). slice(0,10)===todayStrOm).reduce((s,p)=>s+toEGPOm(p),0);
                   const mRem = mSubs.reduce((sum,s)=>{
-                    const hist=s.paymentHistory||[];
+                    const hist=(s.paymentHistory||[]).filter(isCollected);
                     const cpMap:Record<string,number>={};
                     hist.forEach(p=>{ if(p.courseId&&p.courseExpected&&!cpMap[p.courseId]) cpMap[p.courseId]=Number(p.courseExpected)||0; });
                     const exp=Object.values(cpMap).reduce((a,b)=>a+b,0);
@@ -863,12 +863,12 @@ export default function OverviewTab({
                 const todayStr3 = now3.toISOString().slice(0, 10);
                 const thisMonthStr3 = now3.toISOString().slice(0, 7);
                 const thisWeekStart3 = (() => { const d=new Date(now3); d.setDate(d.getDate()-d.getDay()); return d.toISOString().slice(0,10); })();
-                const allPayments3 = allSubs.flatMap(s => (s.paymentHistory||[]).map(p => ({...p, subId: s.id})));
+                const allPayments3 = allSubs.flatMap(s => (s.paymentHistory||[]).filter(isCollected).map(p => ({...p, subId: s.id})));
                 const todayRev3  = allPayments3.filter(p=>(p.at||'').slice(0,10)===todayStr3).reduce((s,p)=>s+(Number(p.amount)||0),0);
                 const weekRev3   = allPayments3.filter(p=>(p.at||'').slice(0,10)>=thisWeekStart3).reduce((s,p)=>s+(Number(p.amount)||0),0);
                 const monthRev3  = allPayments3.filter(p=>(p.at||'').slice(0,7)===thisMonthStr3).reduce((s,p)=>s+(Number(p.amount)||0),0);
                 const totalRem3  = allSubs.reduce((sum,s)=>{
-                  const hist=s.paymentHistory||[];
+                  const hist=(s.paymentHistory||[]).filter(isCollected);
                   const cpMap:Record<string,number>={};
                   hist.forEach(p=>{ if(p.courseId&&p.courseExpected&&!cpMap[p.courseId]) cpMap[p.courseId]=Number(p.courseExpected)||0; });
                   const exp=Object.values(cpMap).reduce((a,b)=>a+b,0);

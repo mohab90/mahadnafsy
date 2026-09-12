@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import type { StaffMember, SubscriberItem } from '../../../../types';
+import { isCollected } from '../../../../lib/money';
 
 type ToEGP = (amount: number, currency: string) => number;
 
@@ -48,7 +49,7 @@ export function useFinancialCommissionsData(
     const reps = staffMembers.filter((staff) => (staff.commissionRate || 0) > 0 && staff.status === 'active');
     return reps.map((rep) => {
       const repSubs = subscribers.filter((subscriber) => subscriber.assignedSalesId === rep.id);
-      const allPayments = repSubs.flatMap((subscriber) => subscriber.paymentHistory || []);
+      const allPayments = repSubs.flatMap((subscriber) => (subscriber.paymentHistory || []).filter(isCollected));
       const byMonth = rangeMonths.map((month) => {
         const revenue = allPayments
           .filter((payment) => payment.at.startsWith(month))

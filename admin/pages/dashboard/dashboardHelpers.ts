@@ -1,5 +1,5 @@
 import type { Price, StaffMember, SubscriberItem } from '../../types';
-import { toEgp } from '../../lib/money';
+import { isCollected, toEgp } from '../../lib/money';
 
 export type StaffWire = StaffMember & { is_active?: number | boolean };
 
@@ -36,7 +36,7 @@ export const buildStaffSettingsMetrics = (
   const pct = Math.min(100, Math.round((achieved / monthlyTarget) * 100));
   const sumPayments = (items: SubscriberItem[], monthOnly: boolean) => items.reduce((total, subscriber) => {
     const paid = (subscriber.paymentHistory || [])
-      .filter((payment) => !monthOnly || (payment.at || '').slice(0, 7) === currentMonth)
+      .filter((payment) => isCollected(payment) && (!monthOnly || (payment.at || '').slice(0, 7) === currentMonth))
       .reduce((sum, payment) => sum + toEgp(payment.amount, payment.currency), 0);
     return total + paid;
   }, 0);

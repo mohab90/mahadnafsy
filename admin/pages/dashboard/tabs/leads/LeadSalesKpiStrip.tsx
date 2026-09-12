@@ -1,4 +1,5 @@
 import type { LeadItem, SubscriberItem } from '../../../../types';
+import { isCollected } from '../../../../lib/money';
 
 type Props = {
   isSalesOnly: boolean;
@@ -23,7 +24,7 @@ export function LeadSalesKpiStrip({ isSalesOnly, effectiveLeads, effectiveSubs }
     l.nextFollowUpDate && l.nextFollowUpDate < todayStr && !['converted', 'lost'].includes(l.status || '')).length;
   const totalCollected = (effectiveSubs || []).reduce((s, sub) =>
     s + (sub.paymentHistory || []).reduce((a: number, p) =>
-      a + (p.currency === 'EGP' ? (p.amount || 0) : 0), 0)
+      a + (isCollected(p) && p.currency === 'EGP' ? (p.amount || 0) : 0), 0)
   , 0);
   const totalLeads = effectiveLeads.length;
   const totalConverted = effectiveLeads.filter(l => l.status === 'converted').length;

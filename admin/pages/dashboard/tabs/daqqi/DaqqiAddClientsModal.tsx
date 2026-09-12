@@ -5,6 +5,7 @@
 
 import type { Course, Bundle, SubscriberItem, DaqqiRound } from '../../../../types';
 import { isEnrolledInCourse } from './daqqiScheduleUtils';
+import { isCollected } from '../../../../lib/money';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -73,7 +74,12 @@ export function DaqqiAddClientsModal({
                   const enrolledIds = s.enrolledCourseIds || [];
                   // Determine which courseId to use for this client in this round
                   const chosenCourseId = daqqiAddClientsCourseSel[s.id] || (addRound?.courseId ?? '');
-                  const paidForCourse = (s.paymentHistory || []).filter(p => p.currency === 'EGP' && (!p.courseId || p.courseId === chosenCourseId)).reduce((sum, p) => sum + Number(p.amount), 0);
+                  // isCollected, not a bare sum: lib/refunds.js flips the same
+                  // payments row to 'refunded' and leaves its amount positive, so
+                  // without it a refunded client reads as paid up and «متبقي»
+                  // shows less than they owe — on the screen where the desk
+                  // decides what to charge them.
+                  const paidForCourse = (s.paymentHistory || []).filter(p => isCollected(p) && p.currency === 'EGP' && (!p.courseId || p.courseId === chosenCourseId)).reduce((sum, p) => sum + Number(p.amount), 0);
                   const cp = addCourse?.price?.EGP ?? 0;
                   const rem = cp > 0 ? Math.max(0, cp - paidForCourse) : 0;
                   const enrolled = enrolledLabels(courses, bundles, enrolledIds);
