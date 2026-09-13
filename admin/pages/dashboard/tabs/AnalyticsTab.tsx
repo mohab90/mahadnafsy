@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { fxRates } from '../../../lib/money';
+import { toCsv, downloadCsvText, type CsvValue } from '../../../../shared/csv';
 
 type Section   = 'all' | 'sales' | 'consultations' | 'courses' | 'bundles';
 type TimeRange = 'all' | 'today' | 'yesterday' | '7d' | '30d';
@@ -144,30 +145,26 @@ const AnalyticsTab: React.FC<Props> = () => {
   const contactRep   = contactMessages.filter(c => c.status === 'replied').length;
 
   // ── Download ──────────────────────────────────────────────────
-  const esc = (v: string | number | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const timeLabel = { all: 'الكل', today: 'اليوم', yesterday: 'أمس', '7d': '7أيام', '30d': '30يوم' }[timeRange];
   const downloadReport = () => {
     let csv = ''; let filename = `تقرير-${timeLabel}-${todayStr}`;
     if (section === 'all' || section === 'sales') {
       const h = ['رقم الطلب', 'العميل', 'المبلغ', 'العملة', 'بالجنيه', 'النوع', 'البند', 'التاريخ'];
       const r = filteredOrders.map(o => [o.id?.slice(-8) || '', o.customerName || '', o.amount, o.currency, Math.round(toEGP(o.amount, o.currency)), o.type || '', o.itemTitle || '', (o.paidAt || o.createdAt || '').slice(0, 10)]);
-      csv += [h, ...r].map(row => row.map(c => esc(c as string)).join(',')).join('\n');
+      csv += toCsv([h, ...r] as CsvValue[][]);
       if (section === 'sales') filename = `مبيعات-${timeLabel}-${todayStr}`;
     }
     if (section === 'all' || section === 'consultations') {
       if (csv) csv += '\n\n';
       const h = ['العميل', 'هاتف', 'المعالج', 'الحالة', 'التاريخ'];
       const r = filteredConsts.map(c => [c.clientName || '', c.clientPhone || '', c.therapistName || '', c.status || '', ((c as { createdAt?: string }).createdAt || '').slice(0, 10)]);
-      csv += [h, ...r].map(row => row.map(c => esc(c as string)).join(',')).join('\n');
+      csv += toCsv([h, ...r] as CsvValue[][]);
       if (section === 'consultations') filename = `استشارات-${timeLabel}-${todayStr}`;
     }
-    if (section === 'courses') { const h = ['الكورس', 'النوع', 'المشتركون', 'الإيراد ج.م']; const r = courseStats.map(c => [c.title, c.type, c.subs, Math.round(c.rev)]); csv = [h, ...r].map(row => row.map(c => esc(c as string)).join(',')).join('\n'); filename = `كورسات-${todayStr}`; }
-    if (section === 'bundles') { const h = ['المسار', 'الكورسات', 'المشتركون', 'الإيراد ج.م']; const r = bundleStats.map(b => [b.title, b.courseCount, b.enrolled, Math.round(b.rev)]); csv = [h, ...r].map(row => row.map(c => esc(c as string)).join(',')).join('\n'); filename = `مسارات-${todayStr}`; }
+    if (section === 'courses') { const h = ['الكورس', 'النوع', 'المشتركون', 'الإيراد ج.م']; const r = courseStats.map(c => [c.title, c.type, c.subs, Math.round(c.rev)]); csv = toCsv([h, ...r] as CsvValue[][]); filename = `كورسات-${todayStr}`; }
+    if (section === 'bundles') { const h = ['المسار', 'الكورسات', 'المشتركون', 'الإيراد ج.م']; const r = bundleStats.map(b => [b.title, b.courseCount, b.enrolled, Math.round(b.rev)]); csv = toCsv([h, ...r] as CsvValue[][]); filename = `مسارات-${todayStr}`; }
     if (!csv) csv = 'لا توجد بيانات في الفترة المحددة';
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob); const a = document.createElement('a');
-    a.href = url; a.download = `${filename}.csv`;
-    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    downloadCsvText(filename, csv);
   };
 
   // ── UI config ─────────────────────────────────────────────────

@@ -5,22 +5,11 @@
  */
 import type { OrderItem, SubscriberItem, Bundle, Course } from '../../types';
 import { cairoDateOnly } from '../../../shared/cairoDate';
+import { downloadCsv as writeCsv } from '../../../shared/csv';
 
-function csvEscape(value: string | number | undefined): string {
-  return `"${String(value ?? '').replace(/"/g, '""')}"`;
-}
-
+/** Every file here is stamped with the day it was taken. */
 function downloadCsv(rows: (string | number | undefined)[][], filename: string): void {
-  const csv = rows.map(r => r.map(csvEscape).join(',')).join('\n');
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `${filename}-${cairoDateOnly()}.csv`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  writeCsv(`${filename}-${cairoDateOnly()}`, rows);
 }
 
 /** Export the currently-filtered orders list. */

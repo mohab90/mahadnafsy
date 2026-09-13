@@ -1,6 +1,7 @@
 import { exportToExcel, exportToPDF, fmtCurrency, fmtDate } from '../../../../lib/exportUtils';
 import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import type { ExpenseItem, OrderItem, SubscriberItem } from '../../../../types';
+import { toCsv, downloadCsv, downloadCsvText, type CsvValue } from '../../../../../shared/csv';
 
 type ContentMap = Record<string, string>;
 
@@ -21,19 +22,8 @@ const toEgpWith = (content: ContentMap) => {
   };
 };
 
-const csvCell = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
-
-export const exportCSV = (filename: string, rows: string[][], headers: string[]) => {
-  const bom = '\uFEFF';
-  const lines = [headers.map(csvCell).join(','), ...rows.map(row => row.map(csvCell).join(','))];
-  const blob = new Blob([bom + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
-};
+export const exportCSV = (filename: string, rows: string[][], headers: string[]) =>
+  downloadCsv(filename, [headers, ...rows]);
 
 export function exportFullFinancialReport(params: {
   content: ContentMap;
@@ -45,7 +35,9 @@ export function exportFullFinancialReport(params: {
   const { content, orders, subscribers, expenses, officialTotals } = params;
   const toEGP = toEgpWith(content);
   const sections: string[] = [];
-  const row = (...cols: (string | number)[]) => cols.map(csvCell).join(',');
+  // Several tables stacked in one file, separated by a blank line — so the
+  // rows are turned into text here and handed over as text.
+  const row = (...cols: CsvValue[]) => toCsv([cols]);
 
   sections.push('=== ملخص مالي ===');
   sections.push(row('الإيرادات الإجمالية (ج.م)', 'المصروفات الإجمالية (ج.م)', 'صافي الربح (ج.م)', 'هامش الربح %'));
@@ -127,13 +119,7 @@ export function exportFullFinancialReport(params: {
     sections.push(row(expense.date, expense.category, expense.description, expense.amount, expense.currency, Math.round(toEGP(expense.amount, expense.currency))));
   }
 
-  const blob = new Blob(['\uFEFF' + sections.join('\n')], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = `تقرير-مالي-شامل-${cairoDateOnly()}.csv`;
-  anchor.click();
-  URL.revokeObjectURL(url);
+  downloadCsvText(`تقرير-مالي-شامل-${cairoDateOnly()}`, sections.join('\n'));
 }
 
 export function exportPaymentsExcelReport(params: {

@@ -5,6 +5,7 @@ import { DataTable, type Column } from '../../../components/shared/DataTable';
 import type { ActivityLogItem } from '../../../types';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 import { promptDialog } from '../../../../shared/ui/promptDialog';
+import { downloadCsv as writeCsv } from '../../../../shared/csv';
 
 interface Props {
   isSalesOnly: boolean;
@@ -27,10 +28,6 @@ const ACTION_CLASS: Record<string, string> = {
   logout: 'bg-gray-50 text-gray-700 border-gray-200',
 };
 
-function csvEscape(value: unknown) {
-  return `"${String(value ?? '').replace(/"/g, '""')}"`;
-}
-
 function downloadJson(filename: string, data: unknown) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -43,17 +40,8 @@ function downloadJson(filename: string, data: unknown) {
 
 function downloadCsv(filename: string, rows: ActivityLogItem[]) {
   const header = ['action', 'entity', 'label', 'actor', 'section', 'at'];
-  const csv = [
-    header.join(','),
-    ...rows.map((row) => header.map((key) => csvEscape((row as unknown as Record<string, unknown>)[key])).join(',')),
-  ].join('\n');
-  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
+  writeCsv(filename, [header, ...rows.map(row =>
+    header.map(key => (row as unknown as Record<string, unknown>)[key] as string))]);
 }
 
 const ActivityTab: React.FC<Props> = ({ isSalesOnly }) => {

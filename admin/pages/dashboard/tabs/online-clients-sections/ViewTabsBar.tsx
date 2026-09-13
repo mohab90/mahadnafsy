@@ -4,6 +4,7 @@ import { Download, Plus, Users } from 'lucide-react';
 import type { Bundle, Course, StaffMember, SubscriberItem } from '../../../../types';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { errorMessage, paymentAmountInEGP } from '../onlineClientsUtils';
+import { downloadCsv } from '../../../../../shared/csv';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type ViewTabKey = 'active'|'real-local'|'real-intl'|'finished'|'paused'|'refunded'|'old_data'|'old_local'|'old_intl'|'booked2024'|'booked2025';
@@ -109,16 +110,15 @@ export function ViewTabsBar({
               <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-30 min-w-[160px] py-1">
                 <button onClick={() => {
                   const toExport = collOnlineSelected.size > 0 ? filtered.filter(s => collOnlineSelected.has(s.id)) : filtered;
-                  const header = 'الاسم,الهاتف,الإيميل,الفرع,الكورسات,الحالة,المدفوع (ج.م),المتبقي (ج.م),الروند,الرسيبشن,تاريخ الاشتراك,الكود\n';
+                  const header = ['الاسم','الهاتف','الإيميل','الفرع','الكورسات','الحالة','المدفوع (ج.م)','المتبقي (ج.م)','الروند','الرسيبشن','تاريخ الاشتراك','الكود'];
                   const rows = toExport.map(s => {
                     const paid = (s.paymentHistory||[]).reduce((a,p)=>a+paymentAmountInEGP(p),0);
                     const total = Number(s.totalValue)||0;
                     const crs = (s.enrolledCourseIds||[]).map(id=>courses.find(c=>c.id===id)?.title||bundles.find(b=>`bundle:${b.id}`===id)?.title||id).join(' | ');
                     const hInfo = housingMap.get(s.id);
-                    return [s.name,s.phone,s.email,s.branch||'',crs,s.clientStatus||s.status||'',paid,Math.max(0,total-paid),hInfo?.roundCode||'',hInfo?.receptionName||'',(s.createdAt||'').slice(0,10),s.clientCode||''].map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(',');
-                  }).join('\n');
-                  const blob = new Blob(['﻿'+header+rows],{type:'text/csv;charset=utf-8;'});
-                  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`daqqi-clients-${cairoDateOnly()}.csv`;a.click();URL.revokeObjectURL(a.href);
+                    return [s.name,s.phone,s.email,s.branch||'',crs,s.clientStatus||s.status||'',paid,Math.max(0,total-paid),hInfo?.roundCode||'',hInfo?.receptionName||'',(s.createdAt||'').slice(0,10),s.clientCode||''];
+                  });
+                  downloadCsv(`daqqi-clients-${cairoDateOnly()}`, [header, ...rows]);
                   setDaqqiSettingsOpen(false);
                 }} className="w-full text-right px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2">
                   <Download size={12}/> تصدير CSV

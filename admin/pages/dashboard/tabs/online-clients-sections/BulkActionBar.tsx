@@ -3,6 +3,7 @@ import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { Modal } from '../../../../../shared/ui/Modal';
 import type { Course, StaffMember, SubscriberItem } from '../../../../types';
 import { paymentAmountInEGP } from '../onlineClientsUtils';
+import { downloadCsv } from '../../../../../shared/csv';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type BulkAction = null|'pause'|'finish'|'delete'|'assign';
@@ -46,14 +47,13 @@ export function BulkActionBar({
           {isAdmin && <button onClick={() => setCollOnlineBulkConfirm('delete')} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 transition">🗑 حذف</button>}
           <button onClick={() => {
             const toExport = filtered.filter(s => collOnlineSelected.has(s.id));
-            const header = 'الاسم,الهاتف,الإيميل,الفرع,الكورسات,الحالة,المدفوع (ج.م),المتبقي,الكود\n';
+            const header = ['الاسم','الهاتف','الإيميل','الفرع','الكورسات','الحالة','المدفوع (ج.م)','المتبقي','الكود'];
             const csvRows = toExport.map(s => {
               const paid = (s.paymentHistory||[]).reduce((a,p)=>a+paymentAmountInEGP(p),0);
               const crs = (s.enrolledCourseIds||[]).map(id=>courses.find(c=>c.id===id)?.title||id).join(' | ');
-              return [s.name,s.phone,s.email,s.branch||'',crs,s.clientStatus||s.status||'',paid,Math.max(0,(Number(s.totalValue)||0)-paid),s.clientCode||''].map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(',');
-            }).join('\n');
-            const blob = new Blob(['﻿'+header+csvRows],{type:'text/csv;charset=utf-8;'});
-            const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`selected-clients-${cairoDateOnly()}.csv`;a.click();URL.revokeObjectURL(a.href);
+              return [s.name,s.phone,s.email,s.branch||'',crs,s.clientStatus||s.status||'',paid,Math.max(0,(Number(s.totalValue)||0)-paid),s.clientCode||''];
+            });
+            downloadCsv(`selected-clients-${cairoDateOnly()}`, [header, ...csvRows]);
           }} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition">📥 تصدير CSV</button>
           <button onClick={() => setCollOnlineSelected(new Set())} className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-xs font-bold hover:bg-gray-300 transition">✕ إلغاء</button>
         </div>

@@ -10,6 +10,7 @@ import {
 import type { Bundle, Course, OrderItem, StaffMember, SubscriberItem } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { toEgp } from '../../../lib/money';
+import { downloadCsv } from '../../../../shared/csv';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -387,9 +388,7 @@ export default function OrdersTab({
                     <span className="text-xs text-gray-400 ml-auto">{filtered2.length} دفعة — {sumOrd(filtered2.filter(p=>p.status!=='pending')).toLocaleString()} ج.م</span>
                     <button onClick={()=>{
                       const rows=[['العميل','الكود','الكورس','المبلغ','وسيلة الدفع','الموظف','التاريخ','الحالة','ملاحظة'],...filtered2.map(p=>[p.clientName,p.clientCode,courses.find(c=>c.id===p.courseId)?.title||p.paymentType||'',''+p.amount,p.paymentMethod||'',p.staffName||'',(p.at||'').slice(0,10),p.status==='pending'?'انتظار':'مؤكد',p.note||''])];
-                      const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
-                      const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
-                      const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`daqqi_payments_${cairoDateOnly()}.csv`;a.click();URL.revokeObjectURL(url);
+                      downloadCsv(`daqqi_payments_${cairoDateOnly()}`, rows);
                     }} className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700">
                       <Download size={12}/> تصدير CSV
                     </button>

@@ -12,10 +12,10 @@ import { STATUS_CFG } from '../leadUtils';
 import { EMPTY_LEAD_DRAFT } from '../crmConstants';
 import type { NotifyFn } from '../CrmSettingsModal';
 import type { ConvertLeadModalState } from './ConvertLeadModal';
-import { buildCsv } from './leadCsvUtils';
 import type { TabKey } from '../../navigation';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 import { promptDialog } from '../../../../../shared/ui/promptDialog';
+import { downloadCsv } from '../../../../../shared/csv';
 
 type AsyncReload = () => Promise<void>;
 type StatusTimer = ReturnType<typeof setTimeout>;
@@ -68,15 +68,7 @@ const downloadLeadsCsv = (leads: LeadItem[]) => {
     lead.assignedSalesName || '',
     (lead.createdAt || '').slice(0, 10),
   ]);
-  const url = URL.createObjectURL(new Blob(
-    ['\uFEFF' + buildCsv([headers, ...rows])],
-    { type: 'text/csv;charset=utf-8;' },
-  ));
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = `leads-${cairoDateOnly()}.csv`;
-  anchor.click();
-  URL.revokeObjectURL(url);
+  downloadCsv(`leads-${cairoDateOnly()}`, [headers, ...rows]);
 };
 
 export function useLeadActions(params: LeadActionsParams) {

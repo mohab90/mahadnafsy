@@ -1,12 +1,5 @@
 import type { FacebookLeadAdsConfig, LeadItem, LeadStatus, BranchType } from '../../../../types';
-
-export const csvEscape = (value: string | number | undefined | null): string => {
-  const text = String(value ?? '');
-  return `"${text.replace(/"/g, '""')}"`;
-};
-
-export const buildCsv = (rows: Array<Array<string | number | undefined | null>>): string =>
-  rows.map(row => row.map(csvEscape).join(',')).join('\n');
+import { parseCsvRows } from '../../../../../shared/csv';
 
 export type ParsedCsv = {
   headers: string[];
@@ -14,28 +7,8 @@ export type ParsedCsv = {
   autoMap: Record<string, string>;
 };
 
-export const parseCsvLine = (line: string): string[] => {
-  const result: string[] = [];
-  let current = '';
-  let inQuotes = false;
-
-  for (let index = 0; index < line.length; index++) {
-    const char = line[index];
-    if (char === '"') {
-      inQuotes = !inQuotes;
-      continue;
-    }
-    if (char === ',' && !inQuotes) {
-      result.push(current.trim());
-      current = '';
-      continue;
-    }
-    current += char;
-  }
-
-  result.push(current.trim());
-  return result;
-};
+/** One line, for the callers that already have the file split into lines. */
+export const parseCsvLine = (line: string): string[] => parseCsvRows(line)[0] ?? [];
 
 export const detectCsvMapping = (headers: string[]): Record<string, string> => {
   const autoMap: Record<string, string> = {};
@@ -55,18 +28,14 @@ export const detectCsvMapping = (headers: string[]): Record<string, string> => {
 };
 
 export const parseCsvText = (text: string): ParsedCsv | null => {
-  const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
-  if (lines.length < 2) return null;
+  const [headers, ...body] = parseCsvRows(text);
+  if (!headers || body.length === 0) return null;
 
-  const headers = parseCsvLine(lines[0]);
-  const rows = lines.slice(1)
-    .map((line) => {
-      const values = parseCsvLine(line);
-      const row: Record<string, string> = {};
-      headers.forEach((header, index) => { row[header] = values[index] || ''; });
-      return row;
-    })
-    .filter((row) => Object.values(row).some(Boolean));
+  const rows = body.map((values) => {
+    const row: Record<string, string> = {};
+    headers.forEach((header, index) => { row[header] = values[index] || ''; });
+    return row;
+  });
 
   return { headers, rows, autoMap: detectCsvMapping(headers) };
 };
@@ -126,17 +95,17 @@ export const parseFacebookCsvLeads = (
   existingLeads: LeadItem[],
   createdAt: string,
 ): LeadItem[] | null => {
-  const lines = text.split('\n').filter(Boolean);
-  if (lines.length < 2) return null;
+  const [headerRow, ...body] = parseCsvRows(text);
+  if (!headerRow || body.length === 0) return null;
 
-  const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
+  const headers = headerRow.map(h => h.trim().toLowerCase());
   const nameIdx = headers.findIndex(h => h.includes('name') || h.includes('full_name'));
   const phoneIdx = headers.findIndex(h => h.includes('phone'));
   const emailIdx = headers.findIndex(h => h.includes('email'));
   const importedLeads: LeadItem[] = [];
 
-  for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(',').map(c => c.trim().replace(/"/g, ''));
+  for (let i = 0; i < body.length; i++) {
+    const cols = body[i];
     const name = nameIdx >= 0 ? cols[nameIdx] : '';
     const phone = phoneIdx >= 0 ? cols[phoneIdx] : '';
     const email = emailIdx >= 0 ? cols[emailIdx] : '';

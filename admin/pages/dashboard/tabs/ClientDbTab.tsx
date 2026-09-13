@@ -13,6 +13,7 @@ import { toDialable } from '../../../lib/whatsappLink';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 import { isRawCourse, rawCourseText } from './leads/leadCourseLabel';
 import { toEgp } from '../../../lib/money';
+import { downloadCsv } from '../../../../shared/csv';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -400,19 +401,17 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
 
   function exportSelectedCSV() {
     const rows = filtered.filter(c => selectedIds.has(`${c.type}-${c.id}`));
-    const header = 'الاسم,الكود,الهاتف,الإيميل,النوع,الفرع,الكورسات,المدفوع,المبيعات,التاريخ';
-    const lines = rows.map(c =>
-      [c.name, c.clientCode, c.phone, c.email,
-       (() => { const ti = c.clientType ? CLIENT_TYPE_INFO[c.clientType] : null; return ti ? `${ti.label} - ${ti.entity}` : (c.subType ? SUB_TYPE_LABEL[c.subType] : 'عميل محتمل'); })(),
-       c.branch, `"${c.courseNames}"`, c.totalPaid, c.assignedSalesName, c.createdAt.slice(0,10)
-      ].join(',')
-    );
-    const csv = '\uFEFF' + [header, ...lines].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'clients_export.csv'; a.click();
-    URL.revokeObjectURL(url);
+    const header = ['الاسم', 'الكود', 'الهاتف', 'الإيميل', 'النوع', 'الفرع', 'الكورسات', 'المدفوع', 'المبيعات', 'التاريخ'];
+    // The values used to be joined raw, with only الكورسات wrapped in quotes and
+    // the quotes inside it left undoubled. A course list with a comma in it
+    // opened an extra column, and a name written «أحمد "أبو مازن"» ended its
+    // field early — every heading after it in that row was then wrong.
+    const lines = rows.map(c => [
+      c.name, c.clientCode, c.phone, c.email,
+      (() => { const ti = c.clientType ? CLIENT_TYPE_INFO[c.clientType] : null; return ti ? `${ti.label} - ${ti.entity}` : (c.subType ? SUB_TYPE_LABEL[c.subType] : 'عميل محتمل'); })(),
+      c.branch, c.courseNames, c.totalPaid, c.assignedSalesName, c.createdAt.slice(0, 10),
+    ]);
+    downloadCsv('clients_export', [header, ...lines]);
     notify('success', `تم تصدير ${rows.length} عميل`);
   }
 

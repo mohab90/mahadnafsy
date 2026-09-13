@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { LogIn, RefreshCw, Search, ShieldAlert, Globe, Monitor, Download } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
+import { downloadCsv } from '../../../../../shared/csv';
 
 // Sign-in log only. Deliberately separate from the client/lead database above:
 // a login row is an authentication event, not a CRM record — it has no owner, no
@@ -97,15 +98,7 @@ export function LoginHistoryPanel() {
       fmtTime(r.created_at), r.email || '', r.ip || '', deviceLabel(r.user_agent),
       STATUS_META[r.status]?.label || r.status, r.failure_reason || '',
     ]);
-    const csv = [header, ...body]
-      .map(line => line.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-    const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `login-history-${cairoDateOnly()}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsv(`login-history-${cairoDateOnly()}`, [header, ...body]);
   };
 
   // Repeated failures from one IP are the signal worth surfacing — it separates a

@@ -3,6 +3,7 @@ import { ArrowDownRight, CheckCircle2, Download, TrendingDown, Users } from 'luc
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { BulkStubPanel } from '../FinancialPanels';
 import { toDialable } from '../../../../lib/whatsappLink';
+import { downloadCsv } from '../../../../../shared/csv';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type OutstandingSub = {
@@ -10,16 +11,8 @@ type OutstandingSub = {
   assigned_sales_name: string | null; total_expected: number; total_paid: number; outstanding: number;
 };
 
-const exportCSV = (filename: string, rows: string[][], headers: string[]) => {
-  const BOM = '﻿';
-  const escape = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
-  const lines = [headers.map(escape).join(','), ...rows.map(r => r.map(escape).join(','))];
-  const blob = new Blob([BOM + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
-};
+const exportCSV = (filename: string, rows: string[][], headers: string[]) =>
+  downloadCsv(filename, [headers, ...rows]);
 
 export function OutstandingPanel({ notify }: { notify: NotifyFn }) {
   const [outstandingSubs, setOutstandingSubs] = useState<OutstandingSub[] | null>(null);

@@ -1,4 +1,5 @@
 import { Download } from 'lucide-react';
+import { downloadCsv, type CsvValue } from '../../../../../shared/csv';
 
 type CommissionViewMode = 'single' | 'range';
 
@@ -55,14 +56,12 @@ export function FinancialCommissionsControls({
         })));
     if (!data.length) return;
     const headers = Object.keys(data[0]);
-    const csv = [headers.join(','), ...data.map((row) => headers.map((header) => (row as Record<string, unknown>)[header]).join(','))].join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `commissions-${commissionViewMode === 'single' ? commissionMonth : `${commissionFrom}_${commissionTo}`}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    // Was the values dropped in raw and joined with commas. A staff name or a
+    // note containing a comma opened as an extra column, and every field after
+    // it in that row sat under the wrong heading.
+    const period = commissionViewMode === 'single' ? commissionMonth : `${commissionFrom}_${commissionTo}`;
+    downloadCsv(`commissions-${period}`,
+      [headers, ...data.map(row => headers.map(header => (row as Record<string, unknown>)[header] as CsvValue))]);
   };
 
   return (

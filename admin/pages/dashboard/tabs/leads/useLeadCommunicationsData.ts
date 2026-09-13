@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import type { LeadItem, LeadStatus, StaffMember } from '../../../../types';
+import { downloadCsv } from '../../../../../shared/csv';
 
 export interface LeadCommunicationFilter {
   staffId: string;
@@ -96,14 +97,7 @@ export function useLeadCommunicationsData(
         comm.notes,
         comm.outcome || '',
       ]);
-      const csv = [header, ...rows].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
-      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `communications-${todayStr}.csv`;
-      link.click();
-      URL.revokeObjectURL(url);
+      downloadCsv(`communications-${todayStr}`, [header, ...rows]);
     };
 
     return {

@@ -8,6 +8,7 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { useStaticData } from '../../../context/siteDataSlices';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 import { promptDialog } from '../../../../shared/ui/promptDialog';
+import { downloadCsv } from '../../../../shared/csv';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -362,23 +363,13 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
   const exportSelected = () => {
     const rows = filtered.filter(t => selectedIds.size === 0 || selectedIds.has(t.id));
     if (rows.length === 0) { notify('info', 'لا توجد تذاكر للتصدير'); return; }
-    const cell = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const header = ['الرقم', 'الموضوع', 'العميل', 'البريد', 'الهاتف', 'الحالة', 'الأولوية', 'التصنيف', 'المسؤول', 'أُنشئت', 'آخر تحديث'];
-    const csv = '﻿' + [
-      header.map(cell).join(','),
-      ...rows.map(t => [
-        t.id, t.title, t.clientName, t.clientEmail, t.clientPhone,
-        STATUS_CFG[t.status]?.label, PRIORITY_CFG[t.priority]?.label,
-        CAT_LABELS[t.category], supportTeam.find(m => m.id === t.assigneeId)?.name || '',
-        t.createdAt?.slice(0, 16).replace('T', ' '), t.updatedAt?.slice(0, 16).replace('T', ' '),
-      ].map(cell).join(',')),
-    ].join('\r\n');
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `tickets-${cairoDateOnly()}.csv`;
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
+    downloadCsv(`tickets-${cairoDateOnly()}`, [header, ...rows.map(t => [
+      t.id, t.title, t.clientName, t.clientEmail, t.clientPhone,
+      STATUS_CFG[t.status]?.label, PRIORITY_CFG[t.priority]?.label,
+      CAT_LABELS[t.category], supportTeam.find(m => m.id === t.assigneeId)?.name || '',
+      t.createdAt?.slice(0, 16).replace('T', ' '), t.updatedAt?.slice(0, 16).replace('T', ' '),
+    ])]);
     notify('success', `تم تصدير ${rows.length} تذكرة`);
   };
 
