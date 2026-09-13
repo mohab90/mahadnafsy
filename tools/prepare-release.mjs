@@ -66,6 +66,32 @@ for (const build of requiredBuilds) {
   }
 }
 
+// Per-page SEO, written into the client build before it is packed.
+//
+// Every URL used to serve the same shell, so each course page carried the
+// homepage's title, its og:* tags, and a canonical pointing at the front page —
+// which tells Google the 31 product pages are duplicates, and shows the generic
+// institute card whenever anyone shares a course link. The generator writes
+// dist/c/<slug>/index.html per product; nginx's existing
+// `try_files $uri $uri/ /index.html` serves the directory before the SPA
+// fallback, so no server configuration changes. It also rewrites sitemap.xml,
+// which listed twelve static pages and none of the things being sold.
+//
+// A failure here is fatal on purpose: shipping a build whose product pages all
+// canonicalise to the homepage is the bug this exists to prevent.
+console.log('[release] generating per-page SEO…');
+const seo = spawnSync('node', [path.join(root, 'tools', 'generate-seo.mjs')], {
+  cwd: root,
+  encoding: 'utf8',
+  windowsHide: true,
+  shell: false,
+});
+if (seo.error) throw seo.error;
+if (seo.status !== 0) {
+  throw new Error(`SEO generation failed:\n${(seo.stderr || seo.stdout || '').slice(-800)}`);
+}
+process.stdout.write(seo.stdout);
+
 const artifact = path.join(artifactDir, `${release}-api.tgz`);
 const archive = spawnSync('git', [
   'archive',

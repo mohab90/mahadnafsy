@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Filter, Search, BookOpen, Users, Play, Award } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import CourseCard from '../components/CourseCard';
+import { useSeo } from '../lib/useSeo';
 
 const Courses: React.FC = () => {
   const { courses, content, currency } = useSiteData();
@@ -9,7 +10,7 @@ const Courses: React.FC = () => {
   const [selectedType, setSelectedType] = useState<string>('All');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
 
-  useEffect(() => { document.title = 'الدبلومات والكورسات | معهد الدراسات النفسية'; }, []);
+  useSeo({ title: 'الدبلومات والكورسات | معهد الدراسات النفسية', path: '/courses', description: 'دبلومات معتمدة في الصحة النفسية والعلاج النفسي — برامج تدريبية بشهادات موثقة من معهد الدراسات النفسية.' });
 
   const filteredCourses = courses.filter(course => {
     const matchesSearch = (course.title || '').includes(searchTerm) || (course.description || '').includes(searchTerm);

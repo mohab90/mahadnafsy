@@ -326,6 +326,15 @@ const CourseDetails: React.FC = () => {
     setOg('og:title', seoTitle);
     if (course.thumbnail) setOg('og:image', course.thumbnail);
     setOg('og:type', 'article');
+    // The two that were missing, and the two that cost the most. `canonical`
+    // stayed on the homepage for the whole session, which tells Google this
+    // course is a duplicate of the front page; `og:url` did the same to every
+    // shared link. The prerendered HTML gets them right for crawlers that do
+    // not run JavaScript — this keeps them right once the app is navigating.
+    const url = `https://mahadnafsy.com/c/${course.slug || course.id}`;
+    setOg('og:url', url);
+    const canonical = document.head.querySelector('link[rel="canonical"]');
+    if (canonical) canonical.setAttribute('href', url);
     return () => { document.title = 'معهد الدراسات النفسية'; };
   }, [course]);
 

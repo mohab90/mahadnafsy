@@ -4,9 +4,10 @@ import { Eye, EyeOff } from 'lucide-react';
 import { mysqlAuth, mysqlClient } from '../lib/mysqlapi';
 import { useSiteData } from '../context/SiteDataContext';
 import { adminDashboardUrl } from '../lib/adminDashboard';
+import { useSeo } from '../lib/useSeo';
 
 const Auth: React.FC = () => {
-  useEffect(() => { document.title = 'تسجيل الدخول | معهد الدراسات النفسية'; }, []);
+  useSeo({ title: 'تسجيل الدخول | معهد الدراسات النفسية', path: '/auth' });
   // Someone arriving on a referral link is by definition a new visitor, so open
   // on the create-account form rather than making them find the toggle first.
   const [isLogin, setIsLogin] = useState(() => !new URLSearchParams(window.location.search).get('ref'));

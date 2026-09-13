@@ -13,6 +13,7 @@ import { useSiteData } from '../context/SiteDataContext';
 import { cdnImg } from '../lib/img';
 import { cairoDateOnly } from '../../shared/cairoDate';
 import type { CommunityEventItem } from '../types';
+import { useSeo } from '../lib/useSeo';
 
 const TAG_COLORS: Record<string, string> = {
   'نقاش حالة': 'bg-blue-50 text-blue-700 border-blue-200',
@@ -29,7 +30,7 @@ const ARABIC_MONTHS = ['يناير','فبراير','مارس','أبريل','ما
 const ARABIC_DAYS_SHORT = ['سبت','أحد','اثن','ثلا','أرب','خمس','جمع'];
 
 const Community: React.FC = () => {
-  useEffect(() => { document.title = 'المجتمع النفسي | معهد الدراسات النفسية'; }, []);
+  useSeo({ title: 'المجتمع النفسي | معهد الدراسات النفسية', path: '/community', description: 'مجتمع المتخصصين في الصحة النفسية — مقالات ومكتبة وفعاليات ونقاش مهني.' });
   const {
     communityPosts, communityLibraryItems, communityVideos, communityEvents,
     addCommunityPost, updateCommunityPost, deleteCommunityPost,

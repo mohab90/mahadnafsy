@@ -7,6 +7,7 @@ import { useEscapeKey } from '../../shared/ui/useEscapeKey';
 import { formatAvailabilitySlot, getTherapistActiveSlots, getTherapistSessionPrice, isConsultationEnabled, meetingProviderLabels } from '../lib/consultations';
 import { cdnImg } from '../lib/img';
 import { cairoDateOnly } from '../../shared/cairoDate';
+import { useSeo } from '../lib/useSeo';
 
 const Consultations: React.FC = () => {
     const navigate = useNavigate();
@@ -27,7 +28,7 @@ const Consultations: React.FC = () => {
 
     const currencySymbol = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
 
-    useEffect(() => { document.title = 'العيادة النفسية | معهد الدراسات النفسية'; }, []);
+    useSeo({ title: 'العيادة النفسية | معهد الدراسات النفسية', path: '/consultations', description: 'استشارات نفسية أونلاين مع نخبة من المعالجين المتخصصين في معهد الدراسات النفسية.' });
 
     const consultationTherapists = useMemo(() => therapists.filter(isConsultationEnabled), [therapists]);
     const availableSlots = selectedTherapist ? getTherapistActiveSlots(selectedTherapist, selectedDate) : [];

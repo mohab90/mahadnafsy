@@ -1,8 +1,9 @@
 import React, { useEffect } from 'react';
 import { useSiteData } from '../context/SiteDataContext';
+import { useSeo } from '../lib/useSeo';
 
 const Policies: React.FC = () => {
-  useEffect(() => { document.title = 'سياسات المعهد | معهد الدراسات النفسية'; }, []);
+  useSeo({ title: 'سياسات المعهد | معهد الدراسات النفسية', path: '/policies', description: 'سياسة الخصوصية وشروط الاستخدام وسياسة الاسترداد في معهد الدراسات النفسية.' });
   const { content } = useSiteData();
 
   return (

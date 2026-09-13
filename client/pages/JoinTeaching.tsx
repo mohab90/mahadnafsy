@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Send, CheckCircle, Users, Award, BookOpen, Globe, Star, GraduationCap, Heart, Briefcase } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
+import { useSeo } from '../lib/useSeo';
 
 // Split out of the old single JoinUs.tsx (which toggled instructor/consultant/
 // employee copy in place with the same layout) per the owner's explicit
@@ -11,7 +12,7 @@ import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 // text. This one is the teaching/consulting track — see JoinStaff.tsx for the
 // employee track (a distinct design, jobs-board-first).
 const JoinTeaching: React.FC = () => {
-  useEffect(() => { document.title = 'انضم إلينا كمحاضر | معهد الدراسات النفسية'; }, []);
+  useSeo({ title: 'انضم إلينا كمحاضر | معهد الدراسات النفسية', path: '/join', description: 'انضم إلى معهد الدراسات النفسية كمحاضر — قدّم سيرتك الذاتية وتخصصك.' });
   const { addJoinUsApplication, content } = useSiteData();
   const [form, setForm] = useState({
     name: '', email: '', phone: '', specialty: '', experience: '',

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ChevronDown, HelpCircle } from 'lucide-react';
+import { setCanonical } from '../lib/useSeo';
 
 type Faq = { id: string; question: string; answer: string; category: string };
 
@@ -10,6 +11,8 @@ const Faq: React.FC = () => {
 
   useEffect(() => {
     document.title = 'الأسئلة الشائعة | معهد الدراسات النفسية';
+    // Without this the canonical stays on whichever page loaded first.
+    setCanonical('/faq');
     fetch('/api/faq')
       .then(r => (r.ok ? r.json() : []))
       .then(rows => setList(Array.isArray(rows) ? rows : []))

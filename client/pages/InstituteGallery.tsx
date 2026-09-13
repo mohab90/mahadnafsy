@@ -1,9 +1,10 @@
 import React, { useMemo, useEffect } from 'react';
 import { useSiteData } from '../context/SiteDataContext';
+import { useSeo } from '../lib/useSeo';
 
 const InstituteGallery: React.FC = () => {
   const { content } = useSiteData();
-  useEffect(() => { document.title = 'معرض صور المعهد | معهد الدراسات النفسية'; }, []);
+  useSeo({ title: 'معرض صور المعهد | معهد الدراسات النفسية', path: '/institute-gallery', description: 'صور من داخل معهد الدراسات النفسية وقاعات التدريب والفعاليات.' });
 
   const images = useMemo(() => {
     const raw = content['institute.gallery.images'] || '[]';

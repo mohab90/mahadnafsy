@@ -2,9 +2,10 @@ import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Target, Eye, History, Users, Award, Globe, Mail, GraduationCap, Briefcase } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
+import { useSeo } from '../lib/useSeo';
 
 const AboutUs: React.FC = () => {
-    useEffect(() => { document.title = 'عن المعهد | معهد الدراسات النفسية'; }, []);
+    useSeo({ title: 'عن المعهد | معهد الدراسات النفسية', path: '/about', description: 'معهد الدراسات النفسية — رواد التعليم النفسي منذ 2010، وأكثر من 12,000 خريج في 15 دولة.' });
     const { content, therapists } = useSiteData();
     const teamMembers = [...therapists]
       .filter(t => t.showOnAbout)

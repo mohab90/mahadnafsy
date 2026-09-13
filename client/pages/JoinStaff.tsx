@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Send, CheckCircle, Users, Award, Star, Heart, Briefcase, GraduationCap, MapPin, Clock } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
+import { useSeo } from '../lib/useSeo';
 
 type JobPosting = {
   id: string; title: string; branch?: string; employment_type?: string;
@@ -23,7 +24,7 @@ const BRANCH_LABEL: Record<string, string> = {
 // picking a listing now actually attaches the application to that job
 // (jobId) instead of always landing everyone in the generic talent pool.
 const JoinStaff: React.FC = () => {
-  useEffect(() => { document.title = 'الوظائف المتاحة | معهد الدراسات النفسية'; }, []);
+  useSeo({ title: 'الوظائف المتاحة | معهد الدراسات النفسية', path: '/join-us', description: 'الوظائف المتاحة في معهد الدراسات النفسية — تقدّم للفرص المفتوحة.' });
   const { addJoinUsApplication } = useSiteData();
   const [jobs, setJobs] = useState<JobPosting[]>([]);
   const [jobsLoading, setJobsLoading] = useState(true);

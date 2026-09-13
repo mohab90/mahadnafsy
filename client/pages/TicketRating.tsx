@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Star, CheckCircle } from 'lucide-react';
+import { setCanonical } from '../lib/useSeo';
 
 // Declared here, not inside TicketRating. React compares element types by
 // identity: a component defined in another component's body is a new function
@@ -29,6 +30,8 @@ const TicketRating: React.FC = () => {
 
   useEffect(() => {
     document.title = 'تقييم الدعم | معهد الدراسات النفسية';
+    // Without this the canonical stays on whichever page loaded first.
+    setCanonical('/ticket-rating');
     if (!id || !token) { setNotFound(true); setLoading(false); return; }
     fetch(`/api/ticket-csat/${encodeURIComponent(id)}?token=${encodeURIComponent(token)}`)
       .then(r => (r.ok ? r.json() : Promise.reject()))

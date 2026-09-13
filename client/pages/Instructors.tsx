@@ -4,10 +4,11 @@ import { Star, Shield, ArrowRight, CalendarCheck2, Globe, GraduationCap } from '
 import { useSiteData } from '../context/SiteDataContext';
 import { isConsultationEnabled, meetingProviderLabels } from '../lib/consultations';
 import { cdnImg } from '../lib/img';
+import { useSeo } from '../lib/useSeo';
 
 const Instructors: React.FC = () => {
   const { therapists, content } = useSiteData();
-  useEffect(() => { document.title = 'الخبراء والمدربين | معهد الدراسات النفسية'; }, []);
+  useSeo({ title: 'الخبراء والمدربين | معهد الدراسات النفسية', path: '/instructors', description: 'نخبة الخبراء والمدربين في معهد الدراسات النفسية — سِيَر ذاتية وتخصصات كل محاضر.' });
   return (
     <div className="bg-gray-50 min-h-screen">
       {/* Hero */}

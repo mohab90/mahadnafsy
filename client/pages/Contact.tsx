@@ -3,9 +3,10 @@ import { Mail, Phone, MapPin, Send, MessageCircle, Facebook, Instagram, Youtube,
 import { useSiteData } from '../context/SiteDataContext';
 import { instituteWhatsApp } from '../lib/whatsappLink';
 import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
+import { useSeo } from '../lib/useSeo';
 
 const Contact: React.FC = () => {
-  useEffect(() => { document.title = 'تواصل معنا | معهد الدراسات النفسية'; }, []);
+  useSeo({ title: 'تواصل معنا | معهد الدراسات النفسية', path: '/contact', description: 'تواصل مع معهد الدراسات النفسية — هاتف، واتساب، بريد إلكتروني ونموذج مراسلة.' });
   const { content, addContactMessage } = useSiteData();
   const [form, setForm] = useState({ name: '', email: '', phone: '', subject: '', message: '' });
   const [submitted, setSubmitted] = useState(false);

@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { CheckCircle2, ShieldX, Award } from 'lucide-react';
 import { mysqlClient } from '../lib/mysqlapi';
 import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
+import { setCanonical } from '../lib/useSeo';
 
 interface VerifiedCertificate {
   certificate_code: string;
@@ -24,6 +25,8 @@ const CertificateVerify: React.FC = () => {
 
   useEffect(() => {
     document.title = 'التحقق من الشهادة | معهد الدراسات النفسية';
+    // Without this the canonical stays on whichever page loaded first.
+    setCanonical('/certificate');
     if (!code) { setLoading(false); return; }
     let cancelled = false;
     mysqlClient.verifyCertificate(code)

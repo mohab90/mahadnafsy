@@ -8,9 +8,10 @@ import { getTherapistSessionPrice } from '../lib/consultations';
 import { cdnImg } from '../lib/img';
 import { instituteWhatsApp } from '../lib/whatsappLink';
 import { amountDueNow, installmentTotal, type PayMode } from '../../shared/enrollmentPricing';
+import { useSeo } from '../lib/useSeo';
 
 const Checkout: React.FC = () => {
-  useEffect(() => { document.title = 'إتمام الاشتراك | معهد الدراسات النفسية'; }, []);
+  useSeo({ title: 'إتمام الاشتراك | معهد الدراسات النفسية', path: '/checkout' });
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();

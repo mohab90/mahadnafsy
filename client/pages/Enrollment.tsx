@@ -10,6 +10,7 @@ import { instituteWhatsApp } from '../lib/whatsappLink';
 // applies exactly the same ones. They used to be defined here only, which is
 // how a customer could be shown a discount the server had never heard of.
 import { CASH_DISCOUNT, INSTALL_DISCOUNT, INSTALL_FIRST_PCT, amountDueNow, installmentTotal } from '../../shared/enrollmentPricing';
+import { useSeo } from '../lib/useSeo';
 
 // ── Payment type ──────────────────────────────────────────────────────────────
 type PayType = 'cash' | 'installment';
@@ -24,7 +25,7 @@ const authAr: Record<string, string> = {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 const Enrollment: React.FC = () => {
-  useEffect(() => { document.title = 'التسجيل في الكورس | معهد الدراسات النفسية'; }, []);
+  useSeo({ title: 'التسجيل في الكورس | معهد الدراسات النفسية', path: '/enroll' });
   const { courses, bundles, currency, content, authUser } = useSiteData();
   const onlinePayEnabled = usePaymentAvailability();
 

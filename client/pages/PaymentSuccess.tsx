@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { CheckCircle, Home, MessageCircle, Upload, Clock, LayoutDashboard, Receipt, XCircle, CreditCard } from 'lucide-react';
 import { instituteWhatsApp } from '../lib/whatsappLink';
 import { useSiteData } from '../context/SiteDataContext';
+import { setCanonical } from '../lib/useSeo';
 
 /**
  * Where a customer lands after paying — by card or by transfer.
@@ -42,6 +43,7 @@ const PaymentSuccess: React.FC = () => {
   const outcome = paymobResult === null ? 'transfer' : paymobResult.toLowerCase() === 'true' ? 'card' : 'declined';
 
   useEffect(() => {
+    setCanonical('/success');
     document.title = outcome === 'declined'
       ? 'لم تتم عملية الدفع | معهد الدراسات النفسية'
       : 'تم استلام طلبك | معهد الدراسات النفسية';

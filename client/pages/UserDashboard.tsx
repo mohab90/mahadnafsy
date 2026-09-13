@@ -21,6 +21,7 @@ import { isCertificateEarned } from '../lib/certificateStatus';
 import { adminDashboardUrl } from '../lib/adminDashboard';
 import { cairoDateOnly } from '../../shared/cairoDate';
 import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
+import { useSeo } from '../lib/useSeo';
 
 const CourseCertificate = React.lazy(() => import('../components/CourseCertificate'));
 const StudentCoursesTab = React.lazy(() => import('../components/student-dashboard/StudentCoursesTab').then((module) => ({ default: module.StudentCoursesTab })));
@@ -60,7 +61,7 @@ type AccountSection = 'payments' | 'notifications' | 'loyalty' | 'referral' | 's
 
 /* ─── helpers ─────────────────────────────────────────────────────────────── */
 const UserDashboard: React.FC = () => {
-  useEffect(() => { document.title = 'حسابي | معهد الدراسات النفسية'; }, []);
+  useSeo({ title: 'حسابي | معهد الدراسات النفسية', path: '/my-account' });
   const { courses, subscribers, notifications, notificationReadIds: dismissedNotifIds, markBroadcastNotificationRead, markAllBroadcastNotificationsRead, communityPosts, consultations, getCourseLectures, authUser, remoteReady, mySubscriberLoaded, mySubscriberId, isAdmin, content, courseQuizzes, quizAttempts, submitQuizAttempt, liveStreams, logout, refreshMySubscriber } = useSiteData();
   const onlinePayEnabled = usePaymentAvailability();
   const navigate = useNavigate();

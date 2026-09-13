@@ -4,13 +4,14 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useSiteData } from '../context/SiteDataContext';
 import { cdnImg } from '../lib/img';
 import { formatPrice, isDiscounted } from '../../shared/priceFormat';
+import { useSeo } from '../lib/useSeo';
 
 const Bundles: React.FC = () => {
     const { bundles, content, currency, remoteReady } = useSiteData();
   const navigate = useNavigate();
   const currencySymbol = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
 
-  useEffect(() => { document.title = 'المسارات والباقات | معهد الدراسات النفسية'; }, []);
+  useSeo({ title: 'المسارات والباقات | معهد الدراسات النفسية', path: '/bundles', description: 'مسارات تعليمية متكاملة وباقات مجمعة بخصومات تصل إلى 40% — من المبتدئ إلى المحترف.' });
 
   // A bundle with no courses attached has nothing to show, so the list skips
   // it. The empty-state check below uses the same list for the same reason.

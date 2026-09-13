@@ -11,6 +11,7 @@ import CourseCertificate from '../components/CourseCertificate';
 import { cdnImg } from '../lib/img';
 import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 import { formatPrice, isDiscounted, discountPercent } from '../../shared/priceFormat';
+import { useSeo, seoSummary } from '../lib/useSeo';
 
 // Strip HTML tags + Word-style markup and return clean Arabic text
 function stripHtml(raw: string): string {
@@ -55,7 +56,14 @@ const BundleDetails: React.FC = () => {
   // A bundle priced in EGP only rendered a bold "0" to a visitor browsing in
   // USD, with a live checkout button under it.
   const priceAvailable = (bundle?.price?.[currency] ?? 0) > 0;
-  useEffect(() => { document.title = (bundle?.title ? `${bundle.title} — مسار` : 'المسارات والباقات') + ' | معهد الدراسات النفسية'; }, [bundle?.title]);
+  useSeo({
+    title: (bundle?.title ? `${bundle.title} — مسار` : 'المسارات والباقات') + ' | معهد الدراسات النفسية',
+    path: bundle?.id ? `/bundle/${bundle.id}` : '/bundles',
+    description: seoSummary(bundle?.shortDescription || bundle?.description,
+      'مسار تعليمي متكامل من معهد الدراسات النفسية.'),
+    image: bundle?.thumbnail || bundle?.courses?.[0]?.thumbnail,
+    type: bundle ? 'article' : 'website',
+  });
   if (!bundle) return <div className="text-center py-20 text-gray-500">{globalContent['bundleDetails.notFound'] || 'المسار غير موجود'}</div>;
 
   const content = { ...globalContent, ...(bundle.detailsContent || {}) };

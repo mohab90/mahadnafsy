@@ -8,6 +8,7 @@ import CourseCard from '../components/CourseCard';
 import { cdnImg } from '../lib/img';
 import { isExpiryActive } from '../../shared/cairoDate';
 import { formatPrice, isDiscounted } from '../../shared/priceFormat';
+import { useSeo } from '../lib/useSeo';
 
 // Countdown for the 24-hour offer, from the moment the admin started it
 // (offer.timerStartedAt, set by the "إعادة ضبط المؤقت" button on the offer
@@ -54,7 +55,7 @@ const Home: React.FC = () => {
   const currencySymbol = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
   const timer = use24hCountdown(content['offer.timerStartedAt'] || undefined);
 
-  useEffect(() => { document.title = 'الرئيسية | معهد الدراسات النفسية'; }, []);
+  useSeo({ title: 'الرئيسية | معهد الدراسات النفسية', path: '/', description: 'المنصة الأكاديمية الأولى عربياً لتعليم الصحة النفسية والعلاج النفسي — دبلومات معتمدة وتدريب عملي.' });
 
   // Gallery images — stored as JSON string in content
   const galleryImages: string[] = (() => {

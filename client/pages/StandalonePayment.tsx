@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { usePaymentAvailability } from '../lib/usePaymentAvailability';
 import { useSiteData } from '../context/SiteDataContext';
 import { instituteWhatsApp } from '../lib/whatsappLink';
+import { setCanonical } from '../lib/useSeo';
 
 type PayStatus = 'idle' | 'reserving' | 'redirecting';
 
@@ -38,6 +39,8 @@ const StandalonePayment: React.FC = () => {
 
   useEffect(() => {
     document.title = 'الدفع السريع | معهد الدراسات النفسية';
+    // Without this the canonical stays on whichever page loaded first.
+    setCanonical('/pay');
   }, []);
 
   const handlePay = async (event: React.FormEvent) => {

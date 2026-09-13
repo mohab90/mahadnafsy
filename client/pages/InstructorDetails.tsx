@@ -8,12 +8,14 @@ import CourseCard from '../components/CourseCard';
 import { useSiteData } from '../context/SiteDataContext';
 import { formatAvailabilitySlot, getTherapistActiveSlots, getTherapistSessionPrice, isConsultationEnabled, meetingProviderLabels } from '../lib/consultations';
 import { cdnImg } from '../lib/img';
+import { setCanonical } from '../lib/useSeo';
 
 const InstructorDetails: React.FC = () => {
   const { therapists, courses, currency, content } = useSiteData();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const instructor = therapists.find((t) => t.id === id);
+  useEffect(() => { setCanonical('/instructors'); }, []);
   useEffect(() => { document.title = (instructor?.name || 'المحاضرون والخبراء') + ' | معهد الدراسات النفسية'; }, [instructor?.name]);
 
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
