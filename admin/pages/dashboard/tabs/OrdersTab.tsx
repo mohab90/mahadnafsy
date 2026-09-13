@@ -513,7 +513,6 @@ export default function OrdersTab({
               const PAY_METHOD_CLS: Record<string, string> = {
                 cash: 'bg-gray-100 text-gray-700',
                 bank_transfer: 'bg-blue-100 text-blue-700',
-                transfer: 'bg-blue-100 text-blue-700',
                 vodafone_cash: 'bg-red-100 text-red-700',
                 instapay: 'bg-purple-100 text-purple-700',
                 online_paymob: 'bg-indigo-100 text-indigo-700',

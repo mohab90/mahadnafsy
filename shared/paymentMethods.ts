@@ -41,7 +41,8 @@ const LABELS: Record<string, string> = {
   card: 'بطاقة بنكية',
   wallet: 'محفظة إلكترونية',
   online_paymob: 'دفع إلكتروني',
-  transfer: 'تحويل بنكي',
+  // Not a rail a customer picks: the desk entered the payment by hand.
+  manual: 'يدوي',
 };
 
 /**
@@ -71,6 +72,8 @@ const ALIASES: Record<string, string> = {
   vodafonecash: 'vodafone_cash',
   'vodafone-cash': 'vodafone_cash',
   bank: 'bank_transfer',
+  // What most of the orders table holds, in upper case.
+  transfer: 'bank_transfer',
   // تحويل عميل أونلاين → استرداد wrote these two, and neither resolved: a
   // refund recorded there read back as the bare token 'vodafone'.
   vodafone: 'vodafone_cash',

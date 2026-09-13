@@ -151,3 +151,45 @@ test('a value saved under an older spelling still reads back as the same rail', 
   assert.match(source, /return ALIASES\[value\] \|\| ALIASES\[lower\] \|\| '';/);
   assert.match(source, /return \(code && LABELS\[code\]\) \|\| LABELS\[value\.toLowerCase\(\)\] \|\| value;/);
 });
+
+test('what production actually stores resolves to the rail the filter offers', () => {
+  // The bug the first attempt at this fix did not close. orders.payment_method
+  // holds 'TRANSFER' upper-cased for most rows, and 'transfer' used to be its
+  // own key in LABELS — so normalizePaymentMethod short-circuited there and
+  // returned 'transfer', which never equals the filter's 'bank_transfer'.
+  // Caught by running the built bundle against the real values, not by reading
+  // the source. 'transfer' is an alias now, not a rail.
+  const source = fs.readFileSync(path.join(ROOT, SHARED), 'utf8');
+
+  const labelBlock = /const LABELS: Record<string, string> = \{([\s\S]*?)\n\};/.exec(source)[1];
+  const aliasBlock = /const ALIASES: Record<string, string> = \{([\s\S]*?)\n\};/.exec(source)[1];
+
+  assert.ok(!/^\s*transfer:/m.test(labelBlock),
+    "'transfer' as a LABELS key makes normalizePaymentMethod stop there; it is a spelling of bank_transfer");
+  assert.match(aliasBlock, /^\s*transfer: 'bank_transfer',/m);
+
+  // Every value production holds today, and where it has to land.
+  for (const [stored, code] of [
+    ['transfer', 'bank_transfer'],
+    ['paymob', 'online_paymob'],
+    ['bank', 'bank_transfer'],
+    ['vodafone', 'vodafone_cash'],
+  ]) {
+    // Plain includes: a template literal eats the backslash out of \s, and a
+    // pattern that matches nothing is a guard that passes forever.
+    assert.ok(aliasBlock.includes(`\n  ${stored}: '${code}',`),
+      `${stored} is in the orders or refunds table and must resolve to ${code}`);
+  }
+
+  // 'manual' is not a rail but orders carry it, and the filter shows its label.
+  assert.match(labelBlock, /^\s*manual: 'يدوي',/m,
+    "without a label the filter's own option would read 'manual' in English");
+
+  // The comparison itself: both sides normalized, and a raw lowercase fallback
+  // so an unrecognised value still filters to itself rather than to everything.
+  const derived = read('admin/pages/dashboard/hooks/useOrdersDerived.ts');
+  assert.ok(!/row\.paymentMethod === orderMethodFilter/.test(derived),
+    'a plain === here is what made «تحويل بنكي» return nothing');
+  assert.match(derived, /sameMethod\(row\.paymentMethod, orderMethodFilter\)/);
+  assert.match(derived, /normalizePaymentMethod\(a\) \|\| String\(a \|\| ''\)\.trim\(\)\.toLowerCase\(\)/);
+});
