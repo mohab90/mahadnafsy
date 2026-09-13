@@ -6,6 +6,29 @@ const { safeDateOnly } = require('./dates');
 const { uuidv4 } = require('./id');
 const { mapInstallmentPlan } = require('./installmentMath');
 
+/**
+ * A money column as a number.
+ *
+ * price_egp and its siblings are DECIMAL(10,2), and mysql2 hands a DECIMAL back
+ * as a **string** — "7900.00". `r.price_egp || 0` kept the string, so every
+ * price reached the browser as text. Two things followed:
+ *
+ *   the compare   CourseCard asked `oldPrice > currentPrice` and got a
+ *                 lexicographic answer: "11500.00" > "5600.00" is false, so ten
+ *                 of the institute's thirty-one products showed no discount at
+ *                 all — every one of them a ~51% cut on its headline programme.
+ *
+ *   the display   the string was printed as it arrived: «14800.00 ج.م» instead
+ *                 of «14,800 ج.م», on every card of every catalogue page.
+ *
+ * Fixed at the boundary rather than at each of the five comparisons, because
+ * the next screen to read a price should not have to know this.
+ */
+const money = value => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+};
+
 // ── Column lists for hot-path queries ────────────────────────────────────────
 const COURSE_COLS = `id, course_code, slug, title, title_en, title_ar, description,
   short_description, instructor, instructor_id, thumbnail, category, type,
@@ -121,8 +144,8 @@ function mapCourse(r, materials) {
     // on the wire and the screens keep the vocabulary their types declare.
     category: canonicalCourseCategory(r.category),
     type: canonicalCourseType(r.type),
-    price:         { EGP: r.price_egp     || 0, SAR: r.price_sar     || 0, USD: r.price_usd     || 0 },
-    originalPrice: { EGP: r.orig_price_egp|| 0, SAR: r.orig_price_sar|| 0, USD: r.orig_price_usd|| 0 },
+    price:         { EGP: money(r.price_egp), SAR: money(r.price_sar), USD: money(r.price_usd) },
+    originalPrice: { EGP: money(r.orig_price_egp), SAR: money(r.orig_price_sar), USD: money(r.orig_price_usd) },
     rating: r.rating,
     // `courses.students` is a denormalised counter that nothing in the codebase
     // has ever incremented — it sat at 0 for every course while enrollments held
@@ -162,8 +185,8 @@ function mapBundle(r, allCourses = []) {
     description: r.description,
     thumbnail: r.thumbnail,
     videoUrl: r.video_url,
-    price:         { EGP: r.price_egp     || 0, SAR: r.price_sar     || 0, USD: r.price_usd     || 0 },
-    originalPrice: { EGP: r.orig_price_egp|| 0, SAR: r.orig_price_sar|| 0, USD: r.orig_price_usd|| 0 },
+    price:         { EGP: money(r.price_egp), SAR: money(r.price_sar), USD: money(r.price_usd) },
+    originalPrice: { EGP: money(r.orig_price_egp), SAR: money(r.orig_price_sar), USD: money(r.orig_price_usd) },
     detailsContent: tryJson(r.details_content_json, {}),
     isPublished: !!r.is_published,
     courses,
@@ -176,9 +199,9 @@ function mapBundle(r, allCourses = []) {
  *        availableSlots below for why the default is off.
  */
 function mapTherapist(r, includeMeetingLinks = false) {
-  const priceEgp = r.price_egp || 0;
-  const priceSar = r.price_sar || 0;
-  const priceUsd = r.price_usd || 0;
+  const priceEgp = money(r.price_egp);
+  const priceSar = money(r.price_sar);
+  const priceUsd = money(r.price_usd);
   const mp = (r.meeting_provider || 'GOOGLE_MEET').toLowerCase();
   return {
     id: r.id,

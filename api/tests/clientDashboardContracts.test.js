@@ -70,7 +70,13 @@ test('a course with no original price shows neither a struck-out zero nor a disc
     assert.ok(
       source.includes('const strikePrice = discountedPrice !== null ? currentPrice : oldPrice;'),
       where);
-    assert.ok(source.includes('strikePrice > payPrice'), where);
+    // `strikePrice > payPrice` was a *string* compare — the API sends prices as
+    // DECIMAL strings — so «11500.00» was not greater than «5600.00» and ten
+    // products showed no discount. isDiscounted coerces both sides; the rule
+    // this test holds is unchanged: compare before you strike.
+    assert.ok(source.includes('isDiscounted(strikePrice, payPrice)'), where);
+    assert.ok(!/strikePrice > payPrice/.test(source),
+      `${where} compares prices as text again`);
     assert.ok(
       !/line-through[^\n]*discountedPrice !== null \? currentPrice : oldPrice/.test(source),
       `${where} still strikes a price it never compared`);

@@ -10,6 +10,7 @@ import { useSiteData } from '../context/SiteDataContext';
 import CourseCertificate from '../components/CourseCertificate';
 import { cdnImg } from '../lib/img';
 import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
+import { formatPrice, isDiscounted, discountPercent } from '../../shared/priceFormat';
 
 // Strip HTML tags + Word-style markup and return clean Arabic text
 function stripHtml(raw: string): string {
@@ -61,7 +62,7 @@ const BundleDetails: React.FC = () => {
   const currentPrice = bundle.price?.[currency] ?? 0;
   const oldPrice = bundle.originalPrice?.[currency] ?? 0;
   const currencySymbol = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
-  const savePct = oldPrice > currentPrice ? ((oldPrice - currentPrice) / oldPrice * 100).toFixed(0) : '0';
+  const savePct = String(discountPercent(oldPrice, currentPrice));
   const embedUrl = bundle.videoUrl ? toEmbedUrl(bundle.videoUrl) : '';
 
   const handleBundleLeadSubmit = async (event: React.FormEvent<HTMLFormElement>) => {

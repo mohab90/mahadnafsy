@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import type { Course, Currency } from '../../types';
 import { cdnImg } from '../../lib/img';
+import { formatPrice } from '../../../shared/priceFormat';
 
 interface RelatedCoursesSidebarProps {
   content: Record<string, string>;
@@ -23,7 +24,7 @@ export const RelatedCoursesSidebar: React.FC<RelatedCoursesSidebarProps> = ({ co
                       <img loading="lazy" decoding="async" src={cdnImg(c.thumbnail, 160)} className="w-20 h-16 object-cover rounded-lg" alt="" />
                       <div>
                           <h4 className="text-sm font-bold text-gray-800 group-hover:text-primary-600 line-clamp-2 transition">{c.title}</h4>
-                          <p className="text-xs text-primary-600 font-bold mt-1">{c.price[currency]} {currencySymbol}</p>
+                          <p className="text-xs text-primary-600 font-bold mt-1">{formatPrice(c.price[currency], currency)} {currencySymbol}</p>
                       </div>
                   </Link>
               ))}

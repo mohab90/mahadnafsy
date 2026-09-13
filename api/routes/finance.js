@@ -17,7 +17,7 @@ const { branchIdForBranch, defaultDigitalBranch } = require('../lib/branches');
 const { financialRecordMatches, financialScopeClause, resolveFinancialScope } = require('../lib/financialScope');
 const { addDaysToDateOnly, dateOnlyInTimeZone, isValidDateOnly, monthRange } = require('../lib/dates');
 const { EXPENSE_CATEGORY_LABEL } = require('../lib/expenseCategories');
-const { logFinancialAudit } = require('../lib/finance');
+const { getVatPercent, logFinancialAudit } = require('../lib/finance');
 
 const validDateRange = (from, to) => isValidDateOnly(from) && isValidDateOnly(to) && from <= to;
 
@@ -47,7 +47,7 @@ async function _loadPaymentForPrint(paymentId, tenantId) {
   // Identity comes from the central brand (what the owner set in Settings → الهوية),
   // so receipts/invoices carry the institute name, logo, colour and contacts.
   const brand = await getBrandSettings(tenantId);
-  const vatSetting = await getTenantSetting('vat_pct', { tenantId, fallback: 0 });
+  const vatSetting = await getVatPercent(tenantId);
   p._instituteName = escapeHtml(brand.instituteName);
   p._sitePhone = escapeHtml(brand.supportPhone || brand.supportWhatsapp || '');
   p._siteEmail = escapeHtml(brand.supportEmail);

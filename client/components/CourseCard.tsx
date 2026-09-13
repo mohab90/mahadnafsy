@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Clock, Star, Users } from 'lucide-react';
 import { Course, Currency } from '../types';
 import { cdnImg } from '../lib/img';
+import { formatPrice, isDiscounted } from '../../shared/priceFormat';
 
 interface CourseCardProps {
   course: Course;
@@ -67,8 +68,8 @@ const CourseCard: React.FC<CourseCardProps> = ({ course, currency }) => {
           <div className="flex flex-col">
             {currentPrice > 0 ? (
               <>
-                {oldPrice > currentPrice && <span className="text-xs text-gray-400 line-through">{oldPrice} {currencySymbol}</span>}
-                <span className="text-lg font-bold text-primary-700">{currentPrice} {currencySymbol}</span>
+                {isDiscounted(oldPrice, currentPrice) && <span className="text-xs text-gray-400 line-through">{formatPrice(oldPrice, currency)}</span>}
+                <span className="text-lg font-bold text-primary-700">{formatPrice(currentPrice, currency)}</span>
               </>
             ) : (
               <span className="text-sm font-bold text-amber-700">السعر غير متاح في دولتك حاليًا</span>

@@ -8,6 +8,27 @@ const { assertWritable } = require('./periodLock');
 const { dateOnlyInTimeZone } = require('./dates');
 const { ensureInvoiceForPayment } = require('./financialDocuments');
 
+/**
+ * The VAT rate that goes on a document, from the setting an admin actually edits.
+ *
+ * There were two keys for one number. الإعدادات ← المالية writes
+ * `sys_financial.vat_percent`; the receipt, the invoice and the VAT summary
+ * report each read a top-level `vat_pct` that nothing has ever written — it
+ * exists in neither tenant_settings nor site_config. So every document the
+ * institute has printed computed VAT at 0 and skipped the tax line entirely,
+ * while the settings screen stated 14%.
+ *
+ * `vat_pct` is still read first so a tenant that has one keeps it; otherwise
+ * the answer comes from the screen.
+ */
+async function getVatPercent(tenantId = DEFAULT_TENANT) {
+  const legacy = Number(await getTenantSetting('vat_pct', { tenantId, fallback: null }));
+  if (Number.isFinite(legacy) && legacy > 0) return legacy;
+  const financial = await getTenantSetting('sys_financial', { tenantId, fallback: null });
+  const configured = Number(financial?.vat_percent);
+  return Number.isFinite(configured) && configured > 0 ? configured : 0;
+}
+
 // Logs a payment status change to payment_audit_log table.
 async function logPaymentAudit(paymentId, action, oldStatus, newStatus, amount, subscriberId, actor, tenantId = DEFAULT_TENANT, db = pool, strict = false) {
   try {
@@ -379,6 +400,7 @@ async function postExpenseJournal(expense, sign, actor, db = pool, tenantId = ex
 }
 
 module.exports = {
+  getVatPercent,
   logPaymentAudit,
   logFinancialAudit,
   postJournalEntry,

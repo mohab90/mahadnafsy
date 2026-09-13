@@ -7,6 +7,7 @@ import { useSiteData } from '../context/SiteDataContext';
 import CourseCard from '../components/CourseCard';
 import { cdnImg } from '../lib/img';
 import { isExpiryActive } from '../../shared/cairoDate';
+import { formatPrice, isDiscounted } from '../../shared/priceFormat';
 
 // Countdown for the 24-hour offer, from the moment the admin started it
 // (offer.timerStartedAt, set by the "إعادة ضبط المؤقت" button on the offer
@@ -247,8 +248,10 @@ const Home: React.FC = () => {
                           </div>
                           <div className="mt-auto flex justify-between items-center border-t pt-4">
                               <div>
-                                  <span className="text-gray-400 line-through text-xs block">{bundle.originalPrice?.[currency]} {currencySymbol}</span>
-                                  <span className="text-primary-700 font-bold text-xl">{bundle.price?.[currency]} {currencySymbol}</span>
+                                  {isDiscounted(bundle.originalPrice?.[currency], bundle.price?.[currency]) && (
+                                    <span className="text-gray-400 line-through text-xs block">{formatPrice(bundle.originalPrice?.[currency], currency)}</span>
+                                  )}
+                                  <span className="text-primary-700 font-bold text-xl">{formatPrice(bundle.price?.[currency], currency)}</span>
                               </div>
                               <Link to={`/bundle/${bundle.id}`} className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-800 transition">
                                   التفاصيل

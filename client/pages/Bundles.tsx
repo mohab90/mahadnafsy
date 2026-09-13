@@ -3,6 +3,7 @@ import { Layers, Map, ArrowRight, Check, Send, Award, Clock } from 'lucide-react
 import { Link, useNavigate } from 'react-router-dom';
 import { useSiteData } from '../context/SiteDataContext';
 import { cdnImg } from '../lib/img';
+import { formatPrice, isDiscounted } from '../../shared/priceFormat';
 
 const Bundles: React.FC = () => {
     const { bundles, content, currency, remoteReady } = useSiteData();
@@ -110,9 +111,9 @@ const Bundles: React.FC = () => {
                             <div className="mt-8">
                                 {(bundle.price?.[currency] ?? 0) > 0 ? (
                                   <>
-                                    <div className="text-3xl font-bold mb-1">{bundle.price?.[currency]} {currencySymbol}</div>
-                                    {(bundle.originalPrice?.[currency] ?? 0) > (bundle.price?.[currency] ?? 0) && (
-                                      <div className="text-white/60 line-through text-sm mb-4">{content['bundles.card.oldPricePrefix'] || 'بدلاً من'} {bundle.originalPrice?.[currency]} {currencySymbol}</div>
+                                    <div className="text-3xl font-bold mb-1">{formatPrice(bundle.price?.[currency], currency)}</div>
+                                    {isDiscounted(bundle.originalPrice?.[currency], bundle.price?.[currency]) && (
+                                      <div className="text-white/60 line-through text-sm mb-4">{content['bundles.card.oldPricePrefix'] || 'بدلاً من'} {formatPrice(bundle.originalPrice?.[currency], currency)}</div>
                                     )}
                                   </>
                                 ) : (

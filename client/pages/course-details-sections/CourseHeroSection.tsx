@@ -4,6 +4,7 @@ import type { Course } from '../../types';
 import { SafeHtml } from '../../../shared/ui/SafeHtml';
 import { cdnImg } from '../../lib/img';
 import { instituteWhatsApp } from '../../lib/whatsappLink';
+import { formatAmount, isDiscounted } from '../../../shared/priceFormat';
 
 interface CourseHeroSectionProps {
   course: Course;
@@ -106,17 +107,17 @@ export const CourseHeroSection: React.FC<CourseHeroSectionProps> = ({
                 <div className="mb-6 text-center border-b pb-4 border-gray-100">
                   {currentPrice > 0 ? (
                   <>
-                  {strikePrice > payPrice && (
-                    <p className="text-gray-400 text-sm line-through mb-1">{content['courseDetails.price.originalLabel'] || 'السعر الرسمي:'} {strikePrice} {currencySymbol}</p>
+                  {isDiscounted(strikePrice, payPrice) && (
+                    <p className="text-gray-400 text-sm line-through mb-1">{content['courseDetails.price.originalLabel'] || 'السعر الرسمي:'} {formatAmount(strikePrice)} {currencySymbol}</p>
                   )}
                   <div className="flex justify-center items-center gap-3">
-                      <span className="text-4xl font-extrabold text-primary-600">{payPrice} <span className="text-xl">{currencySymbol}</span></span>
+                      <span className="text-4xl font-extrabold text-primary-600">{formatAmount(payPrice)} <span className="text-xl">{currencySymbol}</span></span>
                   </div>
                   {applicableDiscount ? (
                     <span className="bg-red-100 text-red-600 text-xs font-bold px-3 py-1 rounded-full mt-2 inline-block">
                       خصم {applicableDiscount.discountPercent}%{applicableDiscount.label ? ` — ${applicableDiscount.label}` : ''}
                     </span>
-                  ) : strikePrice > payPrice ? (
+                  ) : isDiscounted(strikePrice, payPrice) ? (
                     <span className="bg-red-100 text-red-600 text-xs font-bold px-3 py-1 rounded-full mt-2 inline-block">{content['courseDetails.price.discountBadge'] || 'خصم لفترة محدودة'}</span>
                   ) : null}
                   </>

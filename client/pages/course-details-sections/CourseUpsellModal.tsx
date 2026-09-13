@@ -4,6 +4,7 @@ import { X, Gift } from 'lucide-react';
 import { Modal } from '../../../shared/ui/Modal';
 import type { Bundle, Currency } from '../../types';
 import { cdnImg } from '../../lib/img';
+import { formatPrice } from '../../../shared/priceFormat';
 
 interface CourseUpsellModalProps {
   courseTitle: string;
@@ -44,7 +45,7 @@ export const CourseUpsellModal: React.FC<CourseUpsellModalProps> = ({ courseTitl
                     <img loading="lazy" decoding="async" src={cdnImg(b.thumbnail, 160)} alt="" className="w-14 h-12 object-cover rounded-lg flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-gray-800 text-sm line-clamp-1">{b.title}</p>
-                      <p className="text-primary-600 font-extrabold text-sm">{b.price?.[currency]} {currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$'}</p>
+                      <p className="text-primary-600 font-extrabold text-sm">{formatPrice(b.price?.[currency], currency)} {currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$'}</p>
                     </div>
                     <Link to={`/bundle/${b.id}`} onClick={onClose} className="bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition flex-shrink-0">
                       عرض

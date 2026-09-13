@@ -1,5 +1,6 @@
 import React from 'react';
 import { Check, Send } from 'lucide-react';
+import { formatAmount, isDiscounted } from '../../../shared/priceFormat';
 
 interface MobileStickyCtaProps {
   currentPrice: number;
@@ -31,10 +32,10 @@ export const MobileStickyCta: React.FC<MobileStickyCtaProps> = ({
            <div className="flex-shrink-0">
                {currentPrice > 0 ? (
                  <>
-                   {strikePrice > payPrice && (
-                     <p className="text-xs text-gray-500 line-through">{strikePrice} {currencySymbol}</p>
+                   {isDiscounted(strikePrice, payPrice) && (
+                     <p className="text-xs text-gray-500 line-through">{formatAmount(strikePrice)} {currencySymbol}</p>
                    )}
-                   <p className="text-lg font-bold text-primary-700">{payPrice} {currencySymbol}</p>
+                   <p className="text-lg font-bold text-primary-700">{formatAmount(payPrice)} {currencySymbol}</p>
                  </>
                ) : <p className="text-xs font-bold text-amber-700">السعر غير متاح</p>}
            </div>

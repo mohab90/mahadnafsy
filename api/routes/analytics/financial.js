@@ -5,7 +5,7 @@ const router  = express.Router();
 
 const { pool } = require('../../lib/db');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
-const { logFinancialAudit, postExpenseJournal } = require('../../lib/finance');
+const { getVatPercent, logFinancialAudit, postExpenseJournal } = require('../../lib/finance');
 const { assertWritable } = require('../../lib/periodLock');
 const { bulkOperationLimiter } = require('../../middleware/rateLimits');
 const { resolveFinancialScope } = require('../../lib/financialScope');
@@ -416,7 +416,7 @@ router.get('/api/admin/financial/vat-summary', requireAuth, requireAdminOrStaff,
       JOIN journal_entry_lines jel ON jel.entry_id=je.id AND jel.account_code LIKE '4%'
       WHERE je.tenant_id=? AND je.entry_date BETWEEN ? AND ?${journalScopeSql}`,
     scope.branchId ? [req.tenantId, from, to, scope.branchId] : [req.tenantId, from, to]);
-    const configuredVatRate = Number(await getTenantSetting('vat_pct', { tenantId: req.tenantId, fallback: 0 })) || 0;
+    const configuredVatRate = await getVatPercent(req.tenantId);
     const grossRevenue = Number(rev.revenue) || 0;
     const estimatedOutputVat = configuredVatRate > 0
       ? grossRevenue - (grossRevenue / (1 + configuredVatRate / 100))
