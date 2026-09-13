@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { cairoDateOnly } from '../../../shared/cairoDate';
 import { Award, Star, Play } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { mysqlClient } from '../../lib/mysqlapi';
@@ -101,7 +102,7 @@ export const CertificatesTab: React.FC<CertificatesTabProps> = ({
       nationality: extraCertNationality,
       idNumber: extraCertIdNumber.trim() || undefined,
       status: 'pending',
-      requestedAt: new Date().toISOString().slice(0, 10),
+      requestedAt: cairoDateOnly(),
       note: extraCertNote || undefined,
     };
 

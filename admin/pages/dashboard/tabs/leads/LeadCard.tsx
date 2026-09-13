@@ -5,6 +5,7 @@
 // import from it are untouched.
 
 import { Clock, ExternalLink, Phone, Wallet } from 'lucide-react';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import type { LeadItem, LeadStatus, Course, Bundle } from '../../../../types';
 import WhatsAppLink from './WhatsAppLink';
 import { courseBadgeLabel, isRawCourse } from './leadCourseLabel';
@@ -40,7 +41,7 @@ export function LeadCard({ lead, score, onSelect, onStatusChange, onBook, onCont
   courses: Course[];
   bundles: Bundle[];
 }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = cairoDateOnly();
   const isOverdue = !!(lead.nextFollowUpDate && lead.nextFollowUpDate < today);
   const daysOverdue = isOverdue
     ? Math.floor((Date.now() - new Date(lead.nextFollowUpDate!).getTime()) / 86_400_000)

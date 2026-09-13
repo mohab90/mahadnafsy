@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, RefreshCw, Scale } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
@@ -24,7 +25,7 @@ const money = (value: number) =>
   Number(value || 0).toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 2 });
 
 const BalanceSheetTab: React.FC<Props> = ({ notify }) => {
-  const [asOf, setAsOf] = useState(() => new Date().toISOString().slice(0, 10));
+  const [asOf, setAsOf] = useState(() => cairoDateOnly());
   const [sheet, setSheet] = useState<BalanceSheet | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -95,7 +96,7 @@ const BalanceSheetTab: React.FC<Props> = ({ notify }) => {
             <input
               type="date"
               value={asOf}
-              max={new Date().toISOString().slice(0, 10)}
+              max={cairoDateOnly()}
               onChange={(event) => setAsOf(event.target.value)}
               className="mr-2 rounded-xl border border-white/30 bg-white/15 px-3 py-2 text-white"
             />

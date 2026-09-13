@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 import { fxRates, toEgp } from '../../../lib/money';
 import type { ConsultationItem, Course, LeadItem, LeadStats, OrderItem, StaffMember, SubscriberItem } from '../../../types';
 
@@ -60,7 +61,7 @@ export function useOverviewDerived(
       .filter(l => { if (seenIds.has(l.id)) return false; seenIds.add(l.id); return true; })
       .slice(0, 5);
     // Today stats
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = cairoDateOnly();
     const todayRevenue = paidOrders
       .filter(o => (o.createdAt || '').slice(0, 10) === todayStr)
       .reduce((sum, o) => sum + toEGP(o), 0)

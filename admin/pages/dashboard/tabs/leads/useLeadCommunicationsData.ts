@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import type { LeadItem, LeadStatus, StaffMember } from '../../../../types';
 
 export interface LeadCommunicationFilter {
@@ -39,7 +40,7 @@ export function useLeadCommunicationsData(
   salesReps: StaffMember[],
 ) {
   return useMemo(() => {
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = cairoDateOnly();
     const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
 
     const allComms: LeadCommunicationEntry[] = effectiveLeads.flatMap((lead) =>

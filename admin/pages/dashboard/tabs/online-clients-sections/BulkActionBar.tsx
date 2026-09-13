@@ -1,4 +1,5 @@
 import React from 'react';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { Modal } from '../../../../../shared/ui/Modal';
 import type { Course, StaffMember, SubscriberItem } from '../../../../types';
 import { paymentAmountInEGP } from '../onlineClientsUtils';
@@ -52,7 +53,7 @@ export function BulkActionBar({
               return [s.name,s.phone,s.email,s.branch||'',crs,s.clientStatus||s.status||'',paid,Math.max(0,(Number(s.totalValue)||0)-paid),s.clientCode||''].map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(',');
             }).join('\n');
             const blob = new Blob(['﻿'+header+csvRows],{type:'text/csv;charset=utf-8;'});
-            const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`selected-clients-${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(a.href);
+            const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`selected-clients-${cairoDateOnly()}.csv`;a.click();URL.revokeObjectURL(a.href);
           }} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition">📥 تصدير CSV</button>
           <button onClick={() => setCollOnlineSelected(new Set())} className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-xs font-bold hover:bg-gray-300 transition">✕ إلغاء</button>
         </div>

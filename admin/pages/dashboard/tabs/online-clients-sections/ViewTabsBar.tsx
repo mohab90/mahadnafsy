@@ -1,4 +1,5 @@
 import React from 'react';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { Download, Plus, Users } from 'lucide-react';
 import type { Bundle, Course, StaffMember, SubscriberItem } from '../../../../types';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
@@ -117,7 +118,7 @@ export function ViewTabsBar({
                     return [s.name,s.phone,s.email,s.branch||'',crs,s.clientStatus||s.status||'',paid,Math.max(0,total-paid),hInfo?.roundCode||'',hInfo?.receptionName||'',(s.createdAt||'').slice(0,10),s.clientCode||''].map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(',');
                   }).join('\n');
                   const blob = new Blob(['﻿'+header+rows],{type:'text/csv;charset=utf-8;'});
-                  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`daqqi-clients-${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(a.href);
+                  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`daqqi-clients-${cairoDateOnly()}.csv`;a.click();URL.revokeObjectURL(a.href);
                   setDaqqiSettingsOpen(false);
                 }} className="w-full text-right px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2">
                   <Download size={12}/> تصدير CSV

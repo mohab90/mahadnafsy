@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 import {
   Bell, Phone, MessageSquare, Clock, 
   User, 
@@ -29,7 +30,7 @@ const STATUS_COLORS: Partial<Record<LeadStatus, string>> = {
   with_colleague: 'bg-purple-50 text-purple-700',
 };
 
-const TODAY = new Date().toISOString().slice(0, 10);
+const TODAY = cairoDateOnly();
 const TOMORROW = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
 const WEEK = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
 

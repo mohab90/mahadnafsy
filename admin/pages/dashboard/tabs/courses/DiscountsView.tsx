@@ -4,7 +4,7 @@ import { DiscountRule } from '../../../../types';
 import { useStaticData } from '../../../../context/siteDataSlices';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
-import { isExpiryActive } from '../../../../../shared/cairoDate';
+import { isExpiryActive, cairoDateOnly } from '../../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type PromoCode = { id: string; code: string; discount_type: 'percent' | 'fixed'; discount_value: number; min_order_amount: number; max_uses: number | null; used_count: number; expires_at: string | null; active: number };
@@ -368,7 +368,7 @@ export function DiscountsView({ notify, policyDrafts, setPolicyDrafts }: Props) 
                 </thead>
                 <tbody>
                   {promoCodes.map(pc => {
-                    const isExpired = pc.expires_at && pc.expires_at < new Date().toISOString().slice(0, 10);
+                    const isExpired = pc.expires_at && pc.expires_at < cairoDateOnly();
                     const isFull = pc.max_uses != null && pc.used_count >= pc.max_uses;
                     return (
                       <tr key={pc.id} className="border-b border-gray-50 hover:bg-gray-50 transition">

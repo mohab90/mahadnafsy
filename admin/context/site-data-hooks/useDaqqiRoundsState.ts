@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { cairoDateOnly } from '../../../shared/cairoDate';
 import type { MutableRefObject } from 'react';
 import type { DaqqiRound } from '../../types';
 import { mysqlAdmin } from '../../lib/mysqlapi';
@@ -101,7 +102,7 @@ export function useDaqqiRoundsState(
             return { ...round, attendees: round.attendees.filter((row) => row.subscriberId !== subscriberId) };
           }
           if (round.id === toRoundId) {
-            return { ...round, attendees: [...round.attendees, { ...attendee, bookedAt: new Date().toISOString().slice(0, 10) }] };
+            return { ...round, attendees: [...round.attendees, { ...attendee, bookedAt: cairoDateOnly() }] };
           }
           return round;
         });

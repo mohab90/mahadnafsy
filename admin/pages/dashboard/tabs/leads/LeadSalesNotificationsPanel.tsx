@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { Modal } from '../../../../../shared/ui/Modal';
 
 import type { LeadItem, LeadStatus, StaffMember } from '../../../../types';
@@ -97,7 +98,7 @@ export function LeadSalesNotificationsPanel({
   const { isAdmin } = useSiteData();
   if (!open) return null;
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = cairoDateOnly();
   // Read from the context rather than taken as a prop: neither caller had it to
   // hand, and a rule about who you are belongs where that is known.
   const isNonAdminStaff = !isAdmin && !!currentStaff;

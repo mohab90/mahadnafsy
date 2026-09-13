@@ -4,6 +4,7 @@
  * triggers a browser download. UTF-8 BOM prefix keeps Arabic readable in Excel.
  */
 import type { OrderItem, SubscriberItem, Bundle, Course } from '../../types';
+import { cairoDateOnly } from '../../../shared/cairoDate';
 
 function csvEscape(value: string | number | undefined): string {
   return `"${String(value ?? '').replace(/"/g, '""')}"`;
@@ -15,7 +16,7 @@ function downloadCsv(rows: (string | number | undefined)[][], filename: string):
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `${filename}-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `${filename}-${cairoDateOnly()}.csv`;
   document.body.appendChild(link);
   link.click();
   link.remove();

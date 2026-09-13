@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 import { FileText, Loader2, Plus, Save, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
@@ -16,7 +17,7 @@ export default function JournalEntriesTab({ notify }: { notify: NotifyFn }) {
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState({
-    date: new Date().toISOString().slice(0, 10),
+    date: cairoDateOnly(),
     description: '',
     lines: [
       { account_code: '', account_name: '', debit: '', credit: '' },
@@ -65,7 +66,7 @@ export default function JournalEntriesTab({ notify }: { notify: NotifyFn }) {
       await mysqlAdmin.adminPost('/admin/accounting/journal-entries', { date: draft.date, description: draft.description, lines: validLines });
       notify('success', 'تم ترحيل قيد اليومية');
       setShowAdd(false);
-      setDraft({ date: new Date().toISOString().slice(0, 10), description: '', lines: [{ account_code: '', account_name: '', debit: '', credit: '' }, { account_code: '', account_name: '', debit: '', credit: '' }] });
+      setDraft({ date: cairoDateOnly(), description: '', lines: [{ account_code: '', account_name: '', debit: '', credit: '' }, { account_code: '', account_name: '', debit: '', credit: '' }] });
       await load();
     } catch (error: any) {
       notify('error', error?.error || 'فشل حفظ القيد');

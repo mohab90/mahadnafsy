@@ -3,6 +3,7 @@
  * Based on DaqqiScheduleTab design. Used in all payment locations.
  */
 import React, { useState } from 'react';
+import { cairoDateOnly } from '../../shared/cairoDate';
 import { CreditCard, X } from 'lucide-react';
 import { useStaticData } from '../context/siteDataSlices';
 import type {
@@ -66,7 +67,7 @@ export const blankPaymentDraft = (opts?: {
   paymentMethod: '',
   transactionId: '',
   fromAccountNumber: '',
-  date: new Date().toISOString().slice(0, 10),
+  date: cairoDateOnly(),
   note: '',
   extraItems: [],
   branch: opts?.branch,

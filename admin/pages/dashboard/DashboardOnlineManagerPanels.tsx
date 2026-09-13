@@ -1,4 +1,5 @@
 import { AlarmClock, Banknote } from 'lucide-react';
+import { cairoDateOnly } from '../../../shared/cairoDate';
 import { Modal } from '../../../shared/ui/Modal';
 import type { InstallmentEntry, InstallmentPlan, PaymentHistoryEntry, SubscriberItem } from '../../types';
 import type { TabKey } from './navigation';
@@ -68,7 +69,7 @@ function OnlineManagerFollowupPanel({
   onClose: () => void;
   onOpenOnlineClients: () => void;
 }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = cairoDateOnly();
   const soon = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const overdueEntries: OverdueEntry[] = [];
   const upcomingEntries: OverdueEntry[] = [];

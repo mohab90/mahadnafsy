@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { BadgePercent, Gift, Plus, Sparkles, Trash2, X } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 import { BRANCH_LABELS_AR } from '../../../../constants/branches';
@@ -188,7 +189,7 @@ export default function SalesOffersPanel({
   };
 
   const active = offers.filter(o => o.isActive
-    && (!o.endsOn || o.endsOn >= new Date().toISOString().slice(0, 10)));
+    && (!o.endsOn || o.endsOn >= cairoDateOnly()));
   const inactive = offers.filter(o => !active.includes(o));
 
   return (

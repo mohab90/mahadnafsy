@@ -1,4 +1,5 @@
 import React from 'react';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 import { Modal } from '../../../../shared/ui/Modal';
 import { ExternalLink, Eye, EyeOff, Phone, Trash2, Wallet } from 'lucide-react';
 import { useResizableCols } from '../../../components/useResizableCols';
@@ -452,7 +453,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                   {/* ── Next Follow-Up Date ── */}
                   <td className="px-3 py-2 border border-gray-200 text-xs whitespace-nowrap" style={{ width: leadsCol.colWidth('followup') }}>
                     {row.nextFollowUpDate ? (() => {
-                      const td = new Date().toISOString().slice(0, 10);
+                      const td = cairoDateOnly();
                       const isOverdue = row.nextFollowUpDate < td;
                       const isToday = row.nextFollowUpDate === td;
                       return (

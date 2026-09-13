@@ -1,4 +1,5 @@
 import React from 'react';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import type { Course, PaymentHistoryEntry, SubscriberItem } from '../../../../types';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import OldDataImportPanel from '../online/OldDataImportPanel';
@@ -126,7 +127,7 @@ export function OldDataImportSection({
                   isInstallment: false,
                   courseId: matchedCourse.id,
                   courseExpected: expected || undefined,
-                  at: new Date().toISOString().slice(0, 10),
+                  at: cairoDateOnly(),
                 });
               }
               await mysqlAdmin.saveSubscriber({

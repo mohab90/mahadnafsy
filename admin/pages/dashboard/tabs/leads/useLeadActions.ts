@@ -1,4 +1,5 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 
 import type { PaymentDraft } from '../../../../components/PaymentModal';
 import { currencyForBranch } from '../../../../lib/branchCurrency';
@@ -73,7 +74,7 @@ const downloadLeadsCsv = (leads: LeadItem[]) => {
   ));
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
+  anchor.download = `leads-${cairoDateOnly()}.csv`;
   anchor.click();
   URL.revokeObjectURL(url);
 };

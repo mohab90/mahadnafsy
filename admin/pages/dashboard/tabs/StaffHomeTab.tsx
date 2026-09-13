@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 import {
   User, TrendingUp, Clock, CheckCircle, Activity, Calendar,
   Phone, UserCheck, Star, ArrowLeft, Bell, FileText,
@@ -77,7 +78,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
     branchOptions: { id: string; label: string }[];
   }>({ courses: [], bundles: [], branchOptions: [] });
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = cairoDateOnly();
   const thisMonth = new Date().toISOString().slice(0, 7);
 
   // ── Derived stats ───────────────────────────────────────────────────────

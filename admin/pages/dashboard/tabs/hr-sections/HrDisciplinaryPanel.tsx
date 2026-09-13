@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { Gavel, Plus, Trash2, Check, ShieldAlert } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { StaffMember } from '../../../../types';
@@ -50,7 +51,7 @@ const STATUS_LABEL: Record<string, string> = {
   resolved: 'منتهية',
 };
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => cairoDateOnly();
 const emptyDraft = () => ({
   staff_id: '', type: 'written_warning', severity: 'medium',
   title: '', description: '', incident_date: today(), action_taken: '',

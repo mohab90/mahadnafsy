@@ -4,6 +4,7 @@
 // Lifted out of HRTab.tsx with its own state — the month, the summary rows and
 // both modals were read by this tab and nothing else.
 import { useCallback, useEffect, useState } from 'react';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { Modal } from '../../../../../shared/ui/Modal';
 import { X, Plus, Calendar, Clock, Upload } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
@@ -31,7 +32,7 @@ export default function HrAttendancePanel({ notify, staff }: {
   const [attSummary, setAttSummary] = useState<AttendanceSummaryRow[]>([]);
   const [loadingAtt, setLoadingAtt] = useState(false);
   const [showManualEntry, setShowManualEntry] = useState(false);
-  const [manualEntry, setManualEntry] = useState({ staff_id: '', date: new Date().toISOString().slice(0, 10), check_in: '', check_out: '', status: 'PRESENT', notes: '' });
+  const [manualEntry, setManualEntry] = useState({ staff_id: '', date: cairoDateOnly(), check_in: '', check_out: '', status: 'PRESENT', notes: '' });
   const [showCsvImport, setShowCsvImport] = useState(false);
   const [csvText, setCsvText] = useState('');
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number; errors: string[] } | null>(null);
@@ -56,7 +57,7 @@ export default function HrAttendancePanel({ notify, staff }: {
       if (res.ok) {
         notify('success', 'تم تسجيل الحضور ✅');
         setShowManualEntry(false);
-        setManualEntry({ staff_id: '', date: new Date().toISOString().slice(0, 10), check_in: '', check_out: '', status: 'PRESENT', notes: '' });
+        setManualEntry({ staff_id: '', date: cairoDateOnly(), check_in: '', check_out: '', status: 'PRESENT', notes: '' });
         fetchAttendanceSummary();
       } else { const d = await res.json(); notify('error', d.error || 'فشل التسجيل'); }
     } catch { notify('error', 'خطأ في الاتصال'); }

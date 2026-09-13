@@ -1,4 +1,5 @@
 import React from 'react';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { Plus, Wallet } from 'lucide-react';
 import type { ExpenseItem } from '../../../../types';
 import { ExpenseForm } from './ExpenseForm';
@@ -89,7 +90,7 @@ export function FinancialExpensesPanel({
   <article className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
             <div className="flex items-center justify-between gap-2">
               <h4 className="font-bold text-gray-800 flex items-center gap-2"><Wallet size={16} className="text-red-500" />سجل المصروفات</h4>
-              <button onClick={() => { setIsExpenseFormOpen(v => !v); setEditingExpenseId(''); setExpenseDraft({ category: 'أخرى', description: '', amount: 0, currency: 'EGP', date: new Date().toISOString().slice(0,10), receiptUrl: '' }); }} className="flex items-center gap-1.5 bg-primary-600 text-white px-3 py-2 rounded-xl text-sm font-bold"><Plus size={14}/>{isExpenseFormOpen ? 'إغلاق' : 'إضافة مصروف'}</button>
+              <button onClick={() => { setIsExpenseFormOpen(v => !v); setEditingExpenseId(''); setExpenseDraft({ category: 'أخرى', description: '', amount: 0, currency: 'EGP', date: cairoDateOnly(), receiptUrl: '' }); }} className="flex items-center gap-1.5 bg-primary-600 text-white px-3 py-2 rounded-xl text-sm font-bold"><Plus size={14}/>{isExpenseFormOpen ? 'إغلاق' : 'إضافة مصروف'}</button>
             </div>
             {isExpenseFormOpen && (
               <ExpenseForm

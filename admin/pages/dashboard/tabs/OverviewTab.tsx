@@ -1,4 +1,5 @@
 import React, { Suspense, useEffect, useState } from 'react';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 import {
   Activity, AlertCircle, BarChart3, BookOpen, Briefcase,
   CalendarCheck2, Clock, CreditCard, MessageSquareText, Percent,
@@ -135,7 +136,7 @@ export default function OverviewTab({
                 const myCommission = myCommRate > 0 ? Math.round(myRevenueSubs.thisMonth * myCommRate / 100) : 0;
 
                 // Weekly call trend (last 7 days)
-                const todayStr = new Date().toISOString().slice(0, 10);
+                const todayStr = cairoDateOnly();
                 const thisMonthStr = new Date().toISOString().slice(0, 7);
                 const last7Days = Array.from({ length: 7 }, (_, i) => {
                   const d = new Date(); d.setDate(d.getDate() - (6 - i));

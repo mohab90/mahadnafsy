@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 import { useNavigate } from 'react-router-dom';
 import {
  CalendarDays,
@@ -251,7 +252,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
         const paid = (s.paymentHistory || [])
           .filter(p => p.currency === 'EGP' && (!p.status || p.status === 'paid') && (!p.courseId || p.courseId === chosenCourseId))
           .reduce((sum, p) => sum + Number(p.amount), 0);
-        return { subscriberId: s.id, name: s.name, phone: s.phone, bookedAt: s.createdAt || new Date().toISOString().slice(0,10), amountPaid: paid };
+        return { subscriberId: s.id, name: s.name, phone: s.phone, bookedAt: s.createdAt || cairoDateOnly(), amountPaid: paid };
       }),
     ];
     if (!await doUpdateRound({ ...round, attendees: newAttendees })) {
@@ -423,7 +424,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
     const paid = (sub.paymentHistory || []).reduce((sum, p) => (
       p.currency === 'EGP' && (!p.status || p.status === 'paid') ? sum + Number(p.amount) : sum
     ), 0);
-    const newAttendee = { subscriberId: sub.id, name: sub.name, phone: sub.phone, bookedAt: new Date().toISOString().slice(0, 10), amountPaid: paid };
+    const newAttendee = { subscriberId: sub.id, name: sub.name, phone: sub.phone, bookedAt: cairoDateOnly(), amountPaid: paid };
     if (!await doUpdateRound({ ...round, attendees: [...round.attendees, newAttendee] })) {
       notify('error', 'تعذر تسكين العميل في الروند.');
       return;
@@ -491,7 +492,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
     if (!sub) return;
     const rec: CommunicationRecord = {
       id: `dq-comm-${Date.now()}`, type,
-      date: new Date().toISOString().slice(0, 10), notes: note.trim(),
+      date: cairoDateOnly(), notes: note.trim(),
     };
     const saved = await updateSubscriber({ ...sub, communications: [...(sub.communications ?? []), rec] });
     if (!saved) {

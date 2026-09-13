@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 import { ChevronDown, ChevronRight, Download } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 
@@ -102,7 +103,7 @@ export default function DaqqiAttendanceTab({ notify }: { notify: (msg: string, t
       const blob = await r.blob();
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `daqqi_attendance_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `daqqi_attendance_${cairoDateOnly()}.csv`;
       a.click();
     } catch {
       notifyRef.current('فشل تصدير CSV', 'error');

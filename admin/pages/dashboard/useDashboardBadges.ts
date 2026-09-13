@@ -1,4 +1,5 @@
 import React from 'react';
+import { cairoDateOnly } from '../../../shared/cairoDate';
 import type { LeadItem, SubscriberItem, StaffMember } from '../../types';
 
 interface DashboardBadgesArgs {
@@ -21,7 +22,7 @@ export function useDashboardBadges({
   currentStaff, isNonAdminStaff, isOnlineManager, leads, salesOwnLeads, subscribers, salesOwnSubscribers,
 }: DashboardBadgesArgs) {
   // Badge count for staff notification bell (overdue + today followup leads)
-  const _staffNotifTodayStr = new Date().toISOString().slice(0, 10);
+  const _staffNotifTodayStr = cairoDateOnly();
   const staffNotifBadge = currentStaff ? (isNonAdminStaff ? salesOwnLeads : leads).filter(l =>
     !['converted', 'lost'].includes(l.status) && l.nextFollowUpDate && l.nextFollowUpDate <= _staffNotifTodayStr
   ).length : 0;
@@ -29,7 +30,7 @@ export function useDashboardBadges({
   // Online manager: collection/installment follow-up badge
   const onlineMgrFollowupBadge = React.useMemo(() => {
     if (!isOnlineManager) return 0;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = cairoDateOnly();
     const subs = isNonAdminStaff ? salesOwnSubscribers : subscribers;
     let count = 0;
     for (const sub of subs) {

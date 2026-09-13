@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 import { AlertCircle, CheckCircle, Copy, Edit2, Play, Plus, Save, Settings, Trash2, Zap } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { useBranches } from '../../../hooks/useBranches';
@@ -170,7 +171,7 @@ const AutomationTab: React.FC<Props> = ({ notify, setActiveTab }) => {
           action: workflowDraft.action as AutomationAction,
           actionConfig: workflowDraft.actionConfig,
           enabled: workflowDraft.enabled,
-          createdAt: new Date().toISOString().slice(0, 10),
+          createdAt: cairoDateOnly(),
           triggerCount: 0,
         });
       }

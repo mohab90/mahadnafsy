@@ -1,4 +1,5 @@
 import type { Bundle, Course, DaqqiDayOfWeek, DaqqiTimeSlot } from '../../../../types';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 
 export type DaqqiDraftType = {
   courseId: string;
@@ -16,7 +17,7 @@ export const blankDaqqiDraft = (): DaqqiDraftType => ({
   receptionId: '',
   roomId: '',
   dayOfWeek: 'الأحد' as DaqqiDayOfWeek,
-  startDate: new Date().toISOString().slice(0, 10),
+  startDate: cairoDateOnly(),
   timeSlot: 'مساءً' as DaqqiTimeSlot,
 });
 

@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 import {
   Plus, TrendingUp,
 } from 'lucide-react';
@@ -74,7 +75,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   // Expense management state
   const [expenseDraft, setExpenseDraft] = useState<Omit<ExpenseItem, 'id' | 'createdAt'>>({
     category: 'أخرى', description: '', amount: 0, currency: 'EGP',
-    date: new Date().toISOString().slice(0, 10), receiptUrl: '',
+    date: cairoDateOnly(), receiptUrl: '',
   });
   const [editingExpenseId, setEditingExpenseId] = useState('');
   const [isExpenseFormOpen, setIsExpenseFormOpen] = useState(false);
@@ -132,7 +133,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   React.useEffect(() => {
     let active = true;
     setLedgerLoading(true);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = cairoDateOnly();
     const filteredFrom = globalDateFrom || '2000-01-01';
     const filteredTo = globalDateTo || today;
     Promise.all([
@@ -236,7 +237,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
     );
   };
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = cairoDateOnly();
   const subscribersWithPlans = subscribers.filter(s => (s.installmentPlans?.length ?? 0) > 0);
 
   const fxUpdatedAt = new Date(content['exchange.updated_at'] || '').getTime();
@@ -429,7 +430,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
             <Plus size={14} /> إضافة دخل
           </button>
           <button
-            onClick={() => { setFinancialSubTab('expenses'); setIsExpenseFormOpen(true); setEditingExpenseId(''); setExpenseDraft({ category: 'أخرى', description: '', amount: 0, currency: 'EGP', date: new Date().toISOString().slice(0, 10), receiptUrl: '' }); }}
+            onClick={() => { setFinancialSubTab('expenses'); setIsExpenseFormOpen(true); setEditingExpenseId(''); setExpenseDraft({ category: 'أخرى', description: '', amount: 0, currency: 'EGP', date: cairoDateOnly(), receiptUrl: '' }); }}
             className="flex items-center gap-1.5 bg-red-600 text-white px-3 py-2 rounded-xl text-sm font-bold hover:bg-red-700 transition">
             <Plus size={14} /> إضافة مصروف
           </button>

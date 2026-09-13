@@ -1,4 +1,5 @@
 import { Download, Eye, Search } from 'lucide-react';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { BRANCHES, BRANCH_LABELS_AR } from '../../../../constants/branches';
 import type { Bundle, Course, DaqqiRound, StaffMember, SubscriberItem } from '../../../../types';
 import { paymentAmountInEGP } from '../onlineClientsUtils';
@@ -165,7 +166,7 @@ export function FiltersToolbar({
               return [s.name,s.phone,s.email,s.branch||'',crs,s.clientStatus||s.status||'',paid,Math.max(0,total-paid),agent,(s.createdAt||'').slice(0,10),s.clientCode||''].map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(',');
             }).join('\n');
             const blob = new Blob(['﻿'+header+rows],{type:'text/csv;charset=utf-8;'});
-            const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`online-clients-${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(a.href);
+            const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`online-clients-${cairoDateOnly()}.csv`;a.click();URL.revokeObjectURL(a.href);
           }} className="flex items-center gap-1.5 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition" title={collOnlineSelected.size>0?`تصدير ${collOnlineSelected.size} محدد`:'تصدير كل النتائج'}>
             <Download size={13}/> {collOnlineSelected.size>0?`تصدير (${collOnlineSelected.size})`:'تصدير CSV'}
           </button>

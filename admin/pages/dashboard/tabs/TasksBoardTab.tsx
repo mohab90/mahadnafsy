@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 import {
   CheckSquare, Plus, X, Trash2, 
   User, Calendar, Check,
@@ -36,7 +37,7 @@ const COLUMNS: { key: Column; label: string; color: string; dotColor: string }[]
   { key: 'done',       label: 'مكتمل',        color: 'border-green-400', dotColor: 'bg-green-500' },
 ];
 
-const TODAY = new Date().toISOString().slice(0, 10);
+const TODAY = cairoDateOnly();
 
 interface Props { notify: NotifyFn; }
 

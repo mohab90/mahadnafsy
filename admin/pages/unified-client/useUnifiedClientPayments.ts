@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { cairoDateOnly } from '../../../shared/cairoDate';
 import type { PaymentDraft } from '../../components/PaymentModal';
 import { currencyForBranch, currencyLabel } from '../../lib/branchCurrency';
 import { createClientPaymentDraft } from '../../lib/clientActionDrafts';
@@ -36,7 +37,7 @@ export interface UnifiedClientBooking {
   discount?: number;
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => cairoDateOnly();
 
 function persistenceError(field: string, error: unknown) {
   window.dispatchEvent(new CustomEvent('site-persist-error', {

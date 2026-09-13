@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useCallback } from 'react';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 import {
   Megaphone, Users, TrendingUp, Mail, Zap, BarChart3,
   UserPlus, Globe, Bell, Tag, Star, ArrowUpRight, ArrowDownRight,
@@ -21,7 +22,7 @@ type SubTab = 'overview' | 'leads' | 'discounts' | 'campaigns' | 'notifications_
 interface Props { notify: NotifyFn; }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-const TODAY = new Date().toISOString().slice(0, 10);
+const TODAY = cairoDateOnly();
 const MONTH = new Date().toISOString().slice(0, 7);
 
 function getRangeStart(range: TimeRange): string {

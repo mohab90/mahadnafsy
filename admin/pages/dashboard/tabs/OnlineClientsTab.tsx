@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 import { Modal } from '../../../../shared/ui/Modal';
 import { useSearchParams } from 'react-router-dom';
 import { parsePaymentMethods } from '../../../lib/paymentMethods';
@@ -175,9 +176,9 @@ export default function OnlineClientsTab({
   const [convertRefundMethod, setConvertRefundMethod] = useState('');
   const [convertSaving, setConvertSaving] = useState(false);  // New subscriber popup (online manager)
   const [omNewSubOpen, setOmNewSubOpen] = useState(false);
-  const [omNewSubDraft, setOmNewSubDraft] = useState<{name:string;phone:string;email:string;password:string;branch:string;amount:string;currency:'EGP'|'SAR'|'USD';paymentMethod:string;date:string;transactionId:string;note:string;referredBy:string;courses:{courseId:string;accessType:'full'|'limited';videoCount:string;discount:string;customPrice:string}[]}>({ name: '', phone: '', email: '', password: '', branch: '', amount: '', currency: 'EGP', paymentMethod: '', date: new Date().toISOString().slice(0,10), transactionId: '', note: '', referredBy: '', courses: [{courseId:'',accessType:'full',videoCount:'',discount:'',customPrice:''}] });
+  const [omNewSubDraft, setOmNewSubDraft] = useState<{name:string;phone:string;email:string;password:string;branch:string;amount:string;currency:'EGP'|'SAR'|'USD';paymentMethod:string;date:string;transactionId:string;note:string;referredBy:string;courses:{courseId:string;accessType:'full'|'limited';videoCount:string;discount:string;customPrice:string}[]}>({ name: '', phone: '', email: '', password: '', branch: '', amount: '', currency: 'EGP', paymentMethod: '', date: cairoDateOnly(), transactionId: '', note: '', referredBy: '', courses: [{courseId:'',accessType:'full',videoCount:'',discount:'',customPrice:''}] });
   const [omNewSubSaving, setOmNewSubSaving] = useState(false);
-  const omNewSubReset = () => setOmNewSubDraft({name:'',phone:'',email:'',password:'',branch:'',amount:'',currency:'EGP',paymentMethod:'',date:new Date().toISOString().slice(0,10),transactionId:'',note:'',referredBy:'',courses:[{courseId:'',accessType:'full',videoCount:'',discount:'',customPrice:''}]});
+  const omNewSubReset = () => setOmNewSubDraft({name:'',phone:'',email:'',password:'',branch:'',amount:'',currency:'EGP',paymentMethod:'',date:cairoDateOnly(),transactionId:'',note:'',referredBy:'',courses:[{courseId:'',accessType:'full',videoCount:'',discount:'',customPrice:''}]});
   // "تفاصيل" popup for online_clients table
   const [collDetailsRow, setCollDetailsRow] = useState<SubscriberItem | null>(null);
   const [collDetailsDraft, setCollDetailsDraft] = useState<{courseId:string;expected:string;paid:string;createdAt:string}[]>([]);
@@ -337,7 +338,7 @@ export default function OnlineClientsTab({
                 }
                 return true;
               });
-              const todayOnlineStr = new Date().toISOString().slice(0, 10);
+              const todayOnlineStr = cairoDateOnly();
               // Collection financial stats
               const thisWeekStart = (() => { const d=new Date(); d.setDate(d.getDate()-d.getDay()); return d.toISOString().slice(0,10); })();
               const calcPaidEGP = calcSubscribersPaidEGP;
@@ -878,7 +879,7 @@ export default function OnlineClientsTab({
                                       if (convertType === 'daqqi')    { answers.transferToDaqqi = true; }
                                       if (convertType === 'online') {
                                         const { crm_json: _dropCrm2, ...onlineRowClean } = convertRow as SubscriberItem & { crm_json?: unknown };
-                                        const onlineUpdated: SubscriberItem = { ...onlineRowClean, branch: 'ONLINE_EGYPT' as const, clientStatus: 'active' as const, transferDate: new Date().toISOString().slice(0,10) };
+                                        const onlineUpdated: SubscriberItem = { ...onlineRowClean, branch: 'ONLINE_EGYPT' as const, clientStatus: 'active' as const, transferDate: cairoDateOnly() };
                                         if (!await updateSubscriber(onlineUpdated)) throw new Error('فشل حفظ تحويل العميل');
                                         setSalesOwnSubscribers(prev => prev.map(s => s.id === onlineUpdated.id ? onlineUpdated : s));
                                         setConvertRow(null);
@@ -904,7 +905,7 @@ export default function OnlineClientsTab({
                                         ...convertRowClean,
                                         clientStatus: convertType === 'daqqi' ? undefined : convertType,
                                         transferAnswers: answers,
-                                        transferDate: new Date().toISOString().slice(0,10),
+                                        transferDate: cairoDateOnly(),
                                         ...(convertType === 'daqqi' ? { branch: 'DAQQI' as const } : {}),
                                       };
                                       if (!await updateSubscriber(updated)) throw new Error('فشل حفظ حالة العميل');

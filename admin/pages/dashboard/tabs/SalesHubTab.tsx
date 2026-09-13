@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 import {
   TrendingUp, Users, Target, Award, Phone, Mail, Calendar, ChevronRight,
   BarChart3, Star, Clock, CheckCircle, AlertCircle, 
@@ -22,7 +23,7 @@ interface Props {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 const MONTH = new Date().toISOString().slice(0, 7);
-const TODAY = new Date().toISOString().slice(0, 10);
+const TODAY = cairoDateOnly();
 
 function getRangeStart(range: TimeRange): string {
   const d = new Date();

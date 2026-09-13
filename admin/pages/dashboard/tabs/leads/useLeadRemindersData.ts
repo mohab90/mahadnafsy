@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from 'react';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import type React from 'react';
 import type { CommunicationRecord, CrmInsights, LeadItem } from '../../../../types';
 import { calcLeadScore } from '../leadUtils';
@@ -46,7 +47,7 @@ export function useLeadRemindersData({
   setSnoozeIds,
   insights,
 }: UseLeadRemindersDataArgs) {
-  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const todayStr = useMemo(() => cairoDateOnly(), []);
   const next7 = useMemo(() => new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10), []);
 
   const data = useMemo(() => {

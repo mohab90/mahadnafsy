@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 
 import type { CrmInsights, LeadItem, StaffMember } from '../../../../types';
 
@@ -49,7 +50,7 @@ export function useLeadOpsInsights(
     }
 
     const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = cairoDateOnly();
 
     return salesReps.map(rep => {
       const repLeads = leads.filter(lead => lead.assignedSalesId === rep.id);

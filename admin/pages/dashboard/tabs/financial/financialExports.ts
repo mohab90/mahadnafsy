@@ -1,4 +1,5 @@
 import { exportToExcel, exportToPDF, fmtCurrency, fmtDate } from '../../../../lib/exportUtils';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import type { ExpenseItem, OrderItem, SubscriberItem } from '../../../../types';
 
 type ContentMap = Record<string, string>;
@@ -130,7 +131,7 @@ export function exportFullFinancialReport(params: {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `تقرير-مالي-شامل-${new Date().toISOString().slice(0, 10)}.csv`;
+  anchor.download = `تقرير-مالي-شامل-${cairoDateOnly()}.csv`;
   anchor.click();
   URL.revokeObjectURL(url);
 }
@@ -186,7 +187,7 @@ export function exportPaymentsExcelReport(params: {
     { header: 'القناة', key: 'channel', width: 14 },
     { header: 'الموظف', key: 'staff', width: 18 },
     { header: 'ملاحظة', key: 'note', width: 25 },
-  ], { filename: `المدفوعات-${new Date().toISOString().slice(0, 10)}`, title: 'تقرير المدفوعات' });
+  ], { filename: `المدفوعات-${cairoDateOnly()}`, title: 'تقرير المدفوعات' });
 }
 
 export function exportExpensesPdfReport(expenses: ExpenseItem[]) {
@@ -204,7 +205,7 @@ export function exportExpensesPdfReport(expenses: ExpenseItem[]) {
     { header: 'الوصف', key: 'description', width: 40 },
     { header: 'المبلغ', key: 'amount', width: 18 },
   ], {
-    filename: `المصروفات-${new Date().toISOString().slice(0, 10)}`,
+    filename: `المصروفات-${cairoDateOnly()}`,
     title: 'تقرير المصروفات',
     subtitle: `إجمالي: ${expenses.length} بند`,
   });

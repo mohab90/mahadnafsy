@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { CalendarDays, Check, Link2, Phone, Search, Trash2, X } from 'lucide-react';
 import { useSiteData } from '../../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
@@ -44,7 +45,7 @@ export function ConsultationBookingsTab({ notify }: { notify: NotifyFn }) {
   const [localStatus, setLocalStatus] = useState<Record<string, string>>({});
 
   const statusOf = (item: ConsultationItem) => localStatus[item.id] ?? item.status;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = cairoDateOnly();
 
   const rows = useMemo(() => {
     const term = search.trim().toLowerCase();

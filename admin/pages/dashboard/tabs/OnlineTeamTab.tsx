@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 import {
   Monitor, Users, CreditCard, AlertCircle, TrendingUp,
   BarChart3, Target, Calendar, Phone, 
@@ -16,7 +17,7 @@ type SubTab = 'overview' | 'online' | 'collection' | 'targets';
 
 interface Props { notify: NotifyFn; }
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => cairoDateOnly();
 const month = () => new Date().toISOString().slice(0, 7);
 const isOnlineBranch = (branch?: string) => ['ONLINE_EGYPT', 'ONLINE_SAUDI', 'ONLINE_ABROAD'].includes(String(branch || '').toUpperCase());
 

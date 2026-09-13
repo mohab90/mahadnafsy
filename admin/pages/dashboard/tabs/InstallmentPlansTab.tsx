@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 import { CreditCard, Search, ChevronDown, User } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import type { SubscriberItem, InstallmentEntry, InstallmentPlan } from '../../../types';
@@ -7,7 +8,7 @@ type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
 type InstallmentSort = 'dueDate' | 'amount';
 
-const TODAY = new Date().toISOString().slice(0, 10);
+const TODAY = cairoDateOnly();
 
 interface EnrichedEntry {
   entry: InstallmentEntry;

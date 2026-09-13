@@ -1,4 +1,5 @@
 import { DashboardCommunityShell } from './DashboardCommunityShell';
+import { cairoDateOnly } from '../../../shared/cairoDate';
 import { Modal } from '../../../shared/ui/Modal';
 import type { CommunityEventItem, CommunityLibraryItem, CommunityPostItem, CommunityVideoItem } from '../../types';
 import { useCommunityDrafts } from './hooks/useCommunityDrafts';
@@ -195,7 +196,7 @@ export function DashboardCommunityAdminPanel({
                                 const existing = communityPosts.find(p => p.id === editingCommunityPostId);
                                 saved = await updateCommunityPost({ ...existing!, ...communityPostDraft });
                               } else {
-                                saved = await addCommunityPost({ id: `post-${Date.now()}`, ...communityPostDraft, likes: 0, comments: 0, createdAt: new Date().toISOString().slice(0,10), status: 'approved' });
+                                saved = await addCommunityPost({ id: `post-${Date.now()}`, ...communityPostDraft, likes: 0, comments: 0, createdAt: cairoDateOnly(), status: 'approved' });
                               }
                               if (saved) setIsCommunityPostFormOpen(false);
                             }} disabled={!communityPostDraft.title.trim() || !communityPostDraft.body.trim()}

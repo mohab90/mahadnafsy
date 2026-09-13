@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { cairoDateOnly } from '../../../shared/cairoDate';
 import { ListChecks, Plus, RefreshCw, Check, X } from 'lucide-react';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 
@@ -62,7 +63,7 @@ export default function StaffTasksPanel({
   const counts = useMemo(() => ({
     open: tasks.filter(t => t.status === 'todo' || t.status === 'in_progress').length,
     done: tasks.filter(t => t.status === 'done').length,
-    overdue: tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled' && t.due_date && t.due_date.slice(0, 10) < new Date().toISOString().slice(0, 10)).length,
+    overdue: tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled' && t.due_date && t.due_date.slice(0, 10) < cairoDateOnly()).length,
   }), [tasks]);
 
   const addTask = async () => {
@@ -156,7 +157,7 @@ export default function StaffTasksPanel({
         <div className="space-y-2">
           {tasks.map(task => {
             const overdue = task.status !== 'done' && task.status !== 'cancelled'
-              && task.due_date && task.due_date.slice(0, 10) < new Date().toISOString().slice(0, 10);
+              && task.due_date && task.due_date.slice(0, 10) < cairoDateOnly();
             return (
               <div key={task.id} className={`rounded-xl border p-3 ${overdue ? 'border-red-200 bg-red-50/40' : 'border-gray-100'}`}>
                 <div className="flex items-start justify-between gap-3">

@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from 'react';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import type { BranchOption } from '../../../../hooks/useBranches';
 import type { LeadItem, LeadStatus, StaffMember } from '../../../../types';
 import { DEFAULT_SOURCES, isOnlineSource } from '../crmConstants';
@@ -65,7 +66,7 @@ export function useLeadFilteringData({
   instituteBranches,
   pipelineColumns = PIPELINE_COLS,
 }: UseLeadFilteringDataArgs) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = cairoDateOnly();
   const activeLead = selectedId ? (leads.find((lead) => lead.id === selectedId) ?? null) : null;
 
   const assignedReps = useMemo(() => salesReps
@@ -109,7 +110,7 @@ export function useLeadFilteringData({
     !!(lead.name?.trim() || lead.phone?.trim()) &&
     (!salesSourceFilter || (salesSourceFilter === '__none__' ? !lead.source?.trim() : (lead.source || '') === salesSourceFilter)) &&
     (leadsFollowupFilter === 'all' || (() => {
-      const todayDate = new Date().toISOString().slice(0, 10);
+      const todayDate = cairoDateOnly();
       const nextFollowupDate = lead.nextFollowUpDate || '';
       if (leadsFollowupFilter === 'no_followup') return !nextFollowupDate;
       if (!nextFollowupDate) return false;

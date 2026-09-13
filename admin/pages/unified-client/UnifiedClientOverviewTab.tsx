@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { cairoDateOnly } from '../../../shared/cairoDate';
 import { Activity, BookOpen, CheckCircle, Clock, CreditCard, Info, MessageSquare } from 'lucide-react';
 
 import { mysqlAdmin } from '../../lib/mysqlapi';
@@ -205,12 +206,12 @@ export function UnifiedClientOverviewTab({
                             </div>    
                             {lead.nextFollowUpDate && (    
                               <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold ${    
-                                lead.nextFollowUpDate < new Date().toISOString().slice(0,10) ? 'bg-red-100 text-red-700' :    
-                                lead.nextFollowUpDate === new Date().toISOString().slice(0,10) ? 'bg-orange-100 text-orange-700' :    
+                                lead.nextFollowUpDate < cairoDateOnly() ? 'bg-red-100 text-red-700' :    
+                                lead.nextFollowUpDate === cairoDateOnly() ? 'bg-orange-100 text-orange-700' :    
                                 'bg-white/20 text-white'    
                               }`}>    
                                 <Clock size={12} />    
-                                {lead.nextFollowUpDate < new Date().toISOString().slice(0,10)    
+                                {lead.nextFollowUpDate < cairoDateOnly()    
                                   ? `متأخر — ${lead.nextFollowUpDate}`    
                                   : `متابعة: ${lead.nextFollowUpDate}`}    
                               </div>    

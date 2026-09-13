@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 import type { OrderItem } from '../../../types';
 
 /**
@@ -35,7 +36,7 @@ export function useOrdersFinanceState() {
     senderPhone: '',
     reference: '',
     note: '',
-    date: new Date().toISOString().slice(0, 10),
+    date: cairoDateOnly(),
     time: new Date().toTimeString().slice(0, 5),
     status: 'paid' as 'paid' | 'pending',
   });

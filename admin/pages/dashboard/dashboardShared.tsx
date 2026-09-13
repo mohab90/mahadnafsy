@@ -1,4 +1,5 @@
 import React from 'react';
+import { cairoDateOnly } from '../../../shared/cairoDate';
 import { X } from 'lucide-react';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import type { LeadItem, LeadStatus, StaffMember, StaffPermission, PaymentItemType } from '../../types';
@@ -132,7 +133,7 @@ const blankStaffMember = (): StaffMember => ({
   email: '',
   phone: '',
   role: 'sales',
-  joinedAt: new Date().toISOString().slice(0, 10),
+  joinedAt: cairoDateOnly(),
   status: 'active',
   notes: '',
   permissions: [],

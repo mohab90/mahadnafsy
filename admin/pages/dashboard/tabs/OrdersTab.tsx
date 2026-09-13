@@ -1,4 +1,5 @@
 import React from 'react';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 import { parsePaymentMethods } from '../../../lib/paymentMethods';
 import { paymentOrigin, PAYMENT_ORIGIN, PAYMENT_ORIGIN_CLASS } from '../../../lib/paymentOrigin';
 import { useNavigate } from 'react-router-dom';
@@ -167,7 +168,7 @@ export default function OrdersTab({
               const acceptedOm  = filteredOm.filter(p=>p.status!=='pending'&&p.status!=='failed'&&p.status!=='refunded');
               const failedOm    = filteredOm.filter(p=>p.status==='failed'||p.status==='refunded');
               const tabRowsOm = omOrdReviewTab==='review' ? pendingOm : omOrdReviewTab==='accepted' ? acceptedOm : failedOm;
-              const todayOmStr = new Date().toISOString().slice(0,10);
+              const todayOmStr = cairoDateOnly();
               const thisMonthOmStr = new Date().toISOString().slice(0,7);
               const toEGP = (p:{amount:unknown;currency?:string}) => {
                 const n=Number(p.amount)||0;
@@ -344,7 +345,7 @@ export default function OrdersTab({
                 }
                 return true;
               });
-              const todayOrd=new Date().toISOString().slice(0,10);
+              const todayOrd=cairoDateOnly();
               const thisMonthOrd=new Date().toISOString().slice(0,7);
               const sumOrd=(arr:{amount:unknown}[])=>arr.reduce((s,p)=>s+(Number(p.amount)||0),0);
               const confirmedPay=daqqiOrdAllPay.filter(p=>p.status!=='pending');
@@ -388,7 +389,7 @@ export default function OrdersTab({
                       const rows=[['العميل','الكود','الكورس','المبلغ','وسيلة الدفع','الموظف','التاريخ','الحالة','ملاحظة'],...filtered2.map(p=>[p.clientName,p.clientCode,courses.find(c=>c.id===p.courseId)?.title||p.paymentType||'',''+p.amount,p.paymentMethod||'',p.staffName||'',(p.at||'').slice(0,10),p.status==='pending'?'انتظار':'مؤكد',p.note||''])];
                       const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
                       const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
-                      const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`daqqi_payments_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
+                      const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`daqqi_payments_${cairoDateOnly()}.csv`;a.click();URL.revokeObjectURL(url);
                     }} className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700">
                       <Download size={12}/> تصدير CSV
                     </button>
@@ -450,7 +451,7 @@ export default function OrdersTab({
 
   // ── Admin / default view ─────────────────────────────────────────────────
   {
-              const todayStr     = new Date().toISOString().slice(0, 10);
+              const todayStr     = cairoDateOnly();
               const thisMonthStr = new Date().toISOString().slice(0, 7);
               const toEGP = (r: { amount: number; currency?: string }) =>
                 toEgp(r.amount, r.currency);
@@ -622,7 +623,7 @@ export default function OrdersTab({
                     <div className="flex-1" />
                     {/* ── Add Transfer Button ── */}
                     <button onClick={() => {
-                      setTransferForm({ amount: '', currency: 'EGP', method: '', senderName: '', senderPhone: '', reference: '', note: '', date: new Date().toISOString().slice(0,10), time: new Date().toTimeString().slice(0,5), status: 'paid' });
+                      setTransferForm({ amount: '', currency: 'EGP', method: '', senderName: '', senderPhone: '', reference: '', note: '', date: cairoDateOnly(), time: new Date().toTimeString().slice(0,5), status: 'paid' });
                       setShowAddTransfer(true);
                     }}
                       className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-4 py-2 rounded-full shadow-md shadow-blue-200 transition">
@@ -814,7 +815,7 @@ export default function OrdersTab({
                                       <div className="flex flex-col items-center gap-2">
                                         <ArrowUpRight size={28} className="text-gray-200" />
                                         <span className="text-sm">لا توجد تحويلات مسجّلة بعد</span>
-                                        <button onClick={() => { setTransferForm({ amount:'', currency:'EGP', method:'', senderName:'', senderPhone:'', reference:'', note:'', date:new Date().toISOString().slice(0,10), time:new Date().toTimeString().slice(0,5), status:'paid' }); setShowAddTransfer(true); }}
+                                        <button onClick={() => { setTransferForm({ amount:'', currency:'EGP', method:'', senderName:'', senderPhone:'', reference:'', note:'', date:cairoDateOnly(), time:new Date().toTimeString().slice(0,5), status:'paid' }); setShowAddTransfer(true); }}
                                           className="mt-2 text-xs bg-blue-600 text-white px-4 py-1.5 rounded-full font-bold hover:bg-blue-700 transition">
                                           + إضافة أول تحويل
                                         </button>

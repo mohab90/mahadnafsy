@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { cairoDateOnly } from '../../../shared/cairoDate';
 import { Download, ShieldCheck, Trash2 } from 'lucide-react';
 import { mysqlClient } from '../../lib/mysqlapi';
 import { confirmDialog } from '../../../shared/ui/confirmDialog';
@@ -22,7 +23,7 @@ export const StudentPrivacyPanel: React.FC = () => {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `my-data-${new Date().toISOString().slice(0, 10)}.json`;
+      link.download = `my-data-${cairoDateOnly()}.json`;
       link.click();
       URL.revokeObjectURL(url);
       setMessage('تم تجهيز وتنزيل نسخة بياناتك بنجاح.');

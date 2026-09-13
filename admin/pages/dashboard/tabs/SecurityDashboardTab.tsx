@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 import { Shield, AlertTriangle, Search, RefreshCw, Activity, Save, Download } from 'lucide-react';
 import { useCrmData } from '../../../context/siteDataSlices';
 import type { ActivityLogItem } from '../../../types';
@@ -155,7 +156,7 @@ const SecurityDashboardTab: React.FC<Props> = ({ notify }) => {
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = `audit-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.download = `audit-${cairoDateOnly()}.json`;
       anchor.click();
       URL.revokeObjectURL(url);
       notify('success', 'تم تصدير سجل التدقيق مع نتيجة التحقق من سلامته');

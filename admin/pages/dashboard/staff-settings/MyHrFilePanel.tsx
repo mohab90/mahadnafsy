@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 import { AlertTriangle, CheckCircle2, FileText, TrendingDown, TrendingUp } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 
@@ -180,7 +181,7 @@ export default function MyHrFilePanel() {
         ) : (
           <div className="space-y-1.5">
             {data.documents.map(d => {
-              const expired = d.expiry_date && d.expiry_date < new Date().toISOString().slice(0, 10);
+              const expired = d.expiry_date && d.expiry_date < cairoDateOnly();
               return (
                 <div key={d.id} className="flex items-center justify-between gap-2 border-b border-gray-50 pb-1.5 text-sm">
                   <div className="min-w-0">

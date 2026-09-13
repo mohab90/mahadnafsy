@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 import { Modal } from '../../../../shared/ui/Modal';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Ticket, Plus, Search, MessageSquare, Clock, CheckCircle, AlertCircle, XCircle, Star, X, Send, TrendingUp, Zap, ExternalLink, Download } from 'lucide-react';
@@ -375,7 +376,7 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = `tickets-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `tickets-${cairoDateOnly()}.csv`;
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
     notify('success', `تم تصدير ${rows.length} تذكرة`);

@@ -5,6 +5,7 @@
 // import from it are untouched.
 
 import { useState } from 'react';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { Modal } from '../../../../../shared/ui/Modal';
 import { MessageCircle, Phone, Plus, Tag, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
@@ -59,7 +60,7 @@ export function QuickEditPanel({ lead, onClose, onSave, courses, bundles, notify
     if (!commNote.trim()) return;
     const rec: CommunicationRecord = {
       id: `cr-${Date.now()}`, type: commType,
-      date: new Date().toISOString().slice(0, 10), notes: commNote.trim(),
+      date: cairoDateOnly(), notes: commNote.trim(),
     };
     setDraft(d => ({ ...d, communications: [...(d.communications || []), rec] }));
     setCommNote('');

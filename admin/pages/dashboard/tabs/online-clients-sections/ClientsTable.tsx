@@ -1,4 +1,5 @@
 import React from 'react';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { Modal } from '../../../../../shared/ui/Modal';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -87,7 +88,7 @@ export function ClientsTable({
   // set per course in the catalogue; this is where one person is changed.
   const [accessRow, setAccessRow] = React.useState<SubscriberItem | null>(null);
   const navigate = useNavigate();
-  const todayOnlineStr = new Date().toISOString().slice(0, 10);
+  const todayOnlineStr = cairoDateOnly();
   const in3daysOnlineStr = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
   const currFmt = (c: string) => c === 'SAR' ? 'ر.س' : c === 'USD' ? '$' : 'ج.م';
 
@@ -304,7 +305,7 @@ export function ClientsTable({
               </div>
             );
             const followupDate = row.nextFollowUpDate || (lastComm as CommunicationRecord | null)?.nextFollowUp || null;
-            const todayStr2 = new Date().toISOString().slice(0, 10);
+            const todayStr2 = cairoDateOnly();
             const followupOverdue = !!(followupDate && followupDate < todayStr2);
             const followupToday = !!(followupDate && followupDate === todayStr2);
             const followupCell = followupDate ? (

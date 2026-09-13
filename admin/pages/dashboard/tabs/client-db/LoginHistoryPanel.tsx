@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { LogIn, RefreshCw, Search, ShieldAlert, Globe, Monitor, Download } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 
@@ -102,7 +103,7 @@ export function LoginHistoryPanel() {
     const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = `login-history-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `login-history-${cairoDateOnly()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };

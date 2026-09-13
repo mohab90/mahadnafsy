@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { Building2, CheckCircle2, Download, FileText, Landmark, Plus, RefreshCw, TrendingUp, WalletCards, XCircle } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
@@ -26,7 +27,7 @@ type ForecastWeek = {
 };
 type CashForecast = { openingCash: number; closingCash: number; weeks: ForecastWeek[]; basis: string[] };
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => cairoDateOnly();
 const branchValue = (branch?: string) => {
   const value = String(branch || '').toLowerCase();
   if (value.includes('daqqi') || value.includes('dokki')) return 'DAQQI';
