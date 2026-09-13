@@ -29,7 +29,7 @@ router.get('/api/admin/reports/sales-performance', requireAuth, requireAdmin, as
         SELECT staff_id,
           SUM(amount_egp) AS revenue_egp,
           COUNT(*) AS payment_count
-        FROM payments WHERE tenant_id=? AND status IN ('paid','confirmed') AND DATE(\`date\`) BETWEEN ? AND ? AND staff_id IS NOT NULL GROUP BY staff_id
+        FROM payments WHERE tenant_id=? AND status IN ('paid','confirmed') AND DATE(\`date\`) BETWEEN ? AND ? AND staff_id IS NOT NULL AND deleted_at IS NULL GROUP BY staff_id
       ) rd ON rd.staff_id = st.id
       WHERE st.tenant_id=? AND UPPER(st.role) IN ('SALES','SALES_MANAGER','MANAGER') AND st.is_active=1
       ORDER BY revenue_egp DESC`, [req.tenantId, from, to, req.tenantId, from, to, req.tenantId]);
@@ -166,7 +166,7 @@ router.get('/api/admin/sales-goals/vs-actual', requireAuth, requireAdmin, async 
     const goal = goalRows[0] || {};
 
     const [[{ actual_revenue }]] = await pool.query(
-      `SELECT COALESCE(SUM(amount_egp), 0) AS actual_revenue FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [req.tenantId, from, to]);
+      `SELECT COALESCE(SUM(amount_egp), 0) AS actual_revenue FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) AND deleted_at IS NULL`, [req.tenantId, from, to]);
     const [[{ actual_leads }]] = await pool.query(
       `SELECT COUNT(*) AS actual_leads FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [req.tenantId, from, to]);
     const [[{ actual_conversions }]] = await pool.query(

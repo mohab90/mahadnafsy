@@ -258,7 +258,7 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requi
        FROM payments p
        LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id=p.tenant_id
        LEFT JOIN courses c ON c.id = p.course_id AND c.tenant_id=p.tenant_id
-       WHERE ${pagWhere}
+       WHERE p.deleted_at IS NULL AND ${pagWhere}
        ORDER BY p.date DESC, p.id DESC
        ${pagTail}`,
       dataParams
@@ -352,7 +352,7 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requi
               COUNT(*) AS count,
               SUM(CASE WHEN p.status='pending' THEN 1 ELSE 0 END) AS pending_count
        FROM payments p LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id=p.tenant_id
-       WHERE ${where}
+       WHERE p.deleted_at IS NULL AND ${where}
        GROUP BY p.payment_type`,
       countParams
     );

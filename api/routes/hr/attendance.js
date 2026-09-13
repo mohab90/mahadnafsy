@@ -656,7 +656,7 @@ router.get('/api/admin/hr/kpi/:staffId', requireAuth, requireAdminOrStaff, requi
         (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND status IN ('closed','converted') AND updated_at>=? AND updated_at<?) AS leads_converted,
         (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND status='contacted' AND updated_at>=? AND updated_at<?) AS leads_contacted,
         (SELECT COALESCE(SUM(amount_egp),0) FROM payments WHERE tenant_id=? AND staff_id=? AND status='paid' AND date>=? AND date<?) AS revenue_generated,
-        (SELECT COUNT(*) FROM payments WHERE tenant_id=? AND staff_id=? AND status='paid' AND date>=? AND date<?) AS sales_count,
+        (SELECT COUNT(*) FROM payments WHERE tenant_id=? AND staff_id=? AND status='paid' AND date>=? AND date<? AND deleted_at IS NULL) AS sales_count,
         (SELECT COUNT(*) FROM subscribers WHERE tenant_id=? AND assigned_sales_id=? AND created_at>=? AND created_at<?) AS subscribers_enrolled
     `, Array.from({ length: 6 }, () => [req.tenantId, staffId, start, end]).flat());
 
@@ -672,7 +672,7 @@ router.get('/api/admin/hr/kpi/:staffId', requireAuth, requireAdminOrStaff, requi
       SELECT MONTH(date) AS month, YEAR(date) AS year,
              COUNT(*) AS sales_count, SUM(amount_egp) AS revenue
       FROM payments
-      WHERE staff_id=? AND tenant_id=? AND status='paid' AND date >= DATE_SUB(CURRENT_DATE, INTERVAL 6 MONTH)
+      WHERE staff_id=? AND tenant_id=? AND status='paid' AND date >= DATE_SUB(CURRENT_DATE, INTERVAL 6 MONTH) AND deleted_at IS NULL
       GROUP BY YEAR(date), MONTH(date) ORDER BY YEAR(date) DESC, MONTH(date) DESC
     `, [staffId, req.tenantId]);
 

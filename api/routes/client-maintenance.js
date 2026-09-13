@@ -119,7 +119,7 @@ router.post('/api/admin/fix-auto-subscribers', requireAuth, requireAdmin, async 
     const [ghosts] = await conn.query(
       `SELECT s.id FROM subscribers s
        LEFT JOIN enrollments e ON e.subscriber_id = s.id AND e.tenant_id=s.tenant_id
-       LEFT JOIN payments p ON p.subscriber_id = s.id AND p.tenant_id=s.tenant_id
+       LEFT JOIN payments p ON p.subscriber_id = s.id AND p.tenant_id=s.tenant_id AND p.deleted_at IS NULL
        WHERE s.tenant_id=? AND (s.crm_json LIKE '%"source":"auto"%' OR s.crm_json IS NULL)
          AND (s.client_code IS NULL OR s.client_code NOT REGEXP '^C[0-9]+$')
          AND e.id IS NULL AND p.id IS NULL`,

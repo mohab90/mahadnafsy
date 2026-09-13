@@ -99,7 +99,7 @@ router.get('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
         WHERE p.staff_id = ?
           AND p.tenant_id = ?
           AND p.status = 'paid'
-          AND p.date >= ? AND p.date < ?
+          AND p.date >= ? AND p.date < ? AND p.deleted_at IS NULL
       `, [effectiveRate, id, req.tenantId, monthStart, nextMonthStart]);
       commissionFallback = fb ? { ...fb, usedRate: effectiveRate } : fb;
     }
@@ -121,7 +121,7 @@ router.get('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
              COUNT(*) AS sales_count
       FROM payments p
       JOIN staff s ON s.id=p.staff_id AND s.tenant_id=p.tenant_id
-      WHERE p.staff_id=? AND p.tenant_id=? AND p.status='paid' AND p.date >= DATE_SUB(CURRENT_DATE, INTERVAL 6 MONTH)
+      WHERE p.staff_id=? AND p.tenant_id=? AND p.status='paid' AND p.date >= DATE_SUB(CURRENT_DATE, INTERVAL 6 MONTH) AND p.deleted_at IS NULL
       GROUP BY YEAR(p.date), MONTH(p.date)
       ORDER BY YEAR(p.date) DESC, MONTH(p.date) DESC
     `, [histRate, id, req.tenantId]);
@@ -171,7 +171,7 @@ router.get('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
       SELECT
         (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND created_at >= ? AND created_at < ?) AS leads_assigned,
         (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND status IN ('closed','converted') AND updated_at >= ? AND updated_at < ?) AS leads_converted,
-        (SELECT COALESCE(SUM(amount_egp),0) FROM payments WHERE tenant_id=? AND staff_id=? AND status='paid' AND date >= ? AND date < ?) AS revenue_generated
+        (SELECT COALESCE(SUM(amount_egp),0) FROM payments WHERE tenant_id=? AND staff_id=? AND status='paid' AND date >= ? AND date < ? AND deleted_at IS NULL) AS revenue_generated
     `, [req.tenantId, id, monthStart, nextMonthStart, req.tenantId, id, monthStart, nextMonthStart, req.tenantId, id, monthStart, nextMonthStart]);
 
     res.json({

@@ -58,7 +58,7 @@ router.get('/api/admin/payment-boxes', requireAuth, requireAdminOrStaff, require
       `SELECT payment_method AS box, COUNT(*) AS payments, SUM(amount_egp) AS egp
          FROM payments
         WHERE tenant_id = ? AND status = 'paid'
-          AND payment_method IS NOT NULL AND TRIM(payment_method) <> ''
+          AND payment_method IS NOT NULL AND TRIM(payment_method) <> '' AND deleted_at IS NULL
         GROUP BY payment_method
         ORDER BY egp DESC`,
       [req.tenantId],

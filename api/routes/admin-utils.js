@@ -318,7 +318,7 @@ router.get('/api/admin/export/payments', requireAuth, requireAdmin, bulkOperatio
               p.date, p.transaction_id, p.staff_name, p.note
        FROM payments p
        LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id=p.tenant_id
-       WHERE ${where} ORDER BY p.date DESC LIMIT 20000`,
+       WHERE p.deleted_at IS NULL AND ${where} ORDER BY p.date DESC LIMIT 20000`,
       params
     );
     const cols = [
@@ -587,7 +587,7 @@ router.post('/api/me/refund-request', requireAuth, async (req, res) => {
     if (!reason || !Number.isFinite(requestedAmount) || requestedAmount <= 0) return res.status(400).json({ error: 'reason and a positive amount are required' });
     if (!payment_id) return res.status(400).json({ error: 'payment_id is required' });
     const [[payment]] = await pool.query(
-      "SELECT id, amount, currency, payment_method, source FROM payments WHERE id=? AND subscriber_id=? AND tenant_id=? AND status='paid' LIMIT 1",
+      "SELECT id, amount, currency, payment_method, source FROM payments WHERE id=? AND subscriber_id=? AND tenant_id=? AND status='paid' AND deleted_at IS NULL LIMIT 1",
       [payment_id, sub.id, tenantId]
     );
     if (!payment) return res.status(404).json({ error: 'Eligible payment not found' });
@@ -706,7 +706,7 @@ router.get('/api/admin/refund-requests', requireAuth, requireAdminOrStaff, requi
              p.payment_type, p.payment_method, p.date AS payment_date
       FROM refund_requests r
       JOIN subscribers s ON s.id = r.subscriber_id
-      LEFT JOIN payments p ON p.id = r.payment_id AND p.tenant_id=r.tenant_id
+      LEFT JOIN payments p ON p.id = r.payment_id AND p.tenant_id=r.tenant_id AND p.deleted_at IS NULL
       WHERE r.tenant_id=? AND s.tenant_id=r.tenant_id
     `;
     const params = [tenantId];
@@ -751,7 +751,7 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
     // Revenue (last 7 days)
     const [[{ revenue }]] = await pool.query(
       `SELECT COALESCE(SUM(amount), 0) AS revenue FROM payments
-       WHERE tenant_id=? AND date >= ? AND status = 'paid'`, [DEFAULT_TENANT_ID, weekAgo]
+       WHERE tenant_id=? AND date >= ? AND status = 'paid' AND deleted_at IS NULL`, [DEFAULT_TENANT_ID, weekAgo]
     ).catch(() => [[{ revenue: 0 }]]);
 
     // New leads
@@ -786,7 +786,7 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
     const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const [[{ prevRevenue }]] = await pool.query(
       `SELECT COALESCE(SUM(amount), 0) AS prevRevenue FROM payments
-       WHERE tenant_id=? AND date >= ? AND date < ? AND status = 'paid'`,
+       WHERE tenant_id=? AND date >= ? AND date < ? AND status = 'paid' AND deleted_at IS NULL`,
       [DEFAULT_TENANT_ID, twoWeeksAgo, weekAgo]
     ).catch(() => [[{ prevRevenue: 0 }]]);
 

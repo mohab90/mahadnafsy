@@ -793,7 +793,8 @@ async function syncLeadDealValue(subscriberId, db = pool, expectedTenantId = nul
     const tenantId = sub.tenant_id || DEFAULT_TENANT_ID;
     // Sum all payments for this subscriber
     const totalParams = [subscriberId];
-    const totalWhere = appendTenantScope('WHERE subscriber_id = ? AND amount > 0', '', tenantId, totalParams);
+    const totalWhere = appendTenantScope(
+      'WHERE subscriber_id = ? AND amount > 0 AND deleted_at IS NULL', '', tenantId, totalParams);
     const [[totals]] = await db.query(
       `SELECT COALESCE(SUM(amount_egp),0) AS total FROM payments ${totalWhere}`,
       totalParams

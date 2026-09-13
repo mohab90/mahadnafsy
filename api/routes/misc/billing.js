@@ -162,7 +162,7 @@ router.get('/api/admin/payments/:id/invoice-html',
               s.client_code, s.branch
        FROM payments p
        LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
-       WHERE p.id = ? AND p.tenant_id = ?`, [req.params.id, req.tenantId]);
+       WHERE p.id = ? AND p.tenant_id = ? AND p.deleted_at IS NULL`, [req.params.id, req.tenantId]);
     if (!payment) return res.status(404).json({ error: 'Payment not found' });
 
     const settings = await getTenantSetting('sys_general', { tenantId: req.tenantId, fallback: {} });

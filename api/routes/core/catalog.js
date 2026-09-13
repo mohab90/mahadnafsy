@@ -126,7 +126,7 @@ router.get('/api/admin/subscribers/archived', requireAuth, requireAdminOrStaff, 
       `SELECT s.id, s.client_code, s.name, s.email, s.phone, s.branch,
               s.deleted_at, s.created_at,
               (SELECT COALESCE(SUM(p.amount),0) FROM payments p
-                WHERE p.subscriber_id=s.id AND p.tenant_id=s.tenant_id) AS total_paid
+                WHERE p.subscriber_id=s.id AND p.tenant_id=s.tenant_id AND p.deleted_at IS NULL) AS total_paid
          FROM subscribers s
         WHERE ${where}
         ORDER BY s.deleted_at DESC

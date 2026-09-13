@@ -109,7 +109,7 @@ router.get('/api/admin/funnel/attribution', requireAuth, requireAdmin, async (re
            FROM leads l
            ${salesJoin}
            LEFT JOIN subscribers s ON s.lead_id = l.id AND s.tenant_id=l.tenant_id
-           LEFT JOIN payments p ON p.subscriber_id = s.id AND p.tenant_id=l.tenant_id
+           LEFT JOIN payments p ON p.subscriber_id = s.id AND p.tenant_id=l.tenant_id AND p.deleted_at IS NULL
           WHERE ${where}
           GROUP BY label
           ORDER BY revenue DESC, leads DESC

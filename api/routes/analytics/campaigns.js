@@ -76,7 +76,7 @@ router.get('/api/admin/reports/campaign', requireAuth, requireAdminOrStaff, requ
         FROM payments p
         JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
         JOIN leads l ON l.id = s.lead_id AND l.tenant_id = p.tenant_id
-        WHERE p.tenant_id=? AND p.status IN ('paid','confirmed')
+        WHERE p.deleted_at IS NULL AND p.tenant_id=? AND p.status IN ('paid','confirmed')
           AND p.date >= ? AND p.date < DATE_ADD(?, INTERVAL 1 DAY)${scope.sql}
         GROUP BY l.source ORDER BY revenue DESC
       `, [req.tenantId, from, to, ...scope.params]);

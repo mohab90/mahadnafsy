@@ -232,7 +232,7 @@ router.get('/api/admin/financial-audit-dashboard', requireAuth, requireAdmin, as
           COALESCE(SUM(status='refunded'),0) AS refunded_count,
           COALESCE(SUM(CASE WHEN status='paid' THEN amount_egp ELSE 0 END),0) AS paid_egp
        FROM payments
-       WHERE tenant_id=?`,
+       WHERE tenant_id=? AND deleted_at IS NULL`,
       [tenantId]
     ).catch(() => [[{ total_count: 0, paid_count: 0, refunded_count: 0, paid_egp: 0 }]]);
 
@@ -250,7 +250,7 @@ router.get('/api/admin/financial-audit-dashboard', requireAuth, requireAdmin, as
     const [recentPayments] = await pool.query(
       `SELECT id, subscriber_id, amount, currency, payment_type, payment_method, status, date, created_at
        FROM payments
-       WHERE tenant_id=?
+       WHERE tenant_id=? AND deleted_at IS NULL
        ORDER BY created_at DESC
        LIMIT ?`,
       [tenantId, limit]

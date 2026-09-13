@@ -60,7 +60,7 @@ function createScheduledJobHandlers({ pool, logger }) {
         `SELECT p.id,p.tenant_id,p.amount,p.currency,p.date,s.name,s.phone
            FROM payments p
            JOIN subscribers s ON s.id=p.subscriber_id AND s.tenant_id=p.tenant_id
-          WHERE p.status='pending' AND p.date<=? AND s.phone IS NOT NULL AND s.phone!=''
+          WHERE p.status='pending' AND p.date<=? AND s.phone IS NOT NULL AND s.phone!='' AND p.deleted_at IS NULL
           LIMIT 50`,
         [cutoff]
       );

@@ -73,7 +73,7 @@ router.get('/api/admin/orders', requireAuth, requireAdminOrStaff, requirePermiss
        FROM payments p
        LEFT JOIN subscribers s ON s.id=p.subscriber_id AND s.tenant_id=p.tenant_id
        LEFT JOIN users u ON u.id=p.staff_id AND u.tenant_id=p.tenant_id
-       WHERE ${paymentWhere}
+       WHERE p.deleted_at IS NULL AND ${paymentWhere}
        ORDER BY p.date DESC LIMIT ?`,
       [...paymentParams, limit]
     );

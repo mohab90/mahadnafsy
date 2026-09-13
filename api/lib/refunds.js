@@ -34,7 +34,7 @@ async function applyRefundReversal({ paymentId, subscriberId, refundAmount, refu
   const [[pay]] = await conn.query(
     `SELECT id, subscriber_id, course_id, bundle_id, amount, amount_egp, currency, payment_type,
             payment_method, source, status, transaction_id, branch, branch_id, date, created_at
-       FROM payments WHERE id = ? AND tenant_id = ? ${subscriberId ? 'AND subscriber_id = ?' : ''} LIMIT 1 FOR UPDATE`,
+       FROM payments WHERE id = ? AND tenant_id = ? ${subscriberId ? 'AND subscriber_id = ?' : ''} AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
     subscriberId ? [paymentId, tenantId, subscriberId] : [paymentId, tenantId]
   );
   if (!pay) return null;

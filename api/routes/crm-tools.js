@@ -105,7 +105,7 @@ router.post('/api/admin/payments/bulk-stub', requireAuth, requireAdminOrStaff, r
          FROM enrollments e
         WHERE e.tenant_id=? AND e.status='active' AND NOT EXISTS (
           SELECT 1 FROM payments p WHERE p.tenant_id=e.tenant_id AND p.subscriber_id=e.subscriber_id
-            AND (p.course_id=e.course_id OR (e.course_id IS NULL AND p.bundle_id=e.bundle_id))
+            AND (p.course_id=e.course_id OR (e.course_id IS NULL AND p.bundle_id=e.bundle_id)) AND p.deleted_at IS NULL
         )${branchSql} LIMIT 1000`,
       scope.branchId ? [tenantId, scope.branchId] : [tenantId]
     );

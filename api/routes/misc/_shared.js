@@ -30,17 +30,17 @@ async function sendDailyReport(tenantId = DEFAULT_TENANT) {
     const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
     const [[{ revenue }]] = await pool.query(
-      `SELECT COALESCE(SUM(amount_egp),0) AS revenue FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [tenantId, today, today]);
+      `SELECT COALESCE(SUM(amount_egp),0) AS revenue FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) AND deleted_at IS NULL`, [tenantId, today, today]);
     const [[{ new_leads }]] = await pool.query(
       `SELECT COUNT(*) AS new_leads FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [tenantId, today, today]);
     const [[{ new_clients }]] = await pool.query(
       `SELECT COUNT(*) AS new_clients FROM subscribers WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [tenantId, today, today]);
     const [[{ pending_payments }]] = await pool.query(
-      `SELECT COUNT(*) AS pending_payments FROM payments WHERE tenant_id=? AND status='pending'`, [tenantId]);
+      `SELECT COUNT(*) AS pending_payments FROM payments WHERE tenant_id=? AND status='pending' AND deleted_at IS NULL`, [tenantId]);
     const [[{ failed_logins }]] = await pool.query(
       `SELECT COUNT(*) AS failed_logins FROM login_history WHERE tenant_id=? AND status='failed' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [tenantId, today, today]).catch(() => [[{ failed_logins: 0 }]]);
     const [[{ month_revenue }]] = await pool.query(
-      `SELECT COALESCE(SUM(amount_egp),0) AS month_revenue FROM payments WHERE tenant_id=? AND status='paid' AND DATE_FORMAT(created_at,'%Y-%m')=DATE_FORMAT(NOW(),'%Y-%m')`, [tenantId]);
+      `SELECT COALESCE(SUM(amount_egp),0) AS month_revenue FROM payments WHERE tenant_id=? AND status='paid' AND DATE_FORMAT(created_at,'%Y-%m')=DATE_FORMAT(NOW(),'%Y-%m') AND deleted_at IS NULL`, [tenantId]);
 
     // Get admin emails from DB settings
     const [adminStaff] = await pool.query(`SELECT email FROM staff WHERE tenant_id=? AND UPPER(role)='ADMIN' AND email IS NOT NULL LIMIT 5`, [tenantId]).catch(() => [[]]);
@@ -332,7 +332,7 @@ async function runPaymentDueReminders(tenantId = DEFAULT_TENANT) {
       WHERE p.tenant_id = ? AND p.status = 'pending'
         AND p.is_installment = 1
         AND ((p.date >= ? AND p.date < DATE_ADD(?, INTERVAL 1 DAY))
-          OR (p.date >= ? AND p.date < DATE_ADD(?, INTERVAL 1 DAY)))
+          OR (p.date >= ? AND p.date < DATE_ADD(?, INTERVAL 1 DAY))) AND p.deleted_at IS NULL
       LIMIT 200`, [tenantId, in3days, in3days, in1day, in1day]);
 
     let sent = 0;
