@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   Course, Bundle, Therapist, TestimonialItem,
   CourseLectureItem, CourseChapterItem,
@@ -39,6 +39,32 @@ export function useCatalogData({
   const [therapists, setTherapists] = useState<Therapist[]>(initialTherapists);
   const [testimonials, setTestimonials] = useState<TestimonialItem[]>(initialTestimonials);
   const [remoteReady, setRemoteReady] = useState(false);
+  // One fetch, the first time a screen actually wants community content.
+  const communityLoadedRef = useRef(false);
+  const loadCommunity = useCallback(async () => {
+    if (communityLoadedRef.current) return;
+    communityLoadedRef.current = true;
+    const [posts, library, videos, events] = await Promise.allSettled([
+      mysqlCatalog.listCommunityPosts(),
+      mysqlCatalog.listCommunityLibrary(),
+      mysqlCatalog.listCommunityVideos(),
+      mysqlCatalog.listCommunityEvents(),
+    ]);
+    if (posts.status === 'fulfilled' && posts.value.length > 0) {
+      setCommunityPosts((posts.value as unknown as CommunityPostItem[])
+        .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')));
+    }
+    if (library.status === 'fulfilled' && library.value.length > 0) {
+      setCommunityLibraryItems(library.value as unknown as CommunityLibraryItem[]);
+    }
+    if (videos.status === 'fulfilled' && videos.value.length > 0) {
+      setCommunityVideos(videos.value as unknown as CommunityVideoItem[]);
+    }
+    if (events.status === 'fulfilled' && events.value.length > 0) {
+      setCommunityEvents((events.value as unknown as CommunityEventItem[])
+        .sort((a, b) => (b.eventDate || b.dateLabel || '').localeCompare(a.eventDate || a.dateLabel || '')));
+    }
+  }, [setCommunityPosts, setCommunityLibraryItems, setCommunityVideos, setCommunityEvents]);
   // Guards the public catalog/community load (below) so it fires its ~12 API
   // calls exactly ONCE per page load. authUser resolves asynchronously and
   // its identity can change (undefined -> null, or null -> a real uid) several
@@ -61,24 +87,12 @@ export function useCatalogData({
     if (catalogLoadedRef.current) return;
     catalogLoadedRef.current = true;
 
-    // Load community content for all users (deferred 300ms to let critical auth/catalog load first)
-    setTimeout(() => {
-      Promise.allSettled([
-        mysqlCatalog.listCommunityPosts(),
-        mysqlCatalog.listCommunityLibrary(),
-        mysqlCatalog.listCommunityVideos(),
-        mysqlCatalog.listCommunityEvents(),
-      ]).then(([pRes, lRes, vRes, eRes]) => {
-        if (pRes.status === 'fulfilled' && pRes.value.length > 0)
-          setCommunityPosts((pRes.value as unknown as CommunityPostItem[]).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')));
-        if (lRes.status === 'fulfilled' && lRes.value.length > 0)
-          setCommunityLibraryItems(lRes.value as unknown as CommunityLibraryItem[]);
-        if (vRes.status === 'fulfilled' && vRes.value.length > 0)
-          setCommunityVideos(vRes.value as unknown as CommunityVideoItem[]);
-        if (eRes.status === 'fulfilled' && eRes.value.length > 0)
-          setCommunityEvents((eRes.value as unknown as CommunityEventItem[]).sort((a, b) => (b.eventDate || b.dateLabel || '').localeCompare(a.eventDate || a.dateLabel || '')));
-      }).catch(() => {});
-    }, 300);
+    // Community content is not loaded here. These four requests fired on
+    // every page of the site for the one page that reads them, and three of the
+    // four tables are empty — so they were four round trips returning `[]`
+    // before every first paint. loadCommunity() below fetches them the first
+    // time a screen asks.
+
 
     // Load catalog for non-admin users in 2 sequential batches to avoid overwhelming DB connection pool.
     // Batch A (immediate): catalog data needed for home/courses pages.
@@ -176,5 +190,6 @@ export function useCatalogData({
   return {
     courses, setCourses, bundles, therapists, testimonials,
     remoteReady,
+    loadCommunity,
   };
 }

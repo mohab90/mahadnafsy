@@ -173,9 +173,32 @@ function mapCourse(r, materials) {
   };
 }
 
+/**
+ * What a bundle needs to say about each course it contains.
+ *
+ * A bundle used to embed the whole course object, and /api/courses then returned
+ * the same 24 courses again on the same page load. The embedded copies were
+ * 13,410 of the endpoint's 26,765 bytes — half the payload, duplicated.
+ *
+ * These seven fields are every one that any screen reads off a bundle's course:
+ * the timeline rows on the bundle page (title, shortDescription, duration,
+ * level), the cards on /bundles (thumbnail, instructor), the links (slug), and
+ * the id that both apps match on. Anything more is weight nobody unpacks.
+ */
+const BUNDLE_COURSE_FIELDS = ['id', 'slug', 'title', 'thumbnail', 'shortDescription', 'duration', 'level', 'instructor'];
+
+const bundleCourseSummary = course => {
+  const summary = {};
+  for (const key of BUNDLE_COURSE_FIELDS) summary[key] = course[key];
+  return summary;
+};
+
 function mapBundle(r, allCourses = []) {
   const courseIds = r.course_ids_csv ? r.course_ids_csv.split(',') : [];
-  const courses = courseIds.map(id => allCourses.find(c => c.id === id)).filter(Boolean);
+  const courses = courseIds
+    .map(id => allCourses.find(c => c.id === id))
+    .filter(Boolean)
+    .map(bundleCourseSummary);
   return {
     id: r.id,
     title: r.title,

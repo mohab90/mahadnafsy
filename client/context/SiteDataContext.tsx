@@ -28,6 +28,8 @@ interface SiteDataShape {
   communityLibraryItems: CommunityLibraryItem[];
   communityVideos: CommunityVideoItem[];
   communityEvents: CommunityEventItem[];
+  /** Fetch community posts, library, videos and events — once, on the one screen that shows them. */
+  loadCommunity: () => Promise<void>;
   content: Record<string, string>;
   discounts: DiscountRule[];
   notifications: NotificationBroadcast[];
@@ -357,6 +359,7 @@ const seedData = {
   communityLibraryItems: defaultCommunityLibraryItems,
   communityVideos: defaultCommunityVideos,
   communityEvents: defaultCommunityEvents,
+  loadCommunity: async () => {},
   content: defaultContent,
   discounts: [] as DiscountRule[],
   notifications: [] as NotificationBroadcast[],
@@ -414,7 +417,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   );
   const {
     courses, setCourses, bundles, therapists, testimonials,
-    remoteReady,
+    remoteReady, loadCommunity,
   } = useCatalogData({
     initialCourses: initial.courses, initialBundles: initial.bundles,
     initialTherapists: initial.therapists, initialTestimonials: initial.testimonials,
@@ -491,6 +494,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       communityLibraryItems,
       communityVideos,
       communityEvents,
+      loadCommunity,
       content,
       discounts,
       notifications,
@@ -518,6 +522,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     communityLibraryItems,
     communityVideos,
     communityEvents,
+    loadCommunity,
     content,
     discounts,
     notifications,

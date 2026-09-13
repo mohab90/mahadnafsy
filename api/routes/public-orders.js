@@ -11,6 +11,7 @@ const { tryJson } = require('../lib/helpers');
 const { getPaymentGatewaySettings, isPaymobActive } = require('../lib/saasSettings');
 const { paymobLimiter, publicLimiter } = require('../middleware/rateLimits');
 const { branchIdForBranch } = require('../lib/branches');
+const { grantCourseEntitlement } = require('../lib/entitlements');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { awardPointsForPayment } = require('../lib/loyalty');
 const { DEFAULT_TENANT_ID } = require('../lib/tenantScope');
@@ -535,12 +536,28 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
         if (!course) throw new Error('Paid course does not belong to tenant');
         courseIds = [order.item_id];
       }
+      // Through the entitlement authority, like every other grant.
+      //
+      // This used to be its own INSERT. It wrote access_type='full' whatever
+      // had been paid, recorded no entitlement_source, no granted_by, no
+      // expiry and no entitlement_events row — and its ON DUPLICATE KEY UPDATE
+      // set access_type='full' unconditionally, so it would raise a
+      // deliberately limited grant to full, which is the one move
+      // grantCourseEntitlement is written to refuse.
+      //
+      // 1,533 enrolments in the table record no reason for existing; this was
+      // the last writer that could still add to them.
       for (const cid of courseIds) {
-        await conn.query(
-          `INSERT INTO enrollments (id, subscriber_id, course_id, enrolled_at, access_type, tenant_id, branch_id)
-           VALUES (?,?,?,NOW(),'full',?,?) ON DUPLICATE KEY UPDATE access_type='full', tenant_id=VALUES(tenant_id), branch_id=VALUES(branch_id)`,
-          [uuidv4(), sub.id, cid, sub.tenant_id || 'tenant-default', sub.branch_id || branchIdForBranch(sub.branch)]
-        );
+        await grantCourseEntitlement({
+          tenantId: sub.tenant_id || tenantId,
+          subscriberId: sub.id,
+          courseId: cid,
+          accessType: 'full',
+          bundleId: orderType === 'bundle' ? order.item_id : null,
+          branchId: sub.branch_id || branchIdForBranch(sub.branch),
+          source: 'paymob_order',
+          actor: order.customer_email || 'paymob',
+        }, conn);
       }
       logger.info(`[paymob] Enrolled ${order.customer_email} in ${courseIds.join(',')} (order ${merchantOrderId})`);
     }

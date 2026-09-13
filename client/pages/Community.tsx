@@ -35,8 +35,13 @@ const Community: React.FC = () => {
     communityPosts, communityLibraryItems, communityVideos, communityEvents,
     addCommunityPost, updateCommunityPost, deleteCommunityPost,
     toggleCommunityPostLike, addCommunityPostComment,
+    loadCommunity,
     content, isAdmin, authUser,
   } = useSiteData();
+  // This is the only screen that reads community content, and it used to be
+  // fetched on every page of the site — four requests before every first paint,
+  // three of them returning `[]`. It loads here, once, when someone arrives.
+  useEffect(() => { void loadCommunity(); }, [loadCommunity]);
   const navigate = useNavigate();
   // The bell beside each event was inert. A calendar file is the whole feature
   // and needs no server: the event goes into whatever calendar the visitor
