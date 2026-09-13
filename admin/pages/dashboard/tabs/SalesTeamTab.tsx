@@ -142,7 +142,7 @@ export default function SalesTeamTab({ salesTargets = [], onOpenStaffProfile }: 
                     style={{ width: `${s.targetPct}%` }} />
                 </div>
                 <div className="text-[10px] text-gray-400 mt-1">
-                  {s.monthRevenue.toLocaleString()} / {((s.target?.monthlyTarget ?? s.target?.targetEGP) || 0).toLocaleString()} ج
+                  {s.monthRevenue.toLocaleString('ar-EG-u-nu-latn')} / {((s.target?.monthlyTarget ?? s.target?.targetEGP) || 0).toLocaleString('ar-EG-u-nu-latn')} ج
                 </div>
               </div>
             )}

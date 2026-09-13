@@ -111,7 +111,7 @@ export function AuditLogPanel() {
                       </span>
                     ) : '—'}
                   </td>
-                  <td className="px-4 py-3 font-mono text-gray-700">{row.amount != null ? row.amount.toLocaleString() + ' ج.م' : '—'}</td>
+                  <td className="px-4 py-3 font-mono text-gray-700">{row.amount != null ? row.amount.toLocaleString('ar-EG-u-nu-latn') + ' ج.م' : '—'}</td>
                   <td className="px-4 py-3 text-gray-500 text-xs">{row.actor || '—'}</td>
                 </tr>
               ))}

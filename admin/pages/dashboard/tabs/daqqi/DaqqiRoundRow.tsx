@@ -129,8 +129,8 @@ export function DaqqiRoundRow({
                             })() : <span className="text-gray-300 text-xs">—</span>}
                           </td>
                           <td className="px-3 py-2.5 text-xs">
-                            <div className="text-green-700 font-bold">{collected.toLocaleString()} ج.م</div>
-                            {remaining > 0 && <div className="text-amber-600 text-[11px]">متبقي: {remaining.toLocaleString()}</div>}
+                            <div className="text-green-700 font-bold">{collected.toLocaleString('ar-EG-u-nu-latn')} ج.م</div>
+                            {remaining > 0 && <div className="text-amber-600 text-[11px]">متبقي: {remaining.toLocaleString('ar-EG-u-nu-latn')}</div>}
                           </td>
                           <td className="px-3 py-2.5 text-xs">
                             <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700 font-bold text-[11px]">{round.attendees.length} حاضر</span>
@@ -201,10 +201,10 @@ export function DaqqiRoundRow({
                                             </td>
                                             <td className="py-1.5 pr-4"><a href={`tel:${a.phone}`} className="text-blue-600 hover:underline">{a.phone}</a></td>
                                             <td className="py-1.5 pr-4 text-gray-500">{a.bookedAt}</td>
-                                            <td className="py-1.5 pr-4 font-semibold text-green-700">{a.amountPaid.toLocaleString()} ج.م</td>
-                                            <td className="py-1.5 pr-4 text-gray-600">{coursePrice > 0 ? `${coursePrice.toLocaleString()} ج.م` : '—'}</td>
+                                            <td className="py-1.5 pr-4 font-semibold text-green-700">{a.amountPaid.toLocaleString('ar-EG-u-nu-latn')} ج.م</td>
+                                            <td className="py-1.5 pr-4 text-gray-600">{coursePrice > 0 ? `${coursePrice.toLocaleString('ar-EG-u-nu-latn')} ج.م` : '—'}</td>
                                             <td className="py-1.5 pr-4">
-                                              {coursePrice > 0 ? aRem > 0 ? <span className="font-semibold text-amber-600">{aRem.toLocaleString()} ج.م</span> : <span className="text-green-500 text-[10px] font-bold">مكتمل ✓</span> : <span className="text-gray-300">—</span>}
+                                              {coursePrice > 0 ? aRem > 0 ? <span className="font-semibold text-amber-600">{aRem.toLocaleString('ar-EG-u-nu-latn')} ج.م</span> : <span className="text-green-500 text-[10px] font-bold">مكتمل ✓</span> : <span className="text-gray-300">—</span>}
                                             </td>
                                             <td className="py-1.5 pr-4">
                                               <div className="flex items-center gap-1.5">

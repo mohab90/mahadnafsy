@@ -38,7 +38,7 @@ export function LeadSalesKpiStrip({ isSalesOnly, effectiveLeads, effectiveSubs }
     { label: 'نشط الآن', value: totalActive, icon: '⚡', cls: 'bg-amber-50 border-amber-200 text-amber-800', tip: 'ليدز نشطة لم تُحوَّل أو تُفقد' },
     { label: 'متابعة متأخرة', value: overdueCount, icon: '⚠️', cls: overdueCount > 0 ? 'bg-red-50 border-red-200 text-red-800' : 'bg-gray-50 border-gray-200 text-gray-500', tip: 'ليدز تجاوزت تاريخ المتابعة' },
     { label: 'نسبة التحويل', value: `${convRate}%`, icon: '📈', cls: convRate >= 30 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : convRate >= 15 ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-gray-50 border-gray-200 text-gray-600', tip: `${totalConverted} من ${totalLeads} ليد` },
-    { label: 'إجمالي التحصيلات', value: totalCollected > 0 ? `${totalCollected.toLocaleString()} ج.م` : '—', icon: '💰', cls: 'bg-teal-50 border-teal-200 text-teal-800', tip: 'إجمالي المبالغ المحصّلة من ليدزك بالجنيه' },
+    { label: 'إجمالي التحصيلات', value: totalCollected > 0 ? `${totalCollected.toLocaleString('ar-EG-u-nu-latn')} ج.م` : '—', icon: '💰', cls: 'bg-teal-50 border-teal-200 text-teal-800', tip: 'إجمالي المبالغ المحصّلة من ليدزك بالجنيه' },
   ];
 
   return (

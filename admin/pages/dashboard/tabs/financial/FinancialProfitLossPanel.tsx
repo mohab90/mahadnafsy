@@ -94,7 +94,7 @@ export function FinancialProfitLossPanel({
                 <p className="text-red-700 font-bold text-lg mb-3 flex items-center gap-2"><ArrowDownRight size={18}/>المصروفات</p>
                 <div className="space-y-2 text-sm">
                   {(Object.entries(expenseByCategory) as [string, number][]).sort((a,b)=>b[1]-a[1]).map(([cat,val])=>(
-                    <div key={cat} className="flex justify-between"><span className="text-red-700">{cat}</span><span className="font-semibold">({val.toLocaleString()} ج.م)</span></div>
+                    <div key={cat} className="flex justify-between"><span className="text-red-700">{cat}</span><span className="font-semibold">({val.toLocaleString('ar-EG-u-nu-latn')} ج.م)</span></div>
                   ))}
                   {Object.keys(expenseByCategory).length === 0 && <p className="text-red-400 text-xs">لا توجد مصروفات مسجّلة</p>}
                 </div>

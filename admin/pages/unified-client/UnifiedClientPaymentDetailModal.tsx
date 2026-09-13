@@ -50,19 +50,19 @@ export const UnifiedClientPaymentDetailModal: React.FC<UnifiedClientPaymentDetai
           <div className="grid grid-cols-3 gap-2 text-center">
             {paidTotals.EGP > 0 && (
               <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-100">
-                <p className="font-extrabold text-emerald-700 text-base">{paidTotals.EGP.toLocaleString()}</p>
+                <p className="font-extrabold text-emerald-700 text-base">{paidTotals.EGP.toLocaleString('ar-EG-u-nu-latn')}</p>
                 <p className="text-[10px] text-gray-400 mt-0.5">مدفوع ج.م</p>
               </div>
             )}
             {remainingEGP > 0 && (
               <div className="bg-red-50 rounded-xl p-3 border border-red-100">
-                <p className="font-extrabold text-red-600 text-base">{remainingEGP.toLocaleString()}</p>
+                <p className="font-extrabold text-red-600 text-base">{remainingEGP.toLocaleString('ar-EG-u-nu-latn')}</p>
                 <p className="text-[10px] text-gray-400 mt-0.5">متبقي {settlementLabel}</p>
               </div>
             )}
             {paidTotals.SAR > 0 && (
               <div className="bg-blue-50 rounded-xl p-3 border border-blue-100">
-                <p className="font-extrabold text-blue-700 text-base">{paidTotals.SAR.toLocaleString()}</p>
+                <p className="font-extrabold text-blue-700 text-base">{paidTotals.SAR.toLocaleString('ar-EG-u-nu-latn')}</p>
                 <p className="text-[10px] text-gray-400 mt-0.5">مدفوع ر.س</p>
               </div>
             )}
@@ -80,19 +80,19 @@ export const UnifiedClientPaymentDetailModal: React.FC<UnifiedClientPaymentDetai
                     {booking?.expectedEGP != null && (
                       <div>
                         <p className="text-gray-400">السعر</p>
-                        <p className="font-bold text-gray-700">{booking.expectedEGP.toLocaleString()} {settlementLabel}</p>
+                        <p className="font-bold text-gray-700">{booking.expectedEGP.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel}</p>
                       </div>
                     )}
                     {booking && (
                       <div>
                         <p className="text-gray-400">مدفوع</p>
-                        <p className="font-bold text-emerald-700">{booking.paidEGP.toLocaleString()} {settlementLabel}</p>
+                        <p className="font-bold text-emerald-700">{booking.paidEGP.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel}</p>
                       </div>
                     )}
                     {remaining !== null && (
                       <div>
                         <p className="text-gray-400">متبقي</p>
-                        <p className={`font-bold ${remaining > 0 ? 'text-red-600' : 'text-green-600'}`}>{remaining > 0 ? remaining.toLocaleString() : 'مكتمل'}</p>
+                        <p className={`font-bold ${remaining > 0 ? 'text-red-600' : 'text-green-600'}`}>{remaining > 0 ? remaining.toLocaleString('ar-EG-u-nu-latn') : 'مكتمل'}</p>
                       </div>
                     )}
                   </div>
@@ -106,7 +106,7 @@ export const UnifiedClientPaymentDetailModal: React.FC<UnifiedClientPaymentDetai
               {confirmedHistory.slice().reverse().map((payment, index) => (
                 <div key={`${payment.id || index}-${index}`} className="flex items-center justify-between bg-white border border-gray-100 rounded-xl px-3 py-2.5">
                   <div>
-                    <p className="text-xs font-bold text-gray-800">{payment.amount.toLocaleString()} {payment.currency === 'SAR' ? 'ر.س' : payment.currency === 'USD' ? '$' : 'ج.م'}</p>
+                    <p className="text-xs font-bold text-gray-800">{payment.amount.toLocaleString('ar-EG-u-nu-latn')} {payment.currency === 'SAR' ? 'ر.س' : payment.currency === 'USD' ? '$' : 'ج.م'}</p>
                     {payment.note && <p className="text-[11px] text-gray-400 mt-0.5">{payment.note}</p>}
                   </div>
                   <p className="text-[11px] text-gray-400">{payment.at || ''}</p>

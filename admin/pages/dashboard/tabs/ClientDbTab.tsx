@@ -432,7 +432,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
             { label: 'محتملون', value: stats.leads, icon: UserPlus },
           ].map(({ label, value }) => (
             <div key={label} className="bg-white/20 rounded-xl px-3 py-1.5 text-center">
-              <p className="text-lg font-black">{value.toLocaleString()}</p>
+              <p className="text-lg font-black">{value.toLocaleString('ar-EG-u-nu-latn')}</p>
               <p className="text-xs opacity-90">{label}</p>
             </div>
           ))}
@@ -533,7 +533,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
           </select>
 
           <span className="text-xs text-gray-500 font-medium mr-auto">
-            {filtered.length.toLocaleString()} نتيجة
+            {filtered.length.toLocaleString('ar-EG-u-nu-latn')} نتيجة
           </span>
         </div>
       </div>
@@ -676,7 +676,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
                     </td>
                     {/* Total paid */}
                     <td className="px-3 py-3 text-center font-bold text-emerald-700 text-sm">
-                      {c.totalPaid > 0 ? `${c.totalPaid.toLocaleString()} ج` : '—'}
+                      {c.totalPaid > 0 ? `${c.totalPaid.toLocaleString('ar-EG-u-nu-latn')} ج` : '—'}
                     </td>
                     {/* Date */}
                     <td className="px-3 py-3 text-center text-gray-400 text-xs">
@@ -775,7 +775,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
               السابق
             </button>
             <span className="text-xs text-gray-500">
-              صفحة {page + 1} من {totalPages} ({filtered.length.toLocaleString()} نتيجة)
+              صفحة {page + 1} من {totalPages} ({filtered.length.toLocaleString('ar-EG-u-nu-latn')} نتيجة)
             </span>
             <button
               onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}

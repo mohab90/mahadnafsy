@@ -104,19 +104,19 @@ export function StudentCoursesTab({
                 <div className="mb-3 space-y-1 rounded-xl border border-gray-100 bg-gray-50 p-2.5 text-xs">
                   <div className="flex justify-between">
                     <span className="text-gray-500">مدفوع</span>
-                    <span className="font-bold text-green-700">{paymentSummary.paidEGP.toLocaleString()} ج.م</span>
+                    <span className="font-bold text-green-700">{paymentSummary.paidEGP.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
                   </div>
                   {paymentSummary.expectedEGP != null && (
                     <div className="flex justify-between">
                       <span className="text-gray-500">الإجمالي</span>
-                      <span className="font-bold text-gray-700">{paymentSummary.expectedEGP.toLocaleString()} ج.م</span>
+                      <span className="font-bold text-gray-700">{paymentSummary.expectedEGP.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
                     </div>
                   )}
                   {remaining !== null && (
                     <div className="flex justify-between">
                       <span className="text-gray-500">الباقي</span>
                       <span className={`font-bold ${remaining > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        {remaining > 0 ? `${remaining.toLocaleString()} ج.م` : 'مكتمل'}
+                        {remaining > 0 ? `${remaining.toLocaleString('ar-EG-u-nu-latn')} ج.م` : 'مكتمل'}
                       </span>
                     </div>
                   )}

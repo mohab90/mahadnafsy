@@ -962,7 +962,7 @@ const MarketingHubTab: React.FC<Props> = ({ notify }) => {
           {/* Main KPIs */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <StatCard label="معدل تحويل الليدات" value={`${convRate}%`} sub={`${convertedLeads} تحويل`} icon={TrendingUp} color="text-green-600" bg="bg-green-50" />
-            <StatCard label="متوسط إيراد/طلب" value={filteredOrders.length > 0 ? `${Math.round(totalRevenue / filteredOrders.length).toLocaleString()} ج` : '—'} sub={`${filteredOrders.length} طلب`} icon={CreditCard} color="text-indigo-600" bg="bg-indigo-50" />
+            <StatCard label="متوسط إيراد/طلب" value={filteredOrders.length > 0 ? `${Math.round(totalRevenue / filteredOrders.length).toLocaleString('ar-EG-u-nu-latn')} ج` : '—'} sub={`${filteredOrders.length} طلب`} icon={CreditCard} color="text-indigo-600" bg="bg-indigo-50" />
             <StatCard label="إجمالي الإيراد" value={`${fmtK(totalRevenue)} ج`} sub="هذه الفترة" icon={BarChart3} color="text-rose-600" bg="bg-rose-50" />
             <StatCard label="مشتركين جدد" value={filteredSubs.length} sub="هذه الفترة" icon={Users} color="text-teal-600" bg="bg-teal-50" />
             <StatCard label="كوبونات نشطة" value={activeDiscounts.length} sub={`من ${discounts.length} إجمالي`} icon={Tag} color="text-purple-600" bg="bg-purple-50" />

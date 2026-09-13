@@ -130,7 +130,7 @@ export default function SubscriptionsTab() {
           { label: 'الاشتراكات', val: filtered.length, color: 'blue', icon: Users },
           { label: 'النشطون', val: activeCount, color: 'emerald', icon: Star },
           { label: 'إجمالي الإيراد', val: `${(totalRevenue / 1000).toFixed(1)}ك ج`, color: 'violet', icon: DollarSign },
-          { label: 'متوسط الاشتراك', val: `${avgRevenue.toLocaleString()} ج`, color: 'amber', icon: BarChart3 },
+          { label: 'متوسط الاشتراك', val: `${avgRevenue.toLocaleString('ar-EG-u-nu-latn')} ج`, color: 'amber', icon: BarChart3 },
         ].map(k => {
           const Icon = k.icon;
           return (
@@ -180,7 +180,7 @@ export default function SubscriptionsTab() {
                 <tr key={c.name} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-semibold text-gray-800 truncate max-w-[200px]">{c.name}</td>
                   <td className="px-4 py-3 font-bold text-blue-700">{c.count}</td>
-                  <td className="px-4 py-3 font-bold text-emerald-700">{c.revenue.toLocaleString()} ج</td>
+                  <td className="px-4 py-3 font-bold text-emerald-700">{c.revenue.toLocaleString('ar-EG-u-nu-latn')} ج</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div className="flex-1 bg-gray-100 rounded-full h-1.5 min-w-[60px]">

@@ -252,8 +252,8 @@ export function LeadPerformanceOverview({
                           style={{ width: `${Math.min(achPct ?? 0, 100)}%` }} />
                       </div>
                       <div className="flex justify-between mt-1 text-[10px] text-gray-400">
-                        <span>{revenue.toLocaleString()} ج.م محصّل</span>
-                        <span>الهدف: {targetEGP > 0 ? targetEGP.toLocaleString() : '—'} ج.م</span>
+                        <span>{revenue.toLocaleString('ar-EG-u-nu-latn')} ج.م محصّل</span>
+                        <span>الهدف: {targetEGP > 0 ? targetEGP.toLocaleString('ar-EG-u-nu-latn') : '—'} ج.م</span>
                       </div>
                     </div>
 

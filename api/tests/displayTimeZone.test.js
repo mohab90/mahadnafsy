@@ -177,3 +177,68 @@ test('the difference it makes, at the hours it makes it', () => {
   assert.equal(summer.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' }), '2026-07-15');
   assert.equal(summer.toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' }), '2026-07-15');
 });
+
+// ── and the digits ───────────────────────────────────────────────────────────
+//
+// The same defect one step over. `(164961).toLocaleString()` with no locale
+// also follows the viewer: an ar-EG browser renders «١٦٤٬٩٦١» in Arabic-Indic
+// digits, an en-US one «164,961». 246 calls were bare and 132 asked for
+// 'ar-EG-u-nu-latn' — Arabic grouping, Latin digits — so a staff member whose
+// browser is set to Arabic read both on one screen, and the amounts they could
+// copy out of the page depended on their laptop.
+//
+// Every deliberate choice in this codebase was Latin, 132 times over. That is
+// the one all of them make now.
+
+const NUMBER_LOCALE = "'ar-EG-u-nu-latn'";
+
+function numberFormattingCalls(source) {
+  const found = [];
+  for (const match of source.matchAll(/\.toLocaleString\s*\(/g)) {
+    let depth = 0;
+    let end = -1;
+    for (let i = match.index + match[0].length - 1; i < source.length; i++) {
+      if (source[i] === '(') depth++;
+      else if (source[i] === ')') { depth--; if (depth === 0) { end = i; break; } }
+    }
+    if (end < 0) continue;
+    const args = source.slice(match.index + match[0].length, end).trim();
+    // A date goes through the zone rule above, not this one.
+    if (DATE_FIELD.test(args) || /timeZone/.test(args)) continue;
+    found.push({ args, line: source.slice(0, match.index).split('\n').length });
+  }
+  return found;
+}
+
+test('every number on screen is formatted in one named locale', () => {
+  const files = browserSources();
+  assert.ok(files.length > 300, `expected both app trees, saw ${files.length}`);
+
+  const bare = [];
+  const other = [];
+  let total = 0;
+  for (const rel of files) {
+    const source = codeOnly(fs.readFileSync(path.join(ROOT, rel), 'utf8'));
+    for (const call of numberFormattingCalls(source)) {
+      total++;
+      if (call.args === '') bare.push(`${rel}:${call.line}`);
+      else if (!call.args.startsWith(NUMBER_LOCALE)) other.push(`${rel}:${call.line} (${call.args.slice(0, 30)})`);
+    }
+  }
+
+  assert.deepEqual(bare, [],
+    'these format a number in whatever locale the viewer\'s browser is set to — an Arabic one gives Arabic-Indic digits: ' + bare.join(', '));
+  assert.deepEqual(other, [],
+    'these ask for a different locale, so the same screen can disagree with itself: ' + other.join(', '));
+
+  assert.ok(total >= 370, `expected the number formatting to still exist, saw ${total} call(s)`);
+});
+
+test('which digits that actually produces', () => {
+  // Run it. The whole reason 'ar-EG-u-nu-latn' is spelled out is the -u-nu-latn.
+  const amount = 164961.5;
+  assert.equal(amount.toLocaleString('ar-EG-u-nu-latn'), '164,961.5');
+  assert.equal(amount.toLocaleString('ar-EG'), '١٦٤٬٩٦١٫٥',
+    'the premise: a browser set to Arabic (Egypt) renders Arabic-Indic digits');
+  assert.notEqual(amount.toLocaleString('ar-EG'), amount.toLocaleString('ar-EG-u-nu-latn'));
+});

@@ -147,7 +147,7 @@ export function ConsultationSettingsTab({ notify }: { notify: NotifyFn }) {
                     ))
                   )}
                   {settings?.sessionPrice?.EGP ? (
-                    <span className="text-[11px] text-gray-500 mr-auto">سعره: {settings.sessionPrice.EGP.toLocaleString()} ج.م</span>
+                    <span className="text-[11px] text-gray-500 mr-auto">سعره: {settings.sessionPrice.EGP.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
                   ) : null}
                 </div>
               );

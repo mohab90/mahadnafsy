@@ -452,9 +452,9 @@ const BundleDetails: React.FC = () => {
                 {priceAvailable ? (
                   <>
                     {oldPrice > currentPrice && (
-                      <div className="text-gray-400 line-through text-sm mb-1">{oldPrice.toLocaleString()} {currencySymbol}</div>
+                      <div className="text-gray-400 line-through text-sm mb-1">{oldPrice.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}</div>
                     )}
-                    <div className="text-4xl font-extrabold text-primary-600">{currentPrice.toLocaleString()}</div>
+                    <div className="text-4xl font-extrabold text-primary-600">{currentPrice.toLocaleString('ar-EG-u-nu-latn')}</div>
                     <div className="text-gray-500 text-base">{currencySymbol}</div>
                     {Number(savePct) > 0 && (
                       <span className="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-full inline-block mt-2">توفر {savePct}%</span>

@@ -126,27 +126,27 @@ const PrintReceiptModal: React.FC<{ data: PrintData; onClose: () => void }> = ({
           {data.items.map((item, i) => (
             <div key={i} className="flex justify-between">
               <span className="text-gray-600 truncate flex-1 ml-1">{item.label}</span>
-              <span className="font-bold whitespace-nowrap">{item.amount.toLocaleString()} {item.currency}</span>
+              <span className="font-bold whitespace-nowrap">{item.amount.toLocaleString('ar-EG-u-nu-latn')} {item.currency}</span>
             </div>
           ))}
           {data.items.length > 1 && (
             <div className="flex justify-between font-extrabold border-t border-dashed border-gray-300 pt-0.5 mt-0.5">
               <span>المدفوع الآن:</span>
-              <span>{data.total.toLocaleString()} {data.currency}</span>
+              <span>{data.total.toLocaleString('ar-EG-u-nu-latn')} {data.currency}</span>
             </div>
           )}
         </div>
         <div className="border-t border-dashed border-gray-400 my-1.5" />
         <div className="space-y-0.5">
-          {data.courseExpected > 0 && <div className="flex justify-between"><span className="text-gray-600">إجمالي الكورس:</span><span className="font-bold">{data.courseExpected.toLocaleString()} {data.currency}</span></div>}
-          {data.prevPaid > 0 && <div className="flex justify-between"><span className="text-gray-600">مدفوع سابقاً:</span><span className="font-bold">{data.prevPaid.toLocaleString()} {data.currency}</span></div>}
+          {data.courseExpected > 0 && <div className="flex justify-between"><span className="text-gray-600">إجمالي الكورس:</span><span className="font-bold">{data.courseExpected.toLocaleString('ar-EG-u-nu-latn')} {data.currency}</span></div>}
+          {data.prevPaid > 0 && <div className="flex justify-between"><span className="text-gray-600">مدفوع سابقاً:</span><span className="font-bold">{data.prevPaid.toLocaleString('ar-EG-u-nu-latn')} {data.currency}</span></div>}
           <div className="flex justify-between font-extrabold text-[12px]">
-            <span>المدفوع الآن:</span><span>{data.total.toLocaleString()} {data.currency}</span>
+            <span>المدفوع الآن:</span><span>{data.total.toLocaleString('ar-EG-u-nu-latn')} {data.currency}</span>
           </div>
           {data.courseExpected > 0 && (
             <div className={`flex justify-between font-bold ${data.remaining === 0 ? 'text-green-700' : 'text-red-600'}`}>
               <span>المتبقي:</span>
-              <span>{data.remaining === 0 ? '✓ مكتمل' : `${data.remaining.toLocaleString()} ${data.currency}`}</span>
+              <span>{data.remaining === 0 ? '✓ مكتمل' : `${data.remaining.toLocaleString('ar-EG-u-nu-latn')} ${data.currency}`}</span>
             </div>
           )}
         </div>
@@ -519,9 +519,9 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           {mode === 'subscriber' && payTotalExpected > 0 && (
             <div className="flex gap-2 mb-1">
               {[
-                { label: 'مدفوع', value: `${payTotalPaid.toLocaleString()} ج` },
-                { label: 'متبقي', value: payRemaining > 0 ? `${payRemaining.toLocaleString()} ج` : '✅ مكتمل' },
-                { label: 'إجمالي', value: `${payTotalExpected.toLocaleString()} ج` },
+                { label: 'مدفوع', value: `${payTotalPaid.toLocaleString('ar-EG-u-nu-latn')} ج` },
+                { label: 'متبقي', value: payRemaining > 0 ? `${payRemaining.toLocaleString('ar-EG-u-nu-latn')} ج` : '✅ مكتمل' },
+                { label: 'إجمالي', value: `${payTotalExpected.toLocaleString('ar-EG-u-nu-latn')} ج` },
               ].map(item => (
                 <div key={item.label} className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-center">
                   <p className="text-[10px] text-gray-500 font-semibold">{item.label}</p>
@@ -644,10 +644,10 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                             <p className={`text-sm font-bold truncate ${d.courseId === opt.cid ? 'text-red-800' : 'text-gray-800'}`}>{opt.label}</p>
                             {opt.px > 0 && (
                               <p className="text-[11px] text-gray-500 mt-0.5">
-                                <span className="text-green-700 font-semibold">مدفوع: {opt.paid.toLocaleString()}</span>
-                                {' · '}<span className="font-semibold">إجمالي: {opt.px.toLocaleString()}</span>
+                                <span className="text-green-700 font-semibold">مدفوع: {opt.paid.toLocaleString('ar-EG-u-nu-latn')}</span>
+                                {' · '}<span className="font-semibold">إجمالي: {opt.px.toLocaleString('ar-EG-u-nu-latn')}</span>
                                 {' · '}{(opt.remaining ?? 0) > 0
-                                  ? <span className="text-amber-600 font-bold">متبقي: {opt.remaining!.toLocaleString()}</span>
+                                  ? <span className="text-amber-600 font-bold">متبقي: {opt.remaining!.toLocaleString('ar-EG-u-nu-latn')}</span>
                                   : <span className="text-green-600 font-bold">✅ مكتمل</span>}
                               </p>
                             )}
@@ -724,9 +724,9 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                                 {certPx > 0 && (
                                   <p className="text-[11px] text-gray-500">
                                     {r.status === 'paid' ? <span className="text-green-600 font-semibold">✅ مدفوعة</span> : <>
-                                      <span className="text-green-700 font-semibold">مدفوع: {certPaid.toLocaleString()}</span>
-                                      {' · '}<span className="font-semibold">إجمالي: {certPx.toLocaleString()}</span>
-                                      {' · '}<span className="text-amber-600 font-bold">متبقي: {Math.max(0, certPx - certPaid).toLocaleString()}</span>
+                                      <span className="text-green-700 font-semibold">مدفوع: {certPaid.toLocaleString('ar-EG-u-nu-latn')}</span>
+                                      {' · '}<span className="font-semibold">إجمالي: {certPx.toLocaleString('ar-EG-u-nu-latn')}</span>
+                                      {' · '}<span className="text-amber-600 font-bold">متبقي: {Math.max(0, certPx - certPaid).toLocaleString('ar-EG-u-nu-latn')}</span>
                                     </>}
                                   </p>
                                 )}
@@ -756,20 +756,20 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                           <option value="">— نوع الشهادة —</option>
                           {Object.entries(certTypeLabels).map(([v, lb]) => {
                             const base = certBasePrice(v, d.currency);
-                            return <option key={v} value={v}>{lb}{base > 0 ? ` — ${base.toLocaleString()} ${d.currency}` : ''}</option>;
+                            return <option key={v} value={v}>{lb}{base > 0 ? ` — ${base.toLocaleString('ar-EG-u-nu-latn')} ${d.currency}` : ''}</option>;
                           })}
                         </select>
                         {d.certType && (
                           certBasePrice(d.certType, d.currency) > 0 ? (
                             <p className="mt-1 text-[11px] text-gray-600">
                               <span className="font-semibold">السعر الأساسي: </span>
-                              {certBasePrice(d.certType, d.currency).toLocaleString()} {d.currency}
+                              {certBasePrice(d.certType, d.currency).toLocaleString('ar-EG-u-nu-latn')} {d.currency}
                               {Number(_amtPaid) > 0 && (
                                 <> {' · '}
-                                  <span className="text-green-700 font-semibold">تدفع الآن: {Number(_amtPaid).toLocaleString()}</span>
+                                  <span className="text-green-700 font-semibold">تدفع الآن: {Number(_amtPaid).toLocaleString('ar-EG-u-nu-latn')}</span>
                                   {' · '}
                                   <span className="text-amber-600 font-bold">
-                                    متبقٍ: {Math.max(0, certBasePrice(d.certType, d.currency) - Number(_amtPaid)).toLocaleString()}
+                                    متبقٍ: {Math.max(0, certBasePrice(d.certType, d.currency) - Number(_amtPaid)).toLocaleString('ar-EG-u-nu-latn')}
                                   </span>
                                 </>
                               )}
@@ -822,7 +822,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                 />
                 {_hasDiscount && (
                   <span className="text-xs font-bold text-red-600 whitespace-nowrap">
-                    <span className="text-gray-400 line-through mr-1">{_sysPx.toLocaleString()}</span>→{_effPx.toLocaleString()} {d.currency}
+                    <span className="text-gray-400 line-through mr-1">{_sysPx.toLocaleString('ar-EG-u-nu-latn')}</span>→{_effPx.toLocaleString('ar-EG-u-nu-latn')} {d.currency}
                   </span>
                 )}
               </>
@@ -837,14 +837,14 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                   onClick={() => set({ amount: String(bal) })}
                   className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-lg hover:bg-amber-100 transition whitespace-nowrap"
                 >
-                  ⚡ كل المتبقي ({bal.toLocaleString()})
+                  ⚡ كل المتبقي ({bal.toLocaleString('ar-EG-u-nu-latn')})
                 </button>
               );
               if (alreadyPaid > 0 && bal === 0) return <span className="text-[10px] font-bold text-green-600">✅ مكتمل الدفع</span>;
               return null;
             })()}
             {d.bookingType === 'new_booking' && _remaining > 0 && (
-              <span className="text-[10px] text-amber-600 font-medium whitespace-nowrap">متبقي: <span className="font-bold">{_remaining.toLocaleString()}</span></span>
+              <span className="text-[10px] text-amber-600 font-medium whitespace-nowrap">متبقي: <span className="font-bold">{_remaining.toLocaleString('ar-EG-u-nu-latn')}</span></span>
             )}
           </div>
 
@@ -862,7 +862,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
             >+ إضافة خدمة / منتج</button>
             {_grandTotal > 0 && (
               <span className="mr-auto text-xs font-bold text-gray-700">
-                الإجمالي: <span className="text-red-600 font-extrabold">{_grandTotal.toLocaleString()} {d.currency}</span>
+                الإجمالي: <span className="text-red-600 font-extrabold">{_grandTotal.toLocaleString('ar-EG-u-nu-latn')} {d.currency}</span>
               </span>
             )}
           </div>
@@ -958,8 +958,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                               {eiSysPx > 0 && (
                                 <span className="text-xs font-bold text-gray-500 whitespace-nowrap">
                                   {eiHasDiscount
-                                    ? <><span className="text-gray-400 line-through mr-1">{eiSysPx.toLocaleString()}</span>→{eiEffPx.toLocaleString()} {d.currency}</>
-                                    : <>{eiSysPx.toLocaleString()} {d.currency}</>
+                                    ? <><span className="text-gray-400 line-through mr-1">{eiSysPx.toLocaleString('ar-EG-u-nu-latn')}</span>→{eiEffPx.toLocaleString('ar-EG-u-nu-latn')} {d.currency}</>
+                                    : <>{eiSysPx.toLocaleString('ar-EG-u-nu-latn')} {d.currency}</>
                                   }
                                 </span>
                               )}
@@ -1143,11 +1143,11 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                 <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
                   <span className="text-gray-500">نوع الخدمة:</span><span className="font-semibold">{typeLabel[d.paymentType] || d.paymentType}</span>
                   {cLabel && <><span className="text-gray-500">الكورس:</span><span className="font-semibold">{cLabel}</span></>}
-                  {_effPx > 0 && <><span className="text-gray-500">السعر:</span><span className="font-semibold">{_effPx.toLocaleString()} {d.currency}{_hasDiscount ? ' (بعد الخصم)' : ''}</span></>}
-                  <span className="text-gray-500">المدفوع الآن:</span><span className="font-bold text-green-700">{_amtPaid.toLocaleString()} {d.currency}</span>
-                  {_extraTotal > 0 && <><span className="text-gray-500">إضافات:</span><span className="font-semibold">+{_extraTotal.toLocaleString()} {d.currency}</span></>}
-                  {_grandTotal > 0 && _extraTotal > 0 && <><span className="text-gray-500">الإجمالي:</span><span className="font-extrabold text-red-700">{_grandTotal.toLocaleString()} {d.currency}</span></>}
-                  {_remaining > 0 && d.bookingType === 'new_booking' && <><span className="text-gray-500">المتبقي:</span><span className="font-bold text-amber-600">{_remaining.toLocaleString()} {d.currency}</span></>}
+                  {_effPx > 0 && <><span className="text-gray-500">السعر:</span><span className="font-semibold">{_effPx.toLocaleString('ar-EG-u-nu-latn')} {d.currency}{_hasDiscount ? ' (بعد الخصم)' : ''}</span></>}
+                  <span className="text-gray-500">المدفوع الآن:</span><span className="font-bold text-green-700">{_amtPaid.toLocaleString('ar-EG-u-nu-latn')} {d.currency}</span>
+                  {_extraTotal > 0 && <><span className="text-gray-500">إضافات:</span><span className="font-semibold">+{_extraTotal.toLocaleString('ar-EG-u-nu-latn')} {d.currency}</span></>}
+                  {_grandTotal > 0 && _extraTotal > 0 && <><span className="text-gray-500">الإجمالي:</span><span className="font-extrabold text-red-700">{_grandTotal.toLocaleString('ar-EG-u-nu-latn')} {d.currency}</span></>}
+                  {_remaining > 0 && d.bookingType === 'new_booking' && <><span className="text-gray-500">المتبقي:</span><span className="font-bold text-amber-600">{_remaining.toLocaleString('ar-EG-u-nu-latn')} {d.currency}</span></>}
                   {requirePaymentApproval && <><span className="text-gray-500">الحالة:</span><span className="font-bold text-amber-600">⏳ بانتظار الموافقة</span></>}
                 </div>
               </div>

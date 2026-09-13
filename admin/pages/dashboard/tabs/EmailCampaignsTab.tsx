@@ -147,7 +147,7 @@ export default function EmailCampaignsTab({ notify }: { notify: NotifyFn }) {
               { label: 'إجمالي الحملات', val: stats.total, color: 'blue' },
               { label: 'تم إرسالها', val: stats.sent, color: 'emerald' },
               { label: 'مسودات', val: stats.draft, color: 'gray' },
-              { label: 'إجمالي المُرسَل', val: stats.totalSent.toLocaleString(), color: 'violet' },
+              { label: 'إجمالي المُرسَل', val: stats.totalSent.toLocaleString('ar-EG-u-nu-latn'), color: 'violet' },
             ].map(k => (
               <div key={k.label} className={`bg-${k.color}-50 border border-${k.color}-100 rounded-2xl p-4 text-center`}>
                 <div className="text-xl font-extrabold text-gray-900">{k.val}</div>
@@ -171,7 +171,7 @@ export default function EmailCampaignsTab({ notify }: { notify: NotifyFn }) {
                     <div className="text-xs text-gray-500 truncate">{c.subject}</div>
                     <div className="flex items-center gap-3 mt-1 flex-wrap">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${STATUS_COLOR[c.status]}`}>{STATUS_LABEL[c.status]}</span>
-                      {c.sent_count > 0 && <span className="text-[10px] text-emerald-600">✓ {c.sent_count.toLocaleString()} مُرسَل</span>}
+                      {c.sent_count > 0 && <span className="text-[10px] text-emerald-600">✓ {c.sent_count.toLocaleString('ar-EG-u-nu-latn')} مُرسَل</span>}
                       {c.fail_count > 0 && <span className="text-[10px] text-red-500">✗ {c.fail_count} فشل</span>}
                     </div>
                   </div>

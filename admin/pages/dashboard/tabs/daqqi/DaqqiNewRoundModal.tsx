@@ -179,8 +179,8 @@ export function DaqqiNewRoundModal({
                                   <div className="text-[11px] text-gray-500 flex flex-wrap gap-x-3 gap-y-0.5">
                                     <span>{s.phone}</span>
                                     {bookingDate && <span className="text-gray-400">📅 {bookingDate}</span>}
-                                    <span className="text-green-700 font-semibold">مدفوع: {paid.toLocaleString()} ج.م</span>
-                                    {cp > 0 && <span className="text-gray-400">من {cp.toLocaleString()} ج.م</span>}
+                                    <span className="text-green-700 font-semibold">مدفوع: {paid.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
+                                    {cp > 0 && <span className="text-gray-400">من {cp.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>}
                                   </div>
                                   {enrolledNames.length > 0 && (
                                     <div className="flex flex-wrap gap-1 mt-1">

@@ -125,19 +125,19 @@ export function UnifiedClientSidebarFinancialCard({
       <div className="grid grid-cols-2 gap-2 mb-3">
         {subPaidTotals.EGP > 0 && (
           <div className="bg-emerald-50 rounded-xl p-2.5 text-center border border-emerald-100">
-            <p className="font-extrabold text-emerald-700 text-sm">{subPaidTotals.EGP.toLocaleString()}</p>
+            <p className="font-extrabold text-emerald-700 text-sm">{subPaidTotals.EGP.toLocaleString('ar-EG-u-nu-latn')}</p>
             <p className="text-[10px] text-gray-400 mt-0.5">مدفوع ج.م</p>
           </div>
         )}
         {subRemainingEGP > 0 && (
           <div className="bg-red-50 rounded-xl p-2.5 text-center border border-red-100">
-            <p className="font-extrabold text-red-600 text-sm">{subRemainingEGP.toLocaleString()}</p>
+            <p className="font-extrabold text-red-600 text-sm">{subRemainingEGP.toLocaleString('ar-EG-u-nu-latn')}</p>
             <p className="text-[10px] text-gray-400 mt-0.5">متبقي {settlementLabel}</p>
           </div>
         )}
         {subPaidTotals.SAR > 0 && (
           <div className="bg-blue-50 rounded-xl p-2.5 text-center border border-blue-100">
-            <p className="font-extrabold text-blue-700 text-sm">{subPaidTotals.SAR.toLocaleString()}</p>
+            <p className="font-extrabold text-blue-700 text-sm">{subPaidTotals.SAR.toLocaleString('ar-EG-u-nu-latn')}</p>
             <p className="text-[10px] text-gray-400 mt-0.5">مدفوع ر.س</p>
           </div>
         )}
@@ -152,8 +152,8 @@ export function UnifiedClientSidebarFinancialCard({
               <p className="font-semibold text-gray-800 text-xs truncate flex-1">{c?.title || cId}</p>
               {bm ? (
                 <div className="flex-shrink-0 text-left">
-                  <p className="text-[11px] font-bold text-emerald-700">{bm.paidEGP.toLocaleString()} {settlementLabel}</p>
-                  {remaining !== null && remaining > 0 && <p className="text-[10px] text-red-600">باقي {remaining.toLocaleString()}</p>}
+                  <p className="text-[11px] font-bold text-emerald-700">{bm.paidEGP.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel}</p>
+                  {remaining !== null && remaining > 0 && <p className="text-[10px] text-red-600">باقي {remaining.toLocaleString('ar-EG-u-nu-latn')}</p>}
                   {remaining === 0 && <p className="text-[10px] text-emerald-600 font-bold">✅ مكتمل</p>}
                 </div>
               ) : <span className="text-[10px] text-gray-400 italic flex-shrink-0">لا مدفوعات</span>}
@@ -164,7 +164,7 @@ export function UnifiedClientSidebarFinancialCard({
       {subscriber.discount != null && subscriber.discount > 0 && (
         <div className="mt-2 flex items-center justify-between bg-orange-50 border border-orange-100 rounded-xl px-3 py-1.5">
           <span className="text-xs text-orange-600">🏷️ خصم</span>
-          <span className="font-extrabold text-orange-700 text-xs">{subscriber.discount.toLocaleString()} {settlementLabel}</span>
+          <span className="font-extrabold text-orange-700 text-xs">{subscriber.discount.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel}</span>
         </div>
       )}
     </div>
@@ -208,7 +208,7 @@ export function UnifiedClientSidebarInstallmentsCard({
               <p className="font-semibold text-xs text-gray-800 truncate mb-1">{plan.courseTitle || courses.find(c => c.id === plan.courseId)?.title || plan.courseId}</p>
               <div className="flex items-center justify-between flex-wrap gap-1">
                 <span className="text-[10px] text-emerald-700 font-bold">{paid.length}/{plan.entries.length} {'\u0642\u0633\u0637'}</span>
-                {nextDue && <span className={`text-[10px] font-bold ${isOverdue ? 'text-red-600' : 'text-amber-600'}`}>{isOverdue ? '\u0645\u062a\u0623\u062e\u0631' : '\u0642\u0627\u062f\u0645'} {nextDue.dueDate} - {nextDue.amount.toLocaleString()} {'\u062c.\u0645'}</span>}
+                {nextDue && <span className={`text-[10px] font-bold ${isOverdue ? 'text-red-600' : 'text-amber-600'}`}>{isOverdue ? '\u0645\u062a\u0623\u062e\u0631' : '\u0642\u0627\u062f\u0645'} {nextDue.dueDate} - {nextDue.amount.toLocaleString('ar-EG-u-nu-latn')} {'\u062c.\u0645'}</span>}
                 {!nextDue && <span className="text-[10px] text-emerald-600 font-bold">{'\u062a\u0645 \u0627\u0644\u0633\u062f\u0627\u062f'}</span>}
               </div>
             </div>
@@ -285,8 +285,8 @@ export function UnifiedClientSidebarLeadCourseCard({
         <p className="font-bold text-blue-800 text-xs">{enrolledCourse.title}</p>
         {leadPaidEGP > 0 && (
           <div className="flex items-center justify-between mt-1.5 flex-wrap gap-1">
-            <span className="text-[10px] text-emerald-700 font-bold">{leadPaidEGP.toLocaleString()} {settlementLabel} مدفوع</span>
-            {leadRemaining > 0 && <span className="text-[10px] text-red-600 font-bold">متبقي {leadRemaining.toLocaleString()} {settlementLabel}</span>}
+            <span className="text-[10px] text-emerald-700 font-bold">{leadPaidEGP.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel} مدفوع</span>
+            {leadRemaining > 0 && <span className="text-[10px] text-red-600 font-bold">متبقي {leadRemaining.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel}</span>}
           </div>
         )}
       </div>
@@ -416,7 +416,7 @@ export function UnifiedClientSidebarActivityCard({
       )}
       {overdueAmount > 0 && (
         <div className="mt-2 flex items-center justify-between text-xs bg-red-50 rounded-xl px-2.5 py-1.5 border border-red-100">
-          <span className="text-red-600 font-bold">🔴 أقساط متأخرة</span><span className="text-red-700 font-extrabold">{overdueAmount.toLocaleString()} {settlementLabel}</span>
+          <span className="text-red-600 font-bold">🔴 أقساط متأخرة</span><span className="text-red-700 font-extrabold">{overdueAmount.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel}</span>
         </div>
       )}
     </div>
@@ -499,17 +499,17 @@ export function UnifiedClientSidebarDiscountCard({
           return (
             <button key={pct} onClick={() => onUpdateDiscount(val)}
               className={`py-1.5 rounded-xl text-xs font-bold border-2 transition ${isActive ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-200 bg-white text-gray-600 hover:border-orange-300'}`}>
-              {pct}%<span className="block text-[9px] font-normal text-gray-400">{val.toLocaleString()}</span>
+              {pct}%<span className="block text-[9px] font-normal text-gray-400">{val.toLocaleString('ar-EG-u-nu-latn')}</span>
             </button>
           );
         })}
       </div>
       {subscriber.discount != null && subscriber.discount > 0 && (
         <button onClick={() => onUpdateDiscount(0)} className="w-full py-1.5 text-xs text-red-500 hover:bg-red-50 rounded-xl transition">
-          ✕ إلغاء الخصم ({subscriber.discount.toLocaleString()} {settlementLabel})
+          ✕ إلغاء الخصم ({subscriber.discount.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel})
         </button>
       )}
-      <p className="text-[10px] text-gray-400 mt-1.5 text-center">محسوبة من {discountBase.toLocaleString()} {settlementLabel}</p>
+      <p className="text-[10px] text-gray-400 mt-1.5 text-center">محسوبة من {discountBase.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel}</p>
     </div>
   );
 }

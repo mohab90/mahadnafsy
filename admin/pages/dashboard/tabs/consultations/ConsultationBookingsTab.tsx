@@ -171,7 +171,7 @@ export function ConsultationBookingsTab({ notify }: { notify: NotifyFn }) {
                       {{ individual: 'فردية', couple: 'زوجية', family: 'أسرية' }[item.sessionType] || item.sessionType || '—'}
                     </td>
                     <td className="px-3 py-2.5 font-bold text-gray-800">
-                      {item.amount ? `${Number(item.amount).toLocaleString()} ${item.currency || 'ج.م'}` : '—'}
+                      {item.amount ? `${Number(item.amount).toLocaleString('ar-EG-u-nu-latn')} ${item.currency || 'ج.م'}` : '—'}
                     </td>
                     <td className="px-3 py-2.5">
                       <span className={`px-2 py-0.5 rounded-lg border font-bold ${STATUS_STYLE[status] || 'bg-gray-50 text-gray-600 border-gray-200'}`}>

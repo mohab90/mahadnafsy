@@ -169,7 +169,7 @@ export default function SalesReportsTab() {
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis dataKey="name" tick={{ fontSize: 10 }} />
             <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmtMoney(v)} />
-            <Tooltip formatter={numericTooltip(v => [`${v.toLocaleString()} ج`, 'الإيراد'])} />
+            <Tooltip formatter={numericTooltip(v => [`${v.toLocaleString('ar-EG-u-nu-latn')} ج`, 'الإيراد'])} />
             <Bar dataKey="revenue" fill="#10b981" radius={[4,4,0,0]} name="الإيراد" />
           </BarChart>
         </ResponsiveContainer>
@@ -193,7 +193,7 @@ export default function SalesReportsTab() {
                 <tr key={c.name} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-semibold text-gray-800 truncate max-w-[200px]">{c.name}</td>
                   <td className="px-4 py-3 text-blue-700 font-bold">{c.count}</td>
-                  <td className="px-4 py-3 text-emerald-700 font-bold">{c.revenue.toLocaleString()} ج</td>
+                  <td className="px-4 py-3 text-emerald-700 font-bold">{c.revenue.toLocaleString('ar-EG-u-nu-latn')} ج</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div className="flex-1 bg-gray-100 rounded-full h-1.5 min-w-[60px]">

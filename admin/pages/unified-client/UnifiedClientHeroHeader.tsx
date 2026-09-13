@@ -136,7 +136,7 @@ export function UnifiedClientHeroHeader({
             <p className="text-[11px] text-slate-400 mt-0.5">رسالة / تواصل</p>
           </div>
           <div className="bg-white/10 backdrop-blur-sm rounded-xl px-3 py-2.5 border border-white/10">
-            <p className="text-2xl font-extrabold text-emerald-300">{heroPaidEGP > 0 ? heroPaidEGP.toLocaleString() : '—'}</p>
+            <p className="text-2xl font-extrabold text-emerald-300">{heroPaidEGP > 0 ? heroPaidEGP.toLocaleString('ar-EG-u-nu-latn') : '—'}</p>
             <p className="text-[11px] text-slate-400 mt-0.5">{settlementLabel} مدفوع</p>
           </div>
           <div className="bg-white/10 backdrop-blur-sm rounded-xl px-3 py-2.5 border border-white/10">

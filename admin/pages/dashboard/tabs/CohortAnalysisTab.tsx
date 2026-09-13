@@ -124,13 +124,13 @@ export default function CohortAnalysisTab({ notify }: { notify: NotifyFn }) {
           <div className="flex items-center gap-2 text-gray-500 text-xs mb-1">
             <Users size={14} /> مشتركون جدد ({year})
           </div>
-          <div className="text-2xl font-extrabold text-gray-800">{totalNewSubs.toLocaleString()}</div>
+          <div className="text-2xl font-extrabold text-gray-800">{totalNewSubs.toLocaleString('ar-EG-u-nu-latn')}</div>
         </div>
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
           <div className="flex items-center gap-2 text-gray-500 text-xs mb-1">
             <Calendar size={14} /> دفعة أولى في نفس الشهر
           </div>
-          <div className="text-2xl font-extrabold text-emerald-600">{totalFirstPay.toLocaleString()}</div>
+          <div className="text-2xl font-extrabold text-emerald-600">{totalFirstPay.toLocaleString('ar-EG-u-nu-latn')}</div>
         </div>
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
           <div className="flex items-center gap-2 text-gray-500 text-xs mb-1">

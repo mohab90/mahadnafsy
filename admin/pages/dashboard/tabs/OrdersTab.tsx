@@ -198,8 +198,8 @@ export default function OrdersTab({
                     {[
                       {label:'إجمالي الدفعات', value:acceptedOm.length, color:'bg-slate-50 text-slate-700 border-slate-200'},
                       {label:'انتظار تأكيد',   value:pendingOm.length,  color:'bg-amber-50 text-amber-700 border-amber-200'},
-                      {label:'تحصيل اليوم',    value:`${todayAmtOm.toLocaleString()} ج`, color:'bg-emerald-50 text-emerald-700 border-emerald-200'},
-                      {label:'تحصيل الشهر',   value:`${monthAmtOm.toLocaleString()} ج`, color:'bg-blue-50 text-blue-700 border-blue-200'},
+                      {label:'تحصيل اليوم',    value:`${todayAmtOm.toLocaleString('ar-EG-u-nu-latn')} ج`, color:'bg-emerald-50 text-emerald-700 border-emerald-200'},
+                      {label:'تحصيل الشهر',   value:`${monthAmtOm.toLocaleString('ar-EG-u-nu-latn')} ج`, color:'bg-blue-50 text-blue-700 border-blue-200'},
                     ].map(k=>(
                       <div key={k.label} className={`border rounded-xl px-3 py-3 ${k.color}`}>
                         <div className="text-xs font-medium mb-1">{k.label}</div>
@@ -239,7 +239,7 @@ export default function OrdersTab({
                       <button onClick={()=>{setDaqqiSubSearch('');setOmOrdDateFrom2('');setOmOrdDateTo2('');}}
                         className="text-xs text-red-500 border border-red-200 rounded-lg px-2 py-1.5 bg-red-50 hover:bg-red-100">مسح</button>
                     )}
-                    <span className="text-xs text-gray-400 ml-auto">{tabRowsOm.length} دفعة — {tabRowsOm.reduce((s,p)=>s+toEGP(p),0).toLocaleString()} ج</span>
+                    <span className="text-xs text-gray-400 ml-auto">{tabRowsOm.length} دفعة — {tabRowsOm.reduce((s,p)=>s+toEGP(p),0).toLocaleString('ar-EG-u-nu-latn')} ج</span>
                   </div>
                   {/* Table */}
                   <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
@@ -279,7 +279,7 @@ export default function OrdersTab({
                                   {p.clientCode&&<div className="text-[9px] text-indigo-600 font-mono">#{p.clientCode}</div>}
                                 </td>
                                 <td className="px-2 py-2 border border-gray-200 text-[10px] text-gray-600 max-w-[140px] truncate" title={courseTitle}>{courseTitle}</td>
-                                <td className="px-2 py-2 border border-gray-200 text-center font-extrabold text-emerald-700">{payAmt.toLocaleString()} {currSymbol}</td>
+                                <td className="px-2 py-2 border border-gray-200 text-center font-extrabold text-emerald-700">{payAmt.toLocaleString('ar-EG-u-nu-latn')} {currSymbol}</td>
                                 <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-600">{(p as {paymentMethod?:string}).paymentMethod||'—'}</td>
                                 <td className="px-2 py-2 border border-gray-200 text-center">
                                   <span title={PAYMENT_ORIGIN[origin].hint} className={`text-[10px] font-bold border rounded-full px-1.5 py-0.5 whitespace-nowrap ${PAYMENT_ORIGIN_CLASS[origin]}`}>
@@ -375,8 +375,8 @@ export default function OrdersTab({
                     {[
                       {label:'إجمالي الدفعات',  value:confirmedPay.length,                      color:'bg-slate-50 text-slate-700 border-slate-200'},
                       {label:'انتظار تأكيد',     value:pendingPay.length,                         color:'bg-amber-50 text-amber-700 border-amber-200'},
-                      {label:'محصّل اليوم',      value:`${todayAmt.toLocaleString()} ج.م`,        color:'bg-emerald-50 text-emerald-700 border-emerald-200'},
-                      {label:'محصّل هذا الشهر', value:`${monthAmt.toLocaleString()} ج.م`,        color:'bg-blue-50 text-blue-700 border-blue-200'},
+                      {label:'محصّل اليوم',      value:`${todayAmt.toLocaleString('ar-EG-u-nu-latn')} ج.م`,        color:'bg-emerald-50 text-emerald-700 border-emerald-200'},
+                      {label:'محصّل هذا الشهر', value:`${monthAmt.toLocaleString('ar-EG-u-nu-latn')} ج.م`,        color:'bg-blue-50 text-blue-700 border-blue-200'},
                     ].map(k=>(
                       <div key={k.label} className={`border rounded-xl px-3 py-3 ${k.color}`}>
                         <div className="text-xs font-medium mb-1">{k.label}</div>
@@ -400,7 +400,7 @@ export default function OrdersTab({
                       <button onClick={()=>{setDaqqiSubSearch('');setDaqqiAccDateFrom('');setDaqqiAccDateTo('');}}
                         className="text-xs text-red-500 border border-red-200 rounded-lg px-2 py-1.5 bg-red-50 hover:bg-red-100">مسح</button>
                     )}
-                    <span className="text-xs text-gray-400 ml-auto">{filtered2.length} دفعة — {sumOrd(filtered2.filter(p=>p.status!=='pending')).toLocaleString()} ج.م</span>
+                    <span className="text-xs text-gray-400 ml-auto">{filtered2.length} دفعة — {sumOrd(filtered2.filter(p=>p.status!=='pending')).toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
                     <button onClick={()=>{
                       const rows=[['العميل','الكود','الكورس','المبلغ','وسيلة الدفع','الموظف','التاريخ','الحالة','ملاحظة'],...filtered2.map(p=>[p.clientName,p.clientCode,courses.find(c=>c.id===p.courseId)?.title||p.paymentType||'',''+p.amount,p.paymentMethod||'',p.staffName||'',(p.at||'').slice(0,10),p.status==='pending'?'انتظار':'مؤكد',p.note||''])];
                       downloadCsv(`daqqi_payments_${cairoDateOnly()}`, rows);
@@ -436,7 +436,7 @@ export default function OrdersTab({
                                   {p.clientCode&&<div className="text-[9px] text-indigo-600 font-mono">#{p.clientCode}</div>}
                                 </td>
                                 <td className="px-2 py-2 border border-gray-200 text-[10px] text-gray-600 max-w-[120px] truncate" title={courseTitle}>{courseTitle}</td>
-                                <td className="px-2 py-2 border border-gray-200 text-center font-extrabold text-emerald-700">{Number(p.amount).toLocaleString()} ج.م</td>
+                                <td className="px-2 py-2 border border-gray-200 text-center font-extrabold text-emerald-700">{Number(p.amount).toLocaleString('ar-EG-u-nu-latn')} ج.م</td>
                                 <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-600">{p.paymentMethod||'—'}</td>
                                 <td className="px-2 py-2 border border-gray-200 text-center">
                                   <span title={PAYMENT_ORIGIN[paymentOrigin(p)].hint} className={`text-[10px] font-bold border rounded-full px-1.5 py-0.5 whitespace-nowrap ${PAYMENT_ORIGIN_CLASS[paymentOrigin(p)]}`}>
@@ -557,11 +557,11 @@ export default function OrdersTab({
                       <div className="flex items-center gap-3 flex-wrap">
                         <div className="text-center bg-white/10 rounded-xl px-4 py-2">
                           <div className="text-xs text-emerald-100">إيراد اليوم</div>
-                          <div className="text-xl font-extrabold">{todayRevEGP.toLocaleString()} ج</div>
+                          <div className="text-xl font-extrabold">{todayRevEGP.toLocaleString('ar-EG-u-nu-latn')} ج</div>
                         </div>
                         <div className="text-center bg-white/10 rounded-xl px-4 py-2">
                           <div className="text-xs text-emerald-100">إيراد الشهر</div>
-                          <div className="text-xl font-extrabold">{monthRevEGP.toLocaleString()} ج</div>
+                          <div className="text-xl font-extrabold">{monthRevEGP.toLocaleString('ar-EG-u-nu-latn')} ج</div>
                         </div>
                       </div>
                     </div>
@@ -574,8 +574,8 @@ export default function OrdersTab({
                       { label: 'مدفوعات مؤكدة',  value: paidAll.length,         icon: CheckCircle, bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', itext: 'text-emerald-400' },
                       { label: 'قيد المراجعة',   value: pendingAll.length,      icon: Clock,       bg: 'bg-amber-50',   border: 'border-amber-200',   text: 'text-amber-700',   itext: 'text-amber-400' },
                       { label: 'فاشلة / مرتجع',  value: failedAll.length,       icon: XCircle,     bg: 'bg-red-50',     border: 'border-red-200',     text: 'text-red-700',     itext: 'text-red-400' },
-                      { label: 'إيراد EGP',       value: `${ordersStats.revenueEGP.toLocaleString()} ج`, icon: Wallet, bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700', itext: 'text-blue-400' },
-                      { label: 'إيراد SAR',       value: `${ordersStats.revenueSAR.toLocaleString()} ر.س`, icon: TrendingUp, bg: 'bg-violet-50', border: 'border-violet-200', text: 'text-violet-700', itext: 'text-violet-400' },
+                      { label: 'إيراد EGP',       value: `${ordersStats.revenueEGP.toLocaleString('ar-EG-u-nu-latn')} ج`, icon: Wallet, bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700', itext: 'text-blue-400' },
+                      { label: 'إيراد SAR',       value: `${ordersStats.revenueSAR.toLocaleString('ar-EG-u-nu-latn')} ر.س`, icon: TrendingUp, bg: 'bg-violet-50', border: 'border-violet-200', text: 'text-violet-700', itext: 'text-violet-400' },
                     ].map(k => {
                       const Icon = k.icon;
                       return (
@@ -601,7 +601,7 @@ export default function OrdersTab({
                         const pct = maxRev > 0 ? Math.round((d.rev / maxRev) * 100) : 0;
                         const isToday = d.ds === todayStr;
                         return (
-                          <div key={d.ds} className="flex-1 flex flex-col items-center gap-1" title={`${d.label}: ${d.rev.toLocaleString()} ج`}>
+                          <div key={d.ds} className="flex-1 flex flex-col items-center gap-1" title={`${d.label}: ${d.rev.toLocaleString('ar-EG-u-nu-latn')} ج`}>
                             <div className="w-full flex flex-col justify-end h-12 relative group">
                               <div
                                 className={`w-full rounded-t-md transition-all ${isToday ? 'bg-emerald-500' : 'bg-emerald-200 group-hover:bg-emerald-400'}`}
@@ -609,7 +609,7 @@ export default function OrdersTab({
                               />
                               {d.rev > 0 && (
                                 <div className="absolute -top-4 left-1/2 -translate-x-1/2 text-[8px] text-gray-500 whitespace-nowrap hidden group-hover:block bg-white border border-gray-200 rounded px-1">
-                                  {d.rev.toLocaleString()}
+                                  {d.rev.toLocaleString('ar-EG-u-nu-latn')}
                                 </div>
                               )}
                             </div>
@@ -716,7 +716,7 @@ export default function OrdersTab({
                       <div className="flex-1" />
                       {/* Summary */}
                       <span className="text-xs text-gray-500 font-medium bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
-                        {tabRows.length} طلب · {tabTotal.toLocaleString()} ج
+                        {tabRows.length} طلب · {tabTotal.toLocaleString('ar-EG-u-nu-latn')} ج
                       </span>
                       {/* Export — the active review tab's rows, matching the count shown above (PAY-12) */}
                       <button onClick={() => exportFilteredOrdersCsv(tabRows)} disabled={tabRows.length === 0}
@@ -737,7 +737,7 @@ export default function OrdersTab({
                             { label: 'إجمالي التحويلات', value: transfers.length, cls: 'bg-blue-50 border-blue-200 text-blue-700' },
                             { label: 'محصّل',             value: transfers.filter(r=>r.status==='paid').length, cls: 'bg-emerald-50 border-emerald-200 text-emerald-700' },
                             { label: 'قيد التأكيد',      value: transfers.filter(r=>r.status==='pending').length, cls: 'bg-amber-50 border-amber-200 text-amber-700' },
-                            { label: 'إجمالي محصّل',     value: `${totalEGP.toLocaleString()} ج`, cls: 'bg-violet-50 border-violet-200 text-violet-700' },
+                            { label: 'إجمالي محصّل',     value: `${totalEGP.toLocaleString('ar-EG-u-nu-latn')} ج`, cls: 'bg-violet-50 border-violet-200 text-violet-700' },
                           ].map(k => (
                             <div key={k.label} className={`border rounded-xl px-3 py-3 ${k.cls}`}>
                               <div className="text-[10px] font-semibold mb-1">{k.label}</div>
@@ -782,7 +782,7 @@ export default function OrdersTab({
                                         {row.transactionId && <div className="text-[9px] text-blue-500 font-mono">ref: {row.transactionId}</div>}
                                       </td>
                                       <td className="px-3 py-2.5 border-l border-gray-100 text-center">
-                                        <span className="font-extrabold text-blue-700 text-[12px]">{row.amount?.toLocaleString()}</span>
+                                        <span className="font-extrabold text-blue-700 text-[12px]">{row.amount?.toLocaleString('ar-EG-u-nu-latn')}</span>
                                         <span className="text-[9px] text-gray-400 mr-0.5">{row.currency || 'EGP'}</span>
                                       </td>
                                       <td className="px-3 py-2.5 border-l border-gray-100 text-center">
@@ -846,7 +846,7 @@ export default function OrdersTab({
                                 <tfoot>
                                   <tr className="bg-gradient-to-l from-blue-50 to-white border-t-2 border-blue-100">
                                     <td colSpan={2} className="px-3 py-2.5 font-bold text-gray-600 text-xs">الإجمالي ({transfers.filter(r=>r.status==='paid').length} محصّل)</td>
-                                    <td className="px-3 py-2.5 text-center font-extrabold text-blue-700 text-[12px]">{totalEGP.toLocaleString()} ج</td>
+                                    <td className="px-3 py-2.5 text-center font-extrabold text-blue-700 text-[12px]">{totalEGP.toLocaleString('ar-EG-u-nu-latn')} ج</td>
                                     <td colSpan={6} />
                                   </tr>
                                 </tfoot>
@@ -910,7 +910,7 @@ export default function OrdersTab({
                                   {typeBadge(row.type)}
                                 </td>
                                 <td className="px-3 py-2.5 border-l border-gray-100 text-center">
-                                  <span className="font-extrabold text-emerald-700 text-[12px]">{row.amount?.toLocaleString()}</span>
+                                  <span className="font-extrabold text-emerald-700 text-[12px]">{row.amount?.toLocaleString('ar-EG-u-nu-latn')}</span>
                                   <span className="text-[9px] text-gray-400 mr-0.5">{row.currency || 'EGP'}</span>
                                 </td>
                                 <td className="px-3 py-2.5 border-l border-gray-100 text-center">
@@ -973,7 +973,7 @@ export default function OrdersTab({
                           <tfoot>
                             <tr className="bg-gradient-to-l from-emerald-50 to-white border-t-2 border-emerald-100">
                               <td colSpan={4} className="px-3 py-2.5 font-bold text-gray-600 text-xs">الإجمالي ({tabRows.length} طلب)</td>
-                              <td className="px-3 py-2.5 text-center font-extrabold text-emerald-700 text-[12px]">{tabTotal.toLocaleString()} ج</td>
+                              <td className="px-3 py-2.5 text-center font-extrabold text-emerald-700 text-[12px]">{tabTotal.toLocaleString('ar-EG-u-nu-latn')} ج</td>
                               <td colSpan={5} />
                             </tr>
                           </tfoot>
@@ -1008,7 +1008,7 @@ export default function OrdersTab({
                           </div>
                           <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm flex-shrink-0">
                             <div className="font-bold text-blue-800">التحويل المحدد</div>
-                            <div className="text-blue-600 text-xs mt-1">{transfer.customerName} — {transfer.paymentMethod}{transfer.transactionId ? ` · ref: ${transfer.transactionId}` : ''} — {transfer.amount?.toLocaleString()} {transfer.currency}</div>
+                            <div className="text-blue-600 text-xs mt-1">{transfer.customerName} — {transfer.paymentMethod}{transfer.transactionId ? ` · ref: ${transfer.transactionId}` : ''} — {transfer.amount?.toLocaleString('ar-EG-u-nu-latn')} {transfer.currency}</div>
                           </div>
                           <p className="text-xs text-gray-500 flex-shrink-0">اختر دفعة عميل قيد المراجعة لربطها بهذا التحويل وتأكيدها تلقائياً.</p>
                           <div className="overflow-y-auto flex-1 space-y-2 min-h-0">
@@ -1035,7 +1035,7 @@ export default function OrdersTab({
                                     <div className="text-[10px] text-gray-400 mt-0.5 font-mono">#{order.id.slice(-8)}</div>
                                   </div>
                                   <div className="text-right flex-shrink-0">
-                                    <div className="font-extrabold text-emerald-700 text-sm">{order.amount?.toLocaleString()} {order.currency}</div>
+                                    <div className="font-extrabold text-emerald-700 text-sm">{order.amount?.toLocaleString('ar-EG-u-nu-latn')} {order.currency}</div>
                                     <div className="text-[10px] text-gray-400">{(order.createdAt || '').slice(0, 10)}</div>
                                   </div>
                                 </div>
@@ -1074,7 +1074,7 @@ export default function OrdersTab({
                           </div>
                           <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm flex-shrink-0">
                             <div className="font-bold text-amber-800">الدفعة المحددة</div>
-                            <div className="text-amber-600 text-xs mt-1">{order.customerName} — {order.itemTitle} — {order.amount?.toLocaleString()} {order.currency}</div>
+                            <div className="text-amber-600 text-xs mt-1">{order.customerName} — {order.itemTitle} — {order.amount?.toLocaleString('ar-EG-u-nu-latn')} {order.currency}</div>
                           </div>
                           <p className="text-xs text-gray-500 flex-shrink-0">اختر تحويلاً من القائمة لربط هذه الدفعة به. سيتم تأكيد الدفعة تلقائياً.</p>
                           <div className="overflow-y-auto flex-1 space-y-2 min-h-0">
@@ -1101,7 +1101,7 @@ export default function OrdersTab({
                                     <div className="text-[10px] text-gray-400 mt-0.5 font-mono">#{transfer.id.slice(-8)}</div>
                                   </div>
                                   <div className="text-right flex-shrink-0">
-                                    <div className="font-extrabold text-blue-700 text-sm">{transfer.amount?.toLocaleString()} {transfer.currency}</div>
+                                    <div className="font-extrabold text-blue-700 text-sm">{transfer.amount?.toLocaleString('ar-EG-u-nu-latn')} {transfer.currency}</div>
                                     <div className="text-[10px] text-gray-400">{(transfer.createdAt || '').slice(0, 10)}</div>
                                   </div>
                                 </div>
@@ -1260,7 +1260,7 @@ export default function OrdersTab({
                               }
                               setShowAddTransfer(false);
                               setOrderReviewTab('transfers');
-                              notify('success', `تم تسجيل التحويل بنجاح (${Number(transferForm.amount).toLocaleString()} ${transferForm.currency}) ✓`);
+                              notify('success', `تم تسجيل التحويل بنجاح (${Number(transferForm.amount).toLocaleString('ar-EG-u-nu-latn')} ${transferForm.currency}) ✓`);
                             }}
                             className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-white py-2.5 rounded-xl text-sm font-bold transition">
                             حفظ التحويل

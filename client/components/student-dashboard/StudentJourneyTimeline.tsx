@@ -99,7 +99,7 @@ export function StudentJourneyTimeline() {
                       a submitted screenshot looked like a completed payment. */}
                   {event.amount != null && (
                     <span className={`text-xs font-bold ${isConfirmed(event) ? 'text-emerald-700' : 'text-amber-700'}`}>
-                      {Number(event.amount).toLocaleString()} {event.currency}
+                      {Number(event.amount).toLocaleString('ar-EG-u-nu-latn')} {event.currency}
                     </span>
                   )}
                 </div>

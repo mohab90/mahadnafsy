@@ -567,7 +567,7 @@ export default function OverviewTab({
                       <h3 className="font-extrabold text-gray-900 flex items-center gap-2 mb-4"><span className="text-lg">📊</span>التحصيلات اليومية (آخر 30 يوم)</h3>
                       <div className="flex items-end gap-0.5 h-24">
                         {last30.map((d,i)=>(
-                          <div key={i} className="flex-1 flex flex-col items-center" title={`${d.day}: ${d.rev.toLocaleString()} ج`}>
+                          <div key={i} className="flex-1 flex flex-col items-center" title={`${d.day}: ${d.rev.toLocaleString('ar-EG-u-nu-latn')} ج`}>
                             <div className="w-full rounded-t-sm transition-all duration-500"
                               style={{height:`${Math.max(2,(d.rev/maxDay)*88)}px`, background: d.rev>0 ? (i===last30.length-1?'#10b981':'#6366f1') : '#e5e7eb', opacity: d.rev===0?0.3:1}} />
                           </div>
@@ -590,7 +590,7 @@ export default function OverviewTab({
                             return (
                               <button key={s.id} onClick={()=>navigate(`/client/${s.clientCode||s.id}`)}
                                 className="text-[11px] font-bold px-2.5 py-1 rounded-full border bg-red-100 text-red-700 border-red-300 hover:opacity-80">
-                                {s.name}{nd&&<span className="opacity-70 mr-1">({nd.amount.toLocaleString()} {cf(nd.cur)} — {nd.date})</span>}
+                                {s.name}{nd&&<span className="opacity-70 mr-1">({nd.amount.toLocaleString('ar-EG-u-nu-latn')} {cf(nd.cur)} — {nd.date})</span>}
                               </button>
                             );
                           })}
@@ -610,7 +610,7 @@ export default function OverviewTab({
                             return (
                               <button key={s.id} onClick={()=>navigate(`/client/${s.clientCode||s.id}`)}
                                 className="text-[11px] font-bold px-2.5 py-1 rounded-full border bg-amber-100 text-amber-700 border-amber-300 hover:opacity-80">
-                                {s.name}{nd&&<span className="opacity-70 mr-1">({nd.amount.toLocaleString()} {cf(nd.cur)})</span>}
+                                {s.name}{nd&&<span className="opacity-70 mr-1">({nd.amount.toLocaleString('ar-EG-u-nu-latn')} {cf(nd.cur)})</span>}
                               </button>
                             );
                           })}
@@ -806,7 +806,7 @@ export default function OverviewTab({
                           </h3>
                           <div className="flex items-end gap-0.5 h-24 w-full">
                             {last30Om.map((d,i) => (
-                              <div key={i} className="flex-1 flex flex-col items-center justify-end gap-0.5 group relative" title={`${d.day}: ${d.rev.toLocaleString()} ج.م`}>
+                              <div key={i} className="flex-1 flex flex-col items-center justify-end gap-0.5 group relative" title={`${d.day}: ${d.rev.toLocaleString('ar-EG-u-nu-latn')} ج.م`}>
                                 <div className="w-full rounded-t-sm bg-teal-400 group-hover:bg-teal-600 transition-colors"
                                   style={{height: `${Math.round((d.rev/maxDayOm)*96)}%`, minHeight: d.rev>0?'2px':'0'}} />
                                 {i%5===0 && <span className="text-[8px] text-gray-400 absolute -bottom-4 whitespace-nowrap">{d.day}</span>}

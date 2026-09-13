@@ -141,9 +141,9 @@ export function StudentPaymentsTab({
       <div className="rounded-2xl bg-gradient-to-br from-primary-600 to-primary-800 p-5 text-white shadow">
         <p className="mb-2 text-sm font-bold text-white/70">إجمالي ما دفعته</p>
         <div className="mb-4 flex flex-wrap items-end gap-6">
-          {totalEGP > 0 && <div><p className="text-3xl font-extrabold">{totalEGP.toLocaleString()}</p><p className="text-xs text-white/60">جنيه مصري</p></div>}
-          {totalSAR > 0 && <div><p className="text-3xl font-extrabold">{totalSAR.toLocaleString()}</p><p className="text-xs text-white/60">ريال سعودي</p></div>}
-          {totalUSD > 0 && <div><p className="text-3xl font-extrabold">{totalUSD.toLocaleString()}</p><p className="text-xs text-white/60">دولار</p></div>}
+          {totalEGP > 0 && <div><p className="text-3xl font-extrabold">{totalEGP.toLocaleString('ar-EG-u-nu-latn')}</p><p className="text-xs text-white/60">جنيه مصري</p></div>}
+          {totalSAR > 0 && <div><p className="text-3xl font-extrabold">{totalSAR.toLocaleString('ar-EG-u-nu-latn')}</p><p className="text-xs text-white/60">ريال سعودي</p></div>}
+          {totalUSD > 0 && <div><p className="text-3xl font-extrabold">{totalUSD.toLocaleString('ar-EG-u-nu-latn')}</p><p className="text-xs text-white/60">دولار</p></div>}
           {totalEGP + totalSAR + totalUSD === 0 && (
             <p className="text-sm font-bold text-white/70">لا توجد مدفوعات مؤكدة بعد</p>
           )}
@@ -153,7 +153,7 @@ export function StudentPaymentsTab({
             {methodEntries.map(([method, total]) => (
               <div key={method} className="rounded-xl bg-white/10 px-3 py-1.5 text-xs">
                 <span className="text-white/70">{method}: </span>
-                <span className="font-bold text-white">{total.toLocaleString()} ج.م</span>
+                <span className="font-bold text-white">{total.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
               </div>
             ))}
           </div>
@@ -176,18 +176,18 @@ export function StudentPaymentsTab({
                   <div className="mb-3 space-y-1.5 text-xs">
                     <div className="flex justify-between">
                       <span className="text-gray-500">مدفوع</span>
-                      <span className="font-extrabold text-green-700">{summary.paidEGP.toLocaleString()} ج.م</span>
+                      <span className="font-extrabold text-green-700">{summary.paidEGP.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
                     </div>
                     {summary.expectedEGP != null && (
                       <>
                         <div className="flex justify-between">
                           <span className="text-gray-500">الإجمالي المطلوب</span>
-                          <span className="font-bold">{summary.expectedEGP.toLocaleString()} ج.م</span>
+                          <span className="font-bold">{summary.expectedEGP.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-500">الباقي</span>
                           <span className={`font-bold ${remaining && remaining > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                            {remaining && remaining > 0 ? `${remaining.toLocaleString()} ج.م` : 'مكتمل'}
+                            {remaining && remaining > 0 ? `${remaining.toLocaleString('ar-EG-u-nu-latn')} ج.م` : 'مكتمل'}
                           </span>
                         </div>
                         <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100">
@@ -237,11 +237,11 @@ export function StudentPaymentsTab({
                   <div className="flex items-center justify-between border-b border-gray-50 bg-amber-50/50 px-4 py-3">
                     <div>
                       <p className="text-sm font-bold text-gray-800">{plan.courseTitle || 'قسط عام'}</p>
-                      <p className="text-xs text-gray-500">الإجمالي: {plan.totalAmount.toLocaleString()} {moneySuffix(plan.currency)}</p>
+                      <p className="text-xs text-gray-500">الإجمالي: {plan.totalAmount.toLocaleString('ar-EG-u-nu-latn')} {moneySuffix(plan.currency)}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs text-gray-500">مدفوع: <span className="font-bold text-emerald-700">{paidTotal.toLocaleString()}</span></p>
-                      <p className="text-xs text-gray-500">متبقي: <span className={`font-bold ${remaining > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{remaining > 0 ? `${remaining.toLocaleString()} ${moneySuffix(plan.currency)}` : 'مكتمل'}</span></p>
+                      <p className="text-xs text-gray-500">مدفوع: <span className="font-bold text-emerald-700">{paidTotal.toLocaleString('ar-EG-u-nu-latn')}</span></p>
+                      <p className="text-xs text-gray-500">متبقي: <span className={`font-bold ${remaining > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{remaining > 0 ? `${remaining.toLocaleString('ar-EG-u-nu-latn')} ${moneySuffix(plan.currency)}` : 'مكتمل'}</span></p>
                     </div>
                   </div>
                   <div className="divide-y divide-gray-50">
@@ -261,7 +261,7 @@ export function StudentPaymentsTab({
                               {entry.paidAt ? '✓' : isOverdue ? '!' : '◷'}
                             </div>
                             <div>
-                              <p className="font-bold text-gray-800">{entry.amount.toLocaleString()} {moneySuffix(plan.currency)}</p>
+                              <p className="font-bold text-gray-800">{entry.amount.toLocaleString('ar-EG-u-nu-latn')} {moneySuffix(plan.currency)}</p>
                               <p className="text-xs text-gray-500">موعد الاستحقاق: {entry.dueDate}</p>
                               {entry.note && <p className="text-xs text-gray-400">{entry.note}</p>}
                             </div>
@@ -302,7 +302,7 @@ export function StudentPaymentsTab({
           <tbody>
             {history.slice().reverse().map(payment => (
               <tr key={payment.id} className="border-b border-gray-50 transition hover:bg-gray-50">
-                <td className="whitespace-nowrap px-4 py-3 font-bold text-primary-700">{payment.amount.toLocaleString()} {moneySuffix(payment.currency)}</td>
+                <td className="whitespace-nowrap px-4 py-3 font-bold text-primary-700">{payment.amount.toLocaleString('ar-EG-u-nu-latn')} {moneySuffix(payment.currency)}</td>
                 <td className="px-4 py-3 text-xs text-gray-600">{customerPaymentMethodLabel(payment.paymentMethod) || <span className="text-gray-300">-</span>}</td>
                 <td className="px-4 py-3">
                   <PaymentTypeBadge paymentType={payment.paymentType} isInstallment={payment.isInstallment} />
@@ -449,7 +449,7 @@ function SubmittedProofs({ proofsLoaded, myProofs, loadMyProofs }: { proofsLoade
       {myProofs.map(proof => (
         <div key={proof.id} className="flex items-center justify-between gap-3 rounded-xl bg-gray-50 px-3 py-2.5 text-xs">
           <div className="min-w-0 flex-1">
-            <p className="font-bold text-gray-700">{proof.amount.toLocaleString()} {moneySuffix(proof.currency)}</p>
+            <p className="font-bold text-gray-700">{proof.amount.toLocaleString('ar-EG-u-nu-latn')} {moneySuffix(proof.currency)}</p>
             <p className="truncate text-gray-400">{paymentMethodLabel(proof.payment_method)} · {proof.submitted_at.slice(0, 10)}{proof.note ? ` · ${proof.note}` : ''}</p>
             {proof.reviewer_note && proof.status !== 'PENDING' && (
               <p className="mt-0.5 text-gray-500">رد الإدارة: {proof.reviewer_note}</p>

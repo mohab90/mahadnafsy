@@ -134,9 +134,9 @@ export function UnifiedClientCertificatesPanel({
                 <p className="text-xs text-gray-400 mt-1">طُلبت في {request.requestedAt}</p>
                 {request.price && request.price > 0 && (
                   <div className="flex items-center gap-3 mt-1 flex-wrap text-xs">
-                    <span className="text-gray-600">السعر: <span className="font-bold">{request.price.toLocaleString()} {request.currency || 'ج.م'}</span></span>
-                    {request.paidAmount != null && <span className="text-green-700">مدفوع: <span className="font-bold">{request.paidAmount.toLocaleString()}</span></span>}
-                    {request.paidAmount != null && remaining > 0 && <span className="text-red-600 font-bold">متبقي: {remaining.toLocaleString()}</span>}
+                    <span className="text-gray-600">السعر: <span className="font-bold">{request.price.toLocaleString('ar-EG-u-nu-latn')} {request.currency || 'ج.م'}</span></span>
+                    {request.paidAmount != null && <span className="text-green-700">مدفوع: <span className="font-bold">{request.paidAmount.toLocaleString('ar-EG-u-nu-latn')}</span></span>}
+                    {request.paidAmount != null && remaining > 0 && <span className="text-red-600 font-bold">متبقي: {remaining.toLocaleString('ar-EG-u-nu-latn')}</span>}
                     {request.paidAmount != null && remaining <= 0 && <span className="text-emerald-600 font-bold">✅ مكتمل</span>}
                   </div>
                 )}

@@ -462,7 +462,7 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
     'success',
     isPendingApproval
       ? `تم تسجيل دفعة ${freshLead.name} كمعلّقة وتنتظر اعتماد الإدارة المالية.`
-      : `تم تسجيل دفعة ${freshLead.name}${_notifCourse ? ' — ' + _notifCourse : ''} | ${_notifAmt.toLocaleString()} ${leadPayDraft.currency}`,
+      : `تم تسجيل دفعة ${freshLead.name}${_notifCourse ? ' — ' + _notifCourse : ''} | ${_notifAmt.toLocaleString('ar-EG-u-nu-latn')} ${leadPayDraft.currency}`,
   );
   if (leadPayDraft.paymentType === 'course' && !isPendingApproval) {
     const _welcomeEmail = leadPayDraft.email || freshLead.email;

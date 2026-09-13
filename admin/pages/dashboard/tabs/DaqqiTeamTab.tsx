@@ -73,7 +73,7 @@ const DaqqiTeamTab: React.FC<Props> = () => {
             { label: 'فريق الاستقبال', value: daqqiTeam.length },
             { label: 'روندات نشطة', value: activeRounds.length, bg: 'bg-cyan-500/30' },
             { label: 'إجمالي الطلاب', value: totalAttendees },
-            { label: 'إجمالي الإيرادات', value: `${totalRevenue.toLocaleString()} ج.م`, small: true },
+            { label: 'إجمالي الإيرادات', value: `${totalRevenue.toLocaleString('ar-EG-u-nu-latn')} ج.م`, small: true },
           ].map(s => (
             <div key={s.label} className={`${s.bg || 'bg-white/15'} rounded-xl p-3 text-center`}>
               <div className={`font-black ${s.small ? 'text-base' : 'text-2xl'}`}>{s.value}</div>
@@ -180,7 +180,7 @@ const DaqqiTeamTab: React.FC<Props> = () => {
                       <div><div className="font-bold text-indigo-600">{rounds.length}</div><div className="text-gray-400">روندات</div></div>
                       <div><div className="font-bold text-teal-600">{active}</div><div className="text-gray-400">نشطة</div></div>
                       <div><div className="font-bold text-green-600">{attendees}</div><div className="text-gray-400">طلاب</div></div>
-                      <div><div className="font-bold text-amber-600 text-[11px]">{revenue.toLocaleString()}</div><div className="text-gray-400">ج.م</div></div>
+                      <div><div className="font-bold text-amber-600 text-[11px]">{revenue.toLocaleString('ar-EG-u-nu-latn')}</div><div className="text-gray-400">ج.م</div></div>
                     </div>
                   </div>
                 ))}
@@ -227,7 +227,7 @@ const DaqqiTeamTab: React.FC<Props> = () => {
                   <div className="flex-1">
                     <div className="flex justify-between mb-0.5">
                       <span className="text-sm font-medium text-gray-800">{s.instructor.name}</span>
-                      <span className="text-xs font-bold text-green-600">{s.revenue.toLocaleString()} ج.م</span>
+                      <span className="text-xs font-bold text-green-600">{s.revenue.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
                     </div>
                     <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                       <div className="h-full bg-teal-500 rounded-full" style={{ width: `${pct}%` }} />
@@ -263,7 +263,7 @@ const DaqqiTeamTab: React.FC<Props> = () => {
             <div className="grid grid-cols-2 gap-3">
               {[
                 { label: 'متوسط طلاب/روند', value: daqqiRounds.length > 0 ? (totalAttendees / daqqiRounds.length).toFixed(1) : 0, color: 'text-teal-600' },
-                { label: 'متوسط إيراد/روند', value: daqqiRounds.length > 0 ? `${Math.round(totalRevenue / daqqiRounds.length).toLocaleString()} ج.م` : '0', color: 'text-green-600' },
+                { label: 'متوسط إيراد/روند', value: daqqiRounds.length > 0 ? `${Math.round(totalRevenue / daqqiRounds.length).toLocaleString('ar-EG-u-nu-latn')} ج.م` : '0', color: 'text-green-600' },
                 { label: 'معدل إكمال الروندات', value: daqqiRounds.length > 0 ? `${Math.round(finishedRounds.length / daqqiRounds.length * 100)}%` : '0%', color: 'text-indigo-600' },
                 { label: 'إجمالي الروندات', value: daqqiRounds.length, color: 'text-gray-700' },
               ].map(k => (

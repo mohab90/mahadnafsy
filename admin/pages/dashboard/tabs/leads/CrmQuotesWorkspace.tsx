@@ -162,7 +162,7 @@ export function CrmQuotesWorkspace({
           <tr key={quote.id} className="border-t">
             <td className="px-3 py-3 font-mono text-xs font-bold text-indigo-700">{quote.quote_number}</td>
             <td className="px-3 py-3 font-bold">{quote.lead_name}</td><td className="px-3 py-3">{quote.item_count}</td>
-            <td className="px-3 py-3 font-extrabold">{Number(quote.total).toLocaleString()} {quote.currency}</td>
+            <td className="px-3 py-3 font-extrabold">{Number(quote.total).toLocaleString('ar-EG-u-nu-latn')} {quote.currency}</td>
             <td className="px-3 py-3 text-xs">{quote.valid_until?.slice(0, 10)}</td>
             <td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-[11px] font-bold ${statusStyle[quote.status]}`}>{labels[quote.status]}</span></td>
             <td className="px-3 py-3"><div className="flex items-center gap-1">

@@ -88,7 +88,7 @@ export default function RetentionTab() {
           { label: 'إجمالي المشتركين', val: subscribers.length, icon: Users, color: 'blue' },
           { label: 'النشطون', val: activeSubs.length, icon: UserCheck, color: 'emerald' },
           { label: 'معدل الاحتفاظ', val: `${retentionRate}%`, icon: Star, color: 'violet' },
-          { label: 'متوسط الإيراد/عميل', val: `${avgRevenue.toLocaleString()} ج`, icon: BarChart3, color: 'amber' },
+          { label: 'متوسط الإيراد/عميل', val: `${avgRevenue.toLocaleString('ar-EG-u-nu-latn')} ج`, icon: BarChart3, color: 'amber' },
         ].map(k => {
           const Icon = k.icon;
           return (

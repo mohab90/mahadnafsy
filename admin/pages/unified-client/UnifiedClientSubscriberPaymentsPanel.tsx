@@ -121,7 +121,7 @@ export function UnifiedClientSubscriberPaymentsPanel({
                 <div className="flex items-center justify-between mb-1.5 gap-2">
                   <p className="text-sm font-bold text-gray-800 truncate flex-1">{course?.title || cId}</p>
                   {remaining > 0
-                    ? <span className="text-xs font-bold text-red-600 shrink-0">متبقي {remaining.toLocaleString()} {settlementLabel}</span>
+                    ? <span className="text-xs font-bold text-red-600 shrink-0">متبقي {remaining.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel}</span>
                     : <span className="text-xs font-bold text-emerald-600 shrink-0">✅ مكتمل</span>}
                 </div>
                 {expected > 0 && (
@@ -129,7 +129,7 @@ export function UnifiedClientSubscriberPaymentsPanel({
                     <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
                       <div className={`h-full rounded-full transition-all ${pct >= 100 ? 'bg-emerald-500' : pct >= 50 ? 'bg-amber-400' : 'bg-red-400'}`} style={{ width: `${pct}%` }} />
                     </div>
-                    <p className="text-[10px] text-gray-400 mt-0.5">{bm.paidEGP.toLocaleString()} من {expected.toLocaleString()} {settlementLabel} ({pct}%)</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">{bm.paidEGP.toLocaleString('ar-EG-u-nu-latn')} من {expected.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel} ({pct}%)</p>
                   </>
                 )}
               </div>
@@ -151,7 +151,7 @@ export function UnifiedClientSubscriberPaymentsPanel({
               <div key={p.id} className="group flex items-start justify-between bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 hover:border-gray-200 transition-colors">
                 <div className="space-y-1 min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-extrabold text-emerald-700 text-base">{Number(p.amount).toLocaleString()} {p.currency === 'EGP' ? 'ج.م' : p.currency === 'SAR' ? 'ر.س' : '$'}</span>
+                    <span className="font-extrabold text-emerald-700 text-base">{Number(p.amount).toLocaleString('ar-EG-u-nu-latn')} {p.currency === 'EGP' ? 'ج.م' : p.currency === 'SAR' ? 'ر.س' : '$'}</span>
                     {p.paymentType && <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{ptLabels[p.paymentType] || p.paymentType}</span>}
                     {p.isInstallment === true && <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">💳 قسط</span>}
                     {p.isInstallment === false && <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">🆕 حجز</span>}
@@ -174,7 +174,7 @@ export function UnifiedClientSubscriberPaymentsPanel({
                       const w = window.open('', '_blank', 'width=700,height=900');
                       if (!w) return;
                       const courseName = p.itemTitle || courses.find(c => c.id === p.courseId)?.title || '';
-                      w.document.write(`<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><title>إيصال دفع</title><style>body{font-family:Arial,sans-serif;padding:40px;direction:rtl;color:#111}.header{text-align:center;border-bottom:3px solid #d97706;padding-bottom:20px;margin-bottom:30px}h1{color:#d97706;margin:0;font-size:24px}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{padding:12px 16px;border:1px solid #e5e7eb;text-align:right}th{background:#fffbeb;font-weight:700}tfoot td{font-weight:700;background:#f0fdf4}.footer{margin-top:40px;text-align:center;color:#888;font-size:12px;border-top:1px solid #e5e7eb;padding-top:16px}</style></head><body><div class="header"><h1>معهد الدراسات النفسية</h1><p style="color:#888;font-size:12px">إيصال دفع — ${escapeHtml(p.at?.slice(0, 10) || '')}</p></div><h3>العميل: ${escapeHtml(clientName)}${p.staffName ? ` | بواسطة: ${escapeHtml(p.staffName)}` : ''}</h3><table><thead><tr><th>الخدمة</th><th>النوع</th><th>وسيلة الدفع</th><th>المبلغ</th></tr></thead><tbody><tr><td>${escapeHtml(courseName || ptLabels[p.paymentType || ''] || 'دفعة')}</td><td>${escapeHtml(ptLabels[p.paymentType || ''] || '—')}</td><td>${escapeHtml(p.paymentMethod || '—')}</td><td>${escapeHtml(Number(p.amount).toLocaleString())} ${escapeHtml(p.currency || 'EGP')}</td></tr></tbody><tfoot><tr><td colspan="3">الإجمالي</td><td>${escapeHtml(Number(p.amount).toLocaleString())} ${escapeHtml(p.currency || 'EGP')}</td></tr></tfoot></table>${p.transactionId ? `<p style="margin-top:16px;font-size:12px;color:#888;">رقم المعاملة: ${escapeHtml(p.transactionId)}</p>` : ''}<div class="footer">معهد الدراسات النفسية — mahadnafsy.com</div></body></html>`);
+                      w.document.write(`<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><title>إيصال دفع</title><style>body{font-family:Arial,sans-serif;padding:40px;direction:rtl;color:#111}.header{text-align:center;border-bottom:3px solid #d97706;padding-bottom:20px;margin-bottom:30px}h1{color:#d97706;margin:0;font-size:24px}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{padding:12px 16px;border:1px solid #e5e7eb;text-align:right}th{background:#fffbeb;font-weight:700}tfoot td{font-weight:700;background:#f0fdf4}.footer{margin-top:40px;text-align:center;color:#888;font-size:12px;border-top:1px solid #e5e7eb;padding-top:16px}</style></head><body><div class="header"><h1>معهد الدراسات النفسية</h1><p style="color:#888;font-size:12px">إيصال دفع — ${escapeHtml(p.at?.slice(0, 10) || '')}</p></div><h3>العميل: ${escapeHtml(clientName)}${p.staffName ? ` | بواسطة: ${escapeHtml(p.staffName)}` : ''}</h3><table><thead><tr><th>الخدمة</th><th>النوع</th><th>وسيلة الدفع</th><th>المبلغ</th></tr></thead><tbody><tr><td>${escapeHtml(courseName || ptLabels[p.paymentType || ''] || 'دفعة')}</td><td>${escapeHtml(ptLabels[p.paymentType || ''] || '—')}</td><td>${escapeHtml(p.paymentMethod || '—')}</td><td>${escapeHtml(Number(p.amount).toLocaleString('ar-EG-u-nu-latn'))} ${escapeHtml(p.currency || 'EGP')}</td></tr></tbody><tfoot><tr><td colspan="3">الإجمالي</td><td>${escapeHtml(Number(p.amount).toLocaleString('ar-EG-u-nu-latn'))} ${escapeHtml(p.currency || 'EGP')}</td></tr></tfoot></table>${p.transactionId ? `<p style="margin-top:16px;font-size:12px;color:#888;">رقم المعاملة: ${escapeHtml(p.transactionId)}</p>` : ''}<div class="footer">معهد الدراسات النفسية — mahadnafsy.com</div></body></html>`);
                       w.document.close(); setTimeout(() => w.print(), 500);
                     }}
                     className="text-amber-500 hover:text-amber-700 hover:bg-amber-50 p-1 rounded-lg transition">
@@ -215,7 +215,7 @@ export function UnifiedClientSubscriberPaymentsPanel({
               <div key={pr.id} className={`rounded-xl border p-3 mb-2 space-y-2 ${pr.status === 'PENDING' ? 'border-amber-200 bg-amber-50/40' : pr.status === 'APPROVED' ? 'border-green-200 bg-green-50/30' : 'border-red-200 bg-red-50/30'}`}>
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div>
-                    <p className="font-extrabold text-gray-800">{pr.amount.toLocaleString()} {pr.currency === 'EGP' ? 'ج.م' : pr.currency === 'SAR' ? 'ر.س' : '$'}</p>
+                    <p className="font-extrabold text-gray-800">{pr.amount.toLocaleString('ar-EG-u-nu-latn')} {pr.currency === 'EGP' ? 'ج.م' : pr.currency === 'SAR' ? 'ر.س' : '$'}</p>
                     <p className="text-xs text-gray-500">{pr.payment_method} · {pr.submitted_at.slice(0, 10)}{pr.note ? ' · ' + pr.note : ''}</p>
                     {pr.course_title && <p className="text-xs text-gray-400">الكورس: {pr.course_title}</p>}
                   </div>

@@ -230,7 +230,7 @@ export default function FinanceOperationsPanel({ notify, branch }: { notify: Not
             {vendors.map(vendor => (
               <div key={vendor.id} className="flex items-center justify-between border-b px-4 py-3 last:border-0">
                 <div><p className="font-bold">{vendor.name}</p><p className="text-xs text-gray-500">{vendor.currency} · {vendor.invoice_count} فاتورة</p></div>
-                <span className="font-bold text-amber-700">{Number(vendor.open_amount).toLocaleString()} {vendor.currency}</span>
+                <span className="font-bold text-amber-700">{Number(vendor.open_amount).toLocaleString('ar-EG-u-nu-latn')} {vendor.currency}</span>
               </div>
             ))}
           </div>
@@ -277,8 +277,8 @@ export default function FinanceOperationsPanel({ notify, branch }: { notify: Not
                   <tr key={row.id}>
                     <td className="p-3"><p className="font-bold">{row.vendor_name}</p><p className="text-xs text-gray-500">{row.invoice_number}</p></td>
                     <td className="p-3 text-center">{String(row.due_date).slice(0, 10)}</td>
-                    <td className="p-3 text-center font-bold">{Number(row.total_amount).toLocaleString()} {row.currency}</td>
-                    <td className="p-3 text-center font-bold text-amber-700">{Number(row.remaining_amount).toLocaleString()} {row.currency}</td>
+                    <td className="p-3 text-center font-bold">{Number(row.total_amount).toLocaleString('ar-EG-u-nu-latn')} {row.currency}</td>
+                    <td className="p-3 text-center font-bold text-amber-700">{Number(row.remaining_amount).toLocaleString('ar-EG-u-nu-latn')} {row.currency}</td>
                     <td className="p-3 text-center">{row.status}</td>
                     <td className="p-3"><div className="flex justify-center gap-2">
                       {row.status === 'draft' && <>
@@ -315,8 +315,8 @@ export default function FinanceOperationsPanel({ notify, branch }: { notify: Not
           <div className="space-y-3">
             {reconciliations.map(row => (
               <div key={row.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-white p-4">
-                <div><p className="font-bold">حساب {row.account_code} · {row.period_start} → {row.period_end}</p><p className="text-xs text-gray-500">دفتر: {Number(row.ledger_closing_balance).toLocaleString()} · بنك: {Number(row.statement_closing_balance).toLocaleString()}</p></div>
-                <div className="text-center"><p className={`font-extrabold ${Math.abs(Number(row.difference_amount)) < 0.01 ? 'text-emerald-700' : 'text-red-700'}`}>{Number(row.difference_amount).toLocaleString()}</p><p className="text-xs text-gray-500">{row.status}</p></div>
+                <div><p className="font-bold">حساب {row.account_code} · {row.period_start} → {row.period_end}</p><p className="text-xs text-gray-500">دفتر: {Number(row.ledger_closing_balance).toLocaleString('ar-EG-u-nu-latn')} · بنك: {Number(row.statement_closing_balance).toLocaleString('ar-EG-u-nu-latn')}</p></div>
+                <div className="text-center"><p className={`font-extrabold ${Math.abs(Number(row.difference_amount)) < 0.01 ? 'text-emerald-700' : 'text-red-700'}`}>{Number(row.difference_amount).toLocaleString('ar-EG-u-nu-latn')}</p><p className="text-xs text-gray-500">{row.status}</p></div>
                 <div className="flex gap-2">
                   {row.status === 'draft' && <button onClick={() => addAdjustment(row)} className="rounded-lg bg-amber-100 px-3 py-1.5 text-xs font-bold text-amber-700"><Plus size={13} className="inline" /> بند تسوية</button>}
                   {row.status === 'ready' && <button onClick={() => run(row.id, () => mysqlAdmin.adminPost(`/admin/finance/bank-reconciliations/${row.id}/approve`, {
@@ -368,8 +368,8 @@ export default function FinanceOperationsPanel({ notify, branch }: { notify: Not
             </button>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
-            <div className="rounded-2xl border bg-white p-4"><p className="text-xs text-gray-500">الرصيد الافتتاحي</p><p className="text-2xl font-extrabold">{Number(forecast?.openingCash || 0).toLocaleString()} ج.م</p></div>
-            <div className={`rounded-2xl border p-4 ${Number(forecast?.closingCash || 0) < 0 ? 'border-red-200 bg-red-50' : 'bg-white'}`}><p className="text-xs text-gray-500">الرصيد المتوقع بعد 13 أسبوعًا</p><p className="text-2xl font-extrabold">{Number(forecast?.closingCash || 0).toLocaleString()} ج.م</p></div>
+            <div className="rounded-2xl border bg-white p-4"><p className="text-xs text-gray-500">الرصيد الافتتاحي</p><p className="text-2xl font-extrabold">{Number(forecast?.openingCash || 0).toLocaleString('ar-EG-u-nu-latn')} ج.م</p></div>
+            <div className={`rounded-2xl border p-4 ${Number(forecast?.closingCash || 0) < 0 ? 'border-red-200 bg-red-50' : 'bg-white'}`}><p className="text-xs text-gray-500">الرصيد المتوقع بعد 13 أسبوعًا</p><p className="text-2xl font-extrabold">{Number(forecast?.closingCash || 0).toLocaleString('ar-EG-u-nu-latn')} ج.م</p></div>
           </div>
           <div className="overflow-x-auto rounded-2xl border bg-white">
             <table className="w-full min-w-[760px] text-sm">
@@ -382,10 +382,10 @@ export default function FinanceOperationsPanel({ notify, branch }: { notify: Not
                   <tr key={week.week}>
                     <td className="p-3 text-center font-bold">{week.week}</td>
                     <td className="p-3 text-center text-xs">{week.from} → {week.to}</td>
-                    <td className="p-3 text-center">{Number(week.opening).toLocaleString()}</td>
-                    <td className="p-3 text-center font-bold text-emerald-700">{Number(week.inflows).toLocaleString()}</td>
-                    <td className="p-3 text-center font-bold text-red-700">{Number(week.outflows).toLocaleString()}</td>
-                    <td className={`p-3 text-center font-extrabold ${Number(week.closing) < 0 ? 'text-red-700' : ''}`}>{Number(week.closing).toLocaleString()}</td>
+                    <td className="p-3 text-center">{Number(week.opening).toLocaleString('ar-EG-u-nu-latn')}</td>
+                    <td className="p-3 text-center font-bold text-emerald-700">{Number(week.inflows).toLocaleString('ar-EG-u-nu-latn')}</td>
+                    <td className="p-3 text-center font-bold text-red-700">{Number(week.outflows).toLocaleString('ar-EG-u-nu-latn')}</td>
+                    <td className={`p-3 text-center font-extrabold ${Number(week.closing) < 0 ? 'text-red-700' : ''}`}>{Number(week.closing).toLocaleString('ar-EG-u-nu-latn')}</td>
                   </tr>
                 ))}
               </tbody>
@@ -420,7 +420,7 @@ export default function FinanceOperationsPanel({ notify, branch }: { notify: Not
                     <td className="p-3 font-mono font-bold">{row.document_number}</td>
                     <td className="p-3 text-center">{row.document_type === 'invoice' ? 'فاتورة' : 'إشعار دائن'}</td>
                     <td className="p-3 text-center">{row.subscriber_name || '—'}</td>
-                    <td className="p-3 text-center font-bold">{Number(row.amount).toLocaleString()} {row.currency}</td>
+                    <td className="p-3 text-center font-bold">{Number(row.amount).toLocaleString('ar-EG-u-nu-latn')} {row.currency}</td>
                     <td className="p-3 text-center">{String(row.issued_at).slice(0, 10)}</td>
                   </tr>
                 ))}

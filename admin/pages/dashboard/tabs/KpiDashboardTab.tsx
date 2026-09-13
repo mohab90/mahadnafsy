@@ -181,7 +181,7 @@ export default function KpiDashboardTab({ notify }: { notify: NotifyFn }) {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="day" tick={{ fontSize: 10 }} />
               <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmt(v)} />
-              <Tooltip formatter={numericTooltip(v => [`${v.toLocaleString()} ج`, 'إيراد'])} />
+              <Tooltip formatter={numericTooltip(v => [`${v.toLocaleString('ar-EG-u-nu-latn')} ج`, 'إيراد'])} />
               <Area type="monotone" dataKey="revenue" stroke="#10b981" fill="url(#revGrad)" strokeWidth={2} />
             </AreaChart>
           </ResponsiveContainer>

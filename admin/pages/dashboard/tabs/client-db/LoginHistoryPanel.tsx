@@ -118,15 +118,15 @@ export function LoginHistoryPanel() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <p className="text-xs text-gray-500 mb-1 flex items-center gap-1.5"><LogIn size={13} /> محاولات الدخول (7 أيام)</p>
-          <p className="text-2xl font-black text-gray-800">{(stats.total ?? 0).toLocaleString()}</p>
+          <p className="text-2xl font-black text-gray-800">{(stats.total ?? 0).toLocaleString('ar-EG-u-nu-latn')}</p>
         </div>
         <div className="bg-white border border-red-200 rounded-xl p-4">
           <p className="text-xs text-gray-500 mb-1 flex items-center gap-1.5"><ShieldAlert size={13} /> محاولات فاشلة</p>
-          <p className="text-2xl font-black text-red-600">{(stats.failed ?? 0).toLocaleString()}</p>
+          <p className="text-2xl font-black text-red-600">{(stats.failed ?? 0).toLocaleString('ar-EG-u-nu-latn')}</p>
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <p className="text-xs text-gray-500 mb-1 flex items-center gap-1.5"><Globe size={13} /> عناوين IP مختلفة</p>
-          <p className="text-2xl font-black text-gray-800">{(stats.unique_ips ?? 0).toLocaleString()}</p>
+          <p className="text-2xl font-black text-gray-800">{(stats.unique_ips ?? 0).toLocaleString('ar-EG-u-nu-latn')}</p>
         </div>
       </div>
 
@@ -182,7 +182,7 @@ export function LoginHistoryPanel() {
         >
           <Download size={13} /> تصدير CSV
         </button>
-        <span className="text-xs text-gray-500 font-medium mr-auto">{rows.length.toLocaleString()} سجل</span>
+        <span className="text-xs text-gray-500 font-medium mr-auto">{rows.length.toLocaleString('ar-EG-u-nu-latn')} سجل</span>
       </div>
 
       {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm">{error}</div>}

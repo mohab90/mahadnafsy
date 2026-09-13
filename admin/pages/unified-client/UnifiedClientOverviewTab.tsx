@@ -144,7 +144,7 @@ export function UnifiedClientOverviewTab({
                             {isSub ? (    
                               <div className={`rounded-2xl p-4 text-center border ${overdueAmt > 0 ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'}`}>    
                                 <p className={`font-extrabold leading-none ${overdueAmt > 0 ? 'text-red-600 text-lg' : 'text-emerald-600 text-2xl'}`}>    
-                                  {overdueAmt > 0 ? overdueAmt.toLocaleString() : '✓'}    
+                                  {overdueAmt > 0 ? overdueAmt.toLocaleString('ar-EG-u-nu-latn') : '✓'}    
                                 </p>    
                                 <p className={`text-[11px] mt-1 font-semibold ${overdueAmt > 0 ? 'text-red-400' : 'text-emerald-500'}`}>    
                                   {overdueAmt > 0 ? `${settlementLabel} متأخر` : 'لا متأخرات'}
@@ -174,7 +174,7 @@ export function UnifiedClientOverviewTab({
                                   <p className="text-[10px] text-slate-400">{event.event_type.replace(/_/g, ' ')}</p>
                                 </div>
                                 <div className="shrink-0 text-left">
-                                  {event.amount != null && <p className="text-xs font-bold text-emerald-700">{Number(event.amount).toLocaleString()} {event.currency}</p>}
+                                  {event.amount != null && <p className="text-xs font-bold text-emerald-700">{Number(event.amount).toLocaleString('ar-EG-u-nu-latn')} {event.currency}</p>}
                                   <p className="text-[10px] text-slate-400">{new Date(event.occurred_at).toLocaleString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}</p>
                                 </div>
                               </div>
@@ -301,7 +301,7 @@ export function UnifiedClientOverviewTab({
                             {leadPayments.map(p => (    
                               <div key={p.id} className="bg-gradient-to-l from-emerald-50 to-white border border-emerald-100 rounded-xl p-4 flex items-center justify-between gap-3 shadow-sm">    
                                 <div>    
-                                  <p className="font-bold text-emerald-700 text-base">{p.amount.toLocaleString()} {p.currency}</p>    
+                                  <p className="font-bold text-emerald-700 text-base">{p.amount.toLocaleString('ar-EG-u-nu-latn')} {p.currency}</p>    
                                   {p.courseId && <p className="text-xs text-gray-500 mt-0.5">🎓 {courses.find(c => c.id === p.courseId)?.title || p.courseId}</p>}    
                                   {p.note && <p className="text-xs text-gray-400 mt-0.5 italic">{p.note}</p>}    
                                 </div>    
@@ -314,7 +314,7 @@ export function UnifiedClientOverviewTab({
                           </div>    
                           <div className="mt-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-center justify-between">    
                             <span className="font-bold text-emerald-700 text-sm">الإجمالي المدفوع</span>    
-                            <span className="font-extrabold text-emerald-800 text-lg">{leadPaidEGP.toLocaleString()} {settlementLabel}</span>
+                            <span className="font-extrabold text-emerald-800 text-lg">{leadPaidEGP.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel}</span>
                           </div>    
                         </div>    
                       )}    
@@ -355,25 +355,25 @@ export function UnifiedClientOverviewTab({
                                     {(bm || expectedForCourse > 0) ? (    
                                       <div className="grid grid-cols-3 gap-2 mb-3">    
                                         <div className="bg-green-50 rounded-xl p-2.5 text-center border border-green-100">    
-                                          <p className="font-extrabold text-green-700 text-sm">{paidForCourse.toLocaleString()}</p>    
+                                          <p className="font-extrabold text-green-700 text-sm">{paidForCourse.toLocaleString('ar-EG-u-nu-latn')}</p>    
                                           <p className="text-[10px] text-gray-400">مدفوع ({settlementLabel})</p>
                                         </div>    
                                         {expectedForCourse > 0 && (    
                                           <div className="bg-blue-50 rounded-xl p-2.5 text-center border border-blue-100">    
-                                            <p className="font-extrabold text-blue-700 text-sm">{expectedForCourse.toLocaleString()}</p>    
+                                            <p className="font-extrabold text-blue-700 text-sm">{expectedForCourse.toLocaleString('ar-EG-u-nu-latn')}</p>    
                                             <p className="text-[10px] text-gray-400">الإجمالي ({settlementLabel})</p>
                                           </div>    
                                         )}    
                                         {remaining != null && (    
                                           <div className={`rounded-xl p-2.5 text-center border ${remaining === 0 ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>    
-                                            <p className={`font-extrabold text-sm ${remaining === 0 ? 'text-green-700' : 'text-red-600'}`}>{remaining === 0 ? '✅' : remaining.toLocaleString()}</p>    
+                                            <p className={`font-extrabold text-sm ${remaining === 0 ? 'text-green-700' : 'text-red-600'}`}>{remaining === 0 ? '✅' : remaining.toLocaleString('ar-EG-u-nu-latn')}</p>    
                                             <p className="text-[10px] text-gray-400">{remaining === 0 ? 'مكتمل' : `متبقي (${settlementLabel})`}</p>
                                           </div>    
                                         )}    
                                         {bm?.discount && bm.discount > 0 && (    
                                           <div className="col-span-3 bg-orange-50 rounded-xl px-3 py-1.5 flex items-center justify-between border border-orange-100">    
                                             <span className="text-[10px] text-orange-600 font-semibold">🏷️ خصم مطبّق</span>    
-                                            <span className="font-bold text-orange-700 text-sm">{bm.discount.toLocaleString()} {settlementLabel}</span>
+                                            <span className="font-bold text-orange-700 text-sm">{bm.discount.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel}</span>
                                           </div>    
                                         )}    
                                       </div>    
@@ -410,12 +410,12 @@ export function UnifiedClientOverviewTab({
                             {leadPaidEGP > 0 && (    
                               <div className="grid grid-cols-2 gap-2">    
                                 <div className="bg-green-50 rounded-xl p-2.5 text-center border border-green-100">    
-                                  <p className="font-extrabold text-green-700">{leadPaidEGP.toLocaleString()} {settlementLabel}</p>
+                                  <p className="font-extrabold text-green-700">{leadPaidEGP.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel}</p>
                                   <p className="text-[10px] text-gray-400">مدفوع</p>    
                                 </div>    
                                 {leadRemaining > 0 && (    
                                   <div className="bg-red-50 rounded-xl p-2.5 text-center border border-red-100">    
-                                    <p className="font-extrabold text-red-600">{leadRemaining.toLocaleString()} {settlementLabel}</p>
+                                    <p className="font-extrabold text-red-600">{leadRemaining.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel}</p>
                                     <p className="text-[10px] text-gray-400">متبقي</p>    
                                   </div>    
                                 )}    

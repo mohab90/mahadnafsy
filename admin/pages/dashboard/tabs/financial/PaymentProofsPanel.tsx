@@ -141,7 +141,7 @@ export function PaymentProofsPanel({
                           {proof.note && <p className="mt-1 text-xs italic text-gray-500">{proof.note}</p>}
                         </td>
                         <td className="p-3 font-extrabold text-emerald-700">
-                          {Number(proof.amount || 0).toLocaleString()} {currencyLabel(proof.currency)}
+                          {Number(proof.amount || 0).toLocaleString('ar-EG-u-nu-latn')} {currencyLabel(proof.currency)}
                         </td>
                         <td className="p-3 text-xs text-gray-600">{paymentMethodLabel(proof.payment_method) || '-'}</td>
                         <td className="p-3 text-xs text-primary-700">{proof.course_title || '-'}</td>

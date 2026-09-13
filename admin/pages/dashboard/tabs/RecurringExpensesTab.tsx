@@ -265,7 +265,7 @@ const RecurringExpensesTab: React.FC<Props> = ({ notify }) => {
                         <span className="text-xs text-gray-400">{FREQ_LABELS[item.frequency]}</span>
                       </div>
                       <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-400">
-                        <span className="font-bold text-gray-700">{item.amount_egp.toLocaleString()} ج.م</span>
+                        <span className="font-bold text-gray-700">{item.amount_egp.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
                         <span className="text-gray-400">≈ {format(monthlyEq)} ج.م/شهر</span>
                         {item.frequency === 'monthly' && <span><Calendar size={10} className="inline ml-0.5" />يوم {item.day_of_month} من كل شهر</span>}
                         {item.last_run && <span>آخر تسجيل: {item.last_run.slice(0, 10)}</span>}

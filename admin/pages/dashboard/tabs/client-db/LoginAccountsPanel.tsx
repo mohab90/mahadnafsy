@@ -82,20 +82,20 @@ export function LoginAccountsPanel() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <p className="text-xs text-gray-500 mb-1 flex items-center gap-1.5"><Users size={13} /> إجمالي الحسابات</p>
-          <p className="text-2xl font-black text-gray-800">{(stats.total ?? 0).toLocaleString()}</p>
+          <p className="text-2xl font-black text-gray-800">{(stats.total ?? 0).toLocaleString('ar-EG-u-nu-latn')}</p>
         </div>
         <div className="bg-white border border-red-200 rounded-xl p-4">
           <p className="text-xs text-gray-500 mb-1 flex items-center gap-1.5"><PhoneOff size={13} /> بدون رقم واتساب</p>
-          <p className="text-2xl font-black text-red-600">{(stats.without_phone ?? 0).toLocaleString()}</p>
+          <p className="text-2xl font-black text-red-600">{(stats.without_phone ?? 0).toLocaleString('ar-EG-u-nu-latn')}</p>
           <p className="text-[10px] text-red-500 mt-0.5">لا يستطيعون تسجيل الدخول</p>
         </div>
         <div className="bg-white border border-green-200 rounded-xl p-4">
           <p className="text-xs text-gray-500 mb-1 flex items-center gap-1.5"><UserCheck size={13} /> رقم مُفعّل</p>
-          <p className="text-2xl font-black text-green-700">{(stats.verified ?? 0).toLocaleString()}</p>
+          <p className="text-2xl font-black text-green-700">{(stats.verified ?? 0).toLocaleString('ar-EG-u-nu-latn')}</p>
         </div>
         <div className="bg-white border border-amber-200 rounded-xl p-4">
           <p className="text-xs text-gray-500 mb-1 flex items-center gap-1.5"><ShieldAlert size={13} /> موقوف مؤقتاً</p>
-          <p className="text-2xl font-black text-amber-600">{(stats.locked ?? 0).toLocaleString()}</p>
+          <p className="text-2xl font-black text-amber-600">{(stats.locked ?? 0).toLocaleString('ar-EG-u-nu-latn')}</p>
         </div>
       </div>
 
@@ -124,7 +124,7 @@ export function LoginAccountsPanel() {
         >
           <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> تحديث
         </button>
-        <span className="text-xs text-gray-500 font-medium mr-auto">{rows.length.toLocaleString()} حساب</span>
+        <span className="text-xs text-gray-500 font-medium mr-auto">{rows.length.toLocaleString('ar-EG-u-nu-latn')} حساب</span>
       </div>
 
       {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm">{error}</div>}
@@ -181,7 +181,7 @@ export function LoginAccountsPanel() {
                       </div>
                     </td>
                     <td className="py-2.5 px-3 text-xs text-gray-600 whitespace-nowrap">{fmt(r.last_login)}</td>
-                    <td className="py-2.5 px-3 text-xs text-gray-600">{(r.login_count ?? 0).toLocaleString()}</td>
+                    <td className="py-2.5 px-3 text-xs text-gray-600">{(r.login_count ?? 0).toLocaleString('ar-EG-u-nu-latn')}</td>
                     <td className="py-2.5 px-3">
                       {r.has_active_session
                         ? <span className="text-[11px] px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-700 font-medium">نشطة · {fmt(r.active_session_last_seen_at)}</span>

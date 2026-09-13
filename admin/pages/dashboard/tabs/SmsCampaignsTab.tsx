@@ -144,7 +144,7 @@ export default function SmsCampaignsTab({ notify }: { notify: NotifyFn }) {
             {[
               { label: 'إجمالي الحملات', val: stats.total, color: 'green' },
               { label: 'تم إرسالها', val: stats.sent, color: 'emerald' },
-              { label: 'إجمالي المُرسَل', val: stats.totalSent.toLocaleString(), color: 'blue' },
+              { label: 'إجمالي المُرسَل', val: stats.totalSent.toLocaleString('ar-EG-u-nu-latn'), color: 'blue' },
               { label: 'فشل الإرسال', val: stats.failed, color: 'red' },
             ].map(k => (
               <div key={k.label} className={`bg-${k.color}-50 border border-${k.color}-100 rounded-2xl p-4 text-center`}>
@@ -171,7 +171,7 @@ export default function SmsCampaignsTab({ notify }: { notify: NotifyFn }) {
                     </div>
                     <div className="text-xs text-gray-500 mt-1 line-clamp-2">{c.message}</div>
                     <div className="flex items-center gap-3 mt-2 flex-wrap text-[10px] text-gray-400">
-                      {c.sent_count > 0 && <span className="text-emerald-600">✓ {c.sent_count.toLocaleString()} مُرسَل</span>}
+                      {c.sent_count > 0 && <span className="text-emerald-600">✓ {c.sent_count.toLocaleString('ar-EG-u-nu-latn')} مُرسَل</span>}
                       {c.fail_count > 0 && <span className="text-red-500">✗ {c.fail_count} فشل</span>}
                       <span><Clock size={9} className="inline ml-1" />{(c.sent_at || c.created_at || '').slice(0, 10)}</span>
                     </div>

@@ -96,9 +96,9 @@ const InstallmentPlansTab: React.FC<Props> = () => {
         <p className="text-blue-200 text-sm mt-0.5">متابعة خطط السداد والأقساط المستحقة</p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
           {[
-            { label: 'إجمالي المتوقع', value: `${planStats.totalExpected.toLocaleString()} ج.م`, bg: 'bg-white/15' },
-            { label: 'إجمالي المحصَّل', value: `${planStats.collected.toLocaleString()} ج.م`, bg: 'bg-green-500/25' },
-            { label: 'متأخر التحصيل', value: `${planStats.overdueAmount.toLocaleString()} ج.م`, bg: planStats.overdueAmount > 0 ? 'bg-red-500/25' : 'bg-white/10' },
+            { label: 'إجمالي المتوقع', value: `${planStats.totalExpected.toLocaleString('ar-EG-u-nu-latn')} ج.م`, bg: 'bg-white/15' },
+            { label: 'إجمالي المحصَّل', value: `${planStats.collected.toLocaleString('ar-EG-u-nu-latn')} ج.م`, bg: 'bg-green-500/25' },
+            { label: 'متأخر التحصيل', value: `${planStats.overdueAmount.toLocaleString('ar-EG-u-nu-latn')} ج.م`, bg: planStats.overdueAmount > 0 ? 'bg-red-500/25' : 'bg-white/10' },
             { label: 'نسبة التحصيل', value: `${planStats.collectionRate}%`, bg: 'bg-white/15' },
           ].map(s => (
             <div key={s.label} className={`${s.bg} rounded-xl p-3 text-center`}>
@@ -198,7 +198,7 @@ const InstallmentPlansTab: React.FC<Props> = () => {
                           <div className="flex justify-between items-start mb-2">
                             <div>
                               <p className="text-sm font-bold text-gray-800">{plan.courseTitle || course?.title || 'كورس'}</p>
-                              <p className="text-xs text-gray-400">{plan.entries.length} قسط · المجموع {plan.totalAmount.toLocaleString()} {plan.currency}</p>
+                              <p className="text-xs text-gray-400">{plan.entries.length} قسط · المجموع {plan.totalAmount.toLocaleString('ar-EG-u-nu-latn')} {plan.currency}</p>
                             </div>
                             <span className="text-xs font-bold text-indigo-600">{Math.round(planPaid / planTotal * 100)}% مدفوع</span>
                           </div>
@@ -216,8 +216,8 @@ const InstallmentPlansTab: React.FC<Props> = () => {
                                     {paid2 ? '✅' : isOvd ? '🔴' : days === 0 ? '⏰' : '📅'} {entry.dueDate}
                                   </span>
                                   <span className={`font-bold ${paid2 ? 'text-green-700' : isOvd ? 'text-red-600' : 'text-gray-700'}`}>
-                                    {entry.amount.toLocaleString()} {plan.currency}
-                                    {paid2 && entry.paidAmount && entry.paidAmount !== entry.amount && <span className="text-gray-400 font-normal"> (دفع {entry.paidAmount.toLocaleString()})</span>}
+                                    {entry.amount.toLocaleString('ar-EG-u-nu-latn')} {plan.currency}
+                                    {paid2 && entry.paidAmount && entry.paidAmount !== entry.amount && <span className="text-gray-400 font-normal"> (دفع {entry.paidAmount.toLocaleString('ar-EG-u-nu-latn')})</span>}
                                   </span>
                                 </div>
                               );
@@ -261,7 +261,7 @@ const InstallmentPlansTab: React.FC<Props> = () => {
                         {status === 'overdue' && ` (${days} يوم)`}
                         {status === 'upcoming' && ` (${days} يوم)`}
                       </span>
-                      <span className="font-black text-gray-800">{entry.amount.toLocaleString()} {plan.currency}</span>
+                      <span className="font-black text-gray-800">{entry.amount.toLocaleString('ar-EG-u-nu-latn')} {plan.currency}</span>
                       <span className="text-gray-400">{entry.dueDate}</span>
                     </div>
                   </div>

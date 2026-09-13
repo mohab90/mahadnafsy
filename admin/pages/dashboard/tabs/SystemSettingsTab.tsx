@@ -480,7 +480,7 @@ const ExchangeRatesSection: React.FC<{ data: ExchangeRates; mutateField: (f: str
             <Field label="سعر الصرف">
               <TextInput value={er.sar_to_egp} onChange={v=>mutateField('sar_to_egp', parseFloat(v)||0)} type="number" suffix="ج.م"/>
             </Field>
-            <p className="text-xs text-amber-600">مثال: 1000 ر.س × {er.sar_to_egp} = {(er.sar_to_egp * 1000).toLocaleString()} ج.م</p>
+            <p className="text-xs text-amber-600">مثال: 1000 ر.س × {er.sar_to_egp} = {(er.sar_to_egp * 1000).toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
           </div>
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
             <div className="flex items-center gap-2">
@@ -493,7 +493,7 @@ const ExchangeRatesSection: React.FC<{ data: ExchangeRates; mutateField: (f: str
             <Field label="سعر الصرف">
               <TextInput value={er.usd_to_egp} onChange={v=>mutateField('usd_to_egp', parseFloat(v)||0)} type="number" suffix="ج.م"/>
             </Field>
-            <p className="text-xs text-blue-600">مثال: 100 $ × {er.usd_to_egp} = {(er.usd_to_egp * 100).toLocaleString()} ج.م</p>
+            <p className="text-xs text-blue-600">مثال: 100 $ × {er.usd_to_egp} = {(er.usd_to_egp * 100).toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
           </div>
         </div>
       </Card>

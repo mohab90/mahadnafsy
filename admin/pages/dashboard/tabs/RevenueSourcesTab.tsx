@@ -218,7 +218,7 @@ export default function RevenueSourcesTab() {
                 <tr key={c.name} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-semibold text-gray-800 truncate max-w-[200px]">{c.name}</td>
                   <td className="px-4 py-3 font-bold text-blue-700">{c.count}</td>
-                  <td className="px-4 py-3 font-bold text-emerald-700">{c.revenue.toLocaleString()} ج</td>
+                  <td className="px-4 py-3 font-bold text-emerald-700">{c.revenue.toLocaleString('ar-EG-u-nu-latn')} ج</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div className="flex-1 bg-gray-100 rounded-full h-1.5 min-w-[60px]">

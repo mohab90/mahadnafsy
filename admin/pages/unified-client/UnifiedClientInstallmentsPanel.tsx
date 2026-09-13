@@ -65,7 +65,7 @@ export function UnifiedClientInstallmentsPanel({
                 <span className="text-xs font-bold text-purple-700">{percent}%</span>
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                {paid.toLocaleString()} {label} من {plan.totalAmount.toLocaleString()} {label}
+                {paid.toLocaleString('ar-EG-u-nu-latn')} {label} من {plan.totalAmount.toLocaleString('ar-EG-u-nu-latn')} {label}
               </p>
             </div>
             <div className="p-4 space-y-2">
@@ -78,7 +78,7 @@ export function UnifiedClientInstallmentsPanel({
                       ? <CheckCircle2 size={15} className="text-green-600" />
                       : <Clock size={15} className={overdue ? 'text-red-600' : 'text-amber-600'} />}
                     <div className="flex-1">
-                      <p className="text-sm font-bold text-gray-800">القسط {index + 1}: {entry.amount.toLocaleString()} {label}</p>
+                      <p className="text-sm font-bold text-gray-800">القسط {index + 1}: {entry.amount.toLocaleString('ar-EG-u-nu-latn')} {label}</p>
                       <p className="text-[11px] text-gray-500">{entry.paidAt ? `دُفع في ${entry.paidAt}` : `يستحق في ${entry.dueDate}`}</p>
                     </div>
                     <span className={`text-[10px] font-bold ${entry.paidAt ? 'text-green-700' : overdue ? 'text-red-700' : 'text-gray-500'}`}>

@@ -95,7 +95,7 @@ export function UnifiedClientAccessModal({
                     payment.settled ? 'bg-green-50 text-green-800' : 'bg-amber-50 text-amber-800'
                   }`}>
                     <span>{payment.settled ? '✓ مدفوع بالكامل' : 'دفع جزئي'}</span>
-                    <span className="font-mono" dir="ltr">{payment.paid.toLocaleString('en-EG')} / {payment.expected.toLocaleString('en-EG')}</span>
+                    <span className="font-mono" dir="ltr">{payment.paid.toLocaleString('ar-EG-u-nu-latn')} / {payment.expected.toLocaleString('ar-EG-u-nu-latn')}</span>
                     {payment.settled && <span className="font-normal opacity-80">— يستحق فتح كامل</span>}
                   </div>
                 )}

@@ -37,7 +37,7 @@ export function InstallmentPlansList({ subscribersWithPlans, today, onPayEntry }
                     <div>
                       <p className="font-bold text-gray-800">{plan.courseTitle || 'خطة سداد'}</p>
                       <p className="text-xs text-gray-500 mt-0.5">
-                        إجمالي: {plan.totalAmount.toLocaleString()} {plan.currency} · مدفوع: {totalPaid.toLocaleString()} {plan.currency}
+                        إجمالي: {plan.totalAmount.toLocaleString('ar-EG-u-nu-latn')} {plan.currency} · مدفوع: {totalPaid.toLocaleString('ar-EG-u-nu-latn')} {plan.currency}
                       </p>
                     </div>
                     <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${percent >= 100 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{percent}%</span>
@@ -55,7 +55,7 @@ export function InstallmentPlansList({ subscribersWithPlans, today, onPayEntry }
                             : <Clock size={14} className="text-amber-500 flex-shrink-0" />}
                           <div className="flex-1">
                             <span className={`font-medium ${isOverdueEntry ? 'text-red-800' : entry.paidAt ? 'text-emerald-800' : 'text-gray-700'}`}>
-                              {entry.amount.toLocaleString()} {entry.currency}
+                              {entry.amount.toLocaleString('ar-EG-u-nu-latn')} {entry.currency}
                             </span>
                             <span className="text-xs text-gray-400 mr-2">استحقاق: {entry.dueDate}</span>
                             {entry.paidAt && <span className="text-xs text-emerald-600"> · سُدِّد: {entry.paidAt}</span>}

@@ -32,7 +32,7 @@ export function UnifiedClientLeadPaymentsPanel({
         <div key={payment.id} className="flex items-start justify-between rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
           <div>
             <p className="font-bold text-emerald-700">
-              {Number(payment.amount || 0).toLocaleString()} {payment.currency}
+              {Number(payment.amount || 0).toLocaleString('ar-EG-u-nu-latn')} {payment.currency}
             </p>
             <p className="text-xs text-gray-400">{payment.date}</p>
             {payment.courseId && <p className="text-xs text-gray-500">كورس: {payment.courseId}</p>}

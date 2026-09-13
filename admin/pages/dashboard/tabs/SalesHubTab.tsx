@@ -272,7 +272,7 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
           {[
             { label: 'إجمالي اللييدات', value: totals.leads, icon: UserPlus, color: 'bg-white/15' },
             { label: 'تحويلات مكتملة', value: totals.converted, icon: CheckCircle, color: 'bg-white/15' },
-            { label: 'إيراد السيلز', value: `${totals.revenue.toLocaleString()} ج`, icon: CreditCard, color: 'bg-white/15' },
+            { label: 'إيراد السيلز', value: `${totals.revenue.toLocaleString('ar-EG-u-nu-latn')} ج`, icon: CreditCard, color: 'bg-white/15' },
             { label: 'متابعات اليوم', value: totals.followUps, icon: Clock, color: 'bg-white/15' },
           ].map(stat => (
             <div key={stat.label} className={`${stat.color} rounded-xl p-3 flex items-center gap-2.5`}>
@@ -346,7 +346,7 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
                       <div className="flex flex-wrap gap-3 mt-1.5 text-xs text-gray-500">
                         <span className="flex items-center gap-1"><UserPlus size={11} /> {stat.totalLeads} ليد</span>
                         <span className="flex items-center gap-1 text-green-600"><CheckCircle size={11} /> {stat.converted} تحويل</span>
-                        <span className="flex items-center gap-1 text-blue-600"><CreditCard size={11} /> {stat.revenue.toLocaleString()} ج</span>
+                        <span className="flex items-center gap-1 text-blue-600"><CreditCard size={11} /> {stat.revenue.toLocaleString('ar-EG-u-nu-latn')} ج</span>
                         {stat.followUpsToday > 0 && (
                           <span className="flex items-center gap-1 text-orange-500"><Clock size={11} /> {stat.followUpsToday} متابعة اليوم</span>
                         )}
@@ -478,8 +478,8 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
                         />
                       </div>
                       <div className="flex justify-between text-xs mt-1">
-                        <span className="text-indigo-600 font-medium">{stat.revenue.toLocaleString()} ج</span>
-                        <span className="text-gray-400">{stat.targetAmt.toLocaleString()} ج هدف</span>
+                        <span className="text-indigo-600 font-medium">{stat.revenue.toLocaleString('ar-EG-u-nu-latn')} ج</span>
+                        <span className="text-gray-400">{stat.targetAmt.toLocaleString('ar-EG-u-nu-latn')} ج هدف</span>
                       </div>
                     </div>
                   )}
@@ -606,12 +606,12 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
                         />
                       </div>
                       <div className="flex justify-between text-xs mt-1.5 text-gray-400">
-                        <span>حقق: <strong className="text-gray-700">{stat.revenue.toLocaleString()} ج</strong></span>
-                        <span>الهدف: <strong className="text-gray-700">{stat.targetAmt.toLocaleString()} ج</strong></span>
+                        <span>حقق: <strong className="text-gray-700">{stat.revenue.toLocaleString('ar-EG-u-nu-latn')} ج</strong></span>
+                        <span>الهدف: <strong className="text-gray-700">{stat.targetAmt.toLocaleString('ar-EG-u-nu-latn')} ج</strong></span>
                       </div>
                       {stat.targetPct >= 100 && (
                         <div className="mt-1.5 text-xs text-green-600 font-medium flex items-center gap-1">
-                          <Trophy size={11} /> تحقق الهدف! زيادة {(stat.revenue - stat.targetAmt).toLocaleString()} ج
+                          <Trophy size={11} /> تحقق الهدف! زيادة {(stat.revenue - stat.targetAmt).toLocaleString('ar-EG-u-nu-latn')} ج
                         </div>
                       )}
                     </>

@@ -213,7 +213,7 @@ export function ClientsTable({
                   <div className={`font-bold ${instOverdue?'text-red-700':instToday?'text-amber-700':instSoon?'text-yellow-700':'text-gray-600'}`}>
                     {instOverdue?'🔴':instToday?'🟡':instSoon?'🟠':'📅'} {nextInst.dueDate}
                   </div>
-                  <div className="font-bold text-gray-800 mt-0.5">{nextInst.amount.toLocaleString()} {currFmt(nextInst.currency)}</div>
+                  <div className="font-bold text-gray-800 mt-0.5">{nextInst.amount.toLocaleString('ar-EG-u-nu-latn')} {currFmt(nextInst.currency)}</div>
                 </div>
               ) : <span className="text-gray-300 text-[10px]">—</span>
             );
@@ -394,7 +394,7 @@ export function ClientsTable({
                           return (
                             <div key={rqi} className="w-full text-center">
                               <span className={`inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-full ${reqRem<=0?'bg-emerald-100 text-emerald-700':'bg-orange-100 text-orange-700'}`}>📜 {certLabel(req.type)}</span>
-                              {reqTotal > 0 && <div className="text-[9px] text-gray-500"><span className="text-emerald-600 font-bold">{reqPaid.toLocaleString()}</span>{reqRem > 0 && <span className="text-red-500 font-bold"> / م {reqRem.toLocaleString()}</span>} {(req.currency||'EGP')==='SAR'?'ر.س':(req.currency||'EGP')==='USD'?'$':'ج'}</div>}
+                              {reqTotal > 0 && <div className="text-[9px] text-gray-500"><span className="text-emerald-600 font-bold">{reqPaid.toLocaleString('ar-EG-u-nu-latn')}</span>{reqRem > 0 && <span className="text-red-500 font-bold"> / م {reqRem.toLocaleString('ar-EG-u-nu-latn')}</span>} {(req.currency||'EGP')==='SAR'?'ر.س':(req.currency||'EGP')==='USD'?'$':'ج'}</div>}
                             </div>
                           );
                         })}
@@ -447,17 +447,17 @@ export function ClientsTable({
                   {vc.value && <td className="px-2 py-2 border border-gray-200 text-center text-[11px] font-bold text-gray-700">
                     {cr.expected > 0 ? (
                       cr.paid > cr.expected ? (
-                        <span className="text-amber-700" title={`المسجَّل ${cr.expected.toLocaleString()} أقل من المحصَّل ${cr.paid.toLocaleString()} — راجع قيمة الاشتراك`}>
-                          {cr.expected.toLocaleString()} {currFmt(cr.cur)} <span className="text-[10px]">⚠</span>
+                        <span className="text-amber-700" title={`المسجَّل ${cr.expected.toLocaleString('ar-EG-u-nu-latn')} أقل من المحصَّل ${cr.paid.toLocaleString('ar-EG-u-nu-latn')} — راجع قيمة الاشتراك`}>
+                          {cr.expected.toLocaleString('ar-EG-u-nu-latn')} {currFmt(cr.cur)} <span className="text-[10px]">⚠</span>
                         </span>
-                      ) : `${cr.expected.toLocaleString()} ${currFmt(cr.cur)}`
+                      ) : `${cr.expected.toLocaleString('ar-EG-u-nu-latn')} ${currFmt(cr.cur)}`
                     ) : '—'}
                   </td>}
                   {vc.paid && <td className="px-2 py-2 border border-gray-200 text-center text-[11px] font-bold text-emerald-700">
-                    {cr.paid > 0 ? `${cr.paid.toLocaleString()} ${currFmt(cr.cur)}` : '—'}
+                    {cr.paid > 0 ? `${cr.paid.toLocaleString('ar-EG-u-nu-latn')} ${currFmt(cr.cur)}` : '—'}
                   </td>}
                   {vc.remaining && <td className="px-2 py-2 border border-gray-200 text-center text-[11px] font-bold">
-                    {cr.remaining > 0 ? <span className="text-red-600">{cr.remaining.toLocaleString()} {currFmt(cr.cur)}</span> : <span className="text-emerald-600 text-[10px]">✅ مكتمل</span>}
+                    {cr.remaining > 0 ? <span className="text-red-600">{cr.remaining.toLocaleString('ar-EG-u-nu-latn')} {currFmt(cr.cur)}</span> : <span className="text-emerald-600 text-[10px]">✅ مكتمل</span>}
                   </td>}
                   {vc.certificates && <td className="px-2 py-2 border border-gray-200 text-center text-[10px]">
                     {(crCert || crCertReqs.length > 0) ? (
@@ -475,7 +475,7 @@ export function ClientsTable({
                           return (
                             <div key={rqi} className="w-full text-center">
                               <span className={`inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-full ${reqRem<=0?'bg-emerald-100 text-emerald-700':'bg-orange-100 text-orange-700'}`}>📜 {certLabel(req.type)}</span>
-                              {reqTotal > 0 && <div className="text-[9px]"><span className="text-emerald-600 font-bold">{reqPaid.toLocaleString()}</span>{reqRem > 0 && <span className="text-red-500 font-bold"> / م {reqRem.toLocaleString()}</span>} <span className="text-gray-400">{(req.currency||'EGP')==='SAR'?'ر.س':(req.currency||'EGP')==='USD'?'$':'ج'}</span></div>}
+                              {reqTotal > 0 && <div className="text-[9px]"><span className="text-emerald-600 font-bold">{reqPaid.toLocaleString('ar-EG-u-nu-latn')}</span>{reqRem > 0 && <span className="text-red-500 font-bold"> / م {reqRem.toLocaleString('ar-EG-u-nu-latn')}</span>} <span className="text-gray-400">{(req.currency||'EGP')==='SAR'?'ر.س':(req.currency||'EGP')==='USD'?'$':'ج'}</span></div>}
                             </div>
                           );
                         })}

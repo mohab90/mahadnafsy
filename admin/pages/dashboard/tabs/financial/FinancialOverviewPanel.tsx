@@ -167,7 +167,7 @@ export function FinancialOverviewPanel({
                     const pct = totalExpensesEGP > 0 ? Math.round((val / totalExpensesEGP) * 100) : 0;
                     return (
                       <div key={cat}>
-                        <div className="flex justify-between text-sm mb-1"><span className="font-medium text-gray-700">{cat}</span><span className="text-gray-500">{val.toLocaleString()} ج.م ({pct}%)</span></div>
+                        <div className="flex justify-between text-sm mb-1"><span className="font-medium text-gray-700">{cat}</span><span className="text-gray-500">{val.toLocaleString('ar-EG-u-nu-latn')} ج.م ({pct}%)</span></div>
                         <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-red-400 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} /></div>
                       </div>
                     );

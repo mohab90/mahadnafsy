@@ -59,7 +59,7 @@ export function StudentNotificationsTab({
                   </span>
                 </div>
                 <p className="text-sm text-gray-700">
-                  قسط بمبلغ <span className="font-bold">{alert.amount.toLocaleString()} {alert.currency === 'EGP' ? 'ج.م' : alert.currency}</span>، موعد الاستحقاق: {alert.dueDate}
+                  قسط بمبلغ <span className="font-bold">{alert.amount.toLocaleString('ar-EG-u-nu-latn')} {alert.currency === 'EGP' ? 'ج.م' : alert.currency}</span>، موعد الاستحقاق: {alert.dueDate}
                 </p>
                 <button
                   onClick={onOpenPayments}

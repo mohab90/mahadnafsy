@@ -115,8 +115,8 @@ Leads جدد: ${_todayLeads.length}
 مشتركون جدد: ${_todaySubs.length}
 طلبات أونلاين مدفوعة: ${_todayOrders.length}
 دفعات يدوية: ${_todayManual.length}
-إيراد أونلاين: ${Math.round(_todayOnlineRev).toLocaleString()} ج.م
-إيراد يدوي: ${Math.round(_todayManualRev).toLocaleString()} ج.م
+إيراد أونلاين: ${Math.round(_todayOnlineRev).toLocaleString('ar-EG-u-nu-latn')} ج.م
+إيراد يدوي: ${Math.round(_todayManualRev).toLocaleString('ar-EG-u-nu-latn')} ج.م
 
 ## الإجماليات
 المشتركون: ${subscribers.length} (نشط ${subscribers.filter(s => s.status === 'active').length}، موقوف ${subscribers.filter(s => s.status === 'paused').length})
@@ -125,10 +125,10 @@ Leads: ${leadTotal} (جديد ${leadBy('new')}، تواصل ${leadBy('contacted'
 الاستشارات: ${consultations.length} (انتظار ${consultations.filter(c => c.status === 'pending').length}، مؤكد ${consultations.filter(c => c.status === 'confirmed').length}، مكتمل ${consultations.filter(c => c.status === 'completed').length})
 الكورسات: ${courses.length} | المعالجون: ${therapists.length} | المسارات: ${bundles.length}
 الطلبات المدفوعة: ${orders.filter(o => o.status === 'paid').length} | المعلقة: ${orders.filter(o => o.status === 'pending').length}
-إجمالي الإيراد التقريبي: ${Math.round(totalRevEGP).toLocaleString()} ج.م
+إجمالي الإيراد التقريبي: ${Math.round(totalRevEGP).toLocaleString('ar-EG-u-nu-latn')} ج.م
 
 ## الفروع (بيانات مجمعة)
-${_branchStats.map(branch => `${branch.label}: مشتركون ${branch.subs} | جديد اليوم ${branch.todayNew} | إيراد اليوم ${branch.todayRev.toLocaleString()} | الشهر ${branch.monthRev.toLocaleString()} ج.م`).join('\n') || 'لا توجد بيانات'}
+${_branchStats.map(branch => `${branch.label}: مشتركون ${branch.subs} | جديد اليوم ${branch.todayNew} | إيراد اليوم ${branch.todayRev.toLocaleString('ar-EG-u-nu-latn')} | الشهر ${branch.monthRev.toLocaleString('ar-EG-u-nu-latn')} ج.م`).join('\n') || 'لا توجد بيانات'}
 
 ## مصادر Leads
 ${leadSources.map(([source, count]) => `${source}: ${count}`).join('\n') || 'لا توجد بيانات'}
@@ -301,7 +301,7 @@ ${customPrompt}
           {[
             { label: 'عملاء اليوم', value: _todayLeads.length, accent: 'bg-red-400/30', icon: '📥' },
             { label: 'مشتركون اليوم', value: _todaySubs.length, accent: 'bg-green-400/30', icon: '✅' },
-            { label: 'إيراد اليوم', value: `${Math.round(_todayOnlineRev+_todayManualRev).toLocaleString()} ج`, accent: 'bg-yellow-400/30', icon: '💰' },
+            { label: 'إيراد اليوم', value: `${Math.round(_todayOnlineRev+_todayManualRev).toLocaleString('ar-EG-u-nu-latn')} ج`, accent: 'bg-yellow-400/30', icon: '💰' },
             { label: 'دفعات يدوية', value: _todayManual.length, accent: 'bg-blue-400/30', icon: '💳' },
           ].map(s => (
             <div key={s.label} className={`${s.accent} rounded-xl px-3 py-2 text-center backdrop-blur-sm`}>

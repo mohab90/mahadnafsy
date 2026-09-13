@@ -63,7 +63,7 @@ export default function ExpenseAnalyticsTab() {
     [expenses, orders, months]
   );
 
-  const fmtMoney = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}ك` : n.toLocaleString();
+  const fmtMoney = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}ك` : n.toLocaleString('ar-EG-u-nu-latn');
 
   return (
     <div className="space-y-5" dir="rtl">
@@ -169,7 +169,7 @@ export default function ExpenseAnalyticsTab() {
                 <tr key={e.id || i} className="hover:bg-gray-50 transition">
                   <td className="px-4 py-3 font-semibold text-gray-800">{e.description || e.title || '—'}</td>
                   <td className="px-4 py-3"><span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-lg text-xs">{e.category || 'أخرى'}</span></td>
-                  <td className="px-4 py-3 font-bold text-red-600">{Number(e.amount).toLocaleString()} ج</td>
+                  <td className="px-4 py-3 font-bold text-red-600">{Number(e.amount).toLocaleString('ar-EG-u-nu-latn')} ج</td>
                   <td className="px-4 py-3 text-gray-500 text-xs">{(e.date || e.createdAt || '').slice(0, 10)}</td>
                 </tr>
               ))}

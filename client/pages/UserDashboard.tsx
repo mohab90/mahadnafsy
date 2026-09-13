@@ -424,7 +424,7 @@ const UserDashboard: React.FC = () => {
     const amt = Number(installAmount);
     if (!amt || amt <= 0 || !installModal || !subscriber) return;
     const msg = encodeURIComponent(
-      `مرحباً، أرغب في دفع قسط بمبلغ ${amt.toLocaleString()} ج.م\n` +
+      `مرحباً، أرغب في دفع قسط بمبلغ ${amt.toLocaleString('ar-EG-u-nu-latn')} ج.م\n` +
       `الكورس: ${installModal.courseTitle}\n` +
       `الاسم: ${subscriber.name || ''}\n` +
       `البريد الإلكتروني: ${subscriber.email || ''}`
@@ -764,9 +764,9 @@ const UserDashboard: React.FC = () => {
                 <div className="bg-gradient-to-br from-primary-600 to-primary-800 rounded-2xl p-5 text-white shadow">
                   <p className="text-sm font-bold text-white/70 mb-1">إجمالي ما دفعته</p>
                   <div className="flex flex-wrap gap-4 items-end">
-                    {totalPaidEGP > 0 && <p className="text-3xl font-extrabold">{totalPaidEGP.toLocaleString()} <span className="text-base font-medium">ج.م</span></p>}
-                    {totalPaidSAR > 0 && <p className="text-3xl font-extrabold">{totalPaidSAR.toLocaleString()} <span className="text-base font-medium">ر.س</span></p>}
-                    {totalPaidUSD > 0 && <p className="text-3xl font-extrabold">{totalPaidUSD.toLocaleString()} <span className="text-base font-medium">$</span></p>}
+                    {totalPaidEGP > 0 && <p className="text-3xl font-extrabold">{totalPaidEGP.toLocaleString('ar-EG-u-nu-latn')} <span className="text-base font-medium">ج.م</span></p>}
+                    {totalPaidSAR > 0 && <p className="text-3xl font-extrabold">{totalPaidSAR.toLocaleString('ar-EG-u-nu-latn')} <span className="text-base font-medium">ر.س</span></p>}
+                    {totalPaidUSD > 0 && <p className="text-3xl font-extrabold">{totalPaidUSD.toLocaleString('ar-EG-u-nu-latn')} <span className="text-base font-medium">$</span></p>}
                     {totalPaidEGP + totalPaidSAR + totalPaidUSD === 0 && <p className="text-xl font-bold text-white/60">لا توجد مدفوعات بعد</p>}
                   </div>
                   <button onClick={() => { setActiveTab('account'); setAccountSection('payments'); }} className="mt-3 text-xs text-white/70 hover:text-white underline transition">عرض سجل المدفوعات كاملاً ←</button>
@@ -838,7 +838,7 @@ const UserDashboard: React.FC = () => {
                         <tbody>
                           {(subscriber?.paymentHistory ?? []).slice(0, 5).map(p => (
                             <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50 transition">
-                              <td className="px-4 py-2.5 font-bold text-primary-700">{p.amount.toLocaleString()} {p.currency === 'EGP' ? 'ج.م' : p.currency === 'SAR' ? 'ر.س' : '$'}</td>
+                              <td className="px-4 py-2.5 font-bold text-primary-700">{p.amount.toLocaleString('ar-EG-u-nu-latn')} {p.currency === 'EGP' ? 'ج.م' : p.currency === 'SAR' ? 'ر.س' : '$'}</td>
                               <td className="px-4 py-2.5 text-gray-500 text-xs">{p.paymentMethod || '—'}</td>
                               <td className="px-4 py-2.5 text-gray-400 text-xs">{p.note || '—'}</td>
                               <td className="px-4 py-2.5 text-gray-400 text-xs">{p.at}</td>
@@ -949,7 +949,7 @@ const UserDashboard: React.FC = () => {
                   ) : (
                     <>
                       <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm">
-                        <p className="text-amber-700"><strong>الباقي من المبلغ:</strong> {installModal.remaining.toLocaleString()} ج.م</p>
+                        <p className="text-amber-700"><strong>الباقي من المبلغ:</strong> {installModal.remaining.toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-gray-600 mb-1">المبلغ الذي تريد دفعه (ج.م)</label>
@@ -963,7 +963,7 @@ const UserDashboard: React.FC = () => {
                           placeholder="أدخل المبلغ"
                           dir="ltr"
                         />
-                        <p className="text-[11px] text-gray-400 mt-1">الحد الأقصى: {installModal.remaining.toLocaleString()} ج.م</p>
+                        <p className="text-[11px] text-gray-400 mt-1">الحد الأقصى: {installModal.remaining.toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
                       </div>
                       {installError && (
                         <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 text-xs text-red-700">
@@ -983,7 +983,7 @@ const UserDashboard: React.FC = () => {
                         className="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-xl transition disabled:opacity-50"
                       >
                         <MessageSquare size={18} />
-                        تواصل عبر واتساب — {Number(installAmount) > 0 ? `${Number(installAmount).toLocaleString()} ج.م` : '...'}
+                        تواصل عبر واتساب — {Number(installAmount) > 0 ? `${Number(installAmount).toLocaleString('ar-EG-u-nu-latn')} ج.م` : '...'}
                       </button>
                     </>
                   )}

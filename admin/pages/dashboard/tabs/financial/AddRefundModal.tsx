@@ -138,7 +138,7 @@ export function AddRefundModal({ onClose, onCreated, notify }: {
                   <option value="">اختر الدفعة...</option>
                   {payments.map(item => (
                     <option key={item.id} value={item.id}>
-                      {Number(item.amount).toLocaleString()} {item.currency || 'EGP'} — {String(item.at || '').slice(0, 10)}
+                      {Number(item.amount).toLocaleString('ar-EG-u-nu-latn')} {item.currency || 'EGP'} — {String(item.at || '').slice(0, 10)}
                       {item.paymentMethod ? ` — ${item.paymentMethod}` : ''}
                     </option>
                   ))}
@@ -152,7 +152,7 @@ export function AddRefundModal({ onClose, onCreated, notify }: {
 
           {payment && (
             <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-sm">
-              <span className="font-bold text-rose-900">هيتم استرداد {Number(payment.amount).toLocaleString()} {payment.currency || 'EGP'}</span>
+              <span className="font-bold text-rose-900">هيتم استرداد {Number(payment.amount).toLocaleString('ar-EG-u-nu-latn')} {payment.currency || 'EGP'}</span>
               <span className="text-rose-700"> لـ{subscriber?.name}</span>
             </div>
           )}
