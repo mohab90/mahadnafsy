@@ -101,12 +101,17 @@ test('the payment methods the settings screen writes are the ones the dialogs re
   assert.match(schema, /'finance\.payment_methods': str/, 'the settings screen writes this key');
   assert.match(schema, /raw\['finance\.payment_methods'\]/, 'and reads the same one back');
 
+  // usePaymentBoxes wraps parsePaymentMethods and adds the boxes with money
+  // against them. Both go through this one helper module either way.
+  assert.match(helper, /export function usePaymentBoxes/);
+  assert.match(helper, /mergePaymentBoxes\(configured, inUse\)/);
+
   for (const screen of [
     'admin/components/PaymentModal.tsx',
     'admin/pages/dashboard/tabs/financial/PaymentReviewPanel.tsx',
   ]) {
     const source = codeOnly(read(screen));
-    assert.match(source, /parsePaymentMethods\(/, `${screen} must read them through the shared helper`);
+    assert.match(source, /usePaymentBoxes\(/, `${screen} must read them through the shared helper`);
     assert.ok(!/DEFAULT_PAYMENT_METHODS\s*=/.test(source),
       `${screen} must not carry its own list`);
   }

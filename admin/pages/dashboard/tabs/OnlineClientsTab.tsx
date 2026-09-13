@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { cairoDateOnly, cairoMonthOnly } from '../../../../shared/cairoDate';
 import { Modal } from '../../../../shared/ui/Modal';
 import { useSearchParams } from 'react-router-dom';
-import { parsePaymentMethods } from '../../../lib/paymentMethods';
+import { usePaymentBoxes } from '../../../lib/paymentMethods';
 import {
   
   Plus, X,
@@ -99,6 +99,11 @@ export default function OnlineClientsTab({
   setSubPayRow, setSubPayDraft, setSubContactRow, setSubContactDraft,
   setSubWaRow, branchFilter,
 }: Props) {
+  // One list for every box dropdown: what الإعدادات lists, plus every box the
+  // institute has collected into. A hook, so it is read once at the top —
+  // the dropdowns below sit inside conditional blocks and callbacks.
+  const paymentBoxes = usePaymentBoxes(content['finance.payment_methods']);
+
   // Collection role — online clients tab state  const [collOnlineSearch, setCollOnlineSearch] = useState('');
   const [collOnlinePage, setCollOnlinePage] = useState(1);
   const [collOnlineStatusFilter, setCollOnlineStatusFilter] = useState('');
@@ -626,7 +631,7 @@ export default function OnlineClientsTab({
 
                   {/* ===== مشترك جديد popup ===== */}
                   {omNewSubOpen && (() => {
-                    const pmList: string[] = parsePaymentMethods(content['finance.payment_methods']);
+                    const pmList: string[] = paymentBoxes;
                     return (
                     <>
                       {isDaqqiClientsTab ? (

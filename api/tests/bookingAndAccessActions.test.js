@@ -265,12 +265,15 @@ test('every booking and payment button opens that one screen', () => {
   assert.ok(helper.includes("'/admin/subscriber-payments'"),
     'the first payment bypasses the endpoint that records it in the books');
 
-  // Payment methods come from one setting, read through one helper, on every
-  // screen that offers them — so the list cannot differ by screen.
+  // The boxes come from one setting, read through one helper, on every screen
+  // that offers them — so the list cannot differ by screen. usePaymentBoxes is
+  // that helper for a dropdown: it is parsePaymentMethods plus the boxes that
+  // already have money against them, because the setting has never been saved
+  // on this tenant and the fallback in the source names none of them.
   for (const rel of ['admin/components/PaymentModal.tsx', 'admin/pages/dashboard/tabs/FinancialTab.tsx',
     'admin/pages/dashboard/tabs/OrdersTab.tsx', 'admin/pages/dashboard/tabs/financial/PaymentReviewPanel.tsx']) {
     const source = codeOnly(read(rel));
-    assert.match(source, /parsePaymentMethods\(/, `${rel} builds its own payment-method list`);
+    assert.match(source, /usePaymentBoxes\(/, `${rel} builds its own payment-method list`);
     assert.ok(!/DEFAULT_PAYMENT_METHODS\s*=/.test(source), `${rel} carries its own hardcoded list`);
   }
 });

@@ -34,6 +34,46 @@ const transactionBackoff = attempt => new Promise(resolve =>
   setTimeout(resolve, 25 * attempt + Math.floor(Math.random() * 25))
 );
 
+// ── The boxes the institute actually collects into ────────────────────────
+//
+// «وسيلة الدفع» in this system is the cash box: «خزنة الدقي», «فودافون كاش
+// 2020», «اورانج كاش 7720» — a rail plus, usually, the last four digits of the
+// account. الإعدادات ← وسائل الدفع owns the list, and on this tenant that key
+// has never been saved, so every payment dialog fell back to a list written
+// into the source: seven names, one of which («خزنة الفرع») has never taken a
+// pound, and none of the ten boxes holding 124,000 EGP between them.
+//
+// A closed dropdown offering none of the boxes you use is not a settings
+// problem the desk can see. So the dialog also asks what has been collected
+// into before: whatever the admin has configured, plus every box with a paid
+// payment against it. Ordered by money, because the box you reach for is
+// nearly always the busy one.
+//
+// Same permission as recording a payment, deliberately. Gating this behind
+// 'view_financial' would empty the dropdown for exactly the reception and
+// sales staff who use it.
+router.get('/api/admin/payment-boxes', requireAuth, requireAdminOrStaff, requirePermission('manage_payments'), async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT payment_method AS box, COUNT(*) AS payments, SUM(amount_egp) AS egp
+         FROM payments
+        WHERE tenant_id = ? AND status = 'paid'
+          AND payment_method IS NOT NULL AND TRIM(payment_method) <> ''
+        GROUP BY payment_method
+        ORDER BY egp DESC`,
+      [req.tenantId],
+    );
+    res.json(rows.map(row => ({
+      box: String(row.box),
+      payments: Number(row.payments) || 0,
+      egp: Math.round(Number(row.egp) || 0),
+    })));
+  } catch (error) {
+    logger.error({ err: error }, '[payment-boxes] failed');
+    res.status(500).json({ error: 'تعذّر تحميل قائمة الخزائن' });
+  }
+});
+
 router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, requirePermission('manage_payments'), async (req, res) => {
   // 'payment': this route emails the customer their receipt.
   const sendEmail = (to, subject, html) =>

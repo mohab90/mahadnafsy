@@ -1,6 +1,6 @@
 import React from 'react';
 import { cairoDateOnly, cairoMonthOnly } from '../../../../shared/cairoDate';
-import { parsePaymentMethods } from '../../../lib/paymentMethods';
+import { usePaymentBoxes } from '../../../lib/paymentMethods';
 import { paymentOrigin, PAYMENT_ORIGIN, PAYMENT_ORIGIN_CLASS } from '../../../lib/paymentOrigin';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -132,6 +132,10 @@ export default function OrdersTab({
   currentStaff, authUser, content,
   updateOrderStatus, addOrder, deleteOrder, reloadOrders, reloadSubscribers, exportFilteredOrdersCsv,
 }: Props) {
+  // One list for every box dropdown: what الإعدادات lists, plus every box the
+  // institute has collected into. A hook, so it is read once at the top —
+  // the dropdowns below sit inside conditional blocks and callbacks.
+  const paymentBoxes = usePaymentBoxes(content['finance.payment_methods']);
   const navigate = useNavigate();
   // Approving is when the accounts team says the money arrived, so it is when
   // the method has to be known — and older rows reached the review queue
@@ -302,7 +306,7 @@ export default function OrdersTab({
                                            className={`text-[10px] rounded-lg px-1 py-1 border-2 font-bold ${approveMethod[payId] ? 'border-gray-200 bg-white' : 'border-amber-400 bg-amber-50 text-amber-800'}`}
                                          >
                                            <option value="">طريقة الدفع…</option>
-                                           {parsePaymentMethods(content['finance.payment_methods']).map((m: string) => <option key={m} value={m}>{m}</option>)}
+                                           {paymentBoxes.map((m: string) => <option key={m} value={m}>{m}</option>)}
                                          </select>
                                        )}
                                        <button disabled={!storedMethod && !approveMethod[payId]} onClick={async()=>{
@@ -1155,7 +1159,7 @@ export default function OrdersTab({
 
                         {/* Payment Method — from finance settings */}
                         {(() => {
-                          const financeMethods: string[] = parsePaymentMethods(content['finance.payment_methods']);
+                          const financeMethods: string[] = paymentBoxes;
                           if (!transferForm.method && financeMethods.length > 0) {
                             setTransferForm(f => ({...f, method: financeMethods[0]}));
                           }

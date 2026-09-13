@@ -10,7 +10,7 @@ import type {
   PaymentItemType, PaymentHistoryEntry,
   ExtraCertificateRequest,
 } from '../types';
-import { parsePaymentMethods } from '../lib/paymentMethods';
+import { usePaymentBoxes } from '../lib/paymentMethods';
 import { isCollected } from '../lib/money';
 import { Modal } from '../../shared/ui/Modal';
 
@@ -401,7 +401,11 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     return Number(tiers.egyptianEGP) || Number(tiers.residentEGP) || 0;
   };
 
-  const paymentMethods: string[] = parsePaymentMethods(content['finance.payment_methods']);
+  // Whatever الإعدادات lists, plus every box the institute has actually
+  // collected into. The settings key has never been saved on this tenant, so
+  // the configured half is a fallback written in code and the second half is
+  // where «فودافون كاش 2020» and the other nine come from.
+  const paymentMethods: string[] = usePaymentBoxes(content['finance.payment_methods']);
 
   // In 'new' mode the amount may be zero — enrolling a customer without
   // taking money yet is a real thing the desk does — but a name and a number

@@ -7,7 +7,7 @@ import type { PaymentHistoryEntry, PaymentItemType, Currency, SubscriberItem } f
 import { paymentOrigin, PAYMENT_ORIGIN, PAYMENT_ORIGIN_CLASS } from '../../../../lib/paymentOrigin';
 import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { useStaticData } from '../../../../context/siteDataSlices';
-import { parsePaymentMethods } from '../../../../lib/paymentMethods';
+import { usePaymentBoxes } from '../../../../lib/paymentMethods';
 import { paymentMethodLabel } from '../../../../../shared/paymentMethods';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -50,7 +50,8 @@ export function PaymentReviewPanel({ notify, branchFilter, subscribers, reloadSu
   // Method chosen at the moment of confirming, for rows stored without one.
   const [approveMethod, setApproveMethod] = useState<Record<string, string>>({});
   const { content } = useStaticData();
-  const paymentMethodsRaw = content['finance.payment_methods'];
+  // What الإعدادات lists, plus every box with money against it.
+  const paymentBoxes = usePaymentBoxes(content['finance.payment_methods']);
 
   useEffect(() => {
     let cancelled = false;
@@ -299,7 +300,7 @@ export function PaymentReviewPanel({ notify, branchFilter, subscribers, reloadSu
                             className={`text-[11px] rounded-lg px-1 py-1 border-2 font-bold ${approveMethod[p.id] ? 'border-gray-200 bg-white' : 'border-amber-400 bg-amber-50 text-amber-800'}`}
                           >
                             <option value="">طريقة الدفع…</option>
-                            {parsePaymentMethods(paymentMethodsRaw).map(m => <option key={m} value={m}>{m}</option>)}
+                            {paymentBoxes.map(m => <option key={m} value={m}>{m}</option>)}
                           </select>
                         )}
                         <button onClick={() => handleAction(p, 'paid')}

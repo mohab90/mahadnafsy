@@ -3,7 +3,7 @@ import type React from 'react';
 import { useEffect } from 'react';
 
 import type { Course, PaymentProof, SubscriberItem } from '../../types';
-import { paymentMethodLabel } from '../../../shared/paymentMethods';
+import { customerPaymentMethodLabel, paymentMethodLabel } from '../../../shared/paymentMethods';
 import { useManualPaymentMethods } from '../../lib/usePaymentAvailability';
 import { cairoDateOnly } from '../../../shared/cairoDate';
 
@@ -118,7 +118,11 @@ export function StudentPaymentsTab({
     // Grouped on the raw stored value, so a customer who paid once from
     // /checkout and once from here saw «انستا باي» and a bare `instapay` listed
     // as two different channels. Both spellings resolve to one label now.
-    const method = paymentMethodLabel(payment.paymentMethod) || 'غير محدد';
+    //
+    // And it is the rail, not the box: the desk records «فودافون كاش 2020» or
+    // «احمد السعودية», which are the institute's own accounts and were being
+    // shown to the student as their payment method.
+    const method = customerPaymentMethodLabel(payment.paymentMethod) || 'غير محدد';
     methodMap[method] = (methodMap[method] || 0) + payment.amount;
   });
   const methodEntries = Object.entries(methodMap).sort((a, b) => b[1] - a[1]);
@@ -299,7 +303,7 @@ export function StudentPaymentsTab({
             {history.slice().reverse().map(payment => (
               <tr key={payment.id} className="border-b border-gray-50 transition hover:bg-gray-50">
                 <td className="whitespace-nowrap px-4 py-3 font-bold text-primary-700">{payment.amount.toLocaleString()} {moneySuffix(payment.currency)}</td>
-                <td className="px-4 py-3 text-xs text-gray-600">{paymentMethodLabel(payment.paymentMethod) || <span className="text-gray-300">-</span>}</td>
+                <td className="px-4 py-3 text-xs text-gray-600">{customerPaymentMethodLabel(payment.paymentMethod) || <span className="text-gray-300">-</span>}</td>
                 <td className="px-4 py-3">
                   <PaymentTypeBadge paymentType={payment.paymentType} isInstallment={payment.isInstallment} />
                 </td>
@@ -355,7 +359,7 @@ export function StudentPaymentsTab({
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
                 {[...manualMethods, 'other'].map(method => (
                   <button key={method} type="button" onClick={() => setProofMethod(method)} className={`rounded-lg border-2 py-1.5 text-xs font-medium transition ${(proofMethod || manualMethods[0]) === method ? 'border-emerald-500 bg-white text-emerald-700' : 'border-gray-200 bg-white text-gray-500 hover:border-emerald-200'}`}>
-                    {paymentMethodLabel(method)}
+                    {method}
                   </button>
                 ))}
               </div>

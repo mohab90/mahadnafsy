@@ -81,7 +81,10 @@ const ordersTab = codeOnly(readAdmin('pages/dashboard/tabs/OrdersTab.tsx'));
 test('the review queue asks for a method when the payment has none', () => {
   assert.match(ordersTab, /const storedMethod = \(\(p as \{paymentMethod\?:string\}\)\.paymentMethod\|\|''\)\.trim\(\)/);
   assert.match(ordersTab, /\{!storedMethod && \(/);
-  assert.match(ordersTab, /parsePaymentMethods\(content\['finance\.payment_methods'\]\)/);
+  // Read once at the top of the component — this dropdown sits inside a
+  // conditional block, so the hook cannot be called here.
+  assert.match(ordersTab, /const paymentBoxes = usePaymentBoxes\(content\['finance\.payment_methods'\]\)/);
+  assert.match(ordersTab, /\{paymentBoxes\.map\(/);
 });
 
 test('it cannot be approved until one is chosen, and the choice is sent', () => {

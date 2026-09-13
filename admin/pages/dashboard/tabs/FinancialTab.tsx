@@ -19,7 +19,7 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { PaymentHistoryEntry, ExpenseItem } from '../../../types';
 import { branchMatches, type FinancialSubTab } from './financial/financialTabUtils';
 import { blankPaymentDraft, type PaymentDraft } from '../../../components/PaymentModal';
-import { parsePaymentMethods } from '../../../lib/paymentMethods';
+import { usePaymentBoxes } from '../../../lib/paymentMethods';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 const AgingReportPanel = React.lazy(() => import('./financial/AgingReportPanel').then(module => ({ default: module.AgingReportPanel })));
@@ -290,7 +290,8 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   }).filter(c => c.total > 0).sort((a, b) => b.total - a.total);
 
   // Helper: get payment method from entry (new field first, then scan note for compat)
-  const PAYMENT_METHODS: string[] = parsePaymentMethods(content['finance.payment_methods']);
+  // What الإعدادات lists, plus every box with money against it.
+  const PAYMENT_METHODS: string[] = usePaymentBoxes(content['finance.payment_methods']);
   const getMethod = (p: { paymentMethod?: string; note?: string }) =>
     p.paymentMethod || PAYMENT_METHODS.find(m => (p.note || '').includes(m)) || '';
   const {

@@ -118,6 +118,44 @@ export function paymentMethodLabel(raw?: string | null): string {
   return (code && LABELS[code]) || LABELS[value.toLowerCase()] || value;
 }
 
+/**
+ * What a *customer* should be told their payment method was.
+ *
+ * A stored value is the institute's cash box, not a rail: «فودافون كاش 2020»,
+ * «اورانج كاش 7720», «خزنة الدقي», «احمد السعودية». Those are internal — the
+ * account tail is the institute's, and one of them is a person's name — and
+ * the student's own payments page was printing them verbatim, in a table
+ * column and in its «حسب الوسيلة» summary.
+ *
+ * So: resolve the box to the rail it is an account of, and say only that. A
+ * box that resolves to nothing is «غير محدد» rather than its own name, because
+ * an unrecognised box is exactly the case where the name is most likely to be
+ * a person or a branch safe.
+ *
+ * The desk's own screens keep calling paymentMethodLabel, which preserves the
+ * box in full — that is the difference the two functions exist for.
+ */
+export function customerPaymentMethodLabel(raw?: string | null): string {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+
+  const direct = normalizePaymentMethod(value);
+  if (direct) return LABELS[direct] || '';
+
+  // «فودافون كاش 2020» is a Vodafone Cash account. The rail is the prefix.
+  const lower = value.toLowerCase().replace(/\s+/g, ' ');
+  for (const [spelling, code] of Object.entries(ALIASES)) {
+    const prefix = spelling.toLowerCase();
+    if (prefix.length >= 4 && lower.startsWith(prefix)) return LABELS[code] || '';
+  }
+  // «خزنة الدقي», «خزنة الفرع» — a desk till. Money reaches one of those in a
+  // hand, so the rail is cash, and saying so beats «غير محدد» to someone who
+  // remembers walking in and paying.
+  if (lower.startsWith('خزنة')) return LABELS.cash;
+
+  return '';
+}
+
 /** Keeps only codes this build knows, in the order the settings list them. */
 export function sanitizePaymentMethods(list?: unknown): PaymentMethodCode[] {
   if (!Array.isArray(list)) return [];
