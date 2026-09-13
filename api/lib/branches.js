@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('./logger');
 
 const BRANCH_ALIASES = Object.freeze({
   DAQQI: 'DAQQI',
@@ -43,6 +44,19 @@ function defaultDigitalBranch(value) {
   return normalizeBranch(value, 'ONLINE_EGYPT');
 }
 
+/**
+ * The branch_id a record is filed under.
+ *
+ * The `branches` table can hold a branch this enum cannot name — it holds seven
+ * and the enum knows six. When that happens the record used to be filed as
+ * `branch-other` in silence: it disappears from every branch filter, every
+ * branch-scoped report, and the money attributed to it lands in the wrong
+ * bucket, with nothing anywhere saying so. (Today the extra row, «الفرع الإداري
+ * - طنطا», is internal_only=1 and no dialog offers it, so nothing is misfiled —
+ * but that is one column away from being untrue.)
+ *
+ * The fallback is still the safe answer. It just says so now.
+ */
 function branchIdForBranch(value, fallback = 'branch-other') {
   const branch = normalizeBranch(value, null);
   const map = {
@@ -53,7 +67,14 @@ function branchIdForBranch(value, fallback = 'branch-other') {
     TAGAMOA: 'branch-tagamoa',
     OTHER: 'branch-other',
   };
-  return map[branch] || fallback;
+  if (map[branch]) return map[branch];
+  const raw = String(value || '').trim();
+  if (raw) {
+    logger.warn('[branches] no branch id for this branch — filing it under the fallback', {
+      value: raw, normalized: branch, fallback,
+    });
+  }
+  return fallback;
 }
 
 function branchForId(value, fallback = 'OTHER') {

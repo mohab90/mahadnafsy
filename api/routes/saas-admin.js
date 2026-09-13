@@ -9,7 +9,7 @@ const { uuidv4 } = require('../lib/id');
 const { pool, cacheInvalidate } = require('../lib/db');
 const logger = require('../lib/logger');
 const { DEFAULT_FEATURES, clearTenantContextCache, loadTenantContext } = require('../lib/tenantScope');
-const { requireAuth, requirePlatformAdmin } = require('../middleware/auth');
+const { requireAdminOrStaff, requireAuth, requirePermission, requirePlatformAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 const slugify = (s) => String(s || '').toLowerCase().trim().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120);
@@ -322,6 +322,67 @@ router.get('/api/admin/saas/status', requireAuth, requirePlatformAdmin, async (r
     const ctx = await loadTenantContext(req.tenantId);
     res.json({ resolvedTenantId: req.tenantId || null, context: ctx });
   } catch (e) { logger.error('[saas]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+/**
+ * Whether the institute can actually reach anybody.
+ *
+ * The outbox has been announcing this all along — «⚠️ قناة إيميل متوقفة», 77
+ * times, the latest today — and not one of the 1,190 delivery notices has ever
+ * been read. A notification in a bell is not where a three-month outage should
+ * live: the email channel has never delivered a single message, 2,152 attempts
+ * to 844 recipients have failed on `535 authentication failed` since 21 June,
+ * and 145 of them were «تأكيد الدفع وتفعيل وصولك» to somebody who had paid.
+ *
+ * So it is a standing fact you can ask for, and a monitor can poll, rather than
+ * one more unread notice. The fix for the failure itself is the SMTP password —
+ * that is not something code can supply.
+ */
+router.get('/api/admin/channel-health', requireAuth, requireAdminOrStaff, requirePermission('view_settings'), async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT channel,
+              SUM(status = 'sent')  AS sent,
+              SUM(status = 'dead')  AS dead,
+              MAX(CASE WHEN status = 'sent' THEN sent_at END)    AS last_sent_at,
+              MAX(CASE WHEN status = 'dead' THEN created_at END) AS last_failure_at,
+              SUBSTRING_INDEX(GROUP_CONCAT(
+                CASE WHEN status = 'dead' THEN last_error END
+                ORDER BY created_at DESC SEPARATOR '||'), '||', 1) AS latest_error
+         FROM message_outbox
+        WHERE tenant_id = ?
+        GROUP BY channel`,
+      [req.tenantId]
+    );
+
+    const channels = rows.map(row => {
+      const sent = Number(row.sent) || 0;
+      const dead = Number(row.dead) || 0;
+      const attempted = sent + dead;
+      return {
+        channel: row.channel,
+        sent,
+        failed: dead,
+        // Never delivered anything is a different problem from stopped working.
+        state: sent === 0 && dead > 0 ? 'never_worked'
+          : dead > sent ? 'failing'
+            : dead > 0 ? 'degraded' : 'ok',
+        failureRate: attempted ? Math.round((dead / attempted) * 100) : 0,
+        lastSentAt: row.last_sent_at || null,
+        lastFailureAt: row.last_failure_at || null,
+        latestError: row.latest_error ? String(row.latest_error).slice(0, 200) : null,
+      };
+    });
+
+    res.json({
+      channels,
+      healthy: channels.every(c => c.state === 'ok'),
+      checkedAt: new Date().toISOString(),
+    });
+  } catch (e) {
+    logger.error('[channel-health]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 module.exports = router;
