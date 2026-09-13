@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { MessageSquare, Send, Users, X } from 'lucide-react';
 import { adminAuthHeaders } from '../../lib/adminAuthHeaders';
 import { useVisibleInterval } from '../../../shared/useVisibleInterval';
+import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
 
 type Notify = (kind: 'success' | 'error' | 'warning' | 'info', message: string) => void;
 
@@ -135,7 +136,7 @@ export default function MessagesBell({
                 <div key={m.id} className="rounded-xl border border-gray-100 bg-gray-50/60 p-2.5">
                   <div className="flex items-center justify-between gap-2 mb-0.5">
                     <span className="text-xs font-bold text-gray-800">{m.staff_name || m.author_name || 'موظف'}</span>
-                    <span className="text-[10px] text-gray-400">{new Date(m.created_at).toLocaleString('ar-EG-u-nu-latn')}</span>
+                    <span className="text-[10px] text-gray-400">{new Date(m.created_at).toLocaleString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}</span>
                   </div>
                   <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{m.body}</p>
                   {m.staff_id && (
@@ -158,7 +159,7 @@ export default function MessagesBell({
                       <div className={`text-[10px] mb-0.5 ${mine ? 'text-indigo-200' : 'text-gray-500'}`}>
                         {mine ? 'أنا' : (m.author_name || 'الإدارة')}
                         {m.broadcast_label && ` · ${m.broadcast_label}`}
-                        {' · '}{new Date(m.created_at).toLocaleString('ar-EG-u-nu-latn')}
+                        {' · '}{new Date(m.created_at).toLocaleString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}
                       </div>
                       <p className="whitespace-pre-wrap leading-relaxed">{m.body}</p>
                     </div>

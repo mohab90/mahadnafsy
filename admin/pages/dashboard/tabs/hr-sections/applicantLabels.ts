@@ -7,6 +7,8 @@
 // fails to match rows labelled by another.
 
 /** Must match the options in client/pages/JoinStaff.tsx. */
+import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
+
 export const EXPERIENCE_YEARS: Record<string, string> = {
   none: 'بدون خبرة',
   under_1: 'أقل من سنة',
@@ -96,5 +98,5 @@ export const fmtDateTime = (value: string | null | undefined): string | null => 
   if (!value) return null;
   const parsed = new Date(String(value).replace(' ', 'T'));
   if (Number.isNaN(parsed.getTime())) return null;
-  return parsed.toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'medium', timeStyle: 'short' });
+  return parsed.toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'medium', timeStyle: 'short', timeZone: CAIRO_TIME_ZONE });
 };

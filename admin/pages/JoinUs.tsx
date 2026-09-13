@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Send, CheckCircle, Users, Award, BookOpen, Globe, Star, GraduationCap, Heart } from 'lucide-react';
 import { useStaticData } from '../context/siteDataSlices';
+import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 
 const JoinUs: React.FC = () => {
   useEffect(() => { document.title = 'انضم إلينا | معهد الدراسات النفسية'; }, []);
@@ -32,7 +33,7 @@ const JoinUs: React.FC = () => {
       linkedin: form.linkedin || undefined,
       message: form.message || undefined,
       status: 'new',
-      createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+      createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: CAIRO_TIME_ZONE }),
     }).finally(() => setSubmitting(false));
     if (saved) setSubmitted(true);
   };

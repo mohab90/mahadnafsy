@@ -7,6 +7,7 @@ import {
 import { useSiteData } from '../../../context/SiteDataContext';
 import { fxRates } from '../../../lib/money';
 import { toCsv, downloadCsvText, type CsvValue } from '../../../../shared/csv';
+import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 
 type Section   = 'all' | 'sales' | 'consultations' | 'courses' | 'bundles';
 type TimeRange = 'all' | 'today' | 'yesterday' | '7d' | '30d';
@@ -73,7 +74,7 @@ const AnalyticsTab: React.FC<Props> = () => {
       const d  = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const ms = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       const mo = allPaid.filter(o => (o.paidAt || o.createdAt || '').startsWith(ms));
-      rows.push({ label: d.toLocaleString('ar-EG-u-nu-latn', { month: 'short', year: '2-digit' }), rev: mo.reduce((s, o) => s + toEGP(o.amount, o.currency), 0), orders: mo.length });
+      rows.push({ label: d.toLocaleString('ar-EG-u-nu-latn', { month: 'short', year: '2-digit', timeZone: CAIRO_TIME_ZONE }), rev: mo.reduce((s, o) => s + toEGP(o.amount, o.currency), 0), orders: mo.length });
     }
     return rows;
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -98,7 +99,7 @@ const AnalyticsTab: React.FC<Props> = () => {
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const ms = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      rows.push({ label: d.toLocaleString('ar-EG-u-nu-latn', { month: 'short' }), count: subscribers.filter(s => (s.createdAt || '').startsWith(ms)).length });
+      rows.push({ label: d.toLocaleString('ar-EG-u-nu-latn', { month: 'short', timeZone: CAIRO_TIME_ZONE }), count: subscribers.filter(s => (s.createdAt || '').startsWith(ms)).length });
     }
     return rows;
   // eslint-disable-next-line react-hooks/exhaustive-deps

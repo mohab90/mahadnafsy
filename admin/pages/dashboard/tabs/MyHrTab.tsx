@@ -6,6 +6,7 @@ import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { ActivityLogItem, AuthUser, StaffMember } from '../../../types';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
+import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type MyHrSection = 'overview' | 'activity' | 'performance' | 'leaves' | 'messages';
@@ -502,7 +503,7 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
                       {mine ? 'أنا' : fromPeer ? `زميل · ${message.author_name}` : `الإدارة · ${message.author_name}`}
                       {message.broadcast_label ? ` · 📣 ${message.broadcast_label}` : ''}
                       {' · '}
-                      {new Date(message.created_at).toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'short', timeStyle: 'short' })}
+                      {new Date(message.created_at).toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'short', timeStyle: 'short', timeZone: CAIRO_TIME_ZONE })}
                     </p>
                     <p className="whitespace-pre-wrap leading-relaxed">{message.body}</p>
                   </div>

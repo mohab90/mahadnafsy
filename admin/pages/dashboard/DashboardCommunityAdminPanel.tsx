@@ -4,6 +4,7 @@ import { Modal } from '../../../shared/ui/Modal';
 import type { CommunityEventItem, CommunityLibraryItem, CommunityPostItem, CommunityVideoItem } from '../../types';
 import { useCommunityDrafts } from './hooks/useCommunityDrafts';
 import { confirmDialog } from '../../../shared/ui/confirmDialog';
+import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
 
 type CommunityAdminTab = 'pending' | 'posts' | 'library' | 'videos' | 'events' | 'comments';
 type CommunityPostDraft = Pick<CommunityPostItem, 'title' | 'body' | 'tag' | 'authorName' | 'authorRole' | 'authorImage'> & { pinned: boolean };
@@ -367,7 +368,7 @@ export function DashboardCommunityAdminPanel({
                               <div><label className="text-xs text-gray-600 mb-1 block">المنصة</label><input value={communityEventDraft.platform} onChange={e => setCommunityEventDraft(d => ({ ...d, platform: e.target.value }))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" /></div>
                             </div>
                             <div><label className="text-xs text-gray-600 mb-1 block">المتحدث</label><input value={communityEventDraft.speaker} onChange={e => setCommunityEventDraft(d => ({ ...d, speaker: e.target.value }))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" /></div>
-                            <div><label className="text-xs text-gray-600 mb-1 block">تاريخ الفعالية</label><input type="date" value={communityEventDraft.eventDate} onChange={e => setCommunityEventDraft(d => ({ ...d, eventDate: e.target.value, dateLabel: new Date(e.target.value).toLocaleDateString('ar-EG-u-nu-latn', { day: 'numeric', month: 'long' }) }))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" /></div>
+                            <div><label className="text-xs text-gray-600 mb-1 block">تاريخ الفعالية</label><input type="date" value={communityEventDraft.eventDate} onChange={e => setCommunityEventDraft(d => ({ ...d, eventDate: e.target.value, dateLabel: new Date(e.target.value).toLocaleDateString('ar-EG-u-nu-latn', { day: 'numeric', month: 'long', timeZone: CAIRO_TIME_ZONE }) }))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" /></div>
                             <div><label className="text-xs text-gray-600 mb-1 block">وصف الفعالية</label><textarea value={communityEventDraft.description} onChange={e => setCommunityEventDraft(d => ({ ...d, description: e.target.value }))} rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none" /></div>
                           </div>
                           <div className="flex gap-3 mt-4">

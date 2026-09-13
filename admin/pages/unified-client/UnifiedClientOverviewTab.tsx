@@ -7,6 +7,7 @@ import type { Bundle, CommunicationRecord, Course, CustomerTimelineEvent, Instal
 import { commTypeMeta } from './constants';
 import type { SettlementCurrency } from '../../lib/branchCurrency';
 import { normalizeInterestLevel } from '../dashboard/tabs/leadUtils';
+import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
 
 type BookingMapEntry = {
   expectedEGP?: number;
@@ -174,7 +175,7 @@ export function UnifiedClientOverviewTab({
                                 </div>
                                 <div className="shrink-0 text-left">
                                   {event.amount != null && <p className="text-xs font-bold text-emerald-700">{Number(event.amount).toLocaleString()} {event.currency}</p>}
-                                  <p className="text-[10px] text-slate-400">{new Date(event.occurred_at).toLocaleString('ar-EG-u-nu-latn')}</p>
+                                  <p className="text-[10px] text-slate-400">{new Date(event.occurred_at).toLocaleString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}</p>
                                 </div>
                               </div>
                             ))}

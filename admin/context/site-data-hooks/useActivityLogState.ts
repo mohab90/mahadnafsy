@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { ActivityLogItem, AuthUser } from '../../types';
+import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
 
 export function nowLabel() {
   return new Date().toLocaleString('ar-EG-u-nu-latn', {
@@ -9,7 +10,7 @@ export function nowLabel() {
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-  });
+    timeZone: CAIRO_TIME_ZONE});
 }
 
 // `track` is called by nearly every CRUD function across domains — kept as a single

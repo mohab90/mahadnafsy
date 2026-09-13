@@ -6,6 +6,7 @@ import {
 } from 'recharts';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { numericTooltip } from '../../../../lib/chartFormat';
+import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type Period = {
@@ -323,7 +324,7 @@ export default function CrmForecastWorkspace({ notify }: { notify?: NotifyFn }) 
                 {['الوقت', 'العميل', 'المسؤول', 'نوع الحركة', 'من', 'إلى'].map(label => <th key={label} className="px-3 py-2 text-right">{label}</th>)}
               </tr></thead>
               <tbody>{pipelineMovements.movements.slice(0, 100).map(item => <tr key={item.id} className="border-t">
-                <td className="px-3 py-2 text-xs">{new Date(item.at).toLocaleString('ar-EG-u-nu-latn')}</td>
+                <td className="px-3 py-2 text-xs">{new Date(item.at).toLocaleString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}</td>
                 <td className="px-3 py-2 font-bold">{item.leadName}</td>
                 <td className="px-3 py-2">{item.ownerName || 'غير مسند'}</td>
                 <td className="px-3 py-2">{item.eventType}</td>

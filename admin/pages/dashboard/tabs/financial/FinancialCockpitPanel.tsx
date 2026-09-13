@@ -4,6 +4,7 @@ import {
   CreditCard, Eye, RefreshCw, Target, TrendingDown, TrendingUp, Users, Wallet,
 } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
+import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 
 interface CockpitData {
   revenue: {
@@ -137,7 +138,7 @@ export default function FinancialCockpitPanel({
         <div>
           <h2 className="text-xl font-black text-gray-900">🎯 لوحة القيادة المالية</h2>
           <p className="text-xs text-gray-400 mt-0.5">
-            بيانات حية من قاعدة البيانات · آخر تحديث: {data.generatedAt ? new Date(data.generatedAt).toLocaleTimeString('ar-EG-u-nu-latn') : '—'}
+            بيانات حية من قاعدة البيانات · آخر تحديث: {data.generatedAt ? new Date(data.generatedAt).toLocaleTimeString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE }) : '—'}
           </p>
         </div>
         <button onClick={load} disabled={loading}

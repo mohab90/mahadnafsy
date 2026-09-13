@@ -26,6 +26,7 @@ import { FinancialSection, GeneralSection } from './systemSettingsCoreSections';
 import SaasSetupWizard from './SaasSetupWizard';
 import { GrowthOpsSection } from './GrowthOpsSection';
 import { PAYMENT_METHOD_CODES, paymentMethodLabel } from '../../../../shared/paymentMethods';
+import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -726,7 +727,7 @@ const BackupSection: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
           <p className={`text-sm font-bold ${status.staleOrMissing ? 'text-red-700' : 'text-green-700'}`}>
             {status.staleOrMissing
               ? '⚠️ لا توجد نسخة احتياطية حديثة'
-              : `✅ آخر نسخة: ${new Date(status.lastBackupAt).toLocaleString('ar-EG')}`}
+              : `✅ آخر نسخة: ${new Date(status.lastBackupAt).toLocaleString('ar-EG', { timeZone: CAIRO_TIME_ZONE })}`}
           </p>
           <p className="mt-1 text-xs text-gray-600">
             {status.totalBackups} نسخة محفوظة في {status.backupDir}
@@ -762,7 +763,7 @@ const BackupSection: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
                     {fmtSize(f.bytes)}
                     {!f.credible && <span className="mr-1 text-red-600">صغير جدًا</span>}
                   </td>
-                  <td className="px-4 py-3 text-xs text-gray-500">{new Date(f.at).toLocaleString('ar-EG')}</td>
+                  <td className="px-4 py-3 text-xs text-gray-500">{new Date(f.at).toLocaleString('ar-EG', { timeZone: CAIRO_TIME_ZONE })}</td>
                   <td className="px-4 py-3 text-center">
                     <button onClick={() => download(f.name)}
                       className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50">تنزيل</button>
@@ -806,7 +807,7 @@ const BackupSection: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
                       {b.status === 'success' ? '✅ نجح' : b.status === 'failed' ? '❌ فشل' : b.status || '—'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-gray-400 text-xs">{b.created_at ? new Date(b.created_at).toLocaleString('ar-EG-u-nu-latn') : '—'}</td>
+                  <td className="px-4 py-3 text-gray-400 text-xs">{b.created_at ? new Date(b.created_at).toLocaleString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE }) : '—'}</td>
                   <td className="px-4 py-3 text-center">
                     {b.fileExists && b.filename ? (
                       <button onClick={() => download(b.filename)}

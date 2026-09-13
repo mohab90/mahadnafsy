@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Send, CheckCircle, Users, Award, Star, Heart, Briefcase, GraduationCap, MapPin, Clock } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
+import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 
 type JobPosting = {
   id: string; title: string; branch?: string; employment_type?: string;
@@ -70,7 +71,7 @@ const JoinStaff: React.FC = () => {
         education: form.education || undefined,
         experiencePlaces: form.experiencePlaces || undefined,
         experienceYears: form.experience || undefined,
-        createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+        createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: CAIRO_TIME_ZONE }),
       });
       setSubmitted(true);
     } catch {

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle, Edit2, Globe, Plus, RefreshCw, Send, Trash2, XCircle } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
+import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type EventType = 'new_lead' | 'lead_converted' | 'new_subscriber' | 'new_payment' | 'new_order' | 'refund_requested' | 'new_consultation' | 'new_contact' | 'new_join_us';
@@ -229,7 +230,7 @@ const WebhooksTab: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
                 ) : (
                   <span className="text-red-700 flex items-center gap-1"><XCircle size={14} />HTTP {item.last_status || 0}</span>
                 )}
-                {item.last_triggered_at && <div className="text-gray-400 mt-1">{new Date(item.last_triggered_at).toLocaleString('ar-EG-u-nu-latn')}</div>}
+                {item.last_triggered_at && <div className="text-gray-400 mt-1">{new Date(item.last_triggered_at).toLocaleString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}</div>}
               </div>
               <div className="flex gap-2">
                 <button onClick={() => void test(item)} disabled={testingId === item.id} className="p-2 bg-green-50 text-green-700 rounded-lg disabled:opacity-50" aria-label="اختبار">

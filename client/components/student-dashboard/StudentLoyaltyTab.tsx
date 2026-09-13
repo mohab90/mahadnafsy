@@ -1,6 +1,7 @@
 import { Award, Bell, CheckCircle, Gift, Loader2, Send } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { mysqlClient } from '../../lib/mysqlapi';
+import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
 
 type LedgerRow = {
   id?: string;
@@ -140,7 +141,7 @@ export function StudentLoyaltyTab() {
                   {Number(row.points) > 0 ? '+' : ''}{Number(row.points || 0).toLocaleString('ar-EG-u-nu-latn')}
                 </span>
                 <p className="font-bold text-gray-700">{row.reason || 'عملية نقاط'}</p>
-                <p className="text-left text-xs text-gray-400">{row.created_at ? new Date(row.created_at).toLocaleDateString('ar-EG-u-nu-latn') : ''}</p>
+                <p className="text-left text-xs text-gray-400">{row.created_at ? new Date(row.created_at).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE }) : ''}</p>
               </div>
             ))}
           </div>

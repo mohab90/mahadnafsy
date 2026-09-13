@@ -3,6 +3,7 @@ import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { LogIn, RefreshCw, Search, ShieldAlert, Globe, Monitor, Download } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 import { downloadCsv } from '../../../../../shared/csv';
+import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 
 // Sign-in log only. Deliberately separate from the client/lead database above:
 // a login row is an authentication event, not a CRM record — it has no owner, no
@@ -55,7 +56,7 @@ const fmtTime = (value: string) => {
   try {
     return new Date(value).toLocaleString('ar-EG-u-nu-latn', {
       year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
-    });
+      timeZone: CAIRO_TIME_ZONE});
   } catch { return String(value || ''); }
 };
 

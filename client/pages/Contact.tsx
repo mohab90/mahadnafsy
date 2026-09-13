@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Mail, Phone, MapPin, Send, MessageCircle, Facebook, Instagram, Youtube, CheckCircle, Clock } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import { instituteWhatsApp } from '../lib/whatsappLink';
+import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 
 const Contact: React.FC = () => {
   useEffect(() => { document.title = 'تواصل معنا | معهد الدراسات النفسية'; }, []);
@@ -32,7 +33,7 @@ const Contact: React.FC = () => {
         subject: form.subject || undefined,
         message: form.message,
         status: 'new',
-        createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+        createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: CAIRO_TIME_ZONE }),
       });
       setSubmitted(true);
     } catch {

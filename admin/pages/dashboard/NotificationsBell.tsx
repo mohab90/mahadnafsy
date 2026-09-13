@@ -6,6 +6,7 @@ import {
 
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import type { TabKey } from './navigation';
+import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
 
 export type NotifRow = {
   id: string;
@@ -47,7 +48,7 @@ function timeAgo(iso: string): string {
   if (hours < 24) return `منذ ${hours} ساعة`;
   const days = Math.floor(hours / 24);
   if (days < 30) return `منذ ${days} يوم`;
-  return new Date(iso).toLocaleDateString('ar-EG-u-nu-latn');
+  return new Date(iso).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE });
 }
 
 interface NotificationsBellProps {

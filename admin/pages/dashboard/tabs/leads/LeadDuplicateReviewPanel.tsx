@@ -3,6 +3,7 @@ import { GitMerge, RefreshCw, RotateCcw } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { NotifyFn } from '../CrmSettingsModal';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
+import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 
 interface DuplicateLead {
   id: string;
@@ -216,7 +217,7 @@ export function LeadDuplicateReviewPanel({
                 <span className="font-bold">{row.sourceName || row.sourceId}</span>
                 <span className="mx-2 text-gray-400">←</span>
                 <span>{row.targetName || row.targetId}</span>
-                <p className="mt-1 text-xs text-gray-500">{row.actor || 'النظام'} · {row.createdAt ? new Date(row.createdAt).toLocaleString('ar-EG-u-nu-latn') : '—'}</p>
+                <p className="mt-1 text-xs text-gray-500">{row.actor || 'النظام'} · {row.createdAt ? new Date(row.createdAt).toLocaleString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE }) : '—'}</p>
               </div>
               {row.revertedAt ? (
                 <span className="rounded-lg bg-gray-100 px-2 py-1 text-xs text-gray-500">تم فك الدمج</span>

@@ -17,6 +17,7 @@ import { CourseUpsellModal } from './course-details-sections/CourseUpsellModal';
 import { MobileStickyCta } from './course-details-sections/MobileStickyCta';
 import CourseCertificate from '../components/CourseCertificate';
 import { isExpiryActive } from '../../shared/cairoDate';
+import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 
 const CourseDetails: React.FC = () => {
                 const { courses, subscribers, discounts, addPublicLead, getCourseLectures, getCourseChapters, content: globalContent, testimonials, currency, authUser, bundles, mySubscriberId, mySubscriberLoaded, refreshMySubscriber } = useSiteData();
@@ -494,7 +495,7 @@ const CourseDetails: React.FC = () => {
               courseNameEn={course.titleEn}
               instructorName={course.instructor || globalContent['courseDetails.cert.instructorName'] || 'معهد الدراسات النفسية'}
               certNumber="SAMPLE-2025"
-              issuedAt={new Date().toLocaleDateString('ar-EG-u-nu-latn')}
+              issuedAt={new Date().toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}
               onClose={() => setCertModalOpen(false)}
             />
           </div>

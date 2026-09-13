@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { Award, MessageSquare, Send, Target, TrendingUp, Users } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
+import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 
 type Notify = (kind: 'success' | 'error' | 'warning' | 'info', message: string) => void;
 
@@ -231,7 +232,7 @@ export default function MyWorkRecordPanel({ notify }: { notify: Notify }) {
                   <div className={`text-[10px] mb-0.5 ${mine ? 'text-indigo-200' : 'text-gray-500'}`}>
                     {mine ? 'أنا' : (m.author_name || 'الإدارة')}
                     {m.broadcast_label && ` · ${m.broadcast_label}`}
-                    {' · '}{new Date(m.created_at).toLocaleString('ar-EG-u-nu-latn')}
+                    {' · '}{new Date(m.created_at).toLocaleString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}
                   </div>
                   <p className="whitespace-pre-wrap leading-relaxed">{m.body}</p>
                 </div>
@@ -275,7 +276,7 @@ export default function MyWorkRecordPanel({ notify }: { notify: Notify }) {
         {pendingResignation && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
             طلب استقالتك قيد المراجعة — آخر يوم عمل مطلوب:{' '}
-            <strong>{new Date(pendingResignation.last_working_day).toLocaleDateString('ar-EG-u-nu-latn')}</strong>
+            <strong>{new Date(pendingResignation.last_working_day).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}</strong>
           </div>
         )}
 
@@ -307,7 +308,7 @@ export default function MyWorkRecordPanel({ notify }: { notify: Notify }) {
           <div className="mt-3 space-y-1.5 text-xs">
             {resignations.filter(r => r.status !== 'pending').map(r => (
               <div key={r.id} className="flex items-center justify-between gap-2 border-b border-gray-50 pb-1.5">
-                <span className="text-gray-600">{new Date(r.created_at).toLocaleDateString('ar-EG-u-nu-latn')}</span>
+                <span className="text-gray-600">{new Date(r.created_at).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}</span>
                 <span className={`px-2 py-0.5 rounded-full font-bold ${
                   r.status === 'accepted' ? 'bg-emerald-100 text-emerald-700'
                     : r.status === 'declined' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>

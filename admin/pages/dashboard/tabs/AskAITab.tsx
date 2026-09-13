@@ -3,6 +3,7 @@ import { AlertCircle, Bot, RefreshCw, Send, Trash2, Users, Zap, Copy, Check, Che
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { toEgp } from '../../../lib/money';
+import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
@@ -95,7 +96,7 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
     const leadTotal = leadStats?.total ?? leads.length;
     const leadBy = (status: string) => leadStats?.byStatus?.[status] ?? leads.filter(l => l.status === status).length;
     const convRate = leadTotal > 0 ? ((leadBy('converted') / leadTotal) * 100).toFixed(1) : '0';
-    const todayStr = _now.toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+    const todayStr = _now.toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long', timeZone: CAIRO_TIME_ZONE });
     const leadSources = Object.entries(leads.reduce((result: Record<string, number>, lead) => {
       const source = lead.source || 'غير محدد';
       result[source] = (result[source] || 0) + 1;

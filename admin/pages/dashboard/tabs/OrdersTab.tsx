@@ -12,6 +12,7 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { toEgp } from '../../../lib/money';
 import { downloadCsv } from '../../../../shared/csv';
 import { PAYMENT_METHOD_CODES, paymentMethodLabel, normalizePaymentMethod } from '../../../../shared/paymentMethods';
+import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 
 // What an order's payment_method can hold. The four rails a customer may pick,
 // plus the three the gateways and the desk write: a card charge, a Paymob
@@ -481,7 +482,7 @@ export default function OrdersTab({
                 const d = new Date(); d.setDate(d.getDate() - (6 - i));
                 const ds = d.toISOString().slice(0, 10);
                 const rev = paidAll.filter(r => (r.createdAt || '').slice(0, 10) === ds).reduce((s, r) => s + toEGP(r), 0);
-                const label = d.toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short' });
+                const label = d.toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short', timeZone: CAIRO_TIME_ZONE });
                 return { ds, rev, label };
               });
               const maxRev = Math.max(...last7.map(d => d.rev), 1);
@@ -768,7 +769,7 @@ export default function OrdersTab({
                                   const fmtDate = (() => {
                                     if (!row.createdAt) return '—';
                                     const d = new Date(row.createdAt.replace(' ','T'));
-                                    return isNaN(d.getTime()) ? row.createdAt : d.toLocaleString('ar-EG-u-nu-latn',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+                                    return isNaN(d.getTime()) ? row.createdAt : d.toLocaleString('ar-EG-u-nu-latn',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit', timeZone: CAIRO_TIME_ZONE });
                                   })();
                                   return (
                                     <tr key={row.id} className={`border-b border-gray-100 ${rowBg} transition-colors`}>
@@ -882,7 +883,7 @@ export default function OrdersTab({
                             const fmtDate = (() => {
                               if (!row.createdAt) return '—';
                               const d = new Date(row.createdAt.replace(' ', 'T'));
-                              return isNaN(d.getTime()) ? row.createdAt : d.toLocaleString('ar-EG-u-nu-latn', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+                              return isNaN(d.getTime()) ? row.createdAt : d.toLocaleString('ar-EG-u-nu-latn', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: CAIRO_TIME_ZONE });
                             })();
                             const productTitle = (() => {
                               const t = (row.itemTitle || '').toLowerCase().trim();

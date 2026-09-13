@@ -8,6 +8,7 @@ import {
   ResponsiveContainer, CartesianGrid,
 } from 'recharts';
 import { numericTooltip } from '../../../lib/chartFormat';
+import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -53,7 +54,7 @@ export default function KpiDashboardTab({ notify }: { notify: NotifyFn }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setData(json);
-      setLastRefresh(new Date().toLocaleTimeString('ar-EG-u-nu-latn'));
+      setLastRefresh(new Date().toLocaleTimeString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE }));
     } catch (e: any) {
       notifyRef.current('error', `خطأ في تحميل لوحة KPI: ${e.message}`);
     } finally { setLoading(false); }

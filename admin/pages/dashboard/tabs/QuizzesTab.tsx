@@ -4,6 +4,7 @@ import { useSiteData, useEnsureLectures } from '../../../context/SiteDataContext
 import { SafeHtml } from '../../../../shared/ui/SafeHtml';
 import type { Course, CourseLectureItem, CourseQuiz, QuizAttempt, QuizQuestion } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -56,7 +57,7 @@ function downloadLectureNotesAsPdf(lectureTitle: string, courseTitle: string, ht
 <div class="header">
   <div class="course-label">${courseTitle}</div>
   <h1>${lectureTitle}</h1>
-  <div style="font-size:11px;color:#9ca3af;margin-top:4px;">${new Date().toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+  <div style="font-size:11px;color:#9ca3af;margin-top:4px;">${new Date().toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric', timeZone: CAIRO_TIME_ZONE })}</div>
 </div>
 ${htmlContent}
 <div class="footer">تم إنشاء هذا المحتوى بالذكاء الاصطناعي — ${courseTitle}</div>

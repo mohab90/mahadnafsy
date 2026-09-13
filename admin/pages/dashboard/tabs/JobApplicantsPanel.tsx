@@ -8,6 +8,7 @@ import {
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { EXPERIENCE_YEARS as YEARS, BRANCH_LABELS as BRANCHES, STAGE_LABELS as STAGES } from "./hr-sections/applicantLabels";
 import { promptDialog } from '../../../../shared/ui/promptDialog';
+import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -30,7 +31,7 @@ type Applicant = {
 };
 
 
-const fmt = (value: string | null) => (value ? new Date(value).toLocaleDateString('ar-EG-u-nu-latn') : null);
+const fmt = (value: string | null) => (value ? new Date(value).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE }) : null);
 
 /**
  * The applicants for one job, and the decisions you can take on them.

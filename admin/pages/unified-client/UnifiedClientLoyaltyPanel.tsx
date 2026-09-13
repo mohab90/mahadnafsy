@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Award, Gift, Loader2, Minus, Plus, RefreshCw } from 'lucide-react';
 import { mysqlAdmin } from '../../lib/mysqlapi';
+import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
 
 type LedgerRow = {
   id?: string;
@@ -130,7 +131,7 @@ export function UnifiedClientLoyaltyPanel({ subscriberId }: Props) {
                 </div>
                 <div className="text-left">
                   <p className="font-bold text-gray-600">{Number(row.balance_after || 0).toLocaleString('ar-EG-u-nu-latn')}</p>
-                  <p className="text-xs text-gray-400">{row.created_at ? new Date(row.created_at).toLocaleDateString('ar-EG-u-nu-latn') : ''}</p>
+                  <p className="text-xs text-gray-400">{row.created_at ? new Date(row.created_at).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE }) : ''}</p>
                 </div>
               </div>
             ))}

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Send, CheckCircle, Users, Award, BookOpen, Globe, Star, GraduationCap, Heart, Briefcase } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
+import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 
 // Split out of the old single JoinUs.tsx (which toggled instructor/consultant/
 // employee copy in place with the same layout) per the owner's explicit
@@ -45,7 +46,7 @@ const JoinTeaching: React.FC = () => {
           form.message.trim(),
         ].filter(Boolean).join('\n') || undefined,
         status: 'new',
-        createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+        createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: CAIRO_TIME_ZONE }),
       });
       setSubmitted(true);
     } catch {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { MessageSquare, Send, RefreshCw } from 'lucide-react';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import type { StaffMessage } from './types';
+import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
 
 /**
  * Management side of the two-way thread with an employee. The employee reads and
@@ -96,7 +97,7 @@ export default function StaffMessagesPanel({
                         : message.author_name || staffName}
                     {message.broadcast_label ? ` · 📣 ${message.broadcast_label}` : ''}
                     {' · '}
-                    {new Date(message.created_at).toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'short', timeStyle: 'short' })}
+                    {new Date(message.created_at).toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'short', timeStyle: 'short', timeZone: CAIRO_TIME_ZONE })}
                     {fromManagement && (message.read_at ? ' · تم الاطلاع' : ' · لم يُقرأ')}
                   </p>
                   <p className="whitespace-pre-wrap leading-relaxed">{message.body}</p>

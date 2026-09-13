@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { CreditCard, Loader2, RefreshCw } from 'lucide-react';
 
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
+import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -120,7 +121,7 @@ export const PaymobPaymentsPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) 
               {collected.map(row => (
                 <tr key={row.id} className="border-t border-gray-100 hover:bg-gray-50">
                   <td className="p-3 whitespace-nowrap text-gray-600 text-xs">
-                    {new Date(row.at).toLocaleString('ar-EG-u-nu-latn')}
+                    {new Date(row.at).toLocaleString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}
                   </td>
                   <td className="p-3 font-semibold text-gray-800">{row.subscriberName || '—'}</td>
                   <td className="p-3 font-mono text-xs text-gray-500">{row.subscriberClientCode || '—'}</td>
@@ -168,7 +169,7 @@ export const PaymobPaymentsPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) 
               {uncollected.map(row => (
                 <tr key={row.id} className="border-t border-amber-100">
                   <td className="p-3 text-xs text-gray-500 whitespace-nowrap">
-                    {new Date(row.at).toLocaleString('ar-EG-u-nu-latn')}
+                    {new Date(row.at).toLocaleString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}
                   </td>
                   <td className="p-3 text-xs text-gray-700">{row.subscriberName || row.itemTitle || '—'}</td>
                   <td className="p-3 font-mono text-xs text-amber-700">{money(row.amount)} ج.م</td>

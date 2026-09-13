@@ -4,6 +4,7 @@ import type HlsType from 'hls.js';
 import { mysqlClient } from '../lib/mysqlapi';
 import { useSiteData } from '../context/SiteDataContext';
 import { useEscapeKey } from '../../shared/ui/useEscapeKey';
+import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 
 // The key the admin panel encodes lecture URLs with. It read VITE_VIDEO_KEY
 // alone, and that variable is defined nowhere — no client .env sets it — so the
@@ -220,7 +221,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
         if (cancelled) return;
         if (r.accessible && r.video_url) setResolvedUrl(r.video_url);
         else if (r.reason === 'drip_locked') {
-          const when = r.unlocks_at ? new Date(r.unlocks_at).toLocaleDateString('ar-EG-u-nu-latn') : '';
+          const when = r.unlocks_at ? new Date(r.unlocks_at).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE }) : '';
           setAccessError(`المحاضرة هتفتح في موعدها${when ? ` يوم ${when}` : ''}`);
         } else setAccessError('المحاضرة غير متاحة ضمن صلاحية اشتراكك الحالية');
       })

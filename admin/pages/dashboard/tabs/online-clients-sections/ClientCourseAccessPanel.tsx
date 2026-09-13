@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { CalendarClock, Loader2, Infinity as InfinityIcon, Plus, Check } from 'lucide-react';
 
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
+import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -24,7 +25,7 @@ type CourseAccess = {
 };
 
 const fmt = (value: string | null) =>
-  value ? new Date(value).toLocaleDateString('ar-EG-u-nu-latn') : null;
+  value ? new Date(value).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE }) : null;
 
 const daysLeft = (value: string | null) => {
   if (!value) return null;

@@ -9,6 +9,7 @@ import { BranchType } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
 import CourseCertificate from '../components/CourseCertificate';
 import { cdnImg } from '../lib/img';
+import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 
 // Strip HTML tags + Word-style markup and return clean Arabic text
 function stripHtml(raw: string): string {
@@ -519,7 +520,7 @@ const BundleDetails: React.FC = () => {
               courseNameEn={bundle.titleEn}
               instructorName={content['bundleDetails.cert.instructorName'] || 'معهد الدراسات النفسية'}
               certNumber="SAMPLE-2025"
-              issuedAt={new Date().toLocaleDateString('ar-EG-u-nu-latn')}
+              issuedAt={new Date().toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}
               onClose={() => setCertModalOpen(false)}
             />
           </div>

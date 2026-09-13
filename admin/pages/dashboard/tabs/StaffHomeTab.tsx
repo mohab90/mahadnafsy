@@ -13,6 +13,7 @@ import { toDialable } from '../../../lib/whatsappLink';
 import { hasPermission, type PermissionKey, type RoleKey } from '../../../constants/permissions';
 import SalesMotivationCard from './staff-home/SalesMotivationCard';
 import { SalesOffersStrip, type SalesOffer } from './leads/SalesOffersPanel';
+import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 
 type TabKey = string;
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -120,7 +121,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
       const dateStr = d.toISOString().slice(0, 10);
       return {
         day: dateStr,
-        label: d.toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short' }),
+        label: d.toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short', timeZone: CAIRO_TIME_ZONE }),
         calls: myLeads.reduce((n, l) =>
           n + (l.communications || []).filter(c => c.date?.slice(0, 10) === dateStr).length, 0,
         ),
@@ -261,7 +262,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
         <div>
           <h2 className="text-xl font-extrabold text-gray-900">الرئيسية — شغل النهاردة</h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            {new Date().toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            {new Date().toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: CAIRO_TIME_ZONE })}
             {' · '}
             <span className="text-gray-400">المتابعات والمهام المستحقة الآن — الأرقام التفصيلية في «إحصائياتي» وبياناتك الوظيفية في «ملفي الشخصي»</span>
           </p>

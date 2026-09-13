@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Calendar, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCrmData } from '../../../context/siteDataSlices';
+import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 
 
 // consultations.status is enum('PENDING','CONFIRMED','COMPLETED','CANCELLED'),
@@ -61,7 +62,7 @@ export default function ConsultationCalendarTab() {
 
   const daysInMonth = getDaysInMonth(viewYear, viewMonth);
   const firstDay = getFirstDayOfMonth(viewYear, viewMonth);
-  const monthName = new Date(viewYear, viewMonth, 1).toLocaleDateString('ar-EG-u-nu-latn', { month: 'long', year: 'numeric' });
+  const monthName = new Date(viewYear, viewMonth, 1).toLocaleDateString('ar-EG-u-nu-latn', { month: 'long', year: 'numeric', timeZone: CAIRO_TIME_ZONE });
 
   function prevMonth() {
     if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); }

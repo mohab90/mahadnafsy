@@ -12,6 +12,7 @@ import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { fxRates, toEgp } from '../../../lib/money';
 import type { SalesTarget, StaffLeadPerformance } from '../../../types';
+import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type TimeRange = 'today' | '7d' | '30d' | 'month' | 'all';
@@ -675,7 +676,7 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-semibold text-gray-800 text-sm">{post.authorName}</span>
-                      <span className="text-xs text-gray-400">{new Date(post.createdAt).toLocaleDateString('ar-EG-u-nu-latn')}</span>
+                      <span className="text-xs text-gray-400">{new Date(post.createdAt).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}</span>
                     </div>
                     <p className="text-gray-700 text-sm leading-relaxed">{post.text}</p>
                     <div className="flex items-center gap-3 mt-2">

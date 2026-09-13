@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Award, BookOpen, CreditCard, LifeBuoy, ShoppingBag } from 'lucide-react';
 import { mysqlClient } from '../../lib/mysqlapi';
+import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
 
 interface TimelineEvent {
   category: 'payment' | 'learning' | 'certificate' | 'support' | 'order';
@@ -102,7 +103,7 @@ export function StudentJourneyTimeline() {
                     </span>
                   )}
                 </div>
-                <p className="text-[11px] text-gray-400 mt-1">{new Date(event.occurred_at).toLocaleString('ar-EG-u-nu-latn')}</p>
+                <p className="text-[11px] text-gray-400 mt-1">{new Date(event.occurred_at).toLocaleString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}</p>
               </div>
             </div>
           );

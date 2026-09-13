@@ -6,6 +6,7 @@
 // lazily via dynamic import() so they only download when the user actually
 // triggers an export — keeping them out of the initial bundle.
 import type { Cell, SheetData } from 'write-excel-file/browser';
+import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface ExportColumn {
@@ -102,7 +103,7 @@ export async function exportToPDF<T extends Record<string, unknown>>(
     doc.setPage(i);
     doc.setFontSize(8);
     doc.text(
-      `تاريخ التصدير: ${new Date().toLocaleDateString('ar-EG-u-nu-latn')} | صفحة ${i} من ${pages}`,
+      `تاريخ التصدير: ${new Date().toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })} | صفحة ${i} من ${pages}`,
       doc.internal.pageSize.width / 2,
       doc.internal.pageSize.height - 5,
       { align: 'center' },
@@ -128,7 +129,7 @@ export const fmtCurrency = (v: unknown, currency = 'EGP') =>
   `${Number(v || 0).toLocaleString('ar-EG-u-nu-latn')} ${currency}`;
 
 export const fmtDate = (v: unknown) =>
-  v ? new Date(v as string).toLocaleDateString('ar-EG-u-nu-latn') : '—';
+  v ? new Date(v as string).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE }) : '—';
 
 export const fmtNum = (v: unknown) =>
   Number(v || 0).toLocaleString('ar-EG-u-nu-latn');

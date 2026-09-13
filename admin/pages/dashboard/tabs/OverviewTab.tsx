@@ -13,6 +13,7 @@ import { useSubscriberStats } from '../hooks/useSubscriberStats';
 import { useCrmData } from '../../../context/siteDataSlices';
 import type { TabKey } from '../navigation';
 import { isCollected, toEgp } from '../../../lib/money';
+import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -144,7 +145,7 @@ export default function OverviewTab({
                 });
                 const callsByDay = last7Days.map(day => ({
                   day,
-                  label: new Date(day).toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short' }),
+                  label: new Date(day).toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short', timeZone: CAIRO_TIME_ZONE }),
                   count: myLeads.reduce((n, l) => n + (l.communications || []).filter(c => c.date?.slice(0,10) === day).length, 0),
                 }));
                 const maxCalls = Math.max(...callsByDay.map(d => d.count), 1);
@@ -512,7 +513,7 @@ export default function OverviewTab({
                       <div className="flex items-center gap-2 mb-4">
                         <TrendingUp size={18} className="text-teal-600" />
                         <h3 className="font-extrabold text-gray-900">تقدمك نحو هدف التحصيل الشهري</h3>
-                        <span className="mr-auto text-xs text-gray-400">{now2.toLocaleDateString('ar-EG-u-nu-latn',{month:'long',year:'numeric'})}</span>
+                        <span className="mr-auto text-xs text-gray-400">{now2.toLocaleDateString('ar-EG-u-nu-latn',{month:'long',year:'numeric', timeZone: CAIRO_TIME_ZONE })}</span>
                       </div>
                       <div className="flex items-center gap-6">
                         <div className="relative flex-shrink-0 w-28 h-28">

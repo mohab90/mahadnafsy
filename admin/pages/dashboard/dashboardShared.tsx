@@ -10,6 +10,7 @@ import {
 import type { TabKey } from './navigation';
 import { toDialable } from '../../lib/whatsappLink';
 import { confirmDialog } from '../../../shared/ui/confirmDialog';
+import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
 
 const PERMISSION_LABELS: Record<StaffPermission, string> = {
   // Dashboard overview
@@ -118,7 +119,7 @@ const blankLead = (): LeadItem => ({
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-  }),
+    timeZone: CAIRO_TIME_ZONE}),
   leadType: 'course',
   branch: '' as LeadItem['branch'],
   interestedCourseIds: [],

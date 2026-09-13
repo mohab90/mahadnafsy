@@ -29,6 +29,7 @@ import { hasPermission, type PermissionKey, type RoleKey } from '../../../consta
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 import { promptDialog } from '../../../../shared/ui/promptDialog';
 import { paymentMethodLabel } from '../../../../shared/paymentMethods';
+import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type InboxSource = 'ticket' | 'contact' | 'refund' | 'join_instructor' | 'join_consultant' | 'join_staff';
@@ -92,7 +93,7 @@ function fmtDate(value?: string) {
   if (!value) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value).slice(0, 16);
-  return date.toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'short', timeStyle: 'short' });
+  return date.toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'short', timeStyle: 'short', timeZone: CAIRO_TIME_ZONE });
 }
 
 function resolveWorkflow(item: InboxItem): { priority: InboxPriority; owner: string; slaLabel: string; slaClass: string } {

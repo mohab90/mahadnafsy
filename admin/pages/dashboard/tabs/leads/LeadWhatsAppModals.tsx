@@ -23,6 +23,7 @@ import {
   getLeadBranchRaw,
   getRottenLevel,
 } from '../leadUtils';
+import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 
 
 export function BulkWhatsAppModal({ selectedLeads, onClose, notify }: {
@@ -250,7 +251,7 @@ export function WhatsAppRepModal({ rep, leads, onClose, notify }: {
                           <p className="leading-relaxed">{msg.textMessage || '[رسالة غير نصية]'}</p>
                           {msg.timestamp && (
                             <p className={`text-[10px] mt-1 ${msg.type === 'outgoing' ? 'text-emerald-100' : 'text-gray-400'}`}>
-                              {new Date(msg.timestamp * 1000).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit' })}
+                              {new Date(msg.timestamp * 1000).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit', timeZone: CAIRO_TIME_ZONE })}
                             </p>
                           )}
                         </div>

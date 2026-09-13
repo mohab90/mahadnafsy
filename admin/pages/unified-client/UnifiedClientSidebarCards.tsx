@@ -5,6 +5,7 @@ import type { SettlementCurrency } from '../../lib/branchCurrency';
 import { branchLabels, EXTRA_TYPE_LABELS, normBranchKey, statusLabels } from './constants';
 import { toDialable } from '../../lib/whatsappLink';
 import { normalizeInterestLevel } from '../dashboard/tabs/leadUtils';
+import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
 
 type ProfileCardProps = {
   isSub: boolean;
@@ -397,7 +398,7 @@ export function UnifiedClientSidebarActivityCard({
           <div className="flex items-center justify-between"><span className="text-gray-400">زيارات الموقع</span><span className="font-bold text-indigo-700">{sessionData.visitCount} مرة</span></div>
         )}
         {sessionData?.lastActiveAt && (
-          <div className="flex items-center justify-between"><span className="text-gray-400">آخر نشاط</span><span className="font-semibold text-gray-700">{new Date(sessionData.lastActiveAt).toLocaleDateString('ar-EG-u-nu-latn')}</span></div>
+          <div className="flex items-center justify-between"><span className="text-gray-400">آخر نشاط</span><span className="font-semibold text-gray-700">{new Date(sessionData.lastActiveAt).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}</span></div>
         )}
         {completionPct !== null && (
           <div>

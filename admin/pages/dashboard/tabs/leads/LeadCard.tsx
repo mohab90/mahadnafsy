@@ -21,6 +21,7 @@ import {
 } from '../leadUtils';
 import { ScoreBadge } from './LeadScoreAndTimeline';
 import LeadOutcomeButtons from './LeadOutcomeButtons';
+import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 
 
 // A lead in one of these is finished; offering "did they answer" on it would
@@ -177,7 +178,7 @@ export function LeadCard({ lead, score, onSelect, onStatusChange, onBook, onCont
         )}
         {lead.createdAt && (
           <span className="mr-auto">
-            {new Date(lead.createdAt).toLocaleDateString('ar-EG-u-nu-latn', { month: 'short', day: 'numeric' })}
+            {new Date(lead.createdAt).toLocaleDateString('ar-EG-u-nu-latn', { month: 'short', day: 'numeric', timeZone: CAIRO_TIME_ZONE })}
           </span>
         )}
       </div>

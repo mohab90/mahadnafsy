@@ -7,6 +7,7 @@ import { buildStaffSettingsMetrics } from './dashboardHelpers';
 import { toDialable } from '../../lib/whatsappLink';
 import MyWorkRecordPanel from './staff-settings/MyWorkRecordPanel';
 import MyHrFilePanel from './staff-settings/MyHrFilePanel';
+import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
 
 type ProfileTabKey = 'overview' | 'record' | 'hr' | 'settings';
 const PROFILE_TABS: [ProfileTabKey, string, typeof Settings2][] = [
@@ -289,7 +290,7 @@ export function DashboardStaffSettingsPanel({
         <div className="flex items-center gap-2 mb-4">
           <TrendingUp size={18} className="text-emerald-600" />
           <h3 className="font-extrabold text-gray-900">تقدمك نحو الهدف الشهري</h3>
-          <span className="mr-auto text-xs text-gray-400">{new Date().toLocaleDateString('ar-EG-u-nu-latn', { month: 'long', year: 'numeric' })}</span>
+          <span className="mr-auto text-xs text-gray-400">{new Date().toLocaleDateString('ar-EG-u-nu-latn', { month: 'long', year: 'numeric', timeZone: CAIRO_TIME_ZONE })}</span>
         </div>
         <div className="flex items-center gap-6">
           {/* SVG Circle */}
@@ -391,7 +392,7 @@ export function DashboardStaffSettingsPanel({
               </h3>
               <div className="space-y-0 text-sm divide-y divide-gray-50">
                 {([
-                  { label: 'تاريخ التعيين', value: myHrData.staff.hire_date ? new Date(myHrData.staff.hire_date).toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric' }) : '—' },
+                  { label: 'تاريخ التعيين', value: myHrData.staff.hire_date ? new Date(myHrData.staff.hire_date).toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric', timeZone: CAIRO_TIME_ZONE }) : '—' },
                   { label: 'القسم', value: myHrData.staff.department_name || '—' },
                   { label: 'نوع التوظيف', value: myHrData.staff.employment_type === 'full_time' ? 'دوام كامل' : myHrData.staff.employment_type === 'part_time' ? 'دوام جزئي' : myHrData.staff.employment_type === 'contractor' ? 'متعاقد' : myHrData.staff.employment_type || '—' },
                   { label: 'الحضور هذا الشهر', value: `${myHrData.attendance.present_days ?? 0} حاضر · ${myHrData.attendance.absent_days ?? 0} غياب · ${myHrData.attendance.late_days ?? 0} متأخر` },
@@ -539,7 +540,7 @@ export function DashboardStaffSettingsPanel({
                       <span className="text-gray-700 font-medium flex-1 truncate">
                         {l.type === 'ANNUAL' ? 'سنوية' : l.type === 'SICK' ? 'مرضية' : l.type === 'EMERGENCY' ? 'طارئ' : l.type === 'UNPAID' ? 'بدون راتب' : l.type === 'PERMISSION' ? 'إذن' : l.type} · {l.total_days} يوم
                       </span>
-                      <span className="text-gray-400 flex-shrink-0">{new Date(l.start_date).toLocaleDateString('ar-EG-u-nu-latn', { month: 'short', day: 'numeric' })}</span>
+                      <span className="text-gray-400 flex-shrink-0">{new Date(l.start_date).toLocaleDateString('ar-EG-u-nu-latn', { month: 'short', day: 'numeric', timeZone: CAIRO_TIME_ZONE })}</span>
                       <span className={`px-2 py-0.5 rounded-full font-bold flex-shrink-0 ${l.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' : l.status === 'REJECTED' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
                         {l.status === 'APPROVED' ? '✓ موافق' : l.status === 'REJECTED' ? '✗ مرفوض' : '⏳ معلق'}
                       </span>
@@ -616,7 +617,7 @@ export function DashboardStaffSettingsPanel({
                         <span className={`block px-2 py-0.5 rounded-full font-bold text-center ${adv.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' : adv.status === 'REJECTED' ? 'bg-red-100 text-red-700' : adv.status === 'DEDUCTED' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
                           {adv.status === 'APPROVED' ? '✓ موافق' : adv.status === 'REJECTED' ? '✗ مرفوض' : adv.status === 'DEDUCTED' ? '✔ تم الخصم' : '⏳ معلق'}
                         </span>
-                        <div className="text-gray-400 mt-0.5 text-center">{new Date(adv.created_at).toLocaleDateString('ar-EG-u-nu-latn', { month: 'short', day: 'numeric' })}</div>
+                        <div className="text-gray-400 mt-0.5 text-center">{new Date(adv.created_at).toLocaleDateString('ar-EG-u-nu-latn', { month: 'short', day: 'numeric', timeZone: CAIRO_TIME_ZONE })}</div>
                       </div>
                     </div>
                   ))}
@@ -637,7 +638,7 @@ export function DashboardStaffSettingsPanel({
                         <div>
                           <div className="font-bold text-gray-900">{record.title}</div>
                           <div className="mt-1 text-xs text-gray-500">
-                            {record.incident_date ? new Date(record.incident_date).toLocaleDateString('ar-EG-u-nu-latn') : ''}
+                            {record.incident_date ? new Date(record.incident_date).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE }) : ''}
                             {' · '}{record.severity === 'high' ? 'عالية' : record.severity === 'low' ? 'منخفضة' : 'متوسطة'}
                           </div>
                         </div>

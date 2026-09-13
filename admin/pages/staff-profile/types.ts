@@ -1,5 +1,7 @@
 /** Shape of GET /api/admin/hr/staff/:id/profile — see api/routes/hr/staffprofile.js */
 
+import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
+
 export interface TimelinePoint {
   ym: string;
   revenue: number;
@@ -65,7 +67,7 @@ export const monthLabel = (ym: string) => {
   const [year, month] = String(ym || '').split('-');
   const date = new Date(Number(year), Number(month) - 1, 1);
   if (Number.isNaN(date.getTime())) return ym;
-  return date.toLocaleDateString('ar-EG-u-nu-latn', { month: 'long', year: 'numeric' });
+  return date.toLocaleDateString('ar-EG-u-nu-latn', { month: 'long', year: 'numeric', timeZone: CAIRO_TIME_ZONE });
 };
 
 /** Compact axis label — "8/26" */

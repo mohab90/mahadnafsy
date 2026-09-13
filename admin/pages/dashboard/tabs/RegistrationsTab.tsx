@@ -7,6 +7,7 @@ import PaymentModal, { type PaymentDraft } from '../../../components/PaymentModa
 import { createClientPaymentDraft } from '../../../lib/clientActionDrafts';
 import { currencyForBranch } from '../../../lib/branchCurrency';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
+import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -172,7 +173,7 @@ const RegistrationsTab: React.FC<Props> = ({ notify }) => {
                     ) : <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-3 py-2 border border-gray-200 text-[11px] text-gray-500 whitespace-nowrap">
-                    {new Date(r.created_at).toLocaleString('ar-EG-u-nu-latn')}
+                    {new Date(r.created_at).toLocaleString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}
                   </td>
                   <td className="px-3 py-2 border border-gray-200 text-[11px] text-gray-400">
                     <span className="inline-flex items-center gap-1" title="كلمات المرور مشفّرة (bcrypt) ولا يمكن عرضها لأي طرف — حتى الإدارة. لو العميل محتاج مساعدة، يستخدم نسيت كلمة المرور من صفحة الدخول.">

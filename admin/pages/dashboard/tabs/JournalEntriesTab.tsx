@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { cairoDateOnly } from '../../../../shared/cairoDate';
 import { FileText, Loader2, Plus, Save, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type Account = { code: string; name: string };
@@ -133,7 +134,7 @@ export default function JournalEntriesTab({ notify }: { notify: NotifyFn }) {
               <div className="flex flex-wrap items-center justify-between gap-2 bg-gray-50 px-4 py-3">
                 <div>
                   <div className="font-black text-gray-900">{entry.description || entry.ref_type}</div>
-                  <div className="text-xs text-gray-500">{new Date(entry.entry_date).toLocaleDateString('ar-EG-u-nu-latn')} - {entry.ref_type}</div>
+                  <div className="text-xs text-gray-500">{new Date(entry.entry_date).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })} - {entry.ref_type}</div>
                 </div>
                 <div className="text-sm font-black text-gray-700" dir="ltr">{money(entry.total_debit)} / {money(entry.total_credit)} ج.م</div>
               </div>

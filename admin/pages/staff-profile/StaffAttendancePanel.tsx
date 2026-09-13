@@ -5,6 +5,7 @@
 // the boundary.
 
 import { useEffect, useMemo, useState } from 'react';
+import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
 
 interface AttendanceLog {
   id: string; date: string; check_in: string | null; check_out: string | null;
@@ -55,7 +56,7 @@ export default function StaffAttendancePanel({ staffId }: { staffId?: string }) 
             <select value={attMonth} onChange={e => setAttMonth(Number(e.target.value))}
               className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
               {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
-                <option key={m} value={m}>{new Date(2000, m - 1, 1).toLocaleDateString('ar-EG-u-nu-latn', { month: 'long' })}</option>
+                <option key={m} value={m}>{new Date(2000, m - 1, 1).toLocaleDateString('ar-EG-u-nu-latn', { month: 'long', timeZone: CAIRO_TIME_ZONE })}</option>
               ))}
             </select>
             <select value={attYear} onChange={e => setAttYear(Number(e.target.value))}

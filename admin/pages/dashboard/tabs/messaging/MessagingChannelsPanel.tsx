@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { mysqlAdmin, type MessagingChannel, type WapilotInstance } from '../../../../lib/mysqlapi';
 import { toDialable } from '../../../../lib/whatsappLink';
+import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -437,7 +438,7 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
                   </div>
                   {wapilotInstances.map(i => i.subscriptionEndsAt && (
                     <p key={i.uniqueName} className="text-[11px] text-amber-700 mt-1">
-                      اشتراك «{i.name}» ينتهي {new Date(i.subscriptionEndsAt).toLocaleDateString('ar-EG-u-nu-latn')}
+                      اشتراك «{i.name}» ينتهي {new Date(i.subscriptionEndsAt).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}
                     </p>
                   ))}
                 </div>

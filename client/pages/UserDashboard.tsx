@@ -20,6 +20,7 @@ import { instituteWhatsApp } from '../lib/whatsappLink';
 import { isCertificateEarned } from '../lib/certificateStatus';
 import { adminDashboardUrl } from '../lib/adminDashboard';
 import { cairoDateOnly } from '../../shared/cairoDate';
+import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 
 const CourseCertificate = React.lazy(() => import('../components/CourseCertificate'));
 const StudentCoursesTab = React.lazy(() => import('../components/student-dashboard/StudentCoursesTab').then((module) => ({ default: module.StudentCoursesTab })));
@@ -910,7 +911,7 @@ const UserDashboard: React.FC = () => {
             const course = courses.find(c => c.id === certModal.courseId);
             if (!course || !subscriber) return null;
             const courseLectures = getCourseLectures(course.id);
-            const issuedDate = new Date(certModal.completedAt).toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' });
+            const issuedDate = new Date(certModal.completedAt).toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric', timeZone: CAIRO_TIME_ZONE });
             const hoursLabel = course.duration || '';
             return (
               <CourseCertificate

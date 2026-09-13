@@ -1,5 +1,6 @@
 import React from 'react';
 import { MessageSquare } from 'lucide-react';
+import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
 
 const API_SUPPORT = import.meta.env.VITE_API_URL || '/api';
 
@@ -212,7 +213,7 @@ export function StudentSupportTab() {
                     <div>
                       <p className="text-sm font-medium text-gray-800">{ticket.subject}</p>
                       <p className="mt-0.5 text-xs text-gray-400">
-                        {new Date(ticket.created_at).toLocaleDateString('ar-EG-u-nu-latn')}
+                        {new Date(ticket.created_at).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}
                       </p>
                       <p className="mt-0.5 text-xs text-purple-600">
                         {(ticket.reply_count || 0) > 0

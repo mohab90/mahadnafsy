@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { RefreshCw, Search, ShieldAlert, UserCheck, PhoneOff, Users, CheckCircle2, Circle } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
+import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 
 // The sign-in accounts themselves — who can actually get into the system, and
 // how. Separate from the login-history view next to it, which is a stream of
@@ -43,7 +44,7 @@ const fmt = (value: string | null) => {
   try {
     return new Date(value).toLocaleString('ar-EG-u-nu-latn', {
       year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
-    });
+      timeZone: CAIRO_TIME_ZONE});
   } catch { return String(value); }
 };
 

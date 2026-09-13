@@ -13,6 +13,7 @@ import {
   WifiOff,
 } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -136,7 +137,7 @@ export default function ServerMonitorTab({ notify }: { notify: NotifyFn }) {
             <h2 className="font-extrabold text-gray-900">مراقبة السيرفر</h2>
             {lastFetch && (
               <p className="text-xs text-gray-400">
-                آخر تحديث: {lastFetch.toLocaleTimeString('ar-EG-u-nu-latn')} — يتحدث كل 30 ث
+                آخر تحديث: {lastFetch.toLocaleTimeString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })} — يتحدث كل 30 ث
               </p>
             )}
           </div>

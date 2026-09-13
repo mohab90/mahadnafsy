@@ -3,6 +3,7 @@ import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { Target, Trophy, Edit2, Save, X } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -12,7 +13,7 @@ interface Goal {
   monthlyLeadsTarget: number;
 }
 
-const MONTH_LABEL = new Date().toLocaleDateString('ar-EG-u-nu-latn', { month: 'long', year: 'numeric' });
+const MONTH_LABEL = new Date().toLocaleDateString('ar-EG-u-nu-latn', { month: 'long', year: 'numeric', timeZone: CAIRO_TIME_ZONE });
 
 export default function SalesGoalsTab({ notify }: { notify: NotifyFn }) {
   const { staffMembers, leads, orders } = useSiteData();
