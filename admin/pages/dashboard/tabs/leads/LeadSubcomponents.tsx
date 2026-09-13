@@ -26,7 +26,6 @@ import {
   STATUS_CFG,
 } from '../leadUtils';
 
-
 export { AddLeadModal } from './AddLeadModal';
 export { BulkWhatsAppModal, WhatsAppRepModal } from './LeadWhatsAppModals';
 export { QuickEditPanel } from './QuickEditPanel';
@@ -53,9 +52,6 @@ export const crmSourceLabels: Record<string, { label: string; color: string }> =
 export const formatWaPhone = (p: string) => {
   return toDialable(p);
 };
-
-export const mkPromoCode = (name: string) =>
-  name.trim().toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '').slice(0, 12);
 
 export const crmStatusLabels: Record<string, string> = {
   new: 'جديد', contacted: 'تم التواصل', interested: 'مهتم', interested_booking: 'مهتم بالحجز',

@@ -13,20 +13,6 @@
 
 const DEFAULT_PRIMARY = '#dc2626'; // red-600 — the system's classic accent (kept by default)
 
-export const BRAND_PRESETS: { label: string; value: string }[] = [
-  { label: 'أحمر كلاسيكي', value: '#dc2626' },
-  { label: 'إندِيغو', value: '#4f46e5' },
-  { label: 'بنفسجي', value: '#7c3aed' },
-  { label: 'أزرق', value: '#2563eb' },
-  { label: 'سماوي', value: '#0891b2' },
-  { label: 'أخضر', value: '#059669' },
-  { label: 'وردي', value: '#db2777' },
-  { label: 'أحمر', value: '#dc2626' },
-  { label: 'برتقالي', value: '#ea580c' },
-  { label: 'كهرماني', value: '#d97706' },
-  { label: 'رمادي داكن', value: '#334155' },
-];
-
 function clamp(n: number) { return Math.max(0, Math.min(255, Math.round(n))); }
 
 function hexToRgb(hex: string): [number, number, number] | null {

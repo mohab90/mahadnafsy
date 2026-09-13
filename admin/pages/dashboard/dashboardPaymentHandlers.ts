@@ -23,24 +23,6 @@ function normalizeAccessEntry(entry?: CourseAccessSetting | 'preview' | 'full'):
   return { mode: entry.mode };
 }
 
-export function normalizeCourseAccess(
-  enrolledCourseIds: string[],
-  currentMap: Record<string, CourseAccessSetting | 'preview' | 'full'> = {},
-): Record<string, CourseAccessSetting> {
-  const nextMap: Record<string, CourseAccessSetting> = {};
-  enrolledCourseIds.forEach((courseId) => {
-    nextMap[courseId] = normalizeAccessEntry(currentMap[courseId]);
-  });
-  return nextMap;
-}
-
-export function normalizeLectureProgress(
-  _enrolledCourseIds: string[],
-  currentMap: Record<string, number> = {},
-): Record<string, number> {
-  return currentMap;
-}
-
 // ── handleSubPayment ─────────────────────────────────────────────────────────
 
 interface HandleSubPaymentDeps {

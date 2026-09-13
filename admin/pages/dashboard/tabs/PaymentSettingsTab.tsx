@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { CreditCard, ShieldCheck } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { Card, Field, Input, NotifyFn, SaveBar, SectionHeader, Toggle, setNested } from './saasConnectorUi';
+import { PAYMENT_METHOD_CODES } from '../../../../shared/paymentMethods';
 
 type PaymentGatewayConfig = {
   active_provider: 'manual' | 'paymob';
@@ -13,7 +14,7 @@ type PaymentGatewayConfig = {
 const DEFAULT_CONFIG: PaymentGatewayConfig = {
   active_provider: 'manual',
   mode: 'sandbox',
-  manual: { enabled: true, require_proof_review: true, supported_methods: ['cash', 'instapay', 'bank_transfer', 'vodafone_cash'] },
+  manual: { enabled: true, require_proof_review: true, supported_methods: [...PAYMENT_METHOD_CODES] },
   paymob: { enabled: false, merchant_id: '', api_key: '', secret_key: '', public_key: '', hmac_secret: '', integration_id_card: '', integration_id_wallet: '', integration_id_unified: '', iframe_id: '', webhook_url: '/api/webhooks/paymob', callback_url: '/success' },
 };
 
@@ -61,9 +62,6 @@ export default function PaymentSettingsTab({ notify }: { notify: NotifyFn }) {
       setTesting(false);
     }
   };
-
-  const methodOptions = ['cash', 'instapay', 'bank_transfer', 'vodafone_cash'];
-  const METHOD_LABEL_AR: Record<string, string> = { cash: 'نقدي', instapay: 'إنستاباي', bank_transfer: 'تحويل بنكي', vodafone_cash: 'فودافون كاش' };
 
   return (
     <div className="space-y-5" dir="rtl">

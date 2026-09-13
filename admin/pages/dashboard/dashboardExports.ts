@@ -23,35 +23,3 @@ export function exportOrdersCsv(filteredOrders: OrderItem[]): void {
   downloadCsv([header, ...rows], 'orders');
 }
 
-/** Export subscribers with resolved branch labels + course names. */
-export function exportSubscribersCsv(
-  subscribers: SubscriberItem[],
-  bundles: Bundle[],
-  courses: Course[],
-  branchLabelMap: Record<string, string>,
-): void {
-  if (subscribers.length === 0) return;
-  const branchLabel = (b?: string) => branchLabelMap[b || ''] || b || '';
-  const header = ['معرف', 'الاسم', 'الهاتف', 'البريد', 'الفرع', 'الحالة', 'تاريخ التسجيل', 'الكورسات', 'عدد الكورسات', 'اسم السيلز', 'ملاحظات'];
-  const rows = subscribers.map(s => [
-    s.id, s.name, s.phone, s.email || '',
-    branchLabel(s.branch), s.status, s.createdAt?.slice(0, 10) || '',
-    (() => {
-      const cIds = s.enrolledCourseIds || [];
-      const cBnds = bundles.filter(b => b.courses.length > 0 && b.courses.every(co => cIds.includes(co.id)));
-      const hIds = new Set(cBnds.flatMap(b => b.courses.map(co => co.id)));
-      return [...cBnds.map(b => b.title), ...cIds.filter(id => !hIds.has(id)).map(id => courses.find(c => c.id === id)?.title || id)].join(' | ');
-    })(),
-    (s.enrolledCourseIds || []).length,
-    s.assignedSalesName || '', s.notes || '',
-  ]);
-  downloadCsv([header, ...rows], 'subscribers');
-}
-
-/** Export the leads list. */
-export function exportLeadsCsv(leads: { id: string; name: string; phone: string; email?: string; status: string; source?: string; branch?: string; leadType?: string; assignedSalesName?: string; createdAt?: string; notes?: string }[]): void {
-  if (leads.length === 0) return;
-  const header = ['id', 'name', 'phone', 'email', 'status', 'source', 'branch', 'leadType', 'assignedSalesName', 'createdAt', 'notes'];
-  const rows = leads.map(r => [r.id, r.name, r.phone, r.email, r.status, r.source, r.branch, r.leadType, r.assignedSalesName, r.createdAt, r.notes]);
-  downloadCsv([header, ...rows], 'leads');
-}

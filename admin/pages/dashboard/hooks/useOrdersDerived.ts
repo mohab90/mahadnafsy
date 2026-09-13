@@ -1,5 +1,13 @@
 import { useMemo } from 'react';
 import type { OrderItem } from '../../../types';
+import { normalizePaymentMethod } from '../../../../shared/paymentMethods';
+
+/** Two stored spellings of one rail are the same rail. */
+const sameMethod = (a: string | undefined, b: string) => {
+  const left = normalizePaymentMethod(a) || String(a || '').trim().toLowerCase();
+  const right = normalizePaymentMethod(b) || b.trim().toLowerCase();
+  return left === right;
+};
 
 /**
  * Pure derived values for the Orders tab: the filtered order list (search +
@@ -22,7 +30,13 @@ export function useOrdersDerived(
     const matchesSearch = text.includes(orderSearch.toLowerCase());
     const matchesStatus = orderStatusFilter === 'all' || row.status === orderStatusFilter;
     const matchesType = orderTypeFilter === 'all' || row.type === orderTypeFilter;
-    const matchesMethod = orderMethodFilter === 'all' || row.paymentMethod === orderMethodFilter;
+    // Both sides through the same vocabulary. The comparison used to be a
+    // plain ===, and production writes 'TRANSFER' in upper case while the
+    // filter offers 'transfer' — so «تحويل بنكي» matched none of the transfers.
+    // The badge lowercased before looking up its label, which is why the rows
+    // read correctly and only the filter came back empty.
+    const matchesMethod = orderMethodFilter === 'all'
+      || sameMethod(row.paymentMethod, orderMethodFilter);
     const matchesStaff = orderStaffFilter === 'all' || (row.staffName || '') === orderStaffFilter;
     // A row with an unparseable createdAt must not be silently dropped when
     // no date filter is even active (PAY-11) — only enforce hasValidTime once

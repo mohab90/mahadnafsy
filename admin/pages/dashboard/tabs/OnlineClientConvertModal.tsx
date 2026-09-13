@@ -1,5 +1,6 @@
 import { Modal } from '../../../../shared/ui/Modal';
 import type { SubscriberItem } from '../../../types';
+import { REFUND_METHOD_CODES, paymentMethodLabel } from '../../../../shared/paymentMethods';
 
 export type OnlineClientConvertType = 'finished' | 'paused' | 'refunded' | 'daqqi' | 'leads' | 'online' | '';
 
@@ -112,11 +113,9 @@ export function OnlineClientConvertModal({
                   <select value={refundMethod} onChange={event => setRefundMethod(event.target.value)}
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-200 bg-white">
                     <option value="">اختر الطريقة (اختياري)</option>
-                    <option value="bank">تحويل بنكي</option>
-                    <option value="vodafone">فودافون كاش</option>
-                    <option value="instapay">إنستاباي</option>
-                    <option value="cash">كاش</option>
-                    <option value="other">أخرى</option>
+                    {REFUND_METHOD_CODES.map(code => (
+                      <option key={code} value={code}>{paymentMethodLabel(code)}</option>
+                    ))}
                   </select>
                 </>
               )}

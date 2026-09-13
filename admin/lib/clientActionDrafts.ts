@@ -24,6 +24,3 @@ export function createClientPaymentDraft(options: ClientPaymentDraftOptions = {}
   };
 }
 
-export function createClientInstallmentDraft(options: Omit<ClientPaymentDraftOptions, 'bookingType'> = {}): PaymentDraft {
-  return createClientPaymentDraft({ ...options, bookingType: 'installment' });
-}

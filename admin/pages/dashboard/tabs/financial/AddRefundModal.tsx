@@ -4,10 +4,12 @@ import { useCrmData } from '../../../../context/siteDataSlices';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { SubscriberItem } from '../../../../types';
 import { Modal } from '../../../../../shared/ui/Modal';
+import { REFUND_METHOD_CODES, paymentMethodLabel } from '../../../../../shared/paymentMethods';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
-const REFUND_METHODS = ['تحويل بنكي', 'محفظة إلكترونية', 'كاش', 'إرجاع على نفس وسيلة الدفع'];
+// Codes, not labels — «استرداد» on the online client writes the same list, and
+// the inbox that prints them reads one vocabulary.
 
 // The API refunds against one paid payment: it checks the payment belongs to the
 // customer, refuses an amount that differs from it, and refuses a currency that
@@ -27,7 +29,7 @@ export function AddRefundModal({ onClose, onCreated, notify }: {
   const [subscriberId, setSubscriberId] = useState('');
   const [paymentId, setPaymentId] = useState('');
   const [reason, setReason] = useState('');
-  const [method, setMethod] = useState(REFUND_METHODS[0]);
+  const [method, setMethod] = useState<string>('bank_transfer');
   const [saving, setSaving] = useState(false);
 
   const branchOf = (item: SubscriberItem) =>
@@ -159,7 +161,9 @@ export function AddRefundModal({ onClose, onCreated, notify }: {
             <label className="text-xs text-gray-600 font-bold mb-1 block">وسيلة الاسترداد</label>
             <select value={method} onChange={event => setMethod(event.target.value)}
               className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:border-rose-400 focus:outline-none">
-              {REFUND_METHODS.map(item => <option key={item} value={item}>{item}</option>)}
+              {REFUND_METHOD_CODES.map(code => (
+                <option key={code} value={code}>{paymentMethodLabel(code)}</option>
+              ))}
             </select>
           </div>
 

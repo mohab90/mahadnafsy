@@ -11,6 +11,16 @@ import type { Bundle, Course, OrderItem, StaffMember, SubscriberItem } from '../
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { toEgp } from '../../../lib/money';
 import { downloadCsv } from '../../../../shared/csv';
+import { PAYMENT_METHOD_CODES, paymentMethodLabel, normalizePaymentMethod } from '../../../../shared/paymentMethods';
+
+// What an order's payment_method can hold. The four rails a customer may pick,
+// plus the three the gateways and the desk write: a card charge, a Paymob
+// charge, and a payment the desk entered by hand. The list used to sit inline
+// in the filter and had no 'bank_transfer' at all.
+const ORDER_METHOD_FILTERS: string[] = [
+  ...PAYMENT_METHOD_CODES,
+  'card', 'wallet', 'online_paymob', 'manual',
+];
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -492,20 +502,30 @@ export default function OrdersTab({
               const hasFilters = orderSearch || orderTypeFilter !== 'all' || orderMethodFilter !== 'all'
                 || orderStaffFilter !== 'all' || orderDateFrom || orderDateTo;
 
+              // The wording comes from shared/paymentMethods, which is also
+              // what the customer's own screens read. This list used to be its
+              // own eight entries and had no 'bank_transfer' — one of the four
+              // rails the manual-payment flow actually writes — so a customer
+              // who paid by transfer showed here as the bare token. Only the
+              // colour is decided locally now.
+              // 'manual' is not a rail — it is how the payment was taken —
+              // but orders carry it, so it stays filterable.
+              const PAY_METHOD_CLS: Record<string, string> = {
+                cash: 'bg-gray-100 text-gray-700',
+                bank_transfer: 'bg-blue-100 text-blue-700',
+                transfer: 'bg-blue-100 text-blue-700',
+                vodafone_cash: 'bg-red-100 text-red-700',
+                instapay: 'bg-purple-100 text-purple-700',
+                online_paymob: 'bg-indigo-100 text-indigo-700',
+                card: 'bg-cyan-100 text-cyan-700',
+                wallet: 'bg-teal-100 text-teal-700',
+                fawry: 'bg-amber-100 text-amber-700',
+              };
               const payMethodBadge = (m: string | undefined) => {
-                const map: Record<string, { label: string; cls: string }> = {
-                  cash:          { label: 'نقدي',          cls: 'bg-gray-100 text-gray-700' },
-                  transfer:      { label: 'تحويل بنكي',    cls: 'bg-blue-100 text-blue-700' },
-                  vodafone_cash: { label: 'فودافون كاش',   cls: 'bg-red-100 text-red-700' },
-                  instapay:      { label: 'انستا باي',     cls: 'bg-purple-100 text-purple-700' },
-                  online_paymob: { label: 'أونلاين/بطاقة', cls: 'bg-indigo-100 text-indigo-700' },
-                  card:          { label: 'بطاقة بنكية',   cls: 'bg-cyan-100 text-cyan-700' },
-                  wallet:        { label: 'محفظة',          cls: 'bg-teal-100 text-teal-700' },
-                  manual:        { label: 'يدوي',           cls: 'bg-orange-100 text-orange-700' },
-                };
-                const key = (m || '').toLowerCase();
-                const info = map[key] || { label: m || '—', cls: 'bg-gray-100 text-gray-500' };
-                return <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${info.cls}`}>{info.label}</span>;
+                const code = normalizePaymentMethod(m) || (m || '').toLowerCase();
+                const label = paymentMethodLabel(m) || '—';
+                const cls = PAY_METHOD_CLS[code] || 'bg-gray-100 text-gray-500';
+                return <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${cls}`}>{label}</span>;
               };
 
               const typeBadge = (t: string | undefined) => {
@@ -653,14 +673,9 @@ export default function OrdersTab({
                       <select value={orderMethodFilter} onChange={e => setOrderMethodFilter(e.target.value)}
                         className="border border-gray-200 rounded-xl px-3 py-2 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-200">
                         <option value="all">كل الوسائل</option>
-                        <option value="cash">نقدي</option>
-                        <option value="transfer">تحويل بنكي</option>
-                        <option value="vodafone_cash">فودافون كاش</option>
-                        <option value="instapay">انستا باي</option>
-                        <option value="online_paymob">أونلاين / بطاقة</option>
-                        <option value="card">بطاقة بنكية</option>
-                        <option value="wallet">محفظة إلكترونية</option>
-                        <option value="manual">يدوي</option>
+                        {ORDER_METHOD_FILTERS.map(code => (
+                          <option key={code} value={code}>{paymentMethodLabel(code)}</option>
+                        ))}
                       </select>
                       {/* Staff */}
                       {staffNames.length > 0 && (

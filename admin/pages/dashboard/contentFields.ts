@@ -223,7 +223,6 @@ export const policySections: { title: string; fields: ContentField[] }[] = [
   },
 ];
 
-
 // ── Course detail page ───────────────────────────────────────────────────────
 // 68 keys this page reads that had no editor anywhere in the panel: every
 // label, FAQ answer, guarantee line and lead-form string was a code default
@@ -419,5 +418,3 @@ export function contentEditorFor(key: string): ContentEditorHome | null {
   return KEY_OWNER.get(key) ?? null;
 }
 
-/** Every key that has a dedicated editor — used by tests and the raw table. */
-export const OWNED_CONTENT_KEYS: ReadonlySet<string> = new Set(KEY_OWNER.keys());

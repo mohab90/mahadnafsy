@@ -9,21 +9,6 @@ export const staffStatusFromWire = (staff: StaffWire): StaffMember['status'] =>
 export const priceForCurrency = (price: Price | undefined, currency: keyof Price): number =>
   Number(price?.[currency] ?? 0) || 0;
 
-export const translatePayMethod = (method: string | undefined): string => {
-  if (!method) return 'غير محدد';
-  const labels: Record<string, string> = {
-    card: 'بطاقة بنكية',
-    wallet: 'محفظة إلكترونية',
-    cash: 'نقدي',
-    transfer: 'تحويل بنكي',
-    vodafone_cash: 'فودافون كاش',
-    instapay: 'انستا باي',
-    online_paymob: 'أونلاين / بطاقة',
-    manual: 'يدوي',
-  };
-  return labels[method.toLowerCase()] || method;
-};
-
 export const buildStaffSettingsMetrics = (
   subscribers: SubscriberItem[],
   monthlyTargetInput: string,

@@ -28,6 +28,7 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { hasPermission, type PermissionKey, type RoleKey } from '../../../constants/permissions';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 import { promptDialog } from '../../../../shared/ui/promptDialog';
+import { paymentMethodLabel } from '../../../../shared/paymentMethods';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type InboxSource = 'ticket' | 'contact' | 'refund' | 'join_instructor' | 'join_consultant' | 'join_staff';
@@ -659,7 +660,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                 {item.source === 'refund' && (
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div className="rounded-lg border border-slate-100 p-2"><span className="text-slate-400">المبلغ:</span> <b>{item.amount}</b></div>
-                    <div className="rounded-lg border border-slate-100 p-2"><span className="text-slate-400">طريقة الاسترداد:</span> {raw.refund_method || '—'}</div>
+                    <div className="rounded-lg border border-slate-100 p-2"><span className="text-slate-400">طريقة الاسترداد:</span> {paymentMethodLabel(raw.refund_method) || '—'}</div>
                     <div className="col-span-2 rounded-lg border border-slate-100 p-2"><span className="text-slate-400">رقم الدفعة:</span> {raw.payment_id || '—'}</div>
                   </div>
                 )}

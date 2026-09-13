@@ -27,13 +27,6 @@ export const isInternationalSubscriber = (subscriber: SubscriberItem): boolean =
   return (subscriber.paymentHistory || []).some(payment => payment.currency === 'SAR' || payment.currency === 'USD');
 };
 
-export const isOnlineSubscriber = (subscriber: SubscriberItem): boolean => {
-  const branch = normBranchId(subscriber.branch);
-  const rawBranch = (subscriber.branch || '').toLowerCase();
-  return branch.startsWith('ONLINE') || rawBranch.includes('online')
-    || rawBranch.includes('اونلاين') || rawBranch.includes('اون_لاين') || rawBranch.includes('اون لاين');
-};
-
 export const calcSubscribersPaidEGP = (
   subscribers: SubscriberItem[],
   fromDate?: string,

@@ -34,6 +34,7 @@ const LABELS: Record<string, string> = {
   instapay: 'انستا باي',
   bank_transfer: 'تحويل بنكي',
   vodafone_cash: 'فودافون كاش',
+  same_as_payment: 'إرجاع على نفس وسيلة الدفع',
   // Not offered as choices any more, but rows carrying them already exist.
   fawry: 'فوري',
   other: 'أخرى',
@@ -70,7 +71,27 @@ const ALIASES: Record<string, string> = {
   vodafonecash: 'vodafone_cash',
   'vodafone-cash': 'vodafone_cash',
   bank: 'bank_transfer',
+  // تحويل عميل أونلاين → استرداد wrote these two, and neither resolved: a
+  // refund recorded there read back as the bare token 'vodafone'.
+  vodafone: 'vodafone_cash',
+  // The gateway names itself in orders.payment_method.
+  paymob: 'online_paymob',
+  'محفظة إلكترونية': 'wallet',
+  'محفظة': 'wallet',
 };
+
+/**
+ * A refund goes back by one of the same rails, or by whichever one it arrived
+ * on — which the desk records rather than looks up.
+ *
+ * Two screens used to offer this and they disagreed: «استرداد» on the online
+ * client wrote codes ('bank', 'vodafone'), the financial tab's refund dialog
+ * wrote Arabic labels («تحويل بنكي»), and the inbox printed whichever it found
+ * raw. The same rail therefore appeared under two names depending on who
+ * recorded it.
+ */
+export const SAME_AS_PAYMENT = 'same_as_payment';
+export const REFUND_METHOD_CODES = [...PAYMENT_METHOD_CODES, SAME_AS_PAYMENT] as const;
 
 /**
  * The code for a stored value, or '' when it is something else entirely — the

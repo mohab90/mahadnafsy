@@ -25,6 +25,7 @@ import { CountriesSection, CurrenciesSection, ListSection } from './systemSettin
 import { FinancialSection, GeneralSection } from './systemSettingsCoreSections';
 import SaasSetupWizard from './SaasSetupWizard';
 import { GrowthOpsSection } from './GrowthOpsSection';
+import { PAYMENT_METHOD_CODES, paymentMethodLabel } from '../../../../shared/paymentMethods';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -283,11 +284,9 @@ const SystemSettingsTab: React.FC<Props> = ({ notify }) => {
   );
 };
 
-/** The four rails the manual-payment integration understands. */
-const CUSTOMER_CHANNELS = ['cash', 'instapay', 'bank_transfer', 'vodafone_cash'] as const;
-const CHANNEL_LABEL_AR: Record<string, string> = {
-  cash: 'نقدي', instapay: 'إنستاباي', bank_transfer: 'تحويل بنكي', vodafone_cash: 'فودافون كاش',
-};
+/** The rails the manual-payment integration understands, and their wording,
+ *  from the one module the customer's screens read too. */
+const CUSTOMER_CHANNELS = PAYMENT_METHOD_CODES;
 
 export type GatewayConfig = {
   manual?: { enabled?: boolean; require_proof_review?: boolean; supported_methods?: string[] };
@@ -323,7 +322,7 @@ const CustomerPaymentChannels: React.FC<{
         {CUSTOMER_CHANNELS.map(channel => (
           <label key={channel} className="flex items-center gap-2 rounded-xl border border-gray-200 p-3 text-sm">
             <input type="checkbox" checked={selected.includes(channel)} onChange={() => toggle(channel)} />
-            {CHANNEL_LABEL_AR[channel] || channel}
+            {paymentMethodLabel(channel) || channel}
           </label>
         ))}
       </div>

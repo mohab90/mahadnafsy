@@ -15,6 +15,7 @@ import {
   Tag,
   Users,
 } from 'lucide-react';
+import { DEFAULT_PAYMENT_METHODS } from '../../../lib/paymentMethods';
 
 export const SECTIONS = [
   { key: 'general',            label: 'الإعدادات العامة',    icon: Settings,        color: 'indigo',  source: 'syscfg'  },
@@ -79,8 +80,6 @@ export const CERT_TYPES = [
   { type: 'institute',          label: 'شهادة المعهد'              },
   { type: 'other',              label: 'شهادة أخرى'                },
 ];
-
-const DEFAULT_PAYMENT_METHODS = ['خزنة الدقي', 'خزنة الفرع', 'فودافون كاش', 'انستا باي', 'تحويل بنكي', 'احمد السعودية'];
 
 export const COLOR: Record<string, { bg: string; text: string; border: string }> = {
   indigo:  { bg: 'bg-indigo-50',  text: 'text-indigo-700',  border: 'border-indigo-200'  },
