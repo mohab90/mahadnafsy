@@ -2,6 +2,7 @@ import { useRef, useState, type ChangeEvent } from 'react';
 import { Upload } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { NotifyFn } from '../CrmSettingsModal';
+import { parseCsvRows, detectCsvDelimiter } from '../../../../../shared/csv';
 
 export function CsvImportButton({ notify, onImported }: {
   notify: NotifyFn;
@@ -15,13 +16,14 @@ export function CsvImportButton({ notify, onImported }: {
     if (!file) return;
     setLoading(true);
     try {
-      const lines = (await file.text()).split('\n').map(line => line.trim()).filter(Boolean);
-      if (lines.length < 2) throw new Error('الملف فارغ أو لا يحتوي بيانات');
-      const headers = lines[0].split(',').map(header =>
-        header.trim().toLowerCase().replace(/['"]/g, '')
-      );
-      const leads = lines.slice(1).map(line => {
-        const values = line.split(',').map(value => value.trim().replace(/^["']|["']$/g, ''));
+      // Not a line split: a note with a comma in it is one field, and a note
+      // with a newline in it is still one row. parseCsvRows reads what this
+      // system's own exports write.
+      const text = await file.text();
+      const [headerRow, ...body] = parseCsvRows(text, detectCsvDelimiter(text.split(/\r?\n/)[0] || ''));
+      if (!headerRow || body.length === 0) throw new Error('الملف فارغ أو لا يحتوي بيانات');
+      const headers = headerRow.map(header => header.trim().toLowerCase().replace(/'/g, ''));
+      const leads = body.map(values => {
         const row = Object.fromEntries(headers.map((header, index) => [header, values[index] || '']));
         return {
           name: row.name || row['الاسم'] || row['اسم'] || '',

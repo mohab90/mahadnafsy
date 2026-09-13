@@ -7,6 +7,7 @@ import { LeadTable } from '../LeadTable';
 import { LEAD_STATUS_CFG, crmStatusLabels } from './LeadSubcomponents';
 import { BRANCH_LABELS_AR, normalizeBranch, type BranchKey } from '../../../../constants/branches';
 import { courseBadgeLabel, matchCourseOrBundle, toRawCourse } from './leadCourseLabel';
+import { parseCsvRows, detectCsvDelimiter } from '../../../../../shared/csv';
 
 /**
  * Header keys are compared with separators and case stripped, so
@@ -142,13 +143,15 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = (e.target?.result as string) || '';
-      const lines = text.split(/\r?\n/).filter(l => l.trim());
-      if (lines.length < 2) { setArchiveParseErr('الملف فارغ أو لا يحتوي على بيانات'); return; }
-      const delim = text.includes('\t') ? '\t' : ',';
-      const headers = lines[0].split(delim).map(h => normKey(h.replace(/^["']|["']$/g, '')));
+      // The delimiter used to be «a tab appears anywhere in the file, so the
+      // file is tab-separated» — one tab inside one note switched the whole
+      // sheet. It is counted on the header line now, outside quotes.
+      const [headerRow, ...body] = parseCsvRows(text, detectCsvDelimiter(text.split(/\r?\n/)[0] || ''));
+      if (!headerRow || body.length === 0) { setArchiveParseErr('الملف فارغ أو لا يحتوي على بيانات'); return; }
+      const headers = headerRow.map(normKey);
       const rows: Record<string, string>[] = [];
-      for (let i = 1; i < lines.length; i++) {
-        const vals = lines[i].split(delim).map(v => v.replace(/^["']|["']$/g, '').trim());
+      for (let i = 0; i < body.length; i++) {
+        const vals = body[i];
         if (vals.every(v => !v)) continue;
         const row: Record<string, string> = {};
         headers.forEach((h, idx) => { row[h] = vals[idx] || ''; });

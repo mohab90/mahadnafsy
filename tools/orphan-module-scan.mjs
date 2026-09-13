@@ -79,3 +79,25 @@ if (files.length < 500) {
   console.log('\nWARNING: fewer files scanned than expected — the walk is not reading the tree');
   process.exitCode = 1;
 }
+
+// Everything under tools/ is meant to be run by name, so nothing importing it
+// says nothing. The app trees are different: a screen, hook or helper that no
+// other file mentions is not in the bundle at all. The leads CSV helper sat
+// there for months — 188 lines that parsed CSV correctly, that this scan had
+// been listing all along, and that nobody read the list to see. A fix was
+// written into it and deployed before anyone noticed the bundle never changed.
+//
+// So the app trees are a gate, not a report.
+//
+// (Module names are deliberately not spelled out in these comments: this file
+// is part of the corpus, and naming a module here would mark it referenced.)
+const IS_TOOL = /(^|\/)tools\//;
+const appOrphans = orphans.filter(o => !IS_TOOL.test(o.file));
+if (appOrphans.length) {
+  console.log(`\nFAIL: ${appOrphans.length} file(s) in the app tree that nothing imports —`);
+  console.log('      they are not in any bundle. Delete them, or import them.');
+  for (const o of appOrphans) console.log(`  ${String(Math.round(o.bytes / 1024)).padStart(5)} KB  ${o.file}`);
+  process.exitCode = 1;
+} else {
+  console.log(`app tree: 0 unimported files (${orphans.length} standalone scripts under tools/ are fine)`);
+}

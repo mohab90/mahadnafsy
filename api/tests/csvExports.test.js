@@ -160,8 +160,8 @@ test('what the writer writes, the leads import reads back', () => {
       'a doubled quote is one quote, not two toggles'],
     [`if (char === '\\r') { if (source[index + 1] === '\\n') index++; endRow(); continue; }`,
       'CRLF ends one row, not two'],
-    [`if (char === ',') { endField(); continue; }`,
-      'a comma outside quotes ends a field'],
+    [`if (char === delimiter) { endField(); continue; }`,
+      'a delimiter outside quotes ends a field'],
     [`    if (quoted) {`,
       'and inside quotes it is data — this branch is what makes that true'],
     [`if (char === '"' && field.trim() === '') { quoted = true; wasQuoted = true; field = ''; continue; }`,
@@ -183,7 +183,7 @@ test('what the writer writes, the leads import reads back', () => {
   const toCsv = rows => rows.map(row => row.map(csvField).join(',')).join('\r\n');
 
   // Ported from shared/csv.ts parseCsvRows.
-  const parseCsvRows = text => {
+  const parseCsvRows = (text, delimiter = ',') => {
     const src = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
     const rows = [];
     let row = [], field = '', quoted = false, wasQuoted = false;
@@ -197,7 +197,7 @@ test('what the writer writes, the leads import reads back', () => {
         quoted = false; continue;
       }
       if (c === '"' && field.trim() === '') { quoted = true; wasQuoted = true; field = ''; continue; }
-      if (c === ',') { endField(); continue; }
+      if (c === delimiter) { endField(); continue; }
       if (c === '\r') { if (src[i + 1] === '\n') i++; endRow(); continue; }
       if (c === '\n') { endRow(); continue; }
       field += c;
@@ -216,9 +216,69 @@ test('what the writer writes, the leads import reads back', () => {
   assert.deepEqual(parseCsvRows('\uFEFF' + toCsv(original)), original);
 });
 
-test('the leads import parses through the shared reader, not its own split', () => {
-  const source = read('admin/pages/dashboard/tabs/leads/leadCsvUtils.ts');
-  assert.match(source, /import \{ parseCsvRows \} from '[^']*shared\/csv'/);
-  assert.ok(!/text\.split\('\n'\)/.test(source), 'a row is not a line: a quoted field may contain one');
-  assert.ok(!/\.split\(','\)/.test(source), 'a field is not a comma-separated token');
+// Every screen that takes a CSV *in*. Named, because the first version of this
+// test asserted against a leads CSV helper — a 188-line module that parsed CSV
+// properly and that nothing imported. The bundle never contained it. A guard
+// pointed at dead code reports success forever, so each of these is checked for
+// being reachable as well as for being correct.
+const IMPORT_SCREENS = [
+  ['admin/pages/dashboard/tabs/leads/CsvImportButton.tsx', 'استيراد CSV on the leads desk'],
+  ['admin/pages/dashboard/tabs/leads/ArchiveTab.tsx', 'أرشيف الليدز'],
+  ['admin/pages/dashboard/tabs/online/OldDataImportPanel.tsx', 'استيراد البيانات القديمة'],
+];
+
+test('every import screen reads through the shared reader, not its own split', () => {
+  const all = browserSources();
+  for (const [rel, label] of IMPORT_SCREENS) {
+    const source = read(rel);
+    assert.match(source, /import \{ parseCsvRows, detectCsvDelimiter \} from '[^']*shared\/csv'/,
+      `${label} does not use the shared reader`);
+    assert.ok(!/\.split\(separator\)|\.split\(delim\)|\.split\(','\)/.test(source),
+      `${label} still cuts a row into fields by splitting — a quoted delimiter is data`);
+
+    // Reachable: something else in the tree imports it. Without this the whole
+    // assertion above can pass on a module the app never loads.
+    const moduleName = rel.split('/').pop().replace(/\.tsx?$/, '');
+    const importers = all.filter(other => other !== rel && new RegExp(`from '[^']*${moduleName}'`).test(read(other)));
+    assert.ok(importers.length > 0, `nothing imports ${rel} — this guard would be watching dead code`);
+  }
+});
+
+test('the delimiter is read off the header, and only outside quotes', () => {
+  const source = fs.readFileSync(path.join(ROOT, 'shared', 'csv.ts'), 'utf8');
+  assert.match(source, /export function detectCsvDelimiter/);
+  for (const [line, why] of [
+    [`    if (!quoted && char in counts) counts[char] += 1;`,
+      'a delimiter inside a quoted heading is data, not a vote'],
+    [`  const line = headerLine.charCodeAt(0) === 0xfeff ? headerLine.slice(1) : headerLine;`,
+      'the BOM is stripped before counting, as it is before parsing'],
+  ]) {
+    assert.ok(source.includes(line), `${why} — shared/csv.ts no longer has: ${line.trim()}`);
+  }
+
+  const detect = headerLine => {
+    const line = headerLine.charCodeAt(0) === 0xfeff ? headerLine.slice(1) : headerLine;
+    const counts = { ',': 0, ';': 0, '\t': 0 };
+    let quoted = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') {
+        if (quoted && line[i + 1] === '"') { i++; continue; }
+        quoted = !quoted;
+        continue;
+      }
+      if (!quoted && c in counts) counts[c] += 1;
+    }
+    const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+    return best[1] > 0 ? best[0] : ',';
+  };
+
+  assert.equal(detect('الاسم,الهاتف,ملاحظات'), ',');
+  assert.equal(detect('الاسم;الهاتف;ملاحظات'), ';', 'Excel on an Arabic locale writes semicolons');
+  assert.equal(detect('الاسم\tالهاتف\tملاحظات'), '\t', 'a sheet pasted out of Google Sheets');
+  assert.equal(detect('﻿الاسم,الهاتف'), ',', 'the BOM is not part of the first heading');
+  // The archive import used to decide by «is there a tab anywhere in the file».
+  // One tab inside one note re-read the entire sheet as tab-separated.
+  assert.equal(detect('الاسم,الهاتف,"ملاحظة\tبها مسافة جدولة"'), ',');
+  assert.equal(detect('عمود واحد'), ',', 'nothing to count, so the format we write');
 });

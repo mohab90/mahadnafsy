@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { parseCsvRows, detectCsvDelimiter } from '../../../../../shared/csv';
 
 export type OldDataRow = {
   _id: string;
@@ -38,19 +39,10 @@ const normalizeCell = (value: string | undefined) =>
 const findColumn = (headers: string[], ...keys: string[]) =>
   headers.findIndex(header => keys.some(key => header.includes(key)));
 
-// Excel on an Arabic/European locale writes ';' rather than ',', and a sheet
-// pasted out of Google Sheets uses tabs. Guessing ',' meant the whole header row
-// parsed as one cell and nothing matched.
-const detectSeparator = (headerLine: string) =>
-  [';', '\t', ',']
-    .map(candidate => ({ candidate, count: headerLine.split(candidate).length - 1 }))
-    .sort((a, b) => b.count - a.count)
-    .filter(entry => entry.count > 0)[0]?.candidate || ',';
-
 function parseOldData(text: string): OldDataRow[] {
-  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(Boolean);
-  const separator = detectSeparator(lines[0] || '');
-  const headers = (lines[0] || '').split(separator).map(header => normalizeCell(header).toLowerCase());
+  const firstLine = text.replace(/^\uFEFF/, '').split(/\r?\n/)[0] || '';
+  const [headerRow, ...body] = parseCsvRows(text, detectCsvDelimiter(firstLine));
+  const headers = (headerRow || []).map(header => normalizeCell(header).toLowerCase());
   const nameCol = findColumn(headers, 'name', 'اسم');
   const phoneCol = findColumn(headers, 'phone', 'هاتف');
   const emailCol = findColumn(headers, 'email', 'إيميل', 'ايميل');
@@ -69,9 +61,9 @@ function parseOldData(text: string): OldDataRow[] {
   const certCol = findColumn(headers, 'cert', 'شهاد');
   const attendanceCol = findColumn(headers, 'attend', 'حضور');
 
-  return lines.slice(1)
-    .map((line, index) => {
-      const cols = line.split(separator).map(normalizeCell);
+  return body
+    .map((cells, index) => {
+      const cols = cells.map(normalizeCell);
       return {
         _id: `r${index}`,
         _name: cols[nameCol] || '',
@@ -131,7 +123,7 @@ export default function OldDataImportPanel({
       if (!rows.length) {
         const headerLine = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(Boolean)[0] || '';
         const headers = headerLine
-          ? headerLine.split(detectSeparator(headerLine)).map(normalizeCell).filter(Boolean)
+          ? (parseCsvRows(headerLine, detectCsvDelimiter(headerLine))[0] || []).map(normalizeCell).filter(Boolean)
           : [];
         setParseError(headers.length
           ? `الملف اتقرا بس مفيش ولا صف فيه اسم أو رقم. الأعمدة اللي لقيتها: ${headers.join(' | ')} — لازم يكون فيه عمود للاسم وعمود للهاتف.`

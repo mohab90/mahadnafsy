@@ -6,6 +6,7 @@
  */
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { join, extname } from 'path';
+import { spawnSync } from 'child_process';
 import { scanTenantViolations } from './tenant-scope-scan.mjs';
 import { scanMigrationDrift } from './migration-drift-scan.mjs';
 import { scanNotificationTenantViolations } from './notification-tenant-scan.mjs';
@@ -703,6 +704,30 @@ if (tabFindings.length === 0) {
 } else {
   for (const finding of tabFindings.slice(0, 8)) console.log(`     ${finding.key} — ${finding.detail}`);
   fail(`dashboard tabs: ${tabFindings.length} tab(s) that cannot render, or key(s) naming no screen — run: node tools/dashboard-tab-audit.mjs --list`);
+}
+
+// ── 27. Unimported app files ─────────────────────────────────────────────────
+// A file under admin/ or client/ that no other file mentions is not in any
+// bundle. It compiles, it typechecks, its tests pass, and none of it ships.
+//
+// The leads CSV helper was 188 lines of correct CSV parsing that nothing
+// imported. A fix went into it and was deployed before the built bundle was
+// checked and found unchanged. orphan-module-scan had been listing the file the
+// whole time — as one line in a report that ran separately and that nobody
+// read. It runs here now, where a failure stops the release.
+console.log('\n27. Unimported app files');
+{
+  const scan = spawnSync(process.execPath, [join(ROOT, 'tools', 'orphan-module-scan.mjs')], { encoding: 'utf8' });
+  const out = `${scan.stdout || ''}${scan.stderr || ''}`;
+  const summary = out.split('\n').find(line => line.startsWith('app tree:'));
+  if (scan.status === 0 && summary) {
+    pass(summary.trim());
+  } else {
+    for (const line of out.split('\n').filter(line => /^\s+\d+ KB/.test(line)).slice(0, 8)) {
+      console.log(`     ${line.trim()}`);
+    }
+    fail('unimported app files: code that is in the repo but in no bundle — run: npm run audit:orphan-modules');
+  }
 }
 
 // ── Summary ──────────────────────────────────────────────────────────────────
