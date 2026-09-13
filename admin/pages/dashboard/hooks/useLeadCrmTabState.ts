@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import type { LeadItem, SalesTarget } from '../../../types';
 import type { PaymentDraft } from '../../../components/PaymentModal';
 import { createClientPaymentDraft } from '../../../lib/clientActionDrafts';
@@ -15,7 +16,7 @@ export function useLeadCrmTabState() {
   const [leadsSalesTargets, setLeadsSalesTargets] = useState<SalesTarget[]>([]);
 
   useEffect(() => {
-    const period = new Date().toISOString().slice(0, 7);
+    const period = cairoMonthOnly();
     void mysqlAdmin.listSalesTargets(period)
       .then(rows => setLeadsSalesTargets(rows.map(row => ({
         staffId: String(row.staffId || ''),

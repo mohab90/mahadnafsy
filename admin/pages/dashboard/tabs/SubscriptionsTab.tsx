@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { BookOpen, Users, DollarSign, BarChart3, Star } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
@@ -26,7 +27,7 @@ function getMonthsForRange(range: Range, earliestMonth: string) {
   if (range === '3months') return getLastNMonths(3);
   if (range === '6months') return getLastNMonths(6);
   // 'all' — from the earliest subscriber's signup month through the current month
-  const thisMonth = new Date().toISOString().slice(0, 7);
+  const thisMonth = cairoMonthOnly();
   const start = earliestMonth && earliestMonth < thisMonth ? earliestMonth : thisMonth;
   const ms: string[] = [];
   const cursor = new Date(`${start}-01T00:00:00`);

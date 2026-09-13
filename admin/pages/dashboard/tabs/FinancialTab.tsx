@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { cairoDateOnly } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoMonthOnly } from '../../../../shared/cairoDate';
 import {
   Plus, TrendingUp,
 } from 'lucide-react';
@@ -120,7 +120,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   };
 
   // ── خزنة date filter ──
-  const currentMonth = new Date().toISOString().slice(0, 7);
+  const currentMonth = cairoMonthOnly();
   const [vaultMonth, setVaultMonth] = useState(currentMonth);
 
   // ── Global date range filter (for overview / P&L) ──
@@ -179,9 +179,9 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   const pendingReviewCount = allPaymentHistoryEarly.filter(p => p.status === 'pending').length;
   const [orderMethodFilter, setOrderMethodFilter] = useState('');
   const [isIncomeFormOpen, setIsIncomeFormOpen] = useState(false);
-  const [commissionMonth, setCommissionMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [commissionMonth, setCommissionMonth] = useState(cairoMonthOnly());
   const [commissionFrom, setCommissionFrom] = useState(() => { const d = new Date(); d.setMonth(d.getMonth() - 2); return d.toISOString().slice(0, 7); });
-  const [commissionTo, setCommissionTo] = useState(new Date().toISOString().slice(0, 7));
+  const [commissionTo, setCommissionTo] = useState(cairoMonthOnly());
   const [commissionViewMode, setCommissionViewMode] = useState<'single' | 'range'>('single');
   const [dbPayments, setDbPayments] = useState<Array<{ id: string; subscriberId: string; subscriberName: string; amount: number; currency: string; paymentType: string; paymentMethod: string | null; transactionId: string | null; note: string | null; at: string; isInstallment: boolean; status?: string }> | null>(null);
   const [loadingDbPayments, setLoadingDbPayments] = useState(false);

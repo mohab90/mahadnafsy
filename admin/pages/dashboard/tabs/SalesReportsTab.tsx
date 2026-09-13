@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react';
+import { rangeStartDate } from '../../../lib/rangeStart';
+import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { FileText, TrendingUp, Users, DollarSign, Tag, BarChart3, PieChart as PieIcon } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell } from 'recharts';
@@ -16,19 +18,12 @@ const COLORS = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f9
 const leadStatusLabel = (status: string) =>
   STATUS_CFG[status as keyof typeof STATUS_CFG]?.label || status;
 
-function getRangeStart(range: Range): string {
-  const d = new Date();
-  if (range === 'week') return new Date(+d - 7 * 86400000).toISOString().slice(0, 10);
-  if (range === 'month') return `${new Date().toISOString().slice(0, 7)}-01`;
-  if (range === '3months') return new Date(+d - 90 * 86400000).toISOString().slice(0, 10);
-  return '2000-01-01';
-}
 
 export default function SalesReportsTab() {
   const { leads, orders, staffMembers, courses } = useSiteData();
   const [range, setRange] = useState<Range>('month');
 
-  const rangeStart = getRangeStart(range);
+  const rangeStart = rangeStartDate(range);
 
   const filteredLeads = useMemo(() => leads.filter(l => (l.createdAt || '') >= rangeStart), [leads, rangeStart]);
   const filteredOrders = useMemo(() => orders.filter(o => o.status === 'paid' && (o.createdAt || '') >= rangeStart), [orders, rangeStart]);

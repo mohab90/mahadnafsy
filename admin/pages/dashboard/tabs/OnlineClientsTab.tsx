@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { cairoDateOnly } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoMonthOnly } from '../../../../shared/cairoDate';
 import { Modal } from '../../../../shared/ui/Modal';
 import { useSearchParams } from 'react-router-dom';
 import { parsePaymentMethods } from '../../../lib/paymentMethods';
@@ -344,7 +344,7 @@ export default function OnlineClientsTab({
               const calcPaidEGP = calcSubscribersPaidEGP;
               const collTodayRev  = calcPaidEGP(allCombined, todayOnlineStr, todayOnlineStr);
               const collWeekRev   = calcPaidEGP(allCombined, thisWeekStart);
-              const collMonthRev  = calcPaidEGP(allCombined, new Date().toISOString().slice(0,7)+'-01');
+              const collMonthRev  = calcPaidEGP(allCombined, cairoMonthOnly()+'-01');
               const collTotalRem  = allCombined.reduce((sum,s)=>{
                 return sum + subscriberRemainingEGP(s);
               },0);

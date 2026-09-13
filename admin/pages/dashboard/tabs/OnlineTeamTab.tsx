@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { cairoDateOnly } from '../../../../shared/cairoDate';
+import { rangeStartDate } from '../../../lib/rangeStart';
+import { cairoDateOnly, cairoMonthOnly } from '../../../../shared/cairoDate';
 import {
   Monitor, Users, CreditCard, AlertCircle, TrendingUp,
   BarChart3, Target, Calendar, Phone, 
@@ -18,22 +19,14 @@ type SubTab = 'overview' | 'online' | 'collection' | 'targets';
 interface Props { notify: NotifyFn; }
 
 const today = () => cairoDateOnly();
-const month = () => new Date().toISOString().slice(0, 7);
+const month = () => cairoMonthOnly();
 const isOnlineBranch = (branch?: string) => ['ONLINE_EGYPT', 'ONLINE_SAUDI', 'ONLINE_ABROAD'].includes(String(branch || '').toUpperCase());
 
-function getRangeStart(range: TimeRange): string {
-  const d = new Date();
-  if (range === 'today') return today();
-  if (range === '7d') return new Date(+d - 7 * 86400000).toISOString().slice(0, 10);
-  if (range === '30d') return new Date(+d - 30 * 86400000).toISOString().slice(0, 10);
-  if (range === 'month') return `${month()}-01`;
-  return '2000-01-01';
-}
 
 function inRange(dateStr: string | undefined, range: TimeRange): boolean {
   if (range === 'all') return true;
   const d = (dateStr || '').slice(0, 10);
-  return d >= getRangeStart(range);
+  return d >= rangeStartDate(range);
 }
 
 function pct(val: number, total: number) {
@@ -176,7 +169,7 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
     }).catch(() => notify('error', 'تعذر تحميل أهداف فريق الأونلاين والتحصيل'));
   }, [staffMembers, notify]);
   useEffect(() => {
-    const start = timeRange === 'all' ? undefined : getRangeStart(timeRange);
+    const start = timeRange === 'all' ? undefined : rangeStartDate(timeRange);
     // No upper bound: it is applied as `date <= ?` against a datetime, so
     // passing today's date excluded everything recorded after midnight — which
     // is every payment taken today. There is nothing later than now to exclude.

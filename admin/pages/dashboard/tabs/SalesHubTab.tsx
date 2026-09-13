@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { cairoDateOnly } from '../../../../shared/cairoDate';
+import { rangeStartDate } from '../../../lib/rangeStart';
+import { cairoDateOnly, cairoMonthOnly } from '../../../../shared/cairoDate';
 import {
   TrendingUp, Users, Target, Award, Phone, Mail, Calendar, ChevronRight,
   BarChart3, Star, Clock, CheckCircle, AlertCircle, 
@@ -22,22 +23,14 @@ interface Props {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-const MONTH = new Date().toISOString().slice(0, 7);
+const MONTH = cairoMonthOnly();
 const TODAY = cairoDateOnly();
 
-function getRangeStart(range: TimeRange): string {
-  const d = new Date();
-  if (range === 'today') return TODAY;
-  if (range === '7d') return new Date(+d - 7 * 86400000).toISOString().slice(0, 10);
-  if (range === '30d') return new Date(+d - 30 * 86400000).toISOString().slice(0, 10);
-  if (range === 'month') return `${MONTH}-01`;
-  return '2000-01-01';
-}
 
 function inRange(dateStr: string | undefined, range: TimeRange): boolean {
   if (range === 'all') return true;
   const d = (dateStr || '').slice(0, 10);
-  return d >= getRangeStart(range);
+  return d >= rangeStartDate(range);
 }
 
 const ROLE_LABEL: Record<string, string> = {
@@ -107,7 +100,7 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
   // ever counting the first page; the two-minute poll used to paper over it by
   // re-fetching everything, and that poll now leaves alone what nobody opened.
   const [perf, setPerf] = useState<StaffLeadPerformance | null>(null);
-  const rangeStart = timeRange === 'all' ? null : getRangeStart(timeRange);
+  const rangeStart = timeRange === 'all' ? null : rangeStartDate(timeRange);
   useEffect(() => {
     let cancelled = false;
     setPerf(null);

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { rangeStartDate } from '../../../lib/rangeStart';
+import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { BarChart3, TrendingUp, Users, Target, Trophy, Star, Award } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -7,19 +9,12 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 
 type TimeRange = 'week' | 'month' | '3months' | 'all';
 
-const MONTH = new Date().toISOString().slice(0, 7);
+const MONTH = cairoMonthOnly();
 
-function getRangeStart(range: TimeRange): string {
-  const d = new Date();
-  if (range === 'week') return new Date(+d - 7 * 86400000).toISOString().slice(0, 10);
-  if (range === 'month') return `${MONTH}-01`;
-  if (range === '3months') return new Date(+d - 90 * 86400000).toISOString().slice(0, 10);
-  return '2000-01-01';
-}
 
 function inRange(ds: string | undefined, range: TimeRange) {
   if (range === 'all') return true;
-  return (ds || '').slice(0, 10) >= getRangeStart(range);
+  return (ds || '').slice(0, 10) >= rangeStartDate(range);
 }
 
 const ROLE_LABEL: Record<string, string> = {
@@ -59,7 +54,7 @@ export default function StaffPerformanceTab() {
   // where the range labels are defined, and sent as a plain date — the server
   // filters, it does not decide when a month starts.
   const [perf, setPerf] = useState<StaffLeadPerformance | null>(null);
-  const rangeStart = range === 'all' ? null : getRangeStart(range);
+  const rangeStart = range === 'all' ? null : rangeStartDate(range);
   useEffect(() => {
     let cancelled = false;
     setPerf(null);

@@ -90,3 +90,52 @@ test('cairoDateOnly actually answers Cairo, at the hours it matters', () => {
     assert.equal(cairoDateOnly(instant), instant.toISOString().slice(0, 10));
   }
 });
+
+test('the month boundary is Cairo\'s too', () => {
+  // Same fault one boundary up. On the first of a month, until 02:00 or 03:00
+  // Cairo, `new Date().toISOString().slice(0, 7)` names the month that just
+  // ended — so a monthly sales target keyed on `period` matched no row,
+  // «إيرادات الشهر» showed the previous month's, and a commission run started
+  // against the wrong period. 31 places asked that way.
+  const offenders = browserSources().filter(rel =>
+    /new Date\(\)\.toISOString\(\)\.slice\(0,\s*7\)/.test(codeOnly(fs.readFileSync(path.join(ROOT, rel), 'utf8'))));
+  assert.deepEqual(offenders, [],
+    'these take the UTC month as this month: ' + offenders.join(', '));
+
+  const CAIRO = 'Africa/Cairo';
+  const cairoMonthOnly = value =>
+    new Date(value).toLocaleDateString('en-CA', { timeZone: CAIRO }).slice(0, 7);
+
+  // 1 October 2026, 01:30 Cairo. UTC still says September.
+  const firstOfMonth = new Date('2026-10-01T01:30:00+03:00');
+  assert.equal(cairoMonthOnly(firstOfMonth), '2026-10');
+  assert.equal(firstOfMonth.toISOString().slice(0, 7), '2026-09', 'the premise');
+});
+
+test('a date range starts where the institute\'s day starts', () => {
+  // Five screens declared their own getRangeStart, three byte-identical, and
+  // all five built «آخر ٧ أيام» as `new Date(+d - 7 * 86400000)` formatted in
+  // UTC — a day early for the same three hours every night.
+  const helper = codeOnly(fs.readFileSync(path.join(ROOT, 'admin', 'lib', 'rangeStart.ts'), 'utf8'));
+  assert.match(helper, /case '7d':\s*\n\s*case 'week': return cairoDaysAgo\(7\);/);
+  assert.match(helper, /case 'month': return `\$\{cairoMonthOnly\(\)\}-01`;/);
+
+  const screens = [
+    'admin/pages/dashboard/tabs/MarketingHubTab.tsx',
+    'admin/pages/dashboard/tabs/OnlineTeamTab.tsx',
+    'admin/pages/dashboard/tabs/SalesHubTab.tsx',
+    'admin/pages/dashboard/tabs/SalesReportsTab.tsx',
+    'admin/pages/dashboard/tabs/StaffPerformanceTab.tsx',
+  ];
+  for (const rel of screens) {
+    const source = codeOnly(fs.readFileSync(path.join(ROOT, rel), 'utf8'));
+    assert.match(source, /rangeStartDate\(/, `${rel} does not use the shared range`);
+    assert.ok(!/function getRangeStart/.test(source), `${rel} declares its own again`);
+  }
+
+  // Whole days off the Cairo day, not milliseconds off an instant — which is
+  // also what keeps the boundary right across a daylight-saving change.
+  const cairo = codeOnly(fs.readFileSync(path.join(ROOT, 'shared', 'cairoDate.ts'), 'utf8'));
+  assert.match(cairo, /Date\.UTC\(year, month - 1, day - days\)/);
+  assert.ok(!/86400000/.test(cairo), 'day arithmetic on milliseconds skips an hour twice a year');
+});

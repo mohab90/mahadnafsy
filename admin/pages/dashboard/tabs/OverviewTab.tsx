@@ -1,5 +1,5 @@
 import React, { Suspense, useEffect, useState } from 'react';
-import { cairoDateOnly } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoMonthOnly } from '../../../../shared/cairoDate';
 import {
   Activity, AlertCircle, BarChart3, BookOpen, Briefcase,
   CalendarCheck2, Clock, CreditCard, MessageSquareText, Percent,
@@ -90,7 +90,7 @@ export default function OverviewTab({
               // left this tile permanently on 500.
               const subscriberStats = useSubscriberStats();
               const subscriberTotal = subscriberStats?.total ?? subscribers.length;
-              const targetPeriod = new Date().toISOString().slice(0, 7);
+              const targetPeriod = cairoMonthOnly();
               // The collection target is read for the «تقدمك نحو هدف التحصيل
               // الشهري» section, which only renders for a collection role (see
               // the isCollectionRole branch below). The fetch was not scoped to
@@ -127,7 +127,7 @@ export default function OverviewTab({
                 const myRevenueSubs = mySubs.flatMap(s => (s.paymentHistory || []).filter(isCollected)).reduce((acc, p) => {
                   const egp = toEgp(p.amount, p.currency);
                   const month = (p.at || '').slice(0, 7);
-                  const thisMonth = new Date().toISOString().slice(0, 7);
+                  const thisMonth = cairoMonthOnly();
                   if (month === thisMonth) acc.thisMonth += egp;
                   acc.total += egp;
                   return acc;
@@ -137,7 +137,7 @@ export default function OverviewTab({
 
                 // Weekly call trend (last 7 days)
                 const todayStr = cairoDateOnly();
-                const thisMonthStr = new Date().toISOString().slice(0, 7);
+                const thisMonthStr = cairoMonthOnly();
                 const last7Days = Array.from({ length: 7 }, (_, i) => {
                   const d = new Date(); d.setDate(d.getDate() - (6 - i));
                   return d.toISOString().slice(0, 10);

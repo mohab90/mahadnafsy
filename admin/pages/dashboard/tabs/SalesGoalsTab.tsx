@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { Target, Trophy, Edit2, Save, X } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -19,7 +20,7 @@ export default function SalesGoalsTab({ notify }: { notify: NotifyFn }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<{ monthlyTarget: string; monthlyLeadsTarget: string }>({ monthlyTarget: '', monthlyLeadsTarget: '' });
 
-  const MONTH = new Date().toISOString().slice(0, 7);
+  const MONTH = cairoMonthOnly();
   const monthStart = `${MONTH}-01`;
 
   useEffect(() => {

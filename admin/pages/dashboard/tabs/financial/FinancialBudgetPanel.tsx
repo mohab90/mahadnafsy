@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { cairoMonthOnly } from '../../../../../shared/cairoDate';
 import { CheckCircle2, Edit3, Save, X } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 
@@ -23,7 +24,7 @@ function pctColor(pct: number) {
 }
 
 export default function FinancialBudgetPanel({ notify, branch }: { notify: (msg: string, t?: 'success' | 'error') => void; branch?: string }) {
-  const curMonth = new Date().toISOString().slice(0, 7);
+  const curMonth = cairoMonthOnly();
   const [month, setMonth] = useState(curMonth);
   const [rows, setRows] = useState<BudgetRow[]>([]);
   const [loading, setLoading] = useState(false);

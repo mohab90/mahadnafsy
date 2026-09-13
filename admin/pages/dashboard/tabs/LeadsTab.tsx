@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { useNavigate } from 'react-router-dom';
 import { AlarmClock, Phone } from 'lucide-react';
 import { hasPermission as hasStaffPermission } from '../../../constants/permissions';
@@ -145,7 +146,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   useEffect(() => {
     setBranchFilter(workspaceBranchFilter || null);
   }, [workspaceBranchFilter]);
-  const [targetMonth, setTargetMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [targetMonth, setTargetMonth] = useState(cairoMonthOnly());
   // Bulk WhatsApp
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());

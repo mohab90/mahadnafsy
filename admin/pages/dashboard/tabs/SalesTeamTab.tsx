@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { Users } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import type { SalesTarget } from '../../../types';
@@ -29,7 +30,7 @@ export default function SalesTeamTab({ salesTargets = [], onOpenStaffProfile }: 
   const [roleFilter, setRoleFilter] = useState('all');
   const [searchQ, setSearchQ] = useState('');
 
-  const MONTH = new Date().toISOString().slice(0, 7);
+  const MONTH = cairoMonthOnly();
   const monthStart = `${MONTH}-01`;
 
   const filtered = useMemo(() =>

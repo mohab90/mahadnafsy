@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useCallback } from 'react';
-import { cairoDateOnly } from '../../../../shared/cairoDate';
+import { rangeStartDate } from '../../../lib/rangeStart';
+import { cairoDateOnly, cairoMonthOnly } from '../../../../shared/cairoDate';
 import {
   Megaphone, Users, TrendingUp, Mail, Zap, BarChart3,
   UserPlus, Globe, Bell, Tag, Star, ArrowUpRight, ArrowDownRight,
@@ -23,19 +24,11 @@ interface Props { notify: NotifyFn; }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 const TODAY = cairoDateOnly();
-const MONTH = new Date().toISOString().slice(0, 7);
+const MONTH = cairoMonthOnly();
 
-function getRangeStart(range: TimeRange): string {
-  const d = new Date();
-  if (range === 'today') return TODAY;
-  if (range === '7d') return new Date(+d - 7 * 86400000).toISOString().slice(0, 10);
-  if (range === '30d') return new Date(+d - 30 * 86400000).toISOString().slice(0, 10);
-  if (range === 'month') return `${MONTH}-01`;
-  return '2000-01-01';
-}
 function inRange(dateStr: string | undefined, range: TimeRange): boolean {
   if (range === 'all') return true;
-  return (dateStr || '').slice(0, 10) >= getRangeStart(range);
+  return (dateStr || '').slice(0, 10) >= rangeStartDate(range);
 }
 function pct(val: number, total: number) {
   return total === 0 ? 0 : Math.min(100, Math.round((val / total) * 100));

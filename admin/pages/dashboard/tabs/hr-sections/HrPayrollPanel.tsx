@@ -4,6 +4,7 @@
 // the runs, the selected run, its line items and the month/branch pickers were
 // read by this tab and nothing else.
 import { useCallback, useEffect, useState } from 'react';
+import { cairoMonthOnly } from '../../../../../shared/cairoDate';
 import { Award, BarChart3, Wallet } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 import { PAYROLL_STATUS_LABELS, PAYROLL_STATUS_COLORS } from './hrLabels';
@@ -56,7 +57,7 @@ export default function HrPayrollPanel({ notify, canManageFinance, canManagePayr
   const [payrollItems, setPayrollItems] = useState<PayrollItem[]>([]);
   const [loadingPayroll, setLoadingPayroll] = useState(false);
   const [calculating, setCalculating] = useState(false);
-  const [payrollMonth, setPayrollMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [payrollMonth, setPayrollMonth] = useState(cairoMonthOnly());
   const [payrollBranch, setPayrollBranch] = useState('branch-all');
 
   const fetchPayrollRuns = useCallback(async () => {

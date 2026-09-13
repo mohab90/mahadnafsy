@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, Briefcase, Search, BarChart3, ChevronRight, UserPlus, Pencil,
@@ -86,7 +87,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [perfMonth, setPerfMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [perfMonth, setPerfMonth] = useState(cairoMonthOnly());
   const [serverPerformance, setServerPerformance] = useState<PerformanceRow[]>([]);
   const [loadingPerformance, setLoadingPerformance] = useState(false);
 

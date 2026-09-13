@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { Award, MessageSquare, Send, Target, TrendingUp, Users } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 
@@ -94,7 +95,7 @@ export default function MyWorkRecordPanel({ notify }: { notify: Notify }) {
     if (report.biggestSale > 0) out.push({ icon: '🏆', title: `أكبر صفقة ${egp(report.biggestSale)}`, note: 'في هذه الفترة' });
     if (report.calls > 0) out.push({ icon: '📞', title: `${report.calls} مكالمة`, note: `${report.touches} تواصل إجمالي` });
     if (report.tasksDone > 0) out.push({ icon: '✅', title: `${report.tasksDone} مهمة منجزة`, note: report.tasksOpen > 0 ? `${report.tasksOpen} مفتوحة` : 'لا مهام مفتوحة' });
-    const hit = targets.find(t => t.period === new Date().toISOString().slice(0, 7));
+    const hit = targets.find(t => t.period === cairoMonthOnly());
     if (hit?.achievedPct != null && hit.achievedPct >= 100) out.push({ icon: '🌟', title: 'حقّقت تارجت الشهر', note: `${hit.achievedPct}% من الهدف` });
     return out;
   }, [report, targets]);

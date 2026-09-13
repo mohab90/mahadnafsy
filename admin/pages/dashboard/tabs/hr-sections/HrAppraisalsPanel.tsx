@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { cairoMonthOnly } from '../../../../../shared/cairoDate';
 import { ClipboardCheck, Plus } from 'lucide-react';
 import type { StaffMember } from '../../../../types';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
@@ -21,7 +22,7 @@ export default function HrAppraisalsPanel({ staff, notify }: { staff: StaffMembe
   const [busy, setBusy] = useState('');
   const [form, setForm] = useState({
     staff_id: '',
-    period: new Date().toISOString().slice(0, 7),
+    period: cairoMonthOnly(),
     kpi: 'الأداء العام',
     score: '80',
     evidence: '',

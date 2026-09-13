@@ -1,5 +1,5 @@
 import type { LeadItem, SubscriberItem } from '../../../../types';
-import { cairoDateOnly } from '../../../../../shared/cairoDate';
+import { cairoDateOnly, cairoMonthOnly } from '../../../../../shared/cairoDate';
 import { isCollected } from '../../../../lib/money';
 
 type Props = {
@@ -12,7 +12,7 @@ export function LeadSalesKpiStrip({ isSalesOnly, effectiveLeads, effectiveSubs }
   if (!isSalesOnly) return null;
 
   const todayStr = cairoDateOnly();
-  const thisMonthStr = new Date().toISOString().slice(0, 7);
+  const thisMonthStr = cairoMonthOnly();
   const weekAgoStr = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
   const todayCalls = effectiveLeads.reduce((n, l) =>
     n + (l.communications || []).filter(c => c.date?.slice(0, 10) === todayStr).length, 0);

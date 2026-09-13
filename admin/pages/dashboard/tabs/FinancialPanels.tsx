@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { CheckCircle, CheckCircle2, Eye, FileText, Plus, XCircle } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
@@ -123,7 +124,7 @@ export function PeriodClosingPanel({ notify }: { notify: NotifyFn }) {
   useEffect(() => { load(); }, []);
 
   const createPeriod = async () => {
-    const label = new Date().toISOString().slice(0, 7);
+    const label = cairoMonthOnly();
     if (!await confirmDialog(`إنشاء فترة محاسبية جديدة للشهر ${label}؟`)) return;
     setActionLoading('create');
     try {

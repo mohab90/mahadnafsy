@@ -4,7 +4,7 @@
 // Lifted out of HRTab.tsx with its own state — the month, the summary rows and
 // both modals were read by this tab and nothing else.
 import { useCallback, useEffect, useState } from 'react';
-import { cairoDateOnly } from '../../../../../shared/cairoDate';
+import { cairoDateOnly, cairoMonthOnly } from '../../../../../shared/cairoDate';
 import { Modal } from '../../../../../shared/ui/Modal';
 import { X, Plus, Calendar, Clock, Upload } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
@@ -28,7 +28,7 @@ export default function HrAttendancePanel({ notify, staff }: {
   staff: StaffMember[];
 }) {
   // ── Attendance state ────────────────────────────────────────
-  const [attMonth, setAttMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [attMonth, setAttMonth] = useState(cairoMonthOnly());
   const [attSummary, setAttSummary] = useState<AttendanceSummaryRow[]>([]);
   const [loadingAtt, setLoadingAtt] = useState(false);
   const [showManualEntry, setShowManualEntry] = useState(false);

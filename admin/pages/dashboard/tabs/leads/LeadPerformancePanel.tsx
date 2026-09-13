@@ -1,4 +1,5 @@
 import { Activity, BarChart2, Phone, TrendingUp } from 'lucide-react';
+import { cairoMonthOnly } from '../../../../../shared/cairoDate';
 import { useCrmData } from '../../../../context/siteDataSlices';
 import {
   BarChart,
@@ -43,7 +44,7 @@ export function LeadPerformancePanel({
   // Three whole-table counts. leadStats answers each of them without the array;
   // the array arms are what run before the stats request resolves.
   const visibleCount = leadStats ? leadStats.total : leads.filter(l => !l.hidden).length;
-  const thisMonth = new Date().toISOString().slice(0, 7);
+  const thisMonth = cairoMonthOnly();
   const totalComms = leadStats
     ? leadStats.totalCommunications
     : leads.reduce((s, l) => s + (l.communicationCount ?? l.communications?.length ?? 0), 0);

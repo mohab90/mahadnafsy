@@ -37,3 +37,34 @@ export function isExpiryActive(expiresAt?: string | null, now?: Date | string | 
   if (!value) return true;
   return value.slice(0, 10) >= cairoDateOnly(now);
 }
+
+/**
+ * The institute's month, as `YYYY-MM`.
+ *
+ * Same fault as cairoDateOnly, one boundary up: 31 places asked for
+ * `new Date().toISOString().slice(0, 7)`, and on the first of the month —
+ * until 02:00 or 03:00 Cairo — that names the month that just ended. A monthly
+ * sales target keyed on `period` matched no row, «إيرادات الشهر» showed the
+ * previous month's, and a commission run started against the wrong period.
+ */
+export function cairoMonthOnly(value?: Date | string | number): string {
+  return cairoDateOnly(value).slice(0, 7);
+}
+
+/**
+ * `YYYY-MM-DD` for N days before the institute's today.
+ *
+ * Written for the range pickers — «آخر 7 أيام», «آخر 30 يوم», «آخر 3 شهور» —
+ * which each built their own boundary with `new Date(+d - 7 * 86400000)` and
+ * then formatted it in UTC, so the window was a day out for the same three
+ * hours every night. Subtracting whole days from the Cairo day rather than from
+ * an instant also keeps the boundary right across a daylight-saving change,
+ * which arithmetic on milliseconds does not.
+ */
+export function cairoDaysAgo(days: number, from?: Date | string | number): string {
+  const today = cairoDateOnly(from);
+  if (!today) return '';
+  const [year, month, day] = today.split('-').map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1, day - days));
+  return shifted.toISOString().slice(0, 10);
+}

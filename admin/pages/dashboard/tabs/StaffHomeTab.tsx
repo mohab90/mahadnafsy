@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { cairoDateOnly } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoMonthOnly } from '../../../../shared/cairoDate';
 import {
   User, TrendingUp, Clock, CheckCircle, Activity, Calendar,
   Phone, UserCheck, Star, ArrowLeft, Bell, FileText,
@@ -79,7 +79,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
   }>({ courses: [], bundles: [], branchOptions: [] });
 
   const today = cairoDateOnly();
-  const thisMonth = new Date().toISOString().slice(0, 7);
+  const thisMonth = cairoMonthOnly();
 
   // ── Derived stats ───────────────────────────────────────────────────────
   const stats = useMemo(() => {

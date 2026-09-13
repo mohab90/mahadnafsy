@@ -1,5 +1,5 @@
 import React from 'react';
-import { cairoDateOnly } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoMonthOnly } from '../../../../shared/cairoDate';
 import { parsePaymentMethods } from '../../../lib/paymentMethods';
 import { paymentOrigin, PAYMENT_ORIGIN, PAYMENT_ORIGIN_CLASS } from '../../../lib/paymentOrigin';
 import { useNavigate } from 'react-router-dom';
@@ -169,7 +169,7 @@ export default function OrdersTab({
               const failedOm    = filteredOm.filter(p=>p.status==='failed'||p.status==='refunded');
               const tabRowsOm = omOrdReviewTab==='review' ? pendingOm : omOrdReviewTab==='accepted' ? acceptedOm : failedOm;
               const todayOmStr = cairoDateOnly();
-              const thisMonthOmStr = new Date().toISOString().slice(0,7);
+              const thisMonthOmStr = cairoMonthOnly();
               const toEGP = (p:{amount:unknown;currency?:string}) => {
                 const n=Number(p.amount)||0;
                 return p.currency==='SAR'?n*13:p.currency==='USD'?n*50:n;
@@ -346,7 +346,7 @@ export default function OrdersTab({
                 return true;
               });
               const todayOrd=cairoDateOnly();
-              const thisMonthOrd=new Date().toISOString().slice(0,7);
+              const thisMonthOrd=cairoMonthOnly();
               const sumOrd=(arr:{amount:unknown}[])=>arr.reduce((s,p)=>s+(Number(p.amount)||0),0);
               const confirmedPay=daqqiOrdAllPay.filter(p=>p.status!=='pending');
               const pendingPay=daqqiOrdAllPay.filter(p=>p.status==='pending');
@@ -452,7 +452,7 @@ export default function OrdersTab({
   // ── Admin / default view ─────────────────────────────────────────────────
   {
               const todayStr     = cairoDateOnly();
-              const thisMonthStr = new Date().toISOString().slice(0, 7);
+              const thisMonthStr = cairoMonthOnly();
               const toEGP = (r: { amount: number; currency?: string }) =>
                 toEgp(r.amount, r.currency);
 

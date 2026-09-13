@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { cairoDateOnly } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoMonthOnly } from '../../../../shared/cairoDate';
 import { fxRates, toEgp } from '../../../lib/money';
 import type { ConsultationItem, Course, LeadItem, LeadStats, OrderItem, StaffMember, SubscriberItem } from '../../../types';
 
@@ -72,7 +72,7 @@ export function useOverviewDerived(
     // The database's own CURDATE(), not a string prefix of whatever shape
     // created_at arrived in.
     const todayNewLeads = leadStats?.createdToday ?? leads.filter(l => (l.createdAt || '').slice(0, 10) === todayStr).length;
-    const thisMonthStr = new Date().toISOString().slice(0, 7);
+    const thisMonthStr = cairoMonthOnly();
     const monthRevenue = paidOrders
       .filter(o => (o.createdAt || '').slice(0, 7) === thisMonthStr)
       .reduce((sum, o) => sum + toEGP(o), 0)
