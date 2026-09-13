@@ -1396,8 +1396,22 @@ router.get('/api/admin/finance/refunds', requireAuth, requireAdminOrStaff, requi
              -- entirely (daqqi_attendees.attended_lectures, per round) and is
              -- not merged in here: adding the two together would produce a
              -- number that means neither.
-             (SELECT COUNT(*) FROM lecture_progress lp
+             --
+             -- lecture_completions, not lecture_progress. The second table has
+             -- the more obvious name, is empty, and nothing has ever written to
+             -- it — api/lib/autoCertificate.js:26 says so in as many words, and
+             -- this query read it anyway. So attended_count, the number a
+             -- manager uses to judge «how much did they watch before asking for
+             -- their money back», was always 0 and every refund looked fully
+             -- justified.
+             --
+             -- Counted the same way the certificate rule counts it: a published
+             -- lecture at 90% or marked complete. A player that stops two
+             -- seconds short of the credits should not read as unwatched.
+             (SELECT COUNT(*) FROM lecture_completions lp
+                JOIN course_lectures cl ON cl.id = lp.lecture_id AND cl.is_published = 1
                WHERE lp.subscriber_id = rr.subscriber_id
+                 AND (lp.progress_pct >= 90 OR lp.completed_at IS NOT NULL)
                  AND (p.course_id IS NULL OR lp.course_id = p.course_id)) AS attended_count
       FROM refund_requests rr
       LEFT JOIN subscribers s ON s.id = rr.subscriber_id AND s.tenant_id=rr.tenant_id

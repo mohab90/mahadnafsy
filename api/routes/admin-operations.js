@@ -244,13 +244,22 @@ router.get('/api/admin/activity-logs', requireAuth, requireAdmin, async (req, re
 
 router.post('/api/admin/activity-logs', requireAuth, requireAdmin, async (req, res) => {
   try {
+    // An audit row records what happened, independently of who is acting — so
+    // the caller describes the event and the server decides who did it, when,
+    // and under which id.
+    //
+    // `actor`, `at` and `id` used to come from the request body. An admin could
+    // therefore write a row under anybody's name at any timestamp, which makes
+    // the log worthless as evidence about an admin; and a chosen `id` with
+    // INSERT IGNORE could pre-empt a genuine row that arrived later.
     const a = req.body;
-    const id = a.id || uuidv4();
+    const id = uuidv4();
     await pool.query(
-      'INSERT IGNORE INTO activity_logs (id, tenant_id, action, entity, entity_id, label, actor, at) VALUES (?,?,?,?,?,?,?,?)',
+      'INSERT INTO activity_logs (id, tenant_id, action, entity, entity_id, label, actor, at) VALUES (?,?,?,?,?,?,?,?)',
       [id, req.tenantId, a.action || '', a.entity || '', a.entity_id || null,
-       a.label || a.entity_name || a.entity || 'activity', a.actor || a.user_id || req.user.uid,
-       a.at || new Date().toISOString()]
+       a.label || a.entity_name || a.entity || 'activity',
+       req.user?.email || req.user?.uid || 'admin',
+       new Date().toISOString()]
     );
     res.json({ ok: true, id });
   } catch (e) { routeError(res, e); }

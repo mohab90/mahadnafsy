@@ -184,15 +184,34 @@ export const GeneralSection: React.FC<{ data: General; mutateField: (f: string, 
 
 export const FinancialSection: React.FC<{ data: Financial; mutateField: (f: string, v: string | number | string[]) => void }> = ({ data, mutateField }) => {
   const f = data || {} as Financial;
+  // Eight controls here accepted a number, saved it, and changed nothing —
+  // no route, job or screen read any of them. Only the ones that now do
+  // something are offered:
+  //
+  //   vat_percent            wired. getVatPercent() reads it, and it is what
+  //                          the receipt, the invoice and «تقرير ضريبة القيمة
+  //                          المضافة» print. Every document used to compute 0%
+  //                          because they read a different key.
+  //
+  // Removed rather than wired, and why:
+  //
+  //   lead_auto_archive_days there is already a working control for this, in
+  //                          «إعدادات CRM» → crm_settings.autoArchiveDays,
+  //                          currently 45 days and archiving. This one said 90.
+  //                          Two numbers for one behaviour is worse than one.
+  //   invoice_prefix         invoice numbers are a legal series —
+  //                          INV-2026-000315 and counting. A settings box that
+  //                          can change the prefix mid-year breaks the sequence.
+  //   consultation_price     the consultations table is empty; the feature has
+  //   session_duration_default   never recorded anything, so there is nothing
+  //                          for these to price or schedule.
+  //   installment_down_pct   installment_plans and installment_entries are
+  //   max_installment_months     empty too.
+  //   default_lead_sla_hours no SLA exists anywhere in the code to drive.
+  //
+  // Any of them can come back the day the feature behind it does.
   const fields = [
-    { key: 'consultation_price',       label: 'سعر جلسة الاستشارة',          suffix: 'ج.م',   type: 'number' },
-    { key: 'installment_down_pct',     label: 'نسبة الدفعة الأولى للتقسيط',  suffix: '%',     type: 'number' },
-    { key: 'max_installment_months',   label: 'أقصى مدة تقسيط',              suffix: 'شهر',   type: 'number' },
-    { key: 'default_lead_sla_hours',   label: 'مهلة التواصل مع الليد',       suffix: 'ساعة',  type: 'number' },
-    { key: 'lead_auto_archive_days',   label: 'أرشفة الليدات الخاملة بعد',   suffix: 'يوم',   type: 'number' },
     { key: 'vat_percent',              label: 'نسبة ضريبة القيمة المضافة',    suffix: '%',     type: 'number' },
-    { key: 'invoice_prefix',           label: 'بادئة رقم الفاتورة',           suffix: '',      type: 'text'   },
-    { key: 'session_duration_default', label: 'مدة الجلسة الافتراضية',        suffix: 'دقيقة', type: 'number' },
   ];
 
   return (

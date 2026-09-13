@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('./logger');
 const { pool } = require('./db');
 const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 
@@ -13,7 +14,12 @@ async function logLoginAttempt({ userId = null, email = null, req, status, failu
        VALUES (?,?,?,?,?,?,?)`,
       [tenantId || req?.tenantId || DEFAULT_TENANT, userId, email, ip, userAgent, status, failureReason]
     );
-  } catch (_) { /* Authentication must not fail because audit storage is unavailable. */ }
+  } catch (error) {
+    // Authentication must not fail because audit storage is unavailable — but a
+    // missing login-history row is the kind of gap a security question is
+    // answered from, so it says so rather than vanishing.
+    logger.warn('[login-audit] write failed', { email, status, err: error.message });
+  }
 }
 
 module.exports = { logLoginAttempt };
