@@ -100,16 +100,25 @@ test('stored methods are labelled everywhere they are shown, in both vocabularie
     .replace(/^export /gm, '');
   const module_ = { exports: {} };
   // eslint-disable-next-line no-new-func
-  new Function('module', 'exports', `${js}\nmodule.exports = { normalizePaymentMethod, paymentMethodLabel, sanitizePaymentMethods };`)(module_, module_.exports);
-  const { normalizePaymentMethod, paymentMethodLabel, sanitizePaymentMethods } = module_.exports;
+  new Function('module', 'exports', `${js}\nmodule.exports = { normalizePaymentMethod, paymentMethodLabel, customerPaymentMethodLabel, sanitizePaymentMethods };`)(module_, module_.exports);
+  const { normalizePaymentMethod, paymentMethodLabel, customerPaymentMethodLabel, sanitizePaymentMethods } = module_.exports;
 
   // Both spellings of the same channel land on one label, which is what stops
-  // the customer's own «حسب الوسيلة» summary listing it twice.
-  assert.equal(paymentMethodLabel('instapay'), 'انستا باي');
-  assert.equal(paymentMethodLabel('انستا باي'), 'انستا باي');
-  assert.equal(paymentMethodLabel('إنستاباي'), 'انستا باي');
+  // the customer's own «حسب الوسيلة» summary listing it twice. That summary is
+  // the customer's, so it is the customer's label that has to collapse them.
+  assert.equal(customerPaymentMethodLabel('instapay'), 'انستا باي');
+  assert.equal(customerPaymentMethodLabel('انستا باي'), 'انستا باي');
+  assert.equal(customerPaymentMethodLabel('إنستاباي'), 'انستا باي');
   assert.equal(normalizePaymentMethod('فودافون كاش'), 'vodafone_cash');
   assert.equal(normalizePaymentMethod('تحويل'), 'bank_transfer');
+
+  // The desk's label is the other half of the pair and does not collapse them,
+  // because on that side the value is a cash box an admin named. A box called
+  // «إنستاباي» keeps the spelling it was given; a code is still looked up.
+  assert.equal(paymentMethodLabel('instapay'), 'انستا باي');
+  assert.equal(paymentMethodLabel('إنستاباي'), 'إنستاباي');
+  assert.equal(paymentMethodLabel('كاش'), 'كاش', 'a box named «كاش» is not the code cash');
+  assert.equal(paymentMethodLabel('cash'), 'نقدي');
 
   // The institute's own cash boxes are free text an admin typed. Forcing those
   // into this vocabulary would rename them on screen, so they pass through.

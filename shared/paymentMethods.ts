@@ -36,6 +36,13 @@ const LABELS: Record<string, string> = {
   vodafone_cash: 'فودافون كاش',
   same_as_payment: 'إرجاع على نفس وسيلة الدفع',
   // Not offered as choices any more, but rows carrying them already exist.
+  // The two extra wallets are boxes the institute collects into — «اورانج كاش
+  // 7720», «وي باي 7720» — and without a rail behind them the customer's own
+  // page could only say «غير محدد» for the nine payments that went there.
+  // Spelled the way the desk writes them, so naming a box after the bare rail
+  // does not rename it on screen.
+  orange_cash: 'اورانج كاش',
+  we_pay: 'وي باي',
   fawry: 'فوري',
   other: 'أخرى',
   card: 'بطاقة بنكية',
@@ -79,6 +86,10 @@ const ALIASES: Record<string, string> = {
   vodafone: 'vodafone_cash',
   // The gateway names itself in orders.payment_method.
   paymob: 'online_paymob',
+  'اورانج كاش': 'orange_cash',
+  'اورنج كاش': 'orange_cash',
+  'وي باي': 'we_pay',
+  'وي كاش': 'we_pay',
   'محفظة إلكترونية': 'wallet',
   'محفظة': 'wallet',
 };
@@ -110,10 +121,26 @@ export function normalizePaymentMethod(raw?: string | null): string {
   return ALIASES[value] || ALIASES[lower] || '';
 }
 
-/** What a human should read. Unrecognised values are shown as they were saved. */
+/**
+ * What the desk should read: the box, exactly as it was saved.
+ *
+ * «وسيلة الدفع» is the institute's cash box — «خزنة الدقي», «فودافون كاش
+ * 2020», «كاش» — typed by an admin in الإعدادات. Renaming one on screen is
+ * wrong, and this used to do it: «كاش» resolved through the alias table to
+ * 'cash' and came back «نقدي», so a box the desk had named appeared under a
+ * name nobody chose.
+ *
+ * The two are told apart by script, which is what actually separates them
+ * here: the desk types Arabic, and every code this system writes — 'cash',
+ * 'TRANSFER', 'online_paymob', 'paymob' — is ASCII. So Arabic is returned
+ * untouched and only a code is looked up.
+ */
+const HAS_ARABIC = /[\u0600-\u06FF]/;
+
 export function paymentMethodLabel(raw?: string | null): string {
   const value = String(raw || '').trim();
   if (!value) return '';
+  if (HAS_ARABIC.test(value)) return value;
   const code = normalizePaymentMethod(value);
   return (code && LABELS[code]) || LABELS[value.toLowerCase()] || value;
 }

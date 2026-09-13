@@ -32,52 +32,27 @@ const ROOT = path.join(__dirname, '..', '..');
 const SHARED = path.join(ROOT, 'shared', 'paymentMethods.ts');
 const source = () => fs.readFileSync(SHARED, 'utf8');
 
-// Ported from shared/paymentMethods.ts. The tables are read out of the real
-// file so the two cannot drift apart in the part that matters — the data.
+// The real module, not a copy of it. node strips the type annotations, so what
+// runs below is the code both browsers ship — a ported reimplementation drifts
+// the moment a branch changes, and three mutations of this file's own rules
+// slipped past exactly that way on the first attempt.
 function build() {
-  const text = source();
-  const table = name => {
-    const block = new RegExp(`const ${name}: Record<string, string> = \\{([\\s\\S]*?)\\n\\};`).exec(text)[1];
-    const out = {};
-    for (const line of block.split('\n')) {
-      const m = /^\s*'?([^':,]+)'?\s*:\s*'([^']*)'/.exec(line);
-      if (m) out[m[1].trim()] = m[2];
-    }
-    return out;
+  const js = require('node:module')
+    .stripTypeScriptTypes(fs.readFileSync(SHARED, 'utf8'))
+    .replace(/^export /gm, '');
+  const box = { exports: {} };
+  // eslint-disable-next-line no-new-func
+  new Function('module', 'exports',
+    js + '\nmodule.exports = { LABELS, ALIASES, normalizePaymentMethod, paymentMethodLabel, customerPaymentMethodLabel };',
+  )(box, box.exports);
+  const m = box.exports;
+  return {
+    LABELS: m.LABELS,
+    ALIASES: m.ALIASES,
+    normalize: m.normalizePaymentMethod,
+    deskLabel: m.paymentMethodLabel,
+    customerLabel: m.customerPaymentMethodLabel,
   };
-  const LABELS = table('LABELS');
-  const ALIASES = table('ALIASES');
-  const CODES = /PAYMENT_METHOD_CODES = \[([^\]]*)\]/.exec(text)[1]
-    .split(',').map(p => p.trim().replace(/^'|'$/g, '')).filter(Boolean);
-
-  const normalize = raw => {
-    const value = String(raw || '').trim();
-    if (!value) return '';
-    const lower = value.toLowerCase().replace(/\s+/g, ' ');
-    if (CODES.includes(lower)) return lower;
-    if (LABELS[lower]) return lower;
-    return ALIASES[value] || ALIASES[lower] || '';
-  };
-  const deskLabel = raw => {
-    const value = String(raw || '').trim();
-    if (!value) return '';
-    const code = normalize(value);
-    return (code && LABELS[code]) || LABELS[value.toLowerCase()] || value;
-  };
-  const customerLabel = raw => {
-    const value = String(raw || '').trim();
-    if (!value) return '';
-    const direct = normalize(value);
-    if (direct) return LABELS[direct] || '';
-    const lower = value.toLowerCase().replace(/\s+/g, ' ');
-    for (const [spelling, code] of Object.entries(ALIASES)) {
-      const prefix = spelling.toLowerCase();
-      if (prefix.length >= 4 && lower.startsWith(prefix)) return LABELS[code] || '';
-    }
-    if (lower.startsWith('خزنة')) return LABELS.cash;
-    return '';
-  };
-  return { LABELS, ALIASES, normalize, deskLabel, customerLabel };
 }
 
 // Every distinct value in production's payments.payment_method, read off the
@@ -91,11 +66,16 @@ const PRODUCTION_BOXES = [
   'qa_smoke', 'online_paymob',
 ];
 
-// The ported rule above is only as good as its agreement with the source, and
-// the tables are read from the file but the branches are not. Pin the four
-// lines that decide, as plain includes — a template literal eats the backslash
-// out of \s and a pattern that matches nothing is a guard that passes forever.
+// The behaviour is exercised for real above, so these are not a substitute for
+// it — they name what each branch is *for*, so that deleting one fails with the
+// reason rather than with a table of Arabic strings.
+//
+// Plain includes, not regexes: these lines are mostly metacharacters, a
+// template literal eats the backslash out of \s, and a pattern that matches
+// nothing is a guard that passes forever.
 const PINS = [
+  [`  if (HAS_ARABIC.test(value)) return value;`,
+    'a box the desk typed is Arabic and is never looked up — «كاش» is a box, not the code cash'],
   [`  return (code && LABELS[code]) || LABELS[value.toLowerCase()] || value;`,
     'the desk falls through to the box name — that is what keeps «فودافون كاش 2020» whole'],
   [`    if (prefix.length >= 4 && lower.startsWith(prefix)) return LABELS[code] || '';`,
@@ -119,7 +99,7 @@ test('the two labels still differ in the way that matters', () => {
 test('the desk keeps the whole box name', () => {
   const { deskLabel } = build();
   // Which wallet took the money is the whole reason the desk writes it down.
-  for (const box of ['فودافون كاش 2020', 'اورانج كاش 7720', 'خزنة الدقي', 'احمد السعودية', 'وي باي 7720']) {
+  for (const box of ['فودافون كاش 2020', 'اورانج كاش 7720', 'خزنة الدقي', 'احمد السعودية', 'وي باي 7720', 'كاش']) {
     assert.equal(deskLabel(box), box, `${box} is a box and must not be renamed on the desk's screens`);
   }
 });
@@ -130,6 +110,11 @@ test('the customer is told the rail, never the box', () => {
   assert.equal(customerLabel('فودافون كاش 2020'), 'فودافون كاش', 'the account tail is the institute\'s');
   assert.equal(customerLabel('فودافون كاش 7711'), 'فودافون كاش');
   assert.equal(customerLabel('احمد السعودية'), '', 'a person\'s name must never reach the customer');
+  // Two wallets the institute collects into that were not in the vocabulary at
+  // all, so the nine payments made to them could only be shown to the people
+  // who made them as «غير محدد».
+  assert.equal(customerLabel('اورانج كاش 7720'), 'اورانج كاش');
+  assert.equal(customerLabel('وي باي 7720'), 'وي باي');
   assert.equal(customerLabel('خزنة الدقي'), 'نقدي', 'they walked in and paid — say so');
   assert.equal(customerLabel('تحويل بنكي'), 'تحويل بنكي');
   assert.equal(customerLabel('انستا باي'), 'انستا باي');
