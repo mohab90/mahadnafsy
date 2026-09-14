@@ -2,6 +2,7 @@
 const { toIdentity } = require('../../lib/phoneNumber');
 const { findLeadByContact } = require('../../lib/leadMatching');
 const logger = require('../../lib/logger');
+const { escapeHtml } = require('../../lib/html');
 const crypto   = require('crypto');
 const bcrypt   = require('../../lib/passwordHash');
 const express  = require('express');
@@ -284,8 +285,10 @@ router.post('/api/staff/enrollment-welcome', requireAuth, requireAdminOrStaff, r
     const normBranch = (branch || '').toUpperCase().replace(/[-\s]/g, '_');
     const isOnline = ONLINE_BRANCHES.has(normBranch);
     const siteUrl = 'https://mahadnafsy.com';
-    const safeTitle = courseTitle || 'الكورس';
-    const safeName = (name || 'عزيزنا').trim();
+    // Escaped, not merely trimmed: both land in HTML mail and the course title
+    // is admin-authored while the name is whatever the customer typed.
+    const safeTitle = escapeHtml(courseTitle || 'الكورس');
+    const safeName = escapeHtml((name || 'عزيزنا').trim());
 
     const videosLine = isOnline
       ? `<div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:12px 16px; margin:12px 0;">

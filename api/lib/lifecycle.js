@@ -13,6 +13,7 @@
  * Scans :  learner_stalled · installment_due
  */
 const { pool } = require('./db');
+const { escapeHtml } = require('./html');
 const logger = require('./logger');
 const outbox = require('./outbox');
 const { getTenantSetting } = require('./tenantSettings');
@@ -30,8 +31,8 @@ const JOURNEY = {
     {
       key: 'lead_welcome_email', channel: 'email', delayH: 0,
       subject: 'أهلاً بك في معهد الدراسات النفسية 🌿',
-      build: (c) => `<p>أهلاً ${c.name || ''}،</p>
-        <p>سعداء باهتمامك${c.courseTitle ? ` بـ <b>${c.courseTitle}</b>` : ' ببرامجنا'}. فريقنا هيتواصل معك قريباً، وتقدر دلوقتي تستكشف كل البرامج وتحجز مكانك:</p>
+      build: (c) => `<p>أهلاً ${escapeHtml(c.name || '')}،</p>
+        <p>سعداء باهتمامك${c.courseTitle ? ` بـ <b>${escapeHtml(c.courseTitle)}</b>` : ' ببرامجنا'}. فريقنا هيتواصل معك قريباً، وتقدر دلوقتي تستكشف كل البرامج وتحجز مكانك:</p>
         <p><a class="btn" href="${SITE}/courses">استكشف البرامج واحجز</a></p>
         <p>لو عندك أي سؤال، رد على الرسالة دي أو راسلنا واتساب.</p>`,
     },
@@ -44,10 +45,10 @@ const JOURNEY = {
     {
       key: 'payment_receipt_email', channel: 'email', delayH: 0,
       subject: 'تأكيد الدفع وتفعيل وصولك ✅',
-      build: (c) => `<p>أهلاً ${c.name || ''}،</p>
-        <p>تم استلام دفعتك بنجاح${c.itemTitle ? ` لـ <b>${c.itemTitle}</b>` : ''}.</p>
+      build: (c) => `<p>أهلاً ${escapeHtml(c.name || '')}،</p>
+        <p>تم استلام دفعتك بنجاح${c.itemTitle ? ` لـ <b>${escapeHtml(c.itemTitle)}</b>` : ''}.</p>
         <table class="details"><tr><td>المبلغ</td><td>${money(c.amount, c.currency)}</td></tr>
-        ${c.method ? `<tr><td>طريقة الدفع</td><td>${c.method}</td></tr>` : ''}
+        ${c.method ? `<tr><td>طريقة الدفع</td><td>${escapeHtml(c.method)}</td></tr>` : ''}
         <tr><td>التاريخ</td><td>${new Date().toISOString().slice(0, 10)}</td></tr></table>
         <p>وصولك اتفعّل — ابدأ التعلّم دلوقتي:</p>
         <p><a class="btn" href="${SITE}/dashboard">ابدأ التعلّم</a></p>`,
@@ -61,8 +62,8 @@ const JOURNEY = {
     {
       key: 'onboarding_email', channel: 'email', delayH: 0,
       subject: 'رحلتك بدأت — ابدأ من هنا 🎓',
-      build: (c) => `<p>مبروك ${c.name || ''}! 🎉</p>
-        <p>تم تسجيلك${c.courseTitle ? ` في <b>${c.courseTitle}</b>` : ''}. عشان تبدأ صح:</p>
+      build: (c) => `<p>مبروك ${escapeHtml(c.name || '')}! 🎉</p>
+        <p>تم تسجيلك${c.courseTitle ? ` في <b>${escapeHtml(c.courseTitle)}</b>` : ''}. عشان تبدأ صح:</p>
         <ol><li>افتح حسابك من <a href="${SITE}/dashboard">هنا</a></li>
         <li>ابدأ بأول محاضرة</li>
         <li>تابع تقدّمك واكمل عشان تستحق الشهادة 🏆</li></ol>
@@ -77,7 +78,7 @@ const JOURNEY = {
     {
       key: 'contact_ack_email', channel: 'email', delayH: 0,
       subject: 'استلمنا رسالتك ✅',
-      build: (c) => `<p>أهلاً ${c.name || ''},</p>
+      build: (c) => `<p>أهلاً ${escapeHtml(c.name || '')},</p>
         <p>وصلتنا رسالتك وفريقنا هيرد عليك في أقرب وقت. شكراً لتواصلك مع معهد الدراسات النفسية 🌿</p>`,
     },
     {
@@ -89,8 +90,8 @@ const JOURNEY = {
     {
       key: 'joinus_ack_email', channel: 'email', delayH: 0,
       subject: 'استلمنا طلب انضمامك 🎓',
-      build: (c) => `<p>أهلاً ${c.name || ''},</p>
-        <p>استلمنا طلب انضمامك${c.roleLabel ? ` (${c.roleLabel})` : ''} وفريقنا هيراجعه ويتواصل معك قريباً. سعداء باهتمامك بالانضمام لمعهد الدراسات النفسية 🌿</p>`,
+      build: (c) => `<p>أهلاً ${escapeHtml(c.name || '')},</p>
+        <p>استلمنا طلب انضمامك${c.roleLabel ? ` (${escapeHtml(c.roleLabel)})` : ''} وفريقنا هيراجعه ويتواصل معك قريباً. سعداء باهتمامك بالانضمام لمعهد الدراسات النفسية 🌿</p>`,
     },
     {
       key: 'joinus_ack_wa', channel: 'whatsapp', delayH: 0,
@@ -107,8 +108,8 @@ const JOURNEY = {
     {
       key: 'abandoned_email', channel: 'email', delayH: 0,
       subject: (c) => `لسه فاكر ${c.courseTitle || 'البرنامج'}؟ مكانك محجوز 🎓`,
-      build: (c) => `<p>أهلاً ${c.name || ''},</p>
-        <p>لاحظنا اهتمامك${c.courseTitle ? ` بـ <b>${c.courseTitle}</b>` : ' ببرامجنا'} وما أكملتش الحجز. الأماكن محدودة وحبينا نفكّرك:</p>
+      build: (c) => `<p>أهلاً ${escapeHtml(c.name || '')},</p>
+        <p>لاحظنا اهتمامك${c.courseTitle ? ` بـ <b>${escapeHtml(c.courseTitle)}</b>` : ' ببرامجنا'} وما أكملتش الحجز. الأماكن محدودة وحبينا نفكّرك:</p>
         <p><a class="btn" href="${SITE}/courses">أكمل حجزك الآن</a></p>
         <p>عندك سؤال أو محتاج تقسيط؟ رد على الرسالة دي ونرتّبلك 💚</p>`,
     },
@@ -121,7 +122,7 @@ const JOURNEY = {
     {
       key: 'stalled_email', channel: 'email', delayH: 0,
       subject: 'محاضرتك الأولى في انتظارك 🎓',
-      build: (c) => `<p>أهلاً ${c.name || ''},</p>
+      build: (c) => `<p>أهلاً ${escapeHtml(c.name || '')},</p>
         <p>لاحظنا إنك سجّلت معانا بس لسه ما بدأتش التعلّم. أول خطوة هي الأهم — ابدأ دلوقتي وكمّل على راحتك:</p>
         <p><a class="btn" href="${SITE}/dashboard">ابدأ التعلّم الآن</a></p>
         <p>محتاج مساعدة للدخول؟ رد على الرسالة دي ونحن معاك 💚</p>`,
@@ -135,8 +136,8 @@ const JOURNEY = {
     {
       key: 'certificate_email', channel: 'email', delayH: 0,
       subject: 'مبروك! شهادتك جاهزة 🏆',
-      build: (c) => `<p>مبروك ${c.name || ''}! 🎉</p>
-        <p>أتممت${c.courseTitle ? ` <b>${c.courseTitle}</b>` : ' برنامجك'} وشهادتك أصبحت جاهزة.</p>
+      build: (c) => `<p>مبروك ${escapeHtml(c.name || '')}! 🎉</p>
+        <p>أتممت${c.courseTitle ? ` <b>${escapeHtml(c.courseTitle)}</b>` : ' برنامجك'} وشهادتك أصبحت جاهزة.</p>
         <p><a class="btn" href="${SITE}/dashboard">استلم شهادتك</a></p>
         <p>عجبتك الرحلة؟ رشّح صديق واحصل على مكافأة — كلّمنا للتفاصيل 💚</p>`,
     },

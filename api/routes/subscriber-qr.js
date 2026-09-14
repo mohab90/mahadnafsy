@@ -4,13 +4,7 @@ const router = express.Router();
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { pool } = require('../lib/db');
 const { createAttendanceQr } = require('../lib/attendanceQr');
-const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#39;',
-}[char]));
+const { escapeHtml } = require('../lib/html');
 
 // GET /api/admin/subscribers/:id/qr
 router.get('/api/admin/subscribers/:id/qr', requireAuth, requireAdminOrStaff, requirePermission('view_subscribers'), async (req, res) => {

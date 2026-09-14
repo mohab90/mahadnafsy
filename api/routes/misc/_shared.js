@@ -1,5 +1,6 @@
 'use strict';
 const logger = require('../../lib/logger');
+const { escapeHtml } = require('../../lib/html');
 const { uuidv4 } = require('../../lib/id');
 const { pool } = require('../../lib/db');
 const { mailer, sendEmail } = require('../../lib/email');
@@ -162,10 +163,10 @@ async function runFollowUpReminders(tenantId = DEFAULT_TENANT) {
           html: `<div dir="rtl" style="font-family:Arial;padding:16px;background:#f8fafc;border-radius:8px;">
             <h3 style="color:#6C63FF;">تذكير متابعة عميل محتمل</h3>
             <table style="border-collapse:collapse;width:100%">
-              <tr><td style="padding:6px 12px;font-weight:bold;">الاسم</td><td style="padding:6px 12px;">${lead.name}</td></tr>
-              <tr style="background:#fff"><td style="padding:6px 12px;font-weight:bold;">الهاتف</td><td style="padding:6px 12px;">${lead.phone || '—'}</td></tr>
-              <tr><td style="padding:6px 12px;font-weight:bold;">الحالة</td><td style="padding:6px 12px;">${lead.status || '—'}</td></tr>
-              <tr style="background:#fff"><td style="padding:6px 12px;font-weight:bold;">المصدر</td><td style="padding:6px 12px;">${lead.source || '—'}</td></tr>
+              <tr><td style="padding:6px 12px;font-weight:bold;">الاسم</td><td style="padding:6px 12px;">${escapeHtml(lead.name)}</td></tr>
+              <tr style="background:#fff"><td style="padding:6px 12px;font-weight:bold;">الهاتف</td><td style="padding:6px 12px;">${escapeHtml(lead.phone || '—')}</td></tr>
+              <tr><td style="padding:6px 12px;font-weight:bold;">الحالة</td><td style="padding:6px 12px;">${escapeHtml(lead.status || '—')}</td></tr>
+              <tr style="background:#fff"><td style="padding:6px 12px;font-weight:bold;">المصدر</td><td style="padding:6px 12px;">${escapeHtml(lead.source || '—')}</td></tr>
             </table>
             <p style="color:#94a3b8;font-size:12px;margin-top:16px;">أُرسل تلقائياً — المعهد النفسي</p>
           </div>`,
@@ -364,7 +365,7 @@ async function runPaymentDueReminders(tenantId = DEFAULT_TENANT) {
           subject: `تذكير بموعد الدفع — ${p.due_date}`,
           html: `<div dir="rtl" style="font-family:Cairo,Arial;max-width:500px;margin:auto;padding:24px;background:#f8fafc;border-radius:12px;">
             <h3 style="color:#6C63FF;">تذكير بموعد دفعة</h3>
-            <p>مرحباً <strong>${p.name}</strong>،</p>
+            <p>مرحباً <strong>${escapeHtml(p.name)}</strong>،</p>
             <p>نودّ تذكيرك بموعد دفعتك القادمة:</p>
             <div style="background:#fff;border-radius:8px;padding:16px;border:1px solid #e2e8f0;">
               <p>💰 <strong>المبلغ:</strong> ${amountFmt}</p>

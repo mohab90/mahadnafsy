@@ -11,6 +11,7 @@ const { uuidv4 } = require('../lib/id');
 const { pool, cached, cacheInvalidate } = require('../lib/db');
 const { parseLimit, parseOffset, sanitize, tryJson, validate } = require('../lib/helpers');
 const { getBrandSettings } = require('../lib/brandSettings');
+const { escapeHtml, safeUrl } = require('../lib/html');
 const { getTenantSetting } = require('../lib/tenantSettings');
 const { COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber, mapQuiz, loadCourseMaterials } = require('../lib/mappers');
 const { recordQuizAttempt } = require('../lib/quizAttempts');
@@ -476,7 +477,7 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Certificate – ${studentName}</title>
+<title>Certificate – ${escapeHtml(studentName)}</title>
 <style>
   @page { size: A4 portrait; margin: 5mm; }
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; }
@@ -521,7 +522,7 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
 
   <!-- Gold medal (logo) -->
   <div style="position:absolute;top:22px;left:50%;transform:translateX(-50%);width:82px;height:82px;border-radius:50%;background:radial-gradient(circle at 35% 32%, #FEF3C7, #F59E0B 52%, #92400E);box-shadow:0 4px 18px rgba(0,0,0,0.45),0 0 0 4px #FCD34D;display:flex;align-items:center;justify-content:center;z-index:10">
-    <img src="${LOGO_URL}" style="width:52px;height:52px;border-radius:50%;object-fit:contain" onerror="this.style.display='none'"/>
+    <img src="${safeUrl(LOGO_URL)}" style="width:52px;height:52px;border-radius:50%;object-fit:contain" onerror="this.style.display='none'"/>
   </div>
 
   <!-- Body -->
@@ -540,12 +541,12 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
       <div style="flex:1;height:2px;background:linear-gradient(to left,transparent,${primaryColor})"></div>
     </div>
 
-    <div style="font-size:22px;font-weight:900;color:${primaryColor};letter-spacing:2px;margin-bottom:5px">${instituteName.toUpperCase()}</div>
+    <div style="font-size:22px;font-weight:900;color:${primaryColor};letter-spacing:2px;margin-bottom:5px">${escapeHtml(instituteName.toUpperCase())}</div>
     <div style="font-size:11px;letter-spacing:5px;color:#777;margin-bottom:16px">IS PROUDLY PRESENTED TO</div>
 
     <!-- Student name -->
     <div style="font-size:${studentName.length > 28 ? '20px' : '27px'};font-weight:900;color:${primaryColor};letter-spacing:2px;padding:10px 16px;border-top:2px solid ${primaryColor};border-bottom:2px solid ${primaryColor};margin:0 24px 16px;line-height:1.4;min-height:54px;display:flex;align-items:center;justify-content:center">
-      ${studentName}
+      ${escapeHtml(studentName)}
     </div>
 
     <div style="font-size:12px;color:#444;letter-spacing:2px;line-height:2">FOR THE SUCCESSFUL COMPLETION</div>
@@ -553,7 +554,7 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
 
     <!-- Course name -->
     <div style="font-size:${courseName.length > 50 ? '13px' : '16px'};font-weight:700;color:#1a1a1a;margin:0 16px 16px;letter-spacing:0.5px;line-height:1.5;padding:8px 16px;background:#fafafa;border:1px solid #eee;border-radius:4px">
-      ${courseName}
+      ${escapeHtml(courseName)}
     </div>
   </div>
 
@@ -564,8 +565,8 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
       <div style="font-size:13px;font-weight:800;margin-bottom:10px;letter-spacing:0.5px">Trainer</div>
       <div class="sig-line"></div>
       <div class="sig-badge" style="direction:rtl">
-        <img src="${LOGO_URL}" style="width:18px;height:18px;border-radius:50%;object-fit:contain;flex-shrink:0" onerror="this.style.display='none'"/>
-        ${instituteName}
+        <img src="${safeUrl(LOGO_URL)}" style="width:18px;height:18px;border-radius:50%;object-fit:contain;flex-shrink:0" onerror="this.style.display='none'"/>
+        ${escapeHtml(instituteName)}
       </div>
     </div>
 
@@ -585,8 +586,8 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
         <polygon points="32,40 38,40 43,60 35,68" fill="${primaryColor}"/>
       </svg>
       <div style="font-size:8px;color:#999;letter-spacing:1px;text-transform:uppercase">Serial No.</div>
-      <div style="font-size:11px;font-weight:700;font-family:monospace;color:${primaryColor};margin-top:2px">${serialNo}</div>
-      <div style="font-size:8px;color:#aaa;margin-top:2px">${issuedAt}</div>
+      <div style="font-size:11px;font-weight:700;font-family:monospace;color:${primaryColor};margin-top:2px">${escapeHtml(serialNo)}</div>
+      <div style="font-size:8px;color:#aaa;margin-top:2px">${escapeHtml(issuedAt)}</div>
     </div>
 
     <!-- Training Manager -->
@@ -594,7 +595,7 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
       <div style="font-size:13px;font-weight:800;margin-bottom:10px;letter-spacing:0.5px">Training Manager</div>
       <div class="sig-line"></div>
       <div class="serial-badge">
-        <div style="font-weight:800">${trainingMgr.toUpperCase()}</div>
+        <div style="font-weight:800">${escapeHtml(trainingMgr.toUpperCase())}</div>
         <div>PSY TRAINING MANAGER</div>
       </div>
     </div>
@@ -602,7 +603,7 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
 
   <!-- QR row -->
   <div style="text-align:center;padding:10px 0 0">
-    <a href="${verifyUrl}" target="_blank">
+    <a href="${escapeHtml(verifyUrl)}" target="_blank">
       <img src="${qrUrl}" alt="QR" style="width:54px;height:54px;display:inline-block"/>
     </a>
     <div style="font-size:8px;color:#bbb;margin-top:2px">Scan to verify certificate authenticity</div>
@@ -617,7 +618,7 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
 </div><!-- /cert -->
 
 <div style="text-align:center;padding:12px;font-size:12px;color:#999">
-  Verify at: <a href="${verifyUrl}" style="color:${primaryColor}">${verifyUrl}</a>
+  Verify at: <a href="${escapeHtml(verifyUrl)}" style="color:${primaryColor}">${escapeHtml(verifyUrl)}</a>
 </div>
 
 <script>

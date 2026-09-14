@@ -5,9 +5,7 @@ const { uuidv4 } = require('./id');
 const { certificateCode, writeCertificateEvent } = require('./certificateLifecycle');
 const outbox = require('./outbox');
 
-const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
-  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-}[character]));
+const { escapeHtml } = require('./html');
 
 // Share of a course's published lectures that must be finished before the
 // certificate is issued. Was an implicit 100%, which meant a learner who watched

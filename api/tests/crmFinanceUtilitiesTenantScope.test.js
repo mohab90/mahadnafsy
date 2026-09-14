@@ -13,7 +13,10 @@ test('printable invoice is permission and tenant scoped and escapes stored data'
   assert.match(route, /invoice-html'[\s\S]*requirePermission\('view_financial'\)/);
   assert.match(route, /WHERE p\.id = \? AND p\.tenant_id = \?/);
   assert.match(route, /s\.tenant_id = p\.tenant_id/);
-  assert.match(route, /const escapeHtml/);
+  // The escaper used to be declared here — one of nine identical copies. It now
+  // comes from api/lib/html.js; the intent of this assertion is unchanged, that
+  // the invoice route escapes what it renders.
+  assert.match(route, /const \{ escapeHtml \} = require\('\.\.\/\.\.\/lib\/html'\)/);
   assert.match(finance, /_loadPaymentForPrint\(paymentId, tenantId\)/);
   assert.match(finance, /WHERE p\.id = \? AND p\.tenant_id = \?/);
   assert.match(finance, /payments\/:id\/receipt'[\s\S]*requirePermission\('view_financial'\)/);

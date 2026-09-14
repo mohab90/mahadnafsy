@@ -26,9 +26,7 @@ const validDateRange = (from, to) => isValidDateOnly(from) && isValidDateOnly(to
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ── Shared data loader for invoice/receipt ────────────────────────────────
-const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
-  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-}[ch]));
+const { escapeHtml } = require('../lib/html');
 
 async function _loadPaymentForPrint(paymentId, tenantId) {
   const [[p]] = await pool.query(`

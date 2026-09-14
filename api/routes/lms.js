@@ -27,9 +27,7 @@ const outbox = require('../lib/outbox');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { bulkOperationLimiter, publicLimiter } = require('../middleware/rateLimits');
 
-const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({
-  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-}[character]));
+const { escapeHtml } = require('../lib/html');
 
 function validHttpUrl(value) {
   try { return ['http:', 'https:'].includes(new URL(String(value)).protocol); } catch { return false; }

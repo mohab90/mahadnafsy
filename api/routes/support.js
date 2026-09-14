@@ -26,9 +26,7 @@ const {
 
 const CLOSED_STATUSES = ['resolved', 'closed'];
 const OPEN_STATUSES = ['open', 'in_progress'];
-const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({
-  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-}[character]));
+const { escapeHtml } = require('../lib/html');
 const hashCsatToken = token => createHash('sha256').update(String(token || '')).digest('hex');
 const TEXT_LIMITS = Object.freeze({ subject: 500, body: 20000, reason: 1000 });
 const VALID_PRIORITIES = new Set(['urgent', 'high', 'medium', 'low']);

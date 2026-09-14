@@ -12,9 +12,7 @@ const express = require('express');
 const router = express.Router();
 const { logLogin, sendDailyReport, scheduleDailyReport, pushAdminNotif, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
 
-const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
-  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-}[ch]));
+const { escapeHtml } = require('../../lib/html');
 
 router.get('/api/admin/subscription-plans', requireAuth, requireAdmin, async (req, res) => {
   try {

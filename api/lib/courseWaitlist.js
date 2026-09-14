@@ -7,9 +7,7 @@
  */
 const outbox = require('./outbox');
 
-const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({
-  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-}[character]));
+const { escapeHtml } = require('./html');
 
 // Must run inside the caller's existing transaction on `conn` (after the
 // enrollment row has already been deleted/cancelled). Returns the number of

@@ -42,9 +42,10 @@ const ALLOWED = new Map([
   ['routes/support.js', 'ticket context, looked up by an explicit id'],
   ['routes/monitoring.js:301', 'journal reconciliation wants the raw table'],
   ['routes/monitoring.js:309', 'journal reconciliation wants the raw table'],
-  // Guarded through an interpolated fragment; asserted separately below.
-  ['routes/payments.js:236', 'the `where` fragment carries the guard'],
-  ['routes/public-orders.js:799', 'the `totalWhere` fragment carries the guard'],
+  // Queries whose WHERE arrives as `${an interpolated fragment}` are exempt
+  // here and covered by the initialiser test further down instead — a source
+  // scan cannot see into the fragment. Line numbers are deliberately NOT used
+  // for these: pinning a line means every edit above it breaks this test.
   ['routes/hr/staffprofile.js:167', 'guarded inside the derived table'],
 ]);
 
@@ -108,6 +109,10 @@ function scan() {
         ? new RegExp('\\b' + a + '\\.deleted_at\\s+IS\\s+NULL', 'i').test(sql)
         : /\bdeleted_at\s+IS\s+NULL/i.test(sql);
       if (guarded) continue;
+      // The WHERE is built in JS. Nothing here can tell whether the fragment
+      // carries the guard, so the fragment's own initialiser is pinned instead
+      // (see 'the interpolated WHERE fragments carry the guard themselves').
+      if (/WHERE\s*\$\{|\$\{\w*[Ww]here\w*\}/.test(sql)) continue;
       const line = src.slice(0, m.index).split('\n').length;
       if (ALLOWED.has(rel) || ALLOWED.has(rel + ':' + line)) continue;
       unguarded.push(rel + ':' + line);

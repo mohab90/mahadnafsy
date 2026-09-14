@@ -31,9 +31,7 @@ const fail = (res, error, label) => {
   return res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Internal server error' });
 };
 const exactDate = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) ? String(value) : null;
-const escapeHtml = value => String(value || '').replace(/[&<>"']/g, char => ({
-  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-}[char]));
+const { escapeHtml } = require('../lib/html');
 
 async function quotePolicy(tenantId) {
   const value = await getTenantSetting('crm_quote_policy', {

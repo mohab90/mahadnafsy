@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const { resolveCatalogPrice, priceMatches } = require('../lib/catalogPrice');
+const { escapeHtml } = require('../lib/html');
 const logger = require('../lib/logger').child({ module: 'public-orders-route' });
 const { uuidv4 } = require('../lib/id');
 
@@ -409,6 +410,18 @@ router.post('/api/orders/reserve', publicLimiter, async (req, res) => {
         expected: catalogPrice,
       });
     }
+    // Re-reserving an id that is already paid used to set it back to
+    // 'pending'. The amount, type and item are not in the UPDATE list below so
+    // they cannot be swapped after the fact, but the status walking backwards
+    // is its own problem: the order stops counting as paid in every screen that
+    // reads the column.
+    const [[existing]] = await pool.query(
+      'SELECT status FROM orders WHERE id=? AND tenant_id=? LIMIT 1',
+      [orderId, req.tenantId || DEFAULT_TENANT_ID]);
+    if (existing && String(existing.status || '').toLowerCase() === 'paid') {
+      return res.status(409).json({ error: 'الطلب مدفوع بالفعل', code: 'ORDER_ALREADY_PAID' });
+    }
+
     const extra = JSON.stringify({ bundleCourseIds, consultationData, extraCertRequestId, subscriberEmail, isInstallment, installmentLimit });
     const orderBranchId = branchIdForBranch(req.body?.branch || 'ONLINE_EGYPT');
     const orderType = normalizeOrderTypeForDb(type);
@@ -419,7 +432,11 @@ router.post('/api/orders/reserve', publicLimiter, async (req, res) => {
       `INSERT INTO orders (id, item_id, item_title, type, status, amount, currency,
          payment_method, customer_name, customer_email, customer_phone, notes, tenant_id, branch_id, created_at)
        VALUES (?,?,?,?,'pending',?,?,?,?,?,?,?,?,?,NOW())
-       ON DUPLICATE KEY UPDATE status='pending', notes=VALUES(notes), tenant_id=VALUES(tenant_id), branch_id=VALUES(branch_id)`,
+       ON DUPLICATE KEY UPDATE
+         notes      = IF(status='paid', notes,      VALUES(notes)),
+         tenant_id  = IF(status='paid', tenant_id,  VALUES(tenant_id)),
+         branch_id  = IF(status='paid', branch_id,  VALUES(branch_id)),
+         status     = IF(status='paid', status,     'pending')`,
       [orderId, itemId||'', itemTitle||'', orderType, amount, currency||'EGP',
        paymentMethod||'', customerName||'', customerEmail||'', customerPhone||'', extra, req.tenantId || DEFAULT_TENANT_ID, orderBranchId]
     );
@@ -440,7 +457,7 @@ router.post('/api/orders/reserve', publicLimiter, async (req, res) => {
 // from both entering the DB transaction simultaneously (race condition protection)
 const _paymobProcessingOrders = new Set();
 
-async function finalisePaymobOrder(merchantOrderId, transactionId) {
+async function finalisePaymobOrder(merchantOrderId, transactionId, capture = null) {
   // Race condition guard: if already being processed by another concurrent webhook, skip
   if (_paymobProcessingOrders.has(merchantOrderId)) {
     logger.warn(`[paymob] Order ${merchantOrderId} already in-flight — skipping duplicate webhook`);
@@ -448,13 +465,13 @@ async function finalisePaymobOrder(merchantOrderId, transactionId) {
   }
   _paymobProcessingOrders.add(merchantOrderId);
   try {
-    return await _finalisePaymobOrderInner(merchantOrderId, transactionId);
+    return await _finalisePaymobOrderInner(merchantOrderId, transactionId, capture);
   } finally {
     _paymobProcessingOrders.delete(merchantOrderId);
   }
 }
 
-async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
+async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture = null) {
   const [[order]] = await pool.query(
     `SELECT id, type, item_id, item_title, amount, currency, payment_method, customer_name,
      customer_email, customer_phone, status, transaction_id, coupon_code, subscriber_id,
@@ -474,6 +491,30 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
     if (existingPay) {
       logger.info(`[paymob] transactionId ${transactionId} already recorded — skipping`);
       return { found: true, alreadyProcessed: true };
+    }
+  }
+
+  // What Paymob says it captured has to be what the order asked for. The
+  // gateway signs amount_cents, so this is not about a forged payload — it is
+  // about the order and the intention drifting apart between reservation and
+  // capture, and about a partial capture being booked as a full one.
+  if (capture && Number.isFinite(capture.amountCents)) {
+    const expectedCents = Math.round(Number(order.amount || 0) * 100);
+    if (expectedCents > 0 && capture.amountCents !== expectedCents) {
+      logger.error('[paymob] captured amount does not match the order — not crediting', {
+        merchantOrderId, transactionId,
+        capturedCents: capture.amountCents, expectedCents,
+        capturedCurrency: capture.currency || null, orderCurrency: order.currency || null,
+      });
+      return { found: true, amountMismatch: true };
+    }
+    if (capture.currency && order.currency
+        && String(capture.currency).toUpperCase() !== String(order.currency).toUpperCase()) {
+      logger.error('[paymob] captured currency does not match the order — not crediting', {
+        merchantOrderId, transactionId,
+        capturedCurrency: capture.currency, orderCurrency: order.currency,
+      });
+      return { found: true, currencyMismatch: true };
     }
   }
 
@@ -762,7 +803,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
     sendEmail(customerEmail,
       `✅ تم استلام دفعتك — ${itemName}`,
       `<div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px">
-        <h2 style="color:#7c3aed">شكراً ${order.customer_name || 'عزيزنا'}! 🎉</h2>
+        <h2 style="color:#7c3aed">شكراً ${escapeHtml(order.customer_name || 'عزيزنا')}! 🎉</h2>
         <p>تم استلام دفعتك بنجاح وتم تفعيل اشتراكك.</p>
         <table style="width:100%;border-collapse:collapse;margin:16px 0">
           <tr><td style="padding:8px;background:#f5f3ff;font-weight:bold">المنتج</td><td style="padding:8px">${itemName}</td></tr>
@@ -832,6 +873,16 @@ async function syncLeadDealValue(subscriberId, db = pool, expectedTenantId = nul
   }
 }
 
+// The captured figure, out of the same signed payload the HMAC covers.
+function paymobCapture(params) {
+  const cents = Number(params.amount_cents ?? params.obj?.amount_cents);
+  const currency = params.currency ?? params.obj?.currency ?? null;
+  return {
+    amountCents: Number.isFinite(cents) ? Math.round(cents) : null,
+    currency: currency ? String(currency) : null,
+  };
+}
+
 function paymobSuccess(params) {
   return String(params.success ?? params.obj?.success ?? '').toLowerCase() === 'true';
 }
@@ -848,7 +899,7 @@ router.post('/api/paymob/verify', paymobLimiter, async (req, res) => {
 
     const merchantOrderId = paymobMerchantOrderId(params);
     if (!merchantOrderId) return res.status(400).json({ ok: false, verified: true, paid: false, error: 'Missing merchant order id' });
-    const result = await finalisePaymobOrder(merchantOrderId, paymobTransactionId(params));
+    const result = await finalisePaymobOrder(merchantOrderId, paymobTransactionId(params), paymobCapture(params));
     res.json({ ok: true, verified: true, paid: !!result.found, alreadyProcessed: !!result.alreadyProcessed });
   } catch (e) {
     logger.error('[paymob/verify]', e.message);
@@ -866,7 +917,7 @@ router.post('/api/webhooks/paymob', paymobLimiter, async (req, res) => {
     if (!verifyPaymobHmac(params, hmacSecret)) return res.status(200).json({ ok: false, reason: 'invalid_signature' });
     if (paymobSuccess(params)) {
       const merchantOrderId = paymobMerchantOrderId(params);
-      if (merchantOrderId) await finalisePaymobOrder(merchantOrderId, paymobTransactionId(params));
+      if (merchantOrderId) await finalisePaymobOrder(merchantOrderId, paymobTransactionId(params), paymobCapture(params));
     }
     res.status(200).json({ ok: true });
   } catch (e) {
