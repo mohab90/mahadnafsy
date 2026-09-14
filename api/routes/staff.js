@@ -22,6 +22,7 @@ const SUPER_ADMIN_ROLES = ['admin', 'manager'];
 const { hasPermission, normalizeDataScope, resolvePermissions, PERMISSIONS } = require('../constants/permissions');
 const { requireTenantQuota } = require('../middleware/tenantQuota');
 const { mapTherapist } = require('../lib/mappers');
+const { assertGrantable } = require('../lib/permissionGrant');
 
 router.get('/api/staff/therapist-portal', requireAuth, requireAdminOrStaff, requirePermission('manage_consultations'), async (req, res) => {
   try {
@@ -151,18 +152,12 @@ router.post('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermiss
     const joinedAt = String(s.joinedAt || s.joined_at || new Date().toISOString()).slice(0, 19).replace('T', ' ');
     const commissionRate = s.commissionRate || s.commission_rate || null;
     const isActive = s.is_active !== undefined ? s.is_active : (s.status === 'inactive' ? 0 : 1);
-    // …and may not hand out a permission they were never given.
-    if (!req.isSuperAdmin && Array.isArray(s.permissions)) {
-      const mine = new Set(resolvePermissions(req.staffRecord) || []);
-      const overreach = s.permissions.filter(perm => !mine.has(perm));
-      if (overreach.length) {
-        return res.status(403).json({
-          error: `مش مسموح تمنح صلاحيات مش عندك: ${overreach.join(', ')}`,
-        });
-      }
-    }
-    const permissionsJson = s.permissions_json
-      || (Array.isArray(s.permissions) ? JSON.stringify(s.permissions) : null);
+    // …and may not hand out a permission they were never given. This used
+    // to test `Array.isArray(s.permissions)` while storing `s.permissions_json`,
+    // so sending the list as a JSON string walked straight past it.
+    const grant = assertGrantable(req, s);
+    if (!grant.ok) return res.status(grant.status).json(grant.body);
+    const permissionsJson = grant.permissionsJson;
     // Per-staff override for the role-keyed DATA_SCOPE. Anything the validator
     // does not recognise becomes NULL, i.e. "fall back to the role default" —
     // an unparsable value must never widen someone's reach.

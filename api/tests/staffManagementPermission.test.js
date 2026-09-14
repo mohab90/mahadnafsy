@@ -21,8 +21,19 @@ test('a non-owner cannot mint a role above their own', () => {
 });
 
 test('a non-owner cannot grant a permission they do not hold', () => {
-  assert.match(route, /resolvePermissions\(req\.staffRecord\)/);
-  assert.match(route, /overreach/);
+  // The check used to live inline here, reading `s.permissions` while storing
+  // `s.permissions_json` — so the same list sent as a JSON string went straight
+  // past it. It now lives in lib/permissionGrant.js, which reads whichever
+  // field the caller used and is what every route that writes permissions
+  // calls. api/tests/permissionGrant.test.js exercises the rule itself.
+  assert.match(route, /assertGrantable\(req, s\)/);
+  assert.ok(!/permissions_json\s*\|\|\s*\(Array\.isArray/.test(route),
+    'staff.js builds permissions_json by hand again, around the guard');
+
+  const helper = fs.readFileSync(
+    path.join(__dirname, '..', 'lib', 'permissionGrant.js'), 'utf8');
+  assert.match(helper, /resolvePermissions\(req\?\.staffRecord\)/);
+  assert.match(helper, /overreach/);
 });
 
 test('deleting staff and setting passwords stay with the owner', () => {

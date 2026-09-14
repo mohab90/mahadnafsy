@@ -8,6 +8,7 @@ const jwt    = require('jsonwebtoken');
 const { createHmac } = require('crypto');
 const { resolveSecret } = require('../lib/secretResolver');
 const { uuidv4 } = require('../lib/id');
+const { assertGrantable } = require('../lib/permissionGrant');
 const { generateTemporaryPassword, generateNumericCode } = require('../lib/secureCredentials');
 
 const { pool, getStaffIdByEmail, requireDb } = require('../lib/db');
@@ -328,8 +329,18 @@ router.post('/api/admin/staff-account', requireAuth, requireAdminOrStaff, requir
     const dbRole = ((role || 'OTHER').toUpperCase());
     const joinedAt = String(req.body.joinedAt || req.body.joined_at || new Date().toISOString()).slice(0, 19).replace('T', ' ');
     const numberOrNull = value => value === undefined || value === null || value === '' ? null : Number(value);
-    const permissionsJson = req.body.permissions_json
-      || (Array.isArray(req.body.permissions) ? JSON.stringify(req.body.permissions) : null);
+    // The role guard above stops manage_staff minting an ADMIN. Permissions
+    // are the other axis and used to be copied into the INSERT unread, so the
+    // same right also minted an account holding anything in the system — with
+    // a password the creator picked.
+    const grant = assertGrantable(req, req.body);
+    if (!grant.ok) {
+      await conn.rollback();
+      transactionStarted = false;
+      conn.release();
+      return res.status(grant.status).json(grant.body);
+    }
+    const permissionsJson = grant.permissionsJson;
     await conn.execute(
       `INSERT INTO staff
          (id, tenant_id, branch_id, firebase_uid, name, email, phone, role, image,

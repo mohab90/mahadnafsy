@@ -14,6 +14,7 @@ const { requireTenantQuota } = require('../../middleware/tenantQuota');
 const bcrypt = require('bcryptjs');
 const { toIdentity } = require('../../lib/phoneNumber');
 const { PERMISSIONS } = require('../../constants/permissions');
+const { assertGrantable } = require('../../lib/permissionGrant');
 
 // Lower-case permission keys, the form stored in staff.permissions_json.
 const ALL_PERMISSIONS = Object.values(PERMISSIONS).map(String);
@@ -339,11 +340,15 @@ router.post(
     // hire_date (same day the record is created); activation stays a separate
     // manual step, which is why is_active is still 0.
     // Explicit permission overrides, when the desk wants something other than
-    // the role default. Validated against the master list so a typo cannot
-    // grant a permission that does not exist (or hide one that should).
-    const requestedPermissions = Array.isArray(req.body.permissions)
-      ? req.body.permissions.filter(p => ALL_PERMISSIONS.includes(String(p))).map(String)
-      : null;
+    // the role default. This used to filter unrecognised names out silently, so
+    // a typo produced a hire with fewer rights than the desk thought it had
+    // granted — and filtering said nothing about whether the person doing the
+    // hiring holds them in the first place.
+    const grant = assertGrantable(req, req.body);
+    if (!grant.ok) {
+      await conn.rollback();
+      return res.status(grant.status).json(grant.body);
+    }
     const position = String(req.body.position || '').trim().slice(0, 255) || null;
     // A hire with a password is ready to work; without one, activation stays a
     // separate manual step (the original behaviour).
@@ -362,7 +367,7 @@ router.post(
         toIdentity(req.body.phone || a.phone) || '',
         role,
         activate ? 1 : 0, position,
-        requestedPermissions ? JSON.stringify(requestedPermissions) : null]
+        grant.permissionsJson]
     );
     if (password) {
       // Reuse the login row if one already exists for this address (a former
@@ -400,7 +405,7 @@ router.post(
       metadata: {
         applicant_id: a.id, role, branch_id: branch.id, position,
         login_created: Boolean(password), activated: activate,
-        permission_overrides: requestedPermissions ? requestedPermissions.length : 0,
+        permission_overrides: grant.permissionsJson ? JSON.parse(grant.permissionsJson).length : 0,
       },
       req,
       db: conn,
