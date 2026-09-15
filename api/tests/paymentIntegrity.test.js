@@ -175,3 +175,14 @@ test('course access is granted from the database, never from the order body', ()
   // And only a course or bundle order grants anything at all.
   assert.match(src, /if \(\(orderType === 'course' \|\| orderType === 'bundle'\) && sub\)/);
 });
+
+test('the verify endpoint does not call a refused capture "paid"', () => {
+  // finalise returns { found: true, amountMismatch: true } when it refuses to
+  // credit. `paid: !!result.found` reported that refusal as a payment.
+  const src = read('routes/public-orders.js');
+  const start = src.indexOf("router.post('/api/paymob/verify'");
+  const handler = src.slice(start, src.indexOf("router.post('/api/webhooks/paymob'", start));
+  assert.ok(!/paid: !!result\.found,/.test(handler), 'verify reports paid on found alone again');
+  assert.match(handler, /paid: !!result\.found && !refused/);
+  assert.match(handler, /result\.amountMismatch \? 'amount_mismatch' : result\.currencyMismatch \? 'currency_mismatch' : null/);
+});

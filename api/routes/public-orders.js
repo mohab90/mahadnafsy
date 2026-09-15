@@ -900,7 +900,16 @@ router.post('/api/paymob/verify', paymobLimiter, async (req, res) => {
     const merchantOrderId = paymobMerchantOrderId(params);
     if (!merchantOrderId) return res.status(400).json({ ok: false, verified: true, paid: false, error: 'Missing merchant order id' });
     const result = await finalisePaymobOrder(merchantOrderId, paymobTransactionId(params), paymobCapture(params));
-    res.json({ ok: true, verified: true, paid: !!result.found, alreadyProcessed: !!result.alreadyProcessed });
+    // `found` only means the order exists. An order whose capture did not match
+    // was deliberately NOT credited, and reporting it as paid would tell the
+    // caller the opposite of what just happened.
+    const refused = result.amountMismatch ? 'amount_mismatch' : result.currencyMismatch ? 'currency_mismatch' : null;
+    res.json({
+      ok: true, verified: true,
+      paid: !!result.found && !refused,
+      alreadyProcessed: !!result.alreadyProcessed,
+      ...(refused ? { refused } : {}),
+    });
   } catch (e) {
     logger.error('[paymob/verify]', e.message);
     if (isDatabaseUnavailableError(e)) return gatewayUnavailable(res, 'payment_config_unavailable');
