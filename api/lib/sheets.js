@@ -174,7 +174,7 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT) {
           const leadId = `lead-gs-${Date.now()}-${i}`;
           const [insertResult] = await pool.execute(
             `INSERT IGNORE INTO leads (id, tenant_id, client_code, name, email, phone, source, status, notes, branch, interested_course_ids_json, assigned_sales_id, assigned_sales_name, assigned_at, crm_json, hidden, created_at) VALUES (?,?,?,?,?,?,?,'new',?,?,?,?,?,CASE WHEN ? IS NULL THEN NULL ELSE NOW() END,?,0,NOW())`,
-            [leadId, tenantId, code, name, email||'', normPhone||phone||'', source||'Facebook Lead Ads', notes, branch||null, courseId ? JSON.stringify([courseId]) : null, salesId, salesName, salesId, crmJson]
+            [leadId, tenantId, code, name, email||'', normPhone||phone||null, source||'Facebook Lead Ads', notes, branch||null, courseId ? JSON.stringify([courseId]) : null, salesId, salesName, salesId, crmJson]
           );
           if (!insertResult.affectedRows) { totalSkipped++; continue; }
           // A timeline entry only when a person wrote something.

@@ -47,7 +47,11 @@ test('ensureSubscriberForOrder: creates a new subscriber (the LMS-01 fix) when n
   assert.ok(insertCall, 'must actually write a subscribers row — this is the exact step LMS-01 was skipping');
   assert.equal(insertCall.params[4], 'New Customer');
   assert.equal(insertCall.params[5], 'new@x.com');
-  assert.equal(insertCall.params[13], 't1', 'new subscriber must carry the correct tenant_id');
+  // notes (13) sits before tenant_id (14) since the phone fix: a number another
+  // subscriber holds is left off with a note instead of failing the insert.
+  assert.equal(insertCall.params[6], '100', 'the phone is stored in its identity form');
+  assert.equal(insertCall.params[13], null, 'no review note when the phone is free');
+  assert.equal(insertCall.params[14], 't1', 'new subscriber must carry the correct tenant_id');
 });
 
 test('ensureSubscriberForOrder: falls back to the given branch when no lead matches', async () => {

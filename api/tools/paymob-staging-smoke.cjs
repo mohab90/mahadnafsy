@@ -84,8 +84,12 @@ async function call(p, { method = 'GET', token, body } = {}) {
   };
 
   try {
+    // Staging has no Paymob HMAC secret of its own, and production's is not ours
+    // to borrow. A throwaway secret for this run only, gone with the restore.
+    const runSecret = crypto.randomBytes(32).toString('hex');
     const enable = await call('/api/admin/sys-config/payment_gateway', { method: 'PUT', token,
-      body: { ...(snapshot || {}), active_provider: 'paymob', paymob: { ...((snapshot || {}).paymob || {}), enabled: true } } });
+      body: { ...(snapshot || {}), active_provider: 'paymob',
+        paymob: { ...((snapshot || {}).paymob || {}), enabled: true, hmac_secret: runSecret } } });
     if (enable.status !== 200) throw new Error('could not enable paymob on staging: ' + enable.status + ' ' + enable.text.slice(0, 120));
     await new Promise(r => setTimeout(r, 1500));
 
@@ -120,7 +124,12 @@ async function call(p, { method = 'GET', token, body } = {}) {
       return { obj, hmac };
     };
     const webhook = ({ obj, hmac }) => call(`/api/webhooks/paymob?hmac=${hmac}`, { method: 'POST', body: { type: 'TRANSACTION', obj } });
-    const order = async id => (await db.query('SELECT status, amount FROM orders WHERE id=? LIMIT 1', [id]))[0][0] || null;
+    // orders.status is ENUM('PAID','FAILED','REFUNDED','PENDING'); the code writes
+    // and compares it case-insensitively, so this does too.
+    const order = async id => {
+      const row = (await db.query('SELECT status, amount FROM orders WHERE id=? LIMIT 1', [id]))[0][0];
+      return row ? { ...row, status: String(row.status || '').toLowerCase() } : null;
+    };
     const payments = async id => (await db.query('SELECT COUNT(*) n, MAX(amount) amount FROM payments WHERE id=? OR id=?', [`paymob-${id}`, id]))[0][0];
 
     // 1. price comes from the catalogue

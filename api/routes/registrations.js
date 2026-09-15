@@ -176,7 +176,10 @@ router.post('/api/admin/registrations/:userId/convert-online', requireAuth, requ
       `INSERT INTO subscribers
          (id, firebase_uid, client_code, name, email, phone, branch, branch_id, is_active, tenant_id, created_at, crm_json, source)
        VALUES (?,?,?,?,?,?,?,?,1,?,NOW(),?,?)`,
-      [subscriberId, userId, clientCode, (user.name || '').trim() || null, user.email, user.phone || '',
+      // NULL, never '': uq_subs_tenant_phone lets any number of NULLs through
+       // and exactly one ''. With one blank already stored, every registration
+       // without a phone failed here — six times in the August logs.
+       [subscriberId, userId, clientCode, (user.name || '').trim() || null, user.email, toIdentity(user.phone) || null,
        branch, branchIdForBranch(branch), tenantId,
        JSON.stringify({ clientStatus: 'active', convertedFromRegistrationId: userId, convertedAt: new Date().toISOString() }),
        'تسجيل موقع']
@@ -228,7 +231,7 @@ router.post('/api/admin/registrations/:userId/convert-lead', requireAuth, requir
           branch, branch_id, assigned_sales_id, assigned_sales_name, created_at)
        VALUES (?,?,?,?,?,?,'تسجيل دخول','new',0,?,?,?,?,NOW())`,
       [leadId, tenantId, clientCode, (user.name || '').trim() || (user.phone || '').trim() || 'عميل جديد',
-       user.email, user.phone || '', branch, branchIdForBranch(branch),
+       user.email, toIdentity(user.phone) || null, branch, branchIdForBranch(branch),
        salesRep?.id || null, salesRep?.name || null]
     );
     await conn.commit();

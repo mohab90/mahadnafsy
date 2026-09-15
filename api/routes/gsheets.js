@@ -115,6 +115,17 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
       // number, so the unique index sees one spelling per person.
       const identity = toIdentity(phone);
 
+      // A row with no phone is stored with phone NULL now, not ''. As '' it
+      // collided with the one blank already in leads and INSERT IGNORE dropped
+      // it in silence — which also happened to stop a re-import duplicating it.
+      // Dedupe those by name instead, the way lib/sheets.js already does.
+      if (!phone && name) {
+        const [dupName] = await pool.execute(
+          "SELECT id FROM leads WHERE tenant_id=? AND (phone IS NULL OR phone='') AND LOWER(TRIM(name))=LOWER(?) AND hidden=0 LIMIT 1",
+          [req.tenantId, name]);
+        if (dupName.length) { skipped++; continue; }
+      }
+
       // Skip if phone already exists in leads
       if (phone) {
         // Matched on identity: "p:+201227155562" and "1227155562" are one person,
@@ -168,7 +179,7 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
         // one argument along, so this was never adding information — it was
         // only making a missing name look like a filled-in one, which is worse,
         // because nobody goes looking for a name that appears to be there.
-        [leadId, req.tenantId, code, name || null, email || '', identity || phone || '', source || 'Google Sheet', notes || null, salesId, salesName, crmJson]
+        [leadId, req.tenantId, code, name || null, email || '', identity || phone || null, source || 'Google Sheet', notes || null, salesId, salesName, crmJson]
       );
       if (insertResult.affectedRows) imported++; else skipped++;
     }
