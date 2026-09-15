@@ -58,9 +58,16 @@ test.describe('Admin role render + permission net', () => {
 
       // The dashboard must render real content — not a blank white screen and not
       // the bare login form. A broken decomposition collapses this.
-      const bodyText = (await page.locator('body').innerText().catch(() => '')) || '';
       await expect(page.locator('input[type="email"], input[name="email"]').first()).not.toBeVisible();
-      expect(bodyText.length, `${r.role}: dashboard should render content, not a blank screen`).toBeGreaterThan(80);
+      // Polled, not read once. loginAdmin has already seen the dashboard, but a
+      // single read straight after it can land mid lazy-load while a section is
+      // swapped for its "جاري التحميل…" fallback — the recruiter run measured 52
+      // characters there, and the snapshot a moment later was a full dashboard.
+      // A blank screen still fails: it never gets past 80.
+      await expect.poll(
+        async () => ((await page.locator('body').innerText().catch(() => '')) || '').trim().length,
+        { timeout: 15_000, message: `${r.role}: dashboard should render content, not a blank screen` },
+      ).toBeGreaterThan(80);
 
       // No fatal React/runtime error in the console (catches bad hook extractions).
       expect(fatal, `${r.role}: fatal error after login → ${fatal[0] || ''}`).toHaveLength(0);
