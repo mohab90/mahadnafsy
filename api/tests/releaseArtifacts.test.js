@@ -101,3 +101,25 @@ test('the welcome message escapes for HTML only', () => {
   assert.match(src, /<strong>\$\{safeName\}<\/strong>/);
   assert.match(src, /🎓 \$\{safeTitle\}<\/span>/);
 });
+
+test('the shell references its icons and manifest by absolute path, and only files that exist', () => {
+  // Every course and bundle page is served from /c/<slug>/ (nginx redirects to
+  // the trailing slash), so ./favicon.svg there meant /c/<slug>/favicon.svg and
+  // came back as the HTML page. And favicon.png never existed at all.
+  const shell = fs.readFileSync(path.join(ROOT, 'client', 'index.html'), 'utf8');
+  const publicDir = path.join(ROOT, 'client', 'public');
+  const refs = [...shell.matchAll(/<link[^>]+rel="(?:icon|apple-touch-icon|manifest)"[^>]*href="([^"]+)"/g)].map(m => m[1]);
+  assert.ok(refs.length >= 3, 'expected the icon, apple-touch-icon and manifest links');
+  for (const ref of refs) {
+    assert.ok(ref.startsWith('/') && !ref.startsWith('//'), `${ref} is relative — it breaks on every nested page`);
+    assert.ok(fs.existsSync(path.join(publicDir, ref.replace(/^\//, ''))), `${ref} is referenced but not in client/public`);
+  }
+  // App.tsx fills these slots with the branding icon; it only updates tags
+  // that exist, so the apple-touch-icon tag has to stay.
+  assert.match(shell, /<link rel="apple-touch-icon"/);
+
+  const manifest = JSON.parse(fs.readFileSync(path.join(publicDir, 'manifest.json'), 'utf8'));
+  for (const icon of manifest.icons) {
+    assert.ok(fs.existsSync(path.join(publicDir, icon.src.replace(/^\//, ''))), `manifest icon ${icon.src} does not exist`);
+  }
+});
