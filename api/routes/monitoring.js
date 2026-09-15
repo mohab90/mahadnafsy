@@ -157,7 +157,12 @@ router.get('/api/admin/queue-dashboard', requireAuth, requireAdmin, async (req, 
     const limit = Math.min(Number(req.query.limit || 100), 500);
     const [jobRows] = await pool.query(
       `SELECT id, tenant_id, job_type AS job_name, status, attempts, max_attempts,
-              last_error AS error_message, run_at, locked_at, done_at, created_at, updated_at
+              last_error AS error_message, run_at, locked_at, done_at, created_at,
+              -- job_queue has no updated_at. Asking for it failed the query, and the
+              -- .catch below turned that into an empty list — a queue dashboard that
+              -- showed no jobs whatever was queued. The last thing that happened to
+              -- the job stands in for it.
+              COALESCE(done_at, locked_at, run_at, created_at) AS updated_at
          FROM job_queue WHERE tenant_id=?
         ORDER BY created_at DESC
         LIMIT ?`,

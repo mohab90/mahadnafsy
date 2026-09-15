@@ -123,3 +123,21 @@ test('the shell references its icons and manifest by absolute path, and only fil
     assert.ok(fs.existsSync(path.join(publicDir, icon.src.replace(/^\//, ''))), `manifest icon ${icon.src} does not exist`);
   }
 });
+
+test('two queries MariaDB refused, found by EXPLAIN-ing the release against the real schema', () => {
+  // The churn-risk report sorted on `days_since_payment IS NULL` — an expression
+  // over an aggregate alias, which MariaDB 10.11 refuses outright. Its own
+  // comment says an earlier fix stopped it answering 500; it had not.
+  const analytics = fs.readFileSync(path.join(ROOT, 'api', 'routes', 'misc', 'analytics.js'), 'utf8');
+  assert.match(analytics, /ORDER BY MAX\(p\.created_at\) IS NULL, days_since_payment DESC/);
+  assert.ok(!/ORDER BY days_since_payment IS NULL/.test(analytics), 'the churn report sorts on an aggregate-alias expression again');
+
+  // The queue dashboard selected job_queue.updated_at, which does not exist; a
+  // .catch turned the failure into an empty list.
+  const monitoring = fs.readFileSync(path.join(ROOT, 'api', 'routes', 'monitoring.js'), 'utf8');
+  const start = monitoring.indexOf('job_type AS job_name');
+  const jobQueueSelect = monitoring.slice(start, monitoring.indexOf('FROM job_queue', start));
+  assert.ok(start > 0, 'the job_queue select moved');
+  assert.ok(!/,\s*updated_at\s*$/m.test(jobQueueSelect), 'job_queue.updated_at is selected again — the column does not exist');
+  assert.match(jobQueueSelect, /COALESCE\(done_at, locked_at, run_at, created_at\) AS updated_at/);
+});

@@ -281,7 +281,9 @@ router.get('/api/admin/analytics/retention', requireAuth, requireAdmin, async (r
       -- is_active carries the state and the money is summed from payments. The
       -- churn-risk report answered 500 on every open because of it. NULLS LAST
       -- is Postgres syntax and is not valid in MySQL either — a NULL max date
-      -- sorts last here by putting the IS NULL test first.
+      -- sorts last here by putting the IS NULL test first. That test has to
+      -- name MAX() itself: MariaDB refuses an expression built on an aggregate
+      -- alias ("Reference not supported"), so the previous fix still answered 500.
       SELECT s.id, s.client_code, s.name, s.phone, s.email, s.branch, s.is_active,
              COALESCE(SUM(p.amount), 0) AS total_paid,
              MAX(p.created_at) AS last_payment_date,
@@ -291,7 +293,7 @@ router.get('/api/admin/analytics/retention', requireAuth, requireAdmin, async (r
       WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL
       GROUP BY s.id
       HAVING (last_payment_date IS NULL OR last_payment_date < ?)
-      ORDER BY days_since_payment IS NULL, days_since_payment DESC
+      ORDER BY MAX(p.created_at) IS NULL, days_since_payment DESC
       LIMIT 500`, [req.tenantId, cutoffStr]);
 
     // Retention rate: active clients with recent payment / all active
