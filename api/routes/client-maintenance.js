@@ -119,7 +119,11 @@ router.post('/api/admin/fix-auto-subscribers', requireAuth, requireAdmin, async 
     const [ghosts] = await conn.query(
       `SELECT s.id FROM subscribers s
        LEFT JOIN enrollments e ON e.subscriber_id = s.id AND e.tenant_id=s.tenant_id
-       LEFT JOIN payments p ON p.subscriber_id = s.id AND p.tenant_id=s.tenant_id AND p.deleted_at IS NULL
+       -- Every payment row counts here, deleted or not. This decides who gets
+       -- deleted as a ghost: a subscriber whose only payment an admin removed
+       -- was still a real client, and must not start looking like an empty
+       -- auto-created record.
+       LEFT JOIN payments p ON p.subscriber_id = s.id AND p.tenant_id=s.tenant_id
        WHERE s.tenant_id=? AND (s.crm_json LIKE '%"source":"auto"%' OR s.crm_json IS NULL)
          AND (s.client_code IS NULL OR s.client_code NOT REGEXP '^C[0-9]+$')
          AND e.id IS NULL AND p.id IS NULL`,

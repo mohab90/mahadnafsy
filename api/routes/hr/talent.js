@@ -14,7 +14,8 @@ const { requireTenantQuota } = require('../../middleware/tenantQuota');
 const bcrypt = require('bcryptjs');
 const { toIdentity } = require('../../lib/phoneNumber');
 const { PERMISSIONS } = require('../../constants/permissions');
-const { assertGrantable } = require('../../lib/permissionGrant');
+const { assertGrantable, heldByTarget } = require('../../lib/permissionGrant');
+const { ADMIN_EMAILS } = require('../../middleware/auth');
 
 // Lower-case permission keys, the form stored in staff.permissions_json.
 const ALL_PERMISSIONS = Object.values(PERMISSIONS).map(String);
@@ -299,6 +300,24 @@ router.post(
       await conn.rollback();
       return res.status(400).json({ error: 'حدد بريدًا إلكترونيًا صحيحًا لحساب الموظف' });
     }
+    // With a password, the hire below resets whatever login already holds this
+    // address. The owner is recognised by email and has no staff row, so the
+    // staff-email check further down never sees them; and a login email typed
+    // at hire time need not be the applicant's own. Either way a password set
+    // here would be somebody else's password.
+    if (!req.isSuperAdmin && req.body.password) {
+      const ownerEmail = ADMIN_EMAILS.some(e => String(e).toLowerCase() === loginEmail);
+      const [[loginOwner]] = await conn.query(
+        'SELECT id FROM users WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, loginEmail]);
+      const applicantEmail = String(a.email || '').toLowerCase().trim();
+      if (ownerEmail || (loginOwner && loginEmail !== applicantEmail)) {
+        await conn.rollback();
+        return res.status(403).json({
+          error: 'هذا البريد يفتح حساباً موجوداً لشخص آخر — تعيينه يحتاج صلاحية المالك',
+          code: 'LOGIN_BELONGS_TO_ANOTHER_ACCOUNT',
+        });
+      }
+    }
     const password = String(req.body.password || '');
     if (password && password.length < 8) {
       await conn.rollback();
@@ -308,6 +327,16 @@ router.post(
     if (!STAFF_ROLES.has(role)) {
       await conn.rollback();
       return res.status(400).json({ error: 'Unsupported staff role', code: 'INVALID_STAFF_ROLE' });
+    }
+    // STAFF_ROLES includes ADMIN and MANAGER, and manage_hr is not the right to
+    // create either — the two staff-creation routes already refuse it. Hiring
+    // was the third door into a full-access account.
+    if (!req.isSuperAdmin && (role === 'ADMIN' || role === 'MANAGER')) {
+      await conn.rollback();
+      return res.status(403).json({
+        error: 'التعيين بصلاحية مدير أو أدمن يحتاج صلاحية المالك',
+        code: 'OWNER_REQUIRED_FOR_PRIVILEGED_ROLE',
+      });
     }
     const [[existing]] = await conn.query(
       'SELECT id FROM staff WHERE LOWER(TRIM(email))=? AND tenant_id=? LIMIT 1 FOR UPDATE',
@@ -344,7 +373,11 @@ router.post(
     // a typo produced a hire with fewer rights than the desk thought it had
     // granted — and filtering said nothing about whether the person doing the
     // hiring holds them in the first place.
-    const grant = assertGrantable(req, req.body);
+    // A new hire holds nothing yet; the role chosen for them brings its defaults
+    // whether or not a list is sent, so those are not the desk's grant.
+    const grant = assertGrantable(req, req.body, {
+      alreadyHeld: heldByTarget({ role: role.toLowerCase(), tenantId: req.tenantId }),
+    });
     if (!grant.ok) {
       await conn.rollback();
       return res.status(grant.status).json(grant.body);

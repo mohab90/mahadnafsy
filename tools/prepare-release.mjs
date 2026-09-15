@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { describeMissing, findMissingPages } from './verifyPrerender.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const artifactDir = path.join(root, 'artifacts', 'releases');
@@ -123,7 +124,31 @@ for (const build of requiredBuilds) {
   });
   if (packed.error) throw packed.error;
   if (packed.status !== 0) throw new Error(packed.stderr.trim() || `${build.name} archive failed`);
+  if (build.name === 'client') verifyClientArchive(target);
   artifacts.push({ component: build.name, path: target });
+}
+
+// Read back what was actually packed. See tools/verifyPrerender.mjs for the
+// release that shipped two empty page directories and a 403.
+function verifyClientArchive(target) {
+  const tarArgs = ['--force-local'];
+  const listed = spawnSync('tar', [...tarArgs, '-tzf', target], {
+    cwd: root, encoding: 'utf8', windowsHide: true, shell: false, maxBuffer: 64 * 1024 * 1024,
+  });
+  if (listed.error) throw listed.error;
+  if (listed.status !== 0) throw new Error(`could not list ${path.basename(target)}: ${listed.stderr.trim()}`);
+  const sitemap = spawnSync('tar', [...tarArgs, '-xzOf', target, './sitemap.xml'], {
+    cwd: root, encoding: 'utf8', windowsHide: true, shell: false, maxBuffer: 16 * 1024 * 1024,
+  });
+  if (sitemap.status !== 0 || !sitemap.stdout.includes('<urlset')) {
+    throw new Error(`${path.basename(target)} has no readable sitemap.xml — refusing to ship it`);
+  }
+  const result = findMissingPages(listed.stdout.split(/\r?\n/), sitemap.stdout);
+  if (result.emptyDirectories.length || result.missingFromSitemap.length) {
+    throw new Error(`client archive is incomplete — not releasing.\n${describeMissing(result)}`);
+  }
+  const pages = listed.stdout.split(/\r?\n/).filter(n => /^(?:\.\/)?(?:c|course|bundle)\/[^/]+\/index\.html$/.test(n)).length;
+  console.log(`[release] client archive carries all ${pages} prerendered page(s)`);
 }
 
 const artifactEvidence = artifacts.map(item => ({

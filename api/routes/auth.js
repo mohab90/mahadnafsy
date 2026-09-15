@@ -8,7 +8,7 @@ const jwt    = require('jsonwebtoken');
 const { createHmac } = require('crypto');
 const { resolveSecret } = require('../lib/secretResolver');
 const { uuidv4 } = require('../lib/id');
-const { assertGrantable } = require('../lib/permissionGrant');
+const { assertGrantable, heldByTarget } = require('../lib/permissionGrant');
 const { generateTemporaryPassword, generateNumericCode } = require('../lib/secureCredentials');
 
 const { pool, getStaffIdByEmail, requireDb } = require('../lib/db');
@@ -303,10 +303,87 @@ router.post('/api/admin/staff-account', requireAuth, requireAdminOrStaff, requir
   let transactionStarted = false;
   try {
     const tenantId = req.tenantId;
+    const normalizedEmail = email.toLowerCase().trim();
     await conn.beginTransaction();
     transactionStarted = true;
+    // Refusals happen before anything is written. Each returns through the
+    // finally below, which releases the connection — once.
+    const refuse = async (status, body) => {
+      await conn.rollback();
+      transactionStarted = false;
+      return res.status(status).json(body);
+    };
+
+    const [existing] = await conn.execute('SELECT id FROM users WHERE tenant_id=? AND email = ? FOR UPDATE', [tenantId, normalizedEmail]);
+
+    // This route resets the password of whatever login already holds the
+    // address. For the owner and the managers that is their account: an owner
+    // is recognised by email, so a new password here is a new owner — and no
+    // owner or manager on this system has MFA to stand in the way. The role
+    // guard above only stopped *creating* an admin; it never looked at whose
+    // account the email already opened.
+    const [[staffByEmail]] = await conn.execute(
+      'SELECT id, role FROM staff WHERE tenant_id=? AND LOWER(TRIM(email))=? AND deleted_at IS NULL LIMIT 1',
+      [tenantId, normalizedEmail]);
+    if (!req.isSuperAdmin) {
+      const ownerEmail = ADMIN_EMAILS.some(e => String(e).toLowerCase() === normalizedEmail);
+      const privilegedStaff = staffByEmail && ['admin', 'manager'].includes(String(staffByEmail.role || '').toLowerCase());
+      if (ownerEmail || privilegedStaff) {
+        return refuse(403, {
+          error: 'تعديل دخول حساب مالك أو مدير يحتاج صلاحية المالك',
+          code: 'OWNER_REQUIRED_FOR_PRIVILEGED_ACCOUNT',
+        });
+      }
+      // A login with no staff record is a customer. Turning it into staff and
+      // resetting its password is taking over somebody's student account.
+      if (existing.length > 0 && !staffByEmail) {
+        return refuse(403, {
+          error: 'هذا البريد مسجّل لحساب عميل — تحويله لحساب موظف يحتاج صلاحية المالك',
+          code: 'CUSTOMER_ACCOUNT_REQUIRES_OWNER',
+        });
+      }
+    }
+
+    // The staff row being upserted, when the caller names one. It has to be
+    // this tenant's, and a non-owner may neither overwrite a manager's row nor
+    // re-point somebody else's row at a different login.
+    let existingStaff = null;
+    if (staffId) {
+      const [[row]] = await conn.execute(
+        'SELECT id, tenant_id, role, email, permissions_json FROM staff WHERE id=? LIMIT 1', [staffId]);
+      if (row && row.tenant_id !== tenantId) {
+        return refuse(403, { error: 'Staff id belongs to another tenant', code: 'STAFF_TENANT_MISMATCH' });
+      }
+      if (row && !req.isSuperAdmin) {
+        if (['admin', 'manager'].includes(String(row.role || '').toLowerCase())) {
+          return refuse(403, {
+            error: 'تعديل حساب مدير يحتاج صلاحية المالك',
+            code: 'OWNER_REQUIRED_FOR_PRIVILEGED_ACCOUNT',
+          });
+        }
+        const rowEmail = String(row.email || '').trim().toLowerCase();
+        if (rowEmail && rowEmail !== normalizedEmail) {
+          return refuse(409, {
+            error: 'بريد الموظف مختلف عن البريد المُرسل — عدّل بريده من ملفه أولاً',
+            code: 'STAFF_EMAIL_MISMATCH',
+          });
+        }
+      }
+      existingStaff = row || null;
+    }
+
+    // The role guard above stops manage_staff minting an ADMIN. Permissions
+    // are the other axis and used to be copied into the INSERT unread, so the
+    // same right also minted an account holding anything in the system — with
+    // a password the creator picked. What the employee already holds, and what
+    // the chosen role brings anyway, are not new grants.
+    const grant = assertGrantable(req, req.body, {
+      alreadyHeld: heldByTarget({ existingStaff, role: String(role || 'other').toLowerCase(), tenantId }),
+    });
+    if (!grant.ok) return refuse(grant.status, grant.body);
+    const permissionsJson = grant.permissionsJson;
+
     // Upsert into users table
-    const [existing] = await conn.execute('SELECT id FROM users WHERE tenant_id=? AND email = ? FOR UPDATE', [tenantId, email.toLowerCase().trim()]);
     let uid;
     if (existing.length > 0) {
       uid = existing[0].id;
@@ -322,25 +399,13 @@ router.post('/api/admin/staff-account', requireAuth, requireAdminOrStaff, requir
       uid = uuidv4();
       const hash = await bcrypt.hash(password, 12);
       await conn.execute('INSERT INTO users (id,tenant_id,email,password_hash,name,role,is_active) VALUES (?,?,?,?,?,?,1)',
-        [uid, tenantId, email.toLowerCase().trim(), hash, name.trim(), 'staff']);
+        [uid, tenantId, normalizedEmail, hash, name.trim(), 'staff']);
     }
     // Upsert into staff table
     const id = staffId || uuidv4();
     const dbRole = ((role || 'OTHER').toUpperCase());
     const joinedAt = String(req.body.joinedAt || req.body.joined_at || new Date().toISOString()).slice(0, 19).replace('T', ' ');
     const numberOrNull = value => value === undefined || value === null || value === '' ? null : Number(value);
-    // The role guard above stops manage_staff minting an ADMIN. Permissions
-    // are the other axis and used to be copied into the INSERT unread, so the
-    // same right also minted an account holding anything in the system — with
-    // a password the creator picked.
-    const grant = assertGrantable(req, req.body);
-    if (!grant.ok) {
-      await conn.rollback();
-      transactionStarted = false;
-      conn.release();
-      return res.status(grant.status).json(grant.body);
-    }
-    const permissionsJson = grant.permissionsJson;
     await conn.execute(
       `INSERT INTO staff
          (id, tenant_id, branch_id, firebase_uid, name, email, phone, role, image,

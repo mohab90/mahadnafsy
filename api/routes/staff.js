@@ -22,7 +22,7 @@ const SUPER_ADMIN_ROLES = ['admin', 'manager'];
 const { hasPermission, normalizeDataScope, resolvePermissions, PERMISSIONS } = require('../constants/permissions');
 const { requireTenantQuota } = require('../middleware/tenantQuota');
 const { mapTherapist } = require('../lib/mappers');
-const { assertGrantable } = require('../lib/permissionGrant');
+const { assertGrantable, heldByTarget } = require('../lib/permissionGrant');
 
 router.get('/api/staff/therapist-portal', requireAuth, requireAdminOrStaff, requirePermission('manage_consultations'), async (req, res) => {
   try {
@@ -155,13 +155,38 @@ router.post('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermiss
     // …and may not hand out a permission they were never given. This used
     // to test `Array.isArray(s.permissions)` while storing `s.permissions_json`,
     // so sending the list as a JSON string walked straight past it.
-    const grant = assertGrantable(req, s);
+    // This route upserts: an existing id rewrites that row's role, permissions
+    // and data scope. A non-owner may not rewrite a manager's row, and what the
+    // employee already holds is not a new grant (see lib/permissionGrant.js).
+    const [[existingStaff]] = await pool.query(
+      'SELECT id, tenant_id, role, permissions_json, data_scope FROM staff WHERE id=? AND tenant_id=? LIMIT 1',
+      [id, req.tenantId]);
+    if (existingStaff && !req.isSuperAdmin
+        && PRIVILEGED_ROLES.includes(String(existingStaff.role || '').toUpperCase())) {
+      return res.status(403).json({
+        error: 'تعديل حساب مدير يحتاج صلاحية المالك',
+        code: 'OWNER_REQUIRED_FOR_PRIVILEGED_ACCOUNT',
+      });
+    }
+    const grant = assertGrantable(req, s, {
+      alreadyHeld: heldByTarget({ existingStaff, role: role.toLowerCase(), tenantId: req.tenantId }),
+    });
     if (!grant.ok) return res.status(grant.status).json(grant.body);
     const permissionsJson = grant.permissionsJson;
     // Per-staff override for the role-keyed DATA_SCOPE. Anything the validator
     // does not recognise becomes NULL, i.e. "fall back to the role default" —
     // an unparsable value must never widen someone's reach.
     const dataScope = normalizeDataScope(s.dataScope ?? s.data_scope);
+    // Data scope is access, the same as permissions: editing it on an existing
+    // employee is owner-only in hr/employees.js. Setting one here is too,
+    // unless it leaves the employee exactly where they already were.
+    if (!req.isSuperAdmin && dataScope !== null
+        && dataScope !== normalizeDataScope(existingStaff?.data_scope)) {
+      return res.status(403).json({
+        error: 'تعديل نطاق البيانات متاح لمدير النظام فقط',
+        code: 'PERMISSIONS_REQUIRE_SUPERADMIN',
+      });
+    }
     // Sales-target / bonus fields (camelCase from frontend or snake_case direct).
     // `undefined` is coalesced to null so the field is cleared rather than left stale.
     const numOrNull = (v) => (v === undefined || v === null || v === '' ? null : Number(v));

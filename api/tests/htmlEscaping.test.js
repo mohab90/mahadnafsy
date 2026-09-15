@@ -121,7 +121,9 @@ test('customer names in HTML mail are escaped', () => {
     ['routes/misc/_shared.js', '${escapeHtml(p.name)}'],
     ['routes/public-orders.js', "${escapeHtml(order.customer_name || 'عزيزنا')}"],
     ['lib/lifecycle.js', "${escapeHtml(c.name || '')}"],
-    ['routes/admin/subscribers.js', "const safeName = escapeHtml((name || 'عزيزنا').trim());"],
+    // Escaped for the HTML body; the subject and WhatsApp take the raw form
+    // (pinned in releaseArtifacts.test.js).
+    ['routes/admin/subscribers.js', 'const safeName = escapeHtml(personName);'],
   ];
   for (const [rel, needle] of pins) {
     assert.ok(read(rel).includes(needle), `${rel} lost: ${needle}`);

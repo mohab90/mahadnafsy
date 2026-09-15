@@ -32,7 +32,7 @@
  *      that is what super-admin means.
  */
 
-const { PERMISSIONS, resolvePermissions } = require('../constants/permissions');
+const { PERMISSIONS, resolvePermissions, getEffectiveRoleDefaults } = require('../constants/permissions');
 
 const ALL_PERMISSIONS = new Set(Object.values(PERMISSIONS));
 
@@ -67,7 +67,7 @@ function readRequestedPermissions(body = {}) {
  * resolvePermissions reads as "fall back to the role defaults" — storing '[]'
  * instead would claim an explicit grant of nothing.
  */
-function assertGrantable(req, body = {}) {
+function assertGrantable(req, body = {}, { alreadyHeld = [] } = {}) {
   const requested = readRequestedPermissions(body);
   if (requested === undefined) return { ok: true, permissionsJson: null };
   if (requested === null) {
@@ -86,7 +86,13 @@ function assertGrantable(req, body = {}) {
   if (!req?.isSuperAdmin) {
     const own = resolvePermissions(req?.staffRecord);
     const mine = own === '*' ? ALL_PERMISSIONS : new Set(own || []);
-    const overreach = requested.filter(permission => !mine.has(permission));
+    // What the target already holds is not being granted by this caller. The
+    // "create a login" screen re-sends the employee's whole record, stored
+    // permissions included, and the role the caller picked brings its defaults
+    // with or without a list — refusing either would block an action that
+    // hands out nothing new. Only additions beyond both are the caller's grant.
+    const held = new Set(Array.isArray(alreadyHeld) ? alreadyHeld.map(String) : []);
+    const overreach = requested.filter(permission => !mine.has(permission) && !held.has(permission));
     if (overreach.length) {
       return {
         ok: false,
@@ -103,4 +109,23 @@ function assertGrantable(req, body = {}) {
   return { ok: true, permissionsJson: unique.length ? JSON.stringify(unique) : null };
 }
 
-module.exports = { ALL_PERMISSIONS, assertGrantable, readRequestedPermissions };
+/**
+ * Everything a target already legitimately has: its stored record's effective
+ * permissions and the defaults of the role it is being given. A role whose
+ * defaults are '*' contributes nothing here — the privileged-role guards on the
+ * calling routes decide who may assign those, not this.
+ */
+function heldByTarget({ existingStaff = null, role = null, tenantId } = {}) {
+  const held = new Set();
+  if (existingStaff) {
+    const current = resolvePermissions(existingStaff);
+    if (Array.isArray(current)) current.forEach(p => held.add(String(p)));
+  }
+  if (role) {
+    const defaults = getEffectiveRoleDefaults(String(role).toLowerCase(), tenantId);
+    if (Array.isArray(defaults)) defaults.forEach(p => held.add(String(p)));
+  }
+  return [...held];
+}
+
+module.exports = { ALL_PERMISSIONS, assertGrantable, heldByTarget, readRequestedPermissions };

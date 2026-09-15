@@ -285,10 +285,15 @@ router.post('/api/staff/enrollment-welcome', requireAuth, requireAdminOrStaff, r
     const normBranch = (branch || '').toUpperCase().replace(/[-\s]/g, '_');
     const isOnline = ONLINE_BRANCHES.has(normBranch);
     const siteUrl = 'https://mahadnafsy.com';
-    // Escaped, not merely trimmed: both land in HTML mail and the course title
-    // is admin-authored while the name is whatever the customer typed.
-    const safeTitle = escapeHtml(courseTitle || 'الكورس');
-    const safeName = escapeHtml((name || 'عزيزنا').trim());
+    // Two forms of each, because this handler writes to two kinds of channel.
+    // The HTML body gets the escaped form — the name is whatever the customer
+    // typed. The subject line and the WhatsApp message are plain text and get
+    // the raw form: two live course titles are «… "Schema 1"» and «… "Schema 2"»,
+    // and escaped they would reach a student's phone as &quot;Schema 1&quot;.
+    const courseLabel = courseTitle || 'الكورس';
+    const personName = (name || 'عزيزنا').trim();
+    const safeTitle = escapeHtml(courseLabel);
+    const safeName = escapeHtml(personName);
 
     const videosLine = isOnline
       ? `<div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:12px 16px; margin:12px 0;">
@@ -314,7 +319,7 @@ router.post('/api/staff/enrollment-welcome', requireAuth, requireAdminOrStaff, r
       tenantId: req.tenantId,
       from: `"معهد الدراسات النفسية" <${process.env.SMTP_USER || 'info@mahadnafsy.com'}>`,
       to: normEmail,
-      subject: `تم تسجيلك في ${safeTitle} — معهد الدراسات النفسية`,
+      subject: `تم تسجيلك في ${courseLabel} — معهد الدراسات النفسية`,
       html: `
         <div dir="rtl" style="font-family:Arial,sans-serif; max-width:520px; margin:0 auto; padding:24px; border:1px solid #e5e7eb; border-radius:12px;">
           <div style="text-align:center; margin-bottom:24px;">
@@ -345,8 +350,8 @@ router.post('/api/staff/enrollment-welcome', requireAuth, requireAdminOrStaff, r
     // Send WhatsApp welcome if phone provided
     if (phone) {
       const waMsg = isOnline
-        ? `مرحباً ${safeName} 🎉\nتم تسجيلك بنجاح في: ${safeTitle}\n✅ تم فتح أول 20 درس تلقائياً — يمكنك البدء الآن!\n🌐 ${siteUrl}${isNew ? `\n\nبيانات دخولك:\nالإيميل: ${normEmail}\nكلمة المرور: ${tempPass}` : ''}`
-        : `مرحباً ${safeName} 🎉\nتم تسجيلك بنجاح في: ${safeTitle}\n📅 سيتم إضافة المحتوى خلال الموعد المحدد مع فريقنا.\n🌐 ${siteUrl}${isNew ? `\n\nبيانات دخولك:\nالإيميل: ${normEmail}\nكلمة المرور: ${tempPass}` : ''}`;
+        ? `مرحباً ${personName} 🎉\nتم تسجيلك بنجاح في: ${courseLabel}\n✅ تم فتح أول 20 درس تلقائياً — يمكنك البدء الآن!\n🌐 ${siteUrl}${isNew ? `\n\nبيانات دخولك:\nالإيميل: ${normEmail}\nكلمة المرور: ${tempPass}` : ''}`
+        : `مرحباً ${personName} 🎉\nتم تسجيلك بنجاح في: ${courseLabel}\n📅 سيتم إضافة المحتوى خلال الموعد المحدد مع فريقنا.\n🌐 ${siteUrl}${isNew ? `\n\nبيانات دخولك:\nالإيميل: ${normEmail}\nكلمة المرور: ${tempPass}` : ''}`;
       try { await sendWhatsApp(phone, waMsg, { tenantId: req.tenantId, category: 'welcome' }); logger.info(`[enrollment-welcome] WA sent to ${phone}`); }
       catch (waErr) { logger.warn('[enrollment-welcome] WA failed:', waErr.message); }
     }

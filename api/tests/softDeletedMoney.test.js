@@ -158,11 +158,10 @@ test('the interpolated WHERE fragments carry the guard themselves', () => {
 });
 
 test('on a LEFT JOIN the guard sits in ON, never in WHERE', () => {
-  // In WHERE it drops every unmatched row and quietly makes the join inner.
-  // The ghost sweep below looks for `p.id IS NULL`; with the guard in its WHERE
-  // it matches nothing at all and the cleanup silently stops running.
+  // In WHERE it drops every unmatched row and quietly makes the join inner —
+  // a funnel that loses every lead who never paid reports 100% conversion.
   for (const rel of ['routes/admin-utils.js', 'routes/analytics/dashboard.js',
-    'routes/client-maintenance.js', 'routes/funnel.js', 'routes/misc/analytics.js']) {
+    'routes/funnel.js', 'routes/misc/analytics.js']) {
     const src = fs.readFileSync(path.join(API, rel), 'utf8');
     const lines = src.split(/\r?\n/);
     for (let i = 0; i < lines.length; i++) {
@@ -182,4 +181,26 @@ test('on a LEFT JOIN the guard sits in ON, never in WHERE', () => {
         rel + ':' + (i + 1) + ' LEFT JOINs payments without excluding the deleted rows');
     }
   }
+});
+
+test('existence checks that feed a write see deleted payments too', () => {
+  // The first cut of this fix guarded these two as well, and both were wrong.
+  // They do not total money; they decide whether a payment was ever recorded,
+  // and each acts on the answer:
+  //   * the ghost sweep soft-deletes subscribers with no payment — a client
+  //     whose only payment an admin removed would have started to qualify;
+  //   * bulk-stub inserts a placeholder payment for enrollments with none — it
+  //     would have re-created a row an admin chose to delete.
+  // Measured before reverting: the sweep matched 0 either way today, bulk-stub
+  // went from 2,722 enrollments to 2,725.
+  const ghost = fs.readFileSync(path.join(API, 'routes/client-maintenance.js'), 'utf8');
+  const ghostJoin = ghost.split(/\r?\n/).find(l => /LEFT JOIN payments p ON p\.subscriber_id = s\.id/.test(l));
+  assert.ok(ghostJoin, 'the ghost sweep join moved');
+  assert.ok(!/deleted_at/.test(ghostJoin), 'the ghost sweep ignores deleted payments again — real clients become ghosts');
+
+  const stub = fs.readFileSync(path.join(API, 'routes/crm-tools.js'), 'utf8');
+  const start = stub.indexOf("router.post('/api/admin/payments/bulk-stub'");
+  assert.ok(start > 0, 'bulk-stub moved');
+  const notExists = stub.slice(start, stub.indexOf('LIMIT 1000', start));
+  assert.ok(!/p\.deleted_at IS NULL/.test(notExists), 'bulk-stub stubs enrollments whose payment was deleted');
 });
