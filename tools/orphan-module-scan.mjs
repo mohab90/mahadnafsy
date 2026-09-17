@@ -51,15 +51,31 @@ for (const file of files) {
   try { corpus.set(file, readFileSync(file, 'utf8')); } catch { /* unreadable */ }
 }
 
+const IS_TEST = /\.(test|spec)\.(t|j)sx?$/;
+
 const orphans = [];
+const testOnly = [];
 for (const file of files) {
   const name = basename(file);
   if (ENTRY.some(rx => rx.test(name))) continue;
   const stem = name.replace(/\.(tsx?|jsx?|mjs|cjs)$/, '');
   let referenced = false;
+  let referencedOutsideTests = false;
   for (const [other, text] of corpus) {
     if (other === file) continue;
-    if (text.includes(stem)) { referenced = true; break; }
+    if (!text.includes(stem)) continue;
+    referenced = true;
+    if (!IS_TEST.test(basename(other))) { referencedOutsideTests = true; break; }
+  }
+  // A module whose only readers are its own tests is as absent from the running
+  // system as one nothing mentions at all — and it looks alive to the check
+  // above, which is how two of them sat in the api tree with green suites over
+  // them. Reported rather than failed: deleting a helper somebody meant to adopt
+  // is a decision, not a cleanup.
+  if (referenced && !referencedOutsideTests) {
+    let bytes = 0;
+    try { bytes = statSync(file).size; } catch { /* gone */ }
+    testOnly.push({ file: relative(ROOT, file).split(sep).join('/'), bytes });
   }
   if (!referenced) {
     let bytes = 0;
@@ -100,4 +116,15 @@ if (appOrphans.length) {
   process.exitCode = 1;
 } else {
   console.log(`app tree: 0 unimported files (${orphans.length} standalone scripts under tools/ are fine)`);
+}
+
+// Only real application modules. A test helper and a test runner's config are
+// imported by tests because that is their job, and a deploy script sitting at
+// the top of an app folder is run by name like anything under tools/.
+const APP_MODULE = /\/(lib|routes|middleware|services|utils|hooks|components|pages|context|state)\//;
+const testOnlyApp = testOnly.filter(o => !IS_TOOL.test(o.file) && !o.file.startsWith('e2e/') && APP_MODULE.test(o.file));
+if (testOnlyApp.length) {
+  console.log(`\n${testOnlyApp.length} module(s) in the app tree that only their own tests import —`);
+  console.log('      the suite is green and the running system never loads them:');
+  for (const o of testOnlyApp) console.log(`  ${String(Math.round(o.bytes / 1024)).padStart(5)} KB  ${o.file}`);
 }

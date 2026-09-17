@@ -203,11 +203,14 @@ function collect(schema) {
       const kind = isSelect(text) ? 'read' : isWrite(text) ? 'write' : null;
       if (!kind) continue;
       if (IGNORED.includes(path.basename(file))) continue;
-      if (tableIsInterpolated(text)) { skipped.push(path.basename(file)); continue; }
+      const at = `${path.relative(path.join(API_ROOT, '..'), file).split(path.sep).join('/')}:${src.slice(0, lit.start).split('\n').length}`;
+      // Named, not just counted: a statement this tool cannot check is the one
+      // place a fault can still hide, so --verbose has to be able to point at it.
+      if (tableIsInterpolated(text)) { skipped.push(at); continue; }
       const filled = kind === 'write' ? fillWriteFragments(text, schema) : text;
       statements.push({
         kind,
-        where: `${path.relative(path.join(API_ROOT, '..'), file).split(path.sep).join('/')}:${src.slice(0, lit.start).split('\n').length}`,
+        where: at,
         sql: explainable(filled, { placeholders: kind === 'write' }),
         // A statement assembled from JS fragments cannot be fully reconstructed
         // here, so a *syntax* error on one says more about the substitution than
@@ -274,7 +277,10 @@ async function loadSchema(db) {
 
   const clean = statements.length - failures.length - unverifiable.length;
   console.log(`${clean}/${statements.length} statements parse against ${process.env.DB_NAME} (${files} files, ${writeCount} of them writes)`);
-  if (skipped.length) console.log(`  ${skipped.length} skipped — the table name itself is built in JS`);
+  if (skipped.length) {
+    console.log(`  ${skipped.length} skipped — the table name itself is built in JS`);
+    if (VERBOSE) for (const s of skipped) console.log(`      ${s}`);
+  }
   if (unverifiable.length) {
     console.log(`  ${unverifiable.length} unverifiable — assembled from JS fragments this tool cannot stand in for`);
     if (VERBOSE) for (const u of unverifiable) console.log(`      ${u.where}`);
