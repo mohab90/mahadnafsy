@@ -69,8 +69,6 @@ async function loadCompletionProjection(tenantId, subscriberIds) {
 router.get('/api/admin/online-performance', requireAuth, requireAdminOrStaff,
   requireAnyPermission(PERMISSIONS.MANAGE_SALES_TEAM, PERMISSIONS.VIEW_PERF_ONLINE), async (req, res) => {
     try {
-      // The online branches, spelled as the columns store them.
-      const ONLINE = "('ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_INTERNATIONAL')";
       const [[byStaff], [months], [[totals]]] = await Promise.all([
         pool.query(
           `SELECT st.id, st.name, LOWER(st.role) role,
@@ -80,14 +78,14 @@ router.get('/api/admin/online-performance', requireAuth, requireAdminOrStaff,
              FROM staff st
              LEFT JOIN (
                SELECT assigned_cs_id id, COUNT(*) clients FROM subscribers
-                WHERE tenant_id=? AND deleted_at IS NULL AND branch IN ${ONLINE} AND assigned_cs_id IS NOT NULL
+                WHERE tenant_id=? AND deleted_at IS NULL AND branch IN ('ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_INTERNATIONAL') AND assigned_cs_id IS NOT NULL
                 GROUP BY assigned_cs_id
              ) cs ON cs.id = st.id
              LEFT JOIN (
                SELECT assigned_sales_id id, COUNT(*) leads,
                       SUM(CASE WHEN status IN ('converted','won') THEN 1 ELSE 0 END) converted
                  FROM leads
-                WHERE tenant_id=? AND branch IN ${ONLINE} AND assigned_sales_id IS NOT NULL
+                WHERE tenant_id=? AND branch IN ('ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_INTERNATIONAL') AND assigned_sales_id IS NOT NULL
                 GROUP BY assigned_sales_id
              ) sl ON sl.id = st.id
             WHERE st.tenant_id=? AND st.is_active=1 AND st.deleted_at IS NULL
@@ -98,21 +96,21 @@ router.get('/api/admin/online-performance', requireAuth, requireAdminOrStaff,
           `SELECT month, SUM(clients) clients, SUM(leads) leads FROM (
              SELECT DATE_FORMAT(created_at, '%Y-%m') month, COUNT(*) clients, 0 leads
                FROM subscribers
-              WHERE tenant_id=? AND deleted_at IS NULL AND branch IN ${ONLINE}
+              WHERE tenant_id=? AND deleted_at IS NULL AND branch IN ('ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_INTERNATIONAL')
                 AND created_at >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
               GROUP BY month
              UNION ALL
              SELECT DATE_FORMAT(created_at, '%Y-%m') month, 0 clients, COUNT(*) leads
                FROM leads
-              WHERE tenant_id=? AND branch IN ${ONLINE}
+              WHERE tenant_id=? AND branch IN ('ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_INTERNATIONAL')
                 AND created_at >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
               GROUP BY month
-           ) both GROUP BY month ORDER BY month`, [req.tenantId, req.tenantId]),
+           ) monthly GROUP BY month ORDER BY month`, [req.tenantId, req.tenantId]),
         pool.query(
           `SELECT
-             (SELECT COUNT(*) FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND branch IN ${ONLINE}) clients,
-             (SELECT COUNT(*) FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND branch IN ${ONLINE} AND is_active=1) active_clients,
-             (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND branch IN ${ONLINE}) leads`,
+             (SELECT COUNT(*) FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND branch IN ('ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_INTERNATIONAL')) clients,
+             (SELECT COUNT(*) FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND branch IN ('ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_INTERNATIONAL') AND is_active=1) active_clients,
+             (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND branch IN ('ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_INTERNATIONAL')) leads`,
           [req.tenantId, req.tenantId, req.tenantId]),
       ]);
 
