@@ -11,7 +11,7 @@ const { htmlEmail } = require('../lib/email');
 const { createNotification } = require('../lib/notification');
 const outbox = require('../lib/outbox');
 const { createUnsubscribeToken, verifyUnsubscribeToken, setMarketingConsent, filterSuppressed, destinationHash } = require('../lib/marketingConsent');
-const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requirePermissionOrOwnRows } = require('../middleware/auth');
 const { publicLimiter } = require('../middleware/rateLimits');
 const { assertSafeWebhookUrl } = require('../lib/webhookSecurity');
 const WEBHOOK_EVENTS = new Set([
@@ -228,7 +228,7 @@ async function validateTaskReferences(req, task) {
   return null;
 }
 
-router.get('/api/admin/tasks', requireAuth, requireAdminOrStaff, requirePermission('view_dashboard'), async (req, res) => {
+router.get('/api/admin/tasks', requireAuth, requireAdminOrStaff, requirePermissionOrOwnRows('view_dashboard'), async (req, res) => {
   try {
     // The caller asks for its own tasks as `my=true`; this read `mine === '1'`.
     // Both halves missed, so the flag never took effect. A staff member was
@@ -258,7 +258,7 @@ router.get('/api/admin/tasks', requireAuth, requireAdminOrStaff, requirePermissi
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.post('/api/admin/tasks', requireAuth, requireAdminOrStaff, requirePermission('view_dashboard'), async (req, res) => {
+router.post('/api/admin/tasks', requireAuth, requireAdminOrStaff, requirePermissionOrOwnRows('view_dashboard'), async (req, res) => {
   try {
     const t = { ...(req.body || {}) };
     if (!['low','medium','high','urgent'].includes(t.priority || 'medium') || !['todo','in_progress','done','cancelled'].includes(t.status || 'todo')) return res.status(400).json({ error: 'Invalid task status or priority' });
@@ -277,7 +277,7 @@ router.post('/api/admin/tasks', requireAuth, requireAdminOrStaff, requirePermiss
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.put('/api/admin/tasks/:id', requireAuth, requireAdminOrStaff, requirePermission('view_dashboard'), async (req, res) => {
+router.put('/api/admin/tasks/:id', requireAuth, requireAdminOrStaff, requirePermissionOrOwnRows('view_dashboard'), async (req, res) => {
   try {
     const t = { ...(req.body || {}) };
     if (!['low','medium','high','urgent'].includes(t.priority || 'medium') || !['todo','in_progress','done','cancelled'].includes(t.status || 'todo')) return res.status(400).json({ error: 'Invalid task status or priority' });
@@ -299,7 +299,7 @@ router.put('/api/admin/tasks/:id', requireAuth, requireAdminOrStaff, requirePerm
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.delete('/api/admin/tasks/:id', requireAuth, requireAdminOrStaff, requirePermission('view_dashboard'), async (req, res) => {
+router.delete('/api/admin/tasks/:id', requireAuth, requireAdminOrStaff, requirePermissionOrOwnRows('view_dashboard'), async (req, res) => {
   try {
     const [result] = await pool.query(
       `DELETE FROM tasks WHERE id=? AND tenant_id=?${taskManager(req) ? '' : ' AND (assigned_to=? OR created_by=?)'}`,

@@ -415,6 +415,30 @@ function requirePermissionOrSelf(permission, param = 'id') {
   };
 }
 
+/**
+ * Any staff member may call; the handler answers with their own rows, and the
+ * named permission is what widens the answer to everybody else's.
+ *
+ * The two personal panels on the page every employee lands on — their tasks and
+ * their notifications — were gated on view_dashboard, which every role's
+ * defaults happen to carry and a narrowed grid does not. The HR manager's own
+ * home page answered «Permission denied: view_dashboard» twice while showing
+ * her name at the top. Both handlers already scope a non-manager to their own
+ * rows (GET /api/admin/tasks through `mineOnly`, notifications through
+ * `visibilitySql`), so the gate was refusing a question that had already been
+ * answered safely.
+ *
+ * The permission is still named here: it is what the handler widens on, and a
+ * caller with no staff record at all is refused by it as before.
+ */
+function requirePermissionOrOwnRows(permission) {
+  const gate = requirePermission(permission);
+  return async function(req, res, next) {
+    if (!req.staffRecord && !req.isSuperAdmin) return gate(req, res, next);
+    if (await enforceMfa(req, res, req.staffRecord, [])) return next();
+  };
+}
+
 function requireAnyPermission(...permissions) {
   return async function(req, res, next) {
     if (req.isSuperAdmin) {
@@ -435,5 +459,6 @@ module.exports = {
   ROLE_DEFAULT_PERMISSIONS_BE, isPlatformAdminIdentity,
   optionalAuth, requireAuth, requireAdmin, requireSuperAdmin, requirePlatformAdmin,
   requireAdminOrOnlineManager, requireAdminOrOnlineManagerOrCollection,
-  requireAdminOrStaff, requirePermission, requirePermissionOrSelf, requireAnyPermission, enforceMfa, invalidateIdentity,
+  requireAdminOrStaff, requirePermission, requirePermissionOrSelf, requirePermissionOrOwnRows,
+  requireAnyPermission, enforceMfa, invalidateIdentity,
 };

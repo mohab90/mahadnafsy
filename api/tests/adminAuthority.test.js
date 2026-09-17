@@ -87,6 +87,29 @@ test('your own profile is not a section you need rights to enter', () => {
   assert.match(helper, /if \(!mine\) return gate\(req, res, next\)/);
 });
 
+test('the personal panels answer their owner, and still only their own rows', () => {
+  // Her own landing page showed her name and two «Permission denied:
+  // view_dashboard» toasts: her tasks and her notifications. Both handlers had
+  // always scoped a non-manager to their own rows — the gate was refusing a
+  // question that was already answered safely.
+  const tasks = fs.readFileSync(path.join(API, 'routes', 'campaigns.js'), 'utf8');
+  const notifications = fs.readFileSync(path.join(API, 'routes', 'notifications.js'), 'utf8');
+  for (const [name, src] of [['tasks', tasks], ['notifications', notifications]]) {
+    assert.ok(!/router\.[a-z]+\('\/api\/admin\/(tasks|notifications)[^\n]*requirePermission\('view_dashboard'\)/.test(src),
+      `a ${name} route asks for view_dashboard again — an employee cannot reach their own`);
+  }
+  // The waiver only holds while the scoping does, so the scoping is pinned here.
+  assert.match(tasks, /const mineOnly = askedForMine \|\| !taskManager\(req\)/);
+  for (const write of [/DELETE FROM tasks WHERE id=\?[^`]*taskManager\(req\) \? '' : ' AND \(assigned_to=\? OR created_by=\?\)'/,
+    /UPDATE tasks SET[\s\S]{0,400}taskManager\(req\) \? '' : ' AND \(assigned_to=\? OR created_by=\?\)'/]) {
+    assert.match(tasks, write, 'a task write stopped scoping a non-manager to their own rows');
+  }
+  assert.match(notifications, /const visibility = visibilitySql\(req\);/);
+  // A caller with no staff record at all is still refused by the permission.
+  const helper = auth.slice(auth.indexOf('function requirePermissionOrOwnRows'));
+  assert.match(helper, /if \(!req\.staffRecord && !req\.isSuperAdmin\) return gate\(req, res, next\)/);
+});
+
 test('the personal tabs are open to every staff member, and only those', () => {
   const shared = fs.readFileSync(path.join(API, '..', 'admin', 'pages', 'dashboard', 'dashboardShared.tsx'), 'utf8');
   for (const tab of ['staff_home', 'staff_settings', 'my_hr']) {

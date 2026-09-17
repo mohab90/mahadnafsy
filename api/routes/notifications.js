@@ -5,7 +5,7 @@ const router = express.Router();
 
 const { pool } = require('../lib/db');
 const { ensureNotificationsTable } = require('../lib/notification');
-const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireAdminOrStaff, requirePermission, requirePermissionOrOwnRows } = require('../middleware/auth');
 const { hasPermission: _hasPermission } = require('../constants/permissions');
 
 const viewerKey = req => req.staffRecord?.id
@@ -55,7 +55,7 @@ const visibilitySql = req => {
 };
 
 // GET /api/admin/notifications
-router.get('/api/admin/notifications', requireAuth, requireAdminOrStaff, requirePermission('view_dashboard'), async (req, res) => {
+router.get('/api/admin/notifications', requireAuth, requireAdminOrStaff, requirePermissionOrOwnRows('view_dashboard'), async (req, res) => {
   try {
     await ensureNotificationsTable();
     const visibility = visibilitySql(req);
@@ -86,7 +86,7 @@ router.get('/api/admin/notifications', requireAuth, requireAdminOrStaff, require
 // Removed rather than optimized.
 
 // PATCH /api/admin/notifications/read-all
-router.patch('/api/admin/notifications/read-all', requireAuth, requireAdminOrStaff, requirePermission('view_dashboard'), async (req, res) => {
+router.patch('/api/admin/notifications/read-all', requireAuth, requireAdminOrStaff, requirePermissionOrOwnRows('view_dashboard'), async (req, res) => {
   try {
     await ensureNotificationsTable();
     const visibility = visibilitySql(req);
@@ -105,7 +105,7 @@ router.patch('/api/admin/notifications/read-all', requireAuth, requireAdminOrSta
 });
 
 // PATCH /api/admin/notifications/:id/read
-router.patch('/api/admin/notifications/:id/read', requireAuth, requireAdminOrStaff, requirePermission('view_dashboard'), async (req, res) => {
+router.patch('/api/admin/notifications/:id/read', requireAuth, requireAdminOrStaff, requirePermissionOrOwnRows('view_dashboard'), async (req, res) => {
   try {
     await ensureNotificationsTable();
     const visibility = visibilitySql(req);
