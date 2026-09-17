@@ -159,6 +159,31 @@ test('a team-performance key opens one team screen and nothing else', () => {
   assert.ok(opensFor('manage_sales_team').includes('online_team'));
 });
 
+test('the Dokki team screen gets its figures from the server, not from the rounds', () => {
+  // Granting the key was not enough: every number on «فريق دقي» was derived in
+  // the browser out of the full rounds array, and a performance-only viewer has
+  // no rounds array — so the screen opened and read 0 rounds, 0 students,
+  // 0 ج.م. An answer that looks like an answer and is not one.
+  const route = fs.readFileSync(path.join(API, 'routes', 'daqqi-rounds.js'), 'utf8');
+  const line = /router\.get\('\/api\/admin\/daqqi-performance'[^\n]*\n[^\n]*/.exec(route);
+  assert.ok(line, 'the Dokki performance route is gone');
+  assert.match(line[0], /requireAnyPermission\(PERMISSIONS\.MANAGE_DAQQI, PERMISSIONS\.VIEW_PERF_DAQQI\)/);
+  // Figures only: nothing in the response names a student or a round.
+  const body = route.slice(route.indexOf("'/api/admin/daqqi-performance'"), route.indexOf("router.get('/api/admin/daqqi-rounds'"));
+  assert.ok(!/a\.name|a\.phone|SELECT \*/.test(body), 'the performance response carries attendee identity');
+  assert.match(body, /COUNT\(DISTINCT r\.id\)/, 'the attendee join would count one round as several');
+  assert.match(body, /canSeeDetail/);
+
+  // And the screen uses it, including to decide whether to offer the schedule.
+  const tab = fs.readFileSync(path.join(API, '..', 'admin', 'pages', 'dashboard', 'tabs', 'DaqqiTeamTab.tsx'), 'utf8');
+  assert.match(tab, /getDaqqiPerformance\(\)/);
+  assert.match(tab, /const detailAvailable = perf \? perf\.canSeeDetail : daqqiRounds\.length > 0;/);
+  assert.match(tab, /perf \? perf\.rounds\.active : activeRounds\.length/);
+  assert.match(tab, /perf \? perf\.students : totalAttendees/);
+  assert.ok(!/\{rounds\.length\}<\/div><div className="text-gray-400">روندات/.test(tab),
+    'the per-instructor round count is read off the rounds array again');
+});
+
 test('an HR account sees no client data until someone gives it a scope', () => {
   // Asked directly: is the HR account empty? It is, by the role's own default —
   // `hr` scopes to 'none', so every lead and subscriber query filters to nothing

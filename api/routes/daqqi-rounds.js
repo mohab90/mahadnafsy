@@ -5,7 +5,8 @@ const router = express.Router();
 const { uuidv4 } = require('../lib/id');
 
 const { pool } = require('../lib/db');
-const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireSuperAdmin } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission, requireSuperAdmin } = require('../middleware/auth');
+const { hasPermission, PERMISSIONS } = require('../constants/permissions');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
 const { requireDaqqiAccess } = require('../lib/daqqiAccess');
 const { writeAuditEvent } = require('../lib/auditTrail');
@@ -89,6 +90,74 @@ function isoDt(v) {
 // GET /api/admin/daqqi-rounds; the attendance-report/export/monthly routes had no
 // role check at all, so e.g. a SALES or HR account could pull every Dokki attendee's
 // name/phone/payments via CSV export.
+/**
+ * GET /api/admin/daqqi-performance — how the Dokki team is doing, in numbers.
+ *
+ * «فريق دقي» drew every figure in the browser out of the full rounds array,
+ * which meant the smallest way to show somebody the team's performance was to
+ * hand them every round, every attendee's name and what each of them paid. The
+ * owner asked for the opposite: the performance of a team without the
+ * department it belongs to.
+ *
+ * So the figures are computed here and the rows stay on the server. Nothing in
+ * this response names a student.
+ */
+router.get('/api/admin/daqqi-performance', requireAuth, requireAdminOrStaff,
+  requireAnyPermission(PERMISSIONS.MANAGE_DAQQI, PERMISSIONS.VIEW_PERF_DAQQI), async (req, res) => {
+    try {
+      const tenant = [req.tenantId];
+      const [[byStatus], [[totals]], [byInstructor], [byReception]] = await Promise.all([
+        pool.query('SELECT status, COUNT(*) n FROM daqqi_rounds WHERE tenant_id=? GROUP BY status', tenant),
+        pool.query('SELECT COUNT(*) students, COALESCE(SUM(amount_paid),0) revenue FROM daqqi_attendees WHERE tenant_id=?', tenant),
+        // COUNT(DISTINCT r.id): the attendee join multiplies a round by its
+        // attendees, so counting rows here would report a busy round as several.
+        pool.query(
+          `SELECT r.instructor_id id,
+                  COALESCE(NULLIF(TRIM(r.instructor_name),''), s.name, '—') name,
+                  COUNT(DISTINCT r.id) rounds,
+                  COUNT(DISTINCT CASE WHEN r.status='active' THEN r.id END) active,
+                  COUNT(a.subscriber_id) students,
+                  COALESCE(SUM(a.amount_paid),0) revenue
+             FROM daqqi_rounds r
+             LEFT JOIN daqqi_attendees a ON a.round_id=r.id AND a.tenant_id=r.tenant_id
+             LEFT JOIN staff s ON s.id=r.instructor_id AND s.tenant_id=r.tenant_id
+            WHERE r.tenant_id=?
+            GROUP BY r.instructor_id, name
+            ORDER BY revenue DESC, rounds DESC`, tenant),
+        pool.query(
+          `SELECT r.reception_id id,
+                  COALESCE(NULLIF(TRIM(r.reception_name),''), s.name, '—') name,
+                  COUNT(DISTINCT r.id) rounds,
+                  COUNT(DISTINCT CASE WHEN r.status='active' THEN r.id END) active,
+                  COUNT(a.subscriber_id) students
+             FROM daqqi_rounds r
+             LEFT JOIN daqqi_attendees a ON a.round_id=r.id AND a.tenant_id=r.tenant_id
+             LEFT JOIN staff s ON s.id=r.reception_id AND s.tenant_id=r.tenant_id
+            WHERE r.tenant_id=?
+            GROUP BY r.reception_id, name
+            ORDER BY rounds DESC`, tenant),
+      ]);
+
+      const counted = status => Number(byStatus.find(row => row.status === status)?.n || 0);
+      res.json({
+        rounds: {
+          total: byStatus.reduce((sum, row) => sum + Number(row.n || 0), 0),
+          active: counted('active'),
+          finished: counted('finished'),
+          new: counted('new'),
+        },
+        students: Number(totals?.students || 0),
+        revenue: Number(totals?.revenue || 0),
+        byInstructor: byInstructor.map(row => ({ ...row, revenue: Number(row.revenue || 0) })),
+        byReception,
+        // Whether this caller may also see the rounds themselves. The screen
+        // hides its schedule for anyone who cannot, instead of drawing an empty
+        // one from an array the API refused them.
+        canSeeDetail: Boolean(req.isSuperAdmin) || hasPermission(req.staffRecord, PERMISSIONS.MANAGE_DAQQI),
+      });
+    } catch (err) { sendRouteError(res, err); }
+  });
+
 router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
   try {
     const [rounds] = await pool.query(

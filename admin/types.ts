@@ -1225,6 +1225,20 @@ export interface StaffLeadPerformance {
   }>;
 }
 
+/** GET /admin/daqqi-performance — how the Dokki team is doing, computed in SQL.
+ *  Nothing here names a student: the figures travel and the rows stay, which is
+ *  what lets one person see a team's performance without its department. */
+export interface DaqqiPerformance {
+  rounds: { total: number; active: number; finished: number; new: number };
+  students: number;
+  revenue: number;
+  byInstructor: { id: string | null; name: string; rounds: number; active: number; students: number; revenue: number }[];
+  byReception: { id: string | null; name: string; rounds: number; active: number; students: number }[];
+  /** Whether this caller may also see the rounds themselves. False hides the
+   *  schedule rather than drawing an empty one from an array they cannot load. */
+  canSeeDetail: boolean;
+}
+
 /** GET /admin/leads/scored — the lead-scoring screen's rows and summary, with
  *  the score computed in SQL rather than per lead in the browser. */
 export interface ScoredLeadsResult {

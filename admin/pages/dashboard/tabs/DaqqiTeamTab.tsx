@@ -1,6 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Users, Calendar, BookOpen, ChevronDown, User } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
+import type { DaqqiPerformance } from '../../../types';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -16,6 +18,23 @@ const DaqqiTeamTab: React.FC<Props> = () => {
   const { staffMembers, daqqiRounds, courses } = useSiteData();
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
   const [subTab, setSubTab] = useState<'team' | 'stats' | 'schedule'>('team');
+
+  // The figures come from the server. Every number on this screen used to be
+  // derived in the browser out of the whole rounds array, so anybody shown the
+  // team's performance was also shown every round, every attendee's name and
+  // what each of them paid. Someone holding view_perf_daqqi has no rounds array
+  // at all — this screen read zeros for them, which is worse than a refusal
+  // because it looks like an answer.
+  const [perf, setPerf] = useState<DaqqiPerformance | null>(null);
+  useEffect(() => {
+    let live = true;
+    mysqlAdmin.getDaqqiPerformance()
+      .then(data => { if (live) setPerf(data); })
+      .catch(() => { if (live) setPerf(null); });
+    return () => { live = false; };
+  }, []);
+  // The rounds themselves: available to whoever may manage the department.
+  const detailAvailable = perf ? perf.canSeeDetail : daqqiRounds.length > 0;
 
   const daqqiTeam = useMemo(() =>
     staffMembers.filter(s => s.role === 'reception_daqqi' || s.role === 'daqqi_manager'),
@@ -33,22 +52,37 @@ const DaqqiTeamTab: React.FC<Props> = () => {
   const totalAttendees = daqqiRounds.reduce((s, r) => s + r.attendees.length, 0);
   const totalRevenue = daqqiRounds.reduce((s, r) => s + r.attendees.reduce((a, at) => a + at.amountPaid, 0), 0);
 
-  // Stats per instructor
+  // Each person's figures, from the server where it answered and from the
+  // rounds array otherwise. The two agree; the server is simply the only source
+  // a performance-only viewer has.
+  const serverByInstructor = useMemo(() => new Map(
+    (perf?.byInstructor || []).filter(row => row.id).map(row => [String(row.id), row])), [perf]);
+  const serverByReception = useMemo(() => new Map(
+    (perf?.byReception || []).filter(row => row.id).map(row => [String(row.id), row])), [perf]);
+
   const instructorStats = useMemo(() => instructors.map(inst => {
     const rounds = daqqiRounds.filter(r => r.instructorId === inst.id);
-    const attendees = rounds.reduce((s, r) => s + r.attendees.length, 0);
-    const revenue = rounds.reduce((s, r) => s + r.attendees.reduce((a, at) => a + at.amountPaid, 0), 0);
-    const active = rounds.filter(r => r.status === 'active').length;
-    return { instructor: inst, rounds, attendees, revenue, active };
-  }).sort((a, b) => b.revenue - a.revenue), [instructors, daqqiRounds]);
+    const counted = serverByInstructor.get(String(inst.id));
+    return {
+      instructor: inst,
+      rounds,
+      roundCount: counted ? counted.rounds : rounds.length,
+      attendees: counted ? counted.students : rounds.reduce((s, r) => s + r.attendees.length, 0),
+      revenue: counted ? counted.revenue : rounds.reduce((s, r) => s + r.attendees.reduce((a, at) => a + at.amountPaid, 0), 0),
+      active: counted ? counted.active : rounds.filter(r => r.status === 'active').length,
+    };
+  }).sort((a, b) => b.revenue - a.revenue), [instructors, daqqiRounds, serverByInstructor]);
 
-  // Stats per reception
   const receptionStats = useMemo(() => daqqiTeam.map(member => {
     const assigned = daqqiRounds.filter(r => r.receptionId === member.id);
-    const attendees = assigned.reduce((s, r) => s + r.attendees.length, 0);
-    const active = assigned.filter(r => r.status === 'active').length;
-    return { member, assigned, attendees, active };
-  }), [daqqiTeam, daqqiRounds]);
+    const counted = serverByReception.get(String(member.id));
+    return {
+      member,
+      assigned,
+      attendees: counted ? counted.students : assigned.reduce((s, r) => s + r.attendees.length, 0),
+      active: counted ? counted.active : assigned.filter(r => r.status === 'active').length,
+    };
+  }), [daqqiTeam, daqqiRounds, serverByReception]);
 
   // Active rounds grouped by day
   const byDay = useMemo(() => {
@@ -71,9 +105,9 @@ const DaqqiTeamTab: React.FC<Props> = () => {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
           {[
             { label: 'فريق الاستقبال', value: daqqiTeam.length },
-            { label: 'روندات نشطة', value: activeRounds.length, bg: 'bg-cyan-500/30' },
-            { label: 'إجمالي الطلاب', value: totalAttendees },
-            { label: 'إجمالي الإيرادات', value: `${totalRevenue.toLocaleString('ar-EG-u-nu-latn')} ج.م`, small: true },
+            { label: 'روندات نشطة', value: perf ? perf.rounds.active : activeRounds.length, bg: 'bg-cyan-500/30' },
+            { label: 'إجمالي الطلاب', value: perf ? perf.students : totalAttendees },
+            { label: 'إجمالي الإيرادات', value: `${(perf ? perf.revenue : totalRevenue).toLocaleString('ar-EG-u-nu-latn')} ج.م`, small: true },
           ].map(s => (
             <div key={s.label} className={`${s.bg || 'bg-white/15'} rounded-xl p-3 text-center`}>
               <div className={`font-black ${s.small ? 'text-base' : 'text-2xl'}`}>{s.value}</div>
@@ -85,7 +119,12 @@ const DaqqiTeamTab: React.FC<Props> = () => {
 
       {/* Subtabs */}
       <div className="flex gap-2">
-        {([['team', '👥 الفريق'], ['stats', '📊 الإحصائيات'], ['schedule', '📅 الجدول']] as const).map(([k, l]) => (
+        {/* The schedule is a round-by-round view, so it is offered only to
+            whoever may see the rounds — an empty calendar is not an answer. */}
+        {(detailAvailable
+          ? ([['team', '👥 الفريق'], ['stats', '📊 الإحصائيات'], ['schedule', '📅 الجدول']] as const)
+          : ([['team', '👥 الفريق'], ['stats', '📊 الإحصائيات']] as const)
+        ).map(([k, l]) => (
           <button key={k} onClick={() => setSubTab(k)}
             className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${subTab === k ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-600 border-gray-200 hover:border-teal-300'}`}>
             {l}
@@ -167,7 +206,7 @@ const DaqqiTeamTab: React.FC<Props> = () => {
               <div className="py-10 text-center text-gray-400 text-sm">لا مدربون</div>
             ) : (
               <div className="divide-y divide-gray-50">
-                {instructorStats.map(({ instructor: inst, rounds, attendees, revenue, active }) => (
+                {instructorStats.map(({ instructor: inst, roundCount, attendees, revenue, active }) => (
                   <div key={inst.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50">
                     <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-sm shrink-0">
                       {inst.name.charAt(0)}
@@ -177,7 +216,7 @@ const DaqqiTeamTab: React.FC<Props> = () => {
                       <p className="text-xs text-gray-400">{inst.specialization || 'معالج نفسي'}</p>
                     </div>
                     <div className="flex gap-4 text-xs text-center">
-                      <div><div className="font-bold text-indigo-600">{rounds.length}</div><div className="text-gray-400">روندات</div></div>
+                      <div><div className="font-bold text-indigo-600">{roundCount}</div><div className="text-gray-400">روندات</div></div>
                       <div><div className="font-bold text-teal-600">{active}</div><div className="text-gray-400">نشطة</div></div>
                       <div><div className="font-bold text-green-600">{attendees}</div><div className="text-gray-400">طلاب</div></div>
                       <div><div className="font-bold text-amber-600 text-[11px]">{revenue.toLocaleString('ar-EG-u-nu-latn')}</div><div className="text-gray-400">ج.م</div></div>
