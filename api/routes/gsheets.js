@@ -76,7 +76,11 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
     }
 
     // Load courses for name→id matching
-    const [dbCourses] = await pool.execute('SELECT id, title FROM courses WHERE tenant_id=? AND is_active=1', [req.tenantId]);
+    // courses has no is_active column — it has is_published. This threw on every
+    // run, so the manual import answered 500 before reading a single row. The
+    // automatic sync in lib/sheets.js had it right; only this copy did not.
+    const [dbCourses] = await pool.execute(
+      'SELECT id, title FROM courses WHERE tenant_id=? AND is_published=1 AND deleted_at IS NULL', [req.tenantId]);
     // Bundles are searched too — see lib/courseMatch.js.
     const [dbBundles] = await pool.execute(
       'SELECT id, title FROM bundles WHERE tenant_id=? AND is_published=1 AND deleted_at IS NULL', [req.tenantId]);

@@ -112,8 +112,22 @@ router.post('/api/admin/sms/bulk', requireAuth, requireAdmin, bulkOperationLimit
 
     let phones = [];
     if (audience === 'subscribers') {
-      const [rows] = await pool.query(`SELECT phone FROM subscribers WHERE tenant_id=? AND phone IS NOT NULL AND phone != '' ${filter?.status ? 'AND status=?' : ''} LIMIT 5000`,
-        filter?.status ? [req.tenantId, filter.status] : [req.tenantId]);
+      // subscribers has no `status` column — is_active carries the state, the
+      // same confusion that used to make the churn report answer 500. Asking for
+      // status here threw, so a filtered send to subscribers never went out and
+      // the caller saw a server error instead of a reason.
+      const wanted = String(filter?.status || '').toLowerCase();
+      if (wanted && !['active', 'inactive'].includes(wanted)) {
+        return res.status(400).json({
+          error: 'فلتر الحالة للمشتركين يقبل active أو inactive فقط',
+          code: 'UNSUPPORTED_SUBSCRIBER_STATUS',
+        });
+      }
+      const [rows] = await pool.query(
+        `SELECT phone FROM subscribers
+          WHERE tenant_id=? AND phone IS NOT NULL AND phone != '' AND deleted_at IS NULL
+                ${wanted ? 'AND is_active=?' : ''} LIMIT 5000`,
+        wanted ? [req.tenantId, wanted === 'active' ? 1 : 0] : [req.tenantId]);
       phones = rows.map(r => r.phone);
     } else if (audience === 'leads') {
       const [rows] = await pool.query(`SELECT phone FROM leads WHERE tenant_id=? AND phone IS NOT NULL AND phone != '' ${filter?.status ? 'AND status=?' : ''} LIMIT 5000`,
