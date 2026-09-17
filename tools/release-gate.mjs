@@ -50,6 +50,23 @@ const release = `mahad-${commit.slice(0, 12)}`;
 const q = p => '"' + String(p).replace(/\\/g, '/') + '"';
 const ssh = command => `ssh -i ${KEY} -o StrictHostKeyChecking=no ${HOST} ${JSON.stringify(command)}`;
 
+/**
+ * The release's archives, named one by one.
+ *
+ * A quoted path is what keeps a Windows backslash from being read as an escape
+ * — and a quoted `*` is not a glob any more, so `"…/mahad-abc-*.tgz"` reached
+ * scp as a literal filename and the shipping step failed with "No such file".
+ * It went unseen because every run until now reused both front ends, and that
+ * branch names a single file.
+ */
+function releaseArchives() {
+  const files = fs.readdirSync(artifacts)
+    .filter(name => name.startsWith(`${release}-`) && name.endsWith('.tgz'))
+    .sort();
+  if (!files.length) throw new Error(`no archives for ${release} in ${artifacts}`);
+  return files.map(name => q(path.join(artifacts, name))).join(' ');
+}
+
 let stage = 0;
 const started = Date.now();
 function run(name, command, { cwd = root, quiet = false } = {}) {
@@ -108,13 +125,13 @@ if (REUSE_CLIENT) {
   console.log(`\n[${stage}] reusing the public-site archive of ${REUSE_CLIENT} — no client or shared change since`);
   if (adminChanged) console.log(`      the admin panel changed and is being rebuilt (${adminChanged.split('\n').length} file(s))`);
   run('build api + admin artifacts', 'npm run release:prepare -- --only admin', { quiet: true });
-  run('ship to staging', `scp -i ${KEY} -o StrictHostKeyChecking=no ${q(path.join(artifacts, `${release}-*.tgz`))} ${HOST}:/staging/`, { quiet: true });
+  run('ship to staging', `scp -i ${KEY} -o StrictHostKeyChecking=no ${releaseArchives()} ${HOST}:/staging/`, { quiet: true });
   run('stage the reused public site', ssh(`cd /staging && cp ${REUSE_CLIENT}-client.tgz ${release}-client.tgz`), { quiet: true });
 } else {
   // prepare-release builds both front ends and refuses an incomplete client
   // archive — see tools/verifyPrerender.mjs.
   run('build and verify artifacts', 'npm run release:prepare', { quiet: true });
-  run('ship to staging', `scp -i ${KEY} -o StrictHostKeyChecking=no ${q(path.join(artifacts, `${release}-*.tgz`))} ${HOST}:/staging/`, { quiet: true });
+  run('ship to staging', `scp -i ${KEY} -o StrictHostKeyChecking=no ${releaseArchives()} ${HOST}:/staging/`, { quiet: true });
 }
 
 // ── 3. staging, then everything that needs a running server ───────────────
