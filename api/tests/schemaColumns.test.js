@@ -58,3 +58,20 @@ test('the schema check itself is in the repo and refuses to execute anything', (
   assert.ok(!/\bawait db\.query\((?!'EXPLAIN|'SET SESSION)/.test(tool),
     'the tool runs something other than EXPLAIN');
 });
+
+test('the branch migration names the column leads actually has', () => {
+  const src = read('routes/payments.js');
+  assert.ok(!src.includes('crm_data'), 'leads.crm_data is back — the column is crm_json, and every statement using it throws');
+  assert.match(src, /SELECT id, crm_json FROM leads/);
+});
+
+test('the daily report reads its mail settings from the environment', () => {
+  const src = read('routes/misc/_shared.js');
+  assert.ok(!/FROM settings\b/.test(src), 'the report queries a `settings` table again — this schema has none');
+  assert.ok(!src.includes('smtpSettings'), 'the swallowed settings read is back');
+  // 465 is implicit TLS; asking for STARTTLS there never connects.
+  assert.match(src, /secure: smtpPort === 465/);
+  // A default in a settings shape elsewhere in this file is not the transport.
+  const transport = src.slice(src.indexOf('createTransport'), src.indexOf('createTransport') + 400);
+  assert.ok(!/secure: false/.test(transport), 'the transport asks for STARTTLS on whatever port again');
+});

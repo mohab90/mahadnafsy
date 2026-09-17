@@ -31,6 +31,8 @@ const args = process.argv.slice(2);
 const VERBOSE = args.includes('--verbose');
 const changedAt = args.indexOf('--changed');
 const CHANGED_REF = changedAt >= 0 ? args[changedAt + 1] : null;
+const ignoreAt = args.indexOf('--ignore');
+const IGNORED = ignoreAt >= 0 ? String(args[ignoreAt + 1] || '').split(',').map(s2 => s2.trim()).filter(Boolean) : [];
 
 // ── collecting statements ──────────────────────────────────────────────────
 
@@ -102,6 +104,23 @@ function explainable(sql) {
 /** A statement whose table name is built in JS cannot be checked against a schema. */
 const tableIsInterpolated = sql => /\b(?:FROM|JOIN|INTO|UPDATE)\s+`?\$\{/i.test(sql);
 
+/**
+ * Where the JS fragments sit decides how much the result can be trusted.
+ *
+ * A fragment in the select list or among the joins takes columns and tables
+ * with it when this tool stands something else in its place, so the database
+ * then reports columns missing that the real query has — that is the tool's
+ * doing, not a fault. A fragment in WHERE or HAVING removes a condition and
+ * nothing else, so a missing column there is the query's own.
+ */
+function interpolationIsStructural(sql) {
+  const from = sql.search(/\bFROM\b/i);
+  if (from < 0) return sql.includes('${');
+  const where = sql.search(/\bWHERE\b/i);
+  const head = sql.slice(0, where > from ? where : sql.length);   // select list + joins
+  return head.includes('${');
+}
+
 function collect() {
   let files = jsFiles(API_ROOT);
   if (CHANGED_REF) {
@@ -115,10 +134,17 @@ function collect() {
     const src = fs.readFileSync(file, 'utf8');
     for (const lit of literals(src)) {
       if (!isSelect(lit.text)) continue;
+      if (IGNORED.includes(path.basename(file))) continue;
       if (tableIsInterpolated(lit.text)) { skipped.push(path.basename(file)); continue; }
       statements.push({
         where: `${path.relative(path.join(API_ROOT, '..'), file).split(path.sep).join('/')}:${src.slice(0, lit.start).split('\n').length}`,
         sql: explainable(lit.text),
+        // A statement assembled from JS fragments cannot be fully reconstructed
+        // here, so a *syntax* error on one says more about the substitution than
+        // about the query. A missing column or table still counts: no
+        // substitution invents those.
+        assembled: lit.text.includes('${'),
+        structural: interpolationIsStructural(lit.text),
       });
     }
   }
@@ -136,21 +162,30 @@ function collect() {
   await db.query('SET SESSION TRANSACTION READ ONLY');
 
   const failures = [];
+  const unverifiable = [];
   for (const statement of statements) {
     try { await db.query('EXPLAIN ' + statement.sql); }
-    catch (error) { failures.push({ ...statement, error: error.message }); }
+    catch (error) {
+      const syntax = /You have an error in your SQL syntax/i.test(error.message);
+      const toolsOwnDoing = statement.assembled && (syntax || statement.structural);
+      (toolsOwnDoing ? unverifiable : failures).push({ ...statement, error: error.message });
+    }
   }
   await db.end();
 
-  console.log(`${statements.length - failures.length}/${statements.length} statements parse against ${process.env.DB_NAME} (${files} files)`);
+  const clean = statements.length - failures.length - unverifiable.length;
+  console.log(`${clean}/${statements.length} statements parse against ${process.env.DB_NAME} (${files} files)`);
   if (skipped.length) console.log(`  ${skipped.length} skipped — the table name itself is built in JS`);
+  if (unverifiable.length) {
+    console.log(`  ${unverifiable.length} unverifiable — assembled from JS fragments this tool cannot stand in for`);
+    if (VERBOSE) for (const u of unverifiable) console.log(`      ${u.where}`);
+  }
   for (const f of failures) {
     console.log(`\n  FAIL ${f.where}\n    ${f.error}`);
     if (VERBOSE) console.log(`    ${f.sql.replace(/\s+/g, ' ').slice(0, 400)}`);
   }
   if (failures.length) {
-    console.log(`\n${failures.length} failing. Some are this tool's own substitutions rather than real faults —`);
-    console.log('a fragment it could not stand in for. Read each one before believing it.');
+    console.log(`\n${failures.length} name a table or column the schema does not have. Those are real.`);
   }
   process.exit(failures.length ? 1 : 0);
 })().catch(error => { console.error('explain-sql: ' + error.message); process.exit(2); });

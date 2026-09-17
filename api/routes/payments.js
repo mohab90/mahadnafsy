@@ -8,14 +8,16 @@ const { addDaysToDateOnly, isValidDateOnly, safeDateOnly } = require('../lib/dat
 const { BRANCHES, normalizeBranch } = require('../constants/branches');
 const { resolveFinancialScope } = require('../lib/financialScope');
 
+// The column is crm_json. Under its old, wrong name every statement here threw and
+// the route answered 500 — a maintenance tool that could never have run.
 router.post('/api/admin/migrate-branches', requireAuth, requireAdmin, async (req, res) => {
   try {
     const VALID = BRANCHES;
     const normBranch = normalizeBranch;
 
-    // 1. Get leads with NULL/empty branch but crm_data has a branch value
+    // 1. Get leads with NULL/empty branch but crm_json has a branch value
     const [rows] = await pool.query(
-      `SELECT id, crm_data FROM leads WHERE tenant_id = ? AND (branch IS NULL OR branch = '') AND crm_data IS NOT NULL`,
+      `SELECT id, crm_json FROM leads WHERE tenant_id = ? AND (branch IS NULL OR branch = '') AND crm_json IS NOT NULL`,
       [req.tenantId]
     );
 
@@ -23,7 +25,7 @@ router.post('/api/admin/migrate-branches', requireAuth, requireAdmin, async (req
     const fix1Ids = [], fix1Vals = [];
     for (const row of rows) {
       let crmData = {};
-      try { crmData = typeof row.crm_data === 'string' ? JSON.parse(row.crm_data) : (row.crm_data || {}); } catch {}
+      try { crmData = typeof row.crm_json === 'string' ? JSON.parse(row.crm_json) : (row.crm_json || {}); } catch {}
       const rawBranch = crmData.branch || null;
       const norm = normBranch(rawBranch);
       if (norm && VALID.includes(norm)) {
@@ -41,14 +43,14 @@ router.post('/api/admin/migrate-branches', requireAuth, requireAdmin, async (req
       );
     }
 
-    // 2. Also fix leads where branch column has lowercase/hyphen value stored as '' by checking crm_data
-    // Additionally fix crm_data.branch to match the column
-    const [all] = await pool.query(`SELECT id, branch, crm_data FROM leads WHERE tenant_id = ? AND branch IS NOT NULL AND branch != ''`, [req.tenantId]);
+    // 2. Also fix leads where branch column has lowercase/hyphen value stored as '' by checking crm_json
+    // Additionally fix crm_json.branch to match the column
+    const [all] = await pool.query(`SELECT id, branch, crm_json FROM leads WHERE tenant_id = ? AND branch IS NOT NULL AND branch != ''`, [req.tenantId]);
     let crmFixed = 0;
     const fix2Ids = [], fix2Vals = [];
     for (const row of all) {
       let crmData = {};
-      try { crmData = typeof row.crm_data === 'string' ? JSON.parse(row.crm_data) : (row.crm_data || {}); } catch {}
+      try { crmData = typeof row.crm_json === 'string' ? JSON.parse(row.crm_json) : (row.crm_json || {}); } catch {}
       const normCol = normBranch(row.branch);
       if (normCol !== row.branch && VALID.includes(normCol)) {
         fix2Ids.push(row.id);

@@ -48,22 +48,24 @@ async function sendDailyReport(tenantId = DEFAULT_TENANT) {
 
     if (!adminStaff.length) return;
 
-    const smtpSettings = await pool.query("SELECT setting_key, setting_value FROM settings WHERE setting_key IN ('smtp_host','smtp_port','smtp_user','smtp_pass','smtp_from') LIMIT 10")
-      .then(([rows]) => Object.fromEntries(rows.map(r => [r.setting_key, r.setting_value])))
-      .catch(() => ({}));
+    // This used to read a `settings` table that does not exist in this schema.
+    // The statement threw on every run and the .catch turned it into {}, so the
+    // environment below is what has actually configured the mailer all along —
+    // it just took a failed query each time to get there.
+    if (!process.env.SMTP_HOST || !process.env.SMTP_USER) return;
 
-    if (!smtpSettings.smtp_host || !smtpSettings.smtp_user) {
-      // Try from env
-      if (!process.env.SMTP_HOST) return;
-    }
-
+    // secure has to follow the port: 465 is implicit TLS, and asking for
+    // STARTTLS there never connects. lib/email.js has always done this; this
+    // copy hard-coded false, so the daily report could not have been delivered
+    // on the configured port even with working credentials.
+    const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
     const transporter = require('nodemailer').createTransport({
-      host: smtpSettings.smtp_host || process.env.SMTP_HOST,
-      port: parseInt(smtpSettings.smtp_port || process.env.SMTP_PORT || '587'),
-      secure: false,
+      host: process.env.SMTP_HOST,
+      port: smtpPort,
+      secure: smtpPort === 465,
       auth: {
-        user: smtpSettings.smtp_user || process.env.SMTP_USER,
-        pass: smtpSettings.smtp_pass || process.env.SMTP_PASS,
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
       },
     });
 
@@ -88,7 +90,7 @@ async function sendDailyReport(tenantId = DEFAULT_TENANT) {
 
     for (const admin of adminStaff) {
       await transporter.sendMail({
-        from: smtpSettings.smtp_from || smtpSettings.smtp_user || process.env.SMTP_USER,
+        from: process.env.SMTP_USER,
         to: admin.email,
         subject: `📊 تقرير يومي — ${today} | المعهد النفسي`,
         html,
