@@ -132,6 +132,48 @@ const brief = r => `${r.status}${r.json?.code ? ' ' + r.json.code : ''}${r.json?
     }
   }
 
+  // ── the two saves that answered 500 in production ──────────────────────
+  //
+  // A course save listed 39 columns against 38 placeholders; a bundle save
+  // wrote three columns the table did not have. Both are one statement, and a
+  // unit test that reads that statement as text cannot tell you the row landed
+  // — so this writes one of each, reads it back, and takes it away again.
+  console.log('\ncatalog saves');
+  const stamp = Date.now();
+  const courseId = `release-smoke-course-${stamp}`;
+  const savedCourse = await call('/api/admin/courses', { method: 'POST', token: admin, body: {
+    id: courseId, title: 'اختبار حفظ الدورة', slug: courseId, category: 'GENERAL', type: 'RECORDED',
+    price: { EGP: 100 }, accessMonths: 3, isPublished: false,
+  } });
+  record('POST /api/admin/courses saves a course', savedCourse.status === 200, brief(savedCourse));
+
+  const courseList = await call('/api/admin/courses?limit=500', { token: admin });
+  const courseRow = (Array.isArray(courseList.json) ? courseList.json : courseList.json?.items || [])
+    .find(c => c.id === courseId);
+  // The editor's own field: written by the save, and empty on every edit until
+  // the read path returned it — which is how a course set to expire became
+  // unlimited again the next time anyone opened it.
+  record('the course comes back with its access window', Number(courseRow?.accessMonths) === 3,
+    `accessMonths=${JSON.stringify(courseRow?.accessMonths)}`);
+
+  const bundleId = `release-smoke-bundle-${stamp}`;
+  const savedBundle = await call('/api/admin/bundles', { method: 'POST', token: admin, body: {
+    id: bundleId, title: 'اختبار حفظ الباقة', slug: bundleId,
+    thumbnail: 'https://example.com/release-smoke.jpg', detailsContent: { smoke: true }, price: { EGP: 250 },
+  } });
+  record('POST /api/admin/bundles saves a bundle', savedBundle.status === 200, brief(savedBundle));
+
+  const bundleList = await call('/api/admin/bundles', { token: admin });
+  const bundleRow = (Array.isArray(bundleList.json) ? bundleList.json : []).find(b => b.id === bundleId);
+  record('the bundle keeps its image and page content',
+    bundleRow?.thumbnail === 'https://example.com/release-smoke.jpg' && bundleRow?.detailsContent?.smoke === true,
+    `thumbnail=${JSON.stringify(bundleRow?.thumbnail)} details=${JSON.stringify(bundleRow?.detailsContent)}`);
+
+  for (const [what, path] of [['bundle', `/api/admin/bundles/${bundleId}`], ['course', `/api/admin/courses/${courseId}`]]) {
+    const gone = await call(path, { method: 'DELETE', token: admin });
+    if (gone.status !== 200) console.log(`    !! the smoke ${what} ${gone.status === 404 ? 'was already gone' : `could not be removed (${gone.status})`} — id ${what === 'bundle' ? bundleId : courseId}`);
+  }
+
   // ── student path that touches a changed query ──────────────────────────
   console.log('\nstudent');
   const refund = await call('/api/me/refund-request', { method: 'POST', token: student,

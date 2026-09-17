@@ -73,6 +73,19 @@ test('bundles gets the columns its save writes and its page reads', () => {
   assert.match(read('routes/core/catalog.js'), /INSERT INTO bundles[\s\S]{0,200}thumbnail/);
 });
 
+test('a course keeps its access window when it is read back', () => {
+  // Found by calling the fixed save for real: the course saved, and came back
+  // without the one field the save had just written. The editor's field opened
+  // empty on every edit, and the next save wrote NULL — a course set to expire
+  // in three months quietly became unlimited the moment anyone touched it.
+  const { mapCourse, COURSE_COLS } = require('../lib/mappers');
+  assert.match(COURSE_COLS, /\baccess_months\b/, 'the admin course query stopped selecting access_months');
+  assert.equal(mapCourse({ id: 'c1', access_months: 3 }).accessMonths, 3);
+  assert.equal(mapCourse({ id: 'c1', access_months: null }).accessMonths, null, 'NULL is unlimited, not absent');
+  // The lighter list query does not select it; absent must not read as unlimited.
+  assert.ok(!('accessMonths' in mapCourse({ id: 'c1' })), 'a row that never loaded the column claims a value');
+});
+
 test('nothing writes to a registrations table — there is none', () => {
   const src = read('routes/auth.js');
   assert.ok(!/INTO registrations\b/i.test(src),

@@ -33,7 +33,7 @@ const money = value => {
 const COURSE_COLS = `id, course_code, slug, title, title_en, title_ar, description,
   short_description, instructor, instructor_id, thumbnail, category, type,
   price_egp, price_sar, price_usd, orig_price_egp, orig_price_sar, orig_price_usd,
-  rating, students, duration, level, hours, promo_video_url, live_session_url,
+  rating, students, duration, level, hours, access_months, promo_video_url, live_session_url,
   certificate_template_url, certificate_template_name, is_published, sort_order,
   modules_json, gallery_images_json, details_content_json, course_modules_json, created_at`;
 
@@ -156,6 +156,13 @@ function mapCourse(r, materials) {
     duration: r.duration,
     level: r.level,
     hours: r.hours,
+    // How many months an enrolment keeps the course; NULL means unlimited. The
+    // course editor has a field for it and the save writes it, but no read path
+    // returned it — so the field opened empty on every edit and the save then
+    // wrote NULL back. A course set to expire quietly became unlimited the next
+    // time anyone touched it. Absent rather than null where the caller used the
+    // lighter column list, so "not loaded" stays distinguishable from "unlimited".
+    ...('access_months' in r ? { accessMonths: r.access_months } : {}),
     promoVideoUrl: r.promo_video_url,
     liveSessionUrl: r.live_session_url,
     certificateTemplateUrl: r.certificate_template_url,
