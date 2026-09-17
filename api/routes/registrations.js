@@ -78,7 +78,7 @@ function originForPhone(phone) {
 router.get('/api/admin/registrations', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
   try {
     const tenantId = req.tenantId;
-    const [usersResult, subsResult, leadsResult] = await Promise.all([
+    const [usersResult, subsResult, leadsResult, staffResult] = await Promise.all([
       pool.query(
         `SELECT id, email, phone, name, created_at FROM users
           WHERE tenant_id=? AND is_active=1 ORDER BY created_at DESC LIMIT 2000`,
@@ -101,19 +101,31 @@ router.get('/api/admin/registrations', requireAuth, requireAdminOrStaff, require
         `SELECT email, phone FROM leads WHERE tenant_id=?`,
         [tenantId]
       ),
+      // Employees are users too — a staff login is a users row like any other,
+      // so every manager, rep and collection officer sat in this queue as an
+      // untriaged registration, beside the buttons that convert a registration
+      // into an online client or delete it outright. Fifteen of them, including
+      // all three managers.
+      pool.query(
+        `SELECT email, phone FROM staff WHERE tenant_id=? AND deleted_at IS NULL`,
+        [tenantId]
+      ),
     ]);
     const [users] = usersResult;
     const [subs] = subsResult;
     const [leads] = leadsResult;
+    const [staffRows] = staffResult;
 
     const claimedUids = new Set(subs.map(s => s.firebase_uid).filter(Boolean));
     const claimedEmails = new Set([
       ...subs.map(s => normEmail(s.email)).filter(Boolean),
       ...leads.map(l => normEmail(l.email)).filter(Boolean),
+      ...staffRows.map(s => normEmail(s.email)).filter(Boolean),
     ]);
     const claimedPhones = new Set([
       ...subs.map(s => normPhone(s.phone)).filter(Boolean),
       ...leads.map(l => normPhone(l.phone)).filter(Boolean),
+      ...staffRows.map(s => normPhone(s.phone)).filter(Boolean),
     ]);
 
     const rows = users.filter(u => {
