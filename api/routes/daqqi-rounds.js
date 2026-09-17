@@ -115,7 +115,7 @@ router.get('/api/admin/daqqi-performance', requireAuth, requireAdminOrStaff,
           `SELECT r.instructor_id id,
                   COALESCE(NULLIF(TRIM(r.instructor_name),''), s.name, '—') name,
                   COUNT(DISTINCT r.id) rounds,
-                  COUNT(DISTINCT CASE WHEN r.status='active' THEN r.id END) active,
+                  COUNT(DISTINCT CASE WHEN UPPER(r.status)='ACTIVE' THEN r.id END) active,
                   COUNT(a.subscriber_id) students,
                   COALESCE(SUM(a.amount_paid),0) revenue
              FROM daqqi_rounds r
@@ -128,7 +128,7 @@ router.get('/api/admin/daqqi-performance', requireAuth, requireAdminOrStaff,
           `SELECT r.reception_id id,
                   COALESCE(NULLIF(TRIM(r.reception_name),''), s.name, '—') name,
                   COUNT(DISTINCT r.id) rounds,
-                  COUNT(DISTINCT CASE WHEN r.status='active' THEN r.id END) active,
+                  COUNT(DISTINCT CASE WHEN UPPER(r.status)='ACTIVE' THEN r.id END) active,
                   COUNT(a.subscriber_id) students
              FROM daqqi_rounds r
              LEFT JOIN daqqi_attendees a ON a.round_id=r.id AND a.tenant_id=r.tenant_id
@@ -138,7 +138,12 @@ router.get('/api/admin/daqqi-performance', requireAuth, requireAdminOrStaff,
             ORDER BY rounds DESC`, tenant),
       ]);
 
-      const counted = status => Number(byStatus.find(row => row.status === status)?.n || 0);
+      // daqqi_rounds.status is ENUM('NEW','ACTIVE','FINISHED') and MariaDB
+      // answers with the declared spelling, so a strict comparison against
+      // 'new' matched nothing: the total read 2 and every bucket read 0. The
+      // same case trap mappers.js documents for courses.type.
+      const counted = status => Number(
+        byStatus.find(row => String(row.status || '').toLowerCase() === status)?.n || 0);
       res.json({
         rounds: {
           total: byStatus.reduce((sum, row) => sum + Number(row.n || 0), 0),

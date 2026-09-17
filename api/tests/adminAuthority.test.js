@@ -173,6 +173,12 @@ test('the Dokki team screen gets its figures from the server, not from the round
   assert.ok(!/a\.name|a\.phone|SELECT \*/.test(body), 'the performance response carries attendee identity');
   assert.match(body, /COUNT\(DISTINCT r\.id\)/, 'the attendee join would count one round as several');
   assert.match(body, /canSeeDetail/);
+  // daqqi_rounds.status is ENUM('NEW','ACTIVE','FINISHED'), answered in the
+  // declared spelling: comparing it to 'new' in JS matched nothing, so the
+  // total read 2 and every bucket read 0. Caught against staging, not in review.
+  assert.match(body, /String\(row\.status \|\| ''\)\.toLowerCase\(\) === status/);
+  assert.match(body, /UPPER\(r\.status\)='ACTIVE'/);
+  assert.ok(!/WHEN r\.status='active'/.test(body), 'the status comparison is case-sensitive again');
 
   // And the screen uses it, including to decide whether to offer the schedule.
   const tab = fs.readFileSync(path.join(API, '..', 'admin', 'pages', 'dashboard', 'tabs', 'DaqqiTeamTab.tsx'), 'utf8');
