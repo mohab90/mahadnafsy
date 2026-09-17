@@ -423,12 +423,13 @@ export function getEffectiveRoleDefaults(role: RoleKey): PermissionKey[] | '*' {
  */
 export function resolvePermissions(staff: {
   role: RoleKey;
-  permissions?: PermissionKey[];
+  permissions?: PermissionKey[] | null;
 }): PermissionKey[] | '*' {
-  // Custom per-staff override
-  if (Array.isArray(staff.permissions) && staff.permissions.length > 0) {
-    return staff.permissions;
-  }
+  // A stored list is the override, empty included: an emptied grid means none,
+  // and the API resolves it the same way. Null or absent means no override, so
+  // the role's defaults apply — the two used to be one case here, which made
+  // "revoke everything" read as "use the role defaults" on both sides.
+  if (Array.isArray(staff.permissions)) return staff.permissions;
   return getEffectiveRoleDefaults(staff.role);
 }
 

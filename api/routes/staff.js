@@ -288,7 +288,10 @@ router.get('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermissi
       hrNotes: canViewSensitive ? (r.hr_notes || '') : undefined,
       departmentId: canViewSensitive ? (r.department_id || null) : undefined,
       department: canViewSensitive ? (r.department_name || '') : undefined,
-      permissions: canViewSensitive ? (r.permissions_json ? tryJson(r.permissions_json, []) : []) : [],
+      // null, not [], when the row carries no override: [] is now a real answer
+      // meaning "none at all", and a screen that cannot tell the two apart sends
+      // the empty one back and silently revokes the role's defaults.
+      permissions: canViewSensitive ? (r.permissions_json ? tryJson(r.permissions_json, []) : null) : [],
       dataScope: canViewSensitive ? (r.data_scope || '') : undefined,
     })));
   } catch (e) {

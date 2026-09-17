@@ -61,6 +61,31 @@ test('an emptied grid stores "[]" — revoking everything is an edit like any ot
   assert.equal(assertGrantable(staffReq([MANAGE_STAFF]), { name: 'no permissions field' }).permissionsJson, null);
 });
 
+test('"no override" and "none" are told apart on the way out, not only on the way in', () => {
+  // Caught by the release smoke, after a diagnosis script read `permissions: []`
+  // from the API — which meant "no override" — and wrote it back, which now
+  // means "none". The account lost its role defaults. A screen doing the same
+  // round trip would revoke a colleague's access by opening their page and
+  // saving an unrelated field.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const staffRoute = fs.readFileSync(path.join(__dirname, '..', 'routes', 'staff.js'), 'utf8');
+  assert.match(staffRoute, /tryJson\(r\.permissions_json, \[\]\) : null/,
+    'the staff list answers [] for a row that has no override again');
+
+  // The front end resolves it the same way the API does.
+  const uiResolver = fs.readFileSync(path.join(__dirname, '..', '..', 'admin', 'constants', 'permissions.ts'), 'utf8');
+  assert.match(uiResolver, /if \(Array\.isArray\(staff\.permissions\)\) return staff\.permissions;/);
+  assert.ok(!/staff\.permissions\.length > 0/.test(uiResolver),
+    'the admin panel still treats an emptied grid as "use the role defaults"');
+
+  // And the editor sends each access field only when that field moved.
+  const panel = fs.readFileSync(path.join(__dirname, '..', '..', 'admin', 'pages', 'staff-profile', 'StaffSettingsPanel.tsx'), 'utf8');
+  assert.match(panel, /permsChanged \? \{ permissions: payload\.permissions \|\| \[\] \}/);
+  assert.match(panel, /scopeChanged \? \{ data_scope: payload\.dataScope \|\| null \}/);
+  assert.match(panel, /staff\.permissions \?\? ROLE_DEFAULT_PERMISSIONS\[staff\.role\]/);
+});
+
 test('a stored empty list resolves to no permissions, not to the role defaults', () => {
   const { resolvePermissions } = require('../constants/permissions');
   assert.deepEqual(resolvePermissions({ role: 'hr', permissions_json: '[]' }), []);

@@ -50,7 +50,14 @@ export default function StaffSettingsPanel({
   // shows what the server kept rather than what was typed at it.
   const [resyncKey, setResyncKey] = useState(0);
   useEffect(() => {
-    if (staff && (!draft || resyncKey > 0)) setDraft({ ...staff });
+    // The grid opens on what the account actually has. A row with no override
+    // comes back with permissions null, and seeding that as an empty grid showed
+    // «0 صلاحية مفعّلة» for an employee working on their role's defaults — and
+    // then saved that empty grid back as a real revocation.
+    if (staff && (!draft || resyncKey > 0)) setDraft({
+      ...staff,
+      permissions: (staff.permissions ?? ROLE_DEFAULT_PERMISSIONS[staff.role] ?? []) as StaffPermission[],
+    });
     // draft is deliberately not a dependency: including it would re-seed on
     // every keystroke and make the form unusable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -64,10 +71,15 @@ export default function StaffSettingsPanel({
       setSaveMsg('❌ لا يمكنك تعديل راتبك بنفسك؛ يلزم موظف HR آخر');
       return;
     }
-    const samePerms = JSON.stringify([...(draft.permissions || [])].sort())
-      === JSON.stringify([...(staff.permissions || [])].sort());
-    const accessChanged = currentStaff?.id !== draft.id
-      && (!samePerms || (draft.dataScope || '') !== (staff.dataScope || ''));
+    // Compared against what the account effectively holds, which is what the
+    // grid was seeded with. Each field travels only if it moved: sending the
+    // permission list along with a scope-only edit would freeze the role's
+    // current defaults into a personal override nobody asked for.
+    const effectivePerms = staff.permissions ?? ROLE_DEFAULT_PERMISSIONS[staff.role] ?? [];
+    const permsChanged = JSON.stringify([...(draft.permissions || [])].sort())
+      !== JSON.stringify([...effectivePerms].sort());
+    const scopeChanged = (draft.dataScope || '') !== (staff.dataScope || '');
+    const notMyOwnRecord = currentStaff?.id !== draft.id;
     setSaving(true);
     setSaveMsg('');
     const payload: StaffMember = { ...draft };
@@ -97,10 +109,8 @@ export default function StaffSettingsPanel({
           // the scope picker on this page edited nothing that ever persisted.
           // Only sent when actually changed and never for your own record —
           // the server rejects self-edits of these two fields outright.
-          ...(isAdmin && accessChanged ? {
-            permissions: payload.permissions || [],
-            data_scope: payload.dataScope || null,
-          } : {}),
+          ...(isAdmin && notMyOwnRecord && permsChanged ? { permissions: payload.permissions || [] } : {}),
+          ...(isAdmin && notMyOwnRecord && scopeChanged ? { data_scope: payload.dataScope || null } : {}),
         });
         let salaryPending = false;
         if (salaryChanged) {
