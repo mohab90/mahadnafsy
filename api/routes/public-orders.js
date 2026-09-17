@@ -606,13 +606,18 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
     // 3. Auto-create consultation record
     if (extra.consultationData) {
       const cd = extra.consultationData;
+      // consultations has no therapist_name: every screen that shows one joins
+      // staff on therapist_id (`t.name AS therapist_name`). Naming it here threw
+      // ER_BAD_FIELD_ERROR inside this transaction, which rolled back the paid
+      // order, the enrolment and the payment row with it — a consultation paid
+      // for by card recorded nothing at all, which is why the table is empty.
       await conn.query(
         `INSERT IGNORE INTO consultations
-           (id, tenant_id, client_name, client_email, client_phone, therapist_id, therapist_name,
+           (id, tenant_id, client_name, client_email, client_phone, therapist_id,
             session_type, session_date, status, amount, currency, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW())`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,NOW())`,
         [cd.id||uuidv4(), tenantId, cd.clientName||'', cd.clientEmail||'', cd.clientPhone||'',
-         cd.therapistId||'', cd.therapistName||'', cd.sessionType||'individual',
+         cd.therapistId||'', cd.sessionType||'individual',
          cd.sessionDate||'', 'pending', order.amount, order.currency]
       );
     }

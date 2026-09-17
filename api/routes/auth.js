@@ -65,7 +65,10 @@ router.post('/api/auth/register', registerLimiter, requireDb, requireTenantQuota
     password: v => isString(v, 200) && (v || '').length >= 8 || 'Password must be at least 8 characters',
   }),
   async (req, res) => {
-  const { email, password, name, phone, interest, ref } = req.body || {};
+  // `interest` is still sent by the signup form and has nowhere to land: it was
+  // only ever read by the dead `registrations` INSERT below. Storing it needs a
+  // column and a screen that shows it, which is a decision, not a fix.
+  const { email, password, name, phone, ref } = req.body || {};
   const hasEmail = isEmail(email);
   const normalizedEmail = hasEmail ? email.toLowerCase().trim() : null;
   let conn;
@@ -124,14 +127,11 @@ router.post('/api/auth/register', registerLimiter, requireDb, requireTenantQuota
       [id, tenantId, normalizedEmail, phoneForUser, hash, (name || '').trim(), 'user',
         session.sessionId, session.ipHash, clientContext.countryCode, clientContext.currency]
     );
-    // Also write to registrations table (best-effort)
-    try {
-      await conn.execute(
-        `INSERT IGNORE INTO registrations (id, uid, name, email, phone, country, interest, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-        [uuidv4(), id, (name || '').trim(), normalizedEmail || '', phone || '', clientContext.countryCode, interest || '']
-      );
-    } catch { /* registrations table may not exist — ignore */ }
+    // There is no `registrations` table and there never has been: "التسجيلات"
+    // is a view over users (routes/registrations.js reads them by user id). The
+    // INSERT that used to sit here threw ER_NO_SUCH_TABLE on every single
+    // signup, inside this transaction, into a catch that dropped it silently.
+    //
     // Neither a lead nor a subscriber is created on register anymore — the
     // account lands in "التسجيلات" (api/routes/registrations.js) until
     // staff explicitly send it to the CRM as a lead or promote it straight
@@ -189,7 +189,10 @@ router.post('/api/user/signup', registerLimiter, requireDb, requireTenantQuota('
     password: v => isString(v, 200) && (v || '').length >= 8 || 'Password must be at least 8 characters',
   }),
   async (req, res) => {
-  const { email, password, name, phone, interest, ref } = req.body || {};
+  // `interest` is still sent by the signup form and has nowhere to land: it was
+  // only ever read by the dead `registrations` INSERT below. Storing it needs a
+  // column and a screen that shows it, which is a decision, not a fix.
+  const { email, password, name, phone, ref } = req.body || {};
   const hasEmail = isEmail(email);
   const normalizedEmail = hasEmail ? email.toLowerCase().trim() : null;
   let conn;
@@ -253,12 +256,9 @@ router.post('/api/user/signup', registerLimiter, requireDb, requireTenantQuota('
         conn.query('UPDATE subscribers SET referred_by = ? WHERE tenant_id=? AND LOWER(TRIM(email)) = ? AND (referred_by IS NULL OR referred_by = "")', [refCode, tenantId, normalizedEmail]).catch(() => {});
       }
     }
-    try {
-      await conn.execute(
-        `INSERT IGNORE INTO registrations (id, uid, name, email, phone, country, interest, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-        [uuidv4(), id, (name || '').trim(), normalizedEmail || '', phone || '', clientContext.countryCode, interest || '']
-      );
-    } catch { /* ignore */ }
+    // The same dead `registrations` INSERT stood here too — see the note on
+    // /api/auth/register above.
+    //
     // Neither a lead nor a subscriber is created here anymore — see the
     // matching comment on /api/auth/register above. The account lands in
     // "التسجيلات" until staff explicitly triage it.
