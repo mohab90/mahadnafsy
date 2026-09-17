@@ -177,8 +177,13 @@ test('the Dokki team screen gets its figures from the server, not from the round
   // declared spelling: comparing it to 'new' in JS matched nothing, so the
   // total read 2 and every bucket read 0. Caught against staging, not in review.
   assert.match(body, /String\(row\.status \|\| ''\)\.toLowerCase\(\) === status/);
-  assert.match(body, /UPPER\(r\.status\)='ACTIVE'/);
-  assert.ok(!/WHEN r\.status='active'/.test(body), 'the status comparison is case-sensitive again');
+  // Compared to the spelling the ENUM declares, which matches without wrapping
+  // the column in a function — scanCoverage refuses LOWER/UPPER on an indexed
+  // column, and it was right to: the first fix defeated the index to solve a
+  // problem the declared spelling solves for free.
+  assert.match(body, /WHEN r\.status='ACTIVE'/);
+  assert.ok(!/UPPER\(r\.status\)|WHEN r\.status='active'/.test(body),
+    'the status comparison either defeats the index or is case-sensitive again');
 
   // And the screen uses it, including to decide whether to offer the schedule.
   const tab = fs.readFileSync(path.join(API, '..', 'admin', 'pages', 'dashboard', 'tabs', 'DaqqiTeamTab.tsx'), 'utf8');

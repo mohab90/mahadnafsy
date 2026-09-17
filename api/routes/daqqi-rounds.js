@@ -86,10 +86,6 @@ function isoDt(v) {
   return String(v);
 }
 
-// Shared by every Dokki-schedule route below — was only actually applied to
-// GET /api/admin/daqqi-rounds; the attendance-report/export/monthly routes had no
-// role check at all, so e.g. a SALES or HR account could pull every Dokki attendee's
-// name/phone/payments via CSV export.
 /**
  * GET /api/admin/daqqi-performance — how the Dokki team is doing, in numbers.
  *
@@ -115,7 +111,7 @@ router.get('/api/admin/daqqi-performance', requireAuth, requireAdminOrStaff,
           `SELECT r.instructor_id id,
                   COALESCE(NULLIF(TRIM(r.instructor_name),''), s.name, '—') name,
                   COUNT(DISTINCT r.id) rounds,
-                  COUNT(DISTINCT CASE WHEN UPPER(r.status)='ACTIVE' THEN r.id END) active,
+                  COUNT(DISTINCT CASE WHEN r.status='ACTIVE' THEN r.id END) active,
                   COUNT(a.subscriber_id) students,
                   COALESCE(SUM(a.amount_paid),0) revenue
              FROM daqqi_rounds r
@@ -128,7 +124,7 @@ router.get('/api/admin/daqqi-performance', requireAuth, requireAdminOrStaff,
           `SELECT r.reception_id id,
                   COALESCE(NULLIF(TRIM(r.reception_name),''), s.name, '—') name,
                   COUNT(DISTINCT r.id) rounds,
-                  COUNT(DISTINCT CASE WHEN UPPER(r.status)='ACTIVE' THEN r.id END) active,
+                  COUNT(DISTINCT CASE WHEN r.status='ACTIVE' THEN r.id END) active,
                   COUNT(a.subscriber_id) students
              FROM daqqi_rounds r
              LEFT JOIN daqqi_attendees a ON a.round_id=r.id AND a.tenant_id=r.tenant_id
@@ -163,6 +159,11 @@ router.get('/api/admin/daqqi-performance', requireAuth, requireAdminOrStaff,
     } catch (err) { sendRouteError(res, err); }
   });
 
+// requireDaqqiAccess is shared by every Dokki-schedule route below — it was
+// only actually applied to GET /api/admin/daqqi-rounds; the
+// attendance-report/export/monthly routes had no role check at all, so e.g. a
+// SALES or HR account could pull every Dokki attendee's name/phone/payments via
+// CSV export.
 router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
   try {
     const [rounds] = await pool.query(
