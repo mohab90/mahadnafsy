@@ -14,7 +14,8 @@ const { pool, getStaffIdByEmail } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
 const outbox = require('../lib/outbox');
 const { createNotification, insertNotification } = require('../lib/notification');
-const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../middleware/auth');
+const { hasPermission, PERMISSIONS } = require('../constants/permissions');
 const { publicLimiter } = require('../middleware/rateLimits');
 const { findSubscriberForIdentity } = require('../lib/privacyService');
 const { writeAuditEvent } = require('../lib/auditTrail');
@@ -115,6 +116,100 @@ async function createRoutedTicket(conn, {
 
 // ── UNIFIED INBOX ────────────────────────────────────────────────────────────
 // Tickets + not-yet-converted contact messages, with routing + SLA, filterable.
+/**
+ * GET /api/admin/cx-performance — how the service team is doing, in numbers.
+ *
+ * خدمة العملاء had no team screen at all: every tab in the section is a
+ * customer's problem in detail — the inbox, the tickets, the refunds, the
+ * consultations. There was nothing to grant somebody who should see how the
+ * team is doing without reading what the customers wrote.
+ *
+ * The figures are what a ticket already records: who it went to, when it was
+ * first answered, whether it beat its SLA, and what the customer scored the
+ * outcome. No subject, no body, no customer name leaves here.
+ */
+router.get('/api/admin/cx-performance', requireAuth, requireAdminOrStaff,
+  requireAnyPermission(PERMISSIONS.MANAGE_INBOX, PERMISSIONS.VIEW_PERF_CX), async (req, res) => {
+    try {
+      const tenant = [req.tenantId];
+      // TIMESTAMPDIFF in minutes: a first response is a customer-visible
+      // promise, and hours would round the SLA question away.
+      const AGENT_FIGURES = `
+        SELECT COALESCE(NULLIF(TRIM(t.assigned_to_name),''), s.name, '—') name,
+               t.assigned_to_id id,
+               COUNT(*) tickets,
+               SUM(CASE WHEN t.status IN ('open','pending','in_progress') THEN 1 ELSE 0 END) open_tickets,
+               SUM(CASE WHEN t.resolved_at IS NOT NULL THEN 1 ELSE 0 END) resolved,
+               SUM(CASE WHEN t.sla_breached=1 THEN 1 ELSE 0 END) sla_breached,
+               ROUND(AVG(CASE WHEN t.first_response_at IS NOT NULL
+                              THEN TIMESTAMPDIFF(MINUTE, t.created_at, t.first_response_at) END)) avg_first_response_minutes,
+               ROUND(AVG(t.csat_score), 2) avg_csat,
+               COUNT(t.csat_score) csat_answers
+          FROM support_tickets t
+          LEFT JOIN staff s ON s.id=t.assigned_to_id AND s.tenant_id=t.tenant_id
+         WHERE t.tenant_id=? AND t.deleted_at IS NULL
+         GROUP BY t.assigned_to_id, name
+         ORDER BY tickets DESC`;
+
+      const [[byAgent], [[totals]], [byStatus], [conversations]] = await Promise.all([
+        pool.query(AGENT_FIGURES, tenant),
+        pool.query(
+          `SELECT COUNT(*) tickets,
+                  SUM(CASE WHEN status IN ('open','pending','in_progress') THEN 1 ELSE 0 END) open_tickets,
+                  SUM(CASE WHEN resolved_at IS NOT NULL THEN 1 ELSE 0 END) resolved,
+                  SUM(CASE WHEN sla_breached=1 THEN 1 ELSE 0 END) sla_breached,
+                  ROUND(AVG(CASE WHEN first_response_at IS NOT NULL
+                                 THEN TIMESTAMPDIFF(MINUTE, created_at, first_response_at) END)) avg_first_response_minutes,
+                  ROUND(AVG(csat_score), 2) avg_csat,
+                  COUNT(csat_score) csat_answers,
+                  SUM(CASE WHEN assigned_to_id IS NULL THEN 1 ELSE 0 END) unassigned
+             FROM support_tickets WHERE tenant_id=? AND deleted_at IS NULL`, tenant),
+        pool.query(
+          `SELECT status, COUNT(*) n FROM support_tickets
+            WHERE tenant_id=? AND deleted_at IS NULL GROUP BY status ORDER BY n DESC`, tenant),
+        // The shared inbox, by whoever is carrying it.
+        pool.query(
+          `SELECT COALESCE(NULLIF(TRIM(assigned_to_staff_name),''), '—') name,
+                  assigned_to_staff_id id, COUNT(*) conversations,
+                  COALESCE(SUM(unread_count),0) unread
+             FROM inbox_conversations WHERE tenant_id=?
+            GROUP BY assigned_to_staff_id, name ORDER BY conversations DESC`, tenant),
+      ]);
+
+      const number = value => (value === null || value === undefined ? null : Number(value));
+      res.json({
+        totals: {
+          tickets: Number(totals?.tickets || 0),
+          open: Number(totals?.open_tickets || 0),
+          resolved: Number(totals?.resolved || 0),
+          slaBreached: Number(totals?.sla_breached || 0),
+          unassigned: Number(totals?.unassigned || 0),
+          avgFirstResponseMinutes: number(totals?.avg_first_response_minutes),
+          avgCsat: number(totals?.avg_csat),
+          csatAnswers: Number(totals?.csat_answers || 0),
+        },
+        byStatus: byStatus.map(row => ({ status: String(row.status || '').toLowerCase(), count: Number(row.n || 0) })),
+        byAgent: byAgent.map(row => ({
+          id: row.id, name: row.name,
+          tickets: Number(row.tickets || 0),
+          open: Number(row.open_tickets || 0),
+          resolved: Number(row.resolved || 0),
+          slaBreached: Number(row.sla_breached || 0),
+          avgFirstResponseMinutes: number(row.avg_first_response_minutes),
+          avgCsat: number(row.avg_csat),
+          csatAnswers: Number(row.csat_answers || 0),
+        })),
+        inbox: conversations.map(row => ({
+          id: row.id, name: row.name,
+          conversations: Number(row.conversations || 0),
+          unread: Number(row.unread || 0),
+        })),
+        // Whether this caller may also open the tickets themselves.
+        canSeeDetail: Boolean(req.isSuperAdmin) || hasPermission(req.staffRecord, PERMISSIONS.MANAGE_INBOX),
+      });
+    } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  });
+
 router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
   try {
     const { department, category, status, sla, assignee, q } = req.query;

@@ -28,6 +28,7 @@ export const contentHubRouteTabs = new Set<string>([
   'campaigns',
   'sales_planning',
   'archived_clients',
+  'cx_team',
   'branches_settings',
   'content_hub',
   'footer_settings',

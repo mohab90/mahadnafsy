@@ -4,13 +4,21 @@ const express = require('express');
 const router  = express.Router();
 
 const { pool } = require('../../lib/db');
-const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../../middleware/auth');
+const { hasPermission, PERMISSIONS } = require('../../constants/permissions');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Sales Team Performance + Lead Conversion Funnel ──────────────
 // ═══════════════════════════════════════════════════════════════════════════
 // GET /api/admin/reports/sales-performance?from=&to=
-router.get('/api/admin/reports/sales-performance', requireAuth, requireAdmin, async (req, res) => {
+// «أداء فريق المبيعات» computed its figures in the browser out of the leads and
+// orders arrays, so the smallest way to show somebody the team's numbers was to
+// hand them the pipeline. This endpoint already computed them in SQL and was
+// admin-only; it now also answers whoever runs the team or holds the
+// performance key, and it tells a performance-only caller less: a rep's pay is
+// not part of how the team is doing.
+router.get('/api/admin/reports/sales-performance', requireAuth, requireAdminOrStaff,
+  requireAnyPermission(PERMISSIONS.MANAGE_SALES_TEAM, PERMISSIONS.VIEW_PERF_SALES), async (req, res) => {
   try {
     const from = req.query.from || `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-01`;
     const to   = req.query.to   || new Date().toISOString().slice(0, 10);
@@ -34,13 +42,25 @@ router.get('/api/admin/reports/sales-performance', requireAuth, requireAdmin, as
       WHERE st.tenant_id=? AND UPPER(st.role) IN ('SALES','SALES_MANAGER','MANAGER') AND st.is_active=1
       ORDER BY revenue_egp DESC`, [req.tenantId, from, to, req.tenantId, from, to, req.tenantId]);
 
+    // Pay is a different question from performance. A caller who holds the
+    // performance key and nothing else gets the work, not the commission or the
+    // address it would be paid to.
+    const seesPay = Boolean(req.isSuperAdmin) || hasPermission(req.staffRecord, PERMISSIONS.MANAGE_SALES_TEAM);
     res.json({
       from, to,
-      staff: staff.map(s => ({
-        ...s,
-        commission_due: s.commission_rate ? Math.round(Number(s.revenue_egp) * Number(s.commission_rate) / 100) : null,
-        conversion_rate: s.total_leads > 0 ? parseFloat((s.converted_leads / s.total_leads * 100).toFixed(1)) : null,
-      })),
+      canSeePay: seesPay,
+      staff: staff.map(s => {
+        const conversion_rate = s.total_leads > 0 ? parseFloat((s.converted_leads / s.total_leads * 100).toFixed(1)) : null;
+        if (!seesPay) {
+          const { email: _email, commission_rate: _rate, ...rest } = s;
+          return { ...rest, conversion_rate };
+        }
+        return {
+          ...s,
+          commission_due: s.commission_rate ? Math.round(Number(s.revenue_egp) * Number(s.commission_rate) / 100) : null,
+          conversion_rate,
+        };
+      }),
     });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

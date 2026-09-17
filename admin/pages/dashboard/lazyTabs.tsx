@@ -22,6 +22,7 @@ export const ServiceHubTab = lazy(() => import('./tabs/ServiceHubTab'));
 export const DaqqiAttendanceTab = lazy(() => import('./tabs/DaqqiAttendanceTab'));
 export const DaqqiScheduleTab = lazy(() => import('./tabs/DaqqiScheduleTab'));
 export const DaqqiTeamTab = lazy(() => import('./tabs/DaqqiTeamTab'));
+export const CxTeamTab = lazy(() => import('./tabs/CxTeamTab'));
 export const DripCampaignsTab = lazy(() => import('./tabs/DripCampaignsTab'));
 export const EmailCampaignsTab = lazy(() => import('./tabs/EmailCampaignsTab'));
 export const ExpenseAnalyticsTab = lazy(() => import('./tabs/ExpenseAnalyticsTab'));

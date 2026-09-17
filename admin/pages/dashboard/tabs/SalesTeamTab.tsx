@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { Users } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
-import type { SalesTarget } from '../../../types';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
+import type { SalesPerformanceRow, SalesTarget } from '../../../types';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -29,6 +30,18 @@ export default function SalesTeamTab({ salesTargets = [], onOpenStaffProfile }: 
   const { staffMembers, leads, orders } = useSiteData();
   const [roleFilter, setRoleFilter] = useState('all');
   const [searchQ, setSearchQ] = useState('');
+  // This month's figures per rep, computed in SQL. Counting them here out of
+  // the leads and orders arrays meant the smallest way to show somebody the
+  // team's numbers was to hand them the pipeline — and somebody holding only
+  // view_perf_sales has neither array, so the screen read zeros.
+  const [perf, setPerf] = useState<SalesPerformanceRow[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    mysqlAdmin.getSalesTeamPerformance()
+      .then(data => { if (live) setPerf(data.staff); })
+      .catch(() => { if (live) setPerf(null); });
+    return () => { live = false; };
+  }, []);
 
   const MONTH = cairoMonthOnly();
   const monthStart = `${MONTH}-01`;
@@ -43,14 +56,21 @@ export default function SalesTeamTab({ salesTargets = [], onOpenStaffProfile }: 
   );
 
   const stats = useMemo(() => filtered.map(s => {
-    const monthLeads = leads.filter(l => l.assignedSalesId === s.id && (l.createdAt || '') >= monthStart);
-    const monthConverted = monthLeads.filter(l => l.status === 'converted');
-    const monthRevenue = orders.filter(o => o.staffId === s.id && (o.createdAt || '') >= monthStart)
-                                .reduce((acc, o) => acc + (Number(o.amount) || 0), 0);
+    const counted = perf?.find(row => String(row.id) === String(s.id));
+    const monthLeads = counted
+      ? counted.total_leads
+      : leads.filter(l => l.assignedSalesId === s.id && (l.createdAt || '') >= monthStart).length;
+    const monthConverted = counted
+      ? counted.converted_leads
+      : leads.filter(l => l.assignedSalesId === s.id && (l.createdAt || '') >= monthStart && l.status === 'converted').length;
+    const monthRevenue = counted
+      ? Number(counted.revenue_egp) || 0
+      : orders.filter(o => o.staffId === s.id && (o.createdAt || '') >= monthStart)
+              .reduce((acc, o) => acc + (Number(o.amount) || 0), 0);
     const target = salesTargets.find(t => t.staffId === s.id);
     const targetPct = target?.monthlyTarget ?? target?.targetEGP ? Math.min(100, Math.round((monthRevenue / (target.monthlyTarget ?? target.targetEGP)) * 100)) : null;
-    return { ...s, monthLeads: monthLeads.length, monthConverted: monthConverted.length, monthRevenue, targetPct, target };
-  }), [filtered, leads, orders, salesTargets, monthStart]);
+    return { ...s, monthLeads, monthConverted, monthRevenue, targetPct, target };
+  }), [filtered, leads, orders, salesTargets, monthStart, perf]);
 
   const roles = [...new Set(staffMembers.map(s => s.role))];
 

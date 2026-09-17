@@ -49,6 +49,7 @@ const PERMISSION_LABELS: Record<StaffPermission, string> = {
   view_perf_sales: 'أداء فريق المبيعات فقط (بدون تفاصيل القسم)',
   view_perf_online: 'أداء فريق الأونلاين فقط (بدون تفاصيل القسم)',
   view_perf_daqqi: 'أداء فريق الدقي فقط (بدون تفاصيل القسم)',
+  view_perf_cx: 'أداء فريق خدمة العملاء فقط (بدون تفاصيل القسم)',
   // Orders & payments
   view_orders: 'عرض الطلبات والمدفوعات',
   manage_orders: 'إدارة الطلبات والمدفوعات',
@@ -699,6 +700,7 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   lecturer_applications: 'view_join_us',
   customer_inbox:     'manage_inbox',
   service_hub:        'manage_inbox',
+  cx_team:            ['manage_inbox', 'view_perf_cx'],
   join_us:            'view_join_us',
   interviews:         'view_hr',
   contacts:           'view_contacts',

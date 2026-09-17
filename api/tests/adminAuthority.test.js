@@ -27,6 +27,8 @@ const path = require('node:path');
 
 const API = path.join(__dirname, '..');
 const auth = fs.readFileSync(path.join(API, 'middleware', 'auth.js'), 'utf8');
+/** A file under api/, or under the repo root with a leading '..'. */
+const read = rel => fs.readFileSync(path.join(API, rel), 'utf8');
 
 /** The body of one guard function, from its declaration to the next one. */
 function guardBody(name) {
@@ -193,6 +195,49 @@ test('the Dokki team screen gets its figures from the server, not from the round
   assert.match(tab, /perf \? perf\.students : totalAttendees/);
   assert.ok(!/\{rounds\.length\}<\/div><div className="text-gray-400">روندات/.test(tab),
     'the per-instructor round count is read off the rounds array again');
+});
+
+test('each team screen has a figures-only source, and خدمة العملاء has a screen at all', () => {
+  // The same treatment for the other three sections. Two of them had a team
+  // screen that counted its own numbers in the browser — so a performance-only
+  // viewer read zeros, the way Dokki did. خدمة العملاء had no team screen: every
+  // tab in it is one customer's problem in detail, so there was nothing to grant
+  // somebody who should see how the team is doing.
+  const sources = [
+    ['routes/support.js', '/api/admin/cx-performance', /requireAnyPermission\(PERMISSIONS\.MANAGE_INBOX, PERMISSIONS\.VIEW_PERF_CX\)/],
+    ['routes/admin/stafflists.js', '/api/admin/online-performance', /requireAnyPermission\(PERMISSIONS\.MANAGE_SALES_TEAM, PERMISSIONS\.VIEW_PERF_ONLINE\)/],
+    ['routes/analytics/sales.js', '/api/admin/reports/sales-performance', /requireAnyPermission\(PERMISSIONS\.MANAGE_SALES_TEAM, PERMISSIONS\.VIEW_PERF_SALES\)/],
+  ];
+  for (const [file, route, gate] of sources) {
+    const src = read(file);
+    const at = src.indexOf(`router.get('${route}'`);
+    assert.ok(at > 0, `${route} is gone`);
+    assert.match(src.slice(at, at + 400), gate, `${route} is not open to the performance key`);
+  }
+
+  // The service figures are what a ticket records, not what a customer wrote.
+  const support = read('routes/support.js');
+  const cx = support.slice(support.indexOf("'/api/admin/cx-performance'"), support.indexOf("router.get('/api/admin/cs/inbox'"));
+  assert.ok(!/t\.subject|t\.body|subscriber_name|subscriber_email/.test(cx),
+    'the service performance response carries what a customer wrote');
+  assert.match(cx, /csat_score/, 'the customer\'s own score is the point of a service scoreboard');
+  assert.match(cx, /TIMESTAMPDIFF\(MINUTE, t\.created_at, t\.first_response_at\)/);
+
+  // A rep's pay is not part of how the team is doing.
+  const sales = read('routes/analytics/sales.js');
+  assert.match(sales, /const seesPay = Boolean\(req\.isSuperAdmin\) \|\| hasPermission\(req\.staffRecord, PERMISSIONS\.MANAGE_SALES_TEAM\)/);
+  assert.match(sales, /const \{ email: _email, commission_rate: _rate, \.\.\.rest \} = s;/);
+
+  // And the new screen is reachable: a key, a route entry, a renderer.
+  const shared = read(path.join('..', 'admin', 'pages', 'dashboard', 'dashboardShared.tsx'));
+  assert.match(shared, /cx_team:\s*\['manage_inbox', 'view_perf_cx'\]/);
+  assert.match(read(path.join('..', 'admin', 'pages', 'dashboard', 'dashboardTabGroups.ts')), /'cx_team'/);
+  assert.match(read(path.join('..', 'admin', 'pages', 'dashboard', 'GeneralDashboardTabs.tsx')), /key: 'cx_team', Component: CxTeamTab/);
+  assert.match(read(path.join('..', 'admin', 'pages', 'dashboard', 'navigation.tsx')), /key: 'cx_team', label: 'أداء فريق خدمة العملاء'/);
+
+  // The two older screens read the server's figures now.
+  assert.match(read(path.join('..', 'admin', 'pages', 'dashboard', 'tabs', 'OnlineTeamMgmtTab.tsx')), /getOnlinePerformance\(\)/);
+  assert.match(read(path.join('..', 'admin', 'pages', 'dashboard', 'tabs', 'SalesTeamTab.tsx')), /getSalesTeamPerformance\(\)/);
 });
 
 test('an HR account sees no client data until someone gives it a scope', () => {

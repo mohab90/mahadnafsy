@@ -321,6 +321,7 @@ export type StaffPermission =
   | 'view_perf_sales'
   | 'view_perf_online'
   | 'view_perf_daqqi'
+  | 'view_perf_cx'
   // Orders & payments
   | 'view_orders'
   | 'manage_orders'
@@ -1223,6 +1224,55 @@ export interface StaffLeadPerformance {
      *  anything else without the response growing a field for each. */
     byStatus: Record<string, number>;
   }>;
+}
+
+/** GET /admin/reports/sales-performance — this month per rep, computed in SQL.
+ *  email and commission are absent for a caller who holds only the performance
+ *  key: pay is a different question from performance. */
+export interface SalesPerformanceRow {
+  id: string;
+  name: string;
+  role: string;
+  email?: string;
+  commission_rate?: number | null;
+  commission_due?: number | null;
+  total_leads: number;
+  converted_leads: number;
+  revenue_egp: number | string;
+  payment_count: number;
+  conversion_rate: number | null;
+}
+export interface SalesTeamPerformance {
+  from: string;
+  to: string;
+  canSeePay: boolean;
+  staff: SalesPerformanceRow[];
+}
+
+/** GET /admin/cx-performance — how the service team is doing, computed in SQL.
+ *  What a ticket records is what the team is measured on; no subject and no
+ *  customer name is part of this shape, which is what lets the performance key
+ *  open the screen on its own. */
+export interface CxPerformance {
+  totals: {
+    tickets: number; open: number; resolved: number; slaBreached: number; unassigned: number;
+    avgFirstResponseMinutes: number | null; avgCsat: number | null; csatAnswers: number;
+  };
+  byStatus: { status: string; count: number }[];
+  byAgent: {
+    id: string | null; name: string; tickets: number; open: number; resolved: number;
+    slaBreached: number; avgFirstResponseMinutes: number | null; avgCsat: number | null; csatAnswers: number;
+  }[];
+  inbox: { id: string | null; name: string; conversations: number; unread: number }[];
+  canSeeDetail: boolean;
+}
+
+/** GET /admin/online-performance — the online team's figures, computed in SQL. */
+export interface OnlinePerformance {
+  totals: { clients: number; activeClients: number; leads: number };
+  months: { month: string; clients: number; leads: number }[];
+  byStaff: { id: string; name: string; role: string; clients: number; leads: number; converted: number }[];
+  canSeeDetail: boolean;
 }
 
 /** GET /admin/daqqi-performance — how the Dokki team is doing, computed in SQL.

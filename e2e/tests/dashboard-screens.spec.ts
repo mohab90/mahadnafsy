@@ -50,7 +50,7 @@ const SCREENS = [
   'leads', 'sales_hub', 'sales_planning', 'sales_reports', 'sales_team',
   'online_clients', 'client', 'archived_clients', 'online_hub', 'online_team', 'installment_plans', 'subscriptions',
   'daqqi_schedule', 'daqqi_clients', 'daqqi_team', 'daqqi_accounting', 'daqqi_stats', 'waitlist',
-  'customer_inbox', 'service_hub', 'refund_requests', 'consultations', 'cert_requests',
+  'customer_inbox', 'cx_team', 'service_hub', 'refund_requests', 'consultations', 'cert_requests',
   'financial', 'orders', 'financial_reports', 'recurring_expenses',
   'hr', 'staff_performance', 'hr_analytics', 'enps_dashboard', 'offboarding', 'instructors', 'join_us', 'interviews',
   'marketing_hub', 'campaigns', 'notif_inbox',

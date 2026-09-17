@@ -2,7 +2,7 @@
 // lib/mysqlapi.ts — MySQL REST API client (complete)
 // ══════════════════════════════════════════════════════════════
 
-import { AuthUser, CrmInsights, DaqqiPerformance, ScoredLeadsResult, StaffLeadPerformance, SubscriberStats } from '../types';
+import { AuthUser, CrmInsights, CxPerformance, DaqqiPerformance, OnlinePerformance, SalesTeamPerformance, ScoredLeadsResult, StaffLeadPerformance, SubscriberStats } from '../types';
 
 // Relative by default — always targets whatever origin actually served the page
 // (Nginx-proxied in every real deploy). A hardcoded absolute production URL here
@@ -409,6 +409,12 @@ export const mysqlAdmin = {
   // somebody the team's performance meant handing them every attendee's name
   // and payment. This returns the figures and keeps the rows.
   getDaqqiPerformance: (): Promise<DaqqiPerformance> => apiFetch('/admin/daqqi-performance', {}, A),
+  // The service team's figures, and the online team's — same reason as Dokki:
+  // the screens counted their own numbers out of arrays a performance-only
+  // viewer is refused, so they read zeros.
+  getCxPerformance: (): Promise<CxPerformance> => apiFetch('/admin/cx-performance', {}, A),
+  getOnlinePerformance: (): Promise<OnlinePerformance> => apiFetch('/admin/online-performance', {}, A),
+  getSalesTeamPerformance: (): Promise<SalesTeamPerformance> => apiFetch('/admin/reports/sales-performance', {}, A),
   // Scored, filtered, sorted leads — the scoring screen's fifty rows, chosen by
   // the database instead of by scoring 26,878 of them in the browser.
   getScoredLeads:          (opts: { minScore?: number; status?: string; source?: string; q?: string; sortBy?: string; limit?: number } = {}): Promise<ScoredLeadsResult> => {

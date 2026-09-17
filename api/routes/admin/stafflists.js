@@ -14,8 +14,8 @@ const { createNotification } = require('../../lib/notification');
 const { logLeadEvent } = require('../../lib/crm');
 const { branchesFromScope } = require('../../lib/leadAccess');
 const { enqueueEmailSequence } = require('../../lib/emailSequence');
-const { ADMIN_EMAILS, requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
-const { VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES, normalizeDataScope, resolveDataScope } = require('../../constants/permissions');
+const { ADMIN_EMAILS, requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../../middleware/auth');
+const { VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES, normalizeDataScope, resolveDataScope, hasPermission, PERMISSIONS } = require('../../constants/permissions');
 const { safeIsoString, safeDateOnly } = require('../../lib/dates');
 const { bulkOperationLimiter } = require('../../middleware/rateLimits');
 const { keyset } = require('../../lib/pagination');
@@ -57,6 +57,83 @@ async function loadCompletionProjection(tenantId, subscriberIds) {
     return projection;
   }, {});
 }
+
+/**
+ * GET /api/admin/online-performance — how the online team is doing, in numbers.
+ *
+ * «إدارة فريق الأونلاين» counted its own figures in the browser out of the
+ * subscribers and leads arrays, so the smallest way to show somebody the team's
+ * numbers was to hand them every client and every lead. Computed here instead:
+ * nothing in this response names a client.
+ */
+router.get('/api/admin/online-performance', requireAuth, requireAdminOrStaff,
+  requireAnyPermission(PERMISSIONS.MANAGE_SALES_TEAM, PERMISSIONS.VIEW_PERF_ONLINE), async (req, res) => {
+    try {
+      // The online branches, spelled as the columns store them.
+      const ONLINE = "('ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_INTERNATIONAL')";
+      const [[byStaff], [months], [[totals]]] = await Promise.all([
+        pool.query(
+          `SELECT st.id, st.name, LOWER(st.role) role,
+                  COALESCE(cs.clients, 0) clients,
+                  COALESCE(sl.leads, 0) leads,
+                  COALESCE(sl.converted, 0) converted
+             FROM staff st
+             LEFT JOIN (
+               SELECT assigned_cs_id id, COUNT(*) clients FROM subscribers
+                WHERE tenant_id=? AND deleted_at IS NULL AND branch IN ${ONLINE} AND assigned_cs_id IS NOT NULL
+                GROUP BY assigned_cs_id
+             ) cs ON cs.id = st.id
+             LEFT JOIN (
+               SELECT assigned_sales_id id, COUNT(*) leads,
+                      SUM(CASE WHEN status IN ('converted','won') THEN 1 ELSE 0 END) converted
+                 FROM leads
+                WHERE tenant_id=? AND branch IN ${ONLINE} AND assigned_sales_id IS NOT NULL
+                GROUP BY assigned_sales_id
+             ) sl ON sl.id = st.id
+            WHERE st.tenant_id=? AND st.is_active=1 AND st.deleted_at IS NULL
+              AND LOWER(st.role) IN ('online_manager','sales','collection','support','sales_collection_manager')
+            ORDER BY clients DESC, leads DESC`, [req.tenantId, req.tenantId, req.tenantId]),
+        // Six months of both, so the screen's chart has a server-side source.
+        pool.query(
+          `SELECT month, SUM(clients) clients, SUM(leads) leads FROM (
+             SELECT DATE_FORMAT(created_at, '%Y-%m') month, COUNT(*) clients, 0 leads
+               FROM subscribers
+              WHERE tenant_id=? AND deleted_at IS NULL AND branch IN ${ONLINE}
+                AND created_at >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+              GROUP BY month
+             UNION ALL
+             SELECT DATE_FORMAT(created_at, '%Y-%m') month, 0 clients, COUNT(*) leads
+               FROM leads
+              WHERE tenant_id=? AND branch IN ${ONLINE}
+                AND created_at >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+              GROUP BY month
+           ) both GROUP BY month ORDER BY month`, [req.tenantId, req.tenantId]),
+        pool.query(
+          `SELECT
+             (SELECT COUNT(*) FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND branch IN ${ONLINE}) clients,
+             (SELECT COUNT(*) FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND branch IN ${ONLINE} AND is_active=1) active_clients,
+             (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND branch IN ${ONLINE}) leads`,
+          [req.tenantId, req.tenantId, req.tenantId]),
+      ]);
+
+      res.json({
+        totals: {
+          clients: Number(totals?.clients || 0),
+          activeClients: Number(totals?.active_clients || 0),
+          leads: Number(totals?.leads || 0),
+        },
+        months: months.map(row => ({ month: row.month, clients: Number(row.clients || 0), leads: Number(row.leads || 0) })),
+        byStaff: byStaff.map(row => ({
+          id: row.id, name: row.name, role: row.role,
+          clients: Number(row.clients || 0),
+          leads: Number(row.leads || 0),
+          converted: Number(row.converted || 0),
+        })),
+        canSeeDetail: Boolean(req.isSuperAdmin) || hasPermission(req.staffRecord, PERMISSIONS.VIEW_SUBSCRIBERS),
+      });
+    } catch (e) { sendRouteError(res, e); }
+  });
+
 
 // GET /api/admin/subscribers/stats
 //

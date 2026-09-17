@@ -48,6 +48,7 @@ export const PERMISSION_LABELS: Record<StaffPermission, string> = {
   view_perf_sales: 'أداء فريق المبيعات فقط (بدون تفاصيل القسم)',
   view_perf_online: 'أداء فريق الأونلاين فقط (بدون تفاصيل القسم)',
   view_perf_daqqi: 'أداء فريق الدقي فقط (بدون تفاصيل القسم)',
+  view_perf_cx: 'أداء فريق خدمة العملاء فقط (بدون تفاصيل القسم)',
   view_orders: 'عرض الطلبات والمدفوعات',
   manage_orders: 'إدارة الطلبات والمدفوعات',
   manage_payments: 'تسجيل وتعديل المدفوعات',
@@ -128,7 +129,7 @@ export const PERM_CATEGORIES = [
   // Each of these opens one department's team screen and nothing else in that
   // department — the performance of a team without its clients, its money or
   // its day-to-day.
-  { key:'team_perf',   label:'أداء الفرق (بدون تفاصيل الأقسام)',       icon:'🏅', bg:'bg-violet-50',  border:'border-violet-200',  text:'text-violet-700',  perms:['view_perf_sales','view_perf_online','view_perf_daqqi'] as StaffPermission[] },
+  { key:'team_perf',   label:'أداء الفرق (بدون تفاصيل الأقسام)',       icon:'🏅', bg:'bg-violet-50',  border:'border-violet-200',  text:'text-violet-700',  perms:['view_perf_sales','view_perf_online','view_perf_daqqi','view_perf_cx'] as StaffPermission[] },
   { key:'leads',       label:'العملاء المحتملين (CRM / الليدات)',      icon:'👥', bg:'bg-blue-50',    border:'border-blue-200',    text:'text-blue-700',    perms:['view_leads','manage_leads','delete_leads','export_leads'] as StaffPermission[] },
   { key:'subscribers', label:'عملاء الأونلاين المسجلين',            icon:'🎓', bg:'bg-emerald-50', border:'border-emerald-200', text:'text-emerald-700', perms:['view_subscribers','manage_subscribers','delete_subscribers','export_subscribers'] as StaffPermission[] },
   { key:'courses',     label:'الكورسات والمحتوى التعليمي',             icon:'📚', bg:'bg-orange-50',  border:'border-orange-200',  text:'text-orange-700',  perms:['view_courses','manage_courses','manage_lectures','manage_instructors','manage_bundles','manage_discounts','manage_testimonials'] as StaffPermission[] },

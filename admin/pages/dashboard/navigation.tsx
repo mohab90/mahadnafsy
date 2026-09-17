@@ -109,6 +109,7 @@ export type TabKey =
   | 'marketing_hub'
   | 'online_hub'
   | 'staff_performance'
+  | 'cx_team'
   | 'tasks_board'
   | 'sales_team'
   | 'sales_reports'
@@ -248,6 +249,8 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     color: 'text-rose-500',
     items: [
       { key: 'customer_inbox', label: 'Inbox خدمة العملاء', icon: Headphones },
+      // The section's team screen: figures only, so it can be granted on its own.
+      { key: 'cx_team', label: 'أداء فريق خدمة العملاء', icon: Headphones },
       // Was 8 items (tickets/faq_manager/refund_requests/cert_requests/
       // contacts/consultations/nps_dashboard each a separate page) — all
       // moved into ServiceHubTab as subtabs, unchanged, so nothing lost.

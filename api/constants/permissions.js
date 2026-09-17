@@ -78,6 +78,7 @@ const PERMISSIONS = Object.freeze({
   VIEW_PERF_SALES:          'view_perf_sales',
   VIEW_PERF_ONLINE:         'view_perf_online',
   VIEW_PERF_DAQQI:          'view_perf_daqqi',
+  VIEW_PERF_CX:             'view_perf_cx',
   // Orders & Financial
   VIEW_ORDERS:              'view_orders',
   MANAGE_ORDERS:            'manage_orders',

@@ -1,6 +1,8 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Monitor, Users, BookOpen, Video, CheckCircle } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
+import type { OnlinePerformance } from '../../../types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 
@@ -29,6 +31,18 @@ const ONLINE_ROLES = new Set([
 
 export default function OnlineTeamMgmtTab() {
   const { staffMembers, subscribers, leads, courses } = useSiteData();
+  // The figures come from the server. Counting them here out of the subscribers
+  // and leads arrays meant the smallest way to show somebody this team's
+  // numbers was to hand them every client and every lead — and somebody holding
+  // only view_perf_online has neither array, so the screen read zeros.
+  const [perf, setPerf] = useState<OnlinePerformance | null>(null);
+  useEffect(() => {
+    let live = true;
+    mysqlAdmin.getOnlinePerformance()
+      .then(data => { if (live) setPerf(data); })
+      .catch(() => { if (live) setPerf(null); });
+    return () => { live = false; };
+  }, []);
   const months = useMemo(getLast6Months, []);
   const onlineSubscribers = useMemo(() => subscribers.filter(subscriber => isOnlineBranch(subscriber.branch)), [subscribers]);
   const onlineLeads = useMemo(() => leads.filter(lead => isOnlineBranch(lead.branch)), [leads]);
@@ -41,19 +55,22 @@ export default function OnlineTeamMgmtTab() {
 
   // Monthly new online subscribers (non-sales)
   const monthlyData = useMemo(() =>
-    months.map(m => ({
-      month: m.slice(5),
-      مشتركين: onlineSubscribers.filter(s => (s.createdAt || '').slice(0, 7) === m).length,
-      ليدات: onlineLeads.filter(l => (l.createdAt || '').slice(0, 7) === m).length,
-    })),
-    [onlineSubscribers, onlineLeads, months]
+    months.map(m => {
+      const fromServer = perf?.months.find(row => row.month === m);
+      return {
+        month: m.slice(5),
+        مشتركين: fromServer ? fromServer.clients : onlineSubscribers.filter(s => (s.createdAt || '').slice(0, 7) === m).length,
+        ليدات: fromServer ? fromServer.leads : onlineLeads.filter(l => (l.createdAt || '').slice(0, 7) === m).length,
+      };
+    }),
+    [onlineSubscribers, onlineLeads, months, perf]
   );
 
   const activeSubs = useMemo(() => onlineSubscribers.filter(s =>
     !['finished','paused','refunded','leads'].includes(s.clientStatus || '')), [onlineSubscribers]);
 
   const totalCourses = courses.length;
-  const totalSubs = onlineSubscribers.length;
+  const totalSubs = perf ? perf.totals.clients : onlineSubscribers.length;
 
   // Team workload - consultations assigned
   const teamStats = useMemo(() => onlineTeam.map(s => {
@@ -61,8 +78,13 @@ export default function OnlineTeamMgmtTab() {
       sub.assignedStaffId === s.id || sub.assignedCsId === s.id || sub.consultantId === s.id
     );
     const myLeads = onlineLeads.filter(l => l.assignedSalesId === s.id);
-    return { ...s, subsCount: mySubs.length, leadsCount: myLeads.length };
-  }), [onlineTeam, onlineSubscribers, onlineLeads]);
+    const counted = perf?.byStaff.find(row => String(row.id) === String(s.id));
+    return {
+      ...s,
+      subsCount: counted ? counted.clients : mySubs.length,
+      leadsCount: counted ? counted.leads : myLeads.length,
+    };
+  }), [onlineTeam, onlineSubscribers, onlineLeads, perf]);
 
   return (
     <div className="space-y-5" dir="rtl">
@@ -77,7 +99,7 @@ export default function OnlineTeamMgmtTab() {
         {[
           { label: 'فريق الأونلاين', val: onlineTeam.length, icon: Users, card: 'bg-cyan-50 border-cyan-100', badge: 'bg-cyan-100', iconClass: 'text-cyan-600' },
           { label: 'إجمالي المشتركين', val: totalSubs, icon: BookOpen, card: 'bg-blue-50 border-blue-100', badge: 'bg-blue-100', iconClass: 'text-blue-600' },
-          { label: 'المشتركون النشطون', val: activeSubs.length, icon: CheckCircle, card: 'bg-emerald-50 border-emerald-100', badge: 'bg-emerald-100', iconClass: 'text-emerald-600' },
+          { label: 'المشتركون النشطون', val: perf ? perf.totals.activeClients : activeSubs.length, icon: CheckCircle, card: 'bg-emerald-50 border-emerald-100', badge: 'bg-emerald-100', iconClass: 'text-emerald-600' },
           { label: 'الكورسات المتاحة', val: totalCourses, icon: Video, card: 'bg-violet-50 border-violet-100', badge: 'bg-violet-100', iconClass: 'text-violet-600' },
         ].map(k => {
           const Icon = k.icon;
