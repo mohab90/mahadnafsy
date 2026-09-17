@@ -274,9 +274,11 @@ router.put('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
           await conn.rollback(); transactionStarted = false;
           return res.status(400).json({ error: `Unknown permission(s): ${unknown.join(', ')}` });
         }
-        // An empty grid means "fall back to the role defaults" (resolvePermissions
-        // ignores an empty array), so store NULL rather than '[]' to say so plainly.
-        updates.permissions_json = list.length ? JSON.stringify([...new Set(list.map(String))]) : null;
+        // An emptied grid is stored as '[]' and means none. NULL is reserved for
+        // "this request did not mention permissions", which is the case that
+        // never reaches here. Storing NULL for an empty grid is how revoking
+        // everything used to come back as the role's own list.
+        updates.permissions_json = JSON.stringify([...new Set(list.map(String))]);
       }
       const rawScope = req.body.data_scope !== undefined ? req.body.data_scope : req.body.dataScope;
       if (rawScope !== undefined) updates.data_scope = normalizeDataScope(rawScope);

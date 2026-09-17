@@ -329,6 +329,19 @@ async function requireAdminOrStaff(req, res, next) {
     const staff = await findActiveStaff(req, email, true);
     if (staff) {
       req.staffRecord = staff;
+      // Authority comes from the role, not from the server's env list. Every
+      // other guard in this file already says so — requireAdmin, both online
+      // manager guards and requireSuperAdmin all raise a full-access role here.
+      // This one did not, and eighteen refusals downstream read `isSuperAdmin`
+      // to decide whether the caller may act: the permission grid and the data
+      // scope picker (403 PERMISSIONS_REQUIRE_SUPERADMIN), creating a
+      // privileged staff row, setting a password at hire, the Dokki round
+      // controls. An account whose role is ADMIN — the top role the product
+      // offers — was refused all of them, and the only way to hold the
+      // authority was to have your address written into an environment
+      // variable on the server. That is why editing a staff member's
+      // permissions changed nothing.
+      if (FULL_ACCESS_ROLES.includes((staff.role || '').toLowerCase())) req.isSuperAdmin = true;
       if (staff.permissions_json && typeof staff.permissions_json === 'string') {
         try { req.staffRecord.permissionsArr = JSON.parse(staff.permissions_json); } catch (_) { req.staffRecord.permissionsArr = []; }
       } else if (Array.isArray(staff.permissions_json)) {

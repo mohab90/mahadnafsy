@@ -63,9 +63,9 @@ function readRequestedPermissions(body = {}) {
  * @returns {{ok: true, permissionsJson: string|null}
  *          |{ok: false, status: number, body: object}}
  *
- * `permissionsJson` is null when the request asked for no override, which
- * resolvePermissions reads as "fall back to the role defaults" — storing '[]'
- * instead would claim an explicit grant of nothing.
+ * `permissionsJson` is null only when the request never mentioned permissions,
+ * which resolvePermissions reads as "fall back to the role defaults". A request
+ * that sent an empty list is stored as '[]' and means exactly none.
  */
 function assertGrantable(req, body = {}, { alreadyHeld = [] } = {}) {
   const requested = readRequestedPermissions(body);
@@ -105,8 +105,11 @@ function assertGrantable(req, body = {}, { alreadyHeld = [] } = {}) {
     }
   }
 
-  const unique = [...new Set(requested)];
-  return { ok: true, permissionsJson: unique.length ? JSON.stringify(unique) : null };
+  // An explicit empty list is stored as `[]`, not NULL: the caller said "none",
+  // and NULL says "whatever the role brings". Only a request that never
+  // mentioned permissions leaves the stored value alone, and that case returned
+  // above.
+  return { ok: true, permissionsJson: JSON.stringify([...new Set(requested)]) };
 }
 
 /**

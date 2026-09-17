@@ -17,7 +17,11 @@ test('the employee editor can actually persist permissions and data scope', () =
   // among its writable fields — every tick was dropped on save and the account
   // silently kept running on its role defaults. That is what made staff
   // accounts show sections nobody had granted them.
-  assert.match(employees, /updates\.permissions_json = list\.length/);
+  // Stored as sent, emptied grid included — `list.length ? … : null` here is
+  // what turned "revoke everything" back into the role's own defaults.
+  assert.match(employees, /updates\.permissions_json = JSON\.stringify/);
+  assert.ok(!/updates\.permissions_json = list\.length/.test(employees),
+    'an emptied grid is stored as NULL again, which reads as "use the role defaults"');
   assert.match(employees, /updates\.data_scope = normalizeDataScope\(rawScope\)/);
   // Granting access is an authority change, not an HR data edit.
   assert.match(employees, /if \(req\.isSuperAdmin\) \{[\s\S]{0,600}rawPerms/);

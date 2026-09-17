@@ -45,17 +45,30 @@ test('a request that does not mention permissions grants none', () => {
   assert.equal(result.permissionsJson, null);
 });
 
-test('an explicitly empty list stores null, not "[]"', () => {
-  // resolvePermissions only treats a non-empty array as an override, so both
-  // resolve the same way today. They do not read the same way: '[]' looks like
-  // somebody deliberately granted nothing, and the next person to touch
-  // resolvePermissions has to work out which was meant.
+test('an emptied grid stores "[]" — revoking everything is an edit like any other', () => {
+  // NULL and '[]' used to be the same thing here, and resolvePermissions read
+  // both as "use the role defaults". So an admin who unticked every box saved
+  // successfully and reopened the page to find the role's twelve permissions
+  // back: the one edit the grid could not express was revoking everything.
+  // NULL now means only "this request said nothing about permissions".
   for (const body of [{ permissions: [] }, { permissions_json: '[]' }, { permissions_json: '' }]) {
     const result = assertGrantable(staffReq([MANAGE_STAFF]), body);
     assert.equal(result.ok, true);
-    assert.equal(result.permissionsJson, null,
-      `an empty grant was stored as ${result.permissionsJson} for ${JSON.stringify(body)}`);
+    assert.equal(result.permissionsJson, '[]',
+      `an emptied grid was stored as ${result.permissionsJson} for ${JSON.stringify(body)}`);
   }
+  // A request that never mentioned permissions still leaves the stored value be.
+  assert.equal(assertGrantable(staffReq([MANAGE_STAFF]), { name: 'no permissions field' }).permissionsJson, null);
+});
+
+test('a stored empty list resolves to no permissions, not to the role defaults', () => {
+  const { resolvePermissions } = require('../constants/permissions');
+  assert.deepEqual(resolvePermissions({ role: 'hr', permissions_json: '[]' }), []);
+  // NULL still falls back, which is what every existing row relies on.
+  assert.ok(resolvePermissions({ role: 'hr', permissions_json: null }).length > 0);
+  // And a full-access role is never locked out by an empty list.
+  const { hasPermission } = require('../constants/permissions');
+  assert.equal(hasPermission({ role: 'admin', permissions_json: '[]' }, 'manage_staff'), true);
 });
 
 test('a permission the caller holds may be passed on', () => {

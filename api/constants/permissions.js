@@ -402,13 +402,20 @@ function resolvePermissions(staffRecord) {
   if (!staffRecord) return [];
   const role = (staffRecord.role || '').toLowerCase();
 
-  // Custom per-user override stored in DB
+  // Custom per-user override stored in DB.
+  //
+  // NULL means "no override, use the role defaults". A stored `[]` means the
+  // grid was emptied on purpose, and that has to survive: an empty list used to
+  // fall through to the role defaults here, so an admin who unticked every box
+  // saved successfully, reopened the page, and found the twelve permissions the
+  // role brings sitting there again — the screen said 0 and the account kept
+  // working. Revoking everything was the one edit the grid could not express.
   if (staffRecord.permissions_json) {
     try {
       const custom = typeof staffRecord.permissions_json === 'string'
         ? JSON.parse(staffRecord.permissions_json)
         : staffRecord.permissions_json;
-      if (Array.isArray(custom) && custom.length > 0) return custom;
+      if (Array.isArray(custom)) return custom;
     } catch (_) { /* ignore */ }
   }
 
