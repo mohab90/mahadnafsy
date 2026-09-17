@@ -586,6 +586,8 @@ const Dashboard: React.FC = () => {
         // Unmapped tabs are hidden for non-admin staff (fail-secure default).
         // An array means any one of the listed permissions opens the tab —
         // التكاملات merged seven screens that were gated four different ways.
+        // null is the person's own page: it belongs in every staff sidebar.
+        if (required === null) return true;
         if (Array.isArray(required)) return required.some(hasPerm);
         return !!required && hasPerm(required);
       }),

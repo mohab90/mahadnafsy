@@ -25,9 +25,13 @@ export function DashboardTabContainer({
   // A tab names one permission or several; several means any one of them opens
   // it. See the comment on TAB_PERMISSION_MAP for why.
   const requiredPermission = TAB_PERMISSION_MAP[activeTab];
-  const allowed = Array.isArray(requiredPermission)
-    ? requiredPermission.some(hasPermission)
-    : requiredPermission !== undefined && hasPermission(requiredPermission);
+  // null names a tab that is the viewer's own page; undefined is a tab nobody
+  // mapped, which stays denied.
+  const allowed = requiredPermission === null
+    ? true
+    : Array.isArray(requiredPermission)
+      ? requiredPermission.some(hasPermission)
+      : requiredPermission !== undefined && hasPermission(requiredPermission);
 
   if (!isAdmin && !allowed) {
     return <AccessDenied />;

@@ -2,7 +2,7 @@
 const logger = require('../../lib/logger');
 const { pool, getStaffIdByEmail } = require('../../lib/db');
 const { tryJson } = require('../../lib/helpers');
-const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission, invalidateIdentity } = require('../../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requirePermissionOrSelf, requireAnyPermission, invalidateIdentity } = require('../../middleware/auth');
 const { createNotification } = require('../../lib/notification');
 const { uuidv4 } = require('../../lib/id');
 const { postJournalEntry, toEgp, getFxToEgp, logFinancialAudit } = require('../../lib/finance');
@@ -32,4 +32,4 @@ function hrError(res, error, message = 'HR route failed') {
   return sendWriteError(res, error);
 }
 
-module.exports = { hrError, requirePermission, requireAnyPermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, invalidateIdentity, _resolveStaffByUser };
+module.exports = { hrError, requirePermission, requirePermissionOrSelf, requireAnyPermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, invalidateIdentity, _resolveStaffByUser };

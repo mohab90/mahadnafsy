@@ -13,7 +13,7 @@
 const { Router } = require('express');
 const router = Router();
 const {
-  requireAuth, requireAdminOrStaff, requirePermission, logger, pool, uuidv4,
+  requireAuth, requireAdminOrStaff, requirePermission, requirePermissionOrSelf, logger, pool, uuidv4,
   createNotification, _resolveStaffByUser,
   hrError,
 } = require('./_shared');
@@ -90,7 +90,7 @@ function monthSpan(fromIso) {
 }
 
 // GET /api/admin/hr/staff/:id/profile — the whole professional profile in one call.
-router.get('/api/admin/hr/staff/:id/profile', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
+router.get('/api/admin/hr/staff/:id/profile', requireAuth, requireAdminOrStaff, requirePermissionOrSelf('view_hr'), async (req, res) => {
   try {
     const { id } = req.params;
     const [[staff]] = await pool.query(
@@ -394,7 +394,7 @@ async function buildStaffReport(tenantId, id, key) {
   };
 }
 
-router.get('/api/admin/hr/staff/:id/report', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
+router.get('/api/admin/hr/staff/:id/report', requireAuth, requireAdminOrStaff, requirePermissionOrSelf('view_hr'), async (req, res) => {
   try {
     const key = String(req.query.period || 'month');
     if (!PERIODS[key]) return res.status(400).json({ error: 'period غير مدعوم' });
@@ -407,7 +407,7 @@ router.get('/api/admin/hr/staff/:id/report', requireAuth, requireAdminOrStaff, r
 
 // ── Management ↔ employee thread ─────────────────────────────────────────────
 
-router.get('/api/admin/hr/staff/:id/messages', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
+router.get('/api/admin/hr/staff/:id/messages', requireAuth, requireAdminOrStaff, requirePermissionOrSelf('view_hr'), async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT id, staff_id, author_staff_id, author_name, direction,

@@ -65,6 +65,41 @@ test('the permission grid is gated on that flag, not on a role string', () => {
   assert.match(employees, /PERMISSIONS_REQUIRE_SUPERADMIN/);
 });
 
+test('your own profile is not a section you need rights to enter', () => {
+  // Watched live on production: the HR manager's grid had been narrowed to lead
+  // and client work — no view_dashboard, no view_hr — so «ملفي الشخصي» answered
+  // «غير مصرح بالوصول» before the page even called the API, and the API would
+  // have refused it too.
+  const profile = fs.readFileSync(path.join(API, 'routes', 'hr', 'staffprofile.js'), 'utf8');
+  for (const route of ['profile', 'report', 'messages']) {
+    const line = new RegExp(`router\\.get\\('/api/admin/hr/staff/:id/${route}'[^\\n]*`).exec(profile);
+    assert.ok(line, `the ${route} route is gone`);
+    assert.match(line[0], /requirePermissionOrSelf\('view_hr'\)/,
+      `reading your own ${route} still demands view_hr`);
+  }
+  // Writing to somebody's file is a different act and stays where it was.
+  const post = /router\.post\('\/api\/admin\/hr\/staff\/:id\/messages'[^\n]*/.exec(profile);
+  assert.match(post[0], /requirePermission\('manage_hr'\)/);
+
+  // …and the middleware only waives the permission for your own id.
+  const helper = auth.slice(auth.indexOf('function requirePermissionOrSelf'));
+  assert.match(helper, /String\(req\.staffRecord\.id\) === String\(req\.params\?\.\[param\]\)/);
+  assert.match(helper, /if \(!mine\) return gate\(req, res, next\)/);
+});
+
+test('the personal tabs are open to every staff member, and only those', () => {
+  const shared = fs.readFileSync(path.join(API, '..', 'admin', 'pages', 'dashboard', 'dashboardShared.tsx'), 'utf8');
+  for (const tab of ['staff_home', 'staff_settings', 'my_hr']) {
+    assert.match(shared, new RegExp(`${tab}:\\s*null`), `${tab} still asks for a permission`);
+  }
+  // null means "yours"; undefined still means denied, in both gates.
+  const container = fs.readFileSync(path.join(API, '..', 'admin', 'pages', 'dashboard', 'DashboardTabContainer.tsx'), 'utf8');
+  assert.match(container, /requiredPermission === null\s*\?\s*true/);
+  assert.match(container, /requiredPermission !== undefined && hasPermission\(requiredPermission\)/);
+  const dashboard = fs.readFileSync(path.join(API, '..', 'admin', 'pages', 'Dashboard.tsx'), 'utf8');
+  assert.match(dashboard, /if \(required === null\) return true;/);
+});
+
 test('an HR account sees no client data until someone gives it a scope', () => {
   // Asked directly: is the HR account empty? It is, by the role's own default —
   // `hr` scopes to 'none', so every lead and subscriber query filters to nothing

@@ -87,8 +87,11 @@ test('ملفي الوظيفي is its own tab with its own URL', () => {
   // It renders on its own, and setActiveTab pushes /dashboard/<tab>.
   assert.match(dashboard, /activeTab === 'my_hr' && currentStaff && <DashboardMyHr/);
   assert.match(dashboard, /navigate\(`\/dashboard\/\$\{urlForTab\(tab\)\}`\)/);
-  // Which means it is reachable by permission too.
-  assert.match(codeOnly(read('admin/pages/dashboard/dashboardShared.tsx')), /my_hr:\s*'view_dashboard'/);
+  // And reachable: it is the employee's own file, so it names no permission at
+  // all. It used to ask for view_dashboard, which an employee whose grid had
+  // been narrowed to lead work does not hold — their own file answered
+  // «غير مصرح بالوصول».
+  assert.match(codeOnly(read('admin/pages/dashboard/dashboardShared.tsx')), /my_hr:\s*null/);
 });
 
 test('the personal page is one page, not a sub-nav', () => {

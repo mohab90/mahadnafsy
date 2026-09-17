@@ -91,16 +91,25 @@ run('unimported modules', 'npm run audit:orphan-modules', { quiet: true });
 const artifacts = path.join(root, 'artifacts', 'releases');
 fs.mkdirSync(artifacts, { recursive: true });
 if (REUSE_CLIENT) {
-  const changed = execSync(`git diff --name-only ${REUSE_CLIENT.replace(/^mahad-/, '')}..HEAD -- client admin shared`, { cwd: root, encoding: 'utf8' }).trim();
+  // The two front ends are asked about separately: the public site is reused
+  // when nothing under client/ or shared/ has changed, and the admin panel is
+  // built from this commit regardless. Treating them as one meant any admin
+  // change forced a client build too — which is a problem on a machine where
+  // the client build cannot run (a virus scanner holding a generated page, say),
+  // and wasted minutes on every release where only the panel moved.
+  const base = REUSE_CLIENT.replace(/^mahad-/, '');
+  const changed = execSync(`git diff --name-only ${base}..HEAD -- client shared`, { cwd: root, encoding: 'utf8' }).trim();
   if (changed) {
-    console.error(`\n✗ --reuse-client ${REUSE_CLIENT} but the front end changed:\n${changed}`);
+    console.error(`\n✗ --reuse-client ${REUSE_CLIENT} but the public site changed:\n${changed}`);
     process.exit(1);
   }
+  const adminChanged = execSync(`git diff --name-only ${base}..HEAD -- admin`, { cwd: root, encoding: 'utf8' }).trim();
   stage++;
-  console.log(`\n[${stage}] reusing the front-end archives of ${REUSE_CLIENT} — no client or admin change since`);
-  run('api archive', `git archive --format=tar.gz --prefix=mahad-api/ --output=${q(path.join(artifacts, `${release}-api.tgz`))} ${commit}:api`, { quiet: true });
-  run('ship to staging', `scp -i ${KEY} -o StrictHostKeyChecking=no ${q(path.join(artifacts, `${release}-api.tgz`))} ${HOST}:/staging/`, { quiet: true });
-  run('stage the reused front end', ssh(`cd /staging && cp ${REUSE_CLIENT}-client.tgz ${release}-client.tgz && cp ${REUSE_CLIENT}-admin.tgz ${release}-admin.tgz`), { quiet: true });
+  console.log(`\n[${stage}] reusing the public-site archive of ${REUSE_CLIENT} — no client or shared change since`);
+  if (adminChanged) console.log(`      the admin panel changed and is being rebuilt (${adminChanged.split('\n').length} file(s))`);
+  run('build api + admin artifacts', 'npm run release:prepare -- --only admin', { quiet: true });
+  run('ship to staging', `scp -i ${KEY} -o StrictHostKeyChecking=no ${q(path.join(artifacts, `${release}-*.tgz`))} ${HOST}:/staging/`, { quiet: true });
+  run('stage the reused public site', ssh(`cd /staging && cp ${REUSE_CLIENT}-client.tgz ${release}-client.tgz`), { quiet: true });
 } else {
   // prepare-release builds both front ends and refuses an incomplete client
   // archive — see tools/verifyPrerender.mjs.

@@ -88,8 +88,11 @@ export function scanPermissionMatrix() {
   // gated four different ways. Reading only the single form counted both merged
   // tabs as unmapped — which is the loudest way for this scan to be wrong, since
   // it reports a permission hole exactly where the gate got broader, not weaker.
+  // `null` is the third form: a tab that belongs to whoever opens it — their
+  // profile, their HR file — which every staff member reaches and which names
+  // no permission. Mapped, deliberately, to nothing.
   const mappedTabs = new Map(
-    [...tabMap.matchAll(/^\s*([a-z_]+):\s*(\[[^\]]*\]|'[a-z_]+')/gm)].map(match => [
+    [...tabMap.matchAll(/^\s*([a-z_]+):\s*(null|\[[^\]]*\]|'[a-z_]+')/gm)].map(match => [
       match[1],
       [...match[2].matchAll(/'([a-z_]+)'/g)].map(inner => inner[1]),
     ])

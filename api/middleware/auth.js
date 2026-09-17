@@ -394,6 +394,27 @@ async function enforceMfa(req, res, staff = req.staffRecord, requestedPermission
   }
 }
 
+/**
+ * Your own record needs no permission; somebody else's needs the usual one.
+ *
+ * The staff profile page is reached at /staff/:id and reads
+ * /api/admin/hr/staff/:id/profile, which asks for view_hr — a permission most
+ * roles do not carry. So an employee opening their own page got 403: the
+ * institute's HR manager could not see her own profile, her own targets or her
+ * own messages, because her grid had been narrowed to lead and client work.
+ * Seeing your own record is not an HR permission.
+ */
+function requirePermissionOrSelf(permission, param = 'id') {
+  const gate = requirePermission(permission);
+  return async function(req, res, next) {
+    const mine = req.staffRecord?.id && String(req.staffRecord.id) === String(req.params?.[param]);
+    if (!mine) return gate(req, res, next);
+    // Reading your own record is not the privileged action the policy is about,
+    // so it is weighed as itself rather than as the permission being bypassed.
+    if (await enforceMfa(req, res, req.staffRecord, [])) return next();
+  };
+}
+
 function requireAnyPermission(...permissions) {
   return async function(req, res, next) {
     if (req.isSuperAdmin) {
@@ -414,5 +435,5 @@ module.exports = {
   ROLE_DEFAULT_PERMISSIONS_BE, isPlatformAdminIdentity,
   optionalAuth, requireAuth, requireAdmin, requireSuperAdmin, requirePlatformAdmin,
   requireAdminOrOnlineManager, requireAdminOrOnlineManagerOrCollection,
-  requireAdminOrStaff, requirePermission, requireAnyPermission, enforceMfa, invalidateIdentity,
+  requireAdminOrStaff, requirePermission, requirePermissionOrSelf, requireAnyPermission, enforceMfa, invalidateIdentity,
 };

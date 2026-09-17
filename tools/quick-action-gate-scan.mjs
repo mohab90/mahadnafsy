@@ -23,9 +23,14 @@ const codeOnly = s => s.replace(/\/\*[\s\S]*?\*\//g, '')
 const gates = codeOnly(read('admin/pages/dashboard/dashboardShared.tsx'));
 const home = codeOnly(read('admin/pages/dashboard/tabs/StaffHomeTab.tsx'));
 
+// `null` in the map is a tab that belongs to whoever opens it — their profile,
+// their HR file — and needs no permission at all.
+const EVERY_STAFF_MEMBER = Symbol('every staff member');
 const gateFor = tab => {
-  const m = gates.match(new RegExp('\\b' + tab + ":\\s*(\\[[^\\]]*\\]|'[a-z_]+')"));
-  return m ? (m[1].match(/'([a-z_]+)'/g) || []).map(x => x.replace(/'/g, '')) : null;
+  const m = gates.match(new RegExp('\\b' + tab + ":\\s*(null|\\[[^\\]]*\\]|'[a-z_]+')"));
+  if (!m) return null;
+  if (m[1] === 'null') return EVERY_STAFF_MEMBER;
+  return (m[1].match(/'([a-z_]+)'/g) || []).map(x => x.replace(/'/g, ''));
 };
 
 // The base list every role gets.
@@ -46,6 +51,7 @@ for (const [role, perms] of Object.entries(ROLE_PERMS)) {
   const offered = [...base, ...extra.filter(e => e.roles.includes(role)).map(e => e.tab)];
   for (const tab of offered) {
     const allowed = gateFor(tab);
+    if (allowed === EVERY_STAFF_MEMBER) continue;
     if (allowed === null) { findings.push(`${role} · ${tab} — no gate (the sidebar would hide it)`); continue; }
     if (!allowed.some(p => held.has(p))) {
       findings.push(`${role} · ${tab} — needs ${allowed.join(' or ')}, role holds none`);

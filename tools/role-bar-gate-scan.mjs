@@ -46,10 +46,16 @@ const BAR_ROLE = {
 const nav = codeOnly(read('admin/pages/dashboard/DashboardNavigation.tsx'));
 const gates = codeOnly(read('admin/pages/dashboard/dashboardShared.tsx'));
 
-/** The permissions a tab is gated on — one, several, or none at all. */
+/**
+ * The permissions a tab is gated on — one, several, none at all, or the tab
+ * being the viewer's own page, which the map spells `null` and every staff
+ * member can open.
+ */
+const EVERY_STAFF_MEMBER = Symbol('every staff member');
 const gateFor = tab => {
-  const match = gates.match(new RegExp(`\\b${tab}:\\s*(\\[[^\\]]*\\]|'[a-z_]+')`));
+  const match = gates.match(new RegExp(`\\b${tab}:\\s*(null|\\[[^\\]]*\\]|'[a-z_]+')`));
   if (!match) return null;
+  if (match[1] === 'null') return EVERY_STAFF_MEMBER;
   return (match[1].match(/'([a-z_]+)'/g) || []).map(s => s.replace(/'/g, ''));
 };
 
@@ -83,6 +89,9 @@ for (const bar of bars) {
   const held = new Set(grants || []);
   for (const { key, label } of bar.tabs) {
     const allowed = gateFor(key);
+    // Their own profile and their own HR file: offered to everyone because
+    // everyone can open them.
+    if (allowed === EVERY_STAFF_MEMBER) continue;
     if (allowed === null) {
       findings.push({ role, key, label, why: 'the tab has no gate, so the sidebar would hide it' });
       continue;

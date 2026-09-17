@@ -616,7 +616,10 @@ const _normalizeClientDate = (d: unknown): string => {
  * away from whoever held only another. It opens for anyone holding any of
  * them, and the sections inside are gated one by one.
  */
-const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermission[]>> = {
+// `null` marks a tab that belongs to the person opening it — their own profile,
+// their own HR file. Being signed in as staff is the whole requirement; an
+// unmapped tab is still denied.
+const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermission[] | null>> = {
   // The company-wide overview, not a personal home page — every employee has
   // view_dashboard, so mapping it there put the whole الإدارة group in every
   // staff member's sidebar. Personal landing pages are staff_home / my_hr.
@@ -759,10 +762,14 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   // in their sidebar the moment this became a menu item.
   notif_inbox:        'manage_channel_settings',
   hub_advanced:       'manage_settings',
-  // Staff personal portal — accessible by any authenticated staff
-  staff_home:         'view_dashboard',
-  staff_settings:     'view_dashboard',
-  my_hr:              'view_dashboard',
+  // Staff personal portal — accessible by any authenticated staff, which is
+  // what these three now say. They asked for view_dashboard, and an employee
+  // whose grid had been narrowed to lead and client work does not hold it: the
+  // institute's HR manager opened her own profile and got «غير مصرح بالوصول».
+  // Your own page is not a section of the system you need rights to enter.
+  staff_home:         null,
+  staff_settings:     null,
+  my_hr:              null,
   home_offer:         'manage_content',
   about_page:         'manage_content',
   page_courses:       'manage_content',

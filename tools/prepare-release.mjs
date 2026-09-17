@@ -36,10 +36,26 @@ if (!/^[a-z0-9][a-z0-9._-]{5,79}$/i.test(release)) {
 }
 
 fs.mkdirSync(artifactDir, { recursive: true });
-const requiredBuilds = ['admin', 'client'].map(name => ({
-  name,
-  directory: path.join(root, name, 'dist'),
-}));
+
+// `--only admin` (or `--only client`) packages one front end instead of both.
+//
+// Not a shortcut: the component left out is not packaged at all, so the caller
+// has to supply its archive from a release whose source is provably identical —
+// which is what release-gate.mjs proves with `git diff` before it passes this
+// flag. The API is always taken from the commit either way.
+const onlyAt = process.argv.indexOf('--only');
+const ONLY = onlyAt >= 0
+  ? String(process.argv[onlyAt + 1] || '').split(',').map(part => part.trim()).filter(Boolean)
+  : null;
+const unknown = (ONLY || []).filter(name => !['admin', 'client'].includes(name));
+if (unknown.length) {
+  console.error(`[release] --only takes admin and/or client, not ${unknown.join(', ')}`);
+  process.exit(2);
+}
+const requiredBuilds = ['admin', 'client']
+  .filter(name => !ONLY || ONLY.includes(name))
+  .map(name => ({ name, directory: path.join(root, name, 'dist') }));
+if (ONLY) console.log(`[release] building ${requiredBuilds.map(b => b.name).join(' and ')} only — the rest must come from a release with identical source`);
 
 // The frontends are rebuilt here rather than packaged from whatever dist/
 // happens to be on disk.
@@ -80,6 +96,8 @@ for (const build of requiredBuilds) {
 //
 // A failure here is fatal on purpose: shipping a build whose product pages all
 // canonicalise to the homepage is the bug this exists to prevent.
+// Only meaningful when the client was just built — it writes into that build.
+if (requiredBuilds.some(build => build.name === 'client')) {
 console.log('[release] generating per-page SEO…');
 const seo = spawnSync('node', [path.join(root, 'tools', 'generate-seo.mjs')], {
   cwd: root,
@@ -92,6 +110,7 @@ if (seo.status !== 0) {
   throw new Error(`SEO generation failed:\n${(seo.stderr || seo.stdout || '').slice(-800)}`);
 }
 process.stdout.write(seo.stdout);
+}
 
 const artifact = path.join(artifactDir, `${release}-api.tgz`);
 const archive = spawnSync('git', [
