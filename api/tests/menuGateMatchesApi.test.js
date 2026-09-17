@@ -63,10 +63,16 @@ test('no screen an HR account can open answers 403', () => {
     'the KPI summary is admin-only, so its tab cannot be gated on view_reports');
   assert.match(routes.sales_planning, /router\.get\('\/api\/admin\/sales-targets', requireAuth, requireAdminOrStaff, requirePermission\('view_leads'\)/,
     'the collection target needs view_leads');
-  assert.match(read('api/routes/admin/leads.js'), /router\.get\('\/api\/admin\/leads\/staff-performance', requireAuth, requireAdminOrStaff, requirePermission\('view_leads'\)/);
+  // «أداء الموظفين» is the HR section's own screen, so its API takes view_hr as
+  // well — the two gates agree, which is the rule this file is about. Keeping
+  // the screen on view_leads alone was the other way to make them agree, and it
+  // left an HR manager unable to open the performance board of her own team.
+  assert.match(read('api/routes/admin/leads.js'), /router\.get\('\/api\/admin\/leads\/staff-performance', requireAuth, requireAdminOrStaff, requireAnyPermission\('view_leads', 'view_hr'\)/);
+  const hrOpens = gateFor('staff_performance').filter(permission => hr.has(permission));
+  assert.deepEqual(hrOpens, ['view_hr'], 'the HR sidebar and the performance API no longer agree');
 
   // So none of these may be reachable by a permission HR holds.
-  for (const tab of ['overview', 'kpi_dashboard', 'sales_planning', 'sales_team', 'sales_reports', 'staff_performance', 'online_team', 'security_center']) {
+  for (const tab of ['overview', 'kpi_dashboard', 'sales_planning', 'sales_team', 'sales_reports', 'online_team', 'security_center']) {
     const allowed = gateFor(tab);
     const opensForHr = allowed.filter(permission => hr.has(permission));
     assert.deepEqual(opensForHr, [],

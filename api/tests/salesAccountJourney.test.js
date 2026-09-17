@@ -36,12 +36,18 @@ test('«إحصائياتي» points at a tab the rep can actually open', () => {
   // same menu-gate-vs-API-gate mismatch menuGateMatchesApi.test.js exists for.
   assert.match(nav, /\{ key: 'staff_performance', label: 'إحصائياتي'/);
 
-  const gate = /staff_performance:\s*'(\w+)'/.exec(gates);
+  const gate = /staff_performance:\s*(\[[^\]]*\]|'\w+')/.exec(gates);
   assert.ok(gate, 'staff_performance has no permission mapping');
-  assert.ok(ROLE_PERMS.sales.includes(gate[1]),
-    `a rep cannot open their own «إحصائياتي» — it needs ${gate[1]}`);
-  assert.ok(!ROLE_PERMS.hr.includes(gate[1]),
-    'HR would get this tab in its sidebar pointing at a 403');
+  const opens = [...gate[1].matchAll(/'(\w+)'/g)].map(m => m[1]);
+  assert.ok(opens.some(p => ROLE_PERMS.sales.includes(p)),
+    `a rep cannot open their own «إحصائياتي» — it needs one of ${opens.join(', ')}`);
+  // HR reaches it too now, and its API was widened to view_hr with it — the
+  // mismatch this used to guard against is closed on both sides rather than by
+  // keeping the screen away from the section it belongs to.
+  assert.ok(opens.includes('view_hr'), 'the HR section lost its own performance board');
+  assert.match(read('api/routes/admin/leads.js'),
+    /staff-performance', requireAuth, requireAdminOrStaff, requireAnyPermission\('view_leads', 'view_hr'\)/,
+    'the menu offers HR a screen its API refuses');
 
   // Whichever tab a bar names, the role reading that bar must be able to open it.
   assert.ok(ROLE_PERMS.collection.includes('view_financial'),

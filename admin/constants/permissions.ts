@@ -103,6 +103,12 @@ export const PERMISSIONS = {
   MANAGE_SECURITY:          'manage_security',
   VIEW_SETTINGS:            'view_settings',
   MANAGE_SETTINGS:          'manage_settings',
+  // One department's team and how it is doing, without the department itself.
+  // See the note in api/constants/permissions.js — the two registries are
+  // pinned to each other by test.
+  VIEW_PERF_SALES:          'view_perf_sales',
+  VIEW_PERF_ONLINE:         'view_perf_online',
+  VIEW_PERF_DAQQI:          'view_perf_daqqi',
 } as const;
 
 export type PermissionKey = typeof PERMISSIONS[keyof typeof PERMISSIONS];
@@ -133,6 +139,9 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   manage_staff:            'إدارة فريق العمل',
   view_hr:                 'عرض الموارد البشرية',
   manage_hr:               'إدارة الموارد البشرية',
+  view_perf_sales:         'أداء فريق المبيعات فقط (بدون تفاصيل القسم)',
+  view_perf_online:        'أداء فريق الأونلاين فقط (بدون تفاصيل القسم)',
+  view_perf_daqqi:         'أداء فريق الدقي فقط (بدون تفاصيل القسم)',
   view_orders:             'عرض الطلبات',
   manage_orders:           'إدارة الطلبات',
   manage_payments:         'تسجيل وتعديل المدفوعات',

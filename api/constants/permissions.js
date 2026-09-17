@@ -67,6 +67,17 @@ const PERMISSIONS = Object.freeze({
   MANAGE_STAFF:             'manage_staff',
   VIEW_HR:                  'view_hr',
   MANAGE_HR:                'manage_hr',
+  // One department's team and how it is doing — and nothing else in that
+  // department. The owner asked to be able to give somebody the performance of
+  // a team without the section it belongs to: HR needs to see how the Dokki,
+  // online and service teams are doing without their clients, their money or
+  // their day-to-day. Before this, the only key that opened «فريق دقي» was
+  // manage_daqqi, which also opens the schedule, the clients, the accounting
+  // and the waiting list — so the smallest grant available was the whole
+  // department.
+  VIEW_PERF_SALES:          'view_perf_sales',
+  VIEW_PERF_ONLINE:         'view_perf_online',
+  VIEW_PERF_DAQQI:          'view_perf_daqqi',
   // Orders & Financial
   VIEW_ORDERS:              'view_orders',
   MANAGE_ORDERS:            'manage_orders',

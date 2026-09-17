@@ -123,6 +123,42 @@ test('the personal tabs are open to every staff member, and only those', () => {
   assert.match(dashboard, /if \(required === null\) return true;/);
 });
 
+test('a team-performance key opens one team screen and nothing else', () => {
+  // The owner wanted to hand somebody the performance of a team without the
+  // department it belongs to: HR sees how the Dokki and online teams are doing,
+  // not their clients, their money or their day-to-day. Before this the only
+  // key that opened «فريق دقي» was manage_daqqi, which also opens the schedule,
+  // the clients, the accounting and the waiting list — the smallest grant
+  // available was the whole department. So each of these must stay small.
+  const shared = fs.readFileSync(path.join(API, '..', 'admin', 'pages', 'dashboard', 'dashboardShared.tsx'), 'utf8');
+  const start = shared.indexOf('const TAB_PERMISSION_MAP');
+  const map = shared.slice(start, shared.indexOf('\n};', start));
+  const opensFor = permission => [...map.matchAll(/^\s*([a-z_]+):\s*(null|\[[^\]]*\]|'[a-z_]+')/gm)]
+    .filter(entry => entry[2].includes(`'${permission}'`))
+    .map(entry => entry[1]);
+
+  assert.deepEqual(opensFor('view_perf_daqqi'), ['daqqi_team']);
+  assert.deepEqual(opensFor('view_perf_online'), ['online_team']);
+  assert.deepEqual(opensFor('view_perf_sales'), ['sales_team']);
+
+  // Each is a real permission on both sides, and no role hands one out by
+  // default — they exist to be given to a person, one at a time.
+  const { PERMISSIONS, ROLE_PERMS } = require('../constants/permissions');
+  const all = new Set(Object.values(PERMISSIONS));
+  for (const permission of ['view_perf_daqqi', 'view_perf_online', 'view_perf_sales']) {
+    assert.ok(all.has(permission), `${permission} is not in the master list`);
+    for (const [role, perms] of Object.entries(ROLE_PERMS)) {
+      if (perms === '*') continue;
+      assert.ok(!perms.includes(permission), `${role} defaults now carry ${permission}`);
+    }
+  }
+  // And the department keys still open their own screens, so nothing changed
+  // for the people who run those departments.
+  assert.ok(opensFor('manage_daqqi').includes('daqqi_team'));
+  assert.ok(opensFor('manage_sales_team').includes('sales_team'));
+  assert.ok(opensFor('manage_sales_team').includes('online_team'));
+});
+
 test('an HR account sees no client data until someone gives it a scope', () => {
   // Asked directly: is the HR account empty? It is, by the role's own default —
   // `hr` scopes to 'none', so every lead and subscriber query filters to nothing

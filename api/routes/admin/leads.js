@@ -34,7 +34,7 @@ const {
   unmergeLead,
 } = require('../../lib/leadMerge');
 const { enqueueEmailSequence } = require('../../lib/emailSequence');
-const { ADMIN_EMAILS, requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
+const { ADMIN_EMAILS, requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../../middleware/auth');
 const { VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES } = require('../../constants/permissions');
 const { safeIsoString, safeDateOnly } = require('../../lib/dates');
 const { keyset } = require('../../lib/pagination');
@@ -1193,7 +1193,11 @@ function mapLeadRow(r, communicationsByLead) {
 // contacted is bounded by updated_at falling back to created_at, which is what
 // the browser did — a lead contacted this month but created last year belongs in
 // this month's contacted figure and not in this month's new-lead figure.
-router.get('/api/admin/leads/staff-performance', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
+// view_hr as well as view_leads: this is «أداء الموظفين» in the HR section, and
+// an HR manager without the CRM could not open the performance board of the
+// people she manages. The rows are still narrowed by the caller's lead scope,
+// so widening who may ask does not widen what any one of them sees.
+router.get('/api/admin/leads/staff-performance', requireAuth, requireAdminOrStaff, requireAnyPermission('view_leads', 'view_hr'), async (req, res) => {
   try {
     const accessScope = leadScope(req, 'l');
     if (accessScope.none) return res.json({ from: null, byStaff: {} });

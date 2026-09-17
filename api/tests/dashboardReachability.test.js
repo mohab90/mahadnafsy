@@ -43,7 +43,10 @@ test('and a route gate, or the entry opens nothing', () => {
 
 test('and a permission, which each already had', () => {
   for (const key of CONNECTED) {
-    assert.match(permissions, new RegExp(`${key}:\\s*'`), `${key} has no permission gate`);
+    // Three forms count as a gate: one permission, a list of them where any one
+    // opens the tab, and `null` for a tab that is the viewer's own page. What
+    // does not count is absence, which the sidebar reads as "hide it".
+    assert.match(permissions, new RegExp(`${key}:\\s*('|\\[|null)`), `${key} has no permission gate`);
   }
 });
 

@@ -318,6 +318,9 @@ export type StaffPermission =
   | 'manage_staff'
   | 'view_hr'
   | 'manage_hr'
+  | 'view_perf_sales'
+  | 'view_perf_online'
+  | 'view_perf_daqqi'
   // Orders & payments
   | 'view_orders'
   | 'manage_orders'

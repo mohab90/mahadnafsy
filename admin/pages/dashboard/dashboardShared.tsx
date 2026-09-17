@@ -46,6 +46,9 @@ const PERMISSION_LABELS: Record<StaffPermission, string> = {
   manage_staff: 'إدارة الموظفين والصلاحيات',
   view_hr: 'عرض الموارد البشرية',
   manage_hr: 'إدارة الموارد البشرية',
+  view_perf_sales: 'أداء فريق المبيعات فقط (بدون تفاصيل القسم)',
+  view_perf_online: 'أداء فريق الأونلاين فقط (بدون تفاصيل القسم)',
+  view_perf_daqqi: 'أداء فريق الدقي فقط (بدون تفاصيل القسم)',
   // Orders & payments
   view_orders: 'عرض الطلبات والمدفوعات',
   manage_orders: 'إدارة الطلبات والمدفوعات',
@@ -669,7 +672,11 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   community:          'view_community',
   daqqi_schedule:     'manage_daqqi',
   daqqi_clients:      'manage_daqqi',
-  daqqi_team:         'manage_daqqi',
+  // The team screens take either key: whoever runs the department still opens
+  // them, and view_perf_* opens that one screen and nothing else in the
+  // department. That is the whole point — the smallest grant used to be the
+  // entire section.
+  daqqi_team:         ['manage_daqqi', 'view_perf_daqqi'],
   daqqi_accounting:   'view_financial',
   daqqi_stats:        'manage_daqqi',
   daqqi_attendance:   'manage_daqqi',
@@ -708,7 +715,11 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   // the HR sidebar as well — HR holds view_reports and not view_leads — where
   // it opens onto a 403. The collection bar points at a screen it can open
   // instead; see DashboardNavigation.
-  staff_performance:  'view_leads',
+  // «أداء الموظفين» is the HR section's own screen and it asked for view_leads,
+  // which is a lead permission on an HR page: an HR manager without the CRM
+  // could not open the performance board of the people she manages. It reads
+  // lead performance per employee, so view_leads still opens it.
+  staff_performance:  ['view_hr', 'view_leads'],
   // Running the sales team, not reading a lead. These three were gated on
   // view_leads — which means "may read a lead record" and nothing more — so a
   // consultant, whose job is therapy sessions, was shown the sales hub, the
@@ -719,14 +730,14 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   // manage_sales_team exists for exactly this and says so in its own comment.
   // It is held by online_manager, daqqi_manager and sales_collection_manager —
   // whose bar already lists sales_hub, so nothing they use moves.
-  sales_team:         'manage_sales_team',
+  sales_team:         ['manage_sales_team', 'view_perf_sales'],
   sales_reports:      'manage_sales_team',
   // Writing targets is a manager action (see POST /api/admin/sales-targets):
   // matched to the API gate so a sales rep doesn't see a tab that 403s.
   // إدارة فريق الأونلاين is a team screen too, and view_subscribers is what
   // every customer-facing role holds — so support and consultant were both
   // offered the online team's assignments.
-  online_team:        'manage_sales_team',
+  online_team:        ['manage_sales_team', 'view_perf_online'],
   subscriptions:     'view_financial',
   consultation_calendar: 'view_consultations',
   automation:         'manage_automation',

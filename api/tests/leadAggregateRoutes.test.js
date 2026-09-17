@@ -29,8 +29,14 @@ test('every aggregate route authenticates, permissions and scopes', () => {
     const body = src.slice(start, nextRoute === -1 ? src.length : nextRoute);
 
     assert.ok(body.includes('requireAuth'), `${route} must require authentication`);
-    assert.ok(/requirePermission\('(view_leads|view_subscribers)'\)/.test(body),
-      `${route} must check a view permission`);
+    // One permission or a list of them, and every one named must be a view
+    // permission — an aggregate gated on a write permission would be reachable
+    // by people who can change rows and not by the ones who only read them.
+    const gate = /require(?:Any)?Permission\(([^)]*)\)/.exec(body);
+    assert.ok(gate, `${route} must check a permission`);
+    const named = [...gate[1].matchAll(/'([a-z_]+)'/g)].map(match => match[1]);
+    assert.ok(named.length && named.every(permission => permission.startsWith('view_')),
+      `${route} must check view permissions only — it checks ${named.join(', ') || 'nothing'}`);
     // An aggregate that ignores role scoping leaks counts across branches even
     // though it returns no rows — the count itself is the disclosure.
     assert.ok(/leadScope\(req, 'l'\)|resolveDataScope\(/.test(body),
