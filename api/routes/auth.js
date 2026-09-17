@@ -323,7 +323,7 @@ router.post('/api/admin/staff-account', requireAuth, requireAdminOrStaff, requir
     // guard above only stopped *creating* an admin; it never looked at whose
     // account the email already opened.
     const [[staffByEmail]] = await conn.execute(
-      'SELECT id, role FROM staff WHERE tenant_id=? AND LOWER(TRIM(email))=? AND deleted_at IS NULL LIMIT 1',
+      'SELECT id, role, branch_id FROM staff WHERE tenant_id=? AND LOWER(TRIM(email))=? AND deleted_at IS NULL LIMIT 1',
       [tenantId, normalizedEmail]);
     if (!req.isSuperAdmin) {
       const ownerEmail = ADMIN_EMAILS.some(e => String(e).toLowerCase() === normalizedEmail);
@@ -401,8 +401,18 @@ router.post('/api/admin/staff-account', requireAuth, requireAdminOrStaff, requir
       await conn.execute('INSERT INTO users (id,tenant_id,email,password_hash,name,role,is_active) VALUES (?,?,?,?,?,?,1)',
         [uid, tenantId, normalizedEmail, hash, name.trim(), 'staff']);
     }
-    // Upsert into staff table
+    // Upsert into staff table.
+    //
+    // The branch is kept, not re-decided. This statement's ON DUPLICATE clause
+    // rewrites branch_id, and the request that reaches it from the staff page's
+    // "create a login" button carries no branch at all — the object it posts has
+    // no branch field, and the two onboarding screens that do send one spell it
+    // branch_id. So creating a login for an employee at Dokki moved them to
+    // branch-other, which is a silent way to drop somebody out of every
+    // branch-wide message. Both spellings are accepted; the row's own branch is
+    // the fallback, and branch-other only names a row that never had one.
     const id = staffId || uuidv4();
+    const branchId = req.body.branch_id ?? req.body.branchId ?? staffByEmail?.branch_id ?? 'branch-other';
     const dbRole = ((role || 'OTHER').toUpperCase());
     const joinedAt = String(req.body.joinedAt || req.body.joined_at || new Date().toISOString()).slice(0, 19).replace('T', ' ');
     const numberOrNull = value => value === undefined || value === null || value === '' ? null : Number(value);
@@ -421,7 +431,7 @@ router.post('/api/admin/staff-account', requireAuth, requireAdminOrStaff, requir
          monthly_target_type=VALUES(monthly_target_type),
          monthly_leads_target=VALUES(monthly_leads_target), monthly_bonus=VALUES(monthly_bonus)`,
       [
-        id, tenantId, req.body.branch_id || 'branch-other', uid, name.trim(),
+        id, tenantId, branchId, uid, name.trim(),
         email.toLowerCase().trim(), phone || '', dbRole, req.body.image || null,
         req.body.specialization || null, joinedAt, 1, req.body.notes || null,
         numberOrNull(req.body.commissionRate ?? req.body.commission_rate), permissionsJson,

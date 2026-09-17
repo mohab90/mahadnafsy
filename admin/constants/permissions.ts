@@ -250,9 +250,12 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
     'manage_certificates',
   ],
 
+  // No delete_leads: deleting a client is reserved for admin and manager. See
+  // the note on this role in api/constants/permissions.js — the two sides are
+  // pinned to each other by test, so the rule cannot hold on one side only.
   sales_collection_manager: [
     'view_dashboard',
-    'view_leads', 'manage_leads', 'export_leads', 'delete_leads',
+    'view_leads', 'manage_leads', 'export_leads',
     'view_subscribers', 'manage_subscribers', 'export_subscribers',
     'view_orders', 'manage_orders', 'manage_payments', 'approve_refunds',
     'view_financial', 'manage_financial',

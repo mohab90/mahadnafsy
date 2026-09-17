@@ -143,9 +143,15 @@ const ROLE_PERMS = Object.freeze({
     'manage_certificates',
   ],
 
+  // Deleting a client is the owner's reserved act: "لا مش عاوز حد يمسح عملاء
+  // غير المدير فقط". This was the only role outside admin and manager whose
+  // defaults carried delete_leads, and the name is what made it look like an
+  // exception — it manages a team, it is not the manager the rule means. Nobody
+  // holds the role in production, so nothing changes for anyone today; it stops
+  // the rule being broken by the act of assigning it.
   [ROLES.SALES_COLLECTION_MANAGER]: [
     'view_dashboard',
-    'view_leads', 'manage_leads', 'export_leads', 'delete_leads',
+    'view_leads', 'manage_leads', 'export_leads',
     'view_subscribers', 'manage_subscribers', 'export_subscribers',
     'view_orders', 'manage_orders', 'manage_payments', 'approve_refunds',
     'view_financial', 'manage_financial',
