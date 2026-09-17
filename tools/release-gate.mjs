@@ -99,6 +99,12 @@ run('deploy to staging only', ssh(
   `sed '/^echo "staging is healthy; continuing to production"/,$d' /root/deploy-release.sh > /tmp/gate-staging.sh` +
   ` && bash /tmp/gate-staging.sh ${release}; code=$?; rm -f /tmp/gate-staging.sh; exit $code`));
 
+// deploy-release.sh migrates production and not staging, so staging's schema
+// drifts behind — which is how a release gets tested against a database that is
+// not the one it will meet. Caught the first time this gate ran: four
+// migrations behind, and a column three queries needed was missing.
+run('migrate staging', ssh(`cd ${STAGING_API} && npm run migrate`), { quiet: true });
+
 // The whole API, not just this release: the server has no git checkout to diff
 // against, and a statement that breaks is worth catching wherever it lives.
 // pipeline.js is ignored — a file left behind by an old deploy, in no release.
