@@ -45,6 +45,9 @@ const SKIP_E2E = flag('--skip-e2e');
 
 const commit = execSync('git rev-parse HEAD', { cwd: root, encoding: 'utf8' }).trim();
 const release = `mahad-${commit.slice(0, 12)}`;
+// Local paths go to tar and scp through a shell that reads a backslash as an
+// escape, so a Windows path is handed over with forward slashes.
+const q = p => '"' + String(p).replace(/\\/g, '/') + '"';
 const ssh = command => `ssh -i ${KEY} -o StrictHostKeyChecking=no ${HOST} ${JSON.stringify(command)}`;
 
 let stage = 0;
@@ -66,6 +69,17 @@ function run(name, command, { cwd = root, quiet = false } = {}) {
 console.log(`release gate for ${release}`);
 console.log(`  commit ${commit}`);
 
+// A release is named after a commit and built with `git archive` from it, so
+// anything uncommitted is tested here and absent from what ships — or the other
+// way round. Say so rather than produce an artifact that matches nothing.
+const dirty = execSync('git status --porcelain', { cwd: root, encoding: 'utf8' }).trim();
+if (dirty && !flag('--allow-dirty')) {
+  console.error(`\n✗ the working tree has uncommitted changes, so ${release} would not contain what you are testing:\n`);
+  console.error(dirty.split('\n').slice(0, 20).map(l => '    ' + l).join('\n'));
+  console.error('\nCommit them, or re-run with --allow-dirty if they are only local scratch.');
+  process.exit(1);
+}
+
 // ── 1. what can be checked without a server ───────────────────────────────
 run('quality gates', 'npm run quality', { quiet: true });
 run('unit tests', 'npm run test:unit', { quiet: true });
@@ -84,14 +98,14 @@ if (REUSE_CLIENT) {
   }
   stage++;
   console.log(`\n[${stage}] reusing the front-end archives of ${REUSE_CLIENT} — no client or admin change since`);
-  run('api archive', `git archive --format=tar.gz --prefix=mahad-api/ --output=${JSON.stringify(path.join(artifacts, `${release}-api.tgz`))} ${commit}:api`, { quiet: true });
-  run('ship to staging', `scp -i ${KEY} -o StrictHostKeyChecking=no ${JSON.stringify(path.join(artifacts, `${release}-api.tgz`))} ${HOST}:/staging/`, { quiet: true });
+  run('api archive', `git archive --format=tar.gz --prefix=mahad-api/ --output=${q(path.join(artifacts, `${release}-api.tgz`))} ${commit}:api`, { quiet: true });
+  run('ship to staging', `scp -i ${KEY} -o StrictHostKeyChecking=no ${q(path.join(artifacts, `${release}-api.tgz`))} ${HOST}:/staging/`, { quiet: true });
   run('stage the reused front end', ssh(`cd /staging && cp ${REUSE_CLIENT}-client.tgz ${release}-client.tgz && cp ${REUSE_CLIENT}-admin.tgz ${release}-admin.tgz`), { quiet: true });
 } else {
   // prepare-release builds both front ends and refuses an incomplete client
   // archive — see tools/verifyPrerender.mjs.
   run('build and verify artifacts', 'npm run release:prepare', { quiet: true });
-  run('ship to staging', `scp -i ${KEY} -o StrictHostKeyChecking=no ${JSON.stringify(path.join(artifacts, `${release}-*.tgz`))} ${HOST}:/staging/`, { quiet: true });
+  run('ship to staging', `scp -i ${KEY} -o StrictHostKeyChecking=no ${q(path.join(artifacts, `${release}-*.tgz`))} ${HOST}:/staging/`, { quiet: true });
 }
 
 // ── 3. staging, then everything that needs a running server ───────────────
@@ -120,9 +134,9 @@ if (!SKIP_E2E) {
   const adminDir = path.join(work, 'admin');
   const clientDir = path.join(work, 'client');
   fs.mkdirSync(adminDir); fs.mkdirSync(clientDir);
-  execSync(`scp -i ${KEY} -o StrictHostKeyChecking=no ${HOST}:/staging/${release}-admin.tgz ${HOST}:/staging/${release}-client.tgz ${JSON.stringify(work)}`, { stdio: 'inherit' });
-  execSync(`tar --force-local -xzf ${JSON.stringify(path.join(work, `${release}-admin.tgz`))} -C ${JSON.stringify(adminDir)}`);
-  execSync(`tar --force-local -xzf ${JSON.stringify(path.join(work, `${release}-client.tgz`))} -C ${JSON.stringify(clientDir)}`);
+  execSync(`scp -i ${KEY} -o StrictHostKeyChecking=no ${HOST}:/staging/${release}-admin.tgz ${HOST}:/staging/${release}-client.tgz ${q(work)}`, { stdio: 'inherit' });
+  execSync(`tar --force-local -xzf ${q(path.join(work, `${release}-admin.tgz`))} -C ${q(adminDir)}`);
+  execSync(`tar --force-local -xzf ${q(path.join(work, `${release}-client.tgz`))} -C ${q(clientDir)}`);
 
   const tunnel = spawn('ssh', ['-i', KEY.replace('~', os.homedir()), '-o', 'StrictHostKeyChecking=no', '-o', 'ExitOnForwardFailure=yes', '-N', '-L', '13002:127.0.0.1:3002', HOST], { stdio: 'ignore' });
   const proxy = spawn(process.execPath, [path.join(root, 'tools', 'e2e-staging-proxy.cjs'), adminDir, clientDir], { stdio: 'ignore' });
