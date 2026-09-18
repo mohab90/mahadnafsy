@@ -133,7 +133,9 @@ if (REUSE_CLIENT) {
     // from this commit because this machine cannot pack a client build at all
     // (a virus scanner holds two of the prerendered pages). Nothing to copy,
     // and the check above has already proved the source matches.
-    run('confirm the staged public site', ssh(`test -s /staging/${release}-client.tgz && echo "already staged: $(du -h /staging/${release}-client.tgz | cut -f1)"`), { quiet: true });
+    // No $(...) in here: the command is handed to the local shell inside double
+    // quotes, which would run the substitution here rather than on the server.
+    run('confirm the staged public site', ssh(`ls -l /staging/${release}-client.tgz`), { quiet: true });
   } else {
     run('stage the reused public site', ssh(`cd /staging && cp ${REUSE_CLIENT}-client.tgz ${release}-client.tgz`), { quiet: true });
   }
