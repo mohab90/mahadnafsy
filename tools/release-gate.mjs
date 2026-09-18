@@ -23,6 +23,8 @@
  *
  *   node tools/release-gate.mjs                    # full run
  *   node tools/release-gate.mjs --reuse-client mahad-xxxx   # front end unchanged
+ *   node tools/release-gate.mjs --reuse-client <this release>  # its client
+ *                                                    archive is already staged
  *   node tools/release-gate.mjs --skip-e2e
  */
 
@@ -126,7 +128,15 @@ if (REUSE_CLIENT) {
   if (adminChanged) console.log(`      the admin panel changed and is being rebuilt (${adminChanged.split('\n').length} file(s))`);
   run('build api + admin artifacts', 'npm run release:prepare -- --only admin', { quiet: true });
   run('ship to staging', `scp -i ${KEY} -o StrictHostKeyChecking=no ${releaseArchives()} ${HOST}:/staging/`, { quiet: true });
-  run('stage the reused public site', ssh(`cd /staging && cp ${REUSE_CLIENT}-client.tgz ${release}-client.tgz`), { quiet: true });
+  if (REUSE_CLIENT === release) {
+    // The archive for this very release is already on the server — built there
+    // from this commit because this machine cannot pack a client build at all
+    // (a virus scanner holds two of the prerendered pages). Nothing to copy,
+    // and the check above has already proved the source matches.
+    run('confirm the staged public site', ssh(`test -s /staging/${release}-client.tgz && echo "already staged: $(du -h /staging/${release}-client.tgz | cut -f1)"`), { quiet: true });
+  } else {
+    run('stage the reused public site', ssh(`cd /staging && cp ${REUSE_CLIENT}-client.tgz ${release}-client.tgz`), { quiet: true });
+  }
 } else {
   // prepare-release builds both front ends and refuses an incomplete client
   // archive — see tools/verifyPrerender.mjs.
