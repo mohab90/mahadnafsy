@@ -34,16 +34,20 @@ test.describe('a cash box opens its own transactions', () => {
   test.skip(!EMAIL || !PASSWORD, 'E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD not set');
 
   test('click a box, see that box and that month, with who recorded each', async ({ page }) => {
-    await page.goto(ADMIN);
-    await page.locator('input[type="email"], input[name="email"]').first().fill(EMAIL!);
-    await page.locator('input[type="password"]').first().fill(PASSWORD!);
-    await page.locator('button[type="submit"]').first().click();
-    await page.waitForURL(/dashboard/, { timeout: 20_000 });
 
     // Choose the box and the month from the data rather than guessing: the
     // manual payment with a named box that was recorded most recently.
-    const response = await page.request.get(`${ADMIN}/api/admin/payments?limit=500`);
-    expect(response.ok(), 'the payments list is not readable as this admin').toBeTruthy();
+    // The data is read through its own login rather than the panel's session:
+    // how the panel holds its token is the panel's business, and a test that
+    // depends on it breaks when that changes rather than when the box does.
+    const login = await page.request.post(`${ADMIN}/api/auth/login`, { data: { email: EMAIL, password: PASSWORD } });
+    const cookie = login.headers()['set-cookie'] || '';
+    const body = await login.json().catch(() => ({} as { token?: string }));
+    const token = (body as { token?: string }).token || decodeURIComponent((/authToken=([^;]+)/.exec(cookie) || [])[1] || '');
+    const response = await page.request.get(`${ADMIN}/api/admin/payments?limit=500`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    expect(response.ok(), `the payments list is not readable as this admin: ${response.status()} ${(await response.text()).slice(0, 160)}`).toBeTruthy();
     const payments = (await response.json()) as ApiPayment[];
     const manual = payments.filter(p =>
       p.paymentMethod
@@ -57,7 +61,16 @@ test.describe('a cash box opens its own transactions', () => {
     const month = target.at.slice(0, 7);
     const expected = manual.filter(p => p.paymentMethod === box && p.at.startsWith(month));
 
-    await page.goto(`${ADMIN}/dashboard/financial`);
+    // The login above is already this browser's session: page.request shares the
+    // context's cookies, so the panel opens signed in. A second login through the
+    // form found no form to fill — and an account holds one session at a time,
+    // so it would have ended the first.
+    await page.goto(ADMIN);
+    await page.waitForURL(/dashboard/, { timeout: 20_000 });
+    await page.getByRole('button', { name: 'الحسابات' }).first().click({ timeout: 20_000 });
+    await page.getByText('النظام المحاسبي', { exact: true }).first().click({ timeout: 10_000 });
+    await page.getByRole('button', { name: /نظرة مالية/ }).first().click({ timeout: 20_000 });
+
     // The vault shows one month at a time.
     const monthInput = page.locator('input[type="month"]').first();
     await monthInput.fill(month);

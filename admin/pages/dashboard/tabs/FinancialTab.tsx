@@ -200,10 +200,10 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   // so clicking a box in «الخزائن» used to filter whatever was already in the
   // browser, which for most boxes was nothing at all.
   useEffect(() => {
-    if (orderMethodFilter && dbPayments === null && !loadingDbPayments) void loadDbPayments();
+    if ((orderMethodFilter || financialSubTab === 'overview') && dbPayments === null && !loadingDbPayments) void loadDbPayments();
     // loadDbPayments is stable enough for this: it only reads setState setters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderMethodFilter, dbPayments, loadingDbPayments]);
+  }, [orderMethodFilter, financialSubTab, dbPayments, loadingDbPayments]);
 
   const [incomeSubjectId, setIncomeSubjectId] = useState('');
   const [incomeDraft, setIncomeDraft] = useState<PaymentDraft>(blankPaymentDraft);
@@ -330,14 +330,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
     getMethod,
   });
 
-  // Revenue by payment method (manual entries only)
-  const revenueByMethod: Record<string, number> = {};
-  for (const p of allManualPayments) {
-    const m = getMethod(p) || 'غير محدد';
-    revenueByMethod[m] = (revenueByMethod[m] || 0) + toEGP(p.amount, p.currency);
-  }
 
-  // Revenue by method filtered by vaultMonth
   // A box on «الخزائن» shows one month's total, so opening it has to show
   // that month's transactions. It used to set the method and nothing else, so
   // the list beneath carried every month the box had ever taken money in and
@@ -352,11 +345,16 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
     setOrdersPage(1);
   };
 
-  const vaultFilteredPayments = allManualPayments.filter(p => p.at.startsWith(vaultMonth));
+  // «الخزائن» is built from the same rows a box opens onto, so the figure on
+  // a box and the transactions behind it are one list counted twice, not two
+  // lists that may disagree. It used to be counted out of the subscriber
+  // bootstrap, which carries only the history it happened to include: on
+  // staging, September showed Paymob alone while the payments table held cash
+  // and instapay for the same month — the box you meant to click was not there.
   const revenueByMethodFiltered: Record<string, number> = {};
-  for (const p of vaultFilteredPayments) {
-    const m = getMethod(p) || 'غير محدد';
-    revenueByMethodFiltered[m] = (revenueByMethodFiltered[m] || 0) + toEGP(p.amount, p.currency);
+  for (const row of manualRows) {
+    if (!row.date.startsWith(vaultMonth)) continue;
+    revenueByMethodFiltered[row.channel] = (revenueByMethodFiltered[row.channel] || 0) + row.amountEGP;
   }
   const onlineRevenueFiltered = paidOrders.filter(o => (o.paidAt || o.createdAt || '').startsWith(vaultMonth)).reduce((s, o) => s + toEGP(o.amount, o.currency), 0);
 
