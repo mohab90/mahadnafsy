@@ -62,11 +62,15 @@ test('its status is lower-cased, because the enum is upper case', () => {
 
 test('a live stream reaches the customer in the shape the screen reads', () => {
   const handler = handlerFor('/api/live-streams');
+  // The mapping lives in lib/mappers.js now — the panel's own route sends the
+  // same shape — so the route is held to using it, and the mapper to its fields.
+  assert.ok(handler.includes('res.json(visible.map(mapLiveStream))'), 'the raw rows must not go out');
+  const { mapLiveStream } = require('../lib/mappers');
+  const mapped = mapLiveStream({ status: 'LIVE', scheduled_at: 'x', stream_url: 'u', instructor_name: 'n', duration_minutes: '30', target_course_ids_json: '[]' });
   for (const field of ['instructorName', 'scheduledAt', 'streamUrl', 'durationMinutes', 'targetCourseIds']) {
-    assert.match(handler, new RegExp(`${field}:`), `${field} must be mapped`);
+    assert.notEqual(mapped[field], undefined, `${field} must be mapped`);
   }
-  assert.match(handler, /status: String\(row\.status \|\| ''\)\.toLowerCase\(\)/);
-  assert.doesNotMatch(handler, /res\.json\(visible\)/, 'the raw rows must not go out');
+  assert.equal(mapped.status, 'live');
 });
 
 test('the screens still read the names being sent', () => {

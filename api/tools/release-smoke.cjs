@@ -174,11 +174,20 @@ const brief = r => `${r.status}${r.json?.code ? ' ' + r.json.code : ''}${r.json?
     if (gone.status !== 200) console.log(`    !! the smoke ${what} ${gone.status === 404 ? 'was already gone' : `could not be removed (${gone.status})`} — id ${what === 'bundle' ? bundleId : courseId}`);
   }
 
+  // ── the panel's live streams, and the orders the vault reads ────────────
+  const streams = await call('/api/admin/live-streams', { token: admin });
+  record('GET /api/admin/live-streams lists the streams for the panel', jsonOk(streams, j => Array.isArray(j)), brief(streams));
+  const orderRows = await call('/api/admin/orders?limit=50', { token: admin });
+  record('GET /api/admin/orders answers with desk payments still marked',
+    jsonOk(orderRows, j => Array.isArray(j) && j.every(o => o.source !== 'crm' || 'staff_name' in o)), brief(orderRows));
+
   // ── student path that touches a changed query ──────────────────────────
   console.log('\nstudent');
   const refund = await call('/api/me/refund-request', { method: 'POST', token: student,
     body: { payment_id: 'release-smoke-no-such-payment', amount: 1, reason: 'release smoke' } });
   record('refund request for a payment that is not theirs is refused', [400, 404].includes(refund.status), brief(refund));
+  const studentStreams = await call('/api/admin/live-streams', { token: student });
+  record('a student cannot read the stream list the panel reads', [401, 403].includes(studentStreams.status), brief(studentStreams));
 
   // ── public ─────────────────────────────────────────────────────────────
   console.log('\npublic');

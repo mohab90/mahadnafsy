@@ -13,7 +13,7 @@ const { parseLimit, parseOffset, sanitize, tryJson, validate } = require('../lib
 const { getBrandSettings } = require('../lib/brandSettings');
 const { escapeHtml, safeUrl } = require('../lib/html');
 const { getTenantSetting } = require('../lib/tenantSettings');
-const { COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber, mapQuiz, loadCourseMaterials } = require('../lib/mappers');
+const { COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber, mapQuiz, loadCourseMaterials, LIVE_STREAM_COLS, mapLiveStream } = require('../lib/mappers');
 const { recordQuizAttempt } = require('../lib/quizAttempts');
 const { sendEmail, htmlEmail } = require('../lib/email');
 const { sendWhatsApp } = require('../lib/whatsapp');
@@ -846,9 +846,7 @@ router.get('/api/live-streams', requireAuth, async (req, res) => {
     const sub = await resolveSubscriberRow(req, ['id']);
     if (!sub) return res.status(403).json({ error: 'يجب أن تكون مشتركاً لعرض البث المباشر' });
     const [rows] = await pool.query(
-      `SELECT id, title, instructor_id, instructor_name, scheduled_at, duration_minutes,
-       stream_url, platform, visibility, target_course_ids_json, status, recording_url,
-       description, created_at
+      `SELECT ${LIVE_STREAM_COLS}
        FROM live_streams WHERE tenant_id=? ORDER BY scheduled_at DESC LIMIT 200`, [req.tenantId]);
     const [enrollRows] = await pool.query(
       "SELECT course_id FROM enrollments WHERE tenant_id=? AND subscriber_id=? AND status='active' AND course_id IS NOT NULL",
@@ -860,29 +858,7 @@ router.get('/api/live-streams', requireAuth, async (req, res) => {
       const targetIds = tryJson(row.target_course_ids_json, []);
       return Array.isArray(targetIds) && targetIds.some(id => enrolledCourseIds.has(id));
     });
-    // Mapped for the same reason the consultations list is: these went out raw,
-    // and the screen reads scheduledAt, streamUrl, instructorName and
-    // durationMinutes off a row carrying scheduled_at, stream_url,
-    // instructor_name and duration_minutes. The client casts the response
-    // straight to its own type, so nothing failed loudly — the session list drew
-    // with no presenter, no time and no way to join, and «مباشر الآن» never lit
-    // because the enum is upper case and the screen compares it in lower.
-    res.json(visible.map(row => ({
-      id: row.id,
-      title: row.title,
-      instructorId: row.instructor_id || undefined,
-      instructorName: row.instructor_name || '',
-      scheduledAt: row.scheduled_at,
-      durationMinutes: row.duration_minutes != null ? Number(row.duration_minutes) : undefined,
-      streamUrl: row.stream_url || '',
-      platform: String(row.platform || '').toLowerCase() || undefined,
-      visibility: String(row.visibility || '').toLowerCase(),
-      targetCourseIds: tryJson(row.target_course_ids_json, []),
-      status: String(row.status || '').toLowerCase(),
-      recordingUrl: row.recording_url || undefined,
-      description: row.description || undefined,
-      createdAt: row.created_at,
-    })));
+    res.json(visible.map(mapLiveStream));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 

@@ -9,7 +9,7 @@ const { pool, cacheInvalidate } = require('../../lib/db');
 const { mailer, sendEmail, htmlEmail } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
 const { tryJson, sanitize, parseLimit, parseOffset, validate } = require('../../lib/helpers');
-const { COURSE_COLS, mapCourse, mapBundle, mapTherapist, getNextClientCode, mapQuiz } = require('../../lib/mappers');
+const { COURSE_COLS, mapCourse, mapBundle, mapTherapist, getNextClientCode, mapQuiz, LIVE_STREAM_COLS, mapLiveStream } = require('../../lib/mappers');
 const { createNotification } = require('../../lib/notification');
 const { logPaymentAudit, logFinancialAudit, postJournalEntry, _paymentAccountCode, _expenseAccountCode, toEgp } = require('../../lib/finance');
 const { assertWritable } = require('../../lib/periodLock');
@@ -363,6 +363,17 @@ router.delete('/api/admin/quizzes/:id', requireAuth, requireAdmin, async (req, r
 });
 
 // ── Live Streams CRUD ─────────────────────────────────────────────────────────
+// The panel read the student route, which refuses anyone without a subscriber
+// row and hides course-only streams from the rest — so «البث المباشر» listed
+// none of the streams it had saved. This one answers the panel, unfiltered.
+router.get('/api/admin/live-streams', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT ${LIVE_STREAM_COLS} FROM live_streams WHERE tenant_id=? ORDER BY scheduled_at DESC LIMIT ?`,
+      [req.tenantId, parseLimit(req.query.limit, 200, 500)]);
+    res.json(rows.map(mapLiveStream));
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
 router.post('/api/admin/live-streams', requireAuth, requireAdmin, async (req, res) => {
   try {
     const s = req.body;

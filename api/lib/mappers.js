@@ -477,4 +477,34 @@ function toNumbers(row, fields) {
   return out;
 }
 
-module.exports = { toNumbers, loadCourseMaterials, saveCourseMaterials, COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber, getNextClientCode, mapQuiz };
+const LIVE_STREAM_COLS = `id, title, instructor_id, instructor_name, scheduled_at, duration_minutes,
+       stream_url, platform, visibility, target_course_ids_json, status, recording_url,
+       description, created_at`;
+
+/**
+ * A live_streams row as both apps read it. These went out raw once, and the
+ * screens read scheduledAt, streamUrl, instructorName and durationMinutes off a
+ * row carrying snake_case — the session list drew with no presenter, no time
+ * and no way to join, and «مباشر الآن» never lit because the enum is upper case
+ * and the screens compare it in lower.
+ */
+function mapLiveStream(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    instructorId: row.instructor_id || undefined,
+    instructorName: row.instructor_name || '',
+    scheduledAt: row.scheduled_at,
+    durationMinutes: row.duration_minutes != null ? Number(row.duration_minutes) : undefined,
+    streamUrl: row.stream_url || '',
+    platform: String(row.platform || '').toLowerCase() || undefined,
+    visibility: String(row.visibility || '').toLowerCase(),
+    targetCourseIds: tryJson(row.target_course_ids_json, []),
+    status: String(row.status || '').toLowerCase(),
+    recordingUrl: row.recording_url || undefined,
+    description: row.description || undefined,
+    createdAt: row.created_at,
+  };
+}
+
+module.exports = { toNumbers, loadCourseMaterials, saveCourseMaterials, COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber, getNextClientCode, mapQuiz, LIVE_STREAM_COLS, mapLiveStream };
