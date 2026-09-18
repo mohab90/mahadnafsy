@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type BrowserContext, type Page } from '@playwright/test';
+import { loginAdmin } from '../helpers/adminLogin';
 
 /**
  * Every dashboard screen opens and draws something.
@@ -15,10 +16,17 @@ import { test, expect } from '@playwright/test';
  * deployed. None of it proves a screen renders — no test in the suite mounts a
  * component.
  *
- * A content floor is the whole assertion. A working screen puts a heading, a
- * table or an empty-state message on the page; a broken one leaves the nav
- * chrome alone. The two dead screens measured 129 characters against 4,440 and
- * 951 once fixed, so the boundary is not delicate.
+ * What is measured is the content section — the one element a screen draws
+ * into; the header and the nav sit outside it. A working screen puts a heading,
+ * a table or an empty-state message there; a dead one leaves it empty.
+ *
+ * It used to measure the whole page against 400 characters, calibrated on
+ * production. Staging holds a handful of rows, so a screen correctly saying
+ * «لا توجد بثوث مباشرة مضافة بعد» fell under the floor beside a dead one — and
+ * nobody saw, because the suite had never run with a login. The first run that
+ * did failed seventeen screens: thirteen empty-but-correct under the floor, one
+ * on a phrase only the nav carries, and three on a real 403 — the panel read
+ * live streams from the student's route (see liveStreamsAdminRead.test.js).
  *
  * Deliberately not asserting specific figures: those change as the desk works,
  * and a test that fails on real activity gets disabled. This asks only whether
@@ -29,13 +37,12 @@ const ADMIN = process.env.ADMIN_BASE_URL || 'http://127.0.0.1:4000';
 const EMAIL = process.env.E2E_ADMIN_EMAIL;
 const PASSWORD = process.env.E2E_ADMIN_PASSWORD;
 
-// Nav chrome alone measured 129 characters on the dead screens. 400 clears that
-// with room to spare while still catching a screen that draws only a header.
-const CONTENT_FLOOR = 400;
-
-// Screens whose correct output depends on whether the signed-in account has a
-// staff record. See the branch in the test body.
-const WORKSPACE_TABS = new Set(['staff_home', 'staff_settings', 'my_hr']);
+// Characters in the content section. The emptiest working screen on staging —
+// a title and one button — carries 51; a dead one carries none.
+const CONTENT_FLOOR = 20;
+const contentLength = async (page: Page) =>
+  ((await page.locator('#root section').first().innerText({ timeout: 1_000 }).catch(() => '')) || '')
+    .replace(/\s+/g, ' ').trim().length;
 
 /**
  * Tab keys reachable from the nav, from admin/pages/dashboard/navigation.tsx.
@@ -75,51 +82,41 @@ test.describe('every dashboard screen renders', () => {
   // and CI supplies them.
   test.skip(!EMAIL || !PASSWORD, 'E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD not set');
 
-  test.beforeEach(async ({ page }) => {
-    await page.goto(ADMIN);
-    await page.locator('input[type="email"], input[name="email"]').first().fill(EMAIL!);
-    await page.locator('input[type="password"]').first().fill(PASSWORD!);
-    await page.locator('button[type="submit"]').first().click();
-    await page.waitForURL(/dashboard/, { timeout: 20_000 });
+  // One sign-in for the whole list, carried into each test's own context.
+  //
+  // Each test used to sign in through the form and wait for /dashboard — which
+  // the panel shows a signed-out visitor too, with the login form on it. So the
+  // wait passed at once, the test navigated away with the sign-in still in
+  // flight, and every screen was measured on the login form. And sixty-odd
+  // sign-ins would be refused anyway: 15 per account per 15 minutes, one
+  // session per account.
+  let session: Awaited<ReturnType<BrowserContext['storageState']>>;
+  test.beforeAll(async ({ browser }) => {
+    const context = await browser.newContext();
+    await loginAdmin(await context.newPage(), ADMIN, EMAIL!, PASSWORD!);
+    session = await context.storageState();
+    await context.close();
   });
 
   for (const key of SCREENS) {
-    test(key, async ({ page }) => {
+    test(key, async ({ browser }) => {
+      const context = await browser.newContext({ storageState: session });
+      const page = await context.newPage();
       const errors: string[] = [];
       page.on('console', m => { if (m.type() === 'error') errors.push(m.text().slice(0, 200)); });
 
       await page.goto(`${ADMIN}/dashboard/${key}`);
 
-      // The workspace tabs have two correct outcomes, and which one appears
-      // depends on the account the suite signs in as. With a staff record they
-      // draw a full profile; without one — the owner account has no staff row —
-      // they draw a short explanation of why. That explanation is ~319
-      // characters of body text, under the floor, so holding these three to it
-      // would fail a screen that is behaving exactly as intended.
-      //
-      // They are held to the thing that actually matters instead: never
-      // silently blank. Before this was fixed they rendered nothing at all —
-      // no message, no spinner, no error — and that is the regression worth
-      // catching.
-      if (WORKSPACE_TABS.has(key)) {
-        await expect
-          .poll(async () => (await page.locator('body').innerText()).replace(/\s+/g, ' '),
-                { timeout: 15_000, message: `${key} never rendered anything` })
-          // Both alternatives are phrases only these screens produce. Bare
-          // «الرئيسية» and «ملفي» were in here first and had to go: they are
-          // short enough to appear in a nav bar, and an assertion the chrome
-          // can satisfy would pass on the blank page it exists to catch.
-          .toMatch(/مساحة الموظف غير متاحة لحسابك|ملفي الشخصي|ملفي الوظيفي/);
-      } else {
-        // Polled on content rather than a fixed delay: a screen may take its
-        // time, but it has to arrive.
-        await expect
-          .poll(async () => (await page.locator('body').innerText()).replace(/\s+/g, ' ').length,
-                { timeout: 15_000, message: `${key} never rendered any content` })
-          .toBeGreaterThan(CONTENT_FLOOR);
-      }
+      // Polled rather than a fixed delay: a screen may take its time, but it has
+      // to arrive. The three workspace screens needed a branch of their own
+      // under the old whole-page floor; measured where the screen draws, they
+      // do not.
+      await expect
+        .poll(() => contentLength(page), { timeout: 15_000, message: `${key} never rendered any content` })
+        .toBeGreaterThan(CONTENT_FLOOR);
 
       expect(errors, `${key} logged console errors`).toEqual([]);
+      await context.close();
     });
   }
 });
