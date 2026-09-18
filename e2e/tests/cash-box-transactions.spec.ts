@@ -4,14 +4,17 @@ import { test, expect } from '@playwright/test';
 // each one.
 //
 // Asked twice before it was checked by anything but reading: the click was
-// wired, and still showed the wrong thing. Three faults stood between the box
-// and its rows, and only a browser sees all three at once:
+// wired, and still showed the wrong thing. Four faults stood between the box
+// and its rows, and only a browser sees all of them at once:
 //
 //   • the manual payments load on demand, so the filter ran over whatever the
 //     browser already had — for most boxes, nothing;
 //   • the box shows one month and the click opened every month, so the rows
 //     added up to several times the figure that was clicked;
-//   • rows loaded from the database dropped «منفذ العملية» to a literal null.
+//   • rows loaded from the database dropped «منفذ العملية» to a literal null;
+//   • the panel dropped the mark that says an order row is a desk payment, so
+//     every desk payment was counted as Paymob and taken out of its own box —
+//     the first run of this test found the box empty for exactly that reason.
 //
 // So this clicks a real box for a month that has one, and checks that every
 // row it opens belongs to that box and that month, and that the rows name who

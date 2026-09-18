@@ -20,6 +20,7 @@ import type { PaymentHistoryEntry, ExpenseItem } from '../../../types';
 import { branchMatches, type FinancialSubTab } from './financial/financialTabUtils';
 import { blankPaymentDraft, type PaymentDraft } from '../../../components/PaymentModal';
 import { usePaymentBoxesWithHistory } from '../../../lib/paymentMethods';
+import { isOnlinePaidOrder } from '../../../context/site-data-hooks/normalizeOrders';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 const AgingReportPanel = React.lazy(() => import('./financial/AgingReportPanel').then(module => ({ default: module.AgingReportPanel })));
@@ -258,7 +259,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   const sarRate = fxFresh ? Number(content['exchange.sar_to_egp']) || 0 : 0;
   const usdRate = fxFresh ? Number(content['exchange.usd_to_egp']) || 0 : 0;
   const toEGP = (amt: number, cur: string) => cur === 'EGP' ? amt : cur === 'SAR' ? amt * sarRate : amt * usdRate;
-  const paidOrders = orders.filter(o => o.status === 'paid' && (o.paymentMethod === 'card' || o.paymentMethod === 'wallet' || o.paymentMethod === 'online_paymob' || (o as unknown as Record<string,unknown>)['source'] !== 'crm'));
+  const paidOrders = orders.filter(isOnlinePaidOrder);
   const paidOrderRefs = new Set<string>();
   paidOrders.forEach(order => {
     paidOrderRefs.add(String(order.id));

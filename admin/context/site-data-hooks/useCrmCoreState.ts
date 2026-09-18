@@ -3,6 +3,7 @@ import type { MutableRefObject } from 'react';
 import type { ConsultationItem, JoinUsApplication, LeadItem, LeadStats, LeadStatus, NewLeadDraft, OrderItem, SubscriberItem } from '../../types';
 import { mysqlAdmin, mysqlForms } from '../../lib/mysqlapi';
 import { normalizeApplicants } from './normalizeApplicants';
+import { normalizeOrders } from './normalizeOrders';
 
 type Track = (action: string, entity: string, label: string) => void;
 
@@ -106,25 +107,7 @@ export function useCrmCoreState(
   const reloadOrders = useCallback(async () => {
     try {
       const fresh = await mysqlAdmin.listAllOrders();
-      const normalized = (fresh as unknown as Record<string, unknown>[]).map(r => ({
-        id: r.id as string,
-        subscriberId: (r.subscriberId ?? r.subscriber_id ?? undefined) as string | undefined,
-        type: (r.type as string || 'course') as 'course' | 'bundle' | 'consultation' | 'transfer',
-        itemId: (r.itemId ?? r.item_id ?? '') as string,
-        itemTitle: (r.itemTitle ?? r.item_title ?? '') as string,
-        amount: Number(r.amount) || 0,
-        currency: (r.currency || 'EGP') as 'EGP' | 'SAR' | 'USD',
-        paymentMethod: (r.paymentMethod ?? r.payment_method ?? 'wallet') as string,
-        customerName: (r.customerName ?? r.customer_name ?? '') as string,
-        customerEmail: (r.customerEmail ?? r.customer_email ?? '') as string,
-        status: (r.status || 'paid') as 'paid' | 'failed' | 'refunded' | 'pending',
-        createdAt: (r.createdAt ?? r.created_at ?? '') as string,
-        transactionId: (r.transactionId ?? r.transaction_id) as string | undefined,
-        staffId: (r.staffId ?? r.staff_id ?? undefined) as string | undefined,
-        staffName: (r.staffName ?? r.staff_name ?? undefined) as string | undefined,
-        linkedTransferId: (r.linkedTransferId ?? r.linked_transfer_id ?? undefined) as string | undefined,
-      }));
-      setOrders(normalized as unknown as OrderItem[]);
+      setOrders(normalizeOrders(fresh));
     } catch { /* caller keeps current state on a transient refresh failure */ }
   }, []);
 

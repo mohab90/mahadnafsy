@@ -10,6 +10,7 @@ const { parseLimit } = require('../lib/helpers');
 const { logPaymentAudit } = require('../lib/finance');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { safeIsoString } = require('../lib/dates');
+const { resolvePaymentExecutors } = require('../lib/paymentExecutor');
 const { assertWritable } = require('../lib/periodLock');
 const { confirmOrderPayment } = require('../lib/orderPaymentConfirmation');
 const { financialRecordMatches, financialScopeClause, resolveFinancialScope } = require('../lib/financialScope');
@@ -67,12 +68,10 @@ router.get('/api/admin/orders', requireAuth, requireAdminOrStaff, requirePermiss
     const [payRows] = await pool.query(
       `SELECT p.id, p.subscriber_id, p.course_id, p.bundle_id, p.amount, p.currency,
                p.payment_type, p.payment_method, p.transaction_id, p.is_installment, p.date, p.note,
-               p.staff_id, p.status, p.branch_id,
-               s.name AS customer_name, s.email AS customer_email, s.phone AS customer_phone,
-               u.name AS staff_name
+               p.staff_id, p.staff_name, p.status, p.branch_id,
+               s.name AS customer_name, s.email AS customer_email, s.phone AS customer_phone
        FROM payments p
        LEFT JOIN subscribers s ON s.id=p.subscriber_id AND s.tenant_id=p.tenant_id
-       LEFT JOIN users u ON u.id=p.staff_id AND u.tenant_id=p.tenant_id
        WHERE p.deleted_at IS NULL AND ${paymentWhere}
        ORDER BY p.date DESC LIMIT ?`,
       [...paymentParams, limit]
@@ -81,6 +80,10 @@ router.get('/api/admin/orders', requireAuth, requireAdminOrStaff, requirePermiss
     const existingTxnIds = new Set(rows.map(r => r.transaction_id).filter(Boolean));
     const existingIds = new Set(rows.map(r => r.id));
 
+    // Who recorded each one. This joined users on payments.staff_id, which
+    // holds a staff id, not a login id: on production it matched none of the 23
+    // payments that carry one. See lib/paymentExecutor.js for the rest.
+    const executors = await resolvePaymentExecutors(pool, req.tenantId, payRows);
     const crmOrders = payRows
       .filter(p => !existingIds.has(p.id) && !(p.transaction_id && existingTxnIds.has(p.transaction_id)))
       .map(p => ({
@@ -100,7 +103,7 @@ router.get('/api/admin/orders', requireAuth, requireAdminOrStaff, requirePermiss
         customer_phone: p.customer_phone || '',
         transaction_id: p.transaction_id || null,
         staff_id: p.staff_id || null,
-        staff_name: p.staff_name || null,
+        staff_name: executors.get(p.id) ?? null,
         branch_id: p.branch_id || null,
         notes: p.note || null,
         created_at: safeIsoString(p.date) || new Date().toISOString(),

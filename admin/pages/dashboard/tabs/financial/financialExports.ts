@@ -1,6 +1,7 @@
 import { exportToExcel, exportToPDF, fmtCurrency, fmtDate } from '../../../../lib/exportUtils';
 import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import type { ExpenseItem, OrderItem, SubscriberItem } from '../../../../types';
+import { isOnlinePaidOrder } from '../../../../context/site-data-hooks/normalizeOrders';
 import { toCsv, downloadCsv, downloadCsvText, type CsvValue } from '../../../../../shared/csv';
 
 type ContentMap = Record<string, string>;
@@ -42,15 +43,7 @@ export function exportFullFinancialReport(params: {
   sections.push('=== ملخص مالي ===');
   sections.push(row('الإيرادات الإجمالية (ج.م)', 'المصروفات الإجمالية (ج.م)', 'صافي الربح (ج.م)', 'هامش الربح %'));
 
-  const paidOnlineOrders = orders.filter(order =>
-    order.status === 'paid' &&
-    (
-      order.paymentMethod === 'card' ||
-      order.paymentMethod === 'wallet' ||
-      order.paymentMethod === 'online_paymob' ||
-      (order as unknown as Record<string, unknown>).source !== 'crm'
-    )
-  );
+  const paidOnlineOrders = orders.filter(isOnlinePaidOrder);
   const manualPayments = subscribers.flatMap(subscriber =>
     (subscriber.paymentHistory ?? []).filter(payment =>
       (!payment.status || payment.status === 'paid') &&

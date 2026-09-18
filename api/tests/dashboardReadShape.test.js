@@ -76,7 +76,8 @@ test('orders leave the API in the case every reader compares against', () => {
   // orders.status/type are UPPERCASE ENUM members and migration 096's
   // UPDATE ... SET status='pending' WHERE status='PENDING' is a no-op against
   // one, so production really does hold PENDING/PAID and COURSE/BUNDLE.
-  const runtime = codeOnly(read('admin/context/site-data-hooks/useAdminDataRuntime.ts'));
+  // Both loads of the orders map through this one module.
+  const runtime = codeOnly(read('admin/context/site-data-hooks/normalizeOrders.ts'));
   assert.ok(runtime.includes("String(row.status || 'paid').toLowerCase()"));
   assert.ok(runtime.includes("String(row.type || 'course').toLowerCase()"));
   for (const field of ['courseId', 'bundleId', 'paidAt']) {
