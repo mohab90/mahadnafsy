@@ -8,6 +8,12 @@ export default {
     './components/**/*.{ts,tsx}',
     './context/**/*.{ts,tsx}',
     './lib/**/*.{ts,tsx}',
+    // shared/ui is outside this folder and was outside this list, so every
+    // class that appears only there was never generated. Modal composes its
+    // width and height from lookup tables — sm:max-w-2xl, max-h-[95vh] — so
+    // none of them existed in the stylesheet and every dialog in the panel
+    // rendered full-bleed with no height cap. 92 admin files import from here.
+    '../shared/**/*.{ts,tsx}',
   ],
   theme: {
     extend: {

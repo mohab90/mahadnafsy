@@ -266,14 +266,18 @@ test('every booking and payment button opens that one screen', () => {
     'the first payment bypasses the endpoint that records it in the books');
 
   // The boxes come from one setting, read through one helper, on every screen
-  // that offers them — so the list cannot differ by screen. usePaymentBoxes is
-  // that helper for a dropdown: it is parsePaymentMethods plus the boxes that
-  // already have money against them, because the setting has never been saved
-  // on this tenant and the fallback in the source names none of them.
+  // that offers them — so the list cannot differ by screen. There are two
+  // helpers now and the difference is the point: usePaymentBoxes is the
+  // admin's configured list, for choosing a box when recording money;
+  // usePaymentBoxesWithHistory adds every box that already has money against
+  // it, for filtering and for recognising an old row. Merging history into
+  // the choosing list is what made «خزنة الدقي || انستا باي» in the settings
+  // show up as eighteen options in the record-payment dialog.
   for (const rel of ['admin/components/PaymentModal.tsx', 'admin/pages/dashboard/tabs/FinancialTab.tsx',
     'admin/pages/dashboard/tabs/OrdersTab.tsx', 'admin/pages/dashboard/tabs/financial/PaymentReviewPanel.tsx']) {
     const source = codeOnly(read(rel));
-    assert.match(source, /usePaymentBoxes\(/, `${rel} builds its own payment-method list`);
-    assert.ok(!/DEFAULT_PAYMENT_METHODS\s*=/.test(source), `${rel} carries its own hardcoded list`);
+    assert.ok(source.includes('usePaymentBoxes(') || source.includes('usePaymentBoxesWithHistory('),
+      `${rel} builds its own payment-method list`);
+    assert.ok(!/DEFAULT_PAYMENT_METHODSs*=/.test(source), `${rel} carries its own hardcoded list`);
   }
 });

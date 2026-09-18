@@ -75,7 +75,28 @@ async function loadBoxesInUse(): Promise<string[]> {
   return boxesPending;
 }
 
+/**
+ * The boxes a person may choose when recording money: the admin's list, and
+ * only that.
+ *
+ * This used to merge in every box that already had a payment against it, which
+ * is right for reading history and wrong for writing it. The institute has 18
+ * distinct spellings in its payments — «فودافون كاش» plus seven numbered
+ * variants — so narrowing the setting to «خزنة الدقي || انستا باي» changed
+ * nothing the desk saw, and the dialog kept offering all eighteen. "I edit the
+ * payment methods in settings and the record-payment screen does not change"
+ * was exactly this.
+ */
 export function usePaymentBoxes(configuredRaw: string | undefined | null): string[] {
+  return parsePaymentMethods(configuredRaw);
+}
+
+/**
+ * The same list plus every box money has actually gone into — for filtering and
+ * for recognising an old row's box, where dropping a historical spelling would
+ * hide payments rather than tidy a dropdown.
+ */
+export function usePaymentBoxesWithHistory(configuredRaw: string | undefined | null): string[] {
   const configured = parsePaymentMethods(configuredRaw);
   const [inUse, setInUse] = useState<string[]>(boxesInUse || []);
 

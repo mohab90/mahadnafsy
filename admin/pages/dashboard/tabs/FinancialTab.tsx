@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { cairoDateOnly, cairoMonthOnly } from '../../../../shared/cairoDate';
 import {
   Plus, TrendingUp,
@@ -19,7 +19,7 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { PaymentHistoryEntry, ExpenseItem } from '../../../types';
 import { branchMatches, type FinancialSubTab } from './financial/financialTabUtils';
 import { blankPaymentDraft, type PaymentDraft } from '../../../components/PaymentModal';
-import { usePaymentBoxes } from '../../../lib/paymentMethods';
+import { usePaymentBoxesWithHistory } from '../../../lib/paymentMethods';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 const AgingReportPanel = React.lazy(() => import('./financial/AgingReportPanel').then(module => ({ default: module.AgingReportPanel })));
@@ -194,6 +194,17 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
     } catch { /* ignore */ }
     finally { setLoadingDbPayments(false); }
   };
+  // Asking for one box's transactions is a promise to show them, so the rows
+  // are fetched rather than assumed. The manual payments are loaded on demand —
+  // the subscriber bootstrap carries only the history it happened to include —
+  // so clicking a box in «الخزائن» used to filter whatever was already in the
+  // browser, which for most boxes was nothing at all.
+  useEffect(() => {
+    if (orderMethodFilter && dbPayments === null && !loadingDbPayments) void loadDbPayments();
+    // loadDbPayments is stable enough for this: it only reads setState setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderMethodFilter, dbPayments, loadingDbPayments]);
+
   const [incomeSubjectId, setIncomeSubjectId] = useState('');
   const [incomeDraft, setIncomeDraft] = useState<PaymentDraft>(blankPaymentDraft);
 
@@ -291,7 +302,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
 
   // Helper: get payment method from entry (new field first, then scan note for compat)
   // What الإعدادات lists, plus every box with money against it.
-  const PAYMENT_METHODS: string[] = usePaymentBoxes(content['finance.payment_methods']);
+  const PAYMENT_METHODS: string[] = usePaymentBoxesWithHistory(content['finance.payment_methods']);
   const getMethod = (p: { paymentMethod?: string; note?: string }) =>
     p.paymentMethod || PAYMENT_METHODS.find(m => (p.note || '').includes(m)) || '';
   const {
