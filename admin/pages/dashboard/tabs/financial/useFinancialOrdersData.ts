@@ -48,6 +48,8 @@ interface DbPayment {
   note: string | null;
   at: string;
   status?: string;
+  /** Who recorded it, already resolved by the API (lib/paymentExecutor.js). */
+  staffName?: string | null;
 }
 
 interface UseFinancialOrdersDataArgs {
@@ -153,7 +155,10 @@ export function useFinancialOrdersData({
           note: payment.note || (payment.transactionId ? `#${payment.transactionId}` : '—'),
           isOnline: false,
           printRow: null,
-          staffName: null,
+          // This was a literal null: every payment loaded from the database —
+          // which is every payment once a box is clicked — showed no one as
+          // having recorded it, whatever the API had sent.
+          staffName: payment.staffName ?? null,
         }))
       : [];
 

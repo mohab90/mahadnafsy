@@ -2,6 +2,7 @@
 const logger = require('../lib/logger');
 const express = require('express');
 const router  = express.Router();
+const { resolvePaymentExecutors } = require('../lib/paymentExecutor');
 const { pool } = require('../lib/db');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { addDaysToDateOnly, isValidDateOnly, safeDateOnly } = require('../lib/dates');
@@ -121,6 +122,9 @@ router.get('/api/admin/payments', requireAuth, requireAdminOrStaff, requirePermi
     sql += ' ORDER BY p.date DESC, p.id DESC LIMIT ? OFFSET ?';
     params.push(limit, offset);
     const [rows] = await pool.query(sql, params);
+    // Who recorded each one, resolved rather than read off staff_name — see
+    // lib/paymentExecutor.js for why that column cannot answer on its own.
+    const executors = await resolvePaymentExecutors(pool, req.tenantId, rows);
     res.json(rows.map(p => {
       const dateStr = safeDateOnly(p.date);
       return {
@@ -142,7 +146,7 @@ router.get('/api/admin/payments', requireAuth, requireAdminOrStaff, requirePermi
         at: dateStr,
         status: p.status || 'paid',
         staffId: p.staff_id || null,
-        staffName: p.staff_name || null,
+        staffName: executors.get(String(p.id)) ?? null,
         fromAccountNumber: p.from_account || null,
         source: p.source || null,
         itemTitle: p.item_title || null,
@@ -317,6 +321,7 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requi
       }
     }
 
+    const executors = await resolvePaymentExecutors(pool, req.tenantId, rows);
     const mappedRows = rows.map(p => {
       const dateStr = safeDateOnly(p.date);
       return {
@@ -330,7 +335,7 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requi
         transactionId: p.transaction_id || null, isInstallment: !!p.is_installment,
         note: p.note || null, at: dateStr,
         status: p.status || 'paid',
-        staffId: p.staff_id || null, staffName: p.staff_name || null,
+        staffId: p.staff_id || null, staffName: executors.get(String(p.id)) ?? null,
         fromAccountNumber: p.from_account || null,
         source: p.source || null,
         itemTitle: p.item_title || null, certType: p.cert_type || null,

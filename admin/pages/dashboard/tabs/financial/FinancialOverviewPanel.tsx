@@ -49,6 +49,8 @@ interface Props {
   revenueByMethodFiltered: Record<string, number>;
   setFinancialSubTab: React.Dispatch<React.SetStateAction<FinancialSubTab>>;
   setOrderMethodFilter: React.Dispatch<React.SetStateAction<string>>;
+  /** Open the transactions behind one box for the month on screen. */
+  onOpenBox: (method: string) => void;
   paymentMethods: string[];
   revenueByCourse: RevenueByCourse[];
   exportCSV: (filename: string, rows: string[][], headers: string[]) => void;
@@ -80,6 +82,7 @@ export function FinancialOverviewPanel({
   revenueByMethodFiltered,
   setFinancialSubTab,
   setOrderMethodFilter,
+  onOpenBox,
   paymentMethods,
   revenueByCourse,
   exportCSV,
@@ -192,7 +195,7 @@ export function FinancialOverviewPanel({
                 {/* Online Paymob card — filtered by month */}
                 {onlineRevenueFiltered > 0 && (
                   <button
-                    onClick={() => { setFinancialSubTab('orders'); setOrderMethodFilter('__online_paymob__'); }}
+                    onClick={() => onOpenBox('__online_paymob__')}
                     className="bg-blue-50 border border-blue-200 hover:border-blue-400 hover:bg-blue-100 rounded-2xl p-4 text-right transition group">
                     <p className="text-xs text-blue-600 font-bold mb-1">🌐 أونلاين (Paymob)</p>
                     <p className="text-xl font-extrabold text-blue-800">{Math.round(onlineRevenueFiltered).toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
@@ -202,7 +205,7 @@ export function FinancialOverviewPanel({
                 {/* Manual payment channels — filtered by month */}
                 {(Object.entries(revenueByMethodFiltered) as [string, number][]).sort((a,b)=>b[1]-a[1]).map(([method, total]) => (
                   <button key={method}
-                    onClick={() => { setFinancialSubTab('orders'); setOrderMethodFilter(method); }}
+                    onClick={() => onOpenBox(method)}
                     className="bg-emerald-50 border border-emerald-200 hover:border-emerald-400 hover:bg-emerald-100 rounded-2xl p-4 text-right transition group">
                     <p className="text-xs text-emerald-600 font-bold mb-1">{method}</p>
                     <p className="text-xl font-extrabold text-emerald-800">{Math.round(total).toLocaleString('ar-EG-u-nu-latn')} ج.م</p>

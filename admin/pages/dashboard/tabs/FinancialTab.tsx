@@ -183,7 +183,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   const [commissionFrom, setCommissionFrom] = useState(() => { const d = new Date(); d.setMonth(d.getMonth() - 2); return d.toISOString().slice(0, 7); });
   const [commissionTo, setCommissionTo] = useState(cairoMonthOnly());
   const [commissionViewMode, setCommissionViewMode] = useState<'single' | 'range'>('single');
-  const [dbPayments, setDbPayments] = useState<Array<{ id: string; subscriberId: string; subscriberName: string; amount: number; currency: string; paymentType: string; paymentMethod: string | null; transactionId: string | null; note: string | null; at: string; isInstallment: boolean; status?: string }> | null>(null);
+  const [dbPayments, setDbPayments] = useState<Array<{ id: string; subscriberId: string; subscriberName: string; amount: number; currency: string; paymentType: string; paymentMethod: string | null; transactionId: string | null; note: string | null; at: string; isInstallment: boolean; status?: string; staffName?: string | null }> | null>(null);
   const [loadingDbPayments, setLoadingDbPayments] = useState(false);
 
   const loadDbPayments = async () => {
@@ -338,6 +338,20 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   }
 
   // Revenue by method filtered by vaultMonth
+  // A box on «الخزائن» shows one month's total, so opening it has to show
+  // that month's transactions. It used to set the method and nothing else, so
+  // the list beneath carried every month the box had ever taken money in and
+  // added up to several times the figure that was clicked.
+  const openBox = (method: string) => {
+    const [year, month] = vaultMonth.split('-').map(Number);
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    setFinancialSubTab('orders');
+    setOrderMethodFilter(method);
+    setOrderDateFrom(`${vaultMonth}-01`);
+    setOrderDateTo(`${vaultMonth}-${String(lastDay).padStart(2, '0')}`);
+    setOrdersPage(1);
+  };
+
   const vaultFilteredPayments = allManualPayments.filter(p => p.at.startsWith(vaultMonth));
   const revenueByMethodFiltered: Record<string, number> = {};
   for (const p of vaultFilteredPayments) {
@@ -522,6 +536,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
           revenueByMethodFiltered={revenueByMethodFiltered}
           setFinancialSubTab={setFinancialSubTab}
           setOrderMethodFilter={setOrderMethodFilter}
+          onOpenBox={openBox}
           paymentMethods={PAYMENT_METHODS}
           revenueByCourse={revenueByCourse}
           exportCSV={exportCSV}

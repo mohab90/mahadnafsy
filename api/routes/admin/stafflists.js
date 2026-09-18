@@ -6,6 +6,7 @@ const router   = express.Router();
 const { uuidv4 } = require('../../lib/id');
 
 const { pool, autoAssignStaff, cacheInvalidate } = require('../../lib/db');
+const { resolvePaymentExecutors } = require('../../lib/paymentExecutor');
 const { mailer } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
 const { tryJson, sanitize, parseLimit, parseOffset, parseCrm, calcLeadScoreServer, sendRouteError } = require('../../lib/helpers');
@@ -291,6 +292,7 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
        ORDER BY \`date\` ASC`,
       [req.tenantId, ...ids]
     );
+    const executors = await resolvePaymentExecutors(pool, req.tenantId, payRows);
     const payBySubId = {};
     payRows.forEach(p => {
       if (!payBySubId[p.subscriber_id]) payBySubId[p.subscriber_id] = [];
@@ -310,7 +312,7 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
         at: dateStr,
         status: p.status || 'paid',
         staffId: p.staff_id || null,
-        staffName: p.staff_name || null,
+        staffName: executors.get(String(p.id)) ?? null,
         fromAccountNumber: p.from_account || null,
         source: p.source || null,
         itemTitle: p.item_title || null,
@@ -455,6 +457,7 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePe
        ORDER BY \`date\` ASC`,
       [req.tenantId, ...ids]
     );
+    const executors = await resolvePaymentExecutors(pool, req.tenantId, payRows);
     const payBySubId = {};
     payRows.forEach(p => {
       if (!payBySubId[p.subscriber_id]) payBySubId[p.subscriber_id] = [];
@@ -466,7 +469,7 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePe
         courseId: p.course_id||null, bundleId: p.bundle_id||null,
         courseExpected: p.course_expected != null ? Number(p.course_expected) : undefined,
         note: p.note||null, at: dateStr,
-        status: p.status||'paid', staffId: p.staff_id||null, staffName: p.staff_name||null,
+        status: p.status||'paid', staffId: p.staff_id||null, staffName: executors.get(String(p.id)) ?? null,
         fromAccountNumber: p.from_account||null, source: p.source||null, itemTitle: p.item_title||null,
         certType: p.cert_type || null, certId: p.certificate_request_id || null, branch: p.branch || null,
       });
@@ -643,6 +646,7 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, requir
        ORDER BY \`date\` ASC`,
       [req.tenantId, ...ids]
     );
+    const executors = await resolvePaymentExecutors(pool, req.tenantId, payRows);
     const payBySubId = {};
     payRows.forEach(p => {
       if (!payBySubId[p.subscriber_id]) payBySubId[p.subscriber_id] = [];
@@ -653,7 +657,7 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, requir
         transactionId: p.transaction_id || null, isInstallment: !!p.is_installment,
         courseId: p.course_id || null, bundleId: p.bundle_id || null, note: p.note || null, at: dateStr,
         status: p.status || 'paid', staffId: p.staff_id || null,
-        staffName: p.staff_name || null, fromAccountNumber: p.from_account || null,
+        staffName: executors.get(String(p.id)) ?? null, fromAccountNumber: p.from_account || null,
         source: p.source || null, itemTitle: p.item_title || null,
       });
     });
@@ -711,6 +715,7 @@ router.get('/api/staff/my-collection-clients', requireAuth, requireAdminOrStaff,
        ORDER BY \`date\` ASC`,
       [req.tenantId, ...ids]
     );
+    const executors = await resolvePaymentExecutors(pool, req.tenantId, payRows);
     const payBySubId = {};
     payRows.forEach(p => {
       if (!payBySubId[p.subscriber_id]) payBySubId[p.subscriber_id] = [];
@@ -721,7 +726,7 @@ router.get('/api/staff/my-collection-clients', requireAuth, requireAdminOrStaff,
         transactionId: p.transaction_id || null, isInstallment: !!p.is_installment,
         courseId: p.course_id || null, bundleId: p.bundle_id || null, note: p.note || null, at: dateStr,
         status: p.status || 'paid', staffId: p.staff_id || null,
-        staffName: p.staff_name || null, fromAccountNumber: p.from_account || null,
+        staffName: executors.get(String(p.id)) ?? null, fromAccountNumber: p.from_account || null,
         source: p.source || null, itemTitle: p.item_title || null,
       });
     });
@@ -780,6 +785,7 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, requ
        ORDER BY \`date\` ASC`,
       [req.tenantId, ...ids]
     );
+    const executors = await resolvePaymentExecutors(pool, req.tenantId, payRows);
     const payBySubId = {};
     payRows.forEach(p => {
       if (!payBySubId[p.subscriber_id]) payBySubId[p.subscriber_id] = [];
@@ -789,7 +795,7 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, requ
         paymentType: (p.payment_type || 'other').toLowerCase(), paymentMethod: p.payment_method || null,
         transactionId: p.transaction_id || null, isInstallment: !!p.is_installment,
         courseId: p.course_id || null, bundleId: p.bundle_id || null, note: p.note || null, at: dateStr,
-        status: p.status || 'paid', staffId: p.staff_id || null, staffName: p.staff_name || null,
+        status: p.status || 'paid', staffId: p.staff_id || null, staffName: executors.get(String(p.id)) ?? null,
         fromAccountNumber: p.from_account || null, source: p.source || null, itemTitle: p.item_title || null,
       });
     });
