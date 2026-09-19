@@ -585,8 +585,11 @@ export const mysqlAdmin = {
     apiFetch<{ text: string }>('/admin/ai/generate', { method: 'POST', body: JSON.stringify(body) }, A),
   // The admin route needs manage_content, which no role holds, so a staff
   // account gets 403 and would otherwise run with no content at all. The public
-  // route returns the same object to anonymous callers, so this loses nothing.
-  getContent:              async ()       => {
+  // route returns the same object to anonymous callers, so this loses nothing —
+  // and a caller that already knows it is not an admin goes there directly
+  // rather than collecting the 403 first.
+  getContent:              async (admin = true) => {
+    if (!admin) return apiFetch<AR>('/content');
     try {
       return await apiFetch<AR>('/admin/content', {}, A);
     } catch {

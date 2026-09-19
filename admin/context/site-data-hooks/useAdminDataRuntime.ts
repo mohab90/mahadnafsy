@@ -145,14 +145,22 @@ export function useAdminDataRuntime(state: RuntimeState): {
       setRemoteReady(true);
     }, 8000);
 
+    // Lists the server gives to admins alone (requireAdmin, which isAdmin
+    // mirrors). For anyone else each was a certain 403 on every page load —
+    // seventeen refusals a load for the Dokki manager — and a refused list set
+    // nothing, which is exactly what skipping it does.
+    const isAdmin = authUser.isAdmin === true;
+    const adminOnly = <T>(load: () => Promise<T>): Promise<T> =>
+      isAdmin ? load() : Promise.reject(new Error('admin only'));
+
     void (async () => {
       try {
         const [subsRes, leadsRes, staffRes, consultsRes, contentRes] = await Promise.allSettled([
           withTimeout(mysqlAdmin.listSubscribersPage(500, 0)),
           withTimeout(mysqlAdmin.listLeadsPage(500, 0)),
           withTimeout(mysqlAdmin.listAllStaff()),
-          withTimeout(mysqlAdmin.listAllConsultations()),
-          withTimeout(mysqlAdmin.getContent()),
+          withTimeout(adminOnly(() => mysqlAdmin.listAllConsultations())),
+          withTimeout(mysqlAdmin.getContent(isAdmin)),
         ]);
         if (disposed) return;
 
@@ -207,8 +215,8 @@ export function useAdminDataRuntime(state: RuntimeState): {
         // useLecturesChaptersState.
         const [coursesRes, bundlesRes, therapistsRes] = await Promise.allSettled([
           mysqlAdmin.listAllCourses(),
-          mysqlAdmin.listAllBundles(500),
-          mysqlAdmin.listAllTherapists(),
+          adminOnly(() => mysqlAdmin.listAllBundles(500)),
+          adminOnly(() => mysqlAdmin.listAllTherapists()),
         ]);
         if (disposed) return;
         if (coursesRes.status === 'fulfilled' && coursesRes.value.length > 0) {
@@ -222,10 +230,10 @@ export function useAdminDataRuntime(state: RuntimeState): {
         if (disposed) return;
         const [testimonialsRes, quizzesRes, streamsRes, expensesRes, activityRes] = await Promise.allSettled([
           mysqlCatalog.listTestimonials(),
-          mysqlCatalog.listQuizzes(),
-          mysqlCatalog.listLiveStreams(),
+          adminOnly(() => mysqlCatalog.listQuizzes()),
+          adminOnly(() => mysqlCatalog.listLiveStreams()),
           mysqlAdmin.listAllExpenses(),
-          mysqlAdmin.listActivityLogs(),
+          adminOnly(() => mysqlAdmin.listActivityLogs()),
         ]);
         if (disposed) return;
         if (testimonialsRes.status === 'fulfilled' && testimonialsRes.value.length > 0) setTestimonials(testimonialsRes.value as unknown as TestimonialItem[]);
@@ -239,9 +247,9 @@ export function useAdminDataRuntime(state: RuntimeState): {
         const [ordersRes, applicantsRes, contactsRes, roundsRes, automationsRes] = await Promise.allSettled([
           mysqlAdmin.listAllOrders(),
           mysqlAdmin.listAllJoinUs(),
-          mysqlAdmin.listAllContactMessages(),
+          adminOnly(() => mysqlAdmin.listAllContactMessages()),
           mysqlAdmin.listAllDaqqiRounds(),
-          mysqlAdmin.listAllAutomationWorkflows(),
+          adminOnly(() => mysqlAdmin.listAllAutomationWorkflows()),
         ]);
         if (disposed) return;
         if (ordersRes.status === 'fulfilled' && ordersRes.value.length > 0) setOrders(normalizeOrders(ordersRes.value));
@@ -253,9 +261,9 @@ export function useAdminDataRuntime(state: RuntimeState): {
         await new Promise(resolve => setTimeout(resolve, 300));
         if (disposed) return;
         const [discountsRes, notificationsRes, settingsRes] = await Promise.allSettled([
-          mysqlAdmin.getDiscounts(),
-          mysqlAdmin.getNotificationSettings(),
-          mysqlAdmin.getSettings(),
+          adminOnly(() => mysqlAdmin.getDiscounts()),
+          adminOnly(() => mysqlAdmin.getNotificationSettings()),
+          adminOnly(() => mysqlAdmin.getSettings()),
         ]);
         if (disposed) return;
         if (discountsRes.status === 'fulfilled' && discountsRes.value.length > 0) setDiscounts(discountsRes.value as unknown as DiscountRule[]);

@@ -10,6 +10,7 @@ import {
 
 import { mysqlAuth } from '../../lib/mysqlapi';
 import MessagesBell from './MessagesBell';
+import { hasPermission } from '../../constants/permissions';
 import { NotificationsBell } from './NotificationsBell';
 import type { LeadItem, StaffMember, SubscriberItem } from '../../types';
 import type { TabKey } from './navigation';
@@ -242,8 +243,10 @@ export function DashboardNavigation(props: Props) {
                 </button>
                 {/* Staff messages used to be visible one employee at a time,
                     inside each profile page — so an incoming message went unseen
-                    until someone opened that person's file. */}
-                <MessagesBell mode="management" notify={notify} />
+                    until someone opened that person's file. Only for those its
+                    route answers (view_hr): for everyone else it was a bell that
+                    always read 0 and opened empty, on a 403 every page load. */}
+                {(isAdmin || hasPermission(currentStaff, 'view_hr')) && <MessagesBell mode="management" notify={notify} />}
                 <NotificationsBell
                   rows={notifRows}
                   setRows={setNotifRows}
