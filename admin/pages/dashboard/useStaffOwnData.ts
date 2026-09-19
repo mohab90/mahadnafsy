@@ -35,10 +35,11 @@ export function useStaffOwnData({
   const [salesDataLoading, setSalesDataLoading] = useState(false);
 
   const fetchSalesData = useCallback(async () => {
-    // Online manager has isAdmin=true but still needs their own scoped data for the online_clients tab
+    // Staff only. The online manager counted as an admin here once, from a list
+    // /api/auth/me kept apart from requireAdmin; it follows requireAdmin now.
     const staffRef = staffSelf || (isOnlineManager ? currentStaff : null);
     if (!staffRef) return;
-    if (isAdmin && !isOnlineManager) return; // Real admins skip — they have full context data
+    if (isAdmin) return; // admins have the full context data
     setSalesDataLoading(true);
     try {
       // mysqlAdmin: static import (top of file)
@@ -127,7 +128,9 @@ export function useStaffOwnData({
 
       // Content (branches, payment methods, etc.)
       try {
-        const contentData = (await mysqlAdmin.getContent()) as Record<string, string>;
+        // Never an admin here, so straight to the public copy the admin route
+        // would have fallen back to after its 403.
+        const contentData = (await mysqlAdmin.getContent(false)) as Record<string, string>;
         if (contentData && typeof contentData === 'object' && Object.keys(contentData).length > 0) {
           mergeContent(contentData);
         }
