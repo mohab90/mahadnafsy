@@ -30,7 +30,7 @@ const { isString, isEmail, validateBody } = require('../middleware/validate');
 const { postPaymentJournal, logPaymentAudit } = require('../lib/finance');
 const { assertWritable } = require('../lib/periodLock');
 const { logLoginAttempt } = require('../lib/loginAudit');
-const { hasPermission } = require('../constants/permissions');
+const { hasPermission, FULL_ACCESS_ROLES } = require('../constants/permissions');
 const { getMfaPolicy, policyRequiresStaff } = require('../lib/mfaPolicy');
 const { requireTenantQuota } = require('../middleware/tenantQuota');
 const { resolveClientContext, getClientIp, hashClientIp } = require('../lib/clientContext');
@@ -1066,9 +1066,6 @@ router.post('/api/auth/logout', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
-// Roles that grant full admin-level access in the frontend
-const FULL_ACCESS_ROLES_AUTH = ['manager', 'admin', 'daqqi_manager', 'online_manager'];
-
 // GET /api/auth/me
 router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
   let conn;
@@ -1079,12 +1076,15 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
     const u = rows[0];
     let isAdmin = ADMIN_EMAILS.includes(u.email) || ADMIN_UIDS.includes(u.id);
     if (!isAdmin) {
-      // Also grant admin access to staff with full-access roles (manager, admin, daqqi_manager, online_manager)
+      // Staff with a full-access role — the list requireAdmin enforces. This
+      // kept a list of its own that added daqqi_manager and online_manager, so
+      // the panel showed those two every section and skipped their permission
+      // checks while the server refused them the data behind it.
       const [[staff]] = u.email ? await conn.execute(
         `SELECT role FROM staff WHERE tenant_id=? AND LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1`,
         [req.tenantId, u.email.toLowerCase().trim()]
       ) : [[null]];
-      if (staff && FULL_ACCESS_ROLES_AUTH.includes(String(staff.role || '').toLowerCase())) isAdmin = true;
+      if (staff && FULL_ACCESS_ROLES.includes(String(staff.role || '').toLowerCase())) isAdmin = true;
     }
     // Surface the user's phone. Subscriber and lead rows come first because they
     // carry the number the desk has actually been calling; users.phone is the
