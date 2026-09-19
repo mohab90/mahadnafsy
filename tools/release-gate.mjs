@@ -186,7 +186,14 @@ if (!SKIP_E2E) {
     execSync('npx playwright test --reporter=line', {
       cwd: path.join(root, 'e2e'),
       stdio: 'inherit',
-      env: { ...process.env, BASE_URL: 'http://127.0.0.1:5180', ADMIN_BASE_URL: 'http://127.0.0.1:4000', API_BASE_URL: 'http://127.0.0.1:5180' },
+      // The staging UAT admin. Without it every spec that opens an admin
+      // screen skipped — 66 of them — and the stage still read as passed. The
+      // first run with a login found a real 403 on every page of the panel.
+      env: {
+        ...process.env, BASE_URL: 'http://127.0.0.1:5180', ADMIN_BASE_URL: 'http://127.0.0.1:4000', API_BASE_URL: 'http://127.0.0.1:5180',
+        E2E_ADMIN_EMAIL: process.env.E2E_ADMIN_EMAIL || 'uat.admin@mahad.test',
+        E2E_ADMIN_PASSWORD: process.env.E2E_ADMIN_PASSWORD || process.env.UAT_PASSWORD || 'MahadUat#2026',
+      },
     });
   } catch {
     stop();

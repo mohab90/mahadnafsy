@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page, type PlaywrightWorkerArgs } from '@playwright/test';
 import { loginAdmin } from '../helpers/adminLogin';
 
 /**
@@ -17,7 +17,7 @@ import { loginAdmin } from '../helpers/adminLogin';
  *
  * It is written to be safe to point at production, which is where the useful
  * answer is. Everything it creates carries the E2E_TAG below, the hall it books
- * is a made-up name that cannot collide with a real one, and the last test puts
+ * is a made-up name that cannot collide with a real one, and afterAll puts
  * the section back:
  *   - the spare round is deleted outright (still empty and NEW)
  *   - the round that took attendance is set FINISHED rather than deleted — the
@@ -30,6 +30,8 @@ import { loginAdmin } from '../helpers/adminLogin';
 const ADMIN = process.env.ADMIN_BASE_URL || 'http://127.0.0.1:4000';
 const EMAIL = process.env.TEST_DAQQI_MANAGER_EMAIL || process.env.TEST_ADMIN_EMAIL || '';
 const PASSWORD = process.env.TEST_DAQQI_MANAGER_PASSWORD || process.env.TEST_ADMIN_PASSWORD || '';
+const MANAGEMENT_EMAIL = process.env.E2E_ADMIN_EMAIL || process.env.TEST_ADMIN_EMAIL || '';
+const MANAGEMENT_PASSWORD = process.env.E2E_ADMIN_PASSWORD || process.env.TEST_ADMIN_PASSWORD || '';
 const WRITES_ALLOWED = process.env.DAQQI_E2E_WRITE === '1';
 
 const STAMP = Date.now().toString(36).toUpperCase();
@@ -71,15 +73,25 @@ test.describe('Dokki section — live pass', () => {
     test.setTimeout(120_000);
     page = await browser.newPage();
     await loginAdmin(page, ADMIN, EMAIL, PASSWORD);
+    // The session cookie is Secure, and page.request — unlike the browser —
+    // will not send a Secure cookie over the plain-http staging proxy: every
+    // write below answered 401 while the screens loaded. The same token goes
+    // as a header instead.
+    const token = (await page.context().cookies()).find(c => c.name === 'authToken')?.value || '';
+    await page.context().setExtraHTTPHeaders({ Authorization: `Bearer ${decodeURIComponent(token)}` });
   });
 
-  test.afterAll(async () => {
+  // In afterAll rather than a last test: the suite runs serially, so one failed
+  // step skipped a cleanup test and left live rounds holding a hall.
+  test.afterAll(async ({ playwright }) => {
+    const failures = await cleanUp(playwright);
     if (leftBehind.size) {
       console.log(`\n[daqqi-e2e] left in the database:\n  ${[...leftBehind.values()].join('\n  ')}\n`);
     } else {
       console.log('\n[daqqi-e2e] nothing left behind.\n');
     }
     await page?.close();
+    expect(failures, 'cleanup must not leave live test data behind').toEqual([]);
   });
 
   test('a course is available to build a round on', async () => {
@@ -241,46 +253,13 @@ test.describe('Dokki section — live pass', () => {
     };
     page.on('response', onResponse);
     for (const tab of ['daqqi_schedule', 'daqqi_clients', 'daqqi_attendance']) {
-      await page.goto(`${ADMIN}/dashboard?tab=${tab}`, { waitUntil: 'networkidle' });
-      await page.waitForTimeout(1500);
+      // /dashboard/<key>: ?tab= is read by nothing, so this swept the overview
+      // three times. And not networkidle — the panel polls, so it never comes.
+      await page.goto(`${ADMIN}/dashboard/${tab}`, { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(4000);
     }
     page.off('response', onResponse);
     expect(bad, 'Dokki screens must not produce API errors').toEqual([]);
-  });
-
-  test('cleanup — put the section back', async () => {
-    const failures: string[] = [];
-
-    // Round B never took attendance, so it is still an empty NEW round.
-    if (roundBId) {
-      const response = await page.request.delete(`${ADMIN}/api/admin/daqqi-rounds/${encodeURIComponent(roundBId)}`);
-      if (response.status() >= 300) failures.push(`spare round ${roundBId} delete → ${response.status()}`);
-      else leftBehind.delete(roundBId);
-    }
-
-    // Round A carries attendance history, which the API refuses to delete. Close
-    // it instead: a FINISHED round releases its hall and leaves the active views.
-    if (roundAId) {
-      const round = await fetchRound(roundAId);
-      const response = await page.request.post(`${ADMIN}/api/admin/daqqi-rounds`, {
-        data: { ...round, status: 'finished' },
-      });
-      if (response.status() >= 300) {
-        failures.push(`round ${roundAId} close → ${response.status()}`);
-      } else {
-        expect((await fetchRound(roundAId)).status, 'round must end up finished').toBe('finished');
-        leftBehind.set(roundAId, `round ${roundAId} — finished, hall released; kept for its attendance history`);
-      }
-    }
-
-    // Soft archive — is_active=0 + deleted_at, reversible via /restore.
-    if (subscriberId) {
-      const response = await page.request.delete(`${ADMIN}/api/admin/subscribers/${encodeURIComponent(subscriberId)}`);
-      if (response.status() >= 300) failures.push(`client ${subscriberId} archive → ${response.status()}`);
-      else leftBehind.delete(subscriberId);
-    }
-
-    expect(failures, 'cleanup must not leave live test data behind').toEqual([]);
   });
 });
 
@@ -291,4 +270,48 @@ async function fetchRound(id: string) {
   const round = rounds.find((r: { id: string }) => r.id === id);
   expect(round, `round ${id} must be in the list`).toBeTruthy();
   return round;
+}
+
+/**
+ * Put the section back. The round with attendance is closed as the Dokki
+ * manager; deleting the spare round and archiving the client are management's
+ * alone — the Dokki manager is refused both, correctly — so those two go
+ * through the admin account.
+ */
+async function cleanUp(playwright: PlaywrightWorkerArgs['playwright']): Promise<string[]> {
+  const failures: string[] = [];
+
+  // Round A carries attendance history, which the API refuses to delete. Close
+  // it instead: a FINISHED round releases its hall and leaves the active views.
+  if (roundAId && page) {
+    const round = await fetchRound(roundAId);
+    const response = await page.request.post(`${ADMIN}/api/admin/daqqi-rounds`, { data: { ...round, status: 'finished' } });
+    if (response.status() >= 300) failures.push(`round ${roundAId} close → ${response.status()}`);
+    else leftBehind.set(roundAId, `round ${roundAId} — finished, hall released; kept for its attendance history`);
+  }
+  if (!roundBId && !subscriberId) return failures;
+
+  // Signed in last: when the suite itself runs as the admin, this login ends
+  // the page's session, which has nothing left to do by now.
+  const signIn = await playwright.request.newContext();
+  const login = await signIn.post(`${ADMIN}/api/auth/login`, { data: { email: MANAGEMENT_EMAIL, password: MANAGEMENT_PASSWORD } });
+  const token = decodeURIComponent((/authToken=([^;]+)/.exec(login.headers()['set-cookie'] || '') || [])[1] || '');
+  await signIn.dispose();
+  if (!token) return [...failures, `the admin sign-in for cleanup failed (${login.status()}) — set E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD`];
+  const management = await playwright.request.newContext({ extraHTTPHeaders: { Authorization: `Bearer ${token}` } });
+
+  // Round B never took attendance, so it is still an empty NEW round.
+  if (roundBId) {
+    const response = await management.delete(`${ADMIN}/api/admin/daqqi-rounds/${encodeURIComponent(roundBId)}`);
+    if (response.status() >= 300) failures.push(`spare round ${roundBId} delete → ${response.status()}`);
+    else leftBehind.delete(roundBId);
+  }
+  // Soft archive — is_active=0 + deleted_at, reversible via /restore.
+  if (subscriberId) {
+    const response = await management.delete(`${ADMIN}/api/admin/subscribers/${encodeURIComponent(subscriberId)}`);
+    if (response.status() >= 300) failures.push(`client ${subscriberId} archive → ${response.status()}`);
+    else leftBehind.delete(subscriberId);
+  }
+  await management.dispose();
+  return failures;
 }
