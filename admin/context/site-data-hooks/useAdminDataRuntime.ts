@@ -174,9 +174,9 @@ export function useAdminDataRuntime(state: RuntimeState): {
     void (async () => {
       try {
         const [subsRes, leadsRes, staffRes, consultsRes, contentRes] = await Promise.allSettled([
-          withTimeout(mysqlAdmin.listSubscribersPage(500, 0)),
-          withTimeout(mysqlAdmin.listLeadsPage(500, 0)),
-          withTimeout(mysqlAdmin.listAllStaff()),
+          withTimeout(permitted('view_subscribers') ? mysqlAdmin.listSubscribersPage(500, 0) : refused('view_subscribers')),
+          withTimeout(permitted('view_leads') ? mysqlAdmin.listLeadsPage(500, 0) : refused('view_leads')),
+          withTimeout(permitted('view_staff') ? mysqlAdmin.listAllStaff() : refused('view_staff')),
           withTimeout(permitted('view_consultations') ? mysqlAdmin.listAllConsultations() : refused('view_consultations')),
           withTimeout(mysqlAdmin.getContent(isAdmin)),
         ]);
@@ -232,7 +232,7 @@ export function useAdminDataRuntime(state: RuntimeState): {
         // read them. Those five call ensureLectures() now; see
         // useLecturesChaptersState.
         const [coursesRes, bundlesRes, therapistsRes] = await Promise.allSettled([
-          mysqlAdmin.listAllCourses(),
+          permitted('view_courses') ? mysqlAdmin.listAllCourses() : refused('view_courses'),
           permitted('view_courses') ? mysqlAdmin.listAllBundles(500) : refused('view_courses'),
           permitted('view_consultations') ? mysqlAdmin.listAllTherapists() : refused('view_consultations'),
         ]);
@@ -250,7 +250,7 @@ export function useAdminDataRuntime(state: RuntimeState): {
           mysqlCatalog.listTestimonials(),
           permitted('view_courses') ? mysqlCatalog.listQuizzes() : refused('view_courses'),
           permitted('view_courses') ? mysqlCatalog.listLiveStreams() : refused('view_courses'),
-          mysqlAdmin.listAllExpenses(),
+          permitted('view_financial') ? mysqlAdmin.listAllExpenses() : refused('view_financial'),
           permitted('view_activity') ? mysqlAdmin.listActivityLogs() : refused('view_activity'),
         ]);
         if (disposed) return;
@@ -263,10 +263,10 @@ export function useAdminDataRuntime(state: RuntimeState): {
         await new Promise(resolve => setTimeout(resolve, 300));
         if (disposed) return;
         const [ordersRes, applicantsRes, contactsRes, roundsRes, automationsRes] = await Promise.allSettled([
-          mysqlAdmin.listAllOrders(),
-          mysqlAdmin.listAllJoinUs(),
+          permitted('view_orders') ? mysqlAdmin.listAllOrders() : refused('view_orders'),
+          permitted('view_join_us') ? mysqlAdmin.listAllJoinUs() : refused('view_join_us'),
           permitted('view_contacts') ? mysqlAdmin.listAllContactMessages() : refused('view_contacts'),
-          mysqlAdmin.listAllDaqqiRounds(),
+          permitted('manage_daqqi') ? mysqlAdmin.listAllDaqqiRounds() : refused('manage_daqqi'),
           adminOnly(() => mysqlAdmin.listAllAutomationWorkflows()),
         ]);
         if (disposed) return;
@@ -345,6 +345,8 @@ export function useAdminDataRuntime(state: RuntimeState): {
         const [leadsRes, subscribersRes, roundsRes, expensesRes] = await Promise.allSettled([
           leadsFetch,
           subsFetch,
+          // This poll runs for admins only (see the guard at the top of the
+          // effect), so there is nothing to ask about here.
           mysqlAdmin.listAllDaqqiRounds(),
           mysqlAdmin.listAllExpenses(),
         ]);

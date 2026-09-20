@@ -473,7 +473,17 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     isHydratingRef.current = false;
     setRemoteReady(true);
 
-    // Load community content for all users (deferred 300ms to let critical auth/catalog load first)
+    // The community, for the accounts whose route answers them — view_community.
+    //
+    // It was loaded "for all users" and the route has always required that
+    // permission, so for every other account it was a 403 on every page load:
+    // the single most refused request in the panel, measured across six roles.
+    const canReadCommunity = isAdmin
+      || (Array.isArray(authUser?.permissions) && authUser.permissions.includes('view_community'))
+      || authUser?.permissions === '*';
+    if (!canReadCommunity) return;
+
+    // Deferred 300ms to let critical auth/catalog load first.
     setTimeout(() => {
       Promise.allSettled([
         mysqlCatalog.listCommunityPosts(),
