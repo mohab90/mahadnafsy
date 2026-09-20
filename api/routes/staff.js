@@ -360,7 +360,12 @@ router.get('/api/staff/me', requireAuth, async (req, res) => {
       firebaseUid: r.firebase_uid || null,
       commissionRate: r.commission_rate || null,
       notes: r.notes || null,
-      permissions: r.permissions_json ? tryJson(r.permissions_json, []) : [],
+      // null, not []. NULL in the column means "whatever the role grants"; an
+      // empty list is an override meaning none. This sent [] for both, and this
+      // is the only answer about themselves that an employee without view_staff
+      // ever gets — so a new employee on their role's defaults signed in with
+      // every permission refused and no screen open.
+      permissions: r.permissions_json ? tryJson(r.permissions_json, []) : null,
     });
   } catch (e) {
     routeError(res, e);

@@ -95,7 +95,7 @@ export default function RecruitmentPipelinePanel({ notify }: { notify: Notify })
           password: result.password || undefined,
           role: result.role,
           position: result.position || undefined,
-          permissions: result.permissions || undefined,
+          permissions: result.permissions?.length ? result.permissions : undefined,
           activate: result.activate,
         }),
       });

@@ -458,7 +458,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
               specialization: result.position || null,
               branch_id: result.branchId || undefined,
               is_active: result.activate ? 1 : 0,
-              permissions: result.permissions || undefined,
+              permissions: result.permissions?.length ? result.permissions : undefined,
             } as unknown as Record<string, unknown>);
           } catch (error) {
             // Nothing was created; the message from the API says why — a taken

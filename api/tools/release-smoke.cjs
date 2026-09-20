@@ -181,6 +181,19 @@ const brief = r => `${r.status}${r.json?.code ? ' ' + r.json.code : ''}${r.json?
   record('GET /api/admin/orders answers with desk payments still marked',
     jsonOk(orderRows, j => Array.isArray(j) && j.every(o => o.source !== 'crm' || 'staff_name' in o)), brief(orderRows));
 
+  // ── what an employee is told about their own permissions ───────────────
+  // null means "whatever the role grants"; [] means none. This route answered
+  // [] for both, and it is the only answer an employee without view_staff ever
+  // gets about themselves — so a new hire on their role's defaults saw no
+  // screen at all while the API happily served them.
+  const salesperson = await login('uat.sales@mahad.test');
+  const ownRecord = await call('/api/staff/me', { token: salesperson });
+  record('an employee on their role\'s defaults is not told they have none',
+    ownRecord.status === 200 && ownRecord.json && ownRecord.json.permissions === null,
+    `permissions=${JSON.stringify(ownRecord.json?.permissions)}`);
+  const theirLeads = await call('/api/admin/leads?limit=1', { token: salesperson });
+  record('and the API serves them what that role opens', theirLeads.status === 200, brief(theirLeads));
+
   // ── student path that touches a changed query ──────────────────────────
   console.log('\nstudent');
   const refund = await call('/api/me/refund-request', { method: 'POST', token: student,
