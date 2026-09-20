@@ -66,7 +66,7 @@ router.get('/api/admin/reports/sales-performance', requireAuth, requireAdminOrSt
 });
 
 // GET /api/admin/reports/lead-funnel?from=&to=
-router.get('/api/admin/reports/lead-funnel', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/reports/lead-funnel', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
     const from = req.query.from || `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-01`;
     const to   = req.query.to   || new Date().toISOString().slice(0, 10);

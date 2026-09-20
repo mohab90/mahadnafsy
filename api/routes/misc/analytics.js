@@ -4,14 +4,14 @@ const { uuidv4 } = require('../../lib/id');
 const { pool } = require('../../lib/db');
 const { mailer, sendEmail } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
-const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff, invalidateIdentity } = require('../../middleware/auth');
+const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff, invalidateIdentity , requirePermission } = require('../../middleware/auth');
 const express = require('express');
 const router = express.Router();
 const ROUTE_LOCAL_CRONS_ENABLED = false;
 const { sendDailyReport, scheduleDailyReport, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
 const { createNotification } = require('../../lib/notification');
 
-router.get('/api/admin/analytics/conversion-funnel', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/analytics/conversion-funnel', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
     const now = new Date();
     const from = req.query.from || new Date(now.getFullYear(), now.getMonth() - 2, 1).toISOString().slice(0, 10);
@@ -70,7 +70,7 @@ router.get('/api/admin/analytics/conversion-funnel', requireAuth, requireAdmin, 
 });
 
 // GET /api/admin/analytics/revenue-forecast?months=3
-router.get('/api/admin/analytics/revenue-forecast', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/analytics/revenue-forecast', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
     const months = Math.min(parseInt(req.query.months || 3), 12);
 
@@ -241,7 +241,7 @@ router.get('/api/admin/security/stats', requireAuth, requireAdmin, async (req, r
 // ═══════════════════════════════════════════════════════════════════════════
 
 
-router.get('/api/admin/reports/daily-preview', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/reports/daily-preview', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
     const today = req.query.date || new Date().toISOString().slice(0, 10);
     const [[{ revenue }]] = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS revenue FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) AND deleted_at IS NULL`, [req.tenantId, today, today]);
@@ -255,7 +255,7 @@ router.get('/api/admin/reports/daily-preview', requireAuth, requireAdmin, async 
 });
 
 // POST /api/admin/reports/send-now — manually trigger the daily report
-router.post('/api/admin/reports/send-now', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/reports/send-now', requireAuth, requireAdminOrStaff, requirePermission('manage_notifications'), async (req, res) => {
   try {
     await sendDailyReport(req.tenantId);
     res.json({ ok: true, message: 'تم إرسال التقرير' });
@@ -268,7 +268,7 @@ router.post('/api/admin/reports/send-now', requireAuth, requireAdmin, async (req
 
 // GET /api/admin/analytics/retention?months=3
 // Returns clients who have NOT made a payment in the last N months
-router.get('/api/admin/analytics/retention', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/analytics/retention', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
     const months = parseInt(req.query.months || '3');
     const cutoff = new Date();
@@ -323,7 +323,7 @@ router.get('/api/admin/analytics/retention', requireAuth, requireAdmin, async (r
 });
 
 // GET /api/admin/analytics/churn-risk — clients most likely to churn
-router.get('/api/admin/analytics/churn-risk', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/analytics/churn-risk', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
     const [clients] = await pool.query(`
       -- total_paid and remaining_amount are not columns on subscribers; the
@@ -367,7 +367,7 @@ router.get('/api/admin/analytics/churn-risk', requireAuth, requireAdmin, async (
 // ═══════════════════════════════════════════════════════════════════════════
 
 // GET /api/admin/analytics/staff-performance?from=&to=
-router.get('/api/admin/analytics/staff-performance', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/analytics/staff-performance', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
     const now = new Date();
     const from = req.query.from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
@@ -426,7 +426,7 @@ router.get('/api/admin/analytics/staff-performance', requireAuth, requireAdmin, 
 // ═══════════════════════════════════════════════════════════════════════════
 
 // GET /api/admin/analytics/expenses?from=&to=
-router.get('/api/admin/analytics/expenses', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/analytics/expenses', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
     const now = new Date();
     const from = req.query.from || new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10);

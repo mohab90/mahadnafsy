@@ -35,21 +35,45 @@ const routes = routeFiles(path.join(ROOT, 'api', 'routes')).map(file => fs.readF
 const skipped = [...runtime.matchAll(/adminOnly\(\(\) => (mysqlAdmin|mysqlCatalog)\.(\w+)\(/g)].map(m => m[2]);
 
 test('the admin-only lists are skipped for everyone else', () => {
-  assert.ok(skipped.length >= 11, `expected the admin-only reads to go through adminOnly, found ${skipped.join(', ')}`);
+  assert.ok(skipped.length >= 2, `expected the admin-only reads to go through adminOnly, found ${skipped.join(', ')}`);
   assert.ok(runtime.includes("isAdmin ? load() : Promise.reject("), 'adminOnly must decide on authUser.isAdmin');
 });
 
+// fn → the permission the route it calls asks for.
+function routeGuardFor(fn) {
+  const line = client.split('\n').find(l => new RegExp(`^\\s+${fn}:`).test(l));
+  assert.ok(line, `${fn} is not in the admin API client`);
+  const route = (/[`'](\/admin\/[\w/-]+)/.exec(line) || [])[1];
+  assert.ok(route, `${fn}: no /admin route in «${line.trim()}»`);
+  const handler = routes.split('\n').find(l => l.includes(`router.get('/api${route}',`));
+  assert.ok(handler, `${fn}: GET /api${route} not found in api/routes`);
+  return { route, handler, permission: (/requirePermission\('([a-z_]+)'\)/.exec(handler) || [])[1] };
+}
+
 test('every skipped list is one the server gives to admins only', () => {
   for (const fn of skipped) {
-    const line = client.split('\n').find(l => new RegExp(`^\\s+${fn}:`).test(l));
-    assert.ok(line, `${fn} is not in the admin API client`);
-    const route = (/[`'](\/admin\/[\w/-]+)/.exec(line) || [])[1];
-    assert.ok(route, `${fn}: no /admin route in «${line.trim()}»`);
-    const handler = routes.split('\n').find(l => l.includes(`router.get('/api${route}',`));
-    assert.ok(handler, `${fn}: GET /api${route} not found in api/routes`);
+    const { route, handler } = routeGuardFor(fn);
     assert.ok(/requireAuth, requireAdmin[,)]/.test(handler),
       `${fn} → GET /api${route} is open to staff — skipping it would hide data they may read: ${handler.trim().slice(0, 140)}`);
   }
+});
+
+test('a list a permission opens is asked for when the account holds it', () => {
+  // These used to be skipped for everyone but an admin, back when only an
+  // admin could read them. They carry permissions now, so skipping them would
+  // hide from a content or reception account exactly what it was given — and
+  // asking for all of them regardless is the 403-per-page-load this file
+  // exists to prevent. So the boot asks by permission, which /api/auth/me now
+  // tells the panel before the first request goes out.
+  const gated = [...runtime.matchAll(/permitted\('([a-z_]+)'\)\s*\?\s*\(?\s*(?:withTimeout\()?(mysqlAdmin|mysqlCatalog)\.(\w+)\(/g)]
+    .map(m => ({ permission: m[1], fn: m[3] }));
+  assert.ok(gated.length >= 8, `expected the delegated lists to be asked for by permission, found ${JSON.stringify(gated)}`);
+  for (const { permission, fn } of gated) {
+    const { route, permission: routeWants } = routeGuardFor(fn);
+    assert.equal(permission, routeWants,
+      `${fn} is fetched behind «${permission}» but GET /api${route} asks for «${routeWants}»`);
+  }
+  assert.ok(runtime.includes('authUser.permissions'), 'the permissions must come from the signed-in account');
 });
 
 test('content goes straight to the public copy for everyone but an admin', () => {

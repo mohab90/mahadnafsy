@@ -4,7 +4,7 @@ const express = require('express');
 const router  = express.Router();
 const { uuidv4 } = require('../lib/id');
 const { pool, cacheInvalidate } = require('../lib/db');
-const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 
 const mediaUrlIsValid = value => {
   const url = String(value || '').trim();
@@ -29,7 +29,7 @@ const durationSeconds = (value, explicit) => {
   return 0;
 };
 
-router.post('/api/admin/lectures', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/lectures', requireAuth, requireAdminOrStaff, requirePermission('manage_lectures'), async (req, res) => {
   try {
     const l = req.body;
     const id = l.id || uuidv4();
@@ -126,7 +126,7 @@ router.post('/api/admin/lectures', requireAuth, requireAdmin, async (req, res) =
 // (removed dead duplicate DELETE /api/admin/lectures/:id — live in an earlier-mounted router)
 
 // POST /api/admin/chapters
-router.post('/api/admin/chapters', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/chapters', requireAuth, requireAdminOrStaff, requirePermission('manage_lectures'), async (req, res) => {
   try {
     const c = req.body;
     const id = c.id || uuidv4();
@@ -164,7 +164,7 @@ router.post('/api/admin/chapters', requireAuth, requireAdmin, async (req, res) =
 // (removed dead duplicate DELETE /api/admin/chapters/:id — live in an earlier-mounted router)
 
 // POST /api/admin/therapists
-router.post('/api/admin/therapists', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/therapists', requireAuth, requireAdminOrStaff, requirePermission('manage_instructors'), async (req, res) => {
   let conn;
   try {
     conn = await pool.getConnection();
@@ -282,7 +282,7 @@ router.post('/api/admin/therapists', requireAuth, requireAdmin, async (req, res)
 });
 
 // POST /api/admin/testimonials
-router.post('/api/admin/testimonials', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/testimonials', requireAuth, requireAdminOrStaff, requirePermission('manage_testimonials'), async (req, res) => {
   try {
     const t = req.body;
     const id = t.id || uuidv4();

@@ -321,7 +321,7 @@ router.get('/api/media/lectures/:lectureId', publicLimiter, async (req, res) => 
 });
 
 // PATCH /api/admin/lectures/:lectureId/drip — set drip_unlock_days
-router.patch('/api/admin/lectures/:lectureId/drip', requireAuth, requireAdmin, async (req, res) => {
+router.patch('/api/admin/lectures/:lectureId/drip', requireAuth, requireAdminOrStaff, requirePermission('manage_lectures'), async (req, res) => {
   try {
     const days = Math.max(0, Number(req.body.drip_unlock_days) || 0);
     const [result] = await pool.query(
@@ -660,7 +660,7 @@ router.post('/api/admin/attendance', requireAuth, requireAdminOrStaff, requirePe
 
 
 // GET /api/admin/appraisals?staff_id=&year=&month=&status=
-router.get('/api/admin/appraisals', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/appraisals', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const { staff_id, year, month, status } = req.query;
     let sql = `
@@ -681,7 +681,7 @@ router.get('/api/admin/appraisals', requireAuth, requireAdmin, async (req, res) 
 });
 
 // POST /api/admin/appraisals — create appraisal
-router.post('/api/admin/appraisals', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/appraisals', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { staff_id, period_month, period_year, kpi_scores, notes, status } = req.body;
     if (!staff_id || !period_month || !period_year) return res.status(400).json({ error: 'staff_id, period_month, period_year required' });
@@ -710,7 +710,7 @@ router.post('/api/admin/appraisals', requireAuth, requireAdmin, async (req, res)
 });
 
 // PATCH /api/admin/appraisals/:id — update appraisal
-router.patch('/api/admin/appraisals/:id', requireAuth, requireAdmin, async (req, res) => {
+router.patch('/api/admin/appraisals/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { kpi_scores, notes, status, overall_score } = req.body;
     const fields = []; const params = [];
@@ -738,7 +738,7 @@ router.patch('/api/admin/appraisals/:id', requireAuth, requireAdmin, async (req,
 });
 
 // DELETE /api/admin/appraisals/:id
-router.delete('/api/admin/appraisals/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/appraisals/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const [result] = await pool.query('DELETE FROM performance_appraisals WHERE id = ? AND tenant_id=?', [req.params.id, req.tenantId]);
     if (!result.affectedRows) return res.status(404).json({ error: 'Appraisal not found' });
@@ -748,7 +748,7 @@ router.delete('/api/admin/appraisals/:id', requireAuth, requireAdmin, async (req
 
 // GET /api/staff/me/appraisals — employee views own appraisals
 // GET /api/admin/appraisals/summary?year= — team performance overview
-router.get('/api/admin/appraisals/summary', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/appraisals/summary', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const year = parseInt(req.query.year) || new Date().getFullYear();
     const [rows] = await pool.query(`
@@ -911,7 +911,7 @@ router.patch('/api/admin/courses/:courseId/waitlist/:id', requireAuth, requireAd
 });
 
 // PATCH /api/admin/courses/:courseId/capacity — set max_students
-router.patch('/api/admin/courses/:courseId/capacity', requireAuth, requireAdmin, async (req, res) => {
+router.patch('/api/admin/courses/:courseId/capacity', requireAuth, requireAdminOrStaff, requirePermission('manage_courses'), async (req, res) => {
   try {
     const { max_students } = req.body;
     const capacity = max_students === null || max_students === '' ? null : Number(max_students);

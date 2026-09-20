@@ -414,7 +414,7 @@ router.post('/api/admin/ai/generate', requireAuth, requireAdminOrStaff, requireP
   }
 });
 
-router.get('/api/admin/discounts', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/discounts', requireAuth, requireAdminOrStaff, requirePermission('manage_discounts'), async (req, res) => {
   try {
     res.json(await getTenantSetting('discounts', { tenantId: req.tenantId, fallback: [] }));
   } catch (e) {
@@ -423,7 +423,7 @@ router.get('/api/admin/discounts', requireAuth, requireAdmin, async (req, res) =
   }
 });
 
-router.put('/api/admin/discounts', requireAuth, requireAdmin, async (req, res) => {
+router.put('/api/admin/discounts', requireAuth, requireAdminOrStaff, requirePermission('manage_discounts'), async (req, res) => {
   try {
     await setTenantSetting('discounts', req.body || [], { tenantId: req.tenantId, actorId: req.user?.uid || req.user?.email });
     res.json({ ok: true });
@@ -532,7 +532,7 @@ router.patch('/api/notifications/broadcasts/read-all', requireAuth, async (req, 
   }
 });
 
-router.get('/api/admin/notification-settings', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/notification-settings', requireAuth, requireAdminOrStaff, requirePermission('manage_notifications'), async (req, res) => {
   try {
     res.json(await getTenantSetting('notifications', { tenantId: req.tenantId, fallback: [] }));
   } catch (e) {
@@ -541,7 +541,7 @@ router.get('/api/admin/notification-settings', requireAuth, requireAdmin, async 
   }
 });
 
-router.put('/api/admin/notification-settings', requireAuth, requireAdmin, async (req, res) => {
+router.put('/api/admin/notification-settings', requireAuth, requireAdminOrStaff, requirePermission('manage_notifications'), async (req, res) => {
   try {
     // Whatever the admin screen believes it is sending, only a customer
     // broadcast is stored: this list is read by customers. The 100 internal

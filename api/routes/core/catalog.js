@@ -172,16 +172,16 @@ router.post('/api/admin/subscribers/:id/restore', requireAuth, requireAdminOrSta
   } finally { conn.release(); }
 });
 
-router.delete('/api/admin/lectures/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/lectures/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_lectures'), async (req, res) => {
   try { await pool.query('DELETE cl FROM course_lectures cl JOIN courses c ON c.id=cl.course_id WHERE cl.id=? AND c.tenant_id=?', [req.params.id, req.tenantId]); cacheInvalidate('courses', 'lectures', 'chapters'); res.json({ ok: true }); }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
-router.delete('/api/admin/chapters/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/chapters/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_lectures'), async (req, res) => {
   try { await pool.query('DELETE ch FROM course_chapters ch JOIN courses c ON c.id=ch.course_id WHERE ch.id=? AND c.tenant_id=?', [req.params.id, req.tenantId]); cacheInvalidate('courses', 'lectures', 'chapters'); res.json({ ok: true }); }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 // GET /api/admin/therapists — all therapists (including inactive) with slots
-router.get('/api/admin/therapists', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/therapists', requireAuth, requireAdminOrStaff, requirePermission('view_consultations'), async (req, res) => {
   try {
     const [therapists] = await pool.query(
       `SELECT id, staff_id, name, specialty, image, experience, rating, title, bio,
@@ -206,7 +206,7 @@ router.get('/api/admin/therapists', requireAuth, requireAdmin, async (req, res) 
     res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' });
   }
 });
-router.delete('/api/admin/therapists/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/therapists/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_instructors'), async (req, res) => {
   try {
     const [r] = await pool.query('DELETE FROM therapists WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
     if (!r.affectedRows) return res.status(404).json({ error: 'Therapist not found' });
@@ -214,7 +214,7 @@ router.delete('/api/admin/therapists/:id', requireAuth, requireAdmin, async (req
   }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
-router.delete('/api/admin/testimonials/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/testimonials/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_testimonials'), async (req, res) => {
   try {
     const [r] = await pool.query('DELETE FROM testimonials WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
     if (!r.affectedRows) return res.status(404).json({ error: 'Testimonial not found' });
@@ -224,7 +224,7 @@ router.delete('/api/admin/testimonials/:id', requireAuth, requireAdmin, async (r
 });
 
 // ── Bundles CRUD ───────────────────────────────────────────────────────────────
-router.get('/api/admin/bundles', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/bundles', requireAuth, requireAdminOrStaff, requirePermission('view_courses'), async (req, res) => {
   try {
     const limit = parseLimit(req.query.limit, 200, 500);
     const [rows] = await pool.query(
@@ -243,7 +243,7 @@ router.get('/api/admin/bundles', requireAuth, requireAdmin, async (req, res) => 
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.post('/api/admin/bundles', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/bundles', requireAuth, requireAdminOrStaff, requirePermission('manage_bundles'), async (req, res) => {
   try {
     const b = req.body;
     const id = b.id || uuidv4();
@@ -296,7 +296,7 @@ router.post('/api/admin/bundles', requireAuth, requireAdmin, async (req, res) =>
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
-router.delete('/api/admin/bundles/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/bundles/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_bundles'), async (req, res) => {
   try {
     const [r] = await pool.query('DELETE FROM bundles WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
     if (!r.affectedRows) return res.status(404).json({ error: 'Bundle not found' });
@@ -310,7 +310,7 @@ router.delete('/api/admin/bundles/:id', requireAuth, requireAdmin, async (req, r
 // Authenticated counterpart to the public GET /api/quizzes — returns the full
 // question set including correctIndex so the admin editor can display/edit
 // answers. The public route strips correctIndex entirely (LMS-05).
-router.get('/api/admin/quizzes', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/quizzes', requireAuth, requireAdminOrStaff, requirePermission('view_courses'), async (req, res) => {
   try {
     const limit = parseLimit(req.query.limit, 200, 500);
     const [rows] = await pool.query(
@@ -320,7 +320,7 @@ router.get('/api/admin/quizzes', requireAuth, requireAdmin, async (req, res) => 
     res.json(rows.map(r => mapQuiz(r, { includeAnswers: true })));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
-router.post('/api/admin/quizzes', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/quizzes', requireAuth, requireAdminOrStaff, requirePermission('manage_courses'), async (req, res) => {
   try {
     const q = req.body;
     const id = q.id || uuidv4();
@@ -353,7 +353,7 @@ router.post('/api/admin/quizzes', requireAuth, requireAdmin, async (req, res) =>
     res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' });
   }
 });
-router.delete('/api/admin/quizzes/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/quizzes/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_courses'), async (req, res) => {
   try {
     const [r] = await pool.query('DELETE FROM course_quizzes WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
     if (!r.affectedRows) return res.status(404).json({ error: 'Quiz not found' });
@@ -366,7 +366,7 @@ router.delete('/api/admin/quizzes/:id', requireAuth, requireAdmin, async (req, r
 // The panel read the student route, which refuses anyone without a subscriber
 // row and hides course-only streams from the rest — so «البث المباشر» listed
 // none of the streams it had saved. This one answers the panel, unfiltered.
-router.get('/api/admin/live-streams', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/live-streams', requireAuth, requireAdminOrStaff, requirePermission('view_courses'), async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT ${LIVE_STREAM_COLS} FROM live_streams WHERE tenant_id=? ORDER BY scheduled_at DESC LIMIT ?`,
@@ -374,7 +374,7 @@ router.get('/api/admin/live-streams', requireAuth, requireAdmin, async (req, res
     res.json(rows.map(mapLiveStream));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
-router.post('/api/admin/live-streams', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/live-streams', requireAuth, requireAdminOrStaff, requirePermission('manage_courses'), async (req, res) => {
   try {
     const s = req.body;
     const id = s.id || uuidv4();
@@ -410,7 +410,7 @@ router.post('/api/admin/live-streams', requireAuth, requireAdmin, async (req, re
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
-router.delete('/api/admin/live-streams/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/live-streams/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_courses'), async (req, res) => {
   try {
     const [r] = await pool.query('DELETE FROM live_streams WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
     if (!r.affectedRows) return res.status(404).json({ error: 'Live stream not found' });
@@ -420,7 +420,7 @@ router.delete('/api/admin/live-streams/:id', requireAuth, requireAdmin, async (r
 });
 
 // ── Consultations CRUD ────────────────────────────────────────────────────────
-router.post('/api/admin/consultations', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/consultations', requireAuth, requireAdminOrStaff, requirePermission('manage_consultations'), async (req, res) => {
   let conn;
   let transactionStarted = false;
   try {
@@ -523,7 +523,7 @@ router.post('/api/admin/consultations', requireAuth, requireAdmin, async (req, r
     conn?.release();
   }
 });
-router.patch('/api/admin/consultations/:id', requireAuth, requireAdmin, async (req, res) => {
+router.patch('/api/admin/consultations/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_consultations'), async (req, res) => {
   try {
     const { status, notes, meeting_link } = req.body;
     const [r] = await pool.query(
@@ -534,7 +534,7 @@ router.patch('/api/admin/consultations/:id', requireAuth, requireAdmin, async (r
     res.json({ ok: true });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
-router.delete('/api/admin/consultations/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/consultations/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_consultations'), async (req, res) => {
   try {
     const [r] = await pool.query('DELETE FROM consultations WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
     if (!r.affectedRows) return res.status(404).json({ error: 'Consultation not found' });

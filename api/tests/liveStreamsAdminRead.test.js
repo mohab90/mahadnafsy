@@ -24,10 +24,14 @@ test('the panel reads its own route, not the student one', () => {
   assert.ok(line.includes('`/admin/live-streams?limit='), `the panel still reads: ${line.trim()}`);
 });
 
-test('the admin route is gated like the writes beside it', () => {
+test('the streams are read by a permission and written by one', () => {
+  // Both were requireAdmin when this route was added, which is what the panel
+  // needed then. The content permissions reach them now, so whoever keeps the
+  // catalogue can list the streams and whoever manages courses can save one —
+  // see everyStaffAreaCanBeDelegated.test.js.
   const catalog = read('api/routes/core/catalog.js');
-  assert.ok(catalog.includes("router.get('/api/admin/live-streams', requireAuth, requireAdmin,"));
-  assert.ok(catalog.includes("router.post('/api/admin/live-streams', requireAuth, requireAdmin,"));
+  assert.ok(catalog.includes("router.get('/api/admin/live-streams', requireAuth, requireAdminOrStaff, requirePermission('view_courses'),"));
+  assert.ok(catalog.includes("router.post('/api/admin/live-streams', requireAuth, requireAdminOrStaff, requirePermission('manage_courses'),"));
 });
 
 test('both routes send a stream in the one shape', () => {

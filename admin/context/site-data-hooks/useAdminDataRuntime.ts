@@ -14,7 +14,13 @@ import { normalizeOrders } from './normalizeOrders';
 
 type Setter<T> = Dispatch<SetStateAction<T>>;
 type Ref<T> = MutableRefObject<T>;
-type RuntimeUser = { email?: string | null; uid?: string | null; isAdmin?: boolean } | null | undefined;
+type RuntimeUser = {
+  email?: string | null;
+  uid?: string | null;
+  isAdmin?: boolean;
+  /** From /api/auth/me — see AuthUser in types.ts. */
+  permissions?: string[] | '*' | null;
+} | null | undefined;
 
 interface RuntimeState {
   authUser: RuntimeUser;
@@ -153,13 +159,25 @@ export function useAdminDataRuntime(state: RuntimeState): {
     const adminOnly = <T>(load: () => Promise<T>): Promise<T> =>
       isAdmin ? load() : Promise.reject(new Error('admin only'));
 
+    // The rest are opened by a permission, so the question is whether this
+    // account holds it — /api/auth/me answers that before the first request.
+    // An account that does holds real data here; one that does not would have
+    // been refused, which is the 403-per-list this avoids.
+    const held = authUser.permissions;
+    const permitted = (permission: string): boolean =>
+      isAdmin || held === '*' || (Array.isArray(held) && held.includes(permission));
+    // Promise<never>, so the ternary beside each call keeps the type of the
+    // call itself rather than widening to unknown.
+    const refused = (permission: string): Promise<never> =>
+      Promise.reject(new Error(`no ${permission}`));
+
     void (async () => {
       try {
         const [subsRes, leadsRes, staffRes, consultsRes, contentRes] = await Promise.allSettled([
           withTimeout(mysqlAdmin.listSubscribersPage(500, 0)),
           withTimeout(mysqlAdmin.listLeadsPage(500, 0)),
           withTimeout(mysqlAdmin.listAllStaff()),
-          withTimeout(adminOnly(() => mysqlAdmin.listAllConsultations())),
+          withTimeout(permitted('view_consultations') ? mysqlAdmin.listAllConsultations() : refused('view_consultations')),
           withTimeout(mysqlAdmin.getContent(isAdmin)),
         ]);
         if (disposed) return;
@@ -215,8 +233,8 @@ export function useAdminDataRuntime(state: RuntimeState): {
         // useLecturesChaptersState.
         const [coursesRes, bundlesRes, therapistsRes] = await Promise.allSettled([
           mysqlAdmin.listAllCourses(),
-          adminOnly(() => mysqlAdmin.listAllBundles(500)),
-          adminOnly(() => mysqlAdmin.listAllTherapists()),
+          permitted('view_courses') ? mysqlAdmin.listAllBundles(500) : refused('view_courses'),
+          permitted('view_consultations') ? mysqlAdmin.listAllTherapists() : refused('view_consultations'),
         ]);
         if (disposed) return;
         if (coursesRes.status === 'fulfilled' && coursesRes.value.length > 0) {
@@ -230,10 +248,10 @@ export function useAdminDataRuntime(state: RuntimeState): {
         if (disposed) return;
         const [testimonialsRes, quizzesRes, streamsRes, expensesRes, activityRes] = await Promise.allSettled([
           mysqlCatalog.listTestimonials(),
-          adminOnly(() => mysqlCatalog.listQuizzes()),
-          adminOnly(() => mysqlCatalog.listLiveStreams()),
+          permitted('view_courses') ? mysqlCatalog.listQuizzes() : refused('view_courses'),
+          permitted('view_courses') ? mysqlCatalog.listLiveStreams() : refused('view_courses'),
           mysqlAdmin.listAllExpenses(),
-          adminOnly(() => mysqlAdmin.listActivityLogs()),
+          permitted('view_activity') ? mysqlAdmin.listActivityLogs() : refused('view_activity'),
         ]);
         if (disposed) return;
         if (testimonialsRes.status === 'fulfilled' && testimonialsRes.value.length > 0) setTestimonials(testimonialsRes.value as unknown as TestimonialItem[]);
@@ -247,7 +265,7 @@ export function useAdminDataRuntime(state: RuntimeState): {
         const [ordersRes, applicantsRes, contactsRes, roundsRes, automationsRes] = await Promise.allSettled([
           mysqlAdmin.listAllOrders(),
           mysqlAdmin.listAllJoinUs(),
-          adminOnly(() => mysqlAdmin.listAllContactMessages()),
+          permitted('view_contacts') ? mysqlAdmin.listAllContactMessages() : refused('view_contacts'),
           mysqlAdmin.listAllDaqqiRounds(),
           adminOnly(() => mysqlAdmin.listAllAutomationWorkflows()),
         ]);
@@ -261,8 +279,8 @@ export function useAdminDataRuntime(state: RuntimeState): {
         await new Promise(resolve => setTimeout(resolve, 300));
         if (disposed) return;
         const [discountsRes, notificationsRes, settingsRes] = await Promise.allSettled([
-          adminOnly(() => mysqlAdmin.getDiscounts()),
-          adminOnly(() => mysqlAdmin.getNotificationSettings()),
+          permitted('manage_discounts') ? mysqlAdmin.getDiscounts() : refused('manage_discounts'),
+          permitted('manage_notifications') ? mysqlAdmin.getNotificationSettings() : refused('manage_notifications'),
           adminOnly(() => mysqlAdmin.getSettings()),
         ]);
         if (disposed) return;

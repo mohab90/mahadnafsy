@@ -148,7 +148,7 @@ router.get('/api/admin/dashboard/kpi', requireAuth, requireAdminOrStaff, require
 // Response:
 //   { cohorts: [ { month, newSubs, firstPayment, retentionByMonth: [n1,n2,...] } ] }
 // ═══════════════════════════════════════════════════════════════════════════
-router.get('/api/admin/analytics/cohorts', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/analytics/cohorts', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
     const year   = parseInt(req.query.year  || new Date().getFullYear());
     const months = Math.min(12, Math.max(1, parseInt(req.query.months || 6)));
@@ -222,7 +222,7 @@ router.get('/api/admin/analytics/cohorts', requireAuth, requireAdmin, async (req
 // Returns today + week + month revenue, lead counts, subscriber counts,
 // top staff performers, and system health indicators.
 // ══════════════════════════════════════════════════════════════════════════════
-router.get('/api/admin/kpi/summary', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/kpi/summary', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
     // The server runs UTC and the institute runs in Cairo, so between midnight
     // and 02:00 the UTC date is still yesterday: «إيراد اليوم» showed the

@@ -231,7 +231,7 @@ router.delete('/api/admin/expenses/:id', requireAuth, requireAdminOrStaff, requi
   } finally { conn.release(); }
 });
 
-router.get('/api/admin/activity-logs', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/activity-logs', requireAuth, requireAdminOrStaff, requirePermission('view_activity'), async (req, res) => {
   try {
     const limit = parseLimit(req.query.limit, 200, 500);
     const offset = parseOffset(req.query.offset);
@@ -242,6 +242,9 @@ router.get('/api/admin/activity-logs', requireAuth, requireAdmin, async (req, re
   } catch (e) { routeError(res, e); }
 });
 
+// Reading the log is view_activity; writing one stays with the owner. Nothing
+// calls this — the panel's logActivity() is declared and never used, and the
+// rows that matter are written server-side beside the change they describe.
 router.post('/api/admin/activity-logs', requireAuth, requireAdmin, async (req, res) => {
   try {
     // An audit row records what happened, independently of who is acting — so
@@ -436,7 +439,7 @@ router.delete('/api/admin/join-us/:id', requireAuth, requireAdminOrStaff, requir
   }
 });
 
-router.get('/api/admin/contact-messages', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/contact-messages', requireAuth, requireAdminOrStaff, requirePermission('view_contacts'), async (req, res) => {
   try {
     const status = req.query.status && req.query.status !== 'all' ? String(req.query.status) : null;
     const [rows] = await pool.query(
@@ -463,7 +466,7 @@ router.get('/api/admin/contact-messages', requireAuth, requireAdmin, async (req,
   } catch (e) { routeError(res, e); }
 });
 
-router.patch('/api/admin/contact-messages/:id', requireAuth, requireAdmin, async (req, res) => {
+router.patch('/api/admin/contact-messages/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_contacts'), async (req, res) => {
   try {
     // The note is saved as well as the status. The desk has always been able to
     // type one — the client sends adminNote — but this only ever wrote status,
@@ -480,7 +483,7 @@ router.patch('/api/admin/contact-messages/:id', requireAuth, requireAdmin, async
   } catch (e) { routeError(res, e); }
 });
 
-router.delete('/api/admin/contact-messages/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/contact-messages/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_contacts'), async (req, res) => {
   try {
     await pool.query(
       'DELETE FROM contact_messages WHERE id=? AND tenant_id=?',

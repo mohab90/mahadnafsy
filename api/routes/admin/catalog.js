@@ -56,7 +56,7 @@ router.get('/api/admin/courses', requireAuth, requireAdminOrStaff, requirePermis
 });
 
 // POST /api/admin/courses
-router.post('/api/admin/courses', requireAuth, requireAdmin, requireTenantQuota('courses'), async (req, res) => {
+router.post('/api/admin/courses', requireAuth, requireAdminOrStaff, requirePermission('manage_courses'), requireTenantQuota('courses'), async (req, res) => {
   try {
     const c = req.body;
     const id = c.id || uuidv4();
@@ -179,7 +179,7 @@ router.post('/api/admin/courses', requireAuth, requireAdmin, requireTenantQuota(
 });
 
 // DELETE /api/admin/courses/:id
-router.delete('/api/admin/courses/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/courses/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_courses'), async (req, res) => {
   try {
     const [r] = await pool.query('DELETE FROM courses WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
     if (!r.affectedRows) return res.status(404).json({ error: 'Course not found' });

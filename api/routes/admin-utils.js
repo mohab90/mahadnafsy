@@ -180,7 +180,7 @@ router.get('/api/admin/backups/download/:filename', requireAuth, requireAdmin, a
 // ── FEATURE: Revenue Forecasting ─────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 
-router.get('/api/admin/forecast', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/forecast', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
     // Last 12 months actuals
     const [monthly] = await pool.query(`

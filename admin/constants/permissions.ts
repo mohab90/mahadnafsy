@@ -206,6 +206,13 @@ export const PERMISSION_CATEGORIES: { label: string; perms: PermissionKey[] }[] 
     perms: ['manage_sales_team'],
   },
   {
+    // Each team's figures without the team's screen: how the HR manager reads
+    // Dokki, online and customer service. Added with those screens and never
+    // listed here, so the one grid that hands permissions out could not.
+    label: 'أداء الفرق',
+    perms: ['view_perf_sales', 'view_perf_online', 'view_perf_daqqi', 'view_perf_cx'],
+  },
+  {
     label: 'الشهادات',
     perms: ['manage_certificates'],
   },

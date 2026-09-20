@@ -30,7 +30,7 @@ const { isString, isEmail, validateBody } = require('../middleware/validate');
 const { postPaymentJournal, logPaymentAudit } = require('../lib/finance');
 const { assertWritable } = require('../lib/periodLock');
 const { logLoginAttempt } = require('../lib/loginAudit');
-const { hasPermission, FULL_ACCESS_ROLES } = require('../constants/permissions');
+const { hasPermission, FULL_ACCESS_ROLES, resolvePermissions } = require('../constants/permissions');
 const { getMfaPolicy, policyRequiresStaff } = require('../lib/mfaPolicy');
 const { requireTenantQuota } = require('../middleware/tenantQuota');
 const { resolveClientContext, getClientIp, hashClientIp } = require('../lib/clientContext');
@@ -1075,16 +1075,23 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
     if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
     const u = rows[0];
     let isAdmin = ADMIN_EMAILS.includes(u.email) || ADMIN_UIDS.includes(u.id);
+    let staffPermissions = null;
     if (!isAdmin) {
       // Staff with a full-access role — the list requireAdmin enforces. This
       // kept a list of its own that added daqqi_manager and online_manager, so
       // the panel showed those two every section and skipped their permission
       // checks while the server refused them the data behind it.
       const [[staff]] = u.email ? await conn.execute(
-        `SELECT role FROM staff WHERE tenant_id=? AND LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1`,
+        `SELECT role, permissions_json FROM staff WHERE tenant_id=? AND LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1`,
         [req.tenantId, u.email.toLowerCase().trim()]
       ) : [[null]];
       if (staff && FULL_ACCESS_ROLES.includes(String(staff.role || '').toLowerCase())) isAdmin = true;
+      // What this employee may do, decided once, here. The panel's first load
+      // asks for a dozen lists and used to send them all whatever the account:
+      // for anyone but an admin most came back 403, on every page load. It can
+      // ask for what it holds now, and it holds this before the first request.
+      // null for a customer, who is not staff at all.
+      staffPermissions = staff ? resolvePermissions({ role: staff.role, permissions_json: staff.permissions_json }) : null;
     }
     // Surface the user's phone. Subscriber and lead rows come first because they
     // carry the number the desk has actually been calling; users.phone is the
@@ -1113,7 +1120,7 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
       }
       if (!phone) phone = u.phone || '';
     } catch { /* phone is best-effort */ }
-    res.json({ uid: u.id, email: u.email, displayName: u.name || '', phone, isAdmin });
+    res.json({ uid: u.id, email: u.email, displayName: u.name || '', phone, isAdmin, permissions: isAdmin ? '*' : staffPermissions });
   } catch (err) {
     logger.error('[auth/me]', err);
     if (!res.headersSent) {

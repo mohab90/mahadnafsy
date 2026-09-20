@@ -6,9 +6,9 @@ const { uuidv4 } = require('../lib/id');
 
 const { pool } = require('../lib/db');
 const { tryJson } = require('../lib/helpers');
-const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 
-router.get('/api/admin/inbox', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/inbox', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT id, channel, contact_name, contact_id, contact_avatar, last_message, last_message_at,
@@ -24,7 +24,7 @@ router.get('/api/admin/inbox', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-router.post('/api/admin/inbox', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/inbox', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
   try {
     const c = req.body;
     const id = c.id || uuidv4();
@@ -58,7 +58,7 @@ router.post('/api/admin/inbox', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-router.delete('/api/admin/inbox/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/inbox/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
   try {
     await pool.query('DELETE FROM inbox_conversations WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]);
     res.json({ ok: true });

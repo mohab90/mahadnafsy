@@ -5,7 +5,7 @@ const router = express.Router();
 const logger = require('../../lib/logger');
 const { pool } = require('../../lib/db');
 const { tryJson, parseLimit } = require('../../lib/helpers');
-const { requireAuth, requireAdmin } = require('../../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 
 router.get('/api/staff/me/preferences', requireAuth, async (req, res) => {
   try {
@@ -58,7 +58,7 @@ router.put('/api/staff/me/preferences', requireAuth, async (req, res) => {
   }
 });
 
-router.get('/api/admin/consultations', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/consultations', requireAuth, requireAdminOrStaff, requirePermission('view_consultations'), async (req, res) => {
   try {
     const limit = parseLimit(req.query.limit, 500, 2000);
     const [rows] = await pool.query(

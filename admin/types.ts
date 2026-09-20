@@ -6,6 +6,11 @@ export interface AuthUser {
   email: string;
   displayName?: string;
   isAdmin?: boolean;
+  /** What this account may do, from /api/auth/me: '*' for an admin, the
+   *  employee's effective list for staff, null for a customer. Known before the
+   *  first data request, which is what lets the boot ask only for what it
+   *  holds instead of collecting a 403 for each list it may not read. */
+  permissions?: string[] | '*' | null;
 }
 
 export type MeetingProvider = 'zoom' | 'google_meet' | 'custom';

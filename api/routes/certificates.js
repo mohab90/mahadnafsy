@@ -9,7 +9,7 @@ const { parseLimit } = require('../lib/helpers');
 const { publishRealtimeEvent } = require('../lib/realtime');
 const { getTenantSetting } = require('../lib/tenantSettings');
 const { resolveCertificatePrice } = require('../lib/certificatePricing');
-const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { isString, isOneOf, validateBody } = require('../middleware/validate');
 const { resolveClientContext } = require('../lib/clientContext');
 
@@ -30,7 +30,7 @@ const CERT_TRANSITIONS = new Map([
 ]);
 
 // ── Certificate Requests admin routes ─────────────────────────────────────────
-router.get('/api/admin/certificate-requests', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/certificate-requests', requireAuth, requireAdminOrStaff, requirePermission('manage_certificates'), async (req, res) => {
   try {
     const limit = parseLimit(req.query.limit, 500, 2000);
     const [rows] = await pool.query(
@@ -44,7 +44,7 @@ router.get('/api/admin/certificate-requests', requireAuth, requireAdmin, async (
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.post('/api/admin/certificate-requests', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/certificate-requests', requireAuth, requireAdminOrStaff, requirePermission('manage_certificates'), async (req, res) => {
   let conn;
   try {
     const b = req.body || {};
@@ -143,7 +143,7 @@ router.post('/api/admin/certificate-requests', requireAuth, requireAdmin, async 
 });
 
 router.patch('/api/admin/certificate-requests/:id',
-  requireAuth, requireAdmin,
+  requireAuth, requireAdminOrStaff, requirePermission('manage_certificates'),
   validateBody({
     status: v => (isString(v, 30) && isOneOf((v || '').toUpperCase(), CERT_STATUSES)) || `status must be one of: ${CERT_STATUSES.join(', ')}`,
   }),
@@ -271,7 +271,7 @@ router.patch('/api/admin/certificate-requests/:id',
   }
 });
 
-router.delete('/api/admin/certificate-requests/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/certificate-requests/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_certificates'), async (req, res) => {
   let conn;
   try {
     conn = await pool.getConnection();

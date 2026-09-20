@@ -7,7 +7,7 @@ const logger = require('../lib/logger').child({ module: 'promo-codes-route' });
 const { pool } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
 const { toNumbers } = require('../lib/mappers');
-const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { publicLimiter } = require('../middleware/rateLimits');
 
 function routeError(res, error, message = 'promo codes route failed') {
@@ -36,7 +36,7 @@ router.post('/api/promo/validate', publicLimiter, async (req, res) => {
   } catch (e) { routeError(res, e); }
 });
 
-router.get('/api/admin/promo-codes', requireAuth, requireAdmin, async (_req, res) => {
+router.get('/api/admin/promo-codes', requireAuth, requireAdminOrStaff, requirePermission('manage_discounts'), async (_req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT id, code, description, discount_type, discount_value, min_order_amount, max_uses,
@@ -46,7 +46,7 @@ router.get('/api/admin/promo-codes', requireAuth, requireAdmin, async (_req, res
   } catch (e) { routeError(res, e); }
 });
 
-router.post('/api/admin/promo-codes', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/promo-codes', requireAuth, requireAdminOrStaff, requirePermission('manage_discounts'), async (req, res) => {
   const { code, description, discount_type, discount_value, min_order_amount, max_uses, expires_at } = req.body || {};
   if (!code || !discount_value) return res.status(400).json({ error: 'الكود والخصم مطلوبان' });
   const id = uuidv4();
@@ -65,7 +65,7 @@ router.post('/api/admin/promo-codes', requireAuth, requireAdmin, async (req, res
   }
 });
 
-router.patch('/api/admin/promo-codes/:id', requireAuth, requireAdmin, async (req, res) => {
+router.patch('/api/admin/promo-codes/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_discounts'), async (req, res) => {
   const { active, description, max_uses, expires_at } = req.body || {};
   try {
     const updates = []; const vals = [];
@@ -80,7 +80,7 @@ router.patch('/api/admin/promo-codes/:id', requireAuth, requireAdmin, async (req
   } catch (e) { routeError(res, e); }
 });
 
-router.delete('/api/admin/promo-codes/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/promo-codes/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_discounts'), async (req, res) => {
   try {
     await pool.query('DELETE FROM promo_codes WHERE id=?', [req.params.id]);
     res.json({ ok: true });

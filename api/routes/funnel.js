@@ -8,14 +8,14 @@ const logger = require('../lib/logger');
 const express = require('express');
 const router = express.Router();
 const { pool, cached } = require('../lib/db');
-const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 
 const n = async (sql, params = []) => {
   try { const [[r]] = await pool.query(sql, params); return Number(Object.values(r)[0]) || 0; }
   catch { return 0; }
 };
 
-router.get('/api/admin/funnel', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/funnel', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
     const { from, to, branch } = req.query;
     const br = branch && branch !== 'all' ? String(branch).toUpperCase() : null;
@@ -89,7 +89,7 @@ router.get('/api/admin/funnel', requireAuth, requireAdmin, async (req, res) => {
 // ── Conversion ATTRIBUTION — which lead source (or salesperson) turns into
 // subscriptions + revenue. Answers "where does our money actually come from?".
 // GET /api/admin/funnel/attribution?by=source|sales&from&to
-router.get('/api/admin/funnel/attribution', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/funnel/attribution', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
     const by = req.query.by === 'sales' ? 'sales' : 'source';
     const { from, to } = req.query;
