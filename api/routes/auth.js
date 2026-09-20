@@ -34,6 +34,7 @@ const { hasPermission, FULL_ACCESS_ROLES, resolvePermissions } = require('../con
 const { getMfaPolicy, policyRequiresStaff } = require('../lib/mfaPolicy');
 const { requireTenantQuota } = require('../middleware/tenantQuota');
 const { resolveClientContext, getClientIp, hashClientIp } = require('../lib/clientContext');
+const { ensureLeadForUser } = require('../lib/registrationLead');
 const { createSessionBinding, rotateSingleSession, closeSingleSession } = require('../lib/singleSession');
 const { getSharingLock, enforceSharingLimit } = require('../lib/accountSharingGuard');
 const {
@@ -132,13 +133,29 @@ router.post('/api/auth/register', registerLimiter, requireDb, requireTenantQuota
     // INSERT that used to sit here threw ER_NO_SUCH_TABLE on every single
     // signup, inside this transaction, into a catch that dropped it silently.
     //
-    // Neither a lead nor a subscriber is created on register anymore — the
-    // account lands in "التسجيلات" (api/routes/registrations.js) until
-    // staff explicitly send it to the CRM as a lead or promote it straight
-    // to an online client. This block used to auto-create a lead here
-    // unconditionally, which meant every self-registration became a
-    // "potential client" whether or not that was ever true.
-    const createdLeadId = null;
+    // A signup reaches the client base.
+    //
+    // This wrote the login row and stopped, on the reasoning that not every
+    // self-registration is a potential client. Measured on production, that
+    // left 238 of 1,764 accounts in neither the client database nor the leads
+    // and not staff — invisible to everyone whose job is to call them, people
+    // who had signed up that same day among them. The owner's rule is the
+    // other way round: a signup is a potential client until they book and pay.
+    //
+    // Through the same routine «التسجيلات» uses to convert one by hand, so the
+    // two cannot drift, and best-effort: the account is what is being created
+    // here, and a lead that cannot be written must not refuse somebody a login.
+    let createdLeadId = null;
+    try {
+      const lead = await ensureLeadForUser(conn, {
+        tenantId,
+        user: { id, name, email: normalizedEmail, phone: normalizeWhatsAppNumber(phone) },
+        branch,
+      });
+      createdLeadId = lead.leadId;
+    } catch (leadError) {
+      logger.warn('[register] could not add the signup to the client base', { error: leadError.message });
+    }
     await conn.commit();
     transactionStarted = false;
     const token = signAccessToken({

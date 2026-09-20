@@ -111,7 +111,10 @@ test('the registration conversion stores NULL for a missing phone too', () => {
   // bare value going into one.
   assert.ok(!/user\.email, user\.phone \|\| ''/.test(src), "a registration insert writes '' into a phone column again");
   assert.ok(!/clientCode, \(user\.name \|\| ''\)\.trim\(\) \|\| null, user\.email, user\.phone \|\| ''/.test(src));
-  assert.match(src, /user\.email, toIdentity\(user\.phone\) \|\| null,/);
+  // The insert itself lives in the routine both the signup and the convert
+  // button go through now; the rule came with it.
+  const lib = fs.readFileSync(path.join(__dirname, '..', 'lib', 'registrationLead.js'), 'utf8');
+  assert.match(lib, /const phone = toIdentity\(user\?\.phone\) \|\| null;/);
 });
 
 test('no write to subscribers, leads or users can store a blank phone', () => {
@@ -122,7 +125,8 @@ test('no write to subscribers, leads or users can store a blank phone', () => {
   const pins = [
     ['api/lib/sheets.js', "normPhone||phone||null, source||'Facebook Lead Ads'"],
     ['api/routes/gsheets.js', "identity || phone || null"],
-    ['api/routes/registrations.js', "user.email, toIdentity(user.phone) || null, branch"],
+    // The registration insert moved into the routine the signup shares.
+    ['api/lib/registrationLead.js', 'email, phone, resolvedBranch'],
   ];
   const root = path.join(__dirname, '..', '..');
   for (const [rel, needle] of pins) {

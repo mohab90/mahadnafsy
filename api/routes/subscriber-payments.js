@@ -17,7 +17,7 @@ const { enqueueFinanceEvent } = require('../lib/financeOutbox');
 const { enqueueEmailSequence } = require('../lib/emailSequence');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { safeDateOnly } = require('../lib/dates');
-const { branchIdForBranch } = require('../lib/branches');
+const { branchIdForBranch, branchForId } = require('../lib/branches');
 const { assertWritable } = require('../lib/periodLock');
 const { resolveCatalogPrice } = require('../lib/catalogPrice');
 const { hasPermission } = require('../constants/permissions');
@@ -176,9 +176,24 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
       if (!safeName || !safePhone) {
         return res.status(400).json({ error: 'Subscriber name and phone are required' });
       }
+      // The branch, or the branch of whoever is recording it.
+      //
+      // «الفرع *» was a required choice on every booking, and the desk makes
+      // the same one every time: reception at Dokki books Dokki, the online
+      // desk books online. Refusing the booking over a field the person
+      // recording it already answers by being who they are is a stop for
+      // nothing — so their own branch stands in, and only an account with no
+      // branch at all is asked.
       const rawBranch = String(subscriberDraft.branch || payment.branch || '').toUpperCase();
-      const branch = VALID_BRANCHES.has(rawBranch) ? rawBranch : null;
-      if (!branch) return res.status(400).json({ error: 'Valid subscriber branch is required' });
+      const staffBranch = req.staffRecord?.branch_id ? branchForId(req.staffRecord.branch_id, '') : '';
+      const branch = VALID_BRANCHES.has(rawBranch) ? rawBranch
+        : (VALID_BRANCHES.has(staffBranch) ? staffBranch : null);
+      if (!branch) {
+        return res.status(400).json({
+          error: 'اختر الفرع — حسابك مش مربوط بفرع، فمحتاجين نعرف الحجز ده تبع أنهي فرع.',
+          code: 'BRANCH_REQUIRED',
+        });
+      }
       const [[existing]] = await pool.query(
         `SELECT id FROM subscribers
           WHERE tenant_id=? AND deleted_at IS NULL
@@ -788,7 +803,30 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
   } catch (e) {
     if (conn) { await conn.rollback().catch(() => {}); conn.release(); conn = null; }
     logger.error('[route]', e.message);
-    if (e?.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Payment ID or transaction reference already exists' });
+    // A duplicate here is nearly always the transaction reference: the column
+    // is unique across the institute, so the second payment carrying a number
+    // the desk has used before is refused. «Payment ID or transaction
+    // reference already exists» told the person recording it neither which
+    // number nor which payment, in a language the desk does not read — so say
+    // what is already there, and let them change it or clear it.
+    if (e?.code === 'ER_DUP_ENTRY') {
+      const reference = sanitize(req.body?.payment?.transactionId || req.body?.payment?.transaction_id || '', 191);
+      if (reference) {
+        const [[owner]] = await pool.query(
+          `SELECT p.date, p.amount, p.currency, s.name
+             FROM payments p LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
+            WHERE p.transaction_id = ? LIMIT 1`, [reference]).catch(() => [[null]]);
+        const when = owner ? String(safeDateOnly(owner.date) || '') : '';
+        return res.status(409).json({
+          code: 'TRANSACTION_REFERENCE_IN_USE',
+          error: owner
+            ? `الرقم المرجعي «${reference}» متسجل قبل كده على دفعة ${Math.round(Number(owner.amount) || 0)} ${owner.currency || 'EGP'}`
+              + `${owner.name ? ` باسم ${owner.name}` : ''}${when ? ` بتاريخ ${when}` : ''}. غيّر الرقم أو سيبه فاضي.`
+            : `الرقم المرجعي «${reference}» متسجل قبل كده على دفعة تانية. غيّر الرقم أو سيبه فاضي.`,
+        });
+      }
+      return res.status(409).json({ error: 'الدفعة دي متسجلة بالفعل.', code: 'PAYMENT_ALREADY_EXISTS' });
+    }
     res.status(e?.statusCode || 500).json({ error: e?.statusCode ? e.message : 'Internal server error' });
   }
 });

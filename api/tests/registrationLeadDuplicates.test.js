@@ -25,8 +25,16 @@ function fakeDb(rows = []) {
   return { calls, async query(sql, params) { calls.push({ sql, params }); return [rows]; } };
 }
 
+const creator = fs.readFileSync(
+  path.join(__dirname, '..', 'lib', 'registrationLead.js'), 'utf8');
+
 test('the route asks the shared matcher instead of comparing phones itself', () => {
-  assert.match(source, /findLeadByContact\(\s*conn\s*,/,
+  // The route delegates to lib/registrationLead.js now — the routine a signup
+  // also goes through, so both reach the same lead — and the matcher call went
+  // with it. The rule is unchanged: nobody compares phones by hand.
+  assert.match(source, /ensureLeadForUser\(\s*conn\s*,/,
+    'converting a registration must go through the shared routine');
+  assert.match(creator, /findLeadByContact\(\s*conn\s*,/,
     'the duplicate check must go through findLeadByContact');
   // The specific comparison that failed must not come back.
   assert.doesNotMatch(source, /REGEXP_REPLACE\(phone[^)]*\)\s*=\s*\?/,
@@ -65,10 +73,12 @@ test('an account with no email does not match a lead that also has none', async 
 });
 
 test('a matched lead short-circuits the insert', () => {
-  // The 409 is what stops the second row being written; without it the route
-  // falls through to INSERT INTO leads.
-  const guard = source.indexOf("res.status(409)");
-  const insert = source.indexOf('INSERT INTO leads');
-  assert.ok(guard > 0 && insert > 0, 'both the guard and the insert must exist');
-  assert.ok(guard < insert, 'the duplicate guard must come before the insert');
+  // The insert lives in lib/registrationLead.js with the match in front of it,
+  // and the route turns "not created" into the 409 the screen shows.
+  const match = creator.indexOf('findLeadByContact');
+  const insert = creator.indexOf('INSERT INTO leads');
+  assert.ok(match > 0 && insert > 0, 'both the match and the insert must exist');
+  assert.ok(match < insert, 'the duplicate guard must come before the insert');
+  assert.match(source, /if \(!outcome\.created\)[\s\S]{0,200}res\.status\(409\)/,
+    'a person already known must come back as a refusal, not a second row');
 });

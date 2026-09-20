@@ -8,8 +8,9 @@
  * they ever meant to be one. This gives staff a real third bucket — neither
  * a lead nor an online client — with two explicit outcomes: promote to a
  * paying-track online client (subscriber), or send to the CRM as a lead.
- * The registration route itself no longer creates a lead automatically;
- * see the comment removed from api/routes/auth.js.
+ * A signup now creates a lead through lib/registrationLead.js — the same
+ * routine the convert button below uses — so this queue is what is left to
+ * triage rather than the only place a self-registration exists.
  */
 const express = require('express');
 const router = express.Router();
@@ -20,6 +21,7 @@ const { requireAuth, requireAdminOrStaff, requirePermission } = require('../midd
 const { getNextClientCode } = require('../lib/mappers');
 const { getNextSalesRep } = require('../lib/leadAssignment');
 const { findLeadByContact, phoneIdentityClause } = require('../lib/leadMatching');
+const { ensureLeadForUser } = require('../lib/registrationLead');
 const { branchIdForBranch } = require('../lib/branches');
 const { normalizeBranch, isBranch } = require('../constants/branches');
 const { toIdentity } = require('../lib/phoneNumber');
@@ -230,22 +232,15 @@ router.post('/api/admin/registrations/:userId/convert-lead', requireAuth, requir
     // marketing lead sitting at "new" beside a "converted" duplicate. Its
     // NULL-guard on email also let one empty address match another, which is
     // the bug already documented at routes/admin/subscribers.js:606.
-    const existing = await findLeadByContact(conn, {
-      tenantId, phone: user.phone, email: user.email,
-    });
-    if (existing) { await conn.rollback(); return res.status(409).json({ error: 'Already a lead' }); }
-    const leadId = uuidv4();
-    const clientCode = await getNextClientCode(conn);
-    const salesRep = await getNextSalesRep(tenantId, conn, { branch });
-    await conn.query(
-      `INSERT INTO leads
-         (id, tenant_id, client_code, name, email, phone, source, status, hidden,
-          branch, branch_id, assigned_sales_id, assigned_sales_name, created_at)
-       VALUES (?,?,?,?,?,?,'تسجيل دخول','new',0,?,?,?,?,NOW())`,
-      [leadId, tenantId, clientCode, (user.name || '').trim() || (user.phone || '').trim() || 'عميل جديد',
-       user.email, toIdentity(user.phone) || null, branch, branchIdForBranch(branch),
-       salesRep?.id || null, salesRep?.name || null]
-    );
+    // The same routine the signup itself uses — see lib/registrationLead.js.
+    // Converting by hand and converting on signup were two copies of this, and
+    // the copy nobody reads is the one that drifts.
+    const outcome = await ensureLeadForUser(conn, { tenantId, user, branch });
+    if (!outcome.created) {
+      await conn.rollback();
+      return res.status(409).json({ error: outcome.reason === 'already a client' ? 'Already a client' : 'Already a lead' });
+    }
+    const leadId = outcome.leadId;
     await conn.commit();
     logger.info(`[registrations] converted ${userId} to lead ${leadId}`);
     res.json({ ok: true, leadId });
