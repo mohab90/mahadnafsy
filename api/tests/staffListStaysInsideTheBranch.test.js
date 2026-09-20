@@ -33,6 +33,8 @@ test('a branch manager may not write outside their branch', () => {
   assert.ok(handler.includes('staffBranchScope(req)'), 'the write must ask for the reader\'s branch');
   assert.ok(/OUTSIDE_YOUR_BRANCH/.test(handler), 'a refusal outside the branch needs a code of its own');
   assert.ok(handler.includes('existingStaff.branch_id'), 'the check is against the row being rewritten');
+  assert.ok(/isSelf/.test(handler),
+    'their own row is theirs wherever it is filed — the list says the same, and a manager filed elsewhere could otherwise not edit themselves');
   assert.ok(handler.includes('SELECT id, tenant_id, role, permissions_json, data_scope, branch_id FROM staff'),
     'branch_id has to be read before it can be compared');
 });

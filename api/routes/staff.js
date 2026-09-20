@@ -183,7 +183,11 @@ router.post('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermiss
     // same reach the list above stopped answering.
     const writeBranchId = staffBranchScope(req);
     if (writeBranchId) {
-      if (existingStaff && existingStaff.branch_id !== writeBranchId) {
+      // Their own row is theirs wherever it is filed — the list says the same,
+      // and a manager whose row sits under another branch could otherwise not
+      // edit themselves at all.
+      const isSelf = existingStaff && req.staffRecord?.id && existingStaff.id === req.staffRecord.id;
+      if (existingStaff && !isSelf && existingStaff.branch_id !== writeBranchId) {
         return res.status(403).json({
           error: 'الموظف ده مش في فرعك', code: 'OUTSIDE_YOUR_BRANCH',
         });
