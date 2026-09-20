@@ -19,7 +19,7 @@ const { writeAuditEvent } = require('../lib/auditTrail');
 // middleware/auth.js — the delete guard below has to know what an owner is in
 // order to refuse removing the last one.
 const SUPER_ADMIN_ROLES = ['admin', 'manager'];
-const { hasPermission, normalizeDataScope, resolveDataScope, resolvePermissions, PERMISSIONS } = require('../constants/permissions');
+const { hasPermission, normalizeDataScope, resolveDataScope, resolvePermissions, DATA_SCOPE, PERMISSIONS } = require('../constants/permissions');
 const { requireTenantQuota } = require('../middleware/tenantQuota');
 const { mapTherapist } = require('../lib/mappers');
 const { assertGrantable, heldByTarget } = require('../lib/permissionGrant');
@@ -33,12 +33,34 @@ const { branchIdForBranch } = require('../lib/branches');
  * every employee of every branch, and manage_staff let them rewrite any row.
  * One reading of the same data scope, so the staff screen agrees with the
  * rest of the panel.
+ *
+ * Who is "in the branch" is the scope, not only the branch column. The Dokki
+ * receptionist was filed under «فرع آخر» while working nothing but Dokki, and
+ * a manager who cannot see their own receptionist has the wrong list — so an
+ * employee whose effective scope is this branch belongs to it whatever the
+ * column says. `roles` are those whose default scope is this branch, which is
+ * what a row with no scope of its own inherits.
  */
 function staffBranchScope(req) {
   const scope = resolveDataScope(req.staffRecord, { isSuperAdmin: req.isSuperAdmin, fallback: 'all' });
-  return String(scope || '').startsWith('branch:')
-    ? branchIdForBranch(String(scope).slice('branch:'.length))
-    : null;
+  const value = String(scope || '');
+  if (!value.startsWith('branch:')) return null;
+  return {
+    branchId: branchIdForBranch(value.slice('branch:'.length)),
+    scope: value,
+    roles: Object.entries(DATA_SCOPE)
+      .filter(([, roleScope]) => roleScope === value)
+      .map(([role]) => role),
+  };
+}
+
+/** The reader's own row is theirs wherever it is filed. */
+function inBranch(scope, row, selfId) {
+  if (!scope || !row) return true;
+  if (selfId && row.id === selfId) return true;
+  if (row.branch_id === scope.branchId) return true;
+  const own = normalizeDataScope(row.data_scope);
+  return own ? own === scope.scope : scope.roles.includes(String(row.role || '').toLowerCase());
 }
 
 router.get('/api/staff/therapist-portal', requireAuth, requireAdminOrStaff, requirePermission('manage_consultations'), async (req, res) => {
@@ -181,18 +203,18 @@ router.post('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermiss
     // A branch manager writes inside their branch. Rewriting another branch's
     // employee, or filing a new one under a branch that is not theirs, is the
     // same reach the list above stopped answering.
-    const writeBranchId = staffBranchScope(req);
-    if (writeBranchId) {
-      // Their own row is theirs wherever it is filed — the list says the same,
-      // and a manager whose row sits under another branch could otherwise not
-      // edit themselves at all.
-      const isSelf = existingStaff && req.staffRecord?.id && existingStaff.id === req.staffRecord.id;
-      if (existingStaff && !isSelf && existingStaff.branch_id !== writeBranchId) {
+    const writeBranch = staffBranchScope(req);
+    if (writeBranch) {
+      // Whoever the list shows them, they may edit — the same rule, so a
+      // manager never sees a colleague they cannot save. Their own row counts
+      // wherever it is filed (inBranch), and a new employee may not be filed
+      // under someone else's branch.
+      if (existingStaff && !inBranch(writeBranch, existingStaff, req.staffRecord?.id)) {
         return res.status(403).json({
           error: 'الموظف ده مش في فرعك', code: 'OUTSIDE_YOUR_BRANCH',
         });
       }
-      if (!existingStaff && s.branch_id && s.branch_id !== writeBranchId) {
+      if (!existingStaff && s.branch_id && s.branch_id !== writeBranch.branchId) {
         return res.status(403).json({
           error: 'إضافة موظف في فرع تاني متاحة للإدارة فقط', code: 'OUTSIDE_YOUR_BRANCH',
         });
@@ -263,7 +285,7 @@ router.post('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermiss
       `INSERT INTO staff (id, tenant_id, branch_id, firebase_uid, name, email, phone, role, image, specialization, joined_at, is_active, notes, commission_rate, permissions_json, data_scope, monthly_target, monthly_target_type, monthly_leads_target, monthly_bonus)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE name=VALUES(name), phone=VALUES(phone), role=VALUES(role), image=VALUES(image), is_active=VALUES(is_active), notes=VALUES(notes), commission_rate=VALUES(commission_rate), permissions_json=VALUES(permissions_json), data_scope=VALUES(data_scope), monthly_target=VALUES(monthly_target), monthly_target_type=VALUES(monthly_target_type), monthly_leads_target=VALUES(monthly_leads_target), monthly_bonus=VALUES(monthly_bonus)`,
-      [id, req.tenantId, s.branch_id || writeBranchId || 'branch-other', firebaseUid, name, email, s.phone || '', role, s.image || null, s.specialization || null, joinedAt, isActive, s.notes || null, commissionRate, permissionsJson, dataScope, monthlyTarget, monthlyTargetType, monthlyLeadsTarget, monthlyBonus]
+      [id, req.tenantId, s.branch_id || writeBranch?.branchId || 'branch-other', firebaseUid, name, email, s.phone || '', role, s.image || null, s.specialization || null, joinedAt, isActive, s.notes || null, commissionRate, permissionsJson, dataScope, monthlyTarget, monthlyTargetType, monthlyLeadsTarget, monthlyBonus]
     );
     res.json({ ok: true, id });
   } catch (e) {
@@ -285,9 +307,9 @@ router.post('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermiss
 router.get('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermission('view_staff'), async (req, res) => {
   try {
     const canViewSensitive = req.isSuperAdmin === true || hasPermission(req.staffRecord, PERMISSIONS.VIEW_STAFF);
-    // A branch manager reads their own branch — and their own row, which is
-    // theirs wherever it sits.
-    const branchId = staffBranchScope(req);
+    // A branch manager reads their own branch — everyone whose work is scoped
+    // to it, and their own row, which is theirs wherever it sits.
+    const branch = staffBranchScope(req);
     const [rows] = await pool.query(
       `SELECT s.id,s.firebase_uid,s.name,s.email,s.phone,s.role,s.is_active,s.image,
               s.specialization,s.joined_at,s.created_at,s.notes,s.commission_rate,s.permissions_json,s.data_scope,
@@ -303,9 +325,12 @@ router.get('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermissi
             ORDER BY x.effective_from DESC LIMIT 1
          )
         WHERE s.tenant_id=? AND s.deleted_at IS NULL
-              ${branchId ? 'AND (s.branch_id = ? OR s.id=?)' : ''}
+              ${branch ? `AND (s.branch_id = ? OR s.id=? OR s.data_scope = ?
+                            OR (s.data_scope IS NULL AND LOWER(s.role) IN (${branch.roles.map(() => '?').join(',') || "''"})))` : ''}
         ORDER BY s.name ASC`,
-      branchId ? [req.tenantId, branchId, req.staffRecord?.id || ''] : [req.tenantId]
+      branch
+        ? [req.tenantId, branch.branchId, req.staffRecord?.id || '', branch.scope, ...branch.roles]
+        : [req.tenantId]
     );
     res.json(rows.map(r => ({
       id: r.id,
