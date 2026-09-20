@@ -102,10 +102,22 @@ test('ملفي الوظيفي is its own tab with its own URL', () => {
 
 test('the personal page is one page, not a sub-nav', () => {
   const workspace = codeOnly(read('admin/pages/dashboard/DashboardMyWorkspace.tsx'));
-  // Both panels render together rather than behind a section switcher.
-  assert.match(workspace, /<StaffHomeTab \{\.\.\.\(staffHomeProps as any\)\} \/>/);
-  assert.match(workspace, /<DashboardStaffSettingsPanel \{\.\.\.\(staffSettingsProps as any\)\} \/>/);
-  assert.ok(!workspace.includes('const SECTIONS'), 'the three-section nav bar is still there');
+  // One destination, and one set of chrome around it.
+  //
+  // This used to hold that both panels render together, which fixed the split
+  // across two destinations and created a worse one: «شغل النهاردة» drew a
+  // greeting, an avatar and a card, then the profile panel drew a second
+  // greeting, a second avatar and its own tab bar halfway down the page. Two
+  // pages stacked, reported as «صفحتين ركبوا علي بعض» with «تابات بتظهر تحت».
+  //
+  // So both panels still answer here — nothing moved to another URL — and the
+  // page owns the heading and the tabs, asking the profile panel for one
+  // section at a time.
+  assert.match(workspace, /<StaffHomeTab \{\.\.\.\(staffHomeProps as any\)\} hideHeader \/>/);
+  assert.match(workspace, /<DashboardStaffSettingsPanel[\s\S]{0,200}section=\{/);
+  const panel = codeOnly(read('admin/pages/dashboard/DashboardStaffSettingsPanel.tsx'));
+  assert.match(panel, /const ownChrome = !section;/,
+    'the panel draws its own greeting and tab bar even when the page has drawn them');
   // And the role bars call it what it is.
   const nav = codeOnly(read('admin/pages/dashboard/DashboardNavigation.tsx'));
   assert.ok(!nav.includes("label: 'مساحتي'"), 'the bars still say مساحتي');

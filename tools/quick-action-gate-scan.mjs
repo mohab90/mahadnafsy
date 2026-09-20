@@ -37,18 +37,36 @@ const gateFor = tab => {
 const baseBlock = home.slice(home.indexOf('const base = ['), home.indexOf('];', home.indexOf('const base = [')));
 const base = [...baseBlock.matchAll(/tab: '([a-z_]+)'/g)].map(m => m[1]);
 
-// The role-conditional additions.
+// The rest of the row: one entry per kind of work, each with the permission it
+// needs and, where the work is one team's, the roles that do it. The list used
+// to be a stack of `if (['sales', …].includes(role))` blocks, which offered a
+// screen by job title while the screen itself asks for a permission — so a
+// permission granted in الإعدادات never reached this row, and a role that had
+// been trimmed still saw the button.
+const byWorkBlock = home.slice(home.indexOf('const byWork'), home.indexOf('];', home.indexOf('const byWork')));
 const extra = [];
-for (const m of home.matchAll(/if \(\[([^\]]+)\]\.includes\(role\)\) \{\s*base\.unshift\(\{[^}]*tab: '([a-z_]+)'/g)) {
-  const roles = [...m[1].matchAll(/'([a-z_]+)'/g)].map(r => r[1]);
-  extra.push({ roles, tab: m[2] });
+for (const line of byWorkBlock.split('\n')) {
+  const tab = (line.match(/tab: '([a-z_]+)'/) || [])[1];
+  if (!tab) continue;
+  const when = line.split('when:')[1] || '';
+  const perms = [...when.matchAll(/can\('([a-z_]+)'\)/g)].map(m => m[1]);
+  const roleList = (when.match(/\[([^\]]+)\]\.includes\(role\)/) || [])[1];
+  extra.push({
+    tab,
+    perms,
+    roles: roleList ? [...roleList.matchAll(/'([a-z_]+)'/g)].map(m => m[1]) : null,
+  });
 }
+
+/** Would this entry be drawn for a role holding `held`? */
+const offeredTo = (entry, role, held) =>
+  entry.perms.every(p => held.has(p)) && (!entry.roles || entry.roles.includes(role));
 
 const findings = [];
 for (const [role, perms] of Object.entries(ROLE_PERMS)) {
   if (perms === '*' || FULL_ACCESS_ROLES.includes(role)) continue;
   const held = new Set(perms);
-  const offered = [...base, ...extra.filter(e => e.roles.includes(role)).map(e => e.tab)];
+  const offered = [...base, ...extra.filter(e => offeredTo(e, role, held)).map(e => e.tab)];
   for (const tab of offered) {
     const allowed = gateFor(tab);
     if (allowed === EVERY_STAFF_MEMBER) continue;

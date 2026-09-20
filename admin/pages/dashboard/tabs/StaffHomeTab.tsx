@@ -241,7 +241,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
       hasPermission(staff as unknown as { role: RoleKey; permissions?: PermissionKey[] }, permission);
     const byWork: { label: string; icon: typeof User; tab: string; color: string; when: boolean }[] = [
       { label: 'فريق العمل', icon: User, tab: 'hr', color: 'bg-purple-50 text-purple-600 border-purple-200', when: can('view_hr') },
-      { label: 'التوظيف', icon: UserPlus, tab: 'registrations', color: 'bg-fuchsia-50 text-fuchsia-600 border-fuchsia-200', when: can('view_join_us') },
+      { label: 'طلبات الانضمام', icon: UserPlus, tab: 'join_us', color: 'bg-fuchsia-50 text-fuchsia-600 border-fuchsia-200', when: can('view_join_us') },
       { label: 'ليداتي', icon: UserPlus, tab: 'leads', color: 'bg-amber-50 text-amber-600 border-amber-200', when: can('view_leads') && ['sales', 'sales_collection_manager', 'support', 'consultant'].includes(role) },
       { label: 'عملائي', icon: UserCheck, tab: 'online_clients', color: 'bg-teal-50 text-teal-600 border-teal-200', when: can('view_subscribers') && ['collection', 'online_manager', 'sales_collection_manager', 'support'].includes(role) },
       { label: 'جدول الدقي', icon: Calendar, tab: 'daqqi_schedule', color: 'bg-rose-50 text-rose-600 border-rose-200', when: can('manage_daqqi') },
