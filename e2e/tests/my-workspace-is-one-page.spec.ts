@@ -43,12 +43,15 @@ test.describe('ملفي الشخصي', () => {
     const box = await tab.boundingBox();
     expect(box!.y, 'the tab bar sits below the fold, where the second page used to start').toBeLessThan(500);
 
-    // Its own tabs, once each.
+    // One tab bar, with its own tabs — read from the bar itself, since the top
+    // nav and the quick row carry some of the same words.
+    const bar = page.locator('div').filter({ has: page.getByRole('button', { name: 'شغل النهاردة' }) }).last();
+    const barText = (await bar.innerText()).replace(/\s+/g, ' ');
     for (const label of ['شغل النهاردة', 'سجلي ومراسلاتي', 'الإعدادات']) {
-      await expect(page.getByRole('button', { name: label })).toHaveCount(1);
+      expect(barText, `the tab bar is missing «${label}»`).toContain(label);
     }
-    // ملفي الوظيفي is a screen of its own; it was also a tab here.
-    await expect(page.getByRole('button', { name: 'ملفي الوظيفي', exact: true })).toHaveCount(0);
+    // ملفي الوظيفي is a screen of its own; it was a tab here as well.
+    expect(barText.includes('ملفي الوظيفي'), 'ملفي الوظيفي is a tab here and a screen of its own').toBe(false);
   });
 
   test('shows a salesperson their target and the HR manager none of it', async ({ page }) => {

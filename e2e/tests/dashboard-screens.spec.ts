@@ -119,4 +119,20 @@ test.describe('every dashboard screen renders', () => {
       await context.close();
     });
   }
+
+  // A key that is no screen.
+  //
+  // Found on production as the owner: /dashboard/staff — a name the panel has
+  // never had; the staff list lives under الموارد البشرية — drew the chrome
+  // and an empty page. No screen, no message, nothing to click, and every
+  // mistyped or retired link did the same.
+  test('a link to a screen that does not exist lands somewhere', async ({ browser }) => {
+    const context = await browser.newContext({ storageState: session });
+    const page = await context.newPage();
+    await page.goto(`${ADMIN}/dashboard/staff`);
+    await expect
+      .poll(() => contentLength(page), { timeout: 15_000, message: 'an unknown screen key renders a blank page' })
+      .toBeGreaterThan(CONTENT_FLOOR);
+    await context.close();
+  });
 });

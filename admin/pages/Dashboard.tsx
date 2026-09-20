@@ -341,6 +341,17 @@ const Dashboard: React.FC = () => {
       navigate('/dashboard/financial_reports', { replace: true }); return;
     }
     const resolved = tabForUrl(urlTab);
+    // A key that is no screen lands on the overview instead of nothing at all.
+    //
+    // /dashboard/staff — a name the panel has never had, the staff list lives
+    // under الموارد البشرية — drew the chrome and an empty page: no screen, no
+    // message, nothing to click. Every mistyped or retired link did. The map
+    // below is the registry of real screens (permission-matrix-scan keeps it
+    // complete), so anything outside it is not a screen.
+    if (!Object.prototype.hasOwnProperty.call(TAB_PERMISSION_MAP, resolved)) {
+      navigate('/dashboard/overview', { replace: true });
+      return;
+    }
     if (urlToTabAlias(urlTab) !== urlTab) { navigate(`/dashboard/${urlForTab(resolved)}`, { replace: true }); return; }
     if (resolved !== activeTabState) setActiveTabState(resolved as TabKey);
   }, [urlTab]);
