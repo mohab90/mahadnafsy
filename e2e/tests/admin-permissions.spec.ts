@@ -69,6 +69,26 @@ test.describe('Admin role render + permission net', () => {
         { timeout: 15_000, message: `${r.role}: dashboard should render content, not a blank screen` },
       ).toBeGreaterThan(80);
 
+      // What the panel is told about the person signed in.
+      //
+      // permissions_json NULL means "whatever the role grants" and the panel
+      // falls back to the role; an empty list is an override meaning none. GET
+      // /api/staff/me — the only answer an employee without view_staff ever
+      // gets about themselves — sent [] for both, so every new hire signed in
+      // with every permission refused. Every account here is on its role's
+      // defaults, so an empty list is the failure, and it is invisible to a
+      // render check: the workspace chrome draws either way.
+      const own = await page.evaluate(async () => {
+        const response = await fetch('/api/staff/me', { credentials: 'include' });
+        const body = await response.json().catch(() => null);
+        return body ? body.permissions : 'no record';
+      });
+      expect(own, `${r.role}: told it holds no permission at all — the role's defaults are lost`).not.toEqual([]);
+
+      // And the screen it lands on is a screen, not the refusal page.
+      const refused = (await page.locator('body').innerText()).includes('ليس لديك صلاحية الوصول لهذا القسم');
+      expect(refused, `${r.role}: lands on «غير مصرح بالوصول»`).toBe(false);
+
       // No fatal React/runtime error in the console (catches bad hook extractions).
       expect(fatal, `${r.role}: fatal error after login → ${fatal[0] || ''}`).toHaveLength(0);
     });
