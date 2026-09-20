@@ -23,6 +23,8 @@ interface Props {
   isDaqqiManager: boolean;
   isAdmin: boolean;
   setOmNewSubOpen: (v: boolean) => void;
+  /** «تابات القسم» — the staff-built tabs, which drew a gear of their own. */
+  onOpenSectionTabs?: () => void;
   daqqiSettingsOpen: boolean;
   setDaqqiSettingsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   collOnlineSelected: Set<string>;
@@ -38,7 +40,7 @@ interface Props {
 
 export function ViewTabsBar({
   isDaqqiClientsTab, allCombined, isIntlSub, bookedInYear, collOnlineViewTab, setCollOnlineViewTab,
-  setCollOnlinePage, filtered, isOnlineManager, isDaqqiManager, isAdmin, setOmNewSubOpen,
+  setCollOnlinePage, filtered, isOnlineManager, isDaqqiManager, isAdmin, setOmNewSubOpen, onOpenSectionTabs,
   daqqiSettingsOpen, setDaqqiSettingsOpen, collOnlineSelected, courses, bundles, housingMap,
   subCsDistributing, setSubCsDistributing, actionSubscribers, reloadSubscribers, notify,
 }: Props) {
@@ -100,7 +102,11 @@ export function ViewTabsBar({
             <Plus size={12} /> مشترك جديد
           </button>
         )}
-        {isDaqqiClientsTab && (
+        {/* One settings button on this screen. The staff-built tabs drew a
+            second one beside their strip, so «إنشاء تاب» sat in a menu nobody
+            expects — it is an entry in this one now, and the strip carries no
+            gear. Offered on the online half too, which had no menu at all. */}
+        {(isDaqqiClientsTab || onOpenSectionTabs) && (
           <div className="relative">
             <button onClick={() => setDaqqiSettingsOpen(p => !p)}
               className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-xl text-xs font-bold transition">
@@ -108,6 +114,13 @@ export function ViewTabsBar({
             </button>
             {daqqiSettingsOpen && (
               <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-30 min-w-[160px] py-1">
+                {onOpenSectionTabs && (
+                  <button onClick={() => { onOpenSectionTabs(); setDaqqiSettingsOpen(false); }}
+                    className="w-full text-right px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                    🗂️ تابات القسم
+                  </button>
+                )}
+                {isDaqqiClientsTab && (<>
                 <button onClick={() => {
                   const toExport = collOnlineSelected.size > 0 ? filtered.filter(s => collOnlineSelected.has(s.id)) : filtered;
                   const header = ['الاسم','الهاتف','الإيميل','الفرع','الكورسات','الحالة','المدفوع (ج.م)','المتبقي (ج.م)','الروند','الرسيبشن','تاريخ الاشتراك','الكود'];
@@ -127,6 +140,7 @@ export function ViewTabsBar({
                   className="w-full text-right px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2">
                   📂 استيراد داتا قديمة
                 </button>
+                </>)}
               </div>
             )}
           </div>

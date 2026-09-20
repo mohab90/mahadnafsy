@@ -151,6 +151,22 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
     } finally { setRegBusy(null); }
   };
 
+  // Opening the file of somebody who is still only a sign-up: they have no file
+  // yet, so this makes one — the same conversion the booking button does, minus
+  // the payment — and lands on it.
+  const convertThenOpen = async (userId: string, name: string | null) => {
+    setRegBusy(userId);
+    try {
+      const { subscriberId } = await mysqlAdmin.convertRegistrationToOnline(userId, 'ONLINE_EGYPT');
+      setRegistrations(prev => prev.filter(r => r.id !== userId));
+      await reloadSubscribers();
+      notify('success', `تم تحويل ${name || 'العميل'} لعميل أونلاين`);
+      if (subscriberId) navigate(`/client/${subscriberId}`);
+    } catch (err) {
+      notify('error', err instanceof Error ? err.message : 'تعذّر فتح ملف العميل');
+    } finally { setRegBusy(null); }
+  };
+
   const removeClient = async (row: ClientRow) => {
     const label = row.type === 'lead' ? 'العميل المحتمل' : 'العميل';
     // In-app, because window.confirm can be switched off. Chrome offers
@@ -458,7 +474,26 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
         ))}
       </div>
 
-      {view === 'accounts' ? <LoginAccountsPanel /> : view === 'logins' ? <LoginHistoryPanel /> : (<>
+      {view === 'accounts' ? (
+        <LoginAccountsPanel
+          busyId={regBusy}
+          // Their file, and their booking, from the row itself. A person who
+          // signed up is a person the desk works on; making them go and find
+          // the same person on another screen first is what left hundreds of
+          // accounts sitting here untouched.
+          onOpenProfile={row => {
+            if (row.subscriberId || row.clientCode) {
+              navigate(`/client/${row.clientCode || row.subscriberId}`);
+              return;
+            }
+            void convertThenOpen(row.id, row.name);
+          }}
+          onBookAndPay={row => {
+            if (row.subscriberId) { onBook?.(String(row.subscriberId), 'subscriber'); return; }
+            void convertThenBook({ id: row.id, name: row.name || '', type: 'registration' } as ClientRow);
+          }}
+        />
+      ) : view === 'logins' ? <LoginHistoryPanel /> : (<>
 
       {/* Filters */}
       <div className="bg-white border border-gray-200 rounded-2xl p-3 shadow-sm">

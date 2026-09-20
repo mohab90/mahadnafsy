@@ -30,12 +30,22 @@ type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
  * than no gear.
  */
 export default function SectionCustomTabs({
-  section, notify, onBook,
+  section, notify, onBook, settingsOpen, onSettingsOpenChange,
 }: {
   section: SectionKey;
   notify: NotifyFn;
   /** What the row's book button does. Defaults to opening the client page. */
   onBook?: (lead: LeadItem) => void;
+  /**
+   * The dialog, opened from the screen's own الإعدادات menu.
+   *
+   * This drew a second gear of its own, halfway down the page beside the tab
+   * strip — two «إعدادات» buttons on one screen, and «إنشاء تاب» in the one
+   * nobody expects. When the page passes these, the gear here is not drawn and
+   * the page's menu owns it.
+   */
+  settingsOpen?: boolean;
+  onSettingsOpenChange?: (open: boolean) => void;
 }) {
   const navigate = useNavigate();
   const branchOptions = useBranches();
@@ -46,7 +56,14 @@ export default function SectionCustomTabs({
 
   const [tabs, setTabs] = useState<SectionTabsMap>(emptySectionTabs);
   const [openTabId, setOpenTabId] = useState<string | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
+  const [ownSettings, setOwnSettings] = useState(false);
+  // Controlled by the page when it offers the entry in its own menu.
+  const pageOwnsSettings = settingsOpen !== undefined;
+  const showSettings = pageOwnsSettings ? settingsOpen : ownSettings;
+  const setShowSettings = (open: boolean) => {
+    if (pageOwnsSettings) onSettingsOpenChange?.(open);
+    else setOwnSettings(open);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -73,8 +90,10 @@ export default function SectionCustomTabs({
   if (!isAdmin && mine.length === 0) return null;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className={mine.length > 0 ? 'space-y-4' : ''}>
+      {/* No strip when there is nothing in it: with the gear moved into the
+          page's own menu, an empty row is a gap on the screen for nothing. */}
+      <div className={`flex flex-wrap items-center gap-2 ${mine.length === 0 ? 'hidden' : ''}`}>
         {mine.length > 0 && (
           <>
             <Layers size={15} className="text-primary-600" />
@@ -93,7 +112,7 @@ export default function SectionCustomTabs({
             ))}
           </>
         )}
-        {isAdmin && (
+        {isAdmin && !pageOwnsSettings && (
           <button
             onClick={() => setShowSettings(true)}
             title="إعدادات القسم — إضافة تاب واختيار اللي يظهر فيه"

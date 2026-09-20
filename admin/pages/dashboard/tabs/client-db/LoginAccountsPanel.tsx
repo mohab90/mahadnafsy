@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { RefreshCw, Search, ShieldAlert, UserCheck, PhoneOff, Users, CheckCircle2, Circle } from 'lucide-react';
+import { RefreshCw, Search, ShieldAlert, UserCheck, PhoneOff, Users, CheckCircle2, Circle, Wallet } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 
@@ -48,7 +48,23 @@ const fmt = (value: string | null) => {
   } catch { return String(value); }
 };
 
-export function LoginAccountsPanel() {
+/**
+ * What the desk can do from here, handed down by the page that owns the data.
+ *
+ * A row on this screen is a person who signed up. Seeing them and not being
+ * able to act on them is what «كتير من العملاء لم تتحول لقاعده البيانات» is:
+ * the work — open their file, take their booking — lived on another screen
+ * they had to find the person on again.
+ */
+export interface LoginAccountActions {
+  /** Open this person's file. Given a subscriber id when they are already a client. */
+  onOpenProfile?: (row: { id: string; subscriberId: string | null; clientCode: string | null; name: string | null }) => void;
+  /** Book and take payment — converting them to a client first when they are not one. */
+  onBookAndPay?: (row: { id: string; subscriberId: string | null; name: string | null }) => void;
+  busyId?: string | null;
+}
+
+export function LoginAccountsPanel({ onOpenProfile, onBookAndPay, busyId }: LoginAccountActions = {}) {
   const [rows, setRows] = useState<AccountRow[]>([]);
   const [stats, setStats] = useState<Stats>({});
   const [loading, setLoading] = useState(false);
@@ -140,13 +156,14 @@ export function LoginAccountsPanel() {
                 <th className="py-2.5 px-3 font-semibold">آخر دخول</th>
                 <th className="py-2.5 px-3 font-semibold">مرات الدخول</th>
                 <th className="py-2.5 px-3 font-semibold">جلسة نشطة</th>
+                {(onOpenProfile || onBookAndPay) && <th className="py-2.5 px-3 font-semibold">إجراءات</th>}
               </tr>
             </thead>
             <tbody>
               {loading && rows.length === 0 ? (
-                <tr><td colSpan={6} className="py-10 text-center text-gray-400 text-sm">جارٍ التحميل…</td></tr>
+                <tr><td colSpan={7} className="py-10 text-center text-gray-400 text-sm">جارٍ التحميل…</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={6} className="py-10 text-center text-gray-400 text-sm">لا توجد حسابات مطابقة</td></tr>
+                <tr><td colSpan={7} className="py-10 text-center text-gray-400 text-sm">لا توجد حسابات مطابقة</td></tr>
               ) : rows.map(r => {
                 const locked = r.sharing_locked_until && new Date(r.sharing_locked_until) > new Date();
                 return (
@@ -187,6 +204,33 @@ export function LoginAccountsPanel() {
                         ? <span className="text-[11px] px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-700 font-medium">نشطة · {fmt(r.active_session_last_seen_at)}</span>
                         : <span className="text-[11px] text-gray-400">—</span>}
                     </td>
+                    {(onOpenProfile || onBookAndPay) && (
+                      <td className="py-2.5 px-3">
+                        <div className="flex items-center gap-1.5">
+                          {onOpenProfile && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenProfile({ id: r.id, subscriberId: r.subscriber_id, clientCode: r.client_code, name: r.name })}
+                              className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-bold text-gray-700 transition hover:bg-gray-50"
+                              title={r.subscriber_id ? 'فتح ملف العميل' : 'لسه تسجيل موقع — هيتحوّل لعميل أول ما تفتح ملفه'}
+                            >
+                              <UserCheck size={12} /> الملف
+                            </button>
+                          )}
+                          {onBookAndPay && (
+                            <button
+                              type="button"
+                              disabled={busyId === r.id}
+                              onClick={() => onBookAndPay({ id: r.id, subscriberId: r.subscriber_id, name: r.name })}
+                              className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-[11px] font-bold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+                              title="حجز ودفع — يحوّله لعميل لو لسه تسجيل"
+                            >
+                              <Wallet size={12} /> {busyId === r.id ? 'جارٍ…' : 'حجز ودفع'}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 );
               })}

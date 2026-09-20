@@ -164,6 +164,8 @@ export default function OnlineClientsTab({
         : `✅ تم إضافة ${(draft.name || '').trim()} بنجاح`);
   };
   const [daqqiSettingsOpen, setDaqqiSettingsOpen] = useState(false);
+  // The staff-built tabs dialog, opened from this screen's own settings menu.
+  const [showSectionTabs, setShowSectionTabs] = useState(false);
   const [daqqiHousingModal, setDaqqiHousingModal] = useState<SubscriberItem|null>(null);
   const [daqqiHousingRoundId, setDaqqiHousingRoundId] = useState('');
   // Bulk selection
@@ -388,6 +390,8 @@ export default function OnlineClientsTab({
                   <SectionCustomTabs
                     section={isDaqqiClientsTab ? 'daqqi' : 'online'}
                     notify={notify}
+                    settingsOpen={showSectionTabs}
+                    onSettingsOpenChange={setShowSectionTabs}
                   />
                   <OnlineClientsKpiStrip
                     isDaqqiClientsTab={isDaqqiClientsTab}
@@ -403,6 +407,7 @@ export default function OnlineClientsTab({
 
                   {/* === Tabs row === */}
                   <ViewTabsBar
+                    onOpenSectionTabs={isAdmin ? () => setShowSectionTabs(true) : undefined}
                     isDaqqiClientsTab={isDaqqiClientsTab}
                     allCombined={allCombined}
                     isIntlSub={isIntlSub}

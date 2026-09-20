@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  ChevronDown, Download, FolderKanban, MapPin, MessageCircle,
+  ChevronDown, Download, FolderKanban, Layers, MapPin, MessageCircle,
   RefreshCw, Settings, UserPlus,
 } from 'lucide-react';
 import type { NotifyFn } from '../CrmSettingsModal';
@@ -27,6 +27,8 @@ interface LeadsTabHeaderProps {
   onToggleActionsMenu: () => void;
   onCloseActionsMenu: () => void;
   onOpenSettings: () => void;
+  /** «تابات القسم» — the staff-built tabs, which used to carry a gear of their own. */
+  onOpenSectionTabs?: () => void;
   notify: NotifyFn;
   onSyncSheet: () => void;
   syncingSheet: boolean;
@@ -60,6 +62,7 @@ export function LeadsTabHeader({
   onToggleActionsMenu,
   onCloseActionsMenu,
   onOpenSettings,
+  onOpenSectionTabs,
   notify,
   onSyncSheet,
   syncingSheet,
@@ -126,6 +129,16 @@ export function LeadsTabHeader({
                   >
                     <Settings size={14} className="text-indigo-500 flex-shrink-0" /> إعدادات CRM
                   </button>
+                  {/* The staff-built tabs. They had a second gear of their own,
+                      halfway down the page — two «إعدادات» on one screen. */}
+                  {onOpenSectionTabs && (
+                    <button
+                      onClick={() => { onOpenSectionTabs(); onCloseActionsMenu(); }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition text-right"
+                    >
+                      <Layers size={14} className="text-emerald-500 flex-shrink-0" /> تابات القسم
+                    </button>
+                  )}
                   {canManageDuplicates && (
                     <button
                       onClick={() => { setSubTab('pipelineSettings'); onCloseActionsMenu(); }}

@@ -129,6 +129,8 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAddLead, setShowAddLead] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  // The staff-built tabs dialog, opened from the header's الإعدادات menu.
+  const [showSectionTabs, setShowSectionTabs] = useState(false);
   const [showActionsMenu, setShowActionsMenu] = useState(false);
   const actionsMenuRef = useRef<HTMLDivElement>(null);
   const [singleStatus, setSingleStatus] = useState<LeadStatus | ''>('');
@@ -406,6 +408,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         onToggleActionsMenu={() => setShowActionsMenu(v => !v)}
         onCloseActionsMenu={() => setShowActionsMenu(false)}
         onOpenSettings={() => setShowSettings(true)}
+        onOpenSectionTabs={() => setShowSectionTabs(true)}
         notify={notify}
         onSyncSheet={handleSyncSheet}
         syncingSheet={syncingSheet}
@@ -419,17 +422,22 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         onCleanupJunk={handleCleanupJunkLeads}
       />
 
+      {/* Staff-built tabs. Creating one lives in the header's own الإعدادات
+          menu now — this drew a second gear here, halfway down the page, and a
+          new tab appeared below beside «محلي قديم» rather than with the tabs. */}
+      <SectionCustomTabs
+        section="leads"
+        notify={notify}
+        onBook={openLeadBook}
+        settingsOpen={showSectionTabs}
+        onSettingsOpenChange={setShowSectionTabs}
+      />
+
       <LeadSalesKpiStrip
         isSalesOnly={isSalesOnly}
         effectiveLeads={effectiveLeads}
         effectiveSubs={effectiveSubs}
       />
-
-      {/* Staff-built tabs. The gear beside them is the per-section one — the
-          existing إعدادات in the header opens CRM-wide settings (sources,
-          auto-assign, Sheets), which is a different scope and stays where it
-          is. */}
-      <SectionCustomTabs section="leads" notify={notify} onBook={openLeadBook} />
 
       {/* ─── border separator under the top row ─── */}
       <div className="border-b border-gray-100 -mt-1" />
