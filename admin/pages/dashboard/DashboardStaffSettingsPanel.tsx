@@ -82,6 +82,16 @@ type DashboardStaffSettingsPanelProps = {
   setStaffContactTags: Dispatch<SetStateAction<string[]>>;
   staffNewTagInput: string;
   setStaffNewTagInput: Dispatch<SetStateAction<string>>;
+  /**
+   * Render one section, with no card of its own and no tab bar.
+   *
+   * The employee's page stacked this whole panel under «شغل النهاردة», so a
+   * person met two greetings, two profile cards and a tab bar halfway down
+   * the page — «صفحتين ركبوا على بعض». The page owns the heading and the tabs
+   * now and asks for one section at a time; called without it, the panel is
+   * what it was.
+   */
+  section?: ProfileTabKey;
 };
 
 export function DashboardStaffSettingsPanel({
@@ -119,10 +129,15 @@ export function DashboardStaffSettingsPanel({
   setStaffContactTags,
   staffNewTagInput,
   setStaffNewTagInput,
+  section,
 }: DashboardStaffSettingsPanelProps) {
   const [savedWaNumber, setSavedWaNumber] = useState('');
   const [disciplinaryBusy, setDisciplinaryBusy] = useState('');
   const [profileTab, setProfileTab] = useState<ProfileTabKey>('overview');
+  // Which section is on screen: the page's choice when it makes one, otherwise
+  // this panel's own tab bar.
+  const shown = (key: ProfileTabKey) => (section ? section === key : profileTab === key);
+  const ownChrome = !section;
   const [appealTarget, setAppealTarget] = useState('');
   const [appealNote, setAppealNote] = useState('');
 
@@ -239,7 +254,8 @@ export function DashboardStaffSettingsPanel({
   return (
     <div className="space-y-5 w-full" dir="rtl">
 
-      {/* Hero profile card */}
+      {/* Hero profile card — the page draws its own when it owns the chrome. */}
+      {ownChrome && (
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary-600 via-primary-700 to-indigo-800 p-6 text-white shadow-xl">
         <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 20% 80%, white 1px, transparent 1px), radial-gradient(circle at 80% 20%, white 1px, transparent 1px)', backgroundSize: '30px 30px' }} />
         <div className="relative flex items-center gap-4">
@@ -262,9 +278,11 @@ export function DashboardStaffSettingsPanel({
           {motivMsg.text}
         </div>
       </div>
+      )}
 
       {/* Tabs — the page had grown to six unrelated stacked sections and the HR
           half was buried under a screen of scrolling. */}
+      {ownChrome && (
       <div className="flex flex-wrap gap-1.5 rounded-2xl border border-gray-200 bg-white p-1.5 shadow-sm">
         {PROFILE_TABS.map(([key, label, Icon]) => (
           <button key={key} type="button" onClick={() => setProfileTab(key)}
@@ -274,8 +292,9 @@ export function DashboardStaffSettingsPanel({
           </button>
         ))}
       </div>
+      )}
 
-      {profileTab === 'overview' && (<>
+      {shown('overview') && (<>
       {/* Performance metrics row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
@@ -376,9 +395,9 @@ export function DashboardStaffSettingsPanel({
 
       </>)}
 
-      {profileTab === 'record' && <MyWorkRecordPanel notify={notify} />}
+      {shown('record') && <MyWorkRecordPanel notify={notify} />}
 
-      {profileTab === 'hr' && (<>
+      {shown('hr') && (<>
       <MyHrFilePanel />
 
       {/* ── HR Self-Service Section ──────────────────────────── */}
@@ -707,7 +726,7 @@ export function DashboardStaffSettingsPanel({
       )}
       </>)}
 
-      {profileTab === 'settings' && (<>
+      {shown('settings') && (<>
       {/* Settings form */}
       <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
         <h3 className="font-bold text-gray-900 flex items-center gap-2">

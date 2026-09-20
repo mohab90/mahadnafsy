@@ -41,8 +41,11 @@ test('the admin-only lists are skipped for everyone else', () => {
 
 // fn → the permission the route it calls asks for.
 function routeGuardFor(fn) {
-  const line = client.split('\n').find(l => new RegExp(`^\\s+${fn}:`).test(l));
-  assert.ok(line, `${fn} is not in the admin API client`);
+  const lines = client.split('\n');
+  const at = lines.findIndex(l => new RegExp(`^\\s+${fn}:`).test(l));
+  assert.ok(at >= 0, `${fn} is not in the admin API client`);
+  // Some entries wrap, so the path sits on the next line.
+  const line = lines.slice(at, at + 3).join(' ');
   const route = (/[`'](\/admin\/[\w/-]+)/.exec(line) || [])[1];
   assert.ok(route, `${fn}: no /admin route in «${line.trim()}»`);
   const handler = routes.split('\n').find(l => l.includes(`router.get('/api${route}',`));

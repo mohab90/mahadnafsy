@@ -32,6 +32,8 @@ interface StaffHomeTabProps {
   subscribers: SubscriberItem[];
   notify: NotifyFn;
   onNavigate: (tab: TabKey) => void;
+  /** The page draws the greeting and the person's name once, above the tabs. */
+  hideHeader?: boolean;
 }
 
 const ROLE_LABEL: Record<string, string> = {
@@ -65,7 +67,7 @@ const STATUS_COLOR: Record<string, string> = {
   no_answer: 'bg-gray-100 text-gray-600',
 };
 
-export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavigate }: StaffHomeTabProps) {
+export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavigate, hideHeader = false }: StaffHomeTabProps) {
   const [leaveBalance, setLeaveBalance] = useState<number | null>(null);
   const [pendingLeaves, setPendingLeaves] = useState<number>(0);
   const [hrSnapshot, setHrSnapshot] = useState<StaffHrSnapshot | null>(null);
@@ -231,23 +233,35 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
     if (hasPermission(staff as unknown as { role: RoleKey; permissions?: PermissionKey[] }, 'view_reports')) {
       base.push({ label: 'لوحة المهام', icon: CheckCircle, tab: 'tasks_board', color: 'bg-indigo-50 text-indigo-600 border-indigo-200' });
     }
-    if (['sales', 'sales_collection_manager', 'support', 'consultant'].includes(role)) {
-      base.unshift({ label: 'ليداتي', icon: UserPlus, tab: 'leads', color: 'bg-amber-50 text-amber-600 border-amber-200' });
-    }
-    if (['collection', 'online_manager', 'sales_collection_manager', 'support'].includes(role)) {
-      base.unshift({ label: 'عملائي', icon: UserCheck, tab: 'online_clients', color: 'bg-teal-50 text-teal-600 border-teal-200' });
-    }
-    if (['instructor', 'trainer'].includes(role)) {
-      base.unshift({ label: 'الكورسات', icon: Award, tab: 'courses', color: 'bg-blue-50 text-blue-600 border-blue-200' });
-    }
-    if (['hr'].includes(role)) {
-      base.unshift({ label: 'فريق العمل', icon: User, tab: 'hr', color: 'bg-purple-50 text-purple-600 border-purple-200' });
+    // The rest is the person's own work, and it is different work for each of
+    // them: the HR manager was offered the same row as a salesperson. Chosen by
+    // what the account may open, so a permission granted in الإعدادات shows up
+    // here too — the row can never offer a screen that answers «غير مصرح».
+    const can = (permission: PermissionKey) =>
+      hasPermission(staff as unknown as { role: RoleKey; permissions?: PermissionKey[] }, permission);
+    const byWork: { label: string; icon: typeof User; tab: string; color: string; when: boolean }[] = [
+      { label: 'فريق العمل', icon: User, tab: 'hr', color: 'bg-purple-50 text-purple-600 border-purple-200', when: can('view_hr') },
+      { label: 'التوظيف', icon: UserPlus, tab: 'registrations', color: 'bg-fuchsia-50 text-fuchsia-600 border-fuchsia-200', when: can('view_join_us') },
+      { label: 'ليداتي', icon: UserPlus, tab: 'leads', color: 'bg-amber-50 text-amber-600 border-amber-200', when: can('view_leads') && ['sales', 'sales_collection_manager', 'support', 'consultant'].includes(role) },
+      { label: 'عملائي', icon: UserCheck, tab: 'online_clients', color: 'bg-teal-50 text-teal-600 border-teal-200', when: can('view_subscribers') && ['collection', 'online_manager', 'sales_collection_manager', 'support'].includes(role) },
+      { label: 'جدول الدقي', icon: Calendar, tab: 'daqqi_schedule', color: 'bg-rose-50 text-rose-600 border-rose-200', when: can('manage_daqqi') },
+      { label: 'الوارد', icon: MessageCircle, tab: 'customer_inbox', color: 'bg-cyan-50 text-cyan-600 border-cyan-200', when: can('manage_inbox') && ['support', 'reception_daqqi'].includes(role) },
+      { label: 'الحسابات', icon: BarChart3, tab: 'financial', color: 'bg-emerald-50 text-emerald-600 border-emerald-200', when: can('view_financial') && ['accountant', 'collection'].includes(role) },
+      { label: 'الكورسات', icon: Award, tab: 'courses', color: 'bg-blue-50 text-blue-600 border-blue-200', when: ['instructor', 'trainer'].includes(role) },
+    ];
+    for (const entry of byWork.filter(e => e.when).reverse()) {
+      base.unshift({ label: entry.label, icon: entry.icon, tab: entry.tab, color: entry.color });
     }
     return base.slice(0, 5);
   }, [staff]);
 
   const isSalesRole = ['sales', 'consultant', 'sales_collection_manager'].includes((staff.role || '').toLowerCase());
   const isCollectionRole = ['collection', 'online_manager', 'sales_collection_manager'].includes((staff.role || '').toLowerCase());
+  // Whose day is a pipeline. The HR manager holds view_leads so the lists
+  // arrive, and was shown «آخر النشاطات» over archived clients and «ليدات بدون
+  // موعد متابعة» — someone else's work on her own page.
+  const worksLeads = isSalesRole || isCollectionRole
+    || ['support', 'reception_daqqi', 'daqqi_manager'].includes((staff.role || '').toLowerCase());
 
   const avatarInitials = (staff.name || '?').split(' ').slice(0, 2).map(w => w[0]).join('');
 
@@ -257,15 +271,25 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
 
   return (
     <div className="space-y-5">
-      {/* ── Header + Refresh ────────────────────────────────────────────── */}
+      {/* ── Header + Refresh ──────────────────────────────────────────────
+          hideHeader: the page above already says who is signed in and what
+          they are, so this greeted the same person a second time. */}
       <div className="flex items-center justify-between">
         <div>
+          {hideHeader ? (
+            <p className="text-sm text-gray-500">
+              {new Date().toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: CAIRO_TIME_ZONE })}
+              {' · '}
+              <span className="text-gray-400">المتابعات والمهام المستحقة الآن</span>
+            </p>
+          ) : (<>
           <h2 className="text-xl font-extrabold text-gray-900">الرئيسية — شغل النهاردة</h2>
           <p className="text-sm text-gray-500 mt-0.5">
             {new Date().toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: CAIRO_TIME_ZONE })}
             {' · '}
             <span className="text-gray-400">المتابعات والمهام المستحقة الآن — الأرقام التفصيلية في «إحصائياتي» وبياناتك الوظيفية في «ملفي الشخصي»</span>
           </p>
+          </>)}
         </div>
         <button
           onClick={handleRefresh}
@@ -276,7 +300,8 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
         </button>
       </div>
 
-      {/* ── Welcome Card ────────────────────────────────────────────────── */}
+      {/* ── Welcome Card — skipped when the page above carries the name ─── */}
+      {!hideHeader && (
       <div className="relative overflow-hidden bg-gradient-to-br from-indigo-600 via-indigo-500 to-purple-600 rounded-2xl p-5 text-white shadow-lg">
         {/* background pattern */}
         <div className="absolute inset-0 opacity-10">
@@ -316,6 +341,24 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
           </div>
         )}
       </div>
+      )}
+
+      {/* The same warning on its own, for the page that draws no welcome card:
+          an overdue follow-up is the one thing here that cannot wait. */}
+      {hideHeader && stats.overdueFollowups.length > 0 && (
+        <div className="flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+          <AlertCircle size={16} className="shrink-0 text-red-500" />
+          <p className="text-sm text-red-800">
+            <span className="font-bold">{stats.overdueFollowups.length}</span> متابعة متأخرة — تحتاج إجراء فوري
+          </p>
+          <button
+            onClick={() => onNavigate('leads')}
+            className="mr-auto rounded-lg bg-red-500 px-2.5 py-1 text-xs font-bold text-white transition-colors hover:bg-red-600"
+          >
+            عرضها
+          </button>
+        </div>
+      )}
 
       {/* ── Permanent motivation block (sales & collection) ──────────────── */}
       {(isSalesRole || isCollectionRole) && (
@@ -463,7 +506,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
           )}
 
           {/* Recent activity */}
-          {stats.recentActivity.length > 0 && (
+          {worksLeads && stats.recentActivity.length > 0 && (
             <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <h4 className="font-bold text-gray-800 text-sm flex items-center gap-2">
@@ -581,7 +624,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
           </div>
 
           {/* Urgent leads (no follow-up set) */}
-          {stats.urgentLeads.length > 0 && (
+          {worksLeads && stats.urgentLeads.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 shadow-sm">
               <h4 className="font-bold text-amber-800 text-sm mb-3 flex items-center gap-2">
                 <MessageCircle size={15} className="text-amber-600" />
