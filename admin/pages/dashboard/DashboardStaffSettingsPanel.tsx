@@ -133,7 +133,14 @@ export function DashboardStaffSettingsPanel({
       setSavedWaNumber(preferences.waNumber || '');
       setStaffWaTemplates(preferences.waTemplates || []);
       setStaffContactTags(preferences.customTags || []);
-    }).catch(() => notify('error', 'تعذر تحميل تفضيلات حساب الموظف'));
+    }).catch((error: unknown) => {
+      // A session that has ended is not a preferences problem, and saying so
+      // sent people looking at their settings while the panel was signed out.
+      // mysqlapi takes a 401 to the login screen; this stays quiet for it.
+      const message = error instanceof Error ? error.message : String(error);
+      if (/401|Unauthorized/i.test(message)) return;
+      notify('error', 'تعذر تحميل تفضيلات حساب الموظف');
+    });
     return () => { cancelled = true; };
   }, [notify, setStaffContactTags, setStaffWaTemplates]);
 

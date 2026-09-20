@@ -8,7 +8,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
-import { mysqlAuth } from '../../lib/mysqlapi';
+import { useAuth } from '../../context/AuthContext';
 import MessagesBell from './MessagesBell';
 import { hasPermission } from '../../constants/permissions';
 import { NotificationsBell } from './NotificationsBell';
@@ -90,6 +90,11 @@ function CompactRoleNav({
   setSalesNotifOpen, notify, extraTabsSlot, extraHeaderButtons,
 }: CompactRoleNavProps) {
   const navigate = useNavigate();
+  const { logout } = useAuth();
+  // Signing out has to tell the app, not only the server. This cleared the
+  // cookie and navigated, so the panel stayed "signed in": the dashboard kept
+  // drawing and every request it made came back 401, one toast each.
+  const signOut = () => { logout(); navigate('/auth'); };
   return (
     <nav className="bg-white border border-gray-200 rounded-2xl p-2 shadow-sm flex items-center gap-2 flex-wrap justify-between" dir="rtl">
       <div className="flex items-center gap-1.5 flex-wrap">
@@ -127,7 +132,7 @@ function CompactRoleNav({
           <MessagesBell mode="staff" notify={notify} compact />
           {extraHeaderButtons}
           <button
-            onClick={() => { mysqlAuth.logout(); navigate('/auth'); }}
+            onClick={signOut}
             className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 grid place-items-center transition"
             title="تسجيل الخروج"
           ><LogOut size={13} /></button>
@@ -149,6 +154,11 @@ export function DashboardNavigation(props: Props) {
     onlineMgrFollowupBadge, setOnlineMgrNewEventsOpen, onlineMgrNewEventsBadge, notify,
   } = props;
   const navigate = useNavigate();
+  const { logout } = useAuth();
+  // Signing out has to tell the app, not only the server. This cleared the
+  // cookie and navigated, so the panel stayed "signed in": the dashboard kept
+  // drawing and every request it made came back 401, one toast each.
+  const signOut = () => { logout(); navigate('/auth'); };
 
   return (
 <>
@@ -257,7 +267,7 @@ export function DashboardNavigation(props: Props) {
                   panelRef={notifRef}
                   onNavigate={setActiveTab}
                 />
-                <button onClick={() => { mysqlAuth.logout(); navigate('/auth'); }}
+                <button onClick={signOut}
                   className="w-8 h-8 rounded-xl bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 grid place-items-center transition"
                   title="تسجيل الخروج">
                   <LogOut size={14} />

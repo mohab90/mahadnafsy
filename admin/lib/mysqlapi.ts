@@ -51,6 +51,35 @@ async function apiFetch<T>(path: string, options: RequestInit = {}, auth = false
   return apiFetchInner<T>(path, options, auth, _retry);
 }
 
+/**
+ * The session is over: show the login screen, once.
+ *
+ * Measured on production, signed in as the HR manager: the session had expired,
+ * /api/auth/me answered 401, and the panel went on drawing the dashboard.
+ * Every screen asked for its data, every request came back 401 — 101 on one
+ * page — and each failure surfaced as a toast about the thing that failed
+ * rather than about the session («تعذر تحميل تفضيلات حساب الموظف»). Signing out
+ * left the same dashboard on screen, because the logout button cleared the
+ * cookie and nothing told the app.
+ *
+ * A 401 has exactly one meaning — there is no session — so it is answered here,
+ * where every call passes, instead of by each caller. Guarded, because a page
+ * fires a dozen requests at once and they all fail together.
+ *
+ * Two exceptions: signing in, where 401 means "wrong password" and the form
+ * says so itself; and the login screen, which is already where this leads.
+ */
+let endingSession = false;
+function sessionIsOver(path: string): void {
+  if (endingSession) return;
+  if (path.startsWith('/auth/login') || path.startsWith('/auth/logout')) return;
+  if (typeof window === 'undefined') return;
+  if (window.location.pathname.startsWith('/auth')) return;
+  endingSession = true;
+  try { localStorage.removeItem('mahad-token'); } catch { /* private mode */ }
+  window.location.assign('/auth');
+}
+
 async function apiFetchInner<T>(path: string, options: RequestInit = {}, auth = false, _retry = 0): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -67,6 +96,7 @@ async function apiFetchInner<T>(path: string, options: RequestInit = {}, auth = 
       await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS));
       return apiFetch<T>(path, options, auth, _retry + 1);
     }
+    if (res.status === 401) sessionIsOver(path);
     if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || `HTTP ${res.status}`); }
     return res.json() as Promise<T>;
   } catch (err: unknown) {
