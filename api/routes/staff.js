@@ -19,10 +19,27 @@ const { writeAuditEvent } = require('../lib/auditTrail');
 // middleware/auth.js — the delete guard below has to know what an owner is in
 // order to refuse removing the last one.
 const SUPER_ADMIN_ROLES = ['admin', 'manager'];
-const { hasPermission, normalizeDataScope, resolvePermissions, PERMISSIONS } = require('../constants/permissions');
+const { hasPermission, normalizeDataScope, resolveDataScope, resolvePermissions, PERMISSIONS } = require('../constants/permissions');
 const { requireTenantQuota } = require('../middleware/tenantQuota');
 const { mapTherapist } = require('../lib/mappers');
 const { assertGrantable, heldByTarget } = require('../lib/permissionGrant');
+const { branchIdForBranch } = require('../lib/branches');
+
+/**
+ * The branch this reader is confined to, or null for the whole institute.
+ *
+ * A branch manager's clients, money, leads and orders are already filtered to
+ * their branch by the routes that serve them. This list was not: it answered
+ * every employee of every branch, and manage_staff let them rewrite any row.
+ * One reading of the same data scope, so the staff screen agrees with the
+ * rest of the panel.
+ */
+function staffBranchScope(req) {
+  const scope = resolveDataScope(req.staffRecord, { isSuperAdmin: req.isSuperAdmin, fallback: 'all' });
+  return String(scope || '').startsWith('branch:')
+    ? branchIdForBranch(String(scope).slice('branch:'.length))
+    : null;
+}
 
 router.get('/api/staff/therapist-portal', requireAuth, requireAdminOrStaff, requirePermission('manage_consultations'), async (req, res) => {
   try {
@@ -159,8 +176,24 @@ router.post('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermiss
     // and data scope. A non-owner may not rewrite a manager's row, and what the
     // employee already holds is not a new grant (see lib/permissionGrant.js).
     const [[existingStaff]] = await pool.query(
-      'SELECT id, tenant_id, role, permissions_json, data_scope FROM staff WHERE id=? AND tenant_id=? LIMIT 1',
+      'SELECT id, tenant_id, role, permissions_json, data_scope, branch_id FROM staff WHERE id=? AND tenant_id=? LIMIT 1',
       [id, req.tenantId]);
+    // A branch manager writes inside their branch. Rewriting another branch's
+    // employee, or filing a new one under a branch that is not theirs, is the
+    // same reach the list above stopped answering.
+    const writeBranchId = staffBranchScope(req);
+    if (writeBranchId) {
+      if (existingStaff && existingStaff.branch_id !== writeBranchId) {
+        return res.status(403).json({
+          error: 'الموظف ده مش في فرعك', code: 'OUTSIDE_YOUR_BRANCH',
+        });
+      }
+      if (!existingStaff && s.branch_id && s.branch_id !== writeBranchId) {
+        return res.status(403).json({
+          error: 'إضافة موظف في فرع تاني متاحة للإدارة فقط', code: 'OUTSIDE_YOUR_BRANCH',
+        });
+      }
+    }
     if (existingStaff && !req.isSuperAdmin
         && PRIVILEGED_ROLES.includes(String(existingStaff.role || '').toUpperCase())) {
       return res.status(403).json({
@@ -226,7 +259,7 @@ router.post('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermiss
       `INSERT INTO staff (id, tenant_id, branch_id, firebase_uid, name, email, phone, role, image, specialization, joined_at, is_active, notes, commission_rate, permissions_json, data_scope, monthly_target, monthly_target_type, monthly_leads_target, monthly_bonus)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE name=VALUES(name), phone=VALUES(phone), role=VALUES(role), image=VALUES(image), is_active=VALUES(is_active), notes=VALUES(notes), commission_rate=VALUES(commission_rate), permissions_json=VALUES(permissions_json), data_scope=VALUES(data_scope), monthly_target=VALUES(monthly_target), monthly_target_type=VALUES(monthly_target_type), monthly_leads_target=VALUES(monthly_leads_target), monthly_bonus=VALUES(monthly_bonus)`,
-      [id, req.tenantId, s.branch_id || 'branch-other', firebaseUid, name, email, s.phone || '', role, s.image || null, s.specialization || null, joinedAt, isActive, s.notes || null, commissionRate, permissionsJson, dataScope, monthlyTarget, monthlyTargetType, monthlyLeadsTarget, monthlyBonus]
+      [id, req.tenantId, s.branch_id || writeBranchId || 'branch-other', firebaseUid, name, email, s.phone || '', role, s.image || null, s.specialization || null, joinedAt, isActive, s.notes || null, commissionRate, permissionsJson, dataScope, monthlyTarget, monthlyTargetType, monthlyLeadsTarget, monthlyBonus]
     );
     res.json({ ok: true, id });
   } catch (e) {
@@ -248,6 +281,9 @@ router.post('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermiss
 router.get('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermission('view_staff'), async (req, res) => {
   try {
     const canViewSensitive = req.isSuperAdmin === true || hasPermission(req.staffRecord, PERMISSIONS.VIEW_STAFF);
+    // A branch manager reads their own branch — and their own row, which is
+    // theirs wherever it sits.
+    const branchId = staffBranchScope(req);
     const [rows] = await pool.query(
       `SELECT s.id,s.firebase_uid,s.name,s.email,s.phone,s.role,s.is_active,s.image,
               s.specialization,s.joined_at,s.created_at,s.notes,s.commission_rate,s.permissions_json,s.data_scope,
@@ -262,8 +298,10 @@ router.get('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermissi
               AND x.effective_from<=CURDATE() AND (x.effective_to IS NULL OR x.effective_to>=CURDATE())
             ORDER BY x.effective_from DESC LIMIT 1
          )
-        WHERE s.tenant_id=? AND s.deleted_at IS NULL ORDER BY s.name ASC`,
-      [req.tenantId]
+        WHERE s.tenant_id=? AND s.deleted_at IS NULL
+              ${branchId ? 'AND (s.branch_id = ? OR s.id=?)' : ''}
+        ORDER BY s.name ASC`,
+      branchId ? [req.tenantId, branchId, req.staffRecord?.id || ''] : [req.tenantId]
     );
     res.json(rows.map(r => ({
       id: r.id,
