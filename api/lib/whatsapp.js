@@ -60,6 +60,8 @@ function providerCredentialState(cfg = {}) {
       && Boolean(cfg.metaPhoneId || process.env.WHATSAPP_PHONE_ID),
     greenReady: Boolean(cfg.instanceId || process.env.WA_INSTANCE_ID)
       && Boolean(cfg.apiToken || envSecret('WA_API_TOKEN')),
+    ultraReady: Boolean(cfg.ultraInstanceId || process.env.ULTRAMSG_INSTANCE_ID)
+      && Boolean(cfg.ultraToken || envSecret('ULTRAMSG_TOKEN')),
   };
 }
 
@@ -86,9 +88,14 @@ function invalidateWaCfg(tenantId) {
 // Resolve which provider to use: explicit config wins, else infer from whatever
 // creds are present (config first, then env).
 function resolveProvider(cfg) {
-  if (cfg.provider === 'meta' || cfg.provider === 'green-api') return cfg.provider;
+  if (cfg.provider === 'meta' || cfg.provider === 'green-api' || cfg.provider === 'ultramsg') return cfg.provider;
   if (cfg.metaToken || cfg.metaPhoneId) return 'meta';
   if (cfg.instanceId || cfg.apiToken) return 'green-api';
+  // The institute's own number sits on UltraMsg — an instance named
+  // «instance5000» rather than the numeric id Green API uses. Nothing here
+  // spoke it, so a valid token reached no sender and OTP never left.
+  if (cfg.ultraInstanceId || cfg.ultraToken
+      || process.env.ULTRAMSG_INSTANCE_ID || envSecret('ULTRAMSG_TOKEN')) return 'ultramsg';
   if (providerCredentialState(cfg).metaReady) return 'meta';
   return 'green-api';
 }
@@ -130,6 +137,36 @@ async function _sendGreenApi(normalized, message, cfg) {
   const data = await res.json();
   if (!res.ok) { logger.warn('[WhatsApp] Green-API error:', data); return { ok: false, provider: 'green-api', reason: data }; }
   return { ok: true, provider: 'green-api', idMessage: data.idMessage };
+}
+
+/**
+ * UltraMsg — the provider the institute's number is on.
+ *
+ * One instance, one number, a token per instance; the address is a plain
+ * international number and the body is form-encoded. A stopped subscription
+ * answers 404 with a JSON explanation, which is exactly what this account did
+ * when the credentials were first tried, so that answer is carried back rather
+ * than flattened into "failed".
+ */
+async function _sendUltraMsg(normalized, message, cfg) {
+  const instanceId = cfg.ultraInstanceId || process.env.ULTRAMSG_INSTANCE_ID;
+  const token = cfg.ultraToken || envSecret('ULTRAMSG_TOKEN');
+  if (!instanceId || !token) {
+    logger.warn('[WhatsApp] UltraMsg not configured — skipping notification');
+    return { ok: false, provider: 'ultramsg', reason: 'not_configured' };
+  }
+  const instance = String(instanceId).startsWith('instance') ? String(instanceId) : `instance${instanceId}`;
+  const res = await fetch(`https://api.ultramsg.com/${instance}/messages/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token, to: `+${String(normalized).replace(/\D/g, '')}`, body: message }).toString(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data?.error) {
+    logger.warn('[WhatsApp] UltraMsg error:', data);
+    return { ok: false, provider: 'ultramsg', reason: data?.error || data };
+  }
+  return { ok: true, provider: 'ultramsg', idMessage: data.id || data.message || null };
 }
 
 /**
@@ -199,7 +236,9 @@ async function sendWhatsApp(phone, message, options = {}) {
         ? await _sendMeta(normalized, message, resolved.credentials)
         : resolved.row.provider === 'wapilot'
           ? await require('./whatsappWapilot').sendViaWapilot(normalized, message, resolved.credentials)
-          : await _sendGreenApi(normalized, message, resolved.credentials);
+          : resolved.row.provider === 'ultramsg'
+            ? await _sendUltraMsg(normalized, message, resolved.credentials)
+            : await _sendGreenApi(normalized, message, resolved.credentials);
       // A send is the only honest proof the credentials work, so the channel's
       // status follows the result rather than whatever it was set at save time.
       if (result.ok) await channels.markChannelConnected(tenantId, resolved.row.id).catch(() => {});
@@ -231,7 +270,9 @@ async function sendWhatsApp(phone, message, options = {}) {
     const provider = resolveProvider(cfg);
     return provider === 'meta'
       ? await _sendMeta(normalized, message, cfg)
-      : await _sendGreenApi(normalized, message, cfg);
+      : provider === 'ultramsg'
+        ? await _sendUltraMsg(normalized, message, cfg)
+        : await _sendGreenApi(normalized, message, cfg);
   } catch (e) {
     logger.warn('[WhatsApp] sendWhatsApp error:', e.message);
     return { ok: false, reason: e.message };
