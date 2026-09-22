@@ -134,16 +134,49 @@ test('applyRefundReversal: rejects an already-refunded payment before writing an
   assert.ok(!conn.calls.some(c => c.sql.includes('INSERT INTO journal_entries')));
 });
 
-test('applyRefundReversal: rejects partial and Paymob refunds while those workflows are deferred', async () => {
-  const partialConn = mockConn({
-    id: 'pay-6', subscriber_id: 's1', course_id: null, bundle_id: null,
+// Partial refunds were refused here until the desk asked for them. A part of
+// the money coming back is not "the payment did not happen", so it is not
+// recorded by rewriting the payment that did: it is its own negative row
+// against the same box, and the customer keeps the course they part-paid for.
+test('applyRefundReversal: a partial refund is a negative row, and the enrolment stays', async () => {
+  const conn = mockConn({
+    id: 'pay-6', subscriber_id: 's1', course_id: 'c1', bundle_id: null,
+    amount: 500, amount_egp: 500, currency: 'EGP', payment_type: 'COURSE', status: 'paid',
+    payment_method: 'خزنة الدقي', branch: 'DAQQI', branch_id: 'branch-daqqi',
+  });
+  const result = await applyRefundReversal(
+    { paymentId: 'pay-6', refundAmount: 100, refundCurrency: 'EGP', tenantId: 't1', actor: 'admin' }, conn);
+
+  assert.equal(result.partial, true);
+  assert.equal(result.refunded, 100);
+  assert.equal(result.remaining, 400);
+
+  const inserted = conn.calls.find(c => c.sql.includes('INSERT INTO payments'));
+  assert.ok(inserted, 'the money leaving gets a row of its own');
+  assert.ok(inserted.params.includes(-100), 'negative, so every total that sums this column is right');
+  assert.ok(inserted.params.includes('خزنة الدقي'), 'out of the box the money was taken into');
+
+  assert.ok(!conn.calls.some(c => c.sql.includes("SET status='refunded'")),
+    'the original payment still says what was actually paid');
+  assert.ok(!conn.calls.some(c => c.sql.includes("UPDATE enrollments SET status='revoked'")),
+    'they paid for part of the course and keep it');
+  assert.ok(conn.calls.some(c => c.sql.includes('UPDATE crm_commissions') && c.sql.includes('ROUND(commission_amount')),
+    'the commission follows the money that stayed, rather than being cancelled');
+});
+
+test('applyRefundReversal: more than was paid is still refused', async () => {
+  const conn = mockConn({
+    id: 'pay-6b', subscriber_id: 's1', course_id: null, bundle_id: null,
     amount: 500, amount_egp: 500, currency: 'EGP', payment_type: 'OTHER', status: 'paid',
   });
   await assert.rejects(
-    () => applyRefundReversal({ paymentId: 'pay-6', refundAmount: 100, refundCurrency: 'EGP', tenantId: 't1', actor: 'admin' }, partialConn),
-    /Partial refunds are not enabled/,
+    () => applyRefundReversal({ paymentId: 'pay-6b', refundAmount: 600, refundCurrency: 'EGP', tenantId: 't1', actor: 'admin' }, conn),
+    /أكبر من المدفوع/,
   );
+  assert.ok(!conn.calls.some(c => c.sql.includes('INSERT INTO payments')));
+});
 
+test('applyRefundReversal: Paymob refunds stay suspended', async () => {
   const paymobConn = mockConn({
     id: 'pay-7', subscriber_id: 's1', course_id: null, bundle_id: null,
     amount: 500, amount_egp: 500, currency: 'EGP', payment_type: 'OTHER',

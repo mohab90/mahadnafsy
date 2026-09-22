@@ -4,7 +4,10 @@ const express = require('express');
 const router = express.Router();
 const logger = require('../../lib/logger');
 const { pool } = require('../../lib/db');
-const { grantCourseSelections } = require('../../lib/entitlements');
+const { grantCourseSelections, grantCourseEntitlement, revokeCourseEntitlement } = require('../../lib/entitlements');
+const { financialRecordMatches, resolveFinancialScope } = require('../../lib/financialScope');
+const { logLeadEvent } = require('../../lib/crm');
+const { sanitize } = require('../../lib/helpers');
 const { DEFAULT_TENANT_ID } = require('../../lib/tenantScope');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 
@@ -104,6 +107,114 @@ router.put('/api/admin/subscribers/:id/course-access/:enrollmentId', requireAuth
       'SELECT expiry_date FROM enrollments WHERE id=? AND tenant_id=?', [enrolment.id, tenantId]);
     res.json({ ok: true, expiresAt: updated?.expiry_date ?? null });
   } catch (e) { logger.error("[course-access-update]", e.message); res.status(500).json({ error: "Internal server error" }); }
+});
+
+// «التقسيط يقفل بتحديد من التحصيل أو خدمة العملاء» — closing a course on a
+// client who stopped paying, and opening it again.
+//
+// Instalment access is already proportional: paying a third of the price opens
+// a third of the lectures. What had no way back was the other direction — a
+// client who stops paying keeps whatever they had reached, and no screen took
+// it away. revokeCourseEntitlement and grantCourseEntitlement sat in the
+// library with no route and no button between them.
+//
+// manage_subscribers is the gate because collection and customer service are
+// the two desks that find out a client has stopped paying, and they are the
+// two roles that hold it — manage_financial, which the buttons above use,
+// excludes customer service.
+//
+// Deliberately a decision somebody makes and signs, not a nightly job: an
+// overdue instalment is a phone call before it is a lock. And it is not final —
+// the next instalment recorded against the course grants it again through the
+// ordinary payment path, which is the right answer when non-payment was the
+// reason it closed.
+router.post('/api/admin/subscribers/:id/course-access', requireAuth, requireAdminOrStaff, requirePermission('manage_subscribers'), async (req, res) => {
+  try {
+    const tenantId = req.tenantId || DEFAULT_TENANT_ID;
+    const courseId = String(req.body?.courseId || '').trim();
+    const action = String(req.body?.action || '').trim().toLowerCase();
+    const reason = sanitize(String(req.body?.reason || ''), 300).trim();
+    if (!courseId) return res.status(400).json({ error: 'حدد الكورس' });
+    if (action !== 'close' && action !== 'open') {
+      return res.status(400).json({ error: 'الإجراء لازم يكون قفل أو فتح' });
+    }
+    if (action === 'close' && !reason) {
+      return res.status(400).json({ error: 'اكتب سبب قفل الكورس — بيتسجل في ملف العميل' });
+    }
+
+    const [[subscriber]] = await pool.query(
+      `SELECT id, name, lead_id, branch_id, assigned_cs_id, assigned_sales_id
+         FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1`,
+      [req.params.id, tenantId]);
+    if (!subscriber) return res.status(404).json({ error: 'العميل غير موجود' });
+
+    // The same row-level rule the money screens use: the managers see everyone,
+    // a branch manager only their branch, collection and customer service only
+    // the clients assigned to them. Without it manage_subscribers would let any
+    // of them close a course for a client who is not theirs.
+    let scope;
+    try {
+      scope = resolveFinancialScope(req, { allowAssigned: true });
+    } catch (error) {
+      return res.status(error.status || 403).json({ error: 'العميل ده خارج نطاقك', code: error.code || 'OUT_OF_SCOPE' });
+    }
+    if (!financialRecordMatches(scope, subscriber)) {
+      return res.status(403).json({ error: 'العميل ده خارج نطاقك', code: 'OUT_OF_SCOPE' });
+    }
+
+    const [[enrolment]] = await pool.query(
+      `SELECT id, status, access_type, lecture_limit FROM enrollments
+        WHERE tenant_id=? AND subscriber_id=? AND course_id=? LIMIT 1`,
+      [tenantId, subscriber.id, courseId]);
+    if (!enrolment) return res.status(404).json({ error: 'العميل مش مشترك في الكورس ده' });
+
+    const actor = req.staffRecord?.id || req.user?.id || null;
+    const actorName = req.staffRecord?.name || req.user?.name || '';
+    let result;
+    if (action === 'close') {
+      result = await revokeCourseEntitlement({
+        tenantId, subscriberId: subscriber.id, courseId,
+        source: 'desk_hold', actor, reason,
+      });
+    } else {
+      // Give back exactly what was taken. The access type and lecture count are
+      // named explicitly so the proportional arithmetic does not recompute a
+      // smaller number — lectures published since they paid would otherwise
+      // shrink the share they had already been given.
+      const limited = enrolment.access_type === 'limited';
+      result = await grantCourseEntitlement({
+        tenantId, subscriberId: subscriber.id, courseId,
+        accessType: limited ? 'limited' : 'full',
+        lectureLimit: limited ? (Number(enrolment.lecture_limit) || 1) : null,
+        branchId: subscriber.branch_id || null,
+        source: 'desk_release', actor,
+      });
+    }
+
+    // entitlement_events already holds the machine record. This is the human
+    // one: collection works out of the client's timeline, and a course that
+    // went quiet has to say there who closed it and what for.
+    if (subscriber.lead_id) {
+      await logLeadEvent(
+        subscriber.lead_id,
+        action === 'close' ? 'course_access_closed' : 'course_access_opened',
+        action === 'close'
+          ? `تم قفل الوصول للكورس — ${reason}`
+          : `تم فتح الوصول للكورس مرة تانية${reason ? ` — ${reason}` : ''}`,
+        { courseId, actor, actorName, reason: reason || null },
+        tenantId);
+    }
+
+    res.json({
+      ok: true,
+      action,
+      changed: !!result?.changed,
+      status: action === 'close' ? 'revoked' : 'active',
+    });
+  } catch (e) {
+    logger.error('[course-access-state]', e.message);
+    res.status(e?.statusCode || 500).json({ error: e?.statusCode ? e.message : 'Internal server error' });
+  }
 });
 
 // Same permission, same reason: enrolling a customer and setting their video

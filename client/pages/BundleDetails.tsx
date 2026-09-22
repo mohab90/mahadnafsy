@@ -27,12 +27,24 @@ function stripHtml(raw: string): string {
     .trim();
 }
 
-// Convert a YouTube watch URL or embed URL to embed format
+// Convert a YouTube watch URL or embed URL to embed format.
+//
+// Through youtube-nocookie with the same parameters the lecture players use.
+// This is the bundle's trailer rather than a lecture, but it was the one
+// player left with YouTube's full chrome on it: the title bar, the related
+// videos at the end and «Watch on YouTube» are each a link to the channel, and
+// the channel lists the lectures. A trailer is not worth protecting; the way
+// out of it is.
+const YOUTUBE_PLAYER_PARAMS =
+  '?autoplay=0&controls=1&modestbranding=1&rel=0&showinfo=0&iv_load_policy=3&color=white&playsinline=1&disablekb=1&fs=0';
+
 function toEmbedUrl(url: string): string {
   if (!url) return '';
   const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-  if (m) return `https://www.youtube.com/embed/${m[1]}`;
-  return url; // assume already embed
+  if (m) return `https://www.youtube-nocookie.com/embed/${m[1]}${YOUTUBE_PLAYER_PARAMS}`;
+  const embedded = url.match(/youtube(?:-nocookie)?\.com\/embed\/([a-zA-Z0-9_-]{11})/);
+  if (embedded) return `https://www.youtube-nocookie.com/embed/${embedded[1]}${YOUTUBE_PLAYER_PARAMS}`;
+  return url; // not YouTube — left as it is
 }
 
 const BundleDetails: React.FC = () => {

@@ -87,8 +87,12 @@ test('the claims that were already handled stay handled', () => {
   const refunds = read('api/lib/refunds.js');
   assert.match(refunds, /crm_commissions SET status='CANCELLED'/,
     'a refund cancels the commission — it is not left with the rep');
-  assert.match(refunds, /Partial refunds are not enabled/,
-    'partial refunds are refused deliberately, with a 409 and a reason');
+  // This used to assert the opposite — that partial refunds were refused
+  // deliberately. They were, until the desk asked for them; what has to stay
+  // true is the guard underneath, which is that nothing larger than the
+  // payment can be handed back.
+  assert.match(refunds, /requestedAmount - paidAmount > 0\.01/,
+    'the institute cannot give back more than it took');
 
   const cohorts = read('api/lib/learningCohorts.js');
   const guard = cohorts.slice(cohorts.indexOf('async function addCohortMember'), cohorts.indexOf('INSERT INTO cohort_members'));

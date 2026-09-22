@@ -195,7 +195,12 @@ const CourseDetails: React.FC = () => {
         // iv_load_policy=3: no annotations
         // playsinline=1: mobile inline play
         // NOTE: enablejsapi removed — causes Error 153 when referrer is not set
-        const params = '?autoplay=0&controls=1&modestbranding=1&rel=0&showinfo=0&iv_load_policy=3&color=white&playsinline=1';
+        // disablekb=1 and fs=0 match the dashboard player: YouTube's keyboard
+        // shortcuts navigate away from the lesson, and its fullscreen chrome
+        // shows the title, which is a route to youtube.com. This player had
+        // neither, so the same lecture was less protected here than inside the
+        // platform.
+        const params = '?autoplay=0&controls=1&modestbranding=1&rel=0&showinfo=0&iv_load_policy=3&color=white&playsinline=1&disablekb=1&fs=0';
         if (plain.includes('youtube.com/watch?v=')) {
             const videoId = new URL(plain).searchParams.get('v') || '';
             return `https://www.youtube-nocookie.com/embed/${videoId}${params}`;

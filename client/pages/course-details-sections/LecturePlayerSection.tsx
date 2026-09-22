@@ -111,7 +111,17 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
                               </div>
                             </div>
                         ) : (
-                            <video className="w-full h-full" controls src={resolvedLectureUrl} />
+                            <video
+                              className="w-full h-full"
+                              controls
+                              // Same as the dashboard player: no download item in
+                              // the browser's own menu, no picture-in-picture, no
+                              // right-click «save video as».
+                              controlsList="nodownload noplaybackrate noremoteplayback"
+                              disablePictureInPicture
+                              onContextMenu={e => e.preventDefault()}
+                              src={resolvedLectureUrl}
+                            />
                         )
                     ) : (
                         <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-5 relative">

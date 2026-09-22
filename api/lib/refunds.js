@@ -16,7 +16,8 @@
  * (FIN-02) — previously a refund left no trace there, so sales/CRM staff
  * would keep treating a refunded customer as a normal paying convert.
  */
-const { logPaymentAudit, postJournalEntry, _paymentAccountCode, toEgp } = require('./finance');
+const { logPaymentAudit, postJournalEntry, postPaymentJournal, _paymentAccountCode, toEgp } = require('./finance');
+const { uuidv4 } = require('./id');
 const { assertWritable } = require('./periodLock');
 const { logLeadEvent } = require('./crm');
 const { revokeCourseEntitlement } = require('./entitlements');
@@ -28,7 +29,7 @@ const { ensureInvoiceForPayment, issueFinancialDocument } = require('./financial
 // has already row-locked and updated the refund_requests row itself — this
 // only handles the payment-side reversal. Returns { journalId, orderUpdated }
 // or null if there was no linked payment to reverse.
-async function applyRefundReversal({ paymentId, subscriberId, refundAmount, refundCurrency, tenantId, actor }, conn) {
+async function applyRefundReversal({ paymentId, subscriberId, refundAmount, refundCurrency, tenantId, actor, reason = null }, conn) {
   if (!paymentId) return null;
 
   const [[pay]] = await conn.query(
@@ -48,12 +49,26 @@ async function applyRefundReversal({ paymentId, subscriberId, refundAmount, refu
     error.status = 409;
     throw error;
   }
+  // How much is going back, and whether that is all of it.
+  //
+  // Anything short of the full amount used to be refused outright, because the
+  // only refund this function could express was "the payment did not happen":
+  // status 'refunded', enrolment revoked, commission cancelled. Part of the
+  // money coming back is a different event, and it is recorded below as its
+  // own row rather than by rewriting the payment that did happen.
   const requestedAmount = Number(refundAmount);
-  if (!Number.isFinite(requestedAmount) || Math.abs(requestedAmount - Number(pay.amount)) >= 0.01) {
-    const error = new Error('Partial refunds are not enabled; the request must equal the full payment amount');
+  const paidAmount = Number(pay.amount);
+  if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
+    const error = new Error('مبلغ الاسترداد لازم يكون أكبر من صفر');
+    error.status = 400;
+    throw error;
+  }
+  if (requestedAmount - paidAmount > 0.01) {
+    const error = new Error(`مبلغ الاسترداد أكبر من المدفوع (${paidAmount})`);
     error.status = 409;
     throw error;
   }
+  const isPartial = paidAmount - requestedAmount > 0.01;
   if (String(refundCurrency || '').toUpperCase() !== String(pay.currency || 'EGP').toUpperCase()) {
     const error = new Error('Refund currency must match the payment currency');
     error.status = 409;
@@ -64,6 +79,63 @@ async function applyRefundReversal({ paymentId, subscriberId, refundAmount, refu
   // every other write path that touches `payments` does this same check.
   const refundDate = dateOnlyInTimeZone();
   await assertWritable(refundDate, conn, tenantId);
+
+  if (isPartial) {
+    // Part of the money back: a row of its own, negative, out of the box the
+    // money was taken into. Every figure in the system sums this column — the
+    // customer's paid total, the vault, the branch P&L, the reports — so this
+    // one row makes all of them right, and the payment that did happen keeps
+    // saying what was paid.
+    const refundedAmount = Math.round(requestedAmount * 100) / 100;
+    const refundId = uuidv4();
+    await conn.query(
+      `INSERT INTO payments
+         (id, tenant_id, subscriber_id, course_id, bundle_id, amount, currency, payment_type,
+          payment_method, transaction_id, is_installment, date, note, status, staff_name,
+          source, branch, branch_id, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,0,?,?,'paid',?,'refund',?,?,NOW())`,
+      [
+        refundId, tenantId, pay.subscriber_id, pay.course_id, pay.bundle_id,
+        -refundedAmount, pay.currency || 'EGP', pay.payment_type || 'OTHER',
+        pay.payment_method || null, null, refundDate,
+        `استرداد جزئي من دفعة ${pay.id}${reason ? ` — ${String(reason).slice(0, 180)}` : ''}`, actor || null,
+        pay.branch || null, pay.branch_id || null,
+      ],
+    );
+    await logPaymentAudit(
+      refundId, 'create', null, 'paid', -refundedAmount,
+      pay.subscriber_id, actor, tenantId, conn, true,
+    );
+    await postPaymentJournal({
+      paymentId: refundId, amount: -refundedAmount, currency: pay.currency || 'EGP',
+      payType: pay.payment_type || 'OTHER', date: refundDate, actor, tenantId,
+      branch: pay.branch || null, branchId: pay.branch_id || null,
+    }, conn);
+
+    // The commission follows the money that stayed. The enrolment does not
+    // move: the customer has paid for part of this course and keeps it.
+    const keptRatio = Math.max(0, (paidAmount - refundedAmount) / (paidAmount || 1));
+    await conn.query(
+      `UPDATE crm_commissions
+          SET payment_amount = ROUND(payment_amount * ?, 2),
+              commission_amount = ROUND(commission_amount * ?, 2),
+              note = CONCAT(COALESCE(note,''),' | خُفّضت بعد استرداد جزئي')
+        WHERE payment_id=? AND tenant_id=? AND status IN ('PENDING','INCLUDED_IN_PAYROLL')`,
+      [keptRatio, keptRatio, pay.id, tenantId],
+    );
+    await conn.query(
+      `INSERT INTO refunds (id, tenant_id, payment_id, subscriber_id, amount, currency, reason,
+                            status, requested_by, approved_by, journal_posted, created_at, resolved_at)
+       VALUES (?,?,?,?,?,?,?, 'done', ?, ?, 1, NOW(), NOW())`,
+      [uuidv4(), tenantId, pay.id, pay.subscriber_id, refundedAmount, pay.currency || 'EGP',
+        'استرداد جزئي', actor || null, actor || null],
+    ).catch(() => { /* the ledger row is a record, not the refund itself */ });
+
+    return {
+      paymentId: pay.id, refundPaymentId: refundId, partial: true,
+      refunded: refundedAmount, remaining: Math.round((paidAmount - refundedAmount) * 100) / 100,
+    };
+  }
 
   await conn.query(
     `UPDATE payments SET status='refunded',

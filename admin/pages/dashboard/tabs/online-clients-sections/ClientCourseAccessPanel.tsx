@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { CalendarClock, Loader2, Infinity as InfinityIcon, Plus, Check } from 'lucide-react';
+import { CalendarClock, Loader2, Infinity as InfinityIcon, Plus, Check, Lock, Unlock } from 'lucide-react';
 
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
+import { promptDialog } from '../../../../../shared/ui/promptDialog';
 import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -34,12 +35,17 @@ const daysLeft = (value: string | null) => {
 };
 
 /**
- * How long this customer keeps each course they own.
+ * What this customer may reach in each course they own, and for how long.
  *
  * The course sets the default length; this is where it is overridden for one
  * person — extend someone who asked for more time, shorten one who should not
  * still have it, or make their copy permanent. Without it the duration would be
  * a policy with no exceptions, which is not how the institute works.
+ *
+ * And the harder direction: closing a course on a client who stopped paying
+ * their instalments, and opening it again when they resume. Collection and
+ * customer service are the two desks that find that out, and this panel is on
+ * the screen both of them already work from.
  */
 export const ClientCourseAccessPanel: React.FC<{ subscriberId: string; notify: NotifyFn }> = ({
   subscriberId, notify,
@@ -86,6 +92,46 @@ export const ClientCourseAccessPanel: React.FC<{ subscriberId: string; notify: N
     } finally { setBusyId(''); }
   };
 
+  // Closing a course on a client who stopped paying, and opening it again.
+  // Collection and customer service both reach this screen and both hold
+  // manage_subscribers, which is what the route asks for. The reason is not
+  // optional: it is what the client's timeline will say afterwards.
+  const setAccess = async (row: CourseAccess, action: 'close' | 'open') => {
+    const reason = await promptDialog(action === 'close'
+      ? {
+        title: 'قفل الكورس على العميل',
+        message: 'العميل مش هيقدر يفتح محاضرات الكورس ده لحد ما يتفتح تاني. السبب بيتسجل في ملفه.',
+        defaultValue: 'توقف عن سداد الأقساط',
+        placeholder: 'سبب القفل',
+        confirmLabel: 'اقفل الكورس',
+      }
+      : {
+        title: 'فتح الكورس تاني',
+        message: 'العميل هيرجع يشوف نفس المحاضرات اللي كانت مفتوحة له قبل القفل.',
+        defaultValue: 'استكمل السداد',
+        placeholder: 'السبب (اختياري)',
+        confirmLabel: 'افتح الكورس',
+      });
+    // null means they backed out. An empty reason is only allowed on the way
+    // back in — a lock has to say what it is for.
+    if (reason === null) return;
+    if (action === 'close' && !reason.trim()) return;
+    setBusyId(row.enrollmentId);
+    try {
+      const res = await fetch(`/api/admin/subscribers/${encodeURIComponent(subscriberId)}/course-access`, {
+        method: 'POST', credentials: 'include',
+        headers: { ...adminAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ courseId: row.courseId, action, reason: reason.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      notify('success', action === 'close' ? 'تم قفل الكورس على العميل' : 'تم فتح الكورس للعميل');
+      await load();
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر التنفيذ');
+    } finally { setBusyId(''); }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-10 text-gray-400" dir="rtl">
@@ -116,11 +162,21 @@ export const ClientCourseAccessPanel: React.FC<{ subscriberId: string; notify: N
         const left = daysLeft(row.expiresAt);
         const expired = left !== null && left < 0;
         const busy = busyId === row.enrollmentId;
+        const closed = row.status !== 'active';
         return (
-          <div key={row.enrollmentId} className="border border-gray-200 rounded-xl p-3 bg-white space-y-2">
+          <div key={row.enrollmentId} className={`border rounded-xl p-3 space-y-2 ${
+            closed ? 'border-red-200 bg-red-50/60' : 'border-gray-200 bg-white'}`}
+          >
             <div className="flex items-start justify-between gap-2 flex-wrap">
               <div className="min-w-0">
-                <div className="font-bold text-gray-800 text-sm truncate">{row.title}</div>
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="font-bold text-gray-800 text-sm truncate">{row.title}</div>
+                  {closed && (
+                    <span className="shrink-0 text-[11px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold flex items-center gap-1">
+                      <Lock size={10} /> مقفول
+                    </span>
+                  )}
+                </div>
                 <div className="text-[11px] text-gray-500 mt-0.5">
                   اشترك في {fmt(row.enrolledAt)}
                   {row.courseDefaultMonths ? ` · الافتراضي ${row.courseDefaultMonths} شهر` : ' · الافتراضي مفتوح'}
@@ -231,6 +287,29 @@ export const ClientCourseAccessPanel: React.FC<{ subscriberId: string; notify: N
                 >
                   {busy ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />} حدد
                 </button>
+              </span>
+              {/* Last, and separated: the dates above extend access, this one
+                  takes it away. A client who stopped paying their instalments
+                  loses the course until they resume — the two desks that find
+                  that out are the two that can press it. */}
+              <span className="mr-auto">
+                {closed ? (
+                  <button
+                    disabled={busy}
+                    onClick={() => setAccess(row, 'open')}
+                    className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 text-white rounded-lg text-[11px] font-bold hover:bg-emerald-700 transition disabled:opacity-40"
+                  >
+                    <Unlock size={11} /> افتح الكورس تاني
+                  </button>
+                ) : (
+                  <button
+                    disabled={busy}
+                    onClick={() => setAccess(row, 'close')}
+                    className="flex items-center gap-1 px-2.5 py-1 bg-red-50 text-red-700 border border-red-200 rounded-lg text-[11px] font-bold hover:bg-red-100 transition disabled:opacity-40"
+                  >
+                    <Lock size={11} /> اقفل الكورس
+                  </button>
+                )}
               </span>
             </div>
           </div>

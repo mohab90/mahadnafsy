@@ -81,6 +81,13 @@ const HlsVideoPlayer: React.FC<HlsVideoPlayerProps> = ({ src, startTime = 0, onT
       ref={videoRef}
       className="w-full h-full"
       controls
+      // The browser's own player offers a download in its ⋮ menu, and the file
+      // it downloads is the lecture. These take that menu item away, along with
+      // picture-in-picture, which pops the video into a window outside the
+      // lesson. Not a lock — a recorder still records — but the one-click copy
+      // was sitting on the player.
+      controlsList="nodownload noplaybackrate noremoteplayback"
+      disablePictureInPicture
       autoPlay
       playsInline
       onContextMenu={e => e.preventDefault()}
