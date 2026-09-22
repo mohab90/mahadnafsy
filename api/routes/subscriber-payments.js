@@ -160,7 +160,10 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
           ...lead,
           id: subscriber_id,
           lead_id: lead.id,
-          email: sanitize(subscriberDraft.email || lead.email || '', 255).toLowerCase(),
+          // NULL, not '' — see the note on the lead-conversion insert below.
+          // This row is what the INSERT reads, so an empty address here is the
+          // same refusal for the next person who has none.
+          email: sanitize(subscriberDraft.email || lead.email || '', 255).toLowerCase() || null,
           branch,
           branch_id: lead.branch_id || branchIdForBranch(branch),
           client_code: lead.client_code || null,
@@ -226,8 +229,22 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
       return res.status(403).json({ error: 'Subscriber is outside your payment scope' });
     }
     const paymentTenantId = req.tenantId;
-    let paymentBranch = subRow.branch || 'ONLINE_EGYPT';
-    let paymentBranchId = subRow.branch_id || branchIdForBranch(paymentBranch);
+    // The branch this money was taken at, which is the one the desk chose.
+    //
+    // «الفرع *» was asked for on every booking and then ignored: the payment
+    // was filed under whatever the client's own row carried, so a payment taken
+    // at the Dokki desk from someone who signed up online was recorded as
+    // online — and the vault, the branch P&L and محاسبة الدقي all read that
+    // column. The client keeps their own branch; the payment carries where it
+    // happened. resolveFinancialScope above has already refused a branch
+    // outside what this account may touch.
+    const chosenBranch = String(payment.branch || req.body.branch || '').toUpperCase();
+    let paymentBranch = VALID_BRANCHES.has(chosenBranch)
+      ? chosenBranch
+      : (subRow.branch || 'ONLINE_EGYPT');
+    let paymentBranchId = VALID_BRANCHES.has(chosenBranch)
+      ? branchIdForBranch(chosenBranch)
+      : (subRow.branch_id || branchIdForBranch(paymentBranch));
     const id = String(payment.id || uuidv4()).slice(0, 100);
     const paymentType = (payment.paymentType || payment.payment_type || 'OTHER').toUpperCase();
     const validTypes = ['COURSE','CERTIFICATE','CONSULTATION','BOOK','CARNEH','OTHER'];
@@ -522,8 +539,13 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
         subscriber_id = racedSubscriber.id;
         subRow = racedSubscriber;
         createFromLead = false;
-        paymentBranch = subRow.branch || 'ONLINE_EGYPT';
-        paymentBranchId = subRow.branch_id || branchIdForBranch(paymentBranch);
+        // Another request created this client while we were working. Their row
+        // decides where they belong, but the branch chosen for this payment
+        // still decides where the money is filed.
+        if (!VALID_BRANCHES.has(chosenBranch)) {
+          paymentBranch = subRow.branch || 'ONLINE_EGYPT';
+          paymentBranchId = subRow.branch_id || branchIdForBranch(paymentBranch);
+        }
       } else {
         let csId = lockedLead.assigned_cs_id || null;
         let csName = lockedLead.assigned_cs_name || null;
@@ -532,7 +554,14 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
           if (rep) { csId = rep.id; csName = rep.name; }
         }
         const clientCode = lockedLead.client_code || await getNextClientCode(conn);
-        const email = sanitize(subscriberDraft.email || lockedLead.email || '', 255).toLowerCase();
+        // NULL, not ''. subscribers carries UNIQUE (tenant_id, email), and one
+        // row already holds the empty string — so every booking for somebody
+        // without an email after that one was refused with «الدفعة دي متسجلة
+        // بالفعل», four attempts in a row, over a field the desk left blank.
+        // Measured in the production log: Duplicate entry 'tenant-default-'
+        // for key 'uq_subs_tenant_email'. The same rule the phone column has
+        // carried since subscriberProvisioningPhone.test.js.
+        const email = sanitize(subscriberDraft.email || lockedLead.email || '', 255).toLowerCase() || null;
         const nationalId = sanitize(subscriberDraft.nationalId || subscriberDraft.national_id || '', 50) || null;
         const crmJson = JSON.stringify({
           source: lockedLead.source || 'lead_conversion',
