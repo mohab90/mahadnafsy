@@ -14,12 +14,21 @@
 function gradeQuizAttempt(questions, answers, passingScore) {
   const total = questions.length;
   let correct = 0;
+  let answeredCount = 0;
   for (let i = 0; i < total; i++) {
-    if (Number(answers?.[i]) === Number(questions[i].correctIndex)) correct++;
+    const given = Number(answers?.[i]);
+    if (Number.isFinite(given) && given >= 0) answeredCount++;
+    if (given === Number(questions[i].correctIndex)) correct++;
   }
   const score = total > 0 ? Math.round((correct / total) * 100) : 0;
-  const passed = score >= (Number(passingScore) || 0);
-  return { score, passed, correctCount: correct, total };
+  // A quiz whose passing score is 0 or unset used to pass an attempt that
+  // answered nothing: `0 >= 0`. An empty submission is not a pass — it is an
+  // attempt that answered nothing, and a quiz with questions has to be
+  // attempted. The floor stays whatever the quiz asks for above that.
+  const required = Number(passingScore) || 0;
+  const answeredSomething = total === 0 || answeredCount > 0;
+  const passed = answeredSomething && score >= required;
+  return { score, passed, correctCount: correct, total, answeredCount };
 }
 
 module.exports = { gradeQuizAttempt };

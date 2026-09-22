@@ -227,6 +227,24 @@ router.post('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermiss
         code: 'OWNER_REQUIRED_FOR_PRIVILEGED_ACCOUNT',
       });
     }
+    // Nobody sets their own pay.
+    //
+    // This route writes commission_rate, monthly_bonus and the targets, and
+    // manage_staff is what HR holds — so an account could open its own row,
+    // raise its own commission and save. Everything else about themselves
+    // (name, phone, photo) is theirs to edit; these four are the owner's.
+    const OWN_PAY_FIELDS = ['commissionRate', 'commission_rate', 'monthlyBonus', 'monthly_bonus',
+      'monthlyTarget', 'monthly_target', 'monthlyLeadsTarget', 'monthly_leads_target'];
+    const editingSelf = Boolean(existingStaff && req.staffRecord?.id && existingStaff.id === req.staffRecord.id);
+    if (editingSelf && !req.isSuperAdmin) {
+      const touched = OWN_PAY_FIELDS.filter(field => s[field] !== undefined && s[field] !== null && s[field] !== '');
+      if (touched.length) {
+        return res.status(403).json({
+          error: 'تعديل العمولة أو المكافأة أو التارجت لحسابك الشخصي متاح للإدارة فقط.',
+          code: 'OWN_PAY_REFUSED',
+        });
+      }
+    }
     const grant = assertGrantable(req, s, {
       alreadyHeld: heldByTarget({ existingStaff, role: role.toLowerCase(), tenantId: req.tenantId }),
     });

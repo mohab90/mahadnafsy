@@ -4,6 +4,8 @@ const { pool } = require('./db');
 const { uuidv4 } = require('./id');
 const { normalizePhone, tryJson } = require('./helpers');
 const { logLeadEventStrict } = require('./crm');
+const logger = require('./logger');
+const { syncLeadDealValue } = require('./leadDealValue');
 
 function normalizedEmail(value) {
   return String(value || '').trim().toLowerCase();
@@ -158,6 +160,30 @@ async function mergeLeads({ tenantId, targetId, sourceIds, actor = null }) {
       [uuidv4(), tenantId, targetId, `Merged ${sourceRows.length} duplicate lead(s)`, JSON.stringify({ sourceIds: sources, actor })]
     );
     await conn.commit();
+
+    // What the merged record is worth, derived rather than chosen.
+    //
+    // The update above takes Math.max of the rows' deal_value, so a customer
+    // who had bought twice came out worth the larger purchase. Summing would be
+    // wrong the other way: two duplicate cards of one person can each carry
+    // that person's whole total, and adding them invents money. The payments
+    // are the only answer that is right in both cases, and every subscriber the
+    // merge just moved onto this lead is now attached to it.
+    //
+    // After the commit, and best-effort: the merge itself is done, and a value
+    // that cannot be recomputed is stale, not wrong — the next payment syncs it.
+    try {
+      const [movedSubscribers] = await pool.query(
+        'SELECT id FROM subscribers WHERE tenant_id=? AND lead_id=? AND deleted_at IS NULL',
+        [tenantId, targetId],
+      );
+      for (const subscriber of movedSubscribers) {
+        await syncLeadDealValue(pool, subscriber.id, tenantId);
+      }
+    } catch (error) {
+      logger.warn('[leadMerge] deal value not re-derived after merge', { targetId, error: error.message });
+    }
+
     return { targetId, merged: sourceRows.length, sourceIds: sources };
   } catch (error) {
     await conn.rollback().catch(() => {});

@@ -266,11 +266,18 @@ router.post('/api/user/signup', registerLimiter, requireDb, requireTenantQuota('
         session.sessionId, session.ipHash, clientContext.countryCode, clientContext.currency]
     );
     // Referral attribution (best-effort): credit the referrer + tag the new user.
+    //
+    // Awaited, and that is the whole point. These were fired without await on
+    // `conn` — a pooled connection this handler releases moments later. A query
+    // still running on a connection that has gone back to the pool is the next
+    // request's connection: its result arrives in someone else's session, and
+    // mysql2 can leave the protocol mid-packet. Best-effort means the failure
+    // is swallowed, not that the wait is.
     if (ref) {
       const refCode = String(ref).trim().toUpperCase();
-      conn.query('UPDATE referral_codes SET uses = uses + 1 WHERE tenant_id=? AND code = ?', [tenantId, refCode]).catch(() => {});
+      await conn.query('UPDATE referral_codes SET uses = uses + 1 WHERE tenant_id=? AND code = ?', [tenantId, refCode]).catch(() => {});
       if (normalizedEmail) {
-        conn.query('UPDATE subscribers SET referred_by = ? WHERE tenant_id=? AND LOWER(TRIM(email)) = ? AND (referred_by IS NULL OR referred_by = "")', [refCode, tenantId, normalizedEmail]).catch(() => {});
+        await conn.query('UPDATE subscribers SET referred_by = ? WHERE tenant_id=? AND LOWER(TRIM(email)) = ? AND (referred_by IS NULL OR referred_by = "")', [refCode, tenantId, normalizedEmail]).catch(() => {});
       }
     }
     // The same dead `registrations` INSERT stood here too — see the note on

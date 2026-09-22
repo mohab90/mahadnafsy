@@ -6,6 +6,7 @@ const { branchIdForBranch } = require('./branches');
 const { fetchFbLeadDetails, getFbLeadConfig } = require('./facebookLeadAds');
 const { getNextSalesRep } = require('./leadAssignment');
 const { logLeadEventStrict } = require('./crm');
+const { findLeadByContact } = require('./leadMatching');
 
 const LEAD_TYPES = new Set(['COURSE', 'CONSULTATION', 'GENERAL']);
 
@@ -47,6 +48,30 @@ async function processFacebookLeadEvent({ event, payload }, dependencies = {}) {
           [tenantId, leadId, leadgenId]
         );
         if (existing) {
+          await conn.commit();
+          continue;
+        }
+        // The same person, arriving again.
+        //
+        // This deduplicated on the Facebook lead id alone, which is unique per
+        // form submission — so somebody who filled a second form, or who was
+        // already in the CRM from a campaign or their own signup, became a
+        // second lead and the two copies went to two different reps. The shared
+        // matcher decides who this is, the way every other intake does; the
+        // Facebook id is recorded on the record that already exists.
+        const known = await findLeadByContact(conn, {
+          tenantId, phone: fields.phone, email: fields.email,
+        });
+        if (known) {
+          await conn.query(
+            'UPDATE leads SET fb_lead_id=COALESCE(fb_lead_id,?), fb_form_id=COALESCE(fb_form_id,?) WHERE id=? AND tenant_id=?',
+            [leadgenId, String(change.value?.form_id || '') || null, known.id, tenantId],
+          );
+          await logLeadEventStrict(
+            known.id, 'note', 'وصل نفس الشخص من إعلان فيسبوك — اتسجل على نفس الكارت',
+            { provider: 'facebook', externalLeadId: leadgenId, pageId, connectorEventId: event.id },
+            tenantId, conn,
+          );
           await conn.commit();
           continue;
         }
