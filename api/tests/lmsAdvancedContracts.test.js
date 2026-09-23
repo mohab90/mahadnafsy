@@ -115,7 +115,10 @@ test('offline progress queue is user-stable, monotonic and refreshes canonical s
   assert.match(api, /window\.addEventListener\('online'/);
   assert.match(runtime, /mahad-progress-synced/);
   assert.match(player, /saveLectureProgress\(lectureId, 100,\s*watchSeconds \?\? getSavedTime\(lectureId\)\)/);
-  assert.match(player, /youtube-nocookie\.com/);
+  // The embed URL moved to lectureVideo.ts and the frame to VideoSurface, so
+  // what this player owes the rest of the system is the component, not the
+  // host. everyLecturePlayerStaysOnTheSite.test.js keeps the host honest.
+  assert.match(player, /<VideoSurface/);
   assert.doesNotMatch(player, /lectureProgress:\s*\{/);
   assert.doesNotMatch(player, /notes:\$\{subscriber\.id\}/);
   assert.match(player, /getLectureNote\(selectedId\)/);

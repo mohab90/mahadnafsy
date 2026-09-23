@@ -224,7 +224,18 @@ export function useAdminDataRuntime(state: RuntimeState): {
         // already in hand from the bootstrap above, so a screen that only needs
         // recent rows still renders immediately.
 
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // The next wave starts here, and it starts now.
+        //
+        // There were four `await new Promise(resolve => setTimeout(resolve,
+        // 300))` between these five waves — 1.2 seconds of deliberate waiting on
+        // every admin page load, for every member of staff, on top of the
+        // requests. Nothing said why, and the reasons one would guess do not
+        // hold: the privileged rate limit is 400 a minute against the 21 calls
+        // made here, and HTTP/2 carries them down one connection. The server
+        // they appeared to be pacing answers in 3–15ms and idles at 0.1 load.
+        //
+        // The waves stay. Awaiting each one lets the dashboard paint from the
+        // first rather than waiting on all twenty-one — that part was right.
         if (disposed) return;
         // Lectures and chapters were pulled here too — listLectures() with no
         // argument, which is the 5000 default: every lecture of every course,
@@ -244,7 +255,6 @@ export function useAdminDataRuntime(state: RuntimeState): {
         if (bundlesRes.status === 'fulfilled' && bundlesRes.value.length > 0) setBundles(bundlesRes.value as unknown as Bundle[]);
         if (therapistsRes.status === 'fulfilled' && therapistsRes.value.length > 0) setTherapists(therapistsRes.value as unknown as Therapist[]);
 
-        await new Promise(resolve => setTimeout(resolve, 300));
         if (disposed) return;
         const [testimonialsRes, quizzesRes, streamsRes, expensesRes, activityRes] = await Promise.allSettled([
           mysqlCatalog.listTestimonials(),
@@ -260,7 +270,6 @@ export function useAdminDataRuntime(state: RuntimeState): {
         if (expensesRes.status === 'fulfilled') setExpenses(expensesRes.value as unknown as ExpenseItem[]);
         if (activityRes.status === 'fulfilled' && activityRes.value.length > 0) setActivityLogs(activityRes.value as unknown as ActivityLogItem[]);
 
-        await new Promise(resolve => setTimeout(resolve, 300));
         if (disposed) return;
         const [ordersRes, applicantsRes, contactsRes, roundsRes, automationsRes] = await Promise.allSettled([
           permitted('view_orders') ? mysqlAdmin.listAllOrders() : refused('view_orders'),
@@ -276,7 +285,6 @@ export function useAdminDataRuntime(state: RuntimeState): {
         if (roundsRes.status === 'fulfilled' && roundsRes.value.length > 0) setDaqqiRounds(roundsRes.value as unknown as DaqqiRound[]);
         if (automationsRes.status === 'fulfilled' && automationsRes.value.length > 0) setAutomationWorkflows(automationsRes.value as unknown as AutomationWorkflow[]);
 
-        await new Promise(resolve => setTimeout(resolve, 300));
         if (disposed) return;
         const [discountsRes, notificationsRes, settingsRes] = await Promise.allSettled([
           permitted('manage_discounts') ? mysqlAdmin.getDiscounts() : refused('manage_discounts'),

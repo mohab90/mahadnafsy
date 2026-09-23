@@ -14,7 +14,7 @@ import { cdnImg } from '../lib/img';
 import { cairoDateOnly } from '../../shared/cairoDate';
 import type { CommunityEventItem } from '../types';
 import { useSeo } from '../lib/useSeo';
-import { youtubeEmbedUrl } from '../lib/lectureVideo';
+import { VideoSurface } from '../components/VideoSurface';
 
 const TAG_COLORS: Record<string, string> = {
   'نقاش حالة': 'bg-blue-50 text-blue-700 border-blue-200',
@@ -107,9 +107,6 @@ const Community: React.FC = () => {
   // it could not be made true, only removed.
   const totalMembers = Number(content['community.memberCount'] || 847) + communityPosts.length;
 
-  // A member's own video, in the feed's lightbox. Videos shared here are not
-  // the institute's lectures, but the way out of the player is the same one.
-  const getEmbedUrl = (url: string) => youtubeEmbedUrl(url, { autoplay: true });
 
   const filteredPosts = useMemo(() => {
     // Only show approved posts (or legacy posts without status) to regular users
@@ -693,7 +690,7 @@ const Community: React.FC = () => {
           <button onClick={() => setShowVideoModal(null)} className="absolute top-4 right-4 text-white bg-white/10 rounded-full p-2 hover:bg-white/20 transition"><X size={22} /></button>
           <div className="w-full max-w-4xl" onClick={e => e.stopPropagation()}>
             <div className="relative aspect-video rounded-2xl overflow-hidden shadow-2xl">
-              <iframe src={getEmbedUrl(showVideoModal)} className="w-full h-full" allow="autoplay; fullscreen; picture-in-picture" allowFullScreen title="فيديو المجتمع" />
+              <VideoSurface url={showVideoModal} title="فيديو المجتمع" autoplay />
             </div>
           </div>
         </div>

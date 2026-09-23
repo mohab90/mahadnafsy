@@ -2,7 +2,7 @@ import React from 'react';
 import { Lock } from 'lucide-react';
 import type { CourseChapterItem, CourseLectureItem } from '../../types';
 import { cdnImg } from '../../lib/img';
-import { youtubeEmbedUrl } from '../../lib/lectureVideo';
+import { VideoSurface } from '../../components/VideoSurface';
 
 type LockedLecture = CourseLectureItem & { locked: boolean };
 
@@ -82,33 +82,16 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
                                 <p className="text-sm">جاري تحميل الفيديو...</p>
                             </div>
                         ) : (resolvedLectureUrl || '').includes('youtube.com') || (resolvedLectureUrl || '').includes('youtu.be') || (resolvedLectureUrl || '').startsWith('enc:') || (resolvedLectureUrl || '').includes('kind=embed') ? (
-                            <div className="relative w-full h-full">
-                              <iframe
-                                src={youtubeEmbedUrl(resolvedLectureUrl)}
-                                className="w-full h-full"
-                                allow="autoplay; encrypted-media; fullscreen"
-                                allowFullScreen
-                                title={selectedLecture.title}
-                              />
-                              {/* Block YouTube channel name (top-left) — pointer-events:auto prevents clicking it */}
-                              <div className="absolute top-0 left-0 h-14 w-56 z-20 cursor-default" style={{ background: 'linear-gradient(to right, rgba(0,0,0,0.92) 60%, transparent)' }} onClick={(e) => e.preventDefault()} />
-                              {/* Block YouTube logo (bottom-right) — pointer-events:auto prevents clicking it */}
-                              <div className="absolute bottom-0 right-0 h-10 w-44 z-20 cursor-default" style={{ background: 'linear-gradient(to left, rgba(0,0,0,0.92) 60%, transparent)' }} onClick={(e) => e.preventDefault()} />
-                              {/* Watermark */}
-                              <div className="absolute inset-0 z-10 pointer-events-none select-none overflow-hidden" aria-hidden="true">
-                                {Array.from({ length: 3 }, (_, row) =>
-                                  Array.from({ length: 2 }, (_, col) => (
-                                    <span
-                                      key={`wm-${row}-${col}`}
-                                      className="absolute text-white/25 text-[9px] font-semibold rotate-[-25deg] whitespace-nowrap"
-                                      style={{ top: `${15 + row * 28}%`, left: `${col * 55}%` }}
-                                    >
-                                      {authUserEmail || 'معهد الدراسات النفسية'}
-                                    </span>
-                                  ))
-                                ).flat()}
-                              </div>
-                            </div>
+                            // The two dark strips that used to sit here covered
+                            // the corners YouTube happened to draw in, and cost
+                            // a slice of the picture to do it. VideoSurface
+                            // takes the controls away entirely instead.
+                            <VideoSurface
+                              key={selectedLecture.id}
+                              url={resolvedLectureUrl}
+                              title={selectedLecture.title}
+                              watermark={authUserEmail || 'معهد الدراسات النفسية'}
+                            />
                         ) : (
                             <video
                               className="w-full h-full"

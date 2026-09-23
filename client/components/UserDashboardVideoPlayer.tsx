@@ -10,7 +10,8 @@ import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 // "enc:…" text as the video source, and every one of the 2,174 lectures failed
 // to play in the student dashboard while the public course page, which had the
 // literal, worked. Both now read the same one.
-import { revealVideoUrl, youtubeEmbedUrl } from '../lib/lectureVideo';
+import { revealVideoUrl } from '../lib/lectureVideo';
+import { VideoSurface } from './VideoSurface';
 
 /* ─── HLS-capable video player ───────────────────────────────────────────── */
 interface HlsVideoPlayerProps {
@@ -265,50 +266,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
   const timeSeekedRef = useRef<Set<string>>(new Set());
   useEffect(() => { timeSeekedRef.current.delete(selectedId); }, [selectedId]);
 
-  // Listen for YouTube messages — ended + time tracking via infoDelivery
-  useEffect(() => {
-    const handleMsg = (ev: MessageEvent) => {
-      if (!['https://www.youtube.com', 'https://www.youtube-nocookie.com'].includes(ev.origin)) return;
-      try {
-        const data = typeof ev.data === 'string' ? JSON.parse(ev.data) : ev.data;
-        // YouTube Iframe API sends {event:'onStateChange', info:0} when video ends
-        if (data?.event === 'onStateChange' && data?.info === 0 && selectedId) {
-          markLectureComplete(selectedId);
-        }
-        // YouTube sends infoDelivery with currentTime when enablejsapi=1.
-        //
-        // The duration has to go with it. saveTime computes the percentage from
-        // seconds/duration and, with no duration, falls back to whatever is
-        // already stored — so a YouTube lecture's progress never moved: it sat
-        // at 0% until the video ended and the completion handler flipped it
-        // straight to 100. That is the same defect the comment inside saveTime
-        // records as fixed; it was only ever fixed for the native player, which
-        // passes its own duration, and most lectures here are YouTube.
-        if (data?.event === 'infoDelivery' && typeof data?.info?.currentTime === 'number' && selectedId) {
-          const duration = typeof data.info.duration === 'number'
-            ? data.info.duration
-            : Number(data.info.progressState?.duration) || undefined;
-          saveTime(selectedId, data.info.currentTime, duration);
-          // Complete at 80%, the same rule the native player uses. Marking a
-          // YouTube lecture complete only when the video reaches its very end
-          // meant a learner who watched almost all of it and stopped kept an
-          // unfinished lecture — and an unfinished course, and no certificate —
-          // while the same lecture hosted natively would have counted.
-          if (duration && duration > 0 && data.info.currentTime / duration >= 0.8) {
-            markLectureComplete(selectedId, data.info.currentTime);
-          }
-        }
-      } catch { /* ignore non-JSON messages */ }
-    };
-    window.addEventListener('message', handleMsg);
-    return () => window.removeEventListener('message', handleMsg);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId]);
-
-  // jsApi, because this is the player that listens for progress over
-  // postMessage; it is the only one that asks for it.
-  const getEmbedUrl = (url: string, startSec = 0) =>
-    youtubeEmbedUrl(url, { autoplay: true, jsApi: true, startSeconds: startSec });
+  // The window-wide listener for YouTube's infoDelivery used to live here. It
+  // is inside VideoSurface now, which is the thing that owns the frame — and
+  // has to own it, because a component with no controls of its own would have
+  // nothing to drive. The rules it carried are unchanged and still matter:
+  // the duration has to travel with the time, or saveTime falls back to what is
+  // already stored and a YouTube lecture's progress sits at 0% until the video
+  // ends; and completion is at 80%, the same as the native player, so a learner
+  // who watches almost all of it and stops is not left without a certificate.
+  // Both now come through onTimeUpdate below.
 
   const grouped =
     chapters.length > 0
@@ -359,39 +325,26 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
                 <p className="text-sm">جاري تحميل الفيديو...</p>
               </div>
             ) : resolvedUrl.includes('youtube') || resolvedUrl.includes('youtu.be') || resolvedUrl.startsWith('enc:') || resolvedUrl.includes('kind=embed') ? (
-              /* The embed still renders YouTube's own title bar across the top on
-                 hover, and that title (and the logo beside it) link out to
-                 youtube.com. The strip below sits over that band and swallows the
-                 clicks, so the lesson can't be used as a doorway to YouTube. It
-                 covers only the top ~15%, leaving the control bar fully usable. */
-              <div className="relative w-full h-full">
-                <iframe
-                  key={selected.id}
-                  src={getEmbedUrl(resolvedUrl, getSavedTime(selected.id))}
-                  className="w-full h-full"
-                  // fullscreen is in both the permission policy and the legacy
-                  // attribute: without them the player's own expand button is
-                  // inert, which is why a lesson could not be watched full
-                  // screen while the promo and community players could.
-                  allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-                  allowFullScreen
-                  // "no-referrer" broke playback outright: YouTube's embed
-                  // player uses the Referer header to validate the embedding
-                  // domain, and with it stripped it serves "Error 153: Video
-                  // player configuration error" instead of the video —
-                  // reproduced live 2026-08-05. strict-origin-when-cross-origin
-                  // sends only the bare origin (https://mahadnafsy.com), same
-                  // as the free promo-video player, which never had this bug.
-                  referrerPolicy="strict-origin-when-cross-origin"
-                  title={selected.title}
-                />
-                <div
-                  className="absolute top-0 left-0 right-0 h-[15%] min-h-[48px] cursor-default"
-                  onClick={e => e.preventDefault()}
-                  onContextMenu={e => e.preventDefault()}
-                  aria-hidden="true"
-                />
-              </div>
+              /* The strip that used to sit across the top here covered the band
+                 YouTube draws its title in, because the title links out. It
+                 guessed at 15% and it only covered the top. VideoSurface takes
+                 YouTube's controls away instead, so there is no title bar and no
+                 logo to cover, and nothing in the frame can be clicked at all. */
+              <VideoSurface
+                key={selected.id}
+                url={resolvedUrl}
+                title={selected.title}
+                autoplay
+                startSeconds={getSavedTime(selected.id)}
+                watermark={subscriber?.email || 'معهد الدراسات النفسية'}
+                onTimeUpdate={(currentTime, duration) => {
+                  saveTime(selected.id, currentTime, duration);
+                  if (duration > 0 && currentTime / duration >= 0.8) {
+                    markLectureComplete(selected.id, currentTime);
+                  }
+                }}
+                onEnded={() => markLectureComplete(selected.id)}
+              />
             ) : (
               <HlsVideoPlayer
                 key={selected.id}

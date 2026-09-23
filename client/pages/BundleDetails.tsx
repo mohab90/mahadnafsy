@@ -13,6 +13,7 @@ import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 import { formatPrice, isDiscounted, discountPercent } from '../../shared/priceFormat';
 import { useSeo, seoSummary } from '../lib/useSeo';
 import { youtubeEmbedUrl } from '../lib/lectureVideo';
+import { VideoSurface } from '../components/VideoSurface';
 
 // Strip HTML tags + Word-style markup and return clean Arabic text
 function stripHtml(raw: string): string {
@@ -189,13 +190,11 @@ const BundleDetails: React.FC = () => {
               <div className="w-full lg:w-[480px] shrink-0">
                 <div className="rounded-2xl overflow-hidden shadow-2xl border border-white/10 relative aspect-video bg-black">
                   {videoModalOpen ? (
-                    <iframe
-                      src={`${embedUrl}?autoplay=1&rel=0`}
-                      title="bundle video"
-                      allow="autoplay; encrypted-media"
-                      allowFullScreen
-                      className="absolute inset-0 w-full h-full"
-                    />
+                    // The raw URL, not embedUrl: VideoSurface builds its own
+                    // embed. This used to append «?autoplay=1&rel=0» to a URL
+                    // that already had a query string, which made the second
+                    // «?» part of the last parameter's value.
+                    <VideoSurface url={bundle.videoUrl || ''} title={bundle.title} autoplay />
                   ) : (
                     <div
                       className="absolute inset-0 flex items-center justify-center cursor-pointer group"

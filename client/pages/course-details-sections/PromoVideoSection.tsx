@@ -2,7 +2,7 @@ import React from 'react';
 import { Play } from 'lucide-react';
 import { cdnImg } from '../../lib/img';
 import { useEscapeKey } from '../../../shared/ui/useEscapeKey';
-import { youtubeEmbedUrl } from '../../lib/lectureVideo';
+import { VideoSurface } from '../../components/VideoSurface';
 
 interface PromoVideoSectionProps {
   thumbnail: string;
@@ -60,13 +60,11 @@ export const PromoVideoSection: React.FC<PromoVideoSectionProps> = ({
                   >
                       ✕ إغلاق
                   </button>
-                  <iframe
-                      src={youtubeEmbedUrl(promoVideoUrl, { autoplay: true })}
-                      className="w-full h-full rounded-xl"
-                      allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-                      allowFullScreen
-                      referrerPolicy="strict-origin-when-cross-origin"
-                      title="Promo Video"
+                  <VideoSurface
+                      url={promoVideoUrl}
+                      title={content['courseDetails.promo.title'] || 'فيديو تعريفي'}
+                      autoplay
+                      className="rounded-xl"
                   />
               </div>
           </div>

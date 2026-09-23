@@ -62,15 +62,26 @@ export type EmbedOptions = {
  * A YouTube URL as an embed this site can host, or the URL unchanged when it is
  * not YouTube.
  *
- * Every parameter here exists to keep the viewer on this site:
+ * controls=0 is the one that matters, and it is the answer to «عاوز اقفل اني
+ * يظهر علامه اليوتيوب في اسفل الشاشه او انه يضغط علي عنوان الفيديو ويتنقل منه
+ * لليوتيوب». modestbranding has not removed the logo since YouTube retired it
+ * in 2023, and showinfo has done nothing since 2018 — both were in this URL,
+ * both were doing nothing, and the logo and the title were still there. With
+ * controls=0 there is no control bar to hold a logo and no title bar to click:
+ * checked on the live site against a real lecture, playing and on hover, and
+ * the frame shows the video and nothing else.
+ *
+ * Two pieces of YouTube branding survive controls=0 — the red play button on
+ * the poster and the wordmark on the loading screen — and neither is a link.
+ * VideoSurface covers both with its own poster, which is why this function is
+ * only ever called from there.
+ *
+ * The rest:
  *   rel=0              no related videos on the end screen
- *   modestbranding=1   the logo in the control bar, not the wordmark
- *   showinfo=0         no title overlay
  *   iv_load_policy=3   no annotations, which can carry links
  *   disablekb=1        YouTube's keyboard shortcuts, some of which navigate away
- *   fs=0               no fullscreen — its native chrome shows the title, and
- *                      the title is a link to youtube.com
- *   controls=1         required: YouTube answers Error 153 to controls=0
+ *   fs=0               no YouTube fullscreen — its native chrome shows the
+ *                      title. VideoSurface fullscreens its own wrapper instead.
  * and youtube-nocookie.com rather than youtube.com, so watching a lecture does
  * not write a viewing history against the customer's Google account.
  */
@@ -81,7 +92,7 @@ export function youtubeEmbedUrl(url: string, options: EmbedOptions = {}): string
   if (!id) return plain;
   const params = [
     `autoplay=${options.autoplay ? 1 : 0}`,
-    'controls=1',
+    'controls=0',
     'modestbranding=1',
     'rel=0',
     'showinfo=0',
