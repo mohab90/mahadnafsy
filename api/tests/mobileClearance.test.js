@@ -36,8 +36,18 @@ test('the public footer clears the floating buttons on phones only', () => {
 
 test('the dashboard clears its booking button on phones only', () => {
   const dashboard = read('admin/pages/Dashboard.tsx');
-  assert.match(dashboard, /py-6 pb-28 md:py-8 md:pb-8/,
+  // The bottom is the part that matters and the part this test is named after:
+  // «حجز / دفعة» is fixed at bottom-6 and 44px tall, so it owns the bottom 68px
+  // of a phone viewport. pb-28 clears it; md:pb-8 puts the normal padding back
+  // where the button no longer overlaps the content column.
+  //
+  // This used to pin «py-6 pb-28 md:py-8 md:pb-8» whole, which made it fail
+  // when the top padding was trimmed to bring the nav closer to the top edge —
+  // a change with nothing to do with the button it guards.
+  assert.match(dashboard, /pb-28/,
     'the dashboard shell lost the padding that keeps «حجز / دفعة» off the last row');
+  assert.match(dashboard, /md:pb-8/,
+    'and the desktop padding that replaces it above the breakpoint');
 });
 
 test('sub-pixel overflow from the decorations cannot scroll the page', () => {

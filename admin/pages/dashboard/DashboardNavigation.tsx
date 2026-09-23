@@ -20,6 +20,8 @@ type NotifRow = { id: string; type: string; title: string; message: string; read
 type VisibleMenuGroup = {
   key: string;
   label: string;
+  /** What the bar shows when the full label is too wide for it. */
+  short?: string;
   icon: LucideIcon;
   color: string;
   items: Array<{ key: TabKey; label: string; icon: LucideIcon }>;
@@ -157,7 +159,12 @@ export function DashboardNavigation(props: Props) {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const { content } = useSiteData();
-  const logoUrl = (content['institute.logo'] || '').trim();
+  // The roundel, not the wordmark. institute.logo is the name beside the
+  // mark, and in a bar that needs its width for the menu the name is the half
+  // worth dropping — institute.favicon is that mark, already square, already
+  // uploaded. Cropping the wide logo to its right-hand end would have worked
+  // for exactly this one image and broken on the next one.
+  const logoUrl = (content['institute.favicon'] || content['institute.logo'] || '').trim();
   // Signing out has to tell the app, not only the server. This cleared the
   // cookie and navigated, so the panel stayed "signed in": the dashboard kept
   // drawing and every request it made came back 401, one toast each.
@@ -197,7 +204,7 @@ export function DashboardNavigation(props: Props) {
                   <img
                     src={logoUrl}
                     alt={content['institute.name'] || 'معهد الدراسات النفسية'}
-                    className="h-8 w-auto max-w-[120px] object-contain"
+                    className="h-10 w-10 object-contain"
                   />
                 ) : (
                   // No logo set for this tenant — an <img> with an empty src is
@@ -208,9 +215,8 @@ export function DashboardNavigation(props: Props) {
                 )}
               </div>
 
-              <div className="w-px h-5 bg-gray-200 flex-shrink-0 mx-0.5" />
-
-              {/* Group nav buttons — scrollable */}
+              {/* Group nav buttons — scrollable. No divider before them: the bar
+                  needs its width for the groups. */}
               <div className="flex items-center gap-0.5 overflow-x-auto flex-1 min-w-0">
                 {visibleMenuGroups.map((group) => {
                   const GroupIcon = group.icon;
@@ -231,7 +237,7 @@ export function DashboardNavigation(props: Props) {
                       }`}
                     >
                       <GroupIcon size={13} />
-                      <span>{group.label}</span>
+                      <span>{group.short || group.label}</span>
                       <ChevronDown size={11} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                     </button>
                   );

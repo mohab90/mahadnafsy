@@ -152,6 +152,8 @@ export type DashboardMenuItem = {
 export type DashboardMenuGroup = {
   key: string;
   label: string;
+  /** What the top bar shows when the full label is too wide for it. */
+  short?: string;
   icon: LucideIcon;
   color: string;
   items: DashboardMenuItem[];
@@ -245,6 +247,10 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
   {
     key: 'cx_group',
     label: 'خدمة العملاء',
+    // Shortened in the bar only — see DashboardNavigation. The dropdown this
+    // opens has room for the full name, and «خ العملاء» as a panel heading
+    // reads like a typo.
+    short: 'خ العملاء',
     icon: Headphones,
     color: 'text-rose-500',
     items: [
@@ -285,6 +291,7 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
   {
     key: 'hr_group',
     label: 'الموارد البشرية',
+    short: 'م البشرية',
     icon: Briefcase,
     color: 'text-purple-600',
     items: [

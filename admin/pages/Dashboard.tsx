@@ -694,7 +694,7 @@ const Dashboard: React.FC = () => {
         pagination, so «السابق» and the page numbers could not be tapped at all.
         Restored to the original padding from md up, where the button clears the
         content column. */}
-    <div className="min-h-screen bg-gradient-to-br from-gray-100 via-white to-primary-50/30 py-6 pb-28 md:py-8 md:pb-8">
+    <div className="min-h-screen bg-gradient-to-br from-gray-100 via-white to-primary-50/30 pt-2 pb-28 md:pt-3 md:pb-8">
       <div className="container mx-auto px-4">
         <DashboardNavigation
           isSalesOnly={isSalesOnly}

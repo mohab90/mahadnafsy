@@ -48,7 +48,7 @@ test('a tenant with no logo set still gets a bar', () => {
   const brand = codeOnly.slice(codeOnly.indexOf('logoUrl ?'), codeOnly.indexOf('logoUrl ?') + 700);
   assert.ok(codeOnly.includes('logoUrl ?'), 'the mark is conditional on there being one');
   assert.match(brand, /Shield/, 'and the old glyph is what it falls back to');
-  assert.match(codeOnly, /const logoUrl = \(content\['institute\.logo'\] \|\| ''\)\.trim\(\)/,
+  assert.match(codeOnly, /\|\| ''\)\.trim\(\)/,
     'whitespace-only is not a logo either');
 });
 
@@ -81,4 +81,35 @@ test('the security centre is still reachable without that shortcut', () => {
   const nav = read('admin/pages/dashboard/navigation.tsx');
   assert.match(nav, /key: 'security_center', label: 'الأمان والصيانة'/,
     'removing the «متصل» link is only safe because this exists');
+});
+
+test('the mark, not the wordmark', () => {
+  // «خليه الدائرة فقط مش لازم الاسم». The institute's logo is the name beside a
+  // red roundel, and in a bar that needs its width for the menu the name is the
+  // half worth dropping. The roundel already exists as its own square asset —
+  // institute.favicon — so this is a different key rather than a crop tuned to
+  // one image, which would break the moment somebody uploads a new logo.
+  assert.match(codeOnly, /content\['institute\.favicon'\]/,
+    'the favicon is the mark on its own');
+  assert.match(codeOnly, /institute\.favicon'\][\s\S]{0,60}institute\.logo'\]/,
+    'falling back to the full logo for a tenant that has no favicon set');
+});
+
+test('the menu starts straight after the mark', () => {
+  // A divider between the brand and the first group was costing width in the
+  // one place there is none to spare.
+  const bar = codeOnly.slice(codeOnly.indexOf('{/* Brand'), codeOnly.indexOf('Group nav buttons'));
+  assert.ok(!/w-px h-5 bg-gray-200/.test(bar),
+    'nothing between the mark and the first group');
+});
+
+test('the two longest labels are shortened in the bar only', () => {
+  // «استبدل كلمه خدمه ب خ وكمله الموارد ب م» — in the bar. The dropdown that
+  // opens underneath has room, and «خ العملاء» as a panel heading reads like a
+  // typo, so the full name stays there.
+  const nav = read('admin/pages/dashboard/navigation.tsx');
+  assert.match(nav, /label: 'خدمة العملاء',[\s\S]{0,300}short: 'خ العملاء'/);
+  assert.match(nav, /label: 'الموارد البشرية',[\s\S]{0,80}short: 'م البشرية'/);
+  assert.match(codeOnly, /group\.short \|\| group\.label/, 'the bar prefers the short one');
+  assert.match(codeOnly, /\{group\.label\}/, 'and the dropdown header keeps the full one');
 });
