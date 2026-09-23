@@ -9,6 +9,8 @@ const { getNextClientCode } = require('../lib/mappers');
 const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
 const { requireAuth, requireAdmin, requirePermission } = require('../middleware/auth');
 const { isHtmlResponse, fetchCsvFollowRedirects, syncAllConfiguredSheets } = require('../lib/sheets');
+const { createRepRotation, listDistributableReps } = require('../lib/leadAssignment');
+const { toIdentity } = require('../lib/phoneNumber');
 
 const validSheetId = (value) => /^[A-Za-z0-9_-]{20,120}$/.test(String(value || ''));
 const validGid = (value) => value == null || value === '' || /^\d{1,20}$/.test(String(value));
@@ -84,16 +86,16 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
       return fuzzy ? fuzzy.id : null;
     };
 
-    // Get sales reps for auto-assign
-    const [reps] = await pool.execute(
-      `SELECT id, name FROM staff WHERE tenant_id=? AND role='SALES' AND is_active=1 AND deleted_at IS NULL ORDER BY name ASC`,
-      [req.tenantId]
-    );
-    // RR index stored in site_config
-    let rrRaw = 0;
-    if (autoAssign === 'rr' && reps.length > 0) {
-      rrRaw = parseInt(await getTenantSetting('crm_rr_index', { tenantId: req.tenantId, fallback: 0 }), 10) || 0;
-    }
+    // Only reps switched on in the CRM "التوزيع" screen (lib/leadAssignment.js).
+    const reps = autoAssign === 'none' ? [] : await listDistributableReps(req.tenantId);
+    const rrStart = autoAssign === 'rr' && reps.length > 0
+      ? parseInt(await getTenantSetting('crm_rr_index', { tenantId: req.tenantId, fallback: 0 }), 10) || 0
+      : 0;
+    const rotation = createRepRotation(reps, { mode: autoAssign, start: rrStart });
+    // Deleted (hidden) and merged leads count as already imported, or every
+    // lead an admin deletes comes straight back on the next sync.
+    const [existing] = await pool.execute('SELECT phone FROM leads WHERE tenant_id=?', [req.tenantId]);
+    const knownPhones = new Set(existing.map(row => toIdentity(row.phone)).filter(Boolean));
 
     let imported = 0, skipped = 0;
     const dataLines = lines.slice(1);
@@ -110,29 +112,14 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
       const courseId = findCourseId(courseNameRaw);
       if (!name && !phone) { skipped++; continue; }
 
-      // Skip if phone already exists in leads
       if (phone) {
-        const [dup] = await pool.execute('SELECT id FROM leads WHERE tenant_id=? AND phone=? AND hidden=0 LIMIT 1', [req.tenantId, phone]);
-        if (dup.length) { skipped++; continue; }
+        const identity = toIdentity(phone);
+        if (identity && knownPhones.has(identity)) { skipped++; continue; }
+        if (identity) knownPhones.add(identity);
       }
 
-      // Pick sales rep
-      let salesId = null, salesName = null;
-      if (reps.length > 0) {
-        if (autoAssign === 'rr') {
-          const rep = reps[rrRaw % reps.length];
-          salesId = rep.id; salesName = rep.name;
-          rrRaw++;
-        } else if (autoAssign === 'least') {
-          const [counts] = await pool.execute(
-            `SELECT assigned_sales_id, COUNT(*) as cnt FROM leads WHERE tenant_id=? AND hidden=0 AND assigned_sales_id IS NOT NULL GROUP BY assigned_sales_id`,
-            [req.tenantId]
-          );
-          const cm = {}; for (const c of counts) cm[c.assigned_sales_id] = Number(c.cnt);
-          const sorted = [...reps].sort((a, b) => (cm[a.id] || 0) - (cm[b.id] || 0));
-          salesId = sorted[0].id; salesName = sorted[0].name;
-        }
-      }
+      const rep = rotation.next();
+      const salesId = rep?.id || null, salesName = rep?.name || null;
 
       // Get sequential client code
       let code = null;
@@ -158,7 +145,7 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
 
     // Persist updated RR index
     if (autoAssign === 'rr' && reps.length > 0) {
-      await setTenantSetting('crm_rr_index', rrRaw, {
+      await setTenantSetting('crm_rr_index', rotation.index, {
         tenantId: req.tenantId,
         actorId: req.user?.uid || req.user?.email || null,
       });

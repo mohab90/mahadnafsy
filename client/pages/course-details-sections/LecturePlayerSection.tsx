@@ -2,6 +2,7 @@ import React from 'react';
 import { Lock } from 'lucide-react';
 import type { CourseChapterItem, CourseLectureItem } from '../../types';
 import { cdnImg } from '../../lib/img';
+import { decodeLectureUrl, isFramedLectureUrl } from '../../lib/lectureMedia';
 
 type LockedLecture = CourseLectureItem & { locked: boolean };
 
@@ -82,9 +83,10 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
                                 <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin mb-3"></div>
                                 <p className="text-sm">جاري تحميل الفيديو...</p>
                             </div>
-                        ) : (resolvedLectureUrl || '').includes('youtube.com') || (resolvedLectureUrl || '').includes('youtu.be') || (resolvedLectureUrl || '').startsWith('enc:') || (resolvedLectureUrl || '').includes('kind=embed') ? (
+                        ) : isFramedLectureUrl(resolvedLectureUrl) ? (
                             <div className="relative w-full h-full">
                               <iframe
+                                key={selectedLecture.id}
                                 src={getEmbedUrl(resolvedLectureUrl)}
                                 className="w-full h-full"
                                 allow="autoplay; encrypted-media; fullscreen"
@@ -111,7 +113,7 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
                               </div>
                             </div>
                         ) : (
-                            <video className="w-full h-full" controls src={resolvedLectureUrl} />
+                            <video key={selectedLecture.id} className="w-full h-full" controls src={decodeLectureUrl(resolvedLectureUrl)} />
                         )
                     ) : (
                         <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-5 relative">

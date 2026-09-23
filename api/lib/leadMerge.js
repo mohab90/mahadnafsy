@@ -50,13 +50,25 @@ function duplicateGroups(rows) {
   });
 }
 
+// Reads every visible lead, a page at a time. This used to stop at the oldest
+// 10,000 — with ~14k leads, a repeat among the newer ones was never detected,
+// which is most of what the sheet importer and web forms create.
 async function findLeadDuplicateGroups(tenantId, db = pool) {
-  const [rows] = await db.query(
-    `SELECT id,name,email,phone,status,score,client_code,created_at
-       FROM leads WHERE tenant_id=? AND hidden=0 AND merged_into_lead_id IS NULL
-      ORDER BY created_at ASC LIMIT 10000`,
-    [tenantId]
-  );
+  const rows = [];
+  const PAGE = 5000;
+  let cursor = null;
+  for (;;) {
+    const [page] = await db.query(
+      `SELECT id,name,email,phone,status,score,client_code,created_at
+         FROM leads WHERE tenant_id=? AND hidden=0 AND merged_into_lead_id IS NULL
+          ${cursor ? 'AND (created_at > ? OR (created_at = ? AND id > ?))' : ''}
+        ORDER BY created_at ASC, id ASC LIMIT ?`,
+      cursor ? [tenantId, cursor.created_at, cursor.created_at, cursor.id, PAGE] : [tenantId, PAGE]
+    );
+    rows.push(...page);
+    if (page.length < PAGE) break;
+    cursor = page[page.length - 1];
+  }
   return duplicateGroups(rows);
 }
 

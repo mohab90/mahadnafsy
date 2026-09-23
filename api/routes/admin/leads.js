@@ -15,7 +15,8 @@ const { COURSE_COLS, mapCourse, getNextClientCode } = require('../../lib/mappers
 const { createNotification } = require('../../lib/notification');
 const { logLeadEvent, logLeadEventStrict } = require('../../lib/crm');
 const { normalizeLeadStatus, transitionLead } = require('../../lib/leadState');
-const { getNextSalesRep } = require('../../lib/leadAssignment');
+const { createRepRotation, getNextSalesRep, listDistributableReps } = require('../../lib/leadAssignment');
+const { DEFAULT_ARCHIVE_SOURCE, excludeArchiveSourcesSql } = require('../../lib/leadArchive');
 const { appendLeadInteraction, queueLeadWhatsAppBatch } = require('../../lib/leadInteractions');
 const { grantCourseEntitlement } = require('../../lib/entitlements');
 const { leadScope, branchesFromScope } = require('../../lib/leadAccess');
@@ -551,14 +552,11 @@ router.post('/api/admin/leads/bulk-assign', requireAuth, requireAdminOrStaff, re
     conn = await pool.getConnection();
     await conn.beginTransaction();
     transactionStarted = true;
-    // Get all active sales reps
-    const [reps] = await conn.query(
-      `SELECT id, name FROM staff WHERE tenant_id=? AND role='SALES' AND is_active=1 AND deleted_at IS NULL ORDER BY name ASC`,
-      [req.tenantId]
-    );
+    // Only the reps switched on in the CRM "التوزيع" screen.
+    const reps = await listDistributableReps(req.tenantId, conn);
     if (!reps.length) {
       await conn.rollback(); transactionStarted = false;
-      return res.status(400).json({ error: 'لا يوجد مندوبو مبيعات نشطون' });
+      return res.status(400).json({ error: 'لا يوجد مندوب مبيعات مفعّل للتوزيع' });
     }
 
     // Get unassigned leads (excluding converted/lost/hidden)
@@ -569,12 +567,13 @@ router.post('/api/admin/leads/bulk-assign', requireAuth, requireAdminOrStaff, re
       await conn.rollback(); transactionStarted = false;
       return res.status(403).json({ error: 'Lead assignment is outside your data scope' });
     }
+    const archive = excludeArchiveSourcesSql('l.source');
     const [unassigned] = await conn.query(
       `SELECT l.id FROM leads l
         WHERE l.tenant_id=? AND (l.assigned_sales_id IS NULL OR l.assigned_sales_id = '')
-          AND l.status IN (${placeholders}) AND l.hidden=0${accessScope.sql}
+          AND l.status IN (${placeholders}) AND l.hidden=0${accessScope.sql}${archive.sql}
         FOR UPDATE`,
-      [req.tenantId, ...statusIn, ...accessScope.params]
+      [req.tenantId, ...statusIn, ...accessScope.params, ...archive.params]
     );
 
     if (!unassigned.length) {
@@ -583,10 +582,12 @@ router.post('/api/admin/leads/bulk-assign', requireAuth, requireAdminOrStaff, re
     }
 
     const updates = [];
-    unassigned.forEach((lead, i) => {
-      const rep = reps[i % reps.length];
+    const rotation = createRepRotation(reps);
+    for (const lead of unassigned) {
+      const rep = rotation.next();
+      if (!rep) break;
       updates.push({ id: lead.id, salesId: rep.id, salesName: rep.name });
-    });
+    }
 
     // Batch update via CASE WHEN for efficiency
     const BATCH = 500;
@@ -613,7 +614,7 @@ router.post('/api/admin/leads/bulk-assign', requireAuth, requireAdminOrStaff, re
     await conn.commit();
     transactionStarted = false;
 
-    res.json({ assigned: updates.length, unassigned: 0, reps: reps.length, message: `تم توزيع ${updates.length} ليد على ${reps.length} مندوب` });
+    res.json({ assigned: updates.length, unassigned: unassigned.length - updates.length, reps: reps.length, message: `تم توزيع ${updates.length} ليد على ${reps.length} مندوب` });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[bulk-assign]', e.message); sendRouteError(res, e);
@@ -693,18 +694,33 @@ router.post('/api/admin/leads/unmerge', requireAuth, requireAdmin, requirePermis
 router.post('/api/admin/leads/dedup-cleanup', requireAuth, requireAdmin, async (req, res) => {
   try {
     if (req.body?.legacyArchiveOnly !== true) {
-      const groups = (await findLeadDuplicateGroups(req.tenantId)).slice(0, 100);
-      let merged = 0;
+      // Merges (never deletes) every duplicate group — same phone identity or
+      // same email — into its best-ranked lead, each with its own audit row so
+      // it can be undone from "سجل الدمج". It used to stop after 100 groups.
+      // Requests are cut off at 45s, so work stops at ~35s and reports what is
+      // left; the caller simply calls again until `remaining` is 0.
+      const deadline = Date.now() + 35000;
+      const groups = await findLeadDuplicateGroups(req.tenantId);
+      const actorName = req.user?.email || req.staffRecord?.name || 'admin';
+      let merged = 0, done = 0, failed = 0;
       for (const group of groups) {
-        const result = await mergeLeads({
-          tenantId: req.tenantId,
-          targetId: group.targetId,
-          sourceIds: group.leads.map(lead => lead.id).filter(id => id !== group.targetId),
-          actor: req.user?.email || req.staffRecord?.name || 'admin',
-        });
-        merged += result.merged;
+        if (Date.now() > deadline) break;
+        const sourceIds = group.leads.map(lead => lead.id).filter(id => id !== group.targetId);
+        try {
+          for (let i = 0; i < sourceIds.length; i += 100) {
+            const result = await mergeLeads({
+              tenantId: req.tenantId, targetId: group.targetId,
+              sourceIds: sourceIds.slice(i, i + 100), actor: actorName,
+            });
+            merged += result.merged;
+          }
+        } catch (error) {
+          failed += 1;
+          logger.warn('[dedup-cleanup] group failed', { targetId: group.targetId, error: error.message });
+        }
+        done += 1;
       }
-      return res.json({ ok: true, merged, groups: groups.length, deleted: 0 });
+      return res.json({ ok: true, merged, groups: done, failed, remaining: groups.length - done, deleted: 0 });
     }
     const normPhone = (p) => (p || '').replace(/\D/g, '').replace(/^00/, '').replace(/^20/, '').replace(/^0/, '');
 
@@ -751,6 +767,52 @@ router.post('/api/admin/leads/dedup-cleanup', requireAuth, requireAdmin, async (
 
     res.json({ ok: true, deleted: ids.length });
   } catch (e) { logger.error('[dedup-cleanup]', e.message); sendRouteError(res, e); }
+});
+
+// POST /api/admin/leads/move-to-archive — move the unassigned live pool into
+// the "محلي قديم" archive tab.
+// body: { createdBefore?: 'YYYY-MM-DD', dryRun?: boolean }
+//
+// The archive is a *source* ("محلي قديم", see lib/leadArchive.js), and bulk
+// historical data that came in under any other source — thousands of old
+// Google-Sheets rows, for instance — sat in "محلي جديد" and the main table
+// with no way to put it away short of editing each lead. Nothing is deleted:
+// the rows keep every field, their previous source is kept in
+// crm_json.archivedFromSource, and they stay distributable from the archive tab.
+router.post('/api/admin/leads/move-to-archive', requireAuth, requireAdmin, requirePermission('manage_leads'), bulkOperationLimiter, async (req, res) => {
+  try {
+    const { createdBefore, dryRun } = req.body || {};
+    if (createdBefore != null && createdBefore !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(String(createdBefore))) {
+      return res.status(400).json({ error: 'createdBefore must be YYYY-MM-DD' });
+    }
+    const archive = excludeArchiveSourcesSql('source');
+    let unassignedPool = `hidden=0 AND (assigned_sales_id IS NULL OR assigned_sales_id='')
+      AND status NOT IN ('converted','lost')${archive.sql}`;
+    const params = [...archive.params];
+    if (createdBefore) { unassignedPool += ' AND created_at < ?'; params.push(createdBefore); }
+
+    const [rows] = await pool.query(`SELECT id FROM leads WHERE tenant_id=? AND ${unassignedPool}`, [req.tenantId, ...params]);
+    if (dryRun) return res.json({ ok: true, dryRun: true, matched: rows.length });
+
+    let moved = 0;
+    for (let i = 0; i < rows.length; i += 1000) {
+      const ids = rows.slice(i, i + 1000).map(row => row.id);
+      // Re-checks the same conditions, so a lead assigned or converted since
+      // the SELECT above is left alone.
+      const [result] = await pool.query(
+        `UPDATE leads
+            SET crm_json = CASE WHEN JSON_VALID(crm_json)
+                  THEN JSON_SET(crm_json, '$.archivedFromSource', source)
+                  ELSE JSON_OBJECT('archivedFromSource', source) END,
+                source = ?, updated_at = NOW()
+          WHERE tenant_id=? AND ${unassignedPool} AND id IN (${ids.map(() => '?').join(',')})`,
+        [DEFAULT_ARCHIVE_SOURCE, req.tenantId, ...params, ...ids]
+      );
+      moved += Number(result.affectedRows || 0);
+    }
+    logger.info('[move-to-archive]', { tenantId: req.tenantId, moved, createdBefore: createdBefore || null, actor: req.user?.email || null });
+    res.json({ ok: true, moved });
+  } catch (e) { logger.error('[move-to-archive]', e.message); sendRouteError(res, e); }
 });
 
 // GET /api/admin/leads/:id/timeline

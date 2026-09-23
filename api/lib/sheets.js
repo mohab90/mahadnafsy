@@ -4,6 +4,8 @@ const https = require('https');
 const { pool } = require('./db');
 const { appendLeadInteraction } = require('./leadInteractions');
 const { getNextClientCode } = require('./mappers');
+const { createRepRotation, listDistributableReps } = require('./leadAssignment');
+const { toIdentity } = require('./phoneNumber');
 const { getTenantSetting, setTenantSetting } = require('./tenantSettings');
 const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 
@@ -117,17 +119,19 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT) {
           const minOverlap = Math.max(2, Math.ceil(qw.length * 0.5));
           return bestScore>=minOverlap?bestId:null;
         };
-        const [reps] = await pool.execute(
-          `SELECT id, name FROM staff WHERE tenant_id=? AND role='SALES' AND is_active=1 AND deleted_at IS NULL ORDER BY name ASC`,
-          [tenantId]
-        );
-        let rrRaw = 0;
-        if (autoAssign === 'rr' && reps.length > 0) {
-          rrRaw = parseInt(await getTenantSetting('crm_rr_index', { tenantId, fallback: 0 }), 10) || 0;
-        }
-        // Pre-load existing phones AND names for fast dedup
-        const [existingPh] = await pool.execute('SELECT phone, name FROM leads WHERE tenant_id=? AND hidden=0', [tenantId]);
-        const phSet   = new Set(existingPh.map(r=>(r.phone||'').replace(/[\s-]/g,'')).filter(Boolean));
+        // Only reps switched on in the CRM "التوزيع" screen (lib/leadAssignment.js).
+        const reps = autoAssign === 'none' ? [] : await listDistributableReps(tenantId);
+        const rrStart = autoAssign === 'rr' && reps.length > 0
+          ? parseInt(await getTenantSetting('crm_rr_index', { tenantId, fallback: 0 }), 10) || 0
+          : 0;
+        const rotation = createRepRotation(reps, { mode: autoAssign, start: rrStart });
+        // Every lead the tenant has ever held counts as "already imported" —
+        // including deleted (hidden) and merged ones. Checking only visible
+        // leads meant each lead an admin deleted was re-imported from the sheet
+        // on the next 15-minute sync. Phones are compared by identity
+        // (lib/phoneNumber.js) so "+20 10…" in the sheet matches "010…" stored.
+        const [existingPh] = await pool.execute('SELECT phone, name FROM leads WHERE tenant_id=?', [tenantId]);
+        const phSet   = new Set(existingPh.map(r => toIdentity(r.phone)).filter(Boolean));
         const nameSet = new Set(existingPh.map(r=>(r.name||'').trim().toLowerCase()).filter(Boolean));
         const dataLines = lines.slice(1);
         for (let i = 0; i < dataLines.length; i++) {
@@ -144,7 +148,7 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT) {
           if (!rawName.trim() && !phone.trim()) { totalSkipped++; continue; }
           const isLikelyCourse = rawName.includes('_') && (/[\u0621-\u064a]/.test(rawName) || rawName.length > 30);
           const name = (!rawName || isLikelyCourse) ? (phone || rawName || `lead-${i}`) : rawName;
-          const normPhone = phone.replace(/[\s-]/g,'');
+          const normPhone = toIdentity(phone);
           if (normPhone && phSet.has(normPhone)) { totalSkipped++; continue; }
           // If no phone, dedup by exact name match (prevents re-importing on server restart)
           if (!normPhone && name && nameSet.has(name.toLowerCase())) { totalSkipped++; continue; }
@@ -158,11 +162,8 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT) {
           if (rawCourse || (isLikelyCourse && rawName)) noteParts.push(`الكورس: ${matchedCourseTitle || rawCourse || rawName}`);
           if (rawNotes)  noteParts.push(rawNotes);
           const notes = noteParts.join(' | ') || null;
-          let salesId = null, salesName = null;
-          if (reps.length > 0) {
-            if (autoAssign === 'rr') { const rep = reps[rrRaw % reps.length]; salesId = rep.id; salesName = rep.name; rrRaw++; }
-            else if (autoAssign === 'least') { const [counts] = await pool.execute(`SELECT assigned_sales_id, COUNT(*) as cnt FROM leads WHERE tenant_id=? AND hidden=0 AND assigned_sales_id IS NOT NULL GROUP BY assigned_sales_id`, [tenantId]); const cm = {}; for (const c of counts) cm[c.assigned_sales_id]=Number(c.cnt); const sorted=[...reps].sort((a,b)=>(cm[a.id]||0)-(cm[b.id]||0)); salesId=sorted[0].id; salesName=sorted[0].name; }
-          }
+          const rep = rotation.next();
+          const salesId = rep?.id || null, salesName = rep?.name || null;
           let code = null;
           try { const conn2 = await pool.getConnection(); try { code = await getNextClientCode(conn2); } finally { conn2.release(); } } catch(_){}
           const crmJson = JSON.stringify({ assignedSalesId: salesId, assignedSalesName: salesName, interestedCourseIds: courseId ? [courseId] : [], rawBranch: rawBranch || null });
@@ -184,7 +185,7 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT) {
           totalImported++;
         }
         if (autoAssign === 'rr' && reps.length > 0) {
-          await setTenantSetting('crm_rr_index', rrRaw, { tenantId });
+          await setTenantSetting('crm_rr_index', rotation.index, { tenantId });
         }
         } // end gidList loop
       } catch(sheetErr) { logger.error('[gsheet-sync-all] sheet error:', sheetErr.message); }

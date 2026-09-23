@@ -794,8 +794,13 @@ export const mysqlAdmin = {
     ),
   /** Delete duplicate leads: leads matching subscriber phones + leads with duplicate phones (keep oldest) */
   dedupLeads: () =>
-    apiFetch<{ ok: boolean; deleted: number }>(
+    apiFetch<{ ok: boolean; merged: number; groups: number; failed: number; remaining: number; deleted: number }>(
       '/admin/leads/dedup-cleanup', { method: 'POST', body: '{}' }, A
+    ),
+  /** Move the unassigned live pool (optionally only leads created before a date) into "محلي قديم". */
+  moveLeadsToArchive: (options: { createdBefore?: string; dryRun?: boolean } = {}) =>
+    apiFetch<{ ok: boolean; matched?: number; moved?: number }>(
+      '/admin/leads/move-to-archive', { method: 'POST', body: JSON.stringify(options) }, A
     ),
   /** Comprehensive fix: assign missing codes, merge phone-duplicate leads, merge email-duplicate subscribers, fix cross-table duplicate codes */
   fixAllCodes: () =>

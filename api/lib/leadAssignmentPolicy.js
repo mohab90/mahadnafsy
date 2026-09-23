@@ -14,6 +14,7 @@ async function listAssignmentMembers(tenantId, db = pool) {
             p.is_available AS isAvailable,p.last_assigned_at AS lastAssignedAt
        FROM crm_assignment_members p
        JOIN staff s ON s.id=p.staff_id AND s.tenant_id=p.tenant_id
+        AND s.is_active=1 AND s.deleted_at IS NULL AND UPPER(s.role)='SALES'
       WHERE p.tenant_id=? ORDER BY p.team_key,p.branch_key,s.name`,
     [tenantId]
   );

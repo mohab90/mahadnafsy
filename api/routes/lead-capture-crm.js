@@ -15,7 +15,8 @@ const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = re
 const { publicLimiter } = require('../middleware/rateLimits');
 const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
 const { logLeadEvent } = require('../lib/crm');
-const { getNextSalesRep } = require('../lib/leadAssignment');
+const { getNextSalesRep, listDistributableReps } = require('../lib/leadAssignment');
+const { excludeArchiveSourcesSql } = require('../lib/leadArchive');
 const { resolveClientContext } = require('../lib/clientContext');
 const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { phoneIdentityClause } = require('../lib/leadMatching');
@@ -207,20 +208,23 @@ router.post('/api/admin/leads/distribute', requireAuth, requireAdmin, async (req
     if (Number(lock?.acquired) !== 1) return res.status(409).json({ error: 'Lead distribution is already running' });
     await conn.beginTransaction();
     transactionStarted = true;
+    // Archive rows ("محلي قديم" …) are distributed by hand from their own tab;
+    // this button is for the live pool the "محلي جديد" tab shows.
+    const archive = excludeArchiveSourcesSql('source');
     const whereClause = mode === 'all'
-      ? `WHERE hidden=0 AND tenant_id=? AND status NOT IN ('converted','lost')`
-      : `WHERE hidden=0 AND tenant_id=? AND assigned_sales_id IS NULL AND status NOT IN ('converted','lost')`;
+      ? `WHERE hidden=0 AND tenant_id=? AND status NOT IN ('converted','lost')${archive.sql}`
+      : `WHERE hidden=0 AND tenant_id=? AND assigned_sales_id IS NULL AND status NOT IN ('converted','lost')${archive.sql}`;
     const [targets] = await conn.execute(
       `SELECT id FROM leads ${whereClause} ORDER BY created_at ASC FOR UPDATE`,
-      [tenantId]
+      [tenantId, ...archive.params]
     );
-    const [reps] = await conn.execute(
-      `SELECT id, name FROM staff WHERE tenant_id=? AND role IN ('SALES','MANAGER') AND is_active=1 ORDER BY name ASC`,
-      [tenantId]
-    );
+    // Same eligibility as every other distributor: the reps switched on in the
+    // CRM "التوزيع" screen. This used to take every active SALES *and MANAGER*
+    // straight from the staff table.
+    const reps = await listDistributableReps(tenantId, conn);
     if (!reps.length) {
       await conn.rollback(); transactionStarted = false;
-      return res.json({ ok: false, assigned: 0, reason: 'No sales reps found' });
+      return res.status(409).json({ ok: false, assigned: 0, error: 'لا يوجد مندوب مبيعات مفعّل للتوزيع — فعّله من إعدادات العملاء المحتملين ← التوزيع' });
     }
     if (!targets.length) {
       await conn.rollback(); transactionStarted = false;
@@ -237,6 +241,9 @@ router.post('/api/admin/leads/distribute', requireAuth, requireAdmin, async (req
       rrIdx++;
       if (slot === reps.length) continue;
       const rep = reps[slot];
+      // A rep who reaches their cap mid-batch leaves the lead for manual placement.
+      if (rep.maxOpenLeads != null && rep.activeLeads >= rep.maxOpenLeads) continue;
+      rep.activeLeads += 1;
       await conn.execute(
         `UPDATE leads SET assigned_sales_id=?, assigned_sales_name=? WHERE id=? AND tenant_id=?`,
         [rep.id, rep.name, targets[i].id, tenantId]

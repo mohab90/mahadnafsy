@@ -30,28 +30,23 @@ type AssignmentMember = {
   weight: number;
   maxOpenLeads: number | null;
   isAvailable: boolean;
+  /** Not saved on this screen yet — receives no leads until switched on and saved. */
+  isNew?: boolean;
 };
 
 const DEFAULT_SOURCES = [
   'واتساب', 'فيسبوك', 'إنستغرام', 'توصية', 'الموقع', 'شات الـAI', 'جوجل', 'تسجيل دخول', 'Google Sheet', 'أخرى',
 ];
 
+// No seed sheets. Two hardcoded tabs used to be pre-filled here and merged back
+// into the list every time this modal opened, so a sheet the admin deleted
+// reappeared, and pressing "حفظ" for any other reason saved it again — its
+// leads then came back on the next sync.
 export const DEFAULT_CRM_SETTINGS: CrmSettings = {
   leadSources: DEFAULT_SOURCES,
   autoAssign: 'rr',
-  sheets: [
-    { id: 'gs-default', name: 'الشيت الرئيسي', sheetId: '1llDstW3cyvlSTgaHLaKQYiIHZ0dui9QwuszMWLvqNgA', gid: '1545487801', autoSync: true },
-    { id: 'gs-mentalhealth', name: 'الصحة النفسية', sheetId: '1llDstW3cyvlSTgaHLaKQYiIHZ0dui9QwuszMWLvqNgA', gid: '1083686129', autoSync: true, defaultCourse: 'الصحة النفسية' },
-  ],
+  sheets: [],
 };
-
-function mergeDefaultSheets(savedSheets: GSheet[]): GSheet[] {
-  const byTab = new Set(savedSheets.map(sheet => `${sheet.sheetId}:${sheet.gid || ''}`));
-  const missingDefaults = DEFAULT_CRM_SETTINGS.sheets
-    .filter(sheet => !byTab.has(`${sheet.sheetId}:${sheet.gid || ''}`))
-    .map(sheet => ({ ...sheet, autoSync: false }));
-  return [...savedSheets, ...missingDefaults];
-}
 
 export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [], onSynced }: {
   onClose: () => void;
@@ -81,12 +76,14 @@ export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [
     ]).then(([data, pipelineData, assignmentData]) => {
       if (data && Object.keys(data).length > 0) {
         const d = data as Partial<CrmSettings & { gsheetId?: string; gsheetGid?: string }>;
-        const savedSheets: GSheet[] = Array.isArray(d.sheets) && d.sheets.length > 0
+        // A saved list is the truth even when it is empty — that is how the
+        // admin says "no sheets". Only the pre-list single-sheet format is
+        // carried forward.
+        const sheets: GSheet[] = Array.isArray(d.sheets)
           ? d.sheets
           : d.gsheetId
             ? [{ id: 'gs-default', name: 'الشيت الرئيسي', sheetId: d.gsheetId, gid: d.gsheetGid || '', autoSync: true }]
-            : DEFAULT_CRM_SETTINGS.sheets;
-        const sheets = mergeDefaultSheets(savedSheets);
+            : [];
         setSettings({
           leadSources: d.leadSources?.length ? d.leadSources : DEFAULT_SOURCES,
           autoAssign: d.autoAssign || 'rr',
@@ -94,11 +91,22 @@ export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [
         });
       }
       setPipeline(pipelineData.stages || []);
-      const savedMembers = assignmentData.members as unknown as AssignmentMember[];
-      setAssignmentMembers(savedMembers.length ? savedMembers : salesReps.map(rep => ({
+      const activeRepIds = new Set(salesReps.map(rep => rep.id));
+      // A saved row for someone who is no longer an active rep would make the
+      // whole save fail ("Active sales staff not found"), so it is dropped.
+      const savedMembers = (assignmentData.members as unknown as AssignmentMember[])
+        .filter(member => activeRepIds.has(member.staffId));
+      // Once the screen has been saved, only reps listed on it receive leads
+      // (api/lib/leadAssignment.js). A rep hired since then is listed here
+      // switched off, so the admin can see them and decide — before, they were
+      // missing from this list while still receiving leads.
+      const listed = new Set(savedMembers.map(member => member.staffId));
+      const configured = savedMembers.length > 0;
+      const unlisted = salesReps.filter(rep => !listed.has(rep.id)).map(rep => ({
         staffId: rep.id, staffName: rep.name, branchKey: '*', teamKey: 'sales',
-        weight: 1, maxOpenLeads: null, isAvailable: true,
-      })));
+        weight: 1, maxOpenLeads: null, isAvailable: !configured, isNew: configured,
+      }));
+      setAssignmentMembers([...savedMembers, ...unlisted]);
       setLoading(false);
     }).catch(() => setLoading(false));
     // Mount-only on purpose. salesReps is read here just to seed the default
@@ -238,10 +246,14 @@ export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [
               {assignmentMembers.length > 0 && (
                 <div className="space-y-2 border-t border-gray-100 pt-4">
                   <p className="text-xs font-bold text-gray-700">سياسة أعضاء فريق المبيعات</p>
+                  <p className="text-[11px] text-gray-500">التوزيع التلقائي (الشيتات، فيسبوك، التسجيلات، زر «توزيع تلقائي») بيروح بس للي عليه علامة «متاح للتوزيع» هنا.</p>
                   {assignmentMembers.map((member, index) => (
                     <div key={member.id || `${member.staffId}-${index}`} className="grid grid-cols-2 gap-2 rounded-xl border border-gray-200 p-3 text-xs">
                       <div className="col-span-2 flex items-center justify-between">
-                        <strong>{member.staffName}</strong>
+                        <strong className="flex items-center gap-1.5">
+                          {member.staffName}
+                          {member.isNew && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-700">جديد — لا يستلم ليدز حتى تفعّله وتحفظ</span>}
+                        </strong>
                         <label className="flex items-center gap-1">
                           <input type="checkbox" checked={member.isAvailable} onChange={e => setAssignmentMembers(rows => rows.map((row, i) => i === index ? { ...row, isAvailable: e.target.checked } : row))} />
                           متاح للتوزيع

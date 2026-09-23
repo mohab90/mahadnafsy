@@ -3,16 +3,7 @@ import { ChevronDown, ChevronUp, Lock, NotebookPen, Play, X } from 'lucide-react
 import type HlsType from 'hls.js';
 import { mysqlClient } from '../lib/mysqlapi';
 import { useSiteData } from '../context/SiteDataContext';
-
-const _vk = (import.meta.env.VITE_VIDEO_KEY as string) || '';
-const deobfV2 = (raw: string): string => {
-  if (!raw || !raw.startsWith('enc:') || !_vk) return raw;
-  try {
-    return atob(raw.slice(4)).split('').map((c, i) =>
-      String.fromCharCode(c.charCodeAt(0) ^ _vk.charCodeAt(i % _vk.length))
-    ).join('');
-  } catch { return raw; }
-};
+import { decodeLectureUrl, isFramedLectureUrl, isHlsLectureUrl, toLectureEmbedUrl } from '../lib/lectureMedia';
 
 /* ─── HLS-capable video player ───────────────────────────────────────────── */
 interface HlsVideoPlayerProps {
@@ -39,7 +30,7 @@ const HlsVideoPlayer: React.FC<HlsVideoPlayerProps> = ({ src, startTime = 0, onT
       }, { once: true });
     };
 
-    const isHls = src.includes('.m3u8') || src.includes('/hls/') || src.includes('kind=hls');
+    const isHls = isHlsLectureUrl(src);
     if (isHls) {
       // hls.js (~500KB) is loaded on demand ONLY when an HLS stream actually
       // plays, so it never ships in the initial student-dashboard bundle.
@@ -305,25 +296,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
 
   const getEmbedUrl = (url: string, startSec = 0) => {
     if (!url) return '';
-    const plain = deobfV2(url);
-    if (!plain) return '';
     const start = startSec > 0 ? `&start=${Math.floor(startSec)}` : '';
     // disablekb=1 removes YouTube's keyboard shortcuts, some of which navigate
     // away from the lesson. fs=0 drops the fullscreen control, whose native
     // chrome exposes the video title (and with it a route to youtube.com).
-    const params = `?autoplay=1&controls=1&modestbranding=1&rel=0&showinfo=0&iv_load_policy=3&color=white&playsinline=1&enablejsapi=1&disablekb=1&fs=0${start}`;
-    if (plain.includes('youtube.com/watch?v=')) {
-      try { const videoId = new URL(plain).searchParams.get('v') || ''; return `https://www.youtube-nocookie.com/embed/${videoId}${params}`; } catch { /* fall through */ }
-    }
-    if (plain.includes('youtu.be/')) {
-      const videoId = plain.split('youtu.be/')[1]?.split('?')[0] || '';
-      return `https://www.youtube-nocookie.com/embed/${videoId}${params}`;
-    }
-    if (plain.includes('youtube.com/embed/')) {
-      const videoId = plain.split('embed/')[1]?.split('?')[0] || '';
-      return `https://www.youtube-nocookie.com/embed/${videoId}${params}`;
-    }
-    return plain;
+    return toLectureEmbedUrl(url, `?autoplay=1&controls=1&modestbranding=1&rel=0&showinfo=0&iv_load_policy=3&color=white&playsinline=1&enablejsapi=1&disablekb=1&fs=0${start}`);
   };
 
   const grouped =
@@ -374,7 +351,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
                 <div className="w-8 h-8 border-2 border-gray-500 border-t-white rounded-full animate-spin mx-auto mb-3"></div>
                 <p className="text-sm">جاري تحميل الفيديو...</p>
               </div>
-            ) : resolvedUrl.includes('youtube') || resolvedUrl.includes('youtu.be') || resolvedUrl.startsWith('enc:') || resolvedUrl.includes('kind=embed') ? (
+            ) : isFramedLectureUrl(resolvedUrl) ? (
               /* The embed still renders YouTube's own title bar across the top on
                  hover, and that title (and the logo beside it) link out to
                  youtube.com. The strip below sits over that band and swallows the
@@ -406,7 +383,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
             ) : (
               <HlsVideoPlayer
                 key={selected.id}
-                src={deobfV2(resolvedUrl)}
+                src={decodeLectureUrl(resolvedUrl)}
                 startTime={getSavedTime(selected.id)}
                 onTimeUpdate={(currentTime, duration) => {
                   if (Math.floor(currentTime) % 5 === 0) saveTime(selected.id, currentTime, duration);

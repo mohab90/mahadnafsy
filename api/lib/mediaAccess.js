@@ -19,11 +19,20 @@ function decodeStoredUrl(value) {
   }
 }
 
+// Only a real media file can go in a <video> element. Anything else — YouTube,
+// Vimeo, Google Drive, Bunny's iframe player, a Zoom recording page — is a web
+// page and must be framed. This used to answer 'video' for every non-YouTube
+// link, so the student app handed a Drive/Vimeo page to <video>, which plays
+// nothing. The free first lecture was unaffected because its URL reaches the
+// browser directly and is framed there — hence "only the first video works".
+const DIRECT_MEDIA_FILE = /\.(?:mp4|m4v|webm|ogg|ogv|mov)(?:$|[?#])/;
+
 function mediaKind(value) {
   const url = decodeStoredUrl(value).toLowerCase();
   if (/youtu\.be|youtube\.com/.test(url)) return 'embed';
   if (/\.m3u8(?:$|\?)/.test(url) || url.includes('/hls/')) return 'hls';
-  return 'video';
+  if (url.startsWith('/uploads/') || DIRECT_MEDIA_FILE.test(url)) return 'video';
+  return 'embed';
 }
 
 function createMediaTicket({ tenantId, subscriberId, lectureId, ttlSeconds = 300 }) {
@@ -64,7 +73,18 @@ function playableRedirect(value) {
     if (parsed.hostname.includes('youtube.com')) {
       id = parsed.searchParams.get('v') || parsed.pathname.split('/embed/')[1]?.split('/')[0] || '';
     }
-    return id ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?controls=1&rel=0&playsinline=1` : url;
+    if (id) return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?controls=1&rel=0&playsinline=1`;
+    // vimeo.com/<id> and a Drive ".../view" link refuse to be framed; their
+    // player/preview forms are the embeddable equivalents.
+    if (/(^|\.)vimeo\.com$/.test(parsed.hostname) && parsed.hostname !== 'player.vimeo.com') {
+      const vimeoId = parsed.pathname.split('/').filter(Boolean).find(part => /^\d+$/.test(part));
+      if (vimeoId) return `https://player.vimeo.com/video/${vimeoId}`;
+    }
+    if (parsed.hostname === 'drive.google.com') {
+      const driveId = parsed.pathname.match(/\/file\/d\/([^/]+)/)?.[1] || parsed.searchParams.get('id');
+      if (driveId) return `https://drive.google.com/file/d/${encodeURIComponent(driveId)}/preview`;
+    }
+    return url;
   } catch {
     return '';
   }
