@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 
 import { useAuth } from '../../context/AuthContext';
+import { useSiteData } from '../../context/SiteDataContext';
 import MessagesBell from './MessagesBell';
 import { hasPermission } from '../../constants/permissions';
 import { NotificationsBell } from './NotificationsBell';
@@ -96,7 +97,7 @@ function CompactRoleNav({
   // drawing and every request it made came back 401, one toast each.
   const signOut = () => { logout(); navigate('/auth'); };
   return (
-    <nav className="bg-white border border-gray-200 rounded-2xl p-2 shadow-sm flex items-center gap-2 flex-wrap justify-between" dir="rtl">
+    <nav className="sticky top-3 z-40 bg-white/95 backdrop-blur border border-gray-200 rounded-2xl p-2 shadow-sm flex items-center gap-2 flex-wrap justify-between" dir="rtl">
       <div className="flex items-center gap-1.5 flex-wrap">
         {tabs.map(tab => {
           const Icon = tab.icon;
@@ -155,30 +156,56 @@ export function DashboardNavigation(props: Props) {
   } = props;
   const navigate = useNavigate();
   const { logout } = useAuth();
+  const { content } = useSiteData();
+  const logoUrl = (content['institute.logo'] || '').trim();
   // Signing out has to tell the app, not only the server. This cleared the
   // cookie and navigated, so the panel stayed "signed in": the dashboard kept
   // drawing and every request it made came back 401, one toast each.
   const signOut = () => { logout(); navigate('/auth'); };
 
+  // A group's menu is positioned once, from the button's rectangle, and drawn
+  // fixed. That was survivable while the bar scrolled away underneath it; now
+  // the bar stays put and an open menu would be left behind on the page.
+  React.useEffect(() => {
+    if (!activeDropdownGroup) return undefined;
+    const close = () => { setActiveDropdownGroup(null); setDropdownRect(null); };
+    window.addEventListener('scroll', close, { passive: true });
+    return () => window.removeEventListener('scroll', close);
+  }, [activeDropdownGroup, setActiveDropdownGroup, setDropdownRect]);
+
   return (
 <>
         {/* ── Main nav bar ── */}
         {!isSalesOnly && !isCollectionRole && !isReceptionDaqqi && !isOnlineManager && (
-          <div className="relative mb-4" dir="rtl">
+          // sticky, because the screens under this bar are long ones — the
+          // leads table, the client database, a financial report — and moving
+          // between sections meant scrolling back to the top first. top-3
+          // rather than top-0 keeps it reading as the floating pill it already
+          // looks like. z-40 and no higher: shared/ui/Modal draws its dialogs
+          // at z-50 and above, and a nav over those would cover every one.
+          <div className="sticky top-3 z-40 mb-4" dir="rtl">
             {/* Single bar */}
-            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-2xl px-3 py-2 shadow-sm">
-              {/* Brand */}
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <div className="w-7 h-7 rounded-xl bg-primary-600 text-white grid place-items-center flex-shrink-0">
-                  <Shield size={14} />
-                </div>
-                <div>
-                  <h2 className="font-extrabold text-gray-900 text-xs leading-tight">لوحة الإدارة</h2>
-                  <button onClick={() => setActiveTab('security_center')} className="text-[9px] flex items-center gap-0.5 hover:underline cursor-pointer" title="مراقبة السيرفر">
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-emerald-600 font-bold">متصل</span>
-                  </button>
-                </div>
+            <div className="flex items-center gap-2 bg-white/95 backdrop-blur border border-gray-200 rounded-2xl px-3 py-2 shadow-sm">
+              {/* Brand — the institute's own mark and nothing else.
+                  This was a shield glyph, «لوحة الإدارة» and a pulsing «متصل»
+                  under it: three lines telling somebody already inside the
+                  panel that they were inside the panel, in the space the logo
+                  belongs in. «متصل» linked to the security centre, which keeps
+                  its own place in الإعدادات ← الأمان والصيانة. */}
+              <div className="flex items-center flex-shrink-0">
+                {logoUrl ? (
+                  <img
+                    src={logoUrl}
+                    alt={content['institute.name'] || 'معهد الدراسات النفسية'}
+                    className="h-8 w-auto max-w-[120px] object-contain"
+                  />
+                ) : (
+                  // No logo set for this tenant — an <img> with an empty src is
+                  // a broken image where the brand should be.
+                  <div className="w-7 h-7 rounded-xl bg-primary-600 text-white grid place-items-center flex-shrink-0">
+                    <Shield size={14} />
+                  </div>
+                )}
               </div>
 
               <div className="w-px h-5 bg-gray-200 flex-shrink-0 mx-0.5" />
