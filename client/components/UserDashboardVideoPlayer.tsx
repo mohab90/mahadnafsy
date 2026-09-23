@@ -5,24 +5,12 @@ import { mysqlClient } from '../lib/mysqlapi';
 import { useSiteData } from '../context/SiteDataContext';
 import { useEscapeKey } from '../../shared/ui/useEscapeKey';
 import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
-
-// The key the admin panel encodes lecture URLs with. It read VITE_VIDEO_KEY
-// alone, and that variable is defined nowhere — no client .env sets it — so the
-// key was the empty string, the guard below returned the still-encoded "enc:…"
-// text as the video source, and every one of the 2,174 lectures failed to play
-// in the student dashboard. The public course page decodes the same URLs with
-// this literal and always worked, which is why it looked like the videos were
-// there but "not uploading". The env var still wins if it is ever set, so a
-// deployment that rotates the key keeps working.
-const _vk = (import.meta.env.VITE_VIDEO_KEY as string) || '\x6d\x68\x64\x2d\x6e\x61\x66\x73\x79\x2d\x32\x30\x32\x36';
-const deobfV2 = (raw: string): string => {
-  if (!raw || !raw.startsWith('enc:') || !_vk) return raw;
-  try {
-    return atob(raw.slice(4)).split('').map((c, i) =>
-      String.fromCharCode(c.charCodeAt(0) ^ _vk.charCodeAt(i % _vk.length))
-    ).join('');
-  } catch { return raw; }
-};
+// The key this once read, VITE_VIDEO_KEY, is defined nowhere — no client .env
+// sets it — so the key was the empty string, the guard returned the still-coded
+// "enc:…" text as the video source, and every one of the 2,174 lectures failed
+// to play in the student dashboard while the public course page, which had the
+// literal, worked. Both now read the same one.
+import { revealVideoUrl, youtubeEmbedUrl } from '../lib/lectureVideo';
 
 /* ─── HLS-capable video player ───────────────────────────────────────────── */
 interface HlsVideoPlayerProps {
@@ -317,28 +305,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
-  const getEmbedUrl = (url: string, startSec = 0) => {
-    if (!url) return '';
-    const plain = deobfV2(url);
-    if (!plain) return '';
-    const start = startSec > 0 ? `&start=${Math.floor(startSec)}` : '';
-    // disablekb=1 removes YouTube's keyboard shortcuts, some of which navigate
-    // away from the lesson. fs=0 drops the fullscreen control, whose native
-    // chrome exposes the video title (and with it a route to youtube.com).
-    const params = `?autoplay=1&controls=1&modestbranding=1&rel=0&showinfo=0&iv_load_policy=3&color=white&playsinline=1&enablejsapi=1&disablekb=1&fs=0${start}`;
-    if (plain.includes('youtube.com/watch?v=')) {
-      try { const videoId = new URL(plain).searchParams.get('v') || ''; return `https://www.youtube-nocookie.com/embed/${videoId}${params}`; } catch { /* fall through */ }
-    }
-    if (plain.includes('youtu.be/')) {
-      const videoId = plain.split('youtu.be/')[1]?.split('?')[0] || '';
-      return `https://www.youtube-nocookie.com/embed/${videoId}${params}`;
-    }
-    if (plain.includes('youtube.com/embed/')) {
-      const videoId = plain.split('embed/')[1]?.split('?')[0] || '';
-      return `https://www.youtube-nocookie.com/embed/${videoId}${params}`;
-    }
-    return plain;
-  };
+  // jsApi, because this is the player that listens for progress over
+  // postMessage; it is the only one that asks for it.
+  const getEmbedUrl = (url: string, startSec = 0) =>
+    youtubeEmbedUrl(url, { autoplay: true, jsApi: true, startSeconds: startSec });
 
   const grouped =
     chapters.length > 0
@@ -425,7 +395,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
             ) : (
               <HlsVideoPlayer
                 key={selected.id}
-                src={deobfV2(resolvedUrl)}
+                src={revealVideoUrl(resolvedUrl)}
                 startTime={getSavedTime(selected.id)}
                 onTimeUpdate={(currentTime, duration) => {
                   if (Math.floor(currentTime) % 5 === 0) saveTime(selected.id, currentTime, duration);

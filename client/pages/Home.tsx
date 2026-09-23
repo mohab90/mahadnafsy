@@ -9,6 +9,7 @@ import { cdnImg } from '../lib/img';
 import { isExpiryActive } from '../../shared/cairoDate';
 import { formatPrice, isDiscounted } from '../../shared/priceFormat';
 import { useSeo } from '../lib/useSeo';
+import { youtubeEmbedUrl } from '../lib/lectureVideo';
 
 // Countdown for the 24-hour offer, from the moment the admin started it
 // (offer.timerStartedAt, set by the "إعادة ضبط المؤقت" button on the offer
@@ -65,12 +66,10 @@ const Home: React.FC = () => {
   const heroGalleryImg = galleryImages.length > 0 ? galleryImages[0] : '';
   // For sections needing multiple gallery images, spread or pick sequentially
 
-  const getEmbedUrl = (url: string): string => {
-    if (!url) return '';
-    const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{11})/);
-    if (ytMatch) return `https://www.youtube-nocookie.com/embed/${ytMatch[1]}?rel=0&modestbranding=1`;
-    return url;
-  };
+  // The institute's own film, opened from the hero. It had rel=0 and
+  // modestbranding and none of the rest, so its title bar and fullscreen chrome
+  // were still a way through to the channel.
+  const getEmbedUrl = (url: string): string => youtubeEmbedUrl(url, { autoplay: true });
 
   // Helper filters
     const bestSellingCourses = [...courses].sort((a, b) => b.students - a.students).slice(0, 6);
@@ -550,7 +549,7 @@ const Home: React.FC = () => {
           <div className="w-full max-w-4xl px-4" onClick={e => e.stopPropagation()}>
             <div className="relative aspect-video rounded-2xl overflow-hidden shadow-2xl">
               <iframe
-                src={`${getEmbedUrl(content['home.video.url'])}&autoplay=1`}
+                src={getEmbedUrl(content['home.video.url'])}
                 className="w-full h-full"
                 allow="autoplay; fullscreen; picture-in-picture"
                 allowFullScreen

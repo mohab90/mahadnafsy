@@ -2,6 +2,7 @@ import React from 'react';
 import { Play } from 'lucide-react';
 import { cdnImg } from '../../lib/img';
 import { useEscapeKey } from '../../../shared/ui/useEscapeKey';
+import { youtubeEmbedUrl } from '../../lib/lectureVideo';
 
 interface PromoVideoSectionProps {
   thumbnail: string;
@@ -9,7 +10,6 @@ interface PromoVideoSectionProps {
   content: Record<string, string>;
   showPromoModal: boolean;
   setShowPromoModal: (show: boolean) => void;
-  getEmbedUrl: (url: string) => string;
 }
 
 export const PromoVideoSection: React.FC<PromoVideoSectionProps> = ({
@@ -18,7 +18,6 @@ export const PromoVideoSection: React.FC<PromoVideoSectionProps> = ({
   content,
   showPromoModal,
   setShowPromoModal,
-  getEmbedUrl,
 }) => {
   // A lightbox is not a dialog and should not be dressed as one — but Escape
   // closes it, which it did not before: you could open the promo video and only
@@ -62,7 +61,7 @@ export const PromoVideoSection: React.FC<PromoVideoSectionProps> = ({
                       ✕ إغلاق
                   </button>
                   <iframe
-                      src={getEmbedUrl(promoVideoUrl) + '&autoplay=1'}
+                      src={youtubeEmbedUrl(promoVideoUrl, { autoplay: true })}
                       className="w-full h-full rounded-xl"
                       allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
                       allowFullScreen

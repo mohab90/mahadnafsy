@@ -2,6 +2,7 @@ import React from 'react';
 import { Lock } from 'lucide-react';
 import type { CourseChapterItem, CourseLectureItem } from '../../types';
 import { cdnImg } from '../../lib/img';
+import { youtubeEmbedUrl } from '../../lib/lectureVideo';
 
 type LockedLecture = CourseLectureItem & { locked: boolean };
 
@@ -20,7 +21,6 @@ interface LecturePlayerSectionProps {
   setLectureGateNotice: (notice: string) => void;
   authUserEmail: string | undefined;
   onLockedLectureClick: () => void;
-  getEmbedUrl: (url: string) => string;
 }
 
 export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
@@ -38,7 +38,6 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
   setLectureGateNotice,
   authUserEmail,
   onLockedLectureClick,
-  getEmbedUrl,
 }) => {
   const handleLectureClick = (lecture: LockedLecture) => {
     if (lecture.locked) {
@@ -85,7 +84,7 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
                         ) : (resolvedLectureUrl || '').includes('youtube.com') || (resolvedLectureUrl || '').includes('youtu.be') || (resolvedLectureUrl || '').startsWith('enc:') || (resolvedLectureUrl || '').includes('kind=embed') ? (
                             <div className="relative w-full h-full">
                               <iframe
-                                src={getEmbedUrl(resolvedLectureUrl)}
+                                src={youtubeEmbedUrl(resolvedLectureUrl)}
                                 className="w-full h-full"
                                 allow="autoplay; encrypted-media; fullscreen"
                                 allowFullScreen

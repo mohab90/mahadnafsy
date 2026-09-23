@@ -14,6 +14,7 @@ import { cdnImg } from '../lib/img';
 import { cairoDateOnly } from '../../shared/cairoDate';
 import type { CommunityEventItem } from '../types';
 import { useSeo } from '../lib/useSeo';
+import { youtubeEmbedUrl } from '../lib/lectureVideo';
 
 const TAG_COLORS: Record<string, string> = {
   'نقاش حالة': 'bg-blue-50 text-blue-700 border-blue-200',
@@ -106,11 +107,9 @@ const Community: React.FC = () => {
   // it could not be made true, only removed.
   const totalMembers = Number(content['community.memberCount'] || 847) + communityPosts.length;
 
-  const getEmbedUrl = (url: string) => {
-    const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{11})/);
-    if (yt) return `https://www.youtube-nocookie.com/embed/${yt[1]}?rel=0&autoplay=1`;
-    return url;
-  };
+  // A member's own video, in the feed's lightbox. Videos shared here are not
+  // the institute's lectures, but the way out of the player is the same one.
+  const getEmbedUrl = (url: string) => youtubeEmbedUrl(url, { autoplay: true });
 
   const filteredPosts = useMemo(() => {
     // Only show approved posts (or legacy posts without status) to regular users

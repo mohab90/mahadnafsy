@@ -177,44 +177,6 @@ const CourseDetails: React.FC = () => {
     // course is still resolving, then run once it loads → "Rendered more hooks than during
     // the previous render" (React #310) crash. Keep all hooks above the guard.
 
-    // --- deobfuscate stored video URL ---
-    const _vk2 = '\x6d\x68\x64\x2d\x6e\x61\x66\x73\x79\x2d\x32\x30\x32\x36';
-    const deobfV2 = (raw: string): string => {
-        if (!raw || !raw.startsWith('enc:')) return raw;
-        try {
-            return atob(raw.slice(4)).split('').map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ _vk2.charCodeAt(i % _vk2.length))).join('');
-        } catch { return raw; }
-    };
-
-    const getEmbedUrl = (url: string) => {
-        const plain = deobfV2(url);
-        if (!plain) return '';
-        // controls=1: required — YouTube blocks playback (Error 153) if controls=0
-        // modestbranding=1: minimal branding in controls bar
-        // rel=0: no related videos at end
-        // iv_load_policy=3: no annotations
-        // playsinline=1: mobile inline play
-        // NOTE: enablejsapi removed — causes Error 153 when referrer is not set
-        // disablekb=1 and fs=0 match the dashboard player: YouTube's keyboard
-        // shortcuts navigate away from the lesson, and its fullscreen chrome
-        // shows the title, which is a route to youtube.com. This player had
-        // neither, so the same lecture was less protected here than inside the
-        // platform.
-        const params = '?autoplay=0&controls=1&modestbranding=1&rel=0&showinfo=0&iv_load_policy=3&color=white&playsinline=1&disablekb=1&fs=0';
-        if (plain.includes('youtube.com/watch?v=')) {
-            const videoId = new URL(plain).searchParams.get('v') || '';
-            return `https://www.youtube-nocookie.com/embed/${videoId}${params}`;
-        }
-        if (plain.includes('youtu.be/')) {
-            const videoId = plain.split('youtu.be/')[1]?.split('?')[0] || '';
-            return `https://www.youtube-nocookie.com/embed/${videoId}${params}`;
-        }
-        if (plain.includes('youtube.com/embed/')) {
-            const videoId = plain.split('embed/')[1]?.split('?')[0] || '';
-            return `https://www.youtube-nocookie.com/embed/${videoId}${params}`;
-        }
-        return plain;
-    };
 
   const handleBuyNow = () => {
     if (!course) return;
@@ -397,7 +359,6 @@ const CourseDetails: React.FC = () => {
                     content={content}
                     showPromoModal={showPromoModal}
                     setShowPromoModal={setShowPromoModal}
-                    getEmbedUrl={getEmbedUrl}
                 />
 
                 <PainPointsAndAboutSection content={content} description={course.description} />
@@ -417,7 +378,6 @@ const CourseDetails: React.FC = () => {
                     setLectureGateNotice={setLectureGateNotice}
                     authUserEmail={authUser?.email}
                     onLockedLectureClick={() => navigate(`/checkout?type=course&id=${course.id}`)}
-                    getEmbedUrl={getEmbedUrl}
                 />
 
                 <ReviewsFaqSection
