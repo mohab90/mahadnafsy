@@ -106,15 +106,24 @@ export const saasOpsTabs = new Set<string>([
  */
 /** Sub-tabs of the leads screen that genuinely need every lead in memory.
  *
- *  The screen itself is deliberately not in `fullCrmDataTabs` any more. Its
- *  landing view is the table, which is paginated and searched on the server, and
- *  the reminder / performance / analytics panels now read server aggregates. Only
- *  These still scan the array: the pipeline board renders every card, the
- *  duplicate finder compares every pair, and the four archive-family views
- *  (localNew, dawliNew, dawliOld, archive) filter the whole table — the archive
- *  specifically lists hidden rows, which the paged fetch never returns at all.
+ *  The screen itself is not in `fullCrmDataTabs`; the reminder / performance /
+ *  analytics panels read server aggregates instead. These sub-tabs still scan
+ *  the array: the pipeline board renders every card, the duplicate finder
+ *  compares every pair, and the four archive-family views (localNew, dawliNew,
+ *  dawliOld, archive) filter the whole table — the archive specifically lists
+ *  hidden rows, which the paged fetch never returns at all.
  *
- *  LeadsTab calls loadFullCrmData() when one of these opens, so the 26,878-row
+ *  'table' is here because the claim that used to stand in this comment — that
+ *  the landing table is "paginated and searched on the server" — was not true of
+ *  the code. LeadTable slices its `rows` prop 100 at a time in the browser, and
+ *  `rows` is whatever the array holds, which on this screen was the 500-row
+ *  bootstrap page. So the table read "500 عميل — عرض 1–100" against 30,964 real
+ *  leads, and the desk could not see, search or distribute the other 30,464. One
+ *  rep alone holds 2,613. Until the table genuinely pages against the server it
+ *  has to hold the table it claims to be showing — the rule at the top of this
+ *  file: a screen computing over a partial array is wrong, and wrong is worse.
+ *
+ *  LeadsTab calls loadFullCrmData() when one of these opens, so the 30,964-row
  *  fetch happens on the screens that need it and nowhere else. */
 export const fullLeadArraySubTabs = new Set<string>([
   'pipeline',
@@ -124,6 +133,7 @@ export const fullLeadArraySubTabs = new Set<string>([
   'dawliNew',
   'dawliOld',
   'archive',
+  'table',
 ]);
 
 /**
