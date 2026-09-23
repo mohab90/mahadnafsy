@@ -85,6 +85,8 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
   const frameRef = useRef<HTMLIFrameElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Set once YouTube has said anything at all, which ends the handshake. */
+  const answered = useRef(false);
 
   const [state, setState] = useState<number>(-1);
   const [current, setCurrent] = useState(0);
@@ -100,7 +102,17 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
   /** Where the thumb is while being dragged, so the bar does not fight the user. */
   const [scrubbing, setScrubbing] = useState<number | null>(null);
 
-  const src = youtubeEmbedUrl(url, { autoplay, startSeconds, jsApi: true });
+  // A paid lecture's URL never reaches the browser: what arrives is a signed
+  // ticket, /api/media/lectures/<id>?ticket=…&kind=embed, which the server
+  // redirects to YouTube. youtubeEmbedUrl finds no video id in that and returns
+  // it untouched, which is right — the embed is built on the other side of the
+  // redirect. What it cannot carry is what the player wants, so autoplay and
+  // the resume position go as query parameters for the redirect to fold in.
+  // Without this a paid lecture always restarted from zero.
+  const ticket = /[?&]kind=embed\b/.test(url || '') && !/youtu/.test(url || '');
+  const src = ticket
+    ? `${url}${autoplay ? '&autoplay=1' : ''}${startSeconds > 0 ? `&start=${Math.floor(startSeconds)}` : ''}`
+    : youtubeEmbedUrl(url, { autoplay, startSeconds, jsApi: true });
 
   const command = useCallback((func: string, args: unknown[] = []) => {
     frameRef.current?.contentWindow?.postMessage(
@@ -122,6 +134,7 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
         data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
       } catch { return; }
       if (!data || typeof data !== 'object') return;
+      answered.current = true;
 
       const info = (data.info ?? {}) as Record<string, unknown>;
       if (data.event === 'onReady' || data.event === 'initialDelivery') listen();
@@ -151,17 +164,30 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
     return () => window.removeEventListener('message', onMessage);
   }, [listen, onEnded, onTimeUpdate]);
 
-  // A new video means a new frame, so the handshake has to happen again. The
-  // interval is for the case where onReady arrived before this component was
-  // listening, which happens on a cached frame.
+  // A new video means a new frame, so the handshake has to happen again.
+  //
+  // It repeats until the player answers rather than for a fixed few seconds,
+  // and the difference matters more than it looks. Commands go through with or
+  // without the handshake; what needs it is YouTube sending state back. So a
+  // frame that loads slowly — a paid lecture arrives through a redirect, which
+  // is a whole extra round trip — would play with the poster still sitting on
+  // top of it, because nothing ever reported that it had started. Audio
+  // running behind a play button that looks untouched is indistinguishable
+  // from «الفيديو مش شغال».
   useEffect(() => {
     setStarted(false);
     setState(-1);
     setCurrent(0);
     setDuration(0);
-    const id = setInterval(listen, 700);
-    const stop = setTimeout(() => clearInterval(id), 6000);
-    return () => { clearInterval(id); clearTimeout(stop); };
+    answered.current = false;
+    let waited = 0;
+    const id = setInterval(() => {
+      waited += 500;
+      if (answered.current || waited > 20000) { clearInterval(id); return; }
+      listen();
+    }, 500);
+    listen();
+    return () => clearInterval(id);
   }, [src, listen]);
 
   useEffect(() => {

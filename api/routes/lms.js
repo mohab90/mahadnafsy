@@ -299,7 +299,12 @@ router.get('/api/media/lectures/:lectureId', publicLimiter, async (req, res) => 
        WHERE cl.id=? AND cl.is_published=1 LIMIT 1`,
       [ticket.tenantId, ticket.tenantId, ticket.subscriberId, ticket.lectureId]
     );
-    const target = playableRedirect(lecture?.video_url);
+    // The player's own state travels on the ticket URL, because for a paid
+    // lecture the browser never holds the YouTube URL to put it in.
+    const target = playableRedirect(lecture?.video_url, {
+      start: Number(req.query.start) || 0,
+      autoplay: req.query.autoplay === '1',
+    });
     if (!target) return res.status(404).json({ error: 'Media is unavailable' });
     if (target.startsWith('/uploads/videos/')) {
       if (await streamTenantMedia(req, res, target, ticket.tenantId)) return;

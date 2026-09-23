@@ -54,7 +54,25 @@ function verifyMediaTicket(ticket, lectureId) {
   }
 }
 
-function playableRedirect(value) {
+/**
+ * The embed a paid lecture is redirected to.
+ *
+ * This is the second place that builds one of these URLs, and for a while it
+ * was the forgotten one. A free preview lecture carries its URL in the public
+ * catalogue and the browser builds the embed itself; every paid lecture comes
+ * back as a ticket and the browser only ever loads this redirect. So the
+ * parameters that matter have to be set twice — once in
+ * client/lib/lectureVideo.ts and once here — and when they were not, the paid
+ * lectures were the ones that broke: «اول فيديو بس اللى بيشتغل».
+ *
+ * controls=1 was putting YouTube's own bar back, logo and clickable title and
+ * all, on exactly the videos people pay for. And with no enablejsapi the player
+ * accepts no commands, so a page that had replaced YouTube's controls with its
+ * own could not start it at all.
+ *
+ * aPaidLecturePlaysLikeAFreeOne.test.js holds the two lists to each other.
+ */
+function playableRedirect(value, { start = 0, autoplay = false } = {}) {
   const url = decodeStoredUrl(value);
   if (!/^https?:\/\//i.test(url) && !url.startsWith('/')) return '';
   try {
@@ -64,7 +82,27 @@ function playableRedirect(value) {
     if (parsed.hostname.includes('youtube.com')) {
       id = parsed.searchParams.get('v') || parsed.pathname.split('/embed/')[1]?.split('/')[0] || '';
     }
-    return id ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?controls=1&rel=0&playsinline=1` : url;
+    if (!id) return url;
+    const params = [
+      `autoplay=${autoplay ? 1 : 0}`,
+      'controls=0',
+      'modestbranding=1',
+      'rel=0',
+      'showinfo=0',
+      'iv_load_policy=3',
+      'color=white',
+      'playsinline=1',
+      'disablekb=1',
+      'fs=0',
+      'enablejsapi=1',
+    ];
+    // Where the viewer had got to. The browser cannot put this in the URL it
+    // builds — for a paid lecture it never sees one — so it travels as a query
+    // on the ticket and is folded in here. Without it a paid lecture always
+    // restarted from zero, however much of it had been watched.
+    const resume = Math.floor(Number(start) || 0);
+    if (resume > 0) params.push(`start=${resume}`);
+    return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?${params.join('&')}`;
   } catch {
     return '';
   }
