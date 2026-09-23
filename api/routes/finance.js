@@ -1509,6 +1509,10 @@ router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdminOrStaff, r
         refundCurrency: rr.currency,
         tenantId,
         actor,
+        // A partial refund writes its own payment row, and the note on that row
+        // is where anyone reading the ledger afterwards finds out what it was.
+        // Without this it read «استرداد جزئي من دفعة <id>» and stopped there.
+        reason: decisionNote || rr.reason || null,
       }, conn);
     }
 

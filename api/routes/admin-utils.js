@@ -591,8 +591,13 @@ router.post('/api/me/refund-request', requireAuth, async (req, res) => {
       [payment_id, sub.id, tenantId]
     );
     if (!payment) return res.status(404).json({ error: 'Eligible payment not found' });
-    if (Math.abs(requestedAmount - Number(payment.amount || 0)) >= 0.01) {
-      return res.status(409).json({ error: 'Partial refunds are not enabled; select the full payment amount' });
+    // Up to the payment, not exactly it. A customer asking for part of their
+    // money back is a normal request; the desk decides what is actually
+    // returned, and applyRefundReversal records a part of it as its own
+    // negative row. This used to demand the exact amount, which made a partial
+    // refund impossible to even ask for.
+    if (requestedAmount - Number(payment.amount || 0) > 0.01) {
+      return res.status(409).json({ error: `مبلغ الاسترداد أكبر من المدفوع (${Number(payment.amount || 0)})` });
     }
     if (String(currency).toUpperCase() !== String(payment.currency).toUpperCase()) {
       return res.status(400).json({ error: 'Refund currency must match payment currency' });
@@ -650,8 +655,10 @@ router.post('/api/admin/refund-requests/by-admin', requireAuth, requireAdminOrSt
       [payment_id, subscriber_id, tenantId]
     );
     if (!payment) return res.status(404).json({ error: 'Eligible payment not found' });
-    if (Math.abs(requestedAmount - Number(payment.amount || 0)) >= 0.01) {
-      return res.status(409).json({ error: 'Partial refunds are not enabled; select one full payment' });
+    // Same rule as the customer's own request above: up to the payment, not
+    // exactly it.
+    if (requestedAmount - Number(payment.amount || 0) > 0.01) {
+      return res.status(409).json({ error: `مبلغ الاسترداد أكبر من المدفوع (${Number(payment.amount || 0)})` });
     }
     if (String(currency).toUpperCase() !== String(payment.currency).toUpperCase()) {
       return res.status(400).json({ error: 'Refund currency must match payment currency' });

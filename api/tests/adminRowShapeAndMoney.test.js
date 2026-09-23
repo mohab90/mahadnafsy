@@ -194,23 +194,27 @@ test('the payroll journal is dated in Cairo', () => {
 });
 
 // ── refunds: the screen matches what the system can do ─────────────────────
-test('approving a refund confirms the full amount instead of asking for one', () => {
-  // Both routes that open a refund request refuse an amount differing from the
-  // payment, and the reversal refuses it again — partial refunds are not
-  // enabled anywhere. The dialog nonetheless accepted anything from 1 up to the
-  // request, so every entry but the default came back a 409 after the desk had
-  // filled it in.
+//
+// These two tests used to assert the opposite of what they assert now, and the
+// pair of them is the point. Partial refunds were refused in four places — both
+// creation routes, the reversal, and the approval dialog — and the dialog had
+// been changed to stop asking for a figure that could only have one value.
+// Enabling them meant changing all four together; the whole reason a dialog can
+// ask the question again is that nothing refuses the answer any more. See
+// theDeskCanApproveAPartOfIt.test.js for the rest of that chain.
+test('approving a refund asks how much is actually going back', () => {
   const panel = codeOnly(read('../admin/pages/dashboard/tabs/financial/FinancialRefundsPanel.tsx'));
-  assert.match(panel, /الاسترداد الجزئي غير مُفعّل/);
-  assert.match(panel, /refundedAmount = requested/);
-  assert.doesNotMatch(panel, /اكتب المبلغ الذي سيُرد فعلياً/);
+  assert.doesNotMatch(panel, /الاسترداد الجزئي غير مُفعّل/, 'it is enabled now');
+  assert.doesNotMatch(panel, /refundedAmount = requested;/, 'so the amount cannot be fixed to the full one');
+  assert.match(panel, /defaultValue: String\(requested\)/, 'a full refund is still one Enter away');
 });
 
-test('and both creation routes still refuse a partial one, which is why', () => {
-  // If this ever changes, the dialog above has to change with it.
+test('and both creation routes accept up to the payment, not exactly it', () => {
   const source = codeOnly(read('routes/admin-utils.js'));
-  assert.equal((source.match(/Partial refunds are not enabled/g) || []).length, 2,
-    'both the customer and the admin route must enforce it');
+  assert.equal((source.match(/Partial refunds are not enabled/g) || []).length, 0,
+    'the refusal is gone from the customer route and the admin one');
+  assert.equal((source.match(/requestedAmount - Number\(payment\.amount \|\| 0\) > 0\.01/g) || []).length, 2,
+    'both still refuse more than was paid — that ceiling never moves');
 });
 
 // ── payroll and the exchange rate ──────────────────────────────────────────

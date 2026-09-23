@@ -116,21 +116,41 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
     let decisionNote = '';
 
     if (status === 'APPROVED') {
-      // Confirmed, not typed.
+      // Typed, because it can now be less than the whole thing.
       //
-      // This used to ask for «المبلغ الذي سيُرد فعلياً» and accept anything from
-      // 1 up to the request. Partial refunds are not enabled anywhere: both
-      // routes that open a request refuse an amount that differs from the
-      // payment, and the reversal refuses it again. So every number other than
-      // the default came back a 409 after the desk had already filled the
-      // dialog in. Asking for a figure that can only have one value is the bug.
-      const agreed = await confirmDialog({
+      // This dialog asked for a figure once before and it was taken away on
+      // purpose: partial refunds were refused everywhere, so every number other
+      // than the full one came back a 409 after the desk had already filled the
+      // form in. Asking for a figure that can only have one value was the bug
+      // then; the reversal handles a part of it now, so the question is real
+      // again — and the full amount is still one Enter away, because it is
+      // still what most refunds are.
+      const answer = await promptDialog({
         title: 'اعتماد الاسترداد',
-        message: `استرداد ${requested} ${row.currency || ''} إلى ${row.subscriber_name || 'العميل'} بالكامل.\nالاسترداد الجزئي غير مُفعّل.`,
+        message: `المطلوب ${requested} ${row.currency || ''} لـ ${row.subscriber_name || 'العميل'}.`
+          + '\nاكتب المبلغ اللي هيترد فعلاً — أقل من ده يبقى استرداد جزئي، والعميل يفضل مشترك في الكورس.',
+        defaultValue: String(requested),
+        placeholder: 'المبلغ المسترد',
         confirmLabel: 'اعتماد',
       });
-      if (!agreed) return;
-      refundedAmount = requested;
+      if (answer === null) return;
+      const typed = Number(String(answer).trim());
+      if (!Number.isFinite(typed) || typed <= 0 || typed > requested) {
+        notify(`المبلغ لازم يكون بين 1 و ${requested}`, 'error');
+        return;
+      }
+      refundedAmount = typed;
+      if (typed < requested) {
+        const note = await promptDialog({
+          title: 'سبب الاسترداد الجزئي',
+          message: `هيترد ${typed} من ${requested} ${row.currency || ''}. السبب بيتسجل على حركة الفلوس نفسها.`,
+          placeholder: 'السبب',
+          confirmLabel: 'تأكيد',
+        });
+        if (note === null) return;
+        decisionNote = note.trim();
+        if (!decisionNote) { notify('اكتب سبب الاسترداد الجزئي', 'error'); return; }
+      }
     } else {
       const label = status === 'REJECTED' ? 'اكتب سبب الرفض كاملاً:' : 'اكتب ما تم عمله في الطلب:';
       const answer = await promptDialog(label);
