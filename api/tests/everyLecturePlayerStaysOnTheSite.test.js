@@ -167,3 +167,23 @@ test('the lecture URL never reaches the page in the clear', () => {
   assert.match(media, /enc:/, 'stored obfuscated');
   assert.match(media, /youtube-nocookie\.com\/embed\//, 'and resolved to nocookie when it is played');
 });
+
+test('the viewer can make it bigger, on a browser that refuses the API too', () => {
+  // «العميل بيقدر يكبر الشاشه». Element.requestFullscreen does not exist on iOS
+  // Safari — there only a <video> may go fullscreen, and this is an iframe — so
+  // a button wired to that alone does nothing at all on an iPhone. It can also
+  // be refused on desktop, and Chrome refuses it by *throwing synchronously*:
+  // the first version of this fallback used .catch() only and never ran, which
+  // is how the refusal was found.
+  const surface = codeOnly(read(SURFACE));
+  const handler = surface.slice(surface.indexOf('const toggleFullscreen'), surface.indexOf('const onKeyDown'));
+  assert.match(handler, /typeof request !== 'function'[\s\S]{0,60}setExpanded\(true\)/,
+    'a browser with no Element.requestFullscreen must still get bigger');
+  assert.match(handler, /try \{[\s\S]{0,300}catch \{ setExpanded\(true\); \}/,
+    'a synchronous refusal is not a rejected promise, and .catch() never sees it');
+  assert.match(handler, /result\.catch\(\(\) => setExpanded\(true\)\)/,
+    'and an asynchronous one is not a throw');
+  // The fallback has to keep what fullscreen was protecting.
+  assert.match(surface, /expanded \? 'fixed inset-0 z-\[9999\]/, 'it fills the viewport');
+  assert.match(surface, /event\.key === 'Escape' && expanded/, 'and Escape gets back out of it');
+});

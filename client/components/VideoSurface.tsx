@@ -97,6 +97,8 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
   const [speedOpen, setSpeedOpen] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
+  /** The CSS fallback, for browsers that will not fullscreen an element. */
+  const [expanded, setExpanded] = useState(false);
   /** Until this is true the poster covers the frame, red play button and all. */
   const [started, setStarted] = useState(false);
   /** Where the thumb is while being dragged, so the bar does not fight the user. */
@@ -224,15 +226,42 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
     setCurrent(target);
   };
 
+  /**
+   * Bigger, by whichever route this browser actually offers.
+   *
+   * Element.requestFullscreen does not exist on iOS Safari — there, only a
+   * <video> element can go fullscreen, and this is an iframe. A button wired
+   * only to the Fullscreen API is a button that does nothing at all on an
+   * iPhone, which is a large part of who watches these lectures. It can also be
+   * refused on desktop for reasons the page does not control.
+   *
+   * So the API is tried first, and anything other than success falls back to
+   * filling the viewport with CSS. The viewer gets a big picture either way,
+   * and the fallback keeps what matters: these controls, and a frame that still
+   * cannot be clicked.
+   */
   const toggleFullscreen = () => {
-    if (document.fullscreenElement === wrapRef.current) void document.exitFullscreen();
-    else void wrapRef.current?.requestFullscreen?.().catch(() => {});
+    if (document.fullscreenElement === wrapRef.current) { void document.exitFullscreen(); return; }
+    if (expanded) { setExpanded(false); return; }
+    const request = wrapRef.current?.requestFullscreen;
+    if (typeof request !== 'function') { setExpanded(true); return; }
+    // try/catch as well as .catch(): a refusal can arrive either way. Chrome
+    // throws «TypeError: Permissions check failed» synchronously, which a
+    // promise handler never sees — the fallback was written with .catch() alone
+    // and did nothing at all the first time it was needed.
+    try {
+      const result = request.call(wrapRef.current) as Promise<void> | undefined;
+      if (result && typeof result.catch === 'function') result.catch(() => setExpanded(true));
+    } catch { setExpanded(true); }
   };
 
   // YouTube's own shortcuts are off (disablekb=1) and the frame cannot take
   // focus, so these are the only ones. Space and the arrows are what people
   // reach for.
   const onKeyDown = (event: React.KeyboardEvent) => {
+    // Escape leaves the CSS fallback. Real fullscreen already exits on its own,
+    // and a viewer who cannot get back out of an expanded video would be stuck.
+    if (event.key === 'Escape' && expanded) { setExpanded(false); return; }
     const keys = [' ', 'k', 'ArrowLeft', 'ArrowRight', 'm', 'f'];
     if (!keys.includes(event.key)) return;
     event.preventDefault();
@@ -250,7 +279,8 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
   return (
     <div
       ref={wrapRef}
-      className={`relative w-full h-full bg-black overflow-hidden ${className}`}
+      className={`bg-black overflow-hidden ${
+        expanded ? 'fixed inset-0 z-[9999] w-screen h-screen' : 'relative w-full h-full'} ${className}`}
       onMouseMove={showChrome}
       onMouseLeave={() => playing && setChromeVisible(false)}
       onContextMenu={event => event.preventDefault()}
@@ -415,10 +445,10 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
             <button
               type="button"
               onClick={toggleFullscreen}
-              aria-label={fullscreen ? 'إنهاء ملء الشاشة' : 'ملء الشاشة'}
+              aria-label={fullscreen || expanded ? 'إنهاء ملء الشاشة' : 'ملء الشاشة'}
               className="hover:text-white/80 transition"
             >
-              {fullscreen ? <Minimize size={17} /> : <Maximize size={17} />}
+              {fullscreen || expanded ? <Minimize size={17} /> : <Maximize size={17} />}
             </button>
           </div>
         </div>
