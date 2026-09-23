@@ -112,9 +112,47 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
   // the resume position go as query parameters for the redirect to fold in.
   // Without this a paid lecture always restarted from zero.
   const ticket = /[?&]kind=embed\b/.test(url || '') && !/youtu/.test(url || '');
+
+  // Where to start is decided once per video, and then left alone.
+  //
+  // The dashboard passes startSeconds={getSavedTime(lecture)} — a value this
+  // player itself rewrites about four times a second as it plays. Building the
+  // frame's src from the live prop meant every parent render produced a new
+  // URL, React rewrote the iframe's src, and the video reloaded and jumped
+  // back to wherever it had just been saved. Production's access log showed it
+  // plainly: the same lecture's media ticket fetched twice two seconds apart,
+  // and one request aborted mid-flight.
+  //
+  // A resume position is a starting position. It is read when the video
+  // changes, and not again while that video is playing.
+  const startedFrom = useRef<{ url: string; at: number }>({ url: '', at: 0 });
+  if (startedFrom.current.url !== url) startedFrom.current = { url, at: startSeconds };
+  const resumeAt = startedFrom.current.at;
+
+  /**
+   * On a phone, the first tap has to land on the frame itself.
+   *
+   * A mobile browser will not start a video because a script asked it to — it
+   * wants a real gesture on the player, and playVideo() over postMessage is not
+   * one. With the frame sealed behind pointer-events:none there was no way to
+   * start a lecture on a phone at all: the poster stayed up, the clock stayed
+   * at 0:00, and pressing play did nothing. Reproduced on a touch viewport,
+   * which is how it was found rather than reasoned about.
+   *
+   * So the frame stays tappable until the video has actually started, and is
+   * sealed the moment it has. That one tap cannot reach a way out, because
+   * controls=0 leaves nothing on that surface to reach: no logo, no title bar,
+   * no «watch on YouTube». Everything after it goes through the controls below.
+   *
+   * On a mouse it is sealed from the first frame, as before.
+   */
+  const coarsePointer = typeof window !== 'undefined'
+    && !!window.matchMedia?.('(hover: none) and (pointer: coarse)').matches;
+  const sealed = !coarsePointer || started;
+
   const src = ticket
-    ? `${url}${autoplay ? '&autoplay=1' : ''}${startSeconds > 0 ? `&start=${Math.floor(startSeconds)}` : ''}`
-    : youtubeEmbedUrl(url, { autoplay, startSeconds, jsApi: true });
+    ? `${url}${autoplay ? '&autoplay=1' : ''}${resumeAt > 0 ? `&start=${Math.floor(resumeAt)}` : ''}`
+    : youtubeEmbedUrl(url, { autoplay, startSeconds: resumeAt, jsApi: true });
 
   const command = useCallback((func: string, args: unknown[] = []) => {
     frameRef.current?.contentWindow?.postMessage(
@@ -295,7 +333,7 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
         className="absolute inset-0 w-full h-full"
         // The whole point. Nothing YouTube draws — now or after their next
         // redesign — can be clicked, so nothing it draws can be a way out.
-        style={{ pointerEvents: 'none' }}
+        style={{ pointerEvents: sealed ? 'none' : 'auto' }}
         tabIndex={-1}
         // No fullscreen permission and no allowFullScreen: YouTube's native
         // fullscreen puts the title back on screen. The wrapper goes fullscreen
@@ -330,7 +368,7 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
           buttons still get their own clicks. */}
       <button
         type="button"
-        className="absolute inset-0 z-20 w-full h-full cursor-pointer"
+        className={`absolute inset-0 z-20 w-full h-full cursor-pointer ${sealed ? '' : 'pointer-events-none'}`}
         onClick={toggle}
         aria-label={playing ? 'إيقاف مؤقت' : 'تشغيل'}
       />
@@ -338,7 +376,12 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
       {/* The poster. It is here to cover YouTube's red play button and the
           wordmark on its loading screen, both of which survive controls=0. */}
       {!started && (
-        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-black">
+        <div className={`absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-black ${
+          // On a phone the tap has to fall through to the frame: it is the only
+          // thing that starts the video. The poster is still what the viewer
+          // sees and aims at.
+          sealed ? '' : 'pointer-events-none'}`}
+        >
           {/* Above the button, not below it: the control bar is drawn on top of
               this and a title underneath disappeared behind it. */}
           {title && (
@@ -365,8 +408,16 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
       )}
 
       <div
-        className={`absolute bottom-0 left-0 right-0 z-40 px-3 pb-2 pt-8 bg-gradient-to-t from-black/85 to-transparent transition-opacity duration-200 ${
-          chromeVisible || !started ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        // pointer-events-none on the strip, auto on the controls inside it.
+        //
+        // The gradient is decoration, and it is tall: pt-8 plus the row is
+        // about ninety pixels, which on a phone is half the height of the whole
+        // player. It was swallowing every tap aimed at the middle of the
+        // picture — including the one tap a mobile browser needs on the frame
+        // itself before it will start a video. Found with elementsFromPoint at
+        // the centre of the player: the strip, then the iframe underneath it.
+        className={`absolute bottom-0 left-0 right-0 z-40 px-3 pb-2 pt-8 bg-gradient-to-t from-black/85 to-transparent transition-opacity duration-200 pointer-events-none ${
+          chromeVisible || !started ? 'opacity-100' : 'opacity-0'}`}
         dir="ltr"
       >
         <input
@@ -378,11 +429,11 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
           onChange={event => setScrubbing(Number(event.target.value))}
           onMouseUp={event => { seekTo(Number((event.target as HTMLInputElement).value)); setScrubbing(null); }}
           onTouchEnd={event => { seekTo(Number((event.target as HTMLInputElement).value)); setScrubbing(null); }}
-          className="w-full h-1 appearance-none rounded-full cursor-pointer accent-white"
+          className="w-full h-1 appearance-none rounded-full cursor-pointer accent-white pointer-events-auto"
           style={{ background: `linear-gradient(to right, #fff ${pct}%, rgba(255,255,255,0.3) ${pct}%)` }}
           aria-label="موضع التشغيل"
         />
-        <div className="flex items-center gap-3 mt-1.5 text-white">
+        <div className="flex items-center gap-3 mt-1.5 text-white pointer-events-auto">
           <button type="button" onClick={toggle} aria-label={playing ? 'إيقاف مؤقت' : 'تشغيل'} className="hover:text-white/80 transition">
             {playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
           </button>

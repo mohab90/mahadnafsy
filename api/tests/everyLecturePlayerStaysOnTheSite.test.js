@@ -102,8 +102,10 @@ test('the embed asks for no controls at all', () => {
 test('the frame cannot be clicked, and cannot be tabbed into', () => {
   const surface = codeOnly(read(SURFACE));
   const frame = surface.slice(surface.indexOf('<iframe'), surface.indexOf('/>', surface.indexOf('<iframe')));
-  assert.match(frame, /pointerEvents:\s*'none'/,
-    'this is the guarantee: whatever YouTube draws, it is not reachable');
+  assert.match(frame, /pointerEvents: sealed \? 'none' : 'auto'/,
+    'this is the guarantee, and it is conditional for one reason only — see the next test');
+  assert.match(surface, /const sealed = !coarsePointer \|\| started/,
+    'on a mouse it is sealed from the first frame; on a phone, until the video starts');
   assert.match(frame, /tabIndex=\{-1\}/, 'nor reachable by keyboard');
   assert.ok(!/allowFullScreen/.test(frame),
     'YouTube\'s own fullscreen chrome puts the title back on screen — the wrapper goes fullscreen instead');
@@ -186,4 +188,57 @@ test('the viewer can make it bigger, on a browser that refuses the API too', () 
   // The fallback has to keep what fullscreen was protecting.
   assert.match(surface, /expanded \? 'fixed inset-0 z-\[9999\]/, 'it fills the viewport');
   assert.match(surface, /event\.key === 'Escape' && expanded/, 'and Escape gets back out of it');
+});
+
+test('where to start is decided once per video, not on every render', () => {
+  // The dashboard passes startSeconds={getSavedTime(lecture)} — a value this
+  // player keeps rewriting as it plays. Building the frame's src from the live
+  // prop meant every parent render produced a new URL, React rewrote the
+  // iframe, and the video reloaded and jumped back. Production's access log
+  // showed it plainly: the same lecture's media ticket fetched twice two
+  // seconds apart, and one request aborted mid-flight (499).
+  //
+  // The resume position is a starting position. It is read when the video
+  // changes and not again.
+  const surface = codeOnly(read(SURFACE));
+  assert.match(surface, /startedFrom\.current\.url !== url/,
+    'the frozen position has to be re-read when the lecture changes, and only then');
+  const src = surface.slice(surface.indexOf('const src ='), surface.indexOf('const src =') + 400);
+  // `startSeconds: resumeAt` is the option's name taking the frozen value, which
+  // is the point. What must not appear is the live prop as a value.
+  assert.ok(!/startSeconds(?!\s*:)/.test(src),
+    'the live prop must not reach the URL — that is the reload loop');
+  assert.match(src, /startSeconds: resumeAt|resumeAt > 0/, 'the frozen value is what builds it');
+  assert.equal((src.match(/resumeAt/g) || []).length, 3,
+    'both branches build from the frozen position, not one of the two');
+});
+
+test('a phone can start the video at all', () => {
+  // The seal above had no exception, and on a phone that meant the lecture
+  // could not be started. A mobile browser will not begin playback because a
+  // script asked it to — it wants a real gesture on the player — and
+  // playVideo() over postMessage is not one. Reproduced on a touch viewport:
+  // the poster stayed up and the clock stayed at 0:00.
+  //
+  // The exception is as narrow as it can be: a coarse pointer, and only until
+  // the video has actually started. The tap it admits cannot reach a way out,
+  // because controls=0 leaves nothing on that surface to reach.
+  const surface = codeOnly(read(SURFACE));
+  assert.match(surface, /\(hover: none\) and \(pointer: coarse\)/,
+    'the exception is for touch devices, not for everyone');
+  assert.match(surface, /const sealed = !coarsePointer \|\| started/,
+    'and it closes the moment the video is playing');
+});
+
+test('the control strip does not eat the picture', () => {
+  // The gradient is decoration and it is tall — pt-8 plus the row is about
+  // ninety pixels, half the height of the player on a phone. It was taking
+  // every tap aimed at the middle of the video, including the one a mobile
+  // browser needs on the frame before it will start. elementsFromPoint at the
+  // centre of the player returned the strip, with the iframe underneath.
+  const surface = codeOnly(read(SURFACE));
+  const strip = surface.slice(surface.indexOf('absolute bottom-0 left-0 right-0 z-40'), surface.indexOf('absolute bottom-0 left-0 right-0 z-40') + 300);
+  assert.match(strip, /pointer-events-none/, 'the strip itself takes no clicks');
+  assert.equal((surface.match(/pointer-events-auto/g) || []).length, 2,
+    'the seek bar and the button row take their own, and nothing else does');
 });
