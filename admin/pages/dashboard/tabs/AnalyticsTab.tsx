@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   BarChart3, Download, TrendingUp, UserCheck, BookOpen, Receipt, Star, Tag,
   Wallet, Clock, Layers, UserPlus, CalendarCheck2, MessageSquareText,
@@ -28,11 +28,16 @@ const AnalyticsTab: React.FC<Props> = () => {
   // This screen carried its own fallbacks and its USD one was 50, where the
   // shared table, the Overview and the API's own ledger all use 48. With no
   // configured rate a $1,000 order read 50,000 here and 48,000 everywhere else.
-  const rates = fxRates(content);
-  const toEGP = (amt: number, cur: string) => amt * (rates[cur as keyof typeof rates] ?? 1);
+  const rates = useMemo(() => fxRates(content), [content]);
+  const toEGP = useCallback(
+    (amt: number, cur: string) => amt * (rates[cur as keyof typeof rates] ?? 1),
+    [rates],
+  );
 
   // ── Date helpers ──────────────────────────────────────────────
-  const now          = new Date();
+  // Frozen at mount: as a bare `new Date()` the memos below could read a clock
+  // from whichever render last rebuilt them.
+  const now          = useMemo(() => new Date(), []);
   const todayStr     = now.toISOString().slice(0, 10);
   const yesterdayStr = new Date(+now - 86_400_000).toISOString().slice(0, 10);
   const days7Ago     = new Date(+now - 7  * 86_400_000).toISOString().slice(0, 10);
@@ -50,7 +55,7 @@ const AnalyticsTab: React.FC<Props> = () => {
   };
 
   // ── Filtered slices ──────────────────────────────────────────
-  const allPaid        = orders.filter(o => o.status === 'paid');
+  const allPaid        = useMemo(() => orders.filter(o => o.status === 'paid'), [orders]);
   const filteredOrders = allPaid.filter(o  => inRange(o.paidAt || o.createdAt));
   const filteredLeads  = leads.filter(l    => inRange(l.createdAt));
   const filteredSubs   = subscribers.filter(s => inRange(s.createdAt));
@@ -102,8 +107,7 @@ const AnalyticsTab: React.FC<Props> = () => {
       rows.push({ label: d.toLocaleString('ar-EG-u-nu-latn', { month: 'short', timeZone: CAIRO_TIME_ZONE }), count: subscribers.filter(s => (s.createdAt || '').startsWith(ms)).length });
     }
     return rows;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subscribers]);
+  }, [subscribers, now]);
   const maxSubMonth = Math.max(...subsByMonth.map(m => m.count), 1);
   const subsByBranch = subscribers.reduce((acc: Record<string, number>, s) => {
     const b = s.branch || 'غير محدد'; acc[b] = (acc[b] || 0) + 1; return acc;
@@ -115,8 +119,7 @@ const AnalyticsTab: React.FC<Props> = () => {
     const rev  = allPaid.filter(o => o.type === 'course' && o.itemId === c.id).reduce((s, o) => s + toEGP(o.amount, o.currency), 0);
     return { id: c.id, title: c.title.length > 32 ? c.title.slice(0, 32) + '…' : c.title, subs: subs.length, rev, type: c.type };
   }).sort((a, b) => b.subs - a.subs),
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  [courses, subscribers, orders]);
+  [courses, subscribers, allPaid, toEGP]);
   const maxSubs = Math.max(...courseStats.map(c => c.subs), 1);
 
   // ── Bundle stats ──────────────────────────────────────────────
@@ -125,8 +128,7 @@ const AnalyticsTab: React.FC<Props> = () => {
     const rev      = allPaid.filter(o => o.type === 'bundle' && o.itemId === b.id).reduce((s, o) => s + toEGP(o.amount, o.currency), 0);
     return { id: b.id, title: b.title.length > 32 ? b.title.slice(0, 32) + '…' : b.title, enrolled, rev, courseCount: b.courses.length };
   }).sort((a, b) => b.enrolled - a.enrolled),
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  [bundles, subscribers, orders]);
+  [bundles, subscribers, allPaid, toEGP]);
 
   // ── Therapist stats ───────────────────────────────────────────
   const therapistStats = therapists.map(t => {

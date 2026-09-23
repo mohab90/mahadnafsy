@@ -96,6 +96,12 @@ export function useClientAccountRuntime({
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('mahad-progress-synced', onProgressSynced);
     };
+    // Keyed on authUser?.uid, not the whole authUser. This effect installs a
+    // 5-minute poll plus visibility and progress-sync listeners; the auth object
+    // is replaced on every token refresh, so depending on it would tear down and
+    // re-install those listeners — and fire an extra fetch — for no change in
+    // who is signed in.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.uid, isAdmin, applySubscriberData, refreshMySubscriber]);
 
   useEffect(() => {

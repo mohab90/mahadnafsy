@@ -17,21 +17,24 @@ function getLast6Months() {
   return ms;
 }
 
+// Takes `range` instead of closing over it, matching MarketingHubTab and
+// OnlineTeamTab. As a closure it was rebuilt every render, so the memos below
+// could not list it as a dependency without recomputing every time.
+function getRangeStart(range: Range): string {
+  const d = new Date(); d.setDate(1);
+  if (range === 'month') return d.toISOString().slice(0, 7) + '-01';
+  if (range === '3months') { d.setMonth(d.getMonth() - 3); return d.toISOString().slice(0, 10); }
+  if (range === '6months') { d.setMonth(d.getMonth() - 6); return d.toISOString().slice(0, 10); }
+  return '2000-01-01';
+}
+
 export default function RevenueSourcesTab() {
   const { orders, courses, bundles } = useSiteData();
   const [range, setRange] = useState<Range>('month');
   const months = getLast6Months();
 
-  function getRangeStart() {
-    const d = new Date(); d.setDate(1);
-    if (range === 'month') return d.toISOString().slice(0, 7) + '-01';
-    if (range === '3months') { d.setMonth(d.getMonth() - 3); return d.toISOString().slice(0, 10); }
-    if (range === '6months') { d.setMonth(d.getMonth() - 6); return d.toISOString().slice(0, 10); }
-    return '2000-01-01';
-  }
-
   const filteredOrders = useMemo(() => {
-    const start = getRangeStart();
+    const start = getRangeStart(range);
     return orders.filter(o => o.status === 'paid' && (o.createdAt || '') >= start);
   }, [orders, range]);
 

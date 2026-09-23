@@ -83,7 +83,7 @@ const SystemSettingsTab: React.FC<Props> = ({ notify }) => {
         setGlobalLoading(false);
       }
     })();
-  }, []);
+  }, [notify]);
 
   const save = useCallback(async (key: SectionKey) => {
     const section = SECTIONS.find(s => s.key === key)!;
@@ -145,7 +145,7 @@ const SystemSettingsTab: React.FC<Props> = ({ notify }) => {
     } finally {
       setSaving(s => { const n = new Set(s); n.delete(key); return n; });
     }
-  }, [data, notify]);
+  }, [data, gateway, notify]);
 
   const reset = useCallback(async (key: SectionKey) => {
     if (!confirm('هل تريد إعادة هذا القسم للقيم الافتراضية؟')) return;

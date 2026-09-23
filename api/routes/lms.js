@@ -10,7 +10,7 @@ const { completeCourse, completeCourses } = require('../lib/courseCompletion');
 const { reissueCertificate, revokeCertificate } = require('../lib/certificateLifecycle');
 const { resolveLectureAccess } = require('../lib/learningAccess');
 const { resolveSubscriberId, resolveSubscriberRow } = require('../lib/subscriberIdentity');
-const { createMediaTicket, mediaKind, playableRedirect, verifyMediaTicket } = require('../lib/mediaAccess');
+const { createMediaTicket, mediaKind, mediaProvider, playableRedirect, verifyMediaTicket } = require('../lib/mediaAccess');
 const { streamTenantMedia } = require('../lib/uploadSafety');
 const {
   addCohortMember,
@@ -281,7 +281,7 @@ router.get('/api/me/lectures/:lectureId/access', requireAuth, async (req, res) =
     });
     res.json({
       accessible: true,
-      video_url: `/api/media/lectures/${encodeURIComponent(lecture.id)}?ticket=${encodeURIComponent(ticket)}&kind=${kind}`,
+      video_url: `/api/media/lectures/${encodeURIComponent(lecture.id)}?ticket=${encodeURIComponent(ticket)}&kind=${kind}${kind === 'embed' ? `&provider=${mediaProvider(lecture.video_url)}` : ''}`,
       video_kind: kind,
       expires_in: 300,
     });

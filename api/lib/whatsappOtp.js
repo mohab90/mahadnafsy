@@ -25,6 +25,14 @@ const CODE_TTL_MINUTES = Math.max(1, Number(process.env.WA_OTP_TTL_MINUTES || 10
 const MAX_ATTEMPTS = Math.max(1, Number(process.env.WA_OTP_MAX_ATTEMPTS || 5));
 // Codes an unregistered number may be sent per hour, from any source.
 const SIGNUP_CODES_PER_HOUR = Math.max(1, Number(process.env.WA_SIGNUP_CODES_PER_HOUR || 3));
+// The same cap for a number that already has an account, set higher because a
+// real customer retrying a sign-in is the common case. Both exist because the
+// route's limiters cannot do this job: the OTP request body carries only a
+// phone, so rateLimits' `actor()` resolves to 'anonymous' and its keyGenerator
+// then falls back to the IP for both limiters. Nothing was counting per number,
+// and rotating IPs could therefore send unlimited WhatsApp messages to any
+// registered customer — their phone, and the institute's send budget.
+const LOGIN_CODES_PER_HOUR = Math.max(1, Number(process.env.WA_LOGIN_CODES_PER_HOUR || 6));
 
 /**
  * Reduce anything a user might type to comparable digits.
@@ -145,19 +153,25 @@ async function requestLoginCode({ tenantId, phone }) {
   // response told anyone watching whether a number was registered. Now both
   // paths do the same work and answer the same way.
   const isNewAccount = !user;
-  if (isNewAccount) {
+  {
     // The IP limiter cannot carry this alone: once codes reach numbers with no
     // account, rotating IPs would turn the institute's own WhatsApp into a way
     // to message strangers. This caps a single number regardless of source.
+    //
+    // Applied to registered numbers too, not just new ones. Capping only signups
+    // left the opposite hole wide open: a customer who already has an account
+    // could be sent unlimited codes by anyone who knew their number, because
+    // nothing else in the stack counts per number.
+    const cap = isNewAccount ? SIGNUP_CODES_PER_HOUR : LOGIN_CODES_PER_HOUR;
     const [[recent]] = await pool.query(
       `SELECT COUNT(*) AS n FROM otp_codes
         WHERE tenant_id=? AND phone=? AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)`,
       [tenantId, normalized]
     );
-    if (Number(recent?.n || 0) >= SIGNUP_CODES_PER_HOUR) {
-      logger.warn('[wa-otp] per-number signup throttle hit');
+    if (Number(recent?.n || 0) >= cap) {
+      logger.warn('[wa-otp] per-number throttle hit', { isNewAccount });
       // Reported as success so the throttle itself cannot be used to probe.
-      return { ok: true, delivered: false, isNewAccount: true };
+      return { ok: true, delivered: false, isNewAccount };
     }
   }
 

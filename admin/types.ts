@@ -553,7 +553,7 @@ export interface JoinUsApplication {
   type: 'instructor' | 'consultant' | 'staff' | 'INSTRUCTOR' | 'CONSULTANT' | 'STAFF' | string;
   linkedin?: string;
   message?: string;
-  status: 'new' | 'pending' | 'reviewed' | 'accepted' | 'rejected';
+  status: 'new' | 'pending' | 'reviewed' | 'accepted' | 'rejected' | 'contacted';
   createdAt: string;
   adminNote?: string;
   // Set by POST /admin/join-us/:id/contact. The decision controls are keyed

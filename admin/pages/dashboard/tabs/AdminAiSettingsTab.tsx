@@ -29,14 +29,17 @@ export default function AdminAiSettingsTab({ notify }: Props) {
     perPayment: '',
   });
   const [videoUnlockSaved, setVideoUnlockSaved] = useState(false);
-  // Sync from content when it loads
+  // Sync from content when it loads. Read out of `content` first: as subscripts
+  // in the dependency array these could not be checked statically, and depending
+  // on `content` itself would reset the draft whenever any unrelated key changed.
+  const videosOnDeposit = content['access.videos_on_deposit'];
+  const videosPerPayment = content['access.videos_per_payment'];
   useEffect(() => {
     setVideoUnlockDraft({
-      onDeposit: content['access.videos_on_deposit'] || '20',
-      perPayment: content['access.videos_per_payment'] || '15',
+      onDeposit: videosOnDeposit || '20',
+      perPayment: videosPerPayment || '15',
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content['access.videos_on_deposit'], content['access.videos_per_payment']]);
+  }, [videosOnDeposit, videosPerPayment]);
 
   const handleSaveVideoUnlock = async () => {
     const dep = Math.max(1, Number(videoUnlockDraft.onDeposit) || 20);

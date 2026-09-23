@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { cairoDateOnly } from '../../../../shared/cairoDate';
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, RefreshCw, Scale } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -29,7 +29,7 @@ const BalanceSheetTab: React.FC<Props> = ({ notify }) => {
   const [sheet, setSheet] = useState<BalanceSheet | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       setSheet(await mysqlAdmin.getFinancialBalanceSheet(asOf));
@@ -39,9 +39,9 @@ const BalanceSheetTab: React.FC<Props> = ({ notify }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [asOf, notify]);
 
-  useEffect(() => { void load(); }, [asOf]);
+  useEffect(() => { void load(); }, [load]);
 
   if (loading) {
     return <div className="flex min-h-56 items-center justify-center text-gray-500"><RefreshCw className="ml-2 animate-spin" size={18} /> جاري تحميل دفتر الأستاذ…</div>;

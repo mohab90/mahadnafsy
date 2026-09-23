@@ -19,7 +19,11 @@ const NpsDashboardTab: React.FC<Props> = () => {
   const [selectedCourse, setSelectedCourse] = useState<string>('all');
   const [period, setPeriod] = useState<NpsPeriod>('month');
 
-  const NOW = Date.now();
+  // Frozen at mount. As a bare Date.now() this moved every render, so `cutoff`
+  // was a new millisecond-precision string every render too — and since the memo
+  // below depends on cutoff, it recomputed the whole NPS breakdown every render
+  // instead of only when the filters change.
+  const NOW = useMemo(() => Date.now(), []);
   const periodMs = period === 'month' ? 30 : period === 'quarter' ? 90 : 365;
   const cutoff = new Date(NOW - periodMs * 86400000).toISOString();
 
@@ -55,7 +59,7 @@ const NpsDashboardTab: React.FC<Props> = () => {
     });
 
     return { nps: calcNPS(pro, pas, det), promoters: pro, passives: pas, detractors: det, total: tot, courseBreakdown: breakdown, trend: months };
-  }, [subscribers, courses, selectedCourse, period, cutoff]);
+  }, [subscribers, courses, selectedCourse, cutoff, NOW]);
 
   const npsColor = nps >= 50 ? 'text-green-600' : nps >= 20 ? 'text-yellow-600' : nps >= 0 ? 'text-orange-600' : 'text-red-600';
   const npsBg = nps >= 50 ? 'from-green-600 to-emerald-500' : nps >= 20 ? 'from-yellow-600 to-amber-500' : nps >= 0 ? 'from-orange-600 to-amber-500' : 'from-red-700 to-rose-600';

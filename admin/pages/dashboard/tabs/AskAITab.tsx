@@ -6,6 +6,18 @@ import { toEgp } from '../../../lib/money';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
+// Module scope: a constant map and a pure function of its arguments. In the
+// component body they were rebuilt every render, so the memos below could not
+// list them as dependencies without recomputing every time.
+const _aiBranchLabels: Record<string, string> = {
+  daqqi: 'الدقي', tagamoa: 'التجمع', 'online-egypt': 'أون لاين - مصر',
+  'online-saudi': 'أون لاين - السعودية', 'online-abroad': 'خارج مصر', other: 'أخرى',
+};
+// Through the shared table, not a second set of fallbacks: the hardcoded 13 and
+// 50 here disagreed with lib/money and with the API's own ledger, so the same
+// order read one figure on this screen and another everywhere else.
+const _aiToEGP = (amt: number, cur: string) => toEgp(amt, cur);
+
 export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
   const {
     leads, leadStats, subscribers, orders, courses, bundles, therapists, consultations,
@@ -19,13 +31,6 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
   const [aiLoading, setAiLoading] = useState(false);
   const aiChatEndRef = useRef<HTMLDivElement>(null);
 
-  // ── Pre-computed AI analysis data ──────────────────────────────────────────
-  const _aiBranchLabels: Record<string, string> = {
-    daqqi: 'الدقي', tagamoa: 'التجمع', 'online-egypt': 'أون لاين - مصر',
-    'online-saudi': 'أون لاين - السعودية', 'online-abroad': 'خارج مصر', other: 'أخرى',
-  };
-  const _aiToEGP = (amt: number, cur: string) => toEgp(amt, cur);
-
   const _aiAllManual = useMemo(() =>
     subscribers.flatMap(s =>
       (s.paymentHistory || []).map(p => ({
@@ -34,7 +39,6 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
         branchLabel: _aiBranchLabels[s.branch || 'other'] || s.branch || '—',
       }))
     ),
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   [subscribers]);
 
   const _aiAllManualForBranch = _aiAllManual;
@@ -55,7 +59,6 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
         allRev: Math.round(bPayments.reduce((s, p) => s + toEGP(p.amount, p.currency), 0)),
       };
     }).sort((a, b) => b.subs - a.subs);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subscribers, _aiAllManualForBranch]);
 
   // Use saved AI config (adminAiConfig from MySQL, alias as adminAiDraft for body code compatibility)

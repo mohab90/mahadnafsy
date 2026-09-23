@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { MessageCircle, CheckCircle2, AlertTriangle, Loader2, Send, Unlink, Save } from 'lucide-react';
 import { mysqlAdmin, type MessagingChannel } from '../../../../lib/mysqlapi';
 import { toDialable } from '../../../../lib/whatsappLink';
@@ -37,7 +37,7 @@ export function MyWhatsappChannelPanel({ notify }: { notify: NotifyFn }) {
   const [wapilotInstance, setWapilotInstance] = useState('');
   const [testTo, setTestTo] = useState('');
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const mine = await mysqlAdmin.getMyWhatsappChannel();
@@ -52,8 +52,8 @@ export function MyWhatsappChannelPanel({ notify }: { notify: NotifyFn }) {
       else notify('error', `تعذر تحميل بيانات القناة: ${message}`);
     }
     finally { setLoading(false); }
-  };
-  useEffect(() => { void load(); }, []);
+  }, [notify]);
+  useEffect(() => { void load(); }, [load]);
 
   const credentialsFromForm = (): Record<string, string> => {
     if (provider === 'meta') return { metaPhoneId: metaPhoneId.trim(), metaToken: metaToken.trim() };

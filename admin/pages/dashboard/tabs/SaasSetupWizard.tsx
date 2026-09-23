@@ -52,7 +52,9 @@ export default function SaasSetupWizard({
   setActive: (key: SectionKey) => void;
 }) {
   const navigate = useNavigate();
-  const general = (data.general || {}) as Partial<General>;
+  // Memoized because `|| {}` mints a fresh object on every render whenever
+  // data.general is nullish, which defeated the steps memo below.
+  const general = useMemo(() => (data.general || {}) as Partial<General>, [data.general]);
 
   const steps = useMemo<SetupStep[]>(() => {
     const brandFields = [

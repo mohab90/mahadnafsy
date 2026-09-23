@@ -103,6 +103,58 @@ const SETTINGS_CARDS: SettingsCard[] = [
     tone: 'bg-gray-50 text-gray-700 border-gray-100',
     area: 'قاعدة البيانات',
   },
+  // The six below were reachable only from the sidebar, never from here — so this
+  // page called itself "نقطة الدخول الموحدة للإعدادات" while silently omitting a
+  // third of the settings. With them listed the hub is actually complete, and the
+  // sidebar no longer has to carry a second copy of every settings entry.
+  {
+    title: 'إعدادات SMS',
+    desc: 'مزوّد الرسائل القصيرة، اسم المُرسِل، وأرصدة الإرسال.',
+    href: '/dashboard/sms_settings',
+    icon: <MessageSquareText size={18} />,
+    tone: 'bg-sky-50 text-sky-700 border-sky-100',
+    area: 'القنوات',
+  },
+  {
+    title: 'الأتمتة والقواعد',
+    desc: 'القواعد اللي بتشتغل لوحدها: توزيع الليدز، التذكيرات، وتغيير الحالات.',
+    href: '/dashboard/automation',
+    icon: <Zap size={18} />,
+    tone: 'bg-yellow-50 text-yellow-700 border-yellow-100',
+    area: 'التشغيل',
+  },
+  {
+    title: 'عميل المراسلة AI',
+    desc: 'الردود الآلية على الواتساب والماسنجر وحدود تدخّل الموظف.',
+    href: '/dashboard/messaging_agent',
+    icon: <Bot size={18} />,
+    tone: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100',
+    area: 'AI',
+  },
+  {
+    title: 'قائمة IP المسموحة',
+    desc: 'تقييد دخول لوحة الإدارة على عناوين محددة.',
+    href: '/dashboard/ip_whitelist',
+    icon: <Shield size={18} />,
+    tone: 'bg-violet-50 text-violet-700 border-violet-100',
+    area: 'الأمان والدخول',
+  },
+  {
+    title: 'Webhooks',
+    desc: 'ربط الأنظمة الخارجية بأحداث النظام ومتابعة آخر تشغيل لكل ربط.',
+    href: '/dashboard/webhooks',
+    icon: <Webhook size={18} />,
+    tone: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+    area: 'التكاملات',
+  },
+  {
+    title: 'مراقبة السيرفر',
+    desc: 'حالة التشغيل، الذاكرة، وسجل إعادة التشغيل.',
+    href: '/dashboard/server_monitor',
+    icon: <SlidersHorizontal size={18} />,
+    tone: 'bg-gray-50 text-gray-700 border-gray-100',
+    area: 'التشغيل',
+  },
 ];
 
 export default function SettingsHubTab() {

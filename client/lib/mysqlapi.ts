@@ -66,8 +66,16 @@ async function apiFetchInner<T>(path: string, options: RequestInit = {}, auth = 
     return res.json() as Promise<T>;
   } catch (err: unknown) {
     clearTimeout(timeoutId);
-    // Retry on network failure (TypeError: Failed to fetch) — 1 extra attempt only.
-    if (err instanceof TypeError && _retry < MAX_RETRIES) {
+    // fetch reports an unreachable host as TypeError and a request past the
+    // timeout as AbortError. Retrying only TypeError meant the client retried
+    // "nothing is listening" and gave up on "the server was just slow" — the
+    // one of the two that usually succeeds on a second attempt.
+    //
+    // A user-cancelled request would also land here, but nothing in this client
+    // passes its own signal — every abort comes from the timeout above.
+    const isRetryableNetworkError = err instanceof TypeError
+      || (err instanceof DOMException && err.name === 'AbortError');
+    if (isRetryableNetworkError && _retry < MAX_RETRIES) {
       await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS));
       return apiFetch<T>(path, options, auth, _retry + 1);
     }

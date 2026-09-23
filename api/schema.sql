@@ -3214,7 +3214,8 @@ CREATE TABLE `learning_prerequisites` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `leave_requests` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
+  `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `staff_id` varchar(36) NOT NULL,
   `type` enum('ANNUAL','SICK','EMERGENCY','UNPAID','OTHER') NOT NULL DEFAULT 'ANNUAL',
   `start_date` date NOT NULL,
@@ -3226,7 +3227,6 @@ CREATE TABLE `leave_requests` (
   `admin_note` text DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   PRIMARY KEY (`id`),
   KEY `idx_leave_staff` (`staff_id`),
   KEY `idx_leave_dates` (`start_date`,`end_date`),
@@ -4339,6 +4339,34 @@ CREATE TABLE `recurring_expenses` (
 
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `recruitment_notes` (
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
+  `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
+  `ref_type` enum('join_us','applicant') NOT NULL,
+  `ref_id` varchar(36) NOT NULL,
+  `kind` enum('note','contact','evaluation') NOT NULL DEFAULT 'note',
+  `body` text NOT NULL,
+  `author_id` varchar(36) DEFAULT NULL,
+  `author_name` varchar(200) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_recruitment_notes_ref` (`tenant_id`,`ref_type`,`ref_id`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `staff_documents` (
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
+  `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
+  `staff_id` varchar(36) NOT NULL,
+  `doc_type` enum('NATIONAL_ID','PHOTOS','QUALIFICATION','BIRTH_CERT','WORK_STUB','INSURANCE_PRINT','MILITARY') NOT NULL,
+  `received` tinyint(1) NOT NULL DEFAULT 0,
+  `note` varchar(500) DEFAULT NULL,
+  `updated_by` varchar(36) DEFAULT NULL,
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_staff_doc` (`tenant_id`,`staff_id`,`doc_type`),
+  KEY `idx_staff_documents_staff` (`tenant_id`,`staff_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE `referral_codes` (
   `id` varchar(36) NOT NULL,
   `subscriber_id` varchar(36) NOT NULL,
@@ -4491,7 +4519,8 @@ CREATE TABLE `saas_plans` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `salary_advances` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
+  `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `staff_id` varchar(36) NOT NULL,
   `amount` decimal(10,2) NOT NULL,
   `currency` enum('EGP','SAR','USD') NOT NULL DEFAULT 'EGP',
@@ -4507,7 +4536,6 @@ CREATE TABLE `salary_advances` (
   `disbursed_at` datetime DEFAULT NULL,
   `journal_entry_id` varchar(36) DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
-  `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   PRIMARY KEY (`id`),
   KEY `idx_advances_staff` (`staff_id`),
   KEY `idx_adv_staff_month` (`staff_id`,`deduct_month`,`deduct_year`),
@@ -4730,6 +4758,8 @@ CREATE TABLE `staff` (
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
   `notes` text DEFAULT NULL,
   `commission_rate` decimal(5,2) DEFAULT NULL,
+  `base_salary` decimal(12,2) DEFAULT NULL,
+  `commission_type` enum('NONE','PERCENT','TARGET') NOT NULL DEFAULT 'NONE',
   `permissions_json` text DEFAULT NULL,
   `totp_secret` varchar(64) DEFAULT NULL,
   `totp_enabled` tinyint(1) NOT NULL DEFAULT 0,
@@ -4753,8 +4783,6 @@ CREATE TABLE `staff` (
   `hr_notes` text DEFAULT NULL,
   `termination_date` date DEFAULT NULL,
   `data_scope` varchar(64) DEFAULT NULL,
-  `base_salary` decimal(12,2) DEFAULT NULL,
-  `commission_type` enum('NONE','PERCENT','TARGET') NOT NULL DEFAULT 'NONE',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_staff_tenant_id` (`tenant_id`,`id`),
   UNIQUE KEY `uq_staff_tenant_email` (`tenant_id`,`email`(191)),
@@ -4975,6 +5003,8 @@ CREATE TABLE `subscribers` (
   UNIQUE KEY `uq_subs_tenant_phone` (`tenant_id`,`phone`),
   UNIQUE KEY `uq_subs_tenant_code` (`tenant_id`,`client_code`),
   UNIQUE KEY `uq_subscribers_tenant_firebase` (`tenant_id`,`firebase_uid`),
+  UNIQUE KEY `uq_subs_code` (`client_code`),
+  UNIQUE KEY `uq_subs_tenant_phone` (`tenant_id`,`phone`),
   UNIQUE KEY `uq_subs_tenant_email` (`tenant_id`,`email`(191)),
   KEY `idx_subscribers_created_at` (`created_at`),
   KEY `idx_subscribers_tenant` (`tenant_id`),

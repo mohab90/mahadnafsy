@@ -12,6 +12,8 @@ const { leadScope } = require('../lib/leadAccess');
 const { normalizeLeadStatus, transitionLead } = require('../lib/leadState');
 const { listPipeline, savePipeline } = require('../lib/leadPipeline');
 const { listAssignmentMembers, saveAssignmentMembers } = require('../lib/leadAssignmentPolicy');
+const { createRepRotation, listDistributableReps } = require('../lib/leadAssignment');
+const { excludeArchiveSourcesSql } = require('../lib/leadArchive');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 
 function routeError(res, error, message = 'crm advanced route failed') {
@@ -270,14 +272,16 @@ router.post('/api/admin/crm/leads/smart-route', requireAuth, requireAdmin, requi
 
   try {
     await conn.beginTransaction();
+    // Archive rows ("محلي قديم" …) are distributed by hand from their own tab.
+    const archive = excludeArchiveSourcesSql('source');
     const [targets] = await conn.query(
       `SELECT id,assigned_sales_id,assigned_sales_name
        FROM leads
        WHERE tenant_id=? AND hidden=0
          AND (?='all' OR assigned_sales_id IS NULL)
-         AND status NOT IN ('converted','lost','archived','disqualified')
+         AND status NOT IN ('converted','lost','archived','disqualified')${archive.sql}
        ORDER BY score DESC, created_at ASC LIMIT ? FOR UPDATE`,
-      [tenantId, mode, limit]
+      [tenantId, mode, ...archive.params, limit]
     );
 
     if (!targets.length) {
@@ -285,34 +289,23 @@ router.post('/api/admin/crm/leads/smart-route', requireAuth, requireAdmin, requi
       return res.json({ ok: true, assigned: 0, reason: 'No matching leads' });
     }
 
-    const [reps] = await conn.query(`
-      SELECT s.id, s.name, s.role, COUNT(l.id) AS active_leads
-      FROM staff s
-      LEFT JOIN leads l
-        ON l.assigned_sales_id = s.id
-       AND l.hidden = 0
-       AND l.status NOT IN ('converted','lost','archived','disqualified')
-       AND l.tenant_id=?
-      WHERE s.tenant_id=? AND UPPER(s.role)='SALES' AND COALESCE(s.is_active, 1) = 1 AND s.deleted_at IS NULL
-      GROUP BY s.id, s.name, s.role
-      ORDER BY active_leads ASC, s.name ASC
-    `, [tenantId, tenantId]);
-
+    // Only the reps switched on in the CRM "التوزيع" screen, with their caps.
+    const reps = await listDistributableReps(tenantId, conn);
     if (!reps.length) {
       await conn.commit();
-      return res.status(409).json({ ok: false, assigned: 0, error: 'No active sales staff found' });
+      return res.status(409).json({ ok: false, assigned: 0, error: 'لا يوجد مندوب مبيعات مفعّل للتوزيع' });
     }
+    const rotation = createRepRotation(reps, { mode: 'least' });
 
     let assigned = 0;
     for (const target of targets) {
-      reps.sort((a, b) => Number(a.active_leads || 0) - Number(b.active_leads || 0) || String(a.name).localeCompare(String(b.name)));
-      const rep = reps[0];
+      const rep = rotation.next();
+      if (!rep) break;
       await conn.query(
         `UPDATE leads SET assigned_sales_id = ?, assigned_sales_name = ?, updated_at = NOW()
          WHERE id = ? AND tenant_id=?`,
         [rep.id, rep.name, target.id, tenantId]
       );
-      rep.active_leads = Number(rep.active_leads || 0) + 1;
       assigned += 1;
       await logLeadEventStrict(target.id, 'assigned', `Smart route assigned to ${rep.name || rep.id}`, {
         fromSalesId: target.assigned_sales_id || null,

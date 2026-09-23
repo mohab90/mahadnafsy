@@ -68,7 +68,7 @@ export function useCrmCoreState(
       leadsRef.current = normalized;
       setLeads(normalized);
     } catch { /* silent */ }
-  }, []);
+  }, [leadsRef]);
 
   const reloadSubscribers = useCallback(async () => {
     try {
@@ -80,7 +80,7 @@ export function useCrmCoreState(
       subscribersRef.current = normalized;
       setSubscribers(normalized);
     } catch { /* caller keeps current state on a transient refresh failure */ }
-  }, []);
+  }, [subscribersRef]);
 
   const recordSubscriberPayment = async (
     subscriberId: string,
@@ -234,7 +234,9 @@ export function useCrmCoreState(
     lastCRMWriteRef.current = Date.now();
     await mysqlAdmin.saveLead(item as unknown as Record<string, unknown>);
     if (!opts?.skipReload) await reloadLeads();
-    track('create', 'lead', item.name);
+    // A lead can legitimately arrive without a name (a phone-only capture), and
+    // the tracker takes a string.
+    track('create', 'lead', item.name || '(بدون اسم)');
   };
 
   // addPublicLead: for public registration forms — uses MySQL /api/registrations (no auth needed).
@@ -269,6 +271,10 @@ export function useCrmCoreState(
     }
     track('update', 'lead', item.name);
     return true;
+    // The refs are stable and `track` is not: useActivityLogState rebuilds it on
+    // every render, so listing it would rebuild this callback — and everything
+    // memoized on it — each time. It is only ever called, never read from.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Updates local state only — no API call. Use for bulk auto-convert on mount.

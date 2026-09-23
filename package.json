@@ -34,7 +34,8 @@
     "audit:paymob": "node tools/paymob-reconcile.cjs",
     "verify:backup-restores": "node tools/verify-backup-restores.cjs",
     "audit:orphan-modules": "node tools/orphan-module-scan.mjs",
-    "audit:content-keys": "node tools/content-key-scan.mjs"
+    "audit:content-keys": "node tools/content-key-scan.mjs",
+    "migrate:check": "npm --prefix api run migrate:check"
   },
   "keywords": [
     "mahad",

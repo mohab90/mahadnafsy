@@ -57,6 +57,8 @@ import { useLeadCrmBootstrap } from './leads/useLeadCrmBootstrap';
 import { useLeadRemoteReminders } from './leads/useLeadRemoteReminders';
 import { isArchiveSource } from './leads/leadSourceGroups';
 import type { TabKey } from '../navigation';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 
 const LeadArchiveViews = React.lazy(() => import('./leads/LeadArchiveViews').then(module => ({ default: module.LeadArchiveViews })));
 const LeadCommunicationsTimeline = React.lazy(() => import('./leads/LeadCommunicationsTimeline').then(module => ({ default: module.LeadCommunicationsTimeline })));
@@ -138,6 +140,8 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const [assignFilter, setAssignFilter] = useState<Set<string>>(new Set());
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [distributing, setDistributing] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+  const [archiveBefore, setArchiveBefore] = useState('');
   const [syncingSheet, setSyncingSheet] = useState(false);
   const [migratingBranches, setMigratingBranches] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<Set<string>>(new Set());
@@ -385,6 +389,28 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   });
 
 
+  // Puts old unassigned data away in "محلي قديم" in one server call — the
+  // alternative was editing thousands of leads one at a time. Nothing is
+  // deleted; the rows can still be distributed from the archive tab.
+  const handleMoveToArchive = async () => {
+    setArchiving(true);
+    try {
+      const options = archiveBefore ? { createdBefore: archiveBefore } : {};
+      const preview = await mysqlAdmin.moveLeadsToArchive({ ...options, dryRun: true });
+      const matched = preview.matched || 0;
+      if (!matched) { notify('info', 'لا يوجد عملاء غير موزّعين لنقلهم'); return; }
+      const scope = archiveBefore ? ` المسجّلين قبل ${archiveBefore}` : '';
+      if (!await confirmDialog(`نقل ${matched} عميل غير موزّع${scope} إلى تبويب «محلي قديم»؟ لن يُحذف أي شيء، ويمكن توزيعهم لاحقًا من هناك.`)) return;
+      const result = await mysqlAdmin.moveLeadsToArchive(options);
+      await reloadLeads();
+      notify('success', `تم نقل ${result.moved || 0} عميل إلى «محلي قديم»`);
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر النقل للأرشيف');
+    } finally {
+      setArchiving(false);
+    }
+  };
+
   return (
     <div className="space-y-4" dir="rtl">
       {/* Row 1: Title + tabs + primary actions — all on one line */}
@@ -561,6 +587,20 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
                 className="flex items-center gap-1.5 bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-emerald-700 disabled:opacity-40 transition whitespace-nowrap">
                 {distributing ? 'جارٍ التوزيع...' : 'توزيع تلقائي'}
               </button>}
+              {isAdmin && (
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-1 text-xs text-gray-500">
+                    أقدم من
+                    <input type="date" value={archiveBefore} onChange={e => setArchiveBefore(e.target.value)}
+                      className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs" />
+                  </label>
+                  <button onClick={handleMoveToArchive} disabled={archiving || unassignedLeads.length === 0}
+                    title="ينقل العملاء غير الموزّعين إلى تبويب محلي قديم — بدون حذف"
+                    className="bg-gray-700 text-white px-4 py-2 rounded-xl text-sm hover:bg-gray-800 disabled:opacity-40 transition whitespace-nowrap">
+                    {archiving ? 'جارٍ النقل...' : 'نقل للأرشيف'}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
           <Suspense fallback={<LeadSectionFallback />}>

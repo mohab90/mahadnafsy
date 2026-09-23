@@ -10,7 +10,7 @@ import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 // "enc:…" text as the video source, and every one of the 2,174 lectures failed
 // to play in the student dashboard while the public course page, which had the
 // literal, worked. Both now read the same one.
-import { revealVideoUrl } from '../lib/lectureVideo';
+import { isFramedLectureUrl, isHlsLectureUrl, isYouTubeLecture, lectureEmbedUrl, revealVideoUrl } from '../lib/lectureVideo';
 import { VideoSurface } from './VideoSurface';
 
 /* ─── HLS-capable video player ───────────────────────────────────────────── */
@@ -38,7 +38,7 @@ const HlsVideoPlayer: React.FC<HlsVideoPlayerProps> = ({ src, startTime = 0, onT
       }, { once: true });
     };
 
-    const isHls = src.includes('.m3u8') || src.includes('/hls/') || src.includes('kind=hls');
+    const isHls = isHlsLectureUrl(src);
     if (isHls) {
       // hls.js (~500KB) is loaded on demand ONLY when an HLS stream actually
       // plays, so it never ships in the initial student-dashboard bundle.
@@ -62,7 +62,10 @@ const HlsVideoPlayer: React.FC<HlsVideoPlayerProps> = ({ src, startTime = 0, onT
     }
 
     return () => { cancelled = true; hls?.destroy(); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Keyed on src alone. startTime is the resume position read once when the
+    // stream is attached; listing it would tear down and rebuild the HLS player
+    // every time playback progress updates it — i.e. constantly, mid-video.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src]);
 
   return (
@@ -125,6 +128,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
         .catch(() => {});
     }
     return () => { cancelled = true; };
+    // Keyed on subscriber?.id: `subscriber` is re-derived from the subscribers
+    // array on every refresh, so depending on the object would re-fetch the
+    // lecture note — and blank the textarea mid-typing — for the same person.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, subscriber?.id]);
   const handleNoteChange = (v: string) => {
     setNoteText(v);
@@ -168,7 +175,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
     if (rawLectures.length > 0 || lecturesLoading) return;
     setLecturesLoading(true);
     reloadLectures().finally(() => setLecturesLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // A one-shot recovery for the case where the bulk lecture load failed. The
+    // values it omits are the ones it changes: rawLectures.length and
+    // lecturesLoading are its own guard, and reloadLectures is rebuilt by the
+    // context each render. Depending on any of them would make the retry loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseId]);
 
   useEffect(() => {
@@ -193,6 +204,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
     if (firstUnwatched) { setSelectedId(firstUnwatched.id); return; }
     // 4. All done: start from beginning
     setSelectedId(unlocked[0].id);
+    // Picks the opening lecture once the curriculum arrives, keyed on how many
+    // lectures there are. lectures/subscriber/courseId are read to decide which
+    // one to resume; listing them would re-run this whenever progress or the
+    // subscriber record refreshed and jump the student off the lecture they are
+    // watching, back to the "resume" pick.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawLectures.length]);
 
@@ -200,6 +216,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
   useEffect(() => {
     if (!selectedId || !subscriber) return;
     try { localStorage.setItem(`last-lecture:${subscriber.id}:${courseId}`, selectedId); } catch { /* quota */ }
+    // Keyed on subscriber?.id for the same reason as the note effect above: the
+    // id is what the storage key is built from, so a new object for the same
+    // person means nothing here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, subscriber?.id, courseId]);
 
   const selected = lectures.find(l => l.id === selectedId) || null;
@@ -223,7 +243,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
       })
       .catch(() => { if (!cancelled) setAccessError('تعذر التحقق من صلاحية المحاضرة؛ حاول مرة أخرى'); });
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Keyed on the three fields of `selected` that decide the answer, not the
+    // object: it is re-derived from the lecture list on every render, so
+    // depending on it would re-ask the server for a signed video URL constantly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, selected?.locked, selected?.videoUrl]);
 
   // Persist completion through the canonical LMS progress endpoint.
@@ -324,27 +347,50 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
                 <div className="w-8 h-8 border-2 border-gray-500 border-t-white rounded-full animate-spin mx-auto mb-3"></div>
                 <p className="text-sm">جاري تحميل الفيديو...</p>
               </div>
-            ) : resolvedUrl.includes('youtube') || resolvedUrl.includes('youtu.be') || resolvedUrl.startsWith('enc:') || resolvedUrl.includes('kind=embed') ? (
-              /* The strip that used to sit across the top here covered the band
-                 YouTube draws its title in, because the title links out. It
-                 guessed at 15% and it only covered the top. VideoSurface takes
-                 YouTube's controls away instead, so there is no title bar and no
-                 logo to cover, and nothing in the frame can be clicked at all. */
-              <VideoSurface
-                key={selected.id}
-                url={resolvedUrl}
-                title={selected.title}
-                autoplay
-                startSeconds={getSavedTime(selected.id)}
-                watermark={subscriber?.email || 'معهد الدراسات النفسية'}
-                onTimeUpdate={(currentTime, duration) => {
-                  saveTime(selected.id, currentTime, duration);
-                  if (duration > 0 && currentTime / duration >= 0.8) {
-                    markLectureComplete(selected.id, currentTime);
-                  }
-                }}
-                onEnded={() => markLectureComplete(selected.id)}
-              />
+            ) : isFramedLectureUrl(resolvedUrl) ? (
+              isYouTubeLecture(resolvedUrl) ? (
+                /* The strip that used to sit across the top here covered the band
+                   YouTube draws its title in, because the title links out. It
+                   guessed at 15% and it only covered the top. VideoSurface takes
+                   YouTube's controls away instead, so there is no title bar and no
+                   logo to cover, and nothing in the frame can be clicked at all. */
+                <VideoSurface
+                  key={selected.id}
+                  url={resolvedUrl}
+                  title={selected.title}
+                  autoplay
+                  startSeconds={getSavedTime(selected.id)}
+                  watermark={subscriber?.email || 'معهد الدراسات النفسية'}
+                  onTimeUpdate={(currentTime, duration) => {
+                    saveTime(selected.id, currentTime, duration);
+                    if (duration > 0 && currentTime / duration >= 0.8) {
+                      markLectureComplete(selected.id, currentTime);
+                    }
+                  }}
+                  onEnded={() => markLectureComplete(selected.id)}
+                />
+              ) : (
+                /* Vimeo, Drive, any hosted player page: no postMessage protocol
+                   for VideoSurface to drive, so they keep their own controls.
+                   These were the lectures handed to a plain media element,
+                   which played nothing. Progress is not tracked here — the host
+                   reports none — so the lecture completes from the list instead. */
+                <iframe
+                  key={selected.id}
+                  src={lectureEmbedUrl(resolvedUrl)}
+                  className="w-full h-full"
+                  allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                  allowFullScreen
+                  // "no-referrer" broke playback outright: an embed player uses
+                  // the Referer header to validate the embedding domain, and with
+                  // it stripped YouTube serves "Error 153: Video player
+                  // configuration error" instead of the video — reproduced live
+                  // 2026-08-05. strict-origin-when-cross-origin sends only the
+                  // bare origin (https://mahadnafsy.com).
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  title={selected.title}
+                />
+              )
             ) : (
               <HlsVideoPlayer
                 key={selected.id}

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { CalendarDays, Check, Link2, Phone, Search, Trash2, X } from 'lucide-react';
 import { useSiteData } from '../../../../context/SiteDataContext';
@@ -44,7 +44,10 @@ export function ConsultationBookingsTab({ notify }: { notify: NotifyFn }) {
   // rather than waiting for the next full reload of the dashboard.
   const [localStatus, setLocalStatus] = useState<Record<string, string>>({});
 
-  const statusOf = (item: ConsultationItem) => localStatus[item.id] ?? item.status;
+  const statusOf = useCallback(
+    (item: ConsultationItem) => localStatus[item.id] ?? item.status,
+    [localStatus],
+  );
   const today = cairoDateOnly();
 
   const rows = useMemo(() => {
@@ -67,7 +70,7 @@ export function ConsultationBookingsTab({ notify }: { notify: NotifyFn }) {
       })
       .sort((a, b) => bookingDate(b).localeCompare(bookingDate(a)));
     // localStatus participates through statusOf.
-  }, [consultations, view, search, therapistFilter, localStatus, today]);
+  }, [consultations, view, search, therapistFilter, today, statusOf]);
 
   const countFor = (filter: ViewFilter) => consultations.filter(item => {
     const status = statusOf(item);

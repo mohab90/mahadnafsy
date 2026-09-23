@@ -16,8 +16,12 @@ type PolicySection = { title: string; fields: ContentField[] };
 interface Props {
   activeTab: TabKey;
   contentHubSubTab: TabKey;
-  setContentHubSubTab: (tab: TabKey) => void;
-  setActiveTab: (tab: TabKey) => void;
+  setContentHubSubTab: (tab: string) => void;
+  // string, not TabKey: this is passed straight down to panels that build the
+  // tab name from data. Dashboard supplies a navigator that checks the name
+  // against the real menu before it moves, so an unknown one is refused rather
+  // than blanking the screen.
+  setActiveTab: (tab: string) => void;
   content: ContentMap;
   policyDrafts: ContentMap;
   setPolicyDrafts: React.Dispatch<React.SetStateAction<ContentMap>>;

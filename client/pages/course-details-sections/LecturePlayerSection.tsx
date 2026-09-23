@@ -3,6 +3,7 @@ import { Lock } from 'lucide-react';
 import type { CourseChapterItem, CourseLectureItem } from '../../types';
 import { cdnImg } from '../../lib/img';
 import { VideoSurface } from '../../components/VideoSurface';
+import { isFramedLectureUrl, isYouTubeLecture, lectureEmbedUrl, revealVideoUrl } from '../../lib/lectureVideo';
 
 type LockedLecture = CourseLectureItem & { locked: boolean };
 
@@ -81,17 +82,48 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
                                 <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin mb-3"></div>
                                 <p className="text-sm">جاري تحميل الفيديو...</p>
                             </div>
-                        ) : (resolvedLectureUrl || '').includes('youtube.com') || (resolvedLectureUrl || '').includes('youtu.be') || (resolvedLectureUrl || '').startsWith('enc:') || (resolvedLectureUrl || '').includes('kind=embed') ? (
-                            // The two dark strips that used to sit here covered
-                            // the corners YouTube happened to draw in, and cost
-                            // a slice of the picture to do it. VideoSurface
-                            // takes the controls away entirely instead.
-                            <VideoSurface
-                              key={selectedLecture.id}
-                              url={resolvedLectureUrl}
-                              title={selectedLecture.title}
-                              watermark={authUserEmail || 'معهد الدراسات النفسية'}
-                            />
+                        ) : isFramedLectureUrl(resolvedLectureUrl) ? (
+                            isYouTubeLecture(resolvedLectureUrl) ? (
+                              // The two dark strips that used to sit here
+                              // covered the corners YouTube happened to draw
+                              // in, and cost a slice of the picture to do it.
+                              // VideoSurface takes the controls away entirely.
+                              <VideoSurface
+                                key={selectedLecture.id}
+                                url={resolvedLectureUrl}
+                                title={selectedLecture.title}
+                                watermark={authUserEmail || 'معهد الدراسات النفسية'}
+                              />
+                            ) : (
+                              // Vimeo, Drive, any hosted player page. They
+                              // answer none of VideoSurface's postMessage
+                              // protocol, so they keep their own controls —
+                              // framing them at all is the fix. These used to
+                              // fall through to a plain media element, which played nothing.
+                              <div className="relative w-full h-full">
+                                <iframe
+                                  key={selectedLecture.id}
+                                  src={lectureEmbedUrl(resolvedLectureUrl)}
+                                  className="w-full h-full"
+                                  allow="autoplay; encrypted-media; fullscreen"
+                                  allowFullScreen
+                                  title={selectedLecture.title}
+                                />
+                                <div className="absolute inset-0 z-10 pointer-events-none select-none overflow-hidden" aria-hidden="true">
+                                  {Array.from({ length: 3 }, (_, row) =>
+                                    Array.from({ length: 2 }, (_, col) => (
+                                      <span
+                                        key={`wm-${row}-${col}`}
+                                        className="absolute text-white/25 text-[9px] font-semibold rotate-[-25deg] whitespace-nowrap"
+                                        style={{ top: `${15 + row * 28}%`, left: `${col * 55}%` }}
+                                      >
+                                        {authUserEmail || 'معهد الدراسات النفسية'}
+                                      </span>
+                                    ))
+                                  ).flat()}
+                                </div>
+                              </div>
+                            )
                         ) : (
                             <video
                               className="w-full h-full"
@@ -102,7 +134,7 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
                               controlsList="nodownload noplaybackrate noremoteplayback"
                               disablePictureInPicture
                               onContextMenu={e => e.preventDefault()}
-                              src={resolvedLectureUrl}
+                              src={revealVideoUrl(resolvedLectureUrl)}
                             />
                         )
                     ) : (

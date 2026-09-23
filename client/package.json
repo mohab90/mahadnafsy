@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@types/dompurify": "^3.0.5",
-    "dompurify": "3.4.13",
+    "dompurify": "^3.4.14",
     "hls.js": "^1.6.16",
     "lucide-react": "^0.555.0",
     "qrcode": "^1.5.4",
@@ -41,6 +41,9 @@
     "vite": "^6.2.0"
   },
   "overrides": {
-    "browserslist": "^4.28.8"
+    "browserslist": "^4.28.8",
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^9.0.7"
+    }
   }
 }

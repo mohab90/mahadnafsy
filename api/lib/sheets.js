@@ -7,7 +7,7 @@ const { matchCourseId } = require('./courseMatch');
 const { toIdentity } = require('./phoneNumber');
 const { createBatchAssigner } = require('./leadAssignment');
 const { getNextClientCode } = require('./mappers');
-const { getTenantSetting, setTenantSetting } = require('./tenantSettings');
+const { getTenantSetting } = require('./tenantSettings');
 const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 
 // Convenience seed sheets — offered as a starting point in the admin CRM settings
@@ -120,14 +120,20 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT) {
         // One picker for the whole run. It loads the roster, the open-lead
         // counts and each rep's intake for the current period once, then hands
         // out in memory — the copy that used to live here re-queried the load
-        // for every single row, and honoured neither cap.
+        // for every single row, and honoured neither cap. Only reps switched on
+        // in the CRM "التوزيع" screen take part, so a rep hired after that
+        // screen was saved no longer collects the whole import.
         const assigner = await createBatchAssigner(tenantId, pool);
-        // Pre-load existing phones AND names for fast dedup
-        const [existingPh] = await pool.execute('SELECT phone, name FROM leads WHERE tenant_id=? AND hidden=0', [tenantId]);
-        // Compared as identities, not as text. The same person arrives as
+        // Every lead the tenant has ever held counts as "already imported" —
+        // including the deleted (hidden) and the merged. Checking only visible
+        // leads meant every lead an admin deleted came back on the next
+        // 15-minute sync: «شيتات بتترجع بعد المسح».
+        //
+        // Compared as identities, not as text: the same person arrives as
         // "p:+201227155562" from Facebook and as "1227155562" from an older
-        // sheet; matching the strings treats them as two people.
-        const phSet   = new Set(existingPh.map(r=>toIdentity(r.phone)).filter(Boolean));
+        // sheet, and matching the strings treats them as two people.
+        const [existingPh] = await pool.execute('SELECT phone, name FROM leads WHERE tenant_id=?', [tenantId]);
+        const phSet   = new Set(existingPh.map(r => toIdentity(r.phone)).filter(Boolean));
         const nameSet = new Set(existingPh.map(r=>(r.name||'').trim().toLowerCase()).filter(Boolean));
         const dataLines = lines.slice(1);
         for (let i = 0; i < dataLines.length; i++) {

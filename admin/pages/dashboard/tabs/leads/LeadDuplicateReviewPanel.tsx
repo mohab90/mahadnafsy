@@ -70,7 +70,10 @@ export function LeadDuplicateReviewPanel({
     const sourceIds = group.leads.map(lead => lead.id).filter(id => id !== targetId);
     if (!sourceIds.length) return { ok: true, merged: 0 };
     try {
-      await mysqlAdmin.mergeLeads(targetId, sourceIds);
+      // The server merges at most 100 records per call.
+      for (let i = 0; i < sourceIds.length; i += 100) {
+        await mysqlAdmin.mergeLeads(targetId, sourceIds.slice(i, i + 100));
+      }
       return { ok: true, merged: sourceIds.length };
     } catch {
       return { ok: false, merged: 0 };

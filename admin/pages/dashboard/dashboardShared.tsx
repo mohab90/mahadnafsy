@@ -252,43 +252,45 @@ type CertPricingMap = Record<string, {
   egyptianEGP: number; residentEGP: number; residentSAR: number; foreignUSD: number;
 }>;
 
+// Dynamic cert types derived from the saved map + static defaults
+const DEFAULT_CERT_TYPES = [
+  { key: 'social_solidarity', label: 'شهادة التضامن الاجتماعي' },
+  { key: 'ain_shams', label: 'شهادة جامعة عين شمس' },
+  { key: 'experience_external', label: 'شهادة الخبرة' },
+  { key: 'practice_external', label: 'شهادة التطبيقين' },
+  { key: 'national_council', label: 'شهادة المجلس الوطني' },
+  { key: 'american_board', label: 'شهادة البورد الأمريكي' },
+  { key: 'institute', label: 'شهادة المعهد' },
+  { key: 'other', label: 'شهادة أخرى' },
+];
+
+// The saved map is the list. It used to be "the eight defaults, plus the map's
+// extra keys", which meant deleting a default could not stick — it was put back
+// on every read — and a custom type's name was replaced by its code, because
+// the name was never in the map to begin with. The defaults seed the list only
+// when nothing has been saved yet.
+//
+// Module scope, beside the defaults: rebuilt in the component body on every
+// render, buildTypes could not be listed as an effect dependency.
+const buildTypes = (map: CertPricingMap): { key: string; label: string }[] => {
+  const keys = Object.keys(map || {});
+  if (!keys.length) return DEFAULT_CERT_TYPES;
+  return keys.map(key => ({
+    key,
+    // The name as saved; for a default that predates labels being stored, its
+    // own Arabic name; and only then the code, which is what every custom type
+    // was reduced to.
+    label: String((map[key] as { label?: string })?.label || '').trim()
+      || DEFAULT_CERT_TYPES.find(d => d.key === key)?.label
+      || key,
+  }));
+};
+
 function CertPricingTab({ certPricingMap, saveCertPricingMap, notify }: {
   certPricingMap: CertPricingMap;
   saveCertPricingMap: (map: CertPricingMap) => void;
   notify: (type: 'success' | 'error' | 'info', text: string) => void;
 }) {
-  // Dynamic cert types derived from the saved map + static defaults
-  const DEFAULT_CERT_TYPES = [
-    { key: 'social_solidarity', label: 'شهادة التضامن الاجتماعي' },
-    { key: 'ain_shams', label: 'شهادة جامعة عين شمس' },
-    { key: 'experience_external', label: 'شهادة الخبرة' },
-    { key: 'practice_external', label: 'شهادة التطبيقين' },
-    { key: 'national_council', label: 'شهادة المجلس الوطني' },
-    { key: 'american_board', label: 'شهادة البورد الأمريكي' },
-    { key: 'institute', label: 'شهادة المعهد' },
-    { key: 'other', label: 'شهادة أخرى' },
-  ];
-
-  // The saved map is the list. It used to be "the eight defaults, plus the
-  // map's extra keys", which meant deleting a default could not stick — it was
-  // put back on every read — and a custom type's name was replaced by its code,
-  // because the name was never in the map to begin with.
-  //
-  // The defaults seed the list only when nothing has been saved yet.
-  const buildTypes = (map: CertPricingMap): { key: string; label: string }[] => {
-    const keys = Object.keys(map || {});
-    if (!keys.length) return DEFAULT_CERT_TYPES;
-    return keys.map(key => ({
-      key,
-      // The name as saved; for a default that predates labels being stored, its
-      // own Arabic name; and only then the code, which is what every custom
-      // type was reduced to.
-      label: String((map[key] as { label?: string })?.label || '').trim()
-        || DEFAULT_CERT_TYPES.find(d => d.key === key)?.label
-        || key,
-    }));
-  };
-
   const [certTypes, setCertTypes] = React.useState(() => buildTypes(certPricingMap));
   const [localMap, setLocalMap] = React.useState<CertPricingMap>(() => {
     const m: CertPricingMap = {};

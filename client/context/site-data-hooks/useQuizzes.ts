@@ -33,7 +33,6 @@ export function useQuizzes(
       setQuizAttempts((list as unknown as QuizAttempt[]).sort((a, b) => (b.takenAt || '').localeCompare(a.takenAt || '')));
     }).catch(() => {});
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.uid, isAdmin, subscribers]);
 
   // Grades server-side (LMS-06) — the server holds the only copy of correctIndex

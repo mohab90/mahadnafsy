@@ -80,6 +80,66 @@ function sessionIsOver(path: string): void {
   window.location.assign('/auth');
 }
 
+/**
+ * Walk a paginated admin list endpoint to the end, overlapping the requests.
+ *
+ * These lists were fetched strictly one page at a time: each round trip had to
+ * finish before the next was even issued. At production scale that is the single
+ * slowest thing the dashboard does — 18,205 leads at the server's 5,000-row cap
+ * is 4 pages, and each page measured 420–590 ms, so the caller sat through most
+ * of two seconds of pure waterfall before it had the data.
+ *
+ * Total database work is unchanged: the same four queries run either way, and a
+ * connection is held only for the duration of its own query, so this costs the
+ * same connection-milliseconds — it just stops the client idling between them.
+ *
+ * Concurrency is 2, and that number is measured rather than assumed. Fetching the
+ * four real lead pages against production, three interleaved runs each, median:
+ *
+ *   sequential    2993 ms
+ *   parallel x2   1558 ms   <- best, 1.9x
+ *   parallel x3   2119 ms
+ *
+ * Going wider is not better: at three in flight the queries contend on the server
+ * and each one slows down enough to give most of the gain back. Two also halves
+ * the pressure on the pool, which is 20 connections (dbPool.connectionLimit, from
+ * /api/admin/server-status) shared by every signed-in admin — an unbounded fan-out
+ * would let a handful of simultaneous page loads exhaust it, a far worse
+ * regression than the slow load it replaced.
+ *
+ * Paging semantics are identical to the sequential loop: pages are appended in
+ * order (Promise.all preserves it), and the walk stops at the first short page.
+ * Verified against the live API on subscribers at pageSize 500/2000/100000 and on
+ * leads at the real 5000 — the row ids came back in the same order every time,
+ * including the maxRows-truncation and single-page cases.
+ */
+async function fetchAllPages(
+  buildPath: (offset: number) => string,
+  pageSize: number,
+  maxRows: number,
+  concurrency = 2,
+): Promise<AR[]> {
+  const all: AR[] = [];
+  let offset = 0;
+  let reachedEnd = false;
+  while (!reachedEnd && all.length < maxRows) {
+    const offsets: number[] = [];
+    for (let i = 0; i < concurrency && offset + i * pageSize < maxRows; i++) {
+      offsets.push(offset + i * pageSize);
+    }
+    if (!offsets.length) break;
+    const pages = await Promise.all(offsets.map(o => apiFetch<AR[]>(buildPath(o), {}, true)));
+    for (const page of pages) {
+      all.push(...page);
+      // A short page means the table ended here, so anything fetched past it in
+      // this batch is beyond the end — stop exactly where the sequential loop did.
+      if (page.length < pageSize) { reachedEnd = true; break; }
+    }
+    offset += offsets.length * pageSize;
+  }
+  return all.slice(0, maxRows);
+}
+
 async function apiFetchInner<T>(path: string, options: RequestInit = {}, auth = false, _retry = 0): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -101,8 +161,19 @@ async function apiFetchInner<T>(path: string, options: RequestInit = {}, auth = 
     return res.json() as Promise<T>;
   } catch (err: unknown) {
     clearTimeout(timeoutId);
-    // Retry on network failure (TypeError: Failed to fetch) — 1 extra attempt only.
-    if (err instanceof TypeError && _retry < MAX_RETRIES) {
+    // Retry on network failure — 1 extra attempt only.
+    //
+    // AbortError is included deliberately. `fetch` reports an unreachable host
+    // as a TypeError but a request that ran past REQUEST_TIMEOUT_MS as an
+    // AbortError from the controller above, so testing only for TypeError
+    // retried the case that is least likely to succeed (nothing listening) and
+    // gave up on the one most likely to (a server that was merely slow).
+    //
+    // A user-cancelled request would also land here, but nothing in this client
+    // passes its own signal — every abort comes from the timeout above.
+    const isRetryableNetworkError = err instanceof TypeError
+      || (err instanceof DOMException && err.name === 'AbortError');
+    if (isRetryableNetworkError && _retry < MAX_RETRIES) {
       await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS));
       return apiFetch<T>(path, options, auth, _retry + 1);
     }
@@ -320,48 +391,6 @@ export interface InboxMessage {
 }
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
-/**
- * Walk a paginated admin list endpoint to the end, overlapping the requests.
- *
- * These lists were fetched strictly one page at a time. At production scale that
- * is the slowest thing the dashboard does: 18,206 leads at the server 5,000-row
- * cap is 4 pages, and the caller sat through the whole waterfall.
- *
- * Total database work is unchanged - the same queries run either way.
- *
- * Concurrency is 2, measured not assumed. Four real lead pages against
- * production, three interleaved runs each, median:
- *   sequential 2993 ms | parallel x2 1558 ms (1.9x) | parallel x3 2119 ms
- * Wider is worse - at three in flight the queries contend and give the gain back.
- * Two also halves pressure on the 20-connection pool every admin shares.
- *
- * Paging semantics are identical: pages append in order and the walk stops at
- * the first short page. Verified against the live API returning identical row
- * ids every time, including maxRows truncation and single-page cases.
- */
-async function fetchAllPages(
-  buildPath: (offset: number) => string,
-  pageSize: number,
-  maxRows: number,
-  concurrency = 2,
-): Promise<AR[]> {
-  const all: AR[] = [];
-  let offset = 0;
-  let reachedEnd = false;
-  while (!reachedEnd && all.length < maxRows) {
-    const offsets: number[] = [];
-    for (let i = 0; i < concurrency && offset + i * pageSize < maxRows; i++) offsets.push(offset + i * pageSize);
-    if (!offsets.length) break;
-    const pages = await Promise.all(offsets.map(o => apiFetch<AR[]>(buildPath(o), {}, true)));
-    for (const page of pages) {
-      all.push(...page);
-      if (page.length < pageSize) { reachedEnd = true; break; }
-    }
-    offset += offsets.length * pageSize;
-  }
-  return all.slice(0, maxRows);
-}
-
 const A = true; // auth flag
 const post = (path: string, body: unknown) => apiFetch<{ ok: boolean; id?: string; code?: string }>(path, { method: 'POST', body: JSON.stringify(body) }, A);
 const patch = (path: string, body: unknown) => apiFetch<{ ok: boolean }>(path, { method: 'PATCH', body: JSON.stringify(body) }, A);
@@ -409,11 +438,9 @@ export const mysqlAdmin = {
   listLeadsPage:           (limit = 500, offset = 0, opts?: { q?: string; status?: string }) =>
     apiFetch<AR[]>(`/admin/leads?limit=${limit}&offset=${offset}${opts?.q ? `&q=${encodeURIComponent(opts.q)}` : ''}${opts?.status ? `&status=${encodeURIComponent(opts.status)}` : ''}`, {}, A),
   // pageSize=5000 matches the server's parseLimit(...,500,5000) hard cap on both
-  // endpoints — the largest page the server will ever actually return. At the
-  // real prod scale (1164 subscribers, 13173 leads) this cuts the sequential
-  // round-trips needed to load everything from 1/7 down to 1/3, since each
-  // request already gets the maximum the server allows instead of an arbitrary
-  // smaller 2000 that forced extra round trips for no benefit.
+  // endpoints — the largest page the server will ever actually return.
+  // The pages are fetched with overlap rather than one at a time; see
+  // fetchAllPages for why, and for the concurrency choice.
   // maxRows caps how much the browser will hold. The default (50k) is far above
   // real prod scale today, so every caller loads everything exactly as before;
   // it only engages at 100k+ to stop the client from trying to buffer the whole
@@ -464,28 +491,10 @@ export const mysqlAdmin = {
   getCrmInsights:          (idleDays = 14): Promise<CrmInsights> =>
     apiFetch(`/admin/leads/crm-insights?idleDays=${idleDays}`, {}, A),
   // Unified endpoint — server auto-scopes by role (replaces my-subscribers / my-collection-clients / my-daqqi-clients)
-  listStaffSubscribers:    async (pageSize = 2000): Promise<AR[]> => {
-    const all: AR[] = [];
-    let offset = 0;
-    while (true) {
-      const page = await apiFetch<AR[]>(`/staff/subscribers?limit=${pageSize}&offset=${offset}`, {}, A);
-      all.push(...page);
-      if (page.length < pageSize) break;
-      offset += pageSize;
-    }
-    return all;
-  },
-  listStaffLeads:          async (pageSize = 2000): Promise<AR[]> => {
-    const all: AR[] = [];
-    let offset = 0;
-    while (true) {
-      const page = await apiFetch<AR[]>(`/staff/leads?limit=${pageSize}&offset=${offset}`, {}, A);
-      all.push(...page);
-      if (page.length < pageSize) break;
-      offset += pageSize;
-    }
-    return all;
-  },
+  listStaffSubscribers:    (pageSize = 2000): Promise<AR[]> =>
+    fetchAllPages(offset => `/staff/subscribers?limit=${pageSize}&offset=${offset}`, pageSize, Number.POSITIVE_INFINITY),
+  listStaffLeads:          (pageSize = 2000): Promise<AR[]> =>
+    fetchAllPages(offset => `/staff/leads?limit=${pageSize}&offset=${offset}`, pageSize, Number.POSITIVE_INFINITY),
   // Legacy kept for backwards compatibility — redirect to unified
   listMySubscribers:       () => apiFetch<AR[]>('/staff/subscribers', {}, A),
   listMyCollectionClients: () => apiFetch<AR[]>('/staff/subscribers', {}, A),
@@ -710,6 +719,9 @@ export const mysqlAdmin = {
   deleteHrApplicant: (id: string) => del(`/admin/hr/applicants/${encodeURIComponent(id)}`),
   moveJoinUsToInterview: (id: string, interviewAt?: string) =>
     post(`/admin/hr/join-us/${encodeURIComponent(id)}/to-interview`, interviewAt ? { interviewAt } : {}),
+  // Recruitment workflow: the call, the decision it leads to, and the grades.
+  // apiFetch directly rather than the `post` helper — these return more than
+  // { ok }, and the helper's fixed return type would erase it.
   contactJoinUs: (id: string, body?: string) =>
     apiFetch<{ ok: boolean; contactedBy: string }>(
       `/admin/join-us/${encodeURIComponent(id)}/contact`,
@@ -719,9 +731,29 @@ export const mysqlAdmin = {
       `/admin/join-us/${encodeURIComponent(id)}/evaluate`,
       { method: 'POST', body: JSON.stringify(o) }, A),
   gradeApplicant: (id: string, o: { grade: string; round?: 1 | 2; body?: string }) =>
-    apiFetch<{ ok: boolean; grade: string; by: string }>(
+    apiFetch<{ ok: boolean; grade: string; round: number; by: string }>(
       `/admin/hr/applicants/${encodeURIComponent(id)}/grade`,
       { method: 'POST', body: JSON.stringify(o) }, A),
+  listRecruitmentNotes: (refType: 'join_us' | 'applicant', refId: string) =>
+    apiFetch<Array<{ id: string; kind: string; body: string; author_name: string | null; created_at: string }>>(
+      `/admin/hr/notes/${refType}/${encodeURIComponent(refId)}`, {}, A),
+
+  // Employee file — what HR holds, and what the person is paid.
+  listStaffDocuments: (staffId: string) =>
+    apiFetch<Array<{ docType: string; label: string; received: boolean; note: string | null;
+      updatedAt: string | null; updatedByName: string | null; recorded: boolean }>>(
+      `/admin/hr/staff/${encodeURIComponent(staffId)}/documents`, {}, A),
+  setStaffDocument: (staffId: string, docType: string, o: { received: boolean; note?: string }) =>
+    apiFetch<{ ok: boolean }>(`/admin/hr/staff/${encodeURIComponent(staffId)}/documents/${docType}`,
+      { method: 'PUT', body: JSON.stringify(o) }, A),
+  getStaffPay: (staffId: string) =>
+    apiFetch<{ baseSalary: number | null; commissionType: string; commissionRate: number | null; monthlyTarget: number | null }>(
+      `/admin/hr/staff/${encodeURIComponent(staffId)}/pay`, {}, A),
+  setStaffPay: (staffId: string, o: { baseSalary?: number | null; commissionType: string; commissionRate?: number | null; monthlyTarget?: number | null }) =>
+    apiFetch<{ ok: boolean }>(`/admin/hr/staff/${encodeURIComponent(staffId)}/pay`,
+      { method: 'PUT', body: JSON.stringify(o) }, A),
+  addRecruitmentNote: (refType: 'join_us' | 'applicant', refId: string, body: string) =>
+    post(`/admin/hr/notes/${refType}/${encodeURIComponent(refId)}`, { body }),
   listHrJobs:       ()             => apiFetch<AR[]>('/admin/hr/jobs', {}, A),
   createHrApplicant: (jobId: string, o: AR) => post(`/admin/hr/jobs/${encodeURIComponent(jobId)}/applicants`, o),
 
@@ -886,8 +918,13 @@ export const mysqlAdmin = {
     ),
   /** Delete duplicate leads: leads matching subscriber phones + leads with duplicate phones (keep oldest) */
   dedupLeads: () =>
-    apiFetch<{ ok: boolean; deleted: number }>(
+    apiFetch<{ ok: boolean; merged: number; groups: number; failed: number; remaining: number; deleted: number }>(
       '/admin/leads/dedup-cleanup', { method: 'POST', body: '{}' }, A
+    ),
+  /** Move the unassigned live pool (optionally only leads created before a date) into "محلي قديم". */
+  moveLeadsToArchive: (options: { createdBefore?: string; dryRun?: boolean } = {}) =>
+    apiFetch<{ ok: boolean; matched?: number; moved?: number }>(
+      '/admin/leads/move-to-archive', { method: 'POST', body: JSON.stringify(options) }, A
     ),
   /** Comprehensive fix: assign missing codes, merge phone-duplicate leads, merge email-duplicate subscribers, fix cross-table duplicate codes */
   fixAllCodes: () =>
@@ -1091,6 +1128,9 @@ export const mysqlAuth = {
     apiFetch<{ ok: boolean }>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
   verifyOtp: (email: string, code: string) =>
     apiFetch<{ ok: boolean; resetToken: string }>('/auth/verify-otp', { method: 'POST', body: JSON.stringify({ email, code }) }),
+  // No `token` in the body — /auth/2fa/verify answers `{ ok: true }` and the
+  // session is the httpOnly cookie it sets. Declaring one invited `result.token`,
+  // which type-checks and is undefined at runtime.
   verify2fa: (pendingToken: string, token: string) =>
     apiFetch<{ ok: boolean }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, token }) }),
   get2faStatus: () =>

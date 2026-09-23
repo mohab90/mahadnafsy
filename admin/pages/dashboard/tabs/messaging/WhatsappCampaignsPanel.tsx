@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Megaphone, Plus, Eye, Send, XCircle, Trash2, Loader2, Users, Clock, AlertTriangle, CheckCircle2,
 } from 'lucide-react';
@@ -62,7 +62,7 @@ export function WhatsappCampaignsPanel({ notify }: { notify: NotifyFn }) {
     channelId: '', throttlePerMinute: 60, scheduledAt: '',
   });
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const [list, chans] = await Promise.all([
@@ -73,8 +73,8 @@ export function WhatsappCampaignsPanel({ notify }: { notify: NotifyFn }) {
       setChannels(chans);
     } catch { notify('error', 'تعذر تحميل الحملات'); }
     finally { setLoading(false); }
-  };
-  useEffect(() => { void load(); }, []);
+  }, [notify]);
+  useEffect(() => { void load(); }, [load]);
 
   const create = async () => {
     if (!draft.name.trim()) { notify('error', 'اسم الحملة مطلوب'); return; }

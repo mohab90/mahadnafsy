@@ -43,3 +43,17 @@ test('lecture access returns an expiring ticket and redemption rechecks active e
   assert.match(route, /e\.status='active'/);
   assert.doesNotMatch(route, /accessible:\s*true,\s*video_url:\s*lecture\.video_url/);
 });
+
+test('only real media files are classified for <video>; hosted players are framed', () => {
+  assert.equal(mediaKind('https://cdn.example.com/lesson-2.mp4'), 'video');
+  assert.equal(mediaKind('/uploads/videos/t1/lesson.webm'), 'video');
+  assert.equal(mediaKind('https://cdn.example.com/stream/index.m3u8'), 'hls');
+  // These are web pages. Classifying them as 'video' put them in a <video>
+  // element, which is why every gated lecture after the free first one was blank.
+  assert.equal(mediaKind('https://drive.google.com/file/d/abc/preview'), 'embed');
+  assert.equal(mediaKind('https://vimeo.com/123456'), 'embed');
+  assert.equal(mediaKind('https://iframe.mediadelivery.net/embed/1/xyz'), 'embed');
+  assert.equal(playableRedirect('https://vimeo.com/123456'), 'https://player.vimeo.com/video/123456');
+  assert.equal(playableRedirect('https://drive.google.com/file/d/abc_1/view?usp=sharing'), 'https://drive.google.com/file/d/abc_1/preview');
+  assert.equal(playableRedirect('https://player.vimeo.com/video/9'), 'https://player.vimeo.com/video/9');
+});

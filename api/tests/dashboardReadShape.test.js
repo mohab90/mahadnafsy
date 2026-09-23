@@ -128,7 +128,12 @@ test('lead distribution hands out only the leads that are still open', () => {
     'ten statuses are terminal; this excluded two');
   assert.ok(!distribute.includes("status NOT IN ('converted','lost')"),
     'archived, wrong_number and the rest were being redistributed');
-  assert.ok(distribute.includes('[tenantId, ...openStatuses]'), 'and the placeholders must be bound');
+  // Two filters now, so two sets of params: the open statuses, then the archive
+  // sources the "محلي قديم" pool is held back by. Both have to be bound.
+  assert.ok(distribute.includes('[tenantId, ...openStatuses, ...archive.params]'),
+    'and the placeholders must be bound');
+  assert.ok(distribute.includes("excludeArchiveSourcesSql('source')"),
+    'archive rows are distributed from their own tab, not by this button');
 });
 
 test('a Dokki round counts only the money paid for its own course', () => {

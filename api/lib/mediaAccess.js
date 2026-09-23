@@ -19,11 +19,34 @@ function decodeStoredUrl(value) {
   }
 }
 
+// Only a real media file can go in a <video> element. Anything else — YouTube,
+// Vimeo, Google Drive, Bunny's iframe player, a Zoom recording page — is a web
+// page and must be framed. This used to answer 'video' for every non-YouTube
+// link, so the student app handed a Drive/Vimeo page to <video>, which plays
+// nothing. The free first lecture was unaffected because its URL reaches the
+// browser directly and is framed there — hence "only the first video works".
+const DIRECT_MEDIA_FILE = /\.(?:mp4|m4v|webm|ogg|ogv|mov)(?:$|[?#])/;
+
 function mediaKind(value) {
   const url = decodeStoredUrl(value).toLowerCase();
   if (/youtu\.be|youtube\.com/.test(url)) return 'embed';
   if (/\.m3u8(?:$|\?)/.test(url) || url.includes('/hls/')) return 'hls';
-  return 'video';
+  if (url.startsWith('/uploads/') || DIRECT_MEDIA_FILE.test(url)) return 'video';
+  return 'embed';
+}
+
+// Which player an 'embed' lecture needs, for the browser that cannot tell.
+//
+// A paid lecture arrives as a ticket, so the URL the student app sees says
+// nothing about where the video is hosted — and the two cases want different
+// players. A YouTube embed is driven over postMessage by this site's own
+// controls, with YouTube's chrome switched off; a Vimeo or Drive page has no
+// such protocol and has to keep its own controls. Assuming YouTube for every
+// ticket left a Drive-hosted lecture sitting behind a play button that did
+// nothing, which is the same «اول فيديو بس اللى بيشتغل» seen from the client.
+function mediaProvider(value) {
+  const url = decodeStoredUrl(value).toLowerCase();
+  return /youtu\.be|youtube\.com/.test(url) ? 'youtube' : 'other';
 }
 
 function createMediaTicket({ tenantId, subscriberId, lectureId, ttlSeconds = 300 }) {
@@ -82,27 +105,41 @@ function playableRedirect(value, { start = 0, autoplay = false } = {}) {
     if (parsed.hostname.includes('youtube.com')) {
       id = parsed.searchParams.get('v') || parsed.pathname.split('/embed/')[1]?.split('/')[0] || '';
     }
-    if (!id) return url;
-    const params = [
-      `autoplay=${autoplay ? 1 : 0}`,
-      'controls=0',
-      'modestbranding=1',
-      'rel=0',
-      'showinfo=0',
-      'iv_load_policy=3',
-      'color=white',
-      'playsinline=1',
-      'disablekb=1',
-      'fs=0',
-      'enablejsapi=1',
-    ];
-    // Where the viewer had got to. The browser cannot put this in the URL it
-    // builds — for a paid lecture it never sees one — so it travels as a query
-    // on the ticket and is folded in here. Without it a paid lecture always
-    // restarted from zero, however much of it had been watched.
-    const resume = Math.floor(Number(start) || 0);
-    if (resume > 0) params.push(`start=${resume}`);
-    return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?${params.join('&')}`;
+    if (id) {
+      const params = [
+        `autoplay=${autoplay ? 1 : 0}`,
+        'controls=0',
+        'modestbranding=1',
+        'rel=0',
+        'showinfo=0',
+        'iv_load_policy=3',
+        'color=white',
+        'playsinline=1',
+        'disablekb=1',
+        'fs=0',
+        'enablejsapi=1',
+      ];
+      // Where the viewer had got to. The browser cannot put this in the URL it
+      // builds — for a paid lecture it never sees one — so it travels as a query
+      // on the ticket and is folded in here. Without it a paid lecture always
+      // restarted from zero, however much of it had been watched.
+      const resume = Math.floor(Number(start) || 0);
+      if (resume > 0) params.push(`start=${resume}`);
+      return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?${params.join('&')}`;
+    }
+    // Not everything paid is on YouTube. vimeo.com/<id> and a Drive ".../view"
+    // link both refuse to be framed, so a lecture hosted on either used to
+    // redirect to a page that showed nothing — the same «اول فيديو بس اللى
+    // بيشتغل», reached by a different route. These are their embeddable forms.
+    if (/(^|\.)vimeo\.com$/.test(parsed.hostname) && parsed.hostname !== 'player.vimeo.com') {
+      const vimeoId = parsed.pathname.split('/').filter(Boolean).find(part => /^\d+$/.test(part));
+      if (vimeoId) return `https://player.vimeo.com/video/${vimeoId}`;
+    }
+    if (parsed.hostname === 'drive.google.com') {
+      const driveId = parsed.pathname.match(/\/file\/d\/([^/]+)/)?.[1] || parsed.searchParams.get('id');
+      if (driveId) return `https://drive.google.com/file/d/${encodeURIComponent(driveId)}/preview`;
+    }
+    return url;
   } catch {
     return '';
   }
@@ -112,6 +149,7 @@ module.exports = {
   createMediaTicket,
   decodeStoredUrl,
   mediaKind,
+  mediaProvider,
   playableRedirect,
   verifyMediaTicket,
 };

@@ -59,6 +59,10 @@ export function useContentState(
     });
     contentWriteQueueRef.current = queued;
     return queued;
+    // Same as the CRM writers: the ref is stable, and `track` is rebuilt every
+    // render by useActivityLogState, so depending on it would rebuild this
+    // queue-flushing callback on each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const setContentValue = useCallback((key: string, value: string) =>

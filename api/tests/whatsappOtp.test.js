@@ -96,3 +96,25 @@ test('a per-number signup throttle exists and is windowed', () => {
   assert.match(requestFn, /SIGNUP_CODES_PER_HOUR/, 'a per-number cap must exist');
   assert.match(requestFn, /INTERVAL 1 HOUR/, 'the cap must be measured over a window');
 });
+
+test('the per-number throttle covers registered numbers, not only signups', () => {
+  // Capping only signups left the opposite hole open: nothing else in the stack
+  // counts per number. The OTP request body carries only a phone, so the route's
+  // `actor()` resolves to 'anonymous' and both limiters fall back to the IP —
+  // rotating IPs could send a real customer unlimited WhatsApp codes.
+  assert.match(requestFn, /LOGIN_CODES_PER_HOUR/,
+    'a cap must exist for numbers that already have an account');
+  const throttle = requestFn.slice(requestFn.indexOf('isNewAccount'));
+  assert.ok(!/if \(isNewAccount\) \{\s*\/\/ The IP limiter/.test(throttle),
+    'the cap must not be nested inside a new-account-only branch');
+});
+
+test('the subscriber lookup matches a number, not anything ending in it', () => {
+  // `LIKE '%<identity>'` matched on a shared tail: a client stored as
+  // 966501234567 was adopted by a request for 66501234567 — a different
+  // country, a different person, and a number the code would be delivered to.
+  assert.ok(!/LIKE \?[\s\S]{0,80}is_active=1/.test(requestFn) && !/`%\$\{normalized\}`/.test(requestFn),
+    'the subscriber adoption must not use a trailing-wildcard match');
+  assert.match(requestFn, /identitySpellings/,
+    'it must match against the exact set of spellings of this number');
+});

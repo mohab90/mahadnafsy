@@ -122,6 +122,13 @@ type TicketReply = { id: string; text: string; author: string; isStaff: boolean;
 type LinkedEntity = { type: string; id?: string; name?: string; client_code?: string } | null;
 type CannedResponse = { id: string; title: string; body: string; category: string };
 
+const ageHours = (item: InboxItem) =>
+  item.createdAt ? Math.max(0, (Date.now() - new Date(item.createdAt).getTime()) / 3600000) : 0;
+const isWaiting = (item: InboxItem) => item.status === 'open' || item.status === 'pending';
+// 24h is the institute's standard first-response window (SLA_HOURS.medium in
+// api/lib/ticketRouting.js); past that, a customer has been left a full day.
+const isOverdue = (item: InboxItem) => isWaiting(item) && ageHours(item) > 24;
+
 export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   const navigate = useNavigate();
   const { joinUsApplications, isAdmin, authUser, staffMembers, currentStaff } = useSiteData();
@@ -422,12 +429,6 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   // this screen exists to answer. A flat list sorted by arrival hides exactly
   // the item that has been waiting longest behind everything that arrived after
   // it, which is why the page read as "another list" rather than a work queue.
-  const ageHours = (item: InboxItem) =>
-    item.createdAt ? Math.max(0, (Date.now() - new Date(item.createdAt).getTime()) / 3600000) : 0;
-  const isWaiting = (item: InboxItem) => item.status === 'open' || item.status === 'pending';
-  // 24h is the institute's standard first-response window (SLA_HOURS.medium in
-  // api/lib/ticketRouting.js); past that, a customer has been left a full day.
-  const isOverdue = (item: InboxItem) => isWaiting(item) && ageHours(item) > 24;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

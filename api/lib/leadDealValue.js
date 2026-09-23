@@ -2,8 +2,8 @@
 // Tenant-bound deal-value sync. Accepts syncLeadDealValue(subscriberId, tenantId)
 // or syncLeadDealValue(pool, subscriberId, tenantId, strict).
 const { pool: defaultPool } = require('./db');
-const logger = require('./logger').child({ lib: 'leadDealValue' });
 const { findLeadByContact } = require('./leadMatching');
+const logger = require('./logger').child({ lib: 'leadDealValue' });
 
 async function syncLeadDealValue(arg1, arg2, arg3, arg4 = false) {
   // Overload resolution: a pool-like first arg → (pool, id); otherwise → (id).

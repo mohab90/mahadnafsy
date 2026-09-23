@@ -261,13 +261,27 @@ const Auth: React.FC = () => {
             const isRateLimit = msg.includes('محاولات كثيرة') || msg.includes('HTTP 429');
             const isNeedsReset = msg.includes('لم يتم تعيين كلمة مرور');
             const isDbDown = msg.includes('DB unavailable') || msg.includes('tunnel') || msg.includes('HTTP 503');
+            // Same distinction the admin sign-in makes: a request that never
+            // reached the server is not a rejected sign-in. Telling a customer
+            // "تعذر إتمام العملية" for a dropped connection sends them to reset a
+            // password that was never wrong.
+            const isTimeout = (error instanceof DOMException && error.name === 'AbortError')
+                || msg.includes('aborted');
+            const isUnreachable = error instanceof TypeError || msg.includes('Failed to fetch');
+            const isServerFault = /HTTP 5\d\d/.test(msg);
             const arabicText = isRateLimit
                 ? 'محاولات كثيرة جداً — انتظر 15 دقيقة وحاول مرة أخرى'
                 : isNeedsReset
                     ? msg
                     : isDbDown
                         ? 'الموقع غير متاح حالياً، يرجى المحاولة بعد قليل.'
-                        : (arabicMessages[msg] || 'تعذر إتمام العملية، حاول مرة أخرى.');
+                        : isTimeout
+                            ? 'الخادم لم يستجب في الوقت المحدد. بياناتك سليمة — تحقق من الاتصال وحاول مرة أخرى.'
+                            : isUnreachable
+                                ? 'تعذر الوصول إلى الموقع. تحقق من اتصالك بالإنترنت ثم حاول مرة أخرى.'
+                                : isServerFault
+                                    ? 'حدث خطأ في الخادم أثناء محاولة الدخول. حاول بعد قليل.'
+                                    : (arabicMessages[msg] || 'تعذر إتمام العملية، حاول مرة أخرى.');
             setNotice({ type: 'error', text: arabicText });
         } finally {
             setLoading(false);

@@ -6,27 +6,18 @@ const { findLeadById } = require('./leadRepository');
 const { normalizeBranch } = require('./leadAssignmentPolicy');
 const { intakeByStaff, hasRoom } = require('./assignmentQuota');
 
-// Canonical "least-loaded" sales-rep picker for single-lead auto-assignment
-// at capture time (public registration, chatbot capture, self-registration,
-// Facebook Lead Ads webhook). Previously reimplemented 4 separate times with
-// diverging fairness rules — the two most impactful bugs this closes:
-//   - Some copies counted EVERY non-hidden lead ever assigned to a rep,
-//     including years-old converted/lost ones, toward their "load". A
-//     veteran rep who has converted hundreds of leads over time looks
-//     permanently "overloaded" and stops receiving new auto-assigned leads,
-//     while a brand-new hire with zero history gets everything. This version
-//     only counts leads still in a non-terminal status (matching the one
-//     implementation — crm-advanced.js's smart-route — that already had this
-//     right).
-//   - api/lib/facebookLeadAds.js's copy queried staff/leads outside any
-//     transaction with no is_active/deleted_at guard consistency with the
-//     others; folded in here.
-// Bulk operations (admin/leads.js's cyclic bulk-assign, crm-advanced.js's
-// smart-route re-sorting batch distributor) are intentionally NOT routed
-// through this — they distribute a whole batch in one pass with their own
-// rebalancing strategy, which this single-pick helper isn't shaped for.
-async function getNextSalesRep(tenantId, db = pool, options = {}) {
-  const branch = normalizeBranch(options.branch);
+// Who may receive leads automatically. The CRM settings "التوزيع" screen is
+// the authority: once any rep has a row there, only reps with a row that is
+// switched on (and under its cap) take part. A tenant that never saved that
+// screen falls back to every active sales rep.
+//
+// Before this, every distributor read the staff table directly, so a rep hired
+// after the screen was saved was invisible on it yet took part in every
+// round-robin — and under "least loaded" got nearly everything, having zero
+// open leads. New reps now appear on the screen switched off and receive
+// nothing until someone turns them on.
+async function listDistributableReps(tenantId, db = pool, options = {}) {
+  const branch = options.branch ? normalizeBranch(options.branch) : null;
   const teamKey = String(options.teamKey || 'sales').trim().toLowerCase();
   const [rows] = await db.query(
     `SELECT s.id,s.name,p.id AS policy_id,p.branch_key,p.weight,p.max_open_leads,
@@ -34,9 +25,9 @@ async function getNextSalesRep(tenantId, db = pool, options = {}) {
        FROM staff s
        LEFT JOIN crm_assignment_members p
          ON p.tenant_id=s.tenant_id AND p.staff_id=s.id AND p.team_key=?
-        AND p.branch_key IN (?, '*')
-      WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL AND UPPER(s.role)='SALES'`,
-    [teamKey, branch, tenantId]
+      WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL AND UPPER(s.role)='SALES'
+      ORDER BY s.name ASC`,
+    [teamKey, tenantId]
   );
   const [loads] = await db.query(
     `SELECT assigned_sales_id,COUNT(*) active_leads FROM leads
@@ -46,41 +37,93 @@ async function getNextSalesRep(tenantId, db = pool, options = {}) {
     [tenantId]
   );
   const loadByStaff = new Map(loads.map(row => [String(row.assigned_sales_id), Number(row.active_leads)]));
-  const selectedPolicy = new Map();
+  const configured = rows.some(row => row.policy_id != null);
+
+  const staffById = new Map();
   for (const row of rows) {
-    const current = selectedPolicy.get(row.id);
-    if (!current || (row.branch_key === branch && current.branch_key !== branch)) selectedPolicy.set(row.id, row);
+    const entry = staffById.get(row.id) || { id: row.id, name: row.name, policies: [] };
+    if (row.policy_id != null) entry.policies.push(row);
+    staffById.set(row.id, entry);
   }
-  // How many each rep has already been handed inside their own window. A rep
-  // with no intake_limit is unaffected; the count is still cheap to take.
-  const candidates = [...selectedPolicy.values()];
+
+  // The per-period intake cap, which the batch assigner has always honoured.
+  // It was applied where this roster used to be built by hand; without it here
+  // capture-time assignment kept handing leads to a rep who had already taken
+  // their month's limit.
   const intake = await intakeByStaff(
     tenantId,
-    candidates.filter(row => row.intake_limit != null).map(row => ({
-      staff_id: row.id, intake_period: row.intake_period,
-    })),
+    rows.filter(row => row.policy_id != null && row.intake_limit != null)
+      .map(row => ({ staff_id: row.id, intake_period: row.intake_period })),
     db
   );
 
-  const reps = candidates
-    .map(row => ({ ...row, activeLeads: loadByStaff.get(String(row.id)) || 0 }))
-    // Either cap stops a rep receiving: the number they hold open, and the
-    // number they have taken in this period.
-    .filter(row => row.policy_id == null || (
-      Boolean(row.is_available)
-      && (row.max_open_leads == null || row.activeLeads < Number(row.max_open_leads))
-      && hasRoom(row, intake.get(String(row.id)) || 0)
-    ))
-    .sort((a, b) =>
-      (a.activeLeads / Math.max(Number(a.weight) || 1, 0.1)) - (b.activeLeads / Math.max(Number(b.weight) || 1, 0.1)) ||
-      new Date(a.last_assigned_at || 0) - new Date(b.last_assigned_at || 0) ||
-      String(a.name).localeCompare(String(b.name))
-    );
+  const reps = [];
+  for (const { id, name, policies } of staffById.values()) {
+    const activeLeads = loadByStaff.get(String(id)) || 0;
+    if (!configured) {
+      reps.push({ id, name, policyId: null, weight: 1, maxOpenLeads: null, activeLeads, lastAssignedAt: null });
+      continue;
+    }
+    const policy = branch
+      ? (policies.find(p => p.branch_key === branch) || policies.find(p => p.branch_key === '*'))
+      : (policies.find(p => p.branch_key === '*') || policies[0]);
+    if (!policy || !policy.is_available) continue;
+    const maxOpenLeads = policy.max_open_leads == null ? null : Number(policy.max_open_leads);
+    if (maxOpenLeads != null && activeLeads >= maxOpenLeads) continue;
+    if (!hasRoom(policy, intake.get(String(id)) || 0)) continue;
+    reps.push({
+      id, name, policyId: policy.policy_id,
+      weight: Math.max(Number(policy.weight) || 1, 0.1),
+      maxOpenLeads, activeLeads, lastAssignedAt: policy.last_assigned_at,
+    });
+  }
+  return reps;
+}
+
+// Hands out reps one lead at a time for a batch (sheet sync, bulk distribution),
+// keeping each rep's cap and load current as it goes.
+//   mode 'rr'    — strict rotation, resumable from `start`
+//   mode 'least' — lowest weighted open load first
+function createRepRotation(reps, { mode = 'rr', start = 0 } = {}) {
+  let index = Number(start) || 0;
+  return {
+    next() {
+      const open = reps.filter(rep => rep.maxOpenLeads == null || rep.activeLeads < rep.maxOpenLeads);
+      if (!open.length) return null;
+      let rep;
+      if (mode === 'least') {
+        rep = [...open].sort((a, b) =>
+          (a.activeLeads / a.weight) - (b.activeLeads / b.weight) || String(a.name).localeCompare(String(b.name)))[0];
+      } else {
+        rep = open[index % open.length];
+        index += 1;
+      }
+      rep.activeLeads += 1;
+      return rep;
+    },
+    get index() { return index; },
+  };
+}
+
+// Canonical single-lead picker used at capture time (public registration,
+// chatbot, self-registration, Facebook Lead Ads, WhatsApp/Messenger inbound).
+// Load counts only leads still open, so a veteran's converted history does not
+// make them look permanently "full".
+async function getNextSalesRep(tenantId, db = pool, options = {}) {
+  const reps = await listDistributableReps(tenantId, db, {
+    branch: options.branch,
+    teamKey: options.teamKey,
+  });
+  reps.sort((a, b) =>
+    (a.activeLeads / a.weight) - (b.activeLeads / b.weight) ||
+    new Date(a.lastAssignedAt || 0) - new Date(b.lastAssignedAt || 0) ||
+    String(a.name).localeCompare(String(b.name))
+  );
   const rep = reps[0] || null;
-  if (rep?.policy_id) {
+  if (rep?.policyId) {
     await db.query(
       'UPDATE crm_assignment_members SET last_assigned_at=NOW() WHERE id=? AND tenant_id=?',
-      [rep.policy_id, tenantId]
+      [rep.policyId, tenantId]
     );
   }
   return rep ? { id: rep.id, name: rep.name } : null;
@@ -183,6 +226,13 @@ async function createBatchAssigner(tenantId, db = pool, options = {}) {
   );
   const loadByStaff = new Map(loads.map(row => [String(row.assigned_sales_id), Number(row.active_leads)]));
 
+  // The "التوزيع" screen is the authority here too, exactly as it is in
+  // listDistributableReps. Treating a rep with no row on it as available is
+  // what sent a sheet import to every newly hired rep at once — they were
+  // invisible on the screen, held no open leads, and so came first under
+  // "least loaded".
+  const configured = rows.some(row => row.policy_id != null);
+
   // one policy row per rep, preferring the branch-specific one over the wildcard
   const selected = new Map();
   for (const row of rows) {
@@ -203,7 +253,7 @@ async function createBatchAssigner(tenantId, db = pool, options = {}) {
     id: row.id,
     name: row.name,
     policyId: row.policy_id,
-    available: row.policy_id == null ? true : Boolean(row.is_available),
+    available: configured ? (row.policy_id != null && Boolean(row.is_available)) : true,
     weight: Math.max(Number(row.weight) || 1, 0.1),
     maxOpen: row.policy_id == null ? null : row.max_open_leads,
     intakeLimit: row.policy_id == null ? null : row.intake_limit,
@@ -263,4 +313,4 @@ async function createBatchAssigner(tenantId, db = pool, options = {}) {
   };
 }
 
-module.exports = { assignLead, getNextSalesRep, createBatchAssigner };
+module.exports = { assignLead, createBatchAssigner, createRepRotation, getNextSalesRep, listDistributableReps };

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bell, Check, CheckCheck, Trash2, Search, Clock } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
@@ -48,14 +48,14 @@ export default function NotifInboxMgmtTab({ notify }: { notify: NotifyFn }) {
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
   const [searchQ, setSearchQ] = useState('');
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
     mysqlAdmin.getNotifications()
       .then(res => setRows((res.rows as unknown as NotifRow[]) || []))
       .catch(() => notify('error', 'تعذر تحميل الإشعارات'))
       .finally(() => setLoading(false));
-  };
-  useEffect(load, []);
+  }, [notify]);
+  useEffect(load, [load]);
 
   const filtered = useMemo(() =>
     rows.filter(n =>

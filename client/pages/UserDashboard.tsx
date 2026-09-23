@@ -80,7 +80,10 @@ const UserDashboard: React.FC = () => {
     mysqlClient.checkIsStaff().then((r) => {
       setIsStaffMember(r.isStaff);
     }).catch(() => setIsStaffMember(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Guarded by staffCheckDoneRef so the staff probe runs once. authUser's uid
+    // and email are read to decide whether to probe at all; listing them would
+    // re-run this on every token refresh, and the ref would simply swallow it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remoteReady, subscribers]);
 
   /* tabs */
@@ -101,6 +104,9 @@ const UserDashboard: React.FC = () => {
       setActiveTab('account');
       setAccountSection(s as AccountSection);
     }
+    // Mount-only: reads ?tab=/?section= to pick the landing tab. Depending on
+    // dashSearchParams would re-apply the original URL every time the query
+    // string changed and fight the user's own tab clicks.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -109,7 +115,11 @@ const UserDashboard: React.FC = () => {
     if (activeTab === 'learning' && learningSection === 'courses' && authUser) {
       refreshMySubscriber();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Fires on arriving at the courses view, to pick up newly-granted
+    // enrollments. refreshMySubscriber is rebuilt by the context each render and
+    // authUser on each token refresh — listing either would re-fetch the
+    // subscriber repeatedly for as long as the tab stays open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, learningSection]);
 
   /* video player */
@@ -128,7 +138,10 @@ const UserDashboard: React.FC = () => {
       setReferralCode(r.code);
       setReferralStats({ uses: r.uses, earnings: r.earnings });
     }).catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // One referral-code fetch per signed-in user. subscribers is read only to
+    // confirm this account is a subscriber rather than staff; depending on it
+    // would re-request the code on every subscriber-list refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.uid]);
 
   /* certificate modal — certCode/completedAt come from the real course_completions
@@ -145,7 +158,6 @@ const UserDashboard: React.FC = () => {
     mysqlClient.getMyCompletions()
       .then(rows => setCompletions(rows as unknown as { course_id: string; certificate_code: string; completed_at: string }[]))
       .catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.uid, activeTab, learningSection]);
 
   /* payment proof upload */
@@ -209,6 +221,10 @@ const UserDashboard: React.FC = () => {
       s.email.toLowerCase().trim() === (authUser?.email || '').toLowerCase().trim()
     );
     if (sub?.nameEn) setNewNameEn(sub.nameEn);
+  // Deliberately keyed on subscribers alone: this seeds the English-name field
+  // when the subscriber record arrives. authUser is only read to find the row,
+  // and re-running on every token refresh would overwrite what the user has
+  // typed into that field.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subscribers]);
 

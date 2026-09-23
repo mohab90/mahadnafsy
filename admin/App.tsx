@@ -27,6 +27,11 @@ const StaffRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Show spinner while auth resolves (cookie-based auth — no localStorage check needed)
   const [allowed, setAllowed] = React.useState<boolean | null>(null);
 
+  // The identity this gate re-checks on: "loading" until auth resolves, then the
+  // uid, then "guest". Extracted from the dependency array so it can be checked
+  // statically instead of being an expression the rule has to skip over.
+  const authGateKey = authUser === undefined ? 'loading' : (authUser?.uid ?? 'guest');
+
   React.useEffect(() => {
     if (authUser === undefined) return; // still loading auth
     if (!authUser) { setAllowed(false); return; }
@@ -45,8 +50,13 @@ const StaffRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           setAllowed(fallback);
         });
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUser === undefined ? 'loading' : (authUser?.uid ?? 'guest'), isAdmin]); // ⚠️ do NOT add staffMembers.length — causes re-run loop
+    // authUser and staffMembers are read but deliberately not listed. The gate
+    // re-checks per signed-in identity (authGateKey), not per object: authUser is
+    // replaced on every token refresh, and staffMembers is re-fetched by the
+    // context. Adding staffMembers here caused a confirmed re-run loop — the
+    // effect's own /staff/me call feeds the list it would then depend on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authGateKey, isAdmin]);
 
   if (allowed === null) return <PageSpinner />;
   return allowed

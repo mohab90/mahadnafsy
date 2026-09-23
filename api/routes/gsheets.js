@@ -10,6 +10,7 @@ const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
 const { requireAuth, requireAdmin, requirePermission } = require('../middleware/auth');
 const { isHtmlResponse, fetchCsvFollowRedirects, syncAllConfiguredSheets } = require('../lib/sheets');
 const { matchCourseId } = require('../lib/courseMatch');
+const { createRepRotation, listDistributableReps } = require('../lib/leadAssignment');
 const { toIdentity } = require('../lib/phoneNumber');
 
 const validSheetId = (value) => /^[A-Za-z0-9_-]{20,120}$/.test(String(value || ''));
@@ -89,16 +90,16 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
     // the sheets write with underscores instead of spaces.
     const findCourseId = (courseName) => matchCourseId(courseName, dbCourses, dbBundles);
 
-    // Get sales reps for auto-assign
-    const [reps] = await pool.execute(
-      `SELECT id, name FROM staff WHERE tenant_id=? AND role='SALES' AND is_active=1 AND deleted_at IS NULL ORDER BY name ASC`,
-      [req.tenantId]
-    );
-    // RR index stored in site_config
-    let rrRaw = 0;
-    if (autoAssign === 'rr' && reps.length > 0) {
-      rrRaw = parseInt(await getTenantSetting('crm_rr_index', { tenantId: req.tenantId, fallback: 0 }), 10) || 0;
-    }
+    // Only reps switched on in the CRM "التوزيع" screen (lib/leadAssignment.js).
+    const reps = autoAssign === 'none' ? [] : await listDistributableReps(req.tenantId);
+    const rrStart = autoAssign === 'rr' && reps.length > 0
+      ? parseInt(await getTenantSetting('crm_rr_index', { tenantId: req.tenantId, fallback: 0 }), 10) || 0
+      : 0;
+    const rotation = createRepRotation(reps, { mode: autoAssign, start: rrStart });
+    // Deleted (hidden) and merged leads count as already imported, or every
+    // lead an admin deletes comes straight back on the next sync.
+    const [existing] = await pool.execute('SELECT phone FROM leads WHERE tenant_id=?', [req.tenantId]);
+    const knownPhones = new Set(existing.map(row => toIdentity(row.phone)).filter(Boolean));
 
     let imported = 0, skipped = 0;
     const dataLines = lines.slice(1);
@@ -116,47 +117,30 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
       if (!name && !phone) { skipped++; continue; }
 
       // Normalised once: used both to find an existing lead and to store the
-      // number, so the unique index sees one spelling per person.
+      // number, so the unique index sees one spelling per person. Matched on
+      // identity — "p:+201227155562" and "1227155562" are one person, and
+      // comparing the text imported the same lead twice.
       const identity = toIdentity(phone);
 
-      // A row with no phone is stored with phone NULL now, not ''. As '' it
-      // collided with the one blank already in leads and INSERT IGNORE dropped
-      // it in silence — which also happened to stop a re-import duplicating it.
-      // Dedupe those by name instead, the way lib/sheets.js already does.
+      // A row with no phone is stored with phone NULL, not ''. As '' it collided
+      // with the one blank already in leads and INSERT IGNORE dropped it in
+      // silence. Those dedupe by name instead, the way lib/sheets.js does — and
+      // against every lead, deleted ones included, or a blank-phone row an admin
+      // removed is re-imported on the next run.
       if (!phone && name) {
         const [dupName] = await pool.execute(
-          "SELECT id FROM leads WHERE tenant_id=? AND (phone IS NULL OR phone='') AND LOWER(TRIM(name))=LOWER(?) AND hidden=0 LIMIT 1",
+          "SELECT id FROM leads WHERE tenant_id=? AND (phone IS NULL OR phone='') AND LOWER(TRIM(name))=LOWER(?) LIMIT 1",
           [req.tenantId, name]);
         if (dupName.length) { skipped++; continue; }
       }
 
-      // Skip if phone already exists in leads
       if (phone) {
-        // Matched on identity: "p:+201227155562" and "1227155562" are one person,
-        // and comparing the text imported the same lead twice.
-        const [dup] = await pool.execute(
-          'SELECT id FROM leads WHERE tenant_id=? AND phone=? AND hidden=0 LIMIT 1',
-          [req.tenantId, identity || phone]);
-        if (dup.length) { skipped++; continue; }
+        if (identity && knownPhones.has(identity)) { skipped++; continue; }
+        if (identity) knownPhones.add(identity);
       }
 
-      // Pick sales rep
-      let salesId = null, salesName = null;
-      if (reps.length > 0) {
-        if (autoAssign === 'rr') {
-          const rep = reps[rrRaw % reps.length];
-          salesId = rep.id; salesName = rep.name;
-          rrRaw++;
-        } else if (autoAssign === 'least') {
-          const [counts] = await pool.execute(
-            `SELECT assigned_sales_id, COUNT(*) as cnt FROM leads WHERE tenant_id=? AND hidden=0 AND assigned_sales_id IS NOT NULL GROUP BY assigned_sales_id`,
-            [req.tenantId]
-          );
-          const cm = {}; for (const c of counts) cm[c.assigned_sales_id] = Number(c.cnt);
-          const sorted = [...reps].sort((a, b) => (cm[a.id] || 0) - (cm[b.id] || 0));
-          salesId = sorted[0].id; salesName = sorted[0].name;
-        }
-      }
+      const rep = rotation.next();
+      const salesId = rep?.id || null, salesName = rep?.name || null;
 
       // Get sequential client code
       let code = null;
@@ -190,7 +174,7 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
 
     // Persist updated RR index
     if (autoAssign === 'rr' && reps.length > 0) {
-      await setTenantSetting('crm_rr_index', rrRaw, {
+      await setTenantSetting('crm_rr_index', rotation.index, {
         tenantId: req.tenantId,
         actorId: req.user?.uid || req.user?.email || null,
       });

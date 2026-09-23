@@ -108,3 +108,74 @@ export function youtubeEmbedUrl(url: string, options: EmbedOptions = {}): string
   }
   return `https://www.youtube-nocookie.com/embed/${id}?${params.join('&')}`;
 }
+
+/**
+ * Which element a lecture goes in, and — when it is framed — whose player.
+ *
+ * A URL reaches the browser in one of two shapes: the free preview lecture
+ * carries its stored URL, usually `enc:`-obfuscated; every other lecture
+ * carries `/api/media/lectures/<id>?ticket=…&kind=…&provider=…`, which the
+ * server has already classified.
+ *
+ * Only a real media file can go in a <video> element. Everything else — a
+ * YouTube, Vimeo or Drive page, any hosted player — is a web page and has to be
+ * framed. The test used to be "does this look like YouTube", so a Drive or
+ * Vimeo lecture fell through to <video> and played nothing, while the free
+ * first lecture worked: «اول فيديو بس اللى بيشتغل».
+ */
+
+const DIRECT_MEDIA_FILE = /\.(?:mp4|m4v|webm|ogg|ogv|mov|m3u8)(?:$|[?#])/i;
+
+const isTicket = (raw: string) => raw.includes('/api/media/lectures/');
+
+export function isHlsLectureUrl(url: string): boolean {
+  return url.includes('.m3u8') || url.includes('/hls/') || url.includes('kind=hls');
+}
+
+/** true → render in a frame; false → render in a <video> element. */
+export function isFramedLectureUrl(raw: string): boolean {
+  if (!raw) return false;
+  if (isTicket(raw)) return raw.includes('kind=embed');
+  const url = revealVideoUrl(raw);
+  if (url.startsWith('/uploads/') || isHlsLectureUrl(url)) return false;
+  return !DIRECT_MEDIA_FILE.test(url);
+}
+
+/**
+ * Whether a framed lecture is one VideoSurface can drive.
+ *
+ * VideoSurface replaces YouTube's controls with the site's own and talks to it
+ * over postMessage. Vimeo and Drive answer none of that, so pointing it at one
+ * leaves a poster that never lifts and a play button that does nothing — they
+ * keep their own player instead. A ticket hides the host, which is why the
+ * server says so in `provider`.
+ */
+export function isYouTubeLecture(raw: string): boolean {
+  if (!raw) return false;
+  if (isTicket(raw)) return !raw.includes('provider=other');
+  const url = revealVideoUrl(raw);
+  return url.includes('youtube.com') || url.includes('youtu.be');
+}
+
+/**
+ * The embeddable form of a framed lecture that is not YouTube.
+ *
+ * `vimeo.com/<id>` and a Drive `.../view` link both refuse to be framed; their
+ * player/preview forms are the equivalents that do not.
+ */
+export function lectureEmbedUrl(raw: string): string {
+  const plain = revealVideoUrl(raw || '');
+  if (!plain || isTicket(plain)) return plain;
+  try {
+    const parsed = new URL(plain, window.location.origin);
+    if (/(^|\.)vimeo\.com$/.test(parsed.hostname) && parsed.hostname !== 'player.vimeo.com') {
+      const vimeoId = parsed.pathname.split('/').filter(Boolean).find(part => /^\d+$/.test(part));
+      if (vimeoId) return `https://player.vimeo.com/video/${vimeoId}`;
+    }
+    if (parsed.hostname === 'drive.google.com') {
+      const driveId = parsed.pathname.match(/\/file\/d\/([^/]+)/)?.[1] || parsed.searchParams.get('id');
+      if (driveId) return `https://drive.google.com/file/d/${encodeURIComponent(driveId)}/preview`;
+    }
+  } catch { /* a relative URL such as /uploads/… — use it as it is */ }
+  return plain;
+}

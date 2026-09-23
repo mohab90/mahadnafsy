@@ -348,6 +348,11 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     icon: Settings2,
     color: 'text-gray-600',
     items: [
+      // مركز الإعدادات already lists every one of these as a card, and it says so
+      // itself: "نقطة الدخول الموحدة للإعدادات ... بدل التنقل بين صفحات متفرقة".
+      // Repeating all fourteen in the sidebar was the exact fragmentation the hub
+      // was built to remove, and it made الإعدادات the largest group in the menu.
+      // Every route still resolves, so links and bookmarks keep working.
       { key: 'settings_hub', label: 'مركز الإعدادات', icon: Settings2 },
       { key: 'system_settings', label: 'إعدادات الإدارة', icon: Settings2 },
       // Seven entries — payment gateways, OTP, email, SMS, the AI messaging
@@ -371,3 +376,21 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     ],
   },
 ];
+
+/**
+ * Runtime guard for a tab name that arrived as a plain string.
+ *
+ * Several panels type their navigation callback as `(tab: string) => void`
+ * because they build the name from data rather than from a literal. Handing them
+ * `setActiveTabState` directly does not type-check, and rightly so: it accepts
+ * only TabKey, so any of them could set the dashboard to a tab that does not
+ * exist and blank the screen. Checking against the menu the sidebar is built
+ * from means the two can never disagree.
+ */
+const KNOWN_TAB_KEYS: ReadonlySet<string> = new Set(
+  DASHBOARD_MENU_GROUPS.flatMap(group => group.items.map(item => item.key)),
+);
+
+export function isTabKey(value: string): value is TabKey {
+  return KNOWN_TAB_KEYS.has(value);
+}

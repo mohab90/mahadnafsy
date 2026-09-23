@@ -397,6 +397,9 @@ export function useAdminDataRuntime(state: RuntimeState): {
       clearInterval(pollId);
       document.removeEventListener('visibilitychange', onVisible);
     };
+  // Same boundary as the bootstrap above: setters, refs and the reload helpers
+  // are stable, and this installs a poll plus a visibility listener. Keying on
+  // anything finer would tear them down and re-install them on every refresh.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.uid]);
 

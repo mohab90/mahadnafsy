@@ -6,6 +6,9 @@
  * this split a 2,000-row import floods the tab meant for today's new leads.
  * Two tabs, two pools.
  *
+ * The server applies the same rule (api/lib/leadArchive.js) — keep the two
+ * prefix lists identical.
+ *
  * Matched by prefix so the "— موزّع" variant written when a batch is released
  * into the main table is covered by the same rule.
  */

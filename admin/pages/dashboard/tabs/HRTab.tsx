@@ -129,7 +129,10 @@ const HrTab: React.FC<Props> = ({ notify }) => {
 
 
 
-  const safeStaff: StaffMember[] = staffMembers || [];
+  // Memoized because `|| []` mints a fresh array on every render whenever
+  // staffMembers is nullish, which defeated the three memos below entirely —
+  // they listed safeStaff as a dependency and so recomputed every render.
+  const safeStaff = useMemo<StaffMember[]>(() => staffMembers || [], [staffMembers]);
 
   const filtered = useMemo(() => safeStaff.filter(s => {
     if (statusFilter !== 'all' && s.status !== statusFilter) return false;

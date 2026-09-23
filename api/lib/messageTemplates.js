@@ -6,7 +6,10 @@ const logger = require('./logger');
  * module loads them at startup + on change and renders {{var}} placeholders against
  * runtime values. If a template is not customized, the built-in default is used.
  *
- * Keys + variables MUST stay in sync with admin/pages/dashboard/messageTemplates.ts.
+ * Templates are edited from the admin UI and stored in site_config; there is no
+ * second copy of the defaults to keep in sync. (A mirrored
+ * admin/pages/dashboard/messageTemplates.ts once existed but nothing imported
+ * it, so the "keep in sync" contract it named was already dead; it is removed.)
  */
 const { pool } = require('./db');
 const { getTenantSetting } = require('./tenantSettings');

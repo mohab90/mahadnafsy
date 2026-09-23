@@ -171,7 +171,7 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
   // perf belongs here: without it this memo runs once while the request is
   // still in flight, keeps the array fallback, and never recomputes when the
   // real counts arrive. Neither typecheck nor the test suite can see that.
-  }, [salesTeam, leads, orders, salesTargets, timeRange, perf]);
+  }, [salesTeam, leads, orders, salesTargets, timeRange, perf, rates]);
 
   // ── Overall stats ──────────────────────────────────────────────────────
   const totals = useMemo(() => {
