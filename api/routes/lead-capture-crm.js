@@ -9,7 +9,7 @@ const logger = require('../lib/logger').child({ module: 'lead-capture-crm-route'
 const { pool } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
 const { getNextClientCode } = require('../lib/mappers');
-const { dateOnlyInTimeZone } = require('../lib/dates');
+const { dateOnlyInTimeZone, sqlCairoDayStartUtc } = require('../lib/dates');
 const { normalizePhone } = require('../lib/helpers');
 const { LEAD_STATUSES, isOpenLeadStatus } = require('../lib/leadStatuses');
 const { branchIdForBranch, normalizeBranch } = require('../lib/branches');
@@ -268,10 +268,16 @@ router.post('/api/admin/leads/distribute', requireAuth, requireAdmin, async (req
     const dailyCap = Math.max(0, Number(req.body?.dailyCap) || 0);
     const assignedToday = new Map();
     if (dailyCap > 0) {
+      // Cairo's day, as a range on the bare column. assigned_at holds a UTC
+      // instant, so comparing its calendar date to the database's date counted
+      // from UTC midnight — 02:00 or 03:00 in Cairo — and the daily cap reset in
+      // the small hours instead of at midnight. The range also keeps the index.
       const [todayRows] = await conn.execute(
         `SELECT assigned_sales_id AS id, COUNT(*) AS n
            FROM leads
-          WHERE tenant_id=? AND assigned_sales_id IS NOT NULL AND DATE(assigned_at)=CURDATE()
+          WHERE tenant_id=? AND assigned_sales_id IS NOT NULL
+            AND assigned_at >= ${sqlCairoDayStartUtc()}
+            AND assigned_at <  ${sqlCairoDayStartUtc()} + INTERVAL 1 DAY
           GROUP BY assigned_sales_id`,
         [tenantId]
       );

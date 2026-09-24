@@ -24,6 +24,7 @@ const { uuidv4 } = require('./id');
 const { seal, open } = require('./secretBox');
 const { toDialable } = require('./phoneNumber');
 const logger = require('./logger');
+const { sqlCairoToday } = require('./dates');
 
 const KINDS = ['whatsapp', 'messenger'];
 const PROVIDERS = { whatsapp: ['meta', 'green-api', 'wapilot'], messenger: ['messenger'] };
@@ -256,11 +257,11 @@ async function deleteChannel(tenantId, id, db = pool) {
 async function claimSendBudget(tenantId, channelId, db = pool) {
   const [result] = await db.query(
     `UPDATE messaging_channels
-        SET sent_today = CASE WHEN sent_today_date = CURDATE() THEN sent_today + 1 ELSE 1 END,
-            sent_today_date = CURDATE(),
+        SET sent_today = CASE WHEN sent_today_date = ${sqlCairoToday()} THEN sent_today + 1 ELSE 1 END,
+            sent_today_date = ${sqlCairoToday()},
             updated_at = updated_at
       WHERE tenant_id=? AND id=?
-        AND (sent_today_date <> CURDATE() OR sent_today_date IS NULL OR sent_today < daily_send_limit)`,
+        AND (sent_today_date <> ${sqlCairoToday()} OR sent_today_date IS NULL OR sent_today < daily_send_limit)`,
     [tenantId, channelId]
   );
   return result.affectedRows > 0;

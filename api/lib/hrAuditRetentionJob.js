@@ -1,4 +1,5 @@
 'use strict';
+const { sqlCairoToday } = require('./dates');
 
 async function archiveTenantAudit({ pool, tenantId, cutoff }) {
   const conn = await pool.getConnection();
@@ -38,7 +39,7 @@ async function runHrAuditRetention({ pool, logger }) {
        JOIN (
          SELECT tenant_id,MAX(effective_from) effective_from
          FROM hr_policy_versions
-         WHERE effective_from<=CURDATE() AND (effective_to IS NULL OR effective_to>=CURDATE())
+         WHERE effective_from<=${sqlCairoToday()} AND (effective_to IS NULL OR effective_to>=${sqlCairoToday()})
          GROUP BY tenant_id
        ) current ON current.tenant_id=p.tenant_id AND current.effective_from=p.effective_from`
     );

@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const { resolveSecret } = require('./secretResolver');
 const { pool } = require('./db');
 const { destinationHash, normalizeDestination } = require('./marketingConsent');
+const { sqlCairoToday } = require('./dates');
 
 const DEFAULT_POLICY = Object.freeze({
   residency_region: 'not_configured',
@@ -142,7 +143,7 @@ async function activeObligations(tenantId, subscriberId, db) {
       (SELECT COUNT(*) FROM orders WHERE tenant_id=? AND subscriber_id=? AND status IN ('pending','processing')) AS orders,
       (SELECT COUNT(*) FROM payment_proofs WHERE tenant_id=? AND subscriber_id=? AND status='pending') AS proofs,
       (SELECT COUNT(*) FROM consultations WHERE tenant_id=? AND subscriber_id=?
-         AND status NOT IN ('completed','cancelled','no_show') AND session_date>=CURDATE()) AS consultations`,
+         AND status NOT IN ('completed','cancelled','no_show') AND session_date>=${sqlCairoToday()}) AS consultations`,
     [tenantId, subscriberId, tenantId, subscriberId, tenantId, subscriberId]
   );
   return Object.fromEntries(Object.entries(row).map(([key, value]) => [key, Number(value || 0)]));

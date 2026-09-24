@@ -13,6 +13,7 @@ const { financialScopeClause, resolveFinancialScope } = require('../lib/financia
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
 const { leadScope } = require('../lib/leadAccess');
+const { sqlCairoToday } = require('../lib/dates');
 
 // Timers belong to the central worker. Starting them from a route module made
 // every clustered API process send the same reminders and summaries again.
@@ -357,13 +358,13 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
     const [overdue] = await pool.query(`
       SELECT l.id, l.name AS lead_name, l.phone, l.status,
              l.next_follow_up_date,
-             DATEDIFF(CURDATE(), l.next_follow_up_date) AS days_overdue,
+             DATEDIFF(${sqlCairoToday()}, l.next_follow_up_date) AS days_overdue,
              st.name AS staff_name, st.email AS staff_email
       FROM leads l
       JOIN staff st ON st.id=l.assigned_sales_id AND st.tenant_id=l.tenant_id
       WHERE l.tenant_id=?
         AND l.hidden = 0
-        AND l.next_follow_up_date < CURDATE()
+        AND l.next_follow_up_date < ${sqlCairoToday()}
         AND l.status NOT IN ('CONVERTED','LOST','CLOSED')
         AND st.email IS NOT NULL AND st.email != ''
       ORDER BY st.id, l.next_follow_up_date ASC

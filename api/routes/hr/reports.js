@@ -3,6 +3,7 @@ const { Router } = require('express');
 const router = Router();
 const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 const { getEffectiveHrPolicy } = require('../../lib/hrPolicy');
+const { sqlCairoToday } = require('../../lib/dates');
 
 router.get('/api/admin/hr/reports/summary', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
@@ -23,13 +24,13 @@ router.get('/api/admin/hr/reports/summary', requireAuth, requireAdminOrStaff, re
       FROM salary_structures ss
       JOIN staff s ON s.id=ss.staff_id AND s.tenant_id=ss.tenant_id AND s.is_active=1 AND s.deleted_at IS NULL
       WHERE ss.tenant_id=? AND ss.status='APPROVED'
-        AND ss.effective_from<=CURRENT_DATE
-        AND (ss.effective_to IS NULL OR ss.effective_to>=CURRENT_DATE)
+        AND ss.effective_from<=${sqlCairoToday()}
+        AND (ss.effective_to IS NULL OR ss.effective_to>=${sqlCairoToday()})
         AND NOT EXISTS (
           SELECT 1 FROM salary_structures newer
            WHERE newer.tenant_id=ss.tenant_id AND newer.staff_id=ss.staff_id
-             AND newer.status='APPROVED' AND newer.effective_from<=CURRENT_DATE
-             AND (newer.effective_to IS NULL OR newer.effective_to>=CURRENT_DATE)
+             AND newer.status='APPROVED' AND newer.effective_from<=${sqlCairoToday()}
+             AND (newer.effective_to IS NULL OR newer.effective_to>=${sqlCairoToday()})
              AND newer.effective_from>ss.effective_from
         )
     `, [req.tenantId]);
@@ -90,13 +91,13 @@ router.get('/api/admin/hr/reports/department-stats', requireAuth, requireAdminOr
       FROM hr_departments d
       LEFT JOIN staff s ON s.department_id=d.id AND s.tenant_id=d.tenant_id AND s.is_active=1 AND s.deleted_at IS NULL
       LEFT JOIN salary_structures ss ON ss.staff_id=s.id AND ss.tenant_id=d.tenant_id
-        AND ss.status='APPROVED' AND ss.effective_from<=CURRENT_DATE
-        AND (ss.effective_to IS NULL OR ss.effective_to>=CURRENT_DATE)
+        AND ss.status='APPROVED' AND ss.effective_from<=${sqlCairoToday()}
+        AND (ss.effective_to IS NULL OR ss.effective_to>=${sqlCairoToday()})
         AND NOT EXISTS (
           SELECT 1 FROM salary_structures newer
            WHERE newer.tenant_id=ss.tenant_id AND newer.staff_id=ss.staff_id
-             AND newer.status='APPROVED' AND newer.effective_from<=CURRENT_DATE
-             AND (newer.effective_to IS NULL OR newer.effective_to>=CURRENT_DATE)
+             AND newer.status='APPROVED' AND newer.effective_from<=${sqlCairoToday()}
+             AND (newer.effective_to IS NULL OR newer.effective_to>=${sqlCairoToday()})
              AND newer.effective_from>ss.effective_from
         )
       WHERE d.tenant_id=?
@@ -198,13 +199,13 @@ router.get('/api/staff/me/hr', requireAuth, async (req, res) => {
       FROM staff s
       LEFT JOIN hr_departments d ON d.id=s.department_id AND d.tenant_id=s.tenant_id
       LEFT JOIN salary_structures ss ON ss.staff_id=s.id AND ss.tenant_id=s.tenant_id
-        AND ss.status='APPROVED' AND ss.effective_from<=CURRENT_DATE
-        AND (ss.effective_to IS NULL OR ss.effective_to>=CURRENT_DATE)
+        AND ss.status='APPROVED' AND ss.effective_from<=${sqlCairoToday()}
+        AND (ss.effective_to IS NULL OR ss.effective_to>=${sqlCairoToday()})
         AND NOT EXISTS (
           SELECT 1 FROM salary_structures newer
            WHERE newer.tenant_id=ss.tenant_id AND newer.staff_id=ss.staff_id
-             AND newer.status='APPROVED' AND newer.effective_from<=CURRENT_DATE
-             AND (newer.effective_to IS NULL OR newer.effective_to>=CURRENT_DATE)
+             AND newer.status='APPROVED' AND newer.effective_from<=${sqlCairoToday()}
+             AND (newer.effective_to IS NULL OR newer.effective_to>=${sqlCairoToday()})
              AND newer.effective_from>ss.effective_from
         )
       WHERE s.tenant_id=? AND s.id=? AND s.deleted_at IS NULL

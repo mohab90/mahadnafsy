@@ -2,6 +2,7 @@
 
 const { pool } = require('./db');
 const { isInterestedLeadStatus } = require('./leadStatuses');
+const { sqlCairoToday } = require('./dates');
 
 const CATEGORY_PROBABILITY = Object.freeze({
   pipeline: 25,
@@ -288,7 +289,7 @@ async function loadCrmForecast({
          LEFT JOIN subscribers s ON s.tenant_id=p.tenant_id AND s.id=p.subscriber_id
          LEFT JOIN leads l ON l.tenant_id=s.tenant_id AND l.id=s.lead_id
         WHERE p.tenant_id=? AND p.status='paid' AND p.deleted_at IS NULL
-          AND p.date>=DATE_SUB(DATE_FORMAT(CURRENT_DATE,'%Y-%m-01'),INTERVAL 5 MONTH)
+          AND p.date>=DATE_SUB(DATE_FORMAT(${sqlCairoToday()},'%Y-%m-01'),INTERVAL 5 MONTH)
           ${scope.sql || ''}
         GROUP BY DATE_FORMAT(p.date,'%Y-%m') ORDER BY period`,
       [tenantId, ...scopedParams]
@@ -305,7 +306,7 @@ async function loadCrmForecast({
     ),
     db.query(
       `SELECT period,revenue_target FROM sales_targets
-        WHERE tenant_id=? AND period>=DATE_FORMAT(CURRENT_DATE,'%Y-%m')
+        WHERE tenant_id=? AND period>=DATE_FORMAT(${sqlCairoToday()},'%Y-%m')
           AND staff_id<>'__collection__'
           ${staffId ? 'AND staff_id=?' : ''}
         ORDER BY period LIMIT 5000`,
@@ -332,7 +333,7 @@ async function loadCrmForecast({
          LEFT JOIN subscribers s ON s.tenant_id=p.tenant_id AND s.id=p.subscriber_id
          LEFT JOIN leads l ON l.tenant_id=s.tenant_id AND l.id=s.lead_id
         WHERE p.tenant_id=? AND p.status='paid' AND p.deleted_at IS NULL
-          AND p.date>=DATE_SUB(CURRENT_DATE,INTERVAL 12 MONTH)${scope.sql || ''}
+          AND p.date>=DATE_SUB(${sqlCairoToday()},INTERVAL 12 MONTH)${scope.sql || ''}
         GROUP BY COALESCE(l.source,'direct') ORDER BY actual_egp DESC LIMIT 20`,
       [tenantId, ...scopedParams]
     ),
@@ -344,7 +345,7 @@ async function loadCrmForecast({
          LEFT JOIN subscribers s ON s.tenant_id=p.tenant_id AND s.id=p.subscriber_id
          LEFT JOIN leads l ON l.tenant_id=s.tenant_id AND l.id=s.lead_id
         WHERE p.tenant_id=? AND p.status='paid' AND p.deleted_at IS NULL
-          AND p.date>=DATE_SUB(DATE_FORMAT(CURRENT_DATE,'%Y-%m-01'),INTERVAL 12 MONTH)
+          AND p.date>=DATE_SUB(DATE_FORMAT(${sqlCairoToday()},'%Y-%m-01'),INTERVAL 12 MONTH)
           ${scope.sql || ''}
         GROUP BY DATE_FORMAT(p.date,'%Y-%m'),COALESCE(p.staff_id,'unassigned')
         ORDER BY period,staff_id`,

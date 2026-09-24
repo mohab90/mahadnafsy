@@ -15,6 +15,7 @@ const logger = require('../../lib/logger');
 const { uuidv4 } = require('../../lib/id');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { createNotification } = require('../../lib/notification');
+const { sqlCairoToday } = require('../../lib/dates');
 
 const KINDS = ['discount', 'bonus'];
 const VALUE_TYPES = ['percent', 'amount'];
@@ -44,8 +45,8 @@ router.get('/api/admin/sales-offers', requireAuth, requireAdminOrStaff, requireP
     // sargable — no function wrapping the indexed column.
     const sql = `SELECT * FROM sales_offers WHERE tenant_id=?${activeOnly
       ? ` AND is_active=1
-          AND (starts_on IS NULL OR starts_on <= CURDATE())
-          AND (ends_on   IS NULL OR ends_on   >= CURDATE())`
+          AND (starts_on IS NULL OR starts_on <= ${sqlCairoToday()})
+          AND (ends_on   IS NULL OR ends_on   >= ${sqlCairoToday()})`
       : ''} ORDER BY is_active DESC, created_at DESC LIMIT 200`;
     const [rows] = await pool.query(sql, [req.tenantId]);
     res.json(rows.map(shape));

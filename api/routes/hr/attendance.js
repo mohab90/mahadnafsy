@@ -5,6 +5,7 @@ const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, re
 const { createLeaveRequest, getEffectiveHrPolicy, leaveAllowance } = require('../../lib/hrPolicy');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { toNumbers } = require('../../lib/mappers');
+const { cairoClock, sqlCairoToday } = require('../../lib/dates');
 const dateOnly = value => value instanceof Date
   ? value.toISOString().slice(0, 10)
   : String(value || '').slice(0, 10);
@@ -541,7 +542,7 @@ router.get('/api/me/hr/attendance/today', requireAuth, async (req, res) => {
     const st = await _resolveStaffByUser(req);
     if (!st) return res.json({ isStaff: false });
     const [[row]] = await pool.query(
-      'SELECT check_in, check_out, status, total_hours, late_minutes FROM attendance_logs WHERE staff_id=? AND tenant_id=? AND date=CURDATE() LIMIT 1', [st.id, req.tenantId]);
+      `SELECT check_in, check_out, status, total_hours, late_minutes FROM attendance_logs WHERE staff_id=? AND tenant_id=? AND date=${sqlCairoToday()} LIMIT 1`, [st.id, req.tenantId]);
     res.json({ isStaff: true, staffName: st.name, today: row || null });
   } catch (e) { logger.error('[route]', e.message); hrError(res, e); }
 });
@@ -551,9 +552,11 @@ router.post('/api/me/hr/attendance/check-in', requireAuth, async (req, res) => {
   try {
     const st = await _resolveStaffByUser(req);
     if (!st) return res.status(403).json({ error: 'not_staff' });
-    const [[clock]] = await conn.query(
-      "SELECT DATE_FORMAT(CURDATE(),'%Y-%m-%d') work_date,DATE_FORMAT(NOW(),'%H:%i') work_time,HOUR(NOW())*60+MINUTE(NOW()) minutes_in"
-    );
+    // Cairo's clock, not the database's. The server runs in UTC, so asking MySQL
+    // for the hour recorded a 09:00 arrival as 06:00 — and against a 09:00 shift
+    // that made everyone who arrived before noon on time. See lib/dates.js.
+    const cairo = cairoClock();
+    const clock = { work_date: cairo.date, work_time: cairo.time, minutes_in: cairo.minutes };
     const expected = await attendanceStart(conn, req.tenantId, st.id, clock.work_date);
     if (expected.isOffDay) return res.status(409).json({ error: 'اليوم مسجل كراحة في جدولك' });
     const lateMin = Number(clock.minutes_in) > expected.start ? Number(clock.minutes_in) - expected.start : 0;
@@ -603,9 +606,9 @@ router.post('/api/me/hr/attendance/check-out', requireAuth, async (req, res) => 
     if (!st) return res.status(403).json({ error: 'not_staff' });
     await conn.beginTransaction();
     transactionStarted = true;
-    const [[clock]] = await conn.query(
-      "SELECT DATE_FORMAT(CURDATE(),'%Y-%m-%d') work_date,DATE_FORMAT(NOW(),'%H:%i') work_time,HOUR(NOW())*60+MINUTE(NOW()) minutes_now"
-    );
+    // The same clock as check-in, so total_hours subtracts two Cairo times.
+    const cairo = cairoClock();
+    const clock = { work_date: cairo.date, work_time: cairo.time, minutes_now: cairo.minutes };
     const [[row]] = await conn.query(
       'SELECT check_in,check_out,total_hours FROM attendance_logs WHERE staff_id=? AND tenant_id=? AND date=? LIMIT 1 FOR UPDATE',
       [st.id, req.tenantId, clock.work_date]
@@ -672,7 +675,7 @@ router.get('/api/admin/hr/kpi/:staffId', requireAuth, requireAdminOrStaff, requi
       SELECT MONTH(date) AS month, YEAR(date) AS year,
              COUNT(*) AS sales_count, SUM(amount_egp) AS revenue
       FROM payments
-      WHERE staff_id=? AND tenant_id=? AND status='paid' AND date >= DATE_SUB(CURRENT_DATE, INTERVAL 6 MONTH) AND deleted_at IS NULL
+      WHERE staff_id=? AND tenant_id=? AND status='paid' AND date >= DATE_SUB(${sqlCairoToday()}, INTERVAL 6 MONTH) AND deleted_at IS NULL
       GROUP BY YEAR(date), MONTH(date) ORDER BY YEAR(date) DESC, MONTH(date) DESC
     `, [staffId, req.tenantId]);
 

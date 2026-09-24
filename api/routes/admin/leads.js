@@ -37,7 +37,7 @@ const {
 const { enqueueEmailSequence } = require('../../lib/emailSequence');
 const { ADMIN_EMAILS, requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../../middleware/auth');
 const { VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES } = require('../../constants/permissions');
-const { safeIsoString, safeDateOnly } = require('../../lib/dates');
+const { safeIsoString, safeDateOnly, sqlCairoToday, sqlCairoDayStartUtc } = require('../../lib/dates');
 const { keyset } = require('../../lib/pagination');
 const { branchIdForBranch } = require('../../lib/branches');
 const { postPaymentJournal, logPaymentAudit } = require('../../lib/finance');
@@ -1512,7 +1512,7 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
         WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
           AND l.next_follow_up_date IS NOT NULL
           AND l.status NOT IN (${closedSql})
-          AND l.next_follow_up_date <= CURDATE() + INTERVAL 7 DAY
+          AND l.next_follow_up_date <= ${sqlCairoToday()} + INTERVAL 7 DAY
         ORDER BY l.next_follow_up_date ASC, l.id ASC
         LIMIT 500`,
       [req.tenantId, ...scopeParams, ...CLOSED],
@@ -1538,7 +1538,7 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
          FROM leads l
         WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
           AND l.next_follow_up_date IS NOT NULL
-          AND l.next_follow_up_date <= CURDATE()`,
+          AND l.next_follow_up_date <= ${sqlCairoToday()}`,
       [req.tenantId, ...scopeParams],
     );
     const totalDue = Number(dueRow?.due || 0);
@@ -1568,7 +1568,7 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
          JOIN leads l ON l.id = c.lead_id AND l.tenant_id = c.tenant_id
         WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
           AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
-          AND c.date >= CURDATE() - INTERVAL 7 DAY
+          AND c.date >= ${sqlCairoDayStartUtc()} - INTERVAL 7 DAY
         GROUP BY l.assigned_sales_id, c.type`,
       [req.tenantId, ...scopeParams],
     );
@@ -1588,8 +1588,8 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
          FROM leads l
         WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
           AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
-          AND l.next_follow_up_date >= CURDATE() - INTERVAL 7 DAY
-          AND l.next_follow_up_date <= CURDATE()
+          AND l.next_follow_up_date >= ${sqlCairoToday()} - INTERVAL 7 DAY
+          AND l.next_follow_up_date <= ${sqlCairoToday()}
           AND EXISTS (
             SELECT 1 FROM communications c
              WHERE c.tenant_id = l.tenant_id AND c.lead_id = l.id
@@ -1611,7 +1611,7 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
          FROM leads l
         WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
           AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
-          AND l.created_at >= CURDATE() - INTERVAL 7 DAY
+          AND l.created_at >= ${sqlCairoDayStartUtc()} - INTERVAL 7 DAY
         GROUP BY l.assigned_sales_id`,
       [req.tenantId, ...scopeParams],
     );
@@ -1629,7 +1629,7 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
         WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
           AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
           AND l.next_follow_up_date IS NOT NULL
-          AND l.next_follow_up_date < CURDATE()
+          AND l.next_follow_up_date < ${sqlCairoToday()}
           AND l.status NOT IN ('converted','lost')
         GROUP BY l.assigned_sales_id`,
       [req.tenantId, ...scopeParams],
@@ -1678,7 +1678,7 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
         WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
           AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
           AND l.status NOT IN (${redistSql})
-       HAVING DATE(last_activity) <= CURDATE() - INTERVAL ? DAY
+       HAVING DATE(last_activity) <= ${sqlCairoToday()} - INTERVAL ? DAY
         ORDER BY last_activity ASC, l.id ASC
         LIMIT 50`,
       [req.tenantId, ...scopeParams, ...REDIST_EXCLUDED, idleDays],
@@ -1887,7 +1887,7 @@ router.get('/api/admin/leads/stats', requireAuth, requireAdminOrStaff, requirePe
               COUNT(*) AS cnt,
               SUM(l.status = 'converted') AS converted
        FROM leads l WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
-         AND l.created_at >= DATE_FORMAT(CURDATE() - INTERVAL 5 MONTH, '%Y-%m-01')
+         AND l.created_at >= DATE_FORMAT(${sqlCairoDayStartUtc()} - INTERVAL 5 MONTH, '%Y-%m-01')
        GROUP BY DATE_FORMAT(l.created_at, '%Y-%m')`,
       params,
     );
@@ -1907,7 +1907,7 @@ router.get('/api/admin/leads/stats', requireAuth, requireAdminOrStaff, requirePe
     const [[todayRow]] = await pool.query(
       `SELECT COUNT(*) AS cnt FROM leads l
         WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
-          AND l.created_at >= CURDATE() AND l.created_at < CURDATE() + INTERVAL 1 DAY`,
+          AND l.created_at >= ${sqlCairoDayStartUtc()} AND l.created_at < ${sqlCairoDayStartUtc()} + INTERVAL 1 DAY`,
       params,
     );
 

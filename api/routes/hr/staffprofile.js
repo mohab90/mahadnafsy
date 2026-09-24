@@ -18,7 +18,7 @@ const {
   hrError,
 } = require('./_shared');
 const { writeAuditEvent } = require('../../lib/auditTrail');
-const { dateOnlyInTimeZone, addDaysToDateOnly } = require('../../lib/dates');
+const { dateOnlyInTimeZone, addDaysToDateOnly, sqlCairoToday } = require('../../lib/dates');
 
 const MAX_BODY = 4000;
 
@@ -166,12 +166,12 @@ router.get('/api/admin/hr/staff/:id/profile', requireAuth, requireAdminOrStaff, 
            LEFT JOIN (SELECT staff_id, SUM(amount_egp) revenue, COUNT(*) bookings
                         FROM payments
                        WHERE tenant_id=? AND status='paid' AND deleted_at IS NULL
-                         AND date>=DATE_FORMAT(CURDATE(),'%Y-%m-01')
+                         AND date>=DATE_FORMAT(${sqlCairoToday()},'%Y-%m-01')
                        GROUP BY staff_id) p ON p.staff_id=s.id
            LEFT JOIN (SELECT staff_id, COUNT(*) calls
                         FROM communications
                        WHERE tenant_id=? AND type='CALL'
-                         AND date>=DATE_FORMAT(CURDATE(),'%Y-%m-01')
+                         AND date>=DATE_FORMAT(${sqlCairoToday()},'%Y-%m-01')
                        GROUP BY staff_id) c ON c.staff_id=s.id
           WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL
           ORDER BY revenue DESC, bookings DESC, calls DESC, s.name`,
@@ -203,7 +203,7 @@ router.get('/api/admin/hr/staff/:id/profile', requireAuth, requireAdminOrStaff, 
            SUM(status='todo') todo,
            SUM(status='in_progress') in_progress,
            SUM(status='done') done,
-           SUM(status<>'done' AND status<>'cancelled' AND due_date IS NOT NULL AND due_date<CURDATE()) overdue
+           SUM(status<>'done' AND status<>'cancelled' AND due_date IS NOT NULL AND due_date<${sqlCairoToday()}) overdue
            FROM tasks WHERE tenant_id=? AND assigned_to=?`,
         [req.tenantId, id]
       ),

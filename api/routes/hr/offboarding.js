@@ -7,6 +7,7 @@ const {
   hrError,
 } = require('./_shared');
 const { writeAuditEvent } = require('../../lib/auditTrail');
+const { sqlCairoToday } = require('../../lib/dates');
 
 const DEFAULT_CHECKLIST = [
   { task: 'استلام العهدة والأصول', done: false },
@@ -312,7 +313,7 @@ router.put('/api/admin/hr/offboarding/:id', requireAuth, requireAdminOrStaff, re
     await conn.query(
       `UPDATE staff
           SET is_active=0,totp_enabled=0,totp_secret=NULL,
-              termination_date=COALESCE(termination_date,CURDATE())
+              termination_date=COALESCE(termination_date,${sqlCairoToday()})
         WHERE id=? AND tenant_id=?`,
       [row.staff_id, req.tenantId]
     );

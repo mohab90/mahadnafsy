@@ -16,6 +16,7 @@ const { toIdentity } = require('../../lib/phoneNumber');
 const { PERMISSIONS } = require('../../constants/permissions');
 const { assertGrantable, heldByTarget } = require('../../lib/permissionGrant');
 const { ADMIN_EMAILS } = require('../../middleware/auth');
+const { sqlCairoToday } = require('../../lib/dates');
 
 // Lower-case permission keys, the form stored in staff.permissions_json.
 const ALL_PERMISSIONS = Object.values(PERMISSIONS).map(String);
@@ -399,7 +400,7 @@ router.post(
       `INSERT INTO staff
          (id, tenant_id, branch_id, name, email, phone, role, is_active, employment_type,
           hire_date, joined_at, specialization, permissions_json)
-       VALUES (?,?,?,?,?,?,?,?, 'FULL_TIME', CURDATE(), NOW(), ?, ?)`,
+       VALUES (?,?,?,?,?,?,?,?, 'FULL_TIME', ${sqlCairoToday()}, NOW(), ?, ?)`,
       [staffId, req.tenantId, branch.id,
         // The applicant row is the default, not the authority: the hire dialog
         // shows both fields as editable so HR can correct a misspelled name or

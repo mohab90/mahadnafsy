@@ -13,6 +13,7 @@ const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = re
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
 const { verifyAuditRows } = require('../lib/auditTrail');
 const errorMonitor = require('../lib/errorMonitor');
+const { sqlCairoDayStartUtc } = require('../lib/dates');
 
 async function safeCount(sql, params = []) {
   try { const [[r]] = await pool.query(sql, params); return Number(r.n); }
@@ -56,7 +57,7 @@ router.get('/api/admin/monitoring', requireAuth, requireAdmin, async (req, res) 
       safeCount("SELECT COUNT(*) n FROM job_queue WHERE tenant_id=? AND status='dead'", [req.tenantId]),
       safeCount("SELECT COUNT(*) n FROM queue_jobs WHERE tenant_id=? AND status IN ('pending','processing')", [req.tenantId]),
       safeCount("SELECT COUNT(*) n FROM queue_jobs WHERE tenant_id=? AND status='failed'", [req.tenantId]),
-      safeCount('SELECT COUNT(*) n FROM audit_logs WHERE tenant_id=? AND created_at >= CURDATE()', [req.tenantId]),
+      safeCount(`SELECT COUNT(*) n FROM audit_logs WHERE tenant_id=? AND created_at >= ${sqlCairoDayStartUtc()}`, [req.tenantId]),
     ]);
 
     res.json({

@@ -17,7 +17,7 @@ const { branchesFromScope } = require('../../lib/leadAccess');
 const { enqueueEmailSequence } = require('../../lib/emailSequence');
 const { ADMIN_EMAILS, requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../../middleware/auth');
 const { VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES, normalizeDataScope, resolveDataScope, hasPermission, PERMISSIONS } = require('../../constants/permissions');
-const { safeIsoString, safeDateOnly } = require('../../lib/dates');
+const { safeIsoString, safeDateOnly, sqlCairoDayStartUtc } = require('../../lib/dates');
 const { bulkOperationLimiter } = require('../../middleware/rateLimits');
 const { keyset } = require('../../lib/pagination');
 
@@ -98,13 +98,13 @@ router.get('/api/admin/online-performance', requireAuth, requireAdminOrStaff,
              SELECT DATE_FORMAT(created_at, '%Y-%m') month, COUNT(*) clients, 0 leads
                FROM subscribers
               WHERE tenant_id=? AND deleted_at IS NULL AND branch IN ('ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_INTERNATIONAL')
-                AND created_at >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+                AND created_at >= DATE_SUB(${sqlCairoDayStartUtc()}, INTERVAL 6 MONTH)
               GROUP BY month
              UNION ALL
              SELECT DATE_FORMAT(created_at, '%Y-%m') month, 0 clients, COUNT(*) leads
                FROM leads
               WHERE tenant_id=? AND branch IN ('ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_INTERNATIONAL')
-                AND created_at >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+                AND created_at >= DATE_SUB(${sqlCairoDayStartUtc()}, INTERVAL 6 MONTH)
               GROUP BY month
            ) monthly GROUP BY month ORDER BY month`, [req.tenantId, req.tenantId]),
         pool.query(

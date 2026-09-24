@@ -101,7 +101,8 @@ test('overdue CRM SLA alerts are tenant-owned, daily-deduped and use the retryab
   const sla = read('lib/crmSla.js');
   const runtime = read('lib/backgroundScheduler.js');
   assert.match(sla, /s\.tenant_id=l\.tenant_id/);
-  assert.match(sla, /l\.next_follow_up_date<CURDATE\(\)/);
+  // Overdue means before Cairo's today, not the database's UTC date.
+  assert.match(sla, /l\.next_follow_up_date<\$\{sqlCairoToday\(\)\}/);
   assert.match(sla, /tenantId: row\.tenant_id/);
   assert.match(sla, /dedupeKey: `crm-sla:\$\{row\.tenant_id\}:\$\{row\.id\}:\$\{today\}/);
   assert.match(runtime, /enqueueOverdueLeadAlerts\(\)/);

@@ -15,7 +15,7 @@ const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = re
 const { publicLimiter } = require('../middleware/rateLimits');
 const { branchIdForBranch, defaultDigitalBranch } = require('../lib/branches');
 const { financialRecordMatches, financialScopeClause, resolveFinancialScope } = require('../lib/financialScope');
-const { addDaysToDateOnly, dateOnlyInTimeZone, isValidDateOnly, monthRange } = require('../lib/dates');
+const { addDaysToDateOnly, dateOnlyInTimeZone, isValidDateOnly, monthRange, sqlCairoToday } = require('../lib/dates');
 const { EXPENSE_CATEGORY_LABEL } = require('../lib/expenseCategories');
 const { getVatPercent, logFinancialAudit } = require('../lib/finance');
 
@@ -1038,7 +1038,7 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requi
              COUNT(DISTINCT je.id) AS txn_count
       FROM journal_entries je
       JOIN journal_entry_lines jel ON jel.entry_id=je.id
-      WHERE je.tenant_id=? AND je.entry_date>=DATE_SUB(CURDATE(),INTERVAL 12 MONTH)
+      WHERE je.tenant_id=? AND je.entry_date>=DATE_SUB(${sqlCairoToday()},INTERVAL 12 MONTH)
         AND jel.account_code LIKE '4%'${journalScopeSql}
       GROUP BY month ORDER BY month ASC
     `, scope.branchId ? [req.tenantId, scope.branchId] : [req.tenantId]);

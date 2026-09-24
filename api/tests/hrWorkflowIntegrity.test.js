@@ -136,7 +136,15 @@ test('admin leave UI consumes the actual API field name `type`', () => {
 });
 
 test('attendance self service is idempotent and checkout cannot precede check-in', () => {
-  assert.match(attendance, /DATE_FORMAT\(CURDATE\(\),'%Y-%m-%d'\).*DATE_FORMAT\(NOW\(\),'%H:%i'\)/);
+  // This used to pin the clock to DATE_FORMAT(NOW(),'%H:%i') — which is the UTC
+  // hour, because the server runs in UTC. It recorded a 09:00 arrival as 06:00
+  // and, compared against a 09:00 shift, marked everyone who came before noon as
+  // on time. The assertion was pinning the bug. The clock is Cairo's now, and the
+  // database's hour must not come back.
+  assert.match(attendance, /const cairo = cairoClock\(\);/);
+  assert.match(attendance, /work_time: cairo\.time/);
+  assert.doesNotMatch(attendance, /HOUR\(NOW\(\)\)/);
+  assert.doesNotMatch(attendance, /DATE_FORMAT\(NOW\(\)/);
   assert.match(attendance, /SELECT check_in,status,late_minutes FROM attendance_logs/);
   assert.match(attendance, /ON DUPLICATE KEY UPDATE[\s\S]*check_in=COALESCE\(check_in,VALUES\(check_in\)\)/);
   assert.match(attendance, /check_out IS NULL/);

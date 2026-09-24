@@ -10,6 +10,7 @@ const { leadScope } = require('../lib/leadAccess');
 const { buildWorkQueue } = require('../lib/crmWorkQueue');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { whatsappSendLimiter } = require('../middleware/rateLimits');
+const { sqlCairoToday } = require('../lib/dates');
 
 function routeError(res, error, message = 'crm ops route failed') {
   logger.error(message, error);
@@ -56,7 +57,7 @@ router.get('/api/admin/crm/follow-up-due', requireAuth, requireAdminOrStaff, req
       FROM leads l
       WHERE l.tenant_id=? AND l.hidden=0
         AND l.next_follow_up_date IS NOT NULL
-        AND l.next_follow_up_date <= CURDATE()
+        AND l.next_follow_up_date <= ${sqlCairoToday()}
         AND l.status NOT IN ('converted','lost')`;
     const params = [req.tenantId];
     const scope = leadScope(req, 'l');

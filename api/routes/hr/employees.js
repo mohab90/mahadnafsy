@@ -5,6 +5,7 @@ const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, re
 const { getEffectiveHrPolicy } = require('../../lib/hrPolicy');
 const { PERMISSIONS, normalizeDataScope } = require('../../constants/permissions');
 const { writeAuditEvent } = require('../../lib/auditTrail');
+const { sqlCairoToday } = require('../../lib/dates');
 
 
 // GET /api/admin/hr/employees — list all employees with HR info
@@ -51,7 +52,7 @@ router.get('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
              other_allowances_json, currency, effective_from, effective_to, created_by, created_at
       FROM salary_structures
       WHERE staff_id=? AND tenant_id=? AND status='APPROVED'
-        AND effective_from<=CURRENT_DATE AND (effective_to IS NULL OR effective_to >= CURRENT_DATE)
+        AND effective_from<=${sqlCairoToday()} AND (effective_to IS NULL OR effective_to >= ${sqlCairoToday()})
       ORDER BY effective_from DESC LIMIT 1
     `, [id, req.tenantId]);
 
@@ -84,8 +85,8 @@ router.get('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
             (SELECT role FROM staff WHERE id=? AND tenant_id=? LIMIT 1)
           ))))
           AND cr.calc_type = 'PERCENTAGE'
-          AND (cr.effective_to IS NULL OR cr.effective_to >= CURDATE())
-          AND cr.effective_from <= CURDATE()
+          AND (cr.effective_to IS NULL OR cr.effective_to >= ${sqlCairoToday()})
+          AND cr.effective_from <= ${sqlCairoToday()}
         ORDER BY cr.staff_id DESC, cr.priority ASC
         LIMIT 1
       `, [req.tenantId, id, id, req.tenantId]);
@@ -110,7 +111,7 @@ router.get('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
       SELECT percentage_value FROM commission_rules
       WHERE tenant_id=? AND is_active=1 AND calc_type='PERCENTAGE'
         AND (staff_id=? OR staff_id IS NULL)
-        AND (effective_to IS NULL OR effective_to >= CURDATE())
+        AND (effective_to IS NULL OR effective_to >= ${sqlCairoToday()})
       ORDER BY staff_id DESC LIMIT 1
     `, [req.tenantId, id]);
     const histRate = ruleForHistory?.percentage_value || null;
@@ -121,7 +122,7 @@ router.get('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
              COUNT(*) AS sales_count
       FROM payments p
       JOIN staff s ON s.id=p.staff_id AND s.tenant_id=p.tenant_id
-      WHERE p.staff_id=? AND p.tenant_id=? AND p.status='paid' AND p.date >= DATE_SUB(CURRENT_DATE, INTERVAL 6 MONTH) AND p.deleted_at IS NULL
+      WHERE p.staff_id=? AND p.tenant_id=? AND p.status='paid' AND p.date >= DATE_SUB(${sqlCairoToday()}, INTERVAL 6 MONTH) AND p.deleted_at IS NULL
       GROUP BY YEAR(p.date), MONTH(p.date)
       ORDER BY YEAR(p.date) DESC, MONTH(p.date) DESC
     `, [histRate, id, req.tenantId]);

@@ -63,7 +63,9 @@ test('CRM due reminders preserve tenant and canonical role data boundaries', () 
   // Tenant boundary plus the today's-follow-ups filter, pinned in the
   // index-usable half-open form: DATE(next_follow_up_date) = CURDATE() would
   // defeat idx_leads_next_followup and full-scan leads on every reminder sweep.
-  assert.match(route, /WHERE l\.tenant_id = \? AND l\.next_follow_up_date >= CURDATE\(\) AND l\.next_follow_up_date < CURDATE\(\) \+ INTERVAL 1 DAY/);
+  // Today is Cairo's, not the database's: the server runs in UTC, so CURDATE()
+  // began the day at 02:00 or 03:00 Cairo time. See lib/dates.js.
+  assert.match(route, /WHERE l\.tenant_id = \? AND l\.next_follow_up_date >= \$\{sqlCairoToday\(\)\} AND l\.next_follow_up_date < \$\{sqlCairoToday\(\)\} \+ INTERVAL 1 DAY/);
   assert.match(route, /leadScope\(req, 'l'\)/);
   assert.match(route, /\$\{scope\.sql\}/);
   assert.match(shared, /runFollowUpReminders\(tenantId/);

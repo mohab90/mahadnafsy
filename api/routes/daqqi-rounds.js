@@ -14,6 +14,7 @@ const { getDaqqiAttendees } = require('../lib/daqqiAttendees');
 const { ymd } = require('../lib/helpers');
 
 const { mysqlWeekdayFromArabic } = require('../lib/daqqiSchedule');
+const { sqlCairoToday } = require('../lib/dates');
 
 function sendRouteError(res, err) {
   if (res.headersSent) return;
@@ -909,7 +910,7 @@ router.get('/api/admin/daqqi/attendance-monthly', requireAuth, requireAdminOrSta
     const [rounds] = await pool.query(
       `SELECT id, reception_name, instructor_name, start_date, status, current_lecture
        FROM daqqi_rounds
-       WHERE tenant_id=? AND start_date >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
+       WHERE tenant_id=? AND start_date >= DATE_SUB(${sqlCairoToday()}, INTERVAL ? MONTH)
        ORDER BY start_date DESC LIMIT 1000`,
       [req.tenantId, months]
     );

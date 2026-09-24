@@ -16,6 +16,7 @@ const router = express.Router();
 const { logLogin, sendDailyReport, scheduleDailyReport, pushAdminNotif, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
 
 const { escapeHtml } = require('../../lib/html');
+const { sqlCairoToday } = require('../../lib/dates');
 
 router.get('/api/admin/leads/due-today', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
   try {
@@ -27,7 +28,7 @@ router.get('/api/admin/leads/due-today', requireAuth, requireAdminOrStaff, requi
              st.name AS staff_name
       FROM leads l
       LEFT JOIN staff st ON st.id = l.assigned_sales_id AND st.tenant_id = l.tenant_id
-      WHERE l.tenant_id = ? AND l.next_follow_up_date >= CURDATE() AND l.next_follow_up_date < CURDATE() + INTERVAL 1 DAY
+      WHERE l.tenant_id = ? AND l.next_follow_up_date >= ${sqlCairoToday()} AND l.next_follow_up_date < ${sqlCairoToday()} + INTERVAL 1 DAY
         AND l.status NOT IN ('converted','disqualified','archived')
         ${scope.sql}
       ORDER BY l.name`, [req.tenantId, ...scope.params]);
@@ -55,7 +56,7 @@ router.get('/api/admin/payments/due-upcoming', requireAuth, requireAdminOrStaff,
     const future = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
     const [rows] = await pool.query(`
       SELECT p.id, p.amount, p.currency, p.date AS due_date,
-             DATEDIFF(p.date, CURDATE()) AS days_left,
+             DATEDIFF(p.date, ${sqlCairoToday()}) AS days_left,
              s.id AS subscriber_id, s.name, s.phone, s.client_code, s.branch
       FROM payments p
       JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id

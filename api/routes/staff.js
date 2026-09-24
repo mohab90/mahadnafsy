@@ -3,6 +3,7 @@
 const express = require('express');
 const router = express.Router();
 const logger = require('../lib/logger').child({ module: 'staff-route' });
+const { sqlCairoToday } = require('../lib/dates');
 
 function routeError(res, error, message = 'route failed') {
   logger.error(message, error);
@@ -339,7 +340,7 @@ router.get('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermissi
          LEFT JOIN salary_structures ss ON ss.id=(
            SELECT x.id FROM salary_structures x
             WHERE x.tenant_id=s.tenant_id AND x.staff_id=s.id AND x.status='APPROVED'
-              AND x.effective_from<=CURDATE() AND (x.effective_to IS NULL OR x.effective_to>=CURDATE())
+              AND x.effective_from<=${sqlCairoToday()} AND (x.effective_to IS NULL OR x.effective_to>=${sqlCairoToday()})
             ORDER BY x.effective_from DESC LIMIT 1
          )
         WHERE s.tenant_id=? AND s.deleted_at IS NULL

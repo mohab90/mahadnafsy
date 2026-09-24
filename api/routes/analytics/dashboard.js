@@ -6,7 +6,7 @@ const router  = express.Router();
 const { pool, cached } = require('../../lib/db');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { resolveDataScope } = require('../../constants/permissions');
-const { dateOnlyInTimeZone, addDaysToDateOnly } = require('../../lib/dates');
+const { dateOnlyInTimeZone, addDaysToDateOnly, sqlCairoDayStartUtc } = require('../../lib/dates');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Admin Dashboard KPI Snapshot ────────────────────────────────
@@ -82,8 +82,8 @@ router.get('/api/admin/dashboard/kpi', requireAuth, requireAdminOrStaff, require
           SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending
         FROM consultations WHERE tenant_id=?`, [req.tenantId]),
       pool.query('SELECT COUNT(*) AS total FROM course_completions WHERE tenant_id=?', [req.tenantId]),
-      pool.query("SELECT COUNT(*) AS n FROM leads WHERE tenant_id=? AND created_at >= CURDATE() AND created_at < CURDATE() + INTERVAL 1 DAY AND hidden=0", [req.tenantId]),
-      pool.query("SELECT COUNT(*) AS n FROM subscribers WHERE tenant_id=? AND created_at >= CURDATE() AND created_at < CURDATE() + INTERVAL 1 DAY", [req.tenantId]),
+      pool.query(`SELECT COUNT(*) AS n FROM leads WHERE tenant_id=? AND created_at >= ${sqlCairoDayStartUtc()} AND created_at < ${sqlCairoDayStartUtc()} + INTERVAL 1 DAY AND hidden=0`, [req.tenantId]),
+      pool.query(`SELECT COUNT(*) AS n FROM subscribers WHERE tenant_id=? AND created_at >= ${sqlCairoDayStartUtc()} AND created_at < ${sqlCairoDayStartUtc()} + INTERVAL 1 DAY`, [req.tenantId]),
       pool.query("SELECT COUNT(*) AS n FROM payments WHERE tenant_id=? AND status='pending' AND deleted_at IS NULL", [req.tenantId]),
       pool.query("SELECT COUNT(*) AS n FROM leaves WHERE tenant_id=? AND status='PENDING'", [req.tenantId]).catch(() => [[{n:0}]]),
       pool.query("SELECT COUNT(*) AS n FROM forum_posts WHERE tenant_id=? AND is_hidden=0", [req.tenantId]).catch(() => [[{n:0}]]),

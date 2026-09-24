@@ -21,6 +21,7 @@
 const { pool } = require('./db');
 const { uuidv4 } = require('./id');
 const logger = require('./logger').child({ lib: 'commissionCalc' });
+const { sqlCairoToday } = require('./dates');
 
 /**
  * Work out the rate for a staff member: an explicit active rule wins, otherwise
@@ -32,7 +33,7 @@ async function resolveRate(db, { tenantId, staffId, amount }) {
       WHERE tenant_id=? AND is_active=1 AND calc_type='PERCENTAGE'
         AND (staff_id=? OR (staff_id IS NULL AND JSON_CONTAINS(COALESCE(apply_to_roles,'[]'),
              JSON_QUOTE((SELECT role FROM staff WHERE id=? AND tenant_id=? LIMIT 1)))))
-        AND effective_from <= CURDATE() AND (effective_to IS NULL OR effective_to >= CURDATE())
+        AND effective_from <= ${sqlCairoToday()} AND (effective_to IS NULL OR effective_to >= ${sqlCairoToday()})
         AND (min_payment IS NULL OR min_payment <= ?)
       ORDER BY staff_id DESC, priority ASC LIMIT 1`,
     [tenantId, staffId, staffId, tenantId, Number(amount)]
