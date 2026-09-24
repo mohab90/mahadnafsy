@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Activity, AlarmClock, Banknote, BarChart3, Bell, BookOpen, Briefcase, CalendarDays,
   ChevronDown, CreditCard, FileText, FolderKanban, Image, ListOrdered,
-  LogOut, Monitor, RotateCcw, Shield, Tag, TrendingUp,
+  LogOut, Menu, Monitor, RotateCcw, Shield, Tag, TrendingUp,
   UserCheck, UserCog, UserPlus, UserSearch, Users, Video, Wallet, MessageSquareText,
   type LucideIcon,
 } from 'lucide-react';
@@ -98,22 +98,37 @@ function CompactRoleNav({
   // cookie and navigated, so the panel stayed "signed in": the dashboard kept
   // drawing and every request it made came back 401, one toast each.
   const signOut = () => { logout(); navigate('/auth'); };
+  // Same as the admin bar: on a phone the tabs wrapped into three or four rows
+  // of buttons above the page. Below md they fold into ☰ and open downwards.
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const tabButton = (tab: CompactTab, block: boolean) => {
+    const Icon = tab.icon;
+    const isActive = activeTab === tab.key;
+    return (
+      <button key={tab.key} onClick={() => { setActiveTab(tab.key); setMenuOpen(false); }}
+        className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition ${block ? 'w-full text-right' : ''} ${
+          isActive ? activeButtonClass : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+        }`}>
+        <Icon size={15} />
+        {tab.label}
+      </button>
+    );
+  };
   return (
     <nav className="sticky top-3 z-40 bg-white/95 backdrop-blur border border-gray-200 rounded-2xl p-2 shadow-sm flex items-center gap-2 flex-wrap justify-between" dir="rtl">
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {tabs.map(tab => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.key;
-          return (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition ${
-                isActive ? activeButtonClass : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-              }`}>
-              <Icon size={15} />
-              {tab.label}
-            </button>
-          );
-        })}
+      <button
+        type="button"
+        onClick={() => setMenuOpen(open => !open)}
+        aria-expanded={menuOpen}
+        aria-label="القائمة"
+        className={`md:hidden flex items-center gap-2 min-w-0 px-3 py-2 rounded-xl text-sm font-semibold transition ${
+          menuOpen ? activeButtonClass : 'text-gray-700 hover:bg-gray-100'}`}
+      >
+        <Menu size={18} className="flex-shrink-0" />
+        <span className="truncate">{tabs.find(tab => tab.key === activeTab)?.label || 'القائمة'}</span>
+      </button>
+      <div className="hidden md:flex items-center gap-1.5 flex-wrap">
+        {tabs.map(tab => tabButton(tab, false))}
         {extraTabsSlot}
       </div>
       {currentStaff && (
@@ -121,7 +136,9 @@ function CompactRoleNav({
           <div className={`w-7 h-7 rounded-full grid place-items-center text-xs font-bold flex-shrink-0 ${avatarClass}`}>
             {currentStaff.name.charAt(0)}
           </div>
-          <span className="font-semibold text-gray-800">{currentStaff.name}</span>
+          {/* The initial says who it is on a phone; the name needs the width
+              the ☰ button is using there. */}
+          <span className="hidden sm:inline font-semibold text-gray-800">{currentStaff.name}</span>
           {roleBadge && <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${roleBadgeClass}`}>{roleBadge}</span>}
           {salesDataLoading && <span className={`w-4 h-4 border-2 border-t-transparent rounded-full animate-spin ${spinnerBorderClass}`} />}
           <button
@@ -139,6 +156,12 @@ function CompactRoleNav({
             className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 grid place-items-center transition"
             title="تسجيل الخروج"
           ><LogOut size={13} /></button>
+        </div>
+      )}
+      {menuOpen && (
+        <div className="md:hidden basis-full border-t border-gray-100 pt-2 space-y-0.5 max-h-[70vh] overflow-y-auto overscroll-contain">
+          {tabs.map(tab => tabButton(tab, true))}
+          {extraTabsSlot}
         </div>
       )}
     </nav>
@@ -180,6 +203,40 @@ export function DashboardNavigation(props: Props) {
     return () => window.removeEventListener('scroll', close);
   }, [activeDropdownGroup, setActiveDropdownGroup, setDropdownRect]);
 
+  // On a phone the ten groups do not fit across the bar, and a bar that scrolls
+  // sideways hides most of them behind the edge. Below md the bar carries one
+  // ☰ instead, which opens the whole menu downwards: every group, every item.
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+
+  // One item, drawn the same in a group's dropdown and in the phone menu, so
+  // the counts on المالية and صندوق الوارد travel with it.
+  const menuItem = (item: VisibleMenuGroup['items'][number], groupKey: string, onPicked: () => void) => {
+    const Icon = item.icon;
+    const isActive = activeTab === item.key;
+    return (
+      <button
+        key={`${item.key}-${groupKey}`}
+        onClick={() => { setActiveTab(item.key as TabKey); onPicked(); }}
+        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-semibold transition text-right ${
+          isActive ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-primary-50 hover:text-primary-700'
+        }`}
+      >
+        <Icon size={14} className="flex-shrink-0" />
+        <span className="truncate flex-1">{item.label}</span>
+        {item.key === 'financial' && pendingProofsCount > 0 && (
+          <span className="bg-amber-500 text-white text-[10px] font-extrabold rounded-full px-1.5 leading-[18px] min-w-[18px] text-center flex-shrink-0">
+            {pendingProofsCount}
+          </span>
+        )}
+        {item.key === 'notif_inbox' && inboxUnreadCount > 0 && (
+          <span className="bg-red-500 text-white text-[10px] font-extrabold rounded-full px-1.5 leading-[18px] min-w-[18px] text-center flex-shrink-0">
+            {inboxUnreadCount > 9 ? '9+' : inboxUnreadCount}
+          </span>
+        )}
+      </button>
+    );
+  };
+
   return (
 <>
         {/* ── Main nav bar ── */}
@@ -215,9 +272,26 @@ export function DashboardNavigation(props: Props) {
                 )}
               </div>
 
+              {/* The phone's way in: the whole menu, opened downwards. */}
+              <div className="md:hidden flex-1 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => setMobileMenuOpen(open => !open)}
+                  aria-expanded={mobileMenuOpen}
+                  aria-label="القائمة"
+                  // The icon alone: the five controls leave a phone about thirty
+                  // pixels beside it, and the section's name cut to «نظر…» said
+                  // less than nothing.
+                  className={`w-9 h-9 grid place-items-center rounded-xl transition ${
+                    mobileMenuOpen ? 'bg-primary-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+                >
+                  <Menu size={20} />
+                </button>
+              </div>
+
               {/* Group nav buttons — scrollable. No divider before them: the bar
                   needs its width for the groups. */}
-              <div className="flex items-center gap-0.5 overflow-x-auto flex-1 min-w-0">
+              <div className="hidden md:flex items-center gap-0.5 overflow-x-auto flex-1 min-w-0">
                 {visibleMenuGroups.map((group) => {
                   const GroupIcon = group.icon;
                   const hasActive = group.items.some(i => i.key === activeTab);
@@ -230,7 +304,9 @@ export function DashboardNavigation(props: Props) {
                         if (isOpen) { setActiveDropdownGroup(null); setDropdownRect(null); }
                         else { setActiveDropdownGroup(group.key); setDropdownRect(r); }
                       }}
-                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition flex-shrink-0 ${
+                      // px-2, not px-2.5: two pixels a side is what the ten
+                      // groups needed to fit the bar without it scrolling.
+                      className={`flex items-center gap-1 px-2 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition flex-shrink-0 ${
                         hasActive || isOpen
                           ? 'bg-primary-600 text-white shadow-sm'
                           : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
@@ -309,6 +385,25 @@ export function DashboardNavigation(props: Props) {
             </div>
 
 
+            {/* The phone menu. In the sticky block, so it stays under the bar;
+                it scrolls itself, so a long menu never runs off the screen. */}
+            {mobileMenuOpen && (
+              <div className="md:hidden mt-2 bg-white border border-gray-200 rounded-2xl shadow-xl p-1.5 max-h-[70vh] overflow-y-auto overscroll-contain">
+                {visibleMenuGroups.map(group => {
+                  const GroupIcon = group.icon;
+                  return (
+                    <div key={group.key} className="py-1 border-b border-gray-100 last:border-0">
+                      <div className="px-3 py-1.5 text-[11px] font-extrabold text-gray-400 flex items-center gap-2">
+                        <GroupIcon size={12} className={group.color} />
+                        {group.label}
+                      </div>
+                      {group.items.map(item => menuItem(item, group.key, () => setMobileMenuOpen(false)))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Dropdown panel — fixed below the clicked button */}
             {activeDropdownGroup && dropdownRect && (() => {
               const group = visibleMenuGroups.find(g => g.key === activeDropdownGroup);
@@ -325,32 +420,7 @@ export function DashboardNavigation(props: Props) {
                       <GroupIcon size={12} className={group.color} />
                       {group.label}
                     </div>
-                    {group.items.map((item) => {
-                      const Icon = item.icon;
-                      const isActive = activeTab === item.key;
-                      return (
-                        <button
-                          key={`${item.key}-${group.key}`}
-                          onClick={() => { setActiveTab(item.key as TabKey); setActiveDropdownGroup(null); }}
-                          className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-semibold transition text-right ${
-                            isActive ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-primary-50 hover:text-primary-700'
-                          }`}
-                        >
-                          <Icon size={14} className="flex-shrink-0" />
-                          <span className="truncate flex-1">{item.label}</span>
-                          {item.key === 'financial' && pendingProofsCount > 0 && (
-                            <span className="bg-amber-500 text-white text-[10px] font-extrabold rounded-full px-1.5 leading-[18px] min-w-[18px] text-center flex-shrink-0">
-                              {pendingProofsCount}
-                            </span>
-                          )}
-                          {item.key === 'notif_inbox' && inboxUnreadCount > 0 && (
-                            <span className="bg-red-500 text-white text-[10px] font-extrabold rounded-full px-1.5 leading-[18px] min-w-[18px] text-center flex-shrink-0">
-                              {inboxUnreadCount > 9 ? '9+' : inboxUnreadCount}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
+                    {group.items.map(item => menuItem(item, group.key, () => setActiveDropdownGroup(null)))}
                   </div>
                 </>
               );
