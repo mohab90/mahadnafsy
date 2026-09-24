@@ -420,9 +420,15 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                     {canManageLeads && (
                       <select value={row.assignedSalesId || ''} onChange={(e) => {
                         const s = salesStaff.find((x) => x.id === e.target.value);
-                        updateLead({ ...row, assignedSalesId: e.target.value || undefined, assignedSalesName: s?.name || '' });
+                        // null, not undefined. JSON.stringify drops an undefined
+                        // value, so the key never reached the API — and the API
+                        // tells "unassign" from "leave alone" by whether the key
+                        // is there at all. Choosing the blank option therefore
+                        // looked like it worked and changed nothing, which is why
+                        // a lead could never be freed back to محلي جديد.
+                        updateLead({ ...row, assignedSalesId: e.target.value || null, assignedSalesName: s?.name || '' });
                       }} className="border-0 bg-transparent text-xs w-full cursor-pointer text-gray-500 focus:ring-0 focus:outline-none">
-                        <option value="">— تغيير السيلز —</option>
+                        <option value="">— بلا مندوب (يرجع لمحلي جديد) —</option>
                         {salesStaff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                       </select>
                     )}
@@ -492,9 +498,12 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
         {rows.length === 0 && <p className="text-sm text-gray-400 mt-4 text-center py-6">لا توجد نتائج.</p>}
       </div>
 
-      {/* ── Pagination controls ── */}
+      {/* ── Pagination controls ──
+          Pager on the right, count on the left: the floating support button
+          sits in the bottom-left corner and covered «التالي», so the control
+          people press every few seconds was the one underneath it. */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between mt-3 px-1">
+        <div className="flex flex-row-reverse items-center justify-between mt-3 px-1">
           <span className="text-xs text-gray-500">
             {rows.length} عميل — عرض {safePage * PAGE_SIZE + 1}–{Math.min((safePage + 1) * PAGE_SIZE, rows.length)}
           </span>

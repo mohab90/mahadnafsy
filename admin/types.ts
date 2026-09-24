@@ -262,7 +262,8 @@ export interface LeadItem {
   branch?: BranchType;
   rawBranch?: string;   // Raw branch text from sheet when ENUM mapping fails
   interestLevel?: InterestLevel;
-  assignedSalesId?: string;
+  /** null clears it: the API distinguishes an explicit null (unassign) from an absent key (leave alone). */
+  assignedSalesId?: string | null;
   assignedSalesName?: string;
   assignedCsId?: string;
   assignedCsName?: string;

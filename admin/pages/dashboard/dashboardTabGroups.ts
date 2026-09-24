@@ -134,6 +134,12 @@ export const fullLeadArraySubTabs = new Set<string>([
   'dawliOld',
   'archive',
   'table',
+  // 'reminders' builds two of its queues — never contacted, and promised to pay
+  // — by scanning the array, because no server aggregate answers either one.
+  // Left out, it scanned the 500-row bootstrap page: the board showed a handful
+  // of rows and looked unchanged no matter what was added to it, while 14,795
+  // untouched leads and every open payment promise sat outside the slice.
+  'reminders',
 ]);
 
 /**

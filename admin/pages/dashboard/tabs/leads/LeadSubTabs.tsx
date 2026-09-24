@@ -38,9 +38,11 @@ export function LeadSubTabs({
     ...(!isSalesOnly ? [['performance', 'أداء الفريق', TrendingUp] as [SubTabKey, string, ElementType]] : []),
     ...(canManageDuplicates ? [['duplicates', 'مراجعة التكرار', GitMerge] as [SubTabKey, string, ElementType]] : []),
     ...(!isSalesOnly ? [['localNew', 'محلي جديد', UserX] as [SubTabKey, string, ElementType]] : []),
-    // 'دولي جديد' (dawliNew) removed: LeadArchiveViews.tsx renders it with a
-    // hardcoded empty row set — it has never shown any data. Reachable only
-    // via setSubTab('dawliNew') directly now, not as a visible tab.
+    // 'دولي جديد' is back in the strip. It was pulled because the view behind
+    // it rendered a hardcoded empty row set and had never shown a thing; it now
+    // lists the undistributed international pool, the other half of محلي جديد,
+    // so hiding it would hide leads nobody is working.
+    ...(!isSalesOnly ? [['dawliNew', 'دولي جديد', Globe] as [SubTabKey, string, ElementType]] : []),
     // A rep works the data, they don't source it — so for them these are two
     // plain views ("داتا دولي" / "محلي قديم") with the import and bulk-assign
     // panels stripped out. Management keeps the full tooling.
