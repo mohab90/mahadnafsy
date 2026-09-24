@@ -114,7 +114,6 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
   const [archiveImportResult, setArchiveImportResult] = useState<{ created: number; dupes: number; errors: number } | null>(null);
   const [archiveSelectedIds, setArchiveSelectedIds] = useState<Set<string>>(new Set());
   const [archiveSource, setArchiveSource] = useState(defaultSource);
-  const [archivePage, setArchivePage] = useState(1);
   const [bulkAssignSrc, setBulkAssignSrc] = useState('');
   const [bulkAssignRole, setBulkAssignRole] = useState<'sales' | 'collection'>('sales');
   const [bulkSelectedLeadIds, setBulkSelectedLeadIds] = useState<Set<string>>(new Set());
@@ -126,7 +125,6 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [importDest, setImportDest] = useState<'archive' | 'main'>('archive');
   const [assignDest, setAssignDest] = useState<'keep' | 'archive' | 'main'>('keep');
-  const ARCHIVE_PAGE_SIZE = 100;
   const mainSource = `${defaultSource} — موزّع`;
   const showDeskTools = canManageLeads && !isSalesOnly;
   // Configuration narrows; it never widens. A tab asking for the distribute
@@ -231,7 +229,6 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
   const archiveLeads = leads
     .filter(l => !l.hidden && (customFilter ? customFilter(l) : l.source === archiveSource))
     .filter(l => (matchesFilters ? matchesFilters(l) : true));
-  const totalArchivePages = Math.ceil(archiveLeads.length / ARCHIVE_PAGE_SIZE);
   // Narrow the pool to leads interested in one course before assigning. A rep
   // handed a mixed bag calls about whatever is on the row; a rep handed forty
   // people who all asked about the same diploma has one conversation to
@@ -266,7 +263,6 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
         || (!!title && String(lead.notes || '').toLowerCase().includes(title));
     })
     : undistributed;
-  const bulkPaginated = filteredBulkLeads.slice((archivePage - 1) * ARCHIVE_PAGE_SIZE, archivePage * ARCHIVE_PAGE_SIZE);
   const staffForAssign = staffMembers.filter(s => {
     const role = (s.role || '').toLowerCase();
     return bulkAssignRole === 'sales'
@@ -536,44 +532,10 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
                 تحديد
               </button>
             </div>
-            <button onClick={() => setBulkSelectedLeadIds(new Set(bulkPaginated.map(l => l.id)))} className="text-xs px-2.5 py-1 bg-gray-100 rounded-lg hover:bg-gray-200 font-bold">تحديد الصفحة</button>
             <button onClick={() => setBulkSelectedLeadIds(new Set(filteredBulkLeads.map(l => l.id)))} className="text-xs px-2.5 py-1 bg-gray-100 rounded-lg hover:bg-gray-200 font-bold">تحديد الكل ({filteredBulkLeads.length})</button>
             <button onClick={() => setBulkSelectedLeadIds(new Set())} className="text-xs px-2.5 py-1 bg-gray-100 rounded-lg hover:bg-gray-200 font-bold">إلغاء التحديد</button>
           </div>
         </div>
-        <div className="border border-gray-200 rounded-xl overflow-hidden">
-          <table className="w-full text-xs">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="py-2 px-3 text-right font-bold text-gray-600 w-8"><input type="checkbox" checked={bulkPaginated.length > 0 && bulkPaginated.every(l => bulkSelectedLeadIds.has(l.id))} onChange={e => { const next = new Set(bulkSelectedLeadIds); bulkPaginated.forEach(l => e.target.checked ? next.add(l.id) : next.delete(l.id)); setBulkSelectedLeadIds(next); }} className="w-3.5 h-3.5" /></th>
-                <th className="py-2 px-3 text-right font-bold text-gray-600">الاسم</th>
-                <th className="py-2 px-3 text-right font-bold text-gray-600">الهاتف</th>
-                <th className="py-2 px-3 text-right font-bold text-gray-600">الحالة</th>
-                <th className="py-2 px-3 text-right font-bold text-gray-600">مبيعات</th>
-                <th className="py-2 px-3 text-right font-bold text-gray-600">المصدر</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bulkPaginated.map(lead => (
-                <tr key={lead.id} className="border-b border-gray-50 hover:bg-gray-50/50">
-                  <td className="py-1.5 px-3"><input type="checkbox" checked={bulkSelectedLeadIds.has(lead.id)} onChange={e => { const next = new Set(bulkSelectedLeadIds); e.target.checked ? next.add(lead.id) : next.delete(lead.id); setBulkSelectedLeadIds(next); }} className="w-3.5 h-3.5 accent-emerald-600" /></td>
-                  <td className="py-1.5 px-3 font-bold text-gray-900">{lead.name}</td>
-                  <td className="py-1.5 px-3 font-mono text-gray-600">{lead.phone}</td>
-                  <td className="py-1.5 px-3"><span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${LEAD_STATUS_CFG[lead.status as LeadStatus]?.color || 'bg-gray-100 text-gray-500'}`}>{crmStatusLabels[lead.status] || lead.status}</span></td>
-                  <td className="py-1.5 px-3 text-gray-600">{lead.assignedSalesName || '—'}</td>
-                  <td className="py-1.5 px-3 text-gray-400">{lead.source || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {totalArchivePages > 1 && (
-          <div className="flex items-center gap-2 justify-center pt-1">
-            <button disabled={archivePage <= 1} onClick={() => setArchivePage(p => p - 1)} className="px-3 py-1.5 text-xs rounded-lg bg-gray-100 hover:bg-gray-200 disabled:opacity-40 font-bold">← السابق</button>
-            <span className="text-xs text-gray-600 font-bold">{archivePage} / {totalArchivePages}</span>
-            <button disabled={archivePage >= totalArchivePages} onClick={() => setArchivePage(p => p + 1)} className="px-3 py-1.5 text-xs rounded-lg bg-gray-100 hover:bg-gray-200 disabled:opacity-40 font-bold">التالي →</button>
-          </div>
-        )}
       </div>}
 
       {/* ── Section 3: Lead Table ── */}

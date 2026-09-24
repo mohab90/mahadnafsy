@@ -18,3 +18,22 @@ export const isArchiveSource = (source?: string | null): boolean => {
   const value = String(source || '').trim();
   return ARCHIVE_SOURCE_PREFIXES.some(prefix => value.startsWith(prefix));
 };
+
+/**
+ * Local or international, decided by branch first and source second.
+ *
+ * The دولي tabs used to be source-only, matching a "دولي قديم" source that no
+ * lead in the database has — so they could only ever be empty, and what showed
+ * on them was the previous tab's rows. Branch is the field that is actually
+ * filled: every lead carries one, and the two online-international branches
+ * hold real customers. Source is still honoured for data imported under a
+ * "دولي …" label, so either way of marking a lead abroad lands it in the right
+ * pair of tabs.
+ */
+const INTERNATIONAL_BRANCHES = ['ONLINE_ABROAD', 'ONLINE_SAUDI'];
+
+export const isInternationalLead = (lead: { branch?: string | null; source?: string | null }): boolean => {
+  const branch = String(lead.branch || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+  if (INTERNATIONAL_BRANCHES.includes(branch)) return true;
+  return String(lead.source || '').trim().startsWith('دولي');
+};

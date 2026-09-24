@@ -142,6 +142,12 @@ export function useLeadFilteringData({
   const visibleLeads = useMemo(() => effectiveLeads.filter((lead) =>
     (showHiddenLeads ? lead.hidden === true : !lead.hidden) &&
     (isSalesOnly || !isOnlineSource(lead.source)) &&
+    // Distributed only. The desk works this table by rep; an undistributed lead
+    // has no rep to work it, and its home is the محلي جديد / دولي جديد pool,
+    // where the bulk-assign tooling lives. Counting both here made the header
+    // read 28,568 — a number that answered no question anyone was asking.
+    // A rep sees only their own leads anyway, so this is a no-op for them.
+    (isSalesOnly || !!lead.assignedSalesId) &&
     !['converted', 'lost'].includes((lead.status || '').toLowerCase()) &&
     matchesFilters(lead)
   ), [effectiveLeads, showHiddenLeads, isSalesOnly, matchesFilters]);
