@@ -6,6 +6,7 @@ import type { ReminderLead } from './useLeadRemindersData';
 type LeadReminderKanbanProps = {
   /** Leads nobody has contacted at all — the other half of a day's work. */
   untouchedFiltered: ReminderLead[];
+  promisedFiltered: ReminderLead[];
   overdueFiltered: ReminderLead[];
   todayFiltered: ReminderLead[];
   upcomingFiltered: ReminderLead[];
@@ -17,6 +18,7 @@ type LeadReminderKanbanProps = {
 
 export function LeadReminderKanban({
   untouchedFiltered,
+  promisedFiltered,
   overdueFiltered,
   todayFiltered,
   upcomingFiltered,
@@ -26,7 +28,22 @@ export function LeadReminderKanban({
   onOpenLead,
 }: LeadReminderKanbanProps) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+      <ReminderColumn
+        title="وعدوا بالدفع"
+        icon="💰"
+        count={promisedFiltered.length}
+        headerClass="bg-emerald-50 border-emerald-200"
+        titleClass="text-emerald-700"
+        countClass="bg-emerald-600"
+        empty={<p className="text-xs text-gray-400">لا يوجد وعد بالدفع مفتوح</p>}
+      >
+        {promisedFiltered.slice(0, 20).map((lead) => (
+          <LeadReminderCard key={lead.id} lead={lead} urgency="upcoming" showSalesName={showSalesName} onSnooze={onSnooze} onDone={onDone} onOpenLead={onOpenLead} />
+        ))}
+        {promisedFiltered.length > 20 && <p className="text-center text-xs text-gray-400">+{promisedFiltered.length - 20} أخرى</p>}
+      </ReminderColumn>
+
       <ReminderColumn
         title="لم يتواصل معهم أحد"
         icon="🆕"

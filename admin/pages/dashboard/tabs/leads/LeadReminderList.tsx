@@ -6,6 +6,8 @@ import type { ReminderLead } from './useLeadRemindersData';
 import WhatsAppLink from './WhatsAppLink';
 
 type LeadReminderListProps = {
+  promisedFiltered: ReminderLead[];
+  untouchedFiltered: ReminderLead[];
   overdueFiltered: ReminderLead[];
   todayFiltered: ReminderLead[];
   upcomingFiltered: ReminderLead[];
@@ -16,25 +18,36 @@ type LeadReminderListProps = {
 };
 
 function getUrgency(lead: ReminderLead, todayStr: string) {
-  if (lead.nextFollowUpDate! < todayStr) {
+  const promise = lead.status === 'interested_booking';
+  // Two of the queues arrive without a date, and they are not the same thing: a
+  // promise to pay that nobody has scheduled a call for, and a lead nobody has
+  // called at all. The old badge read a date that was not there.
+  if (!lead.nextFollowUpDate) {
+    return promise
+      ? { label: 'وعد بالدفع — بلا موعد', className: 'bg-emerald-100 text-emerald-700' }
+      : { label: 'لم يتم التواصل', className: 'bg-gray-100 text-gray-600' };
+  }
+  if (lead.nextFollowUpDate < todayStr) {
     return {
-      label: `متأخر ${lead.daysOverdue || 0} يوم`,
+      label: `${promise ? 'وعد متأخر' : 'متأخر'} ${lead.daysOverdue || 0} يوم`,
       className: 'bg-red-100 text-red-700',
     };
   }
   if (lead.nextFollowUpDate === todayStr) {
     return {
-      label: 'اليوم',
+      label: promise ? 'وعد اليوم' : 'اليوم',
       className: 'bg-amber-100 text-amber-700',
     };
   }
   return {
-    label: lead.nextFollowUpDate || '-',
+    label: lead.nextFollowUpDate,
     className: 'bg-blue-50 text-blue-700',
   };
 }
 
 export function LeadReminderList({
+  promisedFiltered,
+  untouchedFiltered,
   overdueFiltered,
   todayFiltered,
   upcomingFiltered,
@@ -43,7 +56,16 @@ export function LeadReminderList({
   onSnooze,
   onDone,
 }: LeadReminderListProps) {
-  const rows = [...overdueFiltered, ...todayFiltered, ...upcomingFiltered];
+  // Most-owed first. A promise to pay outranks a dated reminder because the
+  // decision is already made; the leads nobody has called come last because
+  // there are thousands of them and they would otherwise bury everything above.
+  const rows = [
+    ...promisedFiltered,
+    ...overdueFiltered,
+    ...todayFiltered,
+    ...upcomingFiltered,
+    ...untouchedFiltered,
+  ];
 
   const columns: Column<ReminderLead>[] = [
     {

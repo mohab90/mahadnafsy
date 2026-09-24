@@ -247,6 +247,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     today: reminderToday,
     upcoming,
     untouchedFiltered,
+    promisedFiltered,
     overdueFiltered,
     todayFiltered,
     upcomingFiltered,
@@ -693,6 +694,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
             dueTodayLoading={dueTodayLoading}
             onRefreshDueToday={refreshDueToday}
             untouchedFiltered={untouchedFiltered}
+            promisedFiltered={promisedFiltered}
             overdueFiltered={overdueFiltered}
             todayFiltered={todayFiltered}
             upcomingFiltered={upcomingFiltered}

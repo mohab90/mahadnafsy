@@ -95,6 +95,35 @@ export function useLeadRemindersData({
       .slice(0, UNTOUCHED_LIMIT)
       .map(lead => ({ ...lead, daysOverdue: 0, isToday: false, isUpcoming: false }));
 
+
+    // Who said they would pay.
+    //
+    // «مهتم بالحجز» is the point where the lead has agreed and the money is the
+    // only thing still open, so it is the queue a desk loses most by forgetting:
+    // the decision is already made and nothing happens unless somebody calls.
+    //
+    // It is kept apart from the dated reminders because the promise itself is
+    // the signal, whether or not the rep remembered to set a date — and today
+    // almost nobody does. Those that carry a date lead, oldest first; the rest
+    // follow by age, so a promise made three weeks ago cannot hide behind one
+    // made this morning.
+    const promised: ReminderLead[] = leads
+      .filter(lead => !lead.hidden && lead.status === 'interested_booking')
+      .map(lead => ({
+        ...lead,
+        daysOverdue: lead.nextFollowUpDate && lead.nextFollowUpDate < todayStr
+          ? Math.floor((Date.now() - new Date(lead.nextFollowUpDate).getTime()) / 86400000)
+          : 0,
+        isToday: lead.nextFollowUpDate === todayStr,
+        isUpcoming: false,
+      }))
+      .sort((a, b) => {
+        const aDate = a.nextFollowUpDate || '';
+        const bDate = b.nextFollowUpDate || '';
+        if (aDate && bDate) return aDate.localeCompare(bDate);
+        if (aDate !== bDate) return aDate ? -1 : 1;
+        return String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
+      });
     const filterByStaff = (items: ReminderLead[]) =>
       reminderStaffFilter ? items.filter(lead => lead.assignedSalesId === reminderStaffFilter) : items;
 
@@ -118,7 +147,9 @@ export function useLeadRemindersData({
       today,
       upcoming,
       untouched,
+      promised,
       untouchedFiltered: filterByStaff(untouched).filter(lead => !snoozeIds.has(lead.id)),
+      promisedFiltered: filterByStaff(promised).filter(lead => !snoozeIds.has(lead.id)),
       overdueFiltered: filterByStaff(overdue).filter(lead => !snoozeIds.has(lead.id)),
       todayFiltered: filterByStaff(today).filter(lead => !snoozeIds.has(lead.id)),
       upcomingFiltered: filterByStaff(upcoming).filter(lead => !snoozeIds.has(lead.id)),
