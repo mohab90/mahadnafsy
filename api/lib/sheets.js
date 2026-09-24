@@ -141,7 +141,7 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT) {
           const rawName   = nameCol   !== -1 ? (row[nameCol]  ||'').trim() : '';
           const phone     = phoneCol  !== -1 ? (row[phoneCol] ||'').trim().replace(/[\s-]/g,'') : '';
           const email     = emailCol  !== -1 ? (row[emailCol] ||'').trim() : '';
-          const source    = sourceCol !== -1 ? (row[sourceCol]||'').trim() : (sheet.name || 'Google Sheet');
+          const source    = sourceCol !== -1 ? (row[sourceCol]||'').trim() : String(sheet.name || 'Google Sheet').trim();
           const rawNotes  = notesCol  !== -1 ? (row[notesCol] ||'').trim() : '';
           const rawBranch = resolvedBranchCol !== -1 ? (row[resolvedBranchCol]||'').trim() : '';
           const rawCourse = resolvedCourseCol !== -1 ? (row[resolvedCourseCol]||'').trim() : '';
