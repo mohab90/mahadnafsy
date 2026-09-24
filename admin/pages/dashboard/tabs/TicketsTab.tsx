@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { cairoDateOnly } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoDay } from '../../../../shared/cairoDate';
 import { Modal } from '../../../../shared/ui/Modal';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Ticket, Plus, Search, MessageSquare, Clock, CheckCircle, AlertCircle, XCircle, Star, X, Send, TrendingUp, Zap, ExternalLink, Download } from 'lucide-react';
@@ -668,7 +668,7 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
               <div>
                 <h3 className="font-bold text-gray-800">{selectedTicket.title}</h3>
                 <p className="text-xs text-gray-400">
-                  {selectedTicket.clientName} · {selectedTicket.createdAt.slice(0, 10)}
+                  {selectedTicket.clientName} · {cairoDay(selectedTicket.createdAt)}
                   {' · '}<span className="font-bold text-gray-500">{sourceLabel(selectedTicket)}</span>
                 </p>
               </div>

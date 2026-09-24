@@ -7,7 +7,7 @@ import {
 import { useSiteData } from '../../../context/SiteDataContext';
 import { fxRates } from '../../../lib/money';
 import { toCsv, downloadCsvText, type CsvValue } from '../../../../shared/csv';
-import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
+import { CAIRO_TIME_ZONE, cairoDateOnly, cairoDaysAgo, cairoDay } from '../../../../shared/cairoDate';
 
 type Section   = 'all' | 'sales' | 'consultations' | 'courses' | 'bundles';
 type TimeRange = 'all' | 'today' | 'yesterday' | '7d' | '30d';
@@ -38,14 +38,18 @@ const AnalyticsTab: React.FC<Props> = () => {
   // Frozen at mount: as a bare `new Date()` the memos below could read a clock
   // from whichever render last rebuilt them.
   const now          = useMemo(() => new Date(), []);
-  const todayStr     = now.toISOString().slice(0, 10);
-  const yesterdayStr = new Date(+now - 86_400_000).toISOString().slice(0, 10);
-  const days7Ago     = new Date(+now - 7  * 86_400_000).toISOString().slice(0, 10);
-  const days30Ago    = new Date(+now - 30 * 86_400_000).toISOString().slice(0, 10);
+  // Cairo days on both sides of every comparison. These were UTC, and so was
+  // the row's own date below — consistent with each other, and wrong together:
+  // «اليوم» started at 02:00 or 03:00, and an order paid at 01:00 was counted
+  // under yesterday.
+  const todayStr     = cairoDateOnly(now);
+  const yesterdayStr = cairoDaysAgo(1, now);
+  const days7Ago     = cairoDaysAgo(7, now);
+  const days30Ago    = cairoDaysAgo(30, now);
 
   const inRange = (dateStr: string | undefined | null): boolean => {
     if (timeRange === 'all') return true;
-    const d = (dateStr || '').slice(0, 10);
+    const d = cairoDay(dateStr);
     if (!d) return false;
     if (timeRange === 'today')     return d === todayStr;
     if (timeRange === 'yesterday') return d === yesterdayStr;

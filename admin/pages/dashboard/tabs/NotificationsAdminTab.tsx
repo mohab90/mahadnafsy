@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { cairoDay } from '../../../../shared/cairoDate';
 import { NotificationBroadcast } from '../../../types';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
@@ -121,7 +122,7 @@ const NotificationsAdminTab: React.FC = () => {
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className={`text-xs px-2 py-0.5 rounded-lg font-bold ${typeColors[n.type] || 'bg-gray-100 text-gray-600'}`}>{typeLabels[n.type] || n.type}</span>
                     {n.active ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-lg">نشط</span> : <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-lg">موقف</span>}
-                    <span className="text-xs text-gray-400">{n.createdAt?.slice(0, 10)}</span>
+                    <span className="text-xs text-gray-400">{cairoDay(n.createdAt)}</span>
                   </div>
                   <p className="font-bold text-gray-800 text-sm">{n.title}</p>
                   <p className="text-gray-600 text-sm mt-1">{n.body}</p>

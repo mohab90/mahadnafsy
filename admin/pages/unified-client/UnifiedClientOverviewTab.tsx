@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { cairoDateOnly } from '../../../shared/cairoDate';
+import { cairoDateOnly, cairoDay } from '../../../shared/cairoDate';
 import { Activity, BookOpen, CheckCircle, Clock, CreditCard, Info, MessageSquare } from 'lucide-react';
 
 import { mysqlAdmin } from '../../lib/mysqlapi';
@@ -241,7 +241,7 @@ export function UnifiedClientOverviewTab({
                             {lead.createdAt && (    
                               <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">    
                                 <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">تاريخ التسجيل</p>    
-                                <p className="font-bold text-gray-800 text-sm">📅 {lead.createdAt?.slice(0, 10)}</p>    
+                                <p className="font-bold text-gray-800 text-sm">📅 {cairoDay(lead.createdAt)}</p>    
                               </div>    
                             )}    
                             {lead.assignedSalesName && (    

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { cairoInputToUtc } from '../../../../../shared/cairoDate';
 import { Plus, UserMinus, UserPlus } from 'lucide-react';
 import type { Course, SubscriberItem } from '../../../../types';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
@@ -48,7 +49,10 @@ export function CourseCohortsPanel({ courseId, courses, subscribers, notify }: P
     setBusy(true);
     try {
       await mysqlAdmin.adminPost('/admin/lms/cohorts', {
-        courseId, title: draft.title, startsAt: draft.startsAt || null, endsAt: draft.endsAt || null,
+        // Typed on the Cairo clock, stored in UTC like every other instant.
+        courseId, title: draft.title,
+        startsAt: draft.startsAt ? cairoInputToUtc(draft.startsAt) : null,
+        endsAt: draft.endsAt ? cairoInputToUtc(draft.endsAt) : null,
         maxStudents: Number(draft.maxStudents) || null, status: 'active',
       });
       setDraft(emptyDraft);

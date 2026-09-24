@@ -1,5 +1,5 @@
 import React from 'react';
-import { cairoDateOnly } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoDateTime, cairoDateTimeInput, cairoDay, cairoInputToUtc } from '../../../../shared/cairoDate';
 import { Modal } from '../../../../shared/ui/Modal';
 import { ExternalLink, Eye, EyeOff, Phone, Trash2, Wallet } from 'lucide-react';
 import { useResizableCols } from '../../../components/useResizableCols';
@@ -65,7 +65,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
   }, [branchOptions]);
   const leadsCol = useResizableCols('leads', { name: 180, source: 110, courses: 160, notes: 180, branch: 100, sales: 110, status: 120, createdAt: 120, followup: 110 });
   const [contactRow, setContactRow] = React.useState<LeadItem | null>(null);
-  const [contactDraft, setContactDraft] = React.useState({ type: 'call' as 'call' | 'whatsapp' | 'email' | 'meeting' | 'note', date: new Date().toISOString().slice(0, 16), notes: '', outcome: '', nextFollowUp: '', newStatus: '' as LeadStatus | '', lostReason: '' });
+  const [contactDraft, setContactDraft] = React.useState({ type: 'call' as 'call' | 'whatsapp' | 'email' | 'meeting' | 'note', date: cairoDateTimeInput(), notes: '', outcome: '', nextFollowUp: '', newStatus: '' as LeadStatus | '', lostReason: '' });
   const [historyRow, setHistoryRow] = React.useState<LeadItem | null>(null);
   const [waMenuRow, setWaMenuRow] = React.useState<LeadItem | null>(null);
 
@@ -80,7 +80,8 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
     try {
       await mysqlAdmin.addLeadInteraction(freshLead.id, {
         type: contactDraft.type,
-        date: contactDraft.date.replace('T', ' '),
+        // Typed on the Cairo clock; stored in UTC like every other instant.
+        date: cairoInputToUtc(contactDraft.date),
         notes: notesWithReason,
         outcome: contactDraft.outcome || undefined,
         nextFollowUp: contactDraft.nextFollowUp || undefined,
@@ -88,7 +89,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
       });
       await reloadLeads();
       setContactRow(null);
-      setContactDraft({ type: 'call', date: new Date().toISOString().slice(0, 16), notes: '', outcome: '', nextFollowUp: '', newStatus: '', lostReason: '' });
+      setContactDraft({ type: 'call', date: cairoDateTimeInput(), notes: '', outcome: '', nextFollowUp: '', newStatus: '', lostReason: '' });
     } catch (error) {
       window.dispatchEvent(new CustomEvent('site-persist-error', {
         detail: {
@@ -275,7 +276,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                   <td className="px-3 py-2 border border-gray-200 text-xs whitespace-nowrap">
                     {row.createdAt
                       ? <>
-                          <div className="text-[11px] text-gray-700 font-medium">{row.createdAt.slice(0, 10)}</div>
+                          <div className="text-[11px] text-gray-700 font-medium">{cairoDay(row.createdAt)}</div>
                           <div className="text-[10px] text-gray-400">{row.createdAt.length > 10 ? row.createdAt.slice(11, 16) : ''}</div>
                         </>
                       : <span className="text-gray-300">—</span>
@@ -477,7 +478,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                   <td className={`px-0.5 py-1 border border-gray-200 sticky left-0 z-10 shadow-[3px_0_5px_-2px_rgba(0,0,0,0.08)] w-[64px] ${selectedIds.includes(row.id) ? 'bg-primary-50/50' : idx % 2 === 1 ? 'bg-gray-50/70' : 'bg-white'}`}>
                     <div className="grid grid-cols-3 gap-0.5">
                       <button onClick={() => navigate(`/client/${row.clientCode || row.id}`)} title="ملف العميل" className="h-6 w-6 rounded-md text-gray-400 hover:text-primary-600 flex items-center justify-center transition"><ExternalLink size={13}/></button>
-                      {canManageLeads && <button onClick={() => { setContactRow(row); setContactDraft({ type: 'call', date: new Date().toISOString().slice(0, 16), notes: '', outcome: '', nextFollowUp: '', newStatus: '', lostReason: '' }); }} title="تسجيل تواصل" className="h-6 w-6 rounded-md text-gray-400 hover:text-blue-600 flex items-center justify-center transition"><Phone size={13}/></button>}
+                      {canManageLeads && <button onClick={() => { setContactRow(row); setContactDraft({ type: 'call', date: cairoDateTimeInput(), notes: '', outcome: '', nextFollowUp: '', newStatus: '', lostReason: '' }); }} title="تسجيل تواصل" className="h-6 w-6 rounded-md text-gray-400 hover:text-blue-600 flex items-center justify-center transition"><Phone size={13}/></button>}
                       <button onClick={() => setWaMenuRow(row)} title="واتساب" className="h-6 w-6 rounded-md text-gray-400 hover:text-green-600 flex items-center justify-center transition">
                         <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
                       </button>
@@ -662,7 +663,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs font-bold">{meta.icon} {meta.label}</span>
                           <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-gray-400">{c.date.slice(0, 16)}</span>
+                            <span className="text-[11px] text-gray-400">{cairoDateTime(c.date)}</span>
                             {canManageLeads && <button
                               onClick={async () => {
                                 if (!await confirmDialog('حذف سجل التواصل؟ سيظل حدث الحذف ظاهرًا في سجل التدقيق.')) return;
@@ -693,7 +694,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                 </div>
               )}
               <div className="mt-4 flex gap-2">
-                {canManageLeads && <button onClick={() => { setContactRow(liveHistoryRow); setHistoryRow(null); setContactDraft({ type: 'call', date: new Date().toISOString().slice(0, 16), notes: '', outcome: '', nextFollowUp: '', newStatus: '', lostReason: '' }); }}
+                {canManageLeads && <button onClick={() => { setContactRow(liveHistoryRow); setHistoryRow(null); setContactDraft({ type: 'call', date: cairoDateTimeInput(), notes: '', outcome: '', nextFollowUp: '', newStatus: '', lostReason: '' }); }}
                   className="flex-1 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700">
                   <Phone size={13} className="inline ml-1" />إضافة تواصل جديد
                 </button>}

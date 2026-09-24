@@ -5,7 +5,7 @@
 // import from it are untouched.
 
 import { useState } from 'react';
-import { cairoDateOnly } from '../../../../../shared/cairoDate';
+import { cairoDateOnly, cairoDateTime } from '../../../../../shared/cairoDate';
 import { Modal } from '../../../../../shared/ui/Modal';
 import { MessageCircle, Phone, Plus, Tag, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
@@ -216,7 +216,7 @@ export function QuickEditPanel({ lead, onClose, onSave, courses, bundles, notify
             <div className="space-y-1 max-h-28 overflow-y-auto">
               {(draft.communications || []).slice().reverse().slice(0, 5).map(c => (
                 <div key={c.id} className="text-xs text-gray-600 bg-white border border-gray-100 rounded-lg px-2 py-1">
-                  <span className="font-medium text-gray-400">{c.date}</span> · {c.notes}
+                  <span className="font-medium text-gray-400">{cairoDateTime(c.date)}</span> · {c.notes}
                 </div>
               ))}
             </div>

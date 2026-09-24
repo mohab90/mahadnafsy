@@ -7,6 +7,7 @@ import {
   type WhatsappCampaign, type WhatsappCampaignPreview, type MessagingChannel,
   type WhatsappCampaignRecipient,
 } from '../../../../lib/mysqlapi';
+import { cairoInputToUtc } from '../../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -87,7 +88,9 @@ export function WhatsappCampaignsPanel({ notify }: { notify: NotifyFn }) {
         audience: draft.audience,
         channelId: draft.channelId || null,
         throttlePerMinute: draft.throttlePerMinute,
-        scheduledAt: draft.scheduledAt || null,
+        // Typed on the Cairo clock. The sender reads scheduled_at as UTC, so
+        // stored as typed, a campaign set for 20:00 went out at 23:00.
+        scheduledAt: draft.scheduledAt ? cairoInputToUtc(draft.scheduledAt) : null,
       });
       notify('success', 'تم إنشاء الحملة — راجع المستقبلين قبل الإرسال');
       setShowNew(false);

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { cairoInputToUtc } from '../../../../shared/cairoDate';
 import { Bell, Boxes, CheckCircle, DoorOpen, Loader2, QrCode, Route, Send, ShoppingCart, Zap } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
@@ -69,7 +70,7 @@ export const GrowthOpsSection: React.FC<{ notify: NotifyFn }> = ({ notify }) => 
   const bookClassroom = async () => {
     setBusy('booking');
     try {
-      await mysqlAdmin.bookDokkiClassroom({ classroom_id: classroomId, start_time: bookingStart, end_time: bookingEnd, purpose: 'حجز إداري' });
+      await mysqlAdmin.bookDokkiClassroom({ classroom_id: classroomId, start_time: cairoInputToUtc(bookingStart), end_time: cairoInputToUtc(bookingEnd), purpose: 'حجز إداري' });
       notify('success', 'تم حجز القاعة');
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'فشل حجز القاعة');

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Calendar, Plus, Save, Users, Video } from 'lucide-react';
 import { useStaticData } from '../../../context/siteDataSlices';
 import type { LiveStream } from '../../../types';
+import { cairoDateTime, cairoDateTimeInput, cairoInputToUtc } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -14,7 +15,7 @@ type LiveStreamDraft = Omit<LiveStream, 'id' | 'createdAt'>;
 const blankLiveStreamDraft = (): LiveStreamDraft => ({
   title: '',
   instructorName: '',
-  scheduledAt: new Date().toISOString().slice(0, 16),
+  scheduledAt: cairoDateTimeInput(),
   durationMinutes: 60,
   streamUrl: '',
   platform: 'zoom',
@@ -35,9 +36,13 @@ const LiveStreamsTab: React.FC<Props> = ({ notify }) => {
   const handleSaveLiveStream = async () => {
     const now = new Date().toISOString();
     setSaving(true);
+    // The admin types when the stream starts in Cairo — «الساعة 8» means 8 in
+    // Cairo — and it is stored in UTC like every other instant. Stored as typed,
+    // it was read back as UTC and customers saw the stream three hours late.
+    const draft = { ...lsDraft, scheduledAt: cairoInputToUtc(lsDraft.scheduledAt) };
     const saved = lsEdit
-      ? await updateLiveStream({ ...lsEdit, ...lsDraft })
-      : await addLiveStream({ ...lsDraft, id: `ls-${Date.now()}`, createdAt: now });
+      ? await updateLiveStream({ ...lsEdit, ...draft })
+      : await addLiveStream({ ...draft, id: `ls-${Date.now()}`, createdAt: now });
     setSaving(false);
     if (!saved) { notify('error', 'تعذر حفظ البث المباشر.'); return; }
     setLsFormOpen(false); setLsEdit(null); setLsDraft(blankLiveStreamDraft());
@@ -115,7 +120,7 @@ const LiveStreamsTab: React.FC<Props> = ({ notify }) => {
                   </div>
                   <div className="flex flex-wrap gap-3 text-xs text-gray-500">
                     <span><Users size={11} className="inline ml-0.5" />{ls.instructorName}</span>
-                    <span><Calendar size={11} className="inline ml-0.5" />{ls.scheduledAt.replace('T', ' ').slice(0, 16)}</span>
+                    <span><Calendar size={11} className="inline ml-0.5" />{cairoDateTime(ls.scheduledAt)}</span>
                     {ls.durationMinutes && <span>{ls.durationMinutes} دقيقة</span>}
                   </div>
                   <div className="flex gap-2 mt-2">
@@ -124,7 +129,7 @@ const LiveStreamsTab: React.FC<Props> = ({ notify }) => {
                   </div>
                 </div>
                 <div className="flex flex-col gap-2 flex-shrink-0">
-                  <button onClick={() => { setLsEdit(ls); setLsDraft({ ...ls }); setLsFormOpen(true); }} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold px-3 py-1.5 rounded-lg transition">✏ تعديل</button>
+                  <button onClick={() => { setLsEdit(ls); setLsDraft({ ...ls, scheduledAt: cairoDateTimeInput(ls.scheduledAt) }); setLsFormOpen(true); }} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold px-3 py-1.5 rounded-lg transition">✏ تعديل</button>
                   <button onClick={() => { if (confirm('حذف هذا البث؟')) void deleteLiveStream(ls.id).then(ok => notify(ok ? 'success' : 'error', ok ? 'تم حذف البث.' : 'تعذر حذف البث.')); }} className="text-xs bg-red-50 hover:bg-red-100 text-red-600 font-bold px-3 py-1.5 rounded-lg border border-red-200 transition">🗑 حذف</button>
                 </div>
               </div>

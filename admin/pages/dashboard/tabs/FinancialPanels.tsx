@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { cairoMonthOnly } from '../../../../shared/cairoDate';
+import { cairoMonthOnly, cairoDateTime } from '../../../../shared/cairoDate';
 import { CheckCircle, CheckCircle2, Eye, FileText, Plus, XCircle } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
@@ -238,7 +238,7 @@ export function PeriodClosingPanel({ notify }: { notify: NotifyFn }) {
             {closeRequests.map(request => (
               <div key={request.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-gray-50 p-3 text-sm">
                 <div>
-                  <p className="font-bold text-gray-800">{request.status} — {request.created_at?.slice(0, 16)}</p>
+                  <p className="font-bold text-gray-800">{request.status} — {cairoDateTime(request.created_at)}</p>
                   <p className="text-xs text-gray-500">طالب الإقفال: {request.requested_by}</p>
                 </div>
                 {request.status === 'pending' && (

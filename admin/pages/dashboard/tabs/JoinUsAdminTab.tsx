@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { cairoDay } from '../../../../shared/cairoDate';
 import { Briefcase, BriefcaseBusiness, Building2, CalendarCheck, Filter, GraduationCap, Mail, Phone, RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -470,7 +471,7 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
                     <div className="mt-1 flex flex-wrap gap-3 text-xs text-gray-500">
                       <span className="flex items-center gap-1"><Mail size={13} /> {app.email}</span>
                       <span className="flex items-center gap-1"><Phone size={13} /> {app.phone}</span>
-                      <span>{app.createdAt?.slice(0, 10)}</span>
+                      <span>{cairoDay(app.createdAt)}</span>
                     </div>
                     {/* What the form actually collected. Without it, judging an
                         application meant phoning to ask the three things it

@@ -1,5 +1,5 @@
 import { DashboardCommunityShell } from './DashboardCommunityShell';
-import { cairoDateOnly } from '../../../shared/cairoDate';
+import { cairoDateOnly, cairoDay } from '../../../shared/cairoDate';
 import { Modal } from '../../../shared/ui/Modal';
 import type { CommunityEventItem, CommunityLibraryItem, CommunityPostItem, CommunityVideoItem } from '../../types';
 import { useCommunityDrafts } from './hooks/useCommunityDrafts';
@@ -114,7 +114,7 @@ export function DashboardCommunityAdminPanel({
                               <div className="flex items-center gap-2 mb-1 flex-wrap">
                                 <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-lg font-bold">بانتظار الموافقة</span>
                                 <span className="text-xs text-gray-400">{post.tag}</span>
-                                <span className="text-xs text-gray-400">{post.createdAt?.slice(0,10)}</span>
+                                <span className="text-xs text-gray-400">{cairoDay(post.createdAt)}</span>
                               </div>
                               <p className="font-bold text-gray-800">{post.title}</p>
                               <p className="text-sm text-gray-600 mt-1 line-clamp-2">{post.body}</p>
@@ -155,7 +155,7 @@ export function DashboardCommunityAdminPanel({
                                 {post.pinned && <span className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-lg font-bold">📌 مثبت</span>}
                                 <span className={`text-xs px-2 py-0.5 rounded-lg font-bold ${post.status === 'rejected' ? 'bg-red-100 text-red-700' : post.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>{post.status === 'rejected' ? 'مرفوض' : post.status === 'pending' ? 'معلق' : 'منشور'}</span>
                                 <span className="text-xs text-gray-400">{post.tag}</span>
-                                <span className="text-xs text-gray-400">{post.createdAt?.slice(0,10)}</span>
+                                <span className="text-xs text-gray-400">{cairoDay(post.createdAt)}</span>
                               </div>
                               <p className="font-bold text-gray-800 truncate">{post.title}</p>
                               <p className="text-sm text-gray-500 mt-0.5">{post.authorName} · {post.likes} إعجاب · {post.comments} تعليق</p>

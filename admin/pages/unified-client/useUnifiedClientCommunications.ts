@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { cairoDateTimeInput, cairoInputToUtc } from '../../../shared/cairoDate';
 import type { CommunicationRecord, LeadItem, SubscriberItem } from '../../types';
 import type { UnifiedClientCommunicationDraft } from './UnifiedClientCommunicationModal';
 
@@ -15,7 +16,7 @@ interface Params {
 function communicationDraft(withStatus = false): UnifiedClientCommunicationDraft {
   return {
     type: 'call',
-    date: new Date().toISOString().slice(0, 16),
+    date: cairoDateTimeInput(),
     notes: '',
     outcome: '',
     nextFollowUp: '',
@@ -60,7 +61,8 @@ export function useUnifiedClientCommunications(params: Params) {
     const record: CommunicationRecord = {
       id: `comm-${Date.now()}`,
       type: draft.type,
-      date: draft.date.replace('T', ' '),
+      // Typed on the Cairo clock; stored in UTC like every other instant.
+      date: cairoInputToUtc(draft.date),
       notes: draft.notes,
       outcome: draft.outcome || undefined,
       nextFollowUp: draft.nextFollowUp || undefined,

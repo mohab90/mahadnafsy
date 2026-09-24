@@ -1,5 +1,5 @@
 import React, { Suspense, useEffect, useState } from 'react';
-import { cairoDateOnly, cairoMonthOnly } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoMonthOnly, cairoDateTime } from '../../../../shared/cairoDate';
 import {
   Activity, AlertCircle, BarChart3, BookOpen, Briefcase,
   CalendarCheck2, Clock, CreditCard, MessageSquareText, Percent,
@@ -1183,7 +1183,7 @@ export default function OverviewTab({
                                     {lead.status === 'new' ? 'جديد' : lead.status === 'contacted' ? 'تم التواصل' : 'محول'}
                                   </span>
                                 </td>
-                                <td className="py-2.5 text-gray-400 text-xs">{lead.createdAt}</td>
+                                <td className="py-2.5 text-gray-400 text-xs">{cairoDateTime(lead.createdAt)}</td>
                               </tr>
                             ))}
                           </tbody>

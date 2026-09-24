@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { cairoDateTime } from '../../shared/cairoDate';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowRight, Phone, Mail, BarChart3, Activity, CreditCard, Settings, ChevronRight, Clock, Trash2, LayoutDashboard, MessageSquare, ListChecks, Trophy } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
@@ -594,7 +595,7 @@ const StaffProfile: React.FC = () => {
                         {c.notes && <p className="text-sm text-gray-600 mt-0.5">{c.notes}</p>}
                         {c.outcome && <p className="text-xs text-gray-400 mt-0.5">النتيجة: {c.outcome}</p>}
                       </div>
-                      <span className="text-xs text-gray-400 flex-shrink-0 whitespace-nowrap">{c.date}</span>
+                      <span className="text-xs text-gray-400 flex-shrink-0 whitespace-nowrap">{cairoDateTime(c.date)}</span>
                     </div>
                   );
                 })}

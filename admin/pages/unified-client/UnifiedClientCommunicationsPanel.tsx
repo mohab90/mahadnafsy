@@ -1,4 +1,5 @@
 import { Activity, CheckCircle, Clock, MessageSquare, Phone, Plus, Trash2 } from 'lucide-react';
+import { cairoDateTime } from '../../../shared/cairoDate';
 import type { CommunicationRecord } from '../../types';
 import { commTypeMeta } from './constants';
 import { toDialable } from '../../lib/whatsappLink';
@@ -62,7 +63,7 @@ export function UnifiedClientCommunicationsPanel({
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center flex-wrap gap-2">
                         <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${meta.color}`}>{meta.label}</span>
-                        <span className="text-xs text-gray-400">{comm.date}</span>
+                        <span className="text-xs text-gray-400">{cairoDateTime(comm.date)}</span>
                         {waLink && (
                           <a
                             href={waLink}

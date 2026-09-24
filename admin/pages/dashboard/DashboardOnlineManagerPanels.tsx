@@ -1,5 +1,5 @@
 import { AlarmClock, Banknote } from 'lucide-react';
-import { cairoDateOnly } from '../../../shared/cairoDate';
+import { cairoDateOnly, cairoDay } from '../../../shared/cairoDate';
 import { Modal } from '../../../shared/ui/Modal';
 import type { InstallmentEntry, InstallmentPlan, PaymentHistoryEntry, SubscriberItem } from '../../types';
 import type { TabKey } from './navigation';
@@ -240,7 +240,7 @@ function NewSubscribersList({ subscribers }: { subscribers: SubscriberItem[] }) 
             <div className="min-w-0">
               <p className="font-bold text-gray-800 text-sm truncate">{subscriber.name}</p>
               <p className="text-[11px] text-gray-500">{subscriber.email}</p>
-              <p className="text-[10px] text-emerald-700 font-bold">📅 {subscriber.createdAt?.slice(0, 10)}</p>
+              <p className="text-[10px] text-emerald-700 font-bold">📅 {cairoDay(subscriber.createdAt)}</p>
             </div>
             <div className="flex-shrink-0 flex gap-1">
               {subscriber.phone && (

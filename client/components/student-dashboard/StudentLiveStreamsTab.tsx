@@ -1,4 +1,5 @@
 import React from 'react';
+import { cairoDateTime } from '../../../shared/cairoDate';
 import { Calendar, Radio, User, Video } from 'lucide-react';
 import type { LiveStream } from '../../types';
 
@@ -6,7 +7,9 @@ interface StudentLiveStreamsTabProps {
   upcomingLives: LiveStream[];
 }
 
-const formatLiveDate = (value: string) => value.replace('T', ' ').slice(0, 16);
+// The stored start is UTC. Slicing the string printed that, so a stream
+// booked for 20:00 in Cairo was advertised to students as 17:00.
+const formatLiveDate = (value: string) => cairoDateTime(value);
 
 export const StudentLiveStreamsTab: React.FC<StudentLiveStreamsTabProps> = ({ upcomingLives }) => {
   const nextLive =

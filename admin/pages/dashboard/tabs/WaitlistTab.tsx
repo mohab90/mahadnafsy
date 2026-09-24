@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { cairoDay } from '../../../../shared/cairoDate';
 import { CheckCircle2, Phone, Mail, Users, RefreshCw, XCircle, Loader2, Filter, UserPlus } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { useSiteData } from '../../../context/SiteDataContext';
@@ -193,7 +194,7 @@ export default function WaitlistTab({ notify }: { notify: NotifyFn }) {
                         {STATUS_LABELS[e.status]}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-400 text-xs">{e.created_at?.slice(0, 10)}</td>
+                    <td className="px-4 py-3 text-gray-400 text-xs">{cairoDay(e.created_at)}</td>
                     <td className="px-4 py-3">
                       {(updatingId === e.id || convertingId === e.id) ? (
                         <Loader2 size={14} className="animate-spin text-gray-400" />

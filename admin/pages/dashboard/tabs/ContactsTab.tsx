@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { cairoDateTime } from '../../../../shared/cairoDate';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 
@@ -45,7 +46,7 @@ const ContactsTab: React.FC = () => {
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="font-bold text-gray-900 text-base">{msg.name}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{msg.createdAt}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{cairoDateTime(msg.createdAt)}</p>
                 </div>
                 <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${statusColors[msg.status]}`}>{statusLabels[msg.status]}</span>
               </div>

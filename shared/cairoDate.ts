@@ -68,3 +68,100 @@ export function cairoDaysAgo(days: number, from?: Date | string | number): strin
   const shifted = new Date(Date.UTC(year, month - 1, day - days));
   return shifted.toISOString().slice(0, 10);
 }
+
+/*
+ * Times of day.
+ *
+ * Everything above is about which *day* it is. Nothing here covered what time
+ * it is, so every screen that showed one printed the stored value as it came —
+ * and stored instants are UTC. A call logged at 12:45 in Cairo was stored as
+ * 09:45, correctly, and then shown as 09:45 in «سجل التواصل», on the lead's
+ * timeline and on the client's page: three hours early in summer, two in winter.
+ *
+ * The rule these three hold to: storage is UTC, a screen shows Cairo, and an
+ * input a person types into speaks Cairo too and is converted back on the way
+ * out. A stored value with no zone on it — '2026-09-24 09:45', the shape the
+ * browser writes and MySQL DATETIME returns — is UTC, never local.
+ */
+
+const NAIVE_DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/;
+
+/** A stored value as an instant. Zoneless strings are UTC by the storage rule. */
+function toInstant(value: Date | string | number): Date {
+  if (value instanceof Date || typeof value === 'number') return new Date(value);
+  const raw = String(value).trim();
+  const naive = raw.match(NAIVE_DATE_TIME);
+  if (naive) {
+    const [, y, mo, d, h, mi, s] = naive;
+    return new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi, s ? +s : 0));
+  }
+  return new Date(raw);
+}
+
+function cairoParts(date: Date) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: CAIRO_TIME_ZONE,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(date);
+  const get = (type: string) => parts.find(part => part.type === type)?.value || '';
+  return { date: `${get('year')}-${get('month')}-${get('day')}`, time: `${get('hour')}:${get('minute')}` };
+}
+
+/** A stored instant on the institute's clock, `YYYY-MM-DD HH:MM`. Blank or unreadable → ''. */
+export function cairoDateTime(value?: Date | string | number | null): string {
+  if (value === undefined || value === null || value === '') return '';
+  const instant = toInstant(value);
+  if (Number.isNaN(instant.getTime())) return typeof value === 'string' ? value : '';
+  const { date, time } = cairoParts(instant);
+  return `${date} ${time}`;
+}
+
+/** The value for an `<input type="datetime-local">`: Cairo wall clock, `YYYY-MM-DDTHH:MM`. */
+export function cairoDateTimeInput(value?: Date | string | number | null): string {
+  const shown = cairoDateTime(value === undefined || value === null || value === '' ? new Date() : value);
+  return shown ? shown.replace(' ', 'T') : '';
+}
+
+/**
+ * Back from what a person typed — Cairo wall clock — to the UTC `YYYY-MM-DD HH:MM`
+ * that is stored. The offset is looked up at that moment rather than assumed,
+ * because Egypt moves between +2 and +3 and a single constant is wrong for half
+ * the year. Two passes, since the offset at a first guess can differ from the
+ * offset at the answer when the guess and the answer straddle the change.
+ */
+export function cairoInputToUtc(local: string): string {
+  const match = String(local || '').trim().match(NAIVE_DATE_TIME);
+  if (!match) return '';
+  const [, y, mo, d, h, mi] = match;
+  const wall = Date.UTC(+y, +mo - 1, +d, +h, +mi);
+  const offsetAt = (instant: number) => {
+    const { date, time } = cairoParts(new Date(instant));
+    const [py, pmo, pd] = date.split('-').map(Number);
+    const [ph, pmi] = time.split(':').map(Number);
+    return Date.UTC(py, pmo - 1, pd, ph, pmi) - instant;
+  };
+  let instant = wall - offsetAt(wall);
+  instant = wall - offsetAt(instant);
+  // The autumn change repeats an hour: on the night Egypt goes back, 23:00-23:59
+  // happens twice, and a zoneless input cannot say which one was meant. Take the
+  // first, as Temporal's 'compatible' rule does, rather than whichever the
+  // arithmetic happened to land on. (The spring change skips an hour instead;
+  // a time typed inside it moves forward, by the same rule.)
+  const earlier = instant - 3600000;
+  if (cairoDateTime(earlier) === cairoDateTime(instant)) instant = earlier;
+  return new Date(instant).toISOString().slice(0, 16).replace('T', ' ');
+}
+
+/**
+ * The Cairo day of a stored instant, `YYYY-MM-DD`, or '' when there is none.
+ *
+ * For lists that show when something was created. They printed
+ * `createdAt.slice(0, 10)`, which is the UTC day, so a lead that arrived at
+ * 01:30 in Cairo was listed under the day before. cairoDateOnly() is not the
+ * replacement: given nothing it answers *today*, which is right for "what day
+ * is it" and wrong for a row whose date is missing.
+ */
+export function cairoDay(value?: Date | string | number | null): string {
+  return cairoDateTime(value).slice(0, 10);
+}
