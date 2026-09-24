@@ -38,3 +38,24 @@ input, select, textarea, button {
   border-left-color: #6366f1;
 }
 
+/* ── A fixed-layout table keeps its content inside the column ──────────────
+ *
+ * `table-fixed` takes each column's width from the header row, and the leads
+ * table sets those widths from the resizable-column store. What it does not do
+ * is make a cell clip: a long name, note, course title or source simply drew
+ * past its own column and over the one beside it, so the row read as though
+ * the value belonged to the next column along. Reported from the desk as
+ * «كل الأعمدة بتطلع الداتا زيادة عن العمود».
+ *
+ * Clipping is the right answer rather than widening, because these columns are
+ * the user's to size — they can drag any column wider, and the full value is
+ * still there on hover where a title is set. overflow-wrap lets a long
+ * unbroken run (an email, a pasted link) fold inside the cell instead of
+ * forcing it open; a cell that asked for nowrap is simply cut at its edge.
+ */
+table.table-fixed th,
+table.table-fixed td {
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
