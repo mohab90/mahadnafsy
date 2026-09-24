@@ -81,6 +81,29 @@ test('an input round-trips across both daylight-saving changes', () => {
   assert.equal(clock.cairoDateTime(clock.cairoInputToUtc('2026-04-24T00:30')), '2026-04-24 01:30');
 });
 
+test('the Cairo day agrees with Intl, and a whole table of rows is cheap to date', () => {
+  // The offset is cached per UTC hour instead of asking Intl for every row —
+  // a new formatter per call took 2.5 s for 30,000 leads, on every render of
+  // the analytics tab. Checked against Intl itself across four years, at
+  // minutes that are not on the hour.
+  const reference = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  });
+  const expected = instant => {
+    const p = Object.fromEntries(reference.formatToParts(instant).map(part => [part.type, part.value]));
+    return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
+  };
+  for (let t = Date.parse('2024-01-01T00:07:00Z'); t < Date.parse('2028-01-01T00:00:00Z'); t += 97 * 60000) {
+    assert.equal(clock.cairoDateTime(new Date(t)), expected(new Date(t)), new Date(t).toISOString());
+  }
+  const rows = Array.from({ length: 30000 }, (_, i) => new Date(Date.parse('2023-01-01T00:00:00Z') + i * 3300000)
+    .toISOString().slice(0, 19).replace('T', ' '));
+  const started = performance.now();
+  for (const row of rows) clock.cairoDay(row);
+  assert.ok(performance.now() - started < 1000, 'dating 30,000 rows should take well under a second');
+});
+
 test('the screens that print a stored time go through the Cairo clock', () => {
   const renders = {
     'admin/pages/dashboard/tabs/LeadTable.tsx': /\{cairoDateTime\(c\.date\)\}/,

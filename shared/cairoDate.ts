@@ -8,15 +8,15 @@
  * 03:00 local that string names yesterday: a «دفعات اليوم» tile counted the
  * previous day's receipts and reported none for the ones taken that morning.
  *
- * en-CA is used because it formats as YYYY-MM-DD, which is the shape every
- * caller slices and compares against a stored date.
+ * Every day here is YYYY-MM-DD, which is the shape every caller slices and
+ * compares against a stored date.
  */
 export const CAIRO_TIME_ZONE = 'Africa/Cairo';
 
 export function cairoDateOnly(value?: Date | string | number): string {
   const date = value === undefined ? new Date() : new Date(value);
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('en-CA', { timeZone: CAIRO_TIME_ZONE });
+  return cairoParts(date).date;
 }
 
 /**
@@ -98,14 +98,38 @@ function toInstant(value: Date | string | number): Date {
   return new Date(raw);
 }
 
+/*
+ * Cairo's offset from UTC, by UTC hour.
+ *
+ * List screens ask for the Cairo day of every row, and asking Intl each time —
+ * a new formatter per call — took 2.5 s for 30,000 leads, on every render of
+ * the analytics tab. Egypt's offset is a whole number of hours and changes only
+ * at a local midnight, so it is constant within any UTC hour: Intl is asked once
+ * per distinct hour and the rest is arithmetic.
+ */
+let offsetFormat: Intl.DateTimeFormat | undefined;
+const offsetByHour = new Map<number, number>();
+
+function cairoOffsetMs(instant: number): number {
+  const hour = Math.floor(instant / 3600000) * 3600000;
+  let offset = offsetByHour.get(hour);
+  if (offset === undefined) {
+    offsetFormat ??= new Intl.DateTimeFormat('en-US', {
+      timeZone: CAIRO_TIME_ZONE,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    });
+    const parts = offsetFormat.formatToParts(new Date(hour));
+    const get = (type: string) => Number(parts.find(part => part.type === type)?.value);
+    offset = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute')) - hour;
+    offsetByHour.set(hour, offset);
+  }
+  return offset;
+}
+
 function cairoParts(date: Date) {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: CAIRO_TIME_ZONE,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).formatToParts(date);
-  const get = (type: string) => parts.find(part => part.type === type)?.value || '';
-  return { date: `${get('year')}-${get('month')}-${get('day')}`, time: `${get('hour')}:${get('minute')}` };
+  const wall = new Date(date.getTime() + cairoOffsetMs(date.getTime())).toISOString();
+  return { date: wall.slice(0, 10), time: wall.slice(11, 16) };
 }
 
 /** A stored instant on the institute's clock, `YYYY-MM-DD HH:MM`. Blank or unreadable → ''. */
