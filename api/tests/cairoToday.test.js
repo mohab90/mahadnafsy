@@ -65,15 +65,15 @@ test('no screen decides what "today" is in UTC', () => {
   assert.ok(adopters.length >= 55, `expected the migrated callers, saw ${adopters.length}`);
 });
 
-test('cairoDateOnly actually answers Cairo, at the hours it matters', () => {
-  // Not a source assertion — run it. The three hours after midnight are the
-  // whole point, so they are what gets checked.
-  const CAIRO = 'Africa/Cairo';
-  const cairoDateOnly = value => new Date(value).toLocaleDateString('en-CA', { timeZone: CAIRO });
-
-  const helper = fs.readFileSync(path.join(ROOT, 'shared', 'cairoDate.ts'), 'utf8');
-  assert.match(helper, /toLocaleDateString\('en-CA', \{ timeZone: CAIRO_TIME_ZONE \}\)/,
-    'en-CA is what produces YYYY-MM-DD, which is the shape every caller compares');
+test('cairoDateOnly actually answers Cairo, at the hours it matters', async () => {
+  // Not a source assertion — run the real helper. This used to run a copy of it
+  // and pin the source to toLocaleDateString, which is what it happened to call;
+  // Node strips the types itself now (22.13+), so the shipped code is what runs.
+  // The three hours after midnight are the whole point, so they are what gets
+  // checked.
+  const { stripTypeScriptTypes } = require('node:module');
+  const js = stripTypeScriptTypes(fs.readFileSync(path.join(ROOT, 'shared', 'cairoDate.ts'), 'utf8'));
+  const { cairoDateOnly } = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
 
   // 12 September 2026, Cairo is UTC+3 that week.
   for (const hour of ['00:30', '01:30', '02:30']) {
