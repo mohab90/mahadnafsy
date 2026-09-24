@@ -423,7 +423,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         canManageDuplicates={isAdmin}
         totalOfflineLeads={offlineLeadTotal}
         overdueCount={overdueLeads.length}
-        rottenCount={effectiveLeads.filter(l => !l.hidden && getRottenLevel(l) >= 2).length}
+        rottenCount={effectiveLeads.filter(l => !l.hidden && getRottenLevel(l) >= 1).length}
         dueTodayCount={dueToday.length}
         unassignedCount={leads.filter(l => !l.hidden && !l.assignedSalesId && !['converted', 'lost'].includes(l.status)).length}
         subTab={subTab}

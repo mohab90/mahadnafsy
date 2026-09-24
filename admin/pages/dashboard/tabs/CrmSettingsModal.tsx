@@ -3,6 +3,7 @@
  * can be opened from outside the Leads tab.
  */
 import { useEffect, useState } from 'react';
+import { DEFAULT_STALE_DAYS } from './leadUtils';
 import { Modal } from '../../../../shared/ui/Modal';
 import { AlertTriangle, CheckCircle2, Plus, RefreshCw, Settings, Wifi, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -14,6 +15,8 @@ export type CrmSettings = {
   autoAssign: 'none' | 'rr' | 'least';
   /** Archive a never-contacted lead after this many days. 0 = never. */
   autoArchiveDays?: number;
+  /** Days without a follow-up before each lateness tier. Four, ascending. */
+  staleDays?: number[];
   sheets: GSheet[];
 };
 export type CrmPipelineStage = {
@@ -52,6 +55,7 @@ export const DEFAULT_CRM_SETTINGS: CrmSettings = {
   leadSources: DEFAULT_SOURCES,
   autoAssign: 'rr',
   sheets: [],
+  staleDays: [...DEFAULT_STALE_DAYS],
 };
 
 export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [], onSynced }: {

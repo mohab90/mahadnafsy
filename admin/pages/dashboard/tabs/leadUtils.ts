@@ -1,6 +1,38 @@
 import type { LeadItem, LeadStatus } from '../../../types';
 
-export function getRottenLevel(lead: LeadItem): 0 | 1 | 2 | 3 {
+/**
+ * How long a lead has gone without a follow-up, in tiers.
+ *
+ * The top tier was labelled «فاسد». That is a verdict, not a measurement: it
+ * sits beside a real person's name, it tells the rep nothing about what to do,
+ * and it hid the only fact that matters — how long it has actually been. The
+ * tiers now say the number of days, which is what is being measured.
+ *
+ * The thresholds are data, not constants. setStaleDays() lets the institute
+ * change them without a release; everything below reads whatever is current, so
+ * the badge on a row and the "متأخرة" filter can never disagree about what late
+ * means.
+ */
+export const DEFAULT_STALE_DAYS: readonly number[] = [7, 15, 30, 90];
+
+let staleDays: number[] = [...DEFAULT_STALE_DAYS];
+
+/** Four ascending day thresholds. Anything invalid falls back to the default. */
+export function setStaleDays(days: unknown): void {
+  const parsed = (Array.isArray(days) ? days : String(days ?? '').split(','))
+    .map(value => Math.floor(Number(value)))
+    .filter(value => Number.isFinite(value) && value > 0);
+  const ascending = parsed.length === 4 && parsed.every((d, i) => i === 0 || d > parsed[i - 1]);
+  staleDays = ascending ? parsed : [...DEFAULT_STALE_DAYS];
+  rebuildTiers();
+}
+
+export function getStaleDays(): number[] {
+  return [...staleDays];
+}
+
+/** 0 = followed up recently; 1..4 = past the first, second, third, fourth threshold. */
+export function getRottenLevel(lead: LeadItem): 0 | 1 | 2 | 3 | 4 {
   if (['converted', 'lost', 'not_interested', 'not_interested_hidden', 'wrong_number'].includes(lead.status)) return 0;
   const comms = lead.communications || [];
   const lastComm = comms.length
@@ -9,18 +41,31 @@ export function getRottenLevel(lead: LeadItem): 0 | 1 | 2 | 3 {
   const refDate = lastComm ? lastComm.date.slice(0, 10) : (lead.createdAt ? lead.createdAt.slice(0, 10) : null);
   if (!refDate) return 0;
   const days = Math.floor((Date.now() - new Date(refDate).getTime()) / 86_400_000);
-  if (days >= 14) return 3;
-  if (days >= 7) return 2;
-  if (days >= 3) return 1;
+  for (let tier = staleDays.length; tier >= 1; tier--) {
+    if (days >= staleDays[tier - 1]) return tier as 1 | 2 | 3 | 4;
+  }
   return 0;
 }
 
-export const ROTTEN_CFG: { label: string; bar: string; badge: string; row: string }[] = [
-  { label: '', bar: '', badge: '', row: '' },
-  { label: '3+ أيام', bar: 'bg-yellow-400', badge: 'bg-yellow-100 text-yellow-800 border-yellow-300', row: 'border-r-[3px] border-r-yellow-400' },
-  { label: 'أسبوع+', bar: 'bg-orange-500', badge: 'bg-orange-100 text-orange-800 border-orange-300', row: 'border-r-[3px] border-r-orange-500' },
-  { label: 'فاسد', bar: 'bg-red-500', badge: 'bg-red-100 text-red-800 border-red-300', row: 'border-r-[3px] border-r-red-500' },
+const TIER_STYLES = [
+  { bar: '', badge: '', row: '' },
+  { bar: 'bg-yellow-400', badge: 'bg-yellow-100 text-yellow-800 border-yellow-300', row: 'border-r-[3px] border-r-yellow-400' },
+  { bar: 'bg-orange-500', badge: 'bg-orange-100 text-orange-800 border-orange-300', row: 'border-r-[3px] border-r-orange-500' },
+  { bar: 'bg-red-500', badge: 'bg-red-100 text-red-800 border-red-300', row: 'border-r-[3px] border-r-red-500' },
+  { bar: 'bg-red-700', badge: 'bg-red-200 text-red-900 border-red-400', row: 'border-r-[3px] border-r-red-700' },
 ];
+
+/** Mutated in place, never replaced: the call sites import the array itself. */
+export const ROTTEN_CFG: { label: string; bar: string; badge: string; row: string }[] = [];
+
+function rebuildTiers() {
+  ROTTEN_CFG.length = 0;
+  ROTTEN_CFG.push({ label: '', ...TIER_STYLES[0] });
+  staleDays.forEach((day, index) => {
+    ROTTEN_CFG.push({ label: `${day} يوم+`, ...TIER_STYLES[index + 1] });
+  });
+}
+rebuildTiers();
 
 // IMPORTANT: Keep this in sync with calcLeadScoreServer() in api/server.js.
 export function calcLeadScore(lead: LeadItem): number {

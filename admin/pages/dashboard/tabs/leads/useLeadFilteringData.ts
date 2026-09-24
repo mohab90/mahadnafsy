@@ -106,7 +106,7 @@ export function useLeadFilteringData({
         })()
     )) &&
     (singleStatus === '' || lead.status === singleStatus) &&
-    (!rottenFilter || getRottenLevel(lead) >= 2) &&
+    (!rottenFilter || getRottenLevel(lead) >= 1) &&
     !!(lead.name?.trim() || lead.phone?.trim()) &&
     (!salesSourceFilter || (salesSourceFilter === '__none__' ? !lead.source?.trim() : (lead.source || '') === salesSourceFilter)) &&
     (leadsFollowupFilter === 'all' || (() => {

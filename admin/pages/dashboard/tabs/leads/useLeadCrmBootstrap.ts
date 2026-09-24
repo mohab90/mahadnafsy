@@ -1,3 +1,4 @@
+import { setStaleDays } from '../leadUtils';
 import { useCallback, useEffect, useState } from 'react';
 
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
@@ -37,6 +38,11 @@ export function useLeadCrmBootstrap(notify: NotifyFn) {
         if ((data as Partial<CrmSettings> | null)?.leadSources?.length) {
           setCrmSettings(current => ({ ...current, ...(data as Partial<CrmSettings>) }));
         }
+        // The lateness tiers are the institute's to set, not the build's.
+        // Applied here so a row's badge and the "متأخرة" filter can never
+        // disagree about what late means; an absent or malformed value falls
+        // back to the default.
+        setStaleDays((data as Partial<CrmSettings> | null)?.staleDays);
       })
       .catch(() => notify('error', 'تعذر تحميل إعدادات CRM'));
   }, [notify]);
