@@ -1,5 +1,5 @@
 import React from 'react';
-import { cairoDateOnly } from '../../../../../shared/cairoDate';
+import { cairoDateOnly, cairoDay } from '../../../../../shared/cairoDate';
 import { Download, Plus, Users } from 'lucide-react';
 import type { Bundle, Course, StaffMember, SubscriberItem } from '../../../../types';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
@@ -129,7 +129,7 @@ export function ViewTabsBar({
                     const total = Number(s.totalValue)||0;
                     const crs = (s.enrolledCourseIds||[]).map(id=>courses.find(c=>c.id===id)?.title||bundles.find(b=>`bundle:${b.id}`===id)?.title||id).join(' | ');
                     const hInfo = housingMap.get(s.id);
-                    return [s.name,s.phone,s.email,s.branch||'',crs,s.clientStatus||s.status||'',paid,Math.max(0,total-paid),hInfo?.roundCode||'',hInfo?.receptionName||'',(s.createdAt||'').slice(0,10),s.clientCode||''];
+                    return [s.name,s.phone,s.email,s.branch||'',crs,s.clientStatus||s.status||'',paid,Math.max(0,total-paid),hInfo?.roundCode||'',hInfo?.receptionName||'',cairoDay(s.createdAt),s.clientCode||''];
                   });
                   downloadCsv(`daqqi-clients-${cairoDateOnly()}`, [header, ...rows]);
                   setDaqqiSettingsOpen(false);

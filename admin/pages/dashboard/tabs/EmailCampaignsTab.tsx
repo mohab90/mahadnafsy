@@ -3,6 +3,7 @@ import { Mail, Plus, Send, Trash2, Eye, RefreshCw, CheckCircle } from 'lucide-re
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { useCrmData } from '../../../context/siteDataSlices';
 import { useSubscriberStats } from '../hooks/useSubscriberStats';
+import { cairoDay } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -176,7 +177,7 @@ export default function EmailCampaignsTab({ notify }: { notify: NotifyFn }) {
                     </div>
                   </div>
                   <div className="text-xs text-gray-400 hidden md:block flex-shrink-0">
-                    {(c.sent_at || c.created_at || '').slice(0, 10)}
+                    {cairoDay(c.sent_at || c.created_at)}
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     {c.status === 'draft' && (

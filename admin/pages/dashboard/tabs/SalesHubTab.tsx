@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { rangeStartDate } from '../../../lib/rangeStart';
-import { cairoDateOnly, cairoMonthOnly } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoMonthOnly, cairoDay } from '../../../../shared/cairoDate';
 import {
   TrendingUp, Users, Target, Award, Phone, Mail, Calendar, ChevronRight,
   BarChart3, Star, Clock, CheckCircle, AlertCircle, 
@@ -30,7 +30,7 @@ const TODAY = cairoDateOnly();
 
 function inRange(dateStr: string | undefined, range: TimeRange): boolean {
   if (range === 'all') return true;
-  const d = (dateStr || '').slice(0, 10);
+  const d = cairoDay(dateStr);
   return d >= rangeStartDate(range);
 }
 

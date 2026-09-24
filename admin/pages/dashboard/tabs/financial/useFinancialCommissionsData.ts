@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { StaffMember, SubscriberItem } from '../../../../types';
 import { isCollected } from '../../../../lib/money';
+import { cairoDay } from '../../../../../shared/cairoDate';
 
 type ToEGP = (amount: number, currency: string) => number;
 
@@ -19,7 +20,7 @@ export function useFinancialCommissionsData(
         const repSubs = subscribers.filter((subscriber) => subscriber.assignedSalesId === rep.id);
         const revenue = repSubs
           .flatMap((subscriber) => subscriber.paymentHistory || [])
-          .filter((payment) => payment.at.startsWith(commissionMonth)
+          .filter((payment) => cairoDay(payment.at).startsWith(commissionMonth)
             && (!payment.status || payment.status === 'paid'))
           .reduce((sum, payment) => sum + toEGP(payment.amount, payment.currency), 0);
         const commission = Math.round(revenue * (rep.commissionRate || 0) / 100);
@@ -52,7 +53,7 @@ export function useFinancialCommissionsData(
       const allPayments = repSubs.flatMap((subscriber) => (subscriber.paymentHistory || []).filter(isCollected));
       const byMonth = rangeMonths.map((month) => {
         const revenue = allPayments
-          .filter((payment) => payment.at.startsWith(month))
+          .filter((payment) => cairoDay(payment.at).startsWith(month))
           .reduce((sum, payment) => sum + toEGP(payment.amount, payment.currency), 0);
         return { month, revenue, commission: Math.round(revenue * (rep.commissionRate || 0) / 100) };
       });

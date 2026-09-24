@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, BarChart3, Droplets, RefreshCw } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { cairoDateOnly, cairoMonthStart } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -15,11 +16,7 @@ interface CashFlow {
 const money = (value: number) =>
   Number(value || 0).toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 2 });
 
-const periodDates = (months: number) => {
-  const now = new Date();
-  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - months + 1, 1));
-  return { from: from.toISOString().slice(0, 10), to: now.toISOString().slice(0, 10) };
-};
+const periodDates = (months: number) => ({ from: cairoMonthStart(months - 1), to: cairoDateOnly() });
 
 const CashFlowTab: React.FC<Props> = ({ notify }) => {
   const [monthsCount, setMonthsCount] = useState(6);
@@ -50,11 +47,8 @@ const CashFlowTab: React.FC<Props> = ({ notify }) => {
   const months = useMemo(() => {
     if (!data) return [];
     const source = new Map(data.monthly.map((row) => [row.month, row]));
-    const { from } = periodDates(monthsCount);
-    const start = new Date(`${from}T00:00:00Z`);
     return Array.from({ length: monthsCount }, (_, index) => {
-      const date = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + index, 1));
-      const key = date.toISOString().slice(0, 7);
+      const key = cairoMonthStart(monthsCount - 1 - index).slice(0, 7);
       return source.get(key) || { month: key, revenue: 0, refunds: 0, expenses: 0, netCashFlow: 0 };
     });
   }, [data, monthsCount]);

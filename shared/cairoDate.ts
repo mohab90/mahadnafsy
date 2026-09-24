@@ -69,6 +69,38 @@ export function cairoDaysAgo(days: number, from?: Date | string | number): strin
   return shifted.toISOString().slice(0, 10);
 }
 
+/** `YYYY-MM-DD` for N days after the institute's today — a due-soon window, a default expiry. */
+export function cairoDaysAhead(days: number, from?: Date | string | number): string {
+  return cairoDaysAgo(-days, from);
+}
+
+/**
+ * The first day of the institute's week, `YYYY-MM-DD`: Sunday, or Monday when
+ * asked (the Dokki rounds key their postponed weeks on Monday).
+ *
+ * The screens built it with `d.setDate(d.getDate() - d.getDay())` on the current
+ * instant and then formatted it in UTC — so between midnight and 02:00 or 03:00
+ * Cairo, «هذا الأسبوع» began on the Saturday before.
+ */
+export function cairoWeekStart(firstDay: 0 | 1 = 0, from?: Date | string | number): string {
+  const today = cairoDateOnly(from);
+  if (!today) return '';
+  const weekday = new Date(`${today}T00:00:00Z`).getUTCDay();
+  return cairoDaysAgo((weekday - firstDay + 7) % 7, from);
+}
+
+/**
+ * The first day of the Cairo month N months before this one, `YYYY-MM-01`;
+ * negative looks ahead. For «آخر 3 شهور» pickers that start on a month boundary,
+ * and for a salary change that takes effect next month.
+ */
+export function cairoMonthStart(monthsBack = 0, from?: Date | string | number): string {
+  const month = cairoMonthOnly(from);
+  if (!month) return '';
+  const [year, index] = month.split('-').map(Number);
+  return new Date(Date.UTC(year, index - 1 - monthsBack, 1)).toISOString().slice(0, 10);
+}
+
 /*
  * Times of day.
  *

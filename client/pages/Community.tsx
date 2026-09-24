@@ -11,7 +11,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useSiteData } from '../context/SiteDataContext';
 import { cdnImg } from '../lib/img';
-import { cairoDateOnly } from '../../shared/cairoDate';
+import { cairoDateOnly, cairoDaysAhead } from '../../shared/cairoDate';
 import type { CommunityEventItem } from '../types';
 import { useSeo } from '../lib/useSeo';
 import { VideoSurface } from '../components/VideoSurface';
@@ -50,9 +50,7 @@ const Community: React.FC = () => {
   const addEventToCalendar = (event: CommunityEventItem) => {
     if (!event.eventDate) return;
     const day = event.eventDate.replace(/-/g, '');
-    const next = new Date(event.eventDate);
-    next.setDate(next.getDate() + 1);
-    const dayEnd = next.toISOString().slice(0, 10).replace(/-/g, '');
+    const dayEnd = cairoDaysAhead(1, event.eventDate).replace(/-/g, '');
     const esc = (s: string) => String(s || '').replace(/([,;\\])/g, '\\$1').replace(/\r?\n/g, '\\n');
     const ics = [
       'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//mahadnafsy//community//AR',

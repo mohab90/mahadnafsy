@@ -1,5 +1,6 @@
 import type { Price, StaffMember, SubscriberItem } from '../../types';
 import { isCollected, toEgp } from '../../lib/money';
+import { cairoDay, cairoMonthOnly } from '../../../shared/cairoDate';
 
 export type StaffWire = StaffMember & { is_active?: number | boolean };
 
@@ -15,13 +16,13 @@ export const buildStaffSettingsMetrics = (
   now = new Date(),
 ) => {
   const monthlyTarget = Math.max(1, Number(monthlyTargetInput) || 10);
-  const currentMonth = now.toISOString().slice(0, 7);
-  const thisMonthSubs = subscribers.filter((subscriber) => (subscriber.createdAt || '').slice(0, 7) === currentMonth);
+  const currentMonth = cairoMonthOnly(now);
+  const thisMonthSubs = subscribers.filter((subscriber) => cairoDay(subscriber.createdAt).slice(0, 7) === currentMonth);
   const achieved = thisMonthSubs.length;
   const pct = Math.min(100, Math.round((achieved / monthlyTarget) * 100));
   const sumPayments = (items: SubscriberItem[], monthOnly: boolean) => items.reduce((total, subscriber) => {
     const paid = (subscriber.paymentHistory || [])
-      .filter((payment) => isCollected(payment) && (!monthOnly || (payment.at || '').slice(0, 7) === currentMonth))
+      .filter((payment) => isCollected(payment) && (!monthOnly || cairoDay(payment.at).slice(0, 7) === currentMonth))
       .reduce((sum, payment) => sum + toEgp(payment.amount, payment.currency), 0);
     return total + paid;
   }, 0);

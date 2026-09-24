@@ -43,6 +43,7 @@ import {
   UserSessionData,
 } from '../types';
 import { useToast } from '../../shared/ui/Toast';
+import { cairoDay } from '../../shared/cairoDate';
 
 const UnifiedClientCertificatesPanel = React.lazy(() => import('./unified-client/UnifiedClientCertificatesPanel').then(module => ({ default: module.UnifiedClientCertificatesPanel })));
 const UnifiedClientCommunicationsPanel = React.lazy(() => import('./unified-client/UnifiedClientCommunicationsPanel').then(module => ({ default: module.UnifiedClientCommunicationsPanel })));
@@ -211,7 +212,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   });
 
   // ── hero KPI calculations ─────────────────────────────────────────────────
-  const lastCommDate = allComms[0]?.date?.slice(0, 10) ?? null;
+  const lastCommDate = cairoDay(allComms[0]?.date) || null;
   const heroPaidEGP = isSub ? subPaidTotals[settlementCurrency] : leadPaidEGP;
   const heroCourseCount = isSub ? subscriber!.enrolledCourseIds.length : (enrolledCourse ? 1 : 0);
 

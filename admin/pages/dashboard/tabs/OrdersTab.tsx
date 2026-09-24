@@ -1,5 +1,5 @@
 import React from 'react';
-import { cairoDateOnly, cairoMonthOnly } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoMonthOnly, cairoDay, cairoDaysAgo, cairoWeekStart } from '../../../../shared/cairoDate';
 import { usePaymentBoxes } from '../../../lib/paymentMethods';
 import { paymentOrigin, PAYMENT_ORIGIN, PAYMENT_ORIGIN_CLASS } from '../../../lib/paymentOrigin';
 import { useNavigate } from 'react-router-dom';
@@ -171,7 +171,7 @@ export default function OrdersTab({
               const [omOrdDateFrom2, setOmOrdDateFrom2] = [daqqiAccDateFrom, setDaqqiAccDateFrom];
               const [omOrdDateTo2, setOmOrdDateTo2] = [daqqiAccDateTo, setDaqqiAccDateTo];
               const filteredOm = omAllPay.filter(p => {
-                const d=(p.at||'').slice(0,10);
+                const d=cairoDay(p.at);
                 if(omOrdDateFrom2&&d<omOrdDateFrom2) return false;
                 if(omOrdDateTo2&&d>omOrdDateTo2) return false;
                 if(daqqiSubSearch.trim()){
@@ -190,7 +190,7 @@ export default function OrdersTab({
                 const n=Number(p.amount)||0;
                 return p.currency==='SAR'?n*13:p.currency==='USD'?n*50:n;
               };
-              const todayAmtOm  = acceptedOm.filter(p=>(p.at||'').slice(0,10)===todayOmStr).reduce((s,p)=>s+toEGP(p),0);
+              const todayAmtOm  = acceptedOm.filter(p=>cairoDay(p.at)===todayOmStr).reduce((s,p)=>s+toEGP(p),0);
               const monthAmtOm  = acceptedOm.filter(p=>(p.at||'').startsWith(thisMonthOmStr)).reduce((s,p)=>s+toEGP(p),0);
               return (
                 <article className="space-y-4" dir="rtl">
@@ -287,7 +287,7 @@ export default function OrdersTab({
                                   </span>
                                 </td>
                                 <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500">{(p as {staffName?:string}).staffName||'—'}</td>
-                                <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{((p as {at?:string}).at||'').slice(0,10)||'—'}</td>
+                                <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{cairoDay((p as {at?:string}).at)||'—'}</td>
                                 <td className="px-2 py-2 border border-gray-200 text-center">
                                   {isPending
                                     ?<span className="text-[10px] bg-amber-100 text-amber-700 border border-amber-200 rounded-full px-1.5 py-0.5 font-bold">⏳ انتظار</span>
@@ -352,7 +352,7 @@ export default function OrdersTab({
               const daqqiOrdDateFrom2 = daqqiAccDateFrom;
               const daqqiOrdDateTo2 = daqqiAccDateTo;
               const filtered2 = daqqiOrdAllPay.filter(p => {
-                const d=(p.at||'').slice(0,10);
+                const d=cairoDay(p.at);
                 if(daqqiOrdDateFrom2&&d<daqqiOrdDateFrom2) return false;
                 if(daqqiOrdDateTo2&&d>daqqiOrdDateTo2) return false;
                 if(daqqiSubSearch.trim()){
@@ -366,7 +366,7 @@ export default function OrdersTab({
               const sumOrd=(arr:{amount:unknown}[])=>arr.reduce((s,p)=>s+(Number(p.amount)||0),0);
               const confirmedPay=daqqiOrdAllPay.filter(p=>p.status!=='pending');
               const pendingPay=daqqiOrdAllPay.filter(p=>p.status==='pending');
-              const todayAmt=sumOrd(confirmedPay.filter(p=>(p.at||'').slice(0,10)===todayOrd));
+              const todayAmt=sumOrd(confirmedPay.filter(p=>cairoDay(p.at)===todayOrd));
               const monthAmt=sumOrd(confirmedPay.filter(p=>(p.at||'').startsWith(thisMonthOrd)));
               return (
                 <article className="space-y-4" dir="rtl">
@@ -402,7 +402,7 @@ export default function OrdersTab({
                     )}
                     <span className="text-xs text-gray-400 ml-auto">{filtered2.length} دفعة — {sumOrd(filtered2.filter(p=>p.status!=='pending')).toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
                     <button onClick={()=>{
-                      const rows=[['العميل','الكود','الكورس','المبلغ','وسيلة الدفع','الموظف','التاريخ','الحالة','ملاحظة'],...filtered2.map(p=>[p.clientName,p.clientCode,courses.find(c=>c.id===p.courseId)?.title||p.paymentType||'',''+p.amount,p.paymentMethod||'',p.staffName||'',(p.at||'').slice(0,10),p.status==='pending'?'انتظار':'مؤكد',p.note||''])];
+                      const rows=[['العميل','الكود','الكورس','المبلغ','وسيلة الدفع','الموظف','التاريخ','الحالة','ملاحظة'],...filtered2.map(p=>[p.clientName,p.clientCode,courses.find(c=>c.id===p.courseId)?.title||p.paymentType||'',''+p.amount,p.paymentMethod||'',p.staffName||'',cairoDay(p.at),p.status==='pending'?'انتظار':'مؤكد',p.note||''])];
                       downloadCsv(`daqqi_payments_${cairoDateOnly()}`, rows);
                     }} className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700">
                       <Download size={12}/> تصدير CSV
@@ -444,7 +444,7 @@ export default function OrdersTab({
                                   </span>
                                 </td>
                                 <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500">{p.staffName||'—'}</td>
-                                <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{(p.at||'').slice(0,10)||'—'}</td>
+                                <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{cairoDay(p.at)||'—'}</td>
                                 <td className="px-2 py-2 border border-gray-200 text-center">
                                   {isPending
                                     ?<span className="text-[10px] bg-amber-100 text-amber-700 border border-amber-200 rounded-full px-1.5 py-0.5 font-bold">⏳ انتظار</span>
@@ -474,15 +474,14 @@ export default function OrdersTab({
               const pendingAll = effectiveOrders.filter(r => r.status === 'pending');
               const failedAll  = effectiveOrders.filter(r => r.status === 'failed' || r.status === 'refunded');
 
-              const todayRevEGP  = paidAll.filter(r => (r.createdAt || '').slice(0, 10) === todayStr).reduce((s, r) => s + toEGP(r), 0);
-              const monthRevEGP  = paidAll.filter(r => (r.createdAt || '').startsWith(thisMonthStr)).reduce((s, r) => s + toEGP(r), 0);
+              const todayRevEGP  = paidAll.filter(r => cairoDay(r.createdAt) === todayStr).reduce((s, r) => s + toEGP(r), 0);
+              const monthRevEGP  = paidAll.filter(r => cairoDay(r.createdAt).startsWith(thisMonthStr)).reduce((s, r) => s + toEGP(r), 0);
 
               // last 7 days daily revenue for mini-chart
               const last7 = Array.from({ length: 7 }, (_, i) => {
-                const d = new Date(); d.setDate(d.getDate() - (6 - i));
-                const ds = d.toISOString().slice(0, 10);
-                const rev = paidAll.filter(r => (r.createdAt || '').slice(0, 10) === ds).reduce((s, r) => s + toEGP(r), 0);
-                const label = d.toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short', timeZone: CAIRO_TIME_ZONE });
+                const ds = cairoDaysAgo(6 - i);
+                const rev = paidAll.filter(r => cairoDay(r.createdAt) === ds).reduce((s, r) => s + toEGP(r), 0);
+                const label = new Date(ds).toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short', timeZone: CAIRO_TIME_ZONE });
                 return { ds, rev, label };
               });
               const maxRev = Math.max(...last7.map(d => d.rev), 1);
@@ -694,7 +693,7 @@ export default function OrdersTab({
                       {/* Quick presets */}
                       {[
                         { label: 'اليوم',   from: todayStr, to: todayStr },
-                        { label: 'هذا الأسبوع', from: (() => { const d = new Date(); d.setDate(d.getDate() - d.getDay()); return d.toISOString().slice(0,10); })(), to: todayStr },
+                        { label: 'هذا الأسبوع', from: cairoWeekStart(), to: todayStr },
                         { label: 'هذا الشهر', from: `${thisMonthStr}-01`, to: todayStr },
                       ].map(p => (
                         <button key={p.label} onClick={() => { setOrderDateFrom(p.from); setOrderDateTo(p.to); }}
@@ -1036,7 +1035,7 @@ export default function OrdersTab({
                                   </div>
                                   <div className="text-right flex-shrink-0">
                                     <div className="font-extrabold text-emerald-700 text-sm">{order.amount?.toLocaleString('ar-EG-u-nu-latn')} {order.currency}</div>
-                                    <div className="text-[10px] text-gray-400">{(order.createdAt || '').slice(0, 10)}</div>
+                                    <div className="text-[10px] text-gray-400">{cairoDay(order.createdAt)}</div>
                                   </div>
                                 </div>
                               </button>
@@ -1102,7 +1101,7 @@ export default function OrdersTab({
                                   </div>
                                   <div className="text-right flex-shrink-0">
                                     <div className="font-extrabold text-blue-700 text-sm">{transfer.amount?.toLocaleString('ar-EG-u-nu-latn')} {transfer.currency}</div>
-                                    <div className="text-[10px] text-gray-400">{(transfer.createdAt || '').slice(0, 10)}</div>
+                                    <div className="text-[10px] text-gray-400">{cairoDay(transfer.createdAt)}</div>
                                   </div>
                                 </div>
                               </button>

@@ -87,24 +87,6 @@ const PERMISSION_LABELS: Record<StaffPermission, string> = {
   manage_ai_settings: 'إعدادات الذكاء الاصطناعي',
 };
 
-// ── Daqqi helpers (module-level so they're usable in both Dashboard and SubscriberDetails) ──
-const calcCurrentLecture = (startDate: string, postponedWeeks?: string[]): number => {
-  if (!startDate) return 1;
-  const start = new Date(startDate);
-  const today = new Date();
-  const daysDiff = Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-  const weeksElapsed = Math.max(0, Math.floor(daysDiff / 7));
-  return Math.max(1, weeksElapsed + 1 - (postponedWeeks?.length || 0));
-};
-
-const getCurrentWeekKey = (): string => {
-  const d = new Date();
-  const day = d.getDay();
-  const monday = new Date(d);
-  monday.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-  return monday.toISOString().slice(0, 10);
-};
-
 
 
 
@@ -808,8 +790,6 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
 
 export {
   PERMISSION_LABELS,
-  calcCurrentLecture,
-  getCurrentWeekKey,
   blankLead,
   blankStaffMember,
   SUB_STATUS_CFG,

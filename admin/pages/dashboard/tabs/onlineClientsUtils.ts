@@ -1,5 +1,6 @@
 import type { CommunicationRecord, SubscriberItem } from '../../../types';
 import { normBranchId } from '../dashboardShared';
+import { cairoDay } from '../../../../shared/cairoDate';
 
 export type SubContactDraft = {
   type: CommunicationRecord['type']; date: string;
@@ -37,7 +38,7 @@ export const calcSubscribersPaidEGP = (
     // «تحصيل اليوم / الأسبوع / الشهر» counted refunded money as collected: a
     // refund flips the same row to 'refunded' and keeps its amount.
     if (!isCollected(payment)) return sum;
-    const paymentDate = (payment.at || '').slice(0, 10);
+    const paymentDate = cairoDay(payment.at);
     if (fromDate && paymentDate < fromDate) return sum;
     if (toDate && paymentDate > toDate) return sum;
     return sum + paymentAmountInEGP(payment);

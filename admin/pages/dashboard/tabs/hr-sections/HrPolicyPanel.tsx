@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { CalendarCog, ChevronDown, ChevronUp } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
+import { cairoDaysAhead } from '../../../../../shared/cairoDate';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 type Policy = {
@@ -19,7 +20,7 @@ type Policy = {
 };
 type Draft = Omit<Policy, 'id' | 'version' | 'effective_to'>;
 
-const tomorrow = () => new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+const tomorrow = () => cairoDaysAhead(1);
 const fromPolicy = (policy?: Policy): Draft => ({
   annual_leave_days: Number(policy?.annual_leave_days ?? 21),
   sick_leave_days: Number(policy?.sick_leave_days ?? 14),

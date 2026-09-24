@@ -1,5 +1,5 @@
 import type { Bundle, Course, DaqqiDayOfWeek, DaqqiTimeSlot } from '../../../../types';
-import { cairoDateOnly } from '../../../../../shared/cairoDate';
+import { cairoDateOnly, cairoWeekStart } from '../../../../../shared/cairoDate';
 
 export type DaqqiDraftType = {
   courseId: string;
@@ -24,19 +24,16 @@ export const blankDaqqiDraft = (): DaqqiDraftType => ({
 export const calcCurrentLecture = (startDate: string, postponedWeeks?: string[]): number => {
   if (!startDate) return 1;
   const start = new Date(startDate);
-  const today = new Date();
+  const today = new Date(cairoDateOnly());
   const daysDiff = Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
   const weeksElapsed = Math.max(0, Math.floor(daysDiff / 7));
   return Math.max(1, weeksElapsed + 1 - (postponedWeeks?.length || 0));
 };
 
-export const getCurrentWeekKey = (): string => {
-  const d = new Date();
-  const day = d.getDay();
-  const monday = new Date(d);
-  monday.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-  return monday.toISOString().slice(0, 10);
-};
+// This week's Monday in Cairo, the key a postponed week is stored under. Built
+// on the instant and formatted in UTC, it named Sunday between midnight and
+// 02:00 or 03:00, so a week postponed then was filed under a key nothing read.
+export const getCurrentWeekKey = (): string => cairoWeekStart(1);
 
 export const normalizeDaqqiBranchId = (value?: string | null) =>
   String(value || '').toUpperCase().replace(/[-\s]/g, '_');

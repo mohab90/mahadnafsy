@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { cairoDateOnly } from '../../../shared/cairoDate';
+import { cairoDateOnly, cairoDaysAhead } from '../../../shared/cairoDate';
 import type { PaymentDraft } from '../../components/PaymentModal';
 import { currencyForBranch, currencyLabel } from '../../lib/branchCurrency';
 import { createClientPaymentDraft } from '../../lib/clientActionDrafts';
@@ -144,7 +144,7 @@ export function useUnifiedClientPayments(params: Params) {
     ? Math.max(0, subExpectedEGP - subPaidTotals[settlementCurrency] - (subscriber?.discount || 0))
     : 0;
   const todayStr = today();
-  const soon3Str = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+  const soon3Str = cairoDaysAhead(3);
   const instOverdueCount = serverInstallmentPlans
     .flatMap(plan => plan.entries.filter(entry => !entry.paidAt && entry.dueDate < todayStr)).length;
   const instSoonCount = serverInstallmentPlans

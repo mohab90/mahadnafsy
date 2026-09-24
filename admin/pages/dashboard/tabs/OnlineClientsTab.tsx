@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { cairoDateOnly, cairoMonthOnly } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoMonthOnly, cairoDay, cairoWeekStart } from '../../../../shared/cairoDate';
 import { Modal } from '../../../../shared/ui/Modal';
 import { useSearchParams } from 'react-router-dom';
 import { usePaymentBoxes } from '../../../lib/paymentMethods';
@@ -319,8 +319,8 @@ export default function OnlineClientsTab({
                     : lifecycle === collOnlineStatusFilter;
                   if (!matches) return false;
                 }
-                if (collOnlineDateFrom && (s.createdAt||'').slice(0,10) < collOnlineDateFrom) return false;
-                if (collOnlineDateTo   && (s.createdAt||'').slice(0,10) > collOnlineDateTo)   return false;
+                if (collOnlineDateFrom && cairoDay(s.createdAt) < collOnlineDateFrom) return false;
+                if (collOnlineDateTo   && cairoDay(s.createdAt) > collOnlineDateTo)   return false;
                 if (collOnlineCourseFilter && !(s.enrolledCourseIds||[]).includes(collOnlineCourseFilter)) return false;
                 // فلتر مسئول التحصيل
                 if (collOnlineCollectionFilter && s.assignedCsId !== collOnlineCollectionFilter) return false;
@@ -347,7 +347,7 @@ export default function OnlineClientsTab({
               });
               const todayOnlineStr = cairoDateOnly();
               // Collection financial stats
-              const thisWeekStart = (() => { const d=new Date(); d.setDate(d.getDate()-d.getDay()); return d.toISOString().slice(0,10); })();
+              const thisWeekStart = cairoWeekStart();
               const calcPaidEGP = calcSubscribersPaidEGP;
               const collTodayRev  = calcPaidEGP(allCombined, todayOnlineStr, todayOnlineStr);
               const collWeekRev   = calcPaidEGP(allCombined, thisWeekStart);

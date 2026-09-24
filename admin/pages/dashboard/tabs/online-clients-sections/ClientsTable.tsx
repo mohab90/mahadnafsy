@@ -1,5 +1,5 @@
 import React from 'react';
-import { cairoDateOnly } from '../../../../../shared/cairoDate';
+import { cairoDateOnly, cairoDay, cairoDaysAhead } from '../../../../../shared/cairoDate';
 import { Modal } from '../../../../../shared/ui/Modal';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -89,7 +89,7 @@ export function ClientsTable({
   const [accessRow, setAccessRow] = React.useState<SubscriberItem | null>(null);
   const navigate = useNavigate();
   const todayOnlineStr = cairoDateOnly();
-  const in3daysOnlineStr = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+  const in3daysOnlineStr = cairoDaysAhead(3);
   const currFmt = (c: string) => c === 'SAR' ? 'ر.س' : c === 'USD' ? '$' : 'ج.م';
 
   return (
@@ -317,7 +317,7 @@ export function ClientsTable({
               <div>
                 {commActor && <div className="font-semibold text-gray-700 whitespace-nowrap">{commActor} :</div>}
                 <div className="text-gray-600">{lastComm.notes?.slice(0,40) || lastComm.outcome || '—'}</div>
-                <div className="text-gray-400 mt-0.5">{lastComm.date.slice(0,10)}</div>
+                <div className="text-gray-400 mt-0.5">{cairoDay(lastComm.date)}</div>
               </div>
             ) : <span className="text-gray-300">—</span>;
             const actionsCell = (
@@ -372,7 +372,7 @@ export function ClientsTable({
                   <ClientNameCell row={row} clientCode={clientCode} navigate={navigate} />
                 </td>
                 {vc.branch && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] whitespace-nowrap"><span className="rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">{branchLabel(row.branch)}</span></td>}
-                {vc.createdAt  && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{(row.createdAt||'').slice(0,10)||'—'}</td>}
+                {vc.createdAt  && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{cairoDay(row.createdAt)||'—'}</td>}
                 {vc.courses    && <td className="px-3 py-2 border border-gray-200 text-xs text-gray-400">لا يوجد</td>}
                 {vc.value      && <td className="px-2 py-2 border border-gray-200 text-center text-gray-300 text-xs">—</td>}
                 {vc.paid       && <td className="px-2 py-2 border border-gray-200 text-center text-gray-300 text-xs">—</td>}
@@ -414,7 +414,7 @@ export function ClientsTable({
               courseRows.map((cr, ci) => {
                 // Per-course subscription date: first payment date for this course
                 const crPays = payments.filter(p => p.courseId === cr.cid || (cr.cid.startsWith('bundle:') && p.courseId && bundles.find(b=>`bundle:${b.id}`===cr.cid)?.courses.some(co=>co.id===p.courseId)));
-                const crFirstPayDate = crPays.length > 0 ? [...crPays].sort((a,b)=>(a.at||'').localeCompare(b.at||''))[0]?.at?.slice(0,10) || (row.createdAt||'').slice(0,10) : (row.createdAt||'').slice(0,10);
+                const crFirstPayDate = crPays.length > 0 ? cairoDay([...crPays].sort((a,b)=>(a.at||'').localeCompare(b.at||''))[0]?.at) || cairoDay(row.createdAt) : cairoDay(row.createdAt);
                 // Per-course certificate: check if cert exists for this courseId
                 const crCertId = cr.cid.startsWith('bundle:') ? cr.cid.replace('bundle:','') : cr.cid;
                 const crCert = (row.certificates||[]).find(cert => cert.courseId === crCertId || cert.courseId === cr.cid);

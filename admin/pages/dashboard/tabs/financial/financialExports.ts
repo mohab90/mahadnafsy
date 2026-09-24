@@ -1,5 +1,5 @@
 import { exportToExcel, exportToPDF, fmtCurrency, fmtDate } from '../../../../lib/exportUtils';
-import { cairoDateOnly } from '../../../../../shared/cairoDate';
+import { cairoDateOnly, cairoDay } from '../../../../../shared/cairoDate';
 import type { ExpenseItem, OrderItem, SubscriberItem } from '../../../../types';
 import { isOnlinePaidOrder } from '../../../../context/site-data-hooks/normalizeOrders';
 import { toCsv, downloadCsv, downloadCsvText, type CsvValue } from '../../../../../shared/csv';
@@ -70,7 +70,7 @@ export function exportFullFinancialReport(params: {
   sections.push(row('التاريخ', 'العميل', 'الخدمة', 'المبلغ (ج.م)', 'العملة', 'المبلغ المحوّل (ج.م)', 'القناة', 'الموظف', 'ملاحظة', 'النوع'));
   for (const order of paidOnlineOrders) {
     sections.push(row(
-      (order.paidAt || order.createdAt || '').slice(0, 10),
+      cairoDay(order.paidAt || order.createdAt),
       order.customerName || '—',
       order.itemTitle || '—',
       order.amount,
@@ -91,7 +91,7 @@ export function exportFullFinancialReport(params: {
     );
     for (const payment of rows) {
       sections.push(row(
-        (payment.at || '').slice(0, 10),
+        cairoDay(payment.at),
         subscriber.name,
         payment.paymentType || 'دفعة',
         payment.amount,
@@ -128,7 +128,7 @@ export function exportPaymentsExcelReport(params: {
   for (const subscriber of subscribers) {
     for (const payment of (subscriber.paymentHistory ?? []).filter(payment => !payment.status || payment.status === 'paid')) {
       rows.push({
-        date: (payment.at || '').slice(0, 10),
+        date: cairoDay(payment.at),
         client: subscriber.name,
         service: payment.paymentType || 'دفعة',
         amount: String(payment.amount),
@@ -143,7 +143,7 @@ export function exportPaymentsExcelReport(params: {
 
   for (const order of orders.filter(item => item.status === 'paid')) {
     rows.push({
-      date: (order.paidAt || order.createdAt || '').slice(0, 10),
+      date: cairoDay(order.paidAt || order.createdAt),
       client: order.customerName || '—',
       service: order.itemTitle || '—',
       amount: String(order.amount),

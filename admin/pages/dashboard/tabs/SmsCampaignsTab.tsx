@@ -3,6 +3,7 @@ import { MessageSquare, Plus, Send, Trash2, CheckCircle, Clock, RefreshCw } from
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { useCrmData } from '../../../context/siteDataSlices';
 import { useSubscriberStats } from '../hooks/useSubscriberStats';
+import { cairoDay } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -173,7 +174,7 @@ export default function SmsCampaignsTab({ notify }: { notify: NotifyFn }) {
                     <div className="flex items-center gap-3 mt-2 flex-wrap text-[10px] text-gray-400">
                       {c.sent_count > 0 && <span className="text-emerald-600">✓ {c.sent_count.toLocaleString('ar-EG-u-nu-latn')} مُرسَل</span>}
                       {c.fail_count > 0 && <span className="text-red-500">✗ {c.fail_count} فشل</span>}
-                      <span><Clock size={9} className="inline ml-1" />{(c.sent_at || c.created_at || '').slice(0, 10)}</span>
+                      <span><Clock size={9} className="inline ml-1" />{cairoDay(c.sent_at || c.created_at)}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">

@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { rangeStartDate } from '../../../lib/rangeStart';
-import { cairoDateOnly, cairoMonthOnly } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoMonthOnly, cairoDay, cairoDaysAgo } from '../../../../shared/cairoDate';
 import {
   Megaphone, Users, TrendingUp, Mail, Zap, BarChart3,
   UserPlus, Globe, Bell, Tag, Star, ArrowUpRight, ArrowDownRight,
@@ -28,7 +28,7 @@ const MONTH = cairoMonthOnly();
 
 function inRange(dateStr: string | undefined, range: TimeRange): boolean {
   if (range === 'all') return true;
-  return (dateStr || '').slice(0, 10) >= rangeStartDate(range);
+  return cairoDay(dateStr) >= rangeStartDate(range);
 }
 function pct(val: number, total: number) {
   return total === 0 ? 0 : Math.min(100, Math.round((val / total) * 100));
@@ -37,12 +37,7 @@ function fmtK(n: number) {
   return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}م` : n >= 1000 ? `${(n / 1000).toFixed(1)}ك` : String(n);
 }
 function getLast7Days() {
-  const days: string[] = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(); d.setDate(d.getDate() - i);
-    days.push(d.toISOString().slice(0, 10));
-  }
-  return days;
+  return Array.from({ length: 7 }, (_, i) => cairoDaysAgo(6 - i));
 }
 
 const SOURCE_ICONS: Record<string, string> = {
@@ -210,16 +205,16 @@ const MarketingHubTab: React.FC<Props> = ({ notify }) => {
   const last7Days = useMemo(() => getLast7Days(), []);
   const leadsChartData = useMemo(() =>
     last7Days.map(day => ({
-      label: day, value: leads.filter(l => !l.hidden && (l.createdAt || '').slice(0, 10) === day).length,
+      label: day, value: leads.filter(l => !l.hidden && cairoDay(l.createdAt) === day).length,
     })), [leads, last7Days]);
   const revenueChartData = useMemo(() =>
     last7Days.map(day => ({
-      label: day, value: orders.filter(o => o.status === 'paid' && (o.paidAt || o.createdAt || '').slice(0, 10) === day)
+      label: day, value: orders.filter(o => o.status === 'paid' && cairoDay(o.paidAt || o.createdAt) === day)
         .reduce((s, o) => s + (o.amount || 0), 0),
     })), [orders, last7Days]);
   const convChartData = useMemo(() =>
     last7Days.map(day => ({
-      label: day, value: leads.filter(l => l.status === 'converted' && (l.updatedAt || l.createdAt || '').slice(0, 10) === day).length,
+      label: day, value: leads.filter(l => l.status === 'converted' && cairoDay(l.updatedAt || l.createdAt) === day).length,
     })), [leads, last7Days]);
 
   // ── Discount analytics ─────────────────────────────────────────────────
@@ -778,8 +773,8 @@ const MarketingHubTab: React.FC<Props> = ({ notify }) => {
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <StatCard label="إجمالي الإشعارات" value={notifications.length} icon={Bell} color="text-indigo-600" bg="bg-indigo-50" />
-            <StatCard label="مرسل اليوم" value={notifications.filter(n => (n.sentAt || n.createdAt || '').slice(0, 10) === TODAY).length} icon={Send} color="text-green-600" bg="bg-green-50" />
-            <StatCard label="مرسل هذا الشهر" value={notifications.filter(n => (n.sentAt || n.createdAt || '').slice(0, 7) === MONTH).length} icon={Calendar} color="text-rose-600" bg="bg-rose-50" />
+            <StatCard label="مرسل اليوم" value={notifications.filter(n => cairoDay(n.sentAt || n.createdAt) === TODAY).length} icon={Send} color="text-green-600" bg="bg-green-50" />
+            <StatCard label="مرسل هذا الشهر" value={notifications.filter(n => cairoDay(n.sentAt || n.createdAt).slice(0, 7) === MONTH).length} icon={Calendar} color="text-rose-600" bg="bg-rose-50" />
             <StatCard label="المستقبلون" value={subscribers.filter(s => s.status === 'active').length} icon={Users} color="text-teal-600" bg="bg-teal-50" />
           </div>
 
@@ -806,7 +801,7 @@ const MarketingHubTab: React.FC<Props> = ({ notify }) => {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start gap-2 mb-0.5">
                         <span className="font-semibold text-sm text-gray-800 flex-1">{n.title}</span>
-                        <span className="text-xs text-gray-400 shrink-0">{(n.sentAt || n.createdAt || '').slice(0, 10)}</span>
+                        <span className="text-xs text-gray-400 shrink-0">{cairoDay(n.sentAt || n.createdAt)}</span>
                       </div>
                       <p className="text-sm text-gray-500 line-clamp-2">{n.body}</p>
                     </div>

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { cairoDateTime } from '../../shared/cairoDate';
+import { cairoDateTime, cairoDay, cairoDateOnly, cairoDaysAgo, cairoWeekStart, cairoMonthOnly } from '../../shared/cairoDate';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowRight, Phone, Mail, BarChart3, Activity, CreditCard, Settings, ChevronRight, Clock, Trash2, LayoutDashboard, MessageSquare, ListChecks, Trophy } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
@@ -113,12 +113,18 @@ const StaffProfile: React.FC = () => {
     const sl = leads.filter(l => l.assignedSalesName === staff.name || l.assignedSalesId === staff.id);
     const assignedSubs = subscribers.filter(sub => sub.assignedSalesId === staff.id);
     const now = new Date();
-    const todayStr = now.toISOString().slice(0, 10);
-    const yesterdayStr = new Date(now.getTime() - 86_400_000).toISOString().slice(0, 10);
-    const isT = (d: string) => !!d && new Date(d).toDateString() === now.toDateString();
-    const isYest = (d: string) => !!d && d.slice(0, 10) === yesterdayStr;
-    const isW = (d: string) => { if (!d) return false; const st = new Date(now); st.setDate(now.getDate() - now.getDay()); st.setHours(0, 0, 0, 0); return new Date(d) >= st; };
-    const isTM = (d: string) => { if (!d) return false; const x = new Date(d); return x.getMonth() === now.getMonth() && x.getFullYear() === now.getFullYear(); };
+    // Every one of these on the Cairo day. isT and isW read a stored UTC string
+    // with new Date(), which a browser takes as its own local time, and the call
+    // counts compared "2026-09-24 09:45" with "2026-09-24" — never equal, so
+    // «مكالمات اليوم» on a staff profile was always 0.
+    const todayStr = cairoDateOnly(now);
+    const yesterdayStr = cairoDaysAgo(1, now);
+    const weekStartStr = cairoWeekStart(0, now);
+    const monthStr = cairoMonthOnly(now);
+    const isT = (d: string) => !!d && cairoDay(d) === todayStr;
+    const isYest = (d: string) => !!d && cairoDay(d) === yesterdayStr;
+    const isW = (d: string) => !!d && cairoDay(d) >= weekStartStr;
+    const isTM = (d: string) => !!d && cairoDay(d).slice(0, 7) === monthStr;
 
     const allPayments = assignedSubs.flatMap(sub =>
       (sub.paymentHistory || []).filter(isCollected).map(p => ({ ...p, subName: sub.name, subId: sub.id, subCode: sub.clientCode }))
@@ -153,8 +159,8 @@ const StaffProfile: React.FC = () => {
       revWeek: toRevEGP(allPayments.filter(p => isW(p.at || ''))),
       revMonth: toRevEGP(allPayments.filter(p => isTM(p.at || ''))),
       commission: cr ? Math.round(revTotal * cr / 100) : 0,
-      callsToday: allComms.filter(c => c.date === todayStr).length,
-      callsYest: allComms.filter(c => c.date === yesterdayStr).length,
+      callsToday: allComms.filter(c => isT(c.date)).length,
+      callsYest: allComms.filter(c => isYest(c.date)).length,
       callsWeek: allComms.filter(c => isW(c.date)).length,
       callsMonth: allComms.filter(c => isTM(c.date)).length,
       allComms,
@@ -486,16 +492,12 @@ const StaffProfile: React.FC = () => {
 
             {/* Charts: Daily calls + conversions for last 7 days */}
             {(() => {
-              const days = Array.from({ length: 7 }, (_, i) => {
-                const d = new Date();
-                d.setDate(d.getDate() - (6 - i));
-                return d.toISOString().slice(0, 10);
-              });
-              const callsPerDay = days.map(day => perf.allComms.filter(c => c.date === day).length);
-              const convsPerDay = days.map(day => perf.leads.filter(l => l.status === 'converted' && (l.createdAt || '').slice(0, 10) === day).length);
+              const days = Array.from({ length: 7 }, (_, i) => cairoDaysAgo(6 - i));
+              const callsPerDay = days.map(day => perf.allComms.filter(c => cairoDay(c.date) === day).length);
+              const convsPerDay = days.map(day => perf.leads.filter(l => l.status === 'converted' && cairoDay(l.createdAt) === day).length);
               const maxCalls = Math.max(...callsPerDay, 1);
               const maxConvs = Math.max(...convsPerDay, 1);
-              const dayLabels = days.map(d => { const x = new Date(d); return `${x.getDate()}/${x.getMonth() + 1}`; });
+              const dayLabels = days.map(d => `${Number(d.slice(8))}/${Number(d.slice(5, 7))}`);
               const BAR_W = 28;
               const GAP = 12;
               const H = 100;
@@ -647,7 +649,7 @@ const StaffProfile: React.FC = () => {
                     </div>
                     <div className="text-right flex-shrink-0">
                       <div className="text-sm font-bold text-emerald-700">{fmt(b.amount)} {b.currency}</div>
-                      <div className="text-xs text-gray-400">{(b.at || '').slice(0, 10)}</div>
+                      <div className="text-xs text-gray-400">{cairoDay(b.at)}</div>
                     </div>
                   </div>
                 ))}

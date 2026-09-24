@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { cairoMonthOnly } from '../../../../shared/cairoDate';
+import { cairoMonthOnly, cairoDay, cairoMonthStart } from '../../../../shared/cairoDate';
 import { BookOpen, Users, DollarSign, BarChart3, Star } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
@@ -11,12 +11,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 function getLastNMonths(n: number) {
-  const ms: string[] = [];
-  for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
-    ms.push(d.toISOString().slice(0, 7));
-  }
-  return ms;
+  return Array.from({ length: n }, (_, i) => cairoMonthStart(n - 1 - i).slice(0, 7));
 }
 
 // Chart month range now follows the same `range` filter as the KPI cards
@@ -29,24 +24,21 @@ function getMonthsForRange(range: Range, earliestMonth: string) {
   // 'all' — from the earliest subscriber's signup month through the current month
   const thisMonth = cairoMonthOnly();
   const start = earliestMonth && earliestMonth < thisMonth ? earliestMonth : thisMonth;
-  const ms: string[] = [];
-  const cursor = new Date(`${start}-01T00:00:00`);
-  const end = new Date(`${thisMonth}-01T00:00:00`);
-  while (cursor <= end) {
-    ms.push(cursor.toISOString().slice(0, 7));
-    cursor.setMonth(cursor.getMonth() + 1);
-  }
-  return ms;
+  // The cursor was a local midnight read back in UTC, which in Cairo is the day
+  // before — so every month in «الكل» was labelled one month early.
+  const [startYear, startMonth] = start.split('-').map(Number);
+  const [endYear, endMonth] = thisMonth.split('-').map(Number);
+  const span = (endYear - startYear) * 12 + (endMonth - startMonth);
+  return getLastNMonths(span + 1);
 }
 
 // Takes `range` instead of closing over it, matching getMonthsForRange above.
 // As a closure it was rebuilt every render, so the memo below could not list it
 // as a dependency without recomputing every time.
 function getRangeStart(range: Range): string {
-  const d = new Date(); d.setDate(1);
-  if (range === 'month') { return d.toISOString().slice(0, 7) + '-01'; }
-  if (range === '3months') { d.setMonth(d.getMonth() - 3); return d.toISOString().slice(0, 10); }
-  if (range === '6months') { d.setMonth(d.getMonth() - 6); return d.toISOString().slice(0, 10); }
+  if (range === 'month') return cairoMonthStart(0);
+  if (range === '3months') return cairoMonthStart(3);
+  if (range === '6months') return cairoMonthStart(6);
   return '2000-01-01';
 }
 
@@ -55,7 +47,7 @@ export default function SubscriptionsTab() {
   const [range, setRange] = useState<Range>('6months');
   const [statusFilter, setStatusFilter] = useState('all');
   const earliestMonth = useMemo(() => subscribers.reduce((min, s) => {
-    const m = (s.createdAt || '').slice(0, 7);
+    const m = cairoDay(s.createdAt).slice(0, 7);
     return m && (!min || m < min) ? m : min;
   }, ''), [subscribers]);
   const months = useMemo(() => getMonthsForRange(range, earliestMonth), [range, earliestMonth]);
@@ -72,8 +64,8 @@ export default function SubscriptionsTab() {
   const monthlyData = useMemo(() =>
     months.map(m => ({
       month: m.slice(5),
-      اشتراكات: subscribers.filter(s => (s.createdAt || '').slice(0, 7) === m).length,
-      إيراد: subscribers.filter(s => (s.createdAt || '').slice(0, 7) === m)
+      اشتراكات: subscribers.filter(s => cairoDay(s.createdAt).slice(0, 7) === m).length,
+      إيراد: subscribers.filter(s => cairoDay(s.createdAt).slice(0, 7) === m)
                         .reduce((acc, s) => acc + (Number(s.totalPaid) || 0), 0),
     })),
     [subscribers, months]

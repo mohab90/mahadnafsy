@@ -230,7 +230,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                 ? [...row.communications].sort((a, b) => b.date.localeCompare(a.date))[0]
                 : null;
               const daysSinceContact = lastCommEntry
-                ? Math.floor((Date.now() - new Date(lastCommEntry.date.slice(0, 10)).getTime()) / 86_400_000)
+                ? Math.floor((Date.now() - new Date(cairoDay(lastCommEntry.date)).getTime()) / 86_400_000)
                 : null;
               const isStale = agingDays > 14 && !['converted', 'lost', 'not_interested'].includes(row.status);
               const rottenLv = getRottenLevel(row);
@@ -451,7 +451,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                   <td className="px-3 py-2 border border-gray-200 text-xs max-w-[160px]">
                     {(() => {
                       const lastComm = [...(row.communications || [])].sort((a, b) => b.date.localeCompare(a.date))[0];
-                      const display = lastComm ? `${lastComm.date.slice(0, 10)}: ${lastComm.notes}` : (row.notes || row.lastContactNote || '');
+                      const display = lastComm ? `${cairoDay(lastComm.date)}: ${lastComm.notes}` : (row.notes || row.lastContactNote || '');
                       return display
                         ? <p className="text-gray-600 text-[11px] leading-snug line-clamp-3 whitespace-pre-wrap break-words">{display}</p>
                         : <span className="text-gray-300 text-[11px]">—</span>;

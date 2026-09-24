@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { rangeStartDate } from '../../../lib/rangeStart';
-import { cairoMonthOnly } from '../../../../shared/cairoDate';
+import { cairoMonthOnly, cairoDay } from '../../../../shared/cairoDate';
 import { BarChart3, TrendingUp, Users, Target, Trophy, Star, Award } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -14,7 +14,7 @@ const MONTH = cairoMonthOnly();
 
 function inRange(ds: string | undefined, range: TimeRange) {
   if (range === 'all') return true;
-  return (ds || '').slice(0, 10) >= rangeStartDate(range);
+  return cairoDay(ds) >= rangeStartDate(range);
 }
 
 const ROLE_LABEL: Record<string, string> = {

@@ -306,7 +306,7 @@ export function UnifiedClientOverviewTab({
                                   {p.note && <p className="text-xs text-gray-400 mt-0.5 italic">{p.note}</p>}    
                                 </div>    
                                 <div className="text-left flex-shrink-0">    
-                                  <p className="text-[11px] text-gray-400 font-semibold">{p.date?.slice(0, 10)}</p>    
+                                  <p className="text-[11px] text-gray-400 font-semibold">{cairoDay(p.date)}</p>    
                                   {p.paymentType && <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold mt-1 block text-center">{p.paymentType}</span>}    
                                 </div>    
                               </div>    
@@ -447,7 +447,7 @@ export function UnifiedClientOverviewTab({
                                   <div className="flex-1 min-w-0">    
                                     <div className="flex items-center gap-2 flex-wrap mb-0.5">    
                                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${meta.color}`}>{meta.label}</span>    
-                                      <span className="text-[10px] text-gray-400">{c.date?.slice(0, 10)}</span>    
+                                      <span className="text-[10px] text-gray-400">{cairoDay(c.date)}</span>    
                                     </div>    
                                     {c.notes && <p className="text-xs text-gray-700 line-clamp-2 leading-snug">{c.notes}</p>}    
                                     {c.outcome && <p className="text-[10px] text-emerald-600 mt-0.5 flex items-center gap-1"><CheckCircle size={10} />{c.outcome}</p>}    

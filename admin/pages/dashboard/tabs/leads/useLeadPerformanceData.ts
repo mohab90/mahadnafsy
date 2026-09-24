@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import type { LeadItem, LeadStats, SalesTarget, StaffMember, SubscriberItem } from '../../../../types';
 import { calcLeadScore } from '../leadUtils';
 import { isCollected, toEgp } from '../../../../lib/money';
+import { cairoDay } from '../../../../../shared/cairoDate';
 
 // These figures decide what a rep is shown to have sold, so a rate that does
 // not match the ledger's misstates their performance. It was 13 and 50 written
@@ -57,7 +58,7 @@ export function useLeadPerformanceData(
     const repSubs = subscribers.filter((subscriber) => subscriber.assignedSalesId === rep.id);
     const revenue = repSubs
       .flatMap((subscriber) => (subscriber.paymentHistory || []).filter(isCollected))
-      .filter((payment) => payment.at.startsWith(targetMonth))
+      .filter((payment) => cairoDay(payment.at).startsWith(targetMonth))
       .reduce((sum, payment) => sum + toEGP(payment.amount, payment.currency), 0);
     const target = salesTargets.find((item) => item.staffId === rep.id && item.month === targetMonth);
     return { rep, leads: leadCount, converted, convPct, revenue, avgScore, targetEGP: target?.targetEGP || 0 };

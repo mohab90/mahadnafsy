@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
+import { cairoMonthStart } from '../../../../../shared/cairoDate';
 
 type Notify = (type: 'success' | 'error' | 'info', message: string) => void;
 type Advance = {
@@ -31,10 +32,7 @@ export default function HrAdvancesPanel({
   canDisburse: boolean;
   financeMode?: boolean;
 }) {
-  const nextMonth = new Date();
-  nextMonth.setUTCDate(1);
-  nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1);
-  const [deductPeriod, setDeductPeriod] = useState(nextMonth.toISOString().slice(0, 7));
+  const [deductPeriod, setDeductPeriod] = useState(() => cairoMonthStart(-1).slice(0, 7));
   const [rows, setRows] = useState<Advance[]>([]);
   const [busy, setBusy] = useState('');
 

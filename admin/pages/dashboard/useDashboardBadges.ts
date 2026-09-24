@@ -1,5 +1,5 @@
 import React from 'react';
-import { cairoDateOnly } from '../../../shared/cairoDate';
+import { cairoDateOnly, cairoDay, cairoDaysAgo } from '../../../shared/cairoDate';
 import type { LeadItem, SubscriberItem, StaffMember } from '../../types';
 
 interface DashboardBadgesArgs {
@@ -46,11 +46,11 @@ export function useDashboardBadges({
   // Online manager: new subscribers + payments in last 7 days badge
   const onlineMgrNewEventsBadge = React.useMemo(() => {
     if (!isOnlineManager) return 0;
-    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const since = cairoDaysAgo(7);
     const subs = isNonAdminStaff ? salesOwnSubscribers : subscribers;
-    const newSubs = subs.filter(s => s.createdAt && s.createdAt.slice(0, 10) >= since).length;
+    const newSubs = subs.filter(s => s.createdAt && cairoDay(s.createdAt) >= since).length;
     const newPayments = subs.reduce((acc, s) =>
-      acc + (s.paymentHistory || []).filter(p => p.at && p.at.slice(0, 10) >= since).length
+      acc + (s.paymentHistory || []).filter(p => p.at && cairoDay(p.at) >= since).length
     , 0);
     return newSubs + newPayments;
   }, [isOnlineManager, isNonAdminStaff, salesOwnSubscribers, subscribers]);

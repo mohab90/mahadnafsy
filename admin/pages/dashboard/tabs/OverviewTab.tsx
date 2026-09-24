@@ -1,5 +1,5 @@
 import React, { Suspense, useEffect, useState } from 'react';
-import { cairoDateOnly, cairoMonthOnly, cairoDateTime } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoMonthOnly, cairoDateTime, cairoDay, cairoDaysAgo, cairoWeekStart, cairoDaysAhead } from '../../../../shared/cairoDate';
 import {
   Activity, AlertCircle, BarChart3, BookOpen, Briefcase,
   CalendarCheck2, Clock, CreditCard, MessageSquareText, Percent,
@@ -127,7 +127,7 @@ export default function OverviewTab({
                 const mySubs = salesOwnSubscribers;
                 const myRevenueSubs = mySubs.flatMap(s => (s.paymentHistory || []).filter(isCollected)).reduce((acc, p) => {
                   const egp = toEgp(p.amount, p.currency);
-                  const month = (p.at || '').slice(0, 7);
+                  const month = cairoDay(p.at).slice(0, 7);
                   const thisMonth = cairoMonthOnly();
                   if (month === thisMonth) acc.thisMonth += egp;
                   acc.total += egp;
@@ -139,14 +139,11 @@ export default function OverviewTab({
                 // Weekly call trend (last 7 days)
                 const todayStr = cairoDateOnly();
                 const thisMonthStr = cairoMonthOnly();
-                const last7Days = Array.from({ length: 7 }, (_, i) => {
-                  const d = new Date(); d.setDate(d.getDate() - (6 - i));
-                  return d.toISOString().slice(0, 10);
-                });
+                const last7Days = Array.from({ length: 7 }, (_, i) => cairoDaysAgo(6 - i));
                 const callsByDay = last7Days.map(day => ({
                   day,
                   label: new Date(day).toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short', timeZone: CAIRO_TIME_ZONE }),
-                  count: myLeads.reduce((n, l) => n + (l.communications || []).filter(c => c.date?.slice(0,10) === day).length, 0),
+                  count: myLeads.reduce((n, l) => n + (l.communications || []).filter(c => cairoDay(c.date) === day).length, 0),
                 }));
                 const maxCalls = Math.max(...callsByDay.map(d => d.count), 1);
                 const todayCalls = callsByDay.find(d => d.day === todayStr)?.count ?? 0;
@@ -164,7 +161,7 @@ export default function OverviewTab({
 
                 const myCards = [
                   { title: 'عملائي المحتملون', value: myLeads.length, icon: UserPlus, bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200' },
-                  { title: 'محوّلون هذا الشهر', value: myLeads.filter(l => l.status === 'converted' && (l.updatedAt || l.createdAt || '').slice(0,7) === thisMonthStr).length, icon: TrendingUp, bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-200' },
+                  { title: 'محوّلون هذا الشهر', value: myLeads.filter(l => l.status === 'converted' && cairoDay(l.updatedAt || l.createdAt).slice(0, 7) === thisMonthStr).length, icon: TrendingUp, bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-200' },
                   { title: 'عملائي', value: mySubs.length, icon: UserCheck, bg: 'bg-teal-50', text: 'text-teal-600', border: 'border-teal-200' },
                   { title: 'مكالمات اليوم', value: todayCalls, icon: Activity, bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-200' },
                   { title: 'إيراداتي هذا الشهر', value: `${Math.round(myRevenueSubs.thisMonth).toLocaleString('ar-EG-u-nu-latn')} ج`, icon: BarChart3, bg: 'bg-green-50', text: 'text-green-600', border: 'border-green-200' },
@@ -311,7 +308,7 @@ export default function OverviewTab({
                                       className="font-semibold text-gray-800 text-sm hover:text-primary-700 hover:underline truncate text-right block">
                                       {l.name}
                                     </button>
-                                    <p className="text-[11px] text-gray-400">{(l.updatedAt || l.createdAt || '').slice(0, 10)}</p>
+                                    <p className="text-[11px] text-gray-400">{cairoDay(l.updatedAt || l.createdAt)}</p>
                                   </div>
                                   <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full flex-shrink-0">محوّل ✓</span>
                                 </div>
@@ -413,9 +410,9 @@ export default function OverviewTab({
               if (isCollectionRole && currentStaff) {
                 const allSubs = salesOwnSubscribers;
                 const now2 = new Date();
-                const todayStr2 = now2.toISOString().slice(0, 10);
-                const thisMonthStr2 = now2.toISOString().slice(0, 7);
-                const thisWeekStartStr = (() => { const d=new Date(now2); d.setDate(d.getDate()-d.getDay()); return d.toISOString().slice(0,10); })();
+                const todayStr2 = cairoDateOnly(now2);
+                const thisMonthStr2 = cairoMonthOnly(now2);
+                const thisWeekStartStr = cairoWeekStart(0, now2);
                 const onlineSubs = allSubs; // collection sees all subscribers (branch may be null for many)
                 // ── Financial calculations (EGP equivalent) ──
                 const allPayments = allSubs.flatMap(s => (s.paymentHistory||[]).map(p => ({...p, subId: s.id})));
@@ -423,9 +420,9 @@ export default function OverviewTab({
                   const n = Number(p.amount)||0;
                   return p.currency==='SAR' ? n*13 : p.currency==='USD' ? n*50 : n;
                 };
-                const collTodayRevOv  = allPayments.filter(p=>(p.at||'').slice(0,10)===todayStr2).reduce((s,p)=>s+toEGP(p),0);
-                const collWeekRevOv   = allPayments.filter(p=>(p.at||'').slice(0,10)>=thisWeekStartStr).reduce((s,p)=>s+toEGP(p),0);
-                const collMonthRevOv  = allPayments.filter(p=>(p.at||'').slice(0,7)===thisMonthStr2).reduce((s,p)=>s+toEGP(p),0);
+                const collTodayRevOv  = allPayments.filter(p=>cairoDay(p.at)===todayStr2).reduce((s,p)=>s+toEGP(p),0);
+                const collWeekRevOv   = allPayments.filter(p=>cairoDay(p.at)>=thisWeekStartStr).reduce((s,p)=>s+toEGP(p),0);
+                const collMonthRevOv  = allPayments.filter(p=>cairoDay(p.at).slice(0, 7)===thisMonthStr2).reduce((s,p)=>s+toEGP(p),0);
                 // Total remaining across all subs
                 const collTotalRemOv  = allSubs.reduce((sum,s)=>{
                   const hist=(s.paymentHistory||[]).filter(isCollected);
@@ -446,7 +443,7 @@ export default function OverviewTab({
                 // Overdue & due today
                 const overdueInstSubs = allSubs.filter(s =>(s.installmentPlans||[]).some(p=>(p.entries||[]).some(e=>!e.paidAt&&e.dueDate<todayStr2)));
                 const dueTodaySubs = allSubs.filter(s =>(s.installmentPlans||[]).some(p=>(p.entries||[]).some(e=>!e.paidAt&&e.dueDate===todayStr2)));
-                const dueThisWeekSubs = allSubs.filter(s=>(s.installmentPlans||[]).some(p=>(p.entries||[]).some(e=>!e.paidAt&&e.dueDate>todayStr2&&e.dueDate<=new Date(Date.now()+7*86400000).toISOString().slice(0,10))));
+                const dueThisWeekSubs = allSubs.filter(s=>(s.installmentPlans||[]).some(p=>(p.entries||[]).some(e=>!e.paidAt&&e.dueDate>todayStr2&&e.dueDate<=cairoDaysAhead(7))));
                 // Estimate uses the employee's configured commission rate; no browser-local assumption.
                 const commissionRate = Math.max(0, Number(currentStaff.commissionRate || 0)) / 100;
                 const estCommission = Math.round(collMonthRevOv * commissionRate);
@@ -454,9 +451,8 @@ export default function OverviewTab({
                 const fmtM = (n:number) => n>=1000000 ? `${(n/1000000).toFixed(1)}M` : n>=1000 ? `${(n/1000).toFixed(0)}K` : String(Math.round(n));
                 // Monthly collection by day (last 30 days)
                 const last30 = Array.from({length:30},(_,i)=>{
-                  const d=new Date(now2); d.setDate(d.getDate()-29+i);
-                  const ds=d.toISOString().slice(0,10);
-                  return { day: ds.slice(8), rev: allPayments.filter(p=>(p.at||'').slice(0,10)===ds).reduce((s,p)=>s+toEGP(p),0) };
+                  const ds=cairoDaysAgo(29-i, now2);
+                  return { day: ds.slice(8), rev: allPayments.filter(p=>cairoDay(p.at)===ds).reduce((s,p)=>s+toEGP(p),0) };
                 });
                 const maxDay = Math.max(...last30.map(d=>d.rev),1);
                 const motivOv =
@@ -647,15 +643,15 @@ export default function OverviewTab({
               if (isOnlineManager && currentStaff) {
                 const allSubsOm = salesOwnSubscribers;
                 const nowOm = new Date();
-                const todayStrOm = nowOm.toISOString().slice(0, 10);
-                const thisMonthStrOm = nowOm.toISOString().slice(0, 7);
+                const todayStrOm = cairoDateOnly(nowOm);
+                const thisMonthStrOm = cairoMonthOnly(nowOm);
                 const toEGPOm = (p: {amount?: number|string; currency?: string}) => {
                   const n = Number(p.amount)||0;
                   return p.currency==='SAR' ? n*13 : p.currency==='USD' ? n*50 : n;
                 };
                 const allPaymentsOm = allSubsOm.flatMap(s => (s.paymentHistory||[]).map(p => ({...p, subId: s.id})));
-                const totalMonthRevOm = allPaymentsOm.filter(p=>(p.at||''). slice(0,7)===thisMonthStrOm).reduce((s,p)=>s+toEGPOm(p),0);
-                const totalTodayRevOm = allPaymentsOm.filter(p=>(p.at||''). slice(0,10)===todayStrOm).reduce((s,p)=>s+toEGPOm(p),0);
+                const totalMonthRevOm = allPaymentsOm.filter(p=>cairoDay(p.at).slice(0, 7)===thisMonthStrOm).reduce((s,p)=>s+toEGPOm(p),0);
+                const totalTodayRevOm = allPaymentsOm.filter(p=>cairoDay(p.at)===todayStrOm).reduce((s,p)=>s+toEGPOm(p),0);
                 const totalAllRevOm   = allPaymentsOm.reduce((s,p)=>s+toEGPOm(p),0);
                 const totalRemOm = allSubsOm.reduce((sum,s)=>{
                   const hist=(s.paymentHistory||[]).filter(isCollected);
@@ -668,15 +664,15 @@ export default function OverviewTab({
                 const overdueCountOm = allSubsOm.filter(s=>(s.installmentPlans||[]).some(p=>(p.entries||[]).some(e=>!e.paidAt&&e.dueDate<todayStrOm))).length;
                 const fmtMOm = (n:number) => n>=1000000 ? `${(n/1000000).toFixed(1)}M` : n>=1000 ? `${(n/1000).toFixed(0)}K` : String(Math.round(n));
                 const collTeamOm = (isOnlineManager ? onlineTeamMembers : staffMembers).filter(s => (s.role||'').toLowerCase() === 'collection');
-                const thisWeekStartOm = (() => { const d=new Date(nowOm); d.setDate(d.getDate()-d.getDay()); return d.toISOString().slice(0,10); })();
+                const thisWeekStartOm = cairoWeekStart(0, nowOm);
                 const memberStatsOm = collTeamOm.map(m => {
                   const mLeads = salesOwnLeads.filter(l => l.assignedSalesId === m.id || l.assignedCsId === m.id || l.assignedSalesName === m.name);
                   const mSubIds = new Set(mLeads.map(l=>l.id));
                   const mSubs = allSubsOm.filter(s => s.leadId && mSubIds.has(s.leadId));
                   const mAllPayments = allSubsOm.flatMap(s=>(s.paymentHistory||[]).filter(p=>p.staffId===m.id||p.staffName===m.name).map(p=>({...p})));
-                  const mMonthRev = mAllPayments.filter(p=>(p.at||''). slice(0,7)===thisMonthStrOm).reduce((s,p)=>s+toEGPOm(p),0);
-                  const mWeekRev  = mAllPayments.filter(p=>(p.at||''). slice(0,10)>=thisWeekStartOm).reduce((s,p)=>s+toEGPOm(p),0);
-                  const mTodayRev = mAllPayments.filter(p=>(p.at||''). slice(0,10)===todayStrOm).reduce((s,p)=>s+toEGPOm(p),0);
+                  const mMonthRev = mAllPayments.filter(p=>cairoDay(p.at).slice(0, 7)===thisMonthStrOm).reduce((s,p)=>s+toEGPOm(p),0);
+                  const mWeekRev  = mAllPayments.filter(p=>cairoDay(p.at)>=thisWeekStartOm).reduce((s,p)=>s+toEGPOm(p),0);
+                  const mTodayRev = mAllPayments.filter(p=>cairoDay(p.at)===todayStrOm).reduce((s,p)=>s+toEGPOm(p),0);
                   const mRem = mSubs.reduce((sum,s)=>{
                     const hist=(s.paymentHistory||[]).filter(isCollected);
                     const cpMap:Record<string,number>={};
@@ -687,9 +683,9 @@ export default function OverviewTab({
                   },0);
                   const mOverdue = mSubs.filter(s=>(s.installmentPlans||[]).some(p=>(p.entries||[]).some(e=>!e.paidAt&&e.dueDate<todayStrOm))).length;
                   const allComms = mLeads.flatMap(l=>(l.communications||[]).map(c=>({...c})));
-                  const callsToday  = allComms.filter(c=>c.type==='call'&&(c.date||'').slice(0,10)===todayStrOm).length;
-                  const callsWeek   = allComms.filter(c=>c.type==='call'&&(c.date||'').slice(0,10)>=thisWeekStartOm).length;
-                  const callsMonth  = allComms.filter(c=>c.type==='call'&&(c.date||'').slice(0,7)===thisMonthStrOm).length;
+                  const callsToday  = allComms.filter(c=>c.type==='call'&&cairoDay(c.date)===todayStrOm).length;
+                  const callsWeek   = allComms.filter(c=>c.type==='call'&&cairoDay(c.date)>=thisWeekStartOm).length;
+                  const callsMonth  = allComms.filter(c=>c.type==='call'&&cairoDay(c.date).slice(0, 7)===thisMonthStrOm).length;
                   return { member: m, subs: mSubs.length, monthRev: mMonthRev, weekRev: mWeekRev, todayRev: mTodayRev, remaining: mRem, overdue: mOverdue, callsToday, callsWeek, callsMonth };
                 });
                 return (
@@ -792,9 +788,8 @@ export default function OverviewTab({
                     {/* ── Revenue trend: last 30 days ── */}
                     {(() => {
                       const last30Om = Array.from({length:30},(_,i)=>{
-                        const d=new Date(nowOm); d.setDate(d.getDate()-29+i);
-                        const ds=d.toISOString().slice(0,10);
-                        return { day: ds.slice(5), rev: allPaymentsOm.filter(p=>(p.at||'').slice(0,10)===ds).reduce((s,p)=>s+toEGPOm(p),0) };
+                        const ds=cairoDaysAgo(29-i, nowOm);
+                        return { day: ds.slice(5), rev: allPaymentsOm.filter(p=>cairoDay(p.at)===ds).reduce((s,p)=>s+toEGPOm(p),0) };
                       });
                       const maxDayOm = Math.max(...last30Om.map(d=>d.rev),1);
                       return (
@@ -862,13 +857,13 @@ export default function OverviewTab({
               if (isReceptionDaqqi && currentStaff) {
                 const allSubs = salesOwnSubscribers;
                 const now3 = new Date();
-                const todayStr3 = now3.toISOString().slice(0, 10);
-                const thisMonthStr3 = now3.toISOString().slice(0, 7);
-                const thisWeekStart3 = (() => { const d=new Date(now3); d.setDate(d.getDate()-d.getDay()); return d.toISOString().slice(0,10); })();
+                const todayStr3 = cairoDateOnly(now3);
+                const thisMonthStr3 = cairoMonthOnly(now3);
+                const thisWeekStart3 = cairoWeekStart(0, now3);
                 const allPayments3 = allSubs.flatMap(s => (s.paymentHistory||[]).filter(isCollected).map(p => ({...p, subId: s.id})));
-                const todayRev3  = allPayments3.filter(p=>(p.at||'').slice(0,10)===todayStr3).reduce((s,p)=>s+(Number(p.amount)||0),0);
-                const weekRev3   = allPayments3.filter(p=>(p.at||'').slice(0,10)>=thisWeekStart3).reduce((s,p)=>s+(Number(p.amount)||0),0);
-                const monthRev3  = allPayments3.filter(p=>(p.at||'').slice(0,7)===thisMonthStr3).reduce((s,p)=>s+(Number(p.amount)||0),0);
+                const todayRev3  = allPayments3.filter(p=>cairoDay(p.at)===todayStr3).reduce((s,p)=>s+(Number(p.amount)||0),0);
+                const weekRev3   = allPayments3.filter(p=>cairoDay(p.at)>=thisWeekStart3).reduce((s,p)=>s+(Number(p.amount)||0),0);
+                const monthRev3  = allPayments3.filter(p=>cairoDay(p.at).slice(0, 7)===thisMonthStr3).reduce((s,p)=>s+(Number(p.amount)||0),0);
                 const totalRem3  = allSubs.reduce((sum,s)=>{
                   const hist=(s.paymentHistory||[]).filter(isCollected);
                   const cpMap:Record<string,number>={};
@@ -946,7 +941,7 @@ export default function OverviewTab({
                 },
                 {
                   title: 'الطلبات المكتملة', value: paidOrders.length, icon: CreditCard, bg: 'bg-violet-50', text: 'text-violet-600', border: 'border-violet-200',
-                  onDetail: () => setKpiModal({ title: 'الطلبات المكتملة', rows: (paidOrders as OverviewOrder[]).slice(0, 50).map(o => ({ label: o.subscriberName || o.subscriber_name || o.name || o.customerName || '', sub: `${Number(o.amount || 0).toLocaleString('ar-EG-u-nu-latn')} ج.م · ${String(o.date || o.paidAt || o.createdAt || '').slice(0, 10)}` })) }),
+                  onDetail: () => setKpiModal({ title: 'الطلبات المكتملة', rows: (paidOrders as OverviewOrder[]).slice(0, 50).map(o => ({ label: o.subscriberName || o.subscriber_name || o.name || o.customerName || '', sub: `${Number(o.amount || 0).toLocaleString('ar-EG-u-nu-latn')} ج.م · ${cairoDay(o.date || o.paidAt || o.createdAt)}` })) }),
                 },
                 {
                   title: 'الكورسات', value: courses.length, icon: BookOpen, bg: 'bg-cyan-50', text: 'text-cyan-600', border: 'border-cyan-200',

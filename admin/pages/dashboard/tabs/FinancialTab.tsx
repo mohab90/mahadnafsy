@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { cairoDateOnly, cairoMonthOnly } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoMonthOnly, cairoDay, cairoMonthStart } from '../../../../shared/cairoDate';
 import {
   Plus, TrendingUp,
 } from 'lucide-react';
@@ -181,7 +181,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   const [orderMethodFilter, setOrderMethodFilter] = useState('');
   const [isIncomeFormOpen, setIsIncomeFormOpen] = useState(false);
   const [commissionMonth, setCommissionMonth] = useState(cairoMonthOnly());
-  const [commissionFrom, setCommissionFrom] = useState(() => { const d = new Date(); d.setMonth(d.getMonth() - 2); return d.toISOString().slice(0, 7); });
+  const [commissionFrom, setCommissionFrom] = useState(() => cairoMonthStart(2).slice(0, 7));
   const [commissionTo, setCommissionTo] = useState(cairoMonthOnly());
   const [commissionViewMode, setCommissionViewMode] = useState<'single' | 'range'>('single');
   const [dbPayments, setDbPayments] = useState<Array<{ id: string; subscriberId: string; subscriberName: string; amount: number; currency: string; paymentType: string; paymentMethod: string | null; transactionId: string | null; note: string | null; at: string; isInstallment: boolean; status?: string; staffName?: string | null }> | null>(null);
@@ -354,10 +354,10 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   // and instapay for the same month — the box you meant to click was not there.
   const revenueByMethodFiltered: Record<string, number> = {};
   for (const row of manualRows) {
-    if (!row.date.startsWith(vaultMonth)) continue;
+    if (!cairoDay(row.date).startsWith(vaultMonth)) continue;
     revenueByMethodFiltered[row.channel] = (revenueByMethodFiltered[row.channel] || 0) + row.amountEGP;
   }
-  const onlineRevenueFiltered = paidOrders.filter(o => (o.paidAt || o.createdAt || '').startsWith(vaultMonth)).reduce((s, o) => s + toEGP(o.amount, o.currency), 0);
+  const onlineRevenueFiltered = paidOrders.filter(o => cairoDay(o.paidAt || o.createdAt).startsWith(vaultMonth)).reduce((s, o) => s + toEGP(o.amount, o.currency), 0);
 
   const manualByType = (type: string) => allManualPayments.filter(p => p.paymentType === type).reduce((s, p) => s + toEGP(p.amount, p.currency), 0);
   const revenueByType = {
@@ -390,11 +390,11 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
       data[key] = { online: 0, manual: 0 };
     }
     paidOrders.forEach(o => {
-      const m = o.createdAt.slice(0, 7);
+      const m = cairoDay(o.createdAt).slice(0, 7);
       if (m in data) data[m].online += toEGP(o.amount, o.currency);
     });
     allManualPayments.forEach(p => {
-      const m = p.at.slice(0, 7);
+      const m = cairoDay(p.at).slice(0, 7);
       if (m in data) data[m].manual += toEGP(p.amount, p.currency);
     });
     return Object.entries(data).sort(([a], [b]) => b.localeCompare(a));

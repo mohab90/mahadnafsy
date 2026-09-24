@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { cairoDateOnly, cairoMonthOnly } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoMonthOnly, cairoDay } from '../../../../shared/cairoDate';
 import { fxRates, toEgp } from '../../../lib/money';
 import type { ConsultationItem, Course, LeadItem, LeadStats, OrderItem, StaffMember, SubscriberItem } from '../../../types';
 
@@ -63,21 +63,21 @@ export function useOverviewDerived(
     // Today stats
     const todayStr = cairoDateOnly();
     const todayRevenue = paidOrders
-      .filter(o => (o.createdAt || '').slice(0, 10) === todayStr)
+      .filter(o => cairoDay(o.createdAt) === todayStr)
       .reduce((sum, o) => sum + toEGP(o), 0)
       + subscribers.reduce((s, sub) => s + (sub.paymentHistory ?? [])
-        .filter(p => !p.isInstallment && (p.at || '').slice(0, 10) === todayStr)
+        .filter(p => !p.isInstallment && cairoDay(p.at) === todayStr)
         .reduce((ps, p) => ps + toEGP(p), 0), 0);
-    const todayNewSubscribers = subscribers.filter(s => (s.createdAt || '').slice(0, 10) === todayStr).length;
+    const todayNewSubscribers = subscribers.filter(s => cairoDay(s.createdAt) === todayStr).length;
     // The database's own CURDATE(), not a string prefix of whatever shape
     // created_at arrived in.
-    const todayNewLeads = leadStats?.createdToday ?? leads.filter(l => (l.createdAt || '').slice(0, 10) === todayStr).length;
+    const todayNewLeads = leadStats?.createdToday ?? leads.filter(l => cairoDay(l.createdAt) === todayStr).length;
     const thisMonthStr = cairoMonthOnly();
     const monthRevenue = paidOrders
-      .filter(o => (o.createdAt || '').slice(0, 7) === thisMonthStr)
+      .filter(o => cairoDay(o.createdAt).slice(0, 7) === thisMonthStr)
       .reduce((sum, o) => sum + toEGP(o), 0)
       + subscribers.reduce((s, sub) => s + (sub.paymentHistory ?? [])
-        .filter(p => !p.isInstallment && (p.at || '').slice(0, 7) === thisMonthStr)
+        .filter(p => !p.isInstallment && cairoDay(p.at).slice(0, 7) === thisMonthStr)
         .reduce((ps, p) => ps + toEGP(p), 0), 0);
     return { totalRevenue, leadsBySource, courseEnrollments, consultsByStatus, salesStats: salesStatsCalc, recentLeads, paidOrders, todayRevenue, todayNewSubscribers, todayNewLeads, monthRevenue };
   }, [orders, subscribers, leads, courses, staffMembers, consultations, content, leadStats]);

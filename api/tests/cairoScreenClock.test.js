@@ -97,11 +97,38 @@ test('the Cairo day agrees with Intl, and a whole table of rows is cheap to date
   for (let t = Date.parse('2024-01-01T00:07:00Z'); t < Date.parse('2028-01-01T00:00:00Z'); t += 97 * 60000) {
     assert.equal(clock.cairoDateTime(new Date(t)), expected(new Date(t)), new Date(t).toISOString());
   }
-  const rows = Array.from({ length: 30000 }, (_, i) => new Date(Date.parse('2023-01-01T00:00:00Z') + i * 3300000)
-    .toISOString().slice(0, 19).replace('T', ' '));
-  const started = performance.now();
-  for (const row of rows) clock.cairoDay(row);
-  assert.ok(performance.now() - started < 1000, 'dating 30,000 rows should take well under a second');
+  // Counted rather than timed — a stopwatch in a suite that runs files in
+  // parallel fails on a busy machine. 30,000 rows across thirty days of 2023
+  // (outside the sweep above, so nothing is cached) span 720 UTC hours, and
+  // that is the most Intl may be asked.
+  const proto = Intl.DateTimeFormat.prototype;
+  const formatToParts = proto.formatToParts;
+  let asked = 0;
+  proto.formatToParts = function (...args) { asked += 1; return formatToParts.apply(this, args); };
+  try {
+    const start = Date.parse('2023-03-01T00:00:00Z');
+    for (let i = 0; i < 30000; i++) {
+      clock.cairoDay(new Date(start + i * 86400).toISOString().slice(0, 19).replace('T', ' '));
+    }
+  } finally {
+    proto.formatToParts = formatToParts;
+  }
+  assert.ok(asked <= 720, `asked Intl ${asked} times for 30,000 rows in 720 hours`);
+});
+
+test('week, month and days-ahead turn over at Cairo\'s midnight', () => {
+  // Thursday 24 September 2026, midday: the week began on Sunday the 20th, or
+  // Monday the 21st for the Dokki rounds.
+  assert.equal(clock.cairoWeekStart(0, '2026-09-24T12:00:00Z'), '2026-09-20');
+  assert.equal(clock.cairoWeekStart(1, '2026-09-24T12:00:00Z'), '2026-09-21');
+  // 22:30 UTC on Saturday is 01:30 on Sunday in Cairo: a new week has begun.
+  assert.equal(clock.cairoWeekStart(0, '2026-09-26T22:30:00Z'), '2026-09-27');
+  // And 22:30 UTC on 30 September is already October in Cairo.
+  assert.equal(clock.cairoMonthStart(0, '2026-09-30T22:30:00Z'), '2026-10-01');
+  assert.equal(clock.cairoMonthStart(-1, '2026-09-30T22:30:00Z'), '2026-11-01', 'next month');
+  assert.equal(clock.cairoMonthStart(3, '2026-01-15T12:00:00Z'), '2025-10-01', 'across a year');
+  assert.equal(clock.cairoDaysAhead(1, '2026-09-23T22:30:00Z'), '2026-09-25');
+  assert.equal(clock.cairoDaysAhead(1, '2026-12-31T12:00:00Z'), '2027-01-01');
 });
 
 test('the screens that print a stored time go through the Cairo clock', () => {

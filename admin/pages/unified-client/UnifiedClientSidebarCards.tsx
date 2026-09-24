@@ -5,7 +5,7 @@ import type { SettlementCurrency } from '../../lib/branchCurrency';
 import { branchLabels, EXTRA_TYPE_LABELS, normBranchKey, statusLabels } from './constants';
 import { toDialable } from '../../lib/whatsappLink';
 import { normalizeInterestLevel } from '../dashboard/tabs/leadUtils';
-import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
+import { CAIRO_TIME_ZONE, cairoDay } from '../../../shared/cairoDate';
 
 type ProfileCardProps = {
   isSub: boolean;
@@ -67,7 +67,7 @@ export function UnifiedClientSidebarProfileCard({
           </div>
           <div className="flex items-center justify-between py-1.5">
             <span className="text-gray-400">🗓️ التسجيل</span>
-            <span className="text-gray-600">{(isSub ? subscriber!.createdAt : lead?.createdAt)?.slice(0, 10) || '—'}</span>
+            <span className="text-gray-600">{cairoDay(isSub ? subscriber!.createdAt : lead?.createdAt) || '—'}</span>
           </div>
           {(isSub ? subscriber!.assignedSalesName : lead?.assignedSalesName) && (
             <div className="flex items-center justify-between py-1.5"><span className="text-gray-400">🧑‍💼 السيلز</span><span className="font-semibold text-indigo-700">{isSub ? subscriber!.assignedSalesName : lead?.assignedSalesName}</span></div>
@@ -409,7 +409,7 @@ export function UnifiedClientSidebarActivityCard({
       </div>
       {allComms.length > 0 ? (
         <div className="mt-2 flex items-center justify-between text-xs pt-2 border-t border-gray-50">
-          <span className="text-gray-400">📅 آخر تواصل</span><span className="font-semibold text-gray-700">{allComms[0].date?.slice(0, 10)}</span>
+          <span className="text-gray-400">📅 آخر تواصل</span><span className="font-semibold text-gray-700">{cairoDay(allComms[0].date)}</span>
         </div>
       ) : (
         <div className="mt-2 text-xs text-amber-600 bg-amber-50 rounded-xl px-2.5 py-1.5 flex items-center gap-1 border border-amber-100">⚠️ لم يتم التواصل بعد</div>

@@ -14,6 +14,7 @@ import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 import { isRawCourse, rawCourseText } from './leads/leadCourseLabel';
 import { toEgp } from '../../../lib/money';
 import { downloadCsv } from '../../../../shared/csv';
+import { cairoDay } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -425,7 +426,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
     const lines = rows.map(c => [
       c.name, c.clientCode, c.phone, c.email,
       (() => { const ti = c.clientType ? CLIENT_TYPE_INFO[c.clientType] : null; return ti ? `${ti.label} - ${ti.entity}` : (c.subType ? SUB_TYPE_LABEL[c.subType] : 'عميل محتمل'); })(),
-      c.branch, c.courseNames, c.totalPaid, c.assignedSalesName, c.createdAt.slice(0, 10),
+      c.branch, c.courseNames, c.totalPaid, c.assignedSalesName, cairoDay(c.createdAt),
     ]);
     downloadCsv('clients_export', [header, ...lines]);
     notify('success', `تم تصدير ${rows.length} عميل`);
@@ -715,7 +716,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
                     </td>
                     {/* Date */}
                     <td className="px-3 py-3 text-center text-gray-400 text-xs">
-                      {c.createdAt ? c.createdAt.slice(0, 10) : '—'}
+                      {c.createdAt ? cairoDay(c.createdAt) : '—'}
                     </td>
                     {/* Actions */}
                     <td className="px-3 py-3">

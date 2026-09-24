@@ -3,7 +3,7 @@ import { AlertCircle, Bot, RefreshCw, Send, Trash2, Users, Zap, Copy, Check, Che
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { toEgp } from '../../../lib/money';
-import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
+import { CAIRO_TIME_ZONE, cairoDateOnly, cairoDay } from '../../../../shared/cairoDate';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 // Module scope: a constant map and a pure function of its arguments. In the
@@ -66,9 +66,9 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
 
   // ═══ PRE-COMPUTE everything once at IIFE top ═══════════════════
   const _now = new Date();
-  const _todayISO = _now.toISOString().slice(0, 10);
+  const _todayISO = cairoDateOnly(_now);
   // Date filters
-  const _isToday    = (d: string) => !!d && (d.startsWith(_todayISO) || new Date(d).toDateString() === _now.toDateString());
+  const _isToday    = (d: string) => !!d && cairoDay(d) === _todayISO;
   const _toEGP = (amt: number, cur: string) => cur==='EGP'?amt:cur==='SAR'?amt*13:amt*50;
 
   // ── All manual payments (pre-memoized above for performance) ──────────────────

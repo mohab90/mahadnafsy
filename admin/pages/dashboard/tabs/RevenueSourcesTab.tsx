@@ -3,28 +3,26 @@ import { DollarSign, Tag, PieChart as PieIcon, BarChart3 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { numericTooltip } from '../../../lib/chartFormat';
+import { cairoDay, cairoMonthStart } from '../../../../shared/cairoDate';
 
 type Range = 'month' | '3months' | '6months' | 'all';
 
 const COLORS = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#84cc16','#ec4899'];
 
+// setDate(1) kept the time of day, so from midnight to 02:00 or 03:00 Cairo the
+// 1st formatted in UTC as the last day of the month before, and every month in
+// the chart slid back by one.
 function getLast6Months() {
-  const ms: string[] = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
-    ms.push(d.toISOString().slice(0, 7));
-  }
-  return ms;
+  return Array.from({ length: 6 }, (_, i) => cairoMonthStart(5 - i).slice(0, 7));
 }
 
 // Takes `range` instead of closing over it, matching MarketingHubTab and
 // OnlineTeamTab. As a closure it was rebuilt every render, so the memos below
 // could not list it as a dependency without recomputing every time.
 function getRangeStart(range: Range): string {
-  const d = new Date(); d.setDate(1);
-  if (range === 'month') return d.toISOString().slice(0, 7) + '-01';
-  if (range === '3months') { d.setMonth(d.getMonth() - 3); return d.toISOString().slice(0, 10); }
-  if (range === '6months') { d.setMonth(d.getMonth() - 6); return d.toISOString().slice(0, 10); }
+  if (range === 'month') return cairoMonthStart(0);
+  if (range === '3months') return cairoMonthStart(3);
+  if (range === '6months') return cairoMonthStart(6);
   return '2000-01-01';
 }
 
@@ -84,7 +82,7 @@ export default function RevenueSourcesTab() {
   const monthlyBySource = useMemo(() => {
     const topSources = byLeadSource.slice(0, 3).map(s => s.name);
     return months.map(m => {
-      const mo = orders.filter(o => o.status === 'paid' && (o.createdAt || '').slice(0, 7) === m);
+      const mo = orders.filter(o => o.status === 'paid' && cairoDay(o.createdAt).slice(0, 7) === m);
       const entry: Record<string, any> = { month: m.slice(5) };
       topSources.forEach(src => {
         entry[src] = mo

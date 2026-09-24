@@ -5,7 +5,7 @@ import {
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { PaymentHistoryEntry, PaymentItemType, Currency, SubscriberItem } from '../../../../types';
 import { paymentOrigin, PAYMENT_ORIGIN, PAYMENT_ORIGIN_CLASS } from '../../../../lib/paymentOrigin';
-import { cairoDateOnly } from '../../../../../shared/cairoDate';
+import { cairoDateOnly, cairoDay } from '../../../../../shared/cairoDate';
 import { useStaticData } from '../../../../context/siteDataSlices';
 import { usePaymentBoxes } from '../../../../lib/paymentMethods';
 import { paymentMethodLabel } from '../../../../../shared/paymentMethods';
@@ -117,8 +117,8 @@ export function PaymentReviewPanel({ notify, branchFilter, subscribers, reloadSu
   const filtered = serverReviewRows.length > 0 ? allReview : allReview.filter(p => {
     if (reviewStatusFilter !== 'all' && (p.status || 'paid') !== reviewStatusFilter) return false;
     if (reviewTypeFilter && p.paymentType !== reviewTypeFilter) return false;
-    if (reviewDateFrom && (p.at || '').slice(0, 10) < reviewDateFrom) return false;
-    if (reviewDateTo && (p.at || '').slice(0, 10) > reviewDateTo) return false;
+    if (reviewDateFrom && cairoDay(p.at) < reviewDateFrom) return false;
+    if (reviewDateTo && cairoDay(p.at) > reviewDateTo) return false;
     if (reviewSearch) {
       const q = reviewSearch.toLowerCase();
       if (
@@ -134,7 +134,7 @@ export function PaymentReviewPanel({ notify, branchFilter, subscribers, reloadSu
   const pendingItems = allReview.filter(p => p.status === 'pending');
   const pendingAmt = pendingItems.reduce((s, p) => s + toEGP(p.amount, p.currency), 0);
   const todayStr = cairoDateOnly();
-  const todayCount = allReview.filter(p => (p.at || '').slice(0, 10) === todayStr).length;
+  const todayCount = allReview.filter(p => cairoDay(p.at) === todayStr).length;
 
   const handleAction = async (p: ReviewPayment, newStatus: 'paid' | 'failed') => {
     setReviewActionLoading(p.id);
@@ -284,7 +284,7 @@ export function PaymentReviewPanel({ notify, branchFilter, subscribers, reloadSu
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-600">{p.staffName || '—'}</td>
                   <td className="px-4 py-3">{sourceBadgeEl(p.source, p.paymentMethod)}</td>
-                  <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{(p.at || '').slice(0, 10)}</td>
+                  <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{cairoDay(p.at)}</td>
                   <td className="px-4 py-3">{statusBadgeEl(p.status)}</td>
                   <td className="px-4 py-3">
                     {(!p.status || p.status === 'pending') && (

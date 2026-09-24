@@ -15,6 +15,7 @@ import type { StaffMember, StaffPermission } from '../../types';
 import { mysqlAdmin, mysqlAuth } from '../../lib/mysqlapi';
 import { ROLE_LABELS, PERMISSION_LABELS, ROLE_OPTIONS, ROLE_PRESETS, PERM_CATEGORIES, ACCESS_PREVIEW_TABS, ROLE_DEFAULT_PERMISSIONS } from './staffProfileConstants';
 import { ROLE_DATA_SCOPE } from '../../constants/permissions';
+import { cairoMonthStart } from '../../../shared/cairoDate';
 
 const createStaffAccount = async (staff: StaffMember, password: string): Promise<void> => {
   await mysqlAdmin.createStaffAccount({ ...staff, staffId: staff.id, password } as unknown as Record<string, unknown>);
@@ -114,14 +115,12 @@ export default function StaffSettingsPanel({
         });
         let salaryPending = false;
         if (salaryChanged) {
-          const effectiveDate = new Date();
-          effectiveDate.setUTCDate(1);
-          effectiveDate.setUTCMonth(effectiveDate.getUTCMonth() + 1);
           await mysqlAdmin.adminPost('/admin/hr/salary', {
             staff_id: payload.id,
             base_salary: Number(payload.salary) || 0,
             currency: 'EGP',
-            effective_from: effectiveDate.toISOString().slice(0, 10),
+            // The first of next month, by Cairo's calendar.
+            effective_from: cairoMonthStart(-1),
           });
           salaryPending = true;
         }

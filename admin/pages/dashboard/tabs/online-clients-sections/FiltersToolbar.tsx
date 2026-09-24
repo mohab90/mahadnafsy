@@ -1,5 +1,5 @@
 import { Download, Eye, Search } from 'lucide-react';
-import { cairoDateOnly } from '../../../../../shared/cairoDate';
+import { cairoDateOnly, cairoDay } from '../../../../../shared/cairoDate';
 import { BRANCHES, BRANCH_LABELS_AR } from '../../../../constants/branches';
 import type { Bundle, Course, DaqqiRound, StaffMember, SubscriberItem } from '../../../../types';
 import { paymentAmountInEGP } from '../onlineClientsUtils';
@@ -164,7 +164,7 @@ export function FiltersToolbar({
               const total = Number(s.totalValue)||0;
               const crs = (s.enrolledCourseIds||[]).map(id=>courses.find(c=>c.id===id)?.title||bundles.find(b=>`bundle:${b.id}`===id)?.title||id).join(' | ');
               const agent = staffMembers.find(st=>st.id===s.assignedCsId)?.name || '';
-              return [s.name,s.phone,s.email,s.branch||'',crs,s.clientStatus||s.status||'',paid,Math.max(0,total-paid),agent,(s.createdAt||'').slice(0,10),s.clientCode||''];
+              return [s.name,s.phone,s.email,s.branch||'',crs,s.clientStatus||s.status||'',paid,Math.max(0,total-paid),agent,cairoDay(s.createdAt),s.clientCode||''];
             });
             downloadCsv(`online-clients-${cairoDateOnly()}`, [header, ...rows]);
           }} className="flex items-center gap-1.5 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition" title={collOnlineSelected.size>0?`تصدير ${collOnlineSelected.size} محدد`:'تصدير كل النتائج'}>

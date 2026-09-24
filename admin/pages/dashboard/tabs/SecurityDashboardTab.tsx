@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { cairoDateOnly } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoDay } from '../../../../shared/cairoDate';
 import { Shield, AlertTriangle, Search, RefreshCw, Activity, Save, Download } from 'lucide-react';
 import { useCrmData } from '../../../context/siteDataSlices';
 import type { ActivityLogItem } from '../../../types';
@@ -84,10 +84,10 @@ const SecurityDashboardTab: React.FC<Props> = ({ notify }) => {
 
   const stats = useMemo(() => {
     const now = new Date();
-    const today = now.toISOString().slice(0, 10);
+    const today = cairoDateOnly(now);
     const loginLogs = activityLogs.filter(l => l.action === 'login');
     const failedLogins = activityLogs.filter(l => l.action === 'login_failed');
-    const todayActivity = activityLogs.filter(l => l.at.startsWith(today)).length;
+    const todayActivity = activityLogs.filter(l => cairoDay(l.at) === today).length;
     const sensitiveCount = activityLogs.filter(l => SENSITIVE_ACTIONS.includes(l.action)).length;
     const uniqueActors = new Set(activityLogs.map(l => l.actor)).size;
     const suspiciousActors = staffMembers.filter(s => isSuspicious(activityLogs, s.id)).length;

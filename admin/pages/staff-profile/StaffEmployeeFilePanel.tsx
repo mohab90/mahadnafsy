@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { BadgeCheck, Banknote, FileText, Loader2 } from 'lucide-react';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import PromptModal from '../../../shared/ui/PromptModal';
+import { cairoDay } from '../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -185,7 +186,7 @@ const StaffEmployeeFilePanel: React.FC<{ staffId: string; staffName: string; not
                 )}
                 {doc.updatedByName && (
                   <span className="text-[10px] text-gray-400">
-                    {doc.updatedByName}{doc.updatedAt ? ` · ${String(doc.updatedAt).slice(0, 10)}` : ''}
+                    {doc.updatedByName}{doc.updatedAt ? ` · ${cairoDay(doc.updatedAt)}` : ''}
                   </span>
                 )}
                 <button disabled={savingDoc === doc.docType} onClick={() => setNoteFor(doc)}

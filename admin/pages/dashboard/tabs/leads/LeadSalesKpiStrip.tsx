@@ -1,5 +1,5 @@
 import type { LeadItem, SubscriberItem } from '../../../../types';
-import { cairoDateOnly, cairoMonthOnly } from '../../../../../shared/cairoDate';
+import { cairoDateOnly, cairoMonthOnly, cairoDay, cairoDaysAgo } from '../../../../../shared/cairoDate';
 import { isCollected } from '../../../../lib/money';
 
 type Props = {
@@ -13,13 +13,13 @@ export function LeadSalesKpiStrip({ isSalesOnly, effectiveLeads, effectiveSubs }
 
   const todayStr = cairoDateOnly();
   const thisMonthStr = cairoMonthOnly();
-  const weekAgoStr = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+  const weekAgoStr = cairoDaysAgo(7);
   const todayCalls = effectiveLeads.reduce((n, l) =>
-    n + (l.communications || []).filter(c => c.date?.slice(0, 10) === todayStr).length, 0);
+    n + (l.communications || []).filter(c => cairoDay(c.date) === todayStr).length, 0);
   const weekCalls = effectiveLeads.reduce((n, l) =>
-    n + (l.communications || []).filter(c => c.date?.slice(0, 10) >= weekAgoStr).length, 0);
+    n + (l.communications || []).filter(c => cairoDay(c.date) >= weekAgoStr).length, 0);
   const monthConverted = effectiveLeads.filter(l =>
-    l.status === 'converted' && (l.updatedAt || l.createdAt || '').slice(0, 7) === thisMonthStr).length;
+    l.status === 'converted' && cairoDay(l.updatedAt || l.createdAt).slice(0, 7) === thisMonthStr).length;
   const totalActive = effectiveLeads.filter(l => !['converted', 'lost', 'not_interested_hidden'].includes(l.status || '')).length;
   const overdueCount = effectiveLeads.filter(l =>
     l.nextFollowUpDate && l.nextFollowUpDate < todayStr && !['converted', 'lost'].includes(l.status || '')).length;

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { cairoDateOnly } from '../../../../../shared/cairoDate';
+import { cairoDateOnly, cairoDay, cairoDaysAgo } from '../../../../../shared/cairoDate';
 
 import type { CrmInsights, LeadItem, StaffMember } from '../../../../types';
 
@@ -49,13 +49,13 @@ export function useLeadOpsInsights(
       });
     }
 
-    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    const weekAgo = cairoDaysAgo(7);
     const todayStr = cairoDateOnly();
 
     return salesReps.map(rep => {
       const repLeads = leads.filter(lead => lead.assignedSalesId === rep.id);
       const weekComms = repLeads.flatMap(lead =>
-        (lead.communications || []).filter(comm => (comm.date || '').slice(0, 10) >= weekAgo),
+        (lead.communications || []).filter(comm => cairoDay(comm.date) >= weekAgo),
       );
       const calls = weekComms.filter(comm => comm.type === 'call').length;
       const wa = weekComms.filter(comm => comm.type === 'whatsapp').length;
@@ -67,10 +67,10 @@ export function useLeadOpsInsights(
           return false;
         }
         return (lead.communications || [])
-          .some(comm => (comm.date || '').slice(0, 10) >= nextFollowUpDate);
+          .some(comm => cairoDay(comm.date) >= nextFollowUpDate);
       }).length;
       const newLeadsThisWeek = repLeads
-        .filter(lead => (lead.createdAt || '').slice(0, 10) >= weekAgo).length;
+        .filter(lead => cairoDay(lead.createdAt) >= weekAgo).length;
       const overdueOwn = repLeads.filter(lead =>
         lead.nextFollowUpDate &&
         lead.nextFollowUpDate < todayStr &&
@@ -123,7 +123,7 @@ export function useLeadOpsInsights(
       .map(lead => {
         const sorted = [...(lead.communications || [])]
           .sort((a, b) => b.date.localeCompare(a.date));
-        const lastDate = (sorted[0]?.date || lead.createdAt || '').slice(0, 10);
+        const lastDate = cairoDay(sorted[0]?.date || lead.createdAt);
         const daysSilent = lastDate
           ? Math.floor((Date.now() - new Date(lastDate).getTime()) / 86400000)
           : 999;

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { cairoDateOnly, cairoMonthOnly } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoMonthOnly, cairoDay, cairoDaysAgo } from '../../../../shared/cairoDate';
 import {
   User, TrendingUp, Clock, CheckCircle, Activity, Calendar,
   Phone, UserCheck, Star, ArrowLeft, Bell, FileText,
@@ -90,7 +90,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
     const totalLeads = myLeads.length;
     const converted = myLeads.filter(l => l.status === 'converted');
     const convertedThisMonth = converted.filter(
-      l => ((l as TimestampedLead).updatedAt || l.createdAt || '').slice(0, 7) === thisMonth,
+      l => cairoDay((l as TimestampedLead).updatedAt || l.createdAt).slice(0, 7) === thisMonth,
     );
     const convRate = totalLeads > 0 ? Math.round((converted.length / totalLeads) * 100) : 0;
 
@@ -107,11 +107,11 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
     );
 
     // This month new leads
-    const newThisMonth = myLeads.filter(l => (l.createdAt || '').slice(0, 7) === thisMonth);
+    const newThisMonth = myLeads.filter(l => cairoDay(l.createdAt).slice(0, 7) === thisMonth);
 
     // This month calls/communications
     const callsThisMonth = myLeads.reduce((n, l) =>
-      n + (l.communications || []).filter(c => (c.date || '').slice(0, 7) === thisMonth).length, 0,
+      n + (l.communications || []).filter(c => cairoDay(c.date).slice(0, 7) === thisMonth).length, 0,
     );
 
     // Financial and conversion KPIs come from the server-side canonical ledger.
@@ -119,16 +119,15 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
 
     // 7-day communications chart
     const last7 = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(); d.setDate(d.getDate() - (6 - i));
-      const dateStr = d.toISOString().slice(0, 10);
+      const dateStr = cairoDaysAgo(6 - i);
       return {
         day: dateStr,
-        label: d.toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short', timeZone: CAIRO_TIME_ZONE }),
+        label: new Date(dateStr).toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short', timeZone: CAIRO_TIME_ZONE }),
         calls: myLeads.reduce((n, l) =>
-          n + (l.communications || []).filter(c => c.date?.slice(0, 10) === dateStr).length, 0,
+          n + (l.communications || []).filter(c => cairoDay(c.date) === dateStr).length, 0,
         ),
         converted: converted.filter(c =>
-          ((c as TimestampedLead).updatedAt || c.createdAt || '').slice(0, 10) === dateStr,
+          cairoDay((c as TimestampedLead).updatedAt || c.createdAt) === dateStr,
         ).length,
       };
     });

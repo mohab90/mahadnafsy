@@ -7,7 +7,7 @@ import {
 import { useSiteData } from '../../../context/SiteDataContext';
 import { fxRates } from '../../../lib/money';
 import { toCsv, downloadCsvText, type CsvValue } from '../../../../shared/csv';
-import { CAIRO_TIME_ZONE, cairoDateOnly, cairoDaysAgo, cairoDay } from '../../../../shared/cairoDate';
+import { CAIRO_TIME_ZONE, cairoDateOnly, cairoDaysAgo, cairoDay, cairoMonthStart } from '../../../../shared/cairoDate';
 
 type Section   = 'all' | 'sales' | 'consultations' | 'courses' | 'bundles';
 type TimeRange = 'all' | 'today' | 'yesterday' | '7d' | '30d';
@@ -80,9 +80,9 @@ const AnalyticsTab: React.FC<Props> = () => {
   const monthlyRevenue = useMemo(() => {
     const rows: { label: string; rev: number; orders: number }[] = [];
     for (let i = 5; i >= 0; i--) {
-      const d  = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const ms = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const mo = allPaid.filter(o => (o.paidAt || o.createdAt || '').startsWith(ms));
+      const ms = cairoMonthStart(i, now).slice(0, 7);
+      const d  = new Date(`${ms}-15T12:00:00Z`);
+      const mo = allPaid.filter(o => cairoDay(o.paidAt || o.createdAt).startsWith(ms));
       rows.push({ label: d.toLocaleString('ar-EG-u-nu-latn', { month: 'short', year: '2-digit', timeZone: CAIRO_TIME_ZONE }), rev: mo.reduce((s, o) => s + toEGP(o.amount, o.currency), 0), orders: mo.length });
     }
     return rows;
@@ -106,9 +106,9 @@ const AnalyticsTab: React.FC<Props> = () => {
   const subsByMonth = useMemo(() => {
     const rows: { label: string; count: number }[] = [];
     for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const ms = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      rows.push({ label: d.toLocaleString('ar-EG-u-nu-latn', { month: 'short', timeZone: CAIRO_TIME_ZONE }), count: subscribers.filter(s => (s.createdAt || '').startsWith(ms)).length });
+      const ms = cairoMonthStart(i, now).slice(0, 7);
+      const d = new Date(`${ms}-15T12:00:00Z`);
+      rows.push({ label: d.toLocaleString('ar-EG-u-nu-latn', { month: 'short', timeZone: CAIRO_TIME_ZONE }), count: subscribers.filter(s => cairoDay(s.createdAt).startsWith(ms)).length });
     }
     return rows;
   }, [subscribers, now]);
@@ -157,14 +157,14 @@ const AnalyticsTab: React.FC<Props> = () => {
     let csv = ''; let filename = `تقرير-${timeLabel}-${todayStr}`;
     if (section === 'all' || section === 'sales') {
       const h = ['رقم الطلب', 'العميل', 'المبلغ', 'العملة', 'بالجنيه', 'النوع', 'البند', 'التاريخ'];
-      const r = filteredOrders.map(o => [o.id?.slice(-8) || '', o.customerName || '', o.amount, o.currency, Math.round(toEGP(o.amount, o.currency)), o.type || '', o.itemTitle || '', (o.paidAt || o.createdAt || '').slice(0, 10)]);
+      const r = filteredOrders.map(o => [o.id?.slice(-8) || '', o.customerName || '', o.amount, o.currency, Math.round(toEGP(o.amount, o.currency)), o.type || '', o.itemTitle || '', cairoDay(o.paidAt || o.createdAt)]);
       csv += toCsv([h, ...r] as CsvValue[][]);
       if (section === 'sales') filename = `مبيعات-${timeLabel}-${todayStr}`;
     }
     if (section === 'all' || section === 'consultations') {
       if (csv) csv += '\n\n';
       const h = ['العميل', 'هاتف', 'المعالج', 'الحالة', 'التاريخ'];
-      const r = filteredConsts.map(c => [c.clientName || '', c.clientPhone || '', c.therapistName || '', c.status || '', ((c as { createdAt?: string }).createdAt || '').slice(0, 10)]);
+      const r = filteredConsts.map(c => [c.clientName || '', c.clientPhone || '', c.therapistName || '', c.status || '', cairoDay((c as { createdAt?: string }).createdAt)]);
       csv += toCsv([h, ...r] as CsvValue[][]);
       if (section === 'consultations') filename = `استشارات-${timeLabel}-${todayStr}`;
     }

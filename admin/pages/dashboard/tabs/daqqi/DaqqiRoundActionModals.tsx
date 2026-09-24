@@ -4,17 +4,10 @@ import React from 'react';
 import { ArrowLeftRight, BookOpen, X } from 'lucide-react';
 
 import type { Course, DaqqiRound, SubscriberItem } from '../../../../types';
+import { getCurrentWeekKey } from './daqqiScheduleUtils';
 
 export type DaqqiTransferModalState = { subscriberId: string; fromRoundId: string } | null;
 export type DaqqiPostponeModalState = { roundId: string; newDate: string } | null;
-
-const getCurrentWeekKey = (): string => {
-  const d = new Date();
-  const day = d.getDay();
-  const monday = new Date(d);
-  monday.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-  return monday.toISOString().slice(0, 10);
-};
 
 const courseTitle = (courses: Course[], courseId?: string) => {
   const course = courses.find(c => c.id === courseId);

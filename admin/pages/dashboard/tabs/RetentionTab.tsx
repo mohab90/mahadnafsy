@@ -2,18 +2,13 @@ import { useMemo } from 'react';
 import { Users, UserCheck, BarChart3, RefreshCw, Star } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar, Legend, PieChart, Pie, Cell } from 'recharts';
+import { cairoDay, cairoMonthStart } from '../../../../shared/cairoDate';
 
 
 const COLORS = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4'];
 
 function getLast12Months() {
-  const months: string[] = [];
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(1); d.setMonth(d.getMonth() - i);
-    months.push(d.toISOString().slice(0, 7));
-  }
-  return months;
+  return Array.from({ length: 12 }, (_, i) => cairoMonthStart(11 - i).slice(0, 7));
 }
 
 export default function RetentionTab() {
@@ -28,8 +23,8 @@ export default function RetentionTab() {
   const monthlyNew = useMemo(() =>
     months.map(m => ({
       month: m.slice(5),
-      'جديد': subscribers.filter(s => (s.createdAt || '').slice(0, 7) === m).length,
-      'منتهي': subscribers.filter(s => s.clientStatus === 'finished' && (s.updatedAt || s.createdAt || '').slice(0, 7) === m).length,
+      'جديد': subscribers.filter(s => cairoDay(s.createdAt).slice(0, 7) === m).length,
+      'منتهي': subscribers.filter(s => s.clientStatus === 'finished' && cairoDay(s.updatedAt || s.createdAt).slice(0, 7) === m).length,
     })),
     [subscribers, months]
   );

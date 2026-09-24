@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 
 import type { LeadItem, LeadStats } from '../../../../types';
+import { cairoDay, cairoMonthStart } from '../../../../../shared/cairoDate';
 
 /**
  * Trend, funnel and source charts.
@@ -14,12 +15,7 @@ import type { LeadItem, LeadStats } from '../../../../types';
  */
 export function useLeadAnalyticsData(leads: LeadItem[], effectiveLeads: LeadItem[], leadStats?: LeadStats | null) {
   const monthlyTrend = useMemo(() => {
-    const months: string[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const date = new Date();
-      date.setMonth(date.getMonth() - i);
-      months.push(date.toISOString().slice(0, 7));
-    }
+    const months = Array.from({ length: 6 }, (_, i) => cairoMonthStart(5 - i).slice(0, 7));
 
     return months.map(month => {
       // The server omits months with no leads; the axis still needs them.
@@ -28,10 +24,10 @@ export function useLeadAnalyticsData(leads: LeadItem[], effectiveLeads: LeadItem
         month: `${month.slice(5)}/${month.slice(2, 4)}`,
         'ليدز': leadStats
           ? (agg?.total ?? 0)
-          : leads.filter(lead => (lead.createdAt || '').slice(0, 7) === month).length,
+          : leads.filter(lead => cairoDay(lead.createdAt).slice(0, 7) === month).length,
         'محوّل': leadStats
           ? (agg?.converted ?? 0)
-          : leads.filter(lead => (lead.createdAt || '').slice(0, 7) === month && lead.status === 'converted').length,
+          : leads.filter(lead => cairoDay(lead.createdAt).slice(0, 7) === month && lead.status === 'converted').length,
       };
     });
   }, [leads, leadStats]);

@@ -5,7 +5,7 @@
 // import from it are untouched.
 
 import { Clock, ExternalLink, Phone, Wallet } from 'lucide-react';
-import { cairoDateOnly } from '../../../../../shared/cairoDate';
+import { cairoDateOnly, cairoDay } from '../../../../../shared/cairoDate';
 import type { LeadItem, LeadStatus, Course, Bundle } from '../../../../types';
 import WhatsAppLink from './WhatsAppLink';
 import { courseBadgeLabel, isRawCourse } from './leadCourseLabel';
@@ -143,7 +143,7 @@ export function LeadCard({ lead, score, onSelect, onStatusChange, onBook, onCont
           <div className="flex items-center gap-1 mb-0.5">
             <span className="text-[11px]">{COMM_ICON[lastComm.type] || '📋'}</span>
             <span className="text-[10px] font-bold text-gray-700">{COMM_LABEL[lastComm.type] || lastComm.type}</span>
-            <span className="mr-auto text-[9px] text-gray-400" dir="ltr">{lastComm.date?.slice(0, 10)}</span>
+            <span className="mr-auto text-[9px] text-gray-400" dir="ltr">{cairoDay(lastComm.date)}</span>
           </div>
           {lastComm.notes && (
             <p className="text-[10px] text-gray-600 leading-tight line-clamp-2">{lastComm.notes}</p>

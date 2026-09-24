@@ -6,7 +6,7 @@ import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { ActivityLogItem, AuthUser, StaffMember } from '../../../types';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
-import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
+import { CAIRO_TIME_ZONE, cairoDay } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type MyHrSection = 'overview' | 'activity' | 'performance' | 'leaves' | 'messages';
@@ -306,8 +306,8 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
                 { label: 'البريد الإلكتروني', val: profile?.email },
                 { label: 'الدور الوظيفي', val: ROLE_LABEL[profile?.role || ''] || profile?.role },
                 { label: 'الحالة', val: me?.status === 'active' ? 'نشط' : 'غير نشط' },
-                { label: 'تاريخ الانضمام', val: me?.createdAt?.slice(0, 10) || '—' },
-                { label: 'آخر تحديث', val: me?.updatedAt?.slice(0, 10) || '—' },
+                { label: 'تاريخ الانضمام', val: cairoDay(me?.createdAt) || '—' },
+                { label: 'آخر تحديث', val: cairoDay(me?.updatedAt) || '—' },
               ].map(f => (
                 <div key={f.label} className="flex gap-2">
                   <span className="text-gray-500 w-32 flex-shrink-0">{f.label}:</span>

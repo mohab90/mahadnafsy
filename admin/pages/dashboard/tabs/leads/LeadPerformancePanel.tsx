@@ -1,5 +1,5 @@
 import { Activity, BarChart2, Phone, TrendingUp } from 'lucide-react';
-import { cairoMonthOnly } from '../../../../../shared/cairoDate';
+import { cairoMonthOnly, cairoDay } from '../../../../../shared/cairoDate';
 import { useCrmData } from '../../../../context/siteDataSlices';
 import {
   BarChart,
@@ -50,7 +50,7 @@ export function LeadPerformancePanel({
     : leads.reduce((s, l) => s + (l.communicationCount ?? l.communications?.length ?? 0), 0);
   const monthlyLeads = leadStats
     ? (leadStats.byMonth?.[thisMonth]?.total ?? 0)
-    : leads.filter(l => (l.createdAt || '').startsWith(thisMonth)).length;
+    : leads.filter(l => cairoDay(l.createdAt).startsWith(thisMonth)).length;
 
   return (
     <div className="space-y-5">

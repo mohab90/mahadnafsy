@@ -3,28 +3,26 @@ import { DollarSign, TrendingDown, TrendingUp, PieChart as PieIcon, BarChart3 } 
 import { useFinanceData } from '../../../context/siteDataSlices';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { numericTooltip } from '../../../lib/chartFormat';
+import { cairoDay, cairoMonthStart } from '../../../../shared/cairoDate';
 
 type Range = 'month' | '3months' | '6months' | 'all';
 
 const COLORS = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#84cc16'];
 
+// setDate(1) kept the time of day, so from midnight to 02:00 or 03:00 Cairo the
+// 1st formatted in UTC as the last day of the month before, and every month in
+// the chart slid back by one.
 function getLast6Months() {
-  const ms: string[] = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
-    ms.push(d.toISOString().slice(0, 7));
-  }
-  return ms;
+  return Array.from({ length: 6 }, (_, i) => cairoMonthStart(5 - i).slice(0, 7));
 }
 
 // Takes `range` instead of closing over it, matching MarketingHubTab and
 // OnlineTeamTab. As a closure it was rebuilt every render, so the memos below
 // could not list it as a dependency without recomputing every time.
 function getRangeStart(range: Range): string {
-  const d = new Date(); d.setDate(1);
-  if (range === 'month') return d.toISOString().slice(0, 7) + '-01';
-  if (range === '3months') { d.setMonth(d.getMonth() - 3); return d.toISOString().slice(0, 10); }
-  if (range === '6months') { d.setMonth(d.getMonth() - 6); return d.toISOString().slice(0, 10); }
+  if (range === 'month') return cairoMonthStart(0);
+  if (range === '3months') return cairoMonthStart(3);
+  if (range === '6months') return cairoMonthStart(6);
   return '2000-01-01';
 }
 
@@ -58,9 +56,9 @@ export default function ExpenseAnalyticsTab() {
   const monthlyData = useMemo(() =>
     months.map(m => ({
       month: m.slice(5),
-      مصروفات: expenses.filter(e => (e.date || e.createdAt || '').slice(0, 7) === m)
+      مصروفات: expenses.filter(e => cairoDay(e.date || e.createdAt).slice(0, 7) === m)
                        .reduce((acc, e) => acc + (Number(e.amount) || 0), 0),
-      إيراد: orders.filter(o => o.status === 'paid' && (o.createdAt || '').slice(0, 7) === m)
+      إيراد: orders.filter(o => o.status === 'paid' && cairoDay(o.createdAt).slice(0, 7) === m)
                    .reduce((acc, o) => acc + (Number(o.amount) || 0), 0),
     })),
     [expenses, orders, months]
@@ -173,7 +171,7 @@ export default function ExpenseAnalyticsTab() {
                   <td className="px-4 py-3 font-semibold text-gray-800">{e.description || e.title || '—'}</td>
                   <td className="px-4 py-3"><span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-lg text-xs">{e.category || 'أخرى'}</span></td>
                   <td className="px-4 py-3 font-bold text-red-600">{Number(e.amount).toLocaleString('ar-EG-u-nu-latn')} ج</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">{(e.date || e.createdAt || '').slice(0, 10)}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs">{cairoDay(e.date || e.createdAt)}</td>
                 </tr>
               ))}
               {filtered.length === 0 && (

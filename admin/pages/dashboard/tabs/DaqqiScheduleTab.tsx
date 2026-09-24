@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { cairoDateOnly } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoWeekStart, cairoDaysAhead } from '../../../../shared/cairoDate';
 import { useNavigate } from 'react-router-dom';
 import {
  CalendarDays,
@@ -656,17 +656,16 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
       ) : (
         <div className="overflow-x-auto pb-4">
           {(() => {
-            const today = new Date();
-            const dayOfWeek = today.getDay();
-            const startOfWeek = new Date(today);
-            startOfWeek.setDate(today.getDate() - dayOfWeek);
             const dayNamesAr: DaqqiDayOfWeek[] = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
             const monthNamesAr = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-            const todayStr = today.toISOString().slice(0, 10);
+            // Two weeks from this Sunday, on Cairo's calendar. Each day is read
+            // back in UTC because it was built as a UTC midnight.
+            const todayStr = cairoDateOnly();
+            const startOfWeek = cairoWeekStart(0);
             const days = Array.from({ length: 14 }, (_, i) => {
-              const d = new Date(startOfWeek);
-              d.setDate(startOfWeek.getDate() + i);
-              return { date: d, dayName: dayNamesAr[d.getDay()], dateStr: d.toISOString().slice(0, 10), monthName: monthNamesAr[d.getMonth()], dayNum: d.getDate() };
+              const dateStr = cairoDaysAhead(i, startOfWeek);
+              const d = new Date(`${dateStr}T00:00:00Z`);
+              return { date: d, dayName: dayNamesAr[d.getUTCDay()], dateStr, monthName: monthNamesAr[d.getUTCMonth()], dayNum: d.getUTCDate() };
             });
             const renderWeek = (weekDays: typeof days, label: string) => (
               <div className="mb-5">

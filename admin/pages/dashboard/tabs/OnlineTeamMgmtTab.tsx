@@ -4,6 +4,7 @@ import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { OnlinePerformance } from '../../../types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { cairoDay, cairoMonthStart } from '../../../../shared/cairoDate';
 
 
 const ROLE_LABEL: Record<string, string> = {
@@ -12,13 +13,11 @@ const ROLE_LABEL: Record<string, string> = {
 };
 const isOnlineBranch = (branch?: string) => ['ONLINE_EGYPT', 'ONLINE_SAUDI', 'ONLINE_ABROAD'].includes(String(branch || '').toUpperCase());
 
+// setDate(1) kept the time of day, so from midnight to 02:00 or 03:00 Cairo the
+// 1st formatted in UTC as the last day of the month before, and every month in
+// the chart slid back by one.
 function getLast6Months() {
-  const ms: string[] = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
-    ms.push(d.toISOString().slice(0, 7));
-  }
-  return ms;
+  return Array.from({ length: 6 }, (_, i) => cairoMonthStart(5 - i).slice(0, 7));
 }
 
 // Who staffs the online operation. This used to name online_manager, support
@@ -59,8 +58,8 @@ export default function OnlineTeamMgmtTab() {
       const fromServer = perf?.months.find(row => row.month === m);
       return {
         month: m.slice(5),
-        مشتركين: fromServer ? fromServer.clients : onlineSubscribers.filter(s => (s.createdAt || '').slice(0, 7) === m).length,
-        ليدات: fromServer ? fromServer.leads : onlineLeads.filter(l => (l.createdAt || '').slice(0, 7) === m).length,
+        مشتركين: fromServer ? fromServer.clients : onlineSubscribers.filter(s => cairoDay(s.createdAt).slice(0, 7) === m).length,
+        ليدات: fromServer ? fromServer.leads : onlineLeads.filter(l => cairoDay(l.createdAt).slice(0, 7) === m).length,
       };
     }),
     [onlineSubscribers, onlineLeads, months, perf]

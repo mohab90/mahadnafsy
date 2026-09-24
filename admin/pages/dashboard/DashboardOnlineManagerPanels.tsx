@@ -1,5 +1,5 @@
 import { AlarmClock, Banknote } from 'lucide-react';
-import { cairoDateOnly, cairoDay } from '../../../shared/cairoDate';
+import { cairoDateOnly, cairoDay, cairoDaysAhead, cairoDaysAgo } from '../../../shared/cairoDate';
 import { Modal } from '../../../shared/ui/Modal';
 import type { InstallmentEntry, InstallmentPlan, PaymentHistoryEntry, SubscriberItem } from '../../types';
 import type { TabKey } from './navigation';
@@ -70,7 +70,7 @@ function OnlineManagerFollowupPanel({
   onOpenOnlineClients: () => void;
 }) {
   const today = cairoDateOnly();
-  const soon = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const soon = cairoDaysAhead(7);
   const overdueEntries: OverdueEntry[] = [];
   const upcomingEntries: OverdueEntry[] = [];
 
@@ -178,13 +178,13 @@ function OnlineManagerNewEventsPanel({
   onClose: () => void;
   onOpenOnlineClients: () => void;
 }) {
-  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const since = cairoDaysAgo(7);
   const newSubs = subscribers
-    .filter((subscriber) => subscriber.createdAt && subscriber.createdAt.slice(0, 10) >= since)
+    .filter((subscriber) => subscriber.createdAt && cairoDay(subscriber.createdAt) >= since)
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   const newPayments: NewPayItem[] = subscribers
     .flatMap((subscriber) => (subscriber.paymentHistory || [])
-      .filter((payment) => payment.at && payment.at.slice(0, 10) >= since)
+      .filter((payment) => payment.at && cairoDay(payment.at) >= since)
       .map((payment) => ({ sub: subscriber, payment })))
     .sort((a, b) => (b.payment.at || '').localeCompare(a.payment.at || ''));
 
@@ -267,7 +267,7 @@ function NewPaymentsList({ payments }: { payments: NewPayItem[] }) {
           <div key={index} className="bg-blue-50 border border-blue-100 rounded-xl p-3">
             <p className="font-bold text-gray-800 text-sm truncate">{item.sub.name}</p>
             <p className="text-[11px] text-gray-500">{item.payment.amount} {item.payment.currency} · {item.payment.paymentType || 'دفعة'}</p>
-            <p className="text-[10px] text-blue-700 font-bold">📅 {item.payment.at?.slice(0, 10)}</p>
+            <p className="text-[10px] text-blue-700 font-bold">📅 {cairoDay(item.payment.at)}</p>
           </div>
         ))}
         {payments.length > 30 && <p className="text-xs text-gray-400 text-center">+{payments.length - 30} دفعة أخرى</p>}

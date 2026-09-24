@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Shield, Plus, Trash2, CheckCircle, Globe, AlertCircle, RefreshCw } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
+import { cairoDay } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -142,7 +143,7 @@ export default function IpWhitelistTab({ notify }: { notify: NotifyFn }) {
                   <div className="font-mono font-bold text-gray-800 text-sm">{entry.ip}</div>
                   <div className="text-xs text-gray-500">{entry.label || 'بدون وصف'}</div>
                 </div>
-                <div className="text-xs text-gray-400 hidden md:block">{(entry.created_at || '').slice(0, 10)}</div>
+                <div className="text-xs text-gray-400 hidden md:block">{cairoDay(entry.created_at)}</div>
                 <button onClick={() => removeIp(entry.id)} className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg transition flex-shrink-0">
                   <Trash2 size={14} />
                 </button>

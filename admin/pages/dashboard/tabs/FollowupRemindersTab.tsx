@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { cairoDateOnly } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoDaysAhead } from '../../../../shared/cairoDate';
 import {
   Bell, Phone, MessageSquare, Clock, 
   User, 
@@ -31,8 +31,8 @@ const STATUS_COLORS: Partial<Record<LeadStatus, string>> = {
 };
 
 const TODAY = cairoDateOnly();
-const TOMORROW = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-const WEEK = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+const TOMORROW = cairoDaysAhead(1);
+const WEEK = cairoDaysAhead(7);
 
 function bucket(lead: LeadItem): 'overdue' | 'today' | 'tomorrow' | 'week' | null {
   const d = lead.nextFollowUpDate;

@@ -45,6 +45,37 @@ function browserSources() {
   return out.map(f => path.relative(ROOT, f).split(path.sep).join('/'));
 }
 
+test('no screen takes a day or a month from the UTC clock, or from a stored instant', () => {
+  // The first test below catches `new Date().toISOString().slice(0, 10)`. The
+  // same fault had more shapes than that one: `Date.now() + 7 * 86400000`
+  // formatted in UTC for «خلال أسبوع», week starts and month lists built on the
+  // current instant, and — 138 times — a stored UTC value cut to its UTC day,
+  // `(createdAt || '').slice(0, 10)`, so a lead that arrived at 01:30 Cairo was
+  // counted, charted and listed under the day before. On 24 September 2026,
+  // 21 of the day's first 36 leads arrived after midnight. Every one of those
+  // now goes through shared/cairoDate.ts.
+  const clock = /\.toISOString\(\)\.(?:slice|substring)\(0,\s*(?:7|10)\)|\.toISOString\(\)\.split\('T'\)\[0\]/;
+  const stored = /(?:\.date|createdAt|\.at|paidAt|updatedAt|created_at|updated_at|sentAt|sent_at)(?: \|\| '')?\)?\??\.slice\(0,\s?(?:7|10)\)|\|\|\s?''\)\.\s?slice\(0,\s?(?:7|10)\)/;
+  // Calendar dates that are not instants: a consultation's session day and a
+  // leave request's start date are stored as the day itself.
+  const allowed = new Set([
+    'admin/pages/dashboard/tabs/consultations/ConsultationBookingsTab.tsx',
+    'admin/pages/dashboard/useStaffOwnData.ts',
+  ]);
+  const offenders = [];
+  for (const rel of browserSources()) {
+    if (allowed.has(rel)) continue;
+    const source = codeOnly(fs.readFileSync(path.join(ROOT, rel), 'utf8'));
+    source.split('\n').forEach((line, index) => {
+      // cairoDay(x).slice(0, 7) is the Cairo month, which is the point; take
+      // the call out before looking (one level of nested parentheses, for casts).
+      const bare = line.replace(/cairoDay\((?:[^()]|\([^()]*\))*\)/g, 'CAIRO_DAY');
+      if (clock.test(bare) || stored.test(bare)) offenders.push(`${rel}:${index + 1}: ${line.trim().slice(0, 120)}`);
+    });
+  }
+  assert.deepEqual(offenders, [], 'these take a UTC day or month:\n' + offenders.join('\n'));
+});
+
 test('no screen decides what "today" is in UTC', () => {
   const files = browserSources();
   // Denominator: a walk that stopped matching would report a clean bill.

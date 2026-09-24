@@ -5,7 +5,7 @@
 // the boundary.
 
 import { useEffect, useMemo, useState } from 'react';
-import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
+import { CAIRO_TIME_ZONE, cairoDay } from '../../../shared/cairoDate';
 
 interface AttendanceLog {
   id: string; date: string; check_in: string | null; check_out: string | null;
@@ -105,7 +105,7 @@ export default function StaffAttendancePanel({ staffId }: { staffId?: string }) 
                   const cfg = ATTENDANCE_STATUS_LABEL[log.status] || { label: log.status, cls: 'bg-gray-50 text-gray-600 border-gray-200' };
                   return (
                     <div key={log.id} className="flex items-center justify-between gap-3 px-5 py-2.5 text-sm">
-                      <span className="font-bold text-gray-700 w-24 flex-shrink-0">{log.date?.slice(0, 10)}</span>
+                      <span className="font-bold text-gray-700 w-24 flex-shrink-0">{cairoDay(log.date)}</span>
                       <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${cfg.cls}`}>{cfg.label}</span>
                       <span className="text-gray-500 text-xs flex-1 text-center" dir="ltr">
                         {log.check_in || '—'} → {log.check_out || '—'}

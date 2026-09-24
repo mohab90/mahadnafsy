@@ -1,5 +1,5 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
-import { cairoDateOnly } from '../../../../../shared/cairoDate';
+import { cairoDateOnly, cairoDay } from '../../../../../shared/cairoDate';
 
 import type { PaymentDraft } from '../../../../components/PaymentModal';
 import { currencyForBranch } from '../../../../lib/branchCurrency';
@@ -66,7 +66,7 @@ const downloadLeadsCsv = (leads: LeadItem[]) => {
     lead.status,
     lead.interestLevel || '',
     lead.assignedSalesName || '',
-    (lead.createdAt || '').slice(0, 10),
+    cairoDay(lead.createdAt),
   ]);
   downloadCsv(`leads-${cairoDateOnly()}`, [headers, ...rows]);
 };

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Calendar, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCrmData } from '../../../context/siteDataSlices';
-import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
+import { CAIRO_TIME_ZONE, cairoDateOnly } from '../../../../shared/cairoDate';
 
 
 // consultations.status is enum('PENDING','CONFIRMED','COMPLETED','CANCELLED'),
@@ -76,7 +76,7 @@ export default function ConsultationCalendarTab() {
     setSelectedDate(null);
   }
 
-  const todayStr = today.toISOString().slice(0, 10);
+  const todayStr = cairoDateOnly(today);
 
   // Summary for current month
   const monthConsults = consultations.filter(c => consultDay(c).slice(0, 7) === monthStr);

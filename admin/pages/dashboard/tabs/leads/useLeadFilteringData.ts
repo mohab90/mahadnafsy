@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react';
-import { cairoDateOnly } from '../../../../../shared/cairoDate';
+import { cairoDateOnly, cairoDaysAgo, cairoDaysAhead } from '../../../../../shared/cairoDate';
 import type { BranchOption } from '../../../../hooks/useBranches';
 import type { LeadItem, LeadStatus, StaffMember } from '../../../../types';
 import { DEFAULT_SOURCES, isOnlineSource } from '../crmConstants';
@@ -114,11 +114,11 @@ export function useLeadFilteringData({
       const nextFollowupDate = lead.nextFollowUpDate || '';
       if (leadsFollowupFilter === 'no_followup') return !nextFollowupDate;
       if (!nextFollowupDate) return false;
-      const past3 = new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10);
-      const past7 = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
-      const past30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-      const next3 = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
-      const next7 = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+      const past3 = cairoDaysAgo(3);
+      const past7 = cairoDaysAgo(7);
+      const past30 = cairoDaysAgo(30);
+      const next3 = cairoDaysAhead(3);
+      const next7 = cairoDaysAhead(7);
       if (leadsFollowupFilter === 'today') return nextFollowupDate === todayDate;
       if (leadsFollowupFilter === 'overdue') return nextFollowupDate < todayDate;
       if (leadsFollowupFilter === 'past3d') return nextFollowupDate >= past3 && nextFollowupDate < todayDate;

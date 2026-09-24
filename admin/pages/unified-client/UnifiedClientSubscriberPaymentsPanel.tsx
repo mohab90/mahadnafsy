@@ -9,6 +9,7 @@ import { ptLabels } from './constants';
 import { UnifiedClientPaymentSummaryPanel } from './UnifiedClientPaymentSummaryPanel';
 import type { SettlementCurrency } from '../../lib/branchCurrency';
 import { useBranches } from '../../hooks/useBranches';
+import { cairoDay } from '../../../shared/cairoDate';
 
 const PaymentModal = React.lazy(() => import('../../components/PaymentModal'));
 
@@ -160,7 +161,7 @@ export function UnifiedClientSubscriberPaymentsPanel({
                   <div className="flex items-center gap-2 flex-wrap text-[10px] text-gray-400">
                     {p.paymentMethod && <span className="bg-gray-100 px-1.5 py-0.5 rounded">{p.paymentMethod}</span>}
                     {p.staffName && <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">بواسطة: {p.staffName}</span>}
-                    <span>{p.at?.slice(0, 10)}</span>
+                    <span>{cairoDay(p.at)}</span>
                     {p.transactionId && <span className="italic">#{p.transactionId}</span>}
                     {p.note && !p.transactionId && <span className="italic">{p.note}</span>}
                   </div>
@@ -174,7 +175,7 @@ export function UnifiedClientSubscriberPaymentsPanel({
                       const w = window.open('', '_blank', 'width=700,height=900');
                       if (!w) return;
                       const courseName = p.itemTitle || courses.find(c => c.id === p.courseId)?.title || '';
-                      w.document.write(`<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><title>إيصال دفع</title><style>body{font-family:Arial,sans-serif;padding:40px;direction:rtl;color:#111}.header{text-align:center;border-bottom:3px solid #d97706;padding-bottom:20px;margin-bottom:30px}h1{color:#d97706;margin:0;font-size:24px}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{padding:12px 16px;border:1px solid #e5e7eb;text-align:right}th{background:#fffbeb;font-weight:700}tfoot td{font-weight:700;background:#f0fdf4}.footer{margin-top:40px;text-align:center;color:#888;font-size:12px;border-top:1px solid #e5e7eb;padding-top:16px}</style></head><body><div class="header"><h1>معهد الدراسات النفسية</h1><p style="color:#888;font-size:12px">إيصال دفع — ${escapeHtml(p.at?.slice(0, 10) || '')}</p></div><h3>العميل: ${escapeHtml(clientName)}${p.staffName ? ` | بواسطة: ${escapeHtml(p.staffName)}` : ''}</h3><table><thead><tr><th>الخدمة</th><th>النوع</th><th>وسيلة الدفع</th><th>المبلغ</th></tr></thead><tbody><tr><td>${escapeHtml(courseName || ptLabels[p.paymentType || ''] || 'دفعة')}</td><td>${escapeHtml(ptLabels[p.paymentType || ''] || '—')}</td><td>${escapeHtml(p.paymentMethod || '—')}</td><td>${escapeHtml(Number(p.amount).toLocaleString('ar-EG-u-nu-latn'))} ${escapeHtml(p.currency || 'EGP')}</td></tr></tbody><tfoot><tr><td colspan="3">الإجمالي</td><td>${escapeHtml(Number(p.amount).toLocaleString('ar-EG-u-nu-latn'))} ${escapeHtml(p.currency || 'EGP')}</td></tr></tfoot></table>${p.transactionId ? `<p style="margin-top:16px;font-size:12px;color:#888;">رقم المعاملة: ${escapeHtml(p.transactionId)}</p>` : ''}<div class="footer">معهد الدراسات النفسية — mahadnafsy.com</div></body></html>`);
+                      w.document.write(`<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><title>إيصال دفع</title><style>body{font-family:Arial,sans-serif;padding:40px;direction:rtl;color:#111}.header{text-align:center;border-bottom:3px solid #d97706;padding-bottom:20px;margin-bottom:30px}h1{color:#d97706;margin:0;font-size:24px}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{padding:12px 16px;border:1px solid #e5e7eb;text-align:right}th{background:#fffbeb;font-weight:700}tfoot td{font-weight:700;background:#f0fdf4}.footer{margin-top:40px;text-align:center;color:#888;font-size:12px;border-top:1px solid #e5e7eb;padding-top:16px}</style></head><body><div class="header"><h1>معهد الدراسات النفسية</h1><p style="color:#888;font-size:12px">إيصال دفع — ${escapeHtml(cairoDay(p.at) || '')}</p></div><h3>العميل: ${escapeHtml(clientName)}${p.staffName ? ` | بواسطة: ${escapeHtml(p.staffName)}` : ''}</h3><table><thead><tr><th>الخدمة</th><th>النوع</th><th>وسيلة الدفع</th><th>المبلغ</th></tr></thead><tbody><tr><td>${escapeHtml(courseName || ptLabels[p.paymentType || ''] || 'دفعة')}</td><td>${escapeHtml(ptLabels[p.paymentType || ''] || '—')}</td><td>${escapeHtml(p.paymentMethod || '—')}</td><td>${escapeHtml(Number(p.amount).toLocaleString('ar-EG-u-nu-latn'))} ${escapeHtml(p.currency || 'EGP')}</td></tr></tbody><tfoot><tr><td colspan="3">الإجمالي</td><td>${escapeHtml(Number(p.amount).toLocaleString('ar-EG-u-nu-latn'))} ${escapeHtml(p.currency || 'EGP')}</td></tr></tfoot></table>${p.transactionId ? `<p style="margin-top:16px;font-size:12px;color:#888;">رقم المعاملة: ${escapeHtml(p.transactionId)}</p>` : ''}<div class="footer">معهد الدراسات النفسية — mahadnafsy.com</div></body></html>`);
                       w.document.close(); setTimeout(() => w.print(), 500);
                     }}
                     className="text-amber-500 hover:text-amber-700 hover:bg-amber-50 p-1 rounded-lg transition">

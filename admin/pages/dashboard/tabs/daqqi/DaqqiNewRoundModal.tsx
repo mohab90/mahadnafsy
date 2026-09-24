@@ -11,6 +11,7 @@ import { DAQQI_DAYS_OF_WEEK as daysOfWeek, DAQQI_TIME_SLOTS as timeSlotsList } f
 import type { DaqqiDraftType } from './daqqiScheduleUtils';
 import { isEnrolledInCourse } from './daqqiScheduleUtils';
 import { isCollected } from '../../../../lib/money';
+import { cairoDay } from '../../../../../shared/cairoDate';
 
 
 export function DaqqiNewRoundModal({
@@ -170,7 +171,7 @@ export function DaqqiNewRoundModal({
                             const paid = (s.paymentHistory || []).reduce((sum, p) => isCollected(p) && p.currency === 'EGP' ? sum + Number(p.amount) : sum, 0);
                             const cp = roundCourse?.price?.EGP ?? 0;
                             const enrolledNames = enrolledLabels(courses, bundles, s.enrolledCourseIds || []);
-                            const bookingDate = (s.createdAt || '').slice(0, 10);
+                            const bookingDate = cairoDay(s.createdAt);
                             return (
                               <label key={s.id} className="flex items-center gap-3 border border-gray-200 rounded-xl px-3 py-2.5 cursor-pointer hover:bg-gray-50">
                                 <input type="checkbox" checked={daqqiSelectedAttendees.has(s.id)} onChange={e => setDaqqiSelectedAttendees(prev => { const next = new Set(prev); e.target.checked ? next.add(s.id) : next.delete(s.id); return next; })} />

@@ -6,6 +6,7 @@ import type { ActivityLogItem } from '../../../types';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 import { promptDialog } from '../../../../shared/ui/promptDialog';
 import { downloadCsv as writeCsv } from '../../../../shared/csv';
+import { cairoDay } from '../../../../shared/cairoDate';
 
 interface Props {
   isSalesOnly: boolean;
@@ -91,7 +92,7 @@ const ActivityTab: React.FC<Props> = ({ isSalesOnly }) => {
     return activityLogs.filter((row) => {
       const rowActor = row.actorName || row.actor || '';
       const rowSection = row.section || 'عام';
-      const rowDate = String(row.at || '').slice(0, 10);
+      const rowDate = cairoDay(row.at);
       if (actor && rowActor !== actor) return false;
       if (section && rowSection !== section) return false;
       if (dateFrom && rowDate < dateFrom) return false;

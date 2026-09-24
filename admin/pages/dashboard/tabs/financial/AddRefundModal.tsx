@@ -5,6 +5,7 @@ import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { SubscriberItem } from '../../../../types';
 import { Modal } from '../../../../../shared/ui/Modal';
 import { REFUND_METHOD_CODES, paymentMethodLabel } from '../../../../../shared/paymentMethods';
+import { cairoDay } from '../../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -138,7 +139,7 @@ export function AddRefundModal({ onClose, onCreated, notify }: {
                   <option value="">اختر الدفعة...</option>
                   {payments.map(item => (
                     <option key={item.id} value={item.id}>
-                      {Number(item.amount).toLocaleString('ar-EG-u-nu-latn')} {item.currency || 'EGP'} — {String(item.at || '').slice(0, 10)}
+                      {Number(item.amount).toLocaleString('ar-EG-u-nu-latn')} {item.currency || 'EGP'} — {cairoDay(item.at)}
                       {item.paymentMethod ? ` — ${item.paymentMethod}` : ''}
                     </option>
                   ))}

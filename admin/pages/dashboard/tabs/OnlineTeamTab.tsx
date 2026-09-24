@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { rangeStartDate } from '../../../lib/rangeStart';
-import { cairoDateOnly, cairoMonthOnly } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoMonthOnly, cairoDay, cairoDaysAgo } from '../../../../shared/cairoDate';
 import {
   Monitor, Users, CreditCard, AlertCircle, TrendingUp,
   BarChart3, Target, Calendar, Phone, 
@@ -25,7 +25,7 @@ const isOnlineBranch = (branch?: string) => ['ONLINE_EGYPT', 'ONLINE_SAUDI', 'ON
 
 function inRange(dateStr: string | undefined, range: TimeRange): boolean {
   if (range === 'all') return true;
-  const d = (dateStr || '').slice(0, 10);
+  const d = cairoDay(dateStr);
   return d >= rangeStartDate(range);
 }
 
@@ -50,13 +50,7 @@ const formatCurrencyAmounts = (amounts: CurrencyAmounts) =>
     .join(' · ') || '—';
 
 function getLast7Days() {
-  const days: string[] = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    days.push(d.toISOString().slice(0, 10));
-  }
-  return days;
+  return Array.from({ length: 7 }, (_, i) => cairoDaysAgo(6 - i));
 }
 
 const MOTIVATE_ONLINE = [
@@ -218,7 +212,7 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
   const weeklyChartData = useMemo(() => last7Days.map(day => ({
     label: day.slice(5),
     value: payments.filter(payment =>
-      payment.status === 'paid' && isOnlineBranch(payment.branch) && payment.at.slice(0, 10) === day
+      payment.status === 'paid' && isOnlineBranch(payment.branch) && cairoDay(payment.at) === day
     ).reduce((sum, payment) => sum + payment.amountEgp, 0),
   })), [payments, last7Days]);
 
@@ -226,7 +220,7 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
     label: day.slice(5),
     value: payments.filter(payment =>
       payment.status === 'paid' && payment.isInstallment && isOnlineBranch(payment.branch)
-      && payment.at.slice(0, 10) === day
+      && cairoDay(payment.at) === day
     ).reduce((sum, payment) => sum + payment.amountEgp, 0),
   })), [payments, last7Days]);
 

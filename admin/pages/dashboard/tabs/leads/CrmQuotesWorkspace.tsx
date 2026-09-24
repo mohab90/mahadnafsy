@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Check, FileText, Plus, RefreshCw, Send, ShoppingCart, X } from 'lucide-react';
 import type { BundleItem, CourseItem, LeadItem, SubscriberItem } from '../../../../types';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
+import { cairoDaysAhead } from '../../../../../shared/cairoDate';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 type QuoteStatus = 'draft' | 'pending_approval' | 'approved' | 'sent' | 'accepted' | 'rejected' | 'expired' | 'converted' | 'cancelled';
@@ -33,7 +34,7 @@ const statusStyle: Record<QuoteStatus, string> = {
 const emptyItem = (): DraftItem => ({ item_type: 'course', item_id: '', quantity: 1 });
 const newDraft = () => ({
   lead_id: '', currency: 'EGP' as 'EGP' | 'SAR' | 'USD', discount_percent: 0, tax_percent: 0,
-  valid_until: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10), notes: '', items: [emptyItem()],
+  valid_until: cairoDaysAhead(14), notes: '', items: [emptyItem()],
 });
 
 export function CrmQuotesWorkspace({

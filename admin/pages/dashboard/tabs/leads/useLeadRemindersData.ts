@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react';
-import { cairoDateOnly } from '../../../../../shared/cairoDate';
+import { cairoDateOnly, cairoDay, cairoDaysAhead } from '../../../../../shared/cairoDate';
 import type React from 'react';
 import type { CommunicationRecord, CrmInsights, LeadItem } from '../../../../types';
 import { calcLeadScore } from '../leadUtils';
@@ -48,7 +48,7 @@ export function useLeadRemindersData({
   insights,
 }: UseLeadRemindersDataArgs) {
   const todayStr = useMemo(() => cairoDateOnly(), []);
-  const next7 = useMemo(() => new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10), []);
+  const next7 = useMemo(() => cairoDaysAhead(7), []);
 
   const data = useMemo(() => {
     // The server already applied hidden/status/window; re-applying them to its
@@ -137,7 +137,7 @@ export function useLeadRemindersData({
       const totalDue = leads.filter(lead => lead.nextFollowUpDate && lead.nextFollowUpDate <= todayStr && !lead.hidden).length;
       const completed = leads.filter(lead => {
         if (!lead.nextFollowUpDate || lead.nextFollowUpDate > todayStr || lead.hidden) return false;
-        return (lead.communications || []).some(comm => comm.date.slice(0, 10) >= lead.nextFollowUpDate!);
+        return (lead.communications || []).some(comm => cairoDay(comm.date) >= lead.nextFollowUpDate!);
       }).length;
       completionRate = totalDue > 0 ? Math.round((completed / totalDue) * 100) : 0;
     }
@@ -158,7 +158,7 @@ export function useLeadRemindersData({
   }, [insights, leads, next7, reminderStaffFilter, snoozeIds, todayStr]);
 
   const snooze1Day = useCallback(async (lead: LeadItem) => {
-    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    const tomorrow = cairoDaysAhead(1);
     if (await updateLead({ ...lead, nextFollowUpDate: tomorrow }) === false) return;
     setSnoozeIds(current => new Set([...current, lead.id]));
   }, [setSnoozeIds, updateLead]);

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { PaymentHistoryEntry, SubscriberItem } from '../../../../types';
 import { paymentTypeLabels } from './financialTabUtils';
+import { cairoDay } from '../../../../../shared/cairoDate';
 
 export const ONLINE_CHANNEL = '__online_paymob__';
 
@@ -97,7 +98,7 @@ export function useFinancialOrdersData({
       amount: row.amount,
       currency: row.currency,
       amountEGP: toEGP(row.amount, row.currency),
-      date: (row.paidAt || row.createdAt || '').slice(0, 10),
+      date: cairoDay(row.paidAt || row.createdAt),
       sortKey: row.paidAt || row.createdAt || '',
       note: row.transactionId ? `#${row.transactionId}` : '—',
       isOnline: true,
@@ -123,8 +124,8 @@ export function useFinancialOrdersData({
           amount: payment.amount,
           currency: payment.currency,
           amountEGP: toEGP(payment.amount, payment.currency),
-          date: (payment.at || '').slice(0, 10),
-          sortKey: payment.at || `${(payment.at || '').slice(0, 10)}T${String(index).padStart(6, '0')}`,
+          date: cairoDay(payment.at),
+          sortKey: payment.at || `${cairoDay(payment.at)}T${String(index).padStart(6, '0')}`,
           note: payment.note || '—',
           isOnline: false,
           staffName: payment.staffName || null,
@@ -150,7 +151,7 @@ export function useFinancialOrdersData({
           amount: payment.amount,
           currency: payment.currency,
           amountEGP: toEGP(payment.amount, payment.currency),
-          date: (payment.at || '').slice(0, 10),
+          date: cairoDay(payment.at),
           sortKey: payment.at || '',
           note: payment.note || (payment.transactionId ? `#${payment.transactionId}` : '—'),
           isOnline: false,

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Layers, MessageSquare, Send, X } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
+import { cairoDay } from '../../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -193,7 +194,7 @@ export function SegmentationTab({ leads, notify }: { leads: any[]; subscribers: 
                   <td className="px-4 py-3 text-center">
                     <span className={`font-bold text-sm ${l._score >= 70 ? 'text-red-600' : l._score >= 50 ? 'text-orange-600' : 'text-blue-600'}`}>{l._score}</span>
                   </td>
-                  <td className="px-4 py-3 text-gray-400 text-xs">{(l.createdAt || l.created_at || '').slice(0, 10) || '—'}</td>
+                  <td className="px-4 py-3 text-gray-400 text-xs">{cairoDay(l.createdAt || l.created_at) || '—'}</td>
                 </tr>
               ))}
               {filtered.length === 0 && (

@@ -1,4 +1,5 @@
 import type { LeadItem, LeadStatus } from '../../../types';
+import { cairoDay } from '../../../../shared/cairoDate';
 
 /**
  * How long a lead has gone without a follow-up, in tiers.
@@ -38,7 +39,7 @@ export function getRottenLevel(lead: LeadItem): 0 | 1 | 2 | 3 | 4 {
   const lastComm = comms.length
     ? [...comms].sort((a, b) => b.date.localeCompare(a.date))[0]
     : null;
-  const refDate = lastComm ? lastComm.date.slice(0, 10) : (lead.createdAt ? lead.createdAt.slice(0, 10) : null);
+  const refDate = lastComm ? cairoDay(lastComm.date) : (lead.createdAt ? cairoDay(lead.createdAt) : null);
   if (!refDate) return 0;
   const days = Math.floor((Date.now() - new Date(refDate).getTime()) / 86_400_000);
   for (let tier = staleDays.length; tier >= 1; tier--) {
@@ -91,7 +92,7 @@ export function calcLeadScore(lead: LeadItem): number {
     const now = Date.now();
     const comms = lead.communications ?? [];
     const lastContactMs = comms.length
-      ? Math.max(...comms.map(c => new Date(c.date?.slice(0, 10) ?? '').getTime()).filter(n => !isNaN(n)))
+      ? Math.max(...comms.map(c => new Date(cairoDay(c.date) ?? '').getTime()).filter(n => !isNaN(n)))
       : NaN;
     if (!isNaN(lastContactMs)) {
       const daysSinceContact = Math.floor((now - lastContactMs) / 86400000);
