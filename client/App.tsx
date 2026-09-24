@@ -42,7 +42,7 @@ const lazyPage = (element: React.ReactNode) => (
   <Suspense fallback={<PageSpinner />}>{element}</Suspense>
 );
 import { SiteDataProvider, useSiteData } from './context/SiteDataContext';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import ErrorBoundary from '../shared/ui/ErrorBoundary';
 import { ToastProvider } from '../shared/ui/Toast';
 import { instituteWhatsApp } from './lib/whatsappLink';
@@ -406,6 +406,41 @@ const SessionTimeoutWarner: React.FC = () => {
   );
 };
 
+/**
+ * Why a student who was signed in a moment ago no longer is.
+ *
+ * An account holds one session at a time, so a sign-in on another phone, another
+ * browser or inside WhatsApp's own browser ends this one. Said plainly, it is
+ * something a student can act on; left unsaid, it looked like «الفيديوهات مش
+ * شغالة» and sent people to try another browser — which only worked because it
+ * meant signing in again.
+ */
+const SessionEndedNotice: React.FC = () => {
+  const { sessionEnded, dismissSessionEnded } = useAuth();
+  const { pathname, search } = useLocation();
+  // Not on the sign-in page itself: the student is already where the notice
+  // would send them, and on a phone it covered «الدخول برقم الواتساب».
+  if (!sessionEnded || pathname === '/auth') return null;
+  return (
+    <div className="fixed bottom-4 inset-x-4 sm:inset-x-auto sm:right-4 z-50 sm:max-w-sm bg-white border border-amber-300 rounded-2xl shadow-lg p-4" dir="rtl" role="alert">
+      <div className="flex items-start gap-2">
+        <p className="flex-1 text-sm text-gray-800 leading-relaxed">
+          <span className="block font-bold text-amber-700 mb-1">تم تسجيل الخروج من هذا الجهاز</span>
+          تم فتح حسابك من جهاز أو متصفح آخر، والحساب يعمل على جهاز واحد في نفس الوقت.
+          سجّل الدخول هنا مرة أخرى لمتابعة المحاضرات.
+        </p>
+        <button type="button" onClick={dismissSessionEnded} aria-label="إغلاق" className="text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
+      </div>
+      <Link
+        to={`/auth?redirect=${encodeURIComponent(pathname + search)}`}
+        className="mt-3 block text-center bg-primary-600 hover:bg-primary-700 text-white text-sm font-bold py-2 rounded-xl transition"
+      >
+        تسجيل الدخول
+      </Link>
+    </div>
+  );
+};
+
 const useMiniFooter = () => {
   const { pathname } = useLocation();
   return MINI_FOOTER_ROUTES.some(r => pathname === r || pathname.startsWith(r));
@@ -489,6 +524,7 @@ const AppShell: React.FC = () => {
           <Suspense fallback={null}><AiTutorWidget /></Suspense>
           <WaFloat />
           <SessionTimeoutWarner />
+          <SessionEndedNotice />
         </div>
       </ErrorBoundary>
     </>

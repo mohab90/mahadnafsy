@@ -107,8 +107,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
   const [lecturesLoading, setLecturesLoading] = useState(false);
   // Resolved playable URL for the selected lecture. Paid lectures no longer ship their URL in
   // the public catalog — it's fetched on demand from the auth-gated access endpoint.
-  const [resolvedUrl, setResolvedUrl] = useState('');
-  const [accessError, setAccessError] = useState('');
+  //
+  // Stored with the lecture it belongs to. The player is keyed on the selected
+  // lecture, and the effect that fetches the next ticket only runs after the
+  // render that changes the selection — so for one render the new lecture's
+  // player was built around the previous lecture's ticket, and requested it.
+  // The access log shows it on every switch: the old ticket again, aborted a
+  // moment later (499), or refused outright (401) once it was past its five
+  // minutes. A URL that belongs to another lecture is no URL at all.
+  const [access, setAccess] = useState({ lectureId: '', url: '', error: '' });
+  const resolvedUrl = access.lectureId === selectedId ? access.url : '';
+  const accessError = access.lectureId === selectedId ? access.error : '';
 
   // Keyed on the id the server resolved, not on a client-side email match: a
   // client who signed in by WhatsApp number has no email, and matching on it
@@ -228,20 +237,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
   // on demand from the auth-gated endpoint (which verifies enrollment + limit + drip).
   useEffect(() => {
     let cancelled = false;
-    setResolvedUrl('');
-    setAccessError('');
     if (!selected || selected.locked) return;
-    if (selected.videoUrl) { setResolvedUrl(selected.videoUrl); return; }
-    mysqlClient.getLectureAccess(selected.id)
+    const lectureId = selected.id;
+    const settle = (url: string, error = '') => setAccess({ lectureId, url, error });
+    if (selected.videoUrl) { settle(selected.videoUrl); return; }
+    mysqlClient.getLectureAccess(lectureId)
       .then(r => {
         if (cancelled) return;
-        if (r.accessible && r.video_url) setResolvedUrl(r.video_url);
+        if (r.accessible && r.video_url) settle(r.video_url);
         else if (r.reason === 'drip_locked') {
           const when = r.unlocks_at ? new Date(r.unlocks_at).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE }) : '';
-          setAccessError(`المحاضرة هتفتح في موعدها${when ? ` يوم ${when}` : ''}`);
-        } else setAccessError('المحاضرة غير متاحة ضمن صلاحية اشتراكك الحالية');
+          settle('', `المحاضرة هتفتح في موعدها${when ? ` يوم ${when}` : ''}`);
+        } else settle('', 'المحاضرة غير متاحة ضمن صلاحية اشتراكك الحالية');
       })
-      .catch(() => { if (!cancelled) setAccessError('تعذر التحقق من صلاحية المحاضرة؛ حاول مرة أخرى'); });
+      .catch(() => { if (!cancelled) settle('', 'تعذر التحقق من صلاحية المحاضرة؛ حاول مرة أخرى'); });
     return () => { cancelled = true; };
     // Keyed on the three fields of `selected` that decide the answer, not the
     // object: it is re-derived from the lecture list on every render, so

@@ -1,12 +1,15 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { AuthUser } from '../types';
-import { mysqlAuth } from '../lib/mysqlapi';
+import { mysqlAuth, SESSION_ENDED_EVENT } from '../lib/mysqlapi';
 
 interface AuthContextShape {
   authUser: AuthUser | null | undefined;
   setAuthUser: (u: AuthUser | null | undefined) => void;
   logout: () => void;
   refreshAuth: () => void;
+  /** The server ended this browser's session — usually a sign-in somewhere else. */
+  sessionEnded: boolean;
+  dismissSessionEnded: () => void;
 }
 
 const AuthContext = createContext<AuthContextShape>({
@@ -14,10 +17,35 @@ const AuthContext = createContext<AuthContextShape>({
   setAuthUser: () => {},
   logout: () => {},
   refreshAuth: () => {},
+  sessionEnded: false,
+  dismissSessionEnded: () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authUser, setAuthUser] = useState<AuthUser | null | undefined>(undefined);
+  const [sessionEnded, setSessionEnded] = useState(false);
+
+  // A session that ends while the page is open — another device signed in — is
+  // reported by whichever request notices first: the heartbeat, a lecture's
+  // access check, the subscriber refresh. Until now each of them failed on its
+  // own and the page stayed signed in, so the student saw a course whose videos
+  // would not play and no reason why. Only a page that believed it was signed in
+  // reacts; a visitor who never was gets the same 401s and nothing to explain.
+  const signedIn = useRef(false);
+  useEffect(() => {
+    signedIn.current = !!authUser;
+    if (authUser) setSessionEnded(false);
+  }, [authUser]);
+  useEffect(() => {
+    const onEnded = () => {
+      if (!signedIn.current) return;
+      localStorage.removeItem('mahad-token');
+      setSessionEnded(true);
+      setAuthUser(null);
+    };
+    window.addEventListener(SESSION_ENDED_EVENT, onEnded);
+    return () => window.removeEventListener(SESSION_ENDED_EVENT, onEnded);
+  }, []);
 
   // Auth: restore session via httpOnly cookie (credentials: 'include' in all API calls)
   useEffect(() => {
@@ -59,6 +87,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .catch((err) => {
           if (isAuthError(err)) {
             localStorage.removeItem('mahad-token');
+            // Reloading does not bring an ended session back, and this is the
+            // moment a student who reloaded to "fix the videos" learns why.
+            if ((err as { code?: string } | null)?.code === 'SESSION_REVOKED') setSessionEnded(true);
             setAuthUser(null);
           } else if (attempts < 3) {
             attempts++;
@@ -88,7 +119,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ authUser, setAuthUser, logout, refreshAuth }}>
+    <AuthContext.Provider value={{
+      authUser, setAuthUser, logout, refreshAuth,
+      sessionEnded, dismissSessionEnded: () => setSessionEnded(false),
+    }}>
       {children}
     </AuthContext.Provider>
   );

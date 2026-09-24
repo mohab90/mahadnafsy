@@ -22,8 +22,25 @@ const REQUEST_TIMEOUT_MS = 8_000;
 const MAX_RETRIES = 1;
 const RETRY_BACKOFF_MS = 1_000;
 class ApiError extends Error {
-  constructor(message: string, readonly status: number) { super(message); }
+  constructor(message: string, readonly status: number, readonly code = '') { super(message); }
 }
+
+/**
+ * Fired when the server stops honouring this browser's session.
+ *
+ * A customer account holds one session at a time, so signing in on a second
+ * phone or browser — or inside WhatsApp's own browser — ends the first. The page
+ * left behind never found out: it kept the course on screen, the free first
+ * lecture played because it needs no session, and every other lecture answered
+ * «تعذر التحقق من صلاحية المحاضرة؛ حاول مرة أخرى», which no retry could fix.
+ * Production's log showed 85 of 105 viewers in two days hitting it.
+ *
+ * Only the answers requireAuth gives about the session itself count. A 401
+ * about the request — «Current password incorrect» — is not a signed-out user.
+ */
+export const SESSION_ENDED_EVENT = 'mahad:session-ended';
+const DEAD_SESSION_CODES = new Set(['SESSION_REVOKED', 'ACCOUNT_UNAVAILABLE']);
+const DEAD_SESSION_ERRORS = new Set(['Unauthorized', 'Invalid token', 'Token revoked']);
 
 // Identical GETs that are in flight at the same moment share one request. Same
 // reasoning as admin/lib/mysqlapi.ts: independent components asking for the same
@@ -62,7 +79,13 @@ async function apiFetchInner<T>(path: string, options: RequestInit = {}, auth = 
       await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS));
       return apiFetch<T>(path, options, auth, _retry + 1);
     }
-    if (!res.ok) { const b = await res.json().catch(() => ({})); throw new ApiError(b.error || `HTTP ${res.status}`, res.status); }
+    if (!res.ok) {
+      const b = await res.json().catch(() => ({}));
+      if (auth && res.status === 401 && (DEAD_SESSION_CODES.has(b.code) || DEAD_SESSION_ERRORS.has(b.error))) {
+        window.dispatchEvent(new CustomEvent(SESSION_ENDED_EVENT, { detail: { code: b.code || '' } }));
+      }
+      throw new ApiError(b.error || `HTTP ${res.status}`, res.status, b.code || '');
+    }
     return res.json() as Promise<T>;
   } catch (err: unknown) {
     clearTimeout(timeoutId);

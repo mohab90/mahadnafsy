@@ -61,7 +61,11 @@ const CourseDetails: React.FC = () => {
   const [, setShowLeadForm] = useState(true);
     const [selectedLectureId, setSelectedLectureId] = useState('');
     // Resolved playable URL — paid lectures no longer ship their URL publicly; fetched on demand.
-    const [resolvedLectureUrl, setResolvedLectureUrl] = useState('');
+    // Stored with its lecture, so the render that switches lectures never hands
+    // the new player the previous lecture's ticket (UserDashboardVideoPlayer has
+    // the whole story).
+    const [resolvedLecture, setResolvedLecture] = useState({ lectureId: '', url: '' });
+    const resolvedLectureUrl = resolvedLecture.lectureId === selectedLectureId ? resolvedLecture.url : '';
     const [lectureGateNotice, setLectureGateNotice] = useState('');
     const [leadName, setLeadName] = useState('');
     const [leadPhone, setLeadPhone] = useState('');
@@ -162,11 +166,11 @@ const CourseDetails: React.FC = () => {
     // on demand from the auth-gated endpoint (the public catalog withholds paid URLs).
     useEffect(() => {
         let cancelled = false;
-        setResolvedLectureUrl('');
         if (!selectedLecture || selectedLecture.locked) return;
-        if (selectedLecture.videoUrl) { setResolvedLectureUrl(selectedLecture.videoUrl); return; }
-        mysqlClient.getLectureAccess(selectedLecture.id)
-            .then(r => { if (!cancelled && r.accessible && r.video_url) setResolvedLectureUrl(r.video_url); })
+        const lectureId = selectedLecture.id;
+        if (selectedLecture.videoUrl) { setResolvedLecture({ lectureId, url: selectedLecture.videoUrl }); return; }
+        mysqlClient.getLectureAccess(lectureId)
+            .then(r => { if (!cancelled && r.accessible && r.video_url) setResolvedLecture({ lectureId, url: r.video_url }); })
             .catch(() => {});
         return () => { cancelled = true; };
         // Keyed on the fields that decide the answer rather than the
