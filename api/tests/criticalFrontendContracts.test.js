@@ -364,13 +364,19 @@ test('CRM reminders render in their own tab and heavy lead views stay deferred',
     leads.indexOf("subTab === 'reminders'"),
     leads.indexOf("subTab === 'performance'"),
   );
-  // 'الاتصالات' was merged into 'المتابعات': one tab, two views switched by
-  // followupView. Both panels must therefore render under subTab='reminders',
-  // and communications must no longer be a top-level tab of its own.
+  // الاتصالات is gone. It was a timeline of every logged communication sitting
+  // beside the follow-up queues — the same rows read a second way — and the desk
+  // asked for it to be removed rather than rearranged. The follow-ups panel is
+  // the only view under this tab now.
+  //
+  // Logging a contact survived it as an action rather than a view: the button
+  // that opens it is on a pipeline card, so the panel is mounted beside the
+  // screen and opens wherever it is asked for, instead of only on the tab that
+  // used to host it.
   assert.match(remindersSection, /<LeadRemindersPanel/);
-  assert.match(remindersSection, /<LeadCommunicationsTimeline/);
-  assert.match(leads, /followupView === 'followups'/);
-  assert.match(leads, /followupView === 'calls'/);
+  assert.doesNotMatch(leads, /LeadCommunicationsTimeline/);
+  assert.doesNotMatch(leads, /followupView/);
+  assert.match(leads, /<QuickLogContactPanel/);
   assert.equal((leads.match(/subTab === 'communications'/g) || []).length, 0);
   assert.doesNotMatch(tabs, /\['communications', 'الاتصالات'/);
   assert.match(tabs, /\['reminders', 'المتابعات'/);

@@ -156,11 +156,15 @@ test('CRM writes, bulk messaging and interaction deletion preserve role data sco
 
   const leadsTab = fs.readFileSync(path.join(__dirname, '..', '..', 'admin', 'pages', 'dashboard', 'tabs', 'LeadsTab.tsx'), 'utf8');
   const leadTable = fs.readFileSync(path.join(__dirname, '..', '..', 'admin', 'pages', 'dashboard', 'tabs', 'LeadTable.tsx'), 'utf8');
-  const communications = fs.readFileSync(path.join(__dirname, '..', '..', 'admin', 'pages', 'dashboard', 'tabs', 'leads', 'LeadCommunicationsControls.tsx'), 'utf8');
+  // The form moved out of the الاتصالات view when that view was removed as
+  // duplicated data. Same form, mounted beside the leads screen so the pipeline
+  // card's button can open it from any tab.
+  const communications = fs.readFileSync(path.join(__dirname, '..', '..', 'admin', 'pages', 'dashboard', 'tabs', 'leads', 'QuickLogContactPanel.tsx'), 'utf8');
   assert.match(leadsTab, /hasStaffPermission\(permissionSubject, 'manage_leads'\)/);
   assert.match(leadTable, /canManageLeads && selectedIds\.length/);
   assert.match(leadTable, /mysqlAdmin\.addLeadInteraction/);
-  assert.match(communications, /canManageLeads && <button[\s\S]*setShowAddComm/);
+  assert.match(communications, /canManageLeads && showAddComm/);
+  assert.match(communications, /setShowAddComm\(false\)/);
 });
 
 test('Daqqi import requires both CRM and financial authority', () => {

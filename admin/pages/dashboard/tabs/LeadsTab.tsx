@@ -1,3 +1,5 @@
+import { QuickLogContactPanel } from './leads/QuickLogContactPanel';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { useNavigate } from 'react-router-dom';
@@ -16,7 +18,6 @@ import type { NotifyFn } from './CrmSettingsModal';
 import { DEFAULT_SOURCES, isOnlineSource } from './crmConstants';
 import { useLeadSubTab } from './leads/useLeadSubTab';
 import type { ConvertLeadModalState } from './leads/ConvertLeadModal';
-import { useLeadCommunicationsData, type LeadCommunicationFilter } from './leads/useLeadCommunicationsData';
 import { useLeadPerformanceData } from './leads/useLeadPerformanceData';
 import { useLeadFilteringData } from './leads/useLeadFilteringData';
 import { useLeadQuickCommunication } from './leads/useLeadQuickCommunication';
@@ -61,7 +62,6 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 
 const LeadArchiveViews = React.lazy(() => import('./leads/LeadArchiveViews').then(module => ({ default: module.LeadArchiveViews })));
-const LeadCommunicationsTimeline = React.lazy(() => import('./leads/LeadCommunicationsTimeline').then(module => ({ default: module.LeadCommunicationsTimeline })));
 const LeadDuplicateReviewPanel = React.lazy(() => import('./leads/LeadDuplicateReviewPanel').then(module => ({ default: module.LeadDuplicateReviewPanel })));
 const LeadModalsHost = React.lazy(() => import('./leads/LeadModalsHost').then(module => ({ default: module.LeadModalsHost })));
 const LeadPerformancePanel = React.lazy(() => import('./leads/LeadPerformancePanel').then(module => ({ default: module.LeadPerformancePanel })));
@@ -124,7 +124,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     staleSelected, setStaleSelected, dueToday, dueTodayLoading,
     refreshStaleLeads, refreshDueToday, sendStaleBulkWhatsapp,
   } = useLeadRemoteReminders(subTab, notify);
-  const [followupView, setFollowupView] = useState<'followups' | 'calls'>('followups');
   const [rottenFilter, setRottenFilter] = useState(false);
   const [showHiddenLeads, setShowHiddenLeads] = useState(false);
   const [waRepId, setWaRepId] = useState<string | null>(null);
@@ -221,7 +220,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   // panels used to answer by scanning every lead in the browser.
   const crmInsights = useCrmInsights(smartIdleDays);
   // ── Communications tab state ─────────────────────────────────────────────
-  const [commFilter, setCommFilter] = useState<LeadCommunicationFilter>({ staffId: '', type: '', dateFrom: '', dateTo: '', search: '' });
   const {
     showAddComm,
     setShowAddComm,
@@ -279,18 +277,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
       && !['converted', 'lost'].includes(l.status)),
     [leads]
   );
-  const {
-    todayStr: commTodayStr,
-    allComms,
-    filteredComms,
-    callCount,
-    waCount,
-    meetingCount,
-    uniqueLeadsToday,
-    typeMeta: TYPE_META,
-    exportCommsCsv,
-    repStats,
-  } = useLeadCommunicationsData(effectiveLeads, commFilter, salesReps);
 
   const { weeklyScorecard, smartRedistCandidates } = useLeadOpsInsights(leads, salesReps, smartIdleDays, crmInsights);
 
@@ -628,55 +614,21 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         </div>
       )}
 
-      {/* اتصالات merged into متابعات: one tab, two views. متابعات stays the
-          default and keeps its own data untouched; الاتصالات is now a view
-          inside it rather than a separate top-level tab. */}
+      {/* An action, not a view: the button that opens it is on a pipeline card,
+          so it has to be mounted beside the screen rather than inside one tab. */}
+      <QuickLogContactPanel
+        canManageLeads={canManageLeads}
+        showAddComm={showAddComm}
+        setShowAddComm={setShowAddComm}
+        addCommDraft={addCommDraft}
+        setAddCommDraft={setAddCommDraft}
+        addCommSearchResults={addCommSearchResults}
+        handleLeadSearchChange={handleLeadSearchChange}
+        selectLeadForCommunication={selectLeadForCommunication}
+        saveQuickCommunication={saveQuickCommunication}
+      />
+
       {subTab === 'reminders' && (
-        <div className="flex flex-wrap gap-1.5 rounded-2xl border border-gray-200 bg-white p-1.5 shadow-sm" dir="rtl">
-          {([['followups', 'المتابعات', AlarmClock], ['calls', 'الاتصالات', Phone]] as const).map(([key, label, Icon]) => (
-            <button key={key} type="button" onClick={() => setFollowupView(key)}
-              className={`flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold transition ${
-                followupView === key ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'}`}>
-              <Icon size={14} /> {label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {subTab === 'reminders' && followupView === 'calls' && (
-        <Suspense fallback={<LeadSectionFallback />}>
-          <LeadCommunicationsTimeline
-            todayStr={commTodayStr}
-            callCount={callCount}
-            waCount={waCount}
-            meetingCount={meetingCount}
-            uniqueLeadsToday={uniqueLeadsToday}
-            repStats={repStats}
-            filteredComms={filteredComms}
-            allComms={allComms}
-            commFilter={commFilter}
-            setCommFilter={setCommFilter}
-            salesReps={salesReps}
-            isSalesOnly={isSalesOnly}
-            canManageLeads={canManageLeads}
-            canExportLeads={canExportLeads}
-            showAddComm={showAddComm}
-            setShowAddComm={setShowAddComm}
-            addCommDraft={addCommDraft}
-            setAddCommDraft={setAddCommDraft}
-            addCommSearchResults={addCommSearchResults}
-            handleLeadSearchChange={handleLeadSearchChange}
-            selectLeadForCommunication={selectLeadForCommunication}
-            saveQuickCommunication={saveQuickCommunication}
-            exportCommsCsv={exportCommsCsv}
-            effectiveLeads={effectiveLeads}
-            setSelectedId={setSelectedId}
-            typeMeta={TYPE_META}
-          />
-        </Suspense>
-      )}
-
-      {subTab === 'reminders' && followupView === 'followups' && (
         <Suspense fallback={<LeadSectionFallback />}>
           <LeadRemindersPanel
             overdueCount={overdue.length}
@@ -698,7 +650,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
             overdueFiltered={overdueFiltered}
             todayFiltered={todayFiltered}
             upcomingFiltered={upcomingFiltered}
-            todayStr={commTodayStr}
+            todayStr={cairoDateOnly()}
             onSnooze={snooze1Day}
             onDone={markDone}
             onOpenLead={setSelectedId}
