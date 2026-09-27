@@ -277,7 +277,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                     {row.createdAt
                       ? <>
                           <div className="text-[11px] text-gray-700 font-medium">{cairoDay(row.createdAt)}</div>
-                          <div className="text-[10px] text-gray-400">{row.createdAt.length > 10 ? row.createdAt.slice(11, 16) : ''}</div>
+                          <div className="text-[10px] text-gray-400">{row.createdAt.length > 10 ? cairoDateTime(row.createdAt).slice(11, 16) : ''}</div>
                         </>
                       : <span className="text-gray-300">—</span>
                     }

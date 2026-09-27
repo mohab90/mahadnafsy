@@ -6,6 +6,7 @@ const router  = express.Router();
 const { pool } = require('../../lib/db');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../../middleware/auth');
 const { hasPermission, PERMISSIONS } = require('../../constants/permissions');
+const { cairoToday } = require('../../lib/dates');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Sales Team Performance + Lead Conversion Funnel ──────────────
@@ -21,7 +22,7 @@ router.get('/api/admin/reports/sales-performance', requireAuth, requireAdminOrSt
   requireAnyPermission(PERMISSIONS.MANAGE_SALES_TEAM, PERMISSIONS.VIEW_PERF_SALES), async (req, res) => {
   try {
     const from = req.query.from || `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-01`;
-    const to   = req.query.to   || new Date().toISOString().slice(0, 10);
+    const to   = req.query.to   || cairoToday();
 
     const [staff] = await pool.query(`
       SELECT st.id, st.name, st.email, st.role, st.commission_rate,
@@ -69,7 +70,7 @@ router.get('/api/admin/reports/sales-performance', requireAuth, requireAdminOrSt
 router.get('/api/admin/reports/lead-funnel', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
     const from = req.query.from || `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-01`;
-    const to   = req.query.to   || new Date().toISOString().slice(0, 10);
+    const to   = req.query.to   || cairoToday();
     const args = [req.tenantId, from, to];
     const [byStatus] = await pool.query(`SELECT status, COUNT(*) AS count FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) GROUP BY status ORDER BY count DESC`, args);
     const [bySource] = await pool.query(`SELECT source, COUNT(*) AS total, SUM(CASE WHEN status IN ('converted','won') THEN 1 ELSE 0 END) AS converted FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) GROUP BY source ORDER BY total DESC`, args);
@@ -175,7 +176,7 @@ router.post('/api/admin/sales-targets', requireAuth, requireAdminOrStaff, requir
 // GET /api/admin/sales-goals/vs-actual?period=YYYY-MM
 router.get('/api/admin/sales-goals/vs-actual', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const period = req.query.period || new Date().toISOString().slice(0, 7);
+    const period = req.query.period || cairoToday().slice(0, 7);
     const from = period + '-01';
     const to   = period + '-31';
 

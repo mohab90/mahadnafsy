@@ -1,5 +1,7 @@
 'use strict';
 
+const { cairoToday } = require('./dates');
+
 const DEFAULT_POLICY = Object.freeze({
   id: null,
   version: 1,
@@ -28,7 +30,7 @@ const parseWeekendDays = value => {
   } catch { return [5, 6]; }
 };
 
-async function getEffectiveHrPolicy(db, tenantId, date = new Date().toISOString().slice(0, 10)) {
+async function getEffectiveHrPolicy(db, tenantId, date = cairoToday()) {
   const [[row]] = await db.query(
     `SELECT id,version,annual_leave_days,sick_leave_days,work_days_per_month,
             workday_minutes,grace_minutes,overtime_multiplier,audit_retention_days,

@@ -28,6 +28,7 @@ const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = re
 const { bulkOperationLimiter, publicLimiter } = require('../middleware/rateLimits');
 
 const { escapeHtml } = require('../lib/html');
+const { cairoToday } = require('../lib/dates');
 
 function validHttpUrl(value) {
   try { return ['http:', 'https:'].includes(new URL(String(value)).protocol); } catch { return false; }
@@ -390,7 +391,7 @@ router.post('/api/admin/live-sessions', requireAuth, requireAdmin, async (req, r
           JOIN subscribers s ON s.id=e.subscriber_id AND s.tenant_id=e.tenant_id
          WHERE e.course_id=? AND e.tenant_id=? AND e.status='active'`, [course_id, req.tenantId]
       );
-      const sessionDate = new Date(starts_at).toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'full', timeStyle: 'short' });
+      const sessionDate = new Date(starts_at).toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'full', timeStyle: 'short', timeZone: 'Africa/Cairo' });
       for (const student of enrolled) {
         if (student.email) await outbox.enqueue({
           channel: 'email', recipient: student.email, subject: `جلسة مباشرة جديدة — ${title || ''}`,
@@ -611,7 +612,7 @@ router.get('/api/admin/attendance', requireAuth, requireAdminOrStaff, requirePer
   try {
     const { staff_id, from, to, status } = req.query;
     const fromDate = from || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
-    const toDate   = to   || new Date().toISOString().slice(0, 10);
+    const toDate   = to   || cairoToday();
     let sql = `
       SELECT al.*, u.name AS staff_name, u.email AS staff_email
       FROM attendance_logs al

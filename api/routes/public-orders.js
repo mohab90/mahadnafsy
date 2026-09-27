@@ -24,6 +24,7 @@ const { findLeadByContact } = require('../lib/leadMatching');
 const { enqueueFinanceEvent } = require('../lib/financeOutbox');
 const { ensureSubscriberForOrder } = require('../lib/subscriberProvisioning');
 const { createNotification } = require('../lib/notification');
+const { cairoToday } = require('../lib/dates');
 const {
   PAYMOB_HMAC_FIELDS,
   buildPaymobHmacPayload,
@@ -561,7 +562,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
   let sub;
   try {
     await conn.beginTransaction();
-    await assertWritable(new Date().toISOString().slice(0, 10), conn, tenantId);
+    await assertWritable(cairoToday(), conn, tenantId);
 
     // Registration alone never creates a subscribers row (only users + leads —
     // see auth.js), so a customer paying for the first time has no subscriber

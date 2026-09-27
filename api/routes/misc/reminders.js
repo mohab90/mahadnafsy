@@ -16,7 +16,7 @@ const router = express.Router();
 const { logLogin, sendDailyReport, scheduleDailyReport, pushAdminNotif, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
 
 const { escapeHtml } = require('../../lib/html');
-const { sqlCairoToday } = require('../../lib/dates');
+const { sqlCairoToday, cairoToday, addDaysToDateOnly } = require('../../lib/dates');
 
 router.get('/api/admin/leads/due-today', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
   try {
@@ -52,8 +52,8 @@ router.post('/api/admin/leads/reminders/send-now', requireAuth, requireAdmin, re
 router.get('/api/admin/payments/due-upcoming', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const days = Math.min(90, Math.max(1, parseInt(req.query.days || '7', 10) || 7));
-    const today = new Date().toISOString().slice(0, 10);
-    const future = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+    const today = cairoToday();
+    const future = addDaysToDateOnly(cairoToday(), Math.round(Number(days) || 0));
     const [rows] = await pool.query(`
       SELECT p.id, p.amount, p.currency, p.date AS due_date,
              DATEDIFF(p.date, ${sqlCairoToday()}) AS days_left,
@@ -152,7 +152,7 @@ router.get('/api/admin/analytics/revenue-sources', requireAuth, requireAdminOrSt
 // GET /api/admin/automation/stats — overview of all automations
 router.get('/api/admin/automation/stats', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = cairoToday();
 
     const [[{ followup_due }]] = await pool.query(
       `SELECT COUNT(*) AS followup_due FROM leads WHERE tenant_id=? AND next_follow_up_date >= ? AND next_follow_up_date < DATE_ADD(?, INTERVAL 1 DAY) AND status NOT IN ('converted','disqualified','archived')`, [req.tenantId, today, today]);
@@ -251,7 +251,7 @@ router.get('/api/admin/consultations/calendar', requireAuth, requireAdminOrStaff
     const scope = resolveDataScope(req.staffRecord, { isSuperAdmin: req.isSuperAdmin, fallback: 'none' });
     if (scope === 'none') return res.json({ month: req.query.month || '', grouped: {}, total: 0 });
 
-    const month = req.query.month || new Date().toISOString().slice(0, 7); // YYYY-MM
+    const month = req.query.month || cairoToday().slice(0, 7); // YYYY-MM
     // No meeting_link. This is a scheduling view — who is booked, when, with
     // whom — and a join link is not part of that. The two places that need one
     // have it: the therapist's own portal, and the customer's dashboard through

@@ -18,7 +18,7 @@ const {
   hrError,
 } = require('./_shared');
 const { writeAuditEvent } = require('../../lib/auditTrail');
-const { dateOnlyInTimeZone, addDaysToDateOnly, sqlCairoToday } = require('../../lib/dates');
+const { dateOnlyInTimeZone, addDaysToDateOnly, sqlCairoToday, cairoToday } = require('../../lib/dates');
 
 const MAX_BODY = 4000;
 
@@ -923,7 +923,7 @@ router.get('/api/staff/me/hr-file', requireAuth, async (req, res) => {
       { category: 'certificate', label: 'المؤهل الدراسي' },
     ];
     const have = new Set(docRows.map(d => d.category));
-    const today = new Date().toISOString().slice(0, 10);
+    const today = cairoToday();
 
     const gaps = [];
     for (const doc of REQUIRED_DOCS) {

@@ -32,6 +32,7 @@ const fail = (res, error, label) => {
 };
 const exactDate = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) ? String(value) : null;
 const { escapeHtml } = require('../lib/html');
+const { cairoToday, addDaysToDateOnly } = require('../lib/dates');
 
 async function quotePolicy(tenantId) {
   const value = await getTenantSetting('crm_quote_policy', {
@@ -141,9 +142,9 @@ router.post('/api/admin/crm/quotes', ...manage, async (req, res) => {
     const policy = await quotePolicy(req.tenantId);
     const approval = resolveDiscountApproval(priced.discountPercent, policy.discountBands);
     const validUntil = exactDate(req.body?.valid_until)
-      || new Date(Date.now() + policy.defaultValidDays * 86400000).toISOString().slice(0, 10);
-    const today = new Date().toISOString().slice(0, 10);
-    const latestValidity = new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10);
+      || addDaysToDateOnly(cairoToday(), Math.round(Number(policy.defaultValidDays) || 0));
+    const today = cairoToday();
+    const latestValidity = addDaysToDateOnly(cairoToday(), 365);
     if (validUntil < today || validUntil > latestValidity) {
       throw Object.assign(new Error('Quote validity must be between today and one year'), { statusCode: 400 });
     }

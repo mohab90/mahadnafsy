@@ -13,6 +13,7 @@ const router = express.Router();
 const { logLogin, sendDailyReport, scheduleDailyReport, pushAdminNotif, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
 
 const { escapeHtml } = require('../../lib/html');
+const { cairoToday } = require('../../lib/dates');
 
 router.get('/api/admin/subscription-plans', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -116,7 +117,7 @@ router.post('/api/admin/subscriptions', requireAuth, requireAdmin, async (req, r
       return res.status(409).json({ error: 'Subscriber already has this plan' });
     }
 
-    const start = start_date || new Date().toISOString().slice(0, 10);
+    const start = start_date || cairoToday();
     let next;
     try {
       next = nextBillingDate(start, plan.billing_cycle);
@@ -220,7 +221,7 @@ router.get('/api/admin/payments/:id/invoice-html',
       <div class="invoice-meta">
         <h2>فاتورة ضريبية</h2>
         <p>رقم الفاتورة: #${invoiceId}</p>
-        <p>التاريخ: ${new Date(payment.created_at).toLocaleDateString('ar-EG-u-nu-latn')}</p>
+        <p>التاريخ: ${new Date(payment.created_at).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: 'Africa/Cairo' })}</p>
       </div>
     </div>
 

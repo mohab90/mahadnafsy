@@ -19,6 +19,7 @@ const outbox = require('./outbox');
 const { getTenantSetting } = require('./tenantSettings');
 const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 const { toDialable } = require('./phoneNumber');
+const { cairoToday } = require('./dates');
 
 const H = (n) => n * 3600 * 1000;
 const money = (a, c) => `${Number(a || 0).toLocaleString()} ${c === 'SAR' ? 'ر.س' : c === 'USD' ? '$' : 'ج.م'}`;
@@ -49,7 +50,7 @@ const JOURNEY = {
         <p>تم استلام دفعتك بنجاح${c.itemTitle ? ` لـ <b>${escapeHtml(c.itemTitle)}</b>` : ''}.</p>
         <table class="details"><tr><td>المبلغ</td><td>${money(c.amount, c.currency)}</td></tr>
         ${c.method ? `<tr><td>طريقة الدفع</td><td>${escapeHtml(c.method)}</td></tr>` : ''}
-        <tr><td>التاريخ</td><td>${new Date().toISOString().slice(0, 10)}</td></tr></table>
+        <tr><td>التاريخ</td><td>${cairoToday()}</td></tr></table>
         <p>وصولك اتفعّل — ابدأ التعلّم دلوقتي:</p>
         <p><a class="btn" href="${SITE}/dashboard">ابدأ التعلّم</a></p>`,
     },

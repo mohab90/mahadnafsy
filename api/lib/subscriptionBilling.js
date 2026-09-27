@@ -3,6 +3,7 @@
 const { pool } = require('./db');
 const { uuidv4 } = require('./id');
 const logger = require('./logger').child({ lib: 'subscription-billing' });
+const { cairoToday } = require('./dates');
 
 function nextBillingDate(currentDate, billingCycle) {
   const dateOnly = String(currentDate).slice(0, 10);
@@ -114,7 +115,7 @@ async function billOneSubscription(subscriptionId, today) {
 }
 
 async function runSubscriptionBilling({ limit = 500 } = {}) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = cairoToday();
   const safeLimit = Math.min(Math.max(Number(limit) || 500, 1), 2000);
   const [due] = await pool.query(
     `SELECT ss.id

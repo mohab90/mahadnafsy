@@ -8,6 +8,7 @@ const { tryJson } = require('../../lib/helpers');
 const { leadScope } = require('../../lib/leadAccess');
 const { hasPermission } = require('../../constants/permissions');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
+const { cairoToday } = require('../../lib/dates');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Campaign Analytics ──────────────────────────────────────────
@@ -19,7 +20,7 @@ const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = re
 router.get('/api/admin/reports/campaign', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), requirePermission('view_reports'), async (req, res) => {
   try {
     const from = req.query.from || `${new Date().getFullYear()}-01-01`;
-    const to   = req.query.to   || new Date().toISOString().slice(0, 10);
+    const to   = req.query.to   || cairoToday();
     const scope = leadScope(req, 'l');
     if (scope.none) return res.json({
       period: { from, to },

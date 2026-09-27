@@ -14,7 +14,7 @@ const { financialRecordMatches, resolveFinancialScope } = require('../lib/financ
 const { assertWritable } = require('../lib/periodLock');
 const { writeAuditEvent } = require('../lib/auditTrail');
 const { toNumbers } = require('../lib/mappers');
-const { safeDateOnly } = require('../lib/dates');
+const { safeDateOnly, cairoToday } = require('../lib/dates');
 const { EXPENSE_CATEGORY_LABEL, expenseCategory } = require('../lib/expenseCategories');
 const { convertJoinUs } = require('./hr/talent');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
@@ -47,7 +47,7 @@ function appendTenantScope(sql, alias, tenantId, params) {
 
 const VALID_EXPENSE_CURRENCIES = new Set(['EGP', 'SAR', 'USD']);
 function expenseDate(value) {
-  const date = String(value || new Date().toISOString().slice(0, 10)).slice(0, 10);
+  const date = String(value || cairoToday()).slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(new Date(`${date}T00:00:00Z`).getTime())
     ? date
     : null;

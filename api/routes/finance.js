@@ -53,7 +53,7 @@ async function _loadPaymentForPrint(paymentId, tenantId) {
   p._primaryColor = brand.primaryColor;
   p._websiteUrl = escapeHtml(brand.websiteUrl);
   p._invoiceNum = p.document_number || `PAY-${p.id.slice(-8).toUpperCase()}`;
-  p._dateStr = new Date(p.date || p.created_at).toLocaleDateString('ar-EG-u-nu-latn', { year:'numeric', month:'long', day:'numeric' });
+  p._dateStr = new Date(p.date || p.created_at).toLocaleDateString('ar-EG-u-nu-latn', { year:'numeric', month:'long', day:'numeric', timeZone: 'Africa/Cairo' });
   p._amount = parseFloat(p.amount) || 0;
   const cur = p.currency || 'EGP';
   p._currencyLabel = cur === 'SAR' ? 'ريال' : cur === 'USD' ? 'USD' : 'ج.م';
@@ -764,7 +764,7 @@ router.get('/api/admin/reports/pl/html', requireAuth, requireAdminOrStaff, requi
           <td class="num">${fmt(r.net_amount)}</td></tr>`).join('') ||
       '<tr><td colspan="3" style="text-align:center;color:#999">لا يوجد بيانات</td></tr>';
 
-    const dateRange = `${new Date(from).toLocaleDateString('ar-EG-u-nu-latn')} — ${new Date(to).toLocaleDateString('ar-EG-u-nu-latn')}`;
+    const dateRange = `${new Date(from).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: 'Africa/Cairo' })} — ${new Date(to).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: 'Africa/Cairo' })}`;
 
     const html = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -820,7 +820,7 @@ router.get('/api/admin/reports/pl/html', requireAuth, requireAdminOrStaff, requi
 </div>
 
 <div class="footer">
-  <p>تقرير مُنشأ بتاريخ ${new Date().toLocaleDateString('ar-EG-u-nu-latn')} — ${instituteName}</p>
+  <p>تقرير مُنشأ بتاريخ ${new Date().toLocaleDateString('ar-EG-u-nu-latn', { timeZone: 'Africa/Cairo' })} — ${instituteName}</p>
 </div>
 
 <div class="no-print">

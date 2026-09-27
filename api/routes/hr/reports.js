@@ -3,7 +3,7 @@ const { Router } = require('express');
 const router = Router();
 const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 const { getEffectiveHrPolicy } = require('../../lib/hrPolicy');
-const { sqlCairoToday } = require('../../lib/dates');
+const { sqlCairoToday, cairoToday } = require('../../lib/dates');
 
 router.get('/api/admin/hr/reports/summary', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
@@ -109,7 +109,7 @@ router.get('/api/admin/hr/reports/department-stats', requireAuth, requireAdminOr
 
 router.get('/api/admin/hr/reports/performance', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
-    const period = String(req.query.month || new Date().toISOString().slice(0, 7));
+    const period = String(req.query.month || cairoToday().slice(0, 7));
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) {
       return res.status(400).json({ error: 'month must be YYYY-MM' });
     }

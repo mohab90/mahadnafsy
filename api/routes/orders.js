@@ -9,7 +9,7 @@ const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { parseLimit } = require('../lib/helpers');
 const { logPaymentAudit } = require('../lib/finance');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
-const { safeIsoString } = require('../lib/dates');
+const { safeIsoString, cairoToday } = require('../lib/dates');
 const { resolvePaymentExecutors } = require('../lib/paymentExecutor');
 const { assertWritable } = require('../lib/periodLock');
 const { confirmOrderPayment } = require('../lib/orderPaymentConfirmation');
@@ -249,7 +249,7 @@ router.post('/api/admin/orders/:id/confirm-payment', requireAuth, requireAdminOr
       if (!transfer) { await conn.rollback(); return res.status(404).json({ error: 'Transfer not found' }); }
     }
 
-    await assertWritable(new Date().toISOString().slice(0, 10), conn, req.tenantId);
+    await assertWritable(cairoToday(), conn, req.tenantId);
 
     const { paymentId } = await confirmOrderPayment({
       order, transfer, linkedTransferId, tenantId: req.tenantId,

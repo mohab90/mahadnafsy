@@ -131,6 +131,25 @@ test('week, month and days-ahead turn over at Cairo\'s midnight', () => {
   assert.equal(clock.cairoDaysAhead(1, '2026-12-31T12:00:00Z'), '2027-01-01');
 });
 
+test('no screen cuts the hour out of a stored UTC value', () => {
+  // «الساعه لسه والتوقيت مش مصر»: the leads table printed a lead's arrival as
+  // createdAt.slice(11, 16) — the UTC hour, three hours early in summer — and
+  // the security log did the same with log.at. The hour comes from cairoDateTime.
+  const offenders = [];
+  const walk = dir => fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }).flatMap(entry => {
+    if (entry.name === 'node_modules' || entry.name === 'dist') return [];
+    const rel = `${dir}/${entry.name}`;
+    return entry.isDirectory() ? walk(rel) : (/\.tsx?$/.test(entry.name) ? [rel] : []);
+  });
+  for (const rel of [...walk('admin'), ...walk('client')]) {
+    read(rel).split('\n').forEach((line, i) => {
+      const bare = line.replace(/cairoDateTime\((?:[^()]|\([^()]*\))*\)/g, 'CAIRO');
+      if (/(?<!CAIRO)\.(?:slice|substring)\(11,\s*(?:13|16|19)\)/.test(bare)) offenders.push(`${rel}:${i + 1}: ${line.trim().slice(0, 100)}`);
+    });
+  }
+  assert.deepEqual(offenders, [], offenders.join('\n'));
+});
+
 test('the screens that print a stored time go through the Cairo clock', () => {
   const renders = {
     'admin/pages/dashboard/tabs/LeadTable.tsx': /\{cairoDateTime\(c\.date\)\}/,

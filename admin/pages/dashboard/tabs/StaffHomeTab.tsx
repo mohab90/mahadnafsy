@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { cairoDateOnly, cairoMonthOnly, cairoDay, cairoDaysAgo } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoDateTime, cairoMonthOnly, cairoDay, cairoDaysAgo } from '../../../../shared/cairoDate';
 import {
   User, TrendingUp, Clock, CheckCircle, Activity, Calendar,
   Phone, UserCheck, Star, ArrowLeft, Bell, FileText,
@@ -265,7 +265,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
   const avatarInitials = (staff.name || '?').split(' ').slice(0, 2).map(w => w[0]).join('');
 
   // ── Greeting based on time ───────────────────────────────────────────────
-  const hour = new Date().getHours();
+  const hour = Number(cairoDateTime(new Date()).slice(11, 13));
   const greeting = hour < 12 ? 'صباح الخير' : hour < 17 ? 'مساء الخير' : 'مساء النور';
 
   return (

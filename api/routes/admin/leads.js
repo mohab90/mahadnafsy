@@ -37,7 +37,7 @@ const {
 const { enqueueEmailSequence } = require('../../lib/emailSequence');
 const { ADMIN_EMAILS, requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../../middleware/auth');
 const { VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES } = require('../../constants/permissions');
-const { safeIsoString, safeDateOnly, sqlCairoToday, sqlCairoDayStartUtc } = require('../../lib/dates');
+const { safeIsoString, safeDateOnly, sqlCairoToday, sqlCairoDayStartUtc, cairoToday, addDaysToDateOnly } = require('../../lib/dates');
 const { keyset } = require('../../lib/pagination');
 const { branchIdForBranch } = require('../../lib/branches');
 const { postPaymentJournal, logPaymentAudit } = require('../../lib/finance');
@@ -295,7 +295,7 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
       // with a date due in two days just manufactures thousands of overdue
       // follow-ups against a rep who has not even been given the lead yet.
       if (!crmData.nextFollowUpDate && salesId) {
-        const followUpDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const followUpDate = addDaysToDateOnly(cairoToday(), 2);
         await conn.query('UPDATE leads SET next_follow_up_date=? WHERE id=? AND tenant_id=? AND next_follow_up_date IS NULL', [followUpDate, id, tenantId]);
         await logLeadEventStrict(id, 'followup_set', `موعد متابعة تلقائي: ${followUpDate}`, { date: followUpDate, auto: true }, tenantId, conn);
       }
@@ -430,7 +430,7 @@ router.post('/api/admin/import/daqqi', requireAuth, requireAdminOrStaff, require
         const nationality = VALID_NATIONALITY.includes(natRaw) ? natRaw : 'EGYPTIAN';
         const notes       = r.notes ? sanitize(String(r.notes),1000) : null;
         const discount    = r.discount ? parseFloat(r.discount) : null;
-        const createdAt   = r.enrollment_date || r.created_at || new Date().toISOString().slice(0,10);
+        const createdAt   = r.enrollment_date || r.created_at || cairoToday();
 
         const courseId      = r.course_id     ? String(r.course_id).trim()     : null;
         const payAmount     = r.payment_amount ? parseFloat(r.payment_amount) : 0;

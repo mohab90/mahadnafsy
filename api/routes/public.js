@@ -449,8 +449,8 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
     const studentName = (row.subscriber_name || 'Student').toUpperCase();
     const courseName  = row.course_title || 'Training Course';
     const issuedAt    = row.completed_at
-      ? new Date(row.completed_at).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })
-      : new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+      ? new Date(row.completed_at).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric', timeZone: 'Africa/Cairo' })
+      : new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric', timeZone: 'Africa/Cairo' });
     // Identity from the central brand (Settings → الهوية): logo, colour, name.
     const [brand, content] = await Promise.all([
       getBrandSettings(row.tenant_id),

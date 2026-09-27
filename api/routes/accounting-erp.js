@@ -11,6 +11,7 @@ const { assertWritable } = require('../lib/periodLock');
 const { resolveFinancialScope } = require('../lib/financialScope');
 const { logFinancialAudit } = require('../lib/finance');
 const logger = require('../lib/logger').child({ route: 'accounting-erp' });
+const { cairoToday } = require('../lib/dates');
 
 const router = express.Router();
 
@@ -154,7 +155,7 @@ router.post('/api/admin/accounting/journal-entries', requireAuth, requireAdminOr
   let transactionStarted = false;
   try {
     const scope = resolveFinancialScope(req, { requestedBranch: req.body.branch || null });
-    const date = String(req.body.date || new Date().toISOString().slice(0, 10)).slice(0, 10);
+    const date = String(req.body.date || cairoToday()).slice(0, 10);
     // Written through unchecked before, so any string the caller sent reached
     // the ledger and MySQL turned what it could not read into a zero date.
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)

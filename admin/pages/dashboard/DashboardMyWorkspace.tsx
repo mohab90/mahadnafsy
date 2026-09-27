@@ -7,6 +7,7 @@ import { MyHrTab, StaffHomeTab } from './lazyTabs';
 import { ROLE_LABELS } from '../../constants/permissions';
 import type { RoleKey } from '../../constants/permissions';
 import type { TabKey } from './navigation';
+import { cairoDateTime } from '../../../shared/cairoDate';
 
 /**
  * The tab keys this page answers for.
@@ -93,7 +94,9 @@ export const DashboardMyWorkspace: React.FC<DashboardMyWorkspaceProps> = ({
   const showing: PageTab = tabs.some(([key]) => key === tab) ? tab : 'overview';
 
   const initials = String(currentStaff.name || '؟').split(' ').slice(0, 2).map((w: string) => w[0]).join('');
-  const hour = new Date().getHours();
+  // Cairo's hour, not the device's: a rep on a laptop set to another zone was
+  // greeted with the wrong part of the day.
+  const hour = Number(cairoDateTime(new Date()).slice(11, 13));
   const greeting = hour < 12 ? 'صباح الخير' : hour < 17 ? 'مساء الخير' : 'مساء النور';
 
   return (

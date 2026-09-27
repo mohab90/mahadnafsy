@@ -8,14 +8,15 @@ const { getTenantSetting, setTenantSetting } = require('./tenantSettings');
 const { invalidateFxCache } = require('./finance');
 const { cacheInvalidate } = require('./db');
 const { notifyWaitlistForFreedSeats } = require('./courseWaitlist');
+const { cairoToday, addDaysToDateOnly } = require('./dates');
 
 function createScheduledJobHandlers({ pool, logger }) {
   const installmentSentToday = new Set();
-  let installmentResetDate = new Date().toISOString().slice(0, 10);
+  let installmentResetDate = cairoToday();
 
   async function installmentReminder() {
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = cairoToday();
       if (today !== installmentResetDate) {
         installmentSentToday.clear();
         installmentResetDate = today;
@@ -55,7 +56,7 @@ function createScheduledJobHandlers({ pool, logger }) {
 
   async function pendingPaymentReminder() {
     try {
-      const cutoff = new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10);
+      const cutoff = addDaysToDateOnly(cairoToday(), -3);
       const [rows] = await pool.query(
         `SELECT p.id,p.tenant_id,p.amount,p.currency,p.date,s.name,s.phone
            FROM payments p
@@ -171,7 +172,7 @@ function createScheduledJobHandlers({ pool, logger }) {
         let sent = 0;
         for (const round of due) {
           const sessionDate = round.nextSession.toLocaleDateString('ar-EG-u-nu-latn', {
-            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Cairo',
           });
           const timeLabel = round.time_slot === 'MORNING' ? 'الصباح'
             : round.time_slot === 'NOON' ? 'الظهيرة' : 'المساء';

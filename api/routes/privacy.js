@@ -20,6 +20,7 @@ const {
 } = require('../middleware/auth');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
 const logger = require('../lib/logger').child({ route: 'privacy' });
+const { cairoToday } = require('../lib/dates');
 
 const identity = req => req.user?.uid || req.user?.email || 'system';
 const attachment = (res, name, data) => {
@@ -64,7 +65,7 @@ router.get('/api/me/privacy/export', requireAuth, bulkOperationLimiter, async (r
     const policy = await getPrivacyPolicy(req.tenantId);
     if (!policy.allow_self_service) return res.status(403).json({ error: 'Self-service privacy requests are disabled' });
     const data = await consistentExport(req, subscriber.id);
-    return attachment(res, `my-data-${new Date().toISOString().slice(0, 10)}.json`, data);
+    return attachment(res, `my-data-${cairoToday()}.json`, data);
   } catch (error) {
     logger.error('self export failed', { error: error.message, tenantId: req.tenantId });
     return res.status(500).json({ error: 'Unable to export data' });

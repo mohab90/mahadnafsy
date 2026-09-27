@@ -14,7 +14,7 @@ const { getDaqqiAttendees } = require('../lib/daqqiAttendees');
 const { ymd } = require('../lib/helpers');
 
 const { mysqlWeekdayFromArabic } = require('../lib/daqqiSchedule');
-const { sqlCairoToday } = require('../lib/dates');
+const { sqlCairoToday, cairoToday } = require('../lib/dates');
 
 function sendRouteError(res, err) {
   if (res.headersSent) return;
@@ -894,7 +894,7 @@ router.get('/api/admin/daqqi/attendance-export', requireAuth, requireAdminOrStaf
 
     const csv = '﻿' + rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\r\n');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="daqqi_attendance_${new Date().toISOString().slice(0,10)}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="daqqi_attendance_${cairoToday()}.csv"`);
     res.send(csv);
   } catch (e) {
     logger.error('[daqqi/attendance-export]', e.message);

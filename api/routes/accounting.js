@@ -6,7 +6,7 @@ const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { publicLimiter } = require('../middleware/rateLimits');
-const { safeDateOnly, monthRange } = require('../lib/dates');
+const { safeDateOnly, monthRange, cairoToday } = require('../lib/dates');
 const { sanitize } = require('../lib/helpers');
 const { isBranch, normalizeBranch } = require('../constants/branches');
 const { logFinancialAudit } = require('../lib/finance');
@@ -94,7 +94,7 @@ router.post('/api/admin/accounting-periods', requireAuth, requireAdminOrStaff, r
       return res.status(403).json({ error: 'Accounting period changes require central financial scope' });
     }
     // Ensure no other open period exists
-    const label = req.body.label || new Date().toISOString().slice(0, 7); // YYYY-MM
+    const label = req.body.label || cairoToday().slice(0, 7); // YYYY-MM
     if (!monthRange(label)) return res.status(400).json({ error: 'Period label must use YYYY-MM' });
     const id = uuidv4();
     await conn.beginTransaction();

@@ -5,7 +5,7 @@ const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, re
 const { createLeaveRequest, getEffectiveHrPolicy, leaveAllowance } = require('../../lib/hrPolicy');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { toNumbers } = require('../../lib/mappers');
-const { cairoClock, sqlCairoToday } = require('../../lib/dates');
+const { cairoClock, sqlCairoToday, cairoToday } = require('../../lib/dates');
 const dateOnly = value => value instanceof Date
   ? value.toISOString().slice(0, 10)
   : String(value || '').slice(0, 10);
@@ -333,8 +333,8 @@ router.post('/api/admin/hr/salary', requireAuth, requireAdminOrStaff, requirePer
     if (!Number.isFinite(Number(base_salary)) || Number(base_salary) < 0) {
       return res.status(400).json({ error: 'Invalid base salary' });
     }
-    const startsOn = effective_from || new Date().toISOString().slice(0, 10);
-    if (startsOn < new Date().toISOString().slice(0, 10)) {
+    const startsOn = effective_from || cairoToday();
+    if (startsOn < cairoToday()) {
       return res.status(400).json({ error: 'Salary effective date cannot be in the past' });
     }
     await conn.beginTransaction();

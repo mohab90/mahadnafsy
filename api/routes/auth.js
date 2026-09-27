@@ -42,6 +42,7 @@ const {
   claimWhatsAppIdentity, normalizeWhatsAppNumber, isPlausibleNumber,
 } = require('../lib/whatsappOtp');
 const { toDialable, identitySpellings } = require('../lib/phoneNumber');
+const { cairoToday } = require('../lib/dates');
 
 function hashOtp({ tenantId, email, type, code }) {
   const secret = String(resolveSecret('OTP_HMAC_SECRET') || JWT_SECRET);
@@ -656,7 +657,7 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
         if (!bundle) throw new Error('Payment bundle does not belong to tenant');
       }
       const paymentId = uuidv4();
-      const paymentDate = firstPayment.date || new Date().toISOString().slice(0, 10);
+      const paymentDate = firstPayment.date || cairoToday();
       const courseExpected = firstPayment.courseExpected === undefined || firstPayment.courseExpected === null
         ? null : Number(firstPayment.courseExpected);
       const currency = ['EGP', 'SAR', 'USD'].includes(firstPayment.currency) ? firstPayment.currency : 'EGP';

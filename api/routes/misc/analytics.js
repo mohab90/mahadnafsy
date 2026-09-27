@@ -10,6 +10,7 @@ const router = express.Router();
 const ROUTE_LOCAL_CRONS_ENABLED = false;
 const { sendDailyReport, scheduleDailyReport, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
 const { createNotification } = require('../../lib/notification');
+const { cairoToday } = require('../../lib/dates');
 
 router.get('/api/admin/analytics/conversion-funnel', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
@@ -243,7 +244,7 @@ router.get('/api/admin/security/stats', requireAuth, requireAdmin, async (req, r
 
 router.get('/api/admin/reports/daily-preview', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
-    const today = req.query.date || new Date().toISOString().slice(0, 10);
+    const today = req.query.date || cairoToday();
     const [[{ revenue }]] = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS revenue FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) AND deleted_at IS NULL`, [req.tenantId, today, today]);
     const [[{ new_leads }]] = await pool.query(`SELECT COUNT(*) AS new_leads FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [req.tenantId, today, today]);
     const [[{ new_clients }]] = await pool.query(`SELECT COUNT(*) AS new_clients FROM subscribers WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [req.tenantId, today, today]);

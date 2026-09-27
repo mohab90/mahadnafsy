@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { cairoDateOnly, cairoDay } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoDateTime, cairoDay } from '../../../../shared/cairoDate';
 import { Shield, AlertTriangle, Search, RefreshCw, Activity, Save, Download } from 'lucide-react';
 import { useCrmData } from '../../../context/siteDataSlices';
 import type { ActivityLogItem } from '../../../types';
@@ -259,7 +259,7 @@ const SecurityDashboardTab: React.FC<Props> = ({ notify }) => {
                     <p className="text-sm text-gray-700 truncate">{log.label || log.entity}</p>
                     <p className="text-xs text-gray-400">{log.actorName || log.actor}</p>
                   </div>
-                  <span className="text-xs text-gray-400 shrink-0">{log.at.slice(11, 16)}</span>
+                  <span className="text-xs text-gray-400 shrink-0">{cairoDateTime(log.at).slice(11, 16)}</span>
                 </div>
               ))}
             </div>

@@ -5,6 +5,7 @@ const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, re
 const { createLeaveRequest, getEffectiveHrPolicy } = require('../../lib/hrPolicy');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { toNumbers } = require('../../lib/mappers');
+const { cairoToday } = require('../../lib/dates');
 
 router.get('/api/admin/hr/compensation/pending', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
@@ -730,7 +731,7 @@ router.get('/api/staff/me/appraisals', requireAuth, async (req, res) => {
 // ══════════════════════════════════════════════════════════════════════════
 router.get('/api/admin/hr/attendance-report', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
-    const month = String(req.query.month || new Date().toISOString().slice(0, 7));
+    const month = String(req.query.month || cairoToday().slice(0, 7));
     if (!/^(20\d{2}|2100)-(0[1-9]|1[0-2])$/.test(month)) {
       return res.status(400).json({ error: 'month must use YYYY-MM' });
     }

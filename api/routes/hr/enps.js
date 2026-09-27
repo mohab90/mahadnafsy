@@ -2,8 +2,9 @@
 const { Router } = require('express');
 const router = Router();
 const { hrError, requirePermission, logger, pool, requireAuth, requireAdminOrStaff, _resolveStaffByUser } = require('./_shared');
+const { cairoToday } = require('../../lib/dates');
 
-const enpsPeriod = () => new Date().toISOString().slice(0, 7); // YYYY-MM
+const enpsPeriod = () => cairoToday().slice(0, 7); // YYYY-MM
 const MIN_ANONYMOUS_COHORT = 5;
 
 // Staff: my eNPS status for the current period

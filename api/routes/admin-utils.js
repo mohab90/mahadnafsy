@@ -13,7 +13,7 @@ const { financialScopeClause, resolveFinancialScope } = require('../lib/financia
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
 const { leadScope } = require('../lib/leadAccess');
-const { sqlCairoToday } = require('../lib/dates');
+const { sqlCairoToday, cairoToday } = require('../lib/dates');
 
 // Timers belong to the central worker. Starting them from a route module made
 // every clustered API process send the same reminders and summaries again.
@@ -261,7 +261,7 @@ router.get('/api/admin/export/subscribers', requireAuth, requireAdmin, bulkOpera
     ];
     const csv = toCSV(rows, cols);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="subscribers-${new Date().toISOString().slice(0,10)}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="subscribers-${cairoToday()}.csv"`);
     res.send('\uFEFF' + csv); // BOM for Excel Arabic support
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -278,7 +278,7 @@ router.get('/api/admin/export/leads', requireAuth, requireAdminOrStaff, requireP
     const scope = leadScope(req, 'leads');
     if (scope.none) {
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="leads-${new Date().toISOString().slice(0, 10)}.csv"`);
+      res.setHeader('Content-Disposition', `attachment; filename="leads-${cairoToday()}.csv"`);
       return res.send('﻿');
     }
     const [rows] = await pool.query(
@@ -300,7 +300,7 @@ router.get('/api/admin/export/leads', requireAuth, requireAdminOrStaff, requireP
     ];
     const csv = toCSV(rows, cols);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="leads-${new Date().toISOString().slice(0,10)}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="leads-${cairoToday()}.csv"`);
     res.send('\uFEFF' + csv);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -338,7 +338,7 @@ router.get('/api/admin/export/payments', requireAuth, requireAdmin, bulkOperatio
     ];
     const csv = toCSV(rows, cols);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="payments-${new Date().toISOString().slice(0,10)}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="payments-${cairoToday()}.csv"`);
     res.send('\uFEFF' + csv);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

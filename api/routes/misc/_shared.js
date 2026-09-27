@@ -9,6 +9,7 @@ const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff } = re
 const { DEFAULT_TENANT } = require('../../middleware/tenantContext');
 const { logLoginAttempt } = require('../../lib/loginAudit');
 const { createNotification } = require('../../lib/notification');
+const { cairoToday, addDaysToDateOnly } = require('../../lib/dates');
 
 async function forEachActiveTenant(task) {
   let tenantIds = [DEFAULT_TENANT];
@@ -27,8 +28,8 @@ async function logLogin(userId, email, req, status, failureReason = null) {
 
 async function sendDailyReport(tenantId = DEFAULT_TENANT) {
   try {
-    const today = new Date().toISOString().slice(0, 10);
-    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const today = cairoToday();
+    const yesterday = addDaysToDateOnly(cairoToday(), -1);
 
     const [[{ revenue }]] = await pool.query(
       `SELECT COALESCE(SUM(amount_egp),0) AS revenue FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) AND deleted_at IS NULL`, [tenantId, today, today]);
@@ -126,7 +127,7 @@ scheduleDailyReport();
 
 async function runFollowUpReminders(tenantId = DEFAULT_TENANT) {
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = cairoToday();
     // Leads due for follow-up today
     const [leads] = await pool.query(`
       SELECT l.id, l.name, l.phone, l.email,
@@ -322,9 +323,9 @@ schedulePaymentReviewSweep();
 
 async function runPaymentDueReminders(tenantId = DEFAULT_TENANT) {
   try {
-    const today = new Date().toISOString().slice(0, 10);
-    const in3days = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
-    const in1day  = new Date(Date.now() + 1 * 86400000).toISOString().slice(0, 10);
+    const today = cairoToday();
+    const in3days = addDaysToDateOnly(cairoToday(), 3);
+    const in1day  = addDaysToDateOnly(cairoToday(), 1);
 
     // Find pending installment payments coming due
     const [pending] = await pool.query(`
