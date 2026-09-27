@@ -32,6 +32,17 @@ interface LeadPerformancePanelProps {
   commsByRep: CommsByRepRow[];
 }
 
+// The pie holds the biggest few; the rest are one slice. Each slice used to
+// carry its own label, and with 25 sources — three of them over 80% between
+// them — the labels were drawn on top of each other: «الصحة النفسية 49%» over
+// «فيسبوك ليدز 22%» over «صحة نفسية 11%». The names now sit in a list beside it.
+const TOP_SOURCES = 6;
+function groupSources(rows: SourceRow[]): SourceRow[] {
+  if (rows.length <= TOP_SOURCES + 1) return rows;
+  const rest = rows.slice(TOP_SOURCES).reduce((sum, row) => sum + row.value, 0);
+  return [...rows.slice(0, TOP_SOURCES), { name: `أخرى (${rows.length - TOP_SOURCES} مصدر)`, value: rest }];
+}
+
 export function LeadPerformancePanel({
   leads,
   totalConverted,
@@ -122,27 +133,36 @@ export function LeadPerformancePanel({
           </h4>
           {sourcesData.length === 0 ? (
             <p className="text-center text-gray-400 text-sm py-16">لا توجد بيانات</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={210}>
-              <PieChart>
-                <Pie
-                  data={sourcesData}
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={72}
-                  innerRadius={32}
-                  dataKey="value"
-                  label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
-                  labelLine={false}
-                >
-                  {sourcesData.map((_, i) => (
-                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+          ) : (() => {
+            const grouped = groupSources(sourcesData);
+            const total = grouped.reduce((sum, row) => sum + row.value, 0) || 1;
+            return (
+              <div className="flex flex-col items-center gap-3 sm:flex-row">
+                <div className="h-[180px] w-full sm:w-[180px] sm:flex-shrink-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={grouped} cx="50%" cy="50%" outerRadius={72} innerRadius={32} dataKey="value">
+                        {grouped.map((_, i) => (
+                          <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <ul className="w-full min-w-0 space-y-1.5 text-xs">
+                  {grouped.map((row, i) => (
+                    <li key={row.name} className="flex items-center gap-2">
+                      <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+                      <span className="min-w-0 flex-1 truncate text-gray-700" title={row.name}>{row.name}</span>
+                      <span className="font-bold text-gray-900">{row.value.toLocaleString('ar-EG-u-nu-latn')}</span>
+                      <span className="w-10 text-left text-gray-500">{Math.round((row.value / total) * 100)}%</span>
+                    </li>
                   ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          )}
+                </ul>
+              </div>
+            );
+          })()}
         </div>
 
         <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">

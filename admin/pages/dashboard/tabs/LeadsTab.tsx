@@ -69,7 +69,8 @@ const LeadPerformanceOverview = React.lazy(() => import('./leads/LeadPerformance
 const LeadPipelineBoard = React.lazy(() => import('./leads/LeadPipelineBoard').then(module => ({ default: module.LeadPipelineBoard })));
 const LeadRemindersPanel = React.lazy(() => import('./leads/LeadRemindersPanel').then(module => ({ default: module.LeadRemindersPanel })));
 const CrmQuotesWorkspace = React.lazy(() => import('./leads/CrmQuotesWorkspace').then(module => ({ default: module.CrmQuotesWorkspace })));
-const CrmCoachingPanel = React.lazy(() => import('./leads/CrmCoachingPanel').then(module => ({ default: module.CrmCoachingPanel })));
+const CrmCoachingButton = React.lazy(() => import('./leads/CrmCoachingPanel').then(module => ({ default: module.CrmCoachingButton })));
+const TeamDailyReport = React.lazy(() => import('./leads/TeamDailyReport').then(module => ({ default: module.TeamDailyReport })));
 const LeadPipelineSettings = React.lazy(() => import('./leads/LeadPipelineSettings').then(module => ({ default: module.LeadPipelineSettings })));
 const SalesOffersPanel = React.lazy(() => import('./leads/SalesOffersPanel'));
 const LeadTable = React.lazy(() => import('./LeadTable').then(module => ({ default: module.LeadTable })));
@@ -677,7 +678,10 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
       {subTab === 'performance' && (
         <Suspense fallback={<LeadSectionFallback />}>
           <div className="space-y-5">
-            <CrmCoachingPanel notify={notify} />
+            {/* The day first — «تقرير يومي في أول الصفحة» — and the quality
+                review one click away rather than on top of it. */}
+            <TeamDailyReport notify={notify} />
+            <div className="flex justify-end"><CrmCoachingButton notify={notify} /></div>
             <LeadPerformanceOverview
               targetMonth={targetMonth}
               setTargetMonth={setTargetMonth}

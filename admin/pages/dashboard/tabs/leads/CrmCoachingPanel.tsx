@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ClipboardCheck, Link2, RefreshCw } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
+import { Modal } from '../../../../../shared/ui/Modal';
 import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -22,6 +23,31 @@ interface CoachingDashboard {
   recentCommunications: Communication[];
 }
 
+/**
+ * «مراجعة جودة المحادثات» as a button that opens the form, instead of a form
+ * standing at the top of «أداء الفريق» above the numbers people open it for.
+ */
+export function CrmCoachingButton({ notify }: { notify: Notify }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}
+        className="flex items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-700 hover:bg-violet-100">
+        <ClipboardCheck size={14} /> مراجعة جودة المحادثات
+      </button>
+      {open && (
+        <Modal open onClose={() => setOpen(false)} title="مراجعة جودة المحادثات" size="xl"
+          icon={<ClipboardCheck size={18} className="text-violet-600" />}>
+          <div className="max-h-[75vh] overflow-y-auto p-4">
+            {/* Loads when opened, not with the tab. */}
+            <CrmCoachingPanel notify={notify} />
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+}
+
 export function CrmCoachingPanel({ notify }: { notify: Notify }) {
   const [data, setData] = useState<CoachingDashboard>({ staff: [], recentCommunications: [] });
   const [loading, setLoading] = useState(true);
@@ -35,7 +61,12 @@ export function CrmCoachingPanel({ notify }: { notify: Notify }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { setData(await mysqlAdmin.adminGet<CoachingDashboard>('/admin/crm/coaching?days=30')); }
+    try {
+      // Read field by field: a reply without these lists took the whole of
+      // «أداء الفريق» down with it, not just this window.
+      const result = await mysqlAdmin.adminGet<Partial<CoachingDashboard>>('/admin/crm/coaching?days=30');
+      setData({ staff: result?.staff || [], recentCommunications: result?.recentCommunications || [] });
+    }
     catch (error) { notify('error', error instanceof Error ? error.message : 'تعذّر تحميل التدريب'); }
     finally { setLoading(false); }
   }, [notify]);
@@ -75,10 +106,10 @@ export function CrmCoachingPanel({ notify }: { notify: Notify }) {
   };
 
   return (
-    <section className="space-y-4 rounded-2xl border border-violet-200 bg-white p-4" dir="rtl">
+    <section className="space-y-4" dir="rtl">
+      {/* The window around it carries the title. */}
       <header className="flex items-center justify-between gap-2">
-        <div><h3 className="flex items-center gap-2 font-bold text-gray-900"><ClipboardCheck size={17} className="text-violet-600" />مراجعة جودة المحادثات</h3>
-          <p className="text-xs text-gray-500">لا توجد درجة بلا Recording/Transcript/رسالة أو ملاحظة موثقة.</p></div>
+        <p className="text-xs text-gray-500">لا توجد درجة بلا Recording/Transcript/رسالة أو ملاحظة موثقة.</p>
         <button type="button" onClick={() => { void load(); }} className="rounded-lg p-2 text-gray-500"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} /></button>
       </header>
 

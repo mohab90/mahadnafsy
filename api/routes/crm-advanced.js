@@ -14,6 +14,7 @@ const { listPipeline, savePipeline } = require('../lib/leadPipeline');
 const { listAssignmentMembers, saveAssignmentMembers } = require('../lib/leadAssignmentPolicy');
 const { createRepRotation, listDistributableReps } = require('../lib/leadAssignment');
 const { excludeArchiveSourcesSql } = require('../lib/leadArchive');
+const { buildTeamDailyReport, reportRange } = require('../lib/teamDailyReport');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 
 function routeError(res, error, message = 'crm advanced route failed') {
@@ -34,6 +35,21 @@ function actor(req) {
     staffRole: req.staffRecord?.role || null,
   };
 }
+
+// GET /api/admin/crm/team-report?from=YYYY-MM-DD&to=YYYY-MM-DD — «أداء الفريق»'s
+// daily report, per rep, over Cairo days (lib/teamDailyReport.js). A rep sees
+// their own row only.
+router.get('/api/admin/crm/team-report', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
+  try {
+    const range = reportRange(req.query);
+    const isSales = String(req.staffRecord?.role || '').toLowerCase() === 'sales';
+    res.json(await buildTeamDailyReport({
+      tenantId: req.tenantId, ...range, onlyRepId: isSales ? req.staffRecord.id : null,
+    }));
+  } catch (e) {
+    routeError(res, e, 'crm team report failed');
+  }
+});
 
 router.get('/api/admin/crm/pipeline', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
   try {
