@@ -733,8 +733,13 @@ test('unified client finance computes balances and certificates in the branch se
   assert.match(payments, /openLegacyPaymentForm = \(\) => openSubscriberPaymentForm\(/);
   assert.match(payments, /createClientPaymentDraft\(\{\s*\n\s*branch: subscriber\?\.branch,/);
   assert.match(lifecycle, /currency: currencyForBranch\(subscriber\.branch\)/);
-  assert.match(clientsTable, /p\.currency === branchCurrency/);
-  assert.match(clientsTable, /price\?\.\[branchCurrency\]/);
+  // Each item in the currency it is paid in, the settlement currency otherwise
+  // (admin/lib/agreedPrice.ts clientItems) — price and payments both.
+  assert.match(clientsTable, /clientItems\(row, courses, bundles, branchCurrency\)/);
+  const agreed = read('admin/lib/agreedPrice.ts');
+  assert.match(agreed, /\|\| fallbackCurrency;/);
+  assert.match(agreed, /&& \(!currency \|\| payment\.currency === currency\)\)/);
+  assert.match(agreed, /catalogueIn\(entry\?\.price, currency\)/);
   assert.doesNotMatch(clientsTable, /setSubInstDraft|title="خطة أقساط"/);
   assert.match(handlers, /سعر \$\{(?:subPayDraft|leadPayDraft)\.currency\} غير مُعرّف/);
   assert.doesNotMatch(handlers, /price\?\.\[(?:subPayDraft|leadPayDraft)\.currency[^\n]*price\?\.EGP/);

@@ -23,7 +23,7 @@ const branchLabel = (value?: string | null): string => {
 import { ClientCourseAccessPanel } from './ClientCourseAccessPanel';
 import { currencyForBranch } from '../../../../lib/branchCurrency';
 import { isOnlineClient, subscriberMarket } from '../onlineClientsUtils';
-import { agreedPriceFor } from '../../../../lib/agreedPrice';
+import { clientItems } from '../../../../lib/agreedPrice';
 import { isCollected } from '../../../../lib/money';
 import ClientNameCell from './ClientNameCell';
 import type { OnlineClientConvertType } from '../OnlineClientConvertModal';
@@ -131,11 +131,6 @@ export function ClientsTable({
             const salesName = row.assignedSalesName || '';
             // Collected money only: a pending or refunded row is not paid.
             const payments = (row.paymentHistory || []).filter(isCollected);
-            const enrolledIds = [...new Set(row.enrolledCourseIds || [])];
-            const allCBundles = bundles.filter(b => b.courses.length > 0 && b.courses.every(co => enrolledIds.includes(co.id)));
-            const completeBundles = allCBundles.filter(b => !allCBundles.some(other => other.id !== b.id && other.courses.length > b.courses.length && b.courses.every(co => other.courses.some(oc => oc.id === co.id))));
-            const bundleHiddenIds = new Set(completeBundles.flatMap(b => b.courses.map(co => co.id)));
-            const partialCids = enrolledIds.filter(id => !bundleHiddenIds.has(id));
             const branchId = normBranchId(row.branch);
             // The currency they pay in: their online market's, else their
             // branch's. A riyal client filed under an Egypt branch showed no
@@ -144,52 +139,17 @@ export function ClientsTable({
               ? ({ local: 'EGP', saudi: 'SAR', intl: 'USD' } as const)[subscriberMarket(row)]
               : currencyForBranch(branchId);
             const certLabel = (t?: string) => certCatalog.label(t);
-            const customPrices: Record<string,number> = row.customPrices || {};
-            const multiCourseKey = completeBundles.length === 0 && partialCids.length > 1
-              ? `multi:${[...partialCids].sort().join(',')}`
-              : null;
-            const courseRows = (multiCourseKey)
-              ? (() => {
-                  const settlementPayments = payments.filter(p => p.currency === branchCurrency);
-                  const totalPaid = settlementPayments.filter(p => p.paymentType !== 'certificate' && p.paymentType !== 'book').reduce((s,p)=>s+(Number(p.amount)||0),0);
-                  const autoExp = partialCids.reduce((s, cid) =>
-                    s + agreedPriceFor(row, cid, courses.find(c=>c.id===cid)?.price?.[branchCurrency] || 0, branchCurrency), 0);
-                  const exp = customPrices[multiCourseKey] || autoExp;
-                  const lbl = 'باقة: ' + partialCids.map(cid => courses.find(c=>c.id===cid)?.title || cid).join(' + ');
-                  return [{ cid: multiCourseKey, label: lbl, expected: exp, paid: totalPaid, remaining: Math.max(0, exp - totalPaid), cur: branchCurrency }];
-                })()
-              : [
-              ...completeBundles.map(b => {
-                const bCids = b.courses.map(co => co.id);
-                const bundleCid = `bundle:${b.id}`;
-                const bPay = payments.filter(p => p.currency === branchCurrency && ((p.courseId && bCids.includes(p.courseId)) || (p.bundleId === b.id) || (!p.courseId && !p.bundleId && (p.paymentType === 'course' || !p.paymentType))));
-                const cur = branchCurrency;
-                const bPrice = (b.price as unknown as Record<string,number>)[cur] || b.price.EGP || 0;
-                // The price agreed for the track (lib/agreedPrice.ts), which
-                // never reads below what was paid for it — the old «900 against
-                // 5,500» rows, a single course's price left on a track booking,
-                // are why the catalogue used to outrank the booking here, and
-                // that hid every track sold at a discount.
-                const expected = agreedPriceFor(row, bundleCid, bPrice, cur);
-                const paid = bPay.reduce((s,p) => s+(Number(p.amount)||0), 0) + (Number(row.priorPaid?.[bundleCid]) || 0);
-                return { cid: bundleCid, label: b.title, expected, paid, remaining: expected > 0 ? Math.max(0, expected-paid) : 0, cur };
-              }),
-              ...partialCids.map((cid, pidx) => {
-                const course = courses.find(c => c.id === cid);
-                const cPayBase = payments.filter(p => p.currency === branchCurrency && p.courseId === cid && p.paymentType !== 'certificate' && p.paymentType !== 'book');
-                // Fallback: attribute payments with no courseId to first course when no bundles
-                // Exclude bundleId-tagged payments (they belong to a bundle, not first course)
-                const unattributed = (pidx === 0 && completeBundles.length === 0)
-                  ? payments.filter(p => p.currency === branchCurrency && !p.courseId && !p.bundleId && (p.paymentType === 'course' || !p.paymentType))
-                  : [];
-                const cPay = [...cPayBase, ...unattributed];
-                const cur = branchCurrency;
-                const catPrice = course?.price?.[cur] || course?.price?.EGP || 0;
-                const expected = agreedPriceFor(row, cid, catPrice, cur);
-                const paid = cPay.reduce((s,p) => s+(Number(p.amount)||0), 0) + (Number(row.priorPaid?.[cid]) || 0);
-                return { cid, label: course?.title || cid, expected, paid, remaining: expected > 0 ? Math.max(0, expected-paid) : 0, cur };
-              }),
-            ];
+            // One row per course or track they hold, at the price agreed, with
+            // what they paid for it here and before the system — the same items
+            // and numbers as «صلاحية الكورسات», the payment dialog and the plans
+            // (lib/agreedPrice.ts clientItems). This guessed a track whenever a
+            // client held all of its courses and folded several courses into one
+            // «باقة» row, so the table could list items no other screen did.
+            const courseRows = clientItems(row, courses, bundles, branchCurrency).map(item => ({
+              cid: item.item,
+              label: item.isTrack ? `📌 ${item.title}` : item.title,
+              expected: item.expected, paid: item.paid, remaining: item.remaining, cur: item.currency,
+            }));
             const instPlans = row.installmentPlans || [];
             const nextInst = instPlans.flatMap(p => (p.entries||[]).filter(e=>!e.paidAt).map(e=>({dueDate:e.dueDate,amount:e.amount,currency:p.currency,note:e.note||p.courseTitle||''}))).sort((a,b)=>a.dueDate.localeCompare(b.dueDate))[0] || null;
             const instOverdue = !!(nextInst && nextInst.dueDate < todayOnlineStr);
@@ -320,7 +280,7 @@ export function ClientsTable({
                     setSubPayRow(row);
                     setSubPayDraft(createClientPaymentDraft({
                       currency: currencyForBranch(branchId),
-                      courseId: completeBundles.length > 0 ? `bundle:${completeBundles[0].id}` : (row.enrolledCourseIds?.[0] || ''),
+                      courseId: courseRows[0]?.cid || '',
                     }));
                     setSubPayDraft(prev => ({ ...prev, bookingType: (row.enrolledCourseIds||[]).length > 0 ? 'installment' : 'new_booking' }));
                   }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-emerald-50 hover:text-emerald-600 flex items-center justify-center transition"><Wallet size={12}/></button>

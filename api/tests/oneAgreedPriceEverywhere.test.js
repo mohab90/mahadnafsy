@@ -55,10 +55,14 @@ test('a client\'s balance counts their tracks, the currency they pay in, and wha
 test('every screen reads that rule', () => {
   const admin = read('admin/lib/agreedPrice.ts');
   assert.match(admin, /if \(booked > 0\) return Math\.max\(booked, paidFor\(subscriber, item, currency\)\);/);
+  // The table, the plans window and the plans page list the same items.
   const table = read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx');
-  assert.match(table, /const expected = agreedPriceFor\(row, bundleCid, bPrice, cur\);/);
-  assert.match(table, /const expected = agreedPriceFor\(row, cid, catPrice, cur\);/);
-  assert.match(table, /const payments = \(row\.paymentHistory \|\| \[\]\)\.filter\(isCollected\);/);
+  assert.match(table, /const courseRows = clientItems\(row, courses, bundles, branchCurrency\)/);
+  assert.doesNotMatch(table, /multiCourseKey|completeBundles/);
+  assert.match(read('admin/pages/dashboard/tabs/online-clients-sections/InstallmentPlansModal.tsx'),
+    /const items = useMemo\(\(\) => clientItems\(subscriber, courses, bundles, defaultCurrency\)/);
+  assert.match(read('admin/pages/dashboard/tabs/InstallmentPlansTab.tsx'), /clientItems\(sub, courses, bundles, plan\.currency\)/);
+  assert.match(admin, /paidFor\(subscriber, item, currency\) \+ \(Number\(subscriber\.priorPaid\?\.\[item\]\) \|\| 0\)/);
   const modal = read('admin/components/PaymentModal.tsx');
   // The instalment list and «كل المتبقي» used the catalogue.
   assert.match(modal, /const px = agreedPriceFor\(subject, cid, isBnd/);

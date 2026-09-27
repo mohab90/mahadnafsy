@@ -3,6 +3,7 @@ import { cairoDateOnly } from '../../../../shared/cairoDate';
 import { CreditCard, Search, ChevronDown, User } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import type { SubscriberItem, InstallmentEntry, InstallmentPlan } from '../../../types';
+import { clientItems } from '../../../lib/agreedPrice';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -19,7 +20,7 @@ interface EnrichedEntry {
 }
 
 const InstallmentPlansTab: React.FC<Props> = () => {
-  const { subscribers, courses } = useSiteData();
+  const { subscribers, courses, bundles } = useSiteData();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'dueDate' | 'amount'>('dueDate');
@@ -193,12 +194,24 @@ const InstallmentPlansTab: React.FC<Props> = () => {
                       const course = courses.find(c => c.id === plan.courseId);
                       const planTotal = plan.entries.reduce((s, e) => s + e.amount, 0);
                       const planPaid = plan.entries.filter(e => e.paidAt).reduce((s, e) => s + (e.paidAmount ?? e.amount), 0);
+                      // What the course itself stands at: the price agreed, all
+                      // that was paid for it, and what is left — beside the plan.
+                      const held = clientItems(sub, courses, bundles, plan.currency).find(item => item.item === plan.courseId);
                       return (
                         <div key={plan.id} className="bg-gray-50 rounded-xl p-3">
                           <div className="flex justify-between items-start mb-2">
                             <div>
                               <p className="text-sm font-bold text-gray-800">{plan.courseTitle || course?.title || 'كورس'}</p>
                               <p className="text-xs text-gray-400">{plan.entries.length} قسط · المجموع {plan.totalAmount.toLocaleString('ar-EG-u-nu-latn')} {plan.currency}</p>
+                              <div className="mt-1 flex flex-wrap gap-1 text-[11px]">
+                                <span className="rounded bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700">اتدفع من الخطة {planPaid.toLocaleString('ar-EG-u-nu-latn')}</span>
+                                <span className="rounded bg-amber-50 px-2 py-0.5 font-bold text-amber-700">باقي في الخطة {Math.max(0, planTotal - planPaid).toLocaleString('ar-EG-u-nu-latn')}</span>
+                                {held && (
+                                  <span className="rounded bg-white px-2 py-0.5 text-gray-600 border border-gray-200">
+                                    الكورس {held.expected.toLocaleString('ar-EG-u-nu-latn')} · اتدفع {held.paid.toLocaleString('ar-EG-u-nu-latn')} · باقي {held.remaining.toLocaleString('ar-EG-u-nu-latn')}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                             <span className="text-xs font-bold text-indigo-600">{Math.round(planPaid / planTotal * 100)}% مدفوع</span>
                           </div>

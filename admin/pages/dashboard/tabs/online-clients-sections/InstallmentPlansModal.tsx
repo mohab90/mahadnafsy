@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarClock, Plus, Trash2 } from 'lucide-react';
 import { Modal } from '../../../../../shared/ui/Modal';
 import { cairoDateOnly, cairoDaysAhead } from '../../../../../shared/cairoDate';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { mapServerInstallmentPlan } from '../../../unified-client/installmentPlanMapper';
 import type { Bundle, Course, Currency, InstallmentPlan, SubscriberItem } from '../../../../types';
+import { clientItems } from '../../../../lib/agreedPrice';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 type DraftEntry = { amount: string; dueDate: string };
@@ -44,9 +45,24 @@ export function InstallmentPlansModal({ subscriber, courses, bundles, paymentBox
   const [plans, setPlans] = useState<InstallmentPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [courseId, setCourseId] = useState(subscriber.enrolledCourseIds?.[0] || '');
-  const [total, setTotal] = useState('');
-  const [currency, setCurrency] = useState<Currency>(defaultCurrency);
+  // What this client holds, with its price, paid and remaining — the plan is
+  // for one of these, not for anything in the catalogue.
+  const items = useMemo(() => clientItems(subscriber, courses, bundles, defaultCurrency),
+    [subscriber, courses, bundles, defaultCurrency]);
+  const firstOwing = items.find(item => item.remaining > 0) || items[0];
+  const [courseId, setCourseId] = useState(firstOwing?.item || '');
+  const [total, setTotal] = useState(firstOwing?.remaining ? String(firstOwing.remaining) : '');
+  const [currency, setCurrency] = useState<Currency>((firstOwing?.currency as Currency) || defaultCurrency);
+  const chosen = items.find(item => item.item === courseId);
+  const pickItem = (id: string) => {
+    const item = items.find(entry => entry.item === id);
+    setCourseId(id);
+    setEntries([]);
+    if (item) {
+      setTotal(item.remaining > 0 ? String(item.remaining) : '');
+      setCurrency(item.currency as Currency);
+    }
+  };
   const [count, setCount] = useState('3');
   const [firstDue, setFirstDue] = useState(cairoDaysAhead(30));
   const [entries, setEntries] = useState<DraftEntry[]>([]);
@@ -66,10 +82,6 @@ export function InstallmentPlansModal({ subscriber, courses, bundles, paymentBox
   const titleOf = (id: string) => id.startsWith('bundle:')
     ? bundles.find(bundle => `bundle:${bundle.id}` === id)?.title || id
     : courses.find(course => course.id === id)?.title || id;
-  const options = [
-    ...(subscriber.enrolledCourseIds || []),
-    ...courses.map(course => course.id), ...bundles.map(bundle => `bundle:${bundle.id}`),
-  ].filter((id, i, all) => id && all.indexOf(id) === i);
 
   const draftTotal = entries.reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0);
   const canSave = entries.length > 0 && entries.every(entry => Number(entry.amount) > 0 && entry.dueDate)
@@ -133,10 +145,23 @@ export function InstallmentPlansModal({ subscriber, courses, bundles, paymentBox
           <p className="rounded-xl bg-gray-50 p-3 text-sm text-gray-500">مفيش خطة أقساط للعميل ده.</p>
         ) : plans.map(plan => {
           const paidAny = plan.entries.some(entry => entry.paidAt);
+          const planPaid = plan.entries.filter(entry => entry.paidAt).reduce((sum, entry) => sum + (entry.paidAmount ?? entry.amount), 0);
+          const course = items.find(item => item.item === plan.courseId);
           return (
             <div key={plan.id} className="rounded-xl border border-gray-200 p-3">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <strong className="text-sm">{plan.courseTitle || 'أقساط'} — {plan.totalAmount.toLocaleString('ar-EG-u-nu-latn')} {plan.currency}</strong>
+                <div>
+                  <strong className="text-sm">{plan.courseTitle || 'أقساط'} — خطة {plan.totalAmount.toLocaleString('ar-EG-u-nu-latn')} {plan.currency}</strong>
+                  <div className="mt-1 flex flex-wrap gap-1 text-[11px]">
+                    <span className="rounded bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700">اتدفع من الخطة {planPaid.toLocaleString('ar-EG-u-nu-latn')}</span>
+                    <span className="rounded bg-amber-50 px-2 py-0.5 font-bold text-amber-700">باقي في الخطة {Math.max(0, plan.totalAmount - planPaid).toLocaleString('ar-EG-u-nu-latn')}</span>
+                    {course && (
+                      <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-600">
+                        الكورس: {course.expected.toLocaleString('ar-EG-u-nu-latn')} · اتدفع {course.paid.toLocaleString('ar-EG-u-nu-latn')} · باقي {course.remaining.toLocaleString('ar-EG-u-nu-latn')}
+                      </span>
+                    )}
+                  </div>
+                </div>
                 {!paidAny && (
                   <button type="button" onClick={() => { void remove(plan.id); }} disabled={saving}
                     className="rounded-lg p-1.5 text-red-500 hover:bg-red-50" aria-label="مسح الخطة"><Trash2 size={14} /></button>
@@ -180,10 +205,15 @@ export function InstallmentPlansModal({ subscriber, courses, bundles, paymentBox
 
         <div className="space-y-2 rounded-xl border border-teal-200 bg-teal-50/40 p-3">
           <p className="flex items-center gap-1 text-sm font-bold text-teal-800"><Plus size={14} /> خطة أقساط جديدة</p>
+          {items.length === 0 && <p className="text-xs text-amber-700">العميل مش مشترك في كورس — احجزله الأول.</p>}
           <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
-            <select value={courseId} onChange={e => setCourseId(e.target.value)} className={`${field} md:col-span-2`}>
-              <option value="">— الكورس —</option>
-              {options.map(id => <option key={id} value={id}>{id.startsWith('bundle:') ? '📌 ' : ''}{titleOf(id)}</option>)}
+            <select value={courseId} onChange={e => pickItem(e.target.value)} className={`${field} md:col-span-2`}>
+              <option value="">— كورس من كورسات العميل —</option>
+              {items.map(item => (
+                <option key={item.item} value={item.item}>
+                  {item.isTrack ? '📌 ' : ''}{item.title} — باقي {item.remaining.toLocaleString('ar-EG-u-nu-latn')} {item.currency}
+                </option>
+              ))}
             </select>
             <input type="number" min="1" placeholder="المبلغ الكلي" value={total} onChange={e => setTotal(e.target.value)} className={field} />
             <select value={currency} onChange={e => setCurrency(e.target.value as Currency)} className={field}>
@@ -191,6 +221,12 @@ export function InstallmentPlansModal({ subscriber, courses, bundles, paymentBox
             </select>
             <input type="number" min="2" max="24" value={count} onChange={e => setCount(e.target.value)} className={field} title="عدد الأقساط" />
           </div>
+          {chosen && (
+            <p className="text-[11px] text-gray-600">
+              سعر الكورس {chosen.expected.toLocaleString('ar-EG-u-nu-latn')} · اتدفع {chosen.paid.toLocaleString('ar-EG-u-nu-latn')} ·
+              <b className="text-amber-700"> باقي {chosen.remaining.toLocaleString('ar-EG-u-nu-latn')} {chosen.currency}</b> — الخطة بتقسّم الباقي.
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <label className="text-xs text-gray-600">أول قسط
               <input type="date" value={firstDue} onChange={e => setFirstDue(e.target.value)} className={`${field} mr-1`} />
