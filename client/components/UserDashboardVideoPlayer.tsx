@@ -10,7 +10,7 @@ import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 // "enc:…" text as the video source, and every one of the 2,174 lectures failed
 // to play in the student dashboard while the public course page, which had the
 // literal, worked. Both now read the same one.
-import { isFramedLectureUrl, isHlsLectureUrl, isYouTubeLecture, lectureEmbedUrl, revealVideoUrl } from '../lib/lectureVideo';
+import { HOSTED_FRAME_ALLOW, isFramedLectureUrl, isHlsLectureUrl, isYouTubeLecture, lectureEmbedUrl, revealVideoUrl } from '../lib/lectureVideo';
 import { VideoSurface } from './VideoSurface';
 
 /* ─── HLS-capable video player ───────────────────────────────────────────── */
@@ -388,7 +388,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
                   key={selected.id}
                   src={lectureEmbedUrl(resolvedUrl)}
                   className="w-full h-full"
-                  allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                  allow={HOSTED_FRAME_ALLOW}
                   allowFullScreen
                   // "no-referrer" broke playback outright: an embed player uses
                   // the Referer header to validate the embedding domain, and with

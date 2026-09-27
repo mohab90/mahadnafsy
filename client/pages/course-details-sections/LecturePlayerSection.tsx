@@ -3,7 +3,7 @@ import { Lock } from 'lucide-react';
 import type { CourseChapterItem, CourseLectureItem } from '../../types';
 import { cdnImg } from '../../lib/img';
 import { VideoSurface } from '../../components/VideoSurface';
-import { isFramedLectureUrl, isYouTubeLecture, lectureEmbedUrl, revealVideoUrl } from '../../lib/lectureVideo';
+import { HOSTED_FRAME_ALLOW, isFramedLectureUrl, isYouTubeLecture, lectureEmbedUrl, revealVideoUrl } from '../../lib/lectureVideo';
 
 type LockedLecture = CourseLectureItem & { locked: boolean };
 
@@ -105,7 +105,7 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
                                   key={selectedLecture.id}
                                   src={lectureEmbedUrl(resolvedLectureUrl)}
                                   className="w-full h-full"
-                                  allow="autoplay; encrypted-media; fullscreen"
+                                  allow={HOSTED_FRAME_ALLOW}
                                   allowFullScreen
                                   title={selectedLecture.title}
                                 />

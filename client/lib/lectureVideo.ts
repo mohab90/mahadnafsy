@@ -126,7 +126,28 @@ export function youtubeEmbedUrl(url: string, options: EmbedOptions = {}): string
 
 const DIRECT_MEDIA_FILE = /\.(?:mp4|m4v|webm|ogg|ogv|mov|m3u8)(?:$|[?#])/i;
 
-const isTicket = (raw: string) => raw.includes('/api/media/lectures/');
+/** A paid lecture's signed ticket, which the server redirects to the real player. */
+export const isLectureTicket = (raw: string) => raw.includes('/api/media/lectures/');
+
+/*
+ * What a lecture frame may do, and for whom.
+ *
+ * allow="autoplay" with no origin grants the feature to the origin of the
+ * frame's src. A paid lecture's src is our own ticket URL, which redirects to
+ * the player — so the permission stayed with mahadnafsy.com and YouTube, the
+ * document actually in the frame, had none. On a phone the viewer taps the
+ * player itself and needs no permission; on a computer VideoSurface starts it
+ * with playVideo over postMessage, and every Windows browser refused: the free
+ * first lecture (src straight to YouTube) played and every paid one sat still.
+ * Chromium's own report, checked on both: allowsFeature('autoplay',
+ * youtube-nocookie) was true for the free frame and false for the ticket.
+ * Naming the players' origins keeps the grant across the redirect.
+ */
+const YOUTUBE_ORIGINS = "'src' https://www.youtube-nocookie.com https://www.youtube.com";
+export const YOUTUBE_FRAME_ALLOW = `autoplay ${YOUTUBE_ORIGINS}; encrypted-media ${YOUTUBE_ORIGINS}`;
+const HOSTED_ORIGINS = "'src' https://player.vimeo.com https://drive.google.com";
+export const HOSTED_FRAME_ALLOW = ['autoplay', 'encrypted-media', 'picture-in-picture', 'fullscreen']
+  .map(feature => `${feature} ${HOSTED_ORIGINS}`).join('; ');
 
 export function isHlsLectureUrl(url: string): boolean {
   return url.includes('.m3u8') || url.includes('/hls/') || url.includes('kind=hls');
@@ -135,7 +156,7 @@ export function isHlsLectureUrl(url: string): boolean {
 /** true → render in a frame; false → render in a <video> element. */
 export function isFramedLectureUrl(raw: string): boolean {
   if (!raw) return false;
-  if (isTicket(raw)) return raw.includes('kind=embed');
+  if (isLectureTicket(raw)) return raw.includes('kind=embed');
   const url = revealVideoUrl(raw);
   if (url.startsWith('/uploads/') || isHlsLectureUrl(url)) return false;
   return !DIRECT_MEDIA_FILE.test(url);
@@ -152,7 +173,7 @@ export function isFramedLectureUrl(raw: string): boolean {
  */
 export function isYouTubeLecture(raw: string): boolean {
   if (!raw) return false;
-  if (isTicket(raw)) return !raw.includes('provider=other');
+  if (isLectureTicket(raw)) return !raw.includes('provider=other');
   const url = revealVideoUrl(raw);
   return url.includes('youtube.com') || url.includes('youtu.be');
 }
@@ -165,7 +186,7 @@ export function isYouTubeLecture(raw: string): boolean {
  */
 export function lectureEmbedUrl(raw: string): string {
   const plain = revealVideoUrl(raw || '');
-  if (!plain || isTicket(plain)) return plain;
+  if (!plain || isLectureTicket(plain)) return plain;
   try {
     const parsed = new URL(plain, window.location.origin);
     if (/(^|\.)vimeo\.com$/.test(parsed.hostname) && parsed.hostname !== 'player.vimeo.com') {

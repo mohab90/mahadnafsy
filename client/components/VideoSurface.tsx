@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, Maximize, Minimize, Pause, Play, Volume2, VolumeX } from 'lucide-react';
 
-import { youtubeEmbedUrl } from '../lib/lectureVideo';
+import { YOUTUBE_FRAME_ALLOW, isLectureTicket, youtubeEmbedUrl } from '../lib/lectureVideo';
 
 /**
  * A YouTube video with none of YouTube in it.
@@ -111,7 +111,12 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
   // redirect. What it cannot carry is what the player wants, so autoplay and
   // the resume position go as query parameters for the redirect to fold in.
   // Without this a paid lecture always restarted from zero.
-  const ticket = /[?&]kind=embed\b/.test(url || '') && !/youtu/.test(url || '');
+  //
+  // It is recognised by its path. The test was "has kind=embed and does not
+  // mention youtu", and once the server began adding provider=youtube to every
+  // YouTube ticket, no paid YouTube lecture passed it: the ticket went out with
+  // no autoplay and no resume position.
+  const ticket = isLectureTicket(url || '') && /[?&]kind=embed\b/.test(url || '');
 
   // Where to start is decided once per video, and then left alone.
   //
@@ -337,8 +342,10 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
         tabIndex={-1}
         // No fullscreen permission and no allowFullScreen: YouTube's native
         // fullscreen puts the title back on screen. The wrapper goes fullscreen
-        // instead, and these controls go with it.
-        allow="autoplay; encrypted-media"
+        // instead, and these controls go with it. The players' origins are
+        // named because a paid lecture reaches YouTube through our redirect —
+        // see YOUTUBE_FRAME_ALLOW.
+        allow={YOUTUBE_FRAME_ALLOW}
         // Stripping the referrer entirely makes YouTube answer «Error 153:
         // Video player configuration error» instead of the video — it uses the
         // Referer to check the embedding domain. This sends the bare origin.
