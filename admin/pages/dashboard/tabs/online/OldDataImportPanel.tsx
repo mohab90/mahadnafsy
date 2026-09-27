@@ -22,6 +22,14 @@ type OldDataImportPanelProps = {
   showAttendanceCol?: boolean;
   importRow: (row: OldDataRow, source: string) => Promise<void>;
   onImported?: (created: number) => void | Promise<void>;
+  /**
+   * Reads a Google Sheet link as CSV text (through the server — Google's export
+   * does not answer the browser). When given, the panel takes a link beside the
+   * file, and the sheet is read exactly as an uploaded file is.
+   */
+  loadSheetCsv?: (link: string) => Promise<string>;
+  /** A link to start with — an officer's saved sheet. */
+  initialSheetLink?: string;
 };
 
 const supportedColumns = [
@@ -88,7 +96,11 @@ export default function OldDataImportPanel({
   showAttendanceCol = false,
   importRow,
   onImported,
+  loadSheetCsv,
+  initialSheetLink = '',
 }: OldDataImportPanelProps) {
+  const [sheetLink, setSheetLink] = useState(initialSheetLink);
+  const [loadingSheet, setLoadingSheet] = useState(false);
   const [source, setSource] = useState(defaultSource);
   const [parsed, setParsed] = useState<OldDataRow[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -105,33 +117,42 @@ export default function OldDataImportPanel({
     : 'file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100';
   const btnCls = accent === 'violet' ? 'bg-violet-600 hover:bg-violet-700' : 'bg-indigo-600 hover:bg-indigo-700';
 
+  const loadText = (text: string) => {
+    const rows = parseOldData(text);
+    setParsed(rows);
+    setSelected(new Set(rows.filter(row => row._name && row._phone).map(row => row._id)));
+    setConfirming(false);
+    setResult(null);
+    // A file that parsed to nothing used to render nothing: no rows, no
+    // button, no message. It looked like the upload control was missing.
+    // Say what was actually read, and show the headers so the mismatch is
+    // obvious — it is nearly always a column name or a separator.
+    if (!rows.length) {
+      const headerLine = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(Boolean)[0] || '';
+      const headers = headerLine
+        ? (parseCsvRows(headerLine, detectCsvDelimiter(headerLine))[0] || []).map(normalizeCell).filter(Boolean)
+        : [];
+      setParseError(headers.length
+        ? `الملف اتقرا بس مفيش ولا صف فيه اسم أو رقم. الأعمدة اللي لقيتها: ${headers.join(' | ')} — لازم يكون فيه عمود للاسم وعمود للهاتف.`
+        : 'الملف فاضي أو مش CSV/TSV.');
+    } else setParseError('');
+  };
+
   const onFile = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = loaded => {
-      const text = String(loaded.target?.result || '');
-      const rows = parseOldData(text);
-      setParsed(rows);
-      setSelected(new Set(rows.filter(row => row._name && row._phone).map(row => row._id)));
-      setConfirming(false);
-      setResult(null);
-      // A file that parsed to nothing used to render nothing: no rows, no
-      // button, no message. It looked like the upload control was missing.
-      // Say what was actually read, and show the headers so the mismatch is
-      // obvious — it is nearly always a column name or a separator.
-      if (!rows.length) {
-        const headerLine = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(Boolean)[0] || '';
-        const headers = headerLine
-          ? (parseCsvRows(headerLine, detectCsvDelimiter(headerLine))[0] || []).map(normalizeCell).filter(Boolean)
-          : [];
-        setParseError(headers.length
-          ? `الملف اتقرا بس مفيش ولا صف فيه اسم أو رقم. الأعمدة اللي لقيتها: ${headers.join(' | ')} — لازم يكون فيه عمود للاسم وعمود للهاتف.`
-          : 'الملف فاضي أو مش CSV/TSV.');
-      } else setParseError('');
-    };
+    reader.onload = loaded => loadText(String(loaded.target?.result || ''));
     reader.onerror = () => setParseError('تعذّرت قراءة الملف.');
     reader.readAsText(file, 'UTF-8');
+  };
+
+  const onSheet = async () => {
+    if (!loadSheetCsv || !sheetLink.trim()) return;
+    setLoadingSheet(true);
+    try { loadText(await loadSheetCsv(sheetLink.trim())); }
+    catch (error) { setParseError(error instanceof Error ? error.message : 'تعذّرت قراءة الشيت.'); }
+    finally { setLoadingSheet(false); }
   };
 
   // Any change to what would be written retracts the confirmation, so the row
@@ -194,6 +215,19 @@ export default function OldDataImportPanel({
             className={`text-sm text-gray-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold cursor-pointer ${fileCls}`}
           />
         </div>
+        {loadSheetCsv && (
+          <div className="flex min-w-[260px] flex-1 items-end gap-2">
+            <div className="flex-1">
+              <label className="text-xs font-bold text-gray-600 mb-1 block">أو رابط جوجل شيت</label>
+              <input value={sheetLink} onChange={event => setSheetLink(event.target.value)} dir="ltr"
+                placeholder="https://docs.google.com/spreadsheets/d/…" className="border border-gray-200 rounded-xl px-3 py-2 text-sm w-full" />
+            </div>
+            <button type="button" onClick={() => { void onSheet(); }} disabled={loadingSheet || !sheetLink.trim()}
+              className={`px-4 py-2 text-white rounded-xl text-sm font-bold disabled:opacity-50 ${btnCls}`}>
+              {loadingSheet ? 'جاري السحب…' : 'سحب الشيت'}
+            </button>
+          </div>
+        )}
       </div>
 
       {parseError && (

@@ -43,7 +43,7 @@ test('empty scheduled jobs are safe no-ops against their injected database', asy
 });
 
 test('scheduled job storage reads and mutations retain tenant identity', () => {
-  assert.match(handlersSource, /subscribers WHERE is_active=1[\s\S]*tenant_id/);
+  assert.match(handlersSource, /FROM subscribers s\s+LEFT JOIN installment_plans ip ON ip\.subscriber_id=s\.id AND ip\.tenant_id=s\.tenant_id/);
   assert.match(handlersSource, /JOIN subscribers s ON s\.id=p\.subscriber_id AND s\.tenant_id=p\.tenant_id/);
   assert.match(handlersSource, /c\.tenant_id=dr\.tenant_id/);
   assert.match(handlersSource, /WHERE id=\? AND tenant_id=\?/);

@@ -3,7 +3,7 @@ import { cairoDateOnly, cairoDay, cairoDaysAhead } from '../../../../../shared/c
 import { Modal } from '../../../../../shared/ui/Modal';
 import { useNavigate } from 'react-router-dom';
 import {
-  ExternalLink, MessageSquareText, Phone, Receipt, RefreshCw, Trash2, Wallet,
+  CalendarClock, ExternalLink, MessageSquareText, Phone, Receipt, RefreshCw, Trash2, Wallet,
 } from 'lucide-react';
 import type {
   Bundle, CommunicationRecord, Course, 
@@ -24,6 +24,7 @@ import { ClientCourseAccessPanel } from './ClientCourseAccessPanel';
 import { currencyForBranch } from '../../../../lib/branchCurrency';
 import { type SubscriberWithCustomPrices } from '../onlineClientsUtils';
 import ClientNameCell from './ClientNameCell';
+import type { OnlineClientConvertType } from '../OnlineClientConvertModal';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type HousingInfo = { roundId: string; roundCode: string; receptionId: string; receptionName: string };
@@ -57,13 +58,15 @@ interface Props {
   setCollDetailsDraft: React.Dispatch<React.SetStateAction<{courseId:string;expected:string;paid:string;createdAt:string}[]>>;
   setCollDetailsRow: (row: SubscriberItem | null) => void;
   setConvertRow: (row: SubscriberItem | null) => void;
-  setConvertType: (t: 'finished'|'paused'|'refunded'|'daqqi'|'leads'|'online'|'') => void;
+  setConvertType: (t: OnlineClientConvertType) => void;
   setConvertAttendedLive: (v: boolean) => void;
   setConvertGotCert: (v: boolean) => void;
   setConvertPauseReason: (v: string) => void;
   setConvertRefundReason: (v: string) => void;
   setConvertRefundAmount: (v: string) => void;
   setConvertRefundMethod: (v: string) => void;
+  /** «الأقساط» — the client's plans, a new schedule, paying an instalment. */
+  setInstallmentsRow: (row: SubscriberItem | null) => void;
   filteredLength: number;
   notify: NotifyFn;
 }
@@ -76,7 +79,7 @@ export function ClientsTable({
   setSubWaRow,
   setDaqqiHousingModal, setDaqqiHousingRoundId,
   setConvertRow, setConvertType, setConvertAttendedLive, setConvertGotCert, setConvertPauseReason,
-  setConvertRefundReason, setConvertRefundAmount, setConvertRefundMethod, filteredLength, notify,
+  setConvertRefundReason, setConvertRefundAmount, setConvertRefundMethod, setInstallmentsRow, filteredLength, notify,
 }: Props) {
   // Which customer we are adjusting course access for. The default length is
   // set per course in the catalogue; this is where one person is changed.
@@ -316,7 +319,7 @@ export function ClientsTable({
             ) : <span className="text-gray-300">—</span>;
             const actionsCell = (
               <div className="flex flex-col gap-0.5">
-                <div className="grid grid-cols-3 gap-0.5">
+                <div className="grid grid-cols-4 gap-0.5">
                   <button title="ملف العميل" onClick={()=>navigate(`/client/${clientCode}`)} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-primary-50 hover:text-primary-600 flex items-center justify-center transition"><ExternalLink size={12}/></button>
                   <button title="تسجيل دفعة" onClick={()=>{
                     setSubPayRow(row);
@@ -326,6 +329,7 @@ export function ClientsTable({
                     }));
                     setSubPayDraft(prev => ({ ...prev, bookingType: (row.enrolledCourseIds||[]).length > 0 ? 'installment' : 'new_booking' }));
                   }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-emerald-50 hover:text-emerald-600 flex items-center justify-center transition"><Wallet size={12}/></button>
+                  <button title="الأقساط" onClick={()=>setInstallmentsRow(row)} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-teal-50 hover:text-teal-600 flex items-center justify-center transition"><CalendarClock size={12}/></button>
                   <button title="تواصل" onClick={()=>navigate(`/client/${clientCode}`, { state: { openTab: 'communications', addCommunication: true } })} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition"><Phone size={12}/></button>
                 </div>
                 <div className={`grid gap-0.5 ${canDeleteSubscriber?'grid-cols-4':'grid-cols-3'}`}>

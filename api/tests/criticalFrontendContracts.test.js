@@ -410,7 +410,7 @@ test('subscriber to lead conversion uses the atomic server workflow', () => {
   assert.doesNotMatch(conversion, /addLead\(/);
 });
 
-test('installment writes stay fail-closed and legacy finance UI is read-only', () => {
+test('installment writes stay behind their gate and permission, and legacy finance UI is read-only', () => {
   const routes = read('api/routes/installments.js');
   const finance = read('admin/pages/dashboard/tabs/FinancialTab.tsx');
   const unifiedPayments = read('admin/pages/unified-client/useUnifiedClientPayments.ts');
@@ -419,7 +419,11 @@ test('installment writes stay fail-closed and legacy finance UI is read-only', (
 
   assert.equal(mutatingRoutes.length, 4);
   mutatingRoutes.forEach(route => assert.match(route, /requireInstallmentWritesEnabled/));
-  assert.match(routes, /INSTALLMENT_WRITES_ENABLED === 'true'/);
+  // On unless switched off: production never switched it on, and every plan
+  // anyone tried to make was refused. INSTALLMENT_WRITES_ENABLED=false still
+  // stops them, and each write still needs manage_financial.
+  assert.match(routes, /INSTALLMENT_WRITES_ENABLED !== 'false'/);
+  mutatingRoutes.forEach(route => assert.match(route, /requirePermission\('manage_financial'\)/));
   assert.doesNotMatch(finance, /saveSubscriberPayment|addEnrollment|handleSaveInstallmentPlan/);
   assert.doesNotMatch(unifiedPayments, /installment-plans\/.*\/pay|handleCreateInstallmentPlan/);
   assert.doesNotMatch(bulkActions, /setCollOnlineBulkConfirm\('refund'\)/);

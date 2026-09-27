@@ -21,8 +21,10 @@ import SectionCustomTabs from './SectionCustomTabs';
 // Kept beside the component so the URL parser and the tab strip agree on what
 // a valid view is; an unknown ?view= falls back to 'active' rather than
 // rendering an empty table.
-type OnlineViewTab = 'active' | 'real-local' | 'real-intl' | 'finished' | 'paused' | 'refunded' | 'old_data' | 'old_local' | 'old_intl' | 'booked2024' | 'booked2025';
-const ONLINE_VIEW_TABS: OnlineViewTab[] = ['active', 'real-local', 'real-intl', 'finished', 'paused', 'refunded', 'old_data', 'old_local', 'old_intl', 'booked2024', 'booked2025'];
+type OnlineViewTab = 'active' | 'real-local' | 'real-saudi' | 'real-intl' | 'finished' | 'paused' | 'refunded' | 'old_data' | 'old_local' | 'old_intl' | 'booked2024' | 'booked2025';
+const ONLINE_VIEW_TABS: OnlineViewTab[] = ['active', 'real-local', 'real-saudi', 'real-intl', 'finished', 'paused', 'refunded', 'old_data', 'old_local', 'old_intl', 'booked2024', 'booked2025'];
+// «محلي / سعودي / دولي» — by what the client pays in (onlineClientsUtils).
+const MARKET_TABS: Partial<Record<OnlineViewTab, ClientMarket>> = { 'real-local': 'local', 'real-saudi': 'saudi', 'real-intl': 'intl' };
 // The Dokki cohort tabs. Keyed rather than parsed out of the tab name so adding
 // عملاء 26 next year is one entry here plus one in ViewTabsBar.
 const BOOKING_YEAR_TABS: Partial<Record<OnlineViewTab, number>> = { booked2024: 2024, booked2025: 2025 };
@@ -37,11 +39,19 @@ import { ClientsPagination } from './online-clients-sections/ClientsPagination';
 import { ViewTabsBar } from './online-clients-sections/ViewTabsBar';
 import { FiltersToolbar } from './online-clients-sections/FiltersToolbar';
 import { ClientsTable } from './online-clients-sections/ClientsTable';
+import { InstallmentPlansModal } from './online-clients-sections/InstallmentPlansModal';
+import { CollectionSettingsModal } from './online-clients-sections/CollectionSettingsModal';
+import { currencyForBranch } from '../../../lib/branchCurrency';
 import {
   calcSubscribersPaidEGP,
   formatCompactNumber,
   isInternationalSubscriber,
+  isOnlineClient,
+  MARKET_BRANCH,
+  MARKET_LABELS,
+  subscriberMarket,
   subscriberRemainingEGP,
+  type ClientMarket,
   type SubscriberSavePayload,
 } from './onlineClientsUtils';
 
@@ -133,7 +143,11 @@ export default function OnlineClientsTab({
   const [searchParams, setSearchParams] = useSearchParams();
   const urlView = searchParams.get('view') as OnlineViewTab | null;
   const collOnlineViewTab: OnlineViewTab = urlView && ONLINE_VIEW_TABS.includes(urlView) ? urlView : 'active';
+  // A staff-built tab open in the same row; opening a built-in one closes it.
+  const [customTabId, setCustomTabId] = useState<string | null>(null);
+  const [customTabsSlot, setCustomTabsSlot] = useState<HTMLSpanElement | null>(null);
   const setCollOnlineViewTab = (value: OnlineViewTab) => {
+    setCustomTabId(null);
     const next = new URLSearchParams(searchParams);
     next.set('view', value);
     // replace: switching tabs is not a navigation worth a history entry per
@@ -187,6 +201,8 @@ export default function OnlineClientsTab({
   const [collDetailsRow, setCollDetailsRow] = useState<SubscriberItem | null>(null);
   const [collDetailsDraft, setCollDetailsDraft] = useState<{courseId:string;expected:string;paid:string;createdAt:string}[]>([]);
   const [collDetailsSaving, setCollDetailsSaving] = useState(false);
+  const [installmentsRow, setInstallmentsRow] = useState<SubscriberItem | null>(null);
+  const [collectionSettingsOpen, setCollectionSettingsOpen] = useState(false);
 
               const isDaqqiClientsTab = activeTab === 'daqqi_clients';
               // Housing map: subscriberId → { roundId, roundCode, receptionId, receptionName }
@@ -263,9 +279,9 @@ export default function OnlineClientsTab({
                 ? branchFiltered.filter(s => normBranchId(s.branch) === 'DAQQI')
                 : branchFiltered;
               // For local/intl real tabs, always draw from allCombined
+              const viewMarket = MARKET_TABS[collOnlineViewTab];
               const tabFiltered =
-                collOnlineViewTab === 'real-local'      ? allCombined.filter(s => !isIntlSub(s)) :
-                collOnlineViewTab === 'real-intl'       ? allCombined.filter(isIntlSub) :
+                viewMarket ? allCombined.filter(s => isOnlineClient(s) && subscriberMarket(s) === viewMarket) :
                 collOnlineViewTab === 'old_data'  ? allCombined :
                 collOnlineViewTab === 'old_local' ? allCombined.filter(s => !isIntlSub(s)) :
                 collOnlineViewTab === 'old_intl'  ? allCombined.filter(isIntlSub) :
@@ -281,7 +297,7 @@ export default function OnlineClientsTab({
                 if (collOnlineViewTab === 'active') {
                   if (s.isActive === false) return false;
                   if (['finished','paused','refunded','refund_pending'].includes(clientSt)) return false;
-                } else if (collOnlineViewTab === 'real-local' || collOnlineViewTab === 'real-intl') {
+                } else if (viewMarket) {
                   // فعلي = active + has at least one enrolled course
                   if (s.isActive === false) return false;
                   if (['finished','paused','refunded','refund_pending'].includes(clientSt)) return false;
@@ -384,12 +400,6 @@ export default function OnlineClientsTab({
                       component is mounted under 'daqqi' when the الدقي clients
                       tab is open and 'online' otherwise, so each keeps its own
                       set of staff-built tabs without a second implementation. */}
-                  <SectionCustomTabs
-                    section={isDaqqiClientsTab ? 'daqqi' : 'online'}
-                    notify={notify}
-                    settingsOpen={showSectionTabs}
-                    onSettingsOpenChange={setShowSectionTabs}
-                  />
                   <OnlineClientsKpiStrip
                     isDaqqiClientsTab={isDaqqiClientsTab}
                     allCombined={allCombined}
@@ -399,16 +409,21 @@ export default function OnlineClientsTab({
                     collMonthRev={collMonthRev}
                     collTotalRem={collTotalRem}
                     fmtK={fmtK}
-                    isIntlSub={isIntlSub}
+                    marketOf={s => (isOnlineClient(s) ? subscriberMarket(s) : null)}
                   />
 
                   {/* === Tabs row === */}
                   <ViewTabsBar
                     onOpenSectionTabs={isAdmin ? () => setShowSectionTabs(true) : undefined}
+                    onOpenCollectionSettings={(isAdmin || isOnlineManager) ? () => setCollectionSettingsOpen(true) : undefined}
+                    customTabsSlot={setCustomTabsSlot}
+                    customTabOpen={!!customTabId}
+                    staffMembers={staffMembers}
                     isDaqqiClientsTab={isDaqqiClientsTab}
                     allCombined={allCombined}
                     isIntlSub={isIntlSub}
                     bookedInYear={bookedInYear}
+                    marketOf={s => (isOnlineClient(s) ? subscriberMarket(s) : null)}
                     collOnlineViewTab={collOnlineViewTab}
                     setCollOnlineViewTab={setCollOnlineViewTab}
                     setCollOnlinePage={setCollOnlinePage}
@@ -430,6 +445,17 @@ export default function OnlineClientsTab({
                     notify={notify}
                   />
 
+                  <SectionCustomTabs
+                    section={isDaqqiClientsTab ? 'daqqi' : 'online'}
+                    notify={notify}
+                    settingsOpen={showSectionTabs}
+                    onSettingsOpenChange={setShowSectionTabs}
+                    stripSlot={customTabsSlot}
+                    openTabId={customTabId}
+                    onOpenTabIdChange={setCustomTabId}
+                  />
+                  {/* The built-in view, unless a staff-built tab is open in its place. */}
+                  {!customTabId && (<>
                   {/* Filters row + column visibility toggles */}
                   <FiltersToolbar
                     isDaqqiClientsTab={isDaqqiClientsTab}
@@ -466,8 +492,6 @@ export default function OnlineClientsTab({
                     setCollOnlineDateFrom={setCollOnlineDateFrom}
                     collOnlineDateTo={collOnlineDateTo}
                     setCollOnlineDateTo={setCollOnlineDateTo}
-                    collOnlineSelected={collOnlineSelected}
-                    filtered={filtered}
                     vc={vc}
                     toggleCol={toggleCol}
                   />
@@ -608,11 +632,13 @@ export default function OnlineClientsTab({
                     setConvertRefundReason={setConvertRefundReason}
                     setConvertRefundAmount={setConvertRefundAmount}
                     setConvertRefundMethod={setConvertRefundMethod}
+                    setInstallmentsRow={setInstallmentsRow}
                     filteredLength={filtered.length}
                     notify={notify}
                   />
                   {/* Pagination */}
                   <ClientsPagination totalPages={totalPages} safePage={safePage} setCollOnlinePage={setCollOnlinePage} />
+                  </>)}
 
 
                   {/* ===== تسكين في روند (daqqi) ===== */}
@@ -872,6 +898,7 @@ export default function OnlineClientsTab({
                       setRefundMethod={setConvertRefundMethod}
                       saving={convertSaving}
                       isDaqqiClientsTab={isDaqqiClientsTab}
+                      currentMarket={isOnlineClient(convertRow) ? subscriberMarket(convertRow) : null}
                       onClose={() => setConvertRow(null)}
                       onConfirm={async () => {
                                     if (!convertRow) return;
@@ -882,6 +909,20 @@ export default function OnlineClientsTab({
                                       if (convertType === 'paused')   { answers.pauseReason  = convertPauseReason; }
                                       if (convertType === 'refunded') { answers.refundReason = convertRefundReason; answers.refundAmount = convertRefundAmount; answers.refundMethod = convertRefundMethod; }
                                       if (convertType === 'daqqi')    { answers.transferToDaqqi = true; }
+                                      if (convertType === 'local' || convertType === 'saudi' || convertType === 'intl') {
+                                        // Moved by hand: the market sticks whatever they paid in, and
+                                        // the branch follows so currency and pricing agree with it.
+                                        const { crm_json: _dropCrm3, ...marketRowClean } = convertRow as SubscriberItem & { crm_json?: unknown };
+                                        const moved: SubscriberItem = {
+                                          ...marketRowClean, market: convertType, branch: MARKET_BRANCH[convertType],
+                                          clientStatus: 'active', transferDate: cairoDateOnly(),
+                                        };
+                                        if (!await updateSubscriber(moved)) throw new Error('فشل حفظ تحويل العميل');
+                                        setSalesOwnSubscribers(prev => prev.map(s => s.id === moved.id ? moved : s));
+                                        setConvertRow(null);
+                                        notify('success', `✅ تم تحويل ${convertRow.name} إلى ${MARKET_LABELS[convertType]}`);
+                                        return;
+                                      }
                                       if (convertType === 'online') {
                                         const { crm_json: _dropCrm2, ...onlineRowClean } = convertRow as SubscriberItem & { crm_json?: unknown };
                                         const onlineUpdated: SubscriberItem = { ...onlineRowClean, branch: 'ONLINE_EGYPT' as const, clientStatus: 'active' as const, transferDate: cairoDateOnly() };
@@ -924,6 +965,30 @@ export default function OnlineClientsTab({
                                       setConvertSaving(false);
                                     }
                                   }}
+                    />
+                  )}
+
+                  {collectionSettingsOpen && (
+                    <CollectionSettingsModal
+                      staffMembers={isOnlineManager ? onlineTeamMembers : staffMembers}
+                      subscribers={scopedOrContextSubscribers}
+                      courses={courses}
+                      notify={notify}
+                      onClose={() => setCollectionSettingsOpen(false)}
+                      onChanged={reloadSubscribers}
+                    />
+                  )}
+
+                  {installmentsRow && (
+                    <InstallmentPlansModal
+                      subscriber={installmentsRow}
+                      courses={courses}
+                      bundles={bundles}
+                      paymentBoxes={paymentBoxes}
+                      defaultCurrency={currencyForBranch(normBranchId(installmentsRow.branch))}
+                      notify={notify}
+                      onClose={() => setInstallmentsRow(null)}
+                      onChanged={reloadSubscribers}
                     />
                   )}
 

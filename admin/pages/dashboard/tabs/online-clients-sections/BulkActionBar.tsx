@@ -103,12 +103,13 @@ export function BulkActionBar({
                     if (shouldUseScopedSubscribers) setSalesOwnSubscribers(prev => prev.filter(s => !succeeded.has(s.id)));
                   } else if (collOnlineBulkConfirm === 'assign') {
                     if (!collOnlineBulkAssignTo) return;
+                    const assignee = staffMembers.find(member => member.id === collOnlineBulkAssignTo);
                     for (const id of ids) {
                       const sub = actionSubscribers.find(s=>s.id===id);
-                      if (sub && await updateSubscriber({ ...sub, collectionStaffId: collOnlineBulkAssignTo })) succeeded.add(id);
+                      if (sub && await updateSubscriber({ ...sub, assignedCsId: collOnlineBulkAssignTo, assignedCsName: assignee?.name || '' })) succeeded.add(id);
                       else failed.add(id);
                     }
-                    if (shouldUseScopedSubscribers) setSalesOwnSubscribers(prev=>prev.map(s=>succeeded.has(s.id)?{...s,collectionStaffId:collOnlineBulkAssignTo}:s));
+                    if (shouldUseScopedSubscribers) setSalesOwnSubscribers(prev=>prev.map(s=>succeeded.has(s.id)?{...s,assignedCsId:collOnlineBulkAssignTo,assignedCsName:assignee?.name||''}:s));
                   } else {
                     const newStatus = collOnlineBulkConfirm === 'pause' ? 'paused' : 'finished';
                     for (const id of ids) {

@@ -23,6 +23,39 @@ export const isInternationalSubscriber = (subscriber: SubscriberItem): boolean =
   return (subscriber.paymentHistory || []).some(payment => payment.currency === 'SAR' || payment.currency === 'USD');
 };
 
+export type ClientMarket = 'local' | 'saudi' | 'intl';
+export const MARKET_LABELS: Record<ClientMarket, string> = { local: '🇪🇬 محلي', saudi: '🇸🇦 سعودي', intl: '🌍 دولي' };
+
+/**
+ * Which of «محلي / سعودي / دولي» an online client belongs to: where the desk
+ * moved them, else what they pay in — جنيه، ريال، دولار — by their latest
+ * collected payment, else their branch.
+ *
+ * «فعلي دولي» used to hold everyone outside Egypt, riyal and dollar together.
+ */
+export const subscriberMarket = (subscriber: SubscriberItem): ClientMarket => {
+  if (subscriber.market === 'local' || subscriber.market === 'saudi' || subscriber.market === 'intl') return subscriber.market;
+  const latest = (subscriber.paymentHistory || [])
+    .filter(isCollected)
+    .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))[0];
+  if (latest?.currency === 'SAR') return 'saudi';
+  if (latest?.currency === 'USD') return 'intl';
+  if (latest?.currency === 'EGP') return 'local';
+  const branch = normBranchId(subscriber.branch);
+  if (branch === 'ONLINE_SAUDI') return 'saudi';
+  if (branch === 'ONLINE_ABROAD') return 'intl';
+  return 'local';
+};
+
+/** The branch a market tab stands for, written when the desk moves a client. */
+export const MARKET_BRANCH: Record<ClientMarket, 'ONLINE_EGYPT' | 'ONLINE_SAUDI' | 'ONLINE_ABROAD'> = {
+  local: 'ONLINE_EGYPT', saudi: 'ONLINE_SAUDI', intl: 'ONLINE_ABROAD',
+};
+
+/** The market tabs are the online desk's; a Dokki or Tagamoa client is not in them. */
+export const isOnlineClient = (subscriber: SubscriberItem): boolean =>
+  !['DAQQI', 'TAGAMOA'].includes(normBranchId(subscriber.branch) || '');
+
 export const calcSubscribersPaidEGP = (
   subscribers: SubscriberItem[],
   fromDate?: string,

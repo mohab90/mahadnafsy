@@ -678,8 +678,13 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
     );
     const isNewSub = !existingSub;
     // Auto-assign to COLLECTION staff on new subscriber if not already assigned
-    let csId   = crmData.assignedCollectionId   || null;
-    let csName = crmData.assignedCollectionName || null;
+    // The screens send the officer as assignedCsId — the name the lists read it
+    // back under — and this read assignedCollectionId alone, so distributing
+    // «محلي قديم» to collection, «تعيين مسئول» and the client page all said
+    // done and changed nothing: the id went into crm_json, and the column the
+    // lists read stayed empty.
+    let csId   = crmData.assignedCollectionId   || crmData.assignedCsId   || null;
+    let csName = crmData.assignedCollectionName || crmData.assignedCsName || null;
     if (isNewSub && !csId) {
       const rep = await autoAssignStaff('COLLECTION', req.tenantId);
       if (rep) { csId = rep.id; csName = rep.name; }

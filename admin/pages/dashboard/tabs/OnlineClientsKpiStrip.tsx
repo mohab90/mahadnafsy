@@ -9,7 +9,8 @@ type OnlineClientsKpiStripProps = {
   collMonthRev: number;
   collTotalRem: number;
   fmtK: (value: number) => string;
-  isIntlSub: (subscriber: SubscriberItem) => boolean;
+  /** «محلي / سعودي / دولي» for an online client, null for a branch one. */
+  marketOf: (subscriber: SubscriberItem) => 'local' | 'saudi' | 'intl' | null;
 };
 
 export function OnlineClientsKpiStrip({
@@ -21,7 +22,7 @@ export function OnlineClientsKpiStrip({
   collMonthRev,
   collTotalRem,
   fmtK,
-  isIntlSub,
+  marketOf,
 }: OnlineClientsKpiStripProps) {
   const stats = isDaqqiClientsTab ? [
     { label: 'إجمالي عملاء الدقي', value: allCombined.length, color: 'bg-indigo-50 text-indigo-700 border-indigo-200', icon: '🏢' },
@@ -34,8 +35,9 @@ export function OnlineClientsKpiStrip({
     { label: 'متبقي في الشيت', value: `${fmtK(collTotalRem)} ج`, color: 'bg-red-50 text-red-700 border-red-200', icon: '⏳' },
   ] : [
     { label: 'إجمالي العملاء', value: allCombined.length, color: 'bg-slate-50 text-slate-700 border-slate-200', icon: '👥' },
-    { label: 'عملاء محلي', value: allCombined.filter(s => !isIntlSub(s)).length, color: 'bg-purple-50 text-purple-700 border-purple-200', icon: '🇪🇬' },
-    { label: 'عملاء دولي', value: allCombined.filter(isIntlSub).length, color: 'bg-cyan-50 text-cyan-700 border-cyan-200', icon: '🌍' },
+    { label: 'عملاء محلي', value: allCombined.filter(s => marketOf(s) === 'local').length, color: 'bg-purple-50 text-purple-700 border-purple-200', icon: '🇪🇬' },
+    { label: 'عملاء سعودي', value: allCombined.filter(s => marketOf(s) === 'saudi').length, color: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: '🇸🇦' },
+    { label: 'عملاء دولي', value: allCombined.filter(s => marketOf(s) === 'intl').length, color: 'bg-cyan-50 text-cyan-700 border-cyan-200', icon: '🌍' },
     { label: 'عملائي', value: mineSubsAll.length, color: 'bg-amber-50 text-amber-700 border-amber-200', icon: '⭐' },
     { label: 'تحصيل اليوم', value: `${fmtK(collTodayRev)} ج`, color: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: '📅' },
     { label: 'تحصيل الأسبوع', value: `${fmtK(collWeekRev)} ج`, color: 'bg-green-50 text-green-700 border-green-200', icon: '📆' },

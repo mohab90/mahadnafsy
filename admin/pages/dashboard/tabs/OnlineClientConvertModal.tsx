@@ -2,7 +2,12 @@ import { Modal } from '../../../../shared/ui/Modal';
 import type { SubscriberItem } from '../../../types';
 import { REFUND_METHOD_CODES, paymentMethodLabel } from '../../../../shared/paymentMethods';
 
-export type OnlineClientConvertType = 'finished' | 'paused' | 'refunded' | 'daqqi' | 'leads' | 'online' | '';
+export type OnlineClientConvertType = 'finished' | 'paused' | 'refunded' | 'daqqi' | 'leads' | 'online' | 'local' | 'saudi' | 'intl' | '';
+const MARKET_OPTIONS = [
+  { key: 'local' as const, label: '🇪🇬 محلي (جنيه)', cls: 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100' },
+  { key: 'saudi' as const, label: '🇸🇦 سعودي (ريال)', cls: 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100' },
+  { key: 'intl' as const, label: '🌍 دولي (دولار)', cls: 'bg-cyan-50 border-cyan-200 text-cyan-700 hover:bg-cyan-100' },
+];
 
 type OnlineClientConvertModalProps = {
   row: SubscriberItem;
@@ -22,6 +27,8 @@ type OnlineClientConvertModalProps = {
   setRefundMethod: (value: string) => void;
   saving: boolean;
   isDaqqiClientsTab: boolean;
+  /** Which of «محلي / سعودي / دولي» the client is in now; null for a branch client. */
+  currentMarket: 'local' | 'saudi' | 'intl' | null;
   onClose: () => void;
   onConfirm: () => void | Promise<void>;
 };
@@ -44,6 +51,7 @@ export function OnlineClientConvertModal({
   setRefundMethod,
   saving,
   isDaqqiClientsTab,
+  currentMarket,
   onClose,
   onConfirm,
 }: OnlineClientConvertModalProps) {
@@ -61,6 +69,8 @@ export function OnlineClientConvertModal({
             <div className="space-y-2">
               <p className="text-sm font-bold text-gray-700 mb-3">اختر نوع التحويل:</p>
               {([
+                // «محلي / سعودي / دولي» — every market but the one they are in.
+                ...(isDaqqiClientsTab ? [] : MARKET_OPTIONS.filter(option => option.key !== currentMarket)),
                 { key: 'finished' as const, label: '✅ منتهي', cls: 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100' },
                 { key: 'paused' as const, label: '⏸ متوقف', cls: 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100' },
                 { key: 'refunded' as const, label: '↩️ استرداد', cls: 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100' },
@@ -127,6 +137,11 @@ export function OnlineClientConvertModal({
               {convertType === 'daqqi' && (
                 <p className="text-sm text-gray-600 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">
                   سيتم تحويل هذا العميل إلى فرع الدقي. هل أنت متأكد؟
+                </p>
+              )}
+              {(convertType === 'local' || convertType === 'saudi' || convertType === 'intl') && (
+                <p className="text-sm text-gray-600 bg-teal-50 border border-teal-200 rounded-xl px-3 py-2">
+                  سيتم نقل العميل إلى تاب «{MARKET_OPTIONS.find(option => option.key === convertType)?.label}» ويفضل فيه حتى لو دفع بعملة تانية. هل أنت متأكد؟
                 </p>
               )}
               {convertType === 'online' && (

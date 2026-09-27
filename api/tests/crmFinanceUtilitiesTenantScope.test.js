@@ -210,7 +210,7 @@ test('employee subscriber lists cannot mix CRM ownership or payment history acro
   assert.match(route, /assign-collection'[^\n]+requirePermission\('manage_subscribers'\)/);
   assert.match(route, /SELECT crm_json FROM subscribers WHERE id=\? AND tenant_id=\?[^\n]+FOR UPDATE/);
   assert.match(route, /staff WHERE tenant_id=\? AND UPPER\(role\)='COLLECTION'/);
-  assert.match(route, /subscribers WHERE tenant_id=\? AND \(assigned_cs_id/);
+  assert.match(route, /FROM subscribers s\s+WHERE s\.tenant_id=\? AND s\.deleted_at IS NULL AND \(s\.assigned_cs_id/);
   assert.match(detail, /FROM subscribers\s+WHERE tenant_id=\? AND deleted_at IS NULL AND is_active=1 AND \(id=\? OR client_code=\?\)/);
   assert.match(detail, /FROM payments\s+WHERE tenant_id=\? AND subscriber_id=\?/);
   assert.match(detail, /FROM leads WHERE tenant_id=\? AND deleted_at IS NULL AND \(id=\? OR client_code=\?\)/);

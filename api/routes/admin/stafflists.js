@@ -15,11 +15,15 @@ const { createNotification } = require('../../lib/notification');
 const { logLeadEvent } = require('../../lib/crm');
 const { branchesFromScope } = require('../../lib/leadAccess');
 const { enqueueEmailSequence } = require('../../lib/emailSequence');
-const { ADMIN_EMAILS, requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../../middleware/auth');
+const { ADMIN_EMAILS, requireAuth, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../../middleware/auth');
 const { VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES, normalizeDataScope, resolveDataScope, hasPermission, PERMISSIONS } = require('../../constants/permissions');
 const { safeIsoString, safeDateOnly, sqlCairoDayStartUtc } = require('../../lib/dates');
 const { bulkOperationLimiter } = require('../../middleware/rateLimits');
 const { keyset } = require('../../lib/pagination');
+const { installmentPlansBySubscriber, withInstallmentPlans } = require('../../lib/installmentPlansBySubscriber');
+const { getTenantSetting } = require('../../lib/tenantSettings');
+const { createCollectionPicker, sanitizeCollectionConfig, subscriberMarket } = require('../../lib/collectionDistribution');
+const { requireCollectionLead } = require('../collection-distribution');
 
 async function loadEnrollmentProjection(tenantId, subscriberIds) {
   if (!subscriberIds.length) return {};
@@ -281,6 +285,7 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
 
     // Batch-load payments from the payments table (authoritative source, one query for all)
     const ids = rows.map(r => r.id);
+    const plansBySub = await installmentPlansBySubscriber(req.tenantId, ids);
     const placeholders = ids.map(() => '?').join(',');
     const [payRows] = await pool.query(
       `SELECT id, subscriber_id, course_id, bundle_id, amount, currency,
@@ -358,7 +363,7 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
     });
 
     res.json(rows.map(r => {
-      const crm = parseCrm(r.crm_json);
+      const crm = withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id));
       // client_code column is authoritative
       const clientCode = r.client_code || crm.clientCode || null;
       // payments table is authoritative; fall back to crm_json if no DB records found
@@ -447,6 +452,7 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePe
     if (rows.length === 0) return res.json([]);
 
     const ids = rows.map(r => r.id);
+    const plansBySub = await installmentPlansBySubscriber(req.tenantId, ids);
     const [payRows] = await pool.query(
       `SELECT id, subscriber_id, course_id, bundle_id, amount, currency,
               payment_type, payment_method, transaction_id, is_installment, course_expected, \`date\`, note,
@@ -511,7 +517,7 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePe
     });
 
     res.json(rows.map(r => {
-      const crm = parseCrm(r.crm_json);
+      const crm = withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id));
       const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : [];
       const enrolledCourseIds = enrollmentProjection[r.id]?.ids || [];
       const rb = r.branch || crm.branch || null;
@@ -635,6 +641,7 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, requir
     // their list. Removed along with the fallback it depended on.
 
     const ids = rows.map(r => r.id);
+    const plansBySub = await installmentPlansBySubscriber(req.tenantId, ids);
     const enrollmentProjection = await loadEnrollmentProjection(req.tenantId, ids);
     const completionProjection = await loadCompletionProjection(req.tenantId, ids);
     const [payRows] = await pool.query(
@@ -663,7 +670,7 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, requir
     });
 
     res.json(rows.map(r => {
-      const crm = parseCrm(r.crm_json);
+      const crm = withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id));
       const clientCode = r.client_code || crm.clientCode || null;
       const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : [];
       return {
@@ -703,6 +710,7 @@ router.get('/api/staff/my-collection-clients', requireAuth, requireAdminOrStaff,
     if (rows.length === 0) return res.json([]);
 
     const ids = rows.map(r => r.id);
+    const plansBySub = await installmentPlansBySubscriber(req.tenantId, ids);
     const enrollmentProjection = await loadEnrollmentProjection(req.tenantId, ids);
     const completionProjection = await loadCompletionProjection(req.tenantId, ids);
     // Show ALL payments for assigned clients (not filtered by staff_id — client may have payments from multiple staff)
@@ -732,7 +740,7 @@ router.get('/api/staff/my-collection-clients', requireAuth, requireAdminOrStaff,
     });
 
     res.json(rows.map(r => {
-      const crm = parseCrm(r.crm_json);
+      const crm = withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id));
       const clientCode = r.client_code || crm.clientCode || null;
       const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : [];
       return {
@@ -774,6 +782,7 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, requ
     if (rows.length === 0) return res.json([]);
 
     const ids = rows.map(r => r.id);
+    const plansBySub = await installmentPlansBySubscriber(req.tenantId, ids);
     const enrollmentProjection = await loadEnrollmentProjection(req.tenantId, ids);
     const completionProjection = await loadCompletionProjection(req.tenantId, ids);
     const [payRows] = await pool.query(
@@ -801,7 +810,7 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, requ
     });
 
     res.json(rows.map(r => {
-      const crm = parseCrm(r.crm_json);
+      const crm = withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id));
       const clientCode = r.client_code || crm.clientCode || null;
       const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : [];
       return {
@@ -851,8 +860,12 @@ router.put('/api/admin/subscribers/:id/assign-collection', requireAuth, requireA
   } catch (e) { if (conn) { await conn.rollback().catch(() => {}); conn.release(); } logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// POST /api/admin/bulk-assign-collection — round-robin assign all unassigned subscribers to collection staff
-router.post('/api/admin/bulk-assign-collection', requireAuth, requireAdmin, bulkOperationLimiter, async (req, res) => {
+// POST /api/admin/bulk-assign-collection — hand the unassigned subscribers to
+// collection, by the rules on «التحصيل: التوزيع والشيتات»: only officers
+// switched on, each within their markets (محلي / سعودي / دولي) and up to their
+// cap. A client nobody takes stays unassigned. With nothing configured it is
+// the plain rotation over every collection employee it always was.
+router.post('/api/admin/bulk-assign-collection', requireAuth, requireAdminOrStaff, requirePermission('manage_subscribers'), requireCollectionLead, bulkOperationLimiter, async (req, res) => {
   let conn;
   try {
     conn = await pool.getConnection(); await conn.beginTransaction();
@@ -862,30 +875,45 @@ router.post('/api/admin/bulk-assign-collection', requireAuth, requireAdmin, bulk
     );
     if (csRows.length === 0) { await conn.rollback(); conn.release(); conn = null; return res.status(400).json({ error: 'لا يوجد موظفو تحصيل نشطون' }); }
 
-    // Get all subscribers with no assigned_cs_id (and not daqqi branch)
+    // Get all subscribers with no assigned_cs_id (and not daqqi branch), with
+    // what decides their market: the desk's choice, their latest payment's
+    // currency, their branch.
     const [unassigned] = await conn.query(
-      "SELECT id FROM subscribers WHERE tenant_id=? AND (assigned_cs_id IS NULL OR assigned_cs_id='') AND (branch IS NULL OR branch NOT LIKE '%DAQQI%') ORDER BY created_at ASC FOR UPDATE", [req.tenantId]
+      `SELECT s.id, s.branch, JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.market')) AS market,
+              (SELECT p.currency FROM payments p
+                WHERE p.subscriber_id=s.id AND p.tenant_id=s.tenant_id AND p.deleted_at IS NULL
+                  AND (p.status IS NULL OR p.status='paid')
+                ORDER BY p.date DESC, p.created_at DESC LIMIT 1) AS latestCurrency
+         FROM subscribers s
+        WHERE s.tenant_id=? AND s.deleted_at IS NULL AND (s.assigned_cs_id IS NULL OR s.assigned_cs_id='')
+          AND (s.branch IS NULL OR s.branch NOT LIKE '%DAQQI%')
+        ORDER BY s.created_at ASC FOR UPDATE`, [req.tenantId]
     );
     if (unassigned.length === 0) { await conn.commit(); conn.release(); conn = null; return res.json({ ok: true, assigned: 0, message: 'لا يوجد مشتركون غير معيّنين' }); }
 
-    let idx = 0;
+    const config = sanitizeCollectionConfig(await getTenantSetting('collection_distribution', { tenantId: req.tenantId, fallback: {}, db: conn }) || {});
+    const [held] = await conn.query(
+      `SELECT assigned_cs_id AS id, COUNT(*) AS n FROM subscribers
+        WHERE tenant_id=? AND deleted_at IS NULL AND is_active=1 AND assigned_cs_id IS NOT NULL
+        GROUP BY assigned_cs_id`, [req.tenantId]
+    );
+    const picker = createCollectionPicker(csRows, config, new Map(held.map(row => [String(row.id), Number(row.n) || 0])));
+    if (!picker.size) { await conn.rollback(); conn.release(); conn = null; return res.status(400).json({ error: 'مفيش مسئول تحصيل متاح للتوزيع — فعّل حد من «التحصيل: التوزيع والشيتات»' }); }
+
     let assigned = 0;
-    // Batch in chunks of 100 for performance
-    const CHUNK = 100;
-    for (let i = 0; i < unassigned.length; i += CHUNK) {
-      const chunk = unassigned.slice(i, i + CHUNK);
-      for (const row of chunk) {
-        const cs = csRows[idx % csRows.length];
-        idx++;
-        await conn.query(
-          'UPDATE subscribers SET assigned_cs_id=?, assigned_cs_name=? WHERE id=? AND tenant_id=?',
-          [cs.id, cs.name, row.id, req.tenantId]
-        );
-      }
-      assigned += chunk.length;
+    const given = new Map();
+    for (const row of unassigned) {
+      const cs = picker.next(subscriberMarket(row));
+      if (!cs) continue;
+      await conn.query(
+        'UPDATE subscribers SET assigned_cs_id=?, assigned_cs_name=? WHERE id=? AND tenant_id=?',
+        [cs.id, cs.name, row.id, req.tenantId]
+      );
+      given.set(cs.name, (given.get(cs.name) || 0) + 1);
+      assigned += 1;
     }
     await conn.commit(); conn.release(); conn = null;
-    res.json({ ok: true, assigned, staffCount: csRows.length, staff: csRows.map(s => s.name) });
+    res.json({ ok: true, assigned, left: unassigned.length - assigned, staffCount: given.size, staff: [...given.keys()] });
   } catch (e) { if (conn) { await conn.rollback().catch(() => {}); conn.release(); } logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 

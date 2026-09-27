@@ -41,8 +41,12 @@ function planMatchesScope(req, plan) {
   return financialRecordMatches(resolveFinancialScope(req, { allowAssigned: true }), plan);
 }
 
+// On unless switched off. It was off unless switched on, and production never
+// switched it on, so every plan anyone tried to make was refused with a 409 —
+// «زرار الأقساط مش شغال» — and no plan was ever created. INSTALLMENT_WRITES_ENABLED=false
+// still turns them off.
 function requireInstallmentWritesEnabled(_req, res, next) {
-  if (process.env.INSTALLMENT_WRITES_ENABLED === 'true') return next();
+  if (process.env.INSTALLMENT_WRITES_ENABLED !== 'false') return next();
   return res.status(409).json({
     error: 'Installment changes are temporarily disabled pending payment-model approval',
     code: 'INSTALLMENT_WRITES_DISABLED',
@@ -101,7 +105,12 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
   try {
     const { planId } = req.params;
     const index = parseInt(req.params.index, 10);
-    const { amount, paidDate } = req.body || {};
+    const { amount, paidDate, paymentMethod } = req.body || {};
+    // The box the money went into, as every other payment records it. The row
+    // used to say 'installment', which is no box, so the payment could not be
+    // reconciled against the account it actually landed in.
+    const method = String(paymentMethod || '').trim().slice(0, 100);
+    if (!method) return res.status(400).json({ error: 'paymentMethod is required' });
     const paidAmount = Number(amount);
     // Cairo, not UTC. toISOString() takes the server's clock, and the server
     // runs in UTC — so an instalment confirmed at 01:30 Cairo was dated to the
@@ -143,7 +152,7 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
           tenant_id, staff_name, created_at)
        VALUES (?,?,?,?,?,?,?,?,1,?,?,?,'paid','installment',?,?,?,?,?,NOW())`,
       [payId, plan.subscriber_id, plan.course_id || null, plan.bundle_id || null, paidAmount, plan.currency || 'EGP',
-       payType, 'installment',
+       payType, method,
        // The plan's total, not this instalment's amount.
        //
        // course_expected is what the customer owes for the course, and the

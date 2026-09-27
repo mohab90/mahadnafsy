@@ -483,6 +483,8 @@ export interface SubscriberItem {
   clientStatus?: string;  // Online client lifecycle: active | finished | paused | refunded
   transferAnswers?: Record<string, unknown>;  // Answers recorded at time of conversion
   transferDate?: string;  // Date of conversion
+  /** «محلي / سعودي / دولي», when the desk moved the client there by hand. */
+  market?: 'local' | 'saudi' | 'intl';
   subscribedAt?: string;
   totalValue?: number;
   collectionStaffId?: string | null;

@@ -2,11 +2,11 @@ import React from 'react';
 import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import type { Course, PaymentHistoryEntry, SubscriberItem } from '../../../../types';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
-import OldDataImportPanel from '../online/OldDataImportPanel';
+import OldDataImportPanel, { type OldDataRow } from '../online/OldDataImportPanel';
 import type { SubscriberSavePayload } from '../onlineClientsUtils';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
-type ViewTabKey = 'active'|'real-local'|'real-intl'|'finished'|'paused'|'refunded'|'old_data'|'old_local'|'old_intl'|'booked2024'|'booked2025';
+type ViewTabKey = 'active'|'real-local'|'real-saudi'|'real-intl'|'finished'|'paused'|'refunded'|'old_data'|'old_local'|'old_intl'|'booked2024'|'booked2025';
 
 interface Props {
   collOnlineViewTab: ViewTabKey;
@@ -22,6 +22,65 @@ const mergeFreshSubscribers = (fresh: SubscriberItem[], setSalesOwnSubscribers: 
     return [...prev, ...fresh.filter(item => !ids.has(item.id))];
   });
 };
+
+/**
+ * One row of an old online sheet as a subscriber in «محلي قديم» or «دولي قديم».
+ * Shared by the tab's own import and each collection officer's sheets.
+ */
+export function oldOnlineSubscriber(row: OldDataRow, source: string, kind: 'old_local' | 'old_intl', courses: Course[]): SubscriberSavePayload {
+  const subBranch = kind === 'old_local' ? 'ONLINE_EGYPT' : 'ONLINE_ABROAD';
+  const subCurrency = kind === 'old_local' ? 'EGP' : 'USD';
+  const matchedCourse = row._course
+    ? courses.find(course => (course.titleAr || course.title || '').includes(row._course) || row._course.includes(course.titleAr || course.title || ''))
+    : null;
+  const enrolledCourseIds = matchedCourse ? [matchedCourse.id] : [];
+  const paid = Number(row._paid) || 0;
+  const expected = Number(row._expected) || 0;
+  // A refund in the old sheet is recorded as a note rather than
+  // netted off the collected amount: quietly reducing what the
+  // import says was paid would make the historic figures disagree
+  // with the sheet they came from, and a refund needs a decision
+  // trail, not an adjusted number. Same for a remaining balance
+  // that disagrees with expected − paid — worth seeing, not worth
+  // silently overwriting.
+  const refund = Number(row._refund) || 0;
+  const statedRemaining = row._remaining === '' ? null : Number(row._remaining);
+  const computedRemaining = expected - paid;
+  const extraNotes = [
+    row._notes,
+    refund > 0 ? `استرداد سابق: ${refund}` : '',
+    statedRemaining !== null && Number.isFinite(statedRemaining) && statedRemaining !== computedRemaining
+      ? `المتبقي في الملف ${statedRemaining} بينما الحساب ${computedRemaining}`
+      : '',
+    row._cert ? `شهادة: ${row._cert}` : '',
+    row._attendance ? `حضور: ${row._attendance}` : '',
+  ].filter(Boolean).join(' | ');
+  const paymentHistory: PaymentHistoryEntry[] = [];
+  if (paid > 0 && matchedCourse) {
+    paymentHistory.push({
+      id: `csv-pay-${Date.now()}-${Math.random()}`,
+      amount: paid,
+      currency: subCurrency as 'EGP' | 'USD',
+      paymentType: 'course',
+      isInstallment: false,
+      courseId: matchedCourse.id,
+      courseExpected: expected || undefined,
+      at: cairoDateOnly(),
+    });
+  }
+  return {
+    name: row._name,
+    phone: row._phone,
+    email: row._email || '',
+    branch: subBranch,
+    status: 'active',
+    clientStatus: kind,
+    notes: extraNotes,
+    enrolledCourseIds,
+    source,
+    paymentHistory,
+  } satisfies SubscriberSavePayload;
+}
 
 export function OldDataImportSection({
   collOnlineViewTab,
@@ -90,58 +149,7 @@ export function OldDataImportSection({
             defaultSource="داتا قديمة أونلاين"
             accent="violet"
             importRow={async (row, source) => {
-              const subBranch = collOnlineViewTab === 'old_local' ? 'ONLINE_EGYPT' : 'ONLINE_ABROAD';
-              const subCurrency = collOnlineViewTab === 'old_local' ? 'EGP' : 'USD';
-              const matchedCourse = row._course
-                ? courses.find(course => (course.titleAr || course.title || '').includes(row._course) || row._course.includes(course.titleAr || course.title || ''))
-                : null;
-              const enrolledCourseIds = matchedCourse ? [matchedCourse.id] : [];
-              const paid = Number(row._paid) || 0;
-              const expected = Number(row._expected) || 0;
-              // A refund in the old sheet is recorded as a note rather than
-              // netted off the collected amount: quietly reducing what the
-              // import says was paid would make the historic figures disagree
-              // with the sheet they came from, and a refund needs a decision
-              // trail, not an adjusted number. Same for a remaining balance
-              // that disagrees with expected − paid — worth seeing, not worth
-              // silently overwriting.
-              const refund = Number(row._refund) || 0;
-              const statedRemaining = row._remaining === '' ? null : Number(row._remaining);
-              const computedRemaining = expected - paid;
-              const extraNotes = [
-                row._notes,
-                refund > 0 ? `استرداد سابق: ${refund}` : '',
-                statedRemaining !== null && Number.isFinite(statedRemaining) && statedRemaining !== computedRemaining
-                  ? `المتبقي في الملف ${statedRemaining} بينما الحساب ${computedRemaining}`
-                  : '',
-                row._cert ? `شهادة: ${row._cert}` : '',
-                row._attendance ? `حضور: ${row._attendance}` : '',
-              ].filter(Boolean).join(' | ');
-              const paymentHistory: PaymentHistoryEntry[] = [];
-              if (paid > 0 && matchedCourse) {
-                paymentHistory.push({
-                  id: `csv-pay-${Date.now()}-${Math.random()}`,
-                  amount: paid,
-                  currency: subCurrency as 'EGP' | 'USD',
-                  paymentType: 'course',
-                  isInstallment: false,
-                  courseId: matchedCourse.id,
-                  courseExpected: expected || undefined,
-                  at: cairoDateOnly(),
-                });
-              }
-              await mysqlAdmin.saveSubscriber({
-                name: row._name,
-                phone: row._phone,
-                email: row._email || '',
-                branch: subBranch,
-                status: 'active',
-                clientStatus: collOnlineViewTab,
-                notes: extraNotes,
-                enrolledCourseIds,
-                source,
-                paymentHistory,
-              } satisfies SubscriberSavePayload);
+              await mysqlAdmin.saveSubscriber(oldOnlineSubscriber(row, source, collOnlineViewTab, courses));
             }}
             onImported={async created => {
               notify('success', `تم استيراد ${created} عميل`);

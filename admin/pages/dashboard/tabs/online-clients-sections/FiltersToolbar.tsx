@@ -1,9 +1,13 @@
-import { Download, Eye, Search } from 'lucide-react';
-import { cairoDateOnly, cairoDay } from '../../../../../shared/cairoDate';
+import { useState } from 'react';
+import { Eye, Search } from 'lucide-react';
+import { cairoDateOnly, cairoDaysAgo } from '../../../../../shared/cairoDate';
 import { BRANCHES, BRANCH_LABELS_AR } from '../../../../constants/branches';
-import type { Bundle, Course, DaqqiRound, StaffMember, SubscriberItem } from '../../../../types';
-import { paymentAmountInEGP } from '../onlineClientsUtils';
-import { downloadCsv } from '../../../../../shared/csv';
+import type { Bundle, Course, DaqqiRound, StaffMember } from '../../../../types';
+
+// The date filter's quick ranges, in Cairo days; «مخصص» opens the two dates.
+const DATE_PRESETS: [string, string, number][] = [
+  ['today', 'النهارده', 0], ['yesterday', 'أمس', 1], ['7', 'آخر 7 أيام', 6], ['15', 'آخر 15 يوم', 14], ['30', 'آخر 30 يوم', 29],
+];
 
 type HousingInfo = { roundId: string; roundCode: string; receptionId: string; receptionName: string };
 
@@ -44,8 +48,6 @@ interface Props {
   setCollOnlineDateFrom: (v: string) => void;
   collOnlineDateTo: string;
   setCollOnlineDateTo: (v: string) => void;
-  collOnlineSelected: Set<string>;
-  filtered: SubscriberItem[];
   vc: Record<string, boolean>;
   toggleCol: (col: string) => void;
 }
@@ -60,12 +62,27 @@ export function FiltersToolbar({
   onlineTeamMembers, staffMembers, collOnlineCertFilter, setCollOnlineCertFilter,
   collOnlineCourseFilter, setCollOnlineCourseFilter, courses, bundles,
   collOnlineDateFrom, setCollOnlineDateFrom, collOnlineDateTo, setCollOnlineDateTo,
-  collOnlineSelected, filtered, vc, toggleCol,
+  vc, toggleCol,
 }: Props) {
+  const [datePreset, setDatePreset] = useState(collOnlineDateFrom || collOnlineDateTo ? 'custom' : '');
+  const pickDate = (preset: string) => {
+    setDatePreset(preset);
+    setCollOnlinePage(1);
+    const quick = DATE_PRESETS.find(([key]) => key === preset);
+    if (quick) {
+      const [, , back] = quick;
+      setCollOnlineDateFrom(cairoDaysAgo(back));
+      setCollOnlineDateTo(preset === 'yesterday' ? cairoDaysAgo(1) : cairoDateOnly());
+    } else if (preset === '') {
+      setCollOnlineDateFrom('');
+      setCollOnlineDateTo('');
+    }
+  };
   return (
     <>
-      <div className="flex flex-wrap gap-2 mb-3 items-center">
-        <div className="relative min-w-0 w-[120px]">
+      {/* One line: the filters scroll sideways rather than wrapping into three. */}
+      <div className="flex flex-nowrap gap-2 mb-3 items-center overflow-x-auto whitespace-nowrap pb-1 [&>*]:shrink-0">
+        <div className="relative min-w-0 w-[140px]">
           <Search size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input value={collOnlineSearch} onChange={e=>{setCollOnlineSearch(e.target.value);setCollOnlinePage(1);}}
             placeholder="بحث اسم / هاتف..."
@@ -146,31 +163,23 @@ export function FiltersToolbar({
           {courses.map(c=><option key={c.id} value={c.id}>{c.title}</option>)}
           {bundles.map(b=><option key={`bundle:${b.id}`} value={`bundle:${b.id}`}>📦 {b.title}</option>)}
         </select>
-        <input type="date" value={collOnlineDateFrom} onChange={e=>{setCollOnlineDateFrom(e.target.value);setCollOnlinePage(1);}}
-          className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none" title="من تاريخ" />
-        <input type="date" value={collOnlineDateTo} onChange={e=>{setCollOnlineDateTo(e.target.value);setCollOnlinePage(1);}}
-          className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none" title="إلى تاريخ" />
+        <select value={datePreset} onChange={e => pickDate(e.target.value)}
+          className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none" title="تاريخ الاشتراك">
+          <option value="">كل التواريخ</option>
+          {DATE_PRESETS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          <option value="custom">من — إلى</option>
+        </select>
+        {datePreset === 'custom' && (<>
+          <input type="date" value={collOnlineDateFrom} onChange={e=>{setCollOnlineDateFrom(e.target.value);setCollOnlinePage(1);}}
+            className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none" title="من تاريخ" />
+          <input type="date" value={collOnlineDateTo} onChange={e=>{setCollOnlineDateTo(e.target.value);setCollOnlinePage(1);}}
+            className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none" title="إلى تاريخ" />
+        </>)}
         {(collOnlineSearch||clientBranchFilter||collOnlineStatusFilter||collOnlineRemainingFilter!=='all'||collOnlineCourseFilter||collOnlineDateFrom||collOnlineDateTo||collOnlineCollectionFilter||collOnlineCertFilter!=='all'||daqqiHousingFilter!=='all'||daqqiRoundFilter||daqqiReceptionFilter) && (
-          <button onClick={()=>{setCollOnlineSearch('');setClientBranchFilter('');setCollOnlineStatusFilter('');setCollOnlineRemainingFilter('all');setCollOnlineCourseFilter('');setCollOnlineDateFrom('');setCollOnlineDateTo('');setCollOnlineCollectionFilter('');setCollOnlineCertFilter('all');setDaqqiHousingFilter('all');setDaqqiRoundFilter('');setDaqqiReceptionFilter('');setCollOnlinePage(1);}}
+          <button onClick={()=>{setCollOnlineSearch('');setClientBranchFilter('');setCollOnlineStatusFilter('');setCollOnlineRemainingFilter('all');setCollOnlineCourseFilter('');setCollOnlineDateFrom('');setCollOnlineDateTo('');setDatePreset('');setCollOnlineCollectionFilter('');setCollOnlineCertFilter('all');setDaqqiHousingFilter('all');setDaqqiRoundFilter('');setDaqqiReceptionFilter('');setCollOnlinePage(1);}}
             className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-gray-50 text-gray-500 hover:bg-gray-100">مسح الفلاتر</button>
         )}
-        {/* ── Export CSV (للأونلاين فقط — الدقي في الإعدادات) ── */}
-        {!isDaqqiClientsTab && (
-          <button onClick={() => {
-            const toExport = collOnlineSelected.size > 0 ? filtered.filter(s => collOnlineSelected.has(s.id)) : filtered;
-            const header = ['الاسم','الهاتف','الإيميل','الفرع','الكورسات','الحالة','المدفوع (ج.م)','المتبقي (ج.م)','مسئول التحصيل','تاريخ الاشتراك','الكود'];
-            const rows = toExport.map(s => {
-              const paid = (s.paymentHistory||[]).reduce((a,p)=>a+paymentAmountInEGP(p),0);
-              const total = Number(s.totalValue)||0;
-              const crs = (s.enrolledCourseIds||[]).map(id=>courses.find(c=>c.id===id)?.title||bundles.find(b=>`bundle:${b.id}`===id)?.title||id).join(' | ');
-              const agent = staffMembers.find(st=>st.id===s.assignedCsId)?.name || '';
-              return [s.name,s.phone,s.email,s.branch||'',crs,s.clientStatus||s.status||'',paid,Math.max(0,total-paid),agent,cairoDay(s.createdAt),s.clientCode||''];
-            });
-            downloadCsv(`online-clients-${cairoDateOnly()}`, [header, ...rows]);
-          }} className="flex items-center gap-1.5 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition" title={collOnlineSelected.size>0?`تصدير ${collOnlineSelected.size} محدد`:'تصدير كل النتائج'}>
-            <Download size={13}/> {collOnlineSelected.size>0?`تصدير (${collOnlineSelected.size})`:'تصدير CSV'}
-          </button>
-        )}
+        {/* Export lives in ⚙️ الإعدادات now, on both halves of the screen. */}
       </div>
 
       {/* Column visibility toggles */}

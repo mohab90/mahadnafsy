@@ -9,6 +9,7 @@ const { invalidateFxCache } = require('./finance');
 const { cacheInvalidate } = require('./db');
 const { notifyWaitlistForFreedSeats } = require('./courseWaitlist');
 const { cairoToday, addDaysToDateOnly } = require('./dates');
+const { installmentPlansBySubscriber } = require('./installmentPlansBySubscriber');
 
 function createScheduledJobHandlers({ pool, logger }) {
   const installmentSentToday = new Set();
@@ -21,15 +22,21 @@ function createScheduledJobHandlers({ pool, logger }) {
         installmentSentToday.clear();
         installmentResetDate = today;
       }
-      const targetDate = new Date();
-      targetDate.setDate(targetDate.getDate() + 3);
-      const target = targetDate.toISOString().slice(0, 10);
+      const target = addDaysToDateOnly(cairoToday(), 3);
       const [subscribers] = await pool.query(
-        "SELECT id,tenant_id,name,phone,crm_json FROM subscribers WHERE is_active=1 AND crm_json LIKE '%installmentPlans%' LIMIT 2000"
+        `SELECT DISTINCT s.id,s.tenant_id,s.name,s.phone,s.crm_json FROM subscribers s
+          LEFT JOIN installment_plans ip ON ip.subscriber_id=s.id AND ip.tenant_id=s.tenant_id AND ip.status='active'
+          WHERE s.is_active=1 AND s.deleted_at IS NULL
+            AND (ip.id IS NOT NULL OR s.crm_json LIKE '%installmentPlans%') LIMIT 2000`
       );
+      const plansBySub = new Map();
+      for (const tenantId of new Set(subscribers.map(subscriber => subscriber.tenant_id))) {
+        const ids = subscribers.filter(subscriber => subscriber.tenant_id === tenantId).map(subscriber => subscriber.id);
+        for (const [id, plans] of await installmentPlansBySubscriber(tenantId, ids, pool)) plansBySub.set(id, plans);
+      }
       let sent = 0;
       for (const subscriber of subscribers) {
-        const plans = tryJson(subscriber.crm_json, {}).installmentPlans || [];
+        const plans = plansBySub.get(subscriber.id) || tryJson(subscriber.crm_json, {}).installmentPlans || [];
         for (const plan of plans) {
           for (const entry of plan.entries || []) {
             const dueDate = String(entry.dueDate || '').slice(0, 10);

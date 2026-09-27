@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Layers, Settings } from 'lucide-react';
 
@@ -30,7 +31,7 @@ type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
  * than no gear.
  */
 export default function SectionCustomTabs({
-  section, notify, onBook, settingsOpen, onSettingsOpenChange,
+  section, notify, onBook, settingsOpen, onSettingsOpenChange, stripSlot, openTabId: openTabIdProp, onOpenTabIdChange,
 }: {
   section: SectionKey;
   notify: NotifyFn;
@@ -46,6 +47,14 @@ export default function SectionCustomTabs({
    */
   settingsOpen?: boolean;
   onSettingsOpenChange?: (open: boolean) => void;
+  /**
+   * Where to draw the tab buttons — the page's own tab row, so a new tab sits
+   * beside the built-in ones instead of in a strip of its own above them.
+   */
+  stripSlot?: HTMLElement | null;
+  /** Which tab is open, when the page needs to know (to hide its own table). */
+  openTabId?: string | null;
+  onOpenTabIdChange?: (id: string | null) => void;
 }) {
   const navigate = useNavigate();
   const branchOptions = useBranches();
@@ -55,7 +64,14 @@ export default function SectionCustomTabs({
   } = useSiteData();
 
   const [tabs, setTabs] = useState<SectionTabsMap>(emptySectionTabs);
-  const [openTabId, setOpenTabId] = useState<string | null>(null);
+  const [ownOpenTabId, setOwnOpenTabId] = useState<string | null>(null);
+  const pageOwnsOpenTab = openTabIdProp !== undefined;
+  const openTabId = pageOwnsOpenTab ? openTabIdProp : ownOpenTabId;
+  const setOpenTabId = (next: string | null | ((current: string | null) => string | null)) => {
+    const value = typeof next === 'function' ? next(openTabId) : next;
+    if (pageOwnsOpenTab) onOpenTabIdChange?.(value);
+    else setOwnOpenTabId(value);
+  };
   const [ownSettings, setOwnSettings] = useState(false);
   // Controlled by the page when it offers the entry in its own menu.
   const pageOwnsSettings = settingsOpen !== undefined;
@@ -89,27 +105,30 @@ export default function SectionCustomTabs({
 
   if (!isAdmin && mine.length === 0) return null;
 
+  const buttons = mine.map(tab => (
+    <button
+      key={tab.id}
+      onClick={() => setOpenTabId(current => (current === tab.id ? null : tab.id))}
+      aria-current={openTabId === tab.id ? 'page' : undefined}
+      className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+        openTabId === tab.id
+          ? 'bg-primary-600 text-white shadow'
+          : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-100'}`}
+    >
+      {tab.label}
+    </button>
+  ));
+
   return (
-    <div className={mine.length > 0 ? 'space-y-4' : ''}>
+    <div className={mine.length > 0 && !stripSlot ? 'space-y-4' : ''}>
+      {stripSlot && createPortal(buttons, stripSlot)}
       {/* No strip when there is nothing in it: with the gear moved into the
           page's own menu, an empty row is a gap on the screen for nothing. */}
-      <div className={`flex flex-wrap items-center gap-2 ${mine.length === 0 ? 'hidden' : ''}`}>
-        {mine.length > 0 && (
+      <div className={`flex flex-wrap items-center gap-2 ${mine.length === 0 || stripSlot ? 'hidden' : ''}`}>
+        {mine.length > 0 && !stripSlot && (
           <>
             <Layers size={15} className="text-primary-600" />
-            {mine.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setOpenTabId(current => (current === tab.id ? null : tab.id))}
-                aria-current={openTabId === tab.id ? 'page' : undefined}
-                className={`rounded-xl px-3 py-1.5 text-sm font-bold transition ${
-                  openTabId === tab.id
-                    ? 'bg-primary-600 text-white shadow'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-              >
-                {tab.label}
-              </button>
-            ))}
+            {buttons}
           </>
         )}
         {isAdmin && !pageOwnsSettings && (

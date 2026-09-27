@@ -43,8 +43,8 @@ async function buildTeamDailyReport({ tenantId, from, to, today, onlyRepId = nul
 
   const [comms] = await db.query(
     `SELECT staff_id AS rep,
-            SUM(UPPER(type)='CALL') AS calls, SUM(UPPER(type)='WHATSAPP') AS whatsapp,
-            SUM(UPPER(type)='MEETING') AS meetings, COUNT(*) AS contacts,
+            SUM(type='CALL') AS calls, SUM(type='WHATSAPP') AS whatsapp,
+            SUM(type='MEETING') AS meetings, COUNT(*) AS contacts,
             COUNT(DISTINCT lead_id) AS leadsContacted
        FROM communications
       WHERE tenant_id=? AND date >= ? AND date < ?
