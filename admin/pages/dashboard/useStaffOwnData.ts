@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import type { LeadItem, SubscriberItem, OrderItem, DaqqiRound, StaffMember, Bundle, Course } from '../../types';
 import { mysqlAdmin } from '../../lib/mysqlapi';
+import { hasPermission } from '../../constants/permissions';
 import { staffStatusFromWire, type StaffWire } from './dashboardHelpers';
 
 interface StaffOwnDataArgs {
@@ -46,7 +47,12 @@ export function useStaffOwnData({
 
       // ONE unified call — server scopes data automatically based on role
       const [subsRaw, leadsRaw] = await Promise.allSettled([
-        mysqlAdmin.listStaffSubscribers() as Promise<unknown>,
+        // Only for a role that may see clients. HR, the accountant and the
+        // instructors were refused this on every page load (403) for a list the
+        // screen then dropped.
+        hasPermission(staffRef, 'view_subscribers')
+          ? mysqlAdmin.listStaffSubscribers() as Promise<unknown>
+          : Promise.resolve([] as unknown),
         mysqlAdmin.listStaffLeads()       as Promise<unknown>,
       ]);
 

@@ -145,6 +145,16 @@ const parseOffset = (v)                          => parseInt(v) || 0;
  */
 function sendRouteError(res, err) {
   if (res.headersSent) return;
+  // An error the code raised on purpose carries its status: «Lead not found»
+  // (404) for a lead merged away while someone had it open, «لا يمكن تعليم
+  // الليد كمحوَّل قبل إنشاء العميل» (409). Every one of them reached the desk as
+  // «Internal server error» — 13 lead saves on 24 September — so the person
+  // could not tell a refused request from a broken server.
+  const intended = Number(err?.statusCode);
+  if (intended >= 400 && intended < 500) {
+    res.status(intended).json({ error: err.message || 'Request refused' });
+    return;
+  }
   const dbCodes = new Set(['ECONNREFUSED', 'ETIMEDOUT', 'PROTOCOL_CONNECTION_LOST', 'ER_SERVER_LOST']);
   const status = err && dbCodes.has(err.code) ? 503 : 500;
   res.status(status).json({ error: status === 503 ? 'Database unavailable' : 'Internal server error' });

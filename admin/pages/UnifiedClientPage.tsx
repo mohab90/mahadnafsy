@@ -6,9 +6,9 @@
  *   LEFT sidebar  → full client data + actions (edit / pay / grant / contact / convert)
  *   RIGHT main    → overview tab first, then contextual tabs
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useBranches } from '../hooks/useBranches';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   
   CreditCard, 
@@ -123,6 +123,11 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   } = useUnifiedClientCommunications({
     lead, subscriber, clientCode, isSaving, setIsSaving, updateLead, updateSubscriber,
   });
+  // «تواصل» in a client list lands here with the form already open.
+  const location = useLocation();
+  useEffect(() => {
+    if ((location.state as { addCommunication?: boolean } | null)?.addCommunication) setShowAddComm(true);
+  }, [location.state, setShowAddComm]);
 
   const paymentState = useUnifiedClientPayments({
     lead, subscriber, subscribers, staffMembers, currentStaff, authUser, courses, bundles,

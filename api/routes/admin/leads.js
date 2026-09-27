@@ -37,7 +37,7 @@ const {
 const { enqueueEmailSequence } = require('../../lib/emailSequence');
 const { ADMIN_EMAILS, requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../../middleware/auth');
 const { VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES } = require('../../constants/permissions');
-const { safeIsoString, safeDateOnly, sqlCairoToday, sqlCairoDayStartUtc, cairoToday, addDaysToDateOnly } = require('../../lib/dates');
+const { safeIsoString, safeDateOnly, sqlCairoToday, sqlCairoDayStartUtc, cairoToday, addDaysToDateOnly, cairoDayStartUtc } = require('../../lib/dates');
 const { keyset } = require('../../lib/pagination');
 const { branchIdForBranch } = require('../../lib/branches');
 const { postPaymentJournal, logPaymentAudit } = require('../../lib/finance');
@@ -793,11 +793,18 @@ router.post('/api/admin/leads/move-to-archive', requireAuth, requireAdmin, requi
     if (createdBefore != null && createdBefore !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(String(createdBefore))) {
       return res.status(400).json({ error: 'createdBefore must be YYYY-MM-DD' });
     }
+    // The pool «محلي جديد» shows, exactly (isLocalNewLead in the admin): open
+    // leads only, and local ones. It took every unassigned lead but converted
+    // and lost, so a lead waiting in «دولي جديد» was filed under «محلي قديم» by
+    // the button on the local tab, along with leads already closed. And the
+    // cut-off is the start of that Cairo day, since created_at is a UTC instant.
     const archive = excludeArchiveSourcesSql('source');
+    const openStatuses = [...LEAD_STATUSES].filter(isOpenLeadStatus);
     let unassignedPool = `hidden=0 AND (assigned_sales_id IS NULL OR assigned_sales_id='')
-      AND status NOT IN ('converted','lost')${archive.sql}`;
-    const params = [...archive.params];
-    if (createdBefore) { unassignedPool += ' AND created_at < ?'; params.push(createdBefore); }
+      AND status IN (${openStatuses.map(() => '?').join(',')})
+      AND COALESCE(branch,'') NOT IN ('ONLINE_ABROAD','ONLINE_SAUDI') AND COALESCE(source,'') NOT LIKE 'دولي%'${archive.sql}`;
+    const params = [...openStatuses, ...archive.params];
+    if (createdBefore) { unassignedPool += ' AND created_at < ?'; params.push(cairoDayStartUtc(createdBefore)); }
 
     const [rows] = await pool.query(`SELECT id FROM leads WHERE tenant_id=? AND ${unassignedPool}`, [req.tenantId, ...params]);
     if (dryRun) return res.json({ ok: true, dryRun: true, matched: rows.length });

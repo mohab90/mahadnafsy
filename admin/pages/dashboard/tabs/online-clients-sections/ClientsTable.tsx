@@ -26,10 +26,6 @@ import { type SubscriberWithCustomPrices } from '../onlineClientsUtils';
 import ClientNameCell from './ClientNameCell';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
-type SubContactDraft = {
-  type: CommunicationRecord['type']; date: string;
-  notes: string; outcome: string; nextFollowUp: string;
-};
 type HousingInfo = { roundId: string; roundCode: string; receptionId: string; receptionName: string };
 
 interface Props {
@@ -55,8 +51,6 @@ interface Props {
   deleteSubscriber: (id: string) => Promise<boolean>;
   setSubPayRow: (row: SubscriberItem | null) => void;
   setSubPayDraft: React.Dispatch<React.SetStateAction<import('../../../../components/PaymentModal').PaymentDraft>>;
-  setSubContactRow: (row: SubscriberItem | null) => void;
-  setSubContactDraft: React.Dispatch<React.SetStateAction<SubContactDraft>>;
   setSubWaRow: (row: SubscriberItem | null) => void;
   setDaqqiHousingModal: (row: SubscriberItem | null) => void;
   setDaqqiHousingRoundId: (id: string) => void;
@@ -79,7 +73,7 @@ export function ClientsTable({
   housingMap, courses, bundles, staffMembers, onlineTeamMembers, isAdmin, isOnlineManager,
   canDeleteSubscriber, shouldUseScopedSubscribers,
   updateSubscriber, reloadSubscribers, setSalesOwnSubscribers, deleteSubscriber, setSubPayRow, setSubPayDraft,
-  setSubContactRow, setSubContactDraft, setSubWaRow,
+  setSubWaRow,
   setDaqqiHousingModal, setDaqqiHousingRoundId,
   setConvertRow, setConvertType, setConvertAttendedLive, setConvertGotCert, setConvertPauseReason,
   setConvertRefundReason, setConvertRefundAmount, setConvertRefundMethod, filteredLength, notify,
@@ -332,7 +326,7 @@ export function ClientsTable({
                     }));
                     setSubPayDraft(prev => ({ ...prev, bookingType: (row.enrolledCourseIds||[]).length > 0 ? 'installment' : 'new_booking' }));
                   }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-emerald-50 hover:text-emerald-600 flex items-center justify-center transition"><Wallet size={12}/></button>
-                  <button title="تواصل" onClick={()=>{setSubContactRow(row);setSubContactDraft({type:'call',date:new Date().toISOString().slice(0,16),notes:'',outcome:'',nextFollowUp:''}); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition"><Phone size={12}/></button>
+                  <button title="تواصل" onClick={()=>navigate(`/client/${clientCode}`, { state: { openTab: 'communications', addCommunication: true } })} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition"><Phone size={12}/></button>
                 </div>
                 <div className={`grid gap-0.5 ${canDeleteSubscriber?'grid-cols-4':'grid-cols-3'}`}>
                   <button title="واتساب" onClick={()=>setSubWaRow(row)} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-green-50 hover:text-green-600 flex items-center justify-center transition"><MessageSquareText size={12}/></button>

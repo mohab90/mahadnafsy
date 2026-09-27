@@ -258,8 +258,6 @@ const Dashboard: React.FC = () => {
     subPayDraft, setSubPayDraft,
     
     
-    setSubContactRow,
-    setSubContactDraft,
     
     
     setSubWaRow,
@@ -901,8 +899,6 @@ const Dashboard: React.FC = () => {
                     setDaqqiOldDistributing,
                     setSubPayRow,
                     setSubPayDraft,
-                    setSubContactRow,
-                    setSubContactDraft,
                     setSubWaRow,
                     branchFilter: branchQueryFilter,
                   }}

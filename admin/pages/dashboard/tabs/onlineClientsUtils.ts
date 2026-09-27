@@ -1,11 +1,6 @@
-import type { CommunicationRecord, SubscriberItem } from '../../../types';
+import type { SubscriberItem } from '../../../types';
 import { normBranchId } from '../dashboardShared';
 import { cairoDay } from '../../../../shared/cairoDate';
-
-export type SubContactDraft = {
-  type: CommunicationRecord['type']; date: string;
-  notes: string; outcome: string; nextFollowUp: string;
-};
 
 export type SubscriberSavePayload = Partial<SubscriberItem> & Record<string, unknown>;
 export type BulkAssignCollectionResult = { ok: boolean; assigned: number; staffCount: number; staff: string[] };

@@ -42,7 +42,6 @@ import {
   formatCompactNumber,
   isInternationalSubscriber,
   subscriberRemainingEGP,
-  type SubContactDraft,
   type SubscriberSavePayload,
 } from './onlineClientsUtils';
 
@@ -83,8 +82,6 @@ interface Props {
   setDaqqiOldDistributing: (v: boolean) => void;
   setSubPayRow: (row: SubscriberItem | null) => void;
   setSubPayDraft: React.Dispatch<React.SetStateAction<PaymentDraft>>;
-  setSubContactRow: (row: SubscriberItem | null) => void;
-  setSubContactDraft: React.Dispatch<React.SetStateAction<SubContactDraft>>;
   setSubWaRow: (row: SubscriberItem | null) => void;
   branchFilter?: string;
 }
@@ -96,7 +93,7 @@ export default function OnlineClientsTab({
   isDaqqiManager, canDeleteSubscriber, isReceptionDaqqi, isAdmin, isOnlineManager, isNonAdminStaff, currentStaff,
   staffSelf, onlineTeamMembers, subCsDistributing, setSubCsDistributing,
   daqqiOldDistribPlan, setDaqqiOldDistribPlan, daqqiOldDistributing, setDaqqiOldDistributing,
-  setSubPayRow, setSubPayDraft, setSubContactRow, setSubContactDraft,
+  setSubPayRow, setSubPayDraft,
   setSubWaRow, branchFilter,
 }: Props) {
   // One list for every box dropdown: what الإعدادات lists, plus every box the
@@ -598,8 +595,6 @@ export default function OnlineClientsTab({
                     deleteSubscriber={deleteSubscriber}
                     setSubPayRow={setSubPayRow}
                     setSubPayDraft={setSubPayDraft}
-                    setSubContactRow={setSubContactRow}
-                    setSubContactDraft={setSubContactDraft}
                     setSubWaRow={setSubWaRow}
                     setDaqqiHousingModal={setDaqqiHousingModal}
                     setDaqqiHousingRoundId={setDaqqiHousingRoundId}

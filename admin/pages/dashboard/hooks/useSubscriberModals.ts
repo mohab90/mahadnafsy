@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { CommunicationRecord, CourseAccessSetting, ExtraCertificateType, PaymentHistoryEntry, SubscriberItem } from '../../../types';
+import type { CourseAccessSetting, ExtraCertificateType, PaymentHistoryEntry, SubscriberItem } from '../../../types';
 import type { PaymentDraft } from '../../../components/PaymentModal';
 import { createClientPaymentDraft } from '../../../lib/clientActionDrafts';
 
@@ -23,21 +23,6 @@ export function useSubscriberModals() {
   const [certActionSub, setCertActionSub] = useState<SubscriberItem | null>(null);
   const [certActionDraft, setCertActionDraft] = useState<{ courseId: string; type: ExtraCertificateType | ''; certExpected: string; certPaid: string }>({ courseId: '', type: '', certExpected: '', certPaid: '' });
 
-  // Subscriber quick-contact modal
-  const [subContactRow, setSubContactRow] = useState<SubscriberItem | null>(null);
-  const [subContactDraft, setSubContactDraft] = useState<{
-    type: CommunicationRecord['type'];
-    date: string;
-    notes: string;
-    outcome: string;
-    nextFollowUp: string;
-  }>({
-    type: 'call',
-    date: new Date().toISOString().slice(0, 16),
-    notes: '',
-    outcome: '',
-    nextFollowUp: '',
-  });
   const [subscriberDraft, setSubscriberDraft] = useState({
     id: '',
     name: '',
@@ -60,8 +45,6 @@ export function useSubscriberModals() {
     subPayDraft, setSubPayDraft,
     certActionSub, setCertActionSub,
     certActionDraft, setCertActionDraft,
-    subContactRow, setSubContactRow,
-    subContactDraft, setSubContactDraft,
     subscriberDraft, setSubscriberDraft,
     newSubscriberPassword, setNewSubscriberPassword,
     subWaRow, setSubWaRow,
