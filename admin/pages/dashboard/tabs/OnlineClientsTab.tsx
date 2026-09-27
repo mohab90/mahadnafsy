@@ -29,7 +29,6 @@ const MARKET_TABS: Partial<Record<OnlineViewTab, ClientMarket>> = { 'real-local'
 // عملاء 26 next year is one entry here plus one in ViewTabsBar.
 const BOOKING_YEAR_TABS: Partial<Record<OnlineViewTab, number>> = { booked2024: 2024, booked2025: 2025 };
 import { branchMatchesFilter } from '../branchWorkspaceFilters';
-import { OnlineClientCourseDetailsModal } from './OnlineClientCourseDetailsModal';
 import { OnlineClientConvertModal, type OnlineClientConvertType } from './OnlineClientConvertModal';
 import { DaqqiHousingModal } from './DaqqiHousingModal';
 import { OnlineClientsKpiStrip } from './OnlineClientsKpiStrip';
@@ -92,7 +91,6 @@ interface Props {
   setDaqqiOldDistributing: (v: boolean) => void;
   setSubPayRow: (row: SubscriberItem | null) => void;
   setSubPayDraft: React.Dispatch<React.SetStateAction<PaymentDraft>>;
-  setSubWaRow: (row: SubscriberItem | null) => void;
   branchFilter?: string;
 }
 
@@ -104,7 +102,7 @@ export default function OnlineClientsTab({
   staffSelf, onlineTeamMembers, subCsDistributing, setSubCsDistributing,
   daqqiOldDistribPlan, setDaqqiOldDistribPlan, daqqiOldDistributing, setDaqqiOldDistributing,
   setSubPayRow, setSubPayDraft,
-  setSubWaRow, branchFilter,
+  branchFilter,
 }: Props) {
   // One list for every box dropdown: what الإعدادات lists, plus every box the
   // institute has collected into. A hook, so it is read once at the top —
@@ -198,9 +196,6 @@ export default function OnlineClientsTab({
   const [omNewSubSaving, setOmNewSubSaving] = useState(false);
   const omNewSubReset = () => setOmNewSubDraft({name:'',phone:'',email:'',password:'',branch:'',amount:'',currency:'EGP',paymentMethod:'',date:cairoDateOnly(),transactionId:'',note:'',referredBy:'',courses:[{courseId:'',accessType:'full',videoCount:'',discount:'',customPrice:''}]});
   // "تفاصيل" popup for online_clients table
-  const [collDetailsRow, setCollDetailsRow] = useState<SubscriberItem | null>(null);
-  const [collDetailsDraft, setCollDetailsDraft] = useState<{courseId:string;expected:string;paid:string;createdAt:string}[]>([]);
-  const [collDetailsSaving, setCollDetailsSaving] = useState(false);
   const [installmentsRow, setInstallmentsRow] = useState<SubscriberItem | null>(null);
   const [collectionSettingsOpen, setCollectionSettingsOpen] = useState(false);
 
@@ -246,12 +241,6 @@ export default function OnlineClientsTab({
                 return Number(String(s.createdAt || '').slice(0, 4)) === year;
               };
               const isIntlSub = isInternationalSubscriber;
-              // «عملائي» = subscribers personally converted by this collection employee
-              const myCollLeadIds = new Set(
-                salesOwnLeads
-                  .filter((l: LeadItem) => l.assignedSalesId === (staffSelf?.id || currentStaff?.id))
-                  .map((l: LeadItem) => l.id)
-              );
               // Prefer staff-scoped data when it is present, but fall back to context data.
               // Production can temporarily return an empty scoped list after API/date issues;
               // falling back keeps managers from seeing an empty CRM while the full context is loaded.
@@ -265,7 +254,6 @@ export default function OnlineClientsTab({
               const branchScopedMasterList = branchFilter
                 ? masterList.filter(s => branchMatchesFilter(s.branch, branchFilter))
                 : masterList;
-              const mineSubsAll = branchScopedMasterList.filter(s => s.leadId && myCollLeadIds.has(s.leadId));
               // عملاء الدقي is the Daqqi desk and stays Daqqi-only. عملائي is
               // every client the employee is responsible for, whichever branch
               // they belong to — it used to exclude DAQQI outright, so a rep
@@ -403,7 +391,6 @@ export default function OnlineClientsTab({
                   <OnlineClientsKpiStrip
                     isDaqqiClientsTab={isDaqqiClientsTab}
                     allCombined={allCombined}
-                    mineSubsAll={mineSubsAll}
                     collTodayRev={collTodayRev}
                     collWeekRev={collWeekRev}
                     collMonthRev={collMonthRev}
@@ -619,11 +606,8 @@ export default function OnlineClientsTab({
                     deleteSubscriber={deleteSubscriber}
                     setSubPayRow={setSubPayRow}
                     setSubPayDraft={setSubPayDraft}
-                    setSubWaRow={setSubWaRow}
                     setDaqqiHousingModal={setDaqqiHousingModal}
                     setDaqqiHousingRoundId={setDaqqiHousingRoundId}
-                    setCollDetailsDraft={setCollDetailsDraft}
-                    setCollDetailsRow={setCollDetailsRow}
                     setConvertRow={setConvertRow}
                     setConvertType={setConvertType}
                     setConvertAttendedLive={setConvertAttendedLive}
@@ -991,21 +975,6 @@ export default function OnlineClientsTab({
                       onChanged={reloadSubscribers}
                     />
                   )}
-
-                  <OnlineClientCourseDetailsModal
-                    row={collDetailsRow}
-                    draft={collDetailsDraft}
-                    setDraft={setCollDetailsDraft}
-                    saving={collDetailsSaving}
-                    setSaving={setCollDetailsSaving}
-                    courses={courses}
-                    bundles={bundles}
-                    reloadSubscribers={reloadSubscribers}
-                    isNonAdminStaff={isNonAdminStaff}
-                    setSalesOwnSubscribers={setSalesOwnSubscribers}
-                    notify={notify}
-                    onClose={() => setCollDetailsRow(null)}
-                  />
                 </article>
               );
 }

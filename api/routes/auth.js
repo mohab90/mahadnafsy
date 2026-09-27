@@ -13,6 +13,8 @@ const { generateTemporaryPassword, generateNumericCode } = require('../lib/secur
 
 const { pool, getStaffIdByEmail, requireDb } = require('../lib/db');
 const { queuePaymentReceipt } = require('../lib/paymentReceipt');
+const { resolveCatalogPrice } = require('../lib/catalogPrice');
+const { setAgreedPrice } = require('../lib/agreedPrice');
 const { sanitize, validate, EMAIL_RE, PHONE_RE } = require('../lib/helpers');
 const { sendEmail: sendEmailBase, htmlEmail, mailer } = require('../lib/email');
 const { describeReason, sendWhatsApp } = require('../lib/whatsapp');
@@ -698,6 +700,30 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
       'SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1',
       [tenantId, normEmail]
     );
+
+    // Each course's own price, as the desk set it on this screen — a price, or
+    // a discount off the catalogue. Only the first course's typed price ever
+    // reached the payment, and a discount reached nothing, so the client's
+    // total read list price from the first screen they appeared on.
+    if (responseSubscriber && Array.isArray(courses)) {
+      const priceCurrency = ['EGP', 'SAR', 'USD'].includes(firstPayment?.currency) ? firstPayment.currency : 'EGP';
+      for (const course of courses) {
+        const item = String(course?.courseId || '').trim();
+        if (!item) continue;
+        const bundleId = item.startsWith('bundle:') ? item.slice(7) : null;
+        const courseId = bundleId ? null : item;
+        const custom = Number(course.customPrice) || 0;
+        const discount = Number(course.discount) || 0;
+        let price = custom > 0 ? custom : null;
+        if (!price && discount > 0 && discount < 100) {
+          const catalogue = await resolveCatalogPrice(conn, {
+            type: bundleId ? 'bundle' : 'course', itemId: bundleId || courseId, currency: priceCurrency, tenantId,
+          }).catch(() => null);
+          if (catalogue) price = Math.round(catalogue * (1 - discount / 100));
+        }
+        if (price) await setAgreedPrice(conn, { tenantId, subscriberId: responseSubscriber.id, courseId, bundleId, price });
+      }
+    }
     if (!responseSubscriber) throw new Error('Subscriber account projection was not created');
     createdSubscriberId = responseSubscriber.id;
     await conn.commit();

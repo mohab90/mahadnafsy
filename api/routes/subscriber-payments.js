@@ -19,7 +19,7 @@ const { requireAuth, requireAdminOrStaff, requirePermission } = require('../midd
 const { safeDateOnly } = require('../lib/dates');
 const { branchIdForBranch, branchForId } = require('../lib/branches');
 const { assertWritable } = require('../lib/periodLock');
-const { resolveCatalogPrice } = require('../lib/catalogPrice');
+const { agreedPrice, setAgreedPrice } = require('../lib/agreedPrice');
 const { hasPermission } = require('../constants/permissions');
 const { applyCertificatePayment } = require('../lib/certificatePayments');
 const { financialRecordMatches, resolveFinancialScope } = require('../lib/financialScope');
@@ -369,20 +369,20 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
     // courseExpected is for, and that still wins. Only when the catalogue has
     // no usable price does this fall back to the amount, because a course with
     // no price cannot say the payment was short.
+    //
+    // Nobody saying means the price the client already agreed — their own
+    // price, else their booking's, else the catalogue (lib/agreedPrice.js). An
+    // instalment used to record nothing here, so it could not open lectures in
+    // proportion and the next payment on the course had no price to agree with.
     let resolvedExpected = courseExpected;
-    if (resolvedExpected == null && !payment.isInstallment) {
+    if (resolvedExpected == null && (courseId || bundleId)) {
       // Read through the pool: this runs before the transaction opens, and the
-      // catalogue price is not part of what this write must see consistently.
-      const catalogue = (courseId || bundleId)
-        ? await resolveCatalogPrice(pool, {
-          type: bundleId ? 'bundle' : 'course',
-          itemId: bundleId || courseId,
-          currency: paymentCurrency,
-          tenantId: paymentTenantId,
-        }).catch(() => null)
-        : null;
-      resolvedExpected = catalogue != null && catalogue > 0 ? catalogue : paymentAmount;
+      // price is not part of what this write must see consistently.
+      resolvedExpected = await agreedPrice(pool, {
+        tenantId: paymentTenantId, subscriberId: subscriber_id, courseId, bundleId, currency: paymentCurrency,
+      }).catch(() => null);
     }
+    if (resolvedExpected == null && !payment.isInstallment) resolvedExpected = paymentAmount;
     if (courseId) {
       const [[course]] = await pool.query(
         'SELECT id FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
@@ -645,6 +645,19 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
       ]
     );
 
+    // A price the desk entered is the client's price for the item from now on,
+    // on every payment for it and on the client — so the online table, the
+    // next instalment and the collections list all read the same number, and
+    // an instalment at the new price does not disagree with the booking's. An
+    // instalment with no price brings the item's rows to the agreed one too,
+    // so the access check below never finds two prices for one course.
+    if (resolvedExpected != null && (courseExpected != null || payment.isInstallment)
+      && (courseId || bundleId) && ['COURSE', 'BUNDLE'].includes(safeType)) {
+      await setAgreedPrice(conn, {
+        tenantId: paymentTenantId, subscriberId: subscriber_id, courseId, bundleId, price: resolvedExpected,
+      });
+    }
+
     // Auto-create enrollment when payment is paid and a course/bundle is specified
     // access_type = 'full' only if NOT an installment payment AND amount covers the full expected price
     // access_type = 'limited' (preview-only) for partial/installment payments until fully paid
@@ -661,7 +674,7 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
           currentPaymentId: id,
           currentAmount: paymentAmount,
           currency: paymentCurrency,
-          expectedAmount: courseExpected,
+          expectedAmount: resolvedExpected,
         });
         enrollAccessType = accessModeOf(resolved);
         enrollPaidRatio = paidRatioOf(resolved);

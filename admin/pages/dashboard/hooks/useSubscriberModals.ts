@@ -36,7 +36,6 @@ export function useSubscriberModals() {
     createdAt: '',
   });
   const [newSubscriberPassword, setNewSubscriberPassword] = useState('');
-  const [subWaRow, setSubWaRow] = useState<SubscriberItem | null>(null);
 
   return {
     editingSubscriberId, setEditingSubscriberId,
@@ -47,6 +46,5 @@ export function useSubscriberModals() {
     certActionDraft, setCertActionDraft,
     subscriberDraft, setSubscriberDraft,
     newSubscriberPassword, setNewSubscriberPassword,
-    subWaRow, setSubWaRow,
   };
 }

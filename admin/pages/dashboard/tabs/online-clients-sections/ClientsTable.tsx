@@ -3,7 +3,7 @@ import { cairoDateOnly, cairoDay, cairoDaysAhead } from '../../../../../shared/c
 import { Modal } from '../../../../../shared/ui/Modal';
 import { useNavigate } from 'react-router-dom';
 import {
-  CalendarClock, ExternalLink, MessageSquareText, Phone, Receipt, RefreshCw, Trash2, Wallet,
+  CalendarClock, ExternalLink, Phone, Receipt, RefreshCw, Trash2, Wallet,
 } from 'lucide-react';
 import type {
   Bundle, CommunicationRecord, Course, 
@@ -22,9 +22,13 @@ const branchLabel = (value?: string | null): string => {
 };
 import { ClientCourseAccessPanel } from './ClientCourseAccessPanel';
 import { currencyForBranch } from '../../../../lib/branchCurrency';
-import { type SubscriberWithCustomPrices } from '../onlineClientsUtils';
+import { isOnlineClient, subscriberMarket } from '../onlineClientsUtils';
+import { agreedPriceFor } from '../../../../lib/agreedPrice';
+import { isCollected } from '../../../../lib/money';
 import ClientNameCell from './ClientNameCell';
 import type { OnlineClientConvertType } from '../OnlineClientConvertModal';
+import { waLink } from '../../../../lib/whatsappLink';
+import { WhatsAppIcon } from '../../../../components/WhatsAppIcon';
 import { useCertificateCatalog } from '../../../../lib/certificateCatalog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -53,11 +57,8 @@ interface Props {
   deleteSubscriber: (id: string) => Promise<boolean>;
   setSubPayRow: (row: SubscriberItem | null) => void;
   setSubPayDraft: React.Dispatch<React.SetStateAction<import('../../../../components/PaymentModal').PaymentDraft>>;
-  setSubWaRow: (row: SubscriberItem | null) => void;
   setDaqqiHousingModal: (row: SubscriberItem | null) => void;
   setDaqqiHousingRoundId: (id: string) => void;
-  setCollDetailsDraft: React.Dispatch<React.SetStateAction<{courseId:string;expected:string;paid:string;createdAt:string}[]>>;
-  setCollDetailsRow: (row: SubscriberItem | null) => void;
   setConvertRow: (row: SubscriberItem | null) => void;
   setConvertType: (t: OnlineClientConvertType) => void;
   setConvertAttendedLive: (v: boolean) => void;
@@ -77,7 +78,6 @@ export function ClientsTable({
   housingMap, courses, bundles, staffMembers, onlineTeamMembers, isAdmin, isOnlineManager,
   canDeleteSubscriber, shouldUseScopedSubscribers,
   updateSubscriber, reloadSubscribers, setSalesOwnSubscribers, deleteSubscriber, setSubPayRow, setSubPayDraft,
-  setSubWaRow,
   setDaqqiHousingModal, setDaqqiHousingRoundId,
   setConvertRow, setConvertType, setConvertAttendedLive, setConvertGotCert, setConvertPauseReason,
   setConvertRefundReason, setConvertRefundAmount, setConvertRefundMethod, setInstallmentsRow, filteredLength, notify,
@@ -129,16 +129,22 @@ export function ClientsTable({
           {pageRows.map((row) => {
             const clientCode = row.clientCode || row.id;
             const salesName = row.assignedSalesName || '';
-            const payments = row.paymentHistory || [];
+            // Collected money only: a pending or refunded row is not paid.
+            const payments = (row.paymentHistory || []).filter(isCollected);
             const enrolledIds = [...new Set(row.enrolledCourseIds || [])];
             const allCBundles = bundles.filter(b => b.courses.length > 0 && b.courses.every(co => enrolledIds.includes(co.id)));
             const completeBundles = allCBundles.filter(b => !allCBundles.some(other => other.id !== b.id && other.courses.length > b.courses.length && b.courses.every(co => other.courses.some(oc => oc.id === co.id))));
             const bundleHiddenIds = new Set(completeBundles.flatMap(b => b.courses.map(co => co.id)));
             const partialCids = enrolledIds.filter(id => !bundleHiddenIds.has(id));
             const branchId = normBranchId(row.branch);
-            const branchCurrency = currencyForBranch(branchId);
+            // The currency they pay in: their online market's, else their
+            // branch's. A riyal client filed under an Egypt branch showed no
+            // payments at all, every one being filtered out as the wrong currency.
+            const branchCurrency = isOnlineClient(row)
+              ? ({ local: 'EGP', saudi: 'SAR', intl: 'USD' } as const)[subscriberMarket(row)]
+              : currencyForBranch(branchId);
             const certLabel = (t?: string) => certCatalog.label(t);
-            const customPrices: Record<string,number> = (row as SubscriberWithCustomPrices).customPrices || {};
+            const customPrices: Record<string,number> = row.customPrices || {};
             const multiCourseKey = completeBundles.length === 0 && partialCids.length > 1
               ? `multi:${[...partialCids].sort().join(',')}`
               : null;
@@ -146,11 +152,8 @@ export function ClientsTable({
               ? (() => {
                   const settlementPayments = payments.filter(p => p.currency === branchCurrency);
                   const totalPaid = settlementPayments.filter(p => p.paymentType !== 'certificate' && p.paymentType !== 'book').reduce((s,p)=>s+(Number(p.amount)||0),0);
-                  const autoExp = partialCids.reduce((s, cid) => {
-                    const nb2 = settlementPayments.find(p => p.courseId === cid && !p.isInstallment && p.paymentType !== 'certificate');
-                    const catP = courses.find(c=>c.id===cid)?.price?.[branchCurrency] || 0;
-                    return s + (nb2?.courseExpected || catP);
-                  }, 0);
+                  const autoExp = partialCids.reduce((s, cid) =>
+                    s + agreedPriceFor(row, cid, courses.find(c=>c.id===cid)?.price?.[branchCurrency] || 0, branchCurrency), 0);
                   const exp = customPrices[multiCourseKey] || autoExp;
                   const lbl = 'باقة: ' + partialCids.map(cid => courses.find(c=>c.id===cid)?.title || cid).join(' + ');
                   return [{ cid: multiCourseKey, label: lbl, expected: exp, paid: totalPaid, remaining: Math.max(0, exp - totalPaid), cur: branchCurrency }];
@@ -161,17 +164,14 @@ export function ClientsTable({
                 const bundleCid = `bundle:${b.id}`;
                 const bPay = payments.filter(p => p.currency === branchCurrency && ((p.courseId && bCids.includes(p.courseId)) || (p.bundleId === b.id) || (!p.courseId && !p.bundleId && (p.paymentType === 'course' || !p.paymentType))));
                 const cur = branchCurrency;
-                const nb = bPay.find(p => !p.isInstallment);
                 const bPrice = (b.price as unknown as Record<string,number>)[cur] || b.price.EGP || 0;
-                // The bundle's own price outranks courseExpected here. That field
-                // carries the price of a single course, so a bundle bought for
-                // 5,500 was displayed against an expected 900 — the "paid more
-                // than the product is worth" rows in the QA report were all
-                // bundles being measured against one of their courses. An
-                // explicit per-client override still wins; courseExpected is
-                // only the last resort, for a bundle with no catalogue price.
-                const expected = customPrices[bundleCid] || bPrice || nb?.courseExpected || 0;
-                const paid = bPay.reduce((s,p) => s+(Number(p.amount)||0), 0);
+                // The price agreed for the track (lib/agreedPrice.ts), which
+                // never reads below what was paid for it — the old «900 against
+                // 5,500» rows, a single course's price left on a track booking,
+                // are why the catalogue used to outrank the booking here, and
+                // that hid every track sold at a discount.
+                const expected = agreedPriceFor(row, bundleCid, bPrice, cur);
+                const paid = bPay.reduce((s,p) => s+(Number(p.amount)||0), 0) + (Number(row.priorPaid?.[bundleCid]) || 0);
                 return { cid: bundleCid, label: b.title, expected, paid, remaining: expected > 0 ? Math.max(0, expected-paid) : 0, cur };
               }),
               ...partialCids.map((cid, pidx) => {
@@ -183,11 +183,10 @@ export function ClientsTable({
                   ? payments.filter(p => p.currency === branchCurrency && !p.courseId && !p.bundleId && (p.paymentType === 'course' || !p.paymentType))
                   : [];
                 const cPay = [...cPayBase, ...unattributed];
-                const nb = cPay.find(p => !p.isInstallment);
                 const cur = branchCurrency;
                 const catPrice = course?.price?.[cur] || course?.price?.EGP || 0;
-                const expected = customPrices[cid] || nb?.courseExpected || catPrice;
-                const paid = cPay.reduce((s,p) => s+(Number(p.amount)||0), 0);
+                const expected = agreedPriceFor(row, cid, catPrice, cur);
+                const paid = cPay.reduce((s,p) => s+(Number(p.amount)||0), 0) + (Number(row.priorPaid?.[cid]) || 0);
                 return { cid, label: course?.title || cid, expected, paid, remaining: expected > 0 ? Math.max(0, expected-paid) : 0, cur };
               }),
             ];
@@ -329,7 +328,14 @@ export function ClientsTable({
                   <button title="تواصل" onClick={()=>navigate(`/client/${clientCode}`, { state: { openTab: 'communications', addCommunication: true } })} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition"><Phone size={12}/></button>
                 </div>
                 <div className={`grid gap-0.5 ${canDeleteSubscriber?'grid-cols-4':'grid-cols-3'}`}>
-                  <button title="واتساب" onClick={()=>setSubWaRow(row)} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-green-50 hover:text-green-600 flex items-center justify-center transition"><MessageSquareText size={12}/></button>
+                  {/* Opens the chat. It set a row for a WhatsApp dialog that no
+                      screen ever drew, so pressing it did nothing. */}
+                  {waLink(row.phone) ? (
+                    <a title="واتساب" href={waLink(row.phone) || undefined} target="_blank" rel="noreferrer"
+                      className="h-7 rounded bg-green-50 text-green-600 hover:bg-green-100 flex items-center justify-center transition"><WhatsAppIcon size={13}/></a>
+                  ) : (
+                    <span title="مفيش رقم" className="h-7 rounded bg-gray-50 text-gray-300 flex items-center justify-center"><WhatsAppIcon size={13}/></span>
+                  )}
                   {isDaqqiClientsTab ? (
                     <button title={rowHousing ? `مسكن في روند ${rowHousing.roundCode}` : 'تسكين في روند'} onClick={()=>{ setDaqqiHousingModal(row); setDaqqiHousingRoundId(rowHousing?.roundId||''); }}
                       className={`h-7 rounded flex items-center justify-center transition text-xs font-bold ${rowHousing ? 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100' : 'bg-gray-50 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600'}`}>
@@ -498,7 +504,7 @@ export function ClientsTable({
       title={`صلاحية الكورسات — ${accessRow.name}`}
       size="lg"
     >
-            <ClientCourseAccessPanel subscriberId={accessRow.id} notify={notify} />
+            <ClientCourseAccessPanel subscriberId={accessRow.id} notify={notify} onChanged={() => { void reloadSubscribers(); }} />
     </Modal>
       )}
     </div>

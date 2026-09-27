@@ -21,7 +21,13 @@ function fakeDb(payment) {
         { id: 'c-2', title: 'الكورس التاني', access_type: 'full', lecture_limit: null, status: 'active', total: 8 },
       ]];
     }
-    if (/MAX\(course_expected\) AS expected, SUM\(amount\) AS paid/.test(sql)) return [[{ expected: 9000, paid: 3000 }]];
+    // The balance (lib/agreedPrice.js itemBalances): the client, their
+    // payments on the item, their enrolments, the catalogue.
+    if (/SELECT crm_json FROM subscribers/.test(sql)) return [[{ crm_json: '{}' }]];
+    if (/SELECT course_id, bundle_id, amount, currency, status, course_expected FROM payments/.test(sql)) {
+      return [[{ course_id: null, bundle_id: 'b-1', amount: 3000, currency: 'EGP', status: 'paid', course_expected: 9000 }]];
+    }
+    if (/AS price FROM `bundles`/.test(sql)) return [[{ price: 9500 }]];
     return [[]];
   } };
 }

@@ -43,7 +43,9 @@ test('a single-course payment records the price agreed, not the catalogue', () =
 
 test('the payment dialog opens at the price this client agreed', () => {
   const modal = read('admin/components/PaymentModal.tsx');
-  assert.match(modal, /customPrices\?\.\[d\.courseId\]/);
+  // The one rule every screen uses (admin/lib/agreedPrice.ts).
+  assert.match(modal, /const _agreedPx = d\.courseId \? agreedPriceFor\(subject, d\.courseId, 0, d\.currency\) : 0;/);
+  assert.match(read('admin/lib/agreedPrice.ts'), /subscriber\.customPrices\?\.\[item\]/);
   assert.match(modal, /const _basePx = _agreedPx > 0 \? _agreedPx : _sysPx;/);
   assert.match(modal, /Math\.round\(_basePx \* \(1 - _discPct \/ 100\)\) : _basePx\);/);
 });

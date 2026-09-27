@@ -10,6 +10,7 @@ const { requireAuth, requireAdminOrStaff, requirePermission } = require('../midd
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
 const { resolveFinancialScope } = require('../lib/financialScope');
 const { logPaymentAudit } = require('../lib/finance');
+const { priorPaidTotal } = require('../lib/agreedPrice');
 
 async function loadOutstandingBalances(tenantId, subscriberIds = null, scope = null) {
   const params = [tenantId, tenantId];
@@ -26,7 +27,7 @@ async function loadOutstandingBalances(tenantId, subscriberIds = null, scope = n
     params.push(scope.staffId);
   }
   const [rows] = await pool.query(
-    `SELECT s.id, s.name, s.email, s.phone, s.client_code, s.assigned_sales_name, s.assigned_cs_name,
+    `SELECT s.id, s.name, s.email, s.phone, s.client_code, s.assigned_sales_name, s.assigned_cs_name, s.crm_json,
             b.total_expected, b.total_paid, b.total_expected - b.total_paid AS outstanding
        FROM subscribers s
        JOIN (
@@ -53,7 +54,16 @@ async function loadOutstandingBalances(tenantId, subscriberIds = null, scope = n
       LIMIT 300`,
     params
   );
-  return rows;
+  // Less what they paid before the system (lib/agreedPrice.js priorPaid): not a
+  // payment row, so the sums above cannot see it, but it is not owed.
+  return rows
+    .map(({ crm_json: crmJson, ...row }) => {
+      const prior = priorPaidTotal(crmJson);
+      return prior > 0
+        ? { ...row, total_paid: Number(row.total_paid) + prior, outstanding: Number(row.outstanding) - prior }
+        : row;
+    })
+    .filter(row => Number(row.outstanding) > 0);
 }
 
 router.get('/api/admin/payments/outstanding', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {

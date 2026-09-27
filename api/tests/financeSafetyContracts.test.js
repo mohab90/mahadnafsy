@@ -221,7 +221,8 @@ test('account onboarding and finance screens keep payments in the ledger-backed 
   const financialRows = read('admin/pages/dashboard/tabs/financial/useFinancialOrdersData.ts');
   const subscriberRoute = read('api/routes/admin/subscribers.js');
   const subscriberPayments = read('api/routes/subscriber-payments.js');
-  const courseDetails = read('admin/pages/dashboard/tabs/OnlineClientCourseDetailsModal.tsx');
+  const accessPanel = read('admin/pages/dashboard/tabs/online-clients-sections/ClientCourseAccessPanel.tsx');
+  const agreed = read('api/lib/agreedPrice.js');
 
   assert.match(auth, /firstPaymentStatus = canApproveFinancial \? 'paid' : 'pending'/);
   assert.match(auth, /paymentBundleId/);
@@ -246,8 +247,11 @@ test('account onboarding and finance screens keep payments in the ledger-backed 
   assert.match(financialTab, /ledgerAllPnl\?\.totalRevenue/);
   assert.match(financialRows, /onlinePaymentRefs/);
   assert.match(subscriberRoute, /delete crmData\.paymentHistory/);
-  assert.doesNotMatch(courseDetails, /newPayHistory/);
-  assert.match(courseDetails, /يتغير فقط من تسجيل\/اعتماد دفعة/);
+  // The panel that edits a client's price shows what the system recorded as
+  // paid with no input for it: that moves only through a payment. What was
+  // paid before the system is its own figure, on the client, never a payment.
+  assert.match(accessPanel, /مدفوع في السيستم\s+<div className="mt-1 text-sm font-bold text-emerald-700">\{num\(head\.paid\)\}<\/div>/);
+  assert.doesNotMatch(agreed.slice(agreed.indexOf('async function setPriorPaid')), /INSERT INTO payments/);
 });
 
 test('manual payment retries the complete transaction after transient MySQL deadlocks', () => {

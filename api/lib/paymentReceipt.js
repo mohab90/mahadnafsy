@@ -15,6 +15,7 @@
 const { pool } = require('./db');
 const lifecycle = require('./lifecycle');
 const logger = require('./logger');
+const { itemBalances, itemKey } = require('./agreedPrice');
 
 // What the client can open now, course by course, after this payment.
 async function unlockedFor(db, tenantId, payment) {
@@ -45,16 +46,12 @@ async function unlockedFor(db, tenantId, payment) {
     });
 }
 
-// What is still owed on this course, in its currency, when the price is known.
+// What is still owed on this item, by the same balance every screen shows
+// (lib/agreedPrice.js): the price agreed, less what was paid here and before.
 async function remainingFor(db, tenantId, payment) {
-  const [[row]] = await db.query(
-    `SELECT MAX(course_expected) AS expected, SUM(amount) AS paid FROM payments
-      WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND status='paid'
-        AND currency=? AND course_id <=> ? AND bundle_id <=> ?`,
-    [tenantId, payment.subscriber_id, payment.currency, payment.course_id, payment.bundle_id]
-  );
-  const expected = Number(row?.expected) || 0;
-  return expected > 0 ? Math.max(0, expected - (Number(row?.paid) || 0)) : null;
+  const balances = await itemBalances(db, { tenantId, subscriberId: payment.subscriber_id });
+  const entry = balances.get(itemKey({ courseId: payment.bundle_id ? null : payment.course_id, bundleId: payment.bundle_id }));
+  return entry && entry.expected > 0 ? entry.remaining : null;
 }
 
 /** Queue the receipt for one payment, once. Never throws into the caller. */

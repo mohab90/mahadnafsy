@@ -7,6 +7,7 @@ import { cairoDateOnly } from '../../shared/cairoDate';
 import { CreditCard, X } from 'lucide-react';
 import { useStaticData } from '../context/siteDataSlices';
 import { useCertificateCatalog } from '../lib/certificateCatalog';
+import { agreedPriceFor } from '../lib/agreedPrice';
 import type {
   PaymentItemType, PaymentHistoryEntry,
   ExtraCertificateRequest,
@@ -290,15 +291,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   // The price this client agreed for this course: their own price on file, or
   // what their booking recorded. The catalogue is only the starting point for a
   // course they have not booked.
-  const _agreedPx = (() => {
-    if (!d.courseId) return 0;
-    const onFile = Number((subject as { customPrices?: Record<string, number> }).customPrices?.[d.courseId]) || 0;
-    if (onFile > 0) return onFile;
-    const booking = (subject.paymentHistory || []).filter(isCollected).find(p =>
-      !p.isInstallment && Number(p.courseExpected) > 0
-      && (p.courseId === d.courseId || (!!p.bundleId && `bundle:${p.bundleId}` === d.courseId)));
-    return booking ? Number(booking.courseExpected) : 0;
-  })();
+  const _agreedPx = d.courseId ? agreedPriceFor(subject, d.courseId, 0, d.currency) : 0;
   const _basePx = _agreedPx > 0 ? _agreedPx : _sysPx;
   const _customExp = Number(d.customExpected) || 0;
   const _discPct = Number(d.discountPct) || 0;
@@ -319,20 +312,15 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   // modal did guard its one, so the fault was in every payment taken anywhere
   // else; it surfaced when that copy was folded into this one.
   const payHistory: PaymentHistoryEntry[] = (subject.paymentHistory || []).filter(isCollected);
-  const payTotalPaid = payHistory.filter(p => p.currency === d.currency).reduce((s, p) => s + Number(p.amount), 0);
-  const coursePayMap: Record<string, { paid: number; expected: number }> = {};
+  const coursePayMap: Record<string, { paid: number }> = {};
   payHistory.forEach(p => {
     // Use 'bundle:ID' as key for bundle payments (where courseId is null but bundleId is set)
     const effId = p.courseId || (p.bundleId ? `bundle:${p.bundleId}` : null);
     if (effId) {
-      if (!coursePayMap[effId]) coursePayMap[effId] = { paid: 0, expected: 0 };
+      if (!coursePayMap[effId]) coursePayMap[effId] = { paid: 0 };
       coursePayMap[effId].paid += Number(p.amount);
-      if (p.courseExpected && Number(p.courseExpected) > 0)
-        coursePayMap[effId].expected = Math.max(coursePayMap[effId].expected, Number(p.courseExpected));
     }
   });
-  const payTotalExpected = Object.values(coursePayMap).reduce((s, v) => s + v.expected, 0);
-  const payRemaining = Math.max(0, payTotalExpected - payTotalPaid);
 
   const enrolledIds: string[] = subject.enrolledCourseIds || [];
 
@@ -368,7 +356,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     ...autoDetectedBundles.map(({ bId, courseIds }) => {
       const b = bundles.find(x => x.id === bId)!;
       const bKey = `bundle:${bId}`;
-      const px = (b.price as unknown as Record<string, number>)?.[d.currency] ?? (b.price as unknown as Record<string, number>)?.EGP ?? 0;
+      const px = agreedPriceFor(subject, bKey,
+        (b.price as unknown as Record<string, number>)?.[d.currency] ?? (b.price as unknown as Record<string, number>)?.EGP ?? 0, d.currency);
       const paid = buildPaid(bKey, courseIds);
       const remaining = px > 0 ? Math.max(0, px - paid) : null;
       return { cid: bKey, label: b.title, px, paid, remaining, isBnd: true };
@@ -381,14 +370,23 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
         const bnd = isBnd ? bundles.find(b => b.id === cid.replace('bundle:', '')) : null;
         const crs = !isBnd ? courses.find(c => c.id === cid) : null;
         const label = bnd?.title || crs?.titleAr || crs?.title || cid;
-        const px = isBnd
+        // What this client agreed for it, not the catalogue: the instalment
+        // list showed list price and «متبقي» against it, whatever was agreed.
+        const px = agreedPriceFor(subject, cid, isBnd
           ? ((bnd?.price as unknown as Record<string, number>)?.[d.currency] ?? (bnd?.price as unknown as Record<string, number>)?.EGP ?? 0)
-          : ((crs?.price as unknown as Record<string, number>)?.[d.currency] ?? (crs?.price as unknown as Record<string, number>)?.EGP ?? 0);
+          : ((crs?.price as unknown as Record<string, number>)?.[d.currency] ?? (crs?.price as unknown as Record<string, number>)?.EGP ?? 0), d.currency);
         const paid = buildPaid(cid);
         const remaining = px > 0 ? Math.max(0, px - paid) : null;
         return { cid, label, px, paid, remaining, isBnd };
       }),
   ];
+
+  // The totals bar: every course and track they hold, at the price agreed.
+  // It summed only bookings that had recorded a price — a quarter had none —
+  // and counted certificate and book money as paid towards the courses.
+  const payTotalExpected = enrolledOptions.reduce((s, opt) => s + (opt.px || 0), 0);
+  const payTotalPaid = enrolledOptions.reduce((s, opt) => s + opt.paid, 0);
+  const payRemaining = Math.max(0, payTotalExpected - payTotalPaid);
 
   const certRequests = subject.extraCertificateRequests || [];
 
@@ -465,7 +463,19 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     setSubmitError('');
     try {
       const printPayload = shouldPrint ? buildPrintData() : null;
-      await onSubmit(d, shouldPrint);
+      // The handler records exactly the price shown here. It recomputed a
+      // discount from the catalogue while this dialog applied it to the agreed
+      // price, and a booking with no change typed was recorded at list price
+      // over the client's own. An instalment carries a price only when the desk
+      // changed it; otherwise the server uses the one agreed.
+      const changedPrice = _customExp > 0 || _discPct > 0;
+      const shownPrice = _effPx > 0 ? String(_effPx) : d.customExpected;
+      await onSubmit({
+        ...d,
+        customExpected: d.bookingType === 'installment'
+          ? (changedPrice ? shownPrice : '')
+          : (changedPrice || (_effPx > 0 && _effPx !== _sysPx) ? shownPrice : d.customExpected),
+      }, shouldPrint);
       if (printPayload) setPrintData(printPayload);
       else onClose();
     } catch (error) {
@@ -836,7 +846,9 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
             {/* ⚡ Quick "all remaining" for installment */}
             {d.bookingType === 'installment' && d.courseId && (() => {
               const alreadyPaid = coursePayMap[d.courseId]?.paid ?? 0;
-              const bal = _sysPx > 0 ? Math.max(0, _sysPx - alreadyPaid) : 0;
+              // Against the price agreed. It used the catalogue, so «كل
+              // المتبقي» asked a client booked at a discount for list price.
+              const bal = _effPx > 0 ? Math.max(0, _effPx - alreadyPaid) : 0;
               if (bal > 0) return (
                 <button
                   type="button"

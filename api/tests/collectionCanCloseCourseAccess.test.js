@@ -69,6 +69,6 @@ test('the desk can reach it from the client screen', () => {
   assert.match(panel, /setAccess\(row, 'close'\)/, 'the button that closes');
   assert.match(panel, /setAccess\(row, 'open'\)/, 'and the one that opens it again');
   assert.match(panel, /row\.status !== 'active'/, 'a closed course has to look closed');
-  assert.match(panel, /method: 'POST'[\s\S]{0,400}courseId: row\.courseId/,
+  assert.match(panel, /api\(`\$\{base\}\/course-access`, 'POST', \{ courseId: row\.courseId/,
     'against the route, carrying the course it means');
 });

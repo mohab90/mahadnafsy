@@ -131,7 +131,11 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
     const entry: PaymentHistoryEntry = {
       id: `pay-${Date.now()}`,
       amount: Number(subPayDraft.amount),
-      courseExpected: subPayDraft.bookingType !== 'installment' && _singleExpected > 0 ? _singleExpected : undefined,
+      // An instalment carries a price only when the desk changed it in the
+      // dialog; otherwise the server takes the one agreed (api/lib/agreedPrice.js).
+      courseExpected: subPayDraft.bookingType === 'installment'
+        ? (_singleCustom > 0 ? _singleCustom : undefined)
+        : (_singleExpected > 0 ? _singleExpected : undefined),
       currency: subPayDraft.currency,
       paymentType: subPayDraft.paymentType,
       isInstallment: subPayDraft.bookingType === 'installment',

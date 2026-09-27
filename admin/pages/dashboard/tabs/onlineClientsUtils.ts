@@ -4,12 +4,12 @@ import { cairoDay } from '../../../../shared/cairoDate';
 
 export type SubscriberSavePayload = Partial<SubscriberItem> & Record<string, unknown>;
 export type BulkAssignCollectionResult = { ok: boolean; assigned: number; staffCount: number; staff: string[] };
-export type SubscriberWithCustomPrices = SubscriberItem & { customPrices?: Record<string, number> };
 
 export const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error || '');
 
-import { isCollected, paymentAmountInEGP } from '../../../lib/money';
+import { isCollected, paymentAmountInEGP, toEgp } from '../../../lib/money';
+import { agreedPriceFor, itemKeyOf, paidFor } from '../../../lib/agreedPrice';
 
 // Re-exported: seven modules import it from here, and the conversion itself
 // now lives in one place instead of three.
@@ -72,18 +72,26 @@ export const calcSubscribersPaidEGP = (
     return sum + paymentAmountInEGP(payment);
   }, 0);
 
+// What the client still owes, in EGP, item by item at the price agreed
+// (lib/agreedPrice.ts). It summed bookings that had recorded a price — courses
+// only, the first one found — so tracks and saved prices never counted, and it
+// took every payment off that total, certificates and books included.
 export const subscriberRemainingEGP = (subscriber: SubscriberItem): number => {
-  const coursePrices: Record<string, number> = {};
+  const items = new Map<string, string>();
   (subscriber.paymentHistory || []).forEach(payment => {
-    if (payment.courseId && payment.courseExpected && !coursePrices[payment.courseId]) {
-      coursePrices[payment.courseId] = Number(payment.courseExpected) || 0;
-    }
+    const item = itemKeyOf(payment);
+    if (item && (!payment.paymentType || payment.paymentType === 'course') && !items.has(item)) items.set(item, payment.currency || 'EGP');
   });
-  const expected = Object.values(coursePrices).reduce((sum, value) => sum + value, 0);
-  // A refunded payment must not reduce what the client still owes.
-  const paid = (subscriber.paymentHistory || [])
-    .reduce((sum, payment) => (isCollected(payment) ? sum + paymentAmountInEGP(payment) : sum), 0);
-  return expected > 0 ? Math.max(0, expected - paid) : 0;
+  Object.keys(subscriber.customPrices || {}).forEach(item => {
+    if (!item.startsWith('multi:') && !items.has(item)) items.set(item, 'EGP');
+  });
+  let remaining = 0;
+  items.forEach((currency, item) => {
+    const owed = agreedPriceFor(subscriber, item, 0, currency) - paidFor(subscriber, item, currency)
+      - (Number(subscriber.priorPaid?.[item]) || 0);
+    if (owed > 0) remaining += toEgp(owed, currency);
+  });
+  return remaining;
 };
 
 export const formatCompactNumber = (value: number): string =>

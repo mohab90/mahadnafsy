@@ -260,7 +260,6 @@ const Dashboard: React.FC = () => {
     
     
     
-    setSubWaRow,
   } = useSubscriberModals();
 
   const {
@@ -899,7 +898,6 @@ const Dashboard: React.FC = () => {
                     setDaqqiOldDistributing,
                     setSubPayRow,
                     setSubPayDraft,
-                    setSubWaRow,
                     branchFilter: branchQueryFilter,
                   }}
                 />

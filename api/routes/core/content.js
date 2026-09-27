@@ -10,6 +10,28 @@ const { logLeadEvent } = require('../../lib/crm');
 const { sanitize } = require('../../lib/helpers');
 const { DEFAULT_TENANT_ID } = require('../../lib/tenantScope');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
+const { itemBalances, itemKey, setAgreedPrice, setPriorPaid } = require('../../lib/agreedPrice');
+const { cairoDayStartUtc, isValidDateOnly } = require('../../lib/dates');
+const { uuidv4 } = require('../../lib/id');
+
+// The same row-level rule the money screens use: the managers see everyone,
+// a branch manager only their branch, collection and customer service only the
+// clients assigned to them.
+async function scopedSubscriber(req, subscriberId, tenantId) {
+  const [[subscriber]] = await pool.query(
+    `SELECT id, name, lead_id, branch_id, assigned_cs_id, assigned_sales_id
+       FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1`,
+    [subscriberId, tenantId]);
+  if (!subscriber) return { status: 404, error: 'العميل غير موجود' };
+  let scope;
+  try {
+    scope = resolveFinancialScope(req, { allowAssigned: true });
+  } catch (error) {
+    return { status: error.status || 403, error: 'العميل ده خارج نطاقك' };
+  }
+  if (!financialRecordMatches(scope, subscriber)) return { status: 403, error: 'العميل ده خارج نطاقك' };
+  return { subscriber };
+}
 
 // The only non-duplicate responsibility retained from the old content router.
 // Manual enrollment is tenant-scoped and atomic; payment-driven enrollment is
@@ -26,7 +48,8 @@ router.get('/api/admin/subscribers/:id/course-access', requireAuth, requireAdmin
   try {
     const tenantId = req.tenantId || DEFAULT_TENANT_ID;
     const [rows] = await pool.query(
-      `SELECT e.id, e.course_id, e.enrolled_at, e.expiry_date, e.access_type, e.status,
+      `SELECT e.id, e.course_id, e.bundle_id, b.title AS bundle_title,
+              e.enrolled_at, e.expiry_date, e.access_type, e.status,
               e.lecture_limit,
               (SELECT COUNT(*) FROM course_lectures cl
                 WHERE cl.course_id = e.course_id AND cl.is_published = 1) AS lecture_count,
@@ -35,21 +58,23 @@ router.get('/api/admin/subscribers/:id/course-access', requireAuth, requireAdmin
               (SELECT COUNT(*) FROM lecture_completions lp
                 WHERE lp.subscriber_id = e.subscriber_id AND lp.course_id = e.course_id
                   AND (lp.progress_pct >= 90 OR lp.completed_at IS NOT NULL)) AS watched_count,
-              (SELECT COALESCE(SUM(p.amount_egp), 0) FROM payments p
-                WHERE p.subscriber_id = e.subscriber_id AND p.tenant_id = e.tenant_id
-                  AND p.course_id = e.course_id AND p.status = 'paid'
-                  AND p.deleted_at IS NULL) AS paid_egp,
-              (SELECT MAX(p.course_expected) FROM payments p
-                WHERE p.subscriber_id = e.subscriber_id AND p.tenant_id = e.tenant_id
-                  AND p.course_id = e.course_id AND p.deleted_at IS NULL) AS expected_egp,
               c.price_egp,
               c.title, c.title_ar, c.access_months
          FROM enrollments e
          JOIN courses c ON c.id = e.course_id AND c.tenant_id = e.tenant_id
+         LEFT JOIN bundles b ON b.id = e.bundle_id AND b.tenant_id = e.tenant_id
         WHERE e.subscriber_id = ? AND e.tenant_id = ? AND c.deleted_at IS NULL
         ORDER BY e.enrolled_at DESC`,
       [req.params.id, tenantId]);
-    res.json(rows.map(r => ({
+    // The money for what they bought — the course, or the track it came in —
+    // by the same balance every screen shows (lib/agreedPrice.js). It summed
+    // payments on the course alone, so a course bought in a track read paid 0,
+    // and compared an EGP total with a price in the payment's own currency.
+    const balances = await itemBalances(pool, { tenantId, subscriberId: req.params.id });
+    res.json(rows.map(r => {
+      const item = itemKey({ courseId: r.course_id, bundleId: r.bundle_id });
+      const money = balances.get(item) || { currency: 'EGP', expected: Number(r.price_egp) || 0, paid: 0, priorPaid: 0, remaining: Number(r.price_egp) || 0 };
+      return {
       enrollmentId: r.id,
       courseId: r.course_id,
       title: r.title_ar || r.title,
@@ -57,16 +82,20 @@ router.get('/api/admin/subscribers/:id/course-access', requireAuth, requireAdmin
       expiresAt: r.expiry_date,
       courseDefaultMonths: r.access_months,
       accessType: r.access_type,
-      // Expected falls back to the catalogue price when no payment recorded
-      // one — a course someone was enrolled in manually still has a value.
-      paidEgp: Number(r.paid_egp) || 0,
-      expectedEgp: Number(r.expected_egp) || Number(r.price_egp) || 0,
+      item,
+      itemTitle: r.bundle_id ? (r.bundle_title || r.title_ar || r.title) : (r.title_ar || r.title),
+      currency: money.currency,
+      expected: money.expected,
+      paid: money.paid,
+      priorPaid: money.priorPaid,
+      remaining: money.remaining,
       lectureCount: Number(r.lecture_count) || 0,
       watchedCount: Number(r.watched_count) || 0,
       totalMinutes: Math.round((Number(r.total_seconds) || 0) / 60),
       lectureLimit: r.access_type === 'limited' ? (Number(r.lecture_limit) || 0) : null,
       status: r.status,
-    })));
+      };
+    }));
   } catch (e) { logger.error("[course-access]", e.message); res.status(500).json({ error: "Internal server error" }); }
 });
 
@@ -79,11 +108,40 @@ router.get('/api/admin/subscribers/:id/course-access', requireAuth, requireAdmin
 router.put('/api/admin/subscribers/:id/course-access/:enrollmentId', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   try {
     const tenantId = req.tenantId || DEFAULT_TENANT_ID;
-    const { expiresAt, addMonths } = req.body || {};
+    const { expiresAt, addMonths, lectureLimit, fullAccess, enrolledAt } = req.body || {};
+    const scoped = await scopedSubscriber(req, req.params.id, tenantId);
+    if (!scoped.subscriber) return res.status(scoped.status).json({ error: scoped.error });
     const [[enrolment]] = await pool.query(
-      'SELECT id, expiry_date FROM enrollments WHERE id=? AND subscriber_id=? AND tenant_id=? LIMIT 1',
+      'SELECT id, course_id, expiry_date FROM enrollments WHERE id=? AND subscriber_id=? AND tenant_id=? LIMIT 1',
       [req.params.enrollmentId, req.params.id, tenantId]);
     if (!enrolment) return res.status(404).json({ error: 'التسجيل غير موجود' });
+
+    // How many lectures they may watch, or all of them. A decision the desk
+    // makes and signs — the payment path only ever raises it, this may lower it.
+    if (fullAccess === true || lectureLimit !== undefined) {
+      const full = fullAccess === true || lectureLimit === null;
+      const limit = full ? null : Math.round(Number(lectureLimit));
+      if (!full && !(limit >= 1)) return res.status(400).json({ error: 'عدد المحاضرات لازم يكون 1 أو أكتر' });
+      await pool.query(
+        "UPDATE enrollments SET access_type=?, lecture_limit=?, updated_at=NOW() WHERE id=? AND tenant_id=?",
+        [full ? 'full' : 'limited', limit, enrolment.id, tenantId]);
+      await pool.query(
+        `INSERT INTO entitlement_events
+         (id,tenant_id,enrollment_id,subscriber_id,course_id,event_type,source,actor,meta_json)
+         VALUES (?,?,?,?,?,'granted','desk_edit',?,?)`,
+        [uuidv4(), tenantId, enrolment.id, req.params.id, enrolment.course_id,
+          req.staffRecord?.id || req.user?.email || null,
+          JSON.stringify({ accessType: full ? 'full' : 'limited', lectureLimit: limit })]);
+      return res.json({ ok: true });
+    }
+
+    // When they subscribed — a Cairo day, stored as its start.
+    if (enrolledAt !== undefined) {
+      if (!isValidDateOnly(enrolledAt)) return res.status(400).json({ error: 'تاريخ غير صالح' });
+      await pool.query('UPDATE enrollments SET enrolled_at=?, updated_at=NOW() WHERE id=? AND tenant_id=?',
+        [cairoDayStartUtc(enrolledAt), enrolment.id, tenantId]);
+      return res.json({ ok: true });
+    }
 
     // Three ways to say it, because all three are things staff actually ask
     // for: add months to whatever is there, set an exact date, or clear it.
@@ -107,6 +165,38 @@ router.put('/api/admin/subscribers/:id/course-access/:enrollmentId', requireAuth
       'SELECT expiry_date FROM enrollments WHERE id=? AND tenant_id=?', [enrolment.id, tenantId]);
     res.json({ ok: true, expiresAt: updated?.expiry_date ?? null });
   } catch (e) { logger.error("[course-access-update]", e.message); res.status(500).json({ error: "Internal server error" }); }
+});
+
+// PUT /api/admin/subscribers/:id/item-money — the total price of one item they
+// bought (a course, or 'bundle:<id>'), and «مدفوع قبل السيستم». The price is
+// written on every payment for it and on the client (lib/agreedPrice.js), so
+// the online table, the payment dialog, the receipt and the collections list
+// all read the new number.
+router.put('/api/admin/subscribers/:id/item-money', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const tenantId = req.tenantId || DEFAULT_TENANT_ID;
+    const item = String(req.body?.item || '').trim();
+    if (!item) return res.status(400).json({ error: 'حدد الكورس' });
+    const scoped = await scopedSubscriber(req, req.params.id, tenantId);
+    if (!scoped.subscriber) return res.status(scoped.status).json({ error: scoped.error });
+    const bundleId = item.startsWith('bundle:') ? item.slice(7) : null;
+    const courseId = bundleId ? null : item;
+    await conn.beginTransaction();
+    if (req.body?.expected !== undefined) {
+      await setAgreedPrice(conn, { tenantId, subscriberId: req.params.id, courseId, bundleId, price: req.body.expected });
+    }
+    if (req.body?.priorPaid !== undefined) {
+      await setPriorPaid(conn, { tenantId, subscriberId: req.params.id, courseId, bundleId, amount: req.body.priorPaid });
+    }
+    await conn.commit();
+    const balances = await itemBalances(pool, { tenantId, subscriberId: req.params.id });
+    res.json({ ok: true, ...(balances.get(item) || {}) });
+  } catch (e) {
+    await conn.rollback().catch(() => {});
+    logger.error('[item-money]', e.message);
+    res.status(e?.statusCode || 500).json({ error: e?.statusCode ? e.message : 'Internal server error' });
+  } finally { conn.release(); }
 });
 
 // «التقسيط يقفل بتحديد من التحصيل أو خدمة العملاء» — closing a course on a
