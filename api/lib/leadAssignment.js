@@ -3,7 +3,7 @@
 const { pool } = require('./db');
 const { logLeadEventStrict } = require('./crm');
 const { findLeadById } = require('./leadRepository');
-const { normalizeBranch } = require('./leadAssignmentPolicy');
+const { normalizeBranch, parseRuleList, repTakesLead } = require('./leadAssignmentPolicy');
 const { intakeByStaff, hasRoom } = require('./assignmentQuota');
 
 // Who may receive leads automatically. The CRM settings "التوزيع" screen is
@@ -21,7 +21,8 @@ async function listDistributableReps(tenantId, db = pool, options = {}) {
   const teamKey = String(options.teamKey || 'sales').trim().toLowerCase();
   const [rows] = await db.query(
     `SELECT s.id,s.name,p.id AS policy_id,p.branch_key,p.weight,p.max_open_leads,
-            p.is_available,p.last_assigned_at,p.intake_limit,p.intake_period
+            p.is_available,p.last_assigned_at,p.intake_limit,p.intake_period,
+            p.course_ids_json,p.sources_json
        FROM staff s
        LEFT JOIN crm_assignment_members p
          ON p.tenant_id=s.tenant_id AND p.staff_id=s.id AND p.team_key=?
@@ -61,7 +62,7 @@ async function listDistributableReps(tenantId, db = pool, options = {}) {
   for (const { id, name, policies } of staffById.values()) {
     const activeLeads = loadByStaff.get(String(id)) || 0;
     if (!configured) {
-      reps.push({ id, name, policyId: null, weight: 1, maxOpenLeads: null, activeLeads, lastAssignedAt: null, intakeLimit: null, taken: 0 });
+      reps.push({ id, name, policyId: null, weight: 1, maxOpenLeads: null, activeLeads, lastAssignedAt: null, intakeLimit: null, taken: 0, courseIds: null, sources: null });
       continue;
     }
     const policy = branch
@@ -80,9 +81,13 @@ async function listDistributableReps(tenantId, db = pool, options = {}) {
       // took every lead of a batch that followed.
       intakeLimit: policy.intake_limit == null ? null : Number(policy.intake_limit),
       taken: intake.get(String(id)) || 0,
+      // Which leads they take — see repTakesLead.
+      courseIds: parseRuleList(policy.course_ids_json),
+      sources: parseRuleList(policy.sources_json),
     });
   }
-  return reps;
+  // One lead to place: only the reps whose course and source rules take it.
+  return options.lead ? reps.filter(rep => repTakesLead(rep, options.lead)) : reps;
 }
 
 // Hands out reps one lead at a time for a batch (sheet sync, bulk distribution),
@@ -93,12 +98,16 @@ async function listDistributableReps(tenantId, db = pool, options = {}) {
 // which is where «محلي جديد» finds them.
 //   mode 'rr'    — strict rotation, resumable from `start`
 //   mode 'least' — lowest weighted open load first
+//
+// Pass the lead to next() and only reps whose course and source rules take it
+// are considered; null then also means nobody takes this one.
 function createRepRotation(reps, { mode = 'rr', start = 0 } = {}) {
   let index = Number(start) || 0;
   return {
-    next() {
+    next(lead = null) {
       const open = reps.filter(rep => (rep.maxOpenLeads == null || rep.activeLeads < rep.maxOpenLeads)
-        && hasRoom({ intake_limit: rep.intakeLimit }, rep.taken));
+        && hasRoom({ intake_limit: rep.intakeLimit }, rep.taken)
+        && repTakesLead(rep, lead));
       if (!open.length) return null;
       let rep;
       if (mode === 'least') {
@@ -119,11 +128,13 @@ function createRepRotation(reps, { mode = 'rr', start = 0 } = {}) {
 // Canonical single-lead picker used at capture time (public registration,
 // chatbot, self-registration, Facebook Lead Ads, WhatsApp/Messenger inbound).
 // Load counts only leads still open, so a veteran's converted history does not
-// make them look permanently "full".
+// make them look permanently "full". options.lead ({ source, courseIds }, or a
+// leads row) limits the pick to reps whose course and source rules take it.
 async function getNextSalesRep(tenantId, db = pool, options = {}) {
   const reps = await listDistributableReps(tenantId, db, {
     branch: options.branch,
     teamKey: options.teamKey,
+    lead: options.lead,
   });
   reps.sort((a, b) =>
     (a.activeLeads / a.weight) - (b.activeLeads / b.weight) ||
@@ -219,7 +230,8 @@ async function createBatchAssigner(tenantId, db = pool, options = {}) {
 
   const [rows] = await db.query(
     `SELECT s.id,s.name,p.id AS policy_id,p.branch_key,p.weight,p.max_open_leads,
-            p.is_available,p.last_assigned_at,p.intake_limit,p.intake_period
+            p.is_available,p.last_assigned_at,p.intake_limit,p.intake_period,
+            p.course_ids_json,p.sources_json
        FROM staff s
        LEFT JOIN crm_assignment_members p
          ON p.tenant_id=s.tenant_id AND p.staff_id=s.id AND p.team_key=?
@@ -273,15 +285,21 @@ async function createBatchAssigner(tenantId, db = pool, options = {}) {
     taken: intake.get(String(row.id)) || 0,
     lastAt: row.last_assigned_at ? new Date(row.last_assigned_at).getTime() : 0,
     given: 0,
+    courseIds: row.policy_id == null ? null : parseRuleList(row.course_ids_json),
+    sources: row.policy_id == null ? null : parseRuleList(row.sources_json),
   }));
 
   let clock = Date.now();
 
   return {
-    /** The rep who should take the next lead, or null when everyone is capped. */
-    next() {
+    /**
+     * The rep who should take the next lead, or null when everyone is capped —
+     * or, given the lead, when no rep's course and source rules take it.
+     */
+    next(lead = null) {
       const open = state
         .filter(rep => rep.available)
+        .filter(rep => repTakesLead(rep, lead))
         .filter(rep => rep.maxOpen == null || rep.open < Number(rep.maxOpen))
         .filter(rep => hasRoom({ intake_limit: rep.intakeLimit }, rep.taken))
         .sort((a, b) =>

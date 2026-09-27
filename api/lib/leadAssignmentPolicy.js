@@ -7,20 +7,77 @@ function normalizeBranch(value) {
   return String(value || '*').trim().toUpperCase().replace(/[-\s]/g, '_') || '*';
 }
 
+// A course entry as the leads table stores it: a course id, or 'bundle:<id>'
+// for a track. An older save left some tracks as the bare bundle id.
+function courseKey(value) {
+  const id = String(value || '').trim();
+  return /^b-/.test(id) ? `bundle:${id}` : id;
+}
+
+const sourceKey = value => String(value || '').trim().toLowerCase();
+
+// A stored rule list: a JSON array, or NULL for "all". Empty means all too, so
+// clearing every box can never quietly mean "nothing".
+function parseRuleList(value) {
+  if (value == null || value === '') return null;
+  let list = value;
+  if (typeof value === 'string') {
+    try { list = JSON.parse(value); } catch { return null; }
+  }
+  if (!Array.isArray(list)) return null;
+  const clean = [...new Set(list.map(item => String(item || '').trim()).filter(Boolean))];
+  return clean.length ? clean : null;
+}
+
+// What a lead is, for routing: where it came from and what it asked about.
+// Takes a leads row (source, interested_course_ids_json, crm_json) or the
+// same facts already in hand ({ source, courseIds }).
+function leadRoutingFacts(lead) {
+  if (!lead) return null;
+  let courseIds = lead.courseIds;
+  if (!Array.isArray(courseIds)) {
+    courseIds = parseRuleList(lead.interested_course_ids_json);
+    if (!courseIds && lead.crm_json) {
+      try { courseIds = parseRuleList(JSON.parse(lead.crm_json).interestedCourseIds); } catch { courseIds = null; }
+    }
+  }
+  return { source: lead.source || '', courseIds: (courseIds || []).map(courseKey).filter(Boolean) };
+}
+
+// Whether a rep's rules take this lead. No lead in hand (a caller that has not
+// said what it is placing) takes everyone, as before; a rep with no rules takes
+// every lead. A rule on courses takes a lead that asked for any one of them — a
+// lead that named no course goes only to reps who take all courses.
+function repTakesLead(rep, lead) {
+  const facts = leadRoutingFacts(lead);
+  if (!facts) return true;
+  const courses = parseRuleList(rep.courseIds);
+  if (courses) {
+    const wanted = new Set(courses.map(courseKey));
+    if (!facts.courseIds.some(id => wanted.has(id))) return false;
+  }
+  const sources = parseRuleList(rep.sources);
+  if (sources && !sources.map(sourceKey).includes(sourceKey(facts.source))) return false;
+  return true;
+}
+
 async function listAssignmentMembers(tenantId, db = pool) {
   const [rows] = await db.query(
     `SELECT p.id,p.staff_id AS staffId,s.name AS staffName,p.branch_key AS branchKey,
             p.team_key AS teamKey,p.weight,p.max_open_leads AS maxOpenLeads,
             p.is_available AS isAvailable,p.last_assigned_at AS lastAssignedAt,
-            p.intake_limit AS intakeLimit,p.intake_period AS intakePeriod
+            p.intake_limit AS intakeLimit,p.intake_period AS intakePeriod,
+            p.course_ids_json AS courseIdsJson,p.sources_json AS sourcesJson
        FROM crm_assignment_members p
        JOIN staff s ON s.id=p.staff_id AND s.tenant_id=p.tenant_id
         AND s.is_active=1 AND s.deleted_at IS NULL AND UPPER(s.role)='SALES'
       WHERE p.tenant_id=? ORDER BY p.team_key,p.branch_key,s.name`,
     [tenantId]
   );
-  return rows.map(row => ({
+  return rows.map(({ courseIdsJson, sourcesJson, ...row }) => ({
     ...row,
+    courseIds: parseRuleList(courseIdsJson) || [],
+    sources: parseRuleList(sourcesJson) || [],
     weight: Number(row.weight || 1),
     maxOpenLeads: row.maxOpenLeads == null ? null : Number(row.maxOpenLeads),
     intakeLimit: row.intakeLimit == null ? null : Number(row.intakeLimit),
@@ -86,15 +143,22 @@ async function saveAssignmentMembers(tenantId, members, db = pool) {
       ? null : Math.min(Math.round(Number(member.intakeLimit)), 100000);
     const intakePeriod = ['day', 'fortnight', 'month'].includes(member.intakePeriod)
       ? member.intakePeriod : 'day';
+    // Which leads, beside how many: NULL is "all", as it was before these existed.
+    const courseIds = parseRuleList(member.courseIds);
+    const sources = parseRuleList(member.sources);
     await db.query(
       `INSERT INTO crm_assignment_members
-       (id,tenant_id,staff_id,branch_key,team_key,weight,max_open_leads,is_available,intake_limit,intake_period)
-       VALUES (?,?,?,?,?,?,?,?,?,?)
+       (id,tenant_id,staff_id,branch_key,team_key,weight,max_open_leads,is_available,intake_limit,intake_period,
+        course_ids_json,sources_json)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE weight=VALUES(weight),max_open_leads=VALUES(max_open_leads),
          is_available=VALUES(is_available),intake_limit=VALUES(intake_limit),
-         intake_period=VALUES(intake_period)`,
+         intake_period=VALUES(intake_period),course_ids_json=VALUES(course_ids_json),
+         sources_json=VALUES(sources_json)`,
       [member.id || uuidv4(), tenantId, staffId, branchKey, teamKey, weight, maxOpenLeads,
-        member.isAvailable === false ? 0 : 1, intakeLimit, intakePeriod]
+        member.isAvailable === false ? 0 : 1, intakeLimit, intakePeriod,
+        courseIds ? JSON.stringify([...new Set(courseIds.map(courseKey))]) : null,
+        sources ? JSON.stringify(sources) : null]
     );
   }
 
@@ -119,4 +183,6 @@ async function saveAssignmentMembers(tenantId, members, db = pool) {
   return listAssignmentMembers(tenantId, db);
 }
 
-module.exports = { listAssignmentMembers, normalizeBranch, saveAssignmentMembers };
+module.exports = {
+  leadRoutingFacts, listAssignmentMembers, normalizeBranch, parseRuleList, repTakesLead, saveAssignmentMembers,
+};

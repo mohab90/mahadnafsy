@@ -187,7 +187,10 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
       crmData.assignedSalesId = salesId;
       crmData.assignedSalesName = salesName;
     } else if (isNew && !salesId && !skipAutoAssign) {
-      const rep = await getNextSalesRep(req.tenantId, conn, { branch: branchVal });
+      const rep = await getNextSalesRep(req.tenantId, conn, {
+        branch: branchVal,
+        lead: { source, courseIds: Array.isArray(crmData.interestedCourseIds) ? crmData.interestedCourseIds : [] },
+      });
       if (rep) { salesId = rep.id; salesName = rep.name; crmData.assignedSalesId = rep.id; crmData.assignedSalesName = rep.name; }
     }
     const prevStatus = existing ? existing.status : null;
@@ -577,7 +580,7 @@ router.post('/api/admin/leads/bulk-assign', requireAuth, requireAdminOrStaff, re
     }
     const archive = excludeArchiveSourcesSql('l.source');
     const [unassigned] = await conn.query(
-      `SELECT l.id FROM leads l
+      `SELECT l.id,l.source,l.interested_course_ids_json,l.crm_json FROM leads l
         WHERE l.tenant_id=? AND (l.assigned_sales_id IS NULL OR l.assigned_sales_id = '')
           AND l.status IN (${placeholders}) AND l.hidden=0${accessScope.sql}${archive.sql}
         FOR UPDATE`,
@@ -592,8 +595,9 @@ router.post('/api/admin/leads/bulk-assign', requireAuth, requireAdminOrStaff, re
     const updates = [];
     const rotation = createRepRotation(reps);
     for (const lead of unassigned) {
-      const rep = rotation.next();
-      if (!rep) break;
+      // null: nobody's course and source rules take this one — it stays in the pool.
+      const rep = rotation.next(lead);
+      if (!rep) continue;
       updates.push({ id: lead.id, salesId: rep.id, salesName: rep.name });
     }
 

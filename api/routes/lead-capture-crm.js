@@ -20,6 +20,7 @@ const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
 const { logLeadEvent } = require('../lib/crm');
 const { getNextSalesRep, listDistributableReps } = require('../lib/leadAssignment');
 const { hasRoom } = require('../lib/assignmentQuota');
+const { repTakesLead } = require('../lib/leadAssignmentPolicy');
 const { excludeArchiveSourcesSql } = require('../lib/leadArchive');
 const { resolveClientContext } = require('../lib/clientContext');
 const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
@@ -96,7 +97,13 @@ router.post('/api/registrations', publicLimiter, async (req, res) => {
     let salesId = existing?.assigned_sales_id || null;
     let salesName = existing?.assigned_sales_name || null;
     if (!salesId) {
-      const rep = await getNextSalesRep(tenantId, conn, { branch: branchVal });
+      const rep = await getNextSalesRep(tenantId, conn, {
+        branch: branchVal,
+        lead: {
+          source: source || 'تسجيل اهتمام',
+          courseIds: Array.isArray(crmData.interestedCourseIds) ? crmData.interestedCourseIds : [],
+        },
+      });
       salesId = rep?.id || null;
       salesName = rep?.name || null;
     }
@@ -177,7 +184,10 @@ router.post('/api/leads-public', publicLimiter, async (req, res) => {
     let code = null;
     try { code = await getNextClientCode(conn); } catch (_) {}
     const normalizedBranch = normalizeBranch(branch, 'OTHER');
-    const rep = await getNextSalesRep(tenantId, conn, { branch: normalizedBranch });
+    const rep = await getNextSalesRep(tenantId, conn, {
+      branch: normalizedBranch,
+      lead: { source: (source || 'chatbot').slice(0, 50), courseIds: [] },
+    });
     await conn.execute(
       `INSERT INTO leads (id, tenant_id, client_code, name, phone, notes, status, interest_level, source, lead_type, branch, branch_id, assigned_sales_id, assigned_sales_name, created_at, hidden)
        VALUES (?, ?, ?, ?, ?, ?, 'new', 'medium', ?, 'general', ?, ?, ?, ?, NOW(), 0)`,
@@ -245,7 +255,7 @@ router.post('/api/admin/leads/distribute', requireAuth, requireAdmin, async (req
       ? `WHERE hidden=0 AND tenant_id=? AND status IN (${openPlaceholders})${archive.sql}`
       : `WHERE hidden=0 AND tenant_id=? AND assigned_sales_id IS NULL AND status IN (${openPlaceholders})${archive.sql}`;
     const [targets] = await conn.execute(
-      `SELECT id FROM leads ${whereClause} ORDER BY created_at ASC FOR UPDATE`,
+      `SELECT id,source,interested_course_ids_json,crm_json FROM leads ${whereClause} ORDER BY created_at ASC FOR UPDATE`,
       [tenantId, ...openStatuses, ...archive.params]
     );
     // Same eligibility as every other distributor: the reps switched on in the
@@ -303,18 +313,28 @@ router.post('/api/admin/leads/distribute', requireAuth, requireAdmin, async (req
     const totalSlots = reps.length + 1;
     let count = 0;
     let skippedAtCap = 0;
+    // Leads no rep's course and source rules take (a rep set to «دبلومة العلاج
+    // النفسي» only, or to «فيسبوك ليدز» only). They stay here, in the pool.
+    let unmatched = 0;
     for (let i = 0; i < targets.length; i++) {
       // Everyone full: stop rather than spin through the remaining leads.
       if (reps.every(full)) { skippedAtCap += targets.length - i; break; }
-      const slot = rrIdx % totalSlots;
-      rrIdx++;
-      if (slot === reps.length) continue;
-      const rep = reps[slot];
-      // Skip a rep who is full and let the cycle carry on, so the lead goes to
-      // the next person rather than being dropped. Both ceilings count: today's
-      // cap, and the open-leads cap — the roster was filtered once, before any
-      // of these leads were handed out, so it has to stay current in the batch.
-      if (full(rep)) { i--; continue; }
+      const takes = rep => !full(rep) && repTakesLead(rep, targets[i]);
+      if (!reps.some(takes)) { unmatched++; continue; }
+      // Skip a rep who is full or does not take this lead and let the cycle
+      // carry on, so the lead goes to the next person rather than being
+      // dropped. Both ceilings count: today's cap, and the open-leads cap — the
+      // roster was filtered once, before any of these leads were handed out, so
+      // it has to stay current in the batch. The no-rep slot still leaves this
+      // lead in the pool, as it always did.
+      let rep = null;
+      for (let tries = 0; tries < totalSlots && !rep; tries++) {
+        const slot = rrIdx % totalSlots;
+        rrIdx++;
+        if (slot === reps.length) break;
+        if (takes(reps[slot])) rep = reps[slot];
+      }
+      if (!rep) continue;
       rep.activeLeads += 1;
       rep.taken = (rep.taken || 0) + 1;
       await conn.execute(
@@ -327,7 +347,7 @@ router.post('/api/admin/leads/distribute', requireAuth, requireAdmin, async (req
     await setTenantSetting('crm_rr_index', rrIdx, { tenantId, actorId: req.user?.uid, db: conn });
     await conn.commit();
     transactionStarted = false;
-    res.json({ ok: true, assigned: count, reps: reps.length, skippedAtCap, dailyCap });
+    res.json({ ok: true, assigned: count, reps: reps.length, skippedAtCap, unmatched, dailyCap });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     routeError(res, e);

@@ -114,9 +114,17 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
     const isBundleSelection = subPayDraft.courseId?.startsWith('bundle:');
     const bundleId = isBundleSelection ? subPayDraft.courseId.replace('bundle:', '') : null;
     const bundle = bundleId ? bundles.find(b => b.id === bundleId) : null;
-    const _singleExpected = isBundleSelection && bundle
+    const _singleCatalog = isBundleSelection && bundle
       ? ((bundle.price as any)?.[subPayDraft.currency] || 0)
       : (!isBundleSelection && subPayDraft.courseId ? (courses.find(c => c.id === subPayDraft.courseId)?.price?.[subPayDraft.currency as 'EGP'|'SAR'|'USD'] || 0) : 0);
+    // The price the desk agreed, as the multi-course path above computes it. This
+    // path read the catalogue alone, so a booking at a special price was recorded
+    // at list price and the client owed the difference from then on.
+    const _singleCustom = Number(subPayDraft.customExpected) || 0;
+    const _singleDiscount = Number(subPayDraft.discountPct) || 0;
+    const _singleExpected = _singleCustom > 0
+      ? _singleCustom
+      : (_singleDiscount > 0 && _singleCatalog > 0 ? Math.round(_singleCatalog * (1 - _singleDiscount / 100)) : _singleCatalog);
     if (subPayDraft.bookingType === 'new_booking' && subPayDraft.paymentType === 'course' && _singleExpected <= 0) {
       throw new Error(`سعر ${subPayDraft.currency} غير مُعرّف للكورس/الباقة؛ عرّف السعر قبل الحفظ.`);
     }

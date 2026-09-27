@@ -309,15 +309,17 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                   {/* ── Courses (multiselect) — renamed to الكورسات ── */}
                   {showCourseCol && (
                     <td className="px-3 py-2 border border-gray-200 text-xs min-w-[150px]">
-                      {/* Show complete bundles as bundle badge, partial enrollments as individual course badges */}
+                      {/* One badge per interest, a track included, each with its own ×.
+                          A track used to be spread into its courses and guessed back
+                          from them: every track whose courses happened to be in the
+                          list showed up — «مسار المعالج» brought others with it — and
+                          the guessed badge had no × at all, so it could not be removed. */}
                       {(() => {
-                        const completeBundles = bundles.filter(b => b.courses.length > 0 && b.courses.every(co => interestedCourseIds.includes(co.id)));
-                        const hiddenCourseIds = new Set(completeBundles.flatMap(b => b.courses.map(co => co.id)));
-                        const partialCourseIds = interestedCourseIds.filter(id => !hiddenCourseIds.has(id));
+                        const isTrack = (cid: string) => cid.startsWith('bundle:') || bundles.some(b => b.id === cid);
                         return (
                           <>
                             <div className="flex flex-wrap gap-1 mb-1">
-                              {partialCourseIds.map(cid => {
+                              {interestedCourseIds.map(cid => {
                                 // A `raw:` entry is a course name imported from a
                                 // sheet that matched nothing in the catalogue. It
                                 // still belongs in this column, just marked as
@@ -326,8 +328,9 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                                 const displayTitle = courseBadgeLabel(cid, courses, bundles);
                                 return (
                                   <span key={cid} className={`inline-flex items-center gap-1 text-[10px] border rounded-full px-2 py-0.5 ${
-                                    raw ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
-                                    <span className="truncate max-w-[90px]" title={raw ? `${displayTitle} — غير مرتبط بكورس في الكتالوج` : displayTitle}>{displayTitle}</span>
+                                    raw ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                      : isTrack(cid) ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                                    <span className="truncate max-w-[90px]" title={raw ? `${displayTitle} — غير مرتبط بكورس في الكتالوج` : displayTitle}>{isTrack(cid) ? '📌 ' : ''}{displayTitle}</span>
                                     {canManageLeads && (
                                       <button onClick={() => updateLead({ ...row, interestedCourseIds: interestedCourseIds.filter(x => x !== cid) })}
                                         className="text-blue-400 hover:text-red-500 font-bold leading-none">×</button>
@@ -336,11 +339,6 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                                 );
                               })}
                             </div>
-                            {completeBundles.map(b => (
-                              <span key={b.id} className="inline-flex items-center text-[10px] bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-2 py-0.5 mb-1 mr-1">
-                                📌 {b.title}
-                              </span>
-                            ))}
                           </>
                         );
                       })()}
@@ -349,24 +347,17 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                           value=""
                           onChange={(e) => {
                             if (!e.target.value) return;
-                            if (e.target.value.startsWith('bundle:')) {
-                              const bundleId = e.target.value.slice(7);
-                              const bnd = bundles.find(b => b.id === bundleId);
-                              if (bnd) {
-                                const next = [...new Set([...interestedCourseIds, ...bnd.courses.map(c => c.id)])];
-                                updateLead({ ...row, interestedCourseIds: next });
-                              }
-                            } else {
-                              const next = [...new Set([...interestedCourseIds, e.target.value])];
-                              updateLead({ ...row, interestedCourseIds: next });
-                            }
+                            // A track is stored as itself — 'bundle:<id>', the form the
+                            // booking and payment screens already read.
+                            const next = [...new Set([...interestedCourseIds, e.target.value])];
+                            updateLead({ ...row, interestedCourseIds: next });
                           }}
                           className="border border-gray-200 rounded-lg px-2 py-1 text-[10px] w-full bg-white text-gray-600 focus:ring-0"
                         >
                           <option value="">+ إضافة كورس / باقة</option>
                           {bundles.length > 0 && (
                             <optgroup label="📌 الباقات">
-                              {bundles.map(b => (
+                              {bundles.filter(b => !interestedCourseIds.includes(`bundle:${b.id}`) && !interestedCourseIds.includes(b.id)).map(b => (
                                 <option key={b.id} value={`bundle:${b.id}`}>{b.title}</option>
                               ))}
                             </optgroup>

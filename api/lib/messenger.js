@@ -134,7 +134,9 @@ async function createLeadFromMessenger({ tenantId, psid, text }, db = pool) {
   const id = uuidv4();
   const name = 'زائر ماسنجر';
   try {
-    const rep = await getNextSalesRep(tenantId, db).catch(() => null);
+    const rep = await getNextSalesRep(tenantId, db, {
+      lead: { source: 'messenger_inbound', courseIds: [] },
+    }).catch(() => null);
     const [result] = await db.query(
       `INSERT INTO leads
          (id, tenant_id, name, source, status, notes, messenger_psid,

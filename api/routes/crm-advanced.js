@@ -275,7 +275,7 @@ router.post('/api/admin/crm/leads/smart-route', requireAuth, requireAdmin, requi
     // Archive rows ("محلي قديم" …) are distributed by hand from their own tab.
     const archive = excludeArchiveSourcesSql('source');
     const [targets] = await conn.query(
-      `SELECT id,assigned_sales_id,assigned_sales_name
+      `SELECT id,assigned_sales_id,assigned_sales_name,source,interested_course_ids_json,crm_json
        FROM leads
        WHERE tenant_id=? AND hidden=0
          AND (?='all' OR assigned_sales_id IS NULL)
@@ -299,8 +299,9 @@ router.post('/api/admin/crm/leads/smart-route', requireAuth, requireAdmin, requi
 
     let assigned = 0;
     for (const target of targets) {
-      const rep = rotation.next();
-      if (!rep) break;
+      // null: nobody's course and source rules take this one.
+      const rep = rotation.next(target);
+      if (!rep) continue;
       await conn.query(
         `UPDATE leads SET assigned_sales_id = ?, assigned_sales_name = ?, updated_at = NOW()
          WHERE id = ? AND tenant_id=?`,

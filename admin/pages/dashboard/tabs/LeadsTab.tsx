@@ -742,6 +742,9 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
           onBook={openLeadBook}
           branchOptions={instituteBranches}
           sources={crmSettings.leadSources.length > 0 ? crmSettings.leadSources : DEFAULT_SOURCES}
+          // The whole pool, the workspace's branch included: a lead with no branch
+          // shows in no branch workspace, and the pools are where it waits.
+          onShowAll={() => { clearLeadFilters(); setBranchFilter(null); }}
         />
       </Suspense>
 

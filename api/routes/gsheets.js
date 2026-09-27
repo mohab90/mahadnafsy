@@ -139,7 +139,7 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
         if (identity) knownPhones.add(identity);
       }
 
-      const rep = rotation.next();
+      const rep = rotation.next({ source: source || 'Google Sheet', courseIds: courseId ? [courseId] : [] });
       const salesId = rep?.id || null, salesName = rep?.name || null;
 
       // Get sequential client code

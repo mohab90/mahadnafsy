@@ -171,7 +171,7 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT) {
           if (autoAssign !== 'none') {
             // null means every rep is at a cap. The lead stays unassigned
             // rather than pushing someone past a limit the owner set.
-            const rep = assigner.next();
+            const rep = assigner.next({ source: source || 'Facebook Lead Ads', courseIds: courseId ? [courseId] : [] });
             if (rep) { salesId = rep.id; salesName = rep.name; }
           }
           let code = null;

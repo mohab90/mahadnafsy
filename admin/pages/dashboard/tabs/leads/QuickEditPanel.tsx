@@ -165,22 +165,28 @@ export function QuickEditPanel({ lead, onClose, onSave, courses, bundles, notify
               )}
               {bundles.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-                  {bundles.map(b => (
+                  {bundles.map(b => {
+                    // Stored as 'bundle:<id>', the form the table and the booking
+                    // screens read; the bare id an older save left counts too.
+                    const keys = [`bundle:${b.id}`, b.id];
+                    const picked = (draft.interestedCourseIds || []).some(id => keys.includes(id));
+                    return (
                     <button key={b.id} type="button"
                       onClick={() => setDraft(d => ({
                         ...d,
-                        interestedCourseIds: (d.interestedCourseIds || []).includes(b.id)
-                          ? (d.interestedCourseIds || []).filter(id => id !== b.id)
-                          : [...(d.interestedCourseIds || []), b.id],
+                        interestedCourseIds: picked
+                          ? (d.interestedCourseIds || []).filter(id => !keys.includes(id))
+                          : [...(d.interestedCourseIds || []), `bundle:${b.id}`],
                       }))}
                       className={`text-xs px-2.5 py-1 rounded-full border transition ${
-                        (draft.interestedCourseIds || []).includes(b.id)
+                        picked
                           ? 'bg-teal-600 text-white border-teal-600'
                           : 'border-gray-200 text-gray-600 hover:bg-gray-50'
                       }`}>
                       📚 {b.title}
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

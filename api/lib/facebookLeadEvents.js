@@ -85,7 +85,13 @@ async function processFacebookLeadEvent({ event, payload }, dependencies = {}) {
           representative = configured || null;
         }
         if (!representative) {
-          representative = await (dependencies.assignSales || getNextSalesRep)(tenantId, conn, { branch });
+          representative = await (dependencies.assignSales || getNextSalesRep)(tenantId, conn, {
+            branch,
+            lead: {
+              source: 'facebook',
+              courseIds: config.defaultInterestedCourseId ? [config.defaultInterestedCourseId] : [],
+            },
+          });
         }
         const leadType = String(config.defaultLeadType || 'GENERAL').toUpperCase();
         const clientCode = await getNextClientCode(conn);

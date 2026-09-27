@@ -235,7 +235,7 @@ test('public lead capture is tenant-deduped, serialized, assigned and audited at
   // Single-lead auto-assignment (CRM-01) is unified in leadAssignment.js's
   // getNextSalesRep(), shared by this route, auth.js register, and the
   // Facebook Lead Ads webhook — assert the tenant-scoping guarantee there.
-  assert.match(route, /getNextSalesRep\(tenantId, conn, \{ branch:/);
+  assert.match(route, /getNextSalesRep\(tenantId, conn, \{\s*branch:/);
   assert.match(leadAssignment, /WHERE s\.tenant_id=\? AND s\.is_active=1/);
   assert.match(route, /logLeadEvent\(id, existing \? 'updated' : 'created'/);
   assert.match(route, /getTenantSetting\('crm_rr_index'/);

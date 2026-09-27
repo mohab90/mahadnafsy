@@ -106,8 +106,10 @@ export interface ArchiveTabProps {
    *  view's own source filter, so «محلي قديم» and «دولي» search, filter and sort
    *  exactly like the table view does. */
   matchesFilters?: (lead: LeadItem) => boolean;
+  /** Clears the filter bar and the workspace branch, so the whole pool shows. */
+  onShowAll?: () => void;
 }
-export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLeads, notify, courses, bundles, navigate, deleteLead, addSubscriber, updateSubscriber, subscribers, salesReps, isSalesOnly, canManageLeads, onBook, branchOptions, sources, title = 'محلي قديم — الاستيراد والتعيين الجماعي', defaultSource = 'محلي قديم', customFilter, hideImport = false, panels, matchesFilters }: ArchiveTabProps) {
+export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLeads, notify, courses, bundles, navigate, deleteLead, addSubscriber, updateSubscriber, subscribers, salesReps, isSalesOnly, canManageLeads, onBook, branchOptions, sources, title = 'محلي قديم — الاستيراد والتعيين الجماعي', defaultSource = 'محلي قديم', customFilter, hideImport = false, panels, matchesFilters, onShowAll }: ArchiveTabProps) {
   const [archiveParsed, setArchiveParsed] = useState<Record<string, string>[]>([]);
   const [archiveParseErr, setArchiveParseErr] = useState('');
   const [archiveImporting, setArchiveImporting] = useState(false);
@@ -226,9 +228,13 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
   };
 
   // The view's own source filter, then whatever the filter bar is asking for.
-  const archiveLeads = leads
-    .filter(l => !l.hidden && (customFilter ? customFilter(l) : l.source === archiveSource))
-    .filter(l => (matchesFilters ? matchesFilters(l) : true));
+  const poolLeads = leads.filter(l => !l.hidden && (customFilter ? customFilter(l) : l.source === archiveSource));
+  const archiveLeads = poolLeads.filter(l => (matchesFilters ? matchesFilters(l) : true));
+  // «غير موزّع: 262» above an empty table: the counter counts the pool and the
+  // table counts what the filter bar lets through, and the filter bar — a
+  // branch picked for the workspace, a search, a status — carries over from
+  // tab to tab. Said on the screen, with the way out, instead of an empty list.
+  const hiddenByFilters = poolLeads.length - archiveLeads.length;
   // Narrow the pool to leads interested in one course before assigning. A rep
   // handed a mixed bag calls about whatever is on the row; a rep handed forty
   // people who all asked about the same diploma has one conversation to
@@ -303,7 +309,18 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
       <div className="flex items-center gap-2">
         <Archive size={18} className="text-indigo-600" />
         <h2 className="font-extrabold text-gray-800 text-base">{title}</h2>
+        <span className="text-xs font-bold text-gray-500">({archiveLeads.length}{hiddenByFilters > 0 ? ` من ${poolLeads.length}` : ''})</span>
       </div>
+      {hiddenByFilters > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800" role="status">
+          <span>الفلاتر المختارة مخفية <strong>{hiddenByFilters}</strong> من <strong>{poolLeads.length}</strong> عميل في التاب ده.</span>
+          {onShowAll && (
+            <button type="button" onClick={onShowAll} className="rounded-lg bg-amber-600 px-3 py-1 text-xs font-bold text-white hover:bg-amber-700">
+              اعرض الكل
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── Section 1: Import CSV ── */}
       {/* Sourcing and distributing data is a desk job, not a rep's. A rep holds

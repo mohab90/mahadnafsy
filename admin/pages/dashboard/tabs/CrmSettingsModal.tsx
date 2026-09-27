@@ -39,9 +39,57 @@ type AssignmentMember = {
   intakeLimit: number | null;
   intakePeriod: 'day' | 'fortnight' | 'month';
   isAvailable: boolean;
+  /** Courses and tracks ('bundle:<id>') this rep receives. Empty = all. */
+  courseIds: string[];
+  /** Lead sources this rep receives. Empty = all. */
+  sources: string[];
   /** Not saved on this screen yet — receives no leads until switched on and saved. */
   isNew?: boolean;
 };
+
+type RuleOption = { id: string; label: string };
+
+/**
+ * «كل …» or a chosen few, folded to one line until opened. Empty is "all",
+ * which is how the server reads it (api/lib/leadAssignmentPolicy.js), so
+ * clearing every choice can never mean "nothing".
+ */
+function RulePicker({ label, allLabel, options, value, onChange }: {
+  label: string;
+  allLabel: string;
+  options: RuleOption[];
+  value: string[];
+  onChange: (next: string[]) => void;
+}) {
+  // A saved choice no longer on offer (a course unpublished since) stays
+  // visible, so it can be seen and removed.
+  const known = new Set(options.map(option => option.id));
+  const shown = [...options, ...value.filter(id => !known.has(id)).map(id => ({ id, label: id }))];
+  const labelOf = (id: string) => shown.find(option => option.id === id)?.label || id;
+  const chip = (on: boolean) => `rounded-full border px-2 py-0.5 text-[11px] transition ${
+    on ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-gray-200 bg-white text-gray-700 hover:border-indigo-300'}`;
+  return (
+    <details className="col-span-2 rounded-lg border border-gray-200 bg-gray-50/60 px-2 py-1.5">
+      <summary className="cursor-pointer select-none">
+        {label}: <span className="font-bold text-indigo-700">
+          {value.length === 0 ? allLabel : value.length <= 2 ? value.map(labelOf).join('، ') : `${value.length} مختارين`}
+        </span>
+      </summary>
+      <div className="mt-2 flex flex-wrap gap-1">
+        <button type="button" onClick={() => onChange([])} className={chip(value.length === 0)}>{allLabel}</button>
+        {shown.map(option => {
+          const on = value.includes(option.id);
+          return (
+            <button key={option.id} type="button" className={chip(on)}
+              onClick={() => onChange(on ? value.filter(id => id !== option.id) : [...value, option.id])}>
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </details>
+  );
+}
 
 const DEFAULT_SOURCES = [
   'واتساب', 'فيسبوك', 'إنستغرام', 'توصية', 'الموقع', 'شات الـAI', 'جوجل', 'تسجيل دخول', 'Google Sheet', 'أخرى',
@@ -58,11 +106,16 @@ export const DEFAULT_CRM_SETTINGS: CrmSettings = {
   staleDays: [...DEFAULT_STALE_DAYS],
 };
 
-export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [], onSynced }: {
+export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [], courses = [], bundles = [], knownSources = [], onSynced }: {
   onClose: () => void;
   notify: NotifyFn;
   salesReps: { id: string; name: string }[];
   branchOptions?: { id: string; label: string }[];
+  /** For each rep's «الكورسات» choice. */
+  courses?: { id: string; title: string }[];
+  bundles?: { id: string; title: string }[];
+  /** Sources the leads actually carry, beside the configured list. */
+  knownSources?: string[];
   onSynced: () => void;
 }) {
   const [tab, setTab] = useState<'sources' | 'assign' | 'pipeline' | 'gsheet'>('sources');
@@ -106,7 +159,8 @@ export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [
       // A saved row for someone who is no longer an active rep would make the
       // whole save fail ("Active sales staff not found"), so it is dropped.
       const savedMembers = (assignmentData.members as unknown as AssignmentMember[])
-        .filter(member => activeRepIds.has(member.staffId));
+        .filter(member => activeRepIds.has(member.staffId))
+        .map(member => ({ ...member, courseIds: member.courseIds || [], sources: member.sources || [] }));
       // Once the screen has been saved, only reps listed on it receive leads
       // (api/lib/leadAssignment.js). A rep hired since then is listed here
       // switched off, so the admin can see them and decide — before, they were
@@ -120,6 +174,7 @@ export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [
         // They used to arrive switched on, which is how a rep hired after the
         // screen was saved started taking leads nobody had assigned them.
         weight: 1, maxOpenLeads: null, intakeLimit: null, intakePeriod: 'day' as const,
+        courseIds: [], sources: [],
         isAvailable: !configured, isNew: configured,
       }));
       setAssignmentMembers([...savedMembers, ...unlisted]);
@@ -169,6 +224,20 @@ export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [
     setSettings(x => ({ ...x, sheets: [...x.sheets, gs] }));
     setNewSheet({ name: '', sheetId: '', gid: '', autoSync: true });
   };
+
+  const courseOptions: RuleOption[] = [
+    ...bundles.map(bundle => ({ id: `bundle:${bundle.id}`, label: `📌 ${bundle.title}` })),
+    ...courses.map(course => ({ id: course.id, label: course.title })),
+  ];
+  // Every source a lead can arrive with: the list on «المصادر», each sheet's
+  // name (a sheet with no source column files its rows under it), and what the
+  // leads already carry — «الصحة النفسية» and «فيسبوك ليدز» come from sheet
+  // columns and are on neither list.
+  const sourceOptions: RuleOption[] = [...new Set([
+    ...settings.leadSources, ...settings.sheets.map(sheet => sheet.name), ...knownSources,
+  ].map(source => String(source || '').trim()).filter(Boolean))].map(source => ({ id: source, label: source }));
+  const setMember = (index: number, patch: Partial<AssignmentMember>) =>
+    setAssignmentMembers(rows => rows.map((row, i) => i === index ? { ...row, ...patch } : row));
 
   const removeSheet = (id: string) => setSettings(x => ({ ...x, sheets: x.sheets.filter(s => s.id !== id) }));
   const toggleAutoSync = (id: string) => setSettings(x => ({ ...x, sheets: x.sheets.map(s => s.id === id ? { ...s, autoSync: !s.autoSync } : s) }));
@@ -326,9 +395,14 @@ export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [
                           <option value="month">شهر</option>
                         </select>
                       </label>
+                      <RulePicker label="الكورسات اللي تنزله" allLabel="كل الكورسات" options={courseOptions}
+                        value={member.courseIds} onChange={courseIds => setMember(index, { courseIds })} />
+                      <RulePicker label="المصادر اللي تنزله" allLabel="كل المصادر" options={sourceOptions}
+                        value={member.sources} onChange={sources => setMember(index, { sources })} />
                       <p className="col-span-2 text-[11px] text-gray-500">
                         الحدّان بيشتغلوا مع بعض: الموظف بيتخطى لو وصل لأي واحد فيهم.
                         لما كل الفريق يوصل لحده، العميل بيفضل من غير مندوب بدل ما حد يتعدى الحد.
+                        ولو اخترت كورسات أو مصادر، بيستلم بس الليدز اللي منها — والليد اللي مفيش حد بياخده بيفضل في «محلي جديد».
                       </p>
                     </div>
                   ))}

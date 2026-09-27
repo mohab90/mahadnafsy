@@ -81,7 +81,9 @@ async function createLeadFromInbound({ tenantId, from, text }, db = pool) {
   const name = `واتساب ${storedPhone}`;
 
   try {
-    const rep = await getNextSalesRep(tenantId, db).catch(() => null);
+    const rep = await getNextSalesRep(tenantId, db, {
+      lead: { source: INBOUND_LEAD_SOURCE, courseIds: [] },
+    }).catch(() => null);
     const [result] = await db.query(
       `INSERT INTO leads
          (id, tenant_id, name, phone, source, status, notes,

@@ -497,7 +497,9 @@ router.post('/api/admin/consultations', requireAuth, requireAdminOrStaff, requir
       if (!knownSubscriber && !knownLead) {
         leadId = uuidv4();
         const clientCode = await getNextClientCode(conn);
-        const rep = await getNextSalesRep(req.tenantId, conn, { branch: 'OTHER' });
+        const rep = await getNextSalesRep(req.tenantId, conn, {
+          branch: 'OTHER', lead: { source: 'consultation', courseIds: [] },
+        });
         await conn.query(
           `INSERT INTO leads
              (id, tenant_id, client_code, name, email, phone, source, status, interest_level,

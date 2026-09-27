@@ -136,6 +136,9 @@ export function LeadModalsHost({
           notify={notify}
           salesReps={salesReps}
           branchOptions={instituteBranches}
+          courses={courses}
+          bundles={bundles}
+          knownSources={[...new Set(leads.map(lead => lead.source).filter((source): source is string => Boolean(source)))]}
           onSynced={async () => {
             setShowSettings(false);
             await Promise.all([reloadLeads(), reloadPipeline()]);

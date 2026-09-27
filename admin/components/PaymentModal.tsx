@@ -291,9 +291,22 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   };
 
   const _sysPx = sysPrice(d.courseId);
+  // The price this client agreed for this course: their own price on file, or
+  // what their booking recorded. The catalogue is only the starting point for a
+  // course they have not booked.
+  const _agreedPx = (() => {
+    if (!d.courseId) return 0;
+    const onFile = Number((subject as { customPrices?: Record<string, number> }).customPrices?.[d.courseId]) || 0;
+    if (onFile > 0) return onFile;
+    const booking = (subject.paymentHistory || []).filter(isCollected).find(p =>
+      !p.isInstallment && Number(p.courseExpected) > 0
+      && (p.courseId === d.courseId || (!!p.bundleId && `bundle:${p.bundleId}` === d.courseId)));
+    return booking ? Number(booking.courseExpected) : 0;
+  })();
+  const _basePx = _agreedPx > 0 ? _agreedPx : _sysPx;
   const _customExp = Number(d.customExpected) || 0;
   const _discPct = Number(d.discountPct) || 0;
-  const _effPx = _customExp > 0 ? _customExp : (_discPct > 0 && _sysPx > 0 ? Math.round(_sysPx * (1 - _discPct / 100)) : _sysPx);
+  const _effPx = _customExp > 0 ? _customExp : (_discPct > 0 && _basePx > 0 ? Math.round(_basePx * (1 - _discPct / 100)) : _basePx);
   const _hasDiscount = _effPx > 0 && _sysPx > 0 && _effPx < _sysPx;
   const _amtPaid = Number(d.amount) || 0;
   const _extraTotal = (d.extraItems || []).reduce((s, i) => s + (Number(i.amount) || 0), 0);
