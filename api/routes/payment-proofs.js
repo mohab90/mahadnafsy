@@ -4,6 +4,7 @@ const express = require('express');
 const router  = express.Router();
 const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
+const { queuePaymentReceipt } = require('../lib/paymentReceipt');
 const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { tryJson } = require('../lib/helpers');
 const { ensureSubscriberForOrder } = require('../lib/subscriberProvisioning');
@@ -567,9 +568,7 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
       const [[sub]] = await pool.query('SELECT name, phone, email FROM subscribers WHERE id = ? AND tenant_id=?', [proof.subscriber_id, tenantId]);
       // Lifecycle: email receipt on approval (whatsapp handled just below to avoid dup).
       if (action === 'approve' && sub?.email) {
-        require('../lib/lifecycle').trigger('payment_received',
-          { name: sub.name, email: sub.email, amount: proof.amount, currency: proof.currency || 'EGP', itemTitle: proof.course_title, tenantId: req.tenantId },
-          { channels: ['email'] });
+        queuePaymentReceipt(req.tenantId, `proof-${proof.id}`);
       }
       if (sub?.phone) {
         const statusAr = action === 'approve' ? 'تم اعتماد' : 'تم رفض';

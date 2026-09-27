@@ -67,7 +67,10 @@ test('an instalment records the plan total, not its own amount', () => {
   // plan dropped off the outstanding list and was never chased again.
   const source = codeOnly(read('routes/installments.js'));
   const insert = source.slice(source.indexOf('INSERT INTO payments'));
-  assert.match(insert.slice(0, 1200), /plan\.total_amount/);
+  // The course's agreed price when the booking recorded one — a plan is often
+  // made for what is left — and the plan's total otherwise.
+  assert.match(insert.slice(0, 1200), /courseExpected, `قسط رقم/);
+  assert.match(source, /const courseExpected = Number\(agreed\?\.expected\) > 0 \? Number\(agreed\.expected\) : Number\(plan\.total_amount\);/);
   assert.doesNotMatch(insert.slice(0, 1200), /update\.scheduledAmount/);
 });
 

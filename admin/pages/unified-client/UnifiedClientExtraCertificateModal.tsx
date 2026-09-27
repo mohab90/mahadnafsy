@@ -1,9 +1,9 @@
 import React from 'react';
 import { Modal } from '../../../shared/ui/Modal';
 
-import type { Course, ExtraCertificateType, SubscriberItem } from '../../types';
+import type { Course, SubscriberItem } from '../../types';
 import type { ExtraCertificateDraft } from './useUnifiedClientCertificateState';
-import { EXTRA_TYPE_LABELS } from './constants';
+import { useCertificateCatalog } from '../../lib/certificateCatalog';
 
 interface UnifiedClientExtraCertificateModalProps {
   open: boolean;
@@ -28,6 +28,7 @@ export const UnifiedClientExtraCertificateModal: React.FC<UnifiedClientExtraCert
   onSubmit,
   onClose,
 }) => {
+  const certCatalog = useCertificateCatalog();
   if (!subscriber) return null;
 
   return (
@@ -69,7 +70,7 @@ export const UnifiedClientExtraCertificateModal: React.FC<UnifiedClientExtraCert
           <div>
             <label className="text-xs text-gray-600 mb-1.5 block font-medium">نوع الشهادة</label>
             <div className="grid grid-cols-2 gap-1.5">
-              {(Object.entries(EXTRA_TYPE_LABELS) as [ExtraCertificateType, string][]).map(([value, label]) => (
+              {certCatalog.types.map(({ key: value, label }) => (
                 <button
                   key={value}
                   onClick={() => setDraft({ ...draft, type: value })}

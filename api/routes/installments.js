@@ -24,6 +24,9 @@ const { assertWritable } = require('../lib/periodLock');
 const { branchIdForBranch } = require('../lib/branches');
 const { applyInstallmentPayment, removeInstallmentEntry } = require('../lib/installmentMath');
 const { financialRecordMatches, resolveFinancialScope } = require('../lib/financialScope');
+const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../lib/paymentEntitlementAccess');
+const { grantCourseEntitlement } = require('../lib/entitlements');
+const { queuePaymentReceipt } = require('../lib/paymentReceipt');
 
 async function requireScopedSubscriber(req, subscriberId, db = pool) {
   const [[subscriber]] = await db.query(
@@ -143,6 +146,18 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
 
     await assertWritable(effectiveDate, conn, req.tenantId);
 
+    // The price agreed for the course, when the booking recorded one: a plan is
+    // often made for what is left, and its total then is not the course's
+    // price. Recording the plan's total beside a booking's price made the next
+    // payment on the course refuse with INSTALLMENT_EXPECTED_MISMATCH.
+    const [[agreed]] = await conn.query(
+      `SELECT MAX(course_expected) AS expected FROM payments
+        WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND status='paid'
+          AND course_id <=> ? AND bundle_id <=> ? AND course_expected > 0`,
+      [req.tenantId, plan.subscriber_id, plan.course_id || null, plan.bundle_id || null]
+    );
+    const courseExpected = Number(agreed?.expected) > 0 ? Number(agreed.expected) : Number(plan.total_amount);
+
     const branch = plan.branch || 'ONLINE_EGYPT';
     const payType = plan.course_id ? 'COURSE' : (plan.bundle_id ? 'BUNDLE' : 'OTHER');
     await conn.query(
@@ -153,7 +168,8 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
        VALUES (?,?,?,?,?,?,?,?,1,?,?,?,'paid','installment',?,?,?,?,?,NOW())`,
       [payId, plan.subscriber_id, plan.course_id || null, plan.bundle_id || null, paidAmount, plan.currency || 'EGP',
        payType, method,
-       // The plan's total, not this instalment's amount.
+       // The course's agreed price (the plan's total when none is on file),
+       // not this instalment's amount.
        //
        // course_expected is what the customer owes for the course, and the
        // collections query reads MAX(course_expected) per course to decide who
@@ -163,7 +179,7 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
        // was never chased again. MAX over the plan total is stable across
        // every instalment row, which is why recording it on each is correct
        // rather than double-counting.
-       plan.total_amount, `قسط رقم ${index + 1} من ${update.installmentAmounts.length} — خطة ${plan.title || planId}`,
+       courseExpected, `قسط رقم ${index + 1} من ${update.installmentAmounts.length} — خطة ${plan.title || planId}`,
        effectiveDate,
        plan.title || null, branch, plan.branch_id || branchIdForBranch(branch),
        req.tenantId, req.user?.email || req.staffRecord?.name || 'system']
@@ -180,6 +196,41 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
     await logPaymentAudit(payId, 'create', null, 'paid', paidAmount, plan.subscriber_id,
       req.user?.email || req.staffRecord?.name || 'system', req.tenantId, conn, true);
 
+    // What the instalment opens, as every other paid payment does: more
+    // lectures in proportion to what is now paid, the whole course once it is
+    // covered. Paying an instalment recorded the money and opened nothing.
+    const courseIds = plan.course_id ? [plan.course_id] : [];
+    if (plan.bundle_id) {
+      const [bundleCourses] = await conn.query(
+        'SELECT course_id FROM bundle_courses WHERE tenant_id=? AND bundle_id=?', [req.tenantId, plan.bundle_id]);
+      courseIds.push(...bundleCourses.map(row => row.course_id));
+    }
+    if (courseIds.length) {
+      let access = null;
+      try {
+        access = await resolvePaymentAccess({
+          db: conn, tenantId: req.tenantId, subscriberId: plan.subscriber_id,
+          courseId: plan.course_id || null, bundleId: plan.bundle_id || null,
+          currentPaymentId: payId, currentAmount: paidAmount, currency: plan.currency || 'EGP',
+          expectedAmount: courseExpected,
+        });
+      } catch (error) {
+        // Mixed currencies or prices on the course: the money is recorded and
+        // access is left for the desk to set, rather than refusing the payment.
+        logger.warn('[installments] access left unchanged', { planId, code: error.code || error.message });
+      }
+      if (access) {
+        for (const courseId of [...new Set(courseIds)]) {
+          await grantCourseEntitlement({
+            tenantId: req.tenantId, subscriberId: plan.subscriber_id, courseId,
+            bundleId: plan.bundle_id || null, accessType: accessModeOf(access), lectureLimit: null,
+            paidRatio: paidRatioOf(access), branchId: plan.branch_id || branchIdForBranch(branch),
+            source: 'manual_payment', actor: req.user?.email || 'installment',
+          }, conn);
+        }
+      }
+    }
+
     await conn.query(
       `UPDATE installment_plans SET paid_dates=?, payment_ids=?, paid_amounts=?, paid_count=?, status=?
         WHERE id=? AND tenant_id=?`,
@@ -188,6 +239,7 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
     );
 
     await conn.commit();
+    queuePaymentReceipt(req.tenantId, payId);
     res.json({ ok: true, paymentId: payId, status: update.status, paidCount: update.paidCount });
   } catch (e) {
     await conn.rollback().catch(() => {});

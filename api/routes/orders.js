@@ -13,6 +13,7 @@ const { safeIsoString, cairoToday } = require('../lib/dates');
 const { resolvePaymentExecutors } = require('../lib/paymentExecutor');
 const { assertWritable } = require('../lib/periodLock');
 const { confirmOrderPayment } = require('../lib/orderPaymentConfirmation');
+const { queuePaymentReceipt } = require('../lib/paymentReceipt');
 const { financialRecordMatches, financialScopeClause, resolveFinancialScope } = require('../lib/financialScope');
 const { normalizeJourneyState } = require('../lib/journeyStates');
 
@@ -257,6 +258,7 @@ router.post('/api/admin/orders/:id/confirm-payment', requireAuth, requireAdminOr
     }, conn);
 
     await conn.commit();
+    queuePaymentReceipt(req.tenantId, paymentId);
     res.json({ ok: true, paymentId });
   } catch (e) {
     await conn.rollback().catch(() => {});

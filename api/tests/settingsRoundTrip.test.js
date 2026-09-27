@@ -32,8 +32,10 @@ test('a certificate keeps its name across a save', () => {
   assert.ok(!shared.includes('.map(k => ({ key: k, label: k }))'),
     'a custom type used to be rebuilt with its code as its name');
   // And is read back, falling through to the built-in Arabic name and only
-  // then to the code.
-  assert.match(shared, /DEFAULT_CERT_TYPES\.find\(d => d\.key === key\)\?\.label/);
+  // then to the code — in the one list every screen that offers a
+  // certificate reads (admin/lib/certificateCatalog.ts).
+  const catalog = codeOnly(read('admin/lib/certificateCatalog.ts'));
+  assert.match(catalog, /DEFAULT_CERT_TYPES\.find\(d => d\.key === key\)\?\.label/);
 
   // And there is one editor now. The settings screen carried a second one for
   // the same key, with its own layout and — until they were found — the same two
@@ -45,11 +47,11 @@ test('a certificate keeps its name across a save', () => {
 });
 
 test('a deleted certificate stays deleted', () => {
-  const shared = codeOnly(read('admin/pages/dashboard/dashboardShared.tsx'));
-  assert.ok(!shared.includes('return [...DEFAULT_CERT_TYPES, ...extra];'),
+  const catalog = codeOnly(read('admin/lib/certificateCatalog.ts'));
+  assert.ok(!catalog.includes('return [...DEFAULT_CERT_TYPES, ...extra];'),
     'the defaults were prepended on every read, so a delete could never stick');
   // The saved map is the list; the defaults only seed an empty one.
-  assert.match(shared, /if \(!keys\.length\) return DEFAULT_CERT_TYPES;/);
+  assert.match(catalog, /if \(!keys\.length\) return DEFAULT_CERT_TYPES;/);
 });
 
 test('each settings section has its own address', () => {

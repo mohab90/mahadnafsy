@@ -8,13 +8,17 @@ const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { parseLimit } = require('../lib/helpers');
 const { publishRealtimeEvent } = require('../lib/realtime');
 const { getTenantSetting } = require('../lib/tenantSettings');
-const { resolveCertificatePrice } = require('../lib/certificatePricing');
+const { certificateTypeCodes, resolveCertificatePrice } = require('../lib/certificatePricing');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { isString, isOneOf, validateBody } = require('../middleware/validate');
 const { resolveClientContext } = require('../lib/clientContext');
 
 const CERT_STATUSES = ['PENDING','PRICED','PAID','IN_PROGRESS','NOT_SENT','ISSUED','SHIPPED','AT_BRANCH','DELIVERED'];
-const CERT_TYPES = ['SOCIAL_SOLIDARITY','AIN_SHAMS','EXPERIENCE_EXTERNAL','PRACTICE_EXTERNAL','NATIONAL_COUNCIL','AMERICAN_BOARD','INSTITUTE','OTHER'];
+// A request's type is any code «تسعير الشهادات» lists (certificateTypeCodes).
+const loadPricing = async tenantId => {
+  const content = await getTenantSetting('content', { tenantId, fallback: {} });
+  try { return JSON.parse(content.extra_cert_pricing || '{}') || {}; } catch { return {}; }
+};
 const CERT_NATS  = ['EGYPTIAN','NON_EGYPTIAN_EGYPT','SAUDI_RESIDENT','INTERNATIONAL'];
 const POST_PAYMENT_STATUSES = new Set(['PAID','IN_PROGRESS','NOT_SENT','ISSUED','SHIPPED','AT_BRANCH','DELIVERED']);
 const CERT_TRANSITIONS = new Map([
@@ -53,7 +57,8 @@ router.post('/api/admin/certificate-requests', requireAuth, requireAdminOrStaff,
     const type = String(b.type || '').toUpperCase();
     const nationality = b.nationality ? String(b.nationality).toUpperCase() : null;
     if (!subscriberId || !courseId) return res.status(400).json({ error: 'subscriberId and courseId are required' });
-    if (!CERT_TYPES.includes(type)) return res.status(400).json({ error: 'Invalid certificate type' });
+    const pricingConfig = await loadPricing(req.tenantId);
+    if (!certificateTypeCodes(pricingConfig).has(type)) return res.status(400).json({ error: 'Invalid certificate type' });
     if (nationality && !CERT_NATS.includes(nationality)) return res.status(400).json({ error: 'Invalid nationality' });
 
     conn = await pool.getConnection();
@@ -97,8 +102,6 @@ router.post('/api/admin/certificate-requests', requireAuth, requireAdminOrStaff,
       conn = null;
       return res.status(400).json({ error: 'price must be a non-negative number' });
     }
-    const content = await getTenantSetting('content', { tenantId: req.tenantId, fallback: {} });
-    const pricingConfig = (() => { try { return JSON.parse(content.extra_cert_pricing || '{}'); } catch { return {}; } })();
     const resolved = resolveCertificatePrice({ type, nationality, pricingConfig });
     const finalPrice = suppliedPrice === null ? resolved.price : suppliedPrice;
     const finalCurrency = String(b.currency || resolved.currency || 'EGP').toUpperCase();
@@ -322,7 +325,8 @@ router.post('/api/me/certificate-request', requireAuth, async (req, res) => {
     const sub = await resolveSubscriberRow(req, ['id']);
     if (!sub) return res.status(403).json({ error: 'not_subscribed' });
     const b = req.body || {};
-    const type = CERT_TYPES.includes(String(b.type || '').toUpperCase()) ? String(b.type).toUpperCase() : 'OTHER';
+    const pricingConfig = await loadPricing(tenantId);
+    const type = certificateTypeCodes(pricingConfig).has(String(b.type || '').toUpperCase()) ? String(b.type).toUpperCase() : 'OTHER';
     const nationality = CERT_NATS.includes(String(b.nationality || '').toUpperCase()) ? String(b.nationality).toUpperCase() : null;
     if (!b.courseId) return res.status(400).json({ error: 'courseId required' });
     const [[eligible]] = await pool.query(
@@ -352,8 +356,6 @@ router.post('/api/me/certificate-request', requireAuth, async (req, res) => {
       return res.status(409).json({ error: 'certificate_request_exists', id: duplicate.id });
     }
 
-    const content = await getTenantSetting('content', { tenantId, fallback: {} });
-    const pricingConfig = (() => { try { return JSON.parse(content.extra_cert_pricing || '{}'); } catch { return {}; } })();
     const clientContext = await resolveClientContext(req);
     // No country means price by nationality, and if that cannot price it either
     // the row lands PENDING for an admin — never a refusal.

@@ -1,6 +1,6 @@
 import { Award, Ban, Eye, Plus, RotateCcw } from 'lucide-react';
 import type { Course, ExtraCertificateRequest, SubscriberCertificate, SubscriberItem } from '../../types';
-import { EXTRA_TYPE_LABELS } from './constants';
+import { useCertificateCatalog } from '../../lib/certificateCatalog';
 
 interface UnifiedClientCertificatesPanelProps {
   subscriber: SubscriberItem;
@@ -52,6 +52,7 @@ export function UnifiedClientCertificatesPanel({
   onRevokeCertificate,
   onReissueCertificate,
 }: UnifiedClientCertificatesPanelProps) {
+  const certCatalog = useCertificateCatalog();
   return (
     <div id="section-certificates" className="space-y-3">
       <div className="flex items-center gap-3 mb-4">
@@ -126,7 +127,7 @@ export function UnifiedClientCertificatesPanel({
             return (
               <div key={request.id} className={`border rounded-xl p-4 ${extraStatusClass(request.status)}`}>
                 <div className="flex justify-between items-start">
-                  <p className="font-bold text-sm text-gray-900">{request.customName || EXTRA_TYPE_LABELS[request.type]}</p>
+                  <p className="font-bold text-sm text-gray-900">{certCatalog.label(request.type, request.customName)}</p>
                   <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${extraStatusBadge(request.status)}`}>
                     {extraStatusLabel(request.status)}
                   </span>

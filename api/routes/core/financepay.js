@@ -4,6 +4,7 @@ const express = require('express');
 const router = express.Router();
 const logger = require('../../lib/logger');
 const { pool } = require('../../lib/db');
+const { queuePaymentReceipt } = require('../../lib/paymentReceipt');
 const { sendWhatsApp } = require('../../lib/whatsapp');
 const { logPaymentAudit, postPaymentJournal } = require('../../lib/finance');
 const { recordPaymentCompensation } = require('../../lib/paymentCompensation');
@@ -210,6 +211,8 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
     transactionStarted = false;
 
     if (becomingPaid && payment.subscriber_id) {
+      // Recorded pending and approved now: the client heard nothing before.
+      queuePaymentReceipt(tenantId, id);
       setImmediate(async () => {
         try {
           const [[subscriber]] = await pool.query(
@@ -218,7 +221,7 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
           );
           if (subscriber?.phone) {
             await sendWhatsApp(subscriber.phone.replace(/\D/g, ''),
-              `Payment confirmed: ${payment.amount} ${payment.currency || 'EGP'}`, { tenantId, category: 'payment' });
+              `✅ تم تأكيد دفعتك: ${payment.amount} ${payment.currency || 'EGP'} — معهد الدراسات النفسية`, { tenantId, category: 'payment' });
           }
         } catch (error) {
           logger.warn('[patch-payment] confirmation notification failed:', error.message);

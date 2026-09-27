@@ -44,14 +44,18 @@ const JOURNEY = {
   ],
   payment_received: [
     {
-      key: 'payment_receipt_email', channel: 'email', delayH: 0,
+      key: 'payment_receipt_email', channel: 'email', delayH: 0, category: 'payment',
       subject: 'تأكيد الدفع وتفعيل وصولك ✅',
+      // `unlocked` and `remaining` come from lib/paymentReceipt.js: what this
+      // payment opened, course by course, and what is still owed.
       build: (c) => `<p>أهلاً ${escapeHtml(c.name || '')}،</p>
         <p>تم استلام دفعتك بنجاح${c.itemTitle ? ` لـ <b>${escapeHtml(c.itemTitle)}</b>` : ''}.</p>
         <table class="details"><tr><td>المبلغ</td><td>${money(c.amount, c.currency)}</td></tr>
         ${c.method ? `<tr><td>طريقة الدفع</td><td>${escapeHtml(c.method)}</td></tr>` : ''}
-        <tr><td>التاريخ</td><td>${cairoToday()}</td></tr></table>
-        <p>وصولك اتفعّل — ابدأ التعلّم دلوقتي:</p>
+        <tr><td>التاريخ</td><td>${escapeHtml(c.date || cairoToday())}</td></tr>
+        ${c.remaining != null ? `<tr><td>المتبقي</td><td>${c.remaining > 0 ? money(c.remaining, c.currency) : 'اتدفع بالكامل ✅'}</td></tr>` : ''}</table>
+        ${Array.isArray(c.unlocked) && c.unlocked.length ? `<p><b>المفتوح لك دلوقتي:</b></p><ul>${c.unlocked.map(u => `<li>${escapeHtml(u.title || '')}: ${
+          u.full ? 'مفتوح بالكامل' : `مفتوح لك ${u.open} من ${u.total} محاضرة`}</li>`).join('')}</ul>` : '<p>وصولك اتفعّل.</p>'}
         <p><a class="btn" href="${SITE}/dashboard">ابدأ التعلّم</a></p>`,
     },
     {
@@ -180,7 +184,7 @@ async function trigger(event, ctx = {}, opts = {}) {
       if (!recipient) continue;
       const content = step.build(ctx);
       const subject = typeof step.subject === 'function' ? step.subject(ctx) : (step.subject || null);
-      const payload = step.channel === 'email' ? { body: content } : { message: content };
+      const payload = step.channel === 'email' ? { body: content, ...(step.category ? { category: step.category } : {}) } : { message: content };
       await outbox.enqueue({
         channel: step.channel, recipient, subject, payload,
         tenantId,

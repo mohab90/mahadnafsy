@@ -1,4 +1,4 @@
-import type { CourseAccessSetting, ExtraCertificateType } from '../../types';
+import type { CourseAccessSetting } from '../../types';
 
 export const branchLabels: Record<string, string> = {
   DAQQI: 'فرع الدقي',
@@ -49,17 +49,6 @@ export const statusLabels: Record<string, string> = {
   no_answer: 'لا يرد',
   closed: 'مغلق',
   converted: 'تحول لمشترك',
-};
-
-export const EXTRA_TYPE_LABELS: Record<ExtraCertificateType, string> = {
-  social_solidarity: 'شهادة التضامن الاجتماعي',
-  ain_shams: 'شهادة جامعة عين شمس',
-  experience_external: 'شهادة الخبرة بتوثيق الخارجية',
-  practice_external: 'شهادة التطبيقين بالخارجية',
-  national_council: 'شهادة المجلس الوطني',
-  american_board: 'شهادة البورد الأمريكي',
-  institute: 'شهادة المعهد',
-  other: 'شهادة أخرى',
 };
 
 export const normalizeAccess = (entry?: CourseAccessSetting | 'preview' | 'full'): CourseAccessSetting => {

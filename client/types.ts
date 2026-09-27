@@ -175,15 +175,9 @@ export interface SubscriberCertificate {
   note?: string;
 }
 
-export type ExtraCertificateType =
-  | 'social_solidarity'
-  | 'ain_shams'
-  | 'experience_external'
-  | 'practice_external'
-  | 'national_council'
-  | 'american_board'
-  | 'institute'
-  | 'other';
+// A code from «تسعير الشهادات» (content extra_cert_pricing): the eight it
+// started with, or one customer service added — 'social_solidarity', '016'.
+export type ExtraCertificateType = string;
 
 export interface ExtraCertificateRequest {
   id: string;

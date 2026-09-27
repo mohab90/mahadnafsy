@@ -70,10 +70,12 @@ test('the security-critical paths name themselves', () => {
   assert.match(codeOnly(read('routes/auth.js')),
     /sendEmailBase\(to, subject, html, \{ tenantId: req\.tenantId, category: 'otp' \}\)/,
     'the password-reset code');
-  assert.match(codeOnly(read('routes/subscriber-payments.js')),
-    /category: 'payment'/, 'the payment receipt');
-  assert.match(codeOnly(read('routes/public-orders.js')),
-    /\{ tenantId, category: 'payment' \}/, 'the order confirmation');
+  // Every paid payment's receipt — recorded, approved, accepted, ordered or
+  // Paymob — is the one lifecycle step, queued as 'payment' and sent as it.
+  assert.match(codeOnly(read('lib/lifecycle.js')),
+    /key: 'payment_receipt_email', channel: 'email', delayH: 0, category: 'payment'/, 'the payment receipt');
+  assert.match(codeOnly(read('lib/backgroundScheduler.js')),
+    /email\.sendEmail\(recipient, subject, html \|\| body \|\| '', \{ tenantId, category \}\)/, 'the outbox keeps it');
   assert.match(codeOnly(read('routes/config.js')),
     /category: 'channel_test'/, 'the button that proves the channel works');
 });

@@ -120,8 +120,10 @@ function startBackgroundScheduler({ pool, logger, port }) {
       await crmSla.enqueueOverdueLeadAlerts();
       await promoteLegacyEmailSequenceQueue();
       await outbox.drain({
-        email: ({ recipient, subject, body, html, tenantId }) =>
-          email.sendEmail(recipient, subject, html || body || '', { tenantId }),
+        // A category queued with the message (a receipt is 'payment') survives
+        // EMAIL_OUTBOUND_CATEGORIES the way the direct send does.
+        email: ({ recipient, subject, body, html, tenantId, category }) =>
+          email.sendEmail(recipient, subject, html || body || '', { tenantId, category }),
         // channelId decides which identity it goes out from — the company
         // number, or the rep's own WhatsApp the campaign was composed against.
         whatsapp: ({ recipient, message, tenantId, channelId, staffId }) =>

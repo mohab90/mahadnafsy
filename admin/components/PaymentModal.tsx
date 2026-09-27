@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import { cairoDateOnly } from '../../shared/cairoDate';
 import { CreditCard, X } from 'lucide-react';
 import { useStaticData } from '../context/siteDataSlices';
+import { useCertificateCatalog } from '../lib/certificateCatalog';
 import type {
   PaymentItemType, PaymentHistoryEntry,
   ExtraCertificateRequest,
@@ -241,13 +242,6 @@ interface PaymentModalProps {
   branchLabel?: string;
 }
 
-const certTypeLabels: Record<string, string> = {
-  social_solidarity: 'تضامن اجتماعي', ain_shams: 'عين شمس',
-  experience_external: 'خبرة خارجي', practice_external: 'ممارسة خارجي',
-  national_council: 'المجلس القومي', american_board: 'البورد الأمريكي',
-  institute: 'شهادة المعهد', other: 'أخرى',
-};
-
 const PaymentModal: React.FC<PaymentModalProps> = ({
   mode, subject, draft, setDraft, onSubmit, onClose,
   requirePaymentApproval, branchOptions = [], instituteName = 'معهد الدراسات النفسية',
@@ -255,6 +249,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   branchLabel,
 }) => {
   const { courses, bundles, content, authUser } = useStaticData();
+  // The certificates «تسعير الشهادات» lists — its own, not eight written here.
+  const certCatalog = useCertificateCatalog();
   const [printData, setPrintData] = useState<PrintData | null>(null);
   // Escape closes the dialog and focus starts inside it. The Daqqi desk had
   // this on its own copy of this modal and every other payment screen did not;
@@ -403,11 +399,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   // pay against and the amount had to be typed from memory. The settings hold
   // four tiers per type; the tier follows the payment currency, since that is
   // what the rest of this dialog is already denominated in.
-  const certPricing: Record<string, { egyptianEGP?: number; residentEGP?: number; residentSAR?: number; foreignUSD?: number }> =
-    (() => { try { return JSON.parse(content['extra_cert_pricing'] || '{}'); } catch { return {}; } })();
-
   const certBasePrice = (type: string, currency: string): number => {
-    const tiers = certPricing[type];
+    const tiers = certCatalog.map[type];
     if (!tiers) return 0;
     if (currency === 'SAR') return Number(tiers.residentSAR) || 0;
     if (currency === 'USD') return Number(tiers.foreignUSD) || 0;
@@ -718,7 +711,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                       <div className="space-y-1">
                         {certRequests.filter(r => !d.courseId || r.courseId === d.courseId).map(r => {
                           const isSel = d.certReqId === r.id;
-                          const certLabel = r.customName || certTypeLabels[r.type] || r.type;
+                          const certLabel = certCatalog.label(r.type, r.customName);
                           const certPx = r.price ?? 0; const certPaid = r.paidAmount ?? 0;
                           return (
                             <button
@@ -767,7 +760,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                           className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-red-400"
                         >
                           <option value="">— نوع الشهادة —</option>
-                          {Object.entries(certTypeLabels).map(([v, lb]) => {
+                          {certCatalog.types.map(({ key: v, label: lb }) => {
                             const base = certBasePrice(v, d.currency);
                             return <option key={v} value={v}>{lb}{base > 0 ? ` — ${base.toLocaleString('ar-EG-u-nu-latn')} ${d.currency}` : ''}</option>;
                           })}

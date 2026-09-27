@@ -2,13 +2,12 @@
 const express = require('express');
 const router = express.Router();
 const { resolveCatalogPrice, priceMatches } = require('../lib/catalogPrice');
-const { escapeHtml } = require('../lib/html');
 const logger = require('../lib/logger').child({ module: 'public-orders-route' });
 const crypto = require('crypto');
 const { uuidv4 } = require('../lib/id');
 
 const { pool } = require('../lib/db');
-const { sendEmail } = require('../lib/email');
+const { queuePaymentReceipt } = require('../lib/paymentReceipt');
 const { tryJson } = require('../lib/helpers');
 const { getPaymentGatewaySettings, isPaymobActive } = require('../lib/saasSettings');
 const { paymobLimiter, publicLimiter } = require('../middleware/rateLimits');
@@ -825,28 +824,8 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
     });
   }
 
-  // ── Send payment confirmation email to customer ───────────────────────────
-  const customerEmail = order.customer_email;
-  if (customerEmail) {
-    const itemName = extra.courseName || extra.bundleName || `طلب #${merchantOrderId}`;
-    const amountFmt = `${order.amount} ${order.currency || 'EGP'}`;
-    sendEmail(customerEmail,
-      `✅ تم استلام دفعتك — ${itemName}`,
-      `<div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px">
-        <h2 style="color:#7c3aed">شكراً ${escapeHtml(order.customer_name || 'عزيزنا')}! 🎉</h2>
-        <p>تم استلام دفعتك بنجاح وتم تفعيل اشتراكك.</p>
-        <table style="width:100%;border-collapse:collapse;margin:16px 0">
-          <tr><td style="padding:8px;background:#f5f3ff;font-weight:bold">المنتج</td><td style="padding:8px">${itemName}</td></tr>
-          <tr><td style="padding:8px;background:#f5f3ff;font-weight:bold">المبلغ</td><td style="padding:8px">${amountFmt}</td></tr>
-          <tr><td style="padding:8px;background:#f5f3ff;font-weight:bold">رقم الطلب</td><td style="padding:8px">${merchantOrderId}</td></tr>
-          <tr><td style="padding:8px;background:#f5f3ff;font-weight:bold">رقم المعاملة</td><td style="padding:8px">${transactionId || '—'}</td></tr>
-        </table>
-        <p>يمكنك البدء في التعلم الآن من خلال <a href="https://mahadnafsy.com/my-account" style="color:#7c3aed">لوحة التحكم</a>.</p>
-        <p style="color:#9ca3af;font-size:12px">معهد الدراسات النفسية — mahadnafsy.com</p>
-      </div>`,
-      { tenantId, category: 'payment' }
-    ).catch(e => logger.warn('[email] payment confirmation failed:', e.message));
-  }
+  // The receipt, the same one every paid payment gets (lib/paymentReceipt.js).
+  queuePaymentReceipt(tenantId, payId);
 
   return { found: true, alreadyProcessed: false };
 }

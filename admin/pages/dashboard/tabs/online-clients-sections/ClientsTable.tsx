@@ -25,6 +25,7 @@ import { currencyForBranch } from '../../../../lib/branchCurrency';
 import { type SubscriberWithCustomPrices } from '../onlineClientsUtils';
 import ClientNameCell from './ClientNameCell';
 import type { OnlineClientConvertType } from '../OnlineClientConvertModal';
+import { useCertificateCatalog } from '../../../../lib/certificateCatalog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type HousingInfo = { roundId: string; roundCode: string; receptionId: string; receptionName: string };
@@ -84,6 +85,7 @@ export function ClientsTable({
   // Which customer we are adjusting course access for. The default length is
   // set per course in the catalogue; this is where one person is changed.
   const [accessRow, setAccessRow] = React.useState<SubscriberItem | null>(null);
+  const certCatalog = useCertificateCatalog();
   const navigate = useNavigate();
   const todayOnlineStr = cairoDateOnly();
   const in3daysOnlineStr = cairoDaysAhead(3);
@@ -135,13 +137,7 @@ export function ClientsTable({
             const partialCids = enrolledIds.filter(id => !bundleHiddenIds.has(id));
             const branchId = normBranchId(row.branch);
             const branchCurrency = currencyForBranch(branchId);
-            const certTypeAr: Record<string,string> = {
-              social_solidarity:'تضامن اجتماعي', ain_shams:'عين شمس',
-              experience_external:'خبرة خارجية', practice_external:'ممارسة خارجية',
-              national_council:'المجلس القومي', american_board:'البورد الأمريكي',
-              institute:'معهد', other:'أخرى',
-            };
-            const certLabel = (t?: string) => (t && certTypeAr[t]) ? certTypeAr[t] : (t || 'شهادة');
+            const certLabel = (t?: string) => certCatalog.label(t);
             const customPrices: Record<string,number> = (row as SubscriberWithCustomPrices).customPrices || {};
             const multiCourseKey = completeBundles.length === 0 && partialCids.length > 1
               ? `multi:${[...partialCids].sort().join(',')}`

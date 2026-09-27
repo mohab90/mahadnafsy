@@ -5,7 +5,7 @@ const express = require('express');
 const router  = express.Router();
 const { uuidv4 } = require('../lib/id');
 const { pool, autoAssignStaff } = require('../lib/db');
-const { mailer, sendEmail: sendEmailBase, htmlEmail } = require('../lib/email');
+const { queuePaymentReceipt } = require('../lib/paymentReceipt');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { sanitize } = require('../lib/helpers');
 const { createNotification } = require('../lib/notification');
@@ -75,9 +75,6 @@ router.get('/api/admin/payment-boxes', requireAuth, requireAdminOrStaff, require
 });
 
 router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, requirePermission('manage_payments'), async (req, res) => {
-  // 'payment': this route emails the customer their receipt.
-  const sendEmail = (to, subject, html) =>
-    sendEmailBase(to, subject, html, { tenantId: req.tenantId, category: 'payment' });
   let conn;
   try {
     let { subscriber_id } = req.body;
@@ -789,18 +786,8 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
           courseLabel = bi?.title || '';
         }
         const paymentDate = new Date(payment.date || payment.at || Date.now()).toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Africa/Cairo' });
-        sendEmail(subRow.email, 'إيصال الدفع — معهد الدراسات النفسية',
-          `<p>مرحباً،</p>
-           <p>تم استلام دفعتك بنجاح. إليك تفاصيل الإيصال:</p>
-           <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;">
-             <tr style="background:#f0f4ff;"><td style="padding:8px 12px;font-weight:bold;color:#4f46e5;">المبلغ</td><td style="padding:8px 12px;">${payment.amount} ${payment.currency || 'EGP'}</td></tr>
-             <tr><td style="padding:8px 12px;font-weight:bold;color:#4f46e5;">التاريخ</td><td style="padding:8px 12px;">${paymentDate}</td></tr>
-             ${courseLabel ? `<tr style="background:#f0f4ff;"><td style="padding:8px 12px;font-weight:bold;color:#4f46e5;">البرنامج</td><td style="padding:8px 12px;">${courseLabel}</td></tr>` : ''}
-             ${payment.paymentMethod ? `<tr><td style="padding:8px 12px;font-weight:bold;color:#4f46e5;">طريقة الدفع</td><td style="padding:8px 12px;">${payment.paymentMethod}</td></tr>` : ''}
-             ${payment.transactionId ? `<tr style="background:#f0f4ff;"><td style="padding:8px 12px;font-weight:bold;color:#4f46e5;">رقم المعاملة</td><td style="padding:8px 12px;">${payment.transactionId}</td></tr>` : ''}
-           </table>
-           <p style="color:#888;font-size:13px;">احتفظ بهذا الإيصال لسجلاتك. للاستفسار تواصل معنا عبر الموقع.</p>`
-        ).catch(e => logger.error('[receipt-email]', e.message));
+        // The email receipt is queued below (lib/paymentReceipt.js), with what
+        // this payment opened. It was written here as well, so two arrived.
         // Send WhatsApp payment confirmation to subscriber
         const subPhone = await pool.query(
           'SELECT phone FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1',
@@ -816,10 +803,8 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
     // Enqueue enrollment email sequence (best-effort)
     if (isPaid && subRow.email) {
       enqueueEmailSequence({ tenantId: paymentTenantId, triggerEvent: 'enrollment', recipientEmail: subRow.email, recipientName: subRow.name || '' }).catch(error => logger.warn('[subscriber-payment] sequence enqueue failed', { error: error.message }));
-      // Lifecycle: instant payment receipt (email; whatsapp handled above).
-      require('../lib/lifecycle').trigger('payment_received',
-        { name: subRow.name, email: subRow.email, amount: payment.amount, currency: payment.currency, tenantId: paymentTenantId },
-        { channels: ['email'] });
+      // The receipt: the amount, and what of the course it opened.
+      queuePaymentReceipt(paymentTenantId, id);
     }
     res.json({
       ok: true,

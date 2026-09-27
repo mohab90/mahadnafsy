@@ -55,7 +55,7 @@ export const CertificatesTab: React.FC<CertificatesTabProps> = ({
     if (subscriber?.nameEn && !extraCertNameEn) setExtraCertNameEn(subscriber.nameEn);
   }, [subscriber, extraCertNameAr, extraCertNameEn]);
 
-  const EXTRA_TYPES: { key: ExtraCertificateType; label: string; icon: string; desc: string }[] = [
+  const KNOWN_TYPES: { key: ExtraCertificateType; label: string; icon: string; desc: string }[] = [
     { key: 'social_solidarity', label: 'شهادة التضامن الاجتماعي', icon: '🦅', desc: 'بختم النسر الرسمي — وزارة التضامن الاجتماعي' },
     { key: 'ain_shams', label: 'شهادة جامعة عين شمس', icon: '🎓', desc: 'معتمدة من جامعة عين شمس' },
     { key: 'experience_external', label: 'شهادة الخبرة', icon: '📜', desc: 'بتوثيق الخارجية المصرية' },
@@ -68,10 +68,20 @@ export const CertificatesTab: React.FC<CertificatesTabProps> = ({
 
   const extraRequests = subscriber?.extraCertificateRequests || [];
 
-  type CertPricing = { egyptianEGP: number; residentEGP: number; residentSAR: number; foreignUSD: number };
+  type CertPricing = { label?: string; egyptianEGP: number; residentEGP: number; residentSAR: number; foreignUSD: number };
   const certPricingMap: Record<string, CertPricing> = (() => {
     try { return JSON.parse(content['extra_cert_pricing'] || '{}'); } catch { return {}; }
   })();
+  // The certificates the institute offers are the ones on «تسعير الشهادات»,
+  // with the names saved there — not the eight this page started with, which
+  // left out every certificate customer service added. Until anything is
+  // saved, the eight.
+  const EXTRA_TYPES = Object.keys(certPricingMap).length
+    ? Object.entries(certPricingMap).map(([key, row]) => {
+        const known = KNOWN_TYPES.find(type => type.key === key);
+        return { key, label: String(row?.label || '').trim() || known?.label || key, icon: known?.icon || '📜', desc: known?.desc || '' };
+      })
+    : KNOWN_TYPES;
 
   const getPriceAndCurrency = (): { price: number; currency: 'EGP' | 'SAR' | 'USD' } | null => {
     if (!extraCertType) return null;

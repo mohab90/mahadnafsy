@@ -31,7 +31,9 @@ function priceKeyForCountry(countryCode, nationality) {
 // { [certTypeLowercase]: { egyptianEGP, residentEGP, residentSAR, foreignUSD } }
 function resolveCertificatePrice({ type, nationality, countryCode, pricingConfig }) {
   const typeKey = String(type || '').toLowerCase();
-  const priceRow = (pricingConfig && pricingConfig[typeKey]) || {};
+  // Requests store the code upper-cased; the catalogue keeps it as it was typed.
+  const savedKey = Object.keys(pricingConfig || {}).find(key => key.toLowerCase() === typeKey);
+  const priceRow = (savedKey && pricingConfig[savedKey]) || {};
   const priceKey = countryCode
     ? priceKeyForCountry(countryCode, nationality)
     : priceKeyForNationality(nationality);
@@ -41,6 +43,13 @@ function resolveCertificatePrice({ type, nationality, countryCode, pricingConfig
   return { price, currency, status: price ? 'PRICED' : 'PENDING' };
 }
 
+// The eight the system started with, and every code «تسعير الشهادات» lists.
+const BUILT_IN_CERTIFICATE_TYPES = ['SOCIAL_SOLIDARITY','AIN_SHAMS','EXPERIENCE_EXTERNAL','PRACTICE_EXTERNAL','NATIONAL_COUNCIL','AMERICAN_BOARD','INSTITUTE','OTHER'];
+function certificateTypeCodes(pricingConfig) {
+  return new Set([...BUILT_IN_CERTIFICATE_TYPES, ...Object.keys(pricingConfig || {}).map(key => String(key).toUpperCase())]);
+}
+
 module.exports = {
+  certificateTypeCodes,
   resolveCertificatePrice, priceKeyForNationality, priceKeyForCountry, currencyForPriceKey,
 };

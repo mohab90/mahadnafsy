@@ -3,6 +3,7 @@ import { Search, Star, Trash2, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { Course, SubscriberItem } from '../../../types';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
+import { useCertificateCatalog } from '../../../lib/certificateCatalog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -29,6 +30,7 @@ export default function CertRequestsTab({
   certStatusFilter, setCertStatusFilter, pricing, initialTab = 'requests',
 }: Props) {
   const [innerTab, setInnerTab] = useState<'requests' | 'pricing'>(initialTab);
+  const certCatalog = useCertificateCatalog();
               const [busyRequestId, setBusyRequestId] = useState<string | null>(null);
               // Gather all extra certificate requests from all subscribers
               type CertReqRow = import('../../../types').ExtraCertificateRequest & { subscriberName: string; subscriberPhone: string; subscriberEmail: string; subscriberId: string };
@@ -40,16 +42,6 @@ export default function CertRequestsTab({
               });
               allRequests.sort((a, b) => (b.requestedAt || '').localeCompare(a.requestedAt || ''));
 
-              const CERT_TYPE_LABELS: Record<string, string> = {
-                social_solidarity: 'شهادة التضامن الاجتماعي',
-                ain_shams: 'شهادة جامعة عين شمس',
-                experience_external: 'شهادة الخبرة',
-                practice_external: 'شهادة التطبيقين',
-                national_council: 'شهادة المجلس الوطني',
-                american_board: 'شهادة البورد الأمريكي',
-                institute: 'شهادة المعهد',
-                other: 'شهادة أخرى',
-              };
 
               type CertStatus = import('../../../types').ExtraCertificateRequest['status'];
 
@@ -191,7 +183,7 @@ export default function CertRequestsTab({
                       className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
                     >
                       <option value="all">كل أنواع الشهادات</option>
-                      {Object.entries(CERT_TYPE_LABELS).map(([k, v]) => (
+                      {certCatalog.types.map(({ key: k, label: v }) => (
                         <option key={k} value={k}>{v}</option>
                       ))}
                     </select>
@@ -241,7 +233,7 @@ export default function CertRequestsTab({
                                 </td>
                                 {/* Cert type */}
                                 <td className="px-3 py-2 border border-gray-100 text-xs font-medium">
-                                  {req.customName || CERT_TYPE_LABELS[req.type] || req.type}
+                                  {certCatalog.label(req.type, req.customName)}
                                 </td>
                                 {/* Course */}
                                 <td className="px-3 py-2 border border-gray-100 text-xs text-gray-600">

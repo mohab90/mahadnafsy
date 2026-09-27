@@ -2,7 +2,8 @@ import { Activity, Award, BookOpen, CalendarDays, CheckCircle, Clock, Copy, Cred
 
 import type { BranchType, CommunicationRecord, Course, ExtraCertificateRequest, InstallmentPlan, LeadItem, SubscriberCertificate, SubscriberItem, UserSessionData } from '../../types';
 import type { SettlementCurrency } from '../../lib/branchCurrency';
-import { branchLabels, EXTRA_TYPE_LABELS, normBranchKey, statusLabels } from './constants';
+import { branchLabels, normBranchKey, statusLabels } from './constants';
+import { useCertificateCatalog } from '../../lib/certificateCatalog';
 import { toDialable } from '../../lib/whatsappLink';
 import { normalizeInterestLevel } from '../dashboard/tabs/leadUtils';
 import { CAIRO_TIME_ZONE, cairoDay } from '../../../shared/cairoDate';
@@ -230,6 +231,7 @@ export function UnifiedClientSidebarCertificatesCard({
   extraRequests,
   courses,
 }: CertificatesCardProps) {
+  const certCatalog = useCertificateCatalog();
   if (certificates.length === 0 && extraRequests.length === 0) return null;
 
   return (
@@ -249,7 +251,7 @@ export function UnifiedClientSidebarCertificatesCard({
         })}
         {extraRequests.map(req => (
           <div key={req.id} className="flex items-center justify-between gap-2 bg-gray-50 rounded-xl px-2.5 py-2 border border-gray-100">
-            <span className="text-xs text-gray-700 truncate">{req.customName || EXTRA_TYPE_LABELS[req.type] || req.type}</span>
+            <span className="text-xs text-gray-700 truncate">{certCatalog.label(req.type, req.customName)}</span>
             <span className={`text-[10px] font-bold flex-shrink-0 ${req.status === 'issued' ? 'text-emerald-600' : req.status === 'paid' ? 'text-blue-600' : 'text-amber-600'}`}>
               {req.status === 'issued' ? '\u0635\u062f\u0631\u062a' : req.status === 'paid' ? '\u0645\u062f\u0641\u0648\u0639\u0629' : '\u0645\u0639\u0644\u0642\u0629'}
             </span>

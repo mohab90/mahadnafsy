@@ -119,8 +119,10 @@ test('customer names in HTML mail are escaped', () => {
   const pins = [
     ['routes/misc/_shared.js', '${escapeHtml(lead.name)}'],
     ['routes/misc/_shared.js', '${escapeHtml(p.name)}'],
-    ['routes/public-orders.js', "${escapeHtml(order.customer_name || 'عزيزنا')}"],
+    // Paymob's own confirmation is gone: every paid payment gets the lifecycle
+    // receipt (lib/paymentReceipt.js), escaped here.
     ['lib/lifecycle.js', "${escapeHtml(c.name || '')}"],
+    ['lib/lifecycle.js', "${escapeHtml(u.title || '')}"],
     // Escaped for the HTML body; the subject and WhatsApp take the raw form
     // (pinned in releaseArtifacts.test.js).
     ['routes/admin/subscribers.js', 'const safeName = escapeHtml(personName);'],

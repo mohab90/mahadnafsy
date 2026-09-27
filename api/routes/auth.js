@@ -12,6 +12,7 @@ const { assertGrantable, heldByTarget } = require('../lib/permissionGrant');
 const { generateTemporaryPassword, generateNumericCode } = require('../lib/secureCredentials');
 
 const { pool, getStaffIdByEmail, requireDb } = require('../lib/db');
+const { queuePaymentReceipt } = require('../lib/paymentReceipt');
 const { sanitize, validate, EMAIL_RE, PHONE_RE } = require('../lib/helpers');
 const { sendEmail: sendEmailBase, htmlEmail, mailer } = require('../lib/email');
 const { describeReason, sendWhatsApp } = require('../lib/whatsapp');
@@ -565,6 +566,7 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
     const phoneVal = (phone || '').trim() || null; // NULL not '' so UNIQUE constraint works
     let action = '';
     let firstPaymentStatus = null;
+    let firstPaymentId = null;
     let createdSubscriberId = null;
     const defaultBranch = 'ONLINE_EGYPT';
 
@@ -665,6 +667,7 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
       const paymentBranchId = paySub.branch_id || branchIdForBranch(paymentBranch);
       const canApproveFinancial = !!req.isSuperAdmin || hasPermission(req.staffRecord, 'manage_financial');
       firstPaymentStatus = canApproveFinancial ? 'paid' : 'pending';
+      firstPaymentId = paymentId;
       await assertWritable(paymentDate, conn, tenantId);
       await conn.execute(
         `INSERT INTO payments
@@ -699,6 +702,7 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
     createdSubscriberId = responseSubscriber.id;
     await conn.commit();
     if (existing) invalidateIdentity(tenantId, existing.id, normEmail);
+    if (firstPaymentId) queuePaymentReceipt(tenantId, firstPaymentId);
 
     // Send welcome email with new password (best-effort, outside the transaction)
     try {
