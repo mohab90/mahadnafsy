@@ -37,3 +37,39 @@ export const isInternationalLead = (lead: { branch?: string | null; source?: str
   if (INTERNATIONAL_BRANCHES.includes(branch)) return true;
   return String(lead.source || '').trim().startsWith('دولي');
 };
+
+/**
+ * Statuses that end a lead's life — api/lib/leadStatuses.js TERMINAL_LEAD_STATUSES,
+ * which the distributor reads. Keep the two identical.
+ */
+export const TERMINAL_LEAD_STATUSES = new Set([
+  'converted', 'lost', 'won', 'closed', 'not_interested', 'not_interested_hidden',
+  'wrong_number', 'unqualified', 'disqualified', 'archived',
+]);
+
+type PoolLead = {
+  hidden?: boolean; assignedSalesId?: string | null; source?: string | null;
+  status?: string | null; branch?: string | null;
+};
+
+/**
+ * Waiting for a rep: what «توزيع تلقائي» draws from, and where whatever it
+ * leaves behind — a day's cap reached, the deliberate no-rep slot — stays.
+ *
+ * «اي ليد مش بيتوزع اتوماتك بيظهر في الصفحه دي». The screen and the server
+ * disagreed about it. The tab excluded only converted and lost, so a lead the
+ * auto-archiver had closed as never contacted, or one marked wrong number, sat
+ * in «محلي جديد» as if it were waiting — though no distribution would ever hand
+ * it out. And the badge, the counter above the table and the two tables each
+ * counted their own version: 4, 3 and 2 for the same five leads.
+ */
+export const isUndistributedLead = (lead: PoolLead): boolean =>
+  !lead.hidden && !lead.assignedSalesId
+  && !isArchiveSource(lead.source)
+  && !TERMINAL_LEAD_STATUSES.has(String(lead.status || '').trim().toLowerCase());
+
+/** «محلي جديد». */
+export const isLocalNewLead = (lead: PoolLead): boolean => isUndistributedLead(lead) && !isInternationalLead(lead);
+
+/** «دولي جديد». */
+export const isDawliNewLead = (lead: PoolLead): boolean => isUndistributedLead(lead) && isInternationalLead(lead);

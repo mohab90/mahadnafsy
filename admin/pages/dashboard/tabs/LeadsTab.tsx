@@ -56,7 +56,7 @@ import { LeadEmptyDiagnostics } from './leads/LeadEmptyDiagnostics';
 import { useLeadActions } from './leads/useLeadActions';
 import { useLeadCrmBootstrap } from './leads/useLeadCrmBootstrap';
 import { useLeadRemoteReminders } from './leads/useLeadRemoteReminders';
-import { isArchiveSource } from './leads/leadSourceGroups';
+import { isLocalNewLead } from './leads/leadSourceGroups';
 import type { TabKey } from '../navigation';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
@@ -268,15 +268,9 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     ),
     [staffMembers]
   );
-  // "محلي جديد" pool — must stay in step with the customFilter in
-  // LeadArchiveViews, including the archive-source exclusion: an imported
-  // archive is unassigned on purpose and belongs to its own tab, not here.
-  const unassignedLeads = useMemo(() =>
-    leads.filter(l => !l.hidden && !l.assignedSalesId
-      && !isArchiveSource(l.source)
-      && !['converted', 'lost'].includes(l.status)),
-    [leads]
-  );
+  // "محلي جديد" pool — the same predicate LeadArchiveViews lists, so the badge,
+  // the counter and the table agree.
+  const unassignedLeads = useMemo(() => leads.filter(isLocalNewLead), [leads]);
 
   const { weeklyScorecard, smartRedistCandidates } = useLeadOpsInsights(leads, salesReps, smartIdleDays, crmInsights);
 
@@ -412,7 +406,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         overdueCount={overdueLeads.length}
         rottenCount={effectiveLeads.filter(l => !l.hidden && getRottenLevel(l) >= 1).length}
         dueTodayCount={dueToday.length}
-        unassignedCount={leads.filter(l => !l.hidden && !l.assignedSalesId && !['converted', 'lost'].includes(l.status)).length}
+        unassignedCount={unassignedLeads.length}
         subTab={subTab}
         setSubTab={setSubTab}
         onAddLead={() => setShowAddLead(true)}
@@ -590,27 +584,9 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
               )}
             </div>
           </div>
-          <Suspense fallback={<LeadSectionFallback />}>
-            <LeadTable
-              rows={unassignedLeads}
-              showCourseCol={true}
-              courses={courses}
-              bundles={bundles}
-              navigate={navigate}
-              updateLead={updateLead}
-              reloadLeads={reloadLeads}
-              deleteLead={deleteLead ?? (() => Promise.resolve())}
-              addSubscriber={addSubscriber ?? ((_: SubscriberItem) => Promise.resolve(false))}
-              updateSubscriber={updateSubscriber ?? (() => Promise.resolve())}
-              subscribers={effectiveSubs}
-              salesStaff={salesReps}
-              isSalesOnly={isSalesOnly}
-              canManageLeads={canManageLeads}
-              onBook={openLeadBook}
-              branchOptions={instituteBranches}
-              sources={crmSettings.leadSources.length > 0 ? crmSettings.leadSources : DEFAULT_SOURCES}
-            />
-          </Suspense>
+          {/* The list itself is LeadArchiveViews' below — the one with bulk
+              assignment. This section drew a second copy of the same pool, so
+              the tab showed every waiting lead twice. */}
         </div>
       )}
 

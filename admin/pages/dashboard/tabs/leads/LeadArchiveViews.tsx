@@ -1,5 +1,5 @@
 import { ArchiveTab, type ArchiveTabProps } from './ArchiveTab';
-import { isArchiveSource, isInternationalLead } from './leadSourceGroups';
+import { isArchiveSource, isDawliNewLead, isInternationalLead, isLocalNewLead } from './leadSourceGroups';
 
 type LeadArchiveViewsProps = ArchiveTabProps & {
   subTab: string;
@@ -26,10 +26,7 @@ export function LeadArchiveViews({ subTab, ...archiveProps }: LeadArchiveViewsPr
         {...archiveProps}
         title="محلي جديد — عملاء بلا مندوب مبيعات"
         hideImport
-        customFilter={lead => !lead.hidden && !lead.assignedSalesId
-          && !isInternationalLead(lead)
-          && !isArchiveSource(lead.source)
-          && !['converted', 'lost'].includes(lead.status)}
+        customFilter={isLocalNewLead}
       />
     );
   }
@@ -41,10 +38,7 @@ export function LeadArchiveViews({ subTab, ...archiveProps }: LeadArchiveViewsPr
         {...archiveProps}
         title="دولي جديد — عملاء بلا مندوب مبيعات"
         hideImport
-        customFilter={lead => !lead.hidden && !lead.assignedSalesId
-          && isInternationalLead(lead)
-          && !isArchiveSource(lead.source)
-          && !['converted', 'lost'].includes(lead.status)}
+        customFilter={isDawliNewLead}
       />
     );
   }
