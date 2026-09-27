@@ -16,20 +16,30 @@
  * Counted in Africa/Cairo, so "today" means the day the desk is having.
  */
 
-const { zonedDateTimeParts } = require('./dates');
+const { cairoDayStartUtc, zonedDateTimeParts } = require('./dates');
 
 const PERIODS = new Set(['day', 'fortnight', 'month']);
 const TIME_ZONE = 'Africa/Cairo';
 
 /**
- * The inclusive start of the current window, as 'YYYY-MM-DD HH:MM:SS' for SQL.
+ * The inclusive start of the current window: Cairo's midnight on the window's
+ * first day, as the UTC instant 'YYYY-MM-DD HH:MM:SS' that leads.assigned_at is
+ * compared with — that column is written with NOW(), in UTC.
+ *
+ * This returned Cairo's midnight as a bare string, and against a UTC column that
+ * string means UTC midnight, 02:00 or 03:00 in Cairo. From Cairo's midnight
+ * until then the window began in the future and every rep counted zero, so the
+ * cap did nothing at all: on 27 September the sheet sync handed Rodina seven
+ * leads between 00:06 and 02:36 against a limit of five. And whatever arrived in
+ * those hours never counted towards the rest of the day.
+ *
  * @param {'day'|'fortnight'|'month'} period
  * @param {Date} [now]
  */
 function periodStart(period, now = new Date()) {
   const { year, month, day } = zonedDateTimeParts(now, TIME_ZONE);
   const pad = (n, width = 2) => String(n).padStart(width, '0');
-  const at = (y, m, d) => `${pad(y, 4)}-${pad(m)}-${pad(d)} 00:00:00`;
+  const at = (y, m, d) => cairoDayStartUtc(`${pad(y, 4)}-${pad(m)}-${pad(d)}`);
 
   if (period === 'month') return at(year, month, 1);
   if (period === 'fortnight') return at(year, month, day <= 15 ? 1 : 16);

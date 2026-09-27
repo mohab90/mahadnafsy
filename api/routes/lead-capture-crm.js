@@ -19,6 +19,7 @@ const { publicLimiter } = require('../middleware/rateLimits');
 const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
 const { logLeadEvent } = require('../lib/crm');
 const { getNextSalesRep, listDistributableReps } = require('../lib/leadAssignment');
+const { hasRoom } = require('../lib/assignmentQuota');
 const { excludeArchiveSourcesSql } = require('../lib/leadArchive');
 const { resolveClientContext } = require('../lib/clientContext');
 const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
@@ -287,8 +288,14 @@ router.post('/api/admin/leads/distribute', requireAuth, requireAdmin, async (req
     // Full on either ceiling. This drives the stop condition as well as the
     // skip, because the skip retries the same lead with the next rep — without
     // a matching stop condition a team that is entirely full would loop forever.
+    //
+    // And each rep's own cap from «التوزيع» — «دي بتاخد 5 في اليوم». The roster
+    // leaves out a rep already at it, but a rep one short passed that check and
+    // then took as many leads as this loop reached them; it is counted here as
+    // they are handed out.
     const full = rep => atCap(rep)
-      || (rep.maxOpenLeads != null && rep.activeLeads >= rep.maxOpenLeads);
+      || (rep.maxOpenLeads != null && rep.activeLeads >= rep.maxOpenLeads)
+      || !hasRoom({ intake_limit: rep.intakeLimit }, rep.taken);
 
     // One extra virtual "no rep" slot in the cycle alongside the real reps, so roughly
     // 1 in (reps+1) leads is deliberately left unassigned instead of force-distributing
@@ -309,6 +316,7 @@ router.post('/api/admin/leads/distribute', requireAuth, requireAdmin, async (req
       // of these leads were handed out, so it has to stay current in the batch.
       if (full(rep)) { i--; continue; }
       rep.activeLeads += 1;
+      rep.taken = (rep.taken || 0) + 1;
       await conn.execute(
         `UPDATE leads SET assigned_sales_id=?, assigned_sales_name=?, assigned_at=NOW() WHERE id=? AND tenant_id=?`,
         [rep.id, rep.name, targets[i].id, tenantId]

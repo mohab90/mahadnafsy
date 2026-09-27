@@ -126,7 +126,21 @@ test('a batch another run took is not narrated twice', async () => {
   ]);
   const result = await archiveColdLeads(pool, { olderThanDays: 30 });
   assert.strictEqual(result.archived, 1, 'counts only what it actually changed');
-  const wroteNote = pool.calls.some(call => /lead_timeline|INSERT/i.test(call.sql));
+  // A write, not a mention: the eligibility query itself reads lead_timeline now.
+  const wroteNote = pool.calls.some(call => /\bINSERT\b/i.test(call.sql));
   assert.strictEqual(wroteNote, false,
     'a missing courtesy note is a smaller wrong than a duplicated one');
+});
+
+test('a lead is cold N days after it was last put in front of someone, not after it arrived', async () => {
+  // «رجع ليدز الارشيف لمحلي جديد». Counted from creation, a lead brought back
+  // from the archive was months old and went straight back the same evening, and
+  // one handed to a rep on its sixth day was taken off them the next night.
+  const pool = stubPool([[[{ eligible: 0 }]]]);
+  await archiveColdLeads(pool, { olderThanDays: 7 });
+  const { sql, params } = pool.calls[0];
+  assert.match(sql, /COALESCE\(l\.assigned_at, l\.created_at\) < DATE_SUB\(NOW\(\), INTERVAL \? DAY\)/);
+  assert.match(sql, /t\.event_type IN \('restored', 'status_changed'\)/);
+  assert.doesNotMatch(sql, /'status'\)/, "the job's own note must not keep a lead warm");
+  assert.strictEqual(params.filter(value => value === 7).length, 3, 'every age test uses the configured days');
 });

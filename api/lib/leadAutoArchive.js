@@ -43,6 +43,16 @@ async function archiveColdLeads(pool, { olderThanDays, tenantId = 'tenant-defaul
   const days = Number(olderThanDays);
   if (!Number.isFinite(days) || days <= 0) return { eligible: 0, archived: 0 };
 
+  // The age runs from when the lead was last put in front of someone, not from
+  // when it first arrived. Counted from creation, a lead handed to a rep on its
+  // sixth day was archived out of their hands the next night, and one brought
+  // back from the archive into «محلي جديد» — by hand, or by a restore — went
+  // straight back the same evening, since it was months old and still
+  // uncontacted. So a lead is cold once N days have passed since the latest of:
+  // its creation, its assignment to a rep (assigned_at, which the database now
+  // stamps on every assignment), and its return to play (a 'restored' or
+  // 'status_changed' entry in its timeline). This job's own note is 'status',
+  // and is not among them.
   const where = `
       l.tenant_id = ?
       AND l.deleted_at IS NULL
@@ -50,8 +60,13 @@ async function archiveColdLeads(pool, { olderThanDays, tenantId = 'tenant-defaul
       AND l.status IN (${COLD_STATUSES.map(() => '?').join(',')})
       AND l.next_follow_up_date IS NULL
       AND l.created_at < DATE_SUB(NOW(), INTERVAL ? DAY)
+      AND COALESCE(l.assigned_at, l.created_at) < DATE_SUB(NOW(), INTERVAL ? DAY)
+      AND NOT EXISTS (SELECT 1 FROM lead_timeline t
+                       WHERE t.lead_id = l.id AND t.tenant_id = l.tenant_id
+                         AND t.event_type IN ('restored', 'status_changed')
+                         AND t.at >= DATE_SUB(NOW(), INTERVAL ? DAY))
       AND NOT EXISTS (SELECT 1 FROM communications c WHERE c.lead_id = l.id)`;
-  const params = [tenantId, ...COLD_STATUSES, days];
+  const params = [tenantId, ...COLD_STATUSES, days, days, days];
 
   const [[count]] = await pool.query(
     `SELECT COUNT(*) AS eligible FROM leads l WHERE ${where}`, params);

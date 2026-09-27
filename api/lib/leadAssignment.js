@@ -61,7 +61,7 @@ async function listDistributableReps(tenantId, db = pool, options = {}) {
   for (const { id, name, policies } of staffById.values()) {
     const activeLeads = loadByStaff.get(String(id)) || 0;
     if (!configured) {
-      reps.push({ id, name, policyId: null, weight: 1, maxOpenLeads: null, activeLeads, lastAssignedAt: null });
+      reps.push({ id, name, policyId: null, weight: 1, maxOpenLeads: null, activeLeads, lastAssignedAt: null, intakeLimit: null, taken: 0 });
       continue;
     }
     const policy = branch
@@ -75,20 +75,30 @@ async function listDistributableReps(tenantId, db = pool, options = {}) {
       id, name, policyId: policy.policy_id,
       weight: Math.max(Number(policy.weight) || 1, 0.1),
       maxOpenLeads, activeLeads, lastAssignedAt: policy.last_assigned_at,
+      // Carried out so a batch can keep counting. Filtering here is only right
+      // for one lead: a rep one short of their cap passed this check and then
+      // took every lead of a batch that followed.
+      intakeLimit: policy.intake_limit == null ? null : Number(policy.intake_limit),
+      taken: intake.get(String(id)) || 0,
     });
   }
   return reps;
 }
 
 // Hands out reps one lead at a time for a batch (sheet sync, bulk distribution),
-// keeping each rep's cap and load current as it goes.
+// keeping each rep's caps and load current as it goes — the open-lead cap and
+// the per-period intake cap both. It used to keep only the first, so a bulk
+// assignment gave a rep with room for one more as many as the rotation reached
+// them. Returns null once everyone is capped; callers leave the rest unassigned,
+// which is where «محلي جديد» finds them.
 //   mode 'rr'    — strict rotation, resumable from `start`
 //   mode 'least' — lowest weighted open load first
 function createRepRotation(reps, { mode = 'rr', start = 0 } = {}) {
   let index = Number(start) || 0;
   return {
     next() {
-      const open = reps.filter(rep => rep.maxOpenLeads == null || rep.activeLeads < rep.maxOpenLeads);
+      const open = reps.filter(rep => (rep.maxOpenLeads == null || rep.activeLeads < rep.maxOpenLeads)
+        && hasRoom({ intake_limit: rep.intakeLimit }, rep.taken));
       if (!open.length) return null;
       let rep;
       if (mode === 'least') {
@@ -99,6 +109,7 @@ function createRepRotation(reps, { mode = 'rr', start = 0 } = {}) {
         index += 1;
       }
       rep.activeLeads += 1;
+      rep.taken = (rep.taken || 0) + 1;
       return rep;
     },
     get index() { return index; },
