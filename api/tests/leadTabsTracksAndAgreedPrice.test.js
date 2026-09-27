@@ -47,3 +47,11 @@ test('the payment dialog opens at the price this client agreed', () => {
   assert.match(modal, /const _basePx = _agreedPx > 0 \? _agreedPx : _sysPx;/);
   assert.match(modal, /Math\.round\(_basePx \* \(1 - _discPct \/ 100\)\) : _basePx\);/);
 });
+
+test('the «المتابعات» badge counts follow-ups due by today, once, and fits its number', () => {
+  const strip = read('admin/pages/dashboard/tabs/leads/LeadSubTabs.tsx');
+  assert.match(strip, /const alertCount = overdueCount;/);
+  assert.doesNotMatch(strip, /rottenCount|dueTodayCount/);
+  assert.match(strip, /min-w-3\.5 items-center justify-center rounded-full bg-red-500 px-1/);
+  assert.doesNotMatch(read('admin/pages/dashboard/tabs/LeadsTab.tsx'), /rottenCount=/);
+});

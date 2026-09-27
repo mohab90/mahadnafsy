@@ -30,7 +30,6 @@ import { useLeadEffectiveRecords } from './leads/useLeadEffectiveRecords';
 import { useSalesTargetsStorage } from './leads/useSalesTargetsStorage';
 import {
   STATUS_CFG,
-  getRottenLevel,
   // getScoreBreakdown intentionally NOT imported — this file defines a richer local version
 } from './leadUtils';
 
@@ -405,8 +404,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         canManageDuplicates={isAdmin}
         totalOfflineLeads={offlineLeadTotal}
         overdueCount={overdueLeads.length}
-        rottenCount={effectiveLeads.filter(l => !l.hidden && getRottenLevel(l) >= 1).length}
-        dueTodayCount={dueToday.length}
         unassignedCount={unassignedLeads.length}
         subTab={subTab}
         setSubTab={setSubTab}

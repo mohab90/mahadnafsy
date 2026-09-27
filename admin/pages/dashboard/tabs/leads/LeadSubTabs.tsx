@@ -10,9 +10,8 @@ interface LeadSubTabsProps {
   subTab: SubTabKey;
   isSalesOnly: boolean;
   canManageDuplicates: boolean;
-  rottenCount: number;
+  /** Follow-ups due today or earlier and not done — each lead once. */
   overdueCount: number;
-  dueTodayCount: number;
   unassignedCount?: number;
   setSubTab: (tab: SubTabKey) => void;
 }
@@ -21,13 +20,15 @@ export function LeadSubTabs({
   subTab,
   isSalesOnly,
   canManageDuplicates,
-  rottenCount,
   overdueCount,
-  dueTodayCount,
   unassignedCount = 0,
   setSubTab,
 }: LeadSubTabsProps) {
-  const alertCount = rottenCount + overdueCount + dueTodayCount;
+  // What is waiting on the «المتابعات» screen: follow-ups due by today. It used
+  // to add every stale lead (thousands of never-contacted ones, the pool
+  // included) and today's follow-ups a second time on top of those already in
+  // overdueCount, so the number answered nothing and did not fit its circle.
+  const alertCount = overdueCount;
   const tabs: [SubTabKey, string, ElementType][] = [
     ['pipeline', 'البايبلاين', Columns],
     ['table', 'الجدول', Users],
@@ -67,7 +68,7 @@ export function LeadSubTabs({
             <Icon size={13} />
             {label}
             {badge > 0 && (
-              <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[9px] text-white">
+              <span className="flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] text-white">
                 {badge}
               </span>
             )}

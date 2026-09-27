@@ -16,8 +16,6 @@ interface LeadsTabHeaderProps {
   canManageDuplicates: boolean;
   totalOfflineLeads: number;
   overdueCount: number;
-  rottenCount: number;
-  dueTodayCount: number;
   unassignedCount?: number;
   subTab: SubTabKey;
   setSubTab: (tab: SubTabKey) => void;
@@ -51,8 +49,6 @@ export function LeadsTabHeader({
   canManageDuplicates,
   totalOfflineLeads,
   overdueCount,
-  rottenCount,
-  dueTodayCount,
   unassignedCount = 0,
   subTab,
   setSubTab,
@@ -217,9 +213,7 @@ export function LeadsTabHeader({
           subTab={subTab}
           isSalesOnly={isSalesOnly}
           canManageDuplicates={canManageDuplicates}
-          rottenCount={rottenCount}
           overdueCount={overdueCount}
-          dueTodayCount={dueTodayCount}
           unassignedCount={unassignedCount}
           setSubTab={setSubTab}
         />
