@@ -205,6 +205,10 @@ test('no second screen records a customer payment', () => {
     // free-text sender — «غير محدد» when blank. It is institute income with no
     // customer attached, which is why it is not this screen.
     'admin/pages/dashboard/tabs/OrdersTab.tsx',
+    // The transfer that confirms a payment already recorded — the money as it
+    // arrived in the wallet (api/lib/incomingTransfers.js), never a second
+    // payment: the approval it belongs to settles the payment the desk entered.
+    'admin/pages/dashboard/tabs/orders/LinkTransferDialog.tsx',
   ], 'a second screen records customer payments, so the same money is entered two different ways');
 
   // The three that used to be here are gone, each folded into PaymentModal.

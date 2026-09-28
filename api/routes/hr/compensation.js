@@ -2,7 +2,7 @@
 const { Router } = require('express');
 const router = Router();
 const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
-const { createLeaveRequest, getEffectiveHrPolicy } = require('../../lib/hrPolicy');
+const { createLeaveRequest, getEffectiveHrPolicy, LEAVE_LABELS_AR } = require('../../lib/hrPolicy');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { toNumbers } = require('../../lib/mappers');
 const { cairoToday } = require('../../lib/dates');
@@ -466,8 +466,8 @@ router.get('/api/staff/me/leaves', requireAuth, async (req, res) => {
     const staff = await _resolveStaffByUser(req);
     if (!staff) return res.status(403).json({ error: 'Staff record not found' });
     const [rows] = await pool.query(
-      `SELECT l.id, l.type, l.start_date, l.end_date, l.total_days, l.reason, l.status, l.created_at,
-              a.name AS approved_by_name
+      `SELECT l.id, l.type, l.start_date, l.end_date, l.start_time, l.end_time, l.total_days, l.reason,
+              l.status, l.admin_note, l.created_at, l.approved_at, a.name AS approved_by_name
        FROM leaves l
        LEFT JOIN staff a ON a.id=l.approved_by AND a.tenant_id=l.tenant_id
        WHERE l.tenant_id=? AND l.staff_id=? ORDER BY l.created_at DESC LIMIT 50`,
@@ -481,33 +481,51 @@ router.post('/api/staff/me/leaves', requireAuth, async (req, res) => {
   try {
     const staff = await _resolveStaffByUser(req);
     if (!staff) return res.status(403).json({ error: 'Staff record not found' });
-    const { type, start_date, end_date, reason } = req.body;
+    const { type, start_date, end_date, start_time, end_time, reason } = req.body;
     if (!type || !start_date || !end_date) {
       return res.status(400).json({ error: 'type, start_date, end_date required' });
     }
-    const { policy, totalDays } = await createLeaveRequest(pool, {
+    const { policy, totalDays, startTime, endTime } = await createLeaveRequest(pool, {
       tenantId: req.tenantId, staffId: staff.id, type,
-      startDate: start_date, endDate: end_date, reason,
+      startDate: start_date, endDate: end_date, startTime: start_time, endTime: end_time,
     });
     const id = uuidv4();
     await pool.query(
       `INSERT INTO leaves
-        (id,tenant_id,policy_id,staff_id,type,start_date,end_date,total_days,reason,status)
-       VALUES (?,?,?,?,?,?,?,?,?,'PENDING')`,
-      [id, req.tenantId, policy.id, staff.id, type, start_date, end_date, totalDays, reason || null]
+        (id,tenant_id,policy_id,staff_id,type,start_date,end_date,start_time,end_time,total_days,reason,status)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,'PENDING')`,
+      [id, req.tenantId, policy.id, staff.id, type, start_date, end_date, startTime, endTime, totalDays,
+        String(reason || '').slice(0, 2000) || null]
     );
-    await createNotification('info', 'طلب إجازة جديد',
-      `موظف طلب ${type === 'PERMISSION' ? 'إذن' : 'إجازة'} من ${start_date} إلى ${end_date}`,
-      { leave_id: id, staff_id: staff.id }, req.tenantId
+    // To HR, by name. This went out as 'info' — a general notice every
+    // employee's bell showed — reading «موظف طلب إجازة», with no name.
+    const when = startTime ? `${start_date} من ${startTime} لـ ${endTime}` : `من ${start_date} إلى ${end_date}`;
+    await createNotification('hr', `طلب ${LEAVE_LABELS_AR[type] || 'إجازة'}`,
+      `${staff.name || 'موظف'} — ${when}`,
+      { leave_id: id, staff_id: staff.id, tab: 'hr' }, req.tenantId
     );
     const [[row]] = await pool.query(
-      'SELECT id, staff_id, type, start_date, end_date, total_days, reason, status FROM leaves WHERE tenant_id=? AND id=?',
+      'SELECT id, staff_id, type, start_date, end_date, start_time, end_time, total_days, reason, status FROM leaves WHERE tenant_id=? AND id=?',
       [req.tenantId, id]
     );
     res.json(row);
   } catch (e) {
     res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' });
   }
+});
+
+// An employee takes back their own request while nobody has answered it.
+router.put('/api/staff/me/leaves/:id/cancel', requireAuth, async (req, res) => {
+  try {
+    const staff = await _resolveStaffByUser(req);
+    if (!staff) return res.status(403).json({ error: 'Staff record not found' });
+    const [result] = await pool.query(
+      "UPDATE leaves SET status='CANCELLED' WHERE id=? AND tenant_id=? AND staff_id=? AND status='PENDING'",
+      [req.params.id, req.tenantId, staff.id]
+    );
+    if (!result.affectedRows) return res.status(409).json({ error: 'الطلب ده مبقاش معلق — اتراجع بالفعل أو اترد عليه' });
+    res.json({ ok: true });
+  } catch (e) { hrError(res, e); }
 });
 
 router.get('/api/staff/me/payslip', requireAuth, async (req, res) => {

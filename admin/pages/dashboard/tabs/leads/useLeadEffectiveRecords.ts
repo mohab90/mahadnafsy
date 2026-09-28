@@ -41,7 +41,8 @@ export function useLeadEffectiveRecords({
     const snapMap = new Map(
       (salesOwnLeads || []).filter(lead => !isArchiveSource(lead.source)).map(lead => [lead.id, lead]));
     liveLeads
-      .filter(lead => snapMap.has(lead.id) || lead.assignedSalesId === staffId)
+      // Theirs as the rep, or as the collection officer the desk handed it to.
+      .filter(lead => snapMap.has(lead.id) || lead.assignedSalesId === staffId || lead.assignedCsId === staffId)
       .forEach(lead => snapMap.set(lead.id, lead));
     return [...snapMap.values()];
   }, [isSalesOnly, liveLeads, salesOwnLeads, staffId]);

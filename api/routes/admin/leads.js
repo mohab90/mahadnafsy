@@ -91,7 +91,10 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
         await conn.rollback();
         return res.status(404).json({ error: 'Lead not found' });
       }
-    } else if (writeScope.none || writeScope.scope === 'assigned_cs') {
+    } else if (writeScope.none || (writeScope.scope === 'assigned_cs' && staffRole !== 'collection')) {
+      // A collection officer adds leads of their own — «خلي في امكانيه انه
+      // يضيف عميل محتمل جديد» — and each one is theirs (below), so it is inside
+      // their scope the moment it exists.
       await conn.rollback();
       return res.status(403).json({ error: 'Lead creation is outside your data scope' });
     }
@@ -182,12 +185,28 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
     delete crmData.skipAutoAssign;
     let salesId   = crmData.assignedSalesId   || null;
     let salesName = crmData.assignedSalesName || null;
-    if (staffRole === 'sales') {
+    // The collection officer a lead was handed to. The distribution screen sent
+    // it as assignedCollectionId and this route kept it in crm_json only, so the
+    // officer's scope — which reads the column — never saw a lead handed to them.
+    let csId   = crmData.assignedCsId   || crmData.assignedCollectionId   || null;
+    let csName = crmData.assignedCsName || crmData.assignedCollectionName || null;
+    const clearCs = ['assignedCsId', 'assignedCollectionId']
+      .some(key => Object.prototype.hasOwnProperty.call(crmData, key) && !crmData[key]);
+    delete crmData.assignedCsId; delete crmData.assignedCsName;
+    delete crmData.assignedCollectionId; delete crmData.assignedCollectionName;
+    if (staffRole === 'collection') {
+      // Their own lead, not a sales rep's: a collection officer's lead is never
+      // auto-assigned to sales, and editing one cannot hand it to anybody else.
+      if (isNew) { csId = req.staffRecord.id; csName = req.staffRecord.name || null; }
+      else { csId = null; csName = null; }
+      salesId = null; salesName = null;
+      delete crmData.assignedSalesId; delete crmData.assignedSalesName;
+    } else if (staffRole === 'sales') {
       salesId = req.staffRecord.id;
       salesName = req.staffRecord.name || salesName;
       crmData.assignedSalesId = salesId;
       crmData.assignedSalesName = salesName;
-    } else if (isNew && !salesId && !skipAutoAssign) {
+    } else if (isNew && !salesId && !csId && !skipAutoAssign) {
       const rep = await getNextSalesRep(req.tenantId, conn, {
         branch: branchVal,
         lead: { source, courseIds: Array.isArray(crmData.interestedCourseIds) ? crmData.interestedCourseIds : [] },
@@ -213,10 +232,10 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
     if (isNew) {
       await conn.query(
         `INSERT INTO leads (id, tenant_id, client_code, name, email, phone, source, status, notes, hidden,
-           assigned_sales_id, assigned_sales_name, crm_json, branch, branch_id, client_type, interested_course_ids_json)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+           assigned_sales_id, assigned_sales_name, assigned_cs_id, assigned_cs_name, crm_json, branch, branch_id, client_type, interested_course_ids_json)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
          [id, tenantId, code, safeName||'', safeEmail||'', safePhone||null, safeSource||null, normalizedRequestedStatus,
-         safeNotes||null, hidden||0, salesId, salesName, JSON.stringify(crmToStore), branchVal, branchId, leadClientTypeVal, courseIdsJson]
+         safeNotes||null, hidden||0, salesId, salesName, csId, csName, JSON.stringify(crmToStore), branchVal, branchId, leadClientTypeVal, courseIdsJson]
       );
     } else {
       // `hidden` used to be silently dropped here — extracted from the body
@@ -240,11 +259,14 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
         `UPDATE leads SET name=?, email=?, phone=?, source=?, notes=?, client_code=COALESCE(client_code,?),
            assigned_sales_id=IF(?,NULL,COALESCE(?,assigned_sales_id)),
            assigned_sales_name=IF(?,NULL,COALESCE(?,assigned_sales_name)),
+           assigned_cs_id=IF(?,NULL,COALESCE(?,assigned_cs_id)),
+           assigned_cs_name=IF(?,NULL,COALESCE(?,assigned_cs_name)),
            crm_json=?, branch=COALESCE(NULLIF(?,''),branch), branch_id=COALESCE(?,branch_id), client_type=COALESCE(?,client_type),
            interested_course_ids_json=COALESCE(?,interested_course_ids_json), hidden=COALESCE(?,hidden)
          WHERE id=? AND tenant_id=?`,
         [safeName||'', safeEmail||null, safePhone, safeSource||null, safeNotes||null, code,
          clearSales ? 1 : 0, salesId, clearSales ? 1 : 0, salesName,
+         clearCs && staffRole !== 'collection' ? 1 : 0, csId, clearCs && staffRole !== 'collection' ? 1 : 0, csName,
          JSON.stringify(crmToStore), branchVal, branchId, leadClientTypeVal, courseIdsJson,
          typeof hidden === 'boolean' ? (hidden ? 1 : 0) : null, id, tenantId]
       );
@@ -376,7 +398,8 @@ router.delete('/api/admin/leads/:id', requireAuth, requireAdmin, requirePermissi
 
 router.post('/api/admin/import/daqqi', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), requirePermission('manage_payments'), async (req, res) => {
   try {
-    if (String(req.staffRecord?.role || '').toLowerCase() === 'sales') return res.status(403).json({ error: 'غير مصرح' });
+    // Desk work: a rep or a collection officer edits their own leads, not the pool.
+    if (['sales', 'collection'].includes(String(req.staffRecord?.role || '').toLowerCase())) return res.status(403).json({ error: 'غير مصرح' });
     const { rows, dryRun } = req.body || {};
     if (!Array.isArray(rows) || !rows.length) return res.status(400).json({ error: 'لا توجد بيانات للاستيراد' });
     // Every row costs ~5 queries and the whole import runs in ONE transaction, so an
@@ -551,7 +574,8 @@ router.post('/api/admin/leads/bulk-assign', requireAuth, requireAdminOrStaff, re
   let conn = null;
   let transactionStarted = false;
   try {
-    if (String(req.staffRecord?.role || '').toLowerCase() === 'sales') return res.status(403).json({ error: 'غير مصرح' });
+    // Desk work: a rep or a collection officer edits their own leads, not the pool.
+    if (['sales', 'collection'].includes(String(req.staffRecord?.role || '').toLowerCase())) return res.status(403).json({ error: 'غير مصرح' });
     const { statusFilter } = req.body || {};
     conn = await pool.getConnection();
     await conn.beginTransaction();
@@ -583,6 +607,7 @@ router.post('/api/admin/leads/bulk-assign', requireAuth, requireAdminOrStaff, re
     const [unassigned] = await conn.query(
       `SELECT l.id,l.source,l.interested_course_ids_json,l.crm_json FROM leads l
         WHERE l.tenant_id=? AND (l.assigned_sales_id IS NULL OR l.assigned_sales_id = '')
+          AND (l.assigned_cs_id IS NULL OR l.assigned_cs_id = '')
           AND l.status IN (${placeholders}) AND l.hidden=0${accessScope.sql}${archive.sql}
         FOR UPDATE`,
       [req.tenantId, ...statusIn, ...accessScope.params, ...archive.params]
@@ -632,6 +657,69 @@ router.post('/api/admin/leads/bulk-assign', requireAuth, requireAdminOrStaff, re
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[bulk-assign]', e.message); sendRouteError(res, e);
   } finally { conn?.release(); }
+});
+
+// POST /api/admin/leads/assign-collection — hand chosen leads to one
+// collection officer. Body: { leadIds: string[], staffId, includeAssigned? }
+//
+// «في تاب محلي جديد ومحلي قديم ودولي قديم اني اوزع الداتا علي فريق التحصيل
+// لكن ميكونوش في التوزيع الرئيسي لكن في الداتا المتبقيه اوزعلهم منها». The
+// collection team is not in the automatic distribution; the desk hands them
+// what is left, from those three tabs. The screen used to save each lead with
+// an assignedCollectionId that only reached crm_json, so the officer's scope —
+// the assigned_cs_id column — never showed them any of it.
+//
+// What is left means nobody has it: a lead with a sales rep or another officer
+// is skipped unless the desk says to take it over.
+router.post('/api/admin/leads/assign-collection', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), bulkOperationLimiter, async (req, res) => {
+  const role = String(req.staffRecord?.role || '').toLowerCase();
+  if (['sales', 'collection'].includes(role)) return res.status(403).json({ error: 'التوزيع شغل المسئول' });
+  const leadIds = [...new Set((Array.isArray(req.body?.leadIds) ? req.body.leadIds : []).map(String).filter(Boolean))];
+  const includeAssigned = req.body?.includeAssigned === true;
+  // Where the batch lives afterwards, as the sales distribution already lets
+  // the desk choose («وجهة الداتا بعد التوزيع»); absent, it stays where it is.
+  const source = sanitize(req.body?.source || '', 200) || null;
+  if (!leadIds.length) return res.status(400).json({ error: 'اختار العملاء اللي هتوزعهم' });
+  if (leadIds.length > 5000) return res.status(400).json({ error: 'أقصى عدد في المرة 5000' });
+  const conn = await pool.getConnection();
+  try {
+    const [[officer]] = await conn.query(
+      `SELECT id, name FROM staff WHERE tenant_id=? AND id=? AND UPPER(role)='COLLECTION'
+          AND is_active=1 AND deleted_at IS NULL LIMIT 1`, [req.tenantId, String(req.body?.staffId || '')]);
+    if (!officer) return res.status(400).json({ error: 'اختار مسئول تحصيل نشط' });
+    const accessScope = leadScope(req, 'l');
+    if (accessScope.none) return res.status(403).json({ error: 'Lead assignment is outside your data scope' });
+    await conn.beginTransaction();
+    const [rows] = await conn.query(
+      `SELECT l.id FROM leads l
+        WHERE l.tenant_id=? AND l.hidden=0 AND l.id IN (${leadIds.map(() => '?').join(',')})${accessScope.sql}
+          ${includeAssigned ? '' : `AND (l.assigned_sales_id IS NULL OR l.assigned_sales_id='')
+          AND (l.assigned_cs_id IS NULL OR l.assigned_cs_id='')`}
+        FOR UPDATE`,
+      [req.tenantId, ...leadIds, ...accessScope.params]
+    );
+    const ids = rows.map(row => row.id);
+    if (ids.length) {
+      await conn.query(
+        `UPDATE leads SET assigned_cs_id=?, assigned_cs_name=?, source=COALESCE(?, source)
+          WHERE tenant_id=? AND id IN (${ids.map(() => '?').join(',')})`,
+        [officer.id, officer.name, source, req.tenantId, ...ids]
+      );
+      for (const id of ids) {
+        await logLeadEventStrict(id, 'assigned', `تعيين لمسئول التحصيل: ${officer.name}`,
+          { collectionId: officer.id, collectionName: officer.name, actor: req.user?.email || 'admin' }, req.tenantId, conn);
+      }
+    }
+    await conn.commit();
+    if (ids.length) {
+      createNotification('lead', '📋 داتا جديدة ليك', `اتوزع عليك ${ids.length} عميل محتمل`,
+        { tab: 'leads' }, req.tenantId, officer.id).catch(() => {});
+    }
+    res.json({ assigned: ids.length, skipped: leadIds.length - ids.length, officer: officer.name });
+  } catch (e) {
+    await conn.rollback().catch(() => {});
+    logger.error('[assign-collection]', e.message); sendRouteError(res, e);
+  } finally { conn.release(); }
 });
 
 // POST /api/admin/leads/bulk-whatsapp — send WhatsApp message to multiple leads
@@ -805,7 +893,7 @@ router.post('/api/admin/leads/move-to-archive', requireAuth, requireAdmin, requi
     // cut-off is the start of that Cairo day, since created_at is a UTC instant.
     const archive = excludeArchiveSourcesSql('source');
     const openStatuses = [...LEAD_STATUSES].filter(isOpenLeadStatus);
-    let unassignedPool = `hidden=0 AND (assigned_sales_id IS NULL OR assigned_sales_id='')
+    let unassignedPool = `hidden=0 AND (assigned_sales_id IS NULL OR assigned_sales_id='') AND (assigned_cs_id IS NULL OR assigned_cs_id='')
       AND status IN (${openStatuses.map(() => '?').join(',')})
       AND COALESCE(branch,'') NOT IN ('ONLINE_ABROAD','ONLINE_SAUDI') AND COALESCE(source,'') NOT LIKE 'دولي%'${archive.sql}`;
     const params = [...openStatuses, ...archive.params];
@@ -884,9 +972,26 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
       await conn.rollback(); transactionStarted = false;
       return res.status(404).json({ error: 'Lead not found' });
     }
-    if (String(req.staffRecord?.role || '').toLowerCase() === 'sales' && lead.assigned_sales_id !== req.staffRecord.id) {
+    // Within the caller's own leads, whatever the role — this checked a sales
+    // rep's ownership and nobody else's, so any other role holding manage_leads
+    // could turn any lead in the institute into a customer.
+    const convertScope = leadScope(req, 'l');
+    const [[inScope]] = convertScope.none ? [[null]] : await conn.query(
+      `SELECT l.id FROM leads l WHERE l.tenant_id=? AND l.id=?${convertScope.sql} LIMIT 1`,
+      [tenantId, leadId, ...convertScope.params]);
+    if (!inScope) {
       await conn.rollback(); transactionStarted = false;
       return res.status(403).json({ error: 'غير مصرح: يمكنك فقط تحويل الليدز المعيّنة لك' });
+    }
+    // A collection officer's new customer is not added until the manager has
+    // seen the money: «لا يضاف حتي يراجع تحويله ومدفوعاته من حساب المسئول».
+    // That is a booking, which goes to review — not this free conversion.
+    if (String(req.staffRecord?.role || '').toLowerCase() === 'collection') {
+      await conn.rollback(); transactionStarted = false;
+      return res.status(403).json({
+        error: 'العميل الجديد من حساب التحصيل بيتسجل بحجز ودفعة، والمسئول بيراجع التحويل ويعتمده — استخدم «حجز / دفعة».',
+        code: 'COLLECTION_BOOKING_REQUIRED',
+      });
     }
 
     // 2. Check already converted — return existing subscriber if matched

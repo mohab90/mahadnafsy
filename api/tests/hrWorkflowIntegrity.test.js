@@ -26,8 +26,10 @@ const appraisalMigration = read('migrations', '131_v25_hr_appraisal_evidence.sql
 const privateFieldsMigration = read('migrations', '142_v25_hr_employee_private_fields.sql');
 const recordsIntegrityMigration = read('migrations', '150_v25_hr_records_integrity.sql');
 const instructorRateMigration = read('migrations', '152_v25_instructor_rate_approval.sql');
-const dashboard = read('..', 'admin', 'pages', 'Dashboard.tsx');
-const settings = read('..', 'admin', 'pages', 'dashboard', 'DashboardStaffSettingsPanel.tsx');
+// «ملفي» loads the employee's own HR record itself, and its requests tab
+// files leave, permissions and advances (admin/pages/dashboard/my-profile).
+const myHr = read('..', 'admin', 'pages', 'dashboard', 'my-profile', 'useMyHr.ts');
+const myRequests = read('..', 'admin', 'pages', 'dashboard', 'my-profile', 'MyRequestsSection.tsx');
 const hrTab = read('..', 'admin', 'pages', 'dashboard', 'tabs', 'HRTab.tsx');
 const staffProfile = read('..', 'admin', 'pages', 'staff-profile', 'StaffSettingsPanel.tsx');
 const hrLeavesPanel = read('..', 'admin', 'pages', 'dashboard', 'tabs', 'hr-sections', 'HrLeavesPanel.tsx');
@@ -117,13 +119,11 @@ test('HR audit retention is tenant-policy driven and bounded', () => {
 });
 
 test('staff settings only calls least-privilege self-service HR endpoints', () => {
-  const selfServiceWindow = dashboard.slice(dashboard.indexOf('Fetch HR self-service data'), dashboard.indexOf('Any non-admin staff member'));
-  assert.doesNotMatch(selfServiceWindow, /\/api\/admin\/hr/);
-  assert.match(selfServiceWindow, /\/api\/staff\/me\/hr/);
-  assert.match(selfServiceWindow, /\/api\/staff\/me\/advances/);
-  assert.doesNotMatch(settings, /\/api\/admin\/hr\/(leaves|advances|employees)/);
-  assert.match(settings, /\/api\/staff\/me\/leaves/);
-  assert.match(settings, /\/api\/staff\/me\/advances/);
+  for (const file of [myHr, myRequests]) assert.doesNotMatch(file, /\/api\/admin\/hr/);
+  assert.match(myHr, /\/api\/staff\/me\/hr/);
+  assert.match(myHr, /\/api\/staff\/me\/advances/);
+  assert.match(myRequests, /\/api\/staff\/me\/leaves/);
+  assert.match(myRequests, /\/api\/staff\/me\/advances/);
   assert.match(reports, /leaveBalance/);
 });
 

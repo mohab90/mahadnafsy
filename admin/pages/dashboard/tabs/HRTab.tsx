@@ -3,7 +3,7 @@ import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, Briefcase, Search, BarChart3, ChevronRight, UserPlus, Pencil,
-  CalendarCheck, CalendarOff, Wallet, UserCheck, UserX, Layers,
+  CalendarCheck, CalendarOff, Wallet, UserCheck, UserX, Layers, Inbox,
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
@@ -17,6 +17,7 @@ import HrResignationsPanel from './hr-sections/HrResignationsPanel';
 import HrPayrollPanel from './hr-sections/HrPayrollPanel';
 import HrAttendancePanel from './hr-sections/HrAttendancePanel';
 import HrLeavesPanel from './hr-sections/HrLeavesPanel';
+import HrRequestsInbox from './hr-sections/HrRequestsInbox';
 import { ROLE_LABELS, ROLE_COLORS } from './hr-sections/hrLabels';
 import { fmtMoney } from './hr-sections/hrFormat';
 
@@ -83,7 +84,14 @@ const HrTab: React.FC<Props> = ({ notify }) => {
   // report claimed one was visible to anyone holding view_hr; there is none in
   // this screen at all.
   const [showAddStaff, setShowAddStaff] = useState(false);
-  const [subTab, setSubTab] = useState<'directory' | 'performance' | 'attendance' | 'leaves' | 'payroll' | 'recruitment'>('directory');
+  // «طلبات الموظفين» first: what employees asked for is what HR answers first.
+  const [subTab, setSubTab] = useState<'requests' | 'directory' | 'performance' | 'attendance' | 'leaves' | 'payroll' | 'recruitment'>('requests');
+  const [pendingRequests, setPendingRequests] = useState(0);
+  // Deciding a request is manage_hr on the server; view_hr alone reads the list.
+  const canManageHr = isAdmin || Boolean(currentStaff && hasPermission({
+    role: currentStaff.role as RoleKey,
+    permissions: currentStaff.permissions as PermissionKey[] | undefined,
+  }, 'manage_hr'));
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -220,6 +228,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
 
       <div className="flex flex-wrap gap-1.5 rounded-2xl border border-gray-200 bg-white p-1.5">
         {([
+          ['requests', 'طلبات الموظفين', Inbox],
           ['directory', 'دليل الموظفين', Users],
           ['performance', 'الأداء والتارجت', BarChart3],
           ['attendance', 'الحضور والغياب', CalendarCheck],
@@ -235,9 +244,14 @@ const HrTab: React.FC<Props> = ({ notify }) => {
                 : 'text-gray-500 hover:bg-slate-50 hover:text-slate-700'
             }`}>
             <Icon size={15} /> {label}
+            {key === 'requests' && pendingRequests > 0 && (
+              <span className={`rounded-full px-1.5 text-[10px] leading-4 ${subTab === key ? 'bg-white text-slate-800' : 'bg-amber-500 text-white'}`}>{pendingRequests}</span>
+            )}
           </button>
         ))}
       </div>
+
+      {subTab === 'requests' && <HrRequestsInbox notify={notify} canManage={canManageHr} onCount={setPendingRequests} />}
 
       {subTab === 'directory' && (
         <div className="space-y-4">

@@ -19,12 +19,19 @@ type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 const isRefundable = (payment: { status?: string }) =>
   !payment.status || payment.status === 'paid';
 
-export function AddRefundModal({ onClose, onCreated, notify }: {
+export function AddRefundModal({ onClose, onCreated, notify, clients }: {
   onClose: () => void;
   onCreated: () => void;
   notify: NotifyFn;
+  /**
+   * Whom the refund can be for. An employee's own clients come from their
+   * scoped list; the context holds the whole book only for an admin, so from a
+   * staff account the picker was empty.
+   */
+  clients?: SubscriberItem[];
 }) {
-  const { subscribers } = useCrmData();
+  const { subscribers: allSubscribers } = useCrmData();
+  const subscribers = clients ?? allSubscribers;
   const [branch, setBranch] = useState<'DAQQI' | 'ONLINE' | ''>('');
   const [search, setSearch] = useState('');
   const [subscriberId, setSubscriberId] = useState('');

@@ -23,6 +23,35 @@ const LEAVE_TYPES = new Set([
   'LATE_PERMIT', 'EARLY_LEAVE',
 ]);
 
+// The two permissions counted in hours: a morning one is arriving late, an
+// evening one is leaving early.
+const HOUR_PERMITS = new Set(['LATE_PERMIT', 'EARLY_LEAVE']);
+// What a request is called in the notices HR and the employee read.
+const LEAVE_LABELS_AR = Object.freeze({
+  ANNUAL: 'إجازة سنوية', SICK: 'إجازة مرضية', UNPAID: 'إجازة بدون راتب', MATERNITY: 'إجازة أمومة',
+  EMERGENCY: 'إجازة طارئة', PERMISSION: 'إذن نصف يوم', OTHER: 'إجازة',
+  LATE_PERMIT: 'إذن صباحي (تأخير)', EARLY_LEAVE: 'إذن مسائي (انصراف مبكر)',
+});
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * The hours an إذن covers — { startTime, endTime } as HH:MM — or nulls for a
+ * type counted in days. A permission has to name its window: HR approving
+ * «إذن تأخير» without knowing until when is approving an open cheque.
+ */
+function permitWindow(type, startTime, endTime) {
+  if (!HOUR_PERMITS.has(type)) return { startTime: null, endTime: null };
+  const start = String(startTime || '').trim();
+  const end = String(endTime || '').trim();
+  if (!HHMM.test(start) || !HHMM.test(end)) {
+    throw Object.assign(new Error('حدد وقت الإذن: من الساعة كام لحد الساعة كام'), { statusCode: 400 });
+  }
+  if (end <= start) {
+    throw Object.assign(new Error('وقت نهاية الإذن لازم يكون بعد وقت بدايته'), { statusCode: 400 });
+  }
+  return { startTime: start, endTime: end };
+}
+
 const parseWeekendDays = value => {
   try {
     const parsed = typeof value === 'string' ? JSON.parse(value) : value;
@@ -70,8 +99,13 @@ function calculateLeaveDays(startDate, endDate, type, policy = DEFAULT_POLICY) {
   // Arriving an hour late is not half a day off. Counting these as leave would
   // quietly drain the annual balance of anyone who ever asked to come in late,
   // so they cost nothing against it — they exist to be approved and to show up
-  // in attendance, not to be deducted.
-  if (type === 'LATE_PERMIT' || type === 'EARLY_LEAVE') return 0;
+  // in attendance, not to be deducted. Part of one day, like PERMISSION.
+  if (HOUR_PERMITS.has(type)) {
+    if (String(startDate) !== String(endDate)) {
+      throw Object.assign(new Error('الإذن يكون ليوم واحد فقط'), { statusCode: 400 });
+    }
+    return 0;
+  }
   const weekend = new Set(parseWeekendDays(policy.weekend_days_json));
   let days = 0;
   for (const date = new Date(start); date <= end; date.setUTCDate(date.getUTCDate() + 1)) {
@@ -81,9 +115,10 @@ function calculateLeaveDays(startDate, endDate, type, policy = DEFAULT_POLICY) {
   return days;
 }
 
-async function createLeaveRequest(db, { tenantId, staffId, type, startDate, endDate, reason }) {
+async function createLeaveRequest(db, { tenantId, staffId, type, startDate, endDate, startTime, endTime }) {
   const policy = await getEffectiveHrPolicy(db, tenantId, startDate);
   const totalDays = calculateLeaveDays(startDate, endDate, type, policy);
+  const window = permitWindow(type, startTime, endTime);
   const [[staff]] = await db.query(
     'SELECT id FROM staff WHERE tenant_id=? AND id=? AND is_active=1 AND deleted_at IS NULL LIMIT 1',
     [tenantId, staffId]
@@ -95,8 +130,8 @@ async function createLeaveRequest(db, { tenantId, staffId, type, startDate, endD
         AND start_date<=? AND end_date>=? LIMIT 1`,
     [tenantId, staffId, endDate, startDate]
   );
-  if (overlap) throw Object.assign(new Error('Overlapping leave request already exists'), { statusCode: 409 });
-  return { policy, totalDays };
+  if (overlap) throw Object.assign(new Error('فيه طلب تاني معلق أو معتمد في نفس الأيام'), { statusCode: 409 });
+  return { policy, totalDays, ...window };
 }
 
 function leaveAllowance(policy, type) {
@@ -106,6 +141,6 @@ function leaveAllowance(policy, type) {
 }
 
 module.exports = {
-  DEFAULT_POLICY, LEAVE_TYPES, calculateLeaveDays, createLeaveRequest,
-  getEffectiveHrPolicy, leaveAllowance,
+  DEFAULT_POLICY, HOUR_PERMITS, LEAVE_LABELS_AR, LEAVE_TYPES, calculateLeaveDays, createLeaveRequest,
+  getEffectiveHrPolicy, leaveAllowance, permitWindow,
 };

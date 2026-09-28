@@ -2,7 +2,7 @@
 const { Router } = require('express');
 const router = Router();
 const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
-const { createLeaveRequest, getEffectiveHrPolicy, leaveAllowance } = require('../../lib/hrPolicy');
+const { createLeaveRequest, getEffectiveHrPolicy, leaveAllowance, HOUR_PERMITS, LEAVE_LABELS_AR } = require('../../lib/hrPolicy');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { toNumbers } = require('../../lib/mappers');
 const { cairoClock, sqlCairoToday, cairoToday } = require('../../lib/dates');
@@ -179,26 +179,26 @@ router.get('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, requirePerm
 // POST /api/admin/hr/leaves — submit leave or permission request
 router.post('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
-    const { staff_id, type, start_date, end_date, reason } = req.body;
+    const { staff_id, type, start_date, end_date, start_time, end_time, reason } = req.body;
     if (!staff_id || !type || !start_date || !end_date) {
       return res.status(400).json({ error: 'staff_id, type, start_date, end_date are required' });
     }
-    const { policy, totalDays } = await createLeaveRequest(pool, {
+    const { policy, totalDays, startTime, endTime } = await createLeaveRequest(pool, {
       tenantId: req.tenantId, staffId: staff_id, type,
-      startDate: start_date, endDate: end_date, reason,
+      startDate: start_date, endDate: end_date, startTime: start_time, endTime: end_time,
     });
     const id = uuidv4();
     await pool.query(
       `INSERT INTO leaves
-        (id,tenant_id,policy_id,staff_id,type,start_date,end_date,total_days,reason,status)
-       VALUES (?,?,?,?,?,?,?,?,?,'PENDING')`,
-      [id, req.tenantId, policy.id, staff_id, type, start_date, end_date, totalDays, reason || null]
+        (id,tenant_id,policy_id,staff_id,type,start_date,end_date,start_time,end_time,total_days,reason,status)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,'PENDING')`,
+      [id, req.tenantId, policy.id, staff_id, type, start_date, end_date, startTime, endTime, totalDays, reason || null]
     );
 
-    // Notify admin
-    await createNotification('info', 'طلب إجازة جديد',
-      `موظف طلب ${type === 'PERMISSION' ? 'إذن' : 'إجازة'} من ${start_date} إلى ${end_date}`,
-      { leave_id: id, staff_id }, req.tenantId
+    // To HR, not to every bell in the building ('info' is a general notice).
+    await createNotification('hr', `طلب ${LEAVE_LABELS_AR[type] || 'إجازة'}`,
+      `اتسجل طلب من ${start_date} إلى ${end_date}`,
+      { leave_id: id, staff_id, tab: 'hr' }, req.tenantId
     );
 
     res.json({ ok: true, id, total_days: totalDays });
@@ -221,7 +221,7 @@ router.put('/api/admin/hr/leaves/:id/status', requireAuth, requireAdminOrStaff, 
     await conn.beginTransaction();
     transactionStarted = true;
     const [[leave]] = await conn.query(
-      `SELECT id,policy_id,staff_id,type,start_date,end_date,total_days,status
+      `SELECT id,policy_id,staff_id,type,start_date,end_date,start_time,end_time,total_days,status
          FROM leaves WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE`,
       [id, req.tenantId]
     );
@@ -239,8 +239,12 @@ router.put('/api/admin/hr/leaves/:id/status', requireAuth, requireAdminOrStaff, 
       return res.status(409).json({ error: 'لا يجوز للموظف اعتماد إجازته بنفسه', code: 'LEAVE_SELF_APPROVAL' });
     }
 
-    // If approved, sync attendance record
-    if (status === 'APPROVED') {
+    // If approved, sync attendance record — for leave. A morning or evening
+    // permission is a day the employee works: approving one wrote a LEAVE row
+    // for it (a paid day away on the attendance sheet), and was refused
+    // outright once they had checked in that morning («سجل حضور متعارض»).
+    // It stands on its own row; payroll reads it to excuse the late minutes.
+    if (status === 'APPROVED' && !HOUR_PERMITS.has(leave.type)) {
       const policy = leave.policy_id
         ? (await conn.query(
           `SELECT id,annual_leave_days,sick_leave_days,weekend_days_json
@@ -313,6 +317,11 @@ router.put('/api/admin/hr/leaves/:id/status', requireAuth, requireAdminOrStaff, 
     });
     await conn.commit();
     transactionStarted = false;
+    // The employee hears the answer on their own bell.
+    const answer = { APPROVED: 'اتوافق على', REJECTED: 'اترفض', CANCELLED: 'اتلغى' }[status];
+    createNotification('hr', `${answer} طلبك: ${LEAVE_LABELS_AR[leave.type] || 'إجازة'}`,
+      `${dateOnly(leave.start_date)}${leave.start_time ? ` من ${leave.start_time} لـ ${leave.end_time}` : ` إلى ${dateOnly(leave.end_date)}`}${admin_note ? ` — ${String(admin_note).slice(0, 300)}` : ''}`,
+      { leave_id: leave.id, tab: 'staff_home' }, req.tenantId, leave.staff_id).catch(() => {});
     res.json({ ok: true });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});

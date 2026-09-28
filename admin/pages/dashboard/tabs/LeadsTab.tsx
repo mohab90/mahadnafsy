@@ -157,7 +157,11 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
   const [showBulkWA, setShowBulkWA] = useState(false);
 
-  const isSalesOnly = selfStaff?.role === 'sales' || staffSelfProp?.role === 'sales';
+  // A collection officer works leads the way a rep does — their own list, no
+  // desk tools. They were shown the manager's CRM: every tab, the team's
+  // performance, the distribution panels — «ليه بيظهر في حساب التحصيل قيم
+  // العملاء المحتملين كامله؟ خلي يظهرله زي ما بيظهر للسيلز».
+  const isSalesOnly = ['sales', 'collection'].includes(String(selfStaff?.role || staffSelfProp?.role || '').toLowerCase());
   const permissionSubject = currentStaff
     ? {
         role: currentStaff.role as RoleKey,

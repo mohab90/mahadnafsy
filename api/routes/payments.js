@@ -260,10 +260,13 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requi
       `SELECT p.*,
               s.name AS subscriber_name, s.phone AS subscriber_phone,
               s.client_code AS subscriber_client_code, s.email AS subscriber_email,
-              c.title_ar AS course_title_ar, c.title AS course_title
+              c.title_ar AS course_title_ar, c.title AS course_title,
+              LOWER(st.role) AS staff_role, bb.title AS bundle_title
        FROM payments p
        LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id=p.tenant_id
        LEFT JOIN courses c ON c.id = p.course_id AND c.tenant_id=p.tenant_id
+       LEFT JOIN staff st ON st.id = p.staff_id AND st.tenant_id=p.tenant_id
+       LEFT JOIN bundles bb ON bb.id = p.bundle_id AND bb.tenant_id=p.tenant_id
        WHERE p.deleted_at IS NULL AND ${pagWhere}
        ORDER BY p.date DESC, p.id DESC
        ${pagTail}`,
@@ -336,11 +339,15 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requi
         note: p.note || null, at: dateStr,
         status: p.status || 'paid',
         staffId: p.staff_id || null, staffName: executors.get(String(p.id)) ?? null,
+        // A collection officer's booking is confirmed against a transfer, so
+        // the review screen has to know whose it is.
+        staffRole: p.staff_role || null, linkedTransferId: p.linked_transfer_id || null,
         fromAccountNumber: p.from_account || null,
         source: p.source || null,
         itemTitle: p.item_title || null, certType: p.cert_type || null,
         certId: p.certificate_request_id || null,
-        courseTitleAr: p.course_title_ar || null, courseTitle: p.course_title || null,
+        // A track's payment named nothing here — no course, so no title.
+        courseTitleAr: p.course_title_ar || null, courseTitle: p.course_title || p.bundle_title || null,
       };
     });
 

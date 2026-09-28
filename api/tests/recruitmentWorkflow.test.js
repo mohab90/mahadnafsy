@@ -150,5 +150,6 @@ test('a late permit does not come out of the annual leave balance', () => {
   // These ride the leave approval flow, but they are not days off. Counting
   // them would drain the balance of anyone who ever asked to come in late.
   assert.match(hrPolicy, /'LATE_PERMIT', 'EARLY_LEAVE',/);
-  assert.match(hrPolicy, /type === 'LATE_PERMIT' \|\| type === 'EARLY_LEAVE'\) return 0;/);
+  assert.match(hrPolicy, /const HOUR_PERMITS = new Set\(\['LATE_PERMIT', 'EARLY_LEAVE'\]\);/);
+  assert.match(hrPolicy, /if \(HOUR_PERMITS\.has\(type\)\) \{[\s\S]{0,200}return 0;/);
 });

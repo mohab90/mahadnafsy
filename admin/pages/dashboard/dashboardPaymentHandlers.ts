@@ -470,9 +470,13 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
     ? leadPayDraft.courseItems.reduce((s, i) => s + (Number(i.amount) || 0), 0)
     : Number(leadPayDraft.amount);
   const isPendingApproval = results.some(result => result.approvalRequired || result.status === 'pending');
+  // A collection account's new customer is not added yet — only asked for.
+  const sentForReview = results.some(result => result.status === 'pending_review');
   notify(
     'success',
-    isPendingApproval
+    sentForReview
+      ? `اتبعت حجز ${freshLead.name} للمسئول — العميل هيتضاف بعد ما يراجع التحويل ويعتمده.`
+      : isPendingApproval
       ? `تم تسجيل دفعة ${freshLead.name} كمعلّقة وتنتظر اعتماد الإدارة المالية.`
       : `تم تسجيل دفعة ${freshLead.name}${_notifCourse ? ' — ' + _notifCourse : ''} | ${_notifAmt.toLocaleString('ar-EG-u-nu-latn')} ${leadPayDraft.currency}`,
   );

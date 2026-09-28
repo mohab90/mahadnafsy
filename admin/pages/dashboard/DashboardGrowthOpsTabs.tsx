@@ -32,7 +32,6 @@ type Props = {
   salesOwnDaqqiRounds: DaqqiRound[] | null;
   isReceptionDaqqi: boolean;
   leadsSalesTargets: SalesTarget[];
-  setStaffProfileModalId: (staffId: string) => void;
 };
 
 const fallback = (color: string) => (
@@ -55,11 +54,8 @@ export function DashboardGrowthOpsTabs({
   salesOwnDaqqiRounds,
   isReceptionDaqqi,
   leadsSalesTargets,
-  setStaffProfileModalId: _setStaffProfileModalId,
 }: Props) {
-  // Was wired to setStaffProfileModalId — a piece of state nothing ever
-  // rendered a modal from, so "ملف" on a sales rep silently did nothing.
-  // Now opens the real dedicated staff page instead.
+  // «ملف» on a sales rep opens that employee's own staff page.
   const navigate = useNavigate();
   if (activeTab === 'leads') {
     return (

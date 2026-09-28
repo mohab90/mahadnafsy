@@ -195,7 +195,11 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
         COUNT(CASE WHEN a.status='ABSENT' THEN 1 END) AS absent_days,
         COALESCE(SUM(CASE WHEN a.leave_id IS NOT NULL AND l.type='UNPAID'
                           THEN IF(a.status='HALF_DAY',0.5,1) ELSE 0 END),0) AS unpaid_leave_days,
-        COALESCE(SUM(a.late_minutes), 0) AS late_minutes,
+        -- A morning permission HR approved is lateness nobody is charged for.
+        COALESCE(SUM(CASE WHEN EXISTS (
+            SELECT 1 FROM leaves lp WHERE lp.tenant_id=a.tenant_id AND lp.staff_id=a.staff_id
+               AND lp.type='LATE_PERMIT' AND lp.status='APPROVED' AND a.date BETWEEN lp.start_date AND lp.end_date)
+          THEN 0 ELSE a.late_minutes END), 0) AS late_minutes,
         COALESCE(SUM(CASE WHEN a.status IN ('PRESENT','LATE','REMOTE') THEN 1
                           WHEN a.status='HALF_DAY' THEN 0.5 ELSE 0 END),0) AS present_days
       FROM attendance_logs a

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Activity, AlarmClock, Banknote, BarChart3, Bell, BookOpen, Briefcase, CalendarDays,
+  Activity, AlarmClock, Banknote, BarChart3, Bell, BookOpen, CalendarDays,
   ChevronDown, CreditCard, FileText, FolderKanban, Image, ListOrdered,
   LogOut, Menu, Monitor, RotateCcw, Shield, Tag, TrendingUp,
   UserCheck, UserCog, UserPlus, UserSearch, Users, Video, Wallet, MessageSquareText,
@@ -15,6 +15,7 @@ import { hasPermission } from '../../constants/permissions';
 import { NotificationsBell } from './NotificationsBell';
 import type { LeadItem, StaffMember, SubscriberItem } from '../../types';
 import type { TabKey } from './navigation';
+import { isProfileTab } from './my-profile/profileTabs';
 
 type NotifRow = { id: string; type: string; title: string; message: string; read_at: string | null; created_at: string };
 type VisibleMenuGroup = {
@@ -87,6 +88,26 @@ type CompactRoleNavProps = {
   extraHeaderButtons?: React.ReactNode;
 };
 
+/**
+ * «ملفي» — the one way into the person's own page, and the same small icon in
+ * every account: the admin bar and each role's bar. Two text tabs used to sit
+ * at the end of every role bar («ملفي الشخصي», «ملفي الوظيفي») while the admin
+ * bar had two icons; the owner asked for one icon, on the left, everywhere.
+ */
+function ProfileIconButton({ activeTab, setActiveTab, size = 'md' }: {
+  activeTab: TabKey; setActiveTab: (tab: TabKey) => void; size?: 'sm' | 'md';
+}) {
+  const active = isProfileTab(activeTab);
+  return (
+    <button type="button" onClick={() => setActiveTab('staff_home')} title="ملفي" aria-label="ملفي"
+      aria-current={active ? 'page' : undefined}
+      className={`${size === 'sm' ? 'w-7 h-7 rounded-lg' : 'w-8 h-8 rounded-xl'} grid place-items-center transition ${
+        active ? 'bg-indigo-600 text-white' : 'bg-gray-100 hover:bg-indigo-50 hover:text-indigo-600 text-gray-500'}`}>
+      <UserCog size={size === 'sm' ? 13 : 15} />
+    </button>
+  );
+}
+
 function CompactRoleNav({
   tabs, activeTab, setActiveTab, activeButtonClass, avatarClass, spinnerBorderClass,
   roleBadge, roleBadgeClass, currentStaff, salesDataLoading, staffNotifBadge,
@@ -141,6 +162,7 @@ function CompactRoleNav({
           <span className="hidden sm:inline font-semibold text-gray-800">{currentStaff.name}</span>
           {roleBadge && <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${roleBadgeClass}`}>{roleBadge}</span>}
           {salesDataLoading && <span className={`w-4 h-4 border-2 border-t-transparent rounded-full animate-spin ${spinnerBorderClass}`} />}
+          <ProfileIconButton activeTab={activeTab} setActiveTab={setActiveTab} size="sm" />
           <button
             onClick={() => setSalesNotifOpen(true)}
             className="relative w-7 h-7 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 hover:text-amber-800 grid place-items-center transition"
@@ -333,33 +355,7 @@ export function DashboardNavigation(props: Props) {
                     <UserCheck size={15} />
                   </button>
                 )}
-                {/* Two icons, two subjects. ملفي الشخصي is the person signed in —
-                    their numbers, their follow-ups and their details, one page.
-                    ملفي الوظيفي is contract, leave and payroll, which is a different
-                    thing with a different audience and has its own URL rather than
-                    living as a section inside the other. */}
-                <button
-                  onClick={() => setActiveTab('staff_home')}
-                  className={`w-8 h-8 rounded-xl grid place-items-center transition ${
-                    ['staff_home', 'staff_settings'].includes(activeTab)
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-gray-100 hover:bg-indigo-50 hover:text-indigo-600 text-gray-500'
-                  }`}
-                  title="ملفي الشخصي"
-                >
-                  <UserCog size={15} />
-                </button>
-                <button
-                  onClick={() => setActiveTab('my_hr')}
-                  className={`w-8 h-8 rounded-xl grid place-items-center transition ${
-                    activeTab === 'my_hr'
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-gray-100 hover:bg-indigo-50 hover:text-indigo-600 text-gray-500'
-                  }`}
-                  title="ملفي الوظيفي"
-                >
-                  <Briefcase size={15} />
-                </button>
+                <ProfileIconButton activeTab={activeTab} setActiveTab={setActiveTab} />
                 {/* Staff messages used to be visible one employee at a time,
                     inside each profile page — so an incoming message went unseen
                     until someone opened that person's file. Only for those its
@@ -432,15 +428,12 @@ export function DashboardNavigation(props: Props) {
             {isSalesOnly && (
               <CompactRoleNav
                 tabs={[
-                  // staff_home is where the rep lands at login, but nothing in
-                  // this bar pointed back at it — leave the page and it was gone
-                  // for the rest of the session.
+                  // staff_home — where the rep lands at login — is the profile
+                  // icon at the end of the bar, the same one in every account.
                   { key: 'leads', label: 'العملاء المحتملون', icon: UserPlus },
                   { key: 'online_clients', label: 'عملائي', icon: UserCheck },
                   { key: 'orders', label: 'مدفوعاتي', icon: CreditCard },
                   { key: 'staff_performance', label: 'إحصائياتي', icon: BarChart3 },
-                  { key: 'staff_home', label: 'ملفي الشخصي', icon: UserCog },
-                  { key: 'my_hr', label: 'ملفي الوظيفي', icon: Briefcase },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 activeButtonClass="bg-primary-600 text-white shadow-md shadow-primary-200"
@@ -457,11 +450,9 @@ export function DashboardNavigation(props: Props) {
                 tabs={[
                   { key: 'online_clients', label: 'عملاء الأونلاين', icon: UserCheck },
                   { key: 'leads', label: 'العملاء المحتملين', icon: UserSearch },
-                  { key: 'refund_requests', label: 'طلبات الاسترداد', icon: RotateCcw },
+                  // الاستردادات live inside مدفوعاتي now, in its design.
                   { key: 'orders', label: 'مدفوعاتي', icon: CreditCard },
                   { key: 'overview', label: 'إحصائياتي', icon: BarChart3 },
-                  { key: 'staff_home', label: 'ملفي الشخصي', icon: UserCog },
-                  { key: 'my_hr', label: 'ملفي الوظيفي', icon: Briefcase },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 activeButtonClass="bg-primary-600 text-white shadow-md shadow-primary-200"
@@ -481,8 +472,6 @@ export function DashboardNavigation(props: Props) {
                   { key: 'leads', label: 'العملاء المحتملين', icon: UserSearch },
                   { key: 'orders', label: 'مدفوعاتي', icon: CreditCard },
                   { key: 'staff_performance', label: 'إحصائياتي', icon: BarChart3 },
-                  { key: 'staff_home', label: 'ملفي الشخصي', icon: UserCog },
-                  { key: 'my_hr', label: 'ملفي الوظيفي', icon: Briefcase },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 activeButtonClass="bg-primary-600 text-white shadow-md shadow-primary-200"
@@ -503,8 +492,6 @@ export function DashboardNavigation(props: Props) {
                   { key: 'orders', label: 'الطلبات والمدفوعات', icon: CreditCard },
                   { key: 'daqqi_accounting', label: 'حسابات الدقي', icon: Wallet },
                   { key: 'daqqi_stats', label: 'إحصائيات فريق الدقي', icon: BarChart3 },
-                  { key: 'staff_home', label: 'ملفي الشخصي', icon: UserCog },
-                  { key: 'my_hr', label: 'ملفي الوظيفي', icon: Briefcase },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 activeButtonClass="bg-purple-600 text-white shadow-md shadow-purple-200"
@@ -528,8 +515,6 @@ export function DashboardNavigation(props: Props) {
                   { key: 'financial', label: 'التقارير المالية', icon: BarChart3 },
                   { key: 'activity', label: 'سجل النشاط', icon: Activity },
                   { key: 'overview', label: 'إحصائيات', icon: BarChart3 },
-                  { key: 'staff_home', label: 'ملفي الشخصي', icon: UserCog },
-                  { key: 'my_hr', label: 'ملفي الوظيفي', icon: Briefcase },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 activeButtonClass="bg-indigo-600 text-white shadow-md shadow-indigo-200"
@@ -554,8 +539,6 @@ export function DashboardNavigation(props: Props) {
                     { key: 'refund_requests', label: 'طلبات الاسترداد', icon: RotateCcw },
                     { key: 'orders', label: 'الطلبات والمدفوعات', icon: CreditCard },
                     { key: 'overview', label: 'إحصائيات', icon: BarChart3 },
-                    { key: 'staff_home', label: 'ملفي الشخصي', icon: UserCog },
-                  { key: 'my_hr', label: 'ملفي الوظيفي', icon: Briefcase },
                   ]}
                   activeTab={activeTab} setActiveTab={setActiveTab}
                   activeButtonClass="bg-emerald-600 text-white shadow-md shadow-emerald-200"

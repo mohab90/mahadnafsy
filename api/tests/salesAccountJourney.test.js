@@ -82,16 +82,18 @@ test('a rep can register the payment they just closed', () => {
   );
 });
 
-test('ملفي الوظيفي is its own tab with its own URL', () => {
-  const workspace = codeOnly(read('admin/pages/dashboard/DashboardMyWorkspace.tsx'));
+test('«ملفي» is one page for every account, and the old addresses still land on it', () => {
+  const tabs = codeOnly(read('admin/pages/dashboard/my-profile/profileTabs.ts'));
+  const page = codeOnly(read('admin/pages/dashboard/my-profile/MyProfilePage.tsx'));
   const dashboard = codeOnly(read('admin/pages/Dashboard.tsx'));
 
-  // الرئيسية and ملفي الشخصي are one page; my_hr is not part of it any more.
-  assert.match(workspace, /export const WORKSPACE_TABS = \['staff_home', 'staff_settings'\] as const;/);
-  assert.ok(!/'my_hr'/.test(workspace.slice(workspace.indexOf('WORKSPACE_TABS'), workspace.indexOf('WORKSPACE_TABS') + 200)),
-    'my_hr is still a section inside the personal page');
-  // It renders on its own, and setActiveTab pushes /dashboard/<tab>.
-  assert.match(dashboard, /activeTab === 'my_hr' && currentStaff && <DashboardMyHr/);
+  // «خلي الملف الشخصي والملف الوظيفي صفحه واحدة ... وبداخلها تابات مختلفه»:
+  // both keys open the one page, and my_hr opens it on the job file.
+  assert.match(tabs, /export const PROFILE_TABS = \['staff_home', 'staff_settings', 'my_hr'\] as const;/);
+  assert.match(page, /useState<Section>\(activeTab === 'my_hr' \? 'job'/);
+  assert.match(dashboard, /\{isProfileTab\(activeTab\) && currentStaff && \(/);
+  assert.match(dashboard, /<MyProfilePage/);
+  assert.ok(!/DashboardMyHr|DashboardMyWorkspace/.test(dashboard), 'the two old pages still render');
   assert.match(dashboard, /navigate\(`\/dashboard\/\$\{urlForTab\(tab\)\}`\)/);
   // And reachable: it is the employee's own file, so it names no permission at
   // all. It used to ask for view_dashboard, which an employee whose grid had
@@ -100,34 +102,20 @@ test('ملفي الوظيفي is its own tab with its own URL', () => {
   assert.match(codeOnly(read('admin/pages/dashboard/dashboardShared.tsx')), /my_hr:\s*null/);
 });
 
-test('the personal page is one page, not a sub-nav', () => {
-  const workspace = codeOnly(read('admin/pages/dashboard/DashboardMyWorkspace.tsx'));
-  // One destination, and one set of chrome around it.
-  //
-  // This used to hold that both panels render together, which fixed the split
-  // across two destinations and created a worse one: «شغل النهاردة» drew a
-  // greeting, an avatar and a card, then the profile panel drew a second
-  // greeting, a second avatar and its own tab bar halfway down the page. Two
-  // pages stacked, reported as «صفحتين ركبوا علي بعض» with «تابات بتظهر تحت».
-  //
-  // So both panels still answer here — nothing moved to another URL — and the
-  // page owns the heading and the tabs, asking the profile panel for one
-  // section at a time.
-  assert.match(workspace, /<StaffHomeTab \{\.\.\.\(staffHomeProps as any\)\} hideHeader \/>/);
-  assert.match(workspace, /<DashboardStaffSettingsPanel[\s\S]{0,200}section=\{/);
-  const panel = codeOnly(read('admin/pages/dashboard/DashboardStaffSettingsPanel.tsx'));
-  assert.match(panel, /const ownChrome = !section;/,
-    'the panel draws its own greeting and tab bar even when the page has drawn them');
-  // And the role bars call it what it is.
+test('the personal page owns one heading and one tab bar, and every bar opens it from one icon', () => {
+  const page = codeOnly(read('admin/pages/dashboard/my-profile/MyProfilePage.tsx'));
+  // One set of chrome: «شغل النهاردة» is a tab of the page with its own header
+  // off, not a second page stacked under the first («صفحتين ركبوا علي بعض»).
+  assert.match(page, /<StaffHomeTab [\s\S]{0,300}?hideHeader \/>/);
+  for (const tab of ['طلباتي', 'ملفي الوظيفي', 'مراسلاتي', 'الإعدادات']) assert.ok(page.includes(`label: '${tab}'`), tab);
+  // «خليها ايقونه صغيره بمتثل الملف الشخصي علي الشمال زي الموجود في حساب
+  // خلود ويبقي كل الحسابات بنفس الايقونات»: the role bars lost their two text
+  // tabs and every bar — the admin's and each role's — draws the same icon.
   const nav = codeOnly(read('admin/pages/dashboard/DashboardNavigation.tsx'));
-  assert.ok(!nav.includes("label: 'مساحتي'"), 'the bars still say مساحتي');
-  // The top-bar icon too: one string-replace attempt on that block matched
-  // nothing and said nothing, so the old tooltip survived a whole deploy.
-  assert.ok(!nav.includes('title="مساحتي'), 'the workspace icon still calls itself مساحتي');
-  assert.match(nav, /title="ملفي الشخصي"/);
-  assert.match(nav, /title="ملفي الوظيفي"/);
-  assert.match(nav, /\{ key: 'staff_home', label: 'ملفي الشخصي'/);
-  assert.match(nav, /\{ key: 'my_hr', label: 'ملفي الوظيفي'/);
+  assert.ok(!nav.includes("label: 'مساحتي'") && !nav.includes('title="مساحتي'), 'the bars still say مساحتي');
+  assert.ok(!/\{ key: '(staff_home|my_hr)', label:/.test(nav), 'a role bar still has the profile as text tabs');
+  assert.match(nav, /title="ملفي" aria-label="ملفي"/);
+  assert.equal((nav.match(/<ProfileIconButton /g) || []).length, 2, 'the admin bar and the role bar each draw the icon once');
 });
 
 test('the online screen holds online clients, and says which market each is in', () => {

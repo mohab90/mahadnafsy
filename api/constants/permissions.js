@@ -206,7 +206,12 @@ const ROLE_PERMS = Object.freeze({
     // leadAccess.js narrows every lead query to the leads of customers assigned
     // to them. A collection officer looking up the original record of a client
     // they are chasing is the whole point; they do not get the pipeline.
-    'view_leads',
+    //
+    // manage_leads (28 Sep): the desk hands the collection team leads from the
+    // remaining data and they add their own, so they work leads the way a rep
+    // does — their own only (leadAccess.js), and none of the desk's
+    // distribution tools, which refuse the role by name.
+    'view_leads', 'manage_leads',
     'view_subscribers', 'manage_subscribers', 'export_subscribers',
     'view_orders', 'manage_orders', 'manage_payments', 'approve_refunds',
     'view_financial', 'manage_financial',

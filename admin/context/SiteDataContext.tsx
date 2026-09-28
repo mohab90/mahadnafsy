@@ -491,13 +491,18 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // It was loaded "for all users" and the route has always required that
     // permission, so for every other account it was a 403 on every page load:
     // the single most refused request in the panel, measured across six roles.
+    //
+    // Only the community waits on it. This returned early for everyone else,
+    // and the catalogue load below sat after the return: no employee but an
+    // admin ever fetched the courses, so their panel named every course from
+    // whatever this browser had cached — or the demo seed. Wafaa's clients read
+    // «دبلومة العلاج النفسي» for courses they never bought.
     const canReadCommunity = isAdmin
       || (Array.isArray(authUser?.permissions) && authUser.permissions.includes('view_community'))
       || authUser?.permissions === '*';
-    if (!canReadCommunity) return;
 
     // Deferred 300ms to let critical auth/catalog load first.
-    setTimeout(() => {
+    if (canReadCommunity) setTimeout(() => {
       Promise.allSettled([
         mysqlCatalog.listCommunityPosts(),
         mysqlCatalog.listCommunityLibrary(),

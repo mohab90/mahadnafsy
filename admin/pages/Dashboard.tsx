@@ -36,7 +36,6 @@ import { useContentEditorDrafts } from './dashboard/hooks/useContentEditorDrafts
 import { useLeadFilters } from './dashboard/useLeadFilters';
 import { useSubscriberFilters } from './dashboard/useSubscriberFilters';
 import { useSubscriberModals } from './dashboard/hooks/useSubscriberModals';
-import { useStaffHrState } from './dashboard/hooks/useStaffHrState';
 import { useOrdersFinanceState } from './dashboard/hooks/useOrdersFinanceState';
 import { useLeadCrmTabState } from './dashboard/hooks/useLeadCrmTabState';
 import { exportOrdersCsv } from './dashboard/dashboardExports';
@@ -50,9 +49,10 @@ import {
   DashboardGrowthOpsTabs,  DashboardOnlineManagerPanels,
   DashboardQuickBooking,
   DashboardSaasOpsTabs,
+  MyProfilePage,
   OverviewTab,
 } from './dashboard/lazyDashboardComponents';
-import { DashboardMyWorkspace, DashboardMyHr, isWorkspaceTab } from './dashboard/DashboardMyWorkspace';
+import { isProfileTab } from './dashboard/my-profile/profileTabs';
 import { tabForUrl, urlForTab, urlToTabAlias } from './dashboard/tabUrlAliases';
 import { useDashboardBadges } from './dashboard/useDashboardBadges';
 import { useNotificationsBell } from './dashboard/useNotificationsBell';
@@ -223,29 +223,6 @@ const Dashboard: React.FC = () => {
   const [daqqiSubSearch, setDaqqiSubSearch] = useState('');
   const [daqqiAccDateFrom, setDaqqiAccDateFrom] = useState('');
   const [daqqiAccDateTo, setDaqqiAccDateTo] = useState('');
-  const {
-    staffWaTemplates, setStaffWaTemplates,
-    staffWaTemplateEdit, setStaffWaTemplateEdit,
-    staffContactTags, setStaffContactTags,
-    staffNewTagInput, setStaffNewTagInput,
-    staffSettingsDraft, setStaffSettingsDraft,
-    staffSettingsSaving, setStaffSettingsSaving,
-    myHrData, setMyHrData,
-    loadingMyHr, setLoadingMyHr,
-    myAdvances, setMyAdvances,
-    myDisciplinary, setMyDisciplinary,
-    showAdvanceForm, setShowAdvanceForm,
-    advanceDraft, setAdvanceDraft,
-    submittingAdvance, setSubmittingAdvance,
-    showMyLeaveFormProfile, setShowMyLeaveFormProfile,
-    myLeaveFormProfile, setMyLeaveFormProfile,
-    submittingMyLeaveProfile, setSubmittingMyLeaveProfile,
-    
-    
-    
-    
-    setStaffProfileModalId,
-  } = useStaffHrState();
   const [subCsDistributing, setSubCsDistributing] = useState(false);
   // Daqqi old-data distribution
   const [daqqiOldDistribPlan, setDaqqiOldDistribPlan] = useState<{staffId:string;count:string}[]>([{staffId:'',count:''}]);
@@ -449,26 +426,6 @@ const Dashboard: React.FC = () => {
     // depending on it would re-enter on the navigation it just performed.
     // currentStaff is keyed by id for the usual reason — the object is replaced
     // on every context refresh.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, currentStaff?.id]);
-
-  // -- Fetch HR self-service data when profile tab is active -----------------
-  useEffect(() => {
-    if (activeTab !== 'staff_settings' || !currentStaff) return;
-    setLoadingMyHr(true);
-    Promise.all([
-      fetch('/api/staff/me/hr', { credentials: 'include', headers: adminAuthHeaders() }).then(r => r.json()).catch(() => null),
-      fetch('/api/staff/me/advances', { credentials: 'include', headers: adminAuthHeaders() }).then(r => r.json()).catch(() => []),
-      fetch('/api/staff/me/disciplinary', { credentials: 'include', headers: adminAuthHeaders() }).then(r => r.json()).catch(() => []),
-    ]).then(([hrData, advances, disciplinary]) => {
-      if (hrData && !hrData.error) setMyHrData(hrData);
-      if (Array.isArray(advances)) setMyAdvances(advances);
-      if (Array.isArray(disciplinary)) setMyDisciplinary(disciplinary);
-    }).finally(() => setLoadingMyHr(false));
-    // Fetches the staff member's own HR record when they open the profile tab.
-    // Keyed on which staff member, not the object: the rest are setters this
-    // effect calls, and re-running on every context refresh would re-issue three
-    // HR requests for data that has not changed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, currentStaff?.id]);
 
@@ -1077,7 +1034,6 @@ const Dashboard: React.FC = () => {
                   salesOwnDaqqiRounds={salesOwnDaqqiRounds}
                   isReceptionDaqqi={isReceptionDaqqi}
                   leadsSalesTargets={leadsSalesTargets}
-                  setStaffProfileModalId={setStaffProfileModalId}
                 />
               </Suspense>
             )}
@@ -1114,71 +1070,23 @@ const Dashboard: React.FC = () => {
               </Suspense>
             )}
 
-            {/* ---- ملفي الشخصي: the employee's own numbers and their own
-                 details, one page. ملفي الوظيفي is separate, below. ---- */}
-            {isWorkspaceTab(activeTab) && currentStaff && (
+            {/* ---- ملفي: the person signed in — one page, every account. ---- */}
+            {isProfileTab(activeTab) && currentStaff && (
               <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" /></div>}>
-                <DashboardMyWorkspace
+                <MyProfilePage
                   activeTab={activeTab}
-                  setActiveTab={setActiveTabState}
-                  staffHomeProps={{
-                    staff: currentStaff,
-                    currentStaff,
-                    leads: usesStaffScopedData ? salesOwnLeads : leads,
-                    subscribers: usesStaffScopedData ? salesOwnSubscribers : subscribers,
-                    notify,
-                    onNavigate: setActiveTabState,
-                  }}
-                  staffSettingsProps={{
-                    currentStaff,
-                    salesOwnSubscribers,
-                    staffSettingsDraft,
-                    setStaffSettingsDraft,
-                    staffSettingsSaving,
-                    setStaffSettingsSaving,
-                    notify,
-                    loadingMyHr,
-                    myHrData,
-                    setMyHrData,
-                    showMyLeaveFormProfile,
-                    setShowMyLeaveFormProfile,
-                    myLeaveFormProfile,
-                    setMyLeaveFormProfile,
-                    submittingMyLeaveProfile,
-                    setSubmittingMyLeaveProfile,
-                    showAdvanceForm,
-                    setShowAdvanceForm,
-                    advanceDraft,
-                    setAdvanceDraft,
-                    submittingAdvance,
-                    setSubmittingAdvance,
-                    myAdvances,
-                    setMyAdvances,
-                    myDisciplinary,
-                    setMyDisciplinary,
-                    staffWaTemplateEdit,
-                    setStaffWaTemplateEdit,
-                    staffWaTemplates,
-                    setStaffWaTemplates,
-                    staffContactTags,
-                    setStaffContactTags,
-                    staffNewTagInput,
-                    setStaffNewTagInput,
-                  }}
+                  staff={currentStaff}
+                  leads={usesStaffScopedData ? salesOwnLeads : leads}
+                  subscribers={usesStaffScopedData ? salesOwnSubscribers : subscribers}
+                  notify={notify}
+                  onNavigate={setActiveTabState}
                 />
               </Suspense>
             )}
 
-            {/* The workspace needs a staff record, and the owner account has a
-                users row without one — so «مساحتي» rendered nothing at all:
-                no message, no spinner, an empty page. Three tabs behaved that
-                way. A screen that cannot draw has to say why. */}
-            {/* ---- ملفي الوظيفي: contract, leave and payroll. Its own tab and
-                 its own URL — a different subject from the page above, with a
-                 different audience. ---- */}
-            {activeTab === 'my_hr' && currentStaff && <DashboardMyHr notify={notify} />}
-
-            {(isWorkspaceTab(activeTab) || activeTab === 'my_hr') && !currentStaff && (
+            {/* The page needs a staff record, and the owner account has a users
+                row without one. A screen that cannot draw has to say why. */}
+            {isProfileTab(activeTab) && !currentStaff && (
               <div className="mx-auto max-w-md rounded-2xl border border-gray-200 bg-white p-8 text-center">
                 <h3 className="mb-2 text-base font-bold text-gray-900">صفحات الموظف غير متاحة لحسابك</h3>
                 <p className="text-sm leading-relaxed text-gray-500">
@@ -1193,7 +1101,10 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      <Suspense fallback={null}>
+      {/* Booking is recording money, so it is for whoever may: the button sat
+          on every account — HR, instructors — and opened a form the server
+          then refused with «Permission denied: manage_payments». */}
+      {(isAdmin || hasPermission('manage_payments')) && <Suspense fallback={null}>
         <DashboardQuickBooking
           open={quickBookOpen}
           search={quickBookSearch}
@@ -1207,7 +1118,7 @@ const Dashboard: React.FC = () => {
           setSubPayDraft={setSubPayDraft}
           navigate={navigate}
         />
-      </Suspense>
+      </Suspense>}
 
     </div>
     <DashboardPaymentOverlays

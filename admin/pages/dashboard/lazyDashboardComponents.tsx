@@ -12,4 +12,4 @@ export const DashboardGrowthOpsTabs = React.lazy(() => import('./DashboardGrowth
 export const DashboardOnlineManagerPanels = React.lazy(() => import('./DashboardOnlineManagerPanels').then(module => ({ default: module.DashboardOnlineManagerPanels })));
 export const DashboardQuickBooking = React.lazy(() => import('./DashboardQuickBooking').then(module => ({ default: module.DashboardQuickBooking })));
 export const DashboardSaasOpsTabs = React.lazy(() => import('./DashboardSaasOpsTabs').then(module => ({ default: module.DashboardSaasOpsTabs })));
-export const DashboardStaffSettingsPanel = React.lazy(() => import('./DashboardStaffSettingsPanel').then(module => ({ default: module.DashboardStaffSettingsPanel })));
+export const MyProfilePage = React.lazy(() => import('./my-profile/MyProfilePage'));

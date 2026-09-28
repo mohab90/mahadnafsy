@@ -156,11 +156,22 @@ export default function OnlineClientsTab({
   const [daqqiReceptionFilter, setDaqqiReceptionFilter] = useState('');
   // One draft for the shared booking screen. This was a hand-rolled object of
   // twelve fields — a third spelling of the same form.
-  const [newClientDraft, setNewClientDraft] = useState<PaymentDraft>(blankPaymentDraft({ branch: 'DAQQI' }));
+  // A collection officer's new customer is a booking the manager reviews: the
+  // same booking screen, and nothing is added until the transfer is confirmed.
+  // Their customers are online ones, so the draft starts there, not at Daqqi.
+  const isCollectionStaff = String(currentStaff?.role || '').toLowerCase() === 'collection';
+  const newClientBranch = isCollectionStaff ? 'ONLINE_EGYPT' : 'DAQQI';
+  const [newClientDraft, setNewClientDraft] = useState<PaymentDraft>(blankPaymentDraft({ branch: newClientBranch }));
   // Creating the customer and recording the money in one place, through the
   // endpoint that journals it. This screen used to post the payment itself and
   // the Daqqi desk wrote it onto the subscriber record — two spellings, one of
   // which never reached the books.
+  const handleNewCollectionClient = async (draft: PaymentDraft) => {
+    const result = await createClientWithPayment(draft, { branch: draft.branch || 'ONLINE_EGYPT', source: 'staff' });
+    notify('info', result.pendingReview
+      ? `اتبعت حجز ${(draft.name || '').trim()} للمسئول — هيتضاف بعد ما يراجع التحويل ويعتمده`
+      : `✅ تم إضافة ${(draft.name || '').trim()}`);
+  };
   const handleNewDaqqiClient = async (draft: PaymentDraft) => {
     const result = await createClientWithPayment(draft, { branch: draft.branch || 'DAQQI', source: 'reception' });
     const fresh = await mysqlAdmin.listAllSubscribers();
@@ -411,6 +422,7 @@ export default function OnlineClientsTab({
                     setCollOnlinePage={setCollOnlinePage}
                     filtered={filtered}
                     isOnlineManager={isOnlineManager}
+                    isCollection={isCollectionStaff}
                     isDaqqiManager={isDaqqiManager}
                     isAdmin={isAdmin}
                     setOmNewSubOpen={setOmNewSubOpen}
@@ -634,7 +646,16 @@ export default function OnlineClientsTab({
                     const pmList: string[] = paymentBoxes;
                     return (
                     <>
-                      {isDaqqiClientsTab ? (
+                      {isCollectionStaff && !isDaqqiClientsTab ? (
+                        <PaymentModal
+                          mode="new"
+                          subject={{ id: '', name: '' }}
+                          draft={newClientDraft}
+                          setDraft={setNewClientDraft}
+                          onSubmit={handleNewCollectionClient}
+                          onClose={() => { setOmNewSubOpen(false); setNewClientDraft(blankPaymentDraft({ branch: newClientBranch })); }}
+                        />
+                      ) : isDaqqiClientsTab ? (
                         /* عميل دقي جديد — نفس شاشة الحجز والدفع المستخدمة في كل مكان.
                            كانت نسخة مكتوبة هنا بحقولها الخاصة، وتوأمها في مكتب الدقي. */
                         <PaymentModal
@@ -643,7 +664,7 @@ export default function OnlineClientsTab({
                           draft={newClientDraft}
                           setDraft={setNewClientDraft}
                           onSubmit={handleNewDaqqiClient}
-                          onClose={() => { setOmNewSubOpen(false); setNewClientDraft(blankPaymentDraft({ branch: 'DAQQI' })); }}
+                          onClose={() => { setOmNewSubOpen(false); setNewClientDraft(blankPaymentDraft({ branch: newClientBranch })); }}
                         />
                       ) : (
                       /* مشترك أونلاين جديد — إنشاء حساب دخول:

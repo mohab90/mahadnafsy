@@ -192,6 +192,9 @@ router.put('/api/admin/hr/advances/:advId/status', requireAuth, requireAdminOrSt
     });
     await conn.commit();
     transactionStarted = false;
+    createNotification('hr', status === 'APPROVED' ? 'اتوافق على طلب السلفة' : 'اترفض طلب السلفة',
+      `${Number(row.amount).toLocaleString('en-US')} ${row.currency}${status === 'APPROVED' && nextMonth ? ` — تتخصم من مرتب ${nextMonth}/${nextYear}` : ''}`,
+      { advance_id: row.id, tab: 'staff_home' }, req.tenantId, advance.staff_id).catch(() => {});
     res.json(row);
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
@@ -662,6 +665,10 @@ router.post('/api/staff/me/advances', requireAuth, async (req, res) => {
     );
     await conn.commit();
     transactionStarted = false;
+    // HR heard about a leave request and nothing at all about an advance.
+    createNotification('hr', 'طلب سلفة',
+      `${staff.name || 'موظف'} — ${Number(amount).toLocaleString('en-US')} ${normalizedCurrency}`,
+      { advance_id: id, staff_id: staff.id, tab: 'hr' }, req.tenantId).catch(() => {});
     res.json(row);
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});

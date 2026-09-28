@@ -29,6 +29,11 @@ export type NewClientResult = {
   approvalRequired: boolean;
   /** True when a payment was recorded; false when the customer was only created. */
   paid: boolean;
+  /**
+   * Nothing was created: a collection account's new customer waits for the
+   * manager to confirm the transfer (api/routes/subscriber-payments.js).
+   */
+  pendingReview?: boolean;
 };
 
 export async function createClientWithPayment(
@@ -68,7 +73,7 @@ export async function createClientWithPayment(
 
   const isBundle = draft.courseId.startsWith('bundle:');
   const result = await mysqlAdmin.adminPost<{
-    ok: boolean; subscriberId: string; approvalRequired?: boolean;
+    ok: boolean; subscriberId: string; approvalRequired?: boolean; status?: string;
   }>('/admin/subscriber-payments', {
     subscriber,
     payment: {
@@ -92,5 +97,6 @@ export async function createClientWithPayment(
     subscriberId: result?.subscriberId,
     approvalRequired: !!result?.approvalRequired,
     paid: true,
+    pendingReview: result?.status === 'pending_review',
   };
 }

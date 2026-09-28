@@ -26,9 +26,9 @@ test('rejects an unknown leave type with a 400', () => {
 
 test('every declared leave type is accepted by the type guard', () => {
   for (const t of LEAVE_TYPES) {
-    // PERMISSION is the one type a multi-day range is wrong for — see below —
-    // so it is exercised on a single day. The rest must not throw on a range.
-    const [from, to] = t === 'PERMISSION' ? [THU, THU] : [THU, MON];
+    // The permissions are part of one day — see below — so they are exercised
+    // on a single day. The rest must not throw on a range.
+    const [from, to] = ['PERMISSION', 'LATE_PERMIT', 'EARLY_LEAVE'].includes(t) ? [THU, THU] : [THU, MON];
     assert.doesNotThrow(() => calculateLeaveDays(from, to, t), t);
   }
 });
@@ -94,4 +94,17 @@ test('default policy keeps payroll-relevant constants intact', () => {
   assert.equal(DEFAULT_POLICY.workday_minutes, 480);
   assert.equal(DEFAULT_POLICY.overtime_multiplier, 1.5);
   assert.deepEqual(DEFAULT_POLICY.weekend_days_json, [5, 6]);
+});
+
+// «اذن تاخير صباحي او مسائي»: an hour off one day, which the request has to name.
+test('a morning or evening permission is one day, costs no balance, and names its hours', () => {
+  const { permitWindow } = require('../lib/hrPolicy');
+  assert.equal(calculateLeaveDays(THU, THU, 'LATE_PERMIT'), 0);
+  assert.equal(calculateLeaveDays(THU, THU, 'EARLY_LEAVE'), 0);
+  assert.equal(caught(() => calculateLeaveDays(THU, MON, 'LATE_PERMIT')).statusCode, 400);
+  assert.deepEqual(permitWindow('LATE_PERMIT', '09:00', '11:30'), { startTime: '09:00', endTime: '11:30' });
+  assert.equal(caught(() => permitWindow('EARLY_LEAVE', '', '')).statusCode, 400);
+  assert.equal(caught(() => permitWindow('EARLY_LEAVE', '17:00', '15:00')).statusCode, 400);
+  assert.equal(caught(() => permitWindow('LATE_PERMIT', '9:00', '25:00')).statusCode, 400);
+  assert.deepEqual(permitWindow('ANNUAL', '09:00', '10:00'), { startTime: null, endTime: null });
 });

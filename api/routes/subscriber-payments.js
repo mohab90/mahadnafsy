@@ -30,6 +30,15 @@ const { leadScope } = require('../lib/leadAccess');
 const { isRealPhone } = require('../lib/phoneNumber');
 const { VALID_BRANCHES } = require('../constants/permissions');
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../lib/paymentEntitlementAccess');
+const { isCashMethod, linkTransfer } = require('../lib/incomingTransfers');
+
+/**
+ * Money recorded from a collection account is the manager's to confirm —
+ * «اي حجز لازم ميسمعش لحد ما المسئول يتاكد من المدفوعات ويربطه بتحويل» —
+ * whatever the officer's grid says. Two collection officers on production hold
+ * manage_financial, which settled their own bookings the moment they typed them.
+ */
+const reviewedByManager = req => !req.isSuperAdmin && String(req.staffRecord?.role || '').toLowerCase() === 'collection';
 
 const TRANSIENT_TX_ERRORS = new Set(['ER_LOCK_DEADLOCK', 'ER_LOCK_WAIT_TIMEOUT']);
 const transactionBackoff = attempt => new Promise(resolve =>
@@ -76,7 +85,13 @@ router.get('/api/admin/payment-boxes', requireAuth, requireAdminOrStaff, require
   }
 });
 
-router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, requirePermission('manage_payments'), async (req, res) => {
+/**
+ * Record a payment — and, for a lead or a draft with no customer yet, the
+ * customer. Also the approval of a collection account's new customer
+ * (req.subscriberRequest, set by the approve route below): the same booking,
+ * as the approver, in one transaction with the request's own status.
+ */
+async function recordSubscriberPayment(req, res) {
   let conn;
   try {
     let { subscriber_id } = req.body;
@@ -100,9 +115,10 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
       return res.status(400).json({ error: 'New manual payments must be paid or pending' });
     }
     // Recording and approving money are separate responsibilities.
-    const canApprovePayment = Boolean(
+    const canApprovePayment = !reviewedByManager(req) && Boolean(
       req.isSuperAdmin || (req.staffRecord && hasPermission(req.staffRecord, 'manage_financial'))
     );
+    const approvingRequest = req.subscriberRequest || null;
     const storedStatus = requestedStatus === 'paid' && !canApprovePayment ? 'pending' : requestedStatus;
     const scope = resolveFinancialScope(req, {
       requestedBranch: payment.branch || req.body.branch || null,
@@ -409,6 +425,31 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
       if (!bundle) return res.status(400).json({ error: 'Bundle does not belong to tenant' });
     }
 
+    // A new customer from a collection account is a request, not a customer:
+    // «لا يضاف حتي يراجع تحويله ومدفوعاته من حساب المسئول». Everything above
+    // has checked it — the phone, the course, the amount — so what waits for
+    // the manager is a booking that will go through as it is.
+    if (reviewedByManager(req) && (createFromLead || createFromDraft)) {
+      const requestId = uuidv4();
+      const { password: _password, ...draftWithoutSecret } = subscriberDraft || {};
+      const body = { lead_id: leadId || null, subscriber: draftWithoutSecret, payment: { ...payment, id: undefined } };
+      await pool.query(
+        `INSERT INTO subscriber_requests
+           (id, tenant_id, requested_by, requested_by_name, lead_id, name, phone, email, amount, currency, body_json)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        [requestId, paymentTenantId, req.staffRecord.id, req.staffRecord.name || null, leadId || null,
+          sanitize(subRow.name || '', 300), subRow.phone || null, subRow.email || null,
+          paymentAmount, paymentCurrency, JSON.stringify(body)]
+      );
+      createNotification('payment', '🆕 عميل جديد مستني مراجعتك',
+        `${req.staffRecord.name || 'مسئول تحصيل'} — ${sanitize(subRow.name || '', 120)} · ${paymentAmount} ${paymentCurrency}`,
+        { requestId, tab: 'orders' }, paymentTenantId).catch(() => {});
+      return res.status(202).json({
+        ok: true, requestId, status: 'pending_review', approvalRequired: true, subscriberCreated: false,
+        message: 'اتبعت للمسئول — العميل هيتضاف بعد ما يراجع التحويل ويعتمده',
+      });
+    }
+
     // ── Begin atomic transaction ──────────────────────────────────────────────
     for (let transactionAttempt = 1; ; transactionAttempt += 1) {
       let paymentLockName = null;
@@ -487,9 +528,11 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
         error.statusCode = 409;
         throw error;
       }
-      const rep = await pickCollectionOfficer(conn, paymentTenantId, {
-        market: subscriberMarket({ latestCurrency: paymentCurrency, branch: subRow.branch }),
-      });
+      const rep = approvingRequest
+        ? { id: approvingRequest.requested_by, name: approvingRequest.requested_by_name }
+        : await pickCollectionOfficer(conn, paymentTenantId, {
+          market: subscriberMarket({ latestCurrency: paymentCurrency, branch: subRow.branch }),
+        });
       const clientCode = await getNextClientCode(conn);
       subRow.assigned_cs_id = rep?.id || null;
       subRow.assigned_cs_name = rep?.name || null;
@@ -557,8 +600,8 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
           paymentBranchId = subRow.branch_id || branchIdForBranch(paymentBranch);
         }
       } else {
-        let csId = lockedLead.assigned_cs_id || null;
-        let csName = lockedLead.assigned_cs_name || null;
+        let csId = approvingRequest?.requested_by || lockedLead.assigned_cs_id || null;
+        let csName = approvingRequest ? approvingRequest.requested_by_name : (lockedLead.assigned_cs_name || null);
         if (!csId) {
           const rep = await pickCollectionOfficer(conn, paymentTenantId, {
             market: subscriberMarket({ latestCurrency: paymentCurrency, branch: lockedLead.branch }),
@@ -771,6 +814,24 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
       id, 'create', null, storedStatus, paymentAmount, subscriber_id,
       req.user?.email || req.user?.uid, paymentTenantId, conn, true,
     );
+    if (approvingRequest) {
+      // Tied to the transfer that brought the money, and the request closed in
+      // the same transaction — two managers approving at once get one customer.
+      if (req.linkTransfer) await linkTransfer(conn, {
+        tenantId: paymentTenantId, paymentId: id, link: req.linkTransfer,
+        actor: { id: req.staffRecord?.id, name: req.staffRecord?.name || req.user?.email },
+      });
+      const [closed] = await conn.query(
+        `UPDATE subscriber_requests SET status='approved', subscriber_id=?, payment_id=?, reviewed_by=?,
+            reviewed_by_name=?, reviewed_at=NOW()
+          WHERE tenant_id=? AND id=? AND status='pending'`,
+        [subscriber_id, id, req.staffRecord?.id || null, req.staffRecord?.name || req.user?.email || null,
+          paymentTenantId, approvingRequest.id]
+      );
+      if (!closed.affectedRows) {
+        throw Object.assign(new Error('الطلب ده اتراجع بالفعل'), { statusCode: 409 });
+      }
+    }
         await conn.commit();
         await conn.query('SELECT RELEASE_LOCK(?)', [paymentLockName]).catch(() => {});
         conn.release();
@@ -794,6 +855,16 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
     }
     // End transaction
 
+    if (approvingRequest) {
+      createNotification('payment', '✅ اتعتمد العميل الجديد', `${subRow.name || 'عميل'} · ${paymentAmount} ${paymentCurrency}`,
+        { subscriberId: subscriber_id, tab: 'online_clients' }, req.tenantId, approvingRequest.requested_by).catch(() => {});
+    }
+    // A collection officer's payment waits for the manager — say so where they look.
+    if (!isPaid && reviewedByManager(req)) {
+      createNotification('payment', '⏳ دفعة من التحصيل مستنية مراجعتك',
+        `${req.staffRecord?.name || 'مسئول تحصيل'} — ${subRow.name || 'عميل'} · ${paymentAmount} ${paymentCurrency}`,
+        { subscriberId: subscriber_id, paymentId: id, tab: 'orders' }, req.tenantId).catch(() => {});
+    }
     // Notify admins of new payment
     if (isPaid) {
       createNotification('payment', '💰 دفعة جديدة', `دفعة ${payment.amount} ${payment.currency || 'EGP'} من مشترك`, { subscriberId: subscriber_id, paymentId: id, amount: payment.amount }, req.tenantId).catch(() => {});
@@ -871,7 +942,105 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
     }
     res.status(e?.statusCode || 500).json({ error: e?.statusCode ? e.message : 'Internal server error' });
   }
+}
+
+router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, requirePermission('manage_payments'), recordSubscriberPayment);
+
+// ── New customers from collection accounts, waiting for the manager ─────────
+
+const requestRow = row => {
+  const body = (() => { try { return JSON.parse(row.body_json || '{}'); } catch { return {}; } })();
+  return {
+    id: row.id, status: row.status, name: row.name, phone: row.phone, email: row.email,
+    amount: Number(row.amount) || 0, currency: row.currency, leadId: row.lead_id,
+    requestedBy: row.requested_by, requestedByName: row.requested_by_name,
+    reviewNote: row.review_note, reviewedByName: row.reviewed_by_name, reviewedAt: row.reviewed_at,
+    subscriberId: row.subscriber_id, paymentId: row.payment_id, createdAt: row.created_at,
+    payment: {
+      courseId: body.payment?.courseId || null, bundleId: body.payment?.bundleId || null,
+      paymentMethod: body.payment?.paymentMethod || null, transactionId: body.payment?.transactionId || null,
+      fromAccountNumber: body.payment?.fromAccountNumber || null, date: body.payment?.date || body.payment?.at || null,
+      isInstallment: !!body.payment?.isInstallment, courseExpected: body.payment?.courseExpected ?? null,
+      note: body.payment?.note || null, paymentType: body.payment?.paymentType || null,
+    },
+  };
+};
+
+// The officer's own requests, with where each stands.
+router.get('/api/staff/subscriber-requests', requireAuth, requireAdminOrStaff, async (req, res) => {
+  try {
+    if (!req.staffRecord?.id) return res.json([]);
+    const [rows] = await pool.query(
+      `SELECT * FROM subscriber_requests WHERE tenant_id=? AND requested_by=? ORDER BY created_at DESC LIMIT 200`,
+      [req.tenantId, req.staffRecord.id]);
+    res.json(rows.map(requestRow));
+  } catch (e) { logger.error('[subscriber-requests/mine]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// The manager's queue.
+router.get('/api/admin/subscriber-requests', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+  try {
+    const status = ['pending', 'approved', 'rejected'].includes(String(req.query.status)) ? String(req.query.status) : null;
+    const [rows] = await pool.query(
+      `SELECT * FROM subscriber_requests WHERE tenant_id=?${status ? ' AND status=?' : ''}
+        ORDER BY (status='pending') DESC, created_at DESC LIMIT 300`,
+      status ? [req.tenantId, status] : [req.tenantId]);
+    res.json(rows.map(requestRow));
+  } catch (e) { logger.error('[subscriber-requests/list]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+const refuseReviewer = (req, request) => {
+  if (reviewedByManager(req)) return 'اعتماد حجوزات التحصيل شغل المسئول';
+  if (request && String(request.requested_by) === String(req.staffRecord?.id || '')) return 'مينفعش تعتمد طلب انت اللي سجلته';
+  return null;
+};
+
+// Approve: the booking goes through as the officer sent it, tied to the transfer.
+router.post('/api/admin/subscriber-requests/:id/approve', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+  try {
+    const [[request]] = await pool.query(
+      'SELECT * FROM subscriber_requests WHERE tenant_id=? AND id=? LIMIT 1', [req.tenantId, req.params.id]);
+    if (!request) return res.status(404).json({ error: 'الطلب مش موجود' });
+    if (request.status !== 'pending') return res.status(409).json({ error: 'الطلب ده اتراجع بالفعل' });
+    const refusal = refuseReviewer(req, request);
+    if (refusal) return res.status(403).json({ error: refusal });
+    const transfer = req.body?.transfer && typeof req.body.transfer === 'object' ? req.body.transfer : null;
+    const suppliedMethod = req.body?.paymentMethod;
+    const body = JSON.parse(request.body_json || '{}');
+    // Counted cash has no transfer to point at; every other box does.
+    if (!transfer && !isCashMethod(body.payment?.paymentMethod || suppliedMethod)) {
+      return res.status(400).json({ error: 'اربط الحجز بالتحويل اللي وصل قبل الاعتماد', code: 'TRANSFER_REQUIRED' });
+    }
+    // The money as the officer recorded it, credited to them; only the method
+    // may be filled in here, for a draft that reached review without one.
+    body.payment = {
+      ...(body.payment || {}), status: 'paid', staffId: request.requested_by,
+      paymentMethod: body.payment?.paymentMethod || suppliedMethod || undefined,
+    };
+    req.body = body;
+    req.subscriberRequest = request;
+    req.linkTransfer = transfer;
+    return recordSubscriberPayment(req, res);
+  } catch (e) { logger.error('[subscriber-requests/approve]', e.message); res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
+});
+
+router.post('/api/admin/subscriber-requests/:id/reject', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+  try {
+    const [[request]] = await pool.query(
+      'SELECT id, requested_by, status, name FROM subscriber_requests WHERE tenant_id=? AND id=? LIMIT 1', [req.tenantId, req.params.id]);
+    if (!request) return res.status(404).json({ error: 'الطلب مش موجود' });
+    const refusal = refuseReviewer(req, request);
+    if (refusal) return res.status(403).json({ error: refusal });
+    const note = sanitize(req.body?.note || '', 1000) || null;
+    const [result] = await pool.query(
+      `UPDATE subscriber_requests SET status='rejected', review_note=?, reviewed_by=?, reviewed_by_name=?, reviewed_at=NOW()
+        WHERE tenant_id=? AND id=? AND status='pending'`,
+      [note, req.staffRecord?.id || null, req.staffRecord?.name || req.user?.email || null, req.tenantId, request.id]);
+    if (!result.affectedRows) return res.status(409).json({ error: 'الطلب ده اتراجع بالفعل' });
+    createNotification('payment', 'اترفض حجز عميل جديد', `${request.name}${note ? ` — ${note}` : ''}`,
+      { tab: 'orders' }, req.tenantId, request.requested_by).catch(() => {});
+    res.json({ ok: true });
+  } catch (e) { logger.error('[subscriber-requests/reject]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
 
 module.exports = router;

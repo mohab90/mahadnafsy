@@ -490,7 +490,7 @@ test('operational admin tools are database-backed rather than browser demos', ()
   const webhooks = read('admin/pages/dashboard/tabs/WebhooksTab.tsx');
   const tasks = read('admin/pages/dashboard/tabs/TasksBoardTab.tsx');
   const onlineTeam = read('admin/pages/dashboard/tabs/OnlineTeamTab.tsx');
-  const staffSettings = read('admin/pages/dashboard/DashboardStaffSettingsPanel.tsx');
+  const staffSettings = read('admin/pages/dashboard/my-profile/MySettingsSection.tsx');
 
   assert.match(webhooks, /adminGet<WebhookConfig\[]>\('\/admin\/webhooks'\)/);
   assert.match(webhooks, /\/admin\/webhooks\/\$\{encodeURIComponent\(item\.id\)\}\/test/);

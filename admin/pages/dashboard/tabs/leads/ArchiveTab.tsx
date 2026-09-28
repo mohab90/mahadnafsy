@@ -8,6 +8,7 @@ import { LEAD_STATUS_CFG, crmStatusLabels } from './LeadSubcomponents';
 import { BRANCH_LABELS_AR, normalizeBranch, type BranchKey } from '../../../../constants/branches';
 import { courseBadgeLabel, matchCourseOrBundle, toRawCourse } from './leadCourseLabel';
 import { parseCsvRows, detectCsvDelimiter } from '../../../../../shared/csv';
+import { mysqlAdmin } from '../../../../lib/mysqlapi';
 
 /**
  * Header keys are compared with separators and case stripped, so
@@ -253,9 +254,13 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
   // Reassignment is a real need, so it stays available behind a switch rather
   // than being removed — what changes is that it is now deliberate.
   const [includeAssigned, setIncludeAssigned] = useState(false);
+  //
+  // The collection team is not in the main distribution; they get what is left
+  // — «في الداتا المتبقيه اوزعلهم منها» — so for them a lead with anybody on
+  // it, rep or officer, is already taken.
   const assignedAlready = (lead: typeof archiveLeads[number]) => (bulkAssignRole === 'sales'
     ? Boolean(lead.assignedSalesId)
-    : Boolean((lead as { assignedCollectionId?: string }).assignedCollectionId));
+    : Boolean(lead.assignedSalesId || lead.assignedCsId));
   const undistributed = includeAssigned ? archiveLeads : archiveLeads.filter(lead => !assignedAlready(lead));
   const alreadyCount = archiveLeads.length - archiveLeads.filter(lead => !assignedAlready(lead)).length;
   const filteredBulkLeads = bulkCourseFilter
@@ -271,9 +276,11 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
     : undistributed;
   const staffForAssign = staffMembers.filter(s => {
     const role = (s.role || '').toLowerCase();
+    // Only a collection officer can hold a collection lead — the server checks
+    // the role, so an admin in this list could only fail.
     return bulkAssignRole === 'sales'
       ? ['sales', 'admin'].includes(role)
-      : ['collection', 'admin'].includes(role);
+      : role === 'collection' && s.status !== 'inactive';
   });
 
   const doBulkAssign = async () => {
@@ -281,6 +288,22 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
     const staff = staffMembers.find(s => s.id === bulkAssignSrc);
     if (!staff) return;
     setBulkAssigning2(true);
+    if (bulkAssignRole === 'collection') {
+      // One request for the batch; the server skips whatever somebody took in
+      // the meantime and says how many.
+      try {
+        const result = await mysqlAdmin.adminPost<{ assigned: number; skipped: number }>('/admin/leads/assign-collection', {
+          leadIds: [...bulkSelectedLeadIds], staffId: staff.id, includeAssigned,
+          source: assignDest === 'main' ? mainSource : assignDest === 'archive' ? (archiveSource || defaultSource) : undefined,
+        });
+        setBulkSelectedLeadIds(new Set());
+        await reloadLeads();
+        notify('success', `اتوزع ${result.assigned} عميل على ${staff.name}${result.skipped ? ` — ${result.skipped} كانوا مع حد تاني` : ''}`);
+      } catch (error) {
+        notify('error', error instanceof Error ? error.message : 'تعذر التوزيع');
+      } finally { setBulkAssigning2(false); }
+      return;
+    }
     let done = 0;
     for (const lid of bulkSelectedLeadIds) {
       const lead = leads.find(l => l.id === lid);
@@ -291,11 +314,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
       const source = assignDest === 'main' ? mainSource
         : assignDest === 'archive' ? (archiveSource || defaultSource)
         : lead.source;
-      if (bulkAssignRole === 'sales') {
-        await updateLead({ ...lead, source, assignedSalesId: staff.id, assignedSalesName: staff.name });
-      } else {
-        await updateLead({ ...lead, source, assignedCollectionId: staff.id, assignedCollectionName: staff.name } as typeof lead);
-      }
+      await updateLead({ ...lead, source, assignedSalesId: staff.id, assignedSalesName: staff.name });
       done++;
     }
     setBulkAssigning2(false);
@@ -472,7 +491,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
             <label className="text-xs font-bold text-gray-600 mb-1 block">القسم</label>
             <select value={bulkAssignRole} onChange={e => setBulkAssignRole(e.target.value as 'sales' | 'collection')} className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
               <option value="sales">مبيعات</option>
-              <option value="collection">تحصيل</option>
+              <option value="collection">تحصيل — من الداتا المتبقية</option>
             </select>
           </div>
           <div>

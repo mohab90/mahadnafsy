@@ -564,7 +564,10 @@ router.get('/api/staff/leads', requireAuth, requireAdminOrStaff, requirePermissi
     // an explicit data_scope: that column exists precisely to describe a hybrid
     // job (an HR lead who also runs sales), and a role blocklist would silently
     // override the scope the admin deliberately set.
-    const noLeadsRoles = new Set(['collection', 'support', 'hr', 'accountant', 'trainer', 'instructor']);
+    // Collection is not on it any more: the desk distributes remaining data to
+    // the collection team and they add leads of their own, and they work them
+    // from the same «عملائي المحتملون» view a sales rep has.
+    const noLeadsRoles = new Set(['support', 'hr', 'accountant', 'trainer', 'instructor']);
     const scopedByHand = Boolean(normalizeDataScope(req.staffRecord?.data_scope));
     if (!isSuper && !scopedByHand && noLeadsRoles.has(role)) return res.json([]);
     if (scope === 'none') return res.json([]);
@@ -576,6 +579,12 @@ router.get('/api/staff/leads', requireAuth, requireAdminOrStaff, requirePermissi
       if (!staffId) return res.status(403).json({ error: 'Staff record required' });
       whereClause = 'hidden = 0 AND assigned_sales_id = ?';
       params.push(staffId);
+    }
+    // The same set lib/leadAccess.js gives every other lead route.
+    else if (scope === 'assigned_cs') {
+      if (!staffId) return res.status(403).json({ error: 'Staff record required' });
+      whereClause = `hidden = 0 AND (assigned_cs_id = ? OR id IN (SELECT lead_id FROM subscribers WHERE tenant_id=? AND assigned_cs_id=? AND lead_id IS NOT NULL))`;
+      params.push(staffId, req.tenantId, staffId);
     }
     // 'all' sees all leads; branch scopes see only their branch.
     else if (scope.startsWith('branch:')) {
@@ -605,6 +614,8 @@ router.get('/api/staff/leads', requireAuth, requireAdminOrStaff, requirePermissi
         interestLevel: r.interest_level || crm.interestLevel || 'medium',
         assignedSalesId: r.assigned_sales_id || null,
         assignedSalesName: r.assigned_sales_name || null,
+        assignedCsId: r.assigned_cs_id || null,
+        assignedCsName: r.assigned_cs_name || null,
         interestedCourseIds: tryJson(r.interested_course_ids_json, crm.interestedCourseIds || []),
         createdAt: r.created_at, updatedAt: r.updated_at,
         communications: Array.isArray(crm.communications) ? crm.communications : [],

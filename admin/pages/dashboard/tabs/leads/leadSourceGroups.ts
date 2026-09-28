@@ -48,7 +48,7 @@ export const TERMINAL_LEAD_STATUSES = new Set([
 ]);
 
 type PoolLead = {
-  hidden?: boolean; assignedSalesId?: string | null; source?: string | null;
+  hidden?: boolean; assignedSalesId?: string | null; assignedCsId?: string | null; source?: string | null;
   status?: string | null; branch?: string | null;
 };
 
@@ -62,9 +62,13 @@ type PoolLead = {
  * in «محلي جديد» as if it were waiting — though no distribution would ever hand
  * it out. And the badge, the counter above the table and the two tables each
  * counted their own version: 4, 3 and 2 for the same five leads.
+ *
+ * A lead handed to a collection officer from the remaining data has an owner
+ * too: it leaves the pool, so a sales distribution cannot give the same person
+ * to somebody else (api/routes/admin/leads.js reads assigned_cs_id the same way).
  */
 export const isUndistributedLead = (lead: PoolLead): boolean =>
-  !lead.hidden && !lead.assignedSalesId
+  !lead.hidden && !lead.assignedSalesId && !lead.assignedCsId
   && !isArchiveSource(lead.source)
   && !TERMINAL_LEAD_STATUSES.has(String(lead.status || '').trim().toLowerCase());
 

@@ -16,6 +16,7 @@ const { grantCourseEntitlement } = require('../../lib/entitlements');
 const { financialRecordMatches, resolveFinancialScope } = require('../../lib/financialScope');
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../../lib/paymentEntitlementAccess');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
+const { isCashMethod, linkTransfer, recordTransfer } = require('../../lib/incomingTransfers');
 
 // This is the only manual status transition endpoint for an existing payment.
 // Refunds are deliberately handled by the refund workflow because they require
@@ -84,6 +85,34 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
       return res.status(400).json({ error: 'لازم تحدد طريقة الدفع قبل ما تأكد السداد. من غيرها مش هيبقى معروف الفلوس وصلت إزاي.' });
     }
     if (becomingPaid) {
+      // Confirming money is somebody else's job than recording it. A collection
+      // officer approves nobody's — the manager does — and nobody approves a
+      // payment they recorded themselves.
+      const approverRole = String(req.staffRecord?.role || '').toLowerCase();
+      if (!req.isSuperAdmin && approverRole === 'collection') {
+        await conn.rollback(); transactionStarted = false;
+        return res.status(403).json({ error: 'اعتماد المدفوعات شغل المسئول', code: 'COLLECTION_CANNOT_APPROVE' });
+      }
+      if (!req.isSuperAdmin && payment.staff_id && String(payment.staff_id) === String(req.staffRecord?.id || '')) {
+        await conn.rollback(); transactionStarted = false;
+        return res.status(403).json({ error: 'مينفعش تعتمد دفعة انت اللي سجلتها', code: 'PAYMENT_SELF_APPROVAL' });
+      }
+      // A collection booking is confirmed against the transfer that brought
+      // it: «يتاكد من المدفوعات ويربطه بتحويل».
+      const [[recorder]] = payment.staff_id
+        ? await conn.query('SELECT role FROM staff WHERE tenant_id=? AND id=? LIMIT 1', [tenantId, payment.staff_id])
+        : [[null]];
+      const transfer = req.body?.transfer && typeof req.body.transfer === 'object' ? req.body.transfer : null;
+      if (String(recorder?.role || '').toLowerCase() === 'collection' && !transfer && !isCashMethod(settledMethod)) {
+        await conn.rollback(); transactionStarted = false;
+        return res.status(400).json({ error: 'اربط الدفعة بالتحويل اللي وصل قبل الاعتماد', code: 'TRANSFER_REQUIRED' });
+      }
+      if (transfer) {
+        await linkTransfer(conn, {
+          tenantId, paymentId: id, link: transfer,
+          actor: { id: req.staffRecord?.id, name: req.staffRecord?.name || req.user?.email },
+        });
+      }
       const rawAmount = Number(payment.amount) || 0;
       if (rawAmount <= 0) throw new Error('Paid payment must have a positive amount');
       const journalId = await postPaymentJournal({
@@ -236,6 +265,50 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
     res.status(statusCode).json({ error: statusCode < 500 ? error.message : 'Internal server error' });
   } finally {
     conn.release();
+  }
+});
+
+// ── Incoming transfers — what arrived, and which payment each one confirmed ──
+
+// The transfers on the ledger; ?unlinked=1 for the ones still free to confirm a payment.
+router.get('/api/admin/incoming-transfers', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+  try {
+    const unlinked = String(req.query.unlinked || '') === '1';
+    const [rows] = await pool.query(
+      `SELECT t.id, t.amount, t.currency, t.method, t.reference, t.sender_name, t.sender_phone, t.received_on,
+              t.note, t.recorded_by_name, t.payment_id, t.linked_at, t.created_at, s.name AS customer_name
+         FROM incoming_transfers t
+         LEFT JOIN payments p ON p.id=t.payment_id AND p.tenant_id=t.tenant_id
+         LEFT JOIN subscribers s ON s.id=p.subscriber_id AND s.tenant_id=t.tenant_id
+        WHERE t.tenant_id=?${unlinked ? ' AND t.payment_id IS NULL' : ''}
+        ORDER BY t.created_at DESC LIMIT 300`, [req.tenantId]);
+    res.json(rows.map(row => ({
+      id: row.id, amount: Number(row.amount) || 0, currency: row.currency, method: row.method, reference: row.reference,
+      senderName: row.sender_name, senderPhone: row.sender_phone, receivedOn: row.received_on, note: row.note,
+      recordedByName: row.recorded_by_name, paymentId: row.payment_id, linkedAt: row.linked_at,
+      customerName: row.customer_name || null, createdAt: row.created_at,
+    })));
+  } catch (error) {
+    logger.error('[incoming-transfers/list]', error.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Record a transfer as it arrived, before (or without) a payment to confirm.
+router.post('/api/admin/incoming-transfers', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+  try {
+    if (!req.isSuperAdmin && String(req.staffRecord?.role || '').toLowerCase() === 'collection') {
+      return res.status(403).json({ error: 'تسجيل التحويلات الواردة شغل المسئول' });
+    }
+    const id = await recordTransfer(pool, {
+      tenantId: req.tenantId, transfer: req.body || {},
+      actor: { id: req.staffRecord?.id, name: req.staffRecord?.name || req.user?.email },
+    });
+    res.json({ ok: true, id });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    if (statusCode >= 500) logger.error('[incoming-transfers/create]', error.message);
+    res.status(statusCode).json({ error: statusCode < 500 ? error.message : 'Internal server error' });
   }
 });
 

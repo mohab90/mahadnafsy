@@ -26,6 +26,8 @@ interface Props {
   setCollOnlinePage: (n: number) => void;
   filtered: SubscriberItem[];
   isOnlineManager: boolean;
+  /** A collection officer adds a customer as a booking the manager reviews. */
+  isCollection?: boolean;
   isDaqqiManager: boolean;
   isAdmin: boolean;
   setOmNewSubOpen: (v: boolean) => void;
@@ -56,7 +58,7 @@ const TERMINAL = ['finished', 'paused', 'refunded', 'refund_pending'];
 
 export function ViewTabsBar({
   isDaqqiClientsTab, allCombined, isIntlSub, marketOf, bookedInYear, collOnlineViewTab, setCollOnlineViewTab,
-  setCollOnlinePage, filtered, isOnlineManager, isDaqqiManager, isAdmin, setOmNewSubOpen, onOpenSectionTabs,
+  setCollOnlinePage, filtered, isOnlineManager, isCollection = false, isDaqqiManager, isAdmin, setOmNewSubOpen, onOpenSectionTabs,
   onOpenCollectionSettings, customTabsSlot, customTabOpen = false,
   daqqiSettingsOpen, setDaqqiSettingsOpen, collOnlineSelected, courses, bundles, staffMembers, housingMap,
   subCsDistributing, setSubCsDistributing, actionSubscribers, reloadSubscribers, notify,
@@ -172,7 +174,7 @@ export function ViewTabsBar({
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <span className="text-[10px] text-gray-400">{filtered.length} مطابق</span>
-          {(isOnlineManager || isDaqqiManager || isAdmin) && (
+          {(isOnlineManager || isDaqqiManager || isAdmin || isCollection) && (
             <button onClick={() => setOmNewSubOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition shadow-sm">
               <Plus size={12} /> مشترك جديد

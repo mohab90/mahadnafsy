@@ -44,7 +44,6 @@ export const LiveStreamsTab = lazy(() => import('./tabs/LiveStreamsTab'));
 export const MarketingHubTab = lazy(() => import('./tabs/MarketingHubTab'));
 export const MessagingAgentTab = lazy(() => import('./tabs/MessagingAgentTab'));
 export const MessagingHubTab = lazy(() => import('./tabs/MessagingHubTab'));
-export const MyHrTab = lazy(() => import('./tabs/MyHrTab'));
 export const EnpsDashboardTab = lazy(() => import('./tabs/EnpsDashboardTab'));
 export const OffboardingTab = lazy(() => import('./tabs/OffboardingTab'));
 export const FaqManagerTab = lazy(() => import('./tabs/FaqManagerTab'));

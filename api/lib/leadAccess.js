@@ -18,11 +18,15 @@ function leadScope({ tenantId, staffRecord, isSuperAdmin }, alias = 'l') {
   if (scope === 'assigned_sales') {
     return { scope, sql: ` AND ${alias}.assigned_sales_id=?`, params: [staffRecord.id], none: false };
   }
+  // A collection officer's leads: the ones handed to them from the remaining
+  // data (leads.assigned_cs_id — «اوزعلهم من الداتا المتبقية») and the lead
+  // behind every client they collect from. It was the second alone, so data
+  // distributed to the collection team reached nobody's screen.
   if (scope === 'assigned_cs') {
     return {
       scope,
-      sql: ` AND ${alias}.id IN (SELECT lead_id FROM subscribers WHERE tenant_id=? AND assigned_cs_id=? AND lead_id IS NOT NULL)`,
-      params: [tenantId, staffRecord.id],
+      sql: ` AND (${alias}.assigned_cs_id=? OR ${alias}.id IN (SELECT lead_id FROM subscribers WHERE tenant_id=? AND assigned_cs_id=? AND lead_id IS NOT NULL))`,
+      params: [staffRecord.id, tenantId, staffRecord.id],
       none: false,
     };
   }

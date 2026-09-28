@@ -55,8 +55,12 @@ const getJson = <T,>(url: string): Promise<T | null> =>
  *
  * Everything reads from /api/staff/me/*, which resolves the staff row from the
  * caller — so this needs no HR permission and cannot be pointed at a colleague.
+ *
+ * The profile page shows it in two tabs: `record` (achievements and targets,
+ * under أدائي) and `thread` (the messages and the resignation, under
+ * مراسلاتي). Each asks only for what it draws.
  */
-export default function MyWorkRecordPanel({ notify }: { notify: Notify }) {
+export default function MyWorkRecordPanel({ notify, part }: { notify: Notify; part: 'record' | 'thread' }) {
   const [period, setPeriod] = useState('month');
   const [report, setReport] = useState<Report | null>(null);
   const [targets, setTargets] = useState<TargetRow[]>([]);
@@ -69,17 +73,22 @@ export default function MyWorkRecordPanel({ notify }: { notify: Notify }) {
   const [resignDraft, setResignDraft] = useState({ lastWorkingDay: '', reasonNote: '' });
   const [resigning, setResigning] = useState(false);
 
-  useEffect(() => { getJson<Report>(`/api/staff/me/report?period=${period}`).then(setReport); }, [period]);
+  useEffect(() => {
+    if (part === 'record') getJson<Report>(`/api/staff/me/report?period=${period}`).then(setReport);
+  }, [part, period]);
 
   const loadThread = useCallback(() => {
     getJson<Message[]>('/api/staff/me/messages').then(rows => setMessages(rows || []));
   }, []);
 
   useEffect(() => {
-    getJson<TargetRow[]>('/api/staff/me/targets').then(rows => setTargets(rows || []));
+    if (part === 'record') {
+      getJson<TargetRow[]>('/api/staff/me/targets').then(rows => setTargets(rows || []));
+      return;
+    }
     getJson<Resignation[]>('/api/staff/me/resignation').then(rows => setResignations(rows || []));
     loadThread();
-  }, [loadThread]);
+  }, [part, loadThread]);
 
   // Only months that actually carry a target or some revenue — a table of
   // twelve empty rows tells the employee nothing.
@@ -139,7 +148,7 @@ export default function MyWorkRecordPanel({ notify }: { notify: Notify }) {
 
   const pendingResignation = resignations.find(r => r.status === 'pending');
 
-  return (
+  if (part === 'record') return (
     <div className="space-y-5" dir="rtl">
       {/* ── Achievements ─────────────────────────────────────────────────── */}
       <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
@@ -211,7 +220,11 @@ export default function MyWorkRecordPanel({ notify }: { notify: Notify }) {
           </div>
         )}
       </div>
+    </div>
+  );
 
+  return (
+    <div className="space-y-5" dir="rtl">
       {/* ── Thread with management / my team ─────────────────────────────── */}
       <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
         <h3 className="font-extrabold text-gray-900 flex items-center gap-2 mb-4">

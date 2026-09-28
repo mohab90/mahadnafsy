@@ -627,6 +627,15 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
     const [[existingRow]] = await conn.query(
       'SELECT id FROM subscribers WHERE id = ? AND tenant_id = ? LIMIT 1', [id, tenantId]);
     if (!existingRow) {
+      // A new customer from a collection account waits for the manager to see
+      // the money (routes/subscriber-payments.js keeps it as a request). This
+      // route makes one outright, with no money at all.
+      if (staffRole === 'collection' && !req.isSuperAdmin) {
+        return res.status(403).json({
+          error: 'العميل الجديد من حساب التحصيل بيتسجل بحجز ودفعة، والمسئول بيراجع التحويل ويعتمده.',
+          code: 'COLLECTION_BOOKING_REQUIRED',
+        });
+      }
       if (!safeName) {
         return res.status(400).json({ error: '\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064a\u0644 \u0645\u0637\u0644\u0648\u0628.' });
       }

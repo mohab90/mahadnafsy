@@ -294,7 +294,7 @@ router.post('/api/admin/crm/leads/smart-route', requireAuth, requireAdmin, requi
       `SELECT id,assigned_sales_id,assigned_sales_name,source,interested_course_ids_json,crm_json
        FROM leads
        WHERE tenant_id=? AND hidden=0
-         AND (?='all' OR assigned_sales_id IS NULL)
+         AND (?='all' OR (assigned_sales_id IS NULL AND (assigned_cs_id IS NULL OR assigned_cs_id='')))
          AND status NOT IN ('converted','lost','archived','disqualified')${archive.sql}
        ORDER BY score DESC, created_at ASC LIMIT ? FOR UPDATE`,
       [tenantId, mode, ...archive.params, limit]

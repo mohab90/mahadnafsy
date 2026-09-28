@@ -146,6 +146,11 @@ router.get('/api/admin/registrations', requireAuth, requireAdminOrStaff, require
 });
 
 router.post('/api/admin/registrations/:userId/convert-online', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), async (req, res) => {
+  // A customer added from a collection account waits for the manager to see
+  // the money (lib/subscriberRequests.js); this makes one with none.
+  if (String(req.staffRecord?.role || '').toLowerCase() === 'collection') {
+    return res.status(403).json({ error: 'العميل الجديد من حساب التحصيل بيتسجل بحجز ودفعة بيراجعها المسئول', code: 'COLLECTION_BOOKING_REQUIRED' });
+  }
   const conn = await pool.getConnection();
   try {
     const tenantId = req.tenantId;

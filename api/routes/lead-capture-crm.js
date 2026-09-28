@@ -254,7 +254,7 @@ router.post('/api/admin/leads/distribute', requireAuth, requireAdmin, async (req
     const archive = excludeArchiveSourcesSql('source');
     const whereClause = mode === 'all'
       ? `WHERE hidden=0 AND tenant_id=? AND status IN (${openPlaceholders})${archive.sql}`
-      : `WHERE hidden=0 AND tenant_id=? AND assigned_sales_id IS NULL AND status IN (${openPlaceholders})${archive.sql}`;
+      : `WHERE hidden=0 AND tenant_id=? AND assigned_sales_id IS NULL AND (assigned_cs_id IS NULL OR assigned_cs_id='') AND status IN (${openPlaceholders})${archive.sql}`;
     const [targets] = await conn.execute(
       `SELECT id,source,interested_course_ids_json,crm_json FROM leads ${whereClause} ORDER BY created_at ASC FOR UPDATE`,
       [tenantId, ...openStatuses, ...archive.params]

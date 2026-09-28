@@ -305,7 +305,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
   collection: [
     'view_dashboard',
     // Mirrors api/constants/permissions.js — see the note there.
-    'view_leads',
+    'view_leads', 'manage_leads',
     'view_subscribers', 'manage_subscribers', 'export_subscribers',
     'view_orders', 'manage_orders', 'manage_payments', 'approve_refunds',
     'view_financial', 'manage_financial',
