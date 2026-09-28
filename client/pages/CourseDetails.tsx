@@ -410,7 +410,9 @@ const CourseDetails: React.FC = () => {
                     lectureGateNotice={lectureGateNotice}
                     setLectureGateNotice={setLectureGateNotice}
                     authUserEmail={authUser?.email}
-                    onLockedLectureClick={() => navigate(`/checkout?type=course&id=${course.id}`)}
+                    // A student already in the course with some lectures still
+                    // locked is paying it off — to their balance, not to buy it again.
+                    onLockedLectureClick={() => navigate(isEnrolled ? '/my-account?section=payments' : `/checkout?type=course&id=${course.id}`)}
                 />
 
                 <ReviewsFaqSection

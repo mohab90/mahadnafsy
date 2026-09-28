@@ -156,7 +156,12 @@ const Checkout: React.FC = () => {
   const planTotal = serverPlanTotal ?? (discountable && payMode === 'installment' ? installmentTotal(itemPrice) : null);
   const whatsapp = instituteWhatsApp(content);
 
-  const canPay = !!customerName.trim() && customerEmail.includes('@') && !!customerPhone.trim() && itemFound && itemPrice > 0;
+  // An email when one is typed must be one; a customer who signed up by
+  // WhatsApp has none, and the server takes the account as the identity — the
+  // page still demanded an «@», so they could not buy at all. The phone is the
+  // number the institute reaches them on (the server checks it is real).
+  const emailOk = customerEmail.trim() ? customerEmail.includes('@') : !authUser?.email;
+  const canPay = !!customerName.trim() && emailOk && customerPhone.replace(/\D/g, '').length >= 9 && itemFound && itemPrice > 0;
 
   // Hand the order the server just priced to the gateway. Deliberately runs
   // after the intent exists rather than instead of it: if the gateway refuses,

@@ -21,6 +21,7 @@ const { optionalAuth, requireAuth, requireAdmin, requireAdminOrStaff, requirePer
 const { setOnlineUser } = require('../lib/onlineUsers');
 const { publicLimiter, contactLimiter } = require('../middleware/rateLimits');
 const { resolveClientContext, getClientIp, hashClientIp } = require('../lib/clientContext');
+const { itemBalances } = require('../lib/agreedPrice');
 // ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC ROUTES (no auth required)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1018,7 +1019,32 @@ router.get('/api/me/subscriber', requireAuth, async (req, res) => {
       const materialsByCourse = await loadCourseMaterials(pool, courseRows.map(row => row.id));
       enrolledCoursesData = courseRows.map(row => mapCourse(row, materialsByCourse.get(row.id) || []));
     }
-    res.json({ ...mapped, enrolledCoursesData });
+    // What the client owes, item by item, by the one rule the desk and the
+    // receipts use (lib/agreedPrice.js): the price agreed, what was paid here
+    // and before the system, in the item's own currency, a track as a track.
+    // The page summed only pound payments — pending and refunded ones too —
+    // against a price found on the first cash payment, so a riyal client had
+    // paid nothing and a track had no row at all.
+    const balanceMap = await itemBalances(pool, { tenantId: req.tenantId, subscriberId: sub.id });
+    const courseIds = [...balanceMap.values()].map(entry => entry.courseId).filter(Boolean);
+    const bundleIds = [...balanceMap.values()].map(entry => entry.bundleId).filter(Boolean);
+    const titles = new Map();
+    if (courseIds.length) {
+      const [rows] = await pool.query(`SELECT id, title FROM courses WHERE tenant_id=? AND id IN (${courseIds.map(() => '?').join(',')})`,
+        [req.tenantId, ...courseIds]);
+      rows.forEach(row => titles.set(String(row.id), row.title));
+    }
+    if (bundleIds.length) {
+      const [rows] = await pool.query(`SELECT id, title FROM bundles WHERE tenant_id=? AND id IN (${bundleIds.map(() => '?').join(',')})`,
+        [req.tenantId, ...bundleIds]);
+      rows.forEach(row => titles.set(`bundle:${row.id}`, row.title));
+    }
+    const balances = [...balanceMap.values()].map(entry => ({
+      item: entry.item, courseId: entry.courseId, bundleId: entry.bundleId,
+      title: titles.get(entry.item) || titles.get(String(entry.courseId)) || '', currency: entry.currency,
+      expected: entry.expected, paid: entry.paid, priorPaid: entry.priorPaid, remaining: entry.remaining,
+    }));
+    res.json({ ...mapped, enrolledCoursesData, balances });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 

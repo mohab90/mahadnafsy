@@ -22,6 +22,7 @@ import { adminDashboardUrl } from '../lib/adminDashboard';
 import { cairoDateOnly } from '../../shared/cairoDate';
 import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 import { useSeo } from '../lib/useSeo';
+import { balancesByCourse, moneySuffix, type InstallmentModalState } from '../lib/itemBalance';
 
 const CourseCertificate = React.lazy(() => import('../components/CourseCertificate'));
 const StudentCoursesTab = React.lazy(() => import('../components/student-dashboard/StudentCoursesTab').then((module) => ({ default: module.StudentCoursesTab })));
@@ -62,7 +63,7 @@ type AccountSection = 'payments' | 'notifications' | 'loyalty' | 'referral' | 's
 /* ─── helpers ─────────────────────────────────────────────────────────────── */
 const UserDashboard: React.FC = () => {
   useSeo({ title: 'حسابي | معهد الدراسات النفسية', path: '/my-account' });
-  const { courses, subscribers, notifications, notificationReadIds: dismissedNotifIds, markBroadcastNotificationRead, markAllBroadcastNotificationsRead, communityPosts, consultations, getCourseLectures, authUser, remoteReady, mySubscriberLoaded, mySubscriberId, isAdmin, content, courseQuizzes, quizAttempts, submitQuizAttempt, liveStreams, logout, refreshMySubscriber } = useSiteData();
+  const { courses, bundles, subscribers, notifications, notificationReadIds: dismissedNotifIds, markBroadcastNotificationRead, markAllBroadcastNotificationsRead, communityPosts, consultations, getCourseLectures, authUser, remoteReady, mySubscriberLoaded, mySubscriberId, isAdmin, content, courseQuizzes, quizAttempts, submitQuizAttempt, liveStreams, logout, refreshMySubscriber } = useSiteData();
   const onlinePayEnabled = usePaymentAvailability();
   const navigate = useNavigate();
 
@@ -180,7 +181,7 @@ const UserDashboard: React.FC = () => {
   const [proofsLoaded, setProofsLoaded] = useState(false);
 
   /* installment payment modal */
-  const [installModal, setInstallModal] = useState<{ courseId: string; courseTitle: string; remaining: number } | null>(null);
+  const [installModal, setInstallModal] = useState<InstallmentModalState | null>(null);
   const [installAmount, setInstallAmount] = useState('');
   const [installIframeUrl, setInstallIframeUrl] = useState('');
   const [installError, setInstallError] = useState('');
@@ -396,18 +397,12 @@ const UserDashboard: React.FC = () => {
   // level above it.
   const userConsultations = consultations;
 
-  // Per-course payment info (for installed subscriber)
-  const subPayHistory = subscriber?.paymentHistory ?? [];
-  const coursePayMap: Record<string, { paidEGP: number; expectedEGP?: number }> = {};
-  subPayHistory.forEach(p => {
-    // Only count course payments (not certificate/consultation/book/etc.) toward per-course totals
-    const isCoursePayment = !p.paymentType || p.paymentType === 'course';
-    if (p.courseId && isCoursePayment) {
-      if (!coursePayMap[p.courseId]) coursePayMap[p.courseId] = { paidEGP: 0 };
-      if (p.currency === 'EGP') coursePayMap[p.courseId].paidEGP += p.amount;
-      if (p.isInstallment === false && p.courseExpected) coursePayMap[p.courseId].expectedEGP = p.courseExpected;
-    }
-  });
+  // What is owed per course or track, from the server's one rule. This summed
+  // pound payments only (pending and refunded included) against a price found
+  // on the first cash payment — a riyal client had paid nothing, a track had no
+  // row, and the price the desk agreed never showed.
+  const balances = subscriber?.balances ?? [];
+  const coursePayMap = balancesByCourse(balances, bundles);
 
   /* ── handlers ── */
   const handleSaveName = async () => {
@@ -441,7 +436,7 @@ const UserDashboard: React.FC = () => {
     const amt = Number(installAmount);
     if (!amt || amt <= 0 || !installModal || !subscriber) return;
     const msg = encodeURIComponent(
-      `مرحباً، أرغب في دفع قسط بمبلغ ${amt.toLocaleString('ar-EG-u-nu-latn')} ج.م\n` +
+      `مرحباً، أرغب في دفع قسط بمبلغ ${amt.toLocaleString('ar-EG-u-nu-latn')} ${moneySuffix(installModal.currency)}\n` +
       `الكورس: ${installModal.courseTitle}\n` +
       `الاسم: ${subscriber.name || ''}\n` +
       `البريد الإلكتروني: ${subscriber.email || ''}`
@@ -451,9 +446,8 @@ const UserDashboard: React.FC = () => {
   };
 
   const handleChangePassword = async () => {
-    if (pwNew.length < 8) { setPwMsg('Password must be at least 8 characters'); return; }
+    if (pwNew.length < 8) { setPwMsg('كلمة المرور لازم تكون 8 حروف على الأقل'); return; }
     if (pwNew !== pwConfirm) { setPwMsg('كلمتا المرور غير متطابقتين'); return; }
-    if (pwNew.length < 6) { setPwMsg('كلمة المرور يجب أن تكون 6 أحرف على الأقل'); return; }
     setPwSaving(true);
     try {
       await mysqlAuth.updatePassword(pwCurrent, pwNew);
@@ -966,10 +960,10 @@ const UserDashboard: React.FC = () => {
                   ) : (
                     <>
                       <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm">
-                        <p className="text-amber-700"><strong>الباقي من المبلغ:</strong> {installModal.remaining.toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
+                        <p className="text-amber-700"><strong>الباقي من المبلغ:</strong> {installModal.remaining.toLocaleString('ar-EG-u-nu-latn')} {moneySuffix(installModal.currency)}</p>
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-gray-600 mb-1">المبلغ الذي تريد دفعه (ج.م)</label>
+                        <label className="block text-xs font-bold text-gray-600 mb-1">المبلغ الذي تريد دفعه ({moneySuffix(installModal.currency)})</label>
                         <input
                           type="number"
                           min={1}
@@ -980,7 +974,7 @@ const UserDashboard: React.FC = () => {
                           placeholder="أدخل المبلغ"
                           dir="ltr"
                         />
-                        <p className="text-[11px] text-gray-400 mt-1">الحد الأقصى: {installModal.remaining.toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
+                        <p className="text-[11px] text-gray-400 mt-1">الحد الأقصى: {installModal.remaining.toLocaleString('ar-EG-u-nu-latn')} {moneySuffix(installModal.currency)}</p>
                       </div>
                       {installError && (
                         <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 text-xs text-red-700">
@@ -1029,7 +1023,7 @@ const UserDashboard: React.FC = () => {
             <StudentPaymentsTab
               subscriber={subscriber}
               enrolledCourses={enrolledCourses}
-              coursePayMap={coursePayMap}
+              balances={balances}
               showProofForm={showProofForm}
               proofAmount={proofAmount}
               proofCurrency={proofCurrency}

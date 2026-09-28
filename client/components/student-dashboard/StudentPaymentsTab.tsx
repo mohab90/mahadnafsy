@@ -2,15 +2,11 @@ import { Camera, Calendar, CheckCircle, CreditCard, DollarSign, Loader2, Plus } 
 import type React from 'react';
 import { useEffect } from 'react';
 
-import type { Course, PaymentProof, SubscriberItem } from '../../types';
+import type { Course, ItemBalance, PaymentProof, SubscriberItem } from '../../types';
+import { moneySuffix, type InstallmentModalState } from '../../lib/itemBalance';
 import { customerPaymentMethodLabel, paymentMethodLabel } from '../../../shared/paymentMethods';
 import { useManualPaymentMethods } from '../../lib/usePaymentAvailability';
 import { cairoDateOnly } from '../../../shared/cairoDate';
-
-type CoursePaymentSummary = {
-  paidEGP: number;
-  expectedEGP?: number;
-};
 
 type ProofCurrency = 'EGP' | 'SAR' | 'USD';
 // The five choices this screen offered were hardcoded here, /checkout hardcoded
@@ -19,16 +15,10 @@ type ProofCurrency = 'EGP' | 'SAR' | 'USD';
 // the type is whatever it holds rather than a list that has to be kept in step.
 type ProofMethod = string;
 
-type InstallmentModalState = {
-  courseId: string;
-  courseTitle: string;
-  remaining: number;
-};
-
 type Props = {
   subscriber: SubscriberItem | undefined;
   enrolledCourses: Course[];
-  coursePayMap: Record<string, CoursePaymentSummary>;
+  balances: ItemBalance[];
   showProofForm: boolean;
   proofAmount: string;
   proofCurrency: ProofCurrency;
@@ -58,12 +48,11 @@ type Props = {
   handleSubmitProof: () => void;
 };
 
-const moneySuffix = (currency: string) => currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
 
 export function StudentPaymentsTab({
   subscriber,
   enrolledCourses,
-  coursePayMap,
+  balances,
   showProofForm,
   proofAmount,
   proofCurrency,
@@ -160,34 +149,35 @@ export function StudentPaymentsTab({
         )}
       </div>
 
-      {enrolledCourses.length > 0 && (
+      {/* What is owed per course or track, by the rule the desk and the receipts
+          use (GET /api/me/subscriber «balances»): the agreed price, what was paid
+          here and before the system, in the item's own currency. */}
+      {balances.length > 0 && (
         <div>
-          <p className="mb-3 text-sm font-extrabold text-gray-700">مدفوعات كل كورس</p>
+          <p className="mb-3 text-sm font-extrabold text-gray-700">مدفوعات كل كورس ومسار</p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {enrolledCourses.map(course => {
-              const summary = coursePayMap[course.id];
-              if (!summary) return null;
-              const remaining = summary.expectedEGP != null ? Math.max(0, summary.expectedEGP - summary.paidEGP) : null;
-              const pct = summary.expectedEGP ? Math.min(100, Math.round((summary.paidEGP / summary.expectedEGP) * 100)) : 100;
-
+            {balances.map(balance => {
+              const paidAll = balance.paid + balance.priorPaid;
+              const suffix = moneySuffix(balance.currency);
+              const pct = balance.expected > 0 ? Math.min(100, Math.round((paidAll / balance.expected) * 100)) : 100;
               return (
-                <div key={course.id} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
-                  <p className="mb-3 line-clamp-1 text-sm font-bold text-gray-800">{course.title}</p>
+                <div key={balance.item} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+                  <p className="mb-3 line-clamp-1 text-sm font-bold text-gray-800">{balance.bundleId ? '📌 ' : ''}{balance.title}</p>
                   <div className="mb-3 space-y-1.5 text-xs">
                     <div className="flex justify-between">
                       <span className="text-gray-500">مدفوع</span>
-                      <span className="font-extrabold text-green-700">{summary.paidEGP.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
+                      <span className="font-extrabold text-green-700">{paidAll.toLocaleString('ar-EG-u-nu-latn')} {suffix}</span>
                     </div>
-                    {summary.expectedEGP != null && (
+                    {balance.expected > 0 && (
                       <>
                         <div className="flex justify-between">
                           <span className="text-gray-500">الإجمالي المطلوب</span>
-                          <span className="font-bold">{summary.expectedEGP.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
+                          <span className="font-bold">{balance.expected.toLocaleString('ar-EG-u-nu-latn')} {suffix}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-500">الباقي</span>
-                          <span className={`font-bold ${remaining && remaining > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                            {remaining && remaining > 0 ? `${remaining.toLocaleString('ar-EG-u-nu-latn')} ج.م` : 'مكتمل'}
+                          <span className={`font-bold ${balance.remaining > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                            {balance.remaining > 0 ? `${balance.remaining.toLocaleString('ar-EG-u-nu-latn')} ${suffix}` : 'مكتمل'}
                           </span>
                         </div>
                         <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100">
@@ -197,11 +187,11 @@ export function StudentPaymentsTab({
                       </>
                     )}
                   </div>
-                  {remaining !== null && remaining > 0 && (
+                  {balance.remaining > 0 && (
                     <button
                       onClick={() => {
-                        setInstallModal({ courseId: course.id, courseTitle: course.title, remaining });
-                        setInstallAmount(String(remaining));
+                        setInstallModal({ courseId: balance.item, courseTitle: balance.title, remaining: balance.remaining, currency: balance.currency });
+                        setInstallAmount(String(balance.remaining));
                         setInstallIframeUrl('');
                         setInstallError('');
                         onOpenCourses();

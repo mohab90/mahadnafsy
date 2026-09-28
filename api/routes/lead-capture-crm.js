@@ -25,6 +25,7 @@ const { excludeArchiveSourcesSql } = require('../lib/leadArchive');
 const { resolveClientContext } = require('../lib/clientContext');
 const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { phoneIdentityClause } = require('../lib/leadMatching');
+const { isRealPhone } = require('../lib/phoneNumber');
 
 function routeError(res, error, message = 'lead capture crm route failed') {
   logger.error(message, error);
@@ -394,6 +395,14 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       return res.status(403).json({ error: 'Checkout email must match the authenticated account' });
     }
     const normalizedEmail = accountEmail || requestedEmail;
+    // «متخلص السيستم يقبل عميل دفع بدون رقم تليفون حقيقي»: the order carries a
+    // number the institute can reach — the one typed here, else the account's.
+    if (!isRealPhone(String(customerPhone || identity?.phone || '').trim())) {
+      return res.status(400).json({
+        error: 'اكتب رقم موبايل صحيح (واتساب) علشان نتواصل معاك بخصوص الطلب — مصري أو بكود الدولة.',
+        code: 'PHONE_REQUIRED',
+      });
+    }
     const clientContext = await resolveClientContext(req);
     if (!clientContext.locationResolved) {
       return res.status(503).json({ error: 'Customer location could not be verified', code: 'LOCATION_UNAVAILABLE' });

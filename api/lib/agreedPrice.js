@@ -71,7 +71,8 @@ async function itemBalances(db, { tenantId, subscriberId }) {
       ORDER BY date, created_at`,
     [tenantId, subscriberId]);
   const [enrolments] = await db.query(
-    `SELECT course_id, bundle_id FROM enrollments WHERE tenant_id=? AND subscriber_id=?`, [tenantId, subscriberId]);
+    // Active ones: a course taken away is not one still owed for.
+    `SELECT course_id, bundle_id FROM enrollments WHERE tenant_id=? AND subscriber_id=? AND status='active'`, [tenantId, subscriberId]);
 
   const items = new Map();
   const touch = (courseId, bundleId, currency) => {

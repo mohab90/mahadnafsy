@@ -3,22 +3,12 @@ import { BookOpen, CheckCircle, Clock, DollarSign, MessageSquare, Play } from 'l
 
 import type { Course, CourseLectureItem, SubscriberItem } from '../../types';
 import { toDialable } from '../../lib/whatsappLink';
-
-type CoursePaymentSummary = {
-  paidEGP: number;
-  expectedEGP?: number;
-};
-
-type InstallmentModalState = {
-  courseId: string;
-  courseTitle: string;
-  remaining: number;
-};
+import { moneySuffix, type CourseBalance, type InstallmentModalState } from '../../lib/itemBalance';
 
 type Props = {
   enrolledCourses: Course[];
   subscriber: SubscriberItem | undefined;
-  coursePayMap: Record<string, CoursePaymentSummary>;
+  coursePayMap: Record<string, CourseBalance>;
   contentWhatsapp: string;
   getCourseLectures: (courseId: string) => CourseLectureItem[];
   onOpenPlayer: (courseId: string) => void;
@@ -78,10 +68,11 @@ export function StudentCoursesTab({
             ).length
           : 0;
         const progressPct = totalLectures > 0 ? Math.round((watchedLectures / totalLectures) * 100) : 100;
+        // The course's balance, or its track's (lib/itemBalance.ts), in its own currency.
         const paymentSummary = coursePayMap[course.id];
-        const remaining = paymentSummary?.expectedEGP != null
-          ? Math.max(0, paymentSummary.expectedEGP - paymentSummary.paidEGP)
-          : null;
+        const remaining = paymentSummary && paymentSummary.expected > 0 ? paymentSummary.remaining : null;
+        const paidAll = paymentSummary ? paymentSummary.paid + paymentSummary.priorPaid : 0;
+        const suffix = moneySuffix(paymentSummary?.currency);
 
         return (
           <div key={course.id} className="group overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition hover:shadow-md">
@@ -102,28 +93,29 @@ export function StudentCoursesTab({
 
               {paymentSummary && (
                 <div className="mb-3 space-y-1 rounded-xl border border-gray-100 bg-gray-50 p-2.5 text-xs">
+                  {paymentSummary.trackTitle && <p className="font-bold text-primary-700">ضمن مسار «{paymentSummary.trackTitle}»</p>}
                   <div className="flex justify-between">
                     <span className="text-gray-500">مدفوع</span>
-                    <span className="font-bold text-green-700">{paymentSummary.paidEGP.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
+                    <span className="font-bold text-green-700">{paidAll.toLocaleString('ar-EG-u-nu-latn')} {suffix}</span>
                   </div>
-                  {paymentSummary.expectedEGP != null && (
+                  {paymentSummary.expected > 0 && (
                     <div className="flex justify-between">
                       <span className="text-gray-500">الإجمالي</span>
-                      <span className="font-bold text-gray-700">{paymentSummary.expectedEGP.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
+                      <span className="font-bold text-gray-700">{paymentSummary.expected.toLocaleString('ar-EG-u-nu-latn')} {suffix}</span>
                     </div>
                   )}
                   {remaining !== null && (
                     <div className="flex justify-between">
                       <span className="text-gray-500">الباقي</span>
                       <span className={`font-bold ${remaining > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        {remaining > 0 ? `${remaining.toLocaleString('ar-EG-u-nu-latn')} ج.م` : 'مكتمل'}
+                        {remaining > 0 ? `${remaining.toLocaleString('ar-EG-u-nu-latn')} ${suffix}` : 'مكتمل'}
                       </span>
                     </div>
                   )}
-                  {remaining !== null && paymentSummary.expectedEGP != null && paymentSummary.expectedEGP > 0 && (
+                  {remaining !== null && (
                     <div className="mt-1">
                       <div className="h-1.5 overflow-hidden rounded-full bg-gray-200">
-                        <div className="h-full rounded-full bg-green-500" style={{ width: `${Math.min(100, Math.round((paymentSummary.paidEGP / paymentSummary.expectedEGP) * 100))}%` }} />
+                        <div className="h-full rounded-full bg-green-500" style={{ width: `${Math.min(100, Math.round((paidAll / paymentSummary.expected) * 100))}%` }} />
                       </div>
                     </div>
                   )}
@@ -161,7 +153,10 @@ export function StudentCoursesTab({
                 {remaining !== null && remaining > 0 && (
                   <button
                     onClick={() => {
-                      setInstallModal({ courseId: course.id, courseTitle: course.title, remaining });
+                      setInstallModal({
+                        courseId: paymentSummary?.item || course.id, courseTitle: paymentSummary?.trackTitle || course.title,
+                        remaining, currency: paymentSummary?.currency || 'EGP',
+                      });
                       setInstallAmount(String(remaining));
                       setInstallIframeUrl('');
                       setInstallError('');

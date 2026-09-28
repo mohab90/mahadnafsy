@@ -356,6 +356,22 @@ export interface PaymentHistoryEntry {
   invoiceNumber?: string | null; // Immutable tenant/branch-scoped financial document number
 }
 
+/**
+ * One course or track the client holds: the price agreed, paid here, paid
+ * before the system, and left — in the item's own currency.
+ */
+export interface ItemBalance {
+  item: string;
+  courseId: string | null;
+  bundleId: string | null;
+  title: string;
+  currency: string;
+  expected: number;
+  paid: number;
+  priorPaid: number;
+  remaining: number;
+}
+
 export interface SubscriberItem {
   id: string;
   clientCode?: string;   // Stable unified client URL code, preserved from lead if converted
@@ -384,6 +400,8 @@ export interface SubscriberItem {
   certificates?: SubscriberCertificate[];
   extraCertificateRequests?: ExtraCertificateRequest[];
   installmentPlans?: InstallmentPlan[];
+  /** What is owed per course or track, from the server's one rule (GET /api/me/subscriber). */
+  balances?: ItemBalance[];
   notes?: string;
   nationalId?: string;   // رقم قومي — set on booking from staff modal
   updatedAt?: string;    // Server-side updated_at for optimistic concurrency control
