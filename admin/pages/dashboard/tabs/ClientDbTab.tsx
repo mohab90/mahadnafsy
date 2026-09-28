@@ -9,6 +9,7 @@ import { useBranches } from '../../../hooks/useBranches';
 import { useNavigate } from 'react-router-dom';
 import { LoginHistoryPanel } from './client-db/LoginHistoryPanel';
 import { LoginAccountsPanel } from './client-db/LoginAccountsPanel';
+import ArchivedClientsTab from './ArchivedClientsTab';
 import { toDialable } from '../../../lib/whatsappLink';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 import { isRawCourse, rawCourseText } from './leads/leadCourseLabel';
@@ -92,7 +93,7 @@ const SUB_TYPE_COLOR: Record<string, string> = {
 };
 
 export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBook?: (id: string, type: 'subscriber' | 'lead') => void }) {
-  const { subscribers, leads, courses, staffScopedSubscribers, staffScopedLeads, reloadSubscribers, deleteSubscriber, deleteLead, isAdmin } = useSiteData();
+  const { subscribers, leads, courses, staffScopedSubscribers, staffScopedLeads, reloadSubscribers, deleteSubscriber, deleteLead, isAdmin, authUser } = useSiteData();
   // Staff-scoped data is populated from the original DB rows by Dashboard's fetchSalesData.
   // Prefer it whenever available so full-access staff roles (online manager) do not fall back to a separate admin-only context path.
   const effectiveSubs = staffScopedSubscribers.length > 0 ? staffScopedSubscribers : subscribers;
@@ -191,7 +192,12 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
     } finally { setRegBusy(null); }
   };
 
-  const [view, setView] = useState<'clients' | 'accounts' | 'logins'>('clients');
+  const [view, setView] = useState<'clients' | 'accounts' | 'logins' | 'archive'>('clients');
+  // «الأرشيف»: every client deleted from the system — deleting archives them,
+  // payments and courses kept — with «استعادة». For whoever may delete (the
+  // archive route asks the same permission).
+  const canSeeArchive = isAdmin || authUser?.permissions === '*'
+    || (Array.isArray(authUser?.permissions) && authUser.permissions.includes('delete_subscribers'));
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'subscriber' | 'subscriber_online' | 'subscriber_daqqi' | 'subscriber_regular' | 'lead' | 'lead_local' | 'lead_intl' | 'registration'>('all');
   const [branchFilter, setBranchFilter] = useState('');
@@ -464,6 +470,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
           ['clients', 'قاعدة العملاء'],
           ['accounts', 'حسابات الدخول'],
           ['logins', 'سجل تسجيلات الدخول'],
+          ...(canSeeArchive ? [['archive', '🗄️ الأرشيف']] as const : []),
         ] as const).map(([key, label]) => (
           <button
             key={key}
@@ -494,7 +501,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
             void convertThenBook({ id: row.id, name: row.name || '', type: 'registration' } as ClientRow);
           }}
         />
-      ) : view === 'logins' ? <LoginHistoryPanel /> : (<>
+      ) : view === 'logins' ? <LoginHistoryPanel /> : view === 'archive' ? <ArchivedClientsTab notify={notify} /> : (<>
 
       {/* Filters */}
       <div className="bg-white border border-gray-200 rounded-2xl p-3 shadow-sm">

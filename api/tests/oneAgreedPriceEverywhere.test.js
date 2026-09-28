@@ -67,7 +67,8 @@ test('every screen reads that rule', () => {
   // The instalment list and «كل المتبقي» used the catalogue.
   assert.match(modal, /const px = agreedPriceFor\(subject, cid, isBnd/);
   assert.match(modal, /const bal = _effPx > 0 \? Math\.max\(0, _effPx - alreadyPaid\) : 0;/);
-  assert.match(read('admin/pages/dashboard/tabs/onlineClientsUtils.ts'), /agreedPriceFor\(subscriber, item, 0, currency\) - paidFor\(subscriber, item, currency\)/);
+  // The filters and the total read the table's own items (onlineSectionReview.test.js).
+  assert.match(read('admin/pages/dashboard/tabs/onlineClientsUtils.ts'), /const items = clientItems\(subscriber, courses, bundles, clientCurrency\(subscriber\)\);/);
   assert.match(read('api/lib/paymentReceipt.js'), /await itemBalances\(db, \{ tenantId, subscriberId: payment\.subscriber_id \}\)/);
   assert.match(read('api/routes/crm-tools.js'), /const prior = priorPaidTotal\(crmJson\);/);
 });

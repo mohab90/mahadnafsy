@@ -8,7 +8,7 @@ import {
   Plus, X,
 } from 'lucide-react';
 import type {
-  BranchType, Bundle, Course,
+  Bundle, Course,
   DaqqiRound, DaqqiRoundAttendee, LeadItem,
   StaffMember, SubscriberItem,
 } from '../../../types';
@@ -40,7 +40,7 @@ import { FiltersToolbar } from './online-clients-sections/FiltersToolbar';
 import { ClientsTable } from './online-clients-sections/ClientsTable';
 import { InstallmentPlansModal } from './online-clients-sections/InstallmentPlansModal';
 import { CollectionSettingsModal } from './online-clients-sections/CollectionSettingsModal';
-import { currencyForBranch } from '../../../lib/branchCurrency';
+import { itemKeyOf } from '../../../lib/agreedPrice';
 import {
   calcSubscribersPaidEGP,
   formatCompactNumber,
@@ -49,7 +49,9 @@ import {
   MARKET_BRANCH,
   MARKET_LABELS,
   subscriberMarket,
-  subscriberRemainingEGP,
+  clientCurrency,
+  isFullyPaid,
+  subscriberBalance,
   type ClientMarket,
   type SubscriberSavePayload,
 } from './onlineClientsUtils';
@@ -111,7 +113,6 @@ export default function OnlineClientsTab({
 
   // Collection role — online clients tab state  const [collOnlineSearch, setCollOnlineSearch] = useState('');
   const [collOnlinePage, setCollOnlinePage] = useState(1);
-  const [collOnlineStatusFilter, setCollOnlineStatusFilter] = useState('');
   const [collOnlineDateFrom, setCollOnlineDateFrom] = useState('');
   const [collOnlineDateTo, setCollOnlineDateTo] = useState('');
   const [collOnlineRemainingFilter, setCollOnlineRemainingFilter] = useState<'all'|'has_remaining'|'paid'>('all');
@@ -123,9 +124,6 @@ export default function OnlineClientsTab({
     courses: true, value: true, paid: true, remaining: true, installments: true,
     status: true, sales: true, followup: true, contact: true, createdAt: true, certificates: true,
   });
-  // Which branch to show. Empty means all of them, which is the point of the
-  // screen — عملائي is every client the employee is responsible for.
-  const [clientBranchFilter, setClientBranchFilter] = useState('');
   const [collOnlineColWidths, setCollOnlineColWidths] = useState<Record<string,number>>(() => {
     try { return JSON.parse(localStorage.getItem('collOnlineColWidths') || '{}'); } catch { return {}; }
   });
@@ -190,6 +188,7 @@ export default function OnlineClientsTab({
   const [convertRefundReason, setConvertRefundReason] = useState('');
   const [convertRefundAmount, setConvertRefundAmount] = useState('');
   const [convertRefundMethod, setConvertRefundMethod] = useState('');
+  const [convertRefundPaymentId, setConvertRefundPaymentId] = useState('');
   const [convertSaving, setConvertSaving] = useState(false);  // New subscriber popup (online manager)
   const [omNewSubOpen, setOmNewSubOpen] = useState(false);
   const [omNewSubDraft, setOmNewSubDraft] = useState<{name:string;phone:string;email:string;password:string;branch:string;amount:string;currency:'EGP'|'SAR'|'USD';paymentMethod:string;date:string;transactionId:string;note:string;referredBy:string;courses:{courseId:string;accessType:'full'|'limited';videoCount:string;discount:string;customPrice:string}[]}>({ name: '', phone: '', email: '', password: '', branch: '', amount: '', currency: 'EGP', paymentMethod: '', date: cairoDateOnly(), transactionId: '', note: '', referredBy: '', courses: [{courseId:'',accessType:'full',videoCount:'',discount:'',customPrice:''}] });
@@ -254,18 +253,25 @@ export default function OnlineClientsTab({
               const branchScopedMasterList = branchFilter
                 ? masterList.filter(s => branchMatchesFilter(s.branch, branchFilter))
                 : masterList;
-              // عملاء الدقي is the Daqqi desk and stays Daqqi-only. عملائي is
-              // every client the employee is responsible for, whichever branch
-              // they belong to — it used to exclude DAQQI outright, so a rep
-              // who had signed up a Daqqi client could not see them anywhere on
-              // their own screen. The branch is a column and a filter now
-              // instead of a hidden exclusion.
-              const branchFiltered = clientBranchFilter
-                ? branchScopedMasterList.filter(s => normBranchId(s.branch) === clientBranchFilter)
-                : branchScopedMasterList;
+              // عملاء الدقي is the Daqqi desk and stays Daqqi-only; the online
+              // screen holds online clients only — محلي، سعودي، دولي. It used to
+              // list every branch, so Dokki and Tagamoa clients sat in it, and
+              // «إجمالي العملاء» (1491) was more than its own three markets
+              // added up to (1477).
               const allCombined = isDaqqiClientsTab
-                ? branchFiltered.filter(s => normBranchId(s.branch) === 'DAQQI')
-                : branchFiltered;
+                ? branchScopedMasterList.filter(s => normBranchId(s.branch) === 'DAQQI')
+                : branchScopedMasterList.filter(isOnlineClient);
+              const holdsItem = (s: SubscriberItem, item: string) => (item.startsWith('bundle:')
+                ? (s.enrolledBundleIds || []).includes(item.slice(7))
+                : (s.enrolledCourseIds || []).includes(item))
+                || (s.paymentHistory || []).some(payment => itemKeyOf(payment) === item);
+              // Each client's balance once per render, for the filter and the
+              // total — from the same items the table shows.
+              const balances = new Map<string, ReturnType<typeof subscriberBalance>>();
+              const balanceOf = (s: SubscriberItem) => {
+                if (!balances.has(s.id)) balances.set(s.id, subscriberBalance(s, courses, bundles));
+                return balances.get(s.id)!;
+              };
               // For local/intl real tabs, always draw from allCombined
               const viewMarket = MARKET_TABS[collOnlineViewTab];
               const tabFiltered =
@@ -312,17 +318,11 @@ export default function OnlineClientsTab({
                   if (!(s.name||'').toLowerCase().includes(q) && !phoneMatch &&
                       !(s.email||'').toLowerCase().includes(q) && !(s.nationalId||'').includes(collOnlineSearch)) return false;
                 }
-                if (collOnlineStatusFilter) {
-                  const lifecycle = s.clientStatus || '';
-                  const terminal = ['finished', 'paused', 'refunded', 'refund_pending'];
-                  const matches = collOnlineStatusFilter === 'active'
-                    ? s.isActive !== false && !terminal.includes(lifecycle)
-                    : lifecycle === collOnlineStatusFilter;
-                  if (!matches) return false;
-                }
                 if (collOnlineDateFrom && cairoDay(s.createdAt) < collOnlineDateFrom) return false;
                 if (collOnlineDateTo   && cairoDay(s.createdAt) > collOnlineDateTo)   return false;
-                if (collOnlineCourseFilter && !(s.enrolledCourseIds||[]).includes(collOnlineCourseFilter)) return false;
+                // A course or a track the client holds. A track never appears in
+                // enrolledCourseIds, so choosing one showed nobody.
+                if (collOnlineCourseFilter && !holdsItem(s, collOnlineCourseFilter)) return false;
                 // فلتر مسئول التحصيل
                 if (collOnlineCollectionFilter && s.assignedCsId !== collOnlineCollectionFilter) return false;
                 // فلتر التسكين (لتب عملاء الدقي فقط)
@@ -339,11 +339,8 @@ export default function OnlineClientsTab({
                 // فلتر الشهادات
                 if (collOnlineCertFilter === 'has_cert' && (s.certificates||[]).length === 0) return false;
                 if (collOnlineCertFilter === 'no_cert' && (s.certificates||[]).length > 0) return false;
-                if (collOnlineRemainingFilter !== 'all') {
-                  const rem = subscriberRemainingEGP(s);
-                  if (collOnlineRemainingFilter==='has_remaining' && rem<=0) return false;
-                  if (collOnlineRemainingFilter==='paid' && rem>0) return false;
-                }
+                if (collOnlineRemainingFilter === 'has_remaining' && balanceOf(s).remainingEgp <= 0) return false;
+                if (collOnlineRemainingFilter === 'paid' && !isFullyPaid(balanceOf(s))) return false;
                 return true;
               });
               const todayOnlineStr = cairoDateOnly();
@@ -353,9 +350,7 @@ export default function OnlineClientsTab({
               const collTodayRev  = calcPaidEGP(allCombined, todayOnlineStr, todayOnlineStr);
               const collWeekRev   = calcPaidEGP(allCombined, thisWeekStart);
               const collMonthRev  = calcPaidEGP(allCombined, cairoMonthOnly()+'-01');
-              const collTotalRem  = allCombined.reduce((sum,s)=>{
-                return sum + subscriberRemainingEGP(s);
-              },0);
+              const collTotalRem  = allCombined.reduce((sum, s) => sum + balanceOf(s).remainingEgp, 0);
               const fmtK = formatCompactNumber;
               const COLL_PAGE_SIZE = 100;
               const totalPages = Math.max(1, Math.ceil(filtered.length / COLL_PAGE_SIZE));
@@ -457,10 +452,6 @@ export default function OnlineClientsTab({
                     housingMap={housingMap}
                     daqqiReceptionFilter={daqqiReceptionFilter}
                     setDaqqiReceptionFilter={setDaqqiReceptionFilter}
-                    clientBranchFilter={clientBranchFilter}
-                    setClientBranchFilter={setClientBranchFilter}
-                    collOnlineStatusFilter={collOnlineStatusFilter}
-                    setCollOnlineStatusFilter={setCollOnlineStatusFilter}
                     collOnlineRemainingFilter={collOnlineRemainingFilter}
                     setCollOnlineRemainingFilter={setCollOnlineRemainingFilter}
                     collOnlineCollectionFilter={collOnlineCollectionFilter}
@@ -492,8 +483,6 @@ export default function OnlineClientsTab({
                     setCollOnlineBulkAssignTo={setCollOnlineBulkAssignTo}
                     isAdmin={isAdmin}
                     staffMembers={staffMembers}
-                    filtered={filtered}
-                    courses={courses}
                     actionSubscribers={actionSubscribers}
                     shouldUseScopedSubscribers={shouldUseScopedSubscribers}
                     setSalesOwnSubscribers={setSalesOwnSubscribers}
@@ -616,6 +605,7 @@ export default function OnlineClientsTab({
                     setConvertRefundReason={setConvertRefundReason}
                     setConvertRefundAmount={setConvertRefundAmount}
                     setConvertRefundMethod={setConvertRefundMethod}
+                    setConvertRefundPaymentId={setConvertRefundPaymentId}
                     setInstallmentsRow={setInstallmentsRow}
                     filteredLength={filtered.length}
                     notify={notify}
@@ -678,7 +668,7 @@ export default function OnlineClientsTab({
                                   className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200" placeholder="اسم العميل" />
                               </div>
                               <div>
-                                <label className="block text-xs font-bold text-gray-600 mb-1">رقم الهاتف</label>
+                                <label className="block text-xs font-bold text-gray-600 mb-1">رقم الهاتف *</label>
                                 <input type="tel" value={omNewSubDraft.phone} onChange={e=>setOmNewSubDraft(d=>({...d,phone:e.target.value}))}
                                   className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200" placeholder="+201xxxxxxxxx" dir="ltr" />
                               </div>
@@ -804,7 +794,9 @@ export default function OnlineClientsTab({
                         </div>
                         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 bg-gray-50">
                           <button onClick={()=>{setOmNewSubOpen(false);omNewSubReset();}} className="px-4 py-2 text-sm rounded-xl border border-gray-200 hover:bg-gray-100">إلغاء</button>
-                          <button disabled={omNewSubSaving || !omNewSubDraft.name.trim() || !omNewSubDraft.email.trim() || !omNewSubDraft.password.trim() || (Number(omNewSubDraft.amount) > 0 && !omNewSubDraft.paymentMethod)}
+                          {/* A client is reached by phone, and money is not recorded against
+                              one without (the server refuses it: PHONE_REQUIRED). */}
+                          <button disabled={omNewSubSaving || !omNewSubDraft.name.trim() || omNewSubDraft.phone.replace(/\D/g, '').length < 9 || !omNewSubDraft.email.trim() || !omNewSubDraft.password.trim() || (Number(omNewSubDraft.amount) > 0 && !omNewSubDraft.paymentMethod)}
                             onClick={async()=>{
                               if (!omNewSubDraft.name.trim() || !omNewSubDraft.email.trim() || !omNewSubDraft.password.trim()) return;
                               setOmNewSubSaving(true);
@@ -880,6 +872,8 @@ export default function OnlineClientsTab({
                       setRefundAmount={setConvertRefundAmount}
                       refundMethod={convertRefundMethod}
                       setRefundMethod={setConvertRefundMethod}
+                      refundPaymentId={convertRefundPaymentId}
+                      setRefundPaymentId={setConvertRefundPaymentId}
                       saving={convertSaving}
                       isDaqqiClientsTab={isDaqqiClientsTab}
                       currentMarket={isOnlineClient(convertRow) ? subscriberMarket(convertRow) : null}
@@ -925,8 +919,21 @@ export default function OnlineClientsTab({
                                          return;
                                        }
                                        if (convertType === 'refunded') {
-                                         notify('error', 'لازم تبدأ الاسترداد من دفعة محددة داخل القسم المالي. لم يتم تغيير حالة العميل.');
-                                         setConvertSaving(false);
+                                         // A refund request against the payment chosen, for approval in
+                                         // «طلبات الاسترداد»; the client shows as awaiting it meanwhile.
+                                         const payment = (convertRow.paymentHistory || []).find(p => p.id === convertRefundPaymentId);
+                                         if (!payment) throw new Error('اختار الدفعة اللي هتترد');
+                                         await mysqlAdmin.createRefundByAdmin({
+                                           subscriber_id: convertRow.id, payment_id: payment.id,
+                                           amount: Number(convertRefundAmount) || payment.amount, currency: payment.currency || 'EGP',
+                                           reason: convertRefundReason.trim(), refund_method: convertRefundMethod,
+                                         });
+                                         const { crm_json: _dropCrm4, ...refundRowClean } = convertRow as SubscriberItem & { crm_json?: unknown };
+                                         const pending: SubscriberItem = { ...refundRowClean, clientStatus: 'refund_pending', transferAnswers: answers, transferDate: cairoDateOnly() };
+                                         if (!await updateSubscriber(pending)) throw new Error('اتفتح طلب الاسترداد، بس حالة العميل متحفظتش');
+                                         setSalesOwnSubscribers(prev => prev.map(s => s.id === pending.id ? pending : s));
+                                         setConvertRow(null);
+                                         notify('success', `✅ اتفتح طلب استرداد لـ ${convertRow.name} — مستني الاعتماد في «طلبات الاسترداد»`);
                                          return;
                                        }
                                        // Strip any stale crm_json property to prevent nesting in DB
@@ -968,7 +975,7 @@ export default function OnlineClientsTab({
                       courses={courses}
                       bundles={bundles}
                       paymentBoxes={paymentBoxes}
-                      defaultCurrency={currencyForBranch(normBranchId(installmentsRow.branch))}
+                      defaultCurrency={clientCurrency(installmentsRow)}
                       notify={notify}
                       onClose={() => setInstallmentsRow(null)}
                       onChanged={reloadSubscribers}

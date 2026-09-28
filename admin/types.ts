@@ -481,6 +481,8 @@ export interface SubscriberItem {
   market?: 'local' | 'saudi' | 'intl';
   /** The price this client agreed per item (course id or 'bundle:<id>'); lib/agreedPrice.ts. */
   customPrices?: Record<string, number>;
+  /** Tracks the client was enrolled in (enrollments.bundle_id). */
+  enrolledBundleIds?: string[];
   /** «مدفوع قبل السيستم» per item — paid before their payments were recorded here; not revenue. */
   priorPaid?: Record<string, number>;
   subscribedAt?: string;

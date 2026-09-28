@@ -9,9 +9,6 @@ import { CommunityEventsAdmin } from './CommunityEventsAdmin';
 import { useSiteData } from '../../context/SiteDataContext';
 
 type CommunityAdminTab = 'pending' | 'posts' | 'library' | 'videos' | 'events' | 'comments';
-type CommunityPostDraft = Pick<CommunityPostItem, 'title' | 'body' | 'tag' | 'authorName' | 'authorRole' | 'authorImage'> & { pinned: boolean };
-type CommunityLibraryDraft = Omit<CommunityLibraryItem, 'id'>;
-type CommunityVideoDraft = Omit<CommunityVideoItem, 'id'> & { videoUrl: string; description: string };
 
 interface Props {
   activeTab: string;

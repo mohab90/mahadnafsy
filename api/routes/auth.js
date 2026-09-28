@@ -45,7 +45,7 @@ const {
   requestLoginCode, verifyLoginCode, CODE_TTL_MINUTES: WA_CODE_TTL_MINUTES,
   claimWhatsAppIdentity, normalizeWhatsAppNumber, isPlausibleNumber,
 } = require('../lib/whatsappOtp');
-const { toDialable, identitySpellings } = require('../lib/phoneNumber');
+const { isRealPhone, toDialable, identitySpellings } = require('../lib/phoneNumber');
 const { cairoToday } = require('../lib/dates');
 
 function hashOtp({ tenantId, email, type, code }) {
@@ -525,6 +525,13 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
   if (!normEmail || !normEmail.includes('@')) return res.status(400).json({ error: 'valid email required' });
   if (courses !== undefined && !Array.isArray(courses)) return res.status(400).json({ error: 'courses must be an array' });
   if (firstPayment && Number(firstPayment.amount) > 0) {
+    // No money against a client who cannot be reached (lib/phoneNumber isRealPhone).
+    if (!isRealPhone(phone)) {
+      return res.status(400).json({
+        error: 'لازم يكون للعميل رقم تليفون حقيقي قبل تسجيل أي دفعة — موبايل مصري أو رقم بكود الدولة.',
+        code: 'PHONE_REQUIRED',
+      });
+    }
     const method = String(firstPayment.paymentMethod || '').trim();
     if (!method || method.length > 100) return res.status(400).json({ error: 'A valid payment method is required for the first payment' });
     if (method.toLowerCase().includes('paymob')) {

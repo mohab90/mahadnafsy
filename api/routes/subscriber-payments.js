@@ -27,6 +27,7 @@ const { financialRecordMatches, resolveFinancialScope } = require('../lib/financ
 const { grantCourseSelections } = require('../lib/entitlements');
 const { getNextClientCode } = require('../lib/mappers');
 const { leadScope } = require('../lib/leadAccess');
+const { isRealPhone } = require('../lib/phoneNumber');
 const { VALID_BRANCHES } = require('../constants/permissions');
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../lib/paymentEntitlementAccess');
 
@@ -225,6 +226,15 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
     }
     if (!financialRecordMatches(scope, subRow)) {
       return res.status(403).json({ error: 'Subscriber is outside your payment scope' });
+    }
+    // «متخليش السيستم يقبل عميل دفع بدون رقم تليفون حقيقي»: money is recorded
+    // only against a client who can be reached. 29 paying clients had no real
+    // number — none at all, or one too short to dial.
+    if (!isRealPhone(subRow.phone)) {
+      return res.status(400).json({
+        error: 'لازم يكون للعميل رقم تليفون حقيقي قبل تسجيل أي دفعة — عدّل رقم العميل الأول (موبايل مصري أو رقم بكود الدولة).',
+        code: 'PHONE_REQUIRED',
+      });
     }
     const paymentTenantId = req.tenantId;
     // The branch this money was taken at, which is the one the desk chose.

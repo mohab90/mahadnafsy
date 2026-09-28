@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarClock, Plus, Trash2 } from 'lucide-react';
 import { Modal } from '../../../../../shared/ui/Modal';
+import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 import { cairoDateOnly, cairoDaysAhead } from '../../../../../shared/cairoDate';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { mapServerInstallmentPlan } from '../../../unified-client/installmentPlanMapper';
@@ -123,7 +124,7 @@ export function InstallmentPlansModal({ subscriber, courses, bundles, paymentBox
   };
 
   const remove = async (planId: string) => {
-    if (!confirm('مسح الخطة؟ مفيش أقساط اتدفعت منها.')) return;
+    if (!await confirmDialog('مسح الخطة؟ مفيش أقساط اتدفعت منها.')) return;
     setSaving(true);
     try {
       await mysqlAdmin.adminDelete(`/admin/installment-plans/${planId}`);

@@ -27,12 +27,15 @@ const { requireCollectionLead } = require('../collection-distribution');
 async function loadEnrollmentProjection(tenantId, subscriberIds) {
   if (!subscriberIds.length) return {};
   const [rows] = await pool.query(
-    `SELECT subscriber_id,course_id,access_type,lecture_limit FROM enrollments
+    `SELECT subscriber_id,course_id,bundle_id,access_type,lecture_limit FROM enrollments
      WHERE tenant_id=? AND status='active' AND subscriber_id IN (${subscriberIds.map(() => '?').join(',')})`,
     [tenantId, ...subscriberIds]
   );
   return rows.reduce((projection, row) => {
-    const entry = projection[row.subscriber_id] ||= { ids: [], access: {} };
+    const entry = projection[row.subscriber_id] ||= { ids: [], bundleIds: [], access: {} };
+    // The track a course was opened through: the online screen shows a
+    // track booking as the track, not as the courses inside it.
+    if (row.bundle_id && !entry.bundleIds.includes(String(row.bundle_id))) entry.bundleIds.push(String(row.bundle_id));
     if (!row.course_id) return projection;
     const courseId = String(row.course_id);
     if (!entry.ids.includes(courseId)) entry.ids.push(courseId);
@@ -376,6 +379,7 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
         notes: r.notes, createdAt: r.created_at,
         ...crm,          // other CRM fields: courseAccess, installmentPlans, etc.
         enrolledCourseIds,
+        enrolledBundleIds: enrollmentProjection[r.id]?.bundleIds || [],
         courseAccess: enrollmentProjection[r.id]?.access || {},
         certificates: completionProjection[r.id] || [],
         clientCode,      // authoritative
@@ -527,6 +531,7 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePe
         notes: r.notes, createdAt: r.created_at,
         ...crm,
         enrolledCourseIds,
+        enrolledBundleIds: enrollmentProjection[r.id]?.bundleIds || [],
         courseAccess: enrollmentProjection[r.id]?.access || {},
         certificates: completionProjection[r.id] || [],
         clientCode: r.client_code || crm.clientCode || null,
@@ -677,6 +682,7 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, requir
         firebaseUid: r.firebase_uid, isActive: !!r.is_active,
         notes: r.notes, createdAt: r.created_at, ...crm,
         enrolledCourseIds: enrollmentProjection[r.id]?.ids || [],
+        enrolledBundleIds: enrollmentProjection[r.id]?.bundleIds || [],
         courseAccess: enrollmentProjection[r.id]?.access || {},
         certificates: completionProjection[r.id] || [],
         clientCode, paymentHistory,
@@ -747,6 +753,7 @@ router.get('/api/staff/my-collection-clients', requireAuth, requireAdminOrStaff,
         firebaseUid: r.firebase_uid, isActive: !!r.is_active,
         notes: r.notes, createdAt: r.created_at, ...crm,
         enrolledCourseIds: enrollmentProjection[r.id]?.ids || [],
+        enrolledBundleIds: enrollmentProjection[r.id]?.bundleIds || [],
         courseAccess: enrollmentProjection[r.id]?.access || {},
         certificates: completionProjection[r.id] || [],
         clientCode, paymentHistory,
@@ -817,6 +824,7 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, requ
         firebaseUid: r.firebase_uid, isActive: !!r.is_active,
         notes: r.notes, createdAt: r.created_at, ...crm,
         enrolledCourseIds: enrollmentProjection[r.id]?.ids || [],
+        enrolledBundleIds: enrollmentProjection[r.id]?.bundleIds || [],
         courseAccess: enrollmentProjection[r.id]?.access || {},
         certificates: completionProjection[r.id] || [],
         clientCode, paymentHistory,

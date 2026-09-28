@@ -111,8 +111,20 @@ function toDisplay(input) {
   return dialable ? `+${dialable}` : '';
 }
 
+/**
+ * A number a person can be reached on: dialable (an Egyptian mobile, or a
+ * number carrying its country code), and not a filler typed to get past a
+ * required field — 01000000000, 01111111111.
+ */
+function isRealPhone(input) {
+  const dialable = toDialable(input);
+  if (!dialable) return false;
+  return !/^(\d)\1+$/.test(dialable.slice(-9));
+}
+
 module.exports = {
   DEFAULT_COUNTRY_CODE,
+  isRealPhone,
   toIdentity,
   toDialable,
   toDisplay,

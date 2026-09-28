@@ -130,21 +130,19 @@ test('the personal page is one page, not a sub-nav', () => {
   assert.match(nav, /\{ key: 'my_hr', label: 'ملفي الوظيفي'/);
 });
 
-test('عملائي holds every branch, and says which', () => {
+test('the online screen holds online clients, and says which market each is in', () => {
+  // «سواء اونلاين محلي او دولي او سعودي دول فقط اللى بيظهروا» (28 Sep): it
+  // listed every branch, so its total was more than its markets added up to.
+  // A Daqqi client is on the Daqqi desk, and every client of every branch is in
+  // «قاعدة العملاء», so a rep still finds whoever they signed up.
   const tab = codeOnly(read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx'));
-  // It used to drop every Daqqi client outright, so a rep who signed one up
-  // could not find them anywhere on their own screen.
-  assert.ok(!tab.includes("branchScopedMasterList.filter(s => normBranchId(s.branch) !== 'DAQQI')"),
-    'عملائي still excludes Daqqi clients');
-  assert.match(tab, /const \[clientBranchFilter, setClientBranchFilter\] = useState\(''\)/);
-  assert.match(tab, /branch: true,/, 'the branch column is not switched on');
+  assert.match(tab, /: branchScopedMasterList\.filter\(isOnlineClient\);/);
+  assert.match(tab, /branch: true,/, 'the market column is not switched on');
 
   const table = codeOnly(read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx'));
   assert.match(table, /vc\.branch && <th/);
-  assert.match(table, /vc\.branch && <td/);
-  const toolbar = codeOnly(read('admin/pages/dashboard/tabs/online-clients-sections/FiltersToolbar.tsx'));
-  assert.match(toolbar, /clientBranchFilter/);
-  assert.match(toolbar, /كل الفروع/);
+  assert.match(table, /vc\.branch && <td[^\n]*\{placeLabel\(row\)\}/);
+  assert.match(table, /isOnlineClient\(row\) \? MARKET_LABELS\[subscriberMarket\(row\)\] : branchLabel\(row\.branch\)/);
 });
 
 test('عملائي has its own URL, and the old ones still land', () => {

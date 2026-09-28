@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Eye, Search } from 'lucide-react';
 import { cairoDateOnly, cairoDaysAgo } from '../../../../../shared/cairoDate';
-import { BRANCHES, BRANCH_LABELS_AR } from '../../../../constants/branches';
 import type { Bundle, Course, DaqqiRound, StaffMember } from '../../../../types';
 
 // The date filter's quick ranges, in Cairo days; «مخصص» opens the two dates.
@@ -24,12 +23,6 @@ interface Props {
   housingMap: Map<string, HousingInfo>;
   daqqiReceptionFilter: string;
   setDaqqiReceptionFilter: (v: string) => void;
-  // عملائي spans every branch, so which one is a filter rather than a hidden
-  // exclusion. Empty means all of them.
-  clientBranchFilter: string;
-  setClientBranchFilter: (value: string) => void;
-  collOnlineStatusFilter: string;
-  setCollOnlineStatusFilter: (v: string) => void;
   collOnlineRemainingFilter: 'all'|'has_remaining'|'paid';
   setCollOnlineRemainingFilter: (v: 'all'|'has_remaining'|'paid') => void;
   collOnlineCollectionFilter: string;
@@ -56,8 +49,7 @@ export function FiltersToolbar({
   isDaqqiClientsTab, collOnlineSearch, setCollOnlineSearch, setCollOnlinePage,
   daqqiHousingFilter, setDaqqiHousingFilter, daqqiRoundFilter, setDaqqiRoundFilter,
   salesOwnDaqqiRounds, housingMap, daqqiReceptionFilter, setDaqqiReceptionFilter,
-  clientBranchFilter, setClientBranchFilter,
-  collOnlineStatusFilter, setCollOnlineStatusFilter, collOnlineRemainingFilter, setCollOnlineRemainingFilter,
+  collOnlineRemainingFilter, setCollOnlineRemainingFilter,
   collOnlineCollectionFilter, setCollOnlineCollectionFilter, isOnlineManager, isAdmin,
   onlineTeamMembers, staffMembers, collOnlineCertFilter, setCollOnlineCertFilter,
   collOnlineCourseFilter, setCollOnlineCourseFilter, courses, bundles,
@@ -118,22 +110,8 @@ export function FiltersToolbar({
             })()}
           </>
         )}
-        {!isDaqqiClientsTab && (
-          <select value={clientBranchFilter} onChange={e=>{setClientBranchFilter(e.target.value);setCollOnlinePage(1);}}
-            className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none" title="الفرع">
-            <option value="">كل الفروع</option>
-            {BRANCHES.map(b => <option key={b} value={b}>{BRANCH_LABELS_AR[b]}</option>)}
-          </select>
-        )}
-        <select value={collOnlineStatusFilter} onChange={e=>{setCollOnlineStatusFilter(e.target.value);setCollOnlinePage(1);}}
-          className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none">
-          <option value="">كل الحالات</option>
-          <option value="active">نشط</option>
-          <option value="paused">موقوف</option>
-          <option value="finished">منتهي</option>
-          <option value="refund_pending">استرداد قيد التنفيذ</option>
-          <option value="refunded">مسترد</option>
-        </select>
+        {/* Status is the tabs' — «النشطين، المنتهين، المتوقفين، المستردين». A
+            status dropdown beside them only ever narrowed a tab to nothing. */}
         <select value={collOnlineRemainingFilter} onChange={e=>{setCollOnlineRemainingFilter(e.target.value as 'all'|'has_remaining'|'paid');setCollOnlinePage(1);}}
           className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none">
           <option value="all">كل المدفوعات</option>
@@ -175,8 +153,8 @@ export function FiltersToolbar({
           <input type="date" value={collOnlineDateTo} onChange={e=>{setCollOnlineDateTo(e.target.value);setCollOnlinePage(1);}}
             className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none" title="إلى تاريخ" />
         </>)}
-        {(collOnlineSearch||clientBranchFilter||collOnlineStatusFilter||collOnlineRemainingFilter!=='all'||collOnlineCourseFilter||collOnlineDateFrom||collOnlineDateTo||collOnlineCollectionFilter||collOnlineCertFilter!=='all'||daqqiHousingFilter!=='all'||daqqiRoundFilter||daqqiReceptionFilter) && (
-          <button onClick={()=>{setCollOnlineSearch('');setClientBranchFilter('');setCollOnlineStatusFilter('');setCollOnlineRemainingFilter('all');setCollOnlineCourseFilter('');setCollOnlineDateFrom('');setCollOnlineDateTo('');setDatePreset('');setCollOnlineCollectionFilter('');setCollOnlineCertFilter('all');setDaqqiHousingFilter('all');setDaqqiRoundFilter('');setDaqqiReceptionFilter('');setCollOnlinePage(1);}}
+        {(collOnlineSearch||collOnlineRemainingFilter!=='all'||collOnlineCourseFilter||collOnlineDateFrom||collOnlineDateTo||collOnlineCollectionFilter||collOnlineCertFilter!=='all'||daqqiHousingFilter!=='all'||daqqiRoundFilter||daqqiReceptionFilter) && (
+          <button onClick={()=>{setCollOnlineSearch('');setCollOnlineRemainingFilter('all');setCollOnlineCourseFilter('');setCollOnlineDateFrom('');setCollOnlineDateTo('');setDatePreset('');setCollOnlineCollectionFilter('');setCollOnlineCertFilter('all');setDaqqiHousingFilter('all');setDaqqiRoundFilter('');setDaqqiReceptionFilter('');setCollOnlinePage(1);}}
             className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-gray-50 text-gray-500 hover:bg-gray-100">مسح الفلاتر</button>
         )}
         {/* Export lives in ⚙️ الإعدادات now, on both halves of the screen. */}

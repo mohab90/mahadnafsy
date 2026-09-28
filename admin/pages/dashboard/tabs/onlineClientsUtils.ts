@@ -1,4 +1,4 @@
-import type { SubscriberItem } from '../../../types';
+import type { Bundle, Course, SubscriberItem } from '../../../types';
 import { normBranchId } from '../dashboardShared';
 import { cairoDay } from '../../../../shared/cairoDate';
 
@@ -9,7 +9,8 @@ export const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error || '');
 
 import { isCollected, paymentAmountInEGP, toEgp } from '../../../lib/money';
-import { agreedPriceFor, itemKeyOf, paidFor } from '../../../lib/agreedPrice';
+import { clientItems } from '../../../lib/agreedPrice';
+import { currencyForBranch } from '../../../lib/branchCurrency';
 
 // Re-exported: seven modules import it from here, and the conversion itself
 // now lives in one place instead of three.
@@ -72,27 +73,30 @@ export const calcSubscribersPaidEGP = (
     return sum + paymentAmountInEGP(payment);
   }, 0);
 
-// What the client still owes, in EGP, item by item at the price agreed
-// (lib/agreedPrice.ts). It summed bookings that had recorded a price — courses
-// only, the first one found — so tracks and saved prices never counted, and it
-// took every payment off that total, certificates and books included.
-export const subscriberRemainingEGP = (subscriber: SubscriberItem): number => {
-  const items = new Map<string, string>();
-  (subscriber.paymentHistory || []).forEach(payment => {
-    const item = itemKeyOf(payment);
-    if (item && (!payment.paymentType || payment.paymentType === 'course') && !items.has(item)) items.set(item, payment.currency || 'EGP');
-  });
-  Object.keys(subscriber.customPrices || {}).forEach(item => {
-    if (!item.startsWith('multi:') && !items.has(item)) items.set(item, 'EGP');
-  });
-  let remaining = 0;
-  items.forEach((currency, item) => {
-    const owed = agreedPriceFor(subscriber, item, 0, currency) - paidFor(subscriber, item, currency)
-      - (Number(subscriber.priorPaid?.[item]) || 0);
-    if (owed > 0) remaining += toEgp(owed, currency);
-  });
-  return remaining;
+/** The currency a client's prices are read in: their market's, online; their branch's, otherwise. */
+export const clientCurrency = (subscriber: SubscriberItem): 'EGP' | 'SAR' | 'USD' => (isOnlineClient(subscriber)
+  ? ({ local: 'EGP', saudi: 'SAR', intl: 'USD' } as const)[subscriberMarket(subscriber)]
+  : currencyForBranch(normBranchId(subscriber.branch)) as 'EGP' | 'SAR' | 'USD');
+
+/**
+ * What the client holds and owes, from the same items, prices and payments the
+ * table shows (lib/agreedPrice.ts clientItems) — so a filter and a row cannot
+ * disagree. It used to count only courses that had a payment or a saved price,
+ * at a catalogue price of nothing: a client enrolled with nothing paid owed
+ * nothing, and «مكتمل الدفع» listed them.
+ */
+export const subscriberBalance = (subscriber: SubscriberItem, courses: Course[], bundles: Bundle[]) => {
+  const items = clientItems(subscriber, courses, bundles, clientCurrency(subscriber));
+  return {
+    items: items.length,
+    remainingEgp: items.reduce((sum, item) => sum + toEgp(item.remaining, item.currency), 0),
+    paidAnything: items.some(item => item.paid > 0),
+  };
 };
+
+/** Paid in full: holds something, has paid for it, and owes nothing. */
+export const isFullyPaid = (balance: ReturnType<typeof subscriberBalance>) =>
+  balance.items > 0 && balance.paidAnything && balance.remainingEgp <= 0;
 
 export const formatCompactNumber = (value: number): string =>
   value >= 1000 ? `${(value / 1000).toFixed(1)}K` : String(Math.round(value));

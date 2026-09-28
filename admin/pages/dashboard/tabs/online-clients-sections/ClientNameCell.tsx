@@ -5,6 +5,7 @@
 // changed in one layout would have been wrong in the other.
 
 import type { SubscriberItem } from '../../../../types';
+import { waLink } from '../../../../lib/whatsappLink';
 
 export default function ClientNameCell({ row, clientCode, navigate }: {
   row: SubscriberItem;
@@ -19,6 +20,11 @@ export default function ClientNameCell({ row, clientCode, navigate }: {
         return <button onClick={()=>navigate(`/client/${clientCode}`)} className="font-bold text-gray-800 hover:text-primary-700 text-[11px] block truncate max-w-[110px]" dir={isEnglish?'ltr':'rtl'}>{displayName}</button>;
       })()}
       <a href={`tel:${row.phone}`} className="text-xs font-semibold text-blue-600">{row.phone}</a>
+      {/* No payment is taken for a client who cannot be reached (the server
+          refuses it), so the number to fix is shown before anyone tries. */}
+      {!waLink(row.phone) && (
+        <span className="block text-[9px] font-bold text-red-600" title="عدّل الرقم قبل تسجيل أي دفعة">⚠ بدون رقم صالح</span>
+      )}
       {row.clientStatus && row.clientStatus !== 'active' && (() => {
         const csBadge: Record<string,string> = {finished:'bg-green-100 text-green-700',paused:'bg-amber-100 text-amber-700',refunded:'bg-red-100 text-red-700',refund_pending:'bg-orange-100 text-orange-700',leads:'bg-purple-100 text-purple-700'};
         const csLabel: Record<string,string> = {finished:'✅ منتهي',paused:'⏸ متوقف',refunded:'↩️ مسترد',refund_pending:'⏳ استرداد معلق',leads:'👥 محتمل'};

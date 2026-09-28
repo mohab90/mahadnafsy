@@ -154,6 +154,7 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
         if (enrollment.bundle_id) return [`bundle:${enrollment.bundle_id}`];
         return [];
       }))];
+      const enrolledBundleIds = [...new Set(enrollmentRows.filter(row => row.bundle_id).map(row => String(row.bundle_id)))];
       const courseAccess = Object.fromEntries(enrollmentRows.filter(row => row.course_id).map(row => [
         String(row.course_id),
         row.access_type === 'limited'
@@ -210,7 +211,7 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
       return res.json({ type: 'subscriber', data: {
         id: r.id, name: r.name, email: r.email, phone: r.phone,
         firebaseUid: r.firebase_uid, isActive: !!r.is_active, notes: r.notes, createdAt: r.created_at,
-        ...crm, enrolledCourseIds, courseAccess,
+        ...crm, enrolledCourseIds, enrolledBundleIds, courseAccess,
         // P1: payments table is the sole source of truth for money; the stale
         // crm_json.paymentHistory fallback was proven dead (0 subscribers rely on
         // it — every one has its payments in the table) and is removed.

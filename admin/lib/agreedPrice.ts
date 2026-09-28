@@ -43,7 +43,7 @@ const catalogueIn = (price: unknown, currency: string): number => {
  * system), and what is left. A course that came inside a track is the track's.
  */
 export function clientItems(
-  subscriber: Pick<SubscriberItem, 'paymentHistory' | 'customPrices' | 'priorPaid' | 'enrolledCourseIds'>,
+  subscriber: Pick<SubscriberItem, 'paymentHistory' | 'customPrices' | 'priorPaid' | 'enrolledCourseIds' | 'enrolledBundleIds'>,
   courses: PricedCatalogueItem[], bundles: PricedCatalogueItem[], fallbackCurrency = 'EGP',
 ): ClientItem[] {
   const keys = new Set<string>();
@@ -52,6 +52,9 @@ export function clientItems(
     if (item && isCoursePayment(payment)) keys.add(item);
   });
   Object.keys(subscriber.customPrices || {}).forEach(item => { if (!item.startsWith('multi:')) keys.add(item); });
+  // A track the client was enrolled in is the track, even when no payment or
+  // saved price names it: 11 clients showed the courses inside one instead.
+  (subscriber.enrolledBundleIds || []).forEach(id => { if (id) keys.add(`bundle:${id}`); });
   const inTracks = new Set([...keys].filter(item => item.startsWith('bundle:'))
     .flatMap(item => bundles.find(bundle => `bundle:${bundle.id}` === item)?.courses?.map(course => course.id) || []));
   (subscriber.enrolledCourseIds || []).forEach(id => { if (id && !inTracks.has(id)) keys.add(id); });

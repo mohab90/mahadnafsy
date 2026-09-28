@@ -27,6 +27,7 @@ const { financialRecordMatches, resolveFinancialScope } = require('../lib/financ
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../lib/paymentEntitlementAccess');
 const { grantCourseEntitlement } = require('../lib/entitlements');
 const { queuePaymentReceipt } = require('../lib/paymentReceipt');
+const { isRealPhone } = require('../lib/phoneNumber');
 
 async function requireScopedSubscriber(req, subscriberId, db = pool) {
   const [[subscriber]] = await db.query(
@@ -124,7 +125,7 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
 
     await conn.beginTransaction();
     const [[plan]] = await conn.query(
-      `SELECT ip.*, s.branch, s.branch_id, s.assigned_cs_id, s.assigned_sales_id
+      `SELECT ip.*, s.branch, s.branch_id, s.assigned_cs_id, s.assigned_sales_id, s.phone AS subscriber_phone
          FROM installment_plans ip JOIN subscribers s ON s.id = ip.subscriber_id AND s.tenant_id = ip.tenant_id
         WHERE ip.id=? AND ip.tenant_id=? LIMIT 1 FOR UPDATE`,
       [planId, req.tenantId]
@@ -133,6 +134,14 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
     if (!planMatchesScope(req, plan)) {
       await conn.rollback();
       return res.status(404).json({ error: 'Plan not found' });
+    }
+    // No money against a client who cannot be reached (lib/phoneNumber isRealPhone).
+    if (!isRealPhone(plan.subscriber_phone)) {
+      await conn.rollback();
+      return res.status(400).json({
+        error: 'لازم يكون للعميل رقم تليفون حقيقي قبل تسجيل أي دفعة — عدّل رقم العميل الأول.',
+        code: 'PHONE_REQUIRED',
+      });
     }
 
     const payId = `inst-${uuidv4()}`;

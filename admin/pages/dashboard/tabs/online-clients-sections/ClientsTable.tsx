@@ -10,7 +10,7 @@ import type {
   StaffMember, SubscriberItem,
 } from '../../../../types';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
-import { SUB_STATUS_CFG, normBranchId, type SubStatus } from '../../dashboardShared';
+import { SUB_STATUS_CFG, type SubStatus } from '../../dashboardShared';
 import { createClientPaymentDraft } from '../../../../lib/clientActionDrafts';
 import { BRANCH_LABELS_AR, normalizeBranch } from '../../../../constants/branches';
 
@@ -20,14 +20,16 @@ const branchLabel = (value?: string | null): string => {
   const key = normalizeBranch(value);
   return key ? BRANCH_LABELS_AR[key] : (String(value || '').trim() || '—');
 };
+/** Online: the market the client is in (the tabs'); a branch client: the branch. */
+const placeLabel = (row: SubscriberItem): string => (isOnlineClient(row) ? MARKET_LABELS[subscriberMarket(row)] : branchLabel(row.branch));
 import { ClientCourseAccessPanel } from './ClientCourseAccessPanel';
-import { currencyForBranch } from '../../../../lib/branchCurrency';
-import { isOnlineClient, subscriberMarket } from '../onlineClientsUtils';
-import { clientItems } from '../../../../lib/agreedPrice';
+import { MARKET_LABELS, clientCurrency, isOnlineClient, subscriberMarket } from '../onlineClientsUtils';
+import { clientItems, itemKeyOf } from '../../../../lib/agreedPrice';
 import { isCollected } from '../../../../lib/money';
 import ClientNameCell from './ClientNameCell';
 import type { OnlineClientConvertType } from '../OnlineClientConvertModal';
 import { waLink } from '../../../../lib/whatsappLink';
+import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 import { WhatsAppIcon } from '../../../../components/WhatsAppIcon';
 import { useCertificateCatalog } from '../../../../lib/certificateCatalog';
 
@@ -67,6 +69,7 @@ interface Props {
   setConvertRefundReason: (v: string) => void;
   setConvertRefundAmount: (v: string) => void;
   setConvertRefundMethod: (v: string) => void;
+  setConvertRefundPaymentId: (v: string) => void;
   /** «الأقساط» — the client's plans, a new schedule, paying an instalment. */
   setInstallmentsRow: (row: SubscriberItem | null) => void;
   filteredLength: number;
@@ -80,7 +83,7 @@ export function ClientsTable({
   updateSubscriber, reloadSubscribers, setSalesOwnSubscribers, deleteSubscriber, setSubPayRow, setSubPayDraft,
   setDaqqiHousingModal, setDaqqiHousingRoundId,
   setConvertRow, setConvertType, setConvertAttendedLive, setConvertGotCert, setConvertPauseReason,
-  setConvertRefundReason, setConvertRefundAmount, setConvertRefundMethod, setInstallmentsRow, filteredLength, notify,
+  setConvertRefundReason, setConvertRefundAmount, setConvertRefundMethod, setConvertRefundPaymentId, setInstallmentsRow, filteredLength, notify,
 }: Props) {
   // Which customer we are adjusting course access for. The default length is
   // set per course in the catalogue; this is where one person is changed.
@@ -109,7 +112,7 @@ export function ClientsTable({
             <th className="text-right px-2 py-2 border border-gray-200 font-semibold relative select-none" style={cw['name']?{width:cw['name']}:{}}>الاسم<span onMouseDown={e=>startColResize('name',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>
             {/* عملائي holds every branch now, so which one a client belongs to
                 has to be readable on the row rather than implied by the tab. */}
-            {vc.branch && <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] whitespace-nowrap relative select-none" style={cw['branch']?{width:cw['branch']}:{}}>الفرع<span onMouseDown={e=>startColResize('branch',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
+            {vc.branch && <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] whitespace-nowrap relative select-none" style={cw['branch']?{width:cw['branch']}:{}}>{isDaqqiClientsTab ? 'الفرع' : 'السوق'}<span onMouseDown={e=>startColResize('branch',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
             {vc.createdAt  && <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] whitespace-nowrap relative select-none" style={cw['createdAt']?{width:cw['createdAt']}:{}}>تاريخ الاشتراك<span onMouseDown={e=>startColResize('createdAt',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
             {vc.courses    && <th className="text-right px-2 py-2 border border-gray-200 font-semibold relative select-none" style={cw['courses']?{width:cw['courses']}:{}}>الكورسات<span onMouseDown={e=>startColResize('courses',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
             {vc.value      && <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] relative select-none" style={cw['value']?{width:cw['value']}:{}}>القيمة<span onMouseDown={e=>startColResize('value',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
@@ -131,13 +134,10 @@ export function ClientsTable({
             const salesName = row.assignedSalesName || '';
             // Collected money only: a pending or refunded row is not paid.
             const payments = (row.paymentHistory || []).filter(isCollected);
-            const branchId = normBranchId(row.branch);
             // The currency they pay in: their online market's, else their
             // branch's. A riyal client filed under an Egypt branch showed no
             // payments at all, every one being filtered out as the wrong currency.
-            const branchCurrency = isOnlineClient(row)
-              ? ({ local: 'EGP', saudi: 'SAR', intl: 'USD' } as const)[subscriberMarket(row)]
-              : currencyForBranch(branchId);
+            const branchCurrency = clientCurrency(row);
             const certLabel = (t?: string) => certCatalog.label(t);
             // One row per course or track they hold, at the price agreed, with
             // what they paid for it here and before the system — the same items
@@ -173,7 +173,7 @@ export function ClientsTable({
               <select value={row.status||'active'} onChange={async e => {
                 const nextStatus = e.target.value as SubscriberItem['status'];
                 if (nextStatus === 'refunded' || nextStatus === 'refund_pending') {
-                  notify('info', 'الاسترداد لازم يبدأ من الدفعة الأصلية داخل القسم المالي؛ لم يتم تغيير حالة العميل.');
+                  notify('info', 'الاسترداد من زرار «تحويل» ← «استرداد»: تختار الدفعة ويتفتح طلب في «طلبات الاسترداد». الحالة متغيرتش.');
                   return;
                 }
                 // `status` (this dropdown) and `clientStatus` (which tab the client shows
@@ -279,7 +279,7 @@ export function ClientsTable({
                   <button title="تسجيل دفعة" onClick={()=>{
                     setSubPayRow(row);
                     setSubPayDraft(createClientPaymentDraft({
-                      currency: currencyForBranch(branchId),
+                      currency: branchCurrency,
                       courseId: courseRows[0]?.cid || '',
                     }));
                     setSubPayDraft(prev => ({ ...prev, bookingType: (row.enrolledCourseIds||[]).length > 0 ? 'installment' : 'new_booking' }));
@@ -292,7 +292,7 @@ export function ClientsTable({
                       screen ever drew, so pressing it did nothing. */}
                   {waLink(row.phone) ? (
                     <a title="واتساب" href={waLink(row.phone) || undefined} target="_blank" rel="noreferrer"
-                      className="h-7 rounded bg-green-50 text-green-600 hover:bg-green-100 flex items-center justify-center transition"><WhatsAppIcon size={13}/></a>
+                      className="h-7 rounded border border-gray-200 bg-white text-gray-900 hover:bg-gray-900 hover:text-white flex items-center justify-center transition"><WhatsAppIcon size={13}/></a>
                   ) : (
                     <span title="مفيش رقم" className="h-7 rounded bg-gray-50 text-gray-300 flex items-center justify-center"><WhatsAppIcon size={13}/></span>
                   )}
@@ -305,13 +305,13 @@ export function ClientsTable({
                     <button title="تفاصيل الكورسات والصلاحية والمدفوعات" onClick={()=>setAccessRow(row)}
                       className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 flex items-center justify-center transition"><Receipt size={12}/></button>
                   )}
-                  <button title="تحويل" onClick={()=>{setConvertRow(row);setConvertType('');setConvertAttendedLive(false);setConvertGotCert(false);setConvertPauseReason('');setConvertRefundReason('');setConvertRefundAmount('');setConvertRefundMethod('');}} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-orange-50 hover:text-orange-600 flex items-center justify-center transition"><RefreshCw size={12}/></button>
+                  <button title="تحويل" onClick={()=>{setConvertRow(row);setConvertType('');setConvertAttendedLive(false);setConvertGotCert(false);setConvertPauseReason('');setConvertRefundReason('');setConvertRefundAmount('');setConvertRefundMethod('');setConvertRefundPaymentId('');}} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-orange-50 hover:text-orange-600 flex items-center justify-center transition"><RefreshCw size={12}/></button>
                   {/* Gated on the permission the route checks, not on a role list:
                       DELETE /api/admin/subscribers/:id requires delete_subscribers, which
                       online_manager and daqqi_manager do not hold — both used to see this
                       button and get refused. */}
                   {canDeleteSubscriber && <button title="حذف العميل" onClick={async ()=>{
-                    if (!confirm(`أرشفة "${row.name}"؟ سيظل السجل التاريخي محفوظًا.`)) return;
+                    if (!await confirmDialog(`أرشفة "${row.name}"؟ هيروح «الأرشيف» في قاعدة العملاء وسجله كله محفوظ.`)) return;
                     const ok = await deleteSubscriber(row.id);
                     if (ok && shouldUseScopedSubscribers) setSalesOwnSubscribers(prev=>prev.filter(s=>s.id!==row.id));
                     notify(ok ? 'success' : 'error', ok ? 'تمت أرشفة العميل.' : 'فشلت أرشفة العميل ولم يُحذف من النظام.');
@@ -331,7 +331,7 @@ export function ClientsTable({
                 <td className="px-2 py-2 border border-gray-200">
                   <ClientNameCell row={row} clientCode={clientCode} navigate={navigate} />
                 </td>
-                {vc.branch && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] whitespace-nowrap"><span className="rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">{branchLabel(row.branch)}</span></td>}
+                {vc.branch && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] whitespace-nowrap"><span className="rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">{placeLabel(row)}</span></td>}
                 {vc.createdAt  && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{cairoDay(row.createdAt)||'—'}</td>}
                 {vc.courses    && <td className="px-3 py-2 border border-gray-200 text-xs text-gray-400">لا يوجد</td>}
                 {vc.value      && <td className="px-2 py-2 border border-gray-200 text-center text-gray-300 text-xs">—</td>}
@@ -373,7 +373,7 @@ export function ClientsTable({
             ) : (
               courseRows.map((cr, ci) => {
                 // Per-course subscription date: first payment date for this course
-                const crPays = payments.filter(p => p.courseId === cr.cid || (cr.cid.startsWith('bundle:') && p.courseId && bundles.find(b=>`bundle:${b.id}`===cr.cid)?.courses.some(co=>co.id===p.courseId)));
+                const crPays = payments.filter(p => itemKeyOf(p) === cr.cid || (cr.cid.startsWith('bundle:') && p.courseId && bundles.find(b=>`bundle:${b.id}`===cr.cid)?.courses.some(co=>co.id===p.courseId)));
                 const crFirstPayDate = crPays.length > 0 ? cairoDay([...crPays].sort((a,b)=>(a.at||'').localeCompare(b.at||''))[0]?.at) || cairoDay(row.createdAt) : cairoDay(row.createdAt);
                 // Per-course certificate: check if cert exists for this courseId
                 const crCertId = cr.cid.startsWith('bundle:') ? cr.cid.replace('bundle:','') : cr.cid;
@@ -396,7 +396,7 @@ export function ClientsTable({
                       <ClientNameCell row={row} clientCode={clientCode} navigate={navigate} />
                     </td>
                   )}
-                  {vc.branch && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] whitespace-nowrap"><span className="rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">{branchLabel(row.branch)}</span></td>}
+                  {vc.branch && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] whitespace-nowrap"><span className="rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">{placeLabel(row)}</span></td>}
                   {vc.createdAt && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{crFirstPayDate||'—'}</td>}
                   {vc.courses && <td className="px-2 py-2 border border-gray-200 text-[11px] text-gray-700 max-w-[160px] truncate" title={cr.label}>{cr.label}</td>}
                   {/* Paid above the recorded value is not an accounting error,

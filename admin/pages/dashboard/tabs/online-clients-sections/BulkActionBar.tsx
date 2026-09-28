@@ -1,9 +1,7 @@
 import React from 'react';
-import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { Modal } from '../../../../../shared/ui/Modal';
-import type { Course, StaffMember, SubscriberItem } from '../../../../types';
-import { paymentAmountInEGP } from '../onlineClientsUtils';
-import { downloadCsv } from '../../../../../shared/csv';
+import type { StaffMember, SubscriberItem } from '../../../../types';
+import { mysqlAdmin } from '../../../../lib/mysqlapi';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type BulkAction = null|'pause'|'finish'|'delete'|'assign';
@@ -17,8 +15,6 @@ interface Props {
   setCollOnlineBulkAssignTo: (v: string) => void;
   isAdmin: boolean;
   staffMembers: StaffMember[];
-  filtered: SubscriberItem[];
-  courses: Course[];
   actionSubscribers: SubscriberItem[];
   shouldUseScopedSubscribers: boolean;
   setSalesOwnSubscribers: React.Dispatch<React.SetStateAction<SubscriberItem[]>>;
@@ -29,7 +25,7 @@ interface Props {
 
 export function BulkActionBar({
   collOnlineSelected, setCollOnlineSelected, collOnlineBulkConfirm, setCollOnlineBulkConfirm,
-  collOnlineBulkAssignTo, setCollOnlineBulkAssignTo, isAdmin, staffMembers, filtered, courses,
+  collOnlineBulkAssignTo, setCollOnlineBulkAssignTo, isAdmin, staffMembers,
   actionSubscribers, shouldUseScopedSubscribers, setSalesOwnSubscribers, deleteSubscriber, updateSubscriber, notify,
 }: Props) {
   const [saving, setSaving] = React.useState(false);
@@ -45,16 +41,8 @@ export function BulkActionBar({
           <button onClick={() => setCollOnlineBulkConfirm('finish')} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700 transition">✅ إنهاء</button>
           {isAdmin && <button onClick={() => setCollOnlineBulkConfirm('assign')} className="px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-bold hover:bg-purple-700 transition">👤 تعيين مسئول</button>}
           {isAdmin && <button onClick={() => setCollOnlineBulkConfirm('delete')} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 transition">🗑 حذف</button>}
-          <button onClick={() => {
-            const toExport = filtered.filter(s => collOnlineSelected.has(s.id));
-            const header = ['الاسم','الهاتف','الإيميل','الفرع','الكورسات','الحالة','المدفوع (ج.م)','المتبقي','الكود'];
-            const csvRows = toExport.map(s => {
-              const paid = (s.paymentHistory||[]).reduce((a,p)=>a+paymentAmountInEGP(p),0);
-              const crs = (s.enrolledCourseIds||[]).map(id=>courses.find(c=>c.id===id)?.title||id).join(' | ');
-              return [s.name,s.phone,s.email,s.branch||'',crs,s.clientStatus||s.status||'',paid,Math.max(0,(Number(s.totalValue)||0)-paid),s.clientCode||''];
-            });
-            downloadCsv(`selected-clients-${cairoDateOnly()}`, [header, ...csvRows]);
-          }} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition">📥 تصدير CSV</button>
+          {/* Export: ⚙️ الإعدادات ← «تصدير المحدد», one export for the screen.
+              This one summed refunded and pending payments as paid. */}
           <button onClick={() => setCollOnlineSelected(new Set())} className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-xs font-bold hover:bg-gray-300 transition">✕ إلغاء</button>
         </div>
       )}
@@ -73,7 +61,7 @@ export function BulkActionBar({
         >
             <p className="text-sm text-gray-600 mb-4">
               {collOnlineBulkConfirm === 'delete'
-                ? `هل أنت متأكد من حذف ${collOnlineSelected.size} عميل؟ هذا الإجراء لا يمكن التراجع عنه.`
+                ? `حذف ${collOnlineSelected.size} عميل؟ هيتنقلوا لـ«الأرشيف» في قاعدة العملاء بكل مدفوعاتهم وكورساتهم، وتقدر ترجعهم في أي وقت.`
                 : collOnlineBulkConfirm === 'assign'
                 ? `اختر مسئول التحصيل الجديد لـ ${collOnlineSelected.size} عميل:`
                 : `هل تريد تغيير حالة ${collOnlineSelected.size} عميل إلى "${collOnlineBulkConfirm === 'pause' ? 'متوقف' : 'منتهي'}"؟`}
@@ -104,10 +92,13 @@ export function BulkActionBar({
                   } else if (collOnlineBulkConfirm === 'assign') {
                     if (!collOnlineBulkAssignTo) return;
                     const assignee = staffMembers.find(member => member.id === collOnlineBulkAssignTo);
+                    // The officer alone, as the row's dropdown sets it — not the
+                    // whole record re-saved from this screen's copy.
                     for (const id of ids) {
-                      const sub = actionSubscribers.find(s=>s.id===id);
-                      if (sub && await updateSubscriber({ ...sub, assignedCsId: collOnlineBulkAssignTo, assignedCsName: assignee?.name || '' })) succeeded.add(id);
-                      else failed.add(id);
+                      try {
+                        await mysqlAdmin.assignSubscriberCollection(id, collOnlineBulkAssignTo, assignee?.name || null);
+                        succeeded.add(id);
+                      } catch { failed.add(id); }
                     }
                     if (shouldUseScopedSubscribers) setSalesOwnSubscribers(prev=>prev.map(s=>succeeded.has(s.id)?{...s,assignedCsId:collOnlineBulkAssignTo,assignedCsName:assignee?.name||''}:s));
                   } else {

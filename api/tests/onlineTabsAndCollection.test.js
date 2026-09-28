@@ -50,7 +50,9 @@ test('the tabs: محلي، سعودي، دولي, custom tabs in the same row, o
   for (const label of ["'🇪🇬 محلي'", "'🇸🇦 سعودي'", "'🌍 دولي'"]) assert.ok(bar.includes(label), label);
   assert.doesNotMatch(bar, /فعلي محلي|فعلي دولي/);
   assert.match(bar, /<span ref=\{customTabsSlot\} className="contents" \/>/);
-  assert.match(bar, /overflow-x-auto whitespace-nowrap/);
+  // «صغر حجم التابات بحيث ميكونش في سكرول»: small, and wrapping rather than scrolling.
+  assert.match(bar, /<div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">/);
+  assert.doesNotMatch(bar, /overflow-x-auto/);
   assert.match(bar, /<button onClick=\{exportCsv\} className=\{menuItem\}>/);
   const filters = read('admin/pages/dashboard/tabs/online-clients-sections/FiltersToolbar.tsx');
   assert.doesNotMatch(filters, /downloadCsv/);

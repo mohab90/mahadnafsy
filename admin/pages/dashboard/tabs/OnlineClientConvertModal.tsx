@@ -1,6 +1,8 @@
 import { Modal } from '../../../../shared/ui/Modal';
 import type { SubscriberItem } from '../../../types';
 import { REFUND_METHOD_CODES, paymentMethodLabel } from '../../../../shared/paymentMethods';
+import { isCollected } from '../../../lib/money';
+import { cairoDay } from '../../../../shared/cairoDate';
 
 export type OnlineClientConvertType = 'finished' | 'paused' | 'refunded' | 'daqqi' | 'leads' | 'online' | 'local' | 'saudi' | 'intl' | '';
 const MARKET_OPTIONS = [
@@ -25,6 +27,9 @@ type OnlineClientConvertModalProps = {
   setRefundAmount: (value: string) => void;
   refundMethod: string;
   setRefundMethod: (value: string) => void;
+  /** The payment being refunded: a refund request is always against one. */
+  refundPaymentId: string;
+  setRefundPaymentId: (value: string) => void;
   saving: boolean;
   isDaqqiClientsTab: boolean;
   /** Which of «محلي / سعودي / دولي» the client is in now; null for a branch client. */
@@ -49,6 +54,8 @@ export function OnlineClientConvertModal({
   setRefundAmount,
   refundMethod,
   setRefundMethod,
+  refundPaymentId,
+  setRefundPaymentId,
   saving,
   isDaqqiClientsTab,
   currentMarket,
@@ -57,7 +64,7 @@ export function OnlineClientConvertModal({
 }: OnlineClientConvertModalProps) {
   const disabled = saving
     || (convertType === 'paused' && !pauseReason.trim())
-    || (convertType === 'refunded' && !refundReason.trim())
+    || (convertType === 'refunded' && (!refundReason.trim() || !refundPaymentId))
     || convertType === '';
 
   return (
@@ -111,11 +118,28 @@ export function OnlineClientConvertModal({
               )}
               {convertType === 'refunded' && (
                 <>
+                  {/* A refund goes back from one payment. The request lands in
+                      «طلبات الاسترداد» for approval; this used to collect the
+                      reason and amount and then throw them away. */}
+                  <label className="block text-sm font-bold text-gray-700 mb-1">الدفعة اللي هتترد: <span className="text-red-500">*</span></label>
+                  <select value={refundPaymentId} onChange={event => {
+                    setRefundPaymentId(event.target.value);
+                    const chosen = (row.paymentHistory || []).find(payment => payment.id === event.target.value);
+                    if (chosen) setRefundAmount(String(chosen.amount));
+                  }}
+                    className="mb-2 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-200 bg-white">
+                    <option value="">— اختار الدفعة —</option>
+                    {(row.paymentHistory || []).filter(isCollected).map(payment => (
+                      <option key={payment.id} value={payment.id}>
+                        {payment.amount.toLocaleString('ar-EG-u-nu-latn')} {payment.currency || 'EGP'} — {cairoDay(payment.at)}{payment.paymentMethod ? ` — ${payment.paymentMethod}` : ''}
+                      </option>
+                    ))}
+                  </select>
                   <label className="block text-sm font-bold text-gray-700 mb-1">سبب الاسترداد: <span className="text-red-500">*</span></label>
                   <textarea value={refundReason} onChange={event => setRefundReason(event.target.value)}
                     rows={3} placeholder="اكتب سبب الاسترداد..."
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-200 resize-none" />
-                  <label className="block text-sm font-bold text-gray-700 mb-1 mt-2">المبلغ المطلوب للاسترداد (ج.م):</label>
+                  <label className="block text-sm font-bold text-gray-700 mb-1 mt-2">المبلغ المطلوب للاسترداد (بعملة الدفعة، لحد قيمتها):</label>
                   <input type="number" min="0" value={refundAmount} onChange={event => setRefundAmount(event.target.value)}
                     placeholder="0"
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-200" />
