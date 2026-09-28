@@ -18,7 +18,7 @@
 
 const { cairoDayStartUtc, zonedDateTimeParts } = require('./dates');
 
-const PERIODS = new Set(['day', 'fortnight', 'month']);
+const PERIODS = new Set(['day', 'week', 'fortnight', 'month']);
 const TIME_ZONE = 'Africa/Cairo';
 
 /**
@@ -33,7 +33,7 @@ const TIME_ZONE = 'Africa/Cairo';
  * leads between 00:06 and 02:36 against a limit of five. And whatever arrived in
  * those hours never counted towards the rest of the day.
  *
- * @param {'day'|'fortnight'|'month'} period
+ * @param {'day'|'week'|'fortnight'|'month'} period
  * @param {Date} [now]
  */
 function periodStart(period, now = new Date()) {
@@ -43,6 +43,12 @@ function periodStart(period, now = new Date()) {
 
   if (period === 'month') return at(year, month, 1);
   if (period === 'fortnight') return at(year, month, day <= 15 ? 1 : 16);
+  if (period === 'week') {
+    // From Saturday, the first day of the working week here.
+    const date = new Date(Date.UTC(year, month - 1, day));
+    date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 1) % 7));
+    return at(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
+  }
   return at(year, month, day);
 }
 
@@ -50,6 +56,7 @@ function periodStart(period, now = new Date()) {
 function periodLabel(period) {
   if (period === 'month') return 'هذا الشهر';
   if (period === 'fortnight') return 'هذه الفترة (نصف شهر)';
+  if (period === 'week') return 'هذا الأسبوع';
   return 'اليوم';
 }
 

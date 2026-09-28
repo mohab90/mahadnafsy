@@ -61,6 +61,17 @@ function startBackgroundScheduler({ pool, logger, port }) {
     sync();
     repeat(sync, 30 * 60 * 1000);
   }, 20000);
+  // Collection officers' linked sheets (lib/collectionSheets.js), offset from
+  // the leads sync above.
+  later(() => {
+    const sync = () => require('./collectionSheets').syncAllCollectionSheets()
+      .then(result => {
+        if (result?.created) logger.info(`[jobs] collection sheets created=${result.created}`);
+      })
+      .catch(error => logger.warn('[jobs] collection sheets sync failed:', error.message));
+    sync();
+    repeat(sync, 30 * 60 * 1000);
+  }, 5 * 60 * 1000);
 
   schedule('installment_reminder', 60 * 60 * 1000);
   schedule('pending_payment_reminder', 24 * 60 * 60 * 1000, 2 * 60 * 1000);

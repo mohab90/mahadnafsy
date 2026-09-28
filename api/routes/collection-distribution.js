@@ -8,7 +8,9 @@ const { requireAuth, requireAdminOrStaff, requirePermission } = require('../midd
 const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
 const { sendRouteError } = require('../lib/helpers');
 const { fetchCsvFollowRedirects, isHtmlResponse } = require('../lib/sheets');
-const { sanitizeCollectionConfig } = require('../lib/collectionDistribution');
+const { pool } = require('../lib/db');
+const { CLIENT_STATUSES, collectionIntake, sanitizeCollectionConfig } = require('../lib/collectionDistribution');
+const { importCollectionRows, officerById, syncCollectionSheet } = require('../lib/collectionSheets');
 
 const LEAD_ROLES = new Set(['online_manager', 'sales_collection_manager']);
 
@@ -25,8 +27,17 @@ const guard = [requireAuth, requireAdminOrStaff, requirePermission('manage_subsc
 
 router.get('/api/admin/collection-distribution', ...guard, async (req, res) => {
   try {
-    const stored = await getTenantSetting('collection_distribution', { tenantId: req.tenantId, fallback: {} });
-    res.json(sanitizeCollectionConfig(stored || {}));
+    const config = sanitizeCollectionConfig(await getTenantSetting('collection_distribution', { tenantId: req.tenantId, fallback: {} }) || {});
+    // What each officer holds, and what they received in their own period —
+    // the number their cap is checked against.
+    const [held] = await pool.query(
+      `SELECT assigned_cs_id AS id, COUNT(*) AS n FROM subscribers
+        WHERE tenant_id=? AND deleted_at IS NULL AND assigned_cs_id IS NOT NULL GROUP BY assigned_cs_id`,
+      [req.tenantId]);
+    const received = await collectionIntake(pool, req.tenantId, config.members);
+    const counts = {};
+    held.forEach(row => { counts[row.id] = { held: Number(row.n) || 0, received: received.get(String(row.id)) || 0 }; });
+    res.json({ ...config, counts });
   } catch (error) { sendRouteError(res, error); }
 });
 
@@ -53,6 +64,34 @@ router.get('/api/admin/collection-sheets/csv', ...guard, async (req, res) => {
       return res.status(422).json({ error: 'الشيت مش متاح — خليه «أي حد معاه الرابط يقدر يشوف»' });
     }
     res.json({ csv });
+  } catch (error) { sendRouteError(res, error); }
+});
+
+// «مزامنة الآن» on a linked sheet: its new rows come in under its officer.
+router.post('/api/admin/collection-sheets/:id/sync', ...guard, async (req, res) => {
+  try {
+    const result = await syncCollectionSheet(req.tenantId, String(req.params.id || '').slice(0, 64), {
+      actor: req.user?.email || req.staffRecord?.name || 'collection-sheet',
+    });
+    res.json(result);
+  } catch (error) { sendRouteError(res, error); }
+});
+
+// An uploaded file, parsed by the screen: the same import as a linked sheet,
+// so both dedupe and assign alike.
+router.post('/api/admin/collection-sheets/import', ...guard, async (req, res) => {
+  try {
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows.slice(0, 5000) : [];
+    if (!rows.length) return res.status(400).json({ error: 'مفيش صفوف' });
+    const staff = await officerById(pool, req.tenantId, String(req.body?.staffId || ''));
+    if (!staff) return res.status(400).json({ error: 'اختار مسئول تحصيل نشط' });
+    const result = await importCollectionRows({
+      tenantId: req.tenantId, staff, rows,
+      kind: CLIENT_STATUSES.includes(req.body?.kind) ? req.body.kind : 'old_local',
+      source: String(req.body?.source || `شيت ${staff.name}`).trim().slice(0, 100),
+      actor: req.user?.email || req.staffRecord?.name || 'collection-sheet',
+    });
+    res.json(result);
   } catch (error) { sendRouteError(res, error); }
 });
 

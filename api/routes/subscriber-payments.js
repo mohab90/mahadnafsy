@@ -4,7 +4,7 @@ const { createHash } = require('node:crypto');
 const express = require('express');
 const router  = express.Router();
 const { uuidv4 } = require('../lib/id');
-const { pool, autoAssignStaff } = require('../lib/db');
+const { pool } = require('../lib/db');
 const { queuePaymentReceipt } = require('../lib/paymentReceipt');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { sanitize } = require('../lib/helpers');
@@ -20,6 +20,7 @@ const { safeDateOnly } = require('../lib/dates');
 const { branchIdForBranch, branchForId } = require('../lib/branches');
 const { assertWritable } = require('../lib/periodLock');
 const { agreedPrice, setAgreedPrice } = require('../lib/agreedPrice');
+const { pickCollectionOfficer, subscriberMarket } = require('../lib/collectionDistribution');
 const { hasPermission } = require('../constants/permissions');
 const { applyCertificatePayment } = require('../lib/certificatePayments');
 const { financialRecordMatches, resolveFinancialScope } = require('../lib/financialScope');
@@ -476,7 +477,9 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
         error.statusCode = 409;
         throw error;
       }
-      const rep = await autoAssignStaff('COLLECTION', paymentTenantId);
+      const rep = await pickCollectionOfficer(conn, paymentTenantId, {
+        market: subscriberMarket({ latestCurrency: paymentCurrency, branch: subRow.branch }),
+      });
       const clientCode = await getNextClientCode(conn);
       subRow.assigned_cs_id = rep?.id || null;
       subRow.assigned_cs_name = rep?.name || null;
@@ -547,7 +550,9 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
         let csId = lockedLead.assigned_cs_id || null;
         let csName = lockedLead.assigned_cs_name || null;
         if (!csId) {
-          const rep = await autoAssignStaff('COLLECTION', paymentTenantId);
+          const rep = await pickCollectionOfficer(conn, paymentTenantId, {
+            market: subscriberMarket({ latestCurrency: paymentCurrency, branch: lockedLead.branch }),
+          });
           if (rep) { csId = rep.id; csName = rep.name; }
         }
         const clientCode = lockedLead.client_code || await getNextClientCode(conn);

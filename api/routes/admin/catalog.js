@@ -5,7 +5,7 @@ const express  = require('express');
 const router   = express.Router();
 const { uuidv4 } = require('../../lib/id');
 
-const { pool, autoAssignStaff, cacheInvalidate } = require('../../lib/db');
+const { pool, cacheInvalidate } = require('../../lib/db');
 const { mailer } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
 const { tryJson, sanitize, parseLimit, parseOffset, parseCrm, calcLeadScoreServer } = require('../../lib/helpers');

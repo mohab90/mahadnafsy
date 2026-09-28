@@ -10,7 +10,8 @@ const router   = express.Router();
 const { uuidv4 } = require('../../lib/id');
 const { generateTemporaryPassword } = require('../../lib/secureCredentials');
 
-const { pool, autoAssignStaff, cacheInvalidate } = require('../../lib/db');
+const { pool, cacheInvalidate } = require('../../lib/db');
+const { pickCollectionOfficer, subscriberMarket } = require('../../lib/collectionDistribution');
 const { mailer } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
 const { tryJson, sanitize, parseLimit, parseOffset, parseCrm, calcLeadScoreServer } = require('../../lib/helpers');
@@ -686,7 +687,12 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
     let csId   = crmData.assignedCollectionId   || crmData.assignedCsId   || null;
     let csName = crmData.assignedCollectionName || crmData.assignedCsName || null;
     if (isNewSub && !csId) {
-      const rep = await autoAssignStaff('COLLECTION', req.tenantId);
+      // By the rules on «التحصيل: التوزيع والشيتات». Nobody taking them
+      // leaves them unassigned, for the distribute button to place.
+      const rawMarketBranch = String(crmData.branch || '').toUpperCase().replace(/[-\s]/g, '_');
+      const rep = await pickCollectionOfficer(conn, req.tenantId, {
+        market: subscriberMarket({ market: crmData.market, branch: rawMarketBranch }),
+      });
       if (rep) { csId = rep.id; csName = rep.name; }
     }
     // Extract sales assignment and branch for dedicated DB columns

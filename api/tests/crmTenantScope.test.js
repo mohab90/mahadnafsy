@@ -44,10 +44,10 @@ test('lead conversion is tenant-owned, transactional and releases once', () => {
 });
 
 test('automatic staff assignment measures workload inside the same tenant', () => {
-  const db = read('lib/db.js');
-  assert.match(db, /async function autoAssignStaff\(role, tenantId/);
-  assert.match(db, /WHERE s\.tenant_id=\? AND s\.role=\?/);
-  assert.doesNotMatch(db, /crm_rr_index/);
+  const lib = read('lib/collectionDistribution.js');
+  assert.match(lib, /FROM staff\s+WHERE tenant_id=\? AND UPPER\(role\)='COLLECTION'/);
+  assert.match(lib, /FROM subscribers\s+WHERE tenant_id=\? AND deleted_at IS NULL AND assigned_cs_at >= \?/);
+  assert.doesNotMatch(read('lib/db.js'), /crm_rr_index|autoAssignStaff/);
 });
 
 test('account creation first payment is period-locked and journaled atomically', () => {

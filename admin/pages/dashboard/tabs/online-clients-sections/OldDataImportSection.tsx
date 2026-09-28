@@ -1,6 +1,5 @@
 import React from 'react';
-import { cairoDateOnly } from '../../../../../shared/cairoDate';
-import type { Course, PaymentHistoryEntry, SubscriberItem } from '../../../../types';
+import type { Course, SubscriberItem } from '../../../../types';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import OldDataImportPanel, { type OldDataRow } from '../online/OldDataImportPanel';
 import type { SubscriberSavePayload } from '../onlineClientsUtils';
@@ -25,11 +24,11 @@ const mergeFreshSubscribers = (fresh: SubscriberItem[], setSalesOwnSubscribers: 
 
 /**
  * One row of an old online sheet as a subscriber in «محلي قديم» or «دولي قديم».
- * Shared by the tab's own import and each collection officer's sheets.
+ * (A collection officer's sheet goes through the server's import instead —
+ * api/lib/collectionSheets.js — which reads a row the same way.)
  */
 export function oldOnlineSubscriber(row: OldDataRow, source: string, kind: 'old_local' | 'old_intl', courses: Course[]): SubscriberSavePayload {
   const subBranch = kind === 'old_local' ? 'ONLINE_EGYPT' : 'ONLINE_ABROAD';
-  const subCurrency = kind === 'old_local' ? 'EGP' : 'USD';
   const matchedCourse = row._course
     ? courses.find(course => (course.titleAr || course.title || '').includes(row._course) || row._course.includes(course.titleAr || course.title || ''))
     : null;
@@ -55,19 +54,11 @@ export function oldOnlineSubscriber(row: OldDataRow, source: string, kind: 'old_
     row._cert ? `شهادة: ${row._cert}` : '',
     row._attendance ? `حضور: ${row._attendance}` : '',
   ].filter(Boolean).join(' | ');
-  const paymentHistory: PaymentHistoryEntry[] = [];
-  if (paid > 0 && matchedCourse) {
-    paymentHistory.push({
-      id: `csv-pay-${Date.now()}-${Math.random()}`,
-      amount: paid,
-      currency: subCurrency as 'EGP' | 'USD',
-      paymentType: 'course',
-      isInstallment: false,
-      courseId: matchedCourse.id,
-      courseExpected: expected || undefined,
-      at: cairoDateOnly(),
-    });
-  }
+  // The sheet's price and what it says was collected are the client's price
+  // for the course and «مدفوع قبل السيستم»: in every balance, never revenue.
+  // They were sent as a payment, which the server never accepts from a
+  // subscriber save — so both were dropped and the course showed at the
+  // catalogue price, fully unpaid.
   return {
     name: row._name,
     phone: row._phone,
@@ -78,7 +69,8 @@ export function oldOnlineSubscriber(row: OldDataRow, source: string, kind: 'old_
     notes: extraNotes,
     enrolledCourseIds,
     source,
-    paymentHistory,
+    ...(matchedCourse && expected > 0 ? { customPrices: { [matchedCourse.id]: expected } } : {}),
+    ...(matchedCourse && paid > 0 ? { priorPaid: { [matchedCourse.id]: paid } } : {}),
   } satisfies SubscriberSavePayload;
 }
 

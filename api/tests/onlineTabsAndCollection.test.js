@@ -70,12 +70,14 @@ test('the transfer button reaches every tab but the one the client is in', () =>
 
 test('distribution to collection keeps to who is on, their markets and their cap', () => {
   const config = sanitizeCollectionConfig({ members: [
-    { staffId: 'a', isAvailable: true, markets: ['saudi', 'bogus'], maxClients: 1 },
-    { staffId: 'b', isAvailable: true, markets: [], maxClients: '' },
+    { staffId: 'a', isAvailable: true, markets: ['saudi', 'bogus'], intakeLimit: 1, intakePeriod: 'week' },
+    { staffId: 'b', isAvailable: true, markets: [], intakeLimit: '' },
     { staffId: 'c', isAvailable: false },
   ] });
   assert.deepEqual(config.members[0].markets, ['saudi']);
-  assert.equal(config.members[1].maxClients, null);
+  assert.equal(config.members[0].intakePeriod, 'week');
+  assert.equal(config.members[1].intakeLimit, null);
+  assert.equal(config.members[1].intakePeriod, 'day');
   const staff = [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }];
   const picker = createCollectionPicker(staff, config, new Map());
   assert.equal(picker.size, 2);
@@ -96,7 +98,7 @@ test('an officer set on a client is saved, whichever name the screen sends it un
   const bulk = read('admin/pages/dashboard/tabs/online-clients-sections/BulkActionBar.tsx');
   assert.doesNotMatch(bulk, /collectionStaffId/);
   const modal = read('admin/pages/dashboard/tabs/online-clients-sections/CollectionSettingsModal.tsx');
-  assert.match(modal, /assignedCsId: officer\.id, assignedCsName: officer\.name,/);
+  assert.match(modal, /'\/admin\/collection-sheets\/import',\s+\{ staffId: officer\.id, kind, source, rows \}/);
   assert.match(modal, /\/admin\/collection-sheets\/csv\?sheetId=/);
   const sheets = read('api/routes/collection-distribution.js');
   assert.match(sheets, /fetchCsvFollowRedirects\(/);

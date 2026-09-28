@@ -222,33 +222,4 @@ async function getStaffIdByEmail(email, tenantId) {
   return row?.id || null;
 }
 
-// ── Round-Robin staff auto-assignment ────────────────────────────────────────
-async function autoAssignStaff(role, tenantId = 'tenant-default') {
-  try {
-    const normalizedRole = String(role || '').toUpperCase();
-    let workloadJoin = '';
-    if (normalizedRole === 'SALES') {
-      workloadJoin = `LEFT JOIN leads w ON w.tenant_id=s.tenant_id
-        AND w.assigned_sales_id=s.id AND w.hidden=0 AND w.status NOT IN ('converted','lost','closed')`;
-    } else if (normalizedRole === 'COLLECTION') {
-      workloadJoin = `LEFT JOIN subscribers w ON w.tenant_id=s.tenant_id
-        AND w.assigned_cs_id=s.id AND w.deleted_at IS NULL AND w.is_active=1`;
-    }
-    const countExpr = workloadJoin ? 'COUNT(w.id)' : '0';
-    const [reps] = await pool.query(
-      `SELECT s.id, s.name, ${countExpr} AS active_workload
-       FROM staff s ${workloadJoin}
-       WHERE s.tenant_id=? AND s.role=? AND s.is_active=1 AND s.deleted_at IS NULL
-       GROUP BY s.id, s.name
-       ORDER BY active_workload ASC, s.name ASC, s.id ASC
-       LIMIT 1`,
-      [tenantId, normalizedRole]
-    );
-    return reps[0] ? { id: reps[0].id, name: reps[0].name } : null;
-  } catch (e) {
-    logger.warn(`[autoAssignStaff] ${role} error: ${e.message}`);
-    return null;
-  }
-}
-
-module.exports = { pool, cached, cacheInvalidate, dbQuery, dbExecute, getStaffIdByEmail, autoAssignStaff, requireDb, isDbDown };
+module.exports = { pool, cached, cacheInvalidate, dbQuery, dbExecute, getStaffIdByEmail, requireDb, isDbDown };

@@ -20,7 +20,9 @@ type OldDataImportPanelProps = {
   defaultSource: string;
   accent?: 'indigo' | 'violet';
   showAttendanceCol?: boolean;
-  importRow: (row: OldDataRow, source: string) => Promise<void>;
+  importRow?: (row: OldDataRow, source: string) => Promise<void>;
+  /** All the selected rows in one call, deduplicated by whoever receives them. */
+  importRows?: (rows: OldDataRow[], source: string) => Promise<ImportResult>;
   onImported?: (created: number) => void | Promise<void>;
   /**
    * Reads a Google Sheet link as CSV text (through the server — Google's export
@@ -31,6 +33,8 @@ type OldDataImportPanelProps = {
   /** A link to start with — an officer's saved sheet. */
   initialSheetLink?: string;
 };
+
+type ImportResult = { created: number; dupes: number; errors: number; assigned?: number; others?: number };
 
 const supportedColumns = [
   ['الاسم / name', 'هاتف / phone', 'email'],
@@ -95,6 +99,7 @@ export default function OldDataImportPanel({
   accent = 'indigo',
   showAttendanceCol = false,
   importRow,
+  importRows,
   onImported,
   loadSheetCsv,
   initialSheetLink = '',
@@ -109,7 +114,7 @@ export default function OldDataImportPanel({
   // directly, so one click on a freshly-parsed file wrote every selected row to
   // the database with no chance to stop it.
   const [confirming, setConfirming] = useState(false);
-  const [result, setResult] = useState<{ created: number; dupes: number; errors: number } | null>(null);
+  const [result, setResult] = useState<ImportResult | null>(null);
   const [parseError, setParseError] = useState('');
 
   const fileCls = accent === 'violet'
@@ -175,13 +180,23 @@ export default function OldDataImportPanel({
   const doImport = async () => {
     setConfirming(false);
     setImporting(true);
+    const rows = parsed.filter(row => selected.has(row._id) && row._name && row._phone);
+    if (importRows) {
+      try {
+        const outcome = await importRows(rows, source);
+        setResult(outcome);
+        if (outcome.created + (outcome.assigned || 0) > 0) await onImported?.(outcome.created);
+      } catch (error) {
+        setParseError(error instanceof Error ? error.message : 'تعذّر الرفع');
+      } finally { setImporting(false); }
+      return;
+    }
     let created = 0;
     let dupes = 0;
     let errors = 0;
-    const rows = parsed.filter(row => selected.has(row._id) && row._name && row._phone);
     for (const row of rows) {
       try {
-        await importRow(row, source);
+        await importRow?.(row, source);
         created++;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -348,7 +363,9 @@ export default function OldDataImportPanel({
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-sm space-y-1">
           <p className="font-bold text-emerald-800">انتهى الاستيراد</p>
           <p className="text-emerald-700">تم إنشاء: <strong>{result.created}</strong> عميل جديد</p>
+          {!!result.assigned && <p className="text-emerald-700">موجودين من غير مسئول واتسجلوا باسمه: <strong>{result.assigned}</strong></p>}
           {result.dupes > 0 && <p className="text-amber-700">مكرر تم تجاهله: <strong>{result.dupes}</strong></p>}
+          {!!result.others && <p className="text-amber-700">موجودين مع مسئول تحصيل تاني (متنقلوش): <strong>{result.others}</strong></p>}
           {result.errors > 0 && <p className="text-red-700">أخطاء: <strong>{result.errors}</strong></p>}
         </div>
       )}

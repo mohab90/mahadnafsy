@@ -956,7 +956,6 @@ export default function OnlineClientsTab({
                     <CollectionSettingsModal
                       staffMembers={isOnlineManager ? onlineTeamMembers : staffMembers}
                       subscribers={scopedOrContextSubscribers}
-                      courses={courses}
                       notify={notify}
                       onClose={() => setCollectionSettingsOpen(false)}
                       onChanged={reloadSubscribers}

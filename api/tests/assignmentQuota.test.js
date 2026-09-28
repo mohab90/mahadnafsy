@@ -77,8 +77,17 @@ test('the monthly window starts on the first', () => {
 
 test('an unknown period falls back to the day rather than to no limit', () => {
   // Falling back to "no window" would silently switch the cap off.
-  assert.strictEqual(periodStart('week', at('2026-08-09T09:00:00Z')), cairoMidnight('2026-08-09'));
+  assert.strictEqual(periodStart('year', at('2026-08-09T09:00:00Z')), cairoMidnight('2026-08-09'));
   assert.strictEqual(periodStart(undefined, at('2026-08-09T09:00:00Z')), cairoMidnight('2026-08-09'));
+});
+
+test('the week starts on Saturday, the first working day here', () => {
+  // 8 August 2026 is a Saturday.
+  assert.strictEqual(periodStart('week', at('2026-08-08T09:00:00Z')), cairoMidnight('2026-08-08'));
+  assert.strictEqual(periodStart('week', at('2026-08-09T09:00:00Z')), cairoMidnight('2026-08-08'));
+  assert.strictEqual(periodStart('week', at('2026-08-14T20:00:00Z')), cairoMidnight('2026-08-08'), 'Friday');
+  // 21:30 UTC on Friday is already Saturday in Cairo: a new week.
+  assert.strictEqual(periodStart('week', at('2026-08-14T21:30:00Z')), cairoMidnight('2026-08-15'));
 });
 
 test('no limit set means no rate cap', () => {
@@ -96,6 +105,7 @@ test('a rep with room takes another; a rep at the limit does not', () => {
   assert.strictEqual(hasRoom(member, 21), false);
 });
 
-test('the three periods the owner asked for are the ones offered', () => {
-  assert.deepStrictEqual([...PERIODS].sort(), ['day', 'fortnight', 'month']);
+test('the periods the owner asked for are the ones offered', () => {
+  // «يوميا ولا اسبوعيا ولا 15 يوم ولا في الشهر».
+  assert.deepStrictEqual([...PERIODS].sort(), ['day', 'fortnight', 'month', 'week']);
 });

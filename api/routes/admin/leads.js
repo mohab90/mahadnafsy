@@ -7,7 +7,8 @@ const router   = express.Router();
 const { uuidv4 } = require('../../lib/id');
 const { generateTemporaryPassword } = require('../../lib/secureCredentials');
 
-const { pool, autoAssignStaff, cacheInvalidate } = require('../../lib/db');
+const { pool, cacheInvalidate } = require('../../lib/db');
+const { pickCollectionOfficer, subscriberMarket } = require('../../lib/collectionDistribution');
 const { LEAD_STATUSES, isOpenLeadStatus } = require('../../lib/leadStatuses');
 const { mailer } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
@@ -1002,7 +1003,7 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
     let csId = lead.assigned_cs_id || null;
     let csName = lead.assigned_cs_name || null;
     if (!csId) {
-      const rep = await autoAssignStaff('COLLECTION', req.tenantId);
+      const rep = await pickCollectionOfficer(pool, req.tenantId, { market: subscriberMarket({ branch: lead.branch }) });
       if (rep) { csId = rep.id; csName = rep.name; }
     }
 

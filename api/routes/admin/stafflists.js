@@ -5,7 +5,7 @@ const express  = require('express');
 const router   = express.Router();
 const { uuidv4 } = require('../../lib/id');
 
-const { pool, autoAssignStaff, cacheInvalidate } = require('../../lib/db');
+const { pool, cacheInvalidate } = require('../../lib/db');
 const { resolvePaymentExecutors } = require('../../lib/paymentExecutor');
 const { mailer } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
@@ -21,8 +21,7 @@ const { safeIsoString, safeDateOnly, sqlCairoDayStartUtc } = require('../../lib/
 const { bulkOperationLimiter } = require('../../middleware/rateLimits');
 const { keyset } = require('../../lib/pagination');
 const { installmentPlansBySubscriber, withInstallmentPlans } = require('../../lib/installmentPlansBySubscriber');
-const { getTenantSetting } = require('../../lib/tenantSettings');
-const { createCollectionPicker, sanitizeCollectionConfig, subscriberMarket } = require('../../lib/collectionDistribution');
+const { loadCollectionPicker, subscriberMarket } = require('../../lib/collectionDistribution');
 const { requireCollectionLead } = require('../collection-distribution');
 
 async function loadEnrollmentProjection(tenantId, subscriberIds) {
@@ -891,13 +890,7 @@ router.post('/api/admin/bulk-assign-collection', requireAuth, requireAdminOrStaf
     );
     if (unassigned.length === 0) { await conn.commit(); conn.release(); conn = null; return res.json({ ok: true, assigned: 0, message: 'لا يوجد مشتركون غير معيّنين' }); }
 
-    const config = sanitizeCollectionConfig(await getTenantSetting('collection_distribution', { tenantId: req.tenantId, fallback: {}, db: conn }) || {});
-    const [held] = await conn.query(
-      `SELECT assigned_cs_id AS id, COUNT(*) AS n FROM subscribers
-        WHERE tenant_id=? AND deleted_at IS NULL AND is_active=1 AND assigned_cs_id IS NOT NULL
-        GROUP BY assigned_cs_id`, [req.tenantId]
-    );
-    const picker = createCollectionPicker(csRows, config, new Map(held.map(row => [String(row.id), Number(row.n) || 0])));
+    const picker = await loadCollectionPicker(conn, req.tenantId);
     if (!picker.size) { await conn.rollback(); conn.release(); conn = null; return res.status(400).json({ error: 'مفيش مسئول تحصيل متاح للتوزيع — فعّل حد من «التحصيل: التوزيع والشيتات»' }); }
 
     let assigned = 0;

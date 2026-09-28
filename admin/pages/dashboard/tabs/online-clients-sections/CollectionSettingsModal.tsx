@@ -1,16 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Settings, Trash2 } from 'lucide-react';
+import { Plus, RefreshCw, Settings, Trash2 } from 'lucide-react';
 import { Modal } from '../../../../../shared/ui/Modal';
+import { cairoDateTime } from '../../../../../shared/cairoDate';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
-import type { Course, StaffMember, SubscriberItem } from '../../../../types';
+import type { StaffMember, SubscriberItem } from '../../../../types';
 import OldDataImportPanel from '../online/OldDataImportPanel';
-import { oldOnlineSubscriber } from './OldDataImportSection';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 type Market = 'local' | 'saudi' | 'intl';
-type Member = { staffId: string; isAvailable: boolean; markets: Market[]; maxClients: number | null };
-type Sheet = { id: string; staffId: string; name: string; sheetId: string; gid: string; clientStatus: 'old_local' | 'old_intl' };
+type Period = 'day' | 'week' | 'fortnight' | 'month';
+type Member = { staffId: string; isAvailable: boolean; markets: Market[]; intakeLimit: number | null; intakePeriod: Period };
+const PERIOD_LABELS: [Period, string][] = [['day', 'يوم'], ['week', 'أسبوع'], ['fortnight', '15 يوم'], ['month', 'شهر']];
+type SyncResult = { created: number; assigned: number; skipped: number; others: number; failed: number };
+type Sheet = {
+  id: string; staffId: string; name: string; sheetId: string; gid: string; clientStatus: 'old_local' | 'old_intl';
+  autoSync?: boolean; lastSyncAt?: string | null; lastResult?: SyncResult | null;
+};
 type Config = { members: Member[]; sheets: Sheet[] };
+type Counts = Record<string, { held: number; received: number }>;
 
 const MARKETS: [Market, string][] = [['local', '🇪🇬 محلي'], ['saudi', '🇸🇦 سعودي'], ['intl', '🌍 دولي']];
 
@@ -23,16 +30,26 @@ function parseSheetLink(link: string): { sheetId: string; gid: string } {
 const sheetUrl = (sheet: Pick<Sheet, 'sheetId' | 'gid'>) =>
   `https://docs.google.com/spreadsheets/d/${sheet.sheetId}/edit${sheet.gid ? `#gid=${sheet.gid}` : ''}`;
 
+/** One line for what a sync or an upload did. */
+function describeResult(result: SyncResult) {
+  return [
+    `جديد ${result.created}`,
+    result.assigned ? `اتسجلوا باسمه ${result.assigned}` : '',
+    result.skipped ? `مكرر ${result.skipped}` : '',
+    result.others ? `مع مسئول تاني ${result.others}` : '',
+    result.failed ? `اتعذّر ${result.failed}` : '',
+  ].filter(Boolean).join(' · ');
+}
+
 /**
  * «التحصيل: التوزيع والشيتات». Who in collection receives clients, from which
  * market and how many — the controls sales has on «التوزيع» — and each
  * officer's sheets: an upload or a Google Sheet, whose rows come in under that
  * officer's name.
  */
-export function CollectionSettingsModal({ staffMembers, subscribers, courses, notify, onClose, onChanged }: {
+export function CollectionSettingsModal({ staffMembers, subscribers, notify, onClose, onChanged }: {
   staffMembers: StaffMember[];
   subscribers: SubscriberItem[];
-  courses: Course[];
   notify: Notify;
   onClose: () => void;
   onChanged: () => void | Promise<void>;
@@ -41,6 +58,8 @@ export function CollectionSettingsModal({ staffMembers, subscribers, courses, no
   const [tab, setTab] = useState<'distribution' | 'sheets'>('distribution');
   const [config, setConfig] = useState<Config>({ members: [], sheets: [] });
   const [configured, setConfigured] = useState(false);
+  // What each officer holds, and what they received in their own period.
+  const [counts, setCounts] = useState<Counts>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [officerId, setOfficerId] = useState('');
@@ -49,15 +68,16 @@ export function CollectionSettingsModal({ staffMembers, subscribers, courses, no
   const [newSheet, setNewSheet] = useState({ name: '', link: '' });
 
   useEffect(() => {
-    mysqlAdmin.adminGet<Config>('/admin/collection-distribution')
+    mysqlAdmin.adminGet<Config & { counts?: Counts }>('/admin/collection-distribution')
       .then(stored => {
+        setCounts(stored?.counts || {});
         const saved = new Map((stored?.members || []).map(member => [member.staffId, member]));
         setConfigured(saved.size > 0);
         // Everyone in collection is listed; until the screen is saved they
         // all take part, as the rotation always did.
         setConfig({
           members: officers.map(officer => saved.get(officer.id)
-            || { staffId: officer.id, isAvailable: saved.size === 0, markets: [], maxClients: null }),
+            || { staffId: officer.id, isAvailable: saved.size === 0, markets: [], intakeLimit: null, intakePeriod: 'day' as Period }),
           sheets: stored?.sheets || [],
         });
       })
@@ -65,7 +85,7 @@ export function CollectionSettingsModal({ staffMembers, subscribers, courses, no
       .finally(() => setLoading(false));
   }, [officers, notify]);
 
-  const holding = (staffId: string) => subscribers.filter(subscriber => subscriber.assignedCsId === staffId).length;
+  const holding = (staffId: string) => counts[staffId]?.held ?? subscribers.filter(subscriber => subscriber.assignedCsId === staffId).length;
   const setMember = (staffId: string, patch: Partial<Member>) =>
     setConfig(current => ({ ...current, members: current.members.map(member => member.staffId === staffId ? { ...member, ...patch } : member) }));
 
@@ -97,6 +117,26 @@ export function CollectionSettingsModal({ staffMembers, subscribers, courses, no
     if (openSheetId === id) setOpenSheetId('');
     await save(next, 'تم فك ربط الشيت');
   };
+  const setAutoSync = async (id: string, autoSync: boolean) => {
+    const next = { ...config, sheets: config.sheets.map(sheet => sheet.id === id ? { ...sheet, autoSync } : sheet) };
+    setConfig(next);
+    await save(next, autoSync ? 'الشيت هيتزامن تلقائي كل نص ساعة' : 'وقفت المزامنة التلقائية للشيت');
+  };
+  // «مزامنة الآن»: the server reads the sheet and brings its new rows in under
+  // the officer, skipping anyone already on the system.
+  const [syncingId, setSyncingId] = useState('');
+  const syncSheet = async (id: string) => {
+    setSyncingId(id);
+    try {
+      const result = await mysqlAdmin.adminPost<SyncResult>(`/admin/collection-sheets/${encodeURIComponent(id)}/sync`, {});
+      setConfig(current => ({ ...current, sheets: current.sheets.map(sheet => sheet.id === id
+        ? { ...sheet, lastSyncAt: new Date().toISOString(), lastResult: result } : sheet) }));
+      notify('success', `تمت المزامنة — ${describeResult(result)}`);
+      if (result.created || result.assigned) await onChanged();
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذّرت المزامنة');
+    } finally { setSyncingId(''); }
+  };
 
   const officer = officers.find(member => member.id === officerId);
   const officerSheets = config.sheets.filter(sheet => sheet.staffId === officerId);
@@ -118,7 +158,8 @@ export function CollectionSettingsModal({ staffMembers, subscribers, courses, no
         {loading ? <p className="text-sm text-gray-500">جاري التحميل…</p> : tab === 'distribution' ? (
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
-              زرار «توزيع غير المُسندين» بيوزّع على المتاحين هنا بس، كل واحد في الأسواق اللي تختارها له ولحد أقصى عدد عملاء.
+              العميل الجديد بيتسجل تلقائي باسم مسئول تحصيل، وزرار «توزيع غير المُسندين» بيوزّع الباقيين — الاتنين على المتاحين هنا بس،
+              كل واحد في الأسواق اللي تختارها له ولحد أقصى عدد يستلمه في الفترة (يوم / أسبوع / 15 يوم / شهر)؛ بيتحسب فيه كل عميل اتسجل باسمه في الفترة، من التوزيع أو من شيته.
               العميل اللي مفيش حد ياخده بيفضل من غير مسئول.
               {!configured && <strong className="text-amber-700"> لسه متحفظش — دلوقتي التوزيع على كل موظفي التحصيل بالتساوي.</strong>}
             </p>
@@ -150,12 +191,21 @@ export function CollectionSettingsModal({ staffMembers, subscribers, courses, no
                         );
                       })}
                     </div>
-                    <label className="flex items-center gap-2 text-sm text-gray-600">
-                      أقصى عدد عملاء يمسكهم
-                      <input type="number" min="0" value={member.maxClients ?? ''} placeholder="بلا حد"
-                        onChange={e => setMember(member.staffId, { maxClients: e.target.value === '' ? null : Number(e.target.value) })}
-                        className={`${field} w-32`} />
-                    </label>
+                    {/* «أقصى عدد في مدة اد ايه» — what they may receive in a
+                        period, counted from when each client was assigned. */}
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+                      أقصى عدد يستلمه
+                      <input type="number" min="0" value={member.intakeLimit ?? ''} placeholder="بلا حد"
+                        onChange={e => setMember(member.staffId, { intakeLimit: e.target.value === '' ? null : Number(e.target.value) })}
+                        className={`${field} w-24`} />
+                      لكل
+                      <select value={member.intakePeriod} onChange={e => setMember(member.staffId, { intakePeriod: e.target.value as Period })} className={field}>
+                        {PERIOD_LABELS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                      </select>
+                      {member.intakeLimit != null && (
+                        <span className="text-xs text-gray-500">استلم {counts[member.staffId]?.received ?? 0} من {member.intakeLimit} في الفترة دي</span>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -167,7 +217,11 @@ export function CollectionSettingsModal({ staffMembers, subscribers, courses, no
           </div>
         ) : (
           <div className="space-y-4">
-            <p className="text-sm text-gray-600">اختار مسئول التحصيل، وارفع ملف أو اربط جوجل شيت — كل عميل في الشيت بينزل باسمه.</p>
+            <p className="text-sm text-gray-600">
+              اختار مسئول التحصيل، وارفع ملف أو اربط جوجل شيت — كل عميل في الشيت بينزل باسمه، ومفيش حد بيتسجل مرتين:
+              اللي موجود على السيستم برقمه أو إيميله مش بيتكرر؛ لو من غير مسئول بيتسجل باسمه، ولو مع مسئول تاني بيفضل معاه.
+              الشيت المربوط بيتزامن تلقائي كل نص ساعة، أو بزرار «مزامنة الآن».
+            </p>
             <div className="flex flex-wrap items-end gap-3">
               <label className="text-sm font-bold text-gray-700">مسئول التحصيل
                 <select value={officerId} onChange={e => { setOfficerId(e.target.value); setOpenSheetId(''); }} className={`${field} mt-1 block min-w-[220px]`}>
@@ -193,6 +247,21 @@ export function CollectionSettingsModal({ staffMembers, subscribers, courses, no
                       <button type="button" onClick={() => { setOpenSheetId(sheet.id); setKind(sheet.clientStatus); }}
                         className={chip(openSheetId === sheet.id)}>{sheet.name}</button>
                       <a href={sheetUrl(sheet)} target="_blank" rel="noreferrer" className="text-xs text-blue-600 underline" dir="ltr">فتح</a>
+                      <button type="button" disabled={!!syncingId} onClick={() => { void syncSheet(sheet.id); }}
+                        className="flex items-center gap-1 rounded-lg border border-teal-200 px-2.5 py-1 text-xs font-bold text-teal-700 hover:bg-teal-50 disabled:opacity-50">
+                        <RefreshCw size={12} className={syncingId === sheet.id ? 'animate-spin' : ''} /> مزامنة الآن
+                      </button>
+                      <label className="flex items-center gap-1 text-xs text-gray-600">
+                        <input type="checkbox" className="accent-teal-600" checked={sheet.autoSync !== false} disabled={saving}
+                          onChange={e => { void setAutoSync(sheet.id, e.target.checked); }} />
+                        تلقائي كل نص ساعة
+                      </label>
+                      {sheet.lastSyncAt && (
+                        <span className="text-xs text-gray-500">
+                          آخر مزامنة <span dir="ltr">{cairoDateTime(sheet.lastSyncAt)}</span>
+                          {sheet.lastResult ? ` — ${describeResult(sheet.lastResult)}` : ''}
+                        </span>
+                      )}
                       <button type="button" onClick={() => { void removeSheet(sheet.id); }} className="rounded-lg p-1.5 text-red-500 hover:bg-red-50" aria-label="فك الربط"><Trash2 size={14} /></button>
                     </div>
                   ))}
@@ -214,14 +283,13 @@ export function CollectionSettingsModal({ staffMembers, subscribers, courses, no
                       `/admin/collection-sheets/csv?sheetId=${encodeURIComponent(sheetId)}&gid=${encodeURIComponent(gid)}`);
                     return result.csv;
                   }}
-                  importRow={async (row, source) => {
-                    await mysqlAdmin.saveSubscriber({
-                      ...oldOnlineSubscriber(row, source, kind, courses),
-                      assignedCsId: officer.id, assignedCsName: officer.name,
-                    });
+                  importRows={async (rows, source) => {
+                    const result = await mysqlAdmin.adminPost<SyncResult>('/admin/collection-sheets/import',
+                      { staffId: officer.id, kind, source, rows });
+                    return { created: result.created, assigned: result.assigned, dupes: result.skipped, others: result.others, errors: result.failed };
                   }}
                   onImported={async created => {
-                    notify('success', `تم استيراد ${created} عميل باسم ${officer.name}`);
+                    notify('success', `تم استيراد ${created} عميل جديد باسم ${officer.name}`);
                     await onChanged();
                   }}
                 />
