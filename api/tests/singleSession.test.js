@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const { rotateSingleSession, closeSingleSession } = require('../lib/singleSession');
 
 function fakePool() {
-  const state = { version: 4, sessionId: null, ipHash: null, committed: false };
+  const state = { version: 4, sessionId: null, ipHash: null, committed: false, devices: 0 };
   const conn = {
     beginTransaction: async () => {},
     commit: async () => { state.committed = true; },
@@ -13,6 +13,10 @@ function fakePool() {
     release: () => {},
     query: async (sql, params) => {
       if (sql.includes('SELECT session_version')) return [[{ session_version: state.version }]];
+      // A customer's sign-in records its device in the same transaction
+      // (lib/customerDevices.js).
+      if (sql.includes('FROM customer_devices')) return [[]];
+      if (sql.includes('INSERT INTO customer_devices')) { state.devices += 1; return [{}]; }
       if (sql.includes('UPDATE users')) {
         state.version = params[0];
         state.sessionId = params[1];
@@ -52,6 +56,7 @@ test('a successful login atomically replaces the previous session and binds the 
     assert.equal(session.sessionId, pool.state.sessionId);
     assert.equal(session.ipHash, pool.state.ipHash);
     assert.equal(pool.state.committed, true);
+    assert.equal(pool.state.devices, 1, 'the device is recorded with the session');
     assert.equal(await closeSingleSession(pool, {
       userId: 'user-1', tenantId: 'tenant-1', sessionId: session.sessionId,
     }), true);

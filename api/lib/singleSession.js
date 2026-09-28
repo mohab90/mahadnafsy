@@ -2,6 +2,7 @@
 
 const { uuidv4 } = require('./id');
 const { getClientIp, hashClientIp } = require('./clientContext');
+const { registerCustomerDevice } = require('./customerDevices');
 
 function createSessionBinding(req) {
   const ip = getClientIp(req);
@@ -34,6 +35,9 @@ async function rotateSingleSession(pool, {
       [userId, tenantId]
     );
     if (!user) throw new Error('Active user not found');
+    // A customer's third device is refused here, before anything changes, so
+    // the devices already signed in stay signed in.
+    if (!allowConcurrent) await registerCustomerDevice(conn, { tenantId, userId, req });
     const sessionVersion = allowConcurrent
       ? Number(user.session_version)
       : Number(user.session_version) + 1;

@@ -697,13 +697,24 @@ export interface CommunityVideoItem {
 
 export interface CommunityEventItem {
   id: string;
+  /** The event's own address: /community/events/<slug> (set by the server). */
+  slug?: string;
   dateLabel: string;
   title: string;
   eventType: string;
+  /** A guest not among the instructors; the instructors are speakerIds. */
   speaker: string;
   platform: string;
   eventDate?: string;    // ISO date (YYYY-MM-DD) for calendar display
-  description?: string; // Full details for the event
+  eventTime?: string;    // HH:MM, Cairo
+  description?: string;  // the one line the lists show
+  content?: string;      // the event page's full text
+  imageUrl?: string;
+  isOnline?: boolean;
+  locationName?: string;
+  speakerIds?: string[];
+  speakers?: { id: string; name: string; title: string; image: string }[];
+  registrations?: number;
 }
 
 export interface ActivityLogItem {

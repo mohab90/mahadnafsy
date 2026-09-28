@@ -32,20 +32,9 @@ export function useCommunityDrafts() {
     description: '',
   });
   const [isCommunityVideoFormOpen, setIsCommunityVideoFormOpen] = useState(false);
-  const [communityEventDraft, setCommunityEventDraft] = useState({
-    dateLabel: '',
-    title: '',
-    eventType: 'ندوة',
-    speaker: '',
-    platform: 'Zoom',
-    eventDate: '',
-    description: '',
-  });
-  const [isCommunityEventFormOpen, setIsCommunityEventFormOpen] = useState(false);
   const [editingCommunityPostId, setEditingCommunityPostId] = useState('');
   const [editingCommunityLibraryId, setEditingCommunityLibraryId] = useState('');
   const [editingCommunityVideoId, setEditingCommunityVideoId] = useState('');
-  const [editingCommunityEventId, setEditingCommunityEventId] = useState('');
 
   return {
     communityPostDraft, setCommunityPostDraft,
@@ -54,11 +43,8 @@ export function useCommunityDrafts() {
     isCommunityLibraryFormOpen, setIsCommunityLibraryFormOpen,
     communityVideoDraft, setCommunityVideoDraft,
     isCommunityVideoFormOpen, setIsCommunityVideoFormOpen,
-    communityEventDraft, setCommunityEventDraft,
-    isCommunityEventFormOpen, setIsCommunityEventFormOpen,
     editingCommunityPostId, setEditingCommunityPostId,
     editingCommunityLibraryId, setEditingCommunityLibraryId,
     editingCommunityVideoId, setEditingCommunityVideoId,
-    editingCommunityEventId, setEditingCommunityEventId,
   };
 }

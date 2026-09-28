@@ -2,13 +2,16 @@
 const logger = require('../lib/logger');
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 const { uuidv4 } = require('../lib/id');
 
 const { pool, cached, cacheInvalidate } = require('../lib/db');
 const { tryJson } = require('../lib/helpers');
 const { optionalAuth, requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
-const { communityPostLimiter, publicLimiter } = require('../middleware/rateLimits');
+const { communityPostLimiter, eventRegistrationLimiter, publicLimiter } = require('../middleware/rateLimits');
+const { createNotification } = require('../lib/notification');
+const { toIdentity } = require('../lib/phoneNumber');
 
 // The id this returns is the ownership key for editing and deleting posts, so
 // resolving the wrong subscriber hands one member another member's posts.
@@ -24,6 +27,28 @@ const findOwnSubscriber = (req) => resolveSubscriberRow(req, ['id', 'name']);
 
 const cacheKey = (req, resource) => `community:${req.tenantId || 'tenant-default'}:${resource}:public`;
 const invalidate = (req, resource) => cacheInvalidate(`community:${req.tenantId || 'tenant-default'}:${resource}`);
+
+// Admin «إضافة» and «تعديل» send the same request, and a new item already
+// carries the id the screen made for it (`ev-…`, `post-…`, `lib-…`, `vid-…`).
+// So an id cannot mean "update": it did, and every add answered 404 — no
+// event, admin post, library item or video could be created. An id that exists
+// is updated; one that does not is created under it, so the screen's copy and
+// the server's agree. The time is always the server's.
+async function saveAdminRow(table, { tenantId, id, columns, values, onCreate = {} }) {
+  const rowId = String(id || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 100) || uuidv4();
+  const [[existing]] = await pool.query(`SELECT id FROM ${table} WHERE tenant_id=? AND id=? LIMIT 1`, [tenantId, rowId]);
+  if (existing) {
+    await pool.query(`UPDATE ${table} SET ${columns.map(column => `${column}=?`).join(', ')} WHERE tenant_id=? AND id=?`,
+      [...values, tenantId, rowId]);
+    return { id: rowId, created: false };
+  }
+  const extra = Object.keys(onCreate);
+  const names = [...columns, ...extra, 'created_at'];
+  await pool.query(
+    `INSERT INTO ${table} (id, tenant_id, ${names.join(', ')}) VALUES (?, ?, ${names.map(() => '?').join(', ')})`,
+    [rowId, tenantId, ...values, ...extra.map(key => onCreate[key]), new Date().toISOString()]);
+  return { id: rowId, created: true };
+}
 
 // Community Posts
 // Map a DB row to the client-facing shape (camelCase author* + status), keeping snake-case too.
@@ -141,18 +166,33 @@ router.post('/api/community/posts', requireAuth, communityPostLimiter, async (re
     if (!p.title?.trim() || !p.body?.trim()) return res.status(400).json({ error: 'title and body are required' });
     const id = uuidv4();
     const subscriber = await findOwnSubscriber(req);
-    if (!subscriber) return res.status(403).json({ error: 'Subscriber required' });
+    // Said in words the page can show: this came back as «Subscriber required»
+    // and the page replaced it with «تأكد من تسجيل الدخول» — to someone signed in.
+    if (!subscriber) {
+      return res.status(403).json({
+        error: 'النشر في المجتمع لمشتركي المعهد — الحساب ده لسه مش مربوط باشتراك. لو انت مشترك تواصل مع الدعم.',
+        code: 'SUBSCRIBER_REQUIRED',
+      });
+    }
+    const title = p.title.trim().slice(0, 200);
+    const author = String(subscriber.name || 'عضو').slice(0, 120);
+    // The time is the server's: the page sent «الآن» and it was stored as the
+    // date, which then sorted and displayed as text.
     await pool.query(
       `INSERT INTO community_posts (id, tenant_id, title, category, body, author, author_role, subscriber_id, image_url, tags, featured, pinned, likes, status, created_at)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, 'pending', ?)`,
       [
-        id, req.tenantId, p.title.trim().slice(0, 200), p.tag || p.category || 'general', p.body.trim().slice(0, 5000),
-        String(subscriber.name || 'عضو').slice(0, 120), 'عضو',
+        id, req.tenantId, title, p.tag || p.category || 'general', p.body.trim().slice(0, 5000),
+        author, 'عضو',
         subscriber.id, p.authorImage || p.imageUrl || null, JSON.stringify(p.tags || []),
-        0, 0, 0, p.createdAt || new Date().toISOString(),
+        0, 0, 0, new Date().toISOString(),
       ]
     );
     invalidate(req, 'posts');
+    // The desk hears of it: a pending post used to wait for someone to happen
+    // to reload the community screen.
+    createNotification('community', '💬 منشور جديد في المجتمع مستني المراجعة', `${author}: ${title}`,
+      { postId: id }, req.tenantId).catch(() => {});
     res.json({ ok: true, id, status: 'pending' });
   } catch (e) {
     logger.error('[route]', e.message);
@@ -316,25 +356,17 @@ router.delete('/api/community/posts/:id', requireAuth, async (req, res) => {
 // Admin create/update — persists moderation status (admin posts default to approved).
 router.post('/api/admin/community/posts', requireAuth, requireAdminOrStaff, requirePermission('manage_community'), async (req, res) => {
   try {
-    const p = req.body;
-    const id = p.id || uuidv4();
-    const status = p.status || 'approved';
-    const values = [
-      p.title || '', p.tag || p.category || 'general', p.body || '', p.authorName || p.author || '',
-      p.authorRole || '', p.authorImage || p.imageUrl || null, JSON.stringify(p.tags || []),
-      p.featured ? 1 : 0, p.pinned ? 1 : 0, status,
-    ];
-    const [updated] = p.id ? await pool.query(
-      `UPDATE community_posts SET title=?, category=?, body=?, author=?, author_role=?, image_url=?, tags=?, featured=?, pinned=?, status=?
-       WHERE tenant_id=? AND id=?`,
-      [...values, req.tenantId, id]
-    ) : [{ affectedRows: 0 }];
-    if (p.id && !updated.affectedRows) return res.status(404).json({ error: 'Post not found' });
-    if (!p.id) await pool.query(
-      `INSERT INTO community_posts (id, tenant_id, title, category, body, author, author_role, image_url, tags, featured, pinned, likes, status, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [id, req.tenantId, ...values.slice(0, 9), p.likes || 0, status, p.createdAt || new Date().toISOString()]
-    );
+    const p = req.body || {};
+    const { id } = await saveAdminRow('community_posts', {
+      tenantId: req.tenantId, id: p.id,
+      columns: ['title', 'category', 'body', 'author', 'author_role', 'image_url', 'tags', 'featured', 'pinned', 'status'],
+      values: [
+        p.title || '', p.tag || p.category || 'general', p.body || '', p.authorName || p.author || '',
+        p.authorRole || '', p.authorImage || p.imageUrl || null, JSON.stringify(p.tags || []),
+        p.featured ? 1 : 0, p.pinned ? 1 : 0, p.status || 'approved',
+      ],
+      onCreate: { likes: 0 },
+    });
     invalidate(req, 'posts');
     res.json({ ok: true, id });
   } catch (e) {
@@ -405,23 +437,17 @@ router.get('/api/community/library', publicLimiter, async (req, res) => {
 
 router.post('/api/admin/community/library', requireAuth, requireAdminOrStaff, requirePermission('manage_community'), async (req, res) => {
   try {
-    const l = req.body;
-    const id = l.id || uuidv4();
+    const l = req.body || {};
     // Admin form (DashboardCommunityAdminPanel.tsx) sends downloadUrl and
     // fileSize — added as aliases (downloadUrl alongside the pre-existing
     // fileUrl/file_url; fileSize backed by the new file_size column) so
     // neither is lost to a silent field-name/missing-column mismatch (MKT-12).
-    const values = [l.title || '', l.category || 'general', l.description || '', l.downloadUrl || l.fileUrl || l.file_url || '', l.thumbnail || null, l.fileType || l.file_type || 'pdf', l.fileSize || l.file_size || null, JSON.stringify(l.tags || [])];
-    const [updated] = l.id ? await pool.query(
-      'UPDATE community_library SET title=?, category=?, description=?, file_url=?, thumbnail=?, file_type=?, file_size=?, tags=? WHERE tenant_id=? AND id=?',
-      [...values, req.tenantId, id]
-    ) : [{ affectedRows: 0 }];
-    if (l.id && !updated.affectedRows) return res.status(404).json({ error: 'Library item not found' });
-    if (!l.id) await pool.query(
-      `INSERT INTO community_library (id, tenant_id, title, category, description, file_url, thumbnail, file_type, file_size, tags, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-      [id, req.tenantId, ...values, l.createdAt || new Date().toISOString()]
-    );
+    const { id } = await saveAdminRow('community_library', {
+      tenantId: req.tenantId, id: l.id,
+      columns: ['title', 'category', 'description', 'file_url', 'thumbnail', 'file_type', 'file_size', 'tags'],
+      values: [l.title || '', l.category || 'general', l.description || '', l.downloadUrl || l.fileUrl || l.file_url || '',
+        l.thumbnail || null, l.fileType || l.file_type || 'pdf', l.fileSize || l.file_size || null, JSON.stringify(l.tags || [])],
+    });
     invalidate(req, 'library');
     res.json({ ok: true, id });
   } catch (e) {
@@ -478,20 +504,14 @@ router.get('/api/community/videos', publicLimiter, async (req, res) => {
 
 router.post('/api/admin/community/videos', requireAuth, requireAdminOrStaff, requirePermission('manage_community'), async (req, res) => {
   try {
-    const v = req.body;
-    const id = v.id || uuidv4();
+    const v = req.body || {};
     // views_label (MKT-14) had no matching DB column — added.
-    const values = [v.title || '', v.category || 'general', v.description || '', v.videoUrl || v.video_url || '', v.thumbnail || null, v.duration || '', v.viewsLabel || v.views_label || null, JSON.stringify(v.tags || [])];
-    const [updated] = v.id ? await pool.query(
-      'UPDATE community_videos SET title=?, category=?, description=?, video_url=?, thumbnail=?, duration=?, views_label=?, tags=? WHERE tenant_id=? AND id=?',
-      [...values, req.tenantId, id]
-    ) : [{ affectedRows: 0 }];
-    if (v.id && !updated.affectedRows) return res.status(404).json({ error: 'Video not found' });
-    if (!v.id) await pool.query(
-      `INSERT INTO community_videos (id, tenant_id, title, category, description, video_url, thumbnail, duration, views_label, tags, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-      [id, req.tenantId, ...values, v.createdAt || new Date().toISOString()]
-    );
+    const { id } = await saveAdminRow('community_videos', {
+      tenantId: req.tenantId, id: v.id,
+      columns: ['title', 'category', 'description', 'video_url', 'thumbnail', 'duration', 'views_label', 'tags'],
+      values: [v.title || '', v.category || 'general', v.description || '', v.videoUrl || v.video_url || '', v.thumbnail || null,
+        v.duration || '', v.viewsLabel || v.views_label || null, JSON.stringify(v.tags || [])],
+    });
     invalidate(req, 'videos');
     res.json({ ok: true, id });
   } catch (e) {
@@ -513,37 +533,111 @@ router.delete('/api/admin/community/videos/:id', requireAuth, requireAdminOrStaf
 });
 
 // Community Events
+//
+// Each event has a page of its own, /community/events/<slug>, with its
+// picture, full text, lecturers (the site's instructors) and whether it is
+// online or in person, and a place to register interest with a name and a
+// number (migration 222).
+
+const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** An address from the title, Arabic kept: «ورشة الصحة النفسية» → ورشة-الصحة-النفسية. */
+function slugify(title) {
+  return String(title || '').trim().toLowerCase()
+    .replace(/[\p{M}ـ]/gu, '')          // tashkeel and tatweel
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'event';
+}
+
+async function uniqueEventSlug(tenantId, title) {
+  const base = slugify(title);
+  const [rows] = await pool.query(
+    'SELECT slug FROM community_events WHERE tenant_id=? AND (slug=? OR slug LIKE ?)', [tenantId, base, `${base}-%`]);
+  const taken = new Set(rows.map(row => row.slug));
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base}-${n}`)) n += 1;
+  return `${base}-${n}`;
+}
+
+const EVENT_COLS = `id, slug, title, category, description, content, image_url, event_date, event_time, date_label,
+  location_name, registration_url, is_online, speaker, speaker_ids, event_type, platform, tags, created_at`;
+
+// Lecturers by id, and how many have registered, for a set of events.
+async function eventExtras(tenantId, rows) {
+  const speakerIds = [...new Set(rows.flatMap(row => tryJson(row.speaker_ids, [])).map(String))];
+  const speakers = new Map();
+  if (speakerIds.length) {
+    const [found] = await pool.query(
+      `SELECT id, name, title, specialty, image FROM therapists
+        WHERE tenant_id=? AND id IN (${speakerIds.map(() => '?').join(',')})`, [tenantId, ...speakerIds]);
+    found.forEach(person => speakers.set(String(person.id), {
+      id: person.id, name: person.name, title: person.title || person.specialty || '', image: person.image || '',
+    }));
+  }
+  const counts = new Map();
+  if (rows.length) {
+    const [registered] = await pool.query(
+      `SELECT event_id, COUNT(*) AS n FROM community_event_registrations
+        WHERE tenant_id=? AND event_id IN (${rows.map(() => '?').join(',')}) GROUP BY event_id`,
+      [tenantId, ...rows.map(row => row.id)]);
+    registered.forEach(row => counts.set(row.event_id, Number(row.n) || 0));
+  }
+  return { speakers, counts };
+}
+
+// The picture is stored as the image itself (the admin compresses it in the
+// browser). It is served from an address of its own rather than inside every
+// list, and that address is what a shared link's preview can use; ?v changes
+// with the picture so a new one is not hidden behind the old one's cache.
+const IMAGE_PATH = /^\/api\/community\/events\/[^/]+\/image/;
+function eventImageUrl(row) {
+  const image = String(row.image_url || '');
+  if (!image.startsWith('data:')) return image || null;
+  const version = crypto.createHash('sha1').update(image).digest('hex').slice(0, 10);
+  return `/api/community/events/${encodeURIComponent(row.id)}/image?v=${version}`;
+}
+
+function mapEvent(row, { speakers, counts }) {
+  const ids = tryJson(row.speaker_ids, []).map(String);
+  // eventDate drives the whole calendar: the grid matched on it, the month
+  // filter fell through to "show everything" because it was always undefined.
+  return {
+    id: row.id,
+    slug: row.slug || row.id,
+    title: row.title,
+    category: row.category,
+    description: row.description,
+    content: row.content || '',
+    imageUrl: eventImageUrl(row),
+    eventDate: row.event_date,
+    eventTime: row.event_time || '',
+    dateLabel: row.date_label,
+    locationName: row.location_name,
+    registrationUrl: row.registration_url,
+    isOnline: !!row.is_online,
+    speaker: row.speaker,
+    speakerIds: ids,
+    speakers: ids.map(id => speakers.get(id)).filter(Boolean),
+    eventType: row.event_type,
+    platform: row.platform,
+    tags: tryJson(row.tags, []),
+    registrations: counts.get(row.id) || 0,
+    createdAt: row.created_at,
+  };
+}
+
 router.get('/api/community/events', publicLimiter, async (req, res) => {
   try {
     const data = await cached(cacheKey(req, 'events'), 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
-        `SELECT id, title, category, description, image_url, event_date, date_label,
-         location_name, registration_url, is_online, speaker, event_type, platform, tags, created_at
-         FROM community_events WHERE tenant_id=? ORDER BY created_at DESC LIMIT 200`,
+        `SELECT ${EVENT_COLS} FROM community_events WHERE tenant_id=? ORDER BY event_date DESC, created_at DESC LIMIT 200`,
         [req.tenantId]
       );
-      // eventDate drives the whole calendar: the grid matched on it, the month
-      // filter fell through to "show everything" because it was always
-      // undefined, the month arrows therefore did nothing, and the reminder
-      // bell was disabled on every event with «لم يُحدد تاريخ لهذه الفعالية بعد»
-      // — for events that all had dates.
-      return rows.map(r => ({
-        id: r.id,
-        title: r.title,
-        category: r.category,
-        description: r.description,
-        imageUrl: r.image_url,
-        eventDate: r.event_date,
-        dateLabel: r.date_label,
-        locationName: r.location_name,
-        registrationUrl: r.registration_url,
-        isOnline: !!r.is_online,
-        speaker: r.speaker,
-        eventType: r.event_type,
-        platform: r.platform,
-        tags: tryJson(r.tags, []),
-        createdAt: r.created_at,
-      }));
+      const extras = await eventExtras(req.tenantId, rows);
+      return rows.map(row => mapEvent(row, extras));
     });
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
     res.json(data);
@@ -553,32 +647,113 @@ router.get('/api/community/events', publicLimiter, async (req, res) => {
   }
 });
 
+router.get('/api/community/events/:id/image', publicLimiter, async (req, res) => {
+  try {
+    const [[row]] = await pool.query('SELECT image_url FROM community_events WHERE tenant_id=? AND id=? LIMIT 1',
+      [req.tenantId, req.params.id]);
+    const image = String(row?.image_url || '');
+    const data = image.match(/^data:(image\/(?:png|jpe?g|webp|gif));base64,(.+)$/);
+    if (data) {
+      res.set('Content-Type', data[1]);
+      res.set('Cache-Control', 'public, max-age=86400');
+      return res.send(Buffer.from(data[2], 'base64'));
+    }
+    if (/^https:\/\//.test(image)) return res.redirect(302, image);
+    res.status(404).end();
+  } catch (e) {
+    logger.error('[route]', e.message);
+    res.status(500).end();
+  }
+});
+
+// One event's page, by its address or its id.
+router.get('/api/community/events/:slug', publicLimiter, async (req, res) => {
+  try {
+    const key = String(req.params.slug || '').slice(0, 160);
+    const [[row]] = await pool.query(
+      `SELECT ${EVENT_COLS} FROM community_events WHERE tenant_id=? AND (slug=? OR id=?) LIMIT 1`, [req.tenantId, key, key]);
+    if (!row) return res.status(404).json({ error: 'الفعالية غير موجودة' });
+    res.set('Cache-Control', 'public, max-age=60');
+    res.json(mapEvent(row, await eventExtras(req.tenantId, [row])));
+  } catch (e) {
+    logger.error('[route]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// «زر اهتمام وتسجيل اسم ورقم فقط». The same number twice is one registration.
+router.post('/api/community/events/:id/register', eventRegistrationLimiter, async (req, res) => {
+  try {
+    const name = String(req.body?.name || '').trim().slice(0, 200);
+    const phone = String(req.body?.phone || '').trim().slice(0, 40);
+    const identity = toIdentity(phone);
+    if (name.length < 2) return res.status(400).json({ error: 'اكتب اسمك' });
+    if (identity.length < 8) return res.status(400).json({ error: 'اكتب رقم موبايل صحيح' });
+    const key = String(req.params.id || '').slice(0, 160);
+    const [[event]] = await pool.query(
+      'SELECT id, title FROM community_events WHERE tenant_id=? AND (id=? OR slug=?) LIMIT 1', [req.tenantId, key, key]);
+    if (!event) return res.status(404).json({ error: 'الفعالية غير موجودة' });
+    const [result] = await pool.query(
+      `INSERT INTO community_event_registrations (id, tenant_id, event_id, name, phone, phone_identity)
+       VALUES (?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name), phone=VALUES(phone)`,
+      [uuidv4(), req.tenantId, event.id, name, phone, identity]);
+    const alreadyRegistered = result.affectedRows !== 1;
+    if (!alreadyRegistered) {
+      createNotification('community', '📅 تسجيل جديد في فعالية', `${name} سجّل اهتمامه بـ «${event.title}»`,
+        { eventId: event.id, phone }, req.tenantId).catch(() => {});
+    }
+    invalidate(req, 'events');
+    res.json({ ok: true, alreadyRegistered });
+  } catch (e) {
+    logger.error('[route]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/api/admin/community/events/:id/registrations', requireAuth, requireAdminOrStaff, requirePermission('view_community'), async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, name, phone, created_at FROM community_event_registrations
+        WHERE tenant_id=? AND event_id=? ORDER BY created_at DESC LIMIT 2000`, [req.tenantId, req.params.id]);
+    res.json(rows.map(row => ({ id: row.id, name: row.name, phone: row.phone, createdAt: row.created_at })));
+  } catch (e) {
+    logger.error('[route]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.post('/api/admin/community/events', requireAuth, requireAdminOrStaff, requirePermission('manage_community'), async (req, res) => {
   try {
-    const ev = req.body;
-    const id = ev.id || uuidv4();
-    // speaker/eventType/platform (MKT-13) had no matching DB columns — added.
-    const values = [
-      ev.title || '', ev.category || 'general', ev.description || '', ev.imageUrl || ev.image_url || null,
-      ev.eventDate || ev.event_date || null, ev.dateLabel || ev.date_label || null,
-      ev.location || ev.location_name || null, ev.registrationUrl || ev.registration_url || null,
-      ev.isOnline ? 1 : 0, ev.speaker || null, ev.eventType || ev.event_type || null, ev.platform || null,
-      JSON.stringify(ev.tags || []),
-    ];
-    const [updated] = ev.id ? await pool.query(
-      `UPDATE community_events SET title=?, category=?, description=?, image_url=?, event_date=?, date_label=?,
-       location_name=?, registration_url=?, is_online=?, speaker=?, event_type=?, platform=?, tags=? WHERE tenant_id=? AND id=?`,
-      [...values, req.tenantId, id]
-    ) : [{ affectedRows: 0 }];
-    if (ev.id && !updated.affectedRows) return res.status(404).json({ error: 'Event not found' });
-    if (!ev.id) await pool.query(
-      `INSERT INTO community_events (id, tenant_id, title, category, description, image_url,
-         event_date, date_label, location_name, registration_url, is_online, speaker, event_type, platform, tags, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [id, req.tenantId, ...values, ev.createdAt || new Date().toISOString()]
-    );
+    const ev = req.body || {};
+    const title = String(ev.title || '').trim().slice(0, 500);
+    if (!title) return res.status(400).json({ error: 'عنوان الفعالية مطلوب' });
+    const eventDate = DATE.test(String(ev.eventDate || '')) ? ev.eventDate : null;
+    const eventTime = TIME.test(String(ev.eventTime || '')) ? ev.eventTime : null;
+    const speakerIds = (Array.isArray(ev.speakerIds) ? ev.speakerIds : []).map(String).filter(Boolean).slice(0, 20);
+    // The address is set once: a link already shared keeps working when the
+    // title is edited later.
+    const rowId = String(ev.id || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 100);
+    const [[current]] = rowId
+      ? await pool.query('SELECT slug, image_url FROM community_events WHERE tenant_id=? AND id=?', [req.tenantId, rowId])
+      : [[null]];
+    const slug = current?.slug || await uniqueEventSlug(req.tenantId, title);
+    // The form shows the picture by its address; sent back unchanged, that
+    // address means "keep the picture", not a new one.
+    const imageUrl = IMAGE_PATH.test(String(ev.imageUrl || '')) ? (current?.image_url || null) : (ev.imageUrl || null);
+    const { id } = await saveAdminRow('community_events', {
+      tenantId: req.tenantId, id: rowId,
+      columns: ['title', 'category', 'description', 'content', 'image_url', 'event_date', 'event_time', 'date_label',
+        'location_name', 'registration_url', 'is_online', 'speaker', 'speaker_ids', 'event_type', 'platform', 'tags', 'slug'],
+      values: [
+        title, ev.category || 'general', String(ev.description || '').slice(0, 1000), String(ev.content || '').slice(0, 60000),
+        imageUrl, eventDate, eventTime, ev.dateLabel || null,
+        ev.locationName || null, ev.registrationUrl || null, ev.isOnline === false ? 0 : 1,
+        String(ev.speaker || '').slice(0, 200) || null, JSON.stringify(speakerIds), ev.eventType || null,
+        ev.isOnline === false ? null : (ev.platform || null), JSON.stringify(ev.tags || []), slug,
+      ],
+    });
     invalidate(req, 'events');
-    res.json({ ok: true, id });
+    res.json({ ok: true, id, slug });
   } catch (e) {
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
@@ -589,6 +764,7 @@ router.delete('/api/admin/community/events/:id', requireAuth, requireAdminOrStaf
   try {
     const [result] = await pool.query('DELETE FROM community_events WHERE tenant_id=? AND id=?', [req.tenantId, req.params.id]);
     if (!result.affectedRows) return res.status(404).json({ error: 'Event not found' });
+    await pool.query('DELETE FROM community_event_registrations WHERE tenant_id=? AND event_id=?', [req.tenantId, req.params.id]);
     invalidate(req, 'events');
     res.json({ ok: true });
   } catch (e) {

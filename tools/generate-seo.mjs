@@ -39,7 +39,9 @@ const SITE = (arg('site', 'https://mahadnafsy.com')).replace(/\/$/, '');
 const STATIC_PAGES = [
   ['/', '1.0', 'weekly'], ['/courses', '0.9', 'weekly'], ['/bundles', '0.9', 'weekly'],
   ['/consultations', '0.8', 'weekly'], ['/instructors', '0.7', 'monthly'],
-  ['/community', '0.6', 'weekly'], ['/about', '0.5', 'monthly'],
+  ['/community', '0.6', 'weekly'], ['/community/events', '0.6', 'weekly'],
+  ['/community/discussions', '0.5', 'daily'], ['/community/videos', '0.5', 'weekly'],
+  ['/community/library', '0.4', 'weekly'], ['/about', '0.5', 'monthly'],
   ['/institute-gallery', '0.4', 'monthly'], ['/faq', '0.4', 'monthly'],
   ['/contact', '0.4', 'monthly'], ['/join', '0.4', 'monthly'],
   ['/join-us', '0.4', 'monthly'], ['/policies', '0.2', 'yearly'],
@@ -137,6 +139,23 @@ function writePage(relUrl, html) {
     pages++;
   }
 
+  // Each community event's page, so a link shared on WhatsApp or Facebook
+  // shows the event rather than the front page. Events are optional here: a
+  // release is never held up because the list could not be read.
+  const events = await getJson('/api/community/events').catch(() => []);
+  for (const ev of Array.isArray(events) ? events : []) {
+    const slug = ev.slug || ev.id;
+    if (!slug) continue;
+    writePage(`/community/events/${slug}`, render(shell, {
+      url: `${SITE}/community/events/${encodeURIComponent(slug)}`,
+      title: `${ev.title} | فعاليات معهد الدراسات النفسية`,
+      description: summarise(ev.description || ev.content, `${ev.title} — فعالية من معهد الدراسات النفسية.`),
+      image: ev.imageUrl && ev.imageUrl.startsWith('/') ? `${SITE}${ev.imageUrl}` : ev.imageUrl,
+    }));
+    urls.push({ loc: `/community/events/${encodeURIComponent(slug)}`, priority: '0.6', changefreq: 'weekly' });
+    pages++;
+  }
+
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
   const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -151,7 +170,7 @@ ${urls.map(u => `  <url>
   writeFileSync(join(DIST, 'sitemap.xml'), sitemap);
 
   console.log(`seo: ${pages} product page(s) prerendered, sitemap has ${urls.length} url(s)`);
-  console.log(`     ${courses.length} course(s), ${bundles.length} bundle(s), from ${API}`);
+  console.log(`     ${courses.length} course(s), ${bundles.length} bundle(s), ${Array.isArray(events) ? events.length : 0} event(s), from ${API}`);
 })().catch(err => {
   console.error('seo generation failed:', err.message);
   process.exit(1);

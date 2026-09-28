@@ -60,7 +60,10 @@ const EXPIRY_COOKIE = `Path=/; Max-Age=${JWT_MAX_AGE_SECONDS}; SameSite=None; Se
 
 function setAuthCookie(res, token) {
   const expiresAt = Date.now() + JWT_MAX_AGE_SECONDS * 1000;
+  // Keep what the sign-in already set (the device cookie, lib/customerDevices.js).
+  const earlier = [].concat(res.getHeader('Set-Cookie') || []).filter(cookie => !/^auth(Token|ExpiresAt)=/.test(cookie));
   res.setHeader('Set-Cookie', [
+    ...earlier,
     `authToken=${token}; ${AUTH_COOKIE}`,
     `authExpiresAt=${expiresAt}; ${EXPIRY_COOKIE}`,
   ]);
@@ -103,7 +106,7 @@ setInterval(() => {
   for (const [k, exp] of tokenBlacklist) if (exp < now) tokenBlacklist.delete(k);
   pool.query('DELETE FROM token_blacklist WHERE expires_at < NOW()').catch(() => {});
   pool.query('DELETE FROM otp_codes WHERE expires_at < NOW()').catch(() => {});
-}, 60 * 60 * 1000);
+}, 60 * 60 * 1000).unref?.();
 
 // Load non-expired blacklist entries from DB into memory on startup
 async function loadBlacklistFromDB() {

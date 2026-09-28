@@ -8,6 +8,7 @@ import { useVisibleInterval } from '../shared/useVisibleInterval';
 // ── Lazily-loaded pages ────────────────────────────────────────────────────────
 const UserDashboard = React.lazy(() => import('./pages/UserDashboard'));
 const Community = React.lazy(() => import('./pages/Community'));
+const CommunityEvent = React.lazy(() => import('./pages/CommunityEvent'));
 const Checkout = React.lazy(() => import('./pages/Checkout'));
 const StandalonePayment = React.lazy(() => import('./pages/StandalonePayment'));
 const Auth = React.lazy(() => import('./pages/Auth'));
@@ -489,6 +490,9 @@ const AppShell: React.FC = () => {
               <Route path="/bundle/:id" element={lazyPage(<BundleDetails />)} />
               <Route path="/consultations" element={lazyPage(<Consultations />)} />
               <Route path="/community" element={lazyPage(<Community />)} />
+              {/* Each section and each event has its own address, to link to and share. */}
+              <Route path="/community/events/:slug" element={lazyPage(<CommunityEvent />)} />
+              <Route path="/community/:section" element={lazyPage(<Community />)} />
               <Route path="/institute-gallery" element={lazyPage(<InstituteGallery />)} />
               <Route path="/instructors" element={lazyPage(<Instructors />)} />
               <Route path="/instructor/:id" element={lazyPage(<InstructorDetails />)} />

@@ -39,6 +39,7 @@ const { requireTenantQuota } = require('../middleware/tenantQuota');
 const { resolveClientContext, getClientIp, hashClientIp } = require('../lib/clientContext');
 const { ensureLeadForUser } = require('../lib/registrationLead');
 const { createSessionBinding, rotateSingleSession, closeSingleSession } = require('../lib/singleSession');
+const { registerCustomerDevice } = require('../lib/customerDevices');
 const { getSharingLock, enforceSharingLimit } = require('../lib/accountSharingGuard');
 const {
   requestLoginCode, verifyLoginCode, CODE_TTL_MINUTES: WA_CODE_TTL_MINUTES,
@@ -132,6 +133,8 @@ router.post('/api/auth/register', registerLimiter, requireDb, requireTenantQuota
       [id, tenantId, normalizedEmail, phoneForUser, hash, (name || '').trim(), 'user',
         session.sessionId, session.ipHash, clientContext.countryCode, clientContext.currency]
     );
+    // The device the account was made on is its first (lib/customerDevices.js).
+    await registerCustomerDevice(conn, { tenantId, userId: id, req });
     // There is no `registrations` table and there never has been: "التسجيلات"
     // is a view over users (routes/registrations.js reads them by user id). The
     // INSERT that used to sit here threw ER_NO_SUCH_TABLE on every single
@@ -269,6 +272,8 @@ router.post('/api/user/signup', registerLimiter, requireDb, requireTenantQuota('
       [id, tenantId, normalizedEmail, phoneForUser, hash, (name || '').trim(), 'user',
         session.sessionId, session.ipHash, clientContext.countryCode, clientContext.currency]
     );
+    // The device the account was made on is its first (lib/customerDevices.js).
+    await registerCustomerDevice(conn, { tenantId, userId: id, req });
     // Referral attribution (best-effort): credit the referrer + tag the new user.
     //
     // Awaited, and that is the whole point. These were fired without await on
@@ -1101,6 +1106,12 @@ router.post('/api/auth/login', loginLimiter, requireDb,
     }
     res.json({ ok: true, user: { uid: user.id, email: user.email, displayName: user.name || '' } });
   } catch (err) {
+    // A third device (lib/customerDevices.js): refused with the reason.
+    if (err?.code === 'DEVICE_LIMIT' && !res.headersSent) {
+      await logLoginAttempt({ email: String(rawIdentifier || '').toLowerCase().trim(), req, status: 'failed', failureReason: 'device_limit' })
+        .catch(() => {});
+      return res.status(403).json({ error: err.message, code: err.code });
+    }
     logger.error('[auth/login]', err);
     if (!res.headersSent) {
       const status = err && ['ECONNREFUSED', 'ETIMEDOUT', 'PROTOCOL_CONNECTION_LOST'].includes(err.code) ? 503 : 500;
@@ -1305,8 +1316,9 @@ router.post('/api/auth/whatsapp/verify-otp', otpLimiter, async (req, res) => {
     });
   } catch (e) {
     if (e.statusCode) {
-      await logLoginAttempt({ email: null, req, status: 'failed', failureReason: 'wa_otp_invalid' }).catch(() => {});
-      return res.status(e.statusCode).json({ error: e.message });
+      const failureReason = e.code === 'DEVICE_LIMIT' ? 'device_limit' : 'wa_otp_invalid';
+      await logLoginAttempt({ email: null, req, status: 'failed', failureReason }).catch(() => {});
+      return res.status(e.statusCode).json({ error: e.message, ...(e.code ? { code: e.code } : {}) });
     }
     logger.error('[wa-otp] verify failed', e.message);
     res.status(500).json({ error: 'تعذّر التحقق من الرمز' });
@@ -2073,6 +2085,7 @@ router.post('/api/auth/2fa/verify', otpLimiter, async (req, res) => {
     await logLoginAttempt({ userId: payload.uid, email: payload.email, req, tenantId: payload.tid || req.tenantId, status: '2fa_success' });
     res.json({ ok: true });
   } catch (e) {
+    if (e.code === 'DEVICE_LIMIT') return res.status(403).json({ error: e.message, code: e.code });
     logger.error('[2fa/verify]', e);
     res.status(500).json({ error: 'Internal server error' });
   }

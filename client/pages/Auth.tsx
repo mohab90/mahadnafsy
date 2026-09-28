@@ -259,7 +259,11 @@ const Auth: React.FC = () => {
                 'Login failed': 'حدث خطأ في الخادم، حاول مرة أخرى.',
             };
             const isRateLimit = msg.includes('محاولات كثيرة') || msg.includes('HTTP 429');
-            const isNeedsReset = msg.includes('لم يتم تعيين كلمة مرور');
+            // The account's own rules — a third device, or a freeze for use
+            // from many networks — arrive in Arabic and say what to do; the
+            // generic «تعذر إتمام العملية» hid them.
+            const isAccountRule = ['DEVICE_LIMIT', 'ACCOUNT_SHARING_LOCKED'].includes((error as { code?: string })?.code || '');
+            const showsServerText = isAccountRule || msg.includes('لم يتم تعيين كلمة مرور');
             const isDbDown = msg.includes('DB unavailable') || msg.includes('tunnel') || msg.includes('HTTP 503');
             // Same distinction the admin sign-in makes: a request that never
             // reached the server is not a rejected sign-in. Telling a customer
@@ -271,7 +275,7 @@ const Auth: React.FC = () => {
             const isServerFault = /HTTP 5\d\d/.test(msg);
             const arabicText = isRateLimit
                 ? 'محاولات كثيرة جداً — انتظر 15 دقيقة وحاول مرة أخرى'
-                : isNeedsReset
+                : showsServerText
                     ? msg
                     : isDbDown
                         ? 'الموقع غير متاح حالياً، يرجى المحاولة بعد قليل.'

@@ -1,16 +1,17 @@
+import { useVisibleInterval } from '../../../shared/useVisibleInterval';
 import { DashboardCommunityShell } from './DashboardCommunityShell';
 import { cairoDateOnly, cairoDay } from '../../../shared/cairoDate';
 import { Modal } from '../../../shared/ui/Modal';
 import type { CommunityEventItem, CommunityLibraryItem, CommunityPostItem, CommunityVideoItem } from '../../types';
 import { useCommunityDrafts } from './hooks/useCommunityDrafts';
 import { confirmDialog } from '../../../shared/ui/confirmDialog';
-import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
+import { CommunityEventsAdmin } from './CommunityEventsAdmin';
+import { useSiteData } from '../../context/SiteDataContext';
 
 type CommunityAdminTab = 'pending' | 'posts' | 'library' | 'videos' | 'events' | 'comments';
 type CommunityPostDraft = Pick<CommunityPostItem, 'title' | 'body' | 'tag' | 'authorName' | 'authorRole' | 'authorImage'> & { pinned: boolean };
 type CommunityLibraryDraft = Omit<CommunityLibraryItem, 'id'>;
 type CommunityVideoDraft = Omit<CommunityVideoItem, 'id'> & { videoUrl: string; description: string };
-type CommunityEventDraft = Omit<CommunityEventItem, 'id'> & { eventDate: string; description: string };
 
 interface Props {
   activeTab: string;
@@ -70,19 +71,17 @@ export function DashboardCommunityAdminPanel({
     setCommunityVideoDraft,
     isCommunityVideoFormOpen,
     setIsCommunityVideoFormOpen,
-    communityEventDraft,
-    setCommunityEventDraft,
-    isCommunityEventFormOpen,
-    setIsCommunityEventFormOpen,
     editingCommunityPostId,
     setEditingCommunityPostId,
     editingCommunityLibraryId,
     setEditingCommunityLibraryId,
     editingCommunityVideoId,
     setEditingCommunityVideoId,
-    editingCommunityEventId,
-    setEditingCommunityEventId,
   } = useCommunityDrafts();
+  const { therapists, refreshCommunityPosts } = useSiteData();
+  // Posts written while this screen is open reach it: read again on opening
+  // and every minute while it stays open and in view.
+  useVisibleInterval(() => { void refreshCommunityPosts(); }, 60_000, activeTab === 'community');
 
   return (
 <DashboardCommunityShell
@@ -324,66 +323,9 @@ export function DashboardCommunityAdminPanel({
                   </div>
                 )}
 
-                {/* -- Events management -- */}
                 {communityAdminTab === 'events' && (
-                  <div className="space-y-4">
-                    <div className="flex justify-end">
-                      <button onClick={() => { setEditingCommunityEventId(''); setCommunityEventDraft({ dateLabel: '', title: '', eventType: 'ندوة', speaker: '', platform: 'Zoom', eventDate: '', description: '' }); setIsCommunityEventFormOpen(true); }}
-                        className="bg-teal-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-teal-700">+ فعالية جديدة</button>
-                    </div>
-                    <div className="space-y-3">
-                      {communityEvents.length === 0 ? (
-                        <div className="bg-white border border-gray-200 rounded-2xl p-10 text-center text-gray-400"><p className="text-4xl mb-2">📅</p><p>لا توجد فعاليات</p></div>
-                      ) : communityEvents.map(ev => (
-                        <div key={ev.id} className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm flex items-start justify-between gap-3">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-lg font-bold">{ev.eventType}</span>
-                              <span className="text-xs text-gray-400">{ev.dateLabel}</span>
-                              <span className="text-xs text-gray-400">{ev.platform}</span>
-                            </div>
-                            <p className="font-bold text-gray-800">{ev.title}</p>
-                            <p className="text-xs text-gray-500 mt-0.5">المتحدث: {ev.speaker}</p>
-                          </div>
-                          <div className="flex gap-2 flex-shrink-0">
-                            <button onClick={() => { setEditingCommunityEventId(ev.id); setCommunityEventDraft({ dateLabel: ev.dateLabel, title: ev.title, eventType: ev.eventType, speaker: ev.speaker, platform: ev.platform, eventDate: ev.eventDate || '', description: ev.description || '' }); setIsCommunityEventFormOpen(true); }}
-                              className="px-2.5 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold">تعديل</button>
-                            <button onClick={async () => { if (await confirmDialog('حذف هذه الفعالية؟')) deleteCommunityEvent(ev.id); }}
-                              className="px-2.5 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold">حذف</button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {isCommunityEventFormOpen && (
-    <Modal
-      open
-      onClose={() => setIsCommunityEventFormOpen(false)}
-      title={editingCommunityEventId ? 'تعديل الفعالية' : 'إضافة فعالية'}
-      size="sm"
-    >
-                          <div className="space-y-3">
-                            <div><label className="text-xs text-gray-600 mb-1 block">عنوان الفعالية *</label><input value={communityEventDraft.title} onChange={e => setCommunityEventDraft(d => ({ ...d, title: e.target.value }))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" /></div>
-                            <div className="grid grid-cols-2 gap-3">
-                              <div><label className="text-xs text-gray-600 mb-1 block">نوع الفعالية</label><input value={communityEventDraft.eventType} onChange={e => setCommunityEventDraft(d => ({ ...d, eventType: e.target.value }))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" /></div>
-                              <div><label className="text-xs text-gray-600 mb-1 block">المنصة</label><input value={communityEventDraft.platform} onChange={e => setCommunityEventDraft(d => ({ ...d, platform: e.target.value }))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" /></div>
-                            </div>
-                            <div><label className="text-xs text-gray-600 mb-1 block">المتحدث</label><input value={communityEventDraft.speaker} onChange={e => setCommunityEventDraft(d => ({ ...d, speaker: e.target.value }))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" /></div>
-                            <div><label className="text-xs text-gray-600 mb-1 block">تاريخ الفعالية</label><input type="date" value={communityEventDraft.eventDate} onChange={e => setCommunityEventDraft(d => ({ ...d, eventDate: e.target.value, dateLabel: new Date(e.target.value).toLocaleDateString('ar-EG-u-nu-latn', { day: 'numeric', month: 'long', timeZone: CAIRO_TIME_ZONE }) }))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" /></div>
-                            <div><label className="text-xs text-gray-600 mb-1 block">وصف الفعالية</label><textarea value={communityEventDraft.description} onChange={e => setCommunityEventDraft(d => ({ ...d, description: e.target.value }))} rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none" /></div>
-                          </div>
-                          <div className="flex gap-3 mt-4">
-                            <button onClick={async () => {
-                              if (!communityEventDraft.title.trim()) return;
-                              const saved = editingCommunityEventId
-                                ? await updateCommunityEvent({ id: editingCommunityEventId, ...communityEventDraft })
-                                : await addCommunityEvent({ id: `ev-${Date.now()}`, ...communityEventDraft });
-                              if (saved) setIsCommunityEventFormOpen(false);
-                            }} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700">حفظ</button>
-                            <button onClick={() => setIsCommunityEventFormOpen(false)} className="px-5 bg-gray-200 text-gray-700 rounded-xl">إلغاء</button>
-                          </div>
-    </Modal>
-                    )}
-                  </div>
+                  <CommunityEventsAdmin events={communityEvents} therapists={therapists}
+                    addEvent={addCommunityEvent} updateEvent={updateCommunityEvent} deleteEvent={deleteCommunityEvent} />
                 )}
             </DashboardCommunityShell>
   );

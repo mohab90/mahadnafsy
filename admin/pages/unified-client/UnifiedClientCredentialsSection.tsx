@@ -2,6 +2,7 @@ import { Eye } from 'lucide-react';
 
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import type { LeadItem, SubscriberItem } from '../../types';
+import { CustomerDevicesCard } from './CustomerDevicesCard';
 
 type StatusMessage = { type: 'success' | 'error'; text: string };
 
@@ -181,6 +182,7 @@ export function UnifiedClientCredentialsSection({
       )}
 
       <p className="text-[10px] text-gray-400 mt-2">💡 إذا لم يكن للعميل حساب بعد، سيتم إنشاؤه تلقائياً عند تعيين كلمة مرور.</p>
+      {subscriber?.id && <CustomerDevicesCard subscriberId={subscriber.id} />}
     </div>
   );
 }

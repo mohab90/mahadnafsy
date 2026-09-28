@@ -2,7 +2,7 @@
 // lib/mysqlapi.ts — MySQL REST API client (complete)
 // ══════════════════════════════════════════════════════════════
 
-import { AuthUser } from '../types';
+import { AuthUser, type CommunityEventItem } from '../types';
 
 // Relative by default — always targets whatever origin actually served the page
 // (Nginx-proxied in every real deploy). A hardcoded absolute production URL here
@@ -281,6 +281,12 @@ export const mysqlClient = {
       { method: 'POST', body: JSON.stringify({ body }) },
       true,
     ),
+  // Community events — one event's page, and «أنا مهتم» (a name and a number, no account needed)
+  getCommunityEvent: (slug: string) =>
+    apiFetch<CommunityEventItem>(`/community/events/${encodeURIComponent(slug)}`),
+  registerForCommunityEvent: (id: string, body: { name: string; phone: string }) =>
+    apiFetch<{ ok: boolean; alreadyRegistered: boolean }>(
+      `/community/events/${encodeURIComponent(id)}/register`, { method: 'POST', body: JSON.stringify(body) }),
   getBroadcastNotifications: () =>
     apiFetch<{ notifications: AR[]; readIds: string[] }>('/notifications/broadcasts', {}, true),
   markBroadcastNotificationRead: (id: string) =>

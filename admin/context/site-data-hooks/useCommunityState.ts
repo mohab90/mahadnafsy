@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { CommunityPostItem, CommunityLibraryItem, CommunityVideoItem, CommunityEventItem } from '../../types';
-import { mysqlAdmin } from '../../lib/mysqlapi';
+import { mysqlAdmin, mysqlCatalog } from '../../lib/mysqlapi';
 
 type Track = (action: string, entity: string, label: string) => void;
 
@@ -84,16 +84,34 @@ export function useCommunityState(
     'delete', 'community_video', id,
   );
 
-  const addCommunityEvent = (item: CommunityEventItem) => persist(
-    mysqlAdmin.saveCommunityEvent(item as unknown as Record<string, unknown>),
-    () => setCommunityEvents((prev) => [item, ...prev]),
-    'create', 'community_event', item.title,
-  );
-  const updateCommunityEvent = (item: CommunityEventItem) => persist(
-    mysqlAdmin.saveCommunityEvent(item as unknown as Record<string, unknown>),
-    () => setCommunityEvents((prev) => prev.map((row) => row.id === item.id ? item : row)),
-    'update', 'community_event', item.title,
-  );
+  // The server names a new event's address (its slug); keep it, so «نسخ
+  // اللينك» works without reloading.
+  const saveEvent = (item: CommunityEventItem, action: 'create' | 'update') => {
+    let saved = item;
+    return persist(
+      mysqlAdmin.saveCommunityEvent(item as unknown as Record<string, unknown>)
+        .then((result) => { saved = { ...item, slug: (result as { slug?: string }).slug || item.slug }; }),
+      () => setCommunityEvents((prev) => action === 'create'
+        ? [saved, ...prev]
+        : prev.map((row) => row.id === item.id ? { ...row, ...saved } : row)),
+      action, 'community_event', item.title,
+    );
+  };
+  const addCommunityEvent = (item: CommunityEventItem) => saveEvent(item, 'create');
+  const updateCommunityEvent = (item: CommunityEventItem) => saveEvent(item, 'update');
+
+  // The moderation list again. It was read once when the panel loaded, so a
+  // post written while the panel was open never reached it: the post from
+  // 03:32 on 28 September sat pending behind a list loaded at 21:44 the night
+  // before.
+  const refreshCommunityPosts = async () => {
+    try {
+      const rows = await mysqlCatalog.listCommunityPosts() as unknown as CommunityPostItem[];
+      setCommunityPosts(rows);
+    } catch {
+      // The list on screen stays; the next refresh tries again.
+    }
+  };
   const deleteCommunityEvent = (id: string) => persist(
     mysqlAdmin.deleteCommunityEvent(id),
     () => setCommunityEvents((prev) => prev.filter((row) => row.id !== id)),
@@ -101,7 +119,7 @@ export function useCommunityState(
   );
 
   return {
-    communityPosts, setCommunityPosts, addCommunityPost, updateCommunityPost, deleteCommunityPost,
+    communityPosts, setCommunityPosts, addCommunityPost, updateCommunityPost, deleteCommunityPost, refreshCommunityPosts,
     communityLibraryItems, setCommunityLibraryItems, addCommunityLibraryItem, updateCommunityLibraryItem, deleteCommunityLibraryItem,
     communityVideos, setCommunityVideos, addCommunityVideo, updateCommunityVideo, deleteCommunityVideo,
     communityEvents, setCommunityEvents, addCommunityEvent, updateCommunityEvent, deleteCommunityEvent,

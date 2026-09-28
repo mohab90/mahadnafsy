@@ -15,6 +15,8 @@ const { logPaymentAudit, logFinancialAudit, postJournalEntry, _paymentAccountCod
 const { assertWritable } = require('../../lib/periodLock');
 const { syncLeadDealValue } = require('../public-orders');
 const { logLeadEvent } = require('../../lib/crm');
+const { reconvertLeadOfRestoredClient, reopenLeadOfArchivedClient } = require('../../lib/leadState');
+const { MAX_CUSTOMER_DEVICES, clearCustomerDevices, listCustomerDevices } = require('../../lib/customerDevices');
 const { enqueueEmailSequence } = require('../../lib/emailSequence');
 const { ADMIN_EMAILS, ADMIN_UIDS, requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { paymobLimiter, whatsappSendLimiter, publicLimiter, contactLimiter } = require('../../middleware/rateLimits');
@@ -89,6 +91,7 @@ router.delete('/api/admin/subscribers/:id', requireAuth, requireAdminOrStaff, re
       'UPDATE subscribers SET is_active=0, deleted_at=NOW(), updated_at=NOW() WHERE id=? AND tenant_id=?',
       [req.params.id, req.tenantId]
     );
+    await reopenLeadOfArchivedClient({ tenantId: req.tenantId, subscriberId: sub.id, actor: req.user?.email || null, db: conn });
 
     const account = customerAccountMatch(sub);
     if (account) {
@@ -152,6 +155,7 @@ router.post('/api/admin/subscribers/:id/restore', requireAuth, requireAdminOrSta
       'UPDATE subscribers SET is_active=1, deleted_at=NULL, updated_at=NOW() WHERE id=? AND tenant_id=?',
       [req.params.id, req.tenantId]
     );
+    await reconvertLeadOfRestoredClient({ tenantId: req.tenantId, subscriberId: sub.id, actor: req.user?.email || null, db: conn });
     // Archiving also disabled their sign-in, so restoring has to give it back
     // or the customer is listed as active and still cannot log in.
     // Exactly the rule the archive used, or the customer is restored to the
@@ -170,6 +174,38 @@ router.post('/api/admin/subscribers/:id/restore', requireAuth, requireAdminOrSta
     await conn.rollback().catch(() => {});
     logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
   } finally { conn.release(); }
+});
+
+// The devices a customer signs in from, two at most (lib/customerDevices.js),
+// and «مسح الأجهزة» for when they change phones: the next device they sign in
+// from is accepted.
+async function customerUserIds(tenantId, subscriberId) {
+  const [[sub]] = await pool.query(
+    'SELECT id, email, firebase_uid FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriberId, tenantId]);
+  const account = sub && customerAccountMatch(sub);
+  if (!account) return sub ? [] : null;
+  const [users] = await pool.query(`SELECT u.id FROM users u WHERE u.tenant_id=? AND ${account.sql}`, account.params(tenantId));
+  return users.map(user => user.id);
+}
+
+router.get('/api/admin/subscribers/:id/devices', requireAuth, requireAdminOrStaff, requirePermission('manage_subscribers'), async (req, res) => {
+  try {
+    const userIds = await customerUserIds(req.tenantId, req.params.id);
+    if (!userIds) return res.status(404).json({ error: 'العميل غير موجود' });
+    const devices = (await Promise.all(userIds.map(userId => listCustomerDevices(pool, { tenantId: req.tenantId, userId })))).flat();
+    res.json({ devices, max: MAX_CUSTOMER_DEVICES, hasAccount: userIds.length > 0 });
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+router.delete('/api/admin/subscribers/:id/devices', requireAuth, requireAdminOrStaff, requirePermission('manage_subscribers'), async (req, res) => {
+  try {
+    const userIds = await customerUserIds(req.tenantId, req.params.id);
+    if (!userIds) return res.status(404).json({ error: 'العميل غير موجود' });
+    let cleared = 0;
+    for (const userId of userIds) cleared += await clearCustomerDevices(pool, { tenantId: req.tenantId, userId });
+    logger.info(`[customer-devices] cleared ${cleared} for subscriber=${req.params.id} by=${req.user?.email || '?'}`);
+    res.json({ ok: true, cleared });
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.delete('/api/admin/lectures/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_lectures'), async (req, res) => {

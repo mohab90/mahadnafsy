@@ -4,15 +4,15 @@ import { Modal } from '../../shared/ui/Modal';
 import {
   Users, BookOpen, MessageSquare, Calendar, Download, FileText,
   Heart, MessageCircle, Share2, MoreHorizontal, Play, Video,
-  Pin, Plus, X, Send, Eye, Bell,
-  ChevronRight, ChevronLeft, Award, Flame, Clock, CheckCircle, TrendingUp,
+  Pin, Plus, X, Send, Eye,
+  ChevronRight, Award, Flame, Clock, CheckCircle, TrendingUp,
   Pencil, Trash2,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useSiteData } from '../context/SiteDataContext';
 import { cdnImg } from '../lib/img';
-import { cairoDateOnly, cairoDaysAhead } from '../../shared/cairoDate';
-import type { CommunityEventItem } from '../types';
+import { isUpcoming } from '../lib/communityEvents';
+import { CommunityEventsSection } from '../components/CommunityEventsSection';
 import { useSeo } from '../lib/useSeo';
 import { VideoSurface } from '../components/VideoSurface';
 
@@ -27,11 +27,12 @@ const TAG_COLORS: Record<string, string> = {
 const getTagColor = (tag: string) => TAG_COLORS[tag] || 'bg-gray-100 text-gray-600 border-gray-200';
 const ALL_TAGS = ['الكل', 'نقاش حالة', 'مشاركة علمية', 'نقاش عام', 'استفسار', 'موارد', 'تجربة شخصية'];
 
-const ARABIC_MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-const ARABIC_DAYS_SHORT = ['سبت','أحد','اثن','ثلا','أرب','خمس','جمع'];
+const SECTIONS = ['discussions', 'library', 'videos', 'events'] as const;
+type CommunitySection = typeof SECTIONS[number];
 
 const Community: React.FC = () => {
-  useSeo({ title: 'المجتمع النفسي | معهد الدراسات النفسية', path: '/community', description: 'مجتمع المتخصصين في الصحة النفسية — مقالات ومكتبة وفعاليات ونقاش مهني.' });
+  const { section } = useParams();
+  useSeo({ title: 'المجتمع النفسي | معهد الدراسات النفسية', path: section ? `/community/${section}` : '/community', description: 'مجتمع المتخصصين في الصحة النفسية — مقالات ومكتبة وفعاليات ونقاش مهني.' });
   const {
     communityPosts, communityLibraryItems, communityVideos, communityEvents,
     addCommunityPost, updateCommunityPost, deleteCommunityPost,
@@ -44,37 +45,10 @@ const Community: React.FC = () => {
   // three of them returning `[]`. It loads here, once, when someone arrives.
   useEffect(() => { void loadCommunity(); }, [loadCommunity]);
   const navigate = useNavigate();
-  // The bell beside each event was inert. A calendar file is the whole feature
-  // and needs no server: the event goes into whatever calendar the visitor
-  // already uses, which is what a reminder was ever meant to mean here.
-  const addEventToCalendar = (event: CommunityEventItem) => {
-    if (!event.eventDate) return;
-    const day = event.eventDate.replace(/-/g, '');
-    const dayEnd = cairoDaysAhead(1, event.eventDate).replace(/-/g, '');
-    const esc = (s: string) => String(s || '').replace(/([,;\\])/g, '\\$1').replace(/\r?\n/g, '\\n');
-    const ics = [
-      'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//mahadnafsy//community//AR',
-      'BEGIN:VEVENT',
-      `UID:community-${event.id}@mahadnafsy.com`,
-      `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
-      `DTSTART;VALUE=DATE:${day}`,
-      `DTEND;VALUE=DATE:${dayEnd}`,
-      `SUMMARY:${esc(event.title)}`,
-      `DESCRIPTION:${esc([event.description, event.speaker && `المتحدث: ${event.speaker}`].filter(Boolean).join('\n'))}`,
-      `LOCATION:${esc(event.platform)}`,
-      'BEGIN:VALARM', 'TRIGGER:-PT1H', 'ACTION:DISPLAY', `DESCRIPTION:${esc(event.title)}`, 'END:VALARM',
-      'END:VEVENT', 'END:VCALENDAR',
-    ].join('\r\n');
-    const url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${event.title.slice(0, 40).replace(/[\\/:*?"<>|]/g, '') || 'event'}.ics`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  };
-  const [activeTab, setActiveTab] = useState<'discussions' | 'library' | 'events' | 'videos'>('discussions');
+  // Each section has its own address — /community/discussions, /events,
+  // /videos, /library — so it can be linked to and shared.
+  const activeTab: CommunitySection = SECTIONS.includes(section as CommunitySection) ? section as CommunitySection : 'discussions';
+  const setActiveTab = (key: CommunitySection) => navigate(`/community/${key}`);
   const [tagFilter, setTagFilter] = useState('الكل');
   const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
   const [showNewPostModal, setShowNewPostModal] = useState(false);
@@ -89,8 +63,6 @@ const Community: React.FC = () => {
   const [contextMenuPostId, setContextMenuPostId] = useState<string | null>(null);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editPostDraft, setEditPostDraft] = useState({ title: '', body: '', tag: 'نقاش عام' });
-  const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
-  const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
   const [actionPending, setActionPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -112,15 +84,6 @@ const Community: React.FC = () => {
     const sorted = [...visible].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
     return sorted.filter(p => tagFilter === 'الكل' || p.tag === tagFilter);
   }, [communityPosts, tagFilter]);
-
-  const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
-  const firstDayCol = (() => {
-    const jsDay = new Date(calendarYear, calendarMonth, 1).getDay();
-    return (jsDay + 1) % 7; // Sat=0, Sun=1, ..., Fri=6
-  })();
-  // The calendar highlights today. toISOString() is the UTC day, so
-  // between midnight and 02:00 Cairo it highlighted yesterday.
-  const todayStr = cairoDateOnly();
 
   const handleLike = async (id: string) => {
     if (actionPending) return;
@@ -177,8 +140,10 @@ const Community: React.FC = () => {
       setNewPost({ title: '', body: '', tag: 'نقاش عام' });
       setPostSubmitted(true);
       setTimeout(() => { setShowNewPostModal(false); setPostSubmitted(false); }, 2000);
-    } catch {
-      setActionError('لم يتم حفظ المنشور. تأكد من تسجيل الدخول والاتصال ثم حاول مرة أخرى.');
+    } catch (failure) {
+      // A refusal that says why (an account with no subscription) is shown as said.
+      const refused = (failure as { code?: string })?.code === 'SUBSCRIBER_REQUIRED' && failure instanceof Error;
+      setActionError(refused ? failure.message : 'لم يتم حفظ المنشور. تأكد من تسجيل الدخول والاتصال ثم حاول مرة أخرى.');
     } finally {
       setActionPending(false);
     }
@@ -278,7 +243,7 @@ const Community: React.FC = () => {
                   <Plus size={18} />مشاركة جديدة
                 </button>
               ) : (
-                <p className="mb-5 rounded-xl bg-amber-50 px-3 py-2 text-center text-xs font-medium text-amber-700">سجّل الدخول للمشاركة والتفاعل.</p>
+                <p className="mb-5 rounded-xl bg-amber-50 px-3 py-2 text-center text-xs font-medium text-amber-700">{isAdmin ? 'انت داخل بحساب الإدارة — المشاركات والموافقة عليها من لوحة التحكم ← المجتمع.' : 'سجّل الدخول للمشاركة والتفاعل.'}</p>
               )}
               <nav className="space-y-1">
                 {([
@@ -287,10 +252,10 @@ const Community: React.FC = () => {
                   { key: 'videos', icon: Video, label: content['community.videos.title'] || 'ورش ومحاضرات', count: communityVideos.length },
                   { key: 'events', icon: Calendar, label: content['community.events.title'] || 'الفعاليات', count: communityEvents.length },
                 ] as const).map(({ key, icon: Icon, label, count }) => (
-                  <button key={key} onClick={() => setActiveTab(key)} className={`w-full flex items-center justify-between p-3 rounded-xl transition text-sm font-medium ${activeTab === key ? 'bg-primary-50 text-primary-700 font-bold' : 'text-gray-600 hover:bg-gray-50'}`}>
+                  <Link key={key} to={`/community/${key}`} className={`w-full flex items-center justify-between p-3 rounded-xl transition text-sm font-medium ${activeTab === key ? 'bg-primary-50 text-primary-700 font-bold' : 'text-gray-600 hover:bg-gray-50'}`}>
                     <div className="flex items-center gap-3"><Icon size={18} />{label}</div>
                     <span className={`text-xs font-bold rounded-full px-2 py-0.5 ${activeTab === key ? 'bg-primary-100 text-primary-700' : 'bg-gray-100 text-gray-500'}`}>{count}</span>
-                  </button>
+                  </Link>
                 ))}
               </nav>
               <div className="mt-5 pt-5 border-t border-gray-100">
@@ -483,94 +448,7 @@ const Community: React.FC = () => {
               </div>
             )}
 
-            {activeTab === 'events' && (
-              <div className="animate-fade-in space-y-4">
-                {/* Calendar */}
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
-                  <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-                    <button onClick={() => { const d = new Date(calendarYear, calendarMonth - 1); setCalendarYear(d.getFullYear()); setCalendarMonth(d.getMonth()); }} aria-label="الشهر السابق" className="p-2 hover:bg-gray-100 rounded-xl transition"><ChevronRight size={18} /></button>
-                    <div className="text-center">
-                      <h3 className="font-extrabold text-gray-900 text-lg">{ARABIC_MONTHS[calendarMonth]} {calendarYear}</h3>
-                      <p className="text-xs text-gray-400">{communityEvents.filter(e => e.eventDate && e.eventDate.startsWith(`${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}`)).length} فعالية هذا الشهر</p>
-                    </div>
-                    <button onClick={() => { const d = new Date(calendarYear, calendarMonth + 1); setCalendarYear(d.getFullYear()); setCalendarMonth(d.getMonth()); }} aria-label="الشهر التالي" className="p-2 hover:bg-gray-100 rounded-xl transition"><ChevronLeft size={18} /></button>
-                  </div>
-                  <div className="grid grid-cols-7 border-b border-gray-100">
-                    {ARABIC_DAYS_SHORT.map(d => (
-                      <div key={d} className="text-center py-2 text-xs font-bold text-gray-500">{d}</div>
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-7">
-                    {Array.from({ length: firstDayCol }).map((_, i) => (
-                      <div key={`e-${i}`} className="min-h-[72px] border-b border-r border-gray-50" />
-                    ))}
-                    {Array.from({ length: daysInMonth }, (_, i) => {
-                      const day = i + 1;
-                      const dateStr = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                      const dayEvents = communityEvents.filter(e => e.eventDate === dateStr);
-                      const isToday = dateStr === todayStr;
-                      const col = (firstDayCol + i) % 7;
-                      return (
-                        <div
-                          key={day}
-                          className={`min-h-[72px] p-1.5 border-b border-gray-100 transition ${col === 6 ? '' : 'border-r border-gray-100'}`}
-                        >
-                          <div className={`text-xs font-bold mb-1 w-6 h-6 flex items-center justify-center rounded-full ${isToday ? 'bg-primary-600 text-white' : 'text-gray-600'}`}>{day}</div>
-                          {dayEvents.slice(0, 2).map(e => (
-                            <div key={e.id} className="text-[10px] bg-primary-100 text-primary-700 rounded px-1 py-0.5 mb-0.5 truncate font-medium leading-tight">{e.title}</div>
-                          ))}
-                          {dayEvents.length > 2 && <div className="text-[9px] text-gray-400">+{dayEvents.length - 2}</div>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Events list for current month */}
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                  <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-                    <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2"><Flame size={16} className="text-orange-500" />فعاليات {ARABIC_MONTHS[calendarMonth]}</h3>
-                  </div>
-                  <div className="divide-y divide-gray-50">
-                    {communityEvents
-                      .filter(e => !e.eventDate || e.eventDate.startsWith(`${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}`))
-                      .sort((a, b) => (a.eventDate || '').localeCompare(b.eventDate || ''))
-                      .map(event => (
-                      <div key={event.id} className="flex items-center gap-4 p-4 hover:bg-primary-50/50 transition group">
-                        <div className="bg-primary-100 w-14 h-14 rounded-xl flex flex-col items-center justify-center font-bold text-primary-700 leading-none flex-shrink-0 text-center group-hover:bg-primary-200 transition">
-                          {event.eventDate ? (
-                            <>
-                              <span className="text-lg font-extrabold leading-none">{new Date(event.eventDate + 'T00:00:00').getDate()}</span>
-                              <span className="text-[10px] mt-0.5">{ARABIC_MONTHS[new Date(event.eventDate + 'T00:00:00').getMonth()]}</span>
-                            </>
-                          ) : (
-                            <span className="text-xs font-extrabold text-center px-1">{event.dateLabel}</span>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-bold text-gray-900 text-sm mb-1 group-hover:text-primary-700 transition">{event.title}</h4>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs bg-primary-50 text-primary-700 border border-primary-100 px-2 py-0.5 rounded-full font-medium">{event.eventType}</span>
-                            {event.speaker && <span className="text-xs text-gray-500">{event.speaker}</span>}
-                            {event.platform && <span className="text-xs text-gray-400">• {event.platform}</span>}
-                          </div>
-                          {event.description && <p className="text-xs text-gray-400 mt-1 line-clamp-1">{event.description}</p>}
-                        </div>
-                        <button type="button" onClick={() => addEventToCalendar(event)} disabled={!event.eventDate}
-                          title={event.eventDate ? 'أضف الفعالية إلى تقويمك' : 'لم يُحدد تاريخ لهذه الفعالية بعد'}
-                          className="text-gray-400 hover:text-primary-600 disabled:opacity-30 disabled:hover:text-gray-400 p-2 rounded-lg transition flex-shrink-0"><Bell size={16} /></button>
-                      </div>
-                    ))}
-                    {communityEvents.filter(e => !e.eventDate || e.eventDate.startsWith(`${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}`)).length === 0 && (
-                      <div className="text-center py-8 text-gray-400">
-                        <Calendar size={32} className="mx-auto mb-2 opacity-30" />
-                        <p className="text-sm">لا توجد فعاليات هذا الشهر</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
+            {activeTab === 'events' && <CommunityEventsSection events={communityEvents} />}
           </div>
 
           {/* Right Sidebar */}
@@ -597,7 +475,7 @@ const Community: React.FC = () => {
                   { label: 'نقاشات هذا الأسبوع', value: communityPosts.length, color: 'text-blue-600' },
                   { label: 'ملفات في المكتبة', value: communityLibraryItems.length, color: 'text-violet-600' },
                   { label: 'محاضرات مسجلة', value: communityVideos.length, color: 'text-amber-600' },
-                  { label: 'فعاليات قادمة', value: communityEvents.length, color: 'text-emerald-600' },
+                  { label: 'فعاليات قادمة', value: communityEvents.filter(event => isUpcoming(event)).length, color: 'text-emerald-600' },
                 ].map(s => (
                   <div key={s.label} className="flex justify-between items-center py-2 border-b border-gray-50 last:border-0">
                     <span className="text-xs text-gray-600">{s.label}</span>

@@ -49,11 +49,22 @@ const CASES = [
   ['/api/community/videos', [
     ['videoUrl', 'video_url'], ['viewsLabel', 'views_label'],
   ]],
-  ['/api/community/events', [
-    ['eventDate', 'event_date'], ['dateLabel', 'date_label'],
-    ['eventType', 'event_type'], ['imageUrl', 'image_url'],
-  ]],
 ];
+
+// The events list and each event's own page share one mapping, mapEvent, so
+// that is where the names are checked; the picture goes out by address.
+test('/api/community/events sends the names both apps read', () => {
+  assert.match(handlerFor('/api/community/events'), /rows\.map\(row => mapEvent\(row, extras\)\)/);
+  const at = community.indexOf('function mapEvent(');
+  assert.ok(at > 0, 'mapEvent not found');
+  const mapping = community.slice(at, community.indexOf('\n}\n', at));
+  for (const [field, column] of [['eventDate', 'event_date'], ['dateLabel', 'date_label'], ['eventType', 'event_type']]) {
+    assert.match(mapping, new RegExp(field + ': row\\.' + column + '\\b'), `${field} must be mapped from ${column}`);
+  }
+  assert.match(mapping, /imageUrl: eventImageUrl\(row\)/);
+  assert.match(community, /function eventImageUrl\(row\) \{\s+const image = String\(row\.image_url/);
+  assert.doesNotMatch(mapping, /\.\.\.row,/, 'the raw row must not be spread through');
+});
 
 for (const [route, pairs] of CASES) {
   test(`${route} sends the names both apps read`, () => {

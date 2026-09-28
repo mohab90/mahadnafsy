@@ -134,6 +134,8 @@ export interface SiteDataShape {
   addCommunityPost: (item: CommunityPostItem) => Promise<boolean>;
   updateCommunityPost: (item: CommunityPostItem) => Promise<boolean>;
   deleteCommunityPost: (id: string) => Promise<boolean>;
+  /** Reads the moderation list again, for posts that arrived while the panel was open. */
+  refreshCommunityPosts: () => Promise<void>;
   addCommunityLibraryItem: (item: CommunityLibraryItem) => Promise<boolean>;
   updateCommunityLibraryItem: (item: CommunityLibraryItem) => Promise<boolean>;
   deleteCommunityLibraryItem: (id: string) => Promise<boolean>;
@@ -325,7 +327,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     track,
   );
   const {
-    communityPosts, setCommunityPosts, addCommunityPost, updateCommunityPost, deleteCommunityPost,
+    communityPosts, setCommunityPosts, addCommunityPost, updateCommunityPost, deleteCommunityPost, refreshCommunityPosts,
     communityLibraryItems, setCommunityLibraryItems, addCommunityLibraryItem, updateCommunityLibraryItem, deleteCommunityLibraryItem,
     communityVideos, setCommunityVideos, addCommunityVideo, updateCommunityVideo, deleteCommunityVideo,
     communityEvents, setCommunityEvents, addCommunityEvent, updateCommunityEvent, deleteCommunityEvent,
@@ -689,6 +691,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     addCommunityPost,
     updateCommunityPost,
     deleteCommunityPost,
+    refreshCommunityPosts,
     addCommunityLibraryItem,
     updateCommunityLibraryItem,
     deleteCommunityLibraryItem,

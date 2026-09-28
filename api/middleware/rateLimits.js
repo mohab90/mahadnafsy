@@ -118,6 +118,11 @@ const bulkOperationLimiter = limiter('bulk-export', {
 const communityPostLimiter = limiter('community-post', {
   windowMs: hour, max: 10, mode: 'user', message: 'عدد كبير من المشاركات. حاول لاحقًا.',
 });
+// Interest in a community event: a name and a number from anyone, so kept to
+// a handful an hour from one address.
+const eventRegistrationLimiter = limiter('event-registration', {
+  windowMs: hour, max: 10, message: 'عدد كبير من التسجيلات، حاول بعد شوية',
+});
 const imageProxyLimiter = limiter('image-proxy', {
   windowMs: minute, max: 600, message: retryMinute,
 });
@@ -139,6 +144,7 @@ module.exports = {
   connectorDiagnosticLimiter,
   uploadLimiter,
   communityPostLimiter,
+  eventRegistrationLimiter,
   bulkOperationLimiter,
   imageProxyLimiter,
   aiLimiter,

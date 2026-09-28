@@ -101,4 +101,46 @@ async function transitionLead({
   }
 }
 
-module.exports = { LEAD_STATUSES, normalizeLeadStatus, transitionLead };
+// Archiving a client and restoring one move their lead with them.
+//
+// 'converted' means a customer exists, and an archived client is not one: the
+// reconcile check flagged three leads left at converted after their clients
+// were archived — two bookings made by mistake and a test — and a lead left
+// there is out of every sales list. Archiving puts the lead back where it
+// stood before converting (lead_timeline has it); restoring converts it again.
+// Both follow a fact that already happened, so the pipeline rules do not
+// apply (force).
+async function reopenLeadOfArchivedClient({ tenantId, subscriberId, actor = null, db }) {
+  const [[lead]] = await db.query(
+    `SELECT l.id FROM subscribers s JOIN leads l ON l.id=s.lead_id AND l.tenant_id=s.tenant_id
+      WHERE s.id=? AND s.tenant_id=? AND l.status='converted'
+        AND NOT EXISTS (SELECT 1 FROM subscribers o WHERE o.tenant_id=s.tenant_id AND o.lead_id=l.id
+                          AND o.id<>s.id AND o.deleted_at IS NULL)`,
+    [subscriberId, tenantId]);
+  if (!lead) return null;
+  const [[before]] = await db.query(
+    `SELECT JSON_UNQUOTE(JSON_EXTRACT(meta_json,'$.from')) AS status FROM lead_timeline
+      WHERE tenant_id=? AND lead_id=? AND event_type='status_changed'
+        AND JSON_UNQUOTE(JSON_EXTRACT(meta_json,'$.to'))='converted'
+      ORDER BY at DESC LIMIT 1`,
+    [tenantId, lead.id]);
+  const status = LEAD_STATUSES.has(before?.status) && before.status !== 'converted' ? before.status : 'new';
+  return transitionLead({
+    tenantId, leadId: lead.id, toStatus: status, actor, db, force: true,
+    reason: 'Client archived — lead back in the pipeline', metadata: { subscriberId },
+  });
+}
+
+async function reconvertLeadOfRestoredClient({ tenantId, subscriberId, actor = null, db }) {
+  const [[lead]] = await db.query(
+    `SELECT l.id FROM subscribers s JOIN leads l ON l.id=s.lead_id AND l.tenant_id=s.tenant_id
+      WHERE s.id=? AND s.tenant_id=? AND l.status<>'converted'`,
+    [subscriberId, tenantId]);
+  if (!lead) return null;
+  return transitionLead({
+    tenantId, leadId: lead.id, toStatus: 'converted', actor, db, force: true,
+    reason: 'Client restored from the archive', metadata: { subscriberId },
+  });
+}
+
+module.exports = { LEAD_STATUSES, normalizeLeadStatus, reconvertLeadOfRestoredClient, reopenLeadOfArchivedClient, transitionLead };
