@@ -64,9 +64,9 @@ test('the transactional setting keeps sign-in and receipts working', () => {
 
 test('the security-critical paths name themselves', () => {
   // Each of these would go silent under any setting if it stayed uncategorised.
-  assert.match(codeOnly(read('lib/otpProvider.js')),
-    /sendEmail\(email, subject, html, \{ tenantId, category: 'otp' \}\)/,
-    'the login code');
+  // (lib/otpProvider.js sendOtp was listed here as «the login code»; nothing
+  // ever called it, and it is gone. Sign-in codes go by WhatsApp, then email
+  // from routes/auth.js.)
   assert.match(codeOnly(read('routes/auth.js')),
     /sendEmailBase\(to, subject, html, \{ tenantId: req\.tenantId, category: 'otp' \}\)/,
     'the password-reset code');

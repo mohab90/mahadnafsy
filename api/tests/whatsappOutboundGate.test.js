@@ -120,12 +120,10 @@ test('only the codes are tagged otp — nothing else rides the exemption', () =>
   for (const file of senderFiles()) {
     if (/category:\s*'otp'/.test(read(file))) otpBearing.push(file);
   }
-  // lib/otpProvider.js joined the list when the email channel was given the
-  // same categories WhatsApp already had. It is the third code-sender, not a
-  // fourth kind of message: it delivers the sign-in code over email when that
-  // is the channel configured for the tenant. The rule this guards is unchanged
-  // — otp is the exemption, and only a code may carry it.
-  assert.deepEqual(otpBearing.sort(), ['lib/otpProvider.js', 'lib/whatsappOtp.js', 'routes/auth.js'],
+  // lib/otpProvider.js was on this list for sendOtp, which nothing called; it
+  // is gone. The rule is unchanged — otp is the exemption, and only a code
+  // may carry it.
+  assert.deepEqual(otpBearing.sort(), ['lib/whatsappOtp.js', 'routes/auth.js'],
     'otp is the one category that sends while everything else is stopped; '
     + 'only the sign-in code and the password-reset code may carry it');
 });
@@ -135,4 +133,16 @@ test('the welcome message the desk switched off is actually gated now', () => {
   // It was fired on every signup with no check of any kind, which is why turning
   // "رسائل الترحيب" off in the admin panel changed nothing.
   assert.match(auth, /نرحب بك في معهد مهاد للدراسات النفسية[\s\S]{0,200}category: 'welcome'/);
+});
+
+test('the WhatsApp key is entered where the codes are sent from', () => {
+  // «OTP والقنوات» offered a WhatsApp token that nothing read, and a test that
+  // always went to Green-API: on 29 September the Wapilot token went in there,
+  // the test refused it, and the real channel stayed broken. The page now
+  // sends the admin to «قنوات المراسلة», where the Wapilot key is checked.
+  const page = fs.readFileSync(path.join(root, '..', 'admin/pages/dashboard/tabs/OtpSettingsTab.tsx'), 'utf8');
+  assert.ok(!page.includes('whatsapp.api_token'), 'no WhatsApp token field on the OTP page');
+  assert.ok(!page.includes("channel: 'whatsapp'"), 'no WhatsApp test that goes to Green-API');
+  assert.ok(page.includes('to="/dashboard/messaging_hub"'), 'a way to the real channel');
+  assert.ok(!read('lib/otpProvider.js').includes('async function sendOtp'), 'the uncalled sender stays gone');
 });

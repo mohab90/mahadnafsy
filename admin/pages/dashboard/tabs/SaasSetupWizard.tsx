@@ -108,10 +108,10 @@ export default function SaasSetupWizard({
       },
       {
         key: 'otp',
-        title: 'OTP والقنوات',
-        detail: 'توحيد البريد وواتساب وSMS تحت مزود OTP واحد قابل للاختبار',
+        title: 'أكواد الدخول وSMS',
+        detail: 'أكواد الدخول بتتبعت من قناة الواتساب في قنوات المراسلة، والرسائل النصية من هنا',
         status: 'partial',
-        actionLabel: 'إعداد OTP',
+        actionLabel: 'افتح',
         action: () => navigate('/dashboard/otp_settings'),
         icon: KeyRound,
       },

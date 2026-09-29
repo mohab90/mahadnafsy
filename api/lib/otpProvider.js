@@ -1,25 +1,7 @@
 'use strict';
 
-const { pool } = require('./db');
 const { toDialable } = require('./phoneNumber');
-const { sendEmail } = require('./email');
 const { getOtpProviderSettings } = require('./saasSettings');
-const logger = require('./logger').child({ lib: 'otpProvider' });
-
-function renderTemplate(template, code) {
-  return String(template || 'رمز التحقق الخاص بك: {{code}}').replace(/\{\{code\}\}/g, code);
-}
-
-async function findPhoneByEmail(email, tenantId = 'tenant-default') {
-  const safeEmail = String(email || '').toLowerCase().trim();
-  if (!safeEmail) return '';
-  const [[sub]] = await pool.query('SELECT phone FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? AND phone IS NOT NULL AND phone<>"" LIMIT 1', [tenantId, safeEmail]).catch(() => [[null]]);
-  if (sub?.phone) return sub.phone;
-  const [[staff]] = await pool.query('SELECT phone FROM staff WHERE tenant_id=? AND LOWER(TRIM(email))=? AND phone IS NOT NULL AND phone<>"" LIMIT 1', [tenantId, safeEmail]).catch(() => [[null]]);
-  if (staff?.phone) return staff.phone;
-  const [[user]] = await pool.query('SELECT phone FROM users WHERE tenant_id=? AND LOWER(TRIM(email))=? AND phone IS NOT NULL AND phone<>"" LIMIT 1', [tenantId, safeEmail]).catch(() => [[null]]);
-  return user?.phone || '';
-}
 
 async function sendGreenApiWhatsApp({ phone, message, instanceId, apiToken }) {
   if (!phone || !instanceId || !apiToken) return { ok: false, reason: 'not_configured' };
@@ -95,41 +77,4 @@ async function sendSms({ phone, message, tenantId = 'tenant-default' }) {
   return result;
 }
 
-async function sendOtp({ email, phone, code, subject, html, tenantId = 'tenant-default' }) {
-  const settings = await getOtpProviderSettings(tenantId).catch(() => ({}));
-  const channel = settings.active_channel || 'email';
-
-  if (channel === 'whatsapp' && settings.whatsapp?.enabled) {
-    const targetPhone = phone || await findPhoneByEmail(email, tenantId);
-    const result = await sendGreenApiWhatsApp({
-      phone: targetPhone,
-      message: renderTemplate(settings.whatsapp.template, code),
-      instanceId: settings.whatsapp.instance_id,
-      apiToken: settings.whatsapp.api_token,
-    }).catch(error => ({ ok: false, reason: error.message }));
-    if (result.ok) return { ok: true, channel: 'whatsapp' };
-    logger.warn('WhatsApp OTP failed; falling back to email', { reason: result.reason });
-  }
-
-  if (channel === 'sms' && settings.sms?.enabled) {
-    const result = await sendSmsOtp({
-      phone: phone || await findPhoneByEmail(email, tenantId),
-      message: renderTemplate(settings.sms.template, code),
-      settings,
-    }).catch(error => ({ ok: false, reason: error.message }));
-    if (result.ok) return { ok: true, channel: 'sms' };
-    logger.warn('SMS OTP failed; falling back to email', { reason: result.reason });
-  }
-
-  if (!settings.email || settings.email.enabled !== false) {
-    // Categorised, so EMAIL_OUTBOUND_CATEGORIES can silence marketing without
-    // silencing the code somebody needs to sign in. A send with no category is
-    // refused the moment that variable is set to anything at all.
-    await sendEmail(email, subject, html, { tenantId, category: 'otp' });
-    return { ok: true, channel: 'email' };
-  }
-
-  return { ok: false, channel, reason: 'no_enabled_otp_channel' };
-}
-
-module.exports = { findPhoneByEmail, renderTemplate, sendGreenApiWhatsApp, sendOtp, sendSms, sendSmsOtp };
+module.exports = { sendGreenApiWhatsApp, sendSms, sendSmsOtp };

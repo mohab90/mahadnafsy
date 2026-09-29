@@ -48,8 +48,8 @@ const SETTINGS_CARDS: SettingsCard[] = [
     area: 'التسويق والمبيعات',
   },
   {
-    title: 'OTP والقنوات',
-    desc: 'إعداد البريد، واتساب، SMS، مدة صلاحية الكود، وترتيب fallback.',
+    title: 'أكواد الدخول وSMS',
+    desc: 'أكواد الدخول بتتبعت منين (واتساب ثم البريد)، وإعدادات الرسائل النصية.',
     href: '/dashboard/otp_settings',
     icon: <Shield size={18} />,
     tone: 'bg-violet-50 text-violet-700 border-violet-100',

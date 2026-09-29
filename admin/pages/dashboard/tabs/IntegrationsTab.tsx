@@ -27,7 +27,7 @@ const AdminAiSettingsTab = lazy(() => import('./AdminAiSettingsTab'));
 
 export const INTEGRATION_SECTIONS: TabSection[] = [
   { id: 'payment', label: 'بوابات الدفع', icon: CreditCard, permission: 'manage_settings', Component: PaymentSettingsTab },
-  { id: 'otp', label: 'OTP والقنوات', icon: Shield, permission: 'manage_security', Component: OtpSettingsTab },
+  { id: 'otp', label: 'أكواد الدخول وSMS', icon: Shield, permission: 'manage_security', Component: OtpSettingsTab },
   { id: 'email', label: 'البريد الإلكتروني', icon: Mail, permission: 'manage_settings', Component: EmailSettingsTab },
   { id: 'sms', label: 'الرسائل النصية', icon: MessageSquareText, permission: 'manage_channel_settings', Component: SmsSettingsTab },
   { id: 'agent', label: 'عميل المراسلة AI', icon: Bot, permission: 'manage_channel_settings', Component: MessagingAgentTab },

@@ -1,30 +1,21 @@
 import { useEffect, useState } from 'react';
-import { KeyRound } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { KeyRound, Mail, MessageCircle } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { Card, Field, Input, NotifyFn, SaveBar, SectionHeader, Toggle, setNested } from './saasConnectorUi';
 import { promptDialog } from '../../../../shared/ui/promptDialog';
 
 type OtpConfig = Record<string, any>;
 
-// These defaults describe intent, not live behavior — see the banner
-// rendered below. The real forgot-password/OTP send path (api/routes/auth.js)
-// is hardcoded to try WhatsApp first via the messaging_channels/Wapilot
-// integration (قنوات المراسلة, تحت التسويق), then falls back to the app's
-// own SMTP for email. It never reads this page's saved config at all —
-// found 2026-08-05 while chasing a real WhatsApp OTP delivery failure: the
-// actual fix was in messaging_channels, not here. Kept whatsapp-first here
-// too so an admin who has never saved anything doesn't see a default that
-// contradicts what the owner explicitly wants (WhatsApp primary, email
-// optional) — even though saving this form doesn't change delivery order.
+// Only the SMS card here sends anything: queued SMS (lib/otpProvider.js
+// sendSms) reads it. The sign-in and password-reset codes go out through the
+// WhatsApp channel in «قنوات المراسلة» (api/lib/whatsappOtp.js, routes/auth.js)
+// and email through «البريد الإلكتروني» (lib/email.js). This page used to offer
+// a WhatsApp card — provider, instance, API token, template — and an SMTP card
+// that nothing read, and a WhatsApp test that always went to Green-API. On 29
+// September the owner entered the Wapilot token there, the test refused it,
+// and the real channel was never touched.
 const DEFAULT_CONFIG: OtpConfig = {
-  preferred_channel: 'whatsapp',
-  fallback_order: ['whatsapp', 'email', 'sms'],
-  length: 6,
-  expiry_minutes: 10,
-  resend_cooldown_seconds: 60,
-  max_attempts: 5,
-  email: { enabled: true, provider: 'smtp', from_email: '', smtp_host: '', smtp_port: 587, smtp_user: '', smtp_password: '', secure: false },
-  whatsapp: { enabled: true, provider: 'greenapi', instance_id: '', api_token: '', template: 'رمز التحقق الخاص بك هو {{code}}' },
   sms: { enabled: false, provider: 'vonage', api_key: '', api_secret: '', sender_id: 'MAHAD' },
 };
 
@@ -32,27 +23,18 @@ export default function OtpSettingsTab({ notify }: { notify: NotifyFn }) {
   const [config, setConfig] = useState<OtpConfig>(DEFAULT_CONFIG);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [testingChannel, setTestingChannel] = useState<string>('');
+  const [testing, setTesting] = useState(false);
 
   useEffect(() => {
     fetch('/api/admin/sys-config?section=otp_provider', { credentials: 'include', headers: adminAuthHeaders() })
       .then(res => res.ok ? res.json() : DEFAULT_CONFIG)
-      // A section with nothing saved answers `null`, and reading .email off it
-      // threw — surfacing as "فشل تحميل إعدادات OTP" every time this page was
-      // opened before anything had ever been saved.
+      // A section with nothing saved answers `null`.
       .then((data: OtpConfig | null) => {
         const loaded = data && typeof data === 'object' ? data : {};
-        setConfig({
-          ...DEFAULT_CONFIG,
-          ...loaded,
-          email: { ...DEFAULT_CONFIG.email, ...(loaded.email || {}) },
-          whatsapp: { ...DEFAULT_CONFIG.whatsapp, ...(loaded.whatsapp || {}) },
-          sms: { ...DEFAULT_CONFIG.sms, ...(loaded.sms || {}) },
-        });
+        setConfig({ ...loaded, sms: { ...DEFAULT_CONFIG.sms, ...(loaded.sms || {}) } });
       })
-      .catch(() => notify('error', 'فشل تحميل إعدادات OTP'));
-    // notify is a stable useCallback in Dashboard; listing it kept this to one
-    // request, but an unstable one here would re-fire the fetch every render.
+      .catch(() => notify('error', 'فشل تحميل إعدادات الرسائل النصية'));
+    // notify is a stable useCallback in Dashboard; an unstable one would re-fire the fetch every render.
   }, [notify]);
 
   const update = (path: string, value: unknown) => {
@@ -66,89 +48,63 @@ export default function OtpSettingsTab({ notify }: { notify: NotifyFn }) {
       const res = await fetch('/api/admin/sys-config/otp_provider', { method: 'PUT', credentials: 'include', headers: adminAuthHeaders(true), body: JSON.stringify(config) });
       if (!res.ok) throw new Error(await res.text());
       setDirty(false);
-      notify('success', 'تم حفظ إعدادات OTP');
+      notify('success', 'تم حفظ إعدادات الرسائل النصية');
     } catch (error) {
-      notify('error', error instanceof Error ? error.message : 'فشل حفظ OTP');
+      notify('error', error instanceof Error ? error.message : 'فشل الحفظ');
     } finally {
       setSaving(false);
     }
   };
 
-  const CHANNEL_LABEL_AR: Record<string, string> = { email: 'البريد الإلكتروني', whatsapp: 'واتساب', sms: 'الرسائل النصية' };
-  const testChannel = async (channel: 'email' | 'whatsapp' | 'sms') => {
-    const label = channel === 'email' ? 'البريد الإلكتروني' : 'رقم الهاتف';
-    const to = await promptDialog(`اختبار OTP عبر ${CHANNEL_LABEL_AR[channel]} - أدخل ${label}، أو اتركه فارغاً للتجربة بدون إرسال فعلي`) || '';
-    setTestingChannel(channel);
+  const testSms = async () => {
+    const to = await promptDialog('اختبار الرسائل النصية - أدخل رقم الهاتف، أو اتركه فارغاً للتجربة بدون إرسال فعلي') || '';
+    setTesting(true);
     try {
       const res = await fetch('/api/admin/otp-provider/test', {
-        method: 'POST',
-        credentials: 'include',
-        headers: adminAuthHeaders(true),
-        body: JSON.stringify({ channel, to }),
+        method: 'POST', credentials: 'include', headers: adminAuthHeaders(true), body: JSON.stringify({ channel: 'sms', to }),
       });
       const body = await res.json();
-      notify(body.ok ? 'success' : 'info', body.message || (body.ok ? 'نجح اختبار OTP' : 'اختبار OTP غير مكتمل'));
+      notify(body.ok ? 'success' : 'info', body.message || (body.ok ? 'نجح الاختبار' : 'الاختبار غير مكتمل'));
     } catch (error) {
-      notify('error', error instanceof Error ? error.message : 'فشل اختبار OTP');
+      notify('error', error instanceof Error ? error.message : 'فشل الاختبار');
     } finally {
-      setTestingChannel('');
+      setTesting(false);
     }
   };
 
+  const place = 'flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3';
+  const go = 'shrink-0 rounded-xl bg-rose-600 px-3 py-2 text-xs font-bold text-white hover:bg-rose-700';
   return (
     <div className="space-y-5" dir="rtl">
-      <SectionHeader title="إعدادات OTP والقنوات" subtitle="توحيد Email وWhatsApp وSMS مع fallback واضح وقواعد انتهاء ومحاولات." icon={<KeyRound size={22} />} tone="rose" />
-      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 leading-relaxed">
-        القواعد هنا وصفية فقط ومش بتتحكم في إرسال فعلي — استعادة كلمة المرور وأكواد الدخول بترسل واتساب أولًا دايمًا (ثم بريد احتياطي)، من خلال قناة واتساب الفعلية المُدارة في <b>الإعدادات ← الواتساب والماسنجر</b>. لو الواتساب مش بيوصل، راجع حالة القناة هناك، مش هنا.
-      </div>
-      <Card title="قواعد OTP">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
-          <Field label="القناة الأساسية">
-            <select value={config.preferred_channel} onChange={event => update('preferred_channel', event.target.value)} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm">
-              <option value="email">البريد الإلكتروني</option>
-              <option value="whatsapp">واتساب</option>
-              <option value="sms">رسائل نصية</option>
-            </select>
-          </Field>
-          <Field label="طول الرمز"><Input type="number" value={config.length} onChange={value => update('length', Number(value) || 6)} /></Field>
-          <Field label="الانتهاء بالدقائق"><Input type="number" value={config.expiry_minutes} onChange={value => update('expiry_minutes', Number(value) || 10)} /></Field>
-          <Field label="إعادة الإرسال بالثواني"><Input type="number" value={config.resend_cooldown_seconds} onChange={value => update('resend_cooldown_seconds', Number(value) || 60)} /></Field>
-          <Field label="أقصى محاولات"><Input type="number" value={config.max_attempts} onChange={value => update('max_attempts', Number(value) || 5)} /></Field>
+      <SectionHeader title="أكواد الدخول والرسائل النصية" subtitle="أكواد الدخول بتتبعت منين، وإعدادات الرسائل النصية." icon={<KeyRound size={22} />} tone="rose" />
+      <Card title="أكواد الدخول واسترجاع كلمة السر">
+        <div className="space-y-3 text-sm">
+          <div className={place}>
+            <div className="flex items-start gap-3">
+              <MessageCircle size={20} className="mt-0.5 shrink-0 text-emerald-600" />
+              <div>
+                <p className="font-bold text-gray-800">واتساب — الأول دايمًا</p>
+                <p className="text-xs text-gray-500">بيتبعت من قناة الواتساب (Wapilot): اسم النسخة ومفتاح Wapilot واختبار الاتصال هناك.</p>
+              </div>
+            </div>
+            <Link to="/dashboard/messaging_hub" className={go}>قنوات المراسلة</Link>
+          </div>
+          <div className={place}>
+            <div className="flex items-start gap-3">
+              <Mail size={20} className="mt-0.5 shrink-0 text-sky-600" />
+              <div>
+                <p className="font-bold text-gray-800">البريد — لو الواتساب ماوصلش أو الحساب ملوش رقم</p>
+                <p className="text-xs text-gray-500">بيتبعت بإعدادات SMTP في «البريد الإلكتروني».</p>
+              </div>
+            </div>
+            <Link to="/dashboard/email_settings" className={go}>البريد الإلكتروني</Link>
+          </div>
         </div>
       </Card>
-      <Card title="OTP عبر البريد الإلكتروني">
+      <Card title="الرسائل النصية (SMS)">
         <div className="mb-4 flex justify-end">
-          <button type="button" onClick={() => testChannel('email')} disabled={testingChannel === 'email'} className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50">
-            {testingChannel === 'email' ? 'جارٍ الاختبار...' : 'اختبار OTP البريد الإلكتروني'}
-          </button>
-        </div>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3"><span className="text-sm font-semibold text-gray-600">تفعيل البريد الإلكتروني</span><Toggle checked={!!config.email.enabled} onChange={value => update('email.enabled', value)} /></div>
-          <Field label="البريد المرسِل"><Input value={config.email.from_email} onChange={value => update('email.from_email', value)} /></Field>
-          <Field label="مضيف SMTP"><Input value={config.email.smtp_host} onChange={value => update('email.smtp_host', value)} /></Field>
-          <Field label="منفذ SMTP"><Input type="number" value={config.email.smtp_port} onChange={value => update('email.smtp_port', Number(value) || 587)} /></Field>
-          <Field label="مستخدم SMTP"><Input value={config.email.smtp_user} onChange={value => update('email.smtp_user', value)} /></Field>
-          <Field label="كلمة مرور SMTP"><Input type="password" value={config.email.smtp_password} onChange={value => update('email.smtp_password', value)} /></Field>
-        </div>
-      </Card>
-      <Card title="OTP عبر واتساب">
-        <div className="mb-4 flex justify-end">
-          <button type="button" onClick={() => testChannel('whatsapp')} disabled={testingChannel === 'whatsapp'} className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50">
-            {testingChannel === 'whatsapp' ? 'جارٍ الاختبار...' : 'اختبار OTP واتساب'}
-          </button>
-        </div>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3"><span className="text-sm font-semibold text-gray-600">تفعيل واتساب</span><Toggle checked={!!config.whatsapp.enabled} onChange={value => update('whatsapp.enabled', value)} /></div>
-          <Field label="المزوّد"><Input value={config.whatsapp.provider} onChange={value => update('whatsapp.provider', value)} /></Field>
-          <Field label="معرّف الجهاز (Instance ID)"><Input value={config.whatsapp.instance_id} onChange={value => update('whatsapp.instance_id', value)} /></Field>
-          <Field label="رمز API"><Input type="password" value={config.whatsapp.api_token} onChange={value => update('whatsapp.api_token', value)} /></Field>
-          <Field label="القالب"><Input value={config.whatsapp.template} onChange={value => update('whatsapp.template', value)} /></Field>
-        </div>
-      </Card>
-      <Card title="رسائل نصية احتياطية (SMS)">
-        <div className="mb-4 flex justify-end">
-          <button type="button" onClick={() => testChannel('sms')} disabled={testingChannel === 'sms'} className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50">
-            {testingChannel === 'sms' ? 'جارٍ الاختبار...' : 'اختبار OTP الرسائل النصية'}
+          <button type="button" onClick={() => { void testSms(); }} disabled={testing} className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50">
+            {testing ? 'جارٍ الاختبار...' : 'اختبار الرسائل النصية'}
           </button>
         </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
