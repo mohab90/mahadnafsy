@@ -129,7 +129,6 @@ const Dashboard: React.FC = () => {
     reloadSubscribers,
     recordSubscriberPayment,
     deleteOrder,
-    addOrder,
     setContentValue,
     setContentValues,
     mergeContent,
@@ -372,7 +371,6 @@ const Dashboard: React.FC = () => {
     showAddTransfer, setShowAddTransfer,
     linkTransferModal, setLinkTransferModal,
     linkOrderModal, setLinkOrderModal,
-    transferForm, setTransferForm,
   } = useOrdersFinanceState();
 
   // Discount management state
@@ -930,15 +928,12 @@ const Dashboard: React.FC = () => {
                     setLinkTransferModal,
                     linkOrderModal,
                     setLinkOrderModal,
-                    transferForm,
-                    setTransferForm,
                     currentStaff,
                     authUser: authUser ?? null,
                     content,
                     updateOrderStatus,
                     reloadOrders,
                     reloadSubscribers,
-                    addOrder,
                     deleteOrder,
                     exportFilteredOrdersCsv,
                   }}
@@ -1135,6 +1130,7 @@ const Dashboard: React.FC = () => {
       branchOptions={instituteBranches.map(b => ({ id: b.id, label: b.label }))}
       instituteName={content['institute.name'] || 'معهد الدراسات النفسية'}
       requireSubscriberApproval={isReceptionDaqqi}
+      lockPrice={isCollectionRole}
     />
     </>
   );

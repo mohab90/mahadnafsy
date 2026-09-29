@@ -22,6 +22,11 @@ const { setOnlineUser } = require('../lib/onlineUsers');
 const { publicLimiter, contactLimiter } = require('../middleware/rateLimits');
 const { resolveClientContext, getClientIp, hashClientIp } = require('../lib/clientContext');
 const { itemBalances } = require('../lib/agreedPrice');
+const { capturePublicLead } = require('../lib/publicLead');
+
+// The contact form's subjects that are sales' to answer (client/pages/Contact.tsx).
+const SALES_SUBJECTS = new Map([['courses', 'استفسار عن الدبلومات والبرامج'], ['payment', 'استفسار عن الدفع والأسعار']]);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC ROUTES (no auth required)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -876,6 +881,14 @@ router.post('/api/contact', contactLimiter, async (req, res) => {
     );
     // Lifecycle: instant acknowledgment to the sender.
     require('../lib/lifecycle').trigger('contact_received', { name, email, phone, tenantId: req.tenantId });
+    // A question about a course or its price is sales' — it reached only the
+    // customer-service inbox, which is for problems with the site.
+    if (SALES_SUBJECTS.has(subject)) {
+      await capturePublicLead({
+        tenantId: req.tenantId, name, phone, source: 'contact_form',
+        notes: `صفحة التواصل — ${SALES_SUBJECTS.get(subject)}: ${String(message).slice(0, 400)}`,
+      }).catch(error => logger.warn('[contact] lead not filed', { error: error.message }));
+    }
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

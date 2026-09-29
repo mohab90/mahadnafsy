@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeftRight, Link2 } from 'lucide-react';
 import { Modal } from '../../../../../shared/ui/Modal';
 import { cairoDateOnly, cairoDay } from '../../../../../shared/cairoDate';
+import { isCashBox } from '../../../../../shared/paymentMethods';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { usePaymentBoxes } from '../../../../lib/paymentMethods';
 import { useStaticData } from '../../../../context/siteDataSlices';
@@ -44,7 +45,7 @@ export function LinkTransferDialog({ title, amount, currency, method, reference,
   // The same amount first: that is nearly always the one.
   const sorted = useMemo(() => [...ledger].sort((a, b) =>
     (Number(b.amount) === amount && b.currency === currency ? 1 : 0) - (Number(a.amount) === amount && a.currency === currency ? 1 : 0)), [ledger, amount, currency]);
-  const cash = /نقد|خزن/.test(String(method || ''));
+  const cash = isCashBox(method);
   const ready = mode === 'ledger' ? !!picked
     : Number(draft.amount) > 0 && !!draft.method.trim() && !!draft.reference.trim();
 

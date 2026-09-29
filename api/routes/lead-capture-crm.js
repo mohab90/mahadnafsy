@@ -26,6 +26,7 @@ const { resolveClientContext } = require('../lib/clientContext');
 const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { phoneIdentityClause } = require('../lib/leadMatching');
 const { isRealPhone } = require('../lib/phoneNumber');
+const { capturePublicLead } = require('../lib/publicLead');
 
 function routeError(res, error, message = 'lead capture crm route failed') {
   logger.error(message, error);
@@ -148,63 +149,17 @@ router.post('/api/registrations', publicLimiter, async (req, res) => {
 });
 
 router.post('/api/leads-public', publicLimiter, async (req, res) => {
-  const conn = await pool.getConnection();
-  let transactionStarted = false;
-  let leadLock = null;
   try {
     const { name, phone, notes, source, branch } = req.body;
     if (!name || !phone) return res.status(400).json({ error: 'name and phone required' });
-    const tenantId = scopedTenantId(req);
     // Same customer submitting again (chatbot re-visit, double-click) must not create a
     // second lead row — match the number and append the note instead.
     // (owner requirement: no duplicate data)
-    const normPhone = normalizePhone(phone);
-    leadLock = `lead-public:${crypto.createHash('sha256').update(`${tenantId}:${normPhone || phone}`).digest('hex').slice(0, 40)}`;
-    const [[lock]] = await conn.query('SELECT GET_LOCK(?,5) AS acquired', [leadLock]);
-    if (Number(lock?.acquired) !== 1) return res.status(409).json({ error: 'Lead submission is already being processed' });
-    await conn.beginTransaction();
-    transactionStarted = true;
-    const identityMatch = phoneIdentityClause(normPhone);
-    if (identityMatch) {
-      const [[existing]] = await conn.query(
-        `SELECT id FROM leads WHERE tenant_id=? AND ${identityMatch.sql} AND hidden = 0 LIMIT 1 FOR UPDATE`,
-        [tenantId, ...identityMatch.params]
-      );
-      if (existing) {
-        await conn.query(
-          `UPDATE leads SET notes = CASE WHEN notes IS NULL OR notes = '' THEN ? ELSE CONCAT(notes, '\n', ?) END, updated_at = NOW() WHERE id = ? AND tenant_id=?`,
-          [(notes || '').trim().slice(0, 500), (notes || '').trim().slice(0, 500), existing.id, tenantId]
-        );
-        await logLeadEvent(existing.id, 'note_added', 'Public form submitted again', { source: source || 'chatbot' }, tenantId, conn);
-        await conn.commit();
-        transactionStarted = false;
-        return res.json({ ok: true, id: existing.id, existing: true });
-      }
-    }
-    const id = `lead-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    let code = null;
-    try { code = await getNextClientCode(conn); } catch (_) {}
-    const normalizedBranch = normalizeBranch(branch, 'OTHER');
-    const rep = await getNextSalesRep(tenantId, conn, {
-      branch: normalizedBranch,
-      lead: { source: (source || 'chatbot').slice(0, 50), courseIds: [] },
-    });
-    await conn.execute(
-      `INSERT INTO leads (id, tenant_id, client_code, name, phone, notes, status, interest_level, source, lead_type, branch, branch_id, assigned_sales_id, assigned_sales_name, created_at, hidden)
-       VALUES (?, ?, ?, ?, ?, ?, 'new', 'medium', ?, 'general', ?, ?, ?, ?, NOW(), 0)`,
-      [id, tenantId, code, name.trim().slice(0, 120), phone.trim().slice(0, 30), (notes || '').trim().slice(0, 500), (source || 'chatbot').slice(0, 50), normalizedBranch, branchIdForBranch(normalizedBranch), rep?.id || null, rep?.name || null]
-    );
-    await logLeadEvent(id, 'created', 'Public lead captured', { source: source || 'chatbot', assignedSalesId: rep?.id || null }, tenantId, conn);
-    await conn.commit();
-    transactionStarted = false;
-    await require('../lib/lifecycle').trigger('lead_created', { name, phone, tenantId });
-    res.json({ ok: true, id });
+    const lead = await capturePublicLead({ tenantId: scopedTenantId(req), name, phone, notes, source, branch });
+    if (lead.busy) return res.status(409).json({ error: 'Lead submission is already being processed' });
+    res.json(lead.existing ? { ok: true, id: lead.id, existing: true } : { ok: true, id: lead.id });
   } catch (e) {
-    if (transactionStarted) await conn.rollback().catch(() => {});
     routeError(res, e);
-  } finally {
-    if (leadLock) await conn.query('SELECT RELEASE_LOCK(?)', [leadLock]).catch(() => {});
-    conn.release();
   }
 });
 

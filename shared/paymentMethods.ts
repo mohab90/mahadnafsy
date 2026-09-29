@@ -105,6 +105,14 @@ const ALIASES: Record<string, string> = {
  * recorded it.
  */
 export const SAME_AS_PAYMENT = 'same_as_payment';
+
+/**
+ * A box money is counted into rather than transferred to («نقدي», «خزنة
+ * الدقي», «كاش») — it has no operation number. «فودافون كاش» is a wallet.
+ * The server's rule is api/lib/incomingTransfers.js isCashMethod.
+ */
+export const isCashBox = (box?: string | null): boolean =>
+  /نقد|خزن/.test(String(box || '')) || /^\s*(cash|كاش)\s*$/i.test(String(box || ''));
 export const REFUND_METHOD_CODES = [...PAYMENT_METHOD_CODES, SAME_AS_PAYMENT] as const;
 
 /**

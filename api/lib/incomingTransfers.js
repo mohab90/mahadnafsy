@@ -80,6 +80,7 @@ async function linkTransfer(conn, { tenantId, paymentId, link, actor = {} }) {
  * «فودافون كاش 2020» included, which is a wallet — has an operation number the
  * manager can check.
  */
-const isCashMethod = method => /نقد|خزن/.test(String(method || '')) || /^s*cashs*$/i.test(String(method || ''));
+// «كاش» alone is cash; «فودافون كاش» is a wallet. Same rule as shared/paymentMethods.ts isCashBox.
+const isCashMethod = method => /نقد|خزن/.test(String(method || '')) || /^\s*(cash|كاش)\s*$/i.test(String(method || ''));
 
 module.exports = { cleanTransfer, recordTransfer, linkTransfer, isCashMethod };

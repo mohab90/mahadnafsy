@@ -122,6 +122,10 @@ test('a transfer confirms one payment, and a cash box needs none', async () => {
   assert.equal(isCashMethod('نقدي'), true);
   assert.equal(isCashMethod('خزنة الدقي'), true);
   assert.equal(isCashMethod('فودافون كاش 2020'), false);
+  // The rule lost its \s once to a shell: « cash » and «كاش» were not cash.
+  assert.equal(isCashMethod(' cash '), true);
+  assert.equal(isCashMethod('كاش'), true);
+  assert.equal(isCashMethod('cashback wallet'), false);
   assert.throws(() => cleanTransfer({ amount: 100, method: 'انستا باي', reference: '' }), /رقم العملية/);
   const fakeConn = row => ({
     calls: [],

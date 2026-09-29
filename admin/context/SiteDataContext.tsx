@@ -128,7 +128,6 @@ export interface SiteDataShape {
   updateChapter: (item: CourseChapterItem) => Promise<boolean>;
   deleteChapter: (id: string) => Promise<boolean>;
   getCourseChapters: (courseId: string) => CourseChapterItem[];
-  addOrder: (item: OrderItem) => Promise<boolean>;
   updateOrderStatus: (id: string, status: OrderItem['status']) => Promise<boolean>;
   deleteOrder: (id: string) => Promise<boolean>;
   addCommunityPost: (item: CommunityPostItem) => Promise<boolean>;
@@ -289,7 +288,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     joinUsApplications, setJoinUsApplications,
     addSubscriber, updateSubscriber, deleteSubscriber,
     addLead, addPublicLead, updateLead, markLeadsConverted, deleteLead, bulkAssignClientCodes, bulkRedistributeLeads,
-    addOrder, updateOrderStatus, deleteOrder,
+    updateOrderStatus, deleteOrder,
     addJoinUsApplication, updateJoinUsApplication, deleteJoinUsApplication, reloadJoinUsApplications,
     reloadLeads, reloadSubscribers, reloadOrders, recordSubscriberPayment,
   } = useCrmCoreState(
@@ -690,7 +689,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     updateChapter,
     deleteChapter,
     getCourseChapters,
-    addOrder,
     updateOrderStatus,
     deleteOrder,
     addCommunityPost,

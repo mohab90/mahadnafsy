@@ -218,7 +218,12 @@ router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermi
     const scope = ticketScope(req);
     where.push(scope.sql);
     params.push(...scope.params);
-    if (department) { where.push('t.department = ?'); params.push(department); }
+    // «المفروض يكون متخصص فقط لمشاكل السايت والسيسيتم»: whoever sees every
+    // department — the administration — gets the support queue here, not sales'
+    // questions or the accounts' refunds (each has its page). Department staff
+    // keep their own queue: collection reads its billing tickets here.
+    const unscoped = scope.sql === '1=1';
+    if (department || unscoped) { where.push('t.department = ?'); params.push(department || 'support'); }
     if (category) { where.push('t.category = ?'); params.push(category); }
     if (status === 'open') where.push(`t.status IN ('open','in_progress')`);
     else if (status) { where.push('t.status = ?'); params.push(status); }
@@ -249,13 +254,15 @@ router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermi
     let tickets = rows.map(r => ({ ...r, kind: 'ticket', sla: slaFlag(r) }));
     if (sla) tickets = tickets.filter(t => t.sla === sla);
 
-    // Un-triaged website contact messages (not converted to a ticket yet).
+    // Un-triaged website contact messages (not converted to a ticket yet) that
+    // report a problem; the rest are in «رسائل التواصل», and a course or price
+    // question is a lead as well (routes/public.js).
     let contacts = [];
     if (!department && !category && !assignee && (!status || status === 'open')) {
       const [crows] = await pool.query(
         `SELECT id, name, email, phone, subject, message, status, priority, created_at
            FROM contact_messages
-          WHERE tenant_id = ? AND converted_ticket_id IS NULL
+          WHERE tenant_id = ? AND converted_ticket_id IS NULL AND subject = 'technical'
             AND LOWER(COALESCE(status,'new')) IN ('new','read','pending','unread')
           ORDER BY created_at DESC LIMIT 100`, [req.tenantId]);
       contacts = crows.map(r => ({
@@ -1157,3 +1164,4 @@ function scheduleSlaSweep() {
 scheduleSlaSweep();
 
 module.exports = router;
+module.exports.createRoutedTicket = createRoutedTicket;

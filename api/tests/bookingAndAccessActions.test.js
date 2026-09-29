@@ -201,10 +201,11 @@ test('no second screen records a customer payment', () => {
     // Its money is recorded correctly; splitting it to reuse PaymentModal
     // would turn one atomic call into two and drop those fields.
     'admin/pages/dashboard/tabs/OnlineClientsTab.tsx',
-    // An incoming bank transfer, recorded as an order of type 'transfer' with a
-    // free-text sender — «غير محدد» when blank. It is institute income with no
-    // customer attached, which is why it is not this screen.
-    'admin/pages/dashboard/tabs/OrdersTab.tsx',
+    // «إضافة تحويل» in الحسابات: money that arrived, on the transfers ledger
+    // (api/lib/incomingTransfers.js), before the payment it confirms. It was
+    // an order of type 'transfer', which the orders table cannot hold. Not a
+    // payment: linking it settles the payment the desk entered.
+    'admin/pages/dashboard/tabs/orders/IncomingTransfers.tsx',
     // The transfer that confirms a payment already recorded — the money as it
     // arrived in the wallet (api/lib/incomingTransfers.js), never a second
     // payment: the approval it belongs to settles the payment the desk entered.

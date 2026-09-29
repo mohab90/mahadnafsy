@@ -284,7 +284,7 @@ export const mysqlClient = {
   // Community events — one event's page, and «أنا مهتم» (a name and a number, no account needed)
   getCommunityEvent: (slug: string) =>
     apiFetch<CommunityEventItem>(`/community/events/${encodeURIComponent(slug)}`),
-  registerForCommunityEvent: (id: string, body: { name: string; phone: string }) =>
+  registerForCommunityEvent: (id: string, body: { name: string; phone: string; studiedBefore: boolean }) =>
     apiFetch<{ ok: boolean; alreadyRegistered: boolean }>(
       `/community/events/${encodeURIComponent(id)}/register`, { method: 'POST', body: JSON.stringify(body) }),
   getBroadcastNotifications: () =>

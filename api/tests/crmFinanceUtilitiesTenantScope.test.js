@@ -217,7 +217,8 @@ test('employee subscriber lists cannot mix CRM ownership or payment history acro
 });
 
 test('public lead capture is tenant-deduped, serialized, assigned and audited atomically', () => {
-  const route = read('routes/lead-capture-crm.js');
+  // /api/leads-public runs lib/publicLead.js, shared with the contact form and the assistant.
+  const route = read('routes/lead-capture-crm.js') + read('lib/publicLead.js');
   const leadAssignment = read('lib/leadAssignment.js');
   assert.match(route, /registration:\$\{crypto\.createHash/);
   assert.match(route, /lead-public:\$\{crypto\.createHash/);

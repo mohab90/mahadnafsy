@@ -5,6 +5,11 @@
 
 const MAX_FIELD_LEN = 50_000; // per-field hard cap (50KB)
 const MAX_FIELDS    = 200;    // max fields per request body
+// A picture sent as a data URL is the one string allowed to be long: cut at
+// 50KB it was saved as a broken image — every transfer receipt over ~37 KB, and
+// every event picture. The JSON body itself stops at 10 MB (httpApp.js).
+const MAX_IMAGE_LEN = 8_000_000;
+const IMAGE_DATA_URL = /^data:image\/[a-z+.-]+;base64,/i;
 
 /** Deep-walk a value and sanitize strings. */
 function deepSanitize(value, depth = 0) {
@@ -13,7 +18,8 @@ function deepSanitize(value, depth = 0) {
     // Strip null bytes (SQL / file path injection vector)
     let v = value.replace(/\0/g, '');
     // Cap length
-    if (v.length > MAX_FIELD_LEN) v = v.slice(0, MAX_FIELD_LEN);
+    const cap = IMAGE_DATA_URL.test(v) ? MAX_IMAGE_LEN : MAX_FIELD_LEN;
+    if (v.length > cap) v = v.slice(0, cap);
     return v;
   }
   if (Array.isArray(value)) {

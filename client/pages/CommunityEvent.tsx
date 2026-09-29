@@ -1,4 +1,4 @@
-import React, { useEffect, useState, type FormEvent } from 'react';
+import React, { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowRight, CalendarDays, CalendarPlus, CheckCircle, Copy, MapPin, MonitorPlay, Share2, Users } from 'lucide-react';
 
@@ -24,6 +24,8 @@ const CommunityEvent: React.FC = () => {
   const [formOpen, setFormOpen] = useState(false);
   const [name, setName] = useState(authUser?.displayName || '');
   const [phone, setPhone] = useState('');
+  const [studiedBefore, setStudiedBefore] = useState<boolean | null>(null);
+  const formRef = useRef<HTMLDivElement>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState<'new' | 'again' | null>(null);
@@ -72,14 +74,21 @@ const CommunityEvent: React.FC = () => {
 
   const register = async (submit: FormEvent<HTMLFormElement>) => {
     submit.preventDefault();
+    if (studiedBefore === null) { setError('اختار: درست في المعهد قبل كده ولا لأ؟'); return; }
     setError('');
     setSending(true);
     try {
-      const result = await mysqlClient.registerForCommunityEvent(event.id, { name: name.trim(), phone: phone.trim() });
+      const result = await mysqlClient.registerForCommunityEvent(event.id, { name: name.trim(), phone: phone.trim(), studiedBefore });
       setDone(result.alreadyRegistered ? 'again' : 'new');
     } catch (failure) {
       setError(failure instanceof Error && !/^HTTP /.test(failure.message) ? failure.message : 'تعذّر التسجيل، حاول تاني.');
     } finally { setSending(false); }
+  };
+
+  // «زر انا مهتم كمان يظهر تحت المحتوي»: the same form, opened and brought into view.
+  const openForm = () => {
+    setFormOpen(true);
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
   // Where the clipboard is refused, the link is shown to copy by hand.
@@ -152,11 +161,17 @@ const CommunityEvent: React.FC = () => {
               <div className="whitespace-pre-line text-[15px] leading-8 text-gray-700">
                 {event.content || event.description || 'التفاصيل هتتنشر قريب.'}
               </div>
+              {upcoming && !done && (
+                <button type="button" onClick={openForm}
+                  className="mt-6 w-full rounded-xl bg-primary-600 py-3 text-lg font-bold text-white shadow hover:bg-primary-700 sm:w-auto sm:px-10">
+                  🙋 أنا مهتم
+                </button>
+              )}
             </section>
           </div>
 
           <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
-            <div className="rounded-2xl border border-primary-100 bg-white p-5 shadow-md">
+            <div ref={formRef} className="rounded-2xl border border-primary-100 bg-white p-5 shadow-md">
               {!upcoming ? (
                 <div className="text-center">
                   <p className="mb-1 font-extrabold text-gray-900">الفعالية دي انتهت</p>
@@ -176,6 +191,17 @@ const CommunityEvent: React.FC = () => {
                     className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-primary-400 focus:outline-none" />
                   <input value={phone} onChange={e => setPhone(e.target.value)} required inputMode="tel" dir="ltr" placeholder="رقم الموبايل / الواتساب"
                     className="w-full rounded-xl border border-gray-200 px-4 py-3 text-right text-sm focus:border-primary-400 focus:outline-none" />
+                  <fieldset>
+                    <legend className="mb-1.5 text-sm font-bold text-gray-700">درست في المعهد قبل كده؟</legend>
+                    <div className="grid grid-cols-2 gap-2">
+                      {([[true, 'نعم'], [false, 'لا']] as const).map(([value, text]) => (
+                        <button key={text} type="button" onClick={() => setStudiedBefore(value)} aria-pressed={studiedBefore === value}
+                          className={`rounded-xl border py-2.5 text-sm font-bold transition ${studiedBefore === value ? 'border-primary-600 bg-primary-600 text-white' : 'border-gray-200 bg-white text-gray-700 hover:border-primary-300'}`}>
+                          {text}
+                        </button>
+                      ))}
+                    </div>
+                  </fieldset>
                   {error && <p className="text-sm text-red-600">{error}</p>}
                   <button type="submit" disabled={sending} className="w-full rounded-xl bg-primary-600 py-3 font-bold text-white hover:bg-primary-700 disabled:opacity-60">
                     {sending ? 'جاري التسجيل…' : 'تأكيد التسجيل'}
@@ -185,7 +211,7 @@ const CommunityEvent: React.FC = () => {
                 <div className="text-center">
                   <p className="mb-1 font-extrabold text-gray-900">مهتم تحضر؟</p>
                   <p className="mb-4 text-sm text-gray-500">سيب اسمك ورقمك وهنبعتلك التفاصيل.</p>
-                  <button type="button" onClick={() => setFormOpen(true)} className="w-full rounded-xl bg-primary-600 py-3 text-lg font-bold text-white shadow hover:bg-primary-700">
+                  <button type="button" onClick={openForm} className="w-full rounded-xl bg-primary-600 py-3 text-lg font-bold text-white shadow hover:bg-primary-700">
                     🙋 أنا مهتم
                   </button>
                 </div>

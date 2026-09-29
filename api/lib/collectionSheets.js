@@ -96,8 +96,8 @@ const amount = value => Number(cell(value).replace(/[^0-9.]/g, '')) || 0;
 
 // One new client, in one transaction: the row, the course the sheet names (as
 // the old-data import always enrolled it) and the lead they came from, if any.
-async function createClient(conn, { tenantId, staff, kind, source, row, email, courseId, actor }) {
-  const branch = kind === 'old_intl' ? 'ONLINE_ABROAD' : 'ONLINE_EGYPT';
+async function createClient(conn, { tenantId, staff, kind, branch: chosenBranch, source, row, email, courseId, actor }) {
+  const branch = chosenBranch || (kind === 'old_intl' ? 'ONLINE_ABROAD' : 'ONLINE_EGYPT');
   const branchId = branchIdForBranch(branch);
   const paid = amount(row._paid);
   const expected = amount(row._expected);
@@ -131,7 +131,7 @@ async function createClient(conn, { tenantId, staff, kind, source, row, email, c
           assigned_cs_id, assigned_cs_name, crm_json, source)
        VALUES (?,?,?,?,?,?,?,?,1,?,?,?,?,?)`,
       [id, tenantId, await getNextClientCode(conn), (cell(row._name) || phone || '').slice(0, 255), email || null,
-        phone, branch, branchId, notes, staff.id, staff.name, JSON.stringify(crm), String(source).slice(0, 100)]);
+        phone, branch, branchId, notes, staff?.id || null, staff?.name || null, JSON.stringify(crm), String(source).slice(0, 100)]);
     if (courseId) {
       await grantCourseSelections({
         tenantId, subscriberId: id, selections: [{ courseId }], branchId, source: 'collection_sheet', actor,
@@ -157,8 +157,13 @@ async function createClient(conn, { tenantId, staff, kind, source, row, email, c
  * Import rows under one officer. `rows`: the old-data screen's rows ({ _name,
  * _phone, _email, _course, _paid, _expected, … }). Returns { created, assigned,
  * skipped, others, failed }.
+ *
+ * The online desk's import («استيراد عملاء» in the tab's settings) runs the
+ * same rows with no officer (`staff` null: created unassigned, someone already
+ * on the system left as they are) and may name the branch, for «النشطين»
+ * in riyal or dollar.
  */
-async function importCollectionRows({ tenantId, staff, kind = 'old_local', source = 'شيت تحصيل', rows, actor = null }, db = pool) {
+async function importCollectionRows({ tenantId, staff = null, kind = 'old_local', branch = null, source = 'شيت تحصيل', rows, actor = null }, db = pool) {
   const conn = await db.getConnection();
   try {
     const [existing] = await conn.query(
@@ -186,7 +191,9 @@ async function importCollectionRows({ tenantId, staff, kind = 'old_local', sourc
 
       const found = (identity && byPhone.get(identity)) || (email && byEmail.get(email)) || null;
       if (found) {
-        if (!found.assigned_cs_id) {
+        if (!staff) {
+          result.skipped += 1;
+        } else if (!found.assigned_cs_id) {
           await conn.query('UPDATE subscribers SET assigned_cs_id=?, assigned_cs_name=? WHERE id=? AND tenant_id=?',
             [staff.id, staff.name, found.id, tenantId]);
           found.assigned_cs_id = staff.id;
@@ -201,8 +208,8 @@ async function importCollectionRows({ tenantId, staff, kind = 'old_local', sourc
 
       try {
         const courseId = cell(row._course) ? matchCourseId(cell(row._course), courses, bundles) : null;
-        const id = await createClient(conn, { tenantId, staff, kind, source, row, email, courseId, actor });
-        const created = { id, assigned_cs_id: staff.id };
+        const id = await createClient(conn, { tenantId, staff, kind, branch, source, row, email, courseId, actor });
+        const created = { id, assigned_cs_id: staff?.id || null };
         if (identity) byPhone.set(identity, created);
         if (email) byEmail.set(email, created);
         result.created += 1;

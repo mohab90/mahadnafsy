@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { ConsultationItem, JoinUsApplication, LeadItem, LeadStats, LeadStatus, NewLeadDraft, OrderItem, SubscriberItem } from '../../types';
 import { mysqlAdmin, mysqlForms } from '../../lib/mysqlapi';
@@ -30,6 +30,16 @@ export function useCrmCoreState(
 ) {
   const [subscribers, setSubscribers] = useState<SubscriberItem[]>(initialSubscribers);
   subscribersRef.current = subscribers;
+  // The newest version of each client this session has seen — its own saves
+  // included. The server answers every save with the row's new updated_at and
+  // refuses the next one that names an older version («تعارض في البيانات»).
+  // That answer was dropped, so the second change to the same client — a status,
+  // then a note — was always refused, rolled back and reported as an error; and
+  // the online manager's list, which is not this context's list, never learnt
+  // the new version at all. Kept by id so every list saves against the latest.
+  const knownVersionRef = useRef(new Map<string, string>());
+  const newestVersion = (...versions: (string | null | undefined)[]) =>
+    versions.filter((value): value is string => Boolean(value)).sort().pop();
   const [leads, setLeads] = useState<LeadItem[]>(initialLeads);
   leadsRef.current = leads;
   // Whole-table totals from the database — see LeadStats in types.ts. One small
@@ -175,9 +185,30 @@ export function useCrmCoreState(
     // The API strips table-owned projections such as paymentHistory and certificate
     // requests; financial changes must use their dedicated transactional endpoints.
     // Pass updatedAt for OCC — server rejects with 409 if another write happened since last load
-    const payload = { ...item, updatedAt: oldSub?.updatedAt ?? item.updatedAt };
+    // What this save changes, against the copy the screen loaded — the context's
+    // list, or for staff the scoped list their screens draw from. The server
+    // applies only these fields to the row as it stands (api/routes/admin/
+    // subscribers.js «partial»), so a payment or another manager's edit since
+    // then is kept instead of refused or overwritten. No copy, no list: the
+    // whole-record save and its version check, as before.
+    const base = oldSub ?? staffScopedSubscribers.find(row => row.id === item.id);
+    const changedFields = base
+      ? [...new Set([...Object.keys(item), ...Object.keys(base)])]
+        .filter(key => key !== 'updatedAt'
+          && JSON.stringify((item as unknown as Record<string, unknown>)[key]) !== JSON.stringify((base as unknown as Record<string, unknown>)[key]))
+      : undefined;
+    const payload = {
+      ...item,
+      updatedAt: newestVersion(knownVersionRef.current.get(item.id), oldSub?.updatedAt, item.updatedAt),
+      ...(changedFields ? { changedFields } : {}),
+    };
     try {
-      await mysqlAdmin.saveSubscriber(payload as unknown as Record<string,unknown>);
+      const saved = await mysqlAdmin.saveSubscriber(payload as unknown as Record<string,unknown>) as { updatedAt?: string };
+      if (saved?.updatedAt) {
+        knownVersionRef.current.set(item.id, saved.updatedAt);
+        subscribersRef.current = subscribersRef.current.map(row => (row.id === item.id ? { ...row, updatedAt: saved.updatedAt } : row));
+        setSubscribers(subscribersRef.current);
+      }
     } catch (err: unknown) {
       subscribersRef.current = exists
         ? subscribersRef.current.map((row) => (row.id === item.id ? oldSub! : row))
@@ -360,19 +391,6 @@ export function useCrmCoreState(
     return assigned;
   };
 
-  const addOrder = async (item: OrderItem): Promise<boolean> => {
-    lastCRMWriteRef.current = Date.now();
-    try {
-      await mysqlAdmin.saveOrder(item as unknown as Record<string,unknown>);
-      await reloadOrders();
-    } catch {
-      window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field: 'order', name: item.itemTitle } }));
-      return false;
-    }
-    track('create', 'order', item.itemTitle);
-    return true;
-  };
-
   const updateOrderStatus = async (id: string, status: OrderItem['status']): Promise<boolean> => {
     lastCRMWriteRef.current = Date.now();
     try {
@@ -462,7 +480,7 @@ export function useCrmCoreState(
     joinUsApplications, setJoinUsApplications,
     addSubscriber, updateSubscriber, deleteSubscriber,
     addLead, addPublicLead, updateLead, markLeadsConverted, deleteLead, bulkAssignClientCodes, bulkRedistributeLeads,
-    addOrder, updateOrderStatus, deleteOrder,
+    updateOrderStatus, deleteOrder,
     addJoinUsApplication, updateJoinUsApplication, deleteJoinUsApplication, reloadJoinUsApplications,
     reloadLeads, reloadSubscribers, reloadOrders, recordSubscriberPayment,
   };

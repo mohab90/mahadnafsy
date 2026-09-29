@@ -96,7 +96,8 @@ test('distribution to collection keeps to who is on, their markets and their cap
 
 test('an officer set on a client is saved, whichever name the screen sends it under', () => {
   const save = read('api/routes/admin/subscribers.js');
-  assert.match(save, /let csId   = crmData\.assignedCollectionId   \|\| crmData\.assignedCsId   \|\| null;/);
+  // assignmentFrom: the whole record, or only the fields a partial save changed.
+  assert.match(save, /let csId   = assignmentFrom\.assignedCollectionId   \|\| assignmentFrom\.assignedCsId   \|\| null;/);
   const bulk = read('admin/pages/dashboard/tabs/online-clients-sections/BulkActionBar.tsx');
   assert.doesNotMatch(bulk, /collectionStaffId/);
   const modal = read('admin/pages/dashboard/tabs/online-clients-sections/CollectionSettingsModal.tsx');

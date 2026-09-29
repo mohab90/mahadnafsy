@@ -4,7 +4,7 @@ import { Copy, ImagePlus, MapPin, MonitorPlay, Users } from 'lucide-react';
 import { CAIRO_TIME_ZONE, cairoDateTime } from '../../../shared/cairoDate';
 import { Modal } from '../../../shared/ui/Modal';
 import { confirmDialog } from '../../../shared/ui/confirmDialog';
-import { compressImageFile } from '../../lib/imageBudget';
+import { uploadImage } from '../../lib/uploadImage';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import { waLink } from '../../lib/whatsappLink';
 import type { CommunityEventItem, Therapist } from '../../types';
@@ -16,14 +16,17 @@ const PLATFORMS = ['Zoom', 'Google Meet', 'بث مباشر فيسبوك', 'يو�
 type Draft = {
   title: string; eventType: string; imageUrl: string; description: string; content: string;
   speakerIds: string[]; speaker: string; isOnline: boolean; platform: string; locationName: string;
-  eventDate: string; eventTime: string;
+  eventDate: string; eventTime: string; slug: string;
 };
-type Registration = { id: string; name: string; phone: string; createdAt: string };
+type Registration = { id: string; name: string; phone: string; createdAt: string; studiedBefore: boolean | null; isClient: boolean };
 
 const emptyDraft: Draft = {
   title: '', eventType: 'ندوة', imageUrl: '', description: '', content: '', speakerIds: [], speaker: '',
-  isOnline: true, platform: 'Zoom', locationName: '', eventDate: '', eventTime: '',
+  isOnline: true, platform: 'Zoom', locationName: '', eventDate: '', eventTime: '', slug: '',
 };
+// What the address may hold, as it is typed: «anxiety seminar» → anxiety-seminar.
+const asSlug = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+/, '').slice(0, 80);
+const ASCII_SLUG = /^[a-z0-9-]+$/;
 
 const eventUrl = (event: CommunityEventItem) => `${SITE}/community/events/${encodeURIComponent(event.slug || event.id)}`;
 const dateLabelOf = (date: string) => (date
@@ -62,6 +65,7 @@ export function CommunityEventsAdmin({ events, therapists, addEvent, updateEvent
       description: event.description || '', content: event.content || '', speakerIds: event.speakerIds || [],
       speaker: event.speaker || '', isOnline: event.isOnline !== false, platform: event.platform || 'Zoom',
       locationName: event.locationName || '', eventDate: event.eventDate || '', eventTime: event.eventTime || '',
+      slug: event.slug && ASCII_SLUG.test(event.slug) ? event.slug : '',
     } : emptyDraft);
   };
 
@@ -69,7 +73,7 @@ export function CommunityEventsAdmin({ events, therapists, addEvent, updateEvent
     const file = files?.[0];
     if (!file) return;
     try {
-      set({ imageUrl: await compressImageFile(file, { maxPx: 1280, quality: 0.75 }) });
+      set({ imageUrl: await uploadImage(file, 'cover') });
       setImageError('');
     } catch {
       setImageError('الصورة كبيرة جدًا أو تعذّر ضغطها.');
@@ -83,6 +87,7 @@ export function CommunityEventsAdmin({ events, therapists, addEvent, updateEvent
       ...(events.find(event => event.id === editingId) || {}),
       ...draft,
       id: editingId || `ev-${Date.now()}`,
+      slug: draft.slug.replace(/-+$/, ''),
       title: draft.title.trim(),
       platform: draft.isOnline ? draft.platform : '',
       locationName: draft.isOnline ? '' : draft.locationName,
@@ -179,6 +184,20 @@ export function CommunityEventsAdmin({ events, therapists, addEvent, updateEvent
             </div>
 
             <div>
+              <label className={label}>رابط الفعالية (بالإنجليزي)</label>
+              <div className="flex items-center overflow-hidden rounded-xl border border-gray-200" dir="ltr">
+                <span className="shrink-0 bg-gray-50 px-2 py-2 text-xs text-gray-500">mahadnafsy.com/community/events/</span>
+                <input value={draft.slug} onChange={e => set({ slug: asSlug(e.target.value) })} placeholder="anxiety-seminar"
+                  className="min-w-0 flex-1 px-2 py-2 text-sm outline-none" />
+              </div>
+              <p className="mt-1 text-[11px] text-gray-500">
+                حروف إنجليزي وأرقام وشرطة بس.
+                {editingId && events.find(event => event.id === editingId)?.slug !== draft.slug && draft.slug ? ' اللينك القديم هيفضل يفتح الفعالية.' : ''}
+                {!draft.slug ? ' لو سيبته فاضي بيتعمل من التاريخ.' : ''}
+              </p>
+            </div>
+
+            <div>
               <label className={label}>صورة الفعالية</label>
               <div className="flex items-center gap-3">
                 {draft.imageUrl
@@ -247,8 +266,12 @@ export function CommunityEventsAdmin({ events, therapists, addEvent, updateEvent
           <div dir="rtl">
             {registrations === null ? <p className="p-4 text-sm text-gray-500">جاري التحميل…</p>
               : registrations.length === 0 ? <p className="p-4 text-sm text-gray-500">لسه محدش سجّل.</p> : (
+                <>
+                <p className="mb-2 text-xs text-gray-500">
+                  {registrations.length} مسجّل · منهم {registrations.filter(row => row.isClient || row.studiedBefore).length} درسوا في المعهد — وهما الأول في القايمة.
+                </p>
                 <table className="w-full text-sm">
-                  <thead><tr className="text-right text-xs text-gray-500"><th className="p-2">الاسم</th><th className="p-2">الرقم</th><th className="p-2">وقت التسجيل</th></tr></thead>
+                  <thead><tr className="text-right text-xs text-gray-500"><th className="p-2">الاسم</th><th className="p-2">الرقم</th><th className="p-2">درس في المعهد؟</th><th className="p-2">وقت التسجيل</th></tr></thead>
                   <tbody>
                     {registrations.map(row => (
                       <tr key={row.id} className="border-t border-gray-100">
@@ -258,11 +281,18 @@ export function CommunityEventsAdmin({ events, therapists, addEvent, updateEvent
                             ? <a href={waLink(row.phone) || undefined} target="_blank" rel="noreferrer" className="text-emerald-700 underline">{row.phone}</a>
                             : row.phone}
                         </td>
+                        <td className="p-2 text-xs">
+                          {row.isClient
+                            ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-bold text-emerald-700">طالب عندنا ✓</span>
+                            : row.studiedBefore === true ? <span className="rounded-full bg-teal-50 px-2 py-0.5 font-bold text-teal-700">نعم</span>
+                            : row.studiedBefore === false ? <span className="text-gray-500">لا</span> : <span className="text-gray-300">—</span>}
+                        </td>
                         <td className="p-2 text-xs text-gray-500" dir="ltr">{cairoDateTime(row.createdAt)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                </>
               )}
           </div>
         </Modal>

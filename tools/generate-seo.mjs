@@ -143,6 +143,14 @@ function writePage(relUrl, html) {
   // shows the event rather than the front page. Events are optional here: a
   // release is never held up because the list could not be read.
   const events = await getJson('/api/community/events').catch(() => []);
+  // The events' folders make /community/events a directory, which nginx
+  // answered with a redirect to /community/events/ and then 403 — the list
+  // itself needs a page there too.
+  writePage('/community/events', render(shell, {
+    url: `${SITE}/community/events`,
+    title: 'الفعاليات والندوات | معهد الدراسات النفسية',
+    description: 'فعاليات وندوات معهد الدراسات النفسية — سجّل اهتمامك وتابع الجديد.',
+  }));
   for (const ev of Array.isArray(events) ? events : []) {
     const slug = ev.slug || ev.id;
     if (!slug) continue;

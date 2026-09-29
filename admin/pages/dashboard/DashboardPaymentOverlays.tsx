@@ -20,6 +20,8 @@ interface DashboardPaymentOverlaysProps {
   branchOptions: BranchOption[];
   instituteName: string;
   requireSubscriberApproval: boolean;
+  /** A collection account books at the agreed price (PaymentModal lockPrice). */
+  lockPrice?: boolean;
 }
 
 /** Global payment dialogs shared by client search, lead CRM, and quick booking. */
@@ -37,6 +39,7 @@ export function DashboardPaymentOverlays({
   branchOptions,
   instituteName,
   requireSubscriberApproval,
+  lockPrice = false,
 }: DashboardPaymentOverlaysProps) {
   return (
     <>
@@ -57,6 +60,7 @@ export function DashboardPaymentOverlays({
             onClose={closeLeadPayment}
             branchOptions={branchOptions}
             instituteName={instituteName}
+            lockPrice={lockPrice}
           />
         </Suspense>
       )}
@@ -81,6 +85,7 @@ export function DashboardPaymentOverlays({
             onClose={closeSubscriberPayment}
             instituteName={instituteName}
             requirePaymentApproval={requireSubscriberApproval}
+            lockPrice={lockPrice}
           />
         </Suspense>
       )}

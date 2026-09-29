@@ -55,6 +55,50 @@ function EventCard({ event }: { event: CommunityEventItem }) {
   );
 }
 
+const daysUntil = (date: string, today: string) =>
+  Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
+
+/**
+ * The next event, at the top of the community's front page above «إضافة
+ * بوست»: «لما يبقي في فعاليه او ندوة تظهر كارت بتصميم مميز».
+ */
+export function FeaturedEventCard({ events }: { events: CommunityEventItem[] }) {
+  const today = cairoDateOnly();
+  const next = events.filter(event => event.eventDate && isUpcoming(event, today))
+    .sort((a, b) => whenKey(a).localeCompare(whenKey(b)))[0];
+  if (!next?.eventDate) return null;
+  const days = daysUntil(next.eventDate, today);
+  const soon = days <= 0 ? 'النهارده' : days === 1 ? 'بكرة' : days === 2 ? 'بعد يومين' : `بعد ${days} ${days <= 10 ? 'أيام' : 'يوم'}`;
+  return (
+    <Link to={eventPath(next)} className="group relative block overflow-hidden rounded-2xl bg-gradient-to-l from-primary-700 via-primary-600 to-violet-600 text-white shadow-lg ring-1 ring-primary-200 transition hover:shadow-xl">
+      <span className="pointer-events-none absolute -left-10 -top-10 h-40 w-40 rounded-full bg-white/10" />
+      <span className="pointer-events-none absolute -bottom-12 left-1/3 h-32 w-32 rounded-full bg-white/5" />
+      <div className="relative flex flex-col sm:flex-row">
+        {next.imageUrl && (
+          <div className="h-40 shrink-0 overflow-hidden sm:h-auto sm:w-56">
+            <img src={next.imageUrl} alt={next.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+          </div>
+        )}
+        <div className="flex flex-1 flex-col gap-2 p-5">
+          <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold">
+            <span className="rounded-full bg-amber-400 px-2.5 py-0.5 text-amber-950">✨ {next.eventType || 'فعالية'} قادمة · {soon}</span>
+            <span className="flex items-center gap-1 rounded-full bg-white/20 px-2.5 py-0.5 backdrop-blur">
+              {next.isOnline === false ? <><MapPin size={11} /> حضور</> : <><MonitorPlay size={11} /> أونلاين</>}
+            </span>
+          </div>
+          <h3 className="text-lg font-extrabold leading-snug sm:text-xl">{next.title}</h3>
+          <p className="flex items-center gap-1.5 text-sm text-white/90"><Calendar size={14} /> {eventWhen(next)}</p>
+          {eventSpeakers(next) && <p className="text-xs text-white/80">مع {eventSpeakers(next)}</p>}
+          <div className="mt-auto flex flex-wrap items-center gap-3 pt-2">
+            <span className="rounded-xl bg-white px-4 py-2 text-sm font-extrabold text-primary-700 shadow group-hover:bg-amber-50">🙋 سجّل اهتمامك</span>
+            {!!next.registrations && <span className="flex items-center gap-1 text-xs text-white/85"><Users size={12} /> {next.registrations} شخص مهتم</span>}
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
 /** «الفعاليات»: what is coming as cards, each opening its own page; what is over, below. */
 export function CommunityEventsSection({ events }: { events: CommunityEventItem[] }) {
   const today = cairoDateOnly();

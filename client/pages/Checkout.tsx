@@ -4,6 +4,7 @@ import { Check, AlertCircle, LogIn, MessageCircle, Banknote, Loader2, CreditCard
 import { useSiteData } from '../context/SiteDataContext';
 import { usePaymentAvailability, useManualPaymentMethods } from '../lib/usePaymentAvailability';
 import { paymentMethodLabel } from '../../shared/paymentMethods';
+import { compressImage } from '../../shared/imageCompress';
 import { getTherapistSessionPrice } from '../lib/consultations';
 import { cdnImg } from '../lib/img';
 import { instituteWhatsApp } from '../lib/whatsappLink';
@@ -280,13 +281,11 @@ const Checkout: React.FC = () => {
     if (!handedOver) setOrderSent(true);
   };
 
-  // Convert the chosen receipt file → base64 for upload.
-  const onProofFile = (file?: File) => {
+  // The receipt, compressed to what stays readable (shared/imageCompress.ts).
+  const onProofFile = async (file?: File) => {
     if (!file) return;
-    if (file.size > 4 * 1024 * 1024) { setProofError('الصورة أكبر من 4 ميجا'); return; }
-    const reader = new FileReader();
-    reader.onload = () => { setProofImage(String(reader.result || '')); setProofError(''); };
-    reader.readAsDataURL(file);
+    try { setProofImage(await compressImage(file, 'receipt')); setProofError(''); }
+    catch { setProofError('تعذّر قراءة الصورة — جرّب صورة تانية'); }
   };
 
   // Self-service: submit the transfer receipt → goes to admin review → on approval
@@ -450,7 +449,7 @@ const Checkout: React.FC = () => {
                         <option value="other">{paymentMethodLabel('other')}</option>
                       </select>
                       <label className="block text-xs font-semibold text-gray-600 mb-1">صورة الإيصال</label>
-                      <input type="file" accept="image/*" onChange={e => onProofFile(e.target.files?.[0])}
+                      <input type="file" accept="image/*" onChange={e => { void onProofFile(e.target.files?.[0]); }}
                         className="w-full text-xs mb-2 file:ml-2 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-primary-50 file:text-primary-700" />
                       {proofImage && <img loading="lazy" decoding="async" src={proofImage} alt="receipt" className="max-h-36 rounded-lg border border-gray-100 mb-3 mx-auto object-contain" />}
 

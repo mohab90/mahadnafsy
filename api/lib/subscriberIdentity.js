@@ -21,6 +21,7 @@
  */
 const { pool } = require('./db');
 const logger = require('./logger');
+const { toIdentity } = require('./phoneNumber');
 
 /**
  * The literal spellings the same Egyptian number is stored in across imports,
@@ -123,4 +124,17 @@ async function resolveSubscriberRow(req, columns = ['id'], db = pool) {
   return found;
 }
 
-module.exports = { resolveSubscriberId, resolveSubscriberRow, phoneVariants };
+/**
+ * Which of these phone identities (lib/phoneNumber.js toIdentity) belong to a
+ * client on the system — an event's registrations, to put the institute's own
+ * students first.
+ */
+async function clientPhoneIdentities(tenantId, identities, db = pool) {
+  const wanted = new Set((identities || []).filter(Boolean));
+  if (!wanted.size) return new Set();
+  const [rows] = await db.query(
+    'SELECT phone FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND phone IS NOT NULL', [tenantId]);
+  return new Set(rows.map(row => toIdentity(row.phone)).filter(identity => wanted.has(identity)));
+}
+
+module.exports = { clientPhoneIdentities, resolveSubscriberId, resolveSubscriberRow, phoneVariants };

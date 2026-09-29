@@ -26,11 +26,13 @@ test('student AI context cannot resolve subscriber or courses globally', () => {
   // So assert the property the test is named for instead of the text that
   // happened to carry it: the route hands the resolver the request, and the
   // course lookup it drives is still tenant-scoped.
+  // The context now holds the tenant's published catalogue, from which the
+  // student's own courses are picked (the assistant answers course questions).
   assert.match(studentAiRoute, /resolveSubscriberRow\(req, \[/);
-  assert.match(studentAiRoute, /loadSubscriberContext\(req\)/);
-  assert.match(studentAiRoute, /FROM courses WHERE tenant_id=\? AND id IN/);
-  assert.match(studentAiRoute, /\[req\.tenantId, \.\.\.enrolledIds/);
-  assert.doesNotMatch(studentAiRoute, /loadSubscriberContext\(req\.user/);
+  assert.match(studentAiRoute, /const context = await loadContext\(req\);/);
+  assert.match(studentAiRoute, /FROM courses WHERE tenant_id=\? AND is_published=1 AND deleted_at IS NULL/);
+  assert.match(studentAiRoute, /LIMIT 60`,\s+\[req\.tenantId\]\);/);
+  assert.doesNotMatch(studentAiRoute, /loadContext\(req\.user/);
 
   // The resolver it delegates to has to be the tenant-scoped one.
   const resolver = fs.readFileSync(

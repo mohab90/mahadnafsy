@@ -8,7 +8,7 @@ const { uuidv4 } = require('../lib/id');
 const { pool, cached, cacheInvalidate } = require('../lib/db');
 const { tryJson } = require('../lib/helpers');
 const { optionalAuth, requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
-const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
+const { clientPhoneIdentities, resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { communityPostLimiter, eventRegistrationLimiter, publicLimiter } = require('../middleware/rateLimits');
 const { createNotification } = require('../lib/notification');
 const { toIdentity } = require('../lib/phoneNumber');
@@ -542,17 +542,18 @@ router.delete('/api/admin/community/videos/:id', requireAuth, requireAdminOrStaf
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** An address from the title, Arabic kept: «ورشة الصحة النفسية» → ورشة-الصحة-النفسية. */
-function slugify(title) {
-  return String(title || '').trim().toLowerCase()
-    .replace(/[\p{M}ـ]/gu, '')          // tashkeel and tatweel
-    .replace(/[^\p{L}\p{N}]+/gu, '-')
+// The address is English: «لينك الفعاليه لازم اقدر ادخله سلج باانجليزي بحيث
+// يكون صح مش عربي». An Arabic address was percent-encoded into a hundred and
+// more characters wherever it was pasted. The admin types it; without one, the
+// title's Latin letters, or the date.
+function slugify(text) {
+  return String(text || '').normalize('NFKD').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 80) || 'event';
+    .slice(0, 80);
 }
 
-async function uniqueEventSlug(tenantId, title) {
-  const base = slugify(title);
+async function uniqueEventSlug(tenantId, base) {
   const [rows] = await pool.query(
     'SELECT slug FROM community_events WHERE tenant_id=? AND (slug=? OR slug LIKE ?)', [tenantId, base, `${base}-%`]);
   const taken = new Set(rows.map(row => row.slug));
@@ -671,7 +672,8 @@ router.get('/api/community/events/:slug', publicLimiter, async (req, res) => {
   try {
     const key = String(req.params.slug || '').slice(0, 160);
     const [[row]] = await pool.query(
-      `SELECT ${EVENT_COLS} FROM community_events WHERE tenant_id=? AND (slug=? OR id=?) LIMIT 1`, [req.tenantId, key, key]);
+      `SELECT ${EVENT_COLS} FROM community_events WHERE tenant_id=? AND (slug=? OR id=? OR previous_slug=?)
+        ORDER BY slug=? DESC LIMIT 1`, [req.tenantId, key, key, key, key]);
     if (!row) return res.status(404).json({ error: 'الفعالية غير موجودة' });
     res.set('Cache-Control', 'public, max-age=60');
     res.json(mapEvent(row, await eventExtras(req.tenantId, [row])));
@@ -687,6 +689,9 @@ router.post('/api/community/events/:id/register', eventRegistrationLimiter, asyn
     const name = String(req.body?.name || '').trim().slice(0, 200);
     const phone = String(req.body?.phone || '').trim().slice(0, 40);
     const identity = toIdentity(phone);
+    // «هل درست في المعهد من قبل؟» — the institute's own students come first.
+    const studied = req.body?.studiedBefore;
+    const studiedBefore = studied === true ? 1 : studied === false ? 0 : null;
     if (name.length < 2) return res.status(400).json({ error: 'اكتب اسمك' });
     if (identity.length < 8) return res.status(400).json({ error: 'اكتب رقم موبايل صحيح' });
     const key = String(req.params.id || '').slice(0, 160);
@@ -694,9 +699,10 @@ router.post('/api/community/events/:id/register', eventRegistrationLimiter, asyn
       'SELECT id, title FROM community_events WHERE tenant_id=? AND (id=? OR slug=?) LIMIT 1', [req.tenantId, key, key]);
     if (!event) return res.status(404).json({ error: 'الفعالية غير موجودة' });
     const [result] = await pool.query(
-      `INSERT INTO community_event_registrations (id, tenant_id, event_id, name, phone, phone_identity)
-       VALUES (?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name), phone=VALUES(phone)`,
-      [uuidv4(), req.tenantId, event.id, name, phone, identity]);
+      `INSERT INTO community_event_registrations (id, tenant_id, event_id, name, phone, phone_identity, studied_before)
+       VALUES (?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name), phone=VALUES(phone),
+         studied_before=COALESCE(VALUES(studied_before), studied_before)`,
+      [uuidv4(), req.tenantId, event.id, name, phone, identity, studiedBefore]);
     const alreadyRegistered = result.affectedRows !== 1;
     if (!alreadyRegistered) {
       createNotification('community', '📅 تسجيل جديد في فعالية', `${name} سجّل اهتمامه بـ «${event.title}»`,
@@ -713,9 +719,17 @@ router.post('/api/community/events/:id/register', eventRegistrationLimiter, asyn
 router.get('/api/admin/community/events/:id/registrations', requireAuth, requireAdminOrStaff, requirePermission('view_community'), async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT id, name, phone, created_at FROM community_event_registrations
+      `SELECT id, name, phone, phone_identity, studied_before, created_at FROM community_event_registrations
         WHERE tenant_id=? AND event_id=? ORDER BY created_at DESC LIMIT 2000`, [req.tenantId, req.params.id]);
-    res.json(rows.map(row => ({ id: row.id, name: row.name, phone: row.phone, createdAt: row.created_at })));
+    // What they answered, and whether the number is a client's on the system.
+    const known = await clientPhoneIdentities(req.tenantId, rows.map(row => row.phone_identity));
+    const list = rows.map(row => ({
+      id: row.id, name: row.name, phone: row.phone, createdAt: row.created_at,
+      studiedBefore: row.studied_before === null ? null : !!row.studied_before,
+      isClient: known.has(row.phone_identity),
+    }));
+    const rank = row => (row.isClient ? 2 : 0) + (row.studiedBefore ? 1 : 0);
+    res.json(list.sort((a, b) => rank(b) - rank(a)));
   } catch (e) {
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
@@ -730,26 +744,38 @@ router.post('/api/admin/community/events', requireAuth, requireAdminOrStaff, req
     const eventDate = DATE.test(String(ev.eventDate || '')) ? ev.eventDate : null;
     const eventTime = TIME.test(String(ev.eventTime || '')) ? ev.eventTime : null;
     const speakerIds = (Array.isArray(ev.speakerIds) ? ev.speakerIds : []).map(String).filter(Boolean).slice(0, 20);
-    // The address is set once: a link already shared keeps working when the
-    // title is edited later.
+    // The address the admin typed, else the one it has, else one made up. A
+    // changed address keeps the old one working (previous_slug), so a link
+    // already shared still opens the event.
     const rowId = String(ev.id || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 100);
     const [[current]] = rowId
-      ? await pool.query('SELECT slug, image_url FROM community_events WHERE tenant_id=? AND id=?', [req.tenantId, rowId])
+      ? await pool.query('SELECT slug, previous_slug, image_url FROM community_events WHERE tenant_id=? AND id=?', [req.tenantId, rowId])
       : [[null]];
-    const slug = current?.slug || await uniqueEventSlug(req.tenantId, title);
+    const typed = slugify(ev.slug);
+    let slug = current?.slug || null;
+    let previousSlug = current?.previous_slug || null;
+    if (typed && typed !== current?.slug) {
+      const [[taken]] = await pool.query(
+        'SELECT id FROM community_events WHERE tenant_id=? AND id<>? AND (slug=? OR previous_slug=?) LIMIT 1',
+        [req.tenantId, rowId, typed, typed]);
+      if (taken) return res.status(409).json({ error: 'اللينك ده مستخدم لفعالية تانية — اكتب غيره' });
+      previousSlug = current?.slug || previousSlug;
+      slug = typed;
+    }
+    if (!slug) slug = await uniqueEventSlug(req.tenantId, slugify(title) || `event-${eventDate || 'soon'}`);
     // The form shows the picture by its address; sent back unchanged, that
     // address means "keep the picture", not a new one.
     const imageUrl = IMAGE_PATH.test(String(ev.imageUrl || '')) ? (current?.image_url || null) : (ev.imageUrl || null);
     const { id } = await saveAdminRow('community_events', {
       tenantId: req.tenantId, id: rowId,
       columns: ['title', 'category', 'description', 'content', 'image_url', 'event_date', 'event_time', 'date_label',
-        'location_name', 'registration_url', 'is_online', 'speaker', 'speaker_ids', 'event_type', 'platform', 'tags', 'slug'],
+        'location_name', 'registration_url', 'is_online', 'speaker', 'speaker_ids', 'event_type', 'platform', 'tags', 'slug', 'previous_slug'],
       values: [
         title, ev.category || 'general', String(ev.description || '').slice(0, 1000), String(ev.content || '').slice(0, 60000),
         imageUrl, eventDate, eventTime, ev.dateLabel || null,
         ev.locationName || null, ev.registrationUrl || null, ev.isOnline === false ? 0 : 1,
         String(ev.speaker || '').slice(0, 200) || null, JSON.stringify(speakerIds), ev.eventType || null,
-        ev.isOnline === false ? null : (ev.platform || null), JSON.stringify(ev.tags || []), slug,
+        ev.isOnline === false ? null : (ev.platform || null), JSON.stringify(ev.tags || []), slug, previousSlug,
       ],
     });
     invalidate(req, 'events');

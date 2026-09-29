@@ -33,7 +33,7 @@ function schedule(total: number, count: number, firstDue: string): DraftEntry[] 
  * «الأقساط» for one client: the plans on file, a new schedule, and paying an
  * instalment into the box it went into (api/routes/installments.js).
  */
-export function InstallmentPlansModal({ subscriber, courses, bundles, paymentBoxes, defaultCurrency, notify, onClose, onChanged }: {
+export function InstallmentPlansModal({ subscriber, courses, bundles, paymentBoxes, defaultCurrency, notify, onClose, onChanged, lockPrice = false }: {
   subscriber: SubscriberItem;
   courses: Course[];
   bundles: Bundle[];
@@ -42,6 +42,7 @@ export function InstallmentPlansModal({ subscriber, courses, bundles, paymentBox
   notify: Notify;
   onClose: () => void;
   onChanged: () => void | Promise<void>;
+  lockPrice?: boolean;
 }) {
   const [plans, setPlans] = useState<InstallmentPlan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -216,8 +217,12 @@ export function InstallmentPlansModal({ subscriber, courses, bundles, paymentBox
                 </option>
               ))}
             </select>
-            <input type="number" min="1" placeholder="المبلغ الكلي" value={total} onChange={e => setTotal(e.target.value)} className={field} />
-            <select value={currency} onChange={e => setCurrency(e.target.value as Currency)} className={field}>
+            {/* A collection account plans what is left at the agreed price —
+                changing the price is the accounts' or the administration's. */}
+            <input type="number" min="1" placeholder="المبلغ الكلي" value={total} onChange={e => setTotal(e.target.value)}
+              readOnly={lockPrice} title={lockPrice ? 'الباقي من السعر المتفق عليه — تغييره من الحسابات أو الإدارة' : undefined}
+              className={`${field} ${lockPrice ? 'cursor-not-allowed bg-gray-50 text-gray-500' : ''}`} />
+            <select value={currency} onChange={e => setCurrency(e.target.value as Currency)} disabled={lockPrice} className={field}>
               <option value="EGP">ج.م</option><option value="SAR">ر.س</option><option value="USD">$</option>
             </select>
             <input type="number" min="2" max="24" value={count} onChange={e => setCount(e.target.value)} className={field} title="عدد الأقساط" />

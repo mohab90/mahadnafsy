@@ -52,6 +52,102 @@ function subscriberTimelineScope(req, alias = 's') {
   };
 }
 
+// ── Contact with a client: who, when, how, and what was said ─────────────────
+//
+// «في صفحه العميل لازم يكون في هسيتوري كامل من كلمه واي تواصل تم معاه بينكتب
+// مين تواصل والتاريخ والكمنت». A client's contacts lived in crm_json, written
+// by saving the whole client with a longer array — no author, and a stale
+// screen's save could drop a colleague's entry. They are rows in
+// `communications` now (subscriber_id, staff_id), read together with the
+// contacts made while they were still a lead. The crm_json copy is kept for
+// the lists' «آخر تواصل» column.
+const CONTACT_TYPES = { call: 'CALL', whatsapp: 'WHATSAPP', email: 'EMAIL', meeting: 'MEETING', note: 'NOTE', payment_followup: 'PAYMENT_FOLLOWUP' };
+
+async function scopedSubscriber(req, db = pool, lock = false) {
+  const scope = subscriberTimelineScope(req);
+  const [[subscriber]] = await db.query(
+    `SELECT s.id, s.lead_id, s.crm_json FROM subscribers s
+      WHERE s.id=? AND s.tenant_id=? AND s.deleted_at IS NULL${scope.sql} LIMIT 1${lock ? ' FOR UPDATE' : ''}`,
+    [req.params.id, req.tenantId, ...scope.params]);
+  return subscriber || null;
+}
+
+router.get('/api/staff/subscribers/:id/communications',
+  requireAuth, requireAdminOrStaff, requirePermission('view_subscribers'),
+  async (req, res) => {
+    try {
+      const subscriber = await scopedSubscriber(req);
+      if (!subscriber) return res.status(404).json({ error: 'Subscriber not found' });
+      const [rows] = await pool.query(
+        `SELECT c.id, c.type, c.date, c.notes, c.outcome, c.next_follow_up, c.direction, c.lead_id,
+                c.subscriber_id, c.created_at, st.name AS staff_name
+           FROM communications c
+           LEFT JOIN staff st ON st.id=c.staff_id AND st.tenant_id=c.tenant_id
+          WHERE c.tenant_id=? AND (c.subscriber_id=? OR (? IS NOT NULL AND c.lead_id=?))
+          ORDER BY c.date DESC LIMIT 300`,
+        [req.tenantId, subscriber.id, subscriber.lead_id, subscriber.lead_id]);
+      const seen = new Set(rows.map(row => row.id));
+      const legacy = (parseCrm(subscriber.crm_json).communications || [])
+        .filter(entry => entry && entry.id && !seen.has(entry.id))
+        .map(entry => ({
+          id: entry.id, type: String(entry.type || 'note').toLowerCase(), date: entry.date, notes: entry.notes || '',
+          outcome: entry.outcome || null, nextFollowUp: entry.nextFollowUp || null,
+          staffName: entry.staffName || null, stage: 'client', direction: 'out',
+        }));
+      const entries = [
+        ...rows.map(row => ({
+          id: row.id, type: String(row.type || 'NOTE').toLowerCase(), date: safeIsoString(row.date), notes: row.notes || '',
+          outcome: row.outcome || null, nextFollowUp: safeIsoString(row.next_follow_up) || null,
+          staffName: row.staff_name || null, stage: row.subscriber_id ? 'client' : 'lead',
+          direction: String(row.direction || 'OUT').toLowerCase(),
+        })),
+        ...legacy,
+      ].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+      res.json(entries);
+    } catch (error) {
+      logger.error('[subscriber-communications]', error.message);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+router.post('/api/staff/subscribers/:id/communications',
+  requireAuth, requireAdminOrStaff, requirePermission('view_subscribers'),
+  async (req, res) => {
+    const notes = sanitize(req.body?.notes || '', 2000);
+    const type = CONTACT_TYPES[String(req.body?.type || 'call').toLowerCase()];
+    if (!notes.trim()) return res.status(400).json({ error: 'اكتب اللي اتقال في التواصل' });
+    if (!type) return res.status(400).json({ error: 'نوع تواصل غير معروف' });
+    const at = req.body?.date && !Number.isNaN(Date.parse(req.body.date)) ? new Date(req.body.date) : new Date();
+    const next = req.body?.nextFollowUp && !Number.isNaN(Date.parse(req.body.nextFollowUp)) ? new Date(req.body.nextFollowUp) : null;
+    const outcome = sanitize(req.body?.outcome || '', 500) || null;
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const subscriber = await scopedSubscriber(req, conn, true);
+      if (!subscriber) { await conn.rollback(); return res.status(404).json({ error: 'Subscriber not found' }); }
+      const id = uuidv4();
+      await conn.query(
+        `INSERT INTO communications (id, tenant_id, lead_id, subscriber_id, type, date, notes, outcome, next_follow_up, staff_id, created_at, direction)
+         VALUES (?,?,?,?,?,?,?,?,?,?,NOW(),'OUT')`,
+        [id, req.tenantId, null, subscriber.id, type, at, notes, outcome, next, req.staffRecord?.id || null]);
+      const record = {
+        id, type: type.toLowerCase(), date: at.toISOString(), notes, outcome: outcome || undefined,
+        nextFollowUp: next ? next.toISOString().slice(0, 10) : undefined,
+        staffId: req.staffRecord?.id || null, staffName: req.staffRecord?.name || req.user?.email || null,
+      };
+      const crm = parseCrm(subscriber.crm_json);
+      crm.communications = [...(Array.isArray(crm.communications) ? crm.communications : []), record].slice(-200);
+      await conn.query('UPDATE subscribers SET crm_json=? WHERE id=? AND tenant_id=?', [JSON.stringify(crm), subscriber.id, req.tenantId]);
+      await conn.commit();
+      const [[saved]] = await pool.query('SELECT updated_at FROM subscribers WHERE id=? AND tenant_id=?', [subscriber.id, req.tenantId]);
+      res.json({ ok: true, communication: { ...record, stage: 'client', direction: 'out' }, updatedAt: safeIsoString(saved?.updated_at) });
+    } catch (error) {
+      await conn.rollback().catch(() => {});
+      logger.error('[subscriber-communications/add]', error.message);
+      res.status(500).json({ error: 'Internal server error' });
+    } finally { conn.release(); }
+  });
+
 router.get('/api/staff/subscribers/:id/timeline',
   requireAuth, requireAdminOrStaff, requirePermission('view_subscribers'),
   async (req, res) => {
@@ -521,10 +617,18 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
     const id = s.id || uuidv4();
     // Extract base columns; store everything else in crm_json
     // NOTE: crm_json is explicitly excluded to prevent nested crm_json from being saved back
+    // `let` for the base columns: a partial save (changedFields, below) takes the
+    // ones it did not change from the row as it stands.
+    let {
+      name, email, phone, isActive, is_active, notes,
+    } = s;
     const {
-      id: _id, name, email, phone, isActive, is_active, firebaseUid, firebase_uid,
-      notes, createdAt, created_at, clientCode, client_code, updatedAt: clientUpdatedAt,
+      id: _id, name: _name, email: _email, phone: _phone, isActive: _isActive, is_active: _isActiveRaw,
+      firebaseUid, firebase_uid,
+      notes: _notes, createdAt, created_at, clientCode, client_code, updatedAt: clientUpdatedAt,
       credentialUpdate,
+      // What the screen actually changed, by field. See «partial» below.
+      changedFields,
       crm_json: _nested_crm,
       // These projections belong to dedicated tables. Never copy a stale UI
       // snapshot back into crm_json when a staff member edits profile fields.
@@ -574,8 +678,56 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
     const [[foreignId]] = await conn.query('SELECT id FROM subscribers WHERE id=? AND tenant_id<>? LIMIT 1', [id, tenantId]);
     if (foreignId) return res.status(409).json({ error: 'Subscriber id is not available in this tenant' });
 
-    // Optimistic Concurrency Check — if client sent updatedAt, verify it matches DB before overwriting
-    if (clientUpdatedAt && id) {
+    // ── A partial save: only what the screen changed ─────────────────────────
+    //
+    // Every save used to carry the whole client as the screen last saw it, and
+    // the version check refused it whenever anything had touched the row since —
+    // a payment, a price, an assignment, another manager, or this screen's own
+    // previous save (whose new version it dropped). «كل اكشن بعمله بيظهر خطا
+    // تقريبا … الخطا بيكون اكبر لما بيشتغل من حساب مدير اخر». And had it gone
+    // through, the stale copy would have overwritten those changes and re-synced
+    // the course list it held — revoking a course granted meanwhile.
+    //
+    // With changedFields the row as it stands is the base, and only the fields
+    // named are this request's. Callers that do not send it keep the old rule.
+    const onlyFields = Array.isArray(changedFields) ? new Set(changedFields.map(String)) : null;
+    let partial = null;
+    if (onlyFields && s.id) {
+      const [[currentRow]] = await conn.query(
+        'SELECT name, email, phone, notes, is_active, crm_json FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
+        [id, tenantId]);
+      if (currentRow) partial = { row: currentRow, crm: parseCrm(currentRow.crm_json) };
+    }
+    const assignmentKeys = ['assignedCsId', 'assignedCsName', 'assignedCollectionId', 'assignedCollectionName', 'assignedSalesId', 'assignedSalesName'];
+    // Who owns the client is its columns; a partial save moves them only when it changed them.
+    const assignmentFrom = partial
+      ? Object.fromEntries(assignmentKeys.filter(key => onlyFields.has(key) && key in crmData).map(key => [key, crmData[key]]))
+      : crmData;
+    if (partial) {
+      const unchanged = key => !onlyFields.has(key);
+      if (unchanged('name')) name = partial.row.name;
+      if (unchanged('email')) email = partial.row.email;
+      if (unchanged('phone')) phone = partial.row.phone;
+      if (unchanged('notes')) notes = partial.row.notes;
+      if (unchanged('isActive') && unchanged('is_active')) { isActive = Boolean(partial.row.is_active); is_active = undefined; }
+      const incoming = { ...crmData };
+      for (const key of Object.keys(crmData)) delete crmData[key];
+      Object.assign(crmData, partial.crm);
+      for (const key of onlyFields) {
+        if (['name', 'email', 'phone', 'notes', 'isActive', 'is_active', 'enrolledCourseIds', 'courseAccess'].includes(key)) continue;
+        if (key in incoming) crmData[key] = incoming[key];
+        else delete crmData[key];
+      }
+      for (const key of ['paymentHistory', 'extraCertificateRequests', 'certificates', 'lectureProgress', 'enrolledCourseIds', 'courseAccess']) {
+        delete crmData[key];
+      }
+    }
+    // Courses move only when the save is about courses.
+    const syncCourses = !partial || onlyFields.has('enrolledCourseIds') || onlyFields.has('courseAccess');
+
+    // Optimistic Concurrency Check — if client sent updatedAt, verify it matches DB before overwriting.
+    // A partial save is its own answer to a stale screen, so it is not refused.
+    if (clientUpdatedAt && id && !partial) {
       try {
         const [[current]] = await conn.query('SELECT updated_at FROM subscribers WHERE id = ? AND tenant_id=? LIMIT 1 FOR UPDATE', [id, tenantId]);
         if (current) {
@@ -694,8 +846,8 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
     // «محلي قديم» to collection, «تعيين مسئول» and the client page all said
     // done and changed nothing: the id went into crm_json, and the column the
     // lists read stayed empty.
-    let csId   = crmData.assignedCollectionId   || crmData.assignedCsId   || null;
-    let csName = crmData.assignedCollectionName || crmData.assignedCsName || null;
+    let csId   = assignmentFrom.assignedCollectionId   || assignmentFrom.assignedCsId   || null;
+    let csName = assignmentFrom.assignedCollectionName || assignmentFrom.assignedCsName || null;
     if (isNewSub && !csId) {
       // By the rules on «التحصيل: التوزيع والشيتات». Nobody taking them
       // leaves them unassigned, for the distribute button to place.
@@ -706,8 +858,8 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
       if (rep) { csId = rep.id; csName = rep.name; }
     }
     // Extract sales assignment and branch for dedicated DB columns
-    const salesId   = crmData.assignedSalesId   || null;
-    const salesName = crmData.assignedSalesName || null;
+    const salesId   = assignmentFrom.assignedSalesId   || null;
+    const salesName = assignmentFrom.assignedSalesName || null;
 
     const rawBranch = crmData.branch || null;
     const normBranch = rawBranch ? rawBranch.toUpperCase().replace(/[-\s]/g,'_') : null;
@@ -725,8 +877,8 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
       // owner stuck forever and a subscriber left behind by a departed rep could
       // never be freed. Same defect that was just fixed on leads. Distinguish the
       // two — an explicitly present null clears, an absent key leaves it alone.
-      const clearCs    = Object.prototype.hasOwnProperty.call(crmData, 'assignedCollectionId') && !crmData.assignedCollectionId;
-      const clearSales = Object.prototype.hasOwnProperty.call(crmData, 'assignedSalesId') && !crmData.assignedSalesId;
+      const clearCs    = Object.prototype.hasOwnProperty.call(assignmentFrom, 'assignedCollectionId') && !assignmentFrom.assignedCollectionId;
+      const clearSales = Object.prototype.hasOwnProperty.call(assignmentFrom, 'assignedSalesId') && !assignmentFrom.assignedSalesId;
       await conn.query(
         `UPDATE subscribers SET name=?, email=?, phone=?, firebase_uid=COALESCE(?,firebase_uid),
            client_code=COALESCE(client_code, ?), is_active=?, notes=COALESCE(?,notes),
@@ -798,7 +950,7 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
         identityToInvalidate = { oldEmail: currentLoginEmail, newEmail: nextLoginEmail };
       }
     }
-    await syncCourseEntitlements({
+    if (syncCourses) await syncCourseEntitlements({
       tenantId,
       subscriberId: id,
       courses: requestedCourseIds.map(courseId => {

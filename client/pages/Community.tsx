@@ -12,7 +12,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useSiteData } from '../context/SiteDataContext';
 import { cdnImg } from '../lib/img';
 import { isUpcoming } from '../lib/communityEvents';
-import { CommunityEventsSection } from '../components/CommunityEventsSection';
+import { CommunityEventsSection, FeaturedEventCard } from '../components/CommunityEventsSection';
 import { useSeo } from '../lib/useSeo';
 import { VideoSurface } from '../components/VideoSurface';
 
@@ -274,6 +274,7 @@ const Community: React.FC = () => {
 
             {activeTab === 'discussions' && (
               <div className="animate-fade-in space-y-4">
+                <FeaturedEventCard events={communityEvents} />
                 <div className="flex gap-2 flex-wrap">
                   {ALL_TAGS.map(tag => (
                     <button key={tag} onClick={() => setTagFilter(tag)} className={`text-xs px-3 py-1.5 rounded-full border font-medium transition ${tagFilter === tag ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'}`}>{tag}</button>

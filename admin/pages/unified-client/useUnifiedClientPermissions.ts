@@ -22,10 +22,13 @@ export function useUnifiedClientPermissions(params: {
   // three hardcoded roles against a route requiring manage_courses, so the
   // collection manager saw «كامل / محدود / عدد الفيديوهات» and every click came
   // back «Permission denied». Both sides say manage_financial now.
-  const canManageCourseAccess = isAdmin || hasPermission(currentStaff ? {
+  //
+  // Never collection, whatever its grid holds: «زر صلاحية الكورسات وتفاصيل
+  // الكورسات مينفعش يظهر للتحصيل ابدا» — and the routes refuse the role.
+  const canManageCourseAccess = isAdmin || (currentStaff?.role !== 'collection' && hasPermission(currentStaff ? {
     role: currentStaff.role as RoleKey,
     permissions: currentStaff.permissions as PermissionKey[] | undefined,
-  } : null, 'manage_financial');
+  } : null, 'manage_financial'));
 
   return {
     currentStaff,

@@ -622,16 +622,16 @@ test('catalog and therapist schedules are server-first and saved atomically', ()
 test('orders and recruiting forms never report success before canonical persistence', () => {
   const state = read('admin/context/site-data-hooks/useCrmCoreState.ts');
   const joinPage = read('admin/pages/JoinUs.tsx');
-  const ordersPage = read('admin/pages/dashboard/tabs/OrdersTab.tsx');
+  // «إضافة تحويل» writes to the transfers ledger, not the orders table.
+  const transfers = read('admin/pages/dashboard/tabs/orders/IncomingTransfers.tsx');
 
   assert.match(state, /await mysqlForms\.submitJoinUs/);
-  assert.match(state, /await mysqlAdmin\.saveOrder/);
   assert.match(state, /await mysqlAdmin\.updateOrderStatus/);
   assert.match(state, /await mysqlAdmin\.deleteOrder/);
   assert.doesNotMatch(state, /persistOrderToCollection|persistJoinUsToCollection/);
   assert.match(joinPage, /const saved = await addJoinUsApplication/);
   assert.match(joinPage, /if \(saved\) setSubmitted\(true\)/);
-  assert.match(ordersPage, /const saved = await addOrder\(newTransfer\)/);
+  assert.match(transfers, /await mysqlAdmin\.adminPost\('\/admin\/incoming-transfers', [^;]*;\s+notify\('success'/);
 });
 
 test('staff account and consultation creation commit their cross-module writes atomically', () => {

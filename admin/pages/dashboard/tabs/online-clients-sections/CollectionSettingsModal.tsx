@@ -22,7 +22,7 @@ type Counts = Record<string, { held: number; received: number }>;
 const MARKETS: [Market, string][] = [['local', '🇪🇬 محلي'], ['saudi', '🇸🇦 سعودي'], ['intl', '🌍 دولي']];
 
 /** A sheet's id and tab from whatever link was pasted. */
-function parseSheetLink(link: string): { sheetId: string; gid: string } {
+export function parseSheetLink(link: string): { sheetId: string; gid: string } {
   const id = link.match(/spreadsheets\/d\/([a-zA-Z0-9_-]+)/)?.[1] || link.trim();
   const gid = link.match(/[#?&]gid=(\d+)/)?.[1] || '';
   return { sheetId: id, gid };

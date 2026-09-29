@@ -29,7 +29,13 @@ const pool = {
     if (/^SELECT id FROM (community_\w+) WHERE tenant_id=\? AND id=\? LIMIT 1/.test(sql)) {
       return [store[table].filter(row => row.id === params[1])];
     }
-    if (/^SELECT slug, image_url FROM community_events/.test(sql)) return [store.community_events.filter(row => row.id === params[1])];
+    if (/^SELECT slug, previous_slug, image_url FROM community_events/.test(sql)) return [store.community_events.filter(row => row.id === params[1])];
+    if (/^SELECT id FROM community_events WHERE tenant_id=\? AND id<>\? AND \(slug=\? OR previous_slug=\?\)/.test(sql)) {
+      return [store.community_events.filter(row => row.id !== params[1] && (row.slug === params[2] || row.previous_slug === params[3]))];
+    }
+    if (/^SELECT id, name, phone, phone_identity, studied_before, created_at FROM community_event_registrations/.test(sql)) {
+      return [store.community_event_registrations.filter(row => row.event_id === params[1]).reverse()];
+    }
     if (/^UPDATE (community_\w+) SET/.test(sql)) {
       const columns = sql.match(/SET (.+) WHERE/)[1].split(', ').map(part => part.replace('=?', ''));
       const row = store[table].find(item => item.id === params[params.length - 1]);
@@ -37,10 +43,10 @@ const pool = {
       return [{ affectedRows: 1 }];
     }
     if (/^INSERT INTO community_event_registrations/.test(sql)) {
-      const [id, tenantId, eventId, name, phone, identity] = params;
+      const [id, tenantId, eventId, name, phone, identity, studied] = params;
       const existing = store.community_event_registrations.find(row => row.event_id === eventId && row.phone_identity === identity);
-      if (existing) { Object.assign(existing, { name, phone }); return [{ affectedRows: 2 }]; }
-      store.community_event_registrations.push({ id, tenant_id: tenantId, event_id: eventId, name, phone, phone_identity: identity, created_at: 'now' });
+      if (existing) { Object.assign(existing, { name, phone, studied_before: studied ?? existing.studied_before }); return [{ affectedRows: 2 }]; }
+      store.community_event_registrations.push({ id, tenant_id: tenantId, event_id: eventId, name, phone, phone_identity: identity, studied_before: studied, created_at: 'now' });
       return [{ affectedRows: 1 }];
     }
     // A member's post: 'pending' is written in the statement, not passed.
@@ -56,8 +62,12 @@ const pool = {
       store[table].push(row);
       return [{ affectedRows: 1 }];
     }
-    if (/FROM community_events WHERE tenant_id=\? AND \(slug=\? OR id=\?\)/.test(sql)
-      || /FROM community_events WHERE tenant_id=\? AND \(id=\? OR slug=\?\)/.test(sql)) {
+    if (/FROM community_events WHERE tenant_id=\? AND \(slug=\? OR id=\? OR previous_slug=\?\)/.test(sql)) {
+      const key = params[1];
+      return [store.community_events.filter(row => row.slug === key || row.id === key || row.previous_slug === key)
+        .sort((a, b) => Number(b.slug === key) - Number(a.slug === key))];
+    }
+    if (/FROM community_events WHERE tenant_id=\? AND \(id=\? OR slug=\?\)/.test(sql)) {
       return [store.community_events.filter(row => row.slug === params[1] || row.id === params[1])];
     }
     if (/FROM community_events WHERE tenant_id=\? ORDER BY/.test(sql)) return [store.community_events.slice()];
@@ -85,7 +95,12 @@ stub('../middleware/auth', {
 stub('../middleware/rateLimits', { communityPostLimiter: pass, eventRegistrationLimiter: pass, publicLimiter: pass });
 stub('../lib/notification', { createNotification: async (...args) => { store.notifications.push(args); } });
 let subscriber = { id: 'sub-1', name: 'هنا' };
-stub('../lib/subscriberIdentity', { resolveSubscriberRow: async () => subscriber });
+// One client on the system, by number (lib/subscriberIdentity.js).
+const clientIdentity = require('../lib/phoneNumber').toIdentity('+20 100 000 0001');
+stub('../lib/subscriberIdentity', {
+  resolveSubscriberRow: async () => subscriber,
+  clientPhoneIdentities: async (_tenantId, identities) => new Set(identities.filter(identity => identity === clientIdentity)),
+});
 
 const router = require('../routes/community');
 
@@ -119,17 +134,22 @@ test('the admin adds an event under the id the screen made, with lecturers and a
     locationName: 'مقر المعهد', eventDate: '2099-10-06', eventTime: '19:00',
   });
   assert.equal(saved.status, 200, 'an add is no longer a 404');
-  assert.deepEqual(saved.json, { ok: true, id: 'ev-1790000000000', slug: 'ورشة-الصحة-النفسية-للأطفال' });
+  // An Arabic title with no address typed: made from the date, in English.
+  assert.deepEqual(saved.json, { ok: true, id: 'ev-1790000000000', slug: 'event-2099-10-06' });
   const [row] = store.community_events;
   assert.equal(row.is_online, 0);
   assert.equal(row.platform, null, 'an in-person event has no platform');
   assert.match(row.created_at, /^\d{4}-\d{2}-\d{2}T/, 'the server writes the time');
 
-  // Same title again: a different address.
-  const second = await call('POST', '/api/admin/community/events', { id: 'ev-2', title: 'ورشة الصحة النفسية للأطفال' });
-  assert.equal(second.json.slug, 'ورشة-الصحة-النفسية-للأطفال-2');
+  // The admin types the address; what cannot be in one is dropped.
+  const second = await call('POST', '/api/admin/community/events', { id: 'ev-2', title: 'ورشة', slug: 'Kids Workshop!' });
+  assert.equal(second.json.slug, 'kids-workshop');
+  const clash = await call('POST', '/api/admin/community/events', { id: 'ev-3', title: 'تالتة', slug: 'kids-workshop' });
+  assert.equal(clash.status, 409, 'one address, one event');
+  const latin = await call('POST', '/api/admin/community/events', { id: 'ev-3', title: 'Anxiety Seminar 2026' });
+  assert.equal(latin.json.slug, 'anxiety-seminar-2026');
 
-  const page = await call('GET', `/api/community/events/${encodeURIComponent('ورشة-الصحة-النفسية-للأطفال')}`);
+  const page = await call('GET', '/api/community/events/event-2099-10-06');
   assert.equal(page.status, 200);
   assert.equal(page.json.title, 'ورشةُ الصحة النفسية للأطفال');
   assert.deepEqual(page.json.speakers, [{ id: 't-1', name: 'د. منى', title: 'استشاري نفسي', image: '/img/mona.jpg' }]);
@@ -142,20 +162,39 @@ test('the admin adds an event under the id the screen made, with lecturers and a
 
   // Editing with the picture's address keeps the picture and the address.
   const edited = await call('POST', '/api/admin/community/events', { ...page.json, id: 'ev-1790000000000', title: 'عنوان جديد' });
-  assert.equal(edited.json.slug, 'ورشة-الصحة-النفسية-للأطفال', 'a shared link keeps working');
+  assert.equal(edited.json.slug, 'event-2099-10-06');
   assert.equal(store.community_events[0].image_url, picture);
+
+  // A new address: the old one still opens the event.
+  const renamed = await call('POST', '/api/admin/community/events', { ...page.json, id: 'ev-1790000000000', slug: 'child-mental-health' });
+  assert.equal(renamed.json.slug, 'child-mental-health');
+  assert.equal((await call('GET', '/api/community/events/event-2099-10-06')).json.slug, 'child-mental-health', 'a shared link keeps working');
+
+  // An event from before, with an Arabic address: sent back as it is, it stays.
+  store.community_events.push({ id: 'ev-old', tenant_id: 'tn', slug: 'ورشة-قديمة', title: 'قديمة' });
+  const legacy = await call('POST', '/api/admin/community/events', { id: 'ev-old', title: 'قديمة', slug: 'ورشة-قديمة' });
+  assert.equal(legacy.json.slug, 'ورشة-قديمة');
 });
 
 test('interest is a name and a number, once per number', async () => {
-  const first = await call('POST', '/api/community/events/ev-1790000000000/register', { name: 'أحمد', phone: '01012345678' });
+  const first = await call('POST', '/api/community/events/ev-1790000000000/register', { name: 'أحمد', phone: '01012345678', studiedBefore: false });
   assert.deepEqual(first.json, { ok: true, alreadyRegistered: false });
-  const again = await call('POST', `/api/community/events/${encodeURIComponent('ورشة-الصحة-النفسية-للأطفال')}/register`,
+  const again = await call('POST', '/api/community/events/child-mental-health/register',
     { name: 'أحمد علي', phone: '+20 101 234 5678' });
   assert.deepEqual(again.json, { ok: true, alreadyRegistered: true }, 'the same number in another format');
   assert.equal(store.community_event_registrations.length, 1);
+  assert.equal(store.community_event_registrations[0].studied_before, 0, 'the answer is kept when it is not given again');
+
+  // «الطلبه بتوعنا بيكون ليهم الاولويه»: a client of ours first, then whoever says they studied.
+  await call('POST', '/api/community/events/ev-1790000000000/register', { name: 'سارة', phone: '01100000002', studiedBefore: true });
+  await call('POST', '/api/community/events/ev-1790000000000/register', { name: 'منة', phone: '01000000001', studiedBefore: false });
+  const registered = await call('GET', '/api/admin/community/events/ev-1790000000000/registrations');
+  assert.deepEqual(registered.json.map(row => [row.name, row.isClient, row.studiedBefore]),
+    [['منة', true, false], ['سارة', false, true], ['أحمد علي', false, false]]);
+  store.community_event_registrations.splice(1);
   assert.equal((await call('POST', '/api/community/events/ev-1790000000000/register', { name: 'x', phone: '0101' })).status, 400);
   const notified = store.notifications.filter(([type]) => type === 'community');
-  assert.equal(notified.length, 1, 'the desk hears of a new registration once');
+  assert.equal(notified.length, 3, 'the desk hears of each person once — three people, one of them twice');
   const list = await call('GET', '/api/community/events');
   assert.equal(list.json.find(event => event.id === 'ev-1790000000000').registrations, 1);
 });
@@ -197,4 +236,19 @@ test('the screens: each section and event has an address; the panel refreshes po
   const migration = read('api/migrations/222_v26_community_event_pages.sql');
   assert.match(migration, /UNIQUE KEY uq_event_registration \(tenant_id, event_id, phone_identity\)/);
   assert.match(migration, /MODIFY COLUMN image_url mediumtext/);
+});
+
+test('the event page asks «درست في المعهد قبل كده؟», and «أنا مهتم» sits under the content too', () => {
+  const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8');
+  const page = read('client/pages/CommunityEvent.tsx');
+  assert.match(page, /درست في المعهد قبل كده؟/);
+  assert.match(page, /registerForCommunityEvent\(event\.id, \{ name: name\.trim\(\), phone: phone\.trim\(\), studiedBefore \}\)/);
+  assert.equal((page.match(/🙋 أنا مهتم/g) || []).length, 2, 'beside the page and under its text');
+  // The next event, above «إضافة بوست» on the community's front page.
+  const community = read('client/pages/Community.tsx');
+  assert.match(community, /<FeaturedEventCard events=\{communityEvents\} \/>\s+<div className="flex gap-2 flex-wrap">/);
+  const admin = read('admin/pages/dashboard/CommunityEventsAdmin.tsx');
+  assert.match(admin, /رابط الفعالية \(بالإنجليزي\)/);
+  assert.match(admin, /درس في المعهد؟/);
+  assert.match(read('api/migrations/225_v26_event_registration_priority.sql'), /ADD COLUMN IF NOT EXISTS studied_before TINYINT\(1\)/);
 });

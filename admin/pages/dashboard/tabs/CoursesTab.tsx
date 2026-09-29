@@ -6,7 +6,7 @@ import { Course } from '../../../types';
 import { useSiteData, useEnsureLectures } from '../../../context/SiteDataContext';
 import { SafeHtml } from '../../../../shared/ui/SafeHtml';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import { compressImageFile } from '../../../lib/imageBudget';
+import { uploadImage } from '../../../lib/uploadImage';
 import { sanitizeRichHtml } from '../../../../shared/ui/sanitizeHtml';
 import type { LessonAnalyticsRow } from './courses/LessonAnalyticsModal';
 import { DiscountsView } from './courses/DiscountsView';
@@ -180,9 +180,8 @@ export default function CoursesTab({
       <input type="number" className={INP} value={courseDraft[group][cur]} onChange={(e) => setCourseDraft({ ...courseDraft, [group]: { ...courseDraft[group], [cur]: Number(e.target.value) } })} />
     </div>
   );
-  const readFileAsDataUrl = (file: File, maxPx = 900, quality = 0.78) => compressImageFile(file, { maxPx, quality });
-  const handleGalleryUpload = async (files: FileList | null) => { if (!files || files.length === 0) return; try { const uploaded = await Promise.all(Array.from(files).map((file) => readFileAsDataUrl(file))); setCourseDraft((prev) => ({ ...prev, galleryImages: Array.from(new Set([...(prev.galleryImages || []), ...uploaded])) })); } catch { notify('error', '\u0627\u0644\u0635\u0648\u0631\u0629 \u0643\u0628\u064a\u0631\u0629 \u062c\u062f\u0627\u064b \u0623\u0648 \u062a\u0639\u0630\u0631 \u0636\u063a\u0637\u0647\u0627. \u062c\u0631\u0628 \u0635\u0648\u0631\u0629 \u0623\u0635\u063a\u0631.'); } };
-  const handleCertificateUpload = async (files: FileList | null) => { const file = files?.[0]; if (!file) return; try { const uploaded = await readFileAsDataUrl(file, 1200, 0.82); setCourseDraft((prev) => ({ ...prev, certificateTemplateUrl: uploaded, certificateTemplateName: file.name })); } catch { notify('error', '\u0646\u0645\u0648\u0630\u062c \u0627\u0644\u0634\u0647\u0627\u062f\u0629 \u0643\u0628\u064a\u0631 \u062c\u062f\u0627\u064b \u0623\u0648 \u062a\u0639\u0630\u0631 \u0636\u063a\u0637\u0647.'); } };
+  const handleGalleryUpload = async (files: FileList | null) => { if (!files || files.length === 0) return; try { const uploaded = await Promise.all(Array.from(files).map((file) => uploadImage(file, 'gallery'))); setCourseDraft((prev) => ({ ...prev, galleryImages: Array.from(new Set([...(prev.galleryImages || []), ...uploaded])) })); } catch { notify('error', '\u0627\u0644\u0635\u0648\u0631\u0629 \u0643\u0628\u064a\u0631\u0629 \u062c\u062f\u0627\u064b \u0623\u0648 \u062a\u0639\u0630\u0631 \u0636\u063a\u0637\u0647\u0627. \u062c\u0631\u0628 \u0635\u0648\u0631\u0629 \u0623\u0635\u063a\u0631.'); } };
+  const handleCertificateUpload = async (files: FileList | null) => { const file = files?.[0]; if (!file) return; try { const uploaded = await uploadImage(file, 'certificate'); setCourseDraft((prev) => ({ ...prev, certificateTemplateUrl: uploaded, certificateTemplateName: file.name })); } catch { notify('error', '\u0646\u0645\u0648\u0630\u062c \u0627\u0644\u0634\u0647\u0627\u062f\u0629 \u0643\u0628\u064a\u0631 \u062c\u062f\u0627\u064b \u0623\u0648 \u062a\u0639\u0630\u0631 \u0636\u063a\u0637\u0647.'); } };
 const startEditCourse = (course: Course) => {
   setEditingCourseId(course.id);
   setCourseDraft({

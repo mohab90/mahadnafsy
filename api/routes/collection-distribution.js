@@ -95,5 +95,36 @@ router.post('/api/admin/collection-sheets/import', ...guard, async (req, res) =>
   } catch (error) { sendRouteError(res, error); }
 });
 
+// «محتاج اقدر الاونلاين اقدر اعمل استيراد للداتا واحدد هتظهر فين في العملاء
+// النشطين ولا محلي قديم ولا دولي قديم»: the same import, where the desk says —
+// and under an officer only if one is chosen.
+const ONLINE_IMPORT = {
+  active: { local: 'ONLINE_EGYPT', saudi: 'ONLINE_SAUDI', intl: 'ONLINE_ABROAD' },
+  old_local: { local: 'ONLINE_EGYPT' },
+  old_intl: { intl: 'ONLINE_ABROAD' },
+};
+
+router.post('/api/admin/online-clients/import', ...guard, async (req, res) => {
+  try {
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows.slice(0, 5000) : [];
+    if (!rows.length) return res.status(400).json({ error: 'مفيش صفوف' });
+    const kind = String(req.body?.destination || '');
+    const markets = ONLINE_IMPORT[kind];
+    if (!markets) return res.status(400).json({ error: 'اختار العملاء هيظهروا فين' });
+    const branch = markets[String(req.body?.market || '')] || Object.values(markets)[0];
+    let staff = null;
+    if (req.body?.staffId) {
+      staff = await officerById(pool, req.tenantId, String(req.body.staffId));
+      if (!staff) return res.status(400).json({ error: 'مسئول التحصيل ده مش نشط' });
+    }
+    const result = await importCollectionRows({
+      tenantId: req.tenantId, staff, kind, branch, rows,
+      source: String(req.body?.source || 'استيراد الأونلاين').trim().slice(0, 100),
+      actor: req.user?.email || req.staffRecord?.name || 'online-import',
+    });
+    res.json(result);
+  } catch (error) { sendRouteError(res, error); }
+});
+
 module.exports = router;
 module.exports.requireCollectionLead = requireCollectionLead;

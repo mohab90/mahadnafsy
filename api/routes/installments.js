@@ -25,6 +25,7 @@ const { branchIdForBranch } = require('../lib/branches');
 const { applyInstallmentPayment, removeInstallmentEntry } = require('../lib/installmentMath');
 const { financialRecordMatches, resolveFinancialScope } = require('../lib/financialScope');
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../lib/paymentEntitlementAccess');
+const { itemBalances } = require('../lib/agreedPrice');
 const { grantCourseEntitlement } = require('../lib/entitlements');
 const { queuePaymentReceipt } = require('../lib/paymentReceipt');
 const { isRealPhone } = require('../lib/phoneNumber');
@@ -68,6 +69,19 @@ router.post('/api/admin/subscribers/:subscriberId/installment-plans', requireAut
 
     const sub = await requireScopedSubscriber(req, subscriberId);
     if (!sub) return res.status(404).json({ error: 'Subscriber not found' });
+    // A collection officer schedules what is left of the price the client
+    // agreed, in its currency; a plan of any other total is a price change,
+    // and that is the accounts' or the administration's.
+    if (!req.isSuperAdmin && String(req.staffRecord?.role || '').toLowerCase() === 'collection') {
+      const item = bundleId ? `bundle:${bundleId}` : String(courseId || '');
+      const balance = item ? (await itemBalances(pool, { tenantId: req.tenantId, subscriberId })).get(item) : null;
+      if (!balance || Math.abs(Number(balance.remaining) - total) > 0.01 || String(balance.currency) !== String(currency || 'EGP')) {
+        return res.status(403).json({
+          error: `الخطة لازم تكون على الباقي من السعر المتفق عليه (${balance ? `${balance.remaining} ${balance.currency}` : 'مش معروف'}) — تغيير السعر من الحسابات أو الإدارة بس`,
+          code: 'COLLECTION_PRICE_LOCKED',
+        });
+      }
+    }
 
     const id = `ip-${uuidv4()}`;
     const amounts = entries.map(e => Number(e.amount) || 0);

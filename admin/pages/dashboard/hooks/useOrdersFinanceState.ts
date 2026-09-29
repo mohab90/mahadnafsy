@@ -1,13 +1,13 @@
 import { useState } from 'react';
-import { cairoDateOnly } from '../../../../shared/cairoDate';
 import type { OrderItem } from '../../../types';
+import type { IncomingTransfer } from '../tabs/orders/IncomingTransfers';
 
 /**
  * Orders/finance tab state: the order-list search/status/type/method/staff/
  * date filters, the review-queue sub-tabs (admin + online-manager variants),
  * and the transfer-linking modals
- * (add transfer, link transfer-to-order, link order-to-transfer) plus the
- * transfer entry form draft. Lifted out of the Dashboard god-hub — pure UI
+ * (add transfer, link transfer-to-order, link order-to-transfer); the add
+ * form keeps its own draft (tabs/orders/IncomingTransfers.tsx). Lifted out of the Dashboard god-hub — pure UI
  * state (no effects) — returns identical names so the component body is
  * unchanged apart from the single destructure that replaces these 14
  * useState lines.
@@ -25,21 +25,9 @@ export function useOrdersFinanceState() {
   // -- Add Transfer Modal --
   const [showAddTransfer, setShowAddTransfer] = useState(false);
   // -- Link Transfer -> Pending Order modal --
-  const [linkTransferModal, setLinkTransferModal] = useState<{ row: OrderItem } | null>(null);
+  const [linkTransferModal, setLinkTransferModal] = useState<{ row: IncomingTransfer } | null>(null);
   // -- Link Pending Order -> Transfer modal --
   const [linkOrderModal, setLinkOrderModal] = useState<{ row: OrderItem } | null>(null);
-  const [transferForm, setTransferForm] = useState({
-    amount: '',
-    currency: 'EGP' as 'EGP' | 'SAR' | 'USD',
-    method: '' as string,
-    senderName: '',
-    senderPhone: '',
-    reference: '',
-    note: '',
-    date: cairoDateOnly(),
-    time: new Date().toTimeString().slice(0, 5),
-    status: 'paid' as 'paid' | 'pending',
-  });
 
   return {
     orderSearch, setOrderSearch,
@@ -54,6 +42,5 @@ export function useOrdersFinanceState() {
     showAddTransfer, setShowAddTransfer,
     linkTransferModal, setLinkTransferModal,
     linkOrderModal, setLinkOrderModal,
-    transferForm, setTransferForm,
   };
 }

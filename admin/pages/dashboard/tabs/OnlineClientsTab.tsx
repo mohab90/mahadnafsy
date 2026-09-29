@@ -40,6 +40,7 @@ import { FiltersToolbar } from './online-clients-sections/FiltersToolbar';
 import { ClientsTable } from './online-clients-sections/ClientsTable';
 import { InstallmentPlansModal } from './online-clients-sections/InstallmentPlansModal';
 import { CollectionSettingsModal } from './online-clients-sections/CollectionSettingsModal';
+import { OnlineImportModal } from './online-clients-sections/OnlineImportModal';
 import { itemKeyOf } from '../../../lib/agreedPrice';
 import {
   calcSubscribersPaidEGP,
@@ -208,6 +209,7 @@ export default function OnlineClientsTab({
   // "تفاصيل" popup for online_clients table
   const [installmentsRow, setInstallmentsRow] = useState<SubscriberItem | null>(null);
   const [collectionSettingsOpen, setCollectionSettingsOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
               const isDaqqiClientsTab = activeTab === 'daqqi_clients';
               // Housing map: subscriberId → { roundId, roundCode, receptionId, receptionName }
@@ -409,6 +411,7 @@ export default function OnlineClientsTab({
                   <ViewTabsBar
                     onOpenSectionTabs={isAdmin ? () => setShowSectionTabs(true) : undefined}
                     onOpenCollectionSettings={(isAdmin || isOnlineManager) ? () => setCollectionSettingsOpen(true) : undefined}
+                    onOpenImport={(isAdmin || isOnlineManager) ? () => setImportOpen(true) : undefined}
                     customTabsSlot={setCustomTabsSlot}
                     customTabOpen={!!customTabId}
                     staffMembers={staffMembers}
@@ -600,6 +603,7 @@ export default function OnlineClientsTab({
                     onlineTeamMembers={onlineTeamMembers}
                     isAdmin={isAdmin}
                     isOnlineManager={isOnlineManager}
+                    isCollection={isCollectionStaff}
                     shouldUseScopedSubscribers={shouldUseScopedSubscribers}
                     updateSubscriber={updateSubscriber}
                     reloadSubscribers={reloadSubscribers}
@@ -653,6 +657,7 @@ export default function OnlineClientsTab({
                           draft={newClientDraft}
                           setDraft={setNewClientDraft}
                           onSubmit={handleNewCollectionClient}
+                          lockPrice
                           onClose={() => { setOmNewSubOpen(false); setNewClientDraft(blankPaymentDraft({ branch: newClientBranch })); }}
                         />
                       ) : isDaqqiClientsTab ? (
@@ -990,6 +995,15 @@ export default function OnlineClientsTab({
                     />
                   )}
 
+                  {importOpen && (
+                    <OnlineImportModal
+                      staffMembers={isOnlineManager ? onlineTeamMembers : staffMembers}
+                      notify={notify}
+                      onClose={() => setImportOpen(false)}
+                      onImported={reloadSubscribers}
+                    />
+                  )}
+
                   {installmentsRow && (
                     <InstallmentPlansModal
                       subscriber={installmentsRow}
@@ -1000,6 +1014,7 @@ export default function OnlineClientsTab({
                       notify={notify}
                       onClose={() => setInstallmentsRow(null)}
                       onChanged={reloadSubscribers}
+                      lockPrice={isCollectionStaff}
                     />
                   )}
                 </article>

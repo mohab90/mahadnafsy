@@ -32,6 +32,7 @@ const routeModules = [
   ['/', '../routes/dokki-operations'],
   ['/', '../routes/public-orders'],
   ['/', '../routes/imageProxy'],
+  ['/', '../routes/media'],
   ['/', '../routes/certificates'],
   ['/', '../routes/client-maintenance'],
   ['/', '../routes/accounting'],

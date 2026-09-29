@@ -32,6 +32,7 @@ import { waLink } from '../../../../lib/whatsappLink';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 import { WhatsAppIcon } from '../../../../components/WhatsAppIcon';
 import { useCertificateCatalog } from '../../../../lib/certificateCatalog';
+import { ClientContactDialog } from '../../../unified-client/ClientContactLog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type HousingInfo = { roundId: string; roundCode: string; receptionId: string; receptionName: string };
@@ -51,6 +52,11 @@ interface Props {
   onlineTeamMembers: StaffMember[];
   isAdmin: boolean;
   isOnlineManager: boolean;
+  /**
+   * A collection officer: course access and course details are not theirs to
+   * see or change — «زر صلاحية الكورسات وتفاصيل الكورسات مينفعش يظهر للتحصيل ابدا».
+   */
+  isCollection?: boolean;
   canDeleteSubscriber: boolean;
   shouldUseScopedSubscribers: boolean;
   updateSubscriber: (s: SubscriberItem) => Promise<boolean>;
@@ -78,7 +84,7 @@ interface Props {
 
 export function ClientsTable({
   pageRows, vc, cw, startColResize, isDaqqiClientsTab, collOnlineSelected, setCollOnlineSelected,
-  housingMap, courses, bundles, staffMembers, onlineTeamMembers, isAdmin, isOnlineManager,
+  housingMap, courses, bundles, staffMembers, onlineTeamMembers, isAdmin, isOnlineManager, isCollection = false,
   canDeleteSubscriber, shouldUseScopedSubscribers,
   updateSubscriber, reloadSubscribers, setSalesOwnSubscribers, deleteSubscriber, setSubPayRow, setSubPayDraft,
   setDaqqiHousingModal, setDaqqiHousingRoundId,
@@ -88,6 +94,8 @@ export function ClientsTable({
   // Which customer we are adjusting course access for. The default length is
   // set per course in the catalogue; this is where one person is changed.
   const [accessRow, setAccessRow] = React.useState<SubscriberItem | null>(null);
+  // «تواصل» records the contact here; it opened the client page instead.
+  const [contactRow, setContactRow] = React.useState<SubscriberItem | null>(null);
   const certCatalog = useCertificateCatalog();
   const navigate = useNavigate();
   const todayOnlineStr = cairoDateOnly();
@@ -285,7 +293,7 @@ export function ClientsTable({
                     setSubPayDraft(prev => ({ ...prev, bookingType: (row.enrolledCourseIds||[]).length > 0 ? 'installment' : 'new_booking' }));
                   }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-emerald-50 hover:text-emerald-600 flex items-center justify-center transition"><Wallet size={12}/></button>
                   <button title="الأقساط" onClick={()=>setInstallmentsRow(row)} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-teal-50 hover:text-teal-600 flex items-center justify-center transition"><CalendarClock size={12}/></button>
-                  <button title="تواصل" onClick={()=>navigate(`/client/${clientCode}`, { state: { openTab: 'communications', addCommunication: true } })} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition"><Phone size={12}/></button>
+                  <button title="تواصل" onClick={()=>setContactRow(row)} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition"><Phone size={12}/></button>
                 </div>
                 <div className={`grid gap-0.5 ${canDeleteSubscriber?'grid-cols-4':'grid-cols-3'}`}>
                   {/* Opens the chat. It set a row for a WhatsApp dialog that no
@@ -301,10 +309,10 @@ export function ClientsTable({
                       className={`h-7 rounded flex items-center justify-center transition text-xs font-bold ${rowHousing ? 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100' : 'bg-gray-50 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600'}`}>
                       🏠
                     </button>
-                  ) : (
+                  ) : !isCollection ? (
                     <button title="تفاصيل الكورسات والصلاحية والمدفوعات" onClick={()=>setAccessRow(row)}
                       className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 flex items-center justify-center transition"><Receipt size={12}/></button>
-                  )}
+                  ) : null}
                   <button title="تحويل" onClick={()=>{setConvertRow(row);setConvertType('');setConvertAttendedLive(false);setConvertGotCert(false);setConvertPauseReason('');setConvertRefundReason('');setConvertRefundAmount('');setConvertRefundMethod('');setConvertRefundPaymentId('');}} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-orange-50 hover:text-orange-600 flex items-center justify-center transition"><RefreshCw size={12}/></button>
                   {/* Gated on the permission the route checks, not on a role list:
                       DELETE /api/admin/subscribers/:id requires delete_subscribers, which
@@ -457,7 +465,23 @@ export function ClientsTable({
         </tbody>
       </table>
       {filteredLength === 0 && <p className="text-sm text-gray-500 mt-3">لا يوجد عملاء مطابقين للبحث.</p>}
-      {accessRow && (
+      {contactRow && (
+        <ClientContactDialog
+          subscriber={contactRow}
+          notify={notify}
+          onClose={() => setContactRow(null)}
+          onSaved={(entry, updatedAt) => {
+            // The «آخر تواصل» column reads the row; the admin's list is reloaded.
+            const withContact = (item: SubscriberItem) => item.id !== contactRow.id ? item : {
+              ...item, updatedAt: updatedAt || item.updatedAt,
+              communications: [...(item.communications || []), { id: entry.id, type: entry.type as never, date: entry.date, notes: entry.notes, outcome: entry.outcome || undefined, nextFollowUp: entry.nextFollowUp || undefined, staffName: entry.staffName || undefined } as never],
+            };
+            if (shouldUseScopedSubscribers) setSalesOwnSubscribers(prev => prev.map(withContact));
+            else void reloadSubscribers();
+          }}
+        />
+      )}
+      {accessRow && !isCollection && (
     <Modal
       open
       onClose={() => setAccessRow(null)}

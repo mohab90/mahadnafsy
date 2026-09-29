@@ -50,10 +50,13 @@ test('«نقل للأرشيف» on the local tab takes the local tab\'s leads, a
 });
 
 test('«تواصل» on a client row opens that client\'s contact form', () => {
-  // It set a row and a draft that no component ever rendered.
+  // It set a row and a draft that no component ever rendered; then it opened
+  // the client's page — «ليه في الاونلاين لما بضغط علي زر تواصل بيفتح صفحة
+  // العميل». The form opens over the table now.
   const table = read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx');
-  assert.match(table, /title="تواصل" onClick=\{\(\)=>navigate\(`\/client\/\$\{clientCode\}`, \{ state: \{ openTab: 'communications', addCommunication: true \} \}\)\}/);
-  assert.match(read('admin/pages/UnifiedClientPage.tsx'), /addCommunication\?: boolean \} \| null\)\?\.addCommunication\) setShowAddComm\(true\)/);
+  assert.match(table, /title="تواصل" onClick=\{\(\)=>setContactRow\(row\)\}/);
+  assert.match(table, /<ClientContactDialog\s/);
+  assert.match(read('admin/pages/UnifiedClientPage.tsx'), /addCommunication\?: boolean \} \| null\)\?\.addCommunication\) openContact\(\)/);
   for (const file of ['admin/pages/Dashboard.tsx', 'admin/pages/dashboard/hooks/useSubscriberModals.ts', 'admin/pages/dashboard/tabs/OnlineClientsTab.tsx']) {
     assert.doesNotMatch(read(file), /subContactRow|setSubContactDraft/, `${file} still carries the dead contact state`);
   }

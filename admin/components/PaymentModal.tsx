@@ -228,6 +228,12 @@ interface PaymentModalProps {
   /** Called when the modal should close (user cancelled or finished) */
   onClose: () => void;
   requirePaymentApproval?: boolean;
+  /**
+   * No discount, no other price: a collection account books at the price the
+   * client agreed — «تغيير سعر الكورس بيتم من الحسابات او الادارة فقط». The
+   * API ignores a price sent from one anyway (routes/subscriber-payments.js).
+   */
+  lockPrice?: boolean;
   branchOptions?: BranchOption[];
   /**
    * Who this payment could be for, when the screen was not opened from a
@@ -245,7 +251,7 @@ interface PaymentModalProps {
 
 const PaymentModal: React.FC<PaymentModalProps> = ({
   mode, subject, draft, setDraft, onSubmit, onClose,
-  requirePaymentApproval, branchOptions = [], instituteName = 'معهد الدراسات النفسية',
+  requirePaymentApproval, lockPrice = false, branchOptions = [], instituteName = 'معهد الدراسات النفسية',
   subjectOptions, onSubjectChange,
   branchLabel,
 }) => {
@@ -817,7 +823,10 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
               autoFocus
             />
             <span className="text-xs text-gray-500 font-semibold">{d.currency}</span>
-            {(isCourse || isCert) && d.courseId && (
+            {(isCourse || isCert) && d.courseId && lockPrice && _effPx > 0 && (
+              <span className="text-xs font-bold text-gray-500 whitespace-nowrap">السعر المتفق عليه: {_effPx.toLocaleString('ar-EG-u-nu-latn')} {d.currency}</span>
+            )}
+            {(isCourse || isCert) && d.courseId && !lockPrice && (
               <>
                 <span className="text-gray-300 select-none">|</span>
                 {_sysPx > 0 && (
@@ -954,7 +963,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                             className="w-28 border-2 border-red-400 bg-white rounded-lg px-2 py-1.5 text-sm font-extrabold text-red-900 focus:outline-none focus:border-red-600"
                           />
                           <span className="text-xs text-gray-500 font-semibold">{d.currency}</span>
-                          {item.courseId && (
+                          {item.courseId && !lockPrice && (
                             <>
                               <span className="text-gray-300 select-none">|</span>
                               {eiSysPx > 0 && (

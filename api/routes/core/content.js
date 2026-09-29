@@ -105,7 +105,19 @@ router.get('/api/admin/subscribers/:id/course-access', requireAuth, requireAdmin
 // money. The unified client page already showed these buttons to the
 // collection manager, who then got «Permission denied: manage_courses»:
 // the screen offered an action the server refused.
+// «زر صلاحية الكورسات وتفاصيل الكورسات مينفعش يظهر للتحصيل ابدا … تغيير سعر
+// الكورس بيتم من الحسابات او الادارة فقط». By role, not by grid: two collection
+// officers hold manage_financial, which these routes ask for.
+const refuseCollection = (req, res, message) => {
+  if (!req.isSuperAdmin && String(req.staffRecord?.role || '').toLowerCase() === 'collection') {
+    res.status(403).json({ error: message, code: 'COLLECTION_NOT_ALLOWED' });
+    return true;
+  }
+  return false;
+};
+
 router.put('/api/admin/subscribers/:id/course-access/:enrollmentId', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+  if (refuseCollection(req, res, 'صلاحية الكورسات مش من شغل التحصيل')) return;
   try {
     const tenantId = req.tenantId || DEFAULT_TENANT_ID;
     const { expiresAt, addMonths, lectureLimit, fullAccess, enrolledAt } = req.body || {};
@@ -173,6 +185,7 @@ router.put('/api/admin/subscribers/:id/course-access/:enrollmentId', requireAuth
 // the online table, the payment dialog, the receipt and the collections list
 // all read the new number.
 router.put('/api/admin/subscribers/:id/item-money', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+  if (refuseCollection(req, res, 'سعر الكورس بيتغير من الحسابات أو الإدارة بس')) return;
   const conn = await pool.getConnection();
   try {
     const tenantId = req.tenantId || DEFAULT_TENANT_ID;
@@ -219,6 +232,9 @@ router.put('/api/admin/subscribers/:id/item-money', requireAuth, requireAdminOrS
 // ordinary payment path, which is the right answer when non-payment was the
 // reason it closed.
 router.post('/api/admin/subscribers/:id/course-access', requireAuth, requireAdminOrStaff, requirePermission('manage_subscribers'), async (req, res) => {
+  // Collection used to be one of the two desks this was for; the owner took
+  // course access off collection altogether (28 Sep).
+  if (refuseCollection(req, res, 'قفل وفتح الكورسات مش من شغل التحصيل')) return;
   try {
     const tenantId = req.tenantId || DEFAULT_TENANT_ID;
     const courseId = String(req.body?.courseId || '').trim();

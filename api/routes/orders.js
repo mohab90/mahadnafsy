@@ -13,6 +13,7 @@ const { safeIsoString, cairoToday } = require('../lib/dates');
 const { resolvePaymentExecutors } = require('../lib/paymentExecutor');
 const { assertWritable } = require('../lib/periodLock');
 const { confirmOrderPayment } = require('../lib/orderPaymentConfirmation');
+const { linkTransfer } = require('../lib/incomingTransfers');
 const { queuePaymentReceipt } = require('../lib/paymentReceipt');
 const { financialRecordMatches, financialScopeClause, resolveFinancialScope } = require('../lib/financialScope');
 const { normalizeJourneyState } = require('../lib/journeyStates');
@@ -236,18 +237,18 @@ router.post('/api/admin/orders/:id/confirm-payment', requireAuth, requireAdminOr
       return res.status(409).json({ error: 'Order is not pending — it may already be confirmed' });
     }
 
+    // The transfer is one on the ledger (lib/incomingTransfers.js). It was an
+    // order of type «transfer», which the orders ENUM cannot hold — so no
+    // transfer was ever recorded and no link could succeed.
     let transfer = null;
     if (linkedTransferId) {
-      const [[existingLink]] = await conn.query(
-        'SELECT id FROM orders WHERE linked_transfer_id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
+      const [[row]] = await conn.query(
+        'SELECT id, method, reference, payment_id FROM incoming_transfers WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
         [linkedTransferId, req.tenantId]
       );
-      if (existingLink) { await conn.rollback(); return res.status(409).json({ error: 'This transfer is already linked to another order' }); }
-      [[transfer]] = await conn.query(
-        `SELECT * FROM orders WHERE id=? AND tenant_id=? AND type='transfer' AND status='paid' LIMIT 1 FOR UPDATE`,
-        [linkedTransferId, req.tenantId]
-      );
-      if (!transfer) { await conn.rollback(); return res.status(404).json({ error: 'Transfer not found' }); }
+      if (!row) { await conn.rollback(); return res.status(404).json({ error: 'التحويل مش موجود' }); }
+      if (row.payment_id) { await conn.rollback(); return res.status(409).json({ error: 'التحويل ده متربط بدفعة تانية بالفعل' }); }
+      transfer = { id: row.id, payment_method: row.method, transaction_id: row.reference };
     }
 
     await assertWritable(cairoToday(), conn, req.tenantId);
@@ -256,12 +257,15 @@ router.post('/api/admin/orders/:id/confirm-payment', requireAuth, requireAdminOr
       order, transfer, linkedTransferId, tenantId: req.tenantId,
       staffId: req.staffRecord?.id, staffName: req.staffRecord?.name, actorEmail: req.user?.email,
     }, conn);
+    if (transfer) await linkTransfer(conn, { tenantId: req.tenantId, paymentId, link: { transferId: transfer.id } });
 
     await conn.commit();
     queuePaymentReceipt(req.tenantId, paymentId);
     res.json({ ok: true, paymentId });
   } catch (e) {
     await conn.rollback().catch(() => {});
+    const refused = Number(e.statusCode);
+    if (refused >= 400 && refused < 500) return res.status(refused).json({ error: e.message });
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   } finally {

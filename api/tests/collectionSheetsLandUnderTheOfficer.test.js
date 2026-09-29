@@ -175,3 +175,24 @@ test('the picker skips an officer at their cap for the period', () => {
   assert.deepEqual(handed.filter(Boolean).sort(), ['a', 'b']);
   assert.equal(handed[2], null);
 });
+
+test('the online import lands where the desk says, unassigned unless an officer is chosen', async () => {
+  const { lib, restore } = loadImport();
+  try {
+    const { db, inserted, assigned } = fakeDb([{ id: 's-free', phone: '01011111111', email: null, assigned_cs_id: null }]);
+    const result = await lib.importCollectionRows({
+      tenantId: 't1', staff: null, kind: 'active', branch: 'ONLINE_SAUDI', source: 'استيراد الأونلاين',
+      rows: [{ _name: 'جديد', _phone: '0555000111' }, { _name: 'موجود', _phone: '+201011111111' }],
+    }, db);
+    assert.deepEqual(result, { created: 1, assigned: 0, skipped: 1, others: 0, failed: 0 });
+    assert.equal(assigned.length, 0, 'nobody already on the system is handed to anyone');
+    assert.equal(inserted[0][6], 'ONLINE_SAUDI');
+    assert.equal(inserted[0][9], null, 'no officer');
+    assert.equal(JSON.parse(inserted[0][11]).clientStatus, 'active');
+  } finally { restore(); }
+
+  const routes = read('api/routes/collection-distribution.js');
+  assert.match(routes, /router\.post\('\/api\/admin\/online-clients\/import', \.\.\.guard,/);
+  const bar = read('admin/pages/dashboard/tabs/online-clients-sections/ViewTabsBar.tsx');
+  assert.match(bar, /📥 استيراد عملاء/);
+});

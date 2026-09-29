@@ -56,6 +56,8 @@ const UnifiedClientLeadPaymentsPanel = React.lazy(() => import('./unified-client
 const UnifiedClientLoyaltyPanel = React.lazy(() => import('./unified-client/UnifiedClientLoyaltyPanel').then(module => ({ default: module.UnifiedClientLoyaltyPanel })));
 const UnifiedClientOverviewTab = React.lazy(() => import('./unified-client/UnifiedClientOverviewTab').then(module => ({ default: module.UnifiedClientOverviewTab })));
 const UnifiedClientSubscriberPaymentsPanel = React.lazy(() => import('./unified-client/UnifiedClientSubscriberPaymentsPanel').then(module => ({ default: module.UnifiedClientSubscriberPaymentsPanel })));
+const ClientContactsPanel = React.lazy(() => import('./unified-client/ClientContactLog').then(module => ({ default: module.ClientContactsPanel })));
+const ClientContactDialog = React.lazy(() => import('./unified-client/ClientContactLog').then(module => ({ default: module.ClientContactDialog })));
 const UnifiedClientModalsHost = React.lazy(() => import('./unified-client/UnifiedClientModalsHost').then(module => ({ default: module.UnifiedClientModalsHost })));
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -123,11 +125,16 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   } = useUnifiedClientCommunications({
     lead, subscriber, clientCode, isSaving, setIsSaving, updateLead, updateSubscriber,
   });
+  // A client's contacts are rows with their author (ClientContactLog); a lead keeps its own log.
+  const [contactDialogOpen, setContactDialogOpen] = useState(false);
+  const openContact = React.useCallback(() => {
+    if (subscriber) setContactDialogOpen(true); else setShowAddComm(true);
+  }, [subscriber, setShowAddComm]);
   // «تواصل» in a client list lands here with the form already open.
   const location = useLocation();
   useEffect(() => {
-    if ((location.state as { addCommunication?: boolean } | null)?.addCommunication) setShowAddComm(true);
-  }, [location.state, setShowAddComm]);
+    if ((location.state as { addCommunication?: boolean } | null)?.addCommunication) openContact();
+  }, [location.state, openContact]);
 
   const paymentState = useUnifiedClientPayments({
     lead, subscriber, subscribers, staffMembers, currentStaff, authUser, courses, bundles,
@@ -254,7 +261,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
         // instead, a different form with different fields.
         onConvertLead={() => setShowLeadPayForm(true)}
         onOpenLinkedSubscriber={() => linkedSub && navigate(`/client/${linkedSub.clientCode || linkedSub.id}`)}
-        onAddCommunication={() => setShowAddComm(true)}
+        onAddCommunication={openContact}
         onOpenInstallmentPlan={() => setActiveTab('installments')}
         onOpenExtraCertificate={() => { setShowExtraCertForm(true); resetExtraCertDraft(); }}
         onOpenAccess={() => setShowAccessModal(true)}
@@ -361,7 +368,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
 
           <UnifiedClientSidebarQuickActions
             isSub={isSub}
-            onAddCommunication={() => { setActiveTab('communications'); setShowAddComm(true); }}
+            onAddCommunication={() => { setActiveTab('communications'); openContact(); }}
             onSubscriberPayment={() => { setActiveTab('payments'); openSubscriberPaymentForm(); }}
             onLeadPayment={openLeadPaymentForm}
             onLegacyPayment={openLegacyPaymentForm}
@@ -437,8 +444,10 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
                 />
               )}
 
-              {/* ══ 💬 التواصل ══ */}
-              {activeTab === 'communications' && (
+              {/* ══ 💬 التواصل ══ — its form opens from the header on any other tab */}
+              {activeTab === 'communications' && subscriber && <ClientContactsPanel subscriber={subscriber} notify={notify} dialogOpen={contactDialogOpen} setDialogOpen={setContactDialogOpen} />}
+              {subscriber && contactDialogOpen && activeTab !== 'communications' && <ClientContactDialog subscriber={subscriber} notify={notify} onClose={() => setContactDialogOpen(false)} />}
+              {activeTab === 'communications' && !subscriber && (
                 <UnifiedClientCommunicationsPanel
                   communications={allComms}
                   clientName={clientName}

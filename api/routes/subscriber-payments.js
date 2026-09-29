@@ -376,7 +376,10 @@ async function recordSubscriberPayment(req, res) {
     if (safeType === 'COURSE' && !courseId && !bundleId) {
       return res.status(400).json({ error: '\u062f\u0641\u0639\u0629 \u0646\u0648\u0639\u0647\u0627 \u0643\u0648\u0631\u0633 \u0644\u0627\u0632\u0645 \u062a\u062d\u062f\u062f \u0627\u0644\u0643\u0648\u0631\u0633 \u0623\u0648 \u0627\u0644\u0628\u0627\u0642\u0629. \u0645\u0646 \u063a\u064a\u0631\u0647\u0645 \u0645\u0634 \u0647\u064a\u0628\u0642\u0649 \u0645\u0639\u0631\u0648\u0641 \u0627\u062a\u062f\u0641\u0639\u062a \u0645\u0642\u0627\u0628\u0644 \u0625\u064a\u0647.' });
     }
-    const suppliedExpected = payment.courseExpected ?? payment.course_expected;
+    // A price typed from a collection account is not a price change: the
+    // client's agreed price stands (lib/agreedPrice.js), and changing it is the
+    // accounts' or the administration's.
+    const suppliedExpected = reviewedByManager(req) ? null : (payment.courseExpected ?? payment.course_expected);
     const courseExpected = suppliedExpected == null ? null : Number(suppliedExpected);
     if (courseExpected != null && (!Number.isFinite(courseExpected) || courseExpected <= 0 || courseExpected > 10000000)) {
       return res.status(400).json({ error: 'courseExpected must be a finite positive amount' });

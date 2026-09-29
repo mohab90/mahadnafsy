@@ -4,7 +4,7 @@ import { defaultMeetingBaseUrls, meetingProviderLabels } from '../../../../lib/c
 import type { ConsultationItem, StaffMember, Therapist, TherapistAvailabilitySlot } from '../../../../types';
 import { useRef, useState } from 'react';
 import { useSiteData } from '../../../../context/SiteDataContext';
-import { compressImageFile } from '../../../../lib/imageBudget';
+import { uploadImage } from '../../../../lib/uploadImage';
 
 const blankTherapist = (): Therapist => ({ id: '', name: '', specialty: '', image: '', experience: 1, rating: 4.8, price: { EGP: 0, SAR: 0, USD: 0 }, title: '', bio: '', featured: false, sortOrder: 99, showOnHome: false, showOnAbout: false, languages: [], focusAreas: [], qualifications: [], consultationSettings: { enabled: false, sessionDurationMinutes: 50, sessionPrice: { EGP: 0, SAR: 0, USD: 0 }, meetingProvider: 'google_meet', providerBaseUrl: defaultMeetingBaseUrls.google_meet, autoCreateMeetingLink: true, intakeFormUrl: '', bookingNotes: '', availableSlots: [], portal: { username: '', password: '', temporaryPassword: true } } });
 const blankTherapistSlot = (): TherapistAvailabilitySlot => ({ id: `slot-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`, day: 'sunday', startTime: '17:00', endTime: '17:50', timezone: 'Africa/Cairo', label: '', meetingLink: '', isActive: true });
@@ -33,7 +33,7 @@ export function CourseInstructorsPanel({ activeTab, notify }: Props) {
   const [editingTherapistId, setEditingTherapistId] = useState('');
   const [isTherapistFormOpen, setIsTherapistFormOpen] = useState(false);
   const [therapistDraft, setTherapistDraft] = useState<Therapist>(blankTherapist());
-  const handleTherapistImageUpload = async (files: FileList | null) => { const file = files?.[0]; if (!file) return; try { const uploaded = await compressImageFile(file, { maxPx: 720, quality: 0.76 }); setTherapistDraft((prev) => ({ ...prev, image: uploaded })); } catch { notify('error', '\u0627\u0644\u0635\u0648\u0631\u0629 \u0643\u0628\u064a\u0631\u0629 \u062c\u062f\u0627\u064b \u0623\u0648 \u062a\u0639\u0630\u0631 \u0636\u063a\u0637\u0647\u0627.'); } };
+  const handleTherapistImageUpload = async (files: FileList | null) => { const file = files?.[0]; if (!file) return; try { const uploaded = await uploadImage(file, 'photo'); setTherapistDraft((prev) => ({ ...prev, image: uploaded })); } catch { notify('error', '\u0627\u0644\u0635\u0648\u0631\u0629 \u0643\u0628\u064a\u0631\u0629 \u062c\u062f\u0627\u064b \u0623\u0648 \u062a\u0639\u0630\u0631 \u0636\u063a\u0637\u0647\u0627.'); } };
 
   const startEditTherapist = (row: Therapist) => {
   setEditingTherapistId(row.id);

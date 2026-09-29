@@ -118,7 +118,6 @@ export function DashboardDirectContentRoutes({
   const handleInstituteGalleryUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     try {
-      // Compress to max 600px wide, 65% quality — keeps each image ~15-30KB in base64
       const uploaded = await compressInstituteGalleryFiles(files);
       saveInstituteGalleryImages(Array.from(new Set([...instituteGalleryImages, ...uploaded])));
       notify('success', 'تم رفع صور المعرض بنجاح.');

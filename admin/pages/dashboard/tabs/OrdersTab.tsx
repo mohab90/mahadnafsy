@@ -4,7 +4,7 @@ import { usePaymentBoxes } from '../../../lib/paymentMethods';
 import { paymentOrigin, PAYMENT_ORIGIN, PAYMENT_ORIGIN_CLASS } from '../../../lib/paymentOrigin';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowUpRight, CheckCircle, Clock, CreditCard, Download,
+  CheckCircle, Clock, CreditCard, Download,
   Plus, Search, TrendingUp, Trash2, Wallet, XCircle,
 } from 'lucide-react';
 import type { Bundle, Course, OrderItem, StaffMember, SubscriberItem } from '../../../types';
@@ -13,6 +13,7 @@ import { toEgp } from '../../../lib/money';
 import { downloadCsv } from '../../../../shared/csv';
 import { PAYMENT_METHOD_CODES, paymentMethodLabel, normalizePaymentMethod } from '../../../../shared/paymentMethods';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
+import { AddTransferModal, IncomingTransfersTable, useIncomingTransfers, type IncomingTransfer } from './orders/IncomingTransfers';
 
 // What an order's payment_method can hold. The four rails a customer may pick,
 // plus the three the gateways and the desk write: a card charge, a Paymob
@@ -24,19 +25,6 @@ const ORDER_METHOD_FILTERS: string[] = [
 ];
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
-
-type TransferForm = {
-  amount: string;
-  currency: 'EGP' | 'SAR' | 'USD';
-  method: string;
-  senderName: string;
-  senderPhone: string;
-  reference: string;
-  note: string;
-  date: string;
-  time: string;
-  status: 'paid' | 'pending';
-};
 
 type OrdersStats = {
   total: number;
@@ -92,17 +80,14 @@ interface Props {
   setOrderReviewTab: (v: 'review' | 'accepted' | 'failed' | 'transfers') => void;
   showAddTransfer: boolean;
   setShowAddTransfer: (v: boolean) => void;
-  linkTransferModal: { row: OrderItem } | null;
-  setLinkTransferModal: (v: { row: OrderItem } | null) => void;
+  linkTransferModal: { row: IncomingTransfer } | null;
+  setLinkTransferModal: (v: { row: IncomingTransfer } | null) => void;
   linkOrderModal: { row: OrderItem } | null;
   setLinkOrderModal: (v: { row: OrderItem } | null) => void;
-  transferForm: TransferForm;
-  setTransferForm: React.Dispatch<React.SetStateAction<TransferForm>>;
   currentStaff: StaffMember | null;
   authUser: { displayName?: string | null; email?: string | null; uid?: string } | null;
   content: Record<string, string>;
   updateOrderStatus: (id: string, status: 'paid' | 'failed' | 'refunded') => Promise<boolean>;
-  addOrder: (order: OrderItem) => Promise<boolean>;
   deleteOrder: (id: string) => Promise<boolean>;
   reloadOrders: () => Promise<void>;
   reloadSubscribers: () => Promise<void>;
@@ -129,15 +114,15 @@ export default function OrdersTab({
   showAddTransfer, setShowAddTransfer,
   linkTransferModal, setLinkTransferModal,
   linkOrderModal, setLinkOrderModal,
-  transferForm, setTransferForm,
   currentStaff, authUser, content,
-  updateOrderStatus, addOrder, deleteOrder, reloadOrders, reloadSubscribers, exportFilteredOrdersCsv,
+  updateOrderStatus, deleteOrder, reloadOrders, reloadSubscribers, exportFilteredOrdersCsv,
 }: Props) {
   // One list for every box dropdown: what الإعدادات lists, plus every box the
   // institute has collected into. A hook, so it is read once at the top —
   // the dropdowns below sit inside conditional blocks and callbacks.
   const paymentBoxes = usePaymentBoxes(content['finance.payment_methods']);
   const navigate = useNavigate();
+  const ledger = useIncomingTransfers(canManageFinancial);
   // Approving is when the accounts team says the money arrived, so it is when
   // the method has to be known — and older rows reached the review queue
   // without one. Nothing else can edit a stored method, so it is asked for
@@ -494,7 +479,7 @@ export default function OrdersTab({
                 : orderReviewTab === 'accepted'
                   ? filteredOrders.filter(r => (r.status === 'paid' || !r.status) && r.type !== 'transfer')
                   : orderReviewTab === 'transfers'
-                    ? effectiveOrders.filter(r => r.type === 'transfer').sort((a,b)=>((b.createdAt||'')>(a.createdAt||'')?1:-1))
+                    ? []
                     : filteredOrders.filter(r => (r.status === 'failed' || r.status === 'refunded') && r.type !== 'transfer');
 
               const tabTotal = tabRows.reduce((s, r) => s + toEGP(r), 0);
@@ -625,7 +610,7 @@ export default function OrdersTab({
                       { key: 'review'    as const, label: 'قيد المراجعة',   count: filteredOrders.filter(r => r.status === 'pending' && r.type !== 'transfer').length,   color: 'amber' },
                       { key: 'accepted'  as const, label: 'مدفوعات مؤكدة', count: filteredOrders.filter(r => (r.status === 'paid' || !r.status) && r.type !== 'transfer').length, color: 'green' },
                       { key: 'failed'    as const, label: 'فاشلة / مرتجع', count: filteredOrders.filter(r => (r.status === 'failed' || r.status === 'refunded') && r.type !== 'transfer').length, color: 'red' },
-                      { key: 'transfers' as const, label: 'التحويلات',      count: effectiveOrders.filter(r => r.type === 'transfer').length, color: 'blue' },
+                      { key: 'transfers' as const, label: 'التحويلات',      count: ledger.transfers.length, color: 'blue' },
                     ]).map(({ key, label, count, color }) => {
                       const active = orderReviewTab === key;
                       const cls: Record<string, string> = {
@@ -644,10 +629,7 @@ export default function OrdersTab({
                     })}
                     <div className="flex-1" />
                     {/* ── Add Transfer Button ── */}
-                    <button onClick={() => {
-                      setTransferForm({ amount: '', currency: 'EGP', method: '', senderName: '', senderPhone: '', reference: '', note: '', date: cairoDateOnly(), time: new Date().toTimeString().slice(0,5), status: 'paid' });
-                      setShowAddTransfer(true);
-                    }}
+                    <button onClick={() => setShowAddTransfer(true)}
                       className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-4 py-2 rounded-full shadow-md shadow-blue-200 transition">
                       <Plus size={15} /> إضافة تحويل
                     </button>
@@ -726,136 +708,10 @@ export default function OrdersTab({
                   </div>
 
                   {/* ── Transfers Table (separate view) ── */}
-                  {orderReviewTab === 'transfers' ? (() => {
-                    const transfers = tabRows;
-                    const totalEGP = transfers.filter(r => r.status === 'paid').reduce((s, r) => s + toEGP(r), 0);
-                    return (
-                      <div className="space-y-3">
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                          {[
-                            { label: 'إجمالي التحويلات', value: transfers.length, cls: 'bg-blue-50 border-blue-200 text-blue-700' },
-                            { label: 'محصّل',             value: transfers.filter(r=>r.status==='paid').length, cls: 'bg-emerald-50 border-emerald-200 text-emerald-700' },
-                            { label: 'قيد التأكيد',      value: transfers.filter(r=>r.status==='pending').length, cls: 'bg-amber-50 border-amber-200 text-amber-700' },
-                            { label: 'إجمالي محصّل',     value: `${totalEGP.toLocaleString('ar-EG-u-nu-latn')} ج`, cls: 'bg-violet-50 border-violet-200 text-violet-700' },
-                          ].map(k => (
-                            <div key={k.label} className={`border rounded-xl px-3 py-3 ${k.cls}`}>
-                              <div className="text-[10px] font-semibold mb-1">{k.label}</div>
-                              <div className="text-xl font-extrabold">{k.value}</div>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-xs min-w-[800px] border-collapse">
-                              <thead>
-                                <tr className="bg-gradient-to-l from-blue-50 to-white text-gray-700 border-b border-gray-200">
-                                  <th className="px-3 py-3 font-bold text-right border-l border-gray-100">#</th>
-                                  <th className="px-3 py-3 font-bold text-right border-l border-gray-100">المُحوِّل / المرجع</th>
-                                  <th className="px-3 py-3 font-bold text-center border-l border-gray-100">المبلغ</th>
-                                  <th className="px-3 py-3 font-bold text-center border-l border-gray-100">وسيلة الدفع</th>
-                                  <th className="px-3 py-3 font-bold text-right border-l border-gray-100">ملاحظة</th>
-                                  <th className="px-3 py-3 font-bold text-center border-l border-gray-100">المُسجِّل</th>
-                                  <th className="px-3 py-3 font-bold text-center border-l border-gray-100">التاريخ</th>
-                                  <th className="px-3 py-3 font-bold text-center border-l border-gray-100">الحالة</th>
-                                  <th className="px-3 py-3 font-bold text-center">إجراءات</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {transfers.slice(0, 300).map((row, i) => {
-                                  const isPending = row.status === 'pending';
-                                  const isFailed  = row.status === 'failed' || row.status === 'refunded';
-                                  const rowBg = isPending ? 'bg-amber-50/40 hover:bg-amber-50/70' : isFailed ? 'bg-red-50/30 hover:bg-red-50/60' : 'hover:bg-blue-50/20';
-                                  const fmtDate = (() => {
-                                    if (!row.createdAt) return '—';
-                                    const d = new Date(row.createdAt.replace(' ','T'));
-                                    return isNaN(d.getTime()) ? row.createdAt : d.toLocaleString('ar-EG-u-nu-latn',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit', timeZone: CAIRO_TIME_ZONE });
-                                  })();
-                                  return (
-                                    <tr key={row.id} className={`border-b border-gray-100 ${rowBg} transition-colors`}>
-                                      <td className="px-3 py-2.5 font-mono text-gray-400 border-l border-gray-100 whitespace-nowrap">
-                                        <span className="text-[9px]">#{row.id.slice(-6)}</span>
-                                        <div className="text-[8px] text-gray-300">{i+1}</div>
-                                      </td>
-                                      <td className="px-3 py-2.5 border-l border-gray-100">
-                                        <div className="font-semibold text-gray-800 text-[11px]">{row.customerName || '—'}</div>
-                                        {row.transactionId && <div className="text-[9px] text-blue-500 font-mono">ref: {row.transactionId}</div>}
-                                      </td>
-                                      <td className="px-3 py-2.5 border-l border-gray-100 text-center">
-                                        <span className="font-extrabold text-blue-700 text-[12px]">{row.amount?.toLocaleString('ar-EG-u-nu-latn')}</span>
-                                        <span className="text-[9px] text-gray-400 mr-0.5">{row.currency || 'EGP'}</span>
-                                      </td>
-                                      <td className="px-3 py-2.5 border-l border-gray-100 text-center">
-                                        {payMethodBadge(row.paymentMethod)}
-                                      </td>
-                                      <td className="px-3 py-2.5 border-l border-gray-100 max-w-[180px]">
-                                        <span className="text-[10px] text-gray-600 line-clamp-2">{row.itemTitle || '—'}</span>
-                                      </td>
-                                      <td className="px-3 py-2.5 border-l border-gray-100 text-center text-[10px] text-gray-500">{row.staffName || '—'}</td>
-                                      <td className="px-3 py-2.5 border-l border-gray-100 text-center text-[10px] text-gray-500 whitespace-nowrap" dir="ltr">{fmtDate}</td>
-                                      <td className="px-3 py-2.5 border-l border-gray-100 text-center">
-                                        {isPending
-                                          ? <span className="text-[10px] bg-amber-100 text-amber-700 border border-amber-200 rounded-full px-2 py-0.5 font-bold">⏳ انتظار</span>
-                                          : isFailed
-                                            ? <span className="text-[10px] bg-red-100 text-red-700 border border-red-200 rounded-full px-2 py-0.5 font-bold">✕ ملغي</span>
-                                            : <span className="text-[10px] bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-full px-2 py-0.5 font-bold">✓ محصّل</span>}
-                                      </td>
-                                      <td className="px-3 py-2.5 text-center">
-                                        <div className="flex items-center justify-center gap-1">
-                                          {isPending && canManageFinancial && (
-                                            <>
-                                              <button onClick={() => handleConfirmOrder(row)}
-                                                className="text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded-lg font-bold transition">✓</button>
-                                              <button onClick={() => updateOrderStatus(row.id, 'failed')}
-                                                className="text-[10px] bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-lg font-bold transition">✕</button>
-                                            </>
-                                          )}
-                                          {canManageFinancial && (
-                                            <button onClick={() => setLinkTransferModal({ row })}
-                                              className="text-[10px] bg-violet-600 hover:bg-violet-700 text-white px-2 py-1 rounded-lg font-bold transition" title="ربط بدفعة عميل">
-                                              🔗 ربط
-                                            </button>
-                                          )}
-                                          {isAdmin && (
-                                            <button onClick={() => deleteOrder(row.id)}
-                                              className="text-red-400 hover:text-red-600 p-1 rounded-md hover:bg-red-50 transition" title="حذف">
-                                              <Trash2 size={11} />
-                                            </button>
-                                          )}
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                                {transfers.length === 0 && (
-                                  <tr>
-                                    <td colSpan={9} className="py-12 text-center text-gray-400">
-                                      <div className="flex flex-col items-center gap-2">
-                                        <ArrowUpRight size={28} className="text-gray-200" />
-                                        <span className="text-sm">لا توجد تحويلات مسجّلة بعد</span>
-                                        <button onClick={() => { setTransferForm({ amount:'', currency:'EGP', method:'', senderName:'', senderPhone:'', reference:'', note:'', date:cairoDateOnly(), time:new Date().toTimeString().slice(0,5), status:'paid' }); setShowAddTransfer(true); }}
-                                          className="mt-2 text-xs bg-blue-600 text-white px-4 py-1.5 rounded-full font-bold hover:bg-blue-700 transition">
-                                          + إضافة أول تحويل
-                                        </button>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                )}
-                              </tbody>
-                              {transfers.length > 0 && (
-                                <tfoot>
-                                  <tr className="bg-gradient-to-l from-blue-50 to-white border-t-2 border-blue-100">
-                                    <td colSpan={2} className="px-3 py-2.5 font-bold text-gray-600 text-xs">الإجمالي ({transfers.filter(r=>r.status==='paid').length} محصّل)</td>
-                                    <td className="px-3 py-2.5 text-center font-extrabold text-blue-700 text-[12px]">{totalEGP.toLocaleString('ar-EG-u-nu-latn')} ج</td>
-                                    <td colSpan={6} />
-                                  </tr>
-                                </tfoot>
-                              )}
-                            </table>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })() : (
+                  {orderReviewTab === 'transfers' ? (
+                    <IncomingTransfersTable transfers={ledger.transfers} loading={ledger.loading} canLink={canManageFinancial}
+                      onLink={row => setLinkTransferModal({ row })} onAdd={() => setShowAddTransfer(true)} />
+                  ) : (
                   /* ── Normal Orders Table ── */
                   <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
                     <div className="overflow-x-auto">
@@ -1007,7 +863,7 @@ export default function OrdersTab({
                           </div>
                           <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm flex-shrink-0">
                             <div className="font-bold text-blue-800">التحويل المحدد</div>
-                            <div className="text-blue-600 text-xs mt-1">{transfer.customerName} — {transfer.paymentMethod}{transfer.transactionId ? ` · ref: ${transfer.transactionId}` : ''} — {transfer.amount?.toLocaleString('ar-EG-u-nu-latn')} {transfer.currency}</div>
+                            <div className="text-blue-600 text-xs mt-1">{transfer.senderName || 'غير محدد'} — {transfer.method}{transfer.reference ? ` · #${transfer.reference}` : ''} — {Number(transfer.amount).toLocaleString('ar-EG-u-nu-latn')} {transfer.currency}</div>
                           </div>
                           <p className="text-xs text-gray-500 flex-shrink-0">اختر دفعة عميل قيد المراجعة لربطها بهذا التحويل وتأكيدها تلقائياً.</p>
                           <div className="overflow-y-auto flex-1 space-y-2 min-h-0">
@@ -1018,12 +874,12 @@ export default function OrdersTab({
                                 onClick={async () => {
                                   try {
                                     await mysqlAdmin.adminPost(`/admin/orders/${order.id}/confirm-payment`, { linkedTransferId: transfer.id });
-                                    await Promise.all([reloadOrders(), reloadSubscribers()]);
+                                    await Promise.all([reloadOrders(), reloadSubscribers(), ledger.reload()]);
                                     notify('success', `✅ تم ربط التحويل بدفعة ${order.customerName} (${order.itemTitle}) وتأكيدها`);
                                     setLinkTransferModal(null);
                                     setOrderReviewTab('accepted');
-                                  } catch {
-                                    notify('error', 'تعذر ربط التحويل — قد يكون مستخدَمًا بالفعل لطلب آخر.');
+                                  } catch (error) {
+                                    notify('error', error instanceof Error ? error.message : 'تعذر ربط التحويل');
                                   }
                                 }}
                                 className="w-full text-right border border-gray-200 hover:border-violet-400 hover:bg-violet-50 rounded-xl px-4 py-3 transition group">
@@ -1057,8 +913,7 @@ export default function OrdersTab({
                   ══════════════════════════════════════════ */}
                   {linkOrderModal && (() => {
                     const order = linkOrderModal.row;
-                    const usedTransferIds = new Set(effectiveOrders.map(r => r.linkedTransferId).filter(Boolean));
-                    const availableTransfers = effectiveOrders.filter(r => r.type === 'transfer' && r.status === 'paid' && !usedTransferIds.has(r.id));
+                    const availableTransfers = ledger.transfers.filter(transfer => !transfer.paymentId);
                     return (
                       <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" dir="rtl">
                         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setLinkOrderModal(null)} />
@@ -1084,24 +939,23 @@ export default function OrdersTab({
                                 onClick={async () => {
                                   try {
                                     await mysqlAdmin.adminPost(`/admin/orders/${order.id}/confirm-payment`, { linkedTransferId: transfer.id });
-                                    await Promise.all([reloadOrders(), reloadSubscribers()]);
-                                    notify('success', `✅ تم ربط دفعة ${order.customerName} بتحويل ${transfer.customerName} وتأكيدها`);
+                                    await Promise.all([reloadOrders(), reloadSubscribers(), ledger.reload()]);
+                                    notify('success', `✅ تم ربط دفعة ${order.customerName} بالتحويل #${transfer.reference || ''} وتأكيدها`);
                                     setLinkOrderModal(null);
                                     setOrderReviewTab('accepted');
-                                  } catch {
-                                    notify('error', 'تعذر ربط التحويل — قد يكون مستخدَمًا بالفعل لطلب آخر.');
+                                  } catch (error) {
+                                    notify('error', error instanceof Error ? error.message : 'تعذر ربط التحويل');
                                   }
                                 }}
                                 className="w-full text-right border border-gray-200 hover:border-violet-400 hover:bg-violet-50 rounded-xl px-4 py-3 transition group">
                                 <div className="flex items-center justify-between gap-3">
                                   <div className="min-w-0">
-                                    <div className="font-semibold text-gray-800 text-sm group-hover:text-violet-700 truncate">{transfer.customerName}</div>
-                                    <div className="text-xs text-gray-500 mt-0.5 truncate">{transfer.paymentMethod}{transfer.transactionId ? ` · ref: ${transfer.transactionId}` : ''}</div>
-                                    <div className="text-[10px] text-gray-400 mt-0.5 font-mono">#{transfer.id.slice(-8)}</div>
+                                    <div className="font-semibold text-gray-800 text-sm group-hover:text-violet-700 truncate">{transfer.senderName || 'غير محدد'}</div>
+                                    <div className="text-xs text-gray-500 mt-0.5 truncate">{transfer.method}{transfer.reference ? ` · #${transfer.reference}` : ''}</div>
                                   </div>
                                   <div className="text-right flex-shrink-0">
-                                    <div className="font-extrabold text-blue-700 text-sm">{transfer.amount?.toLocaleString('ar-EG-u-nu-latn')} {transfer.currency}</div>
-                                    <div className="text-[10px] text-gray-400">{cairoDay(transfer.createdAt)}</div>
+                                    <div className="font-extrabold text-blue-700 text-sm">{Number(transfer.amount).toLocaleString('ar-EG-u-nu-latn')} {transfer.currency}</div>
+                                    <div className="text-[10px] text-gray-400">{cairoDay(transfer.receivedOn)}</div>
                                   </div>
                                 </div>
                               </button>
@@ -1118,155 +972,9 @@ export default function OrdersTab({
                     );
                   })()}
 
-                  {/* ══════════════════════════════════════════
-                      ADD TRANSFER MODAL
-                  ══════════════════════════════════════════ */}
                   {showAddTransfer && (
-                    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" dir="rtl">
-                      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowAddTransfer(false)} />
-                      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
-                        {/* Header */}
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-base font-extrabold text-gray-900 flex items-center gap-2">
-                            <ArrowUpRight size={18} className="text-blue-600" /> إضافة تحويل وارد
-                          </h3>
-                          <button onClick={() => setShowAddTransfer(false)} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition">
-                            <XCircle size={18} />
-                          </button>
-                        </div>
-                        <p className="text-xs text-gray-500">سجّل أي تحويل بنكي أو دفعة واردة بدون ربطها بعميل أو كورس معين.</p>
-
-                        {/* Amount + Currency */}
-                        <div className="flex gap-2">
-                          <div className="flex-1">
-                            <label className="text-xs font-semibold text-gray-700 mb-1 block">المبلغ *</label>
-                            <input type="number" min="0" step="0.01"
-                              value={transferForm.amount}
-                              onChange={e => setTransferForm(f => ({...f, amount: e.target.value}))}
-                              placeholder="0.00"
-                              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
-                          </div>
-                          <div className="w-24">
-                            <label className="text-xs font-semibold text-gray-700 mb-1 block">العملة</label>
-                            <select value={transferForm.currency} onChange={e => setTransferForm(f => ({...f, currency: e.target.value as 'EGP'|'SAR'|'USD'}))}
-                              className="w-full border border-gray-200 rounded-xl px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200">
-                              <option value="EGP">ج.م</option>
-                              <option value="SAR">ر.س</option>
-                              <option value="USD">$</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        {/* Payment Method — from finance settings */}
-                        {(() => {
-                          const financeMethods: string[] = paymentBoxes;
-                          if (!transferForm.method && financeMethods.length > 0) {
-                            setTransferForm(f => ({...f, method: financeMethods[0]}));
-                          }
-                          return (
-                            <div>
-                              <label className="text-xs font-semibold text-gray-700 mb-1 block">
-                                وسيلة الدفع * <span className="text-[10px] text-blue-500 font-normal">(من إعدادات الحسابات)</span>
-                              </label>
-                              <select value={transferForm.method} onChange={e => setTransferForm(f => ({...f, method: e.target.value}))}
-                                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200">
-                                {financeMethods.map(m => <option key={m} value={m}>{m}</option>)}
-                              </select>
-                            </div>
-                          );
-                        })()}
-
-                        {/* Sender Name + Phone */}
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="text-xs font-semibold text-gray-700 mb-1 block">اسم المُحوِّل <span className="text-gray-400 font-normal">(اختياري)</span></label>
-                            <input type="text"
-                              value={transferForm.senderName}
-                              onChange={e => setTransferForm(f => ({...f, senderName: e.target.value}))}
-                              placeholder="مثال: محمد أحمد"
-                              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
-                          </div>
-                          <div>
-                            <label className="text-xs font-semibold text-gray-700 mb-1 block">رقم المُحوِّل <span className="text-gray-400 font-normal">(اختياري)</span></label>
-                            <input type="tel"
-                              value={transferForm.senderPhone}
-                              onChange={e => setTransferForm(f => ({...f, senderPhone: e.target.value}))}
-                              placeholder="01xxxxxxxxx"
-                              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-200" />
-                          </div>
-                        </div>
-
-                        {/* Reference */}
-                        <div>
-                          <label className="text-xs font-semibold text-gray-700 mb-1 block">رقم المرجع / الإيصال <span className="text-gray-400 font-normal">(اختياري)</span></label>
-                          <input type="text"
-                            value={transferForm.reference}
-                            onChange={e => setTransferForm(f => ({...f, reference: e.target.value}))}
-                            placeholder="مثال: TXN-123456"
-                            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-200" />
-                        </div>
-
-                        {/* Date + Time */}
-                        <div className="flex gap-2 flex-wrap">
-                          <div className="flex-1 min-w-[120px]">
-                            <label className="text-xs font-semibold text-gray-700 mb-1 block">التاريخ</label>
-                            <input type="date"
-                              value={transferForm.date}
-                              onChange={e => setTransferForm(f => ({...f, date: e.target.value}))}
-                              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
-                          </div>
-                          <div className="w-28">
-                            <label className="text-xs font-semibold text-gray-700 mb-1 block">الوقت</label>
-                            <input type="time"
-                              value={transferForm.time}
-                              onChange={e => setTransferForm(f => ({...f, time: e.target.value}))}
-                              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
-                          </div>
-                        </div>
-
-                        {/* Actions */}
-                        <div className="flex gap-2 pt-1">
-                          <button onClick={() => setShowAddTransfer(false)}
-                            className="flex-1 border border-gray-200 text-gray-600 py-2.5 rounded-xl text-sm font-semibold hover:bg-gray-50 transition">
-                            إلغاء
-                          </button>
-                          <button
-                            disabled={!transferForm.amount || Number(transferForm.amount) <= 0}
-                            onClick={async () => {
-                              if (!transferForm.amount || Number(transferForm.amount) <= 0) return;
-                              const timeStr = transferForm.time || new Date().toTimeString().slice(0,5);
-                              const now = new Date(`${transferForm.date}T${timeStr}`).toISOString();
-                              const senderLabel = [transferForm.senderName, transferForm.senderPhone].filter(Boolean).join(' — ');
-                              const newTransfer: import('../../../types').OrderItem = {
-                                id: `TRF-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`,
-                                type: 'transfer',
-                                itemId: 'transfer',
-                                itemTitle: transferForm.note || (senderLabel ? `تحويل من ${senderLabel}` : 'تحويل وارد'),
-                                amount: Number(transferForm.amount),
-                                currency: transferForm.currency,
-                                paymentMethod: transferForm.method,
-                                customerName: senderLabel || 'غير محدد',
-                                status: transferForm.status,
-                                createdAt: now,
-                                transactionId: transferForm.reference || undefined,
-                                staffId: currentStaff?.id,
-                                staffName: currentStaff?.name || authUser?.displayName || 'Admin',
-                              };
-                              const saved = await addOrder(newTransfer);
-                              if (!saved) {
-                                notify('error', 'تعذر حفظ التحويل في قاعدة البيانات.');
-                                return;
-                              }
-                              setShowAddTransfer(false);
-                              setOrderReviewTab('transfers');
-                              notify('success', `تم تسجيل التحويل بنجاح (${Number(transferForm.amount).toLocaleString('ar-EG-u-nu-latn')} ${transferForm.currency}) ✓`);
-                            }}
-                            className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-white py-2.5 rounded-xl text-sm font-bold transition">
-                            حفظ التحويل
-                          </button>
-                        </div>
-                      </div>
-                    </div>
+                    <AddTransferModal boxes={paymentBoxes} notify={notify} onClose={() => setShowAddTransfer(false)}
+                      onSaved={async () => { setShowAddTransfer(false); setOrderReviewTab('transfers'); await ledger.reload(); }} />
                   )}
                 </div>
               );

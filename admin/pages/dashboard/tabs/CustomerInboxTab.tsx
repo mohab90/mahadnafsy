@@ -2,12 +2,10 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Modal } from '../../../../shared/ui/Modal';
 import { useNavigate } from 'react-router-dom';
 import {
-  Briefcase,
   AlertCircle,
   CheckCircle2,
   Clock,
   ExternalLink,
-  GraduationCap,
   Inbox,
   Mail,
   MessageSquare,
@@ -20,19 +18,18 @@ import {
   Trash2,
   UserCheck,
   X,
-  XCircle,
 } from 'lucide-react';
 
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import { hasPermission, type PermissionKey, type RoleKey } from '../../../constants/permissions';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 import { promptDialog } from '../../../../shared/ui/promptDialog';
-import { paymentMethodLabel } from '../../../../shared/paymentMethods';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
-type InboxSource = 'ticket' | 'contact' | 'refund' | 'join_instructor' | 'join_consultant' | 'join_staff';
+// «المفروض يكون متخصص فقط لمشاكل السايت والسيسيتم»: support tickets and the
+// contact messages that report a problem. Refunds and join-us forms have their own pages.
+type InboxSource = 'ticket' | 'contact';
 type InboxStatus = 'open' | 'pending' | 'done' | 'rejected' | 'closed';
 type InboxPriority = 'urgent' | 'high' | 'normal';
 
@@ -45,31 +42,13 @@ type InboxItem = {
   detail?: string;
   status: InboxStatus;
   createdAt?: string;
-  amount?: string;
   originalStatus?: string;
   raw?: Record<string, unknown>;
-};
-
-type RefundRow = {
-  id: string;
-  subscriber_name?: string;
-  subscriber_email?: string;
-  amount?: number;
-  currency?: string;
-  reason?: string;
-  status?: string;
-  created_at?: string;
-  refund_method?: string;
-  payment_id?: string | null;
 };
 
 const SOURCE_META: Record<InboxSource, { label: string; icon: React.ComponentType<{ size?: number }>; tab: string; tone: string }> = {
   ticket: { label: 'تذكرة دعم', icon: Ticket, tab: 'tickets', tone: 'blue' },
   contact: { label: 'رسالة تواصل', icon: Mail, tab: 'contacts', tone: 'indigo' },
-  refund: { label: 'طلب استرداد', icon: RotateCcw, tab: 'refund_requests', tone: 'amber' },
-  join_instructor: { label: 'طلب محاضر', icon: GraduationCap, tab: 'lecturer_applications', tone: 'emerald' },
-  join_consultant: { label: 'طلب استشاري', icon: Briefcase, tab: 'lecturer_applications', tone: 'violet' },
-  join_staff: { label: 'طلب موظف', icon: Briefcase, tab: 'staff_applications', tone: 'slate' },
 };
 
 const STATUS_LABEL: Record<InboxStatus, string> = {
@@ -103,12 +82,8 @@ function resolveWorkflow(item: InboxItem): { priority: InboxPriority; owner: str
   const ownerBySource: Record<InboxSource, string> = {
     ticket: 'Support',
     contact: 'CX',
-    refund: 'Finance',
-    join_instructor: 'Academic HR',
-    join_consultant: 'Academic HR',
-    join_staff: 'HR',
   };
-  const urgent = !isClosed && (item.source === 'refund' || ageHours >= 24);
+  const urgent = !isClosed && ageHours >= 24;
   const high = !urgent && !isClosed && (item.source === 'ticket' || ageHours >= 8);
   return {
     priority: urgent ? 'urgent' : high ? 'high' : 'normal',
@@ -131,23 +106,14 @@ const isOverdue = (item: InboxItem) => isWaiting(item) && ageHours(item) > 24;
 
 export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   const navigate = useNavigate();
-  const { joinUsApplications, isAdmin, authUser, staffMembers, currentStaff } = useSiteData();
+  const { isAdmin, authUser, staffMembers, currentStaff } = useSiteData();
   const [tickets, setTickets] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
-  const [refunds, setRefunds] = useState<RefundRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState('');
   const [sourceFilter, setSourceFilter] = useState<'all' | InboxSource>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | InboxStatus>('all');
   const [statusOverrides, setStatusOverrides] = useState<Record<string, { status: InboxStatus; originalStatus: string }>>({});
-  // From the context: staffMembers is empty for the ten roles that cannot read
-  // the staff list, and this used to search it alone.
-  const permissionSubject = currentStaff ? {
-    role: currentStaff.role as RoleKey,
-    permissions: currentStaff.permissions as PermissionKey[] | undefined,
-  } : null;
-  const canManageFinancial = isAdmin || hasPermission(permissionSubject, 'manage_financial');
-  const canManageJoinUs = isAdmin || hasPermission(permissionSubject, 'manage_join_us');
 
   // Detail drawer state — opens the full item + all its actions inline (no navigation).
   const [detailItem, setDetailItem] = useState<InboxItem | null>(null);
@@ -155,7 +121,6 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   const [detailLoading, setDetailLoading] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [actionBusy, setActionBusy] = useState(false);
-  const [refundNote, setRefundNote] = useState('');
   const [linkedEntity, setLinkedEntity] = useState<LinkedEntity>(null);
 
   // Canned (admin-managed) reply templates
@@ -182,19 +147,15 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   const loadRemote = useCallback(async () => {
     setLoading(true);
     try {
-      const [inbox, refundRows] = await Promise.all([
-        mysqlAdmin.adminGet<{ tickets: any[]; contacts: any[] }>('/admin/cs/inbox'),
-        canManageFinancial ? mysqlAdmin.adminGet<RefundRow[]>('/admin/finance/refunds') : Promise.resolve([]),
-      ]);
+      const inbox = await mysqlAdmin.adminGet<{ tickets: any[]; contacts: any[] }>('/admin/cs/inbox');
       setTickets(Array.isArray(inbox?.tickets) ? inbox.tickets : []);
       setContacts(Array.isArray(inbox?.contacts) ? inbox.contacts : []);
-      setRefunds(Array.isArray(refundRows) ? refundRows : []);
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر تحميل صندوق خدمة العملاء');
     } finally {
       setLoading(false);
     }
-  }, [canManageFinancial, notify]);
+  }, [notify]);
 
   useEffect(() => { loadRemote(); }, [loadRemote]);
 
@@ -225,36 +186,9 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
       raw: row as unknown as Record<string, unknown>,
     }));
 
-    const refundItems = refunds.map((row) => ({
-      id: String(row.id),
-      source: 'refund' as const,
-      title: 'طلب استرداد مالي',
-      person: row.subscriber_name || row.subscriber_email || 'عميل',
-      contact: row.subscriber_email || '',
-      detail: row.reason || '',
-      status: mapStatus(row.status),
-      originalStatus: row.status,
-      createdAt: row.created_at,
-      amount: `${Math.round(Number(row.amount || 0)).toLocaleString('ar-EG-u-nu-latn')} ${row.currency || 'EGP'}`,
-      raw: row as unknown as Record<string, unknown>,
-    }));
-
-    const joinItems = (canManageJoinUs ? joinUsApplications : []).map((row) => ({
-      id: row.id,
-      source: row.type === 'consultant' ? 'join_consultant' as const : ['instructor', 'lecturer', 'teacher', 'academic'].includes(String(row.type || '').toLowerCase()) ? 'join_instructor' as const : 'join_staff' as const,
-      title: row.type === 'consultant' ? 'طلب انضمام استشاري' : ['instructor', 'lecturer', 'teacher', 'academic'].includes(String(row.type || '').toLowerCase()) ? 'طلب انضمام محاضر' : 'طلب انضمام موظف',
-      person: row.name,
-      contact: row.phone || row.email,
-      detail: row.specialty || row.message || '',
-      status: mapStatus(row.status),
-      originalStatus: row.status,
-      createdAt: row.createdAt,
-      raw: row as unknown as Record<string, unknown>,
-    }));
-
-    return [...ticketItems, ...contactItems, ...refundItems, ...joinItems]
+    return [...ticketItems, ...contactItems]
       .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
-  }, [canManageJoinUs, contacts, joinUsApplications, refunds, tickets]);
+  }, [contacts, tickets]);
 
   const resolvedItems = useMemo(() => items.map((item) => {
     const override = statusOverrides[`${item.source}-${item.id}`];
@@ -265,7 +199,6 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   const openDetail = useCallback(async (item: InboxItem) => {
     setDetailItem(item);
     setReplyText('');
-    setRefundNote('');
     setTicketReplies([]);
     setLinkedEntity(null);
     if (item.source === 'ticket') {
@@ -289,7 +222,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
     }
   }, [notify]);
 
-  const closeDetail = () => { setDetailItem(null); setTicketReplies([]); setReplyText(''); setRefundNote(''); setLinkedEntity(null); };
+  const closeDetail = () => { setDetailItem(null); setTicketReplies([]); setReplyText(''); setLinkedEntity(null); };
 
   const goToCustomer = useCallback(() => {
     if (linkedEntity?.type === 'subscriber' && linkedEntity.client_code) navigate(`/client/${linkedEntity.client_code}`);
@@ -325,31 +258,22 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
           status: originalStatus,
           ...(closedReason ? { closed_reason: closedReason } : {}),
         });
-      } else if (item.source === 'contact') {
+      } else {
         originalStatus = target === 'done' ? 'replied' : 'read';
         await mysqlAdmin.adminPut(`/admin/cs/contact/${encodeURIComponent(item.id)}/status`, {
           status: originalStatus,
         });
-      } else if (item.source === 'refund') {
-        originalStatus = target === 'rejected' ? 'REJECTED' : 'APPROVED';
-        await mysqlAdmin.adminPut(`/admin/finance/refunds/${encodeURIComponent(item.id)}`, {
-          status: originalStatus,
-          notes: refundNote || (target === 'rejected' ? 'مرفوض من صندوق خدمة العملاء' : 'مقبول من صندوق خدمة العملاء'),
-        });
-      } else {
-        originalStatus = target === 'done' ? 'accepted' : target === 'rejected' ? 'rejected' : 'reviewed';
-        await mysqlAdmin.updateJoinUs(item.id, originalStatus);
       }
       setStatusOverrides((current) => ({ ...current, [key]: { status: target, originalStatus } }));
       notify('success', 'تم تحديث حالة العنصر');
-      if (item.source === 'ticket' || item.source === 'refund') loadRemote();
+      if (item.source === 'ticket') loadRemote();
       closeDetail();
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر تحديث الحالة');
     } finally {
       setActionBusy(false);
     }
-  }, [loadRemote, notify, refundNote]);
+  }, [loadRemote, notify]);
 
   // ── Ticket-only actions available from the drawer ──
   const sendTicketReply = useCallback(async (item: InboxItem) => {
@@ -473,8 +397,8 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
               <Inbox size={20} className="text-indigo-600" /> Inbox خدمة العملاء الموحد
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              كل حاجة مستنية رد من العملاء في مكان واحد: تذاكر الدعم، رسائل التواصل، طلبات الاسترداد، وطلبات الانضمام —
-              بدل ما تفتح 4 صفحات وتدوّر في كل واحدة. مرتّبة بالأقدم انتظاراً، وكل إجراء (رد · حالة · تصعيد · تحويل · موافقة/رفض) من نفس الشاشة.
+              مشاكل الموقع والسيستم بس: تذاكر الدعم، ورسائل «مشكلة تقنية» من صفحة التواصل — ومحادثات المساعد الذكي اللي فيها مشكلة.
+              استفسارات الكورسات بتروح للمبيعات، والاسترداد والانضمام ليهم صفحاتهم. مرتّبة بالأقدم انتظاراً، وكل إجراء (رد · حالة · تصعيد · تحويل) من نفس الشاشة.
             </p>
           </div>
           <button
@@ -593,7 +517,6 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-bold text-slate-900">{item.title}</p>
-                      {item.amount && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">{item.amount}</span>}
                     </div>
                     <p className="mt-0.5 text-sm text-slate-600">{item.person} {item.contact ? <span className="text-slate-400">· {item.contact}</span> : null}</p>
                     {item.detail && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500">{item.detail}</p>}
@@ -644,7 +567,6 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">الحالة: {STATUS_LABEL[item.status]}</span>
                   <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${workflow.slaClass}`}>{workflow.slaLabel}</span>
                   <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700">المسؤول: {workflow.owner}</span>
-                  {item.amount && <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">{item.amount}</span>}
                 </div>
 
                 {item.source === 'ticket' && linkedEntity?.type === 'subscriber' && linkedEntity.client_code && (
@@ -656,14 +578,6 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                 {item.detail && (
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">
                     {item.detail}
-                  </div>
-                )}
-
-                {item.source === 'refund' && (
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-lg border border-slate-100 p-2"><span className="text-slate-400">المبلغ:</span> <b>{item.amount}</b></div>
-                    <div className="rounded-lg border border-slate-100 p-2"><span className="text-slate-400">طريقة الاسترداد:</span> {paymentMethodLabel(raw.refund_method) || '—'}</div>
-                    <div className="col-span-2 rounded-lg border border-slate-100 p-2"><span className="text-slate-400">رقم الدفعة:</span> {raw.payment_id || '—'}</div>
                   </div>
                 )}
 
@@ -724,31 +638,13 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                   </div>
                 )}
 
-                {item.source === 'refund' && !isClosed && (
-                  <textarea
-                    value={refundNote}
-                    onChange={(e) => setRefundNote(e.target.value)}
-                    rows={2}
-                    placeholder="ملاحظة إدارية على قرار الاسترداد (اختياري)..."
-                    className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-200"
-                  />
-                )}
               </div>
 
               {/* actions footer — every action, by source */}
               <div className="border-t border-slate-100 bg-slate-50 p-4">
                 <p className="mb-2 text-[11px] font-bold text-slate-400">الإجراءات</p>
                 <div className="flex flex-wrap gap-2">
-                  {item.source === 'refund' ? (
-                    isClosed ? (
-                      <span className="text-sm text-slate-400">تم حسم هذا الطلب — لا توجد إجراءات إضافية.</span>
-                    ) : (
-                      <>
-                        <button disabled={actionBusy} onClick={() => updateItemStatus(item, 'done')} className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"><CheckCircle2 size={15} /> موافقة على الاسترداد</button>
-                        <button disabled={actionBusy} onClick={() => updateItemStatus(item, 'rejected')} className="inline-flex items-center gap-1 rounded-xl bg-rose-600 px-3 py-2 text-sm font-bold text-white hover:bg-rose-700 disabled:opacity-50"><XCircle size={15} /> رفض الطلب</button>
-                      </>
-                    )
-                  ) : item.source === 'ticket' ? (
+                  {item.source === 'ticket' ? (
                     <>
                       {!['pending'].includes(item.status) && <button disabled={actionBusy} onClick={() => updateItemStatus(item, 'pending')} className="inline-flex items-center gap-1 rounded-xl bg-amber-500 px-3 py-2 text-sm font-bold text-white hover:bg-amber-600 disabled:opacity-50"><RefreshCw size={15} /> تحت المتابعة</button>}
                       {!['done'].includes(item.status) && <button disabled={actionBusy} onClick={() => updateItemStatus(item, 'done')} className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"><CheckCircle2 size={15} /> تم الحل</button>}
@@ -780,22 +676,11 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                       </select>
                       {isAdmin && <button disabled={actionBusy} onClick={() => deleteTicketApi(item)} className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-white px-3 py-2 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-50"><Trash2 size={15} /> أرشفة</button>}
                     </>
-                  ) : item.source === 'contact' ? (
+                  ) : (
                     <>
                       {item.status !== 'pending' && <button disabled={actionBusy} onClick={() => updateItemStatus(item, 'pending')} className="inline-flex items-center gap-1 rounded-xl bg-amber-500 px-3 py-2 text-sm font-bold text-white hover:bg-amber-600 disabled:opacity-50"><RefreshCw size={15} /> تعليم كمقروء</button>}
                       {item.status !== 'done' && <button disabled={actionBusy} onClick={() => updateItemStatus(item, 'done')} className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"><CheckCircle2 size={15} /> تم الرد</button>}
                     </>
-                  ) : (
-                    // join_* requests
-                    isClosed ? (
-                      <span className="text-sm text-slate-400">تم حسم هذا الطلب.</span>
-                    ) : (
-                      <>
-                        <button disabled={actionBusy} onClick={() => updateItemStatus(item, 'pending')} className="inline-flex items-center gap-1 rounded-xl bg-amber-500 px-3 py-2 text-sm font-bold text-white hover:bg-amber-600 disabled:opacity-50"><RefreshCw size={15} /> قيد المراجعة</button>
-                        <button disabled={actionBusy} onClick={() => updateItemStatus(item, 'done')} className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"><CheckCircle2 size={15} /> قبول</button>
-                        <button disabled={actionBusy} onClick={() => updateItemStatus(item, 'rejected')} className="inline-flex items-center gap-1 rounded-xl bg-rose-600 px-3 py-2 text-sm font-bold text-white hover:bg-rose-700 disabled:opacity-50"><XCircle size={15} /> رفض</button>
-                      </>
-                    )
                   )}
                 </div>
               </div>

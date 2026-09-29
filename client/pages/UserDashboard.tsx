@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Modal } from '../../shared/ui/Modal';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useVisibleInterval } from '../../shared/useVisibleInterval';
+import { compressImage } from '../../shared/imageCompress';
 import {
   BookOpen, Award, LogOut, User, CheckCircle,
   Bell, Settings, MessageSquare, CreditCard, Play, Edit3,
@@ -472,14 +473,12 @@ const UserDashboard: React.FC = () => {
     }).catch(() => setProofsLoaded(true));
   };
 
-  const handleProofImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleProofImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 4 * 1024 * 1024) { setProofError('الصورة أكبر من 4 ميجابايت، يرجى ضغطها أولاً'); return; }
     setProofImageName(file.name);
-    const reader = new FileReader();
-    reader.onload = ev => setProofImage(ev.target?.result as string || null);
-    reader.readAsDataURL(file);
+    try { setProofImage(await compressImage(file, 'receipt')); setProofError(''); }
+    catch { setProofError('تعذّر قراءة الصورة — جرّب صورة تانية'); }
   };
 
   const handleSubmitProof = async () => {

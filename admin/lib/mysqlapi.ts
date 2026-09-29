@@ -784,7 +784,6 @@ export const mysqlAdmin = {
   }) => post('/admin/refund-requests/by-admin', payload as unknown as AR),
 
   // ── Orders ──
-  saveOrder:         (o: AR) => post('/admin/orders', o),
   updateOrderStatus: (id: string, status: string) => patch(`/admin/orders/${id}`, { status }),
   // Reconcile a customer payment (order) against a bank transfer: confirm + record the link.
   linkOrderTransfer: (orderId: string, transferId: string) => patch(`/admin/orders/${orderId}`, { status: 'paid', linked_transfer_id: transferId }),

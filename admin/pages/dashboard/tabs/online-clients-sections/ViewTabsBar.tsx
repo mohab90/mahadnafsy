@@ -35,6 +35,8 @@ interface Props {
   onOpenSectionTabs?: () => void;
   /** «إعدادات التحصيل» — who collects, how much, and their sheets. */
   onOpenCollectionSettings?: () => void;
+  /** «استيراد عملاء» — a file or a sheet, into the tab the desk picks. */
+  onOpenImport?: () => void;
   /** Where the staff-built tabs draw their buttons: here, beside the rest. */
   customTabsSlot?: (element: HTMLSpanElement | null) => void;
   /** A staff-built tab is open, so none of these is. */
@@ -59,7 +61,7 @@ const TERMINAL = ['finished', 'paused', 'refunded', 'refund_pending'];
 export function ViewTabsBar({
   isDaqqiClientsTab, allCombined, isIntlSub, marketOf, bookedInYear, collOnlineViewTab, setCollOnlineViewTab,
   setCollOnlinePage, filtered, isOnlineManager, isCollection = false, isDaqqiManager, isAdmin, setOmNewSubOpen, onOpenSectionTabs,
-  onOpenCollectionSettings, customTabsSlot, customTabOpen = false,
+  onOpenCollectionSettings, onOpenImport, customTabsSlot, customTabOpen = false,
   daqqiSettingsOpen, setDaqqiSettingsOpen, collOnlineSelected, courses, bundles, staffMembers, housingMap,
   subCsDistributing, setSubCsDistributing, actionSubscribers, reloadSubscribers, notify,
 }: Props) {
@@ -203,6 +205,11 @@ export function ViewTabsBar({
                 {!isDaqqiClientsTab && onOpenCollectionSettings && (
                   <button onClick={() => { onOpenCollectionSettings(); setDaqqiSettingsOpen(false); }} className={menuItem}>
                     👥 التحصيل: التوزيع والشيتات
+                  </button>
+                )}
+                {!isDaqqiClientsTab && onOpenImport && (
+                  <button onClick={() => { onOpenImport(); setDaqqiSettingsOpen(false); }} className={menuItem}>
+                    📥 استيراد عملاء
                   </button>
                 )}
                 <button onClick={exportCsv} className={menuItem}>

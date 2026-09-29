@@ -9,7 +9,7 @@
 // page re-seeds the draft from what the server actually stored.
 
 import { Shield, Camera, Eye, EyeOff, Save } from 'lucide-react';
-import { compressImageFile } from '../../lib/imageBudget';
+import { compressImage } from '../../../shared/imageCompress';
 import { useEffect, useState } from 'react';
 import type { StaffMember, StaffPermission } from '../../types';
 import { mysqlAdmin, mysqlAuth } from '../../lib/mysqlapi';
@@ -177,7 +177,7 @@ export default function StaffSettingsPanel({
                     e.target.value = '';
                     if (!file) return;
                     try {
-                      const dataUrl = await compressImageFile(file, { maxPx: 320, maxBytes: 45_000 });
+                      const dataUrl = await compressImage(file, 'avatar');
                       setDraft(d => d ? { ...d, image: dataUrl } : d);
                     } catch {
                       setSaveMsg('❌ الصورة كبيرة جداً أو تعذّر ضغطها — جرّب صورة أصغر');
