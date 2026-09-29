@@ -162,10 +162,16 @@ async function requestLoginCode({ tenantId, phone }) {
     // left the opposite hole wide open: a customer who already has an account
     // could be sent unlimited codes by anyone who knew their number, because
     // nothing else in the stack counts per number.
+    //
+    // Only codes that left count. A code WhatsApp refused reached nobody, and
+    // counting it locked the customer out for the hour after an outage: on 29
+    // September three refused codes (UltraMsg stopped) made the fourth request
+    // answer «sent» and send nothing.
     const cap = isNewAccount ? SIGNUP_CODES_PER_HOUR : LOGIN_CODES_PER_HOUR;
     const [[recent]] = await pool.query(
       `SELECT COUNT(*) AS n FROM otp_codes
-        WHERE tenant_id=? AND phone=? AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)`,
+        WHERE tenant_id=? AND phone=? AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)
+          AND delivery_status <> 'failed'`,
       [tenantId, normalized]
     );
     if (Number(recent?.n || 0) >= cap) {

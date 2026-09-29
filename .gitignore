@@ -63,3 +63,10 @@ schema.json
 # beside it is something npm leaves behind rather than anything to install
 # from. admin/, client/ and api/ each keep their own, and those are tracked.
 /package-lock.json
+
+# A database dump holds every customer's name, phone and payments. One was
+# downloaded into the project folder on 29 September; it must never reach
+# GitHub. (api/schema.sql is the tracked schema, and it is not a .gz.)
+*.sql.gz
+*_backup*.sql
+mahadnafsy_db_*.sql

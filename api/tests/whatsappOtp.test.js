@@ -109,6 +109,16 @@ test('the per-number throttle covers registered numbers, not only signups', () =
     'the cap must not be nested inside a new-account-only branch');
 });
 
+test('a code WhatsApp refused does not count against the customer', () => {
+  // Counting refused codes locked customers out for the hour after an outage,
+  // and the throttle's answer is «sent» — so they waited for nothing.
+  const start = requestFn.indexOf('SELECT COUNT(*) AS n FROM otp_codes');
+  const count = requestFn.slice(start, requestFn.indexOf('[tenantId, normalized]', start));
+  assert.ok(count.includes("AND delivery_status <> 'failed'"), count);
+  // And a refused code is marked so, which is what the count relies on.
+  assert.ok(requestFn.includes("UPDATE otp_codes SET used=1, delivery_status='failed'"));
+});
+
 test('the subscriber lookup matches a number, not anything ending in it', () => {
   // `LIKE '%<identity>'` matched on a shared tail: a client stored as
   // 966501234567 was adopted by a request for 66501234567 — a different
