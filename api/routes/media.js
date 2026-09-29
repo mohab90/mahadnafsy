@@ -20,7 +20,12 @@ router.post('/api/admin/media/images', requireAuth, requireAdminOrStaff,
     } catch (error) { sendRouteError(res, error); }
   });
 
-router.get('/api/media/:tenant/:file', imageProxyLimiter, (req, res) => {
+// Only a stored picture's own name (lib/mediaImages.js: 24 hex + .webp).
+// Matching any /api/media/:x/:y also took /api/media/lectures/:lectureId —
+// registered later, in routes/lms.js — and answered every paid lecture 404 for
+// the eleven hours after 29 September's release: only the free first lecture,
+// which plays from YouTube directly, still opened.
+router.get('/api/media/:tenant/:file([a-f0-9]{24}\\.webp)', imageProxyLimiter, (req, res) => {
   const file = mediaImagePath(req.params.tenant, req.params.file);
   if (!file) return res.status(404).end();
   // A file's name is its content, so it never changes under its address.
