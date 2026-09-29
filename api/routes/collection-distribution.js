@@ -126,5 +126,33 @@ router.post('/api/admin/online-clients/import', ...guard, async (req, res) => {
   } catch (error) { sendRouteError(res, error); }
 });
 
+// The old-data screens — «داتا قديمة» in the Dokki tab, «محلي قديم» and «دولي
+// قديم» online. They saved a file row by row: no duplicate check across it,
+// the course found by a substring, and in the Dokki tab no price at all. The
+// Dokki upload of 29 September came in that way — 502 clients, numbers glued
+// together or short of their zero, every balance empty. They go through the
+// same import as a collection sheet now, open to whoever may add clients, with
+// new clients handed to collection by the distribution rules as before.
+const OLD_DATA_IMPORT = {
+  daqqi: { kind: 'active', branch: 'DAQQI' },
+  old_local: { kind: 'old_local', branch: 'ONLINE_EGYPT' },
+  old_intl: { kind: 'old_intl', branch: 'ONLINE_ABROAD' },
+};
+
+router.post('/api/admin/old-data/import', requireAuth, requireAdminOrStaff, requirePermission('manage_subscribers'), async (req, res) => {
+  try {
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows.slice(0, 5000) : [];
+    if (!rows.length) return res.status(400).json({ error: 'مفيش صفوف' });
+    const target = OLD_DATA_IMPORT[String(req.body?.destination || '')];
+    if (!target) return res.status(400).json({ error: 'اختار العملاء هيظهروا فين' });
+    const result = await importCollectionRows({
+      tenantId: req.tenantId, staff: null, autoAssign: true, ...target, rows,
+      source: String(req.body?.source || 'داتا قديمة').trim().slice(0, 100),
+      actor: req.user?.email || req.staffRecord?.name || 'old-data-import',
+    });
+    res.json(result);
+  } catch (error) { sendRouteError(res, error); }
+});
+
 module.exports = router;
 module.exports.requireCollectionLead = requireCollectionLead;

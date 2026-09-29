@@ -1,16 +1,16 @@
 import React from 'react';
-import type { Course, SubscriberItem } from '../../../../types';
+import type { SubscriberItem } from '../../../../types';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
-import OldDataImportPanel, { type OldDataRow } from '../online/OldDataImportPanel';
-import type { SubscriberSavePayload } from '../onlineClientsUtils';
+import OldDataImportPanel from '../online/OldDataImportPanel';
+import type { SheetClientRow } from '../../../../../shared/sheetImport';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type ViewTabKey = 'active'|'real-local'|'real-saudi'|'real-intl'|'finished'|'paused'|'refunded'|'old_data'|'old_local'|'old_intl'|'booked2024'|'booked2025';
+type ImportResult = { created: number; assigned: number; skipped: number; others: number; failed: number };
 
 interface Props {
   collOnlineViewTab: ViewTabKey;
   isDaqqiClientsTab: boolean;
-  courses: Course[];
   notify: NotifyFn;
   setSalesOwnSubscribers: React.Dispatch<React.SetStateAction<SubscriberItem[]>>;
 }
@@ -23,61 +23,19 @@ const mergeFreshSubscribers = (fresh: SubscriberItem[], setSalesOwnSubscribers: 
 };
 
 /**
- * One row of an old online sheet as a subscriber in «محلي قديم» or «دولي قديم».
- * (A collection officer's sheet goes through the server's import instead —
- * api/lib/collectionSheets.js — which reads a row the same way.)
+ * The file's rows through the server's import (api/lib/collectionSheets.js),
+ * as a collection sheet goes: nobody on the system twice, the course or track
+ * matched by the catalogue, the sheet's price and remaining kept on the client.
+ * These screens saved row by row before, and the Dokki one sent no price.
  */
-export function oldOnlineSubscriber(row: OldDataRow, source: string, kind: 'old_local' | 'old_intl', courses: Course[]): SubscriberSavePayload {
-  const subBranch = kind === 'old_local' ? 'ONLINE_EGYPT' : 'ONLINE_ABROAD';
-  const matchedCourse = row._course
-    ? courses.find(course => (course.titleAr || course.title || '').includes(row._course) || row._course.includes(course.titleAr || course.title || ''))
-    : null;
-  const enrolledCourseIds = matchedCourse ? [matchedCourse.id] : [];
-  const paid = Number(row._paid) || 0;
-  const expected = Number(row._expected) || 0;
-  // A refund in the old sheet is recorded as a note rather than
-  // netted off the collected amount: quietly reducing what the
-  // import says was paid would make the historic figures disagree
-  // with the sheet they came from, and a refund needs a decision
-  // trail, not an adjusted number. Same for a remaining balance
-  // that disagrees with expected − paid — worth seeing, not worth
-  // silently overwriting.
-  const refund = Number(row._refund) || 0;
-  const statedRemaining = row._remaining === '' ? null : Number(row._remaining);
-  const computedRemaining = expected - paid;
-  const extraNotes = [
-    row._notes,
-    refund > 0 ? `استرداد سابق: ${refund}` : '',
-    statedRemaining !== null && Number.isFinite(statedRemaining) && statedRemaining !== computedRemaining
-      ? `المتبقي في الملف ${statedRemaining} بينما الحساب ${computedRemaining}`
-      : '',
-    row._cert ? `شهادة: ${row._cert}` : '',
-    row._attendance ? `حضور: ${row._attendance}` : '',
-  ].filter(Boolean).join(' | ');
-  // The sheet's price and what it says was collected are the client's price
-  // for the course and «مدفوع قبل السيستم»: in every balance, never revenue.
-  // They were sent as a payment, which the server never accepts from a
-  // subscriber save — so both were dropped and the course showed at the
-  // catalogue price, fully unpaid.
-  return {
-    name: row._name,
-    phone: row._phone,
-    email: row._email || '',
-    branch: subBranch,
-    status: 'active',
-    clientStatus: kind,
-    notes: extraNotes,
-    enrolledCourseIds,
-    source,
-    ...(matchedCourse && expected > 0 ? { customPrices: { [matchedCourse.id]: expected } } : {}),
-    ...(matchedCourse && paid > 0 ? { priorPaid: { [matchedCourse.id]: paid } } : {}),
-  } satisfies SubscriberSavePayload;
-}
+const importOldData = (destination: 'daqqi' | 'old_local' | 'old_intl') => async (rows: SheetClientRow[], source: string) => {
+  const result = await mysqlAdmin.adminPost<ImportResult>('/admin/old-data/import', { destination, source, rows });
+  return { created: result.created, assigned: result.assigned, dupes: result.skipped, others: result.others, errors: result.failed };
+};
 
 export function OldDataImportSection({
   collOnlineViewTab,
   isDaqqiClientsTab,
-  courses,
   notify,
   setSalesOwnSubscribers,
 }: Props) {
@@ -92,27 +50,7 @@ export function OldDataImportSection({
           defaultSource="داتا قديمة دقي"
           accent="indigo"
           showAttendanceCol
-          importRow={async (row, source) => {
-            const matchedCourse = row._course
-              ? courses.find(course => (course.titleAr || course.title || '').includes(row._course) || row._course.includes(course.titleAr || course.title || ''))
-              : null;
-            const enrolledCourseIds = matchedCourse ? [matchedCourse.id] : [];
-            const extraNotes = [
-              row._notes,
-              row._cert ? `شهادة: ${row._cert}` : '',
-              row._attendance ? `حضور: ${row._attendance}` : '',
-            ].filter(Boolean).join(' | ');
-            await mysqlAdmin.saveSubscriber({
-              name: row._name,
-              phone: row._phone,
-              email: row._email || '',
-              branch: 'DAQQI',
-              status: 'active',
-              notes: extraNotes,
-              enrolledCourseIds,
-              source,
-            } satisfies SubscriberSavePayload);
-          }}
+          importRows={importOldData('daqqi')}
           onImported={async created => {
             notify('success', `تم استيراد ${created} عميل`);
             try {
@@ -140,9 +78,7 @@ export function OldDataImportSection({
           <OldDataImportPanel
             defaultSource="داتا قديمة أونلاين"
             accent="violet"
-            importRow={async (row, source) => {
-              await mysqlAdmin.saveSubscriber(oldOnlineSubscriber(row, source, collOnlineViewTab, courses));
-            }}
+            importRows={importOldData(collOnlineViewTab)}
             onImported={async created => {
               notify('success', `تم استيراد ${created} عميل`);
               try {

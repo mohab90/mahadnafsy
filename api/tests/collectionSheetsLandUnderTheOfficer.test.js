@@ -13,12 +13,13 @@ const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8
 
 // The import with its collaborators replaced: the enrolment and lead steps are
 // recorded rather than run, so the test is about what lands where.
-function loadImport() {
+function loadImport(extra = {}) {
   const granted = [];
   const stubs = {
     '../lib/entitlements': { grantCourseSelections: async args => { granted.push(args); return { granted: 1 }; } },
     '../lib/leadMatching': { findLeadByContact: async () => null },
     '../lib/leadState': { transitionLead: async () => {} },
+    ...extra,
   };
   const previous = {};
   for (const [rel, exports] of Object.entries(stubs)) {
@@ -72,7 +73,8 @@ test('a sheet reads the way the old-data screen reads a file', () => {
     assert.equal(row._name, 'Ali, M');
     assert.equal(row._phone, '01012345678');
     assert.equal(row._course, 'دبلومة اللايف كوتش');
-    assert.equal(row._paid, '1,500');
+    assert.equal(row._paid, '1500', 'the amount as a number, the thousands comma gone');
+    assert.equal(row._expected, '3000');
     assert.deepEqual(lib.parseCsv('a;b\n"x;y";2'), [['a', 'b'], ['x;y', '2']], 'the separator is detected');
   } finally { restore(); }
 });
@@ -144,10 +146,52 @@ test('linked sheets sync on demand and every half hour; an upload goes through t
   const modal = read('admin/pages/dashboard/tabs/online-clients-sections/CollectionSettingsModal.tsx');
   assert.match(modal, /\/admin\/collection-sheets\/\$\{encodeURIComponent\(id\)\}\/sync/);
   assert.doesNotMatch(modal, /saveSubscriber/, 'no row-by-row save that cannot see duplicates');
-  // The online old-data import keeps its sheet price and collected amount.
+  // The old-data screens go through the same import, prices and all.
   const oldImport = read('admin/pages/dashboard/tabs/online-clients-sections/OldDataImportSection.tsx');
-  assert.match(oldImport, /priorPaid: \{ \[matchedCourse\.id\]: paid \}/);
-  assert.doesNotMatch(oldImport, /paymentHistory/);
+  assert.match(oldImport, /'\/admin\/old-data\/import'/);
+  assert.doesNotMatch(oldImport, /saveSubscriber|paymentHistory/);
+});
+
+test('a row lands with the sheet\'s remaining, its date, its numbers cleaned, and an officer by the rules', async () => {
+  const picked = [];
+  const { lib, granted, restore } = loadImport({
+    '../lib/collectionDistribution': {
+      loadCollectionConfig: async () => ({ sheets: [] }),
+      pickCollectionOfficer: async (conn, tenantId, options) => { picked.push(options); return { id: 'cs-9', name: 'دعاء' }; },
+      subscriberMarket: ({ branch }) => (branch === 'ONLINE_ABROAD' ? 'intl' : 'local'),
+    },
+  });
+  try {
+    const { db, inserted } = fakeDb([{ id: 's-old', phone: '1050954780', email: null, assigned_cs_id: null }]);
+    const result = await lib.importCollectionRows({
+      tenantId: 't1', staff: null, autoAssign: true, kind: 'active', branch: 'DAQQI', source: 'داتا قديمة دقي',
+      rows: [
+        // Price 4600, 1000 collected, 2900 still owed: 1700 was paid before the system.
+        { _name: 'جديدة', _phone: '1009441632', _date: '2026-01-08', _course: 'دبلومة اللايف كوتش',
+          _expected: '4600', _paid: '1000', _remaining: '2900', _otherPhones: '+249999147035', _issues: ['رقم مش سليم: 114785023 (ناقص أو زيادة أرقام)'] },
+        // Glued to a number already on the system: that client, not a new one.
+        { _name: 'موجودة', _phone: '01558282609-01050954780' },
+        { _name: 'بكرة', _phone: '01011119999', _date: '2999-01-01' },
+      ],
+    }, db);
+    assert.deepEqual(result, { created: 2, assigned: 0, skipped: 1, others: 0, failed: 0 });
+    const columns = ['id', 'tenant_id', 'client_code', 'name', 'email', 'phone', 'branch', 'branch_id', 'notes',
+      'assigned_cs_id', 'assigned_cs_name', 'crm_json', 'source', 'created_at'];
+    const [first, second] = inserted.map(row => Object.fromEntries(columns.map((column, index) => [column, row[index]])));
+    assert.equal(first.phone, '01009441632', 'the zero Excel dropped is back');
+    assert.equal(first.branch, 'DAQQI');
+    assert.equal(first.created_at, '2026-01-08 12:00:00');
+    assert.equal(second.created_at, null, 'a date ahead of today is not a date');
+    assert.equal(first.assigned_cs_id, 'cs-9');
+    assert.deepEqual(picked, [{ market: 'local' }, { market: 'local' }]);
+    const crm = JSON.parse(first.crm_json);
+    assert.deepEqual(crm.customPrices, { 'c-life': 4600 });
+    assert.deepEqual(crm.priorPaid, { 'c-life': 1700 });
+    assert.match(first.notes, /أرقام تانية: \+249999147035/);
+    assert.match(first.notes, /رقم مش سليم: 114785023/);
+    assert.match(first.notes, /المحصل في الملف 1000 والمتبقي 2900/);
+    assert.deepEqual(granted.map(grant => grant.selections), [[{ courseId: 'c-life' }]]);
+  } finally { restore(); }
 });
 
 test('an officer\'s cap counts from when each client reached them', () => {

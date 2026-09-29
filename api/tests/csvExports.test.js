@@ -224,14 +224,16 @@ test('what the writer writes, the leads import reads back', () => {
 const IMPORT_SCREENS = [
   ['admin/pages/dashboard/tabs/leads/CsvImportButton.tsx', 'استيراد CSV on the leads desk'],
   ['admin/pages/dashboard/tabs/leads/ArchiveTab.tsx', 'أرشيف الليدز'],
-  ['admin/pages/dashboard/tabs/online/OldDataImportPanel.tsx', 'استيراد البيانات القديمة'],
+  // The old-data screen reads through shared/sheetImport.ts, which reads a CSV
+  // through the shared reader beside it.
+  ['shared/sheetImport.ts', 'استيراد البيانات القديمة'],
 ];
 
 test('every import screen reads through the shared reader, not its own split', () => {
   const all = browserSources();
   for (const [rel, label] of IMPORT_SCREENS) {
     const source = read(rel);
-    assert.match(source, /import \{ parseCsvRows, detectCsvDelimiter \} from '[^']*shared\/csv'/,
+    assert.match(source, /import \{ parseCsvRows, detectCsvDelimiter \} from '(\.\/|[^']*shared\/)csv'/,
       `${label} does not use the shared reader`);
     assert.ok(!/\.split\(separator\)|\.split\(delim\)|\.split\(','\)/.test(source),
       `${label} still cuts a row into fields by splitting — a quoted delimiter is data`);

@@ -583,7 +583,6 @@ export default function OnlineClientsTab({
                   <OldDataImportSection
                     collOnlineViewTab={collOnlineViewTab}
                     isDaqqiClientsTab={isDaqqiClientsTab}
-                    courses={courses}
                     notify={notify}
                     setSalesOwnSubscribers={setSalesOwnSubscribers}
                   />
