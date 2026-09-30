@@ -12,7 +12,7 @@ const { DEFAULT_TENANT_ID } = require('../../lib/tenantScope');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { itemBalances, itemKey, setAgreedPrice, setPriorPaid } = require('../../lib/agreedPrice');
 const { cairoDayStartUtc, isValidDateOnly } = require('../../lib/dates');
-const { isCourseManager, removeClientCourse, transferClientCourse } = require('../../lib/clientCourseActions');
+const { isCourseManager, removeClientCourse, transferClientCourse, upgradeClientCourse } = require('../../lib/clientCourseActions');
 const { actorName } = require('../../lib/clientHistory');
 const { uuidv4 } = require('../../lib/id');
 
@@ -331,7 +331,9 @@ router.post('/api/admin/subscribers/:id/course-access', requireAuth, requireAdmi
 // client's history will say.
 const courseActionRoute = (action, run) => async (req, res) => {
   const role = String(req.staffRecord?.role || '').toLowerCase();
-  if (!isCourseManager(req) && !(action === 'transfer' && role === 'accountant')) {
+  // An upgrade is part of taking a payment, and whoever records payments makes
+  // it (manage_payments, on the route); deleting and moving are the managers'.
+  if (action !== 'upgrade' && !isCourseManager(req) && !(action === 'transfer' && role === 'accountant')) {
     return res.status(403).json({ error: action === 'remove' ? 'مسح كورس من عميل للمديرين بس' : 'تحويل الكورس للمديرين والحسابات بس', code: 'MANAGERS_ONLY' });
   }
   const tenantId = req.tenantId || DEFAULT_TENANT_ID;
@@ -358,6 +360,13 @@ router.post('/api/admin/subscribers/:id/course-remove', requireAuth, requireAdmi
 
 router.post('/api/admin/subscribers/:id/course-transfer', requireAuth, requireAdminOrStaff, requirePermission('manage_subscribers'),
   courseActionRoute('transfer', (conn, args) => transferClientCourse(conn, {
+    ...args, item: args.body.item, toItem: args.body.toItem, price: args.body.price ?? null,
+  })));
+
+// «عند حجز او دفع … تكمله يعني العميل يحول الكورس الصغير لمسار»: the booking
+// dialog calls this, then records the payment on the track.
+router.post('/api/admin/subscribers/:id/course-upgrade', requireAuth, requireAdminOrStaff, requirePermission('manage_payments'),
+  courseActionRoute('upgrade', (conn, args) => upgradeClientCourse(conn, {
     ...args, item: args.body.item, toItem: args.body.toItem, price: args.body.price ?? null,
   })));
 

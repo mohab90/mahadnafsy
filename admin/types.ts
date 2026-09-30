@@ -194,6 +194,8 @@ export interface CommunicationRecord {
   notes: string;
   outcome?: string;
   nextFollowUp?: string;
+  /** Who recorded it — the server writes it on every contact. */
+  staffName?: string;
 }
 
 export interface SubscriberCertificate {

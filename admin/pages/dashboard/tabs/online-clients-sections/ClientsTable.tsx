@@ -131,8 +131,7 @@ export function ClientsTable({
             {vc.status     && <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] relative select-none" style={cw['status']?{width:cw['status']}:{}}>الحالة<span onMouseDown={e=>startColResize('status',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
             {vc.sales      && <th className="text-right px-2 py-2 border border-gray-200 font-semibold relative select-none" style={cw['sales']?{width:cw['sales']}:{}}>{isDaqqiClientsTab ? 'رسيبشن الدقي' : 'المسئول'}<span onMouseDown={e=>startColResize('sales',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
             {isDaqqiClientsTab && <th className="text-center px-1 py-2 border border-indigo-200 bg-indigo-50 font-semibold text-[11px] whitespace-nowrap text-indigo-700">التسكين والروند</th>}
-            {vc.followup   && <th className="text-right px-2 py-2 border border-gray-200 font-semibold whitespace-nowrap relative select-none" style={cw['followup']?{width:cw['followup']}:{}}>موعد المتابعة<span onMouseDown={e=>startColResize('followup',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
-            {vc.contact    && <th className="text-right px-2 py-2 border border-gray-200 font-semibold relative select-none" style={cw['contact']?{width:cw['contact']}:{}}>ملاحظات التواصل<span onMouseDown={e=>startColResize('contact',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
+            {vc.contact    && <th className="text-right px-2 py-2 border border-gray-200 font-semibold relative select-none min-w-[210px]" style={cw['contact']?{width:cw['contact']}:{}}>نتيجة التواصل والمتابعة<span onMouseDown={e=>startColResize('contact',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
             <th className="text-right px-2 py-2 border border-gray-200 font-semibold">إجراءات</th>
           </tr>
         </thead>
@@ -165,7 +164,9 @@ export function ClientsTable({
             const instSoon   = !!(nextInst && !instOverdue && !instToday && nextInst.dueDate <= in3daysOnlineStr);
             const comms = row.communications || [];
             const lastComm = comms.length > 0 ? [...comms].sort((a,b)=>b.date.localeCompare(a.date))[0] : null;
-            const commActor = lastComm ? (staffMembers.find(s => s.id === (lastComm as {actorId?:string}).actorId)?.name || (lastComm as {actorName?:string}).actorName || '') : '';
+            // Saved contacts carry staffName; this read only actorId/actorName, so
+            // the column never said who had called.
+            const commActor = lastComm ? (lastComm.staffName || staffMembers.find(s => s.id === (lastComm as {actorId?:string}).actorId)?.name || (lastComm as {actorName?:string}).actorName || '') : '';
             const rowSpan = Math.max(courseRows.length, 1);
             const instCell = (
               nextInst ? (
@@ -269,15 +270,16 @@ export function ClientsTable({
             const followupOverdue = !!(followupDate && followupDate < todayStr2);
             const followupToday = !!(followupDate && followupDate === todayStr2);
             const followupCell = followupDate ? (
-              <div className={`text-[10px] font-semibold rounded-lg px-1.5 py-1 border whitespace-nowrap ${followupOverdue ? 'bg-red-50 border-red-200 text-red-700' : followupToday ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-indigo-50 border-indigo-200 text-indigo-700'}`}>
-                {followupOverdue ? '🔴' : followupToday ? '🟡' : '📅'} {followupDate.slice(0, 10)}
+              <div className={`mt-1 inline-block text-[10px] font-semibold rounded-lg px-1.5 py-0.5 border whitespace-nowrap ${followupOverdue ? 'bg-red-50 border-red-200 text-red-700' : followupToday ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-indigo-50 border-indigo-200 text-indigo-700'}`}>
+                {followupOverdue ? '🔴' : followupToday ? '🟡' : '📅'} المتابعة: {followupDate.slice(0, 10)}
               </div>
-            ) : <span className="text-gray-300 text-[10px]">—</span>;
-            const contactCell = lastComm ? (
-              <div>
-                {commActor && <div className="font-semibold text-gray-700 whitespace-nowrap">{commActor} :</div>}
-                <div className="text-gray-600">{lastComm.notes?.slice(0,40) || lastComm.outcome || '—'}</div>
-                <div className="text-gray-400 mt-0.5">{cairoDay(lastComm.date)}</div>
+            ) : null;
+            const contactCell = lastComm || followupCell ? (
+              <div className="space-y-0.5">
+                {lastComm?.outcome && <div className="font-extrabold text-emerald-700">{lastComm.outcome}</div>}
+                {lastComm?.notes && <div className="text-gray-600 line-clamp-2" title={lastComm.notes}>{lastComm.notes}</div>}
+                {lastComm && <div className="text-gray-400">{commActor ? `${commActor} · ` : ''}{cairoDay(lastComm.date)}</div>}
+                {followupCell}
               </div>
             ) : <span className="text-gray-300">—</span>;
             const actionsCell = (
@@ -374,7 +376,6 @@ export function ClientsTable({
                 {vc.status     && <td className="px-2 py-2 border border-gray-200 text-center">{statusCell}</td>}
                 {vc.sales      && <td className="px-3 py-2 border border-gray-200 text-xs">{salesCell}</td>}
                 {isDaqqiClientsTab && <td className="px-2 py-2 border border-indigo-100 text-center">{housingCell}</td>}
-                {vc.followup   && <td className="px-2 py-2 border border-gray-200 text-[10px]">{followupCell}</td>}
                 {vc.contact    && <td className="px-2 py-2 border border-gray-200 text-[10px]">{contactCell}</td>}
                 <td className="px-1 py-1.5 border border-gray-200">{actionsCell}</td>
               </tr>
@@ -454,7 +455,6 @@ export function ClientsTable({
                   {ci === 0 && vc.status && <td rowSpan={rowSpan} className="px-2 py-2 border border-gray-200 text-center align-top">{statusCell}</td>}
                   {ci === 0 && vc.sales && <td rowSpan={rowSpan} className="px-3 py-2 border border-gray-200 text-xs align-top">{salesCell}</td>}
                   {ci === 0 && isDaqqiClientsTab && <td rowSpan={rowSpan} className="px-2 py-2 border border-indigo-100 text-center align-top">{housingCell}</td>}
-                  {ci === 0 && vc.followup && <td rowSpan={rowSpan} className="px-2 py-2 border border-gray-200 text-[10px] align-top">{followupCell}</td>}
                   {ci === 0 && vc.contact && <td rowSpan={rowSpan} className="px-2 py-2 border border-gray-200 text-[10px] align-top">{contactCell}</td>}
                   {ci === 0 && <td rowSpan={rowSpan} className="px-1 py-1.5 border border-gray-200 align-top w-[90px]">{actionsCell}</td>}
                 </tr>

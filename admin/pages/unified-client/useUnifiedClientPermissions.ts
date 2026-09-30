@@ -30,10 +30,16 @@ export function useUnifiedClientPermissions(params: {
     permissions: currentStaff.permissions as PermissionKey[] | undefined,
   } : null, 'manage_financial'));
 
+  // «زر صلاحيه الكورسات وتفاصيل الكورسات لازم يكون مقفول عند موظفين التحصيل»:
+  // the table hid the button, and the client page still opened the whole
+  // courses tab — prices, access, locking — to collection.
+  const canSeeCourses = String(currentStaff?.role || '').toLowerCase() !== 'collection';
+
   return {
     currentStaff,
     isOnlineManager,
     isCollectionManager,
     canManageCourseAccess,
+    canSeeCourses,
   };
 }

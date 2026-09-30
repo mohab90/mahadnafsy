@@ -14,7 +14,7 @@ export type ContactEntry = {
 };
 
 const CONTACT_TYPES = ['call', 'whatsapp', 'meeting', 'payment_followup', 'note'] as const;
-const OUTCOMES = ['رد وهيدفع', 'رد ومحتاج متابعة', 'مردش', 'الرقم مقفول', 'طلب يتكلم بعدين', 'اتحلت المشكلة'];
+const OUTCOMES = ['رد وهيدفع', 'رد ومحتاج متابعة', 'مردش', 'الرقم مقفول', 'طلب يتكلم بعدين', 'اتحلت المشكلة', 'مصمم على الاسترداد', 'وافق يكمل'];
 
 export function useClientContacts(subscriberId: string | null | undefined) {
   const [entries, setEntries] = useState<ContactEntry[]>([]);
@@ -78,8 +78,10 @@ export function ClientContactDialog({ subscriber, notify, onClose, onSaved }: {
   const [draft, setDraft] = useState({ type: 'call', date: cairoDateTimeInput(), notes: '', outcome: '', nextFollowUp: '' });
   const [saving, setSaving] = useState(false);
 
+  // «مش لازم اكتب في التواصل مدام اخترت نتيجه»: a result is enough.
+  const ready = !!draft.notes.trim() || !!draft.outcome;
   const save = async () => {
-    if (!draft.notes.trim()) return;
+    if (!ready) return;
     setSaving(true);
     try {
       const result = await mysqlAdmin.adminPost<{ communication: ContactEntry; updatedAt?: string }>(
@@ -106,20 +108,26 @@ export function ClientContactDialog({ subscriber, notify, onClose, onSaved }: {
             </button>
           ))}
         </div>
+        <div>
+          <span className="mb-1 block text-[11px] font-bold text-gray-500">نتيجة التواصل</span>
+          <div className="flex flex-wrap gap-1.5">
+            {OUTCOMES.map(outcome => (
+              <button key={outcome} type="button" onClick={() => setDraft(d => ({ ...d, outcome: d.outcome === outcome ? '' : outcome }))}
+                className={`rounded-xl border px-2.5 py-1 text-[11px] font-bold transition ${draft.outcome === outcome ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-gray-200 bg-white text-gray-600 hover:border-emerald-300'}`}>
+                {outcome}
+              </button>
+            ))}
+          </div>
+        </div>
         <textarea value={draft.notes} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))} rows={3}
-          placeholder="اتقال إيه؟ (مطلوب)" className="w-full resize-none rounded-xl border border-gray-200 px-3 py-2" />
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <label className="block"><span className="mb-1 block text-[11px] font-bold text-gray-500">النتيجة</span>
-            <select value={draft.outcome} onChange={e => setDraft(d => ({ ...d, outcome: e.target.value }))} className="w-full rounded-xl border border-gray-200 px-2 py-2">
-              <option value="">—</option>
-              {OUTCOMES.map(outcome => <option key={outcome} value={outcome}>{outcome}</option>)}
-            </select></label>
+          placeholder={draft.outcome ? 'تفاصيل (اختياري)' : 'اتقال إيه؟ — أو اختار نتيجة من فوق'} className="w-full resize-none rounded-xl border border-gray-200 px-3 py-2" />
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <label className="block"><span className="mb-1 block text-[11px] font-bold text-gray-500">وقت التواصل</span>
             <input type="datetime-local" value={draft.date} onChange={e => setDraft(d => ({ ...d, date: e.target.value }))} className="w-full rounded-xl border border-gray-200 px-2 py-2" /></label>
           <label className="block"><span className="mb-1 block text-[11px] font-bold text-gray-500">المتابعة الجاية</span>
             <input type="date" value={draft.nextFollowUp} onChange={e => setDraft(d => ({ ...d, nextFollowUp: e.target.value }))} className="w-full rounded-xl border border-gray-200 px-2 py-2" /></label>
         </div>
-        <button type="button" disabled={saving || !draft.notes.trim()} onClick={() => void save()}
+        <button type="button" disabled={saving || !ready} onClick={() => void save()}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-2.5 font-bold text-white hover:bg-blue-700 disabled:opacity-50">
           <Send size={14} /> {saving ? 'جارٍ الحفظ…' : 'سجّل التواصل'}
         </button>

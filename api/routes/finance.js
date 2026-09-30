@@ -1421,7 +1421,20 @@ router.get('/api/admin/finance/refunds', requireAuth, requireAdminOrStaff, requi
              esc.name AS escalated_by_name,
              blame.name AS blamed_staff_name,
              p.course_id, p.created_at AS booking_date,
-             c.title AS course_title,
+             -- «ليه اسم الكورس مش بيظهر»: a refund for a track named no course,
+             -- and one with no payment named nothing. The course or the track,
+             -- from the payment, else from what the request was opened for.
+             COALESCE(NULLIF(c.title_ar, ''), c.title, b.title) AS course_title,
+             s.assigned_cs_id,
+             -- The last contact about it, since it was asked for (the client's
+             -- contact log — «ويتسجل في سجل التواصل … النتيجه والحاله»).
+             (SELECT JSON_OBJECT('outcome', cm.outcome, 'notes', LEFT(cm.notes, 300), 'at', cm.date, 'by', cst.name, 'type', cm.type)
+                FROM communications cm
+                LEFT JOIN staff cst ON cst.id = cm.staff_id AND cst.tenant_id = cm.tenant_id
+               WHERE cm.tenant_id = rr.tenant_id AND cm.subscriber_id = rr.subscriber_id AND cm.date >= rr.created_at
+               ORDER BY cm.date DESC LIMIT 1) AS last_contact,
+             (SELECT COUNT(*) FROM communications cm
+               WHERE cm.tenant_id = rr.tenant_id AND cm.subscriber_id = rr.subscriber_id AND cm.date >= rr.created_at) AS contacts_count,
              -- Both figures are shown side by side to whoever approves the
              -- refund, so both have to mean the same thing.
              --
@@ -1467,10 +1480,16 @@ router.get('/api/admin/finance/refunds', requireAuth, requireAdminOrStaff, requi
       LEFT JOIN staff blame ON blame.id = rr.blamed_staff_id AND blame.tenant_id=rr.tenant_id
       LEFT JOIN payments p ON p.id = rr.payment_id AND p.tenant_id=rr.tenant_id
       LEFT JOIN courses c ON c.id = COALESCE(p.course_id, rr.course_item) AND c.tenant_id=rr.tenant_id
+      LEFT JOIN bundles b ON b.id = COALESCE(p.bundle_id, IF(rr.course_item LIKE 'bundle:%', SUBSTRING(rr.course_item, 8), NULL))
+                         AND b.tenant_id=rr.tenant_id
       WHERE rr.tenant_id=? AND rr.deleted_at IS NULL${scopeSql}
-      ORDER BY rr.created_at DESC LIMIT 200
+      ORDER BY rr.created_at DESC LIMIT 500
     `, [req.tenantId, ...scopeParams]);
-    res.json(rows);
+    res.json(rows.map(row => {
+      let lastContact = null;
+      try { lastContact = row.last_contact ? JSON.parse(row.last_contact) : null; } catch { lastContact = null; }
+      return { ...row, last_contact: lastContact, contacts_count: Number(row.contacts_count) || 0 };
+    }));
   } catch (e) {
     logger.error('[finance/refunds]', e.message);
     res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });

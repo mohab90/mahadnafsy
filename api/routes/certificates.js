@@ -12,15 +12,22 @@ const { certificateTypeCodes, resolveCertificatePrice } = require('../lib/certif
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { isString, isOneOf, validateBody } = require('../middleware/validate');
 const { resolveClientContext } = require('../lib/clientContext');
+const { actorName, logClientEvent } = require('../lib/clientHistory');
+const { sanitize } = require('../lib/helpers');
 
-const CERT_STATUSES = ['PENDING','PRICED','PAID','IN_PROGRESS','NOT_SENT','ISSUED','SHIPPED','AT_BRANCH','DELIVERED'];
+const CERT_STATUSES = ['PENDING','PRICED','PAID','IN_PROGRESS','NOT_SENT','ISSUED','SHIPPED','AT_BRANCH','DELIVERED','RETURNED'];
+const STATUS_AR = {
+  PENDING: 'تحت المراجعة', PRICED: 'مسعّرة', PAID: 'مدفوعة', IN_PROGRESS: 'في الجهة المسئولة',
+  NOT_SENT: 'لسه متبعتتش للجهة', ISSUED: 'جاهزة للشحن', SHIPPED: 'اتسلمت لشركة الشحن',
+  AT_BRANCH: 'في الفرع', DELIVERED: 'العميل استلمها', RETURNED: 'مرتجع',
+};
 // A request's type is any code «تسعير الشهادات» lists (certificateTypeCodes).
 const loadPricing = async tenantId => {
   const content = await getTenantSetting('content', { tenantId, fallback: {} });
   try { return JSON.parse(content.extra_cert_pricing || '{}') || {}; } catch { return {}; }
 };
 const CERT_NATS  = ['EGYPTIAN','NON_EGYPTIAN_EGYPT','SAUDI_RESIDENT','INTERNATIONAL'];
-const POST_PAYMENT_STATUSES = new Set(['PAID','IN_PROGRESS','NOT_SENT','ISSUED','SHIPPED','AT_BRANCH','DELIVERED']);
+const POST_PAYMENT_STATUSES = new Set(['PAID','IN_PROGRESS','NOT_SENT','ISSUED','SHIPPED','AT_BRANCH','DELIVERED','RETURNED']);
 const CERT_TRANSITIONS = new Map([
   ['PENDING', new Set(['PRICED', 'PAID'])],
   ['PRICED', new Set(['PAID'])],
@@ -28,24 +35,156 @@ const CERT_TRANSITIONS = new Map([
   ['IN_PROGRESS', new Set(['NOT_SENT', 'ISSUED'])],
   ['NOT_SENT', new Set(['IN_PROGRESS', 'ISSUED'])],
   ['ISSUED', new Set(['SHIPPED', 'AT_BRANCH', 'DELIVERED'])],
-  ['SHIPPED', new Set(['AT_BRANCH', 'DELIVERED'])],
+  // «زر اتسلم لشركة الشحن … ومنها زر تاني استلم للعميل او حصل مرتجع».
+  ['SHIPPED', new Set(['AT_BRANCH', 'DELIVERED', 'RETURNED'])],
+  ['RETURNED', new Set(['SHIPPED', 'AT_BRANCH', 'DELIVERED'])],
   ['AT_BRANCH', new Set(['DELIVERED'])],
   ['DELIVERED', new Set()],
 ]);
 
+// «عمود اسمه جهه التحصيل»: the box the money went into. Set on the request, or
+// the linked payment's box, or — for the 646 requests imported from the Dokki
+// sheet — read back from the note the import wrote («2026-09-17 — 400 — خزينة
+// الدقي — مستند …»).
+const NOTE_BOX = /\d{4}-\d{2}-\d{2} — [\d.,]+ — ([^—|]+?) — /g;
+function collectionPartyOf(row) {
+  if (row.collection_party) return row.collection_party;
+  if (row.linked_method) return row.linked_method;
+  const boxes = [...String(row.note || '').matchAll(NOTE_BOX)].map(match => match[1].trim()).filter(Boolean);
+  return [...new Set(boxes)].join('، ') || null;
+}
+
+// Paid is paid whether the payment row is here or the money was taken before
+// the system: 254 requests imported «مدفوعة» from the sheet have no payment row,
+// and every status change on them answered «A paid payment linked to this
+// certificate request is required».
+const fullyPaid = (request, linkedPayment) =>
+  !!linkedPayment || (Number(request.price) > 0 && Number(request.paid_amount) >= Number(request.price));
+
 // ── Certificate Requests admin routes ─────────────────────────────────────────
+// The certificates screen reads this, not the clients it happens to have
+// loaded: that list is paged, so requests of clients past the first page never
+// showed, and a desk without the whole client book saw none.
 router.get('/api/admin/certificate-requests', requireAuth, requireAdminOrStaff, requirePermission('manage_certificates'), async (req, res) => {
   try {
-    const limit = parseLimit(req.query.limit, 500, 2000);
+    const limit = parseLimit(req.query.limit, 3000, 5000);
     const [rows] = await pool.query(
-      `SELECT cr.*, s.name AS subscriber_name, s.phone AS subscriber_phone, c.title AS course_title
-       FROM certificate_requests cr
-       LEFT JOIN subscribers s ON s.id = cr.subscriber_id AND s.tenant_id=cr.tenant_id AND s.deleted_at IS NULL
-       LEFT JOIN courses c ON c.id = cr.course_id AND c.tenant_id=cr.tenant_id AND c.deleted_at IS NULL
-       WHERE cr.tenant_id=?
-       ORDER BY cr.requested_at DESC LIMIT ?`, [req.tenantId, limit]);
-    res.json(rows);
+      `SELECT cr.id, cr.subscriber_id, cr.course_id, cr.type, cr.custom_name, cr.name_ar, cr.name_en, cr.nationality,
+              cr.id_number, cr.status, cr.price, cr.paid_amount, cr.currency, cr.note, cr.admin_note,
+              cr.collection_party, cr.requested_at, cr.issued_at,
+              s.name AS subscriber_name, s.phone AS subscriber_phone, s.client_code, s.branch,
+              COALESCE(s.assigned_cs_name, s.assigned_sales_name) AS owner_name,
+              COALESCE(NULLIF(c.title_ar, ''), c.title) AS course_title,
+              (SELECT MAX(p.payment_method) FROM payments p
+                WHERE p.certificate_request_id=cr.id AND p.tenant_id=cr.tenant_id
+                  AND p.status='paid' AND p.deleted_at IS NULL) AS linked_method
+         FROM certificate_requests cr
+         LEFT JOIN subscribers s ON s.id = cr.subscriber_id AND s.tenant_id=cr.tenant_id AND s.deleted_at IS NULL
+         LEFT JOIN courses c ON c.id = cr.course_id AND c.tenant_id=cr.tenant_id AND c.deleted_at IS NULL
+        WHERE cr.tenant_id=?
+        ORDER BY cr.requested_at DESC LIMIT ?`, [req.tenantId, limit]);
+    res.json(rows.map(row => {
+      const price = row.price != null ? Number(row.price) : null;
+      const paid = Number(row.paid_amount) || 0;
+      return {
+        id: row.id,
+        subscriberId: row.subscriber_id,
+        subscriberName: row.subscriber_name || '',
+        subscriberPhone: row.subscriber_phone || '',
+        clientCode: row.client_code || null,
+        branch: row.branch || null,
+        ownerName: row.owner_name || null,
+        courseId: row.course_id || null,
+        courseTitle: row.course_title || null,
+        type: String(row.type || 'OTHER').toLowerCase(),
+        customName: row.custom_name || null,
+        nameAr: row.name_ar || null,
+        nameEn: row.name_en || null,
+        nationality: row.nationality ? String(row.nationality).toLowerCase() : null,
+        idNumber: row.id_number || null,
+        status: String(row.status || 'PENDING').toLowerCase(),
+        price,
+        paid,
+        remaining: price != null ? Math.max(0, price - paid) : null,
+        currency: row.currency || 'EGP',
+        collectionParty: collectionPartyOf(row),
+        note: row.note || null,
+        adminNote: row.admin_note || null,
+        requestedAt: row.requested_at,
+        issuedAt: row.issued_at,
+      };
+    }));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// «زر تعديل للشهادات». What a request says — the name on it, its type, course,
+// nationality, price, what was paid before the system, the box it was paid into
+// and the desk's notes. The price stays fixed once a payment row is linked, as
+// it always did; without one (the imported requests) it is the desk's to correct.
+router.put('/api/admin/certificate-requests/:id/details', requireAuth, requireAdminOrStaff, requirePermission('manage_certificates'), async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const b = req.body || {};
+    await conn.beginTransaction();
+    const [[request]] = await conn.query(
+      'SELECT * FROM certificate_requests WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE', [req.params.id, req.tenantId]);
+    if (!request) { await conn.rollback(); return res.status(404).json({ error: 'Not found' }); }
+    const [[linkedPayment]] = await conn.query(
+      `SELECT p.id FROM payments p WHERE p.certificate_request_id=? AND p.tenant_id=? AND p.status='paid' AND p.deleted_at IS NULL LIMIT 1`,
+      [request.id, req.tenantId]);
+    const sets = [];
+    const params = [];
+    const changed = [];
+    const text = (key, column, label, max = 255) => {
+      if (b[key] === undefined) return;
+      const value = sanitize(String(b[key] ?? ''), max).trim() || null;
+      if ((value || null) === (request[column] || null)) return;
+      sets.push(`${column}=?`); params.push(value); changed.push(label);
+    };
+    text('nameAr', 'name_ar', 'الاسم بالعربي');
+    text('nameEn', 'name_en', 'الاسم بالإنجليزي');
+    text('customName', 'custom_name', 'اسم الشهادة');
+    text('idNumber', 'id_number', 'رقم البطاقة', 50);
+    text('collectionParty', 'collection_party', 'جهة التحصيل', 160);
+    text('adminNote', 'admin_note', 'الملاحظات', 2000);
+    if (b.type !== undefined) {
+      const type = String(b.type || '').toUpperCase();
+      if (!certificateTypeCodes(await loadPricing(req.tenantId)).has(type)) { await conn.rollback(); return res.status(400).json({ error: 'نوع شهادة غير معروف' }); }
+      if (type !== String(request.type).toUpperCase()) { sets.push('type=?'); params.push(type); changed.push('نوع الشهادة'); }
+    }
+    if (b.nationality !== undefined) {
+      const nationality = b.nationality ? String(b.nationality).toUpperCase() : null;
+      if (nationality && !CERT_NATS.includes(nationality)) { await conn.rollback(); return res.status(400).json({ error: 'جنسية غير معروفة' }); }
+      if (nationality !== (request.nationality || null)) { sets.push('nationality=?'); params.push(nationality); changed.push('الجنسية'); }
+    }
+    if (b.courseId !== undefined) {
+      const courseId = String(b.courseId || '').trim() || null;
+      if (courseId !== (request.course_id || null)) { sets.push('course_id=?'); params.push(courseId); changed.push('الكورس'); }
+    }
+    for (const [key, column, label] of [['price', 'price', 'السعر'], ['paidAmount', 'paid_amount', 'المدفوع']]) {
+      if (b[key] === undefined || b[key] === '') continue;
+      const value = Number(b[key]);
+      if (!Number.isFinite(value) || value < 0) { await conn.rollback(); return res.status(400).json({ error: `${label} لازم يكون رقم` }); }
+      if (value === Number(request[column] || 0)) continue;
+      if (linkedPayment) { await conn.rollback(); return res.status(409).json({ error: `${label} مربوط بدفعة متسجلة — بيتعدل من الدفعة نفسها` }); }
+      sets.push(`${column}=?`); params.push(value); changed.push(label);
+    }
+    if (!sets.length) { await conn.rollback(); return res.json({ ok: true, changed: [] }); }
+    await conn.query(`UPDATE certificate_requests SET ${sets.join(', ')} WHERE id=? AND tenant_id=?`, [...params, request.id, req.tenantId]);
+    if (request.subscriber_id) {
+      await logClientEvent(conn, {
+        tenantId: req.tenantId, subscriberId: request.subscriber_id, action: 'certificate_edited', actor: actorName(req),
+        label: `تعديل شهادة: ${changed.join('، ')}`,
+      });
+    }
+    await conn.commit();
+    res.json({ ok: true, changed });
+  } catch (e) {
+    await conn.rollback().catch(() => {});
+    if (e?.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'فيه طلب شهادة مفتوح بنفس النوع والكورس للعميل ده' });
+    logger.error('[certificate-details]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally { conn.release(); }
 });
 
 router.post('/api/admin/certificate-requests', requireAuth, requireAdminOrStaff, requirePermission('manage_certificates'), async (req, res) => {
@@ -191,11 +330,11 @@ router.patch('/api/admin/certificate-requests/:id',
         LIMIT 1`,
       [request.id, request.subscriber_id, req.tenantId]
     );
-    if (POST_PAYMENT_STATUSES.has(normalizedStatus) && !linkedPayment) {
+    if (POST_PAYMENT_STATUSES.has(normalizedStatus) && !fullyPaid(request, linkedPayment)) {
         await conn.rollback();
         conn.release();
         conn = null;
-        return res.status(409).json({ error: 'A paid payment linked to this certificate request is required' });
+        return res.status(409).json({ error: 'الشهادة لازم تكون مدفوعة الأول — سجّل الدفعة أو المدفوع قبل السيستم' });
     }
     if ((linkedPayment || POST_PAYMENT_STATUSES.has(currentStatus))
       && ((normalizedPrice !== undefined && Number(normalizedPrice) !== Number(request.price))
@@ -214,25 +353,35 @@ router.patch('/api/admin/certificate-requests/:id',
     if (issued_at) { sets.push('issued_at=?'); params.push(issued_at); }
     params.push(req.params.id, req.tenantId);
 
-    if (['ISSUED', 'SHIPPED', 'AT_BRANCH', 'DELIVERED'].includes(normalizedStatus)) {
-      const [[eligible]] = await conn.query(
-        `SELECT cr.id
-           FROM certificate_requests cr
-           JOIN enrollments e ON e.subscriber_id=cr.subscriber_id AND e.course_id=cr.course_id AND e.tenant_id=cr.tenant_id AND e.status='active'
-           JOIN course_completions cc ON cc.subscriber_id=cr.subscriber_id AND cc.course_id=cr.course_id AND cc.tenant_id=cr.tenant_id AND cc.status='active'
-           JOIN payments p ON p.certificate_request_id=cr.id AND p.subscriber_id=cr.subscriber_id
-                          AND p.tenant_id=cr.tenant_id AND p.status='paid' AND p.deleted_at IS NULL
-          WHERE cr.id=? AND cr.tenant_id=? LIMIT 1`,
-        [req.params.id, req.tenantId]
+    // Issued only while the course still stands. A refund revokes the
+    // enrolment and the completion, and that still stops a certificate. What
+    // no longer stops one is a completion that was never recorded: a Dokki
+    // client attends in the branch, and a request imported from the sheet was
+    // for a course finished before the system — 254 of them sat «مدفوعة».
+    if (['ISSUED', 'SHIPPED', 'AT_BRANCH', 'DELIVERED', 'RETURNED'].includes(normalizedStatus) && request.course_id) {
+      const [[standing]] = await conn.query(
+        `SELECT
+           EXISTS(SELECT 1 FROM enrollments e WHERE e.subscriber_id=? AND e.course_id=? AND e.tenant_id=? AND e.status<>'active')
+             AND NOT EXISTS(SELECT 1 FROM enrollments e WHERE e.subscriber_id=? AND e.course_id=? AND e.tenant_id=? AND e.status='active') AS course_taken,
+           EXISTS(SELECT 1 FROM course_completions cc WHERE cc.subscriber_id=? AND cc.course_id=? AND cc.tenant_id=? AND cc.status<>'active')
+             AND NOT EXISTS(SELECT 1 FROM course_completions cc WHERE cc.subscriber_id=? AND cc.course_id=? AND cc.tenant_id=? AND cc.status='active') AS completion_revoked`,
+        [request.subscriber_id, request.course_id, req.tenantId, request.subscriber_id, request.course_id, req.tenantId,
+          request.subscriber_id, request.course_id, req.tenantId, request.subscriber_id, request.course_id, req.tenantId]
       );
-      if (!eligible) {
+      if (Number(standing?.course_taken) || Number(standing?.completion_revoked)) {
         await conn.rollback();
         conn.release();
         conn = null;
-        return res.status(409).json({ error: 'Certificate issuance requires linked payment, enrollment, and course completion' });
+        return res.status(409).json({ error: 'الكورس اتشال من العميل أو اكتماله اتلغى (استرداد مثلاً) — مينفعش تطلع شهادة عليه' });
       }
     }
     await conn.query(`UPDATE certificate_requests SET ${sets.join(',')} WHERE id=? AND tenant_id=?`, params);
+    if (currentStatus !== normalizedStatus && request.subscriber_id) {
+      await logClientEvent(conn, {
+        tenantId: req.tenantId, subscriberId: request.subscriber_id, action: 'certificate_status', actor: actorName(req),
+        label: `شهادة: ${STATUS_AR[currentStatus] || currentStatus} ← ${STATUS_AR[normalizedStatus] || normalizedStatus}`,
+      });
+    }
     await conn.commit();
     conn.release();
     conn = null;

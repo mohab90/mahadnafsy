@@ -13,7 +13,8 @@ test('activity log schema, writes and reads are tenant owned', () => {
   const audit = read('middleware', 'adminAudit.js');
   assert.match(migration, /ALTER TABLE activity_logs[\s\S]*tenant_id/);
   assert.match(migration, /ALTER TABLE activity_logs_archive[\s\S]*tenant_id/);
-  assert.match(operations, /FROM activity_logs WHERE tenant_id=\?/);
+  assert.match(operations, /FROM activity_logs a[\s\S]{0,400}WHERE \$\{where\.join\(' AND '\)\}/);
+  assert.match(operations, /const where = \['a\.tenant_id=\?'\];/);
   // Plain INSERT, not INSERT IGNORE. This test is about tenant ownership and
   // the tenant column is still first — the IGNORE went because the row id used
   // to come from the request body, so a caller who chose an id could pre-insert

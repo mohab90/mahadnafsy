@@ -4,6 +4,9 @@ const { pool } = require('./db');
 const { uuidv4 } = require('./id');
 const { notifyWaitlistForFreedSeats } = require('./courseWaitlist');
 const { assertLearningPrerequisites } = require('./learningPrerequisites');
+// Required when used: trackNaming reads agreedPrice and clientHistory, and
+// neither may be half-loaded here.
+const nameCompletedTracks = (...args) => require('./trackNaming').nameCompletedTracks(...args);
 
 // Grants that follow money rather than a person deciding. A recomputation on
 // one of these must never take away access the client has already paid for.
@@ -220,6 +223,8 @@ async function syncCourseEntitlements({
       lectureLimit: course.lectureLimit, branchId, source, actor,
     }, db);
   }
+  // Every course of a track, given one by one, is the track (lib/trackNaming.js).
+  await nameCompletedTracks(db, { tenantId, subscriberId, actor });
   return { active: desired.size };
 }
 
@@ -278,6 +283,7 @@ async function grantCourseSelections({
       branchId, bundleId: course.bundleId, source, actor,
     }, db);
   }
+  await nameCompletedTracks(db, { tenantId, subscriberId, actor });
   return { granted: expanded.size, courseIds: [...expanded.keys()] };
 }
 

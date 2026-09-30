@@ -14,7 +14,9 @@ const { financialRecordMatches, resolveFinancialScope } = require('../lib/financ
 const { assertWritable } = require('../lib/periodLock');
 const { writeAuditEvent } = require('../lib/auditTrail');
 const { toNumbers } = require('../lib/mappers');
-const { safeDateOnly, cairoToday } = require('../lib/dates');
+const { addDaysToDateOnly, cairoDayStartUtc, safeDateOnly, cairoToday } = require('../lib/dates');
+const { departmentOf, describeLabel } = require('../lib/activityDescribe');
+const { listEnv } = require('../lib/platformAccess');
 const { EXPENSE_CATEGORY_LABEL, expenseCategory } = require('../lib/expenseCategories');
 const { convertJoinUs } = require('./hr/talent');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
@@ -231,14 +233,60 @@ router.delete('/api/admin/expenses/:id', requireAuth, requireAdminOrStaff, requi
   } finally { conn.release(); }
 });
 
+// «سجل النظام … اسم المسئول مش ايميله ومحتاجين يضاف القسم». Each row with the
+// employee's name and department, the part of the system, and what was done in
+// words (lib/activityDescribe.js) — old rows resolved from their email and the
+// path their label kept. Filtered here, not in the browser: the screen held the
+// last 200 rows and searched those.
 router.get('/api/admin/activity-logs', requireAuth, requireAdminOrStaff, requirePermission('view_activity'), async (req, res) => {
   try {
     const limit = parseLimit(req.query.limit, 200, 500);
     const offset = parseOffset(req.query.offset);
+    const where = ['a.tenant_id=?'];
+    const params = [req.tenantId];
+    const from = String(req.query.from || '');
+    const to = String(req.query.to || '');
+    if (/^\d{4}-\d{2}-\d{2}$/.test(from)) { where.push('a.at >= ?'); params.push(cairoDayStartUtc(from)); }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(to)) { where.push('a.at < ?'); params.push(cairoDayStartUtc(addDaysToDateOnly(to, 1))); }
+    const q = String(req.query.q || '').trim().slice(0, 100);
+    if (q) {
+      where.push('(a.label LIKE ? OR a.details LIKE ? OR a.actor_name LIKE ? OR st.name LIKE ? OR a.entity_id = ?)');
+      params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, q);
+    }
+    const department = String(req.query.department || '');
+    const section = String(req.query.section || '');
+    const actor = String(req.query.actor || '').trim();
+    if (actor) { where.push('COALESCE(a.actor_name, st.name, a.actor) = ?'); params.push(actor); }
     const [rows] = await pool.query(
-      'SELECT id, action, entity, entity_id, label, actor, at FROM activity_logs WHERE tenant_id=? ORDER BY at DESC LIMIT ? OFFSET ?',
-      [req.tenantId, limit, offset]);
-    res.json(rows);
+      `SELECT a.id, a.action, a.entity, a.entity_id, a.label, a.actor, a.at, a.details,
+              COALESCE(a.actor_name, st.name) AS actor_name, COALESCE(a.department, d.name) AS department,
+              st.role AS actor_role
+         FROM activity_logs a
+         LEFT JOIN staff st ON st.tenant_id=a.tenant_id AND (st.email=a.actor OR st.id=a.actor)
+         LEFT JOIN hr_departments d ON d.id=st.department_id AND d.tenant_id=st.tenant_id
+        WHERE ${where.join(' AND ')}
+        ORDER BY a.at DESC LIMIT ? OFFSET ?`,
+      // A department or a part of the system is resolved per row (old rows
+      // carry neither), so those filters read a wider page and keep `limit`.
+      [...params, department || section ? Math.min(limit * 6, 3000) : limit, offset]);
+    const owners = new Set(listEnv('ADMIN_EMAILS').map(email => email.toLowerCase()));
+    res.json(rows.map(row => {
+      const described = describeLabel(row.label, row.entity);
+      const isOwner = owners.has(String(row.actor || '').toLowerCase());
+      return {
+        id: row.id,
+        action: row.action,
+        entity: row.entity,
+        entityId: row.entity_id,
+        label: described.text,
+        details: row.details || null,
+        actor: row.actor,
+        actorName: row.actor_name || (isOwner ? 'المالك' : row.actor),
+        department: row.department || departmentOf({ role: row.actor_role, isOwner }) || '—',
+        section: described.area,
+        at: row.at,
+      };
+    }).filter(row => (!department || row.department === department) && (!section || row.section === section)).slice(0, limit));
   } catch (e) { routeError(res, e); }
 });
 

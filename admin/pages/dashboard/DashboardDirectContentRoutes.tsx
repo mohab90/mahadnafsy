@@ -1,6 +1,6 @@
 import React, { Suspense, useMemo, useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 
-import type { Course, ExtraCertificateType, SubscriberItem } from '../../types';
+import type { Course, ExtraCertificateType } from '../../types';
 import { compressInstituteGalleryFiles } from './dashboardGallery';
 import { DashboardContentHubAdvancedPanel } from './DashboardContentHubAdvancedPanel';
 import { DashboardHomeOfferPanel } from './DashboardHomeOfferPanel';
@@ -60,8 +60,8 @@ interface DashboardDirectContentRoutesProps {
   instituteGalleryUrlInput: string;
   setInstituteGalleryUrlInput: Dispatch<SetStateAction<string>>;
   instituteBranches: InstituteBranch[];
-  subscribers: SubscriberItem[];
-  reloadSubscribers: () => Promise<void>;
+  /** Settings save through /api/admin/content, the owner's and managers' only. */
+  canEditSettings: boolean;
 }
 
 export function DashboardDirectContentRoutes({
@@ -91,8 +91,7 @@ export function DashboardDirectContentRoutes({
   instituteGalleryUrlInput,
   setInstituteGalleryUrlInput,
   instituteBranches,
-  subscribers,
-  reloadSubscribers,
+  canEditSettings,
 }: DashboardDirectContentRoutesProps) {
   // Derived from the content map and written back through it, rather than
   // computed one level up and passed down: nothing outside these routes reads
@@ -219,8 +218,6 @@ export function DashboardDirectContentRoutes({
           <CertRequestsTab
             notify={notify}
             courses={courses}
-            subscribers={subscribers}
-            reloadSubscribers={reloadSubscribers}
             certSearch={certSearch}
             setCertSearch={setCertSearch}
             certTypeFilter={certTypeFilter}
@@ -228,7 +225,9 @@ export function DashboardDirectContentRoutes({
             certStatusFilter={certStatusFilter}
             setCertStatusFilter={setCertStatusFilter}
             initialTab={activeTab === 'cert_pricing' ? 'pricing' : 'requests'}
-            pricing={<CertPricingTab certPricingMap={certPricingMap} saveCertPricingMap={saveCertPricingMap} notify={notify} />}
+            // «ازاي يظهر للموظفين اعدادات … الشهادات»: an employee who
+            // cannot save prices is not shown the prices screen.
+            pricing={canEditSettings ? <CertPricingTab certPricingMap={certPricingMap} saveCertPricingMap={saveCertPricingMap} notify={notify} /> : undefined}
           />
         </Suspense>
       )}

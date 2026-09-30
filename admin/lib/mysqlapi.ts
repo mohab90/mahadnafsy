@@ -590,7 +590,9 @@ export const mysqlAdmin = {
   listAllDaqqiRounds:      ()             => apiFetch<AR[]>('/admin/daqqi-rounds', {}, A),
   listAllJoinUs:           ()             => apiFetch<AR[]>('/admin/join-us', {}, A),
   listAllContactMessages:  ()             => apiFetch<AR[]>('/admin/contact-messages', {}, A),
-  listAllCertificateRequests: (limit = 500) => apiFetch<AR[]>(`/admin/certificate-requests?limit=${limit}`, {}, A),
+  listAllCertificateRequests: (limit = 3000) => apiFetch<AR[]>(`/admin/certificate-requests?limit=${limit}`, {}, A),
+  /** «زر تعديل للشهادات» — the name, type, course, money, box and notes of one request. */
+  updateCertificateDetails: (id: string, body: AR) => put(`/admin/certificate-requests/${encodeURIComponent(id)}/details`, body),
   createCertificateRequest: (body: AR) => post('/admin/certificate-requests', body),
   updateCertificateRequest: (id: string | number, status: string, notes?: string) =>
     patch(`/admin/certificate-requests/${id}`, { status, notes }),

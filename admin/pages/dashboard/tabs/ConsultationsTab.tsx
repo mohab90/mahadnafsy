@@ -2,6 +2,7 @@ import React, { Suspense, useState } from 'react';
 import { CalendarDays, CalendarRange, Settings } from 'lucide-react';
 import { ConsultationBookingsTab } from './consultations/ConsultationBookingsTab';
 import { ConsultationSettingsTab } from './consultations/ConsultationSettingsTab';
+import { useSiteData } from '../../../context/SiteDataContext';
 
 const ConsultationCalendarTab = React.lazy(() => import('./ConsultationCalendarTab'));
 
@@ -22,6 +23,12 @@ const TABS: { key: Tab; label: string; icon: React.ComponentType<{ size?: number
 
 export default function ConsultationsTab({ notify }: { notify: NotifyFn }) {
   const [tab, setTab] = useState<Tab>('bookings');
+  // «ازاي يظهر للموظفين اعدادات … الاستشارات»: the settings save through
+  // /api/admin/content, the owner's and managers' only — an employee was shown
+  // a form whose every save was refused.
+  const { isAdmin, currentStaff } = useSiteData();
+  const canEditSettings = isAdmin || ['admin', 'manager'].includes(String(currentStaff?.role || '').toLowerCase());
+  const tabs = TABS.filter(item => item.key !== 'settings' || canEditSettings);
 
   return (
     <div className="space-y-4" dir="rtl">
@@ -33,7 +40,7 @@ export default function ConsultationsTab({ notify }: { notify: NotifyFn }) {
       </div>
 
       <div className="flex flex-wrap gap-1.5 border-b border-gray-200 pb-2">
-        {TABS.map(({ key, label, icon: Icon }) => (
+        {tabs.map(({ key, label, icon: Icon }) => (
           <button key={key} onClick={() => setTab(key)}
             className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold transition ${
               tab === key ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
@@ -48,7 +55,7 @@ export default function ConsultationsTab({ notify }: { notify: NotifyFn }) {
           <ConsultationCalendarTab />
         </Suspense>
       )}
-      {tab === 'settings' && <ConsultationSettingsTab notify={notify} />}
+      {tab === 'settings' && canEditSettings && <ConsultationSettingsTab notify={notify} />}
     </div>
   );
 }

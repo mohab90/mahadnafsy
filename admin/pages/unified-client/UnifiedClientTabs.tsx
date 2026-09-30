@@ -4,6 +4,8 @@ export type UnifiedClientTabItem = [UnifiedClientTab, string];
 
 interface BuildUnifiedClientTabsInput {
   isSubscriber: boolean;
+  /** Collection is not shown a client's courses tab. */
+  showCourses?: boolean;
   communicationsCount: number;
   paymentCount: number;
   courseCount: number;
@@ -17,6 +19,7 @@ interface BuildUnifiedClientTabsInput {
 
 export function buildUnifiedClientTabs({
   isSubscriber,
+  showCourses = true,
   communicationsCount,
   paymentCount,
   courseCount,
@@ -39,7 +42,7 @@ export function buildUnifiedClientTabs({
     ['communications', `التواصل (${communicationsCount})`],
     ['payments', `حجز / دفع (${paymentCount})`],
     ...(isSubscriber ? [
-      ['courses', `الكورسات (${courseCount})`] as UnifiedClientTabItem,
+      ...(showCourses ? [['courses', `الكورسات (${courseCount})`] as UnifiedClientTabItem] : []),
       ['certificates', `الشهادات (${certificateCount})`] as UnifiedClientTabItem,
       ['loyalty', 'الولاء والنقاط'] as UnifiedClientTabItem,
       ['installments', `الأقساط${installmentPlanCount > 0 ? ` (${installmentPlanCount})` : ''}${installmentAlert}`] as UnifiedClientTabItem,

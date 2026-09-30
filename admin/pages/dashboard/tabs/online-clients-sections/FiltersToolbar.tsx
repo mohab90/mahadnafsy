@@ -168,8 +168,8 @@ export function FiltersToolbar({
         <div className="flex flex-wrap gap-2 mt-2 pr-1">
           {([
             ['courses','الكورسات'],['value','القيمة'],['paid','المدفوع'],['remaining','المتبقي'],
-            ['installments','الأقساط'],['status','الحالة'],['sales','المسئول'],['followup','موعد المتابعة'],
-            ['contact','ملاحظات التواصل'],['createdAt','تاريخ الاشتراك'],['certificates','الشهادات'],
+            ['installments','الأقساط'],['status','الحالة'],['sales','المسئول'],
+            ['contact','التواصل والمتابعة'],['createdAt','تاريخ الاشتراك'],['certificates','الشهادات'],
           ] as [string,string][]).map(([col,label]) => (
             <label key={col} className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
               <input type="checkbox" checked={vc[col]!==false} onChange={()=>toggleCol(col)} className="accent-teal-500" />

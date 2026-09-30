@@ -157,4 +157,58 @@ async function transferClientCourse(db, { tenantId, subscriber, item, toItem, pr
   return { from: fromTitle, to: toTitle, paymentsMoved: moved.affectedRows || 0, paid: Number(paid?.total) || 0 };
 }
 
-module.exports = { isCourseManager, itemTitle, parseItem, removeClientCourse, transferClientCourse };
+/**
+ * «تكملة — العميل يحول الكورس الصغير لمسار». The course they hold becomes part
+ * of a track that contains it: what they paid for it, here and before the
+ * system, counts toward the track, and the track's price is `price` or its
+ * catalogue price. Access is left alone — the course they had stays open, and
+ * the track's other courses open through the payment that follows, as any
+ * instalment opens them. Nothing is given away by the upgrade itself.
+ */
+async function upgradeClientCourse(db, { tenantId, subscriber, item, toItem, price = null, actor }) {
+  const from = parseItem(item);
+  const to = parseItem(toItem);
+  if (!from.courseId && !from.bundleId) throw fail(400, 'حدد الكورس اللي هيتكمل');
+  if (!to.bundleId) throw fail(400, 'التكملة بتكون لمسار');
+  if (from.bundleId === to.bundleId) throw fail(400, 'العميل في المسار ده بالفعل');
+  const [trackCourses] = await db.query(
+    'SELECT course_id FROM bundle_courses WHERE tenant_id=? AND bundle_id=?', [tenantId, to.bundleId]);
+  const inTrack = new Set(trackCourses.map(row => String(row.course_id)));
+  const enrolments = await itemEnrolments(db, { tenantId, subscriberId: subscriber.id, ...from });
+  if (!enrolments.length) throw fail(404, 'العميل مش مشترك في الكورس ده');
+  if (!enrolments.every(row => inTrack.has(String(row.course_id)))) throw fail(400, 'الكورس ده مش جزء من المسار ده');
+  const fromTitle = await itemTitle(db, tenantId, from) || itemKey(from);
+  const toTitle = await itemTitle(db, tenantId, to);
+  if (!toTitle) throw fail(404, 'المسار مش موجود');
+
+  await db.query(
+    `UPDATE enrollments SET bundle_id=?, updated_at=NOW()
+      WHERE tenant_id=? AND id IN (${enrolments.map(() => '?').join(',')})`,
+    [to.bundleId, tenantId, ...enrolments.map(row => row.id)]);
+  const fromWhere = from.bundleId ? 'bundle_id=?' : 'course_id=? AND bundle_id IS NULL';
+  const [[paid]] = await db.query(
+    `SELECT COALESCE(SUM(amount),0) AS total, MAX(currency) AS currency FROM payments
+      WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND status='paid'
+        AND payment_type IN ('COURSE','BUNDLE') AND ${fromWhere}`,
+    [tenantId, subscriber.id, from.bundleId || from.courseId]);
+  await db.query(
+    `UPDATE payments SET bundle_id=?, course_expected=NULL,
+            note=CONCAT(COALESCE(note,''), IF(note IS NULL OR note='', '', ' | '), ?)
+      WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL
+        AND payment_type IN ('COURSE','BUNDLE') AND ${fromWhere}`,
+    [to.bundleId, `تكملة من ${fromTitle}`, tenantId, subscriber.id, from.bundleId || from.courseId]);
+  const released = await releaseItemMoney(db, { tenantId, subscriberId: subscriber.id, from, to });
+  if (price !== null && price !== undefined && price !== '') {
+    await setAgreedPrice(db, { tenantId, subscriberId: subscriber.id, ...to, price });
+  }
+  const carried = Number(paid?.total) + released.priorPaid;
+  await logClientEvent(db, {
+    tenantId, subscriberId: subscriber.id, action: 'course_upgraded', actor,
+    label: `تكملة: «${fromTitle}» بقى جزء من المسار «${toTitle}»`
+      + (carried > 0 ? ` — ${money(carried)} ${paid?.currency || 'EGP'} مدفوعة اتحسبت على المسار` : '')
+      + (Number(price) > 0 ? ` · سعر المسار ${money(price)}` : ''),
+  });
+  return { from: fromTitle, to: toTitle, carried };
+}
+
+module.exports = { isCourseManager, itemTitle, parseItem, removeClientCourse, transferClientCourse, upgradeClientCourse };

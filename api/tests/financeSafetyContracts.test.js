@@ -274,7 +274,9 @@ test('certificate lifecycle and receipt rendering fail closed', () => {
 
   assert.match(certificates, /certificate_request_id=\?/);
   assert.match(certificates, /Paid or financially linked certificate requests cannot be deleted/);
-  assert.match(certificates, /Certificate issuance requires linked payment, enrollment, and course completion/);
+  // Paid first (a payment row, or paid in full before the system), and never on a course that was taken back.
+  assert.ok(certificates.includes('!fullyPaid(request, linkedPayment)'));
+  assert.ok(certificates.includes('Number(standing?.course_taken) || Number(standing?.completion_revoked)'));
   assert.match(certificates, /'SHIPPED'/);
   assert.match(certTab, /await mysqlAdmin\.updateCertificateRequest/);
   assert.match(certTab, /await mysqlAdmin\.deleteCertificateRequest/);

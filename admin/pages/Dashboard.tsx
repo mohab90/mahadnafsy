@@ -791,8 +791,7 @@ const Dashboard: React.FC = () => {
                   instituteGalleryUrlInput={instituteGalleryUrlInput}
                   setInstituteGalleryUrlInput={setInstituteGalleryUrlInput}
                   instituteBranches={instituteBranches}
-                  subscribers={subscribers}
-                  reloadSubscribers={reloadSubscribers}
+                  canEditSettings={isAdmin || ['admin', 'manager'].includes(String(currentStaff?.role || '').toLowerCase())}
                 />
               </Suspense>
             )}

@@ -115,11 +115,12 @@ router.post('/api/staff/subscribers/:id/communications',
   async (req, res) => {
     const notes = sanitize(req.body?.notes || '', 2000);
     const type = CONTACT_TYPES[String(req.body?.type || 'call').toLowerCase()];
-    if (!notes.trim()) return res.status(400).json({ error: 'اكتب اللي اتقال في التواصل' });
+    const outcome = sanitize(req.body?.outcome || '', 500) || null;
+    // «مش لازم اكتب في التواصل مدام اخترت نتيجه»: the result says it.
+    if (!notes.trim() && !outcome) return res.status(400).json({ error: 'اكتب اللي اتقال أو اختار نتيجة التواصل' });
     if (!type) return res.status(400).json({ error: 'نوع تواصل غير معروف' });
     const at = req.body?.date && !Number.isNaN(Date.parse(req.body.date)) ? new Date(req.body.date) : new Date();
     const next = req.body?.nextFollowUp && !Number.isNaN(Date.parse(req.body.nextFollowUp)) ? new Date(req.body.nextFollowUp) : null;
-    const outcome = sanitize(req.body?.outcome || '', 500) || null;
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();

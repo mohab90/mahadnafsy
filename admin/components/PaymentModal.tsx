@@ -8,6 +8,7 @@ import { CreditCard, X } from 'lucide-react';
 import { useStaticData } from '../context/siteDataSlices';
 import { useCertificateCatalog } from '../lib/certificateCatalog';
 import { agreedPriceFor } from '../lib/agreedPrice';
+import { mysqlAdmin } from '../lib/mysqlapi';
 import type {
   PaymentItemType, PaymentHistoryEntry,
   ExtraCertificateRequest,
@@ -266,6 +267,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   // runs on some renders and not others.
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  // «تكملة»: the course being completed into a track; '' when not upgrading.
+  const [upgradeFrom, setUpgradeFrom] = useState<string | null>(null);
 
   const d = draft;
   const set = (partial: Partial<PaymentDraft>) => setDraft({ ...d, ...partial });
@@ -390,6 +393,15 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   // The totals bar: every course and track they hold, at the price agreed.
   // It summed only bookings that had recorded a price — a quarter had none —
   // and counted certificate and book money as paid towards the courses.
+  // «تكملة يعني العميل يحول الكورس الصغير لمسار»: a course they hold that some
+  // track contains, and the tracks it can grow into.
+  const tracksHolding = (courseId: string) => bundles.filter(b => (b.courses || []).some(course => course.id === courseId));
+  const upgradeCandidates = mode === 'subscriber' && subject.id
+    ? enrolledOptions.filter(opt => !opt.isBnd && tracksHolding(opt.cid).length > 0)
+    : [];
+  const upgrading = upgradeFrom !== null;
+  const upgradeSource = upgrading ? enrolledOptions.find(opt => opt.cid === upgradeFrom) : undefined;
+
   const payTotalExpected = enrolledOptions.reduce((s, opt) => s + (opt.px || 0), 0);
   const payTotalPaid = enrolledOptions.reduce((s, opt) => s + opt.paid, 0);
   const payRemaining = Math.max(0, payTotalExpected - payTotalPaid);
@@ -424,7 +436,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const subjectChosen = !subjectOptions || !!subject.id;
   const isValid = !subjectChosen ? false : mode === 'new'
     ? hasIdentity && (_amtPaid === 0 || (!!d.paymentMethod && !!d.courseId))
-    : _amtPaid > 0 && !!d.paymentMethod && (mode === 'lead' ? !!d.branch : true);
+    : _amtPaid > 0 && !!d.paymentMethod && (mode === 'lead' ? !!d.branch : true)
+      && (!upgrading || (!!upgradeFrom && d.courseId.startsWith('bundle:')));
 
   // ── Build print data ───────────────────────────────────────────────────
   const buildPrintData = (): PrintData => {
@@ -476,6 +489,17 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       // changed it; otherwise the server uses the one agreed.
       const changedPrice = _customExp > 0 || _discPct > 0;
       const shownPrice = _effPx > 0 ? String(_effPx) : d.customExpected;
+      if (upgrading && upgradeFrom) {
+        // The course becomes part of the track first, its money with it; the
+        // payment is then an instalment on the track, at the price set here.
+        await mysqlAdmin.adminPost(`/admin/subscribers/${encodeURIComponent(subject.id)}/course-upgrade`, {
+          item: upgradeFrom, toItem: d.courseId, price: changedPrice ? Number(shownPrice) : null,
+        });
+        await onSubmit({ ...d, bookingType: 'installment', customExpected: '' }, shouldPrint);
+        if (printPayload) setPrintData(printPayload);
+        else onClose();
+        return;
+      }
       await onSubmit({
         ...d,
         customExpected: d.bookingType === 'installment'
@@ -553,12 +577,23 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
             </div>
           )}
           {/* ── 1: Booking type chips ── */}
-          <div className="grid grid-cols-2 gap-3">
-            {[{ v: 'new_booking', ic: '🆕', lb: 'حجز جديد' }, { v: 'installment', ic: '💳', lb: 'قسط' }].map(opt => (
+          <div className={`grid gap-3 ${upgradeCandidates.length ? 'grid-cols-3' : 'grid-cols-2'}`}>
+            {[
+              { v: 'new_booking', ic: '🆕', lb: 'حجز جديد' }, { v: 'installment', ic: '💳', lb: 'قسط' },
+              ...(upgradeCandidates.length ? [{ v: 'upgrade', ic: '⬆️', lb: 'تكملة لمسار' }] : []),
+            ].map(opt => (
               <button
                 key={opt.v}
                 type="button"
                 onClick={() => {
+                  if (opt.v === 'upgrade') {
+                    const first = upgradeCandidates[0];
+                    const track = first ? tracksHolding(first.cid)[0] : undefined;
+                    setUpgradeFrom(first?.cid || '');
+                    set({ bookingType: 'installment', paymentType: 'course', courseId: track ? `bundle:${track.id}` : '', amount: '', customExpected: '', discountPct: '' });
+                    return;
+                  }
+                  setUpgradeFrom(null);
                   if (opt.v === 'installment' && enrolledOptions.length > 0) {
                     let bestCid = ''; let bestRem = 0;
                     for (const o of enrolledOptions) {
@@ -572,7 +607,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                     set({ bookingType: 'new_booking', courseId: '', amount: '', customExpected: '', discountPct: '' });
                   }
                 }}
-                className={`flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-base font-extrabold border-2 transition ${d.bookingType === opt.v ? 'bg-red-600 border-red-600 text-white shadow-md' : 'bg-white border-gray-200 text-gray-600 hover:border-red-400 hover:text-red-600'}`}
+                className={`flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-base font-extrabold border-2 transition ${(opt.v === 'upgrade' ? upgrading : !upgrading && d.bookingType === opt.v) ? 'bg-red-600 border-red-600 text-white shadow-md' : 'bg-white border-gray-200 text-gray-600 hover:border-red-400 hover:text-red-600'}`}
               >
                 <span className="text-xl">{opt.ic}</span>{opt.lb}
               </button>
@@ -589,7 +624,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
               <button
                 key={opt.v}
                 type="button"
-                onClick={() => set({ paymentType: opt.v as PaymentItemType, courseId: '', certReqId: '', certType: '' })}
+                onClick={() => { setUpgradeFrom(null); set({ paymentType: opt.v as PaymentItemType, courseId: '', certReqId: '', certType: '' }); }}
                 className={`flex items-center gap-0.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition ${d.paymentType === opt.v ? 'bg-red-600 border-red-600 text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-red-300 hover:text-red-600'}`}
               >
                 {opt.ic} {opt.lb}
@@ -598,7 +633,33 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           </div>
 
           {/* ── 3: Course / item selection ── */}
-          {isConsultation ? (
+          {upgrading ? (
+            <div className="space-y-2 rounded-xl border-2 border-red-200 bg-red-50/40 p-3">
+              <label className="block text-xs font-bold text-gray-600">الكورس اللي عند العميل
+                <select value={upgradeFrom || ''} className="mt-1 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm"
+                  onChange={e => {
+                    const track = tracksHolding(e.target.value)[0];
+                    setUpgradeFrom(e.target.value);
+                    set({ courseId: track ? `bundle:${track.id}` : '', customExpected: '', discountPct: '' });
+                  }}>
+                  {upgradeCandidates.map(opt => <option key={opt.cid} value={opt.cid}>🎓 {opt.label}</option>)}
+                </select>
+              </label>
+              <label className="block text-xs font-bold text-gray-600">يتكمل للمسار
+                <select value={d.courseId} className="mt-1 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm"
+                  onChange={e => set({ courseId: e.target.value, customExpected: '', discountPct: '' })}>
+                  {tracksHolding(upgradeFrom || '').map(b => <option key={b.id} value={`bundle:${b.id}`}>📌 {b.title}</option>)}
+                </select>
+              </label>
+              {upgradeSource && (
+                <p className="rounded-lg bg-white px-3 py-2 text-[11px] leading-5 text-gray-600">
+                  المدفوع في «{upgradeSource.label}» ({upgradeSource.paid.toLocaleString('ar-EG-u-nu-latn')} {d.currency}) بيتحسب على المسار
+                  {_effPx > 0 && <> — المتبقي بعد التكملة: <b className="text-amber-700">{Math.max(0, _effPx - upgradeSource.paid).toLocaleString('ar-EG-u-nu-latn')} {d.currency}</b></>}.
+                  الكورس اللي عنده بيفضل مفتوح، وباقي كورسات المسار بتتفتح بالدفع زي أي قسط.
+                </p>
+              )}
+            </div>
+          ) : isConsultation ? (
             <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2.5 text-sm text-blue-700 font-semibold flex items-center gap-2">
               <span>💬</span>الاستشارة لا تحتاج تحديد كورس
             </div>

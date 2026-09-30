@@ -1,13 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   CheckCircle2, Clock, RefreshCw, Plus, XCircle, Wrench, ArrowUpCircle,
-  UserX, Trash2, BadgeCheck, Search,
+  UserX, Trash2, BadgeCheck, Search, Phone, ExternalLink, ChevronDown, X,
 } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../../context/SiteDataContext';
 import { AddRefundModal } from './AddRefundModal';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 import { promptDialog } from '../../../../../shared/ui/promptDialog';
+import { cairoDateTime } from '../../../../../shared/cairoDate';
+import { ClientContactDialog } from '../../../unified-client/ClientContactLog';
+import { branchLabels, normBranchKey } from '../../../unified-client/constants';
 
 // A refund is a money decision with a story: which course, at which branch, how
 // much of it the customer had actually paid, how much they asked back, when
@@ -45,9 +49,13 @@ interface RefundRow {
   blamed_staff_name?: string;
   blame_note?: string;
   course_title?: string;
+  course_item?: string | null;
   course_total?: number | string;
   paid_total?: number | string;
   attended_count?: number;
+  /** The last contact about it since it was asked for, from the client's contact log. */
+  last_contact?: { outcome?: string | null; notes?: string | null; at?: string; by?: string | null; type?: string } | null;
+  contacts_count?: number;
 }
 
 // Matches the narrower notifier FinancialTab passes; every call here is a
@@ -66,11 +74,25 @@ const normalizeStatus = (status?: string) => String(status || '').toUpperCase();
 const num = (value: unknown) => Number(value ?? 0) || 0;
 const money = (value: unknown, currency = 'EGP') => `${num(value).toLocaleString('ar-EG-u-nu-latn')} ${currency}`;
 const day = (value?: string) => (value ? String(value).slice(0, 10) : '—');
+const branchName = (branch?: string) => (branch ? branchLabels[normBranchKey(branch)] || branch : '—');
+const ownerOf = (row: RefundRow) => row.handler_name || row.assigned_cs_name || '';
+// «واللي في الادارة»: raised to management, whatever its status.
+const STATUS_FILTERS: Array<[string, string]> = [
+  ['ALL', 'كل الحالات'], ['PENDING', 'قيد المراجعة'], ['APPROVED', 'مقبول'], ['REJECTED', 'مرفوض'],
+  ['HANDLING', 'جارٍ معالجته'], ['REFUNDED', 'تم رد المبلغ'], ['ESCALATED', 'مرفوع للإدارة'],
+];
 
 // `branch` scopes both the list and the decision: the finance tab renders this
 // per branch, and the server checks the caller may act on that branch.
 export default function FinancialRefundsPanel({ notify, branch }: { notify: Notify; branch?: string }) {
   const { staffMembers, isAdmin, authUser } = useSiteData();
+  const navigate = useNavigate();
+  // The callers pass notify inline, so it is a new function every render; read
+  // through a ref, it no longer reloads the list each time the page renders.
+  const notifyRef = useRef(notify);
+  notifyRef.current = notify;
+  const contactNotify = useCallback((type: 'success' | 'error' | 'info', message: string) =>
+    notifyRef.current(message, type === 'error' ? 'error' : 'success'), []);
   // Customer service reads and escalates; accepting, rejecting, adding and
   // paying out are approve_refunds, which the server asks for each of them.
   const canDecide = isAdmin || authUser?.permissions === '*'
@@ -81,6 +103,12 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
   const [busy, setBusy] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [search, setSearch] = useState('');
+  const [courseFilter, setCourseFilter] = useState('');
+  const [branchFilter, setBranchFilter] = useState('');
+  const [ownerFilter, setOwnerFilter] = useState('');
+  const [salesFilter, setSalesFilter] = useState('');
+  const [menuFor, setMenuFor] = useState('');
+  const [contactRow, setContactRow] = useState<RefundRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -91,13 +119,14 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
       const data = await res.json();
       setRows(Array.isArray(data) ? data : []);
     } catch {
-      notify('تعذر تحميل طلبات الاسترداد', 'error');
+      notifyRef.current('تعذر تحميل طلبات الاسترداد', 'error');
     } finally { setLoading(false); }
-  }, [branch, notify]);
+  }, [branch]);
 
   useEffect(() => { void load(); }, [load]);
 
   const call = async (path: string, init: RequestInit, okMessage: string, id: string) => {
+    setMenuFor('');
     setBusy(id);
     try {
       const res = await fetch(path, {
@@ -212,18 +241,33 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter(row => {
-      if (statusFilter !== 'ALL' && normalizeStatus(row.status) !== statusFilter) return false;
+      if (statusFilter === 'ESCALATED' ? !row.escalated_at : statusFilter !== 'ALL' && normalizeStatus(row.status) !== statusFilter) return false;
+      if (courseFilter && (row.course_title || '') !== courseFilter) return false;
+      if (branchFilter && normBranchKey(row.subscriber_branch) !== branchFilter) return false;
+      if (ownerFilter && ownerOf(row) !== ownerFilter) return false;
+      if (salesFilter && (row.assigned_sales_name || '') !== salesFilter) return false;
       if (!q) return true;
       return [row.subscriber_name, row.subscriber_email, row.subscriber_phone, row.client_code, row.course_title]
         .some(field => String(field || '').toLowerCase().includes(q));
     });
-  }, [rows, statusFilter, search]);
+  }, [rows, statusFilter, courseFilter, branchFilter, ownerFilter, salesFilter, search]);
 
   const counts = useMemo(() => {
-    const out: Record<string, number> = { ALL: rows.length };
+    const out: Record<string, number> = { ALL: rows.length, ESCALATED: rows.filter(r => r.escalated_at).length };
     rows.forEach(r => { const s = normalizeStatus(r.status); out[s] = (out[s] || 0) + 1; });
     return out;
   }, [rows]);
+  const options = useMemo(() => {
+    const distinct = (pick: (row: RefundRow) => string) => [...new Set(rows.map(pick).filter(Boolean))].sort();
+    return {
+      course: distinct(row => row.course_title || ''),
+      branch: distinct(row => normBranchKey(row.subscriber_branch)),
+      owner: distinct(ownerOf),
+      sales: distinct(row => row.assigned_sales_name || ''),
+    };
+  }, [rows]);
+  const hasFilters = statusFilter !== 'ALL' || courseFilter || branchFilter || ownerFilter || salesFilter || search;
+  const selectCls = 'rounded-xl border border-gray-200 bg-white px-2.5 py-2 text-xs font-bold text-gray-700';
 
   const th = 'px-3 py-2.5 text-right font-bold whitespace-nowrap';
   const td = 'px-3 py-2.5 align-top';
@@ -237,13 +281,29 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
             placeholder="ابحث بالاسم أو الكود أو الكورس"
             className="w-full rounded-xl border border-gray-200 py-2 pr-9 pl-3 text-sm" />
         </div>
-        {['ALL', 'PENDING', 'APPROVED', 'HANDLING', 'REJECTED', 'REFUNDED'].map(key => (
-          <button key={key} onClick={() => setStatusFilter(key)}
-            className={`rounded-xl px-3 py-1.5 text-xs font-bold transition ${
-              statusFilter === key ? 'bg-slate-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-            {key === 'ALL' ? 'الكل' : STATUS_MAP[key]?.label} ({counts[key] || 0})
-          </button>
-        ))}
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className={selectCls} aria-label="الحالة">
+          {STATUS_FILTERS.map(([key, label]) => <option key={key} value={key}>{label} ({counts[key] || 0})</option>)}
+        </select>
+        <select value={courseFilter} onChange={e => setCourseFilter(e.target.value)} className={selectCls} aria-label="الكورس">
+          <option value="">كل الكورسات</option>
+          {options.course.map(item => <option key={item} value={item}>{item}</option>)}
+        </select>
+        <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)} className={selectCls} aria-label="الفرع">
+          <option value="">كل الفروع</option>
+          {options.branch.map(item => <option key={item} value={item}>{branchName(item)}</option>)}
+        </select>
+        <select value={ownerFilter} onChange={e => setOwnerFilter(e.target.value)} className={selectCls} aria-label="المسئول">
+          <option value="">كل المسئولين</option>
+          {options.owner.map(item => <option key={item} value={item}>{item}</option>)}
+        </select>
+        <select value={salesFilter} onChange={e => setSalesFilter(e.target.value)} className={selectCls} aria-label="السيلز">
+          <option value="">كل السيلز</option>
+          {options.sales.map(item => <option key={item} value={item}>{item}</option>)}
+        </select>
+        {hasFilters && (
+          <button onClick={() => { setStatusFilter('ALL'); setCourseFilter(''); setBranchFilter(''); setOwnerFilter(''); setSalesFilter(''); setSearch(''); }}
+            className="rounded-xl bg-gray-100 px-3 py-2 text-xs font-bold text-gray-600 flex items-center gap-1"><X size={12} /> مسح</button>
+        )}
         <button onClick={() => void load()} className="rounded-xl border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-50 flex items-center gap-1">
           <RefreshCw size={12} /> تحديث
         </button>
@@ -265,8 +325,7 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
           <table className="w-full text-xs">
             <thead className="bg-gray-50 text-gray-500">
               <tr>
-                <th className={th}>العميل</th>
-                <th className={th}>الكورس</th>
+                <th className={th}>العميل والكورس</th>
                 <th className={th}>الفرع</th>
                 <th className={th}>دفع / الإجمالي</th>
                 <th className={th}>طلب استرداد</th>
@@ -277,6 +336,7 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
                 <th className={th}>الحضور</th>
                 <th className={th}>الحالة</th>
                 <th className={th}>النتيجة</th>
+                <th className={th}>آخر تواصل</th>
                 <th className={th}>إجراءات</th>
               </tr>
             </thead>
@@ -290,10 +350,11 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
                   <tr key={row.id} className="border-t border-gray-100 hover:bg-gray-50/60">
                     <td className={td}>
                       <div className="font-bold text-gray-800">{row.subscriber_name || '—'}</div>
-                      <div className="text-[11px] text-gray-400" dir="ltr">{row.client_code || row.subscriber_phone || row.subscriber_email || ''}</div>
+                      {/* «ليه اسم الكورس مش بيظهر تحت اسم العميل بيكون رقم تليفون». */}
+                      <div className="text-[11px] font-bold text-indigo-700">{row.course_title || 'كورس غير محدد'}</div>
+                      <div className="text-[10px] text-gray-400" dir="ltr">{row.client_code || row.subscriber_phone || ''}</div>
                     </td>
-                    <td className={`${td} text-gray-700`}>{row.course_title || '—'}</td>
-                    <td className={`${td} text-gray-600`}>{row.subscriber_branch || '—'}</td>
+                    <td className={`${td} text-gray-600 whitespace-nowrap`}>{branchName(row.subscriber_branch)}</td>
                     <td className={td}>
                       <span className="font-bold text-gray-800">{num(row.paid_total).toLocaleString('ar-EG-u-nu-latn')}</span>
                       <span className="text-gray-400"> / {num(row.course_total).toLocaleString('ar-EG-u-nu-latn')}</span>
@@ -326,40 +387,68 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
                       ) : <span className="text-gray-300">—</span>}
                       {row.refunded_at && <div className="text-[10px] text-teal-600">رُدّ {day(row.refunded_at)}</div>}
                     </td>
+                    <td className={`${td} min-w-[160px]`}>
+                      {row.last_contact ? (
+                        <div>
+                          {row.last_contact.outcome && <div className="font-bold text-emerald-700">{row.last_contact.outcome}</div>}
+                          {row.last_contact.notes && <div className="text-gray-600 line-clamp-2" title={row.last_contact.notes}>{row.last_contact.notes}</div>}
+                          <div className="text-[10px] text-gray-400">
+                            {row.last_contact.by || '—'} · {cairoDateTime(row.last_contact.at)}
+                            {(row.contacts_count || 0) > 1 && <> · {row.contacts_count} تواصل</>}
+                          </div>
+                        </div>
+                      ) : <span className="text-gray-300">لسه متواصلش</span>}
+                    </td>
                     <td className={td}>
-                      <div className="flex flex-wrap gap-1">
-                        {isPending && canDecide && (
-                          <>
-                            <button disabled={working} onClick={() => decide(row, 'APPROVED')}
-                              className="rounded-lg bg-emerald-600 px-2 py-1 font-bold text-white hover:bg-emerald-700 disabled:opacity-50">مقبول</button>
-                            <button disabled={working} onClick={() => decide(row, 'REJECTED')}
-                              className="rounded-lg bg-red-600 px-2 py-1 font-bold text-white hover:bg-red-700 disabled:opacity-50">مرفوض</button>
-                            <button disabled={working} onClick={() => decide(row, 'HANDLING')}
-                              className="rounded-lg bg-blue-600 px-2 py-1 font-bold text-white hover:bg-blue-700 disabled:opacity-50">هنعالجه</button>
-                          </>
-                        )}
-                        {status === 'APPROVED' && canDecide && (
-                          <button disabled={working} onClick={() => markRefunded(row)}
-                            className="rounded-lg bg-teal-600 px-2 py-1 font-bold text-white hover:bg-teal-700 disabled:opacity-50 inline-flex items-center gap-1">
-                            <BadgeCheck size={11} /> تم رد المبلغ
-                          </button>
+                      {/* «تواصل» and the client's file first; every decision
+                          under «النتيجة»; raising to management on its own. */}
+                      <div className="flex flex-wrap items-start gap-1">
+                        <button disabled={working} onClick={() => setContactRow(row)} title="تواصل وسجّل اللي حصل"
+                          className="rounded-lg bg-blue-600 px-2 py-1 font-bold text-white hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1">
+                          <Phone size={11} /> تواصل
+                        </button>
+                        <button onClick={() => navigate(`/client/${row.client_code || row.subscriber_id}`)} title="ملف العميل"
+                          className="rounded-lg border border-gray-200 bg-white px-2 py-1 font-bold text-gray-600 hover:bg-gray-100 inline-flex items-center gap-1">
+                          <ExternalLink size={11} /> البروفايل
+                        </button>
+                        {(canDecide || isAdmin) && (
+                          <div className="relative">
+                            <button disabled={working} onClick={() => setMenuFor(menuFor === row.id ? '' : row.id)}
+                              className="rounded-lg bg-slate-800 px-2 py-1 font-bold text-white hover:bg-slate-900 disabled:opacity-50 inline-flex items-center gap-1">
+                              النتيجة <ChevronDown size={11} />
+                            </button>
+                            {menuFor === row.id && (
+                              <>
+                                <div className="fixed inset-0 z-10" onClick={() => setMenuFor('')} />
+                                <div className="absolute left-0 z-20 mt-1 w-40 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+                                  {isPending && canDecide && (
+                                    <>
+                                      <button onClick={() => { setMenuFor(''); void decide(row, 'APPROVED'); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-right font-bold text-emerald-700 hover:bg-emerald-50"><CheckCircle2 size={12} /> مقبول</button>
+                                      <button onClick={() => { setMenuFor(''); void decide(row, 'REJECTED'); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-right font-bold text-red-700 hover:bg-red-50"><XCircle size={12} /> مرفوض</button>
+                                      <button onClick={() => { setMenuFor(''); void decide(row, 'HANDLING'); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-right font-bold text-blue-700 hover:bg-blue-50"><Wrench size={12} /> هنعالجه</button>
+                                    </>
+                                  )}
+                                  {status === 'APPROVED' && canDecide && (
+                                    <button onClick={() => { setMenuFor(''); void markRefunded(row); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-right font-bold text-teal-700 hover:bg-teal-50"><BadgeCheck size={12} /> تم رد المبلغ</button>
+                                  )}
+                                  {isAdmin && (
+                                    <button onClick={() => { setMenuFor(''); void blame(row); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-right font-bold text-rose-700 hover:bg-rose-50"><UserX size={12} /> خطأ موظف</button>
+                                  )}
+                                  {isAdmin && (
+                                    <button onClick={() => { setMenuFor(''); void remove(row); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-right font-bold text-gray-600 hover:bg-gray-50"><Trash2 size={12} /> حذف الطلب</button>
+                                  )}
+                                  {!isPending && status !== 'APPROVED' && !isAdmin && (
+                                    <p className="px-3 py-1.5 text-gray-400">اتاخد فيه قرار</p>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                          </div>
                         )}
                         {!row.escalated_at && status !== 'REFUNDED' && (
                           <button disabled={working} onClick={() => escalate(row)}
                             className="rounded-lg border border-purple-200 bg-purple-50 px-2 py-1 font-bold text-purple-700 hover:bg-purple-100 disabled:opacity-50 inline-flex items-center gap-1">
                             <ArrowUpCircle size={11} /> رفع للإدارة
-                          </button>
-                        )}
-                        {isAdmin && (
-                          <button disabled={working} onClick={() => blame(row)}
-                            className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-50 inline-flex items-center gap-1">
-                            <UserX size={11} /> خطأ موظف
-                          </button>
-                        )}
-                        {isAdmin && (
-                          <button disabled={working} onClick={() => remove(row)}
-                            className="rounded-lg border border-gray-200 px-2 py-1 font-bold text-gray-500 hover:bg-gray-100 disabled:opacity-50">
-                            <Trash2 size={11} />
                           </button>
                         )}
                       </div>
@@ -375,6 +464,14 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
       {/* This panel's notify takes (message, tone); the modal uses the
           (type, text) shape the rest of the admin does. Adapted at the call
           site rather than changing either signature. */}
+      {contactRow && (
+        <ClientContactDialog
+          subscriber={{ id: contactRow.subscriber_id, name: contactRow.subscriber_name || 'العميل' }}
+          notify={contactNotify}
+          onClose={() => { setContactRow(null); void load(); }}
+        />
+      )}
+
       {addOpen && (
         <AddRefundModal
           notify={(type, text) => notify(text, type === 'error' ? 'error' : 'success')}
