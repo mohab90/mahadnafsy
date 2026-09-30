@@ -32,7 +32,7 @@ export function DashboardStandaloneTabs({ activeTab, isSalesOnly, notify }: Dash
       {activeTab === 'management_reports' && (
         <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-b-2 border-slate-600" /></div>}>
           <TabErrorBoundary>
-            <ManagementReportsTab notify={(type, text) => notify(type, text)} />
+            <ManagementReportsTab notify={notify} />
           </TabErrorBoundary>
         </Suspense>
       )}

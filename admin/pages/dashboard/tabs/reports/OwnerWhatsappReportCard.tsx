@@ -29,7 +29,7 @@ export function OwnerWhatsappReportCard({ notify }: { notify: Notify }) {
   const save = async () => {
     setBusy(true);
     try {
-      const saved = await mysqlAdmin.adminPut<Settings & { ok: boolean }>('/admin/reports/whatsapp', { ...settings, phones });
+      const saved = await mysqlAdmin.adminPut<Settings & { ok: boolean }>('/admin/reports/whatsapp', { enabled: settings.enabled, hour: settings.hour, phones });
       setSettings(prev => ({ ...saved, preview: prev?.preview }));
       notify('success', saved.enabled ? `اتحفظ — التقرير هيوصل كل يوم الساعة ${saved.hour}:00` : 'اتحفظ — التقرير اليومي مقفول');
     } catch (error) {

@@ -128,7 +128,7 @@ export function DashboardGrowthOpsTabs({
       <Suspense fallback={fallback('border-teal-500')}>
         <TabErrorBoundary>
           <div className="space-y-6">
-            <TeamReportPanel team="online" notify={(type, text) => notify(type, text)} />
+            <TeamReportPanel team="online" notify={notify} />
             <OnlineTeamTab notify={notify} />
           </div>
         </TabErrorBoundary>

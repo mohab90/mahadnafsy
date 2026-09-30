@@ -48,6 +48,16 @@ test('each team is its own report, and the management page gathers them over one
   for (const key of ['salesByMoney', 'collectionByMoney', 'byBranch', 'byDepartment', 'topSources']) assert.ok(lib.includes(key), key);
 });
 
+test('the report screens get the dashboard\'s own notify, not a new one each render', () => {
+  // The WhatsApp card and the reports reload when notify changes; an inline
+  // wrapper changed it on every dashboard render, which wiped the number being
+  // typed and fetched the whole report again.
+  for (const file of ['DashboardStandaloneTabs.tsx', 'GeneralDashboardTabs.tsx', 'DashboardGrowthOpsTabs.tsx']) {
+    const src = read(`admin/pages/dashboard/${file}`);
+    assert.ok(!/<(?:ManagementReportsTab|TeamReportPanel)[^>]*notify=\{\(/.test(src), file);
+  }
+});
+
 test('the reports are for management, and the institute\'s money for the owner and the managers', () => {
   const route = read('api/routes/management-reports.js');
   assert.match(route, /'\/api\/admin\/reports\/teams\/:team', requireAuth, requireAdminOrStaff,\s*requireAnyPermission\('manage_sales_team', 'view_perf_online', 'view_perf_cx', 'view_perf_daqqi'\)/);

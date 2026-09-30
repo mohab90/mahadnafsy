@@ -74,7 +74,7 @@ const spinnerClassByTone: Record<NonNullable<NotifyTabEntry['spinner']>, string>
 function CxTeamWithReport({ notify }: { notify: NotifyFn }) {
   return (
     <div className="space-y-6">
-      <TeamReportPanel team="support" notify={(type, text) => notify(type, text)} />
+      <TeamReportPanel team="support" notify={notify} />
       <CxTeamTab notify={notify} />
     </div>
   );
@@ -83,7 +83,7 @@ function CxTeamWithReport({ notify }: { notify: NotifyFn }) {
 function DaqqiStatsWithAttendance({ notify }: { notify: NotifyFn }) {
   return (
     <div className="space-y-6">
-      <TeamReportPanel team="daqqi" notify={(type, text) => notify(type, text)} />
+      <TeamReportPanel team="daqqi" notify={notify} />
       <AnalyticsTab notify={notify} />
       <DaqqiAttendanceTab notify={(message, type) => notify(type || 'info', message)} />
     </div>
