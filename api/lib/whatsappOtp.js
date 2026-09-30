@@ -236,8 +236,13 @@ async function requestLoginCode({ tenantId, phone }) {
       [reason, id]
     ).catch(() => {});
     logger.error('[wa-otp] delivery failed', { reason });
-    const failure = new Error('تعذّر إرسال الرمز عبر واتساب. حاول لاحقاً.');
-    failure.statusCode = 503;
+    // A number that cannot be dialled is the customer's to fix, now: it was a
+    // 503 «حاول لاحقاً», and trying later with the same number never works.
+    const badNumber = reason === 'invalid_number';
+    const failure = new Error(badNumber
+      ? 'الرقم ده مش رقم واتساب صحيح — اكتبه بكود الدولة لو من برا مصر (مثال: 9665xxxxxxxx).'
+      : 'تعذّر إرسال الرمز عبر واتساب. حاول لاحقاً.');
+    failure.statusCode = badNumber ? 400 : 503;
     throw failure;
   }
 
@@ -308,6 +313,23 @@ async function verifyLoginCode({ tenantId, phone, code, name = null }) {
     // and an account either both exist or neither does.
     let userId = row.user_id;
     let created = false;
+    // The code was issued against the active accounts of the moment. Another
+    // code for the same number may have created the account since, or the
+    // number may belong to a switched-off account: either way an INSERT hit
+    // uq_users_tenant_phone and the customer got «حدث خطأ» (500) — twice on
+    // 29 Sep. The number's own account decides.
+    if (!userId) {
+      const [[existing]] = await conn.query(
+        'SELECT id, is_active FROM users WHERE tenant_id=? AND phone=? LIMIT 1 FOR UPDATE',
+        [tenantId, normalized]
+      );
+      if (existing && !existing.is_active) {
+        const error = new Error('الحساب المرتبط بالرقم ده موقوف — كلّم خدمة العملاء على واتساب');
+        error.statusCode = 403;
+        throw error;
+      }
+      if (existing) userId = existing.id;
+    }
     if (!userId) {
       userId = uuidv4();
       // No password is ever set: this account can only be entered by OTP. A

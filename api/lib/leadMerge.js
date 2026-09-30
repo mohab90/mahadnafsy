@@ -125,6 +125,15 @@ async function mergeLeads({ tenantId, targetId, sourceIds, actor = null }) {
     }))];
     const notes = [...new Set([target.notes, ...sourceRows.map(row => row.notes)].filter(Boolean))].join('\n---\n');
     const fallback = (field) => target[field] || sourceRows.find(row => row[field])?.[field] || null;
+    // The unique keys count hidden leads too, so a target taking a source's
+    // phone or client code collided with the source still holding it — every
+    // merge into a card with no number failed on uq_leads_tenant_phone (11 on
+    // 28 Sep). The sources give theirs up first; the audit snapshot below keeps
+    // them, and an unmerge gives them back.
+    await conn.query(
+      `UPDATE leads SET phone=NULL, client_code=NULL WHERE tenant_id=? AND id IN (${sources.map(() => '?').join(',')})`,
+      [tenantId, ...sources]
+    );
     await conn.query(
       `UPDATE leads SET name=?,email=?,phone=?,source=?,notes=?,client_code=?,assigned_sales_id=?,assigned_sales_name=?,
          assigned_cs_id=?,assigned_cs_name=?,branch=?,interest_level=?,interested_course_ids_json=?,crm_json=?,
@@ -252,6 +261,19 @@ async function unmergeLead({ tenantId, sourceId, actor = null }) {
       'UPDATE leads SET hidden=0,merged_into_lead_id=NULL,updated_at=NOW() WHERE id=? AND tenant_id=?',
       [sourceId, tenantId]
     );
+    // The phone and client code it gave up on merging, unless another lead —
+    // usually the target — holds them now.
+    for (const field of ['phone', 'client_code']) {
+      const value = snapshot.lead[field];
+      if (!value) continue;
+      const [[holder]] = await conn.query(
+        `SELECT id FROM leads WHERE tenant_id=? AND ${field}=? AND id<>? LIMIT 1`,
+        [tenantId, value, sourceId]
+      );
+      if (!holder) {
+        await conn.query(`UPDATE leads SET ${field}=? WHERE id=? AND tenant_id=?`, [value, sourceId, tenantId]);
+      }
+    }
     await conn.query(
       'UPDATE lead_merge_audit SET reverted_at=NOW(),reverted_by=? WHERE id=? AND tenant_id=?',
       [actor, audit.id, tenantId]
