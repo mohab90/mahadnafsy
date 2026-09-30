@@ -74,11 +74,6 @@ type CompactRoleNavProps = {
   tabs: CompactTab[];
   activeTab: TabKey;
   setActiveTab: (tab: TabKey) => void;
-  activeButtonClass: string;
-  avatarClass: string;
-  spinnerBorderClass: string;
-  roleBadge?: string;
-  roleBadgeClass?: string;
   currentStaff: StaffMember | null | undefined;
   salesDataLoading: boolean;
   staffNotifBadge: number;
@@ -88,29 +83,59 @@ type CompactRoleNavProps = {
   extraHeaderButtons?: React.ReactNode;
 };
 
+// «خلي نمط التصميم واحد لكل الموظفين باختلاف صلاحيتهم»: every bar is drawn the
+// way the management bar is — the mark, compact buttons, one colour, the same
+// icon controls — whatever tabs a role is given.
+const barButtonClass = (active: boolean) => `flex items-center gap-1 px-2 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition flex-shrink-0 ${
+  active ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`;
+const menuRowClass = (active: boolean) => `w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-semibold transition text-right ${
+  active ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-primary-50 hover:text-primary-700'}`;
+const iconButtonClass = 'relative w-8 h-8 rounded-xl bg-gray-100 hover:bg-primary-50 hover:text-primary-600 text-gray-500 grid place-items-center transition';
+
+/**
+ * The institute's mark — the roundel, not the wordmark. institute.logo is the
+ * name beside the mark, and in a bar that needs its width for the menu the
+ * name is the half worth dropping; institute.favicon is that mark, already
+ * square, already uploaded.
+ */
+function BrandMark() {
+  const { content } = useSiteData();
+  const logoUrl = (content['institute.favicon'] || content['institute.logo'] || '').trim();
+  return (
+    <div className="flex items-center flex-shrink-0">
+      {logoUrl ? (
+        <img src={logoUrl} alt={content['institute.name'] || 'معهد الدراسات النفسية'} className="h-10 w-10 object-contain" />
+      ) : (
+        // No logo set for this tenant — an <img> with an empty src is a broken
+        // image where the brand should be.
+        <div className="w-7 h-7 rounded-xl bg-primary-600 text-white grid place-items-center flex-shrink-0">
+          <Shield size={14} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * «ملفي» — the one way into the person's own page, and the same small icon in
  * every account: the admin bar and each role's bar. Two text tabs used to sit
  * at the end of every role bar («ملفي الشخصي», «ملفي الوظيفي») while the admin
  * bar had two icons; the owner asked for one icon, on the left, everywhere.
  */
-function ProfileIconButton({ activeTab, setActiveTab, size = 'md' }: {
-  activeTab: TabKey; setActiveTab: (tab: TabKey) => void; size?: 'sm' | 'md';
-}) {
+function ProfileIconButton({ activeTab, setActiveTab }: { activeTab: TabKey; setActiveTab: (tab: TabKey) => void }) {
   const active = isProfileTab(activeTab);
   return (
     <button type="button" onClick={() => setActiveTab('staff_home')} title="ملفي" aria-label="ملفي"
       aria-current={active ? 'page' : undefined}
-      className={`${size === 'sm' ? 'w-7 h-7 rounded-lg' : 'w-8 h-8 rounded-xl'} grid place-items-center transition ${
-        active ? 'bg-indigo-600 text-white' : 'bg-gray-100 hover:bg-indigo-50 hover:text-indigo-600 text-gray-500'}`}>
-      <UserCog size={size === 'sm' ? 13 : 15} />
+      className={`w-8 h-8 rounded-xl grid place-items-center transition ${
+        active ? 'bg-primary-600 text-white' : 'bg-gray-100 hover:bg-primary-50 hover:text-primary-600 text-gray-500'}`}>
+      <UserCog size={15} />
     </button>
   );
 }
 
 function CompactRoleNav({
-  tabs, activeTab, setActiveTab, activeButtonClass, avatarClass, spinnerBorderClass,
-  roleBadge, roleBadgeClass, currentStaff, salesDataLoading, staffNotifBadge,
+  tabs, activeTab, setActiveTab, currentStaff, salesDataLoading, staffNotifBadge,
   setSalesNotifOpen, notify, extraTabsSlot, extraHeaderButtons,
 }: CompactRoleNavProps) {
   const navigate = useNavigate();
@@ -122,67 +147,57 @@ function CompactRoleNav({
   // Same as the admin bar: on a phone the tabs wrapped into three or four rows
   // of buttons above the page. Below md they fold into ☰ and open downwards.
   const [menuOpen, setMenuOpen] = React.useState(false);
-  const tabButton = (tab: CompactTab, block: boolean) => {
-    const Icon = tab.icon;
-    const isActive = activeTab === tab.key;
-    return (
-      <button key={tab.key} onClick={() => { setActiveTab(tab.key); setMenuOpen(false); }}
-        className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition ${block ? 'w-full text-right' : ''} ${
-          isActive ? activeButtonClass : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-        }`}>
-        <Icon size={15} />
-        {tab.label}
-      </button>
-    );
-  };
+  const pick = (key: TabKey) => { setActiveTab(key); setMenuOpen(false); };
   return (
-    <nav className="sticky top-3 z-40 bg-white/95 backdrop-blur border border-gray-200 rounded-2xl p-2 shadow-sm flex items-center gap-2 flex-wrap justify-between" dir="rtl">
-      <button
-        type="button"
-        onClick={() => setMenuOpen(open => !open)}
-        aria-expanded={menuOpen}
-        aria-label="القائمة"
-        className={`md:hidden flex items-center gap-2 min-w-0 px-3 py-2 rounded-xl text-sm font-semibold transition ${
-          menuOpen ? activeButtonClass : 'text-gray-700 hover:bg-gray-100'}`}
-      >
-        <Menu size={18} className="flex-shrink-0" />
-        <span className="truncate">{tabs.find(tab => tab.key === activeTab)?.label || 'القائمة'}</span>
-      </button>
-      <div className="hidden md:flex items-center gap-1.5 flex-wrap">
-        {tabs.map(tab => tabButton(tab, false))}
-        {extraTabsSlot}
-      </div>
-      {currentStaff && (
-        <div className="flex items-center gap-2 pl-2 text-sm text-gray-600">
-          <div className={`w-7 h-7 rounded-full grid place-items-center text-xs font-bold flex-shrink-0 ${avatarClass}`}>
-            {currentStaff.name.charAt(0)}
-          </div>
-          {/* The initial says who it is on a phone; the name needs the width
-              the ☰ button is using there. */}
-          <span className="hidden sm:inline font-semibold text-gray-800">{currentStaff.name}</span>
-          {roleBadge && <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${roleBadgeClass}`}>{roleBadge}</span>}
-          {salesDataLoading && <span className={`w-4 h-4 border-2 border-t-transparent rounded-full animate-spin ${spinnerBorderClass}`} />}
-          <ProfileIconButton activeTab={activeTab} setActiveTab={setActiveTab} size="sm" />
-          <button
-            onClick={() => setSalesNotifOpen(true)}
-            className="relative w-7 h-7 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 hover:text-amber-800 grid place-items-center transition"
-            title="الإشعارات والمتابعات"
-          >
-            <Bell size={13} />
-            {staffNotifBadge > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-bold grid place-items-center">{staffNotifBadge > 9 ? '9+' : staffNotifBadge}</span>}
+    <nav className="sticky top-3 z-40 mb-4" dir="rtl">
+      <div className="flex items-center gap-2 bg-white/95 backdrop-blur border border-gray-200 rounded-2xl px-3 py-2 shadow-sm">
+        <BrandMark />
+        <div className="md:hidden flex-1 min-w-0">
+          <button type="button" onClick={() => setMenuOpen(open => !open)} aria-expanded={menuOpen} aria-label="القائمة"
+            className={`w-9 h-9 grid place-items-center rounded-xl transition ${menuOpen ? 'bg-primary-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}>
+            <Menu size={20} />
           </button>
-          <MessagesBell mode="staff" notify={notify} compact />
-          {extraHeaderButtons}
-          <button
-            onClick={signOut}
-            className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 grid place-items-center transition"
-            title="تسجيل الخروج"
-          ><LogOut size={13} /></button>
         </div>
-      )}
+        <div className="hidden md:flex items-center gap-0.5 overflow-x-auto flex-1 min-w-0">
+          {tabs.map(tab => {
+            const Icon = tab.icon;
+            return (
+              <button key={tab.key} onClick={() => pick(tab.key)} className={barButtonClass(activeTab === tab.key)}>
+                <Icon size={13} />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+          {extraTabsSlot}
+        </div>
+        <div className="w-px h-5 bg-gray-200 flex-shrink-0 mx-0.5" />
+        {currentStaff && (
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {salesDataLoading && <span className="w-4 h-4 border-2 border-t-transparent border-primary-400 rounded-full animate-spin" />}
+            <ProfileIconButton activeTab={activeTab} setActiveTab={setActiveTab} />
+            <button onClick={() => setSalesNotifOpen(true)} className={iconButtonClass} title="الإشعارات والمتابعات">
+              <Bell size={15} />
+              {staffNotifBadge > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold grid place-items-center">{staffNotifBadge > 9 ? '9+' : staffNotifBadge}</span>}
+            </button>
+            <MessagesBell mode="staff" notify={notify} />
+            {extraHeaderButtons}
+            <button onClick={signOut} className="w-8 h-8 rounded-xl bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 grid place-items-center transition" title="تسجيل الخروج">
+              <LogOut size={14} />
+            </button>
+          </div>
+        )}
+      </div>
       {menuOpen && (
-        <div className="md:hidden basis-full border-t border-gray-100 pt-2 space-y-0.5 max-h-[70vh] overflow-y-auto overscroll-contain">
-          {tabs.map(tab => tabButton(tab, true))}
+        <div className="md:hidden mt-2 bg-white border border-gray-200 rounded-2xl shadow-xl p-1.5 max-h-[70vh] overflow-y-auto overscroll-contain">
+          {tabs.map(tab => {
+            const Icon = tab.icon;
+            return (
+              <button key={tab.key} onClick={() => pick(tab.key)} className={menuRowClass(activeTab === tab.key)}>
+                <Icon size={14} />
+                <span className="truncate flex-1">{tab.label}</span>
+              </button>
+            );
+          })}
           {extraTabsSlot}
         </div>
       )}
@@ -203,13 +218,12 @@ export function DashboardNavigation(props: Props) {
   } = props;
   const navigate = useNavigate();
   const { logout } = useAuth();
-  const { content } = useSiteData();
-  // The roundel, not the wordmark. institute.logo is the name beside the
-  // mark, and in a bar that needs its width for the menu the name is the half
-  // worth dropping — institute.favicon is that mark, already square, already
-  // uploaded. Cropping the wide logo to its right-hand end would have worked
-  // for exactly this one image and broken on the next one.
-  const logoUrl = (content['institute.favicon'] || content['institute.logo'] || '').trim();
+  // A role with a bar of its own sees that bar and nothing else. The management
+  // bar was hidden for four of them and not for the Dokki manager or the sales
+  // and collection manager, who got both — the whole panel's groups on top of
+  // their own tabs.
+  const hasRoleBar = isSalesOnly || isCollectionRole || (isReceptionDaqqi && !isDaqqiManager)
+    || ((isDaqqiManager || isSalesCollectionManager || isOnlineManager) && !isAdmin);
   // Signing out has to tell the app, not only the server. This cleared the
   // cookie and navigated, so the panel stayed "signed in": the dashboard kept
   // drawing and every request it made came back 401, one toast each.
@@ -239,9 +253,7 @@ export function DashboardNavigation(props: Props) {
       <button
         key={`${item.key}-${groupKey}`}
         onClick={() => { setActiveTab(item.key as TabKey); onPicked(); }}
-        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-semibold transition text-right ${
-          isActive ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-primary-50 hover:text-primary-700'
-        }`}
+        className={menuRowClass(isActive)}
       >
         <Icon size={14} className="flex-shrink-0" />
         <span className="truncate flex-1">{item.label}</span>
@@ -262,7 +274,7 @@ export function DashboardNavigation(props: Props) {
   return (
 <>
         {/* ── Main nav bar ── */}
-        {!isSalesOnly && !isCollectionRole && !isReceptionDaqqi && !isOnlineManager && (
+        {!hasRoleBar && (
           // sticky, because the screens under this bar are long ones — the
           // leads table, the client database, a financial report — and moving
           // between sections meant scrolling back to the top first. top-3
@@ -278,21 +290,7 @@ export function DashboardNavigation(props: Props) {
                   panel that they were inside the panel, in the space the logo
                   belongs in. «متصل» linked to the security centre, which keeps
                   its own place in الإعدادات ← الأمان والصيانة. */}
-              <div className="flex items-center flex-shrink-0">
-                {logoUrl ? (
-                  <img
-                    src={logoUrl}
-                    alt={content['institute.name'] || 'معهد الدراسات النفسية'}
-                    className="h-10 w-10 object-contain"
-                  />
-                ) : (
-                  // No logo set for this tenant — an <img> with an empty src is
-                  // a broken image where the brand should be.
-                  <div className="w-7 h-7 rounded-xl bg-primary-600 text-white grid place-items-center flex-shrink-0">
-                    <Shield size={14} />
-                  </div>
-                )}
-              </div>
+              <BrandMark />
 
               {/* The phone's way in: the whole menu, opened downwards. */}
               <div className="md:hidden flex-1 min-w-0">
@@ -328,11 +326,7 @@ export function DashboardNavigation(props: Props) {
                       }}
                       // px-2, not px-2.5: two pixels a side is what the ten
                       // groups needed to fit the bar without it scrolling.
-                      className={`flex items-center gap-1 px-2 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition flex-shrink-0 ${
-                        hasActive || isOpen
-                          ? 'bg-primary-600 text-white shadow-sm'
-                          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                      }`}
+                      className={barButtonClass(hasActive || isOpen)}
                     >
                       <GroupIcon size={13} />
                       <span>{group.short || group.label}</span>
@@ -436,9 +430,6 @@ export function DashboardNavigation(props: Props) {
                   { key: 'staff_performance', label: 'إحصائياتي', icon: BarChart3 },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
-                activeButtonClass="bg-primary-600 text-white shadow-md shadow-primary-200"
-                avatarClass="bg-primary-100 text-primary-700"
-                spinnerBorderClass="border-primary-400"
                 currentStaff={currentStaff} salesDataLoading={salesDataLoading}
                 staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen} notify={notify}
               />
@@ -455,9 +446,6 @@ export function DashboardNavigation(props: Props) {
                   { key: 'overview', label: 'إحصائياتي', icon: BarChart3 },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
-                activeButtonClass="bg-primary-600 text-white shadow-md shadow-primary-200"
-                avatarClass="bg-teal-100 text-teal-700"
-                spinnerBorderClass="border-teal-400"
                 currentStaff={currentStaff} salesDataLoading={salesDataLoading}
                 staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen} notify={notify}
               />
@@ -474,9 +462,6 @@ export function DashboardNavigation(props: Props) {
                   { key: 'staff_performance', label: 'إحصائياتي', icon: BarChart3 },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
-                activeButtonClass="bg-primary-600 text-white shadow-md shadow-primary-200"
-                avatarClass="bg-orange-100 text-orange-700"
-                spinnerBorderClass="border-orange-400"
                 currentStaff={currentStaff} salesDataLoading={salesDataLoading}
                 staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen} notify={notify}
               />
@@ -494,10 +479,6 @@ export function DashboardNavigation(props: Props) {
                   { key: 'daqqi_stats', label: 'إحصائيات فريق الدقي', icon: BarChart3 },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
-                activeButtonClass="bg-purple-600 text-white shadow-md shadow-purple-200"
-                avatarClass="bg-purple-100 text-purple-700"
-                spinnerBorderClass="border-purple-400"
-                roleBadge="مدير الدقي" roleBadgeClass="bg-purple-100 text-purple-700"
                 currentStaff={currentStaff} salesDataLoading={salesDataLoading}
                 staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen} notify={notify}
               />
@@ -517,10 +498,6 @@ export function DashboardNavigation(props: Props) {
                   { key: 'overview', label: 'إحصائيات', icon: BarChart3 },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
-                activeButtonClass="bg-indigo-600 text-white shadow-md shadow-indigo-200"
-                avatarClass="bg-indigo-100 text-indigo-700"
-                spinnerBorderClass="border-indigo-400"
-                roleBadge="مدير المبيعات والتحصيل" roleBadgeClass="bg-indigo-100 text-indigo-700"
                 currentStaff={currentStaff} salesDataLoading={salesDataLoading}
                 staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen} notify={notify}
               />
@@ -541,25 +518,19 @@ export function DashboardNavigation(props: Props) {
                     { key: 'overview', label: 'إحصائيات', icon: BarChart3 },
                   ]}
                   activeTab={activeTab} setActiveTab={setActiveTab}
-                  activeButtonClass="bg-emerald-600 text-white shadow-md shadow-emerald-200"
-                  avatarClass="bg-emerald-100 text-emerald-700"
-                  spinnerBorderClass="border-emerald-400"
-                  roleBadge="مسئول الأونلاين" roleBadgeClass="bg-emerald-100 text-emerald-700"
                   currentStaff={currentStaff} salesDataLoading={salesDataLoading}
                   staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen} notify={notify}
                   extraTabsSlot={
                     <div className="relative">
                       <button
                         onClick={() => setOnlineMgrAcademyOpen(o => !o)}
-                        className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition ${
-                          isAcademyActive ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                        }`}>
-                        <BookOpen size={15} />
-                        الأكاديمية والمحتوى
-                        <ChevronDown size={13} className={`transition-transform ${onlineMgrAcademyOpen ? 'rotate-180' : ''}`} />
+                        className={barButtonClass(isAcademyActive || onlineMgrAcademyOpen)}>
+                        <BookOpen size={13} />
+                        <span>الأكاديمية والمحتوى</span>
+                        <ChevronDown size={11} className={`transition-transform ${onlineMgrAcademyOpen ? 'rotate-180' : ''}`} />
                       </button>
                       {onlineMgrAcademyOpen && (
-                        <div className="absolute top-full mt-1 right-0 bg-white border border-gray-200 rounded-xl shadow-xl z-50 min-w-[180px] py-1" dir="rtl">
+                        <div className="absolute top-full mt-1 right-0 bg-white border border-gray-200 rounded-2xl shadow-2xl z-50 min-w-[220px] p-1.5" dir="rtl">
                           {([
                             { key: 'courses' as TabKey, label: 'الكورسات والدبلومات', icon: BookOpen },
                             { key: 'lectures' as TabKey, label: 'الدروس', icon: ListOrdered },
@@ -577,11 +548,9 @@ export function DashboardNavigation(props: Props) {
                             return (
                               <button key={item.key}
                                 onClick={() => { setActiveTab(item.key); setOnlineMgrAcademyOpen(false); }}
-                                className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-right transition ${
-                                  isActive ? 'bg-emerald-600 text-white' : 'text-gray-700 hover:bg-gray-50'
-                                }`}>
-                                <Icon size={13} className="flex-shrink-0" />
-                                <span className="flex-1 text-right">{item.label}</span>
+                                className={menuRowClass(isActive)}>
+                                <Icon size={14} className="flex-shrink-0" />
+                                <span className="truncate flex-1">{item.label}</span>
                               </button>
                             );
                           })}
@@ -591,21 +560,13 @@ export function DashboardNavigation(props: Props) {
                   }
                   extraHeaderButtons={
                     <>
-                      <button
-                        onClick={() => setOnlineMgrFollowupOpen(true)}
-                        className="relative w-7 h-7 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-600 hover:text-teal-800 grid place-items-center transition"
-                        title="متابعات التحصيل والأقساط"
-                      >
-                        <AlarmClock size={13} />
-                        {onlineMgrFollowupBadge > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-bold grid place-items-center">{onlineMgrFollowupBadge > 9 ? '9+' : onlineMgrFollowupBadge}</span>}
+                      <button onClick={() => setOnlineMgrFollowupOpen(true)} className={iconButtonClass} title="متابعات التحصيل والأقساط">
+                        <AlarmClock size={15} />
+                        {onlineMgrFollowupBadge > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold grid place-items-center">{onlineMgrFollowupBadge > 9 ? '9+' : onlineMgrFollowupBadge}</span>}
                       </button>
-                      <button
-                        onClick={() => setOnlineMgrNewEventsOpen(true)}
-                        className="relative w-7 h-7 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-600 hover:text-emerald-800 grid place-items-center transition"
-                        title="عملاء أونلاين جدد ومدفوعات"
-                      >
-                        <Banknote size={13} />
-                        {onlineMgrNewEventsBadge > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 text-white text-[8px] font-bold grid place-items-center">{onlineMgrNewEventsBadge > 9 ? '9+' : onlineMgrNewEventsBadge}</span>}
+                      <button onClick={() => setOnlineMgrNewEventsOpen(true)} className={iconButtonClass} title="عملاء أونلاين جدد ومدفوعات">
+                        <Banknote size={15} />
+                        {onlineMgrNewEventsBadge > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 text-white text-[9px] font-bold grid place-items-center">{onlineMgrNewEventsBadge > 9 ? '9+' : onlineMgrNewEventsBadge}</span>}
                       </button>
                     </>
                   }

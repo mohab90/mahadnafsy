@@ -28,8 +28,8 @@ const json = <T,>(url: string): Promise<T | null> =>
  * someone happened to open that person's page.
  */
 export default function MessagesBell({
-  mode, notify, compact = false,
-}: { mode: 'staff' | 'management'; notify: Notify; compact?: boolean }) {
+  mode, notify,
+}: { mode: 'staff' | 'management'; notify: Notify }) {
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
   const [messages, setMessages] = useState<StaffMessage[]>([]);
@@ -100,18 +100,13 @@ export default function MessagesBell({
     } finally { setSending(false); }
   };
 
-  const size = compact ? 13 : 15;
-  const btn = compact
-    ? 'relative w-7 h-7 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-600 hover:text-sky-800 grid place-items-center transition'
-    : 'relative w-8 h-8 rounded-xl bg-gray-100 hover:bg-sky-50 hover:text-sky-600 text-gray-500 grid place-items-center transition';
-
   return (
     <div className="relative flex-shrink-0" ref={boxRef}>
-      <button type="button" onClick={toggle} className={btn} title="المراسلات">
-        <MessageSquare size={size} />
+      <button type="button" onClick={toggle} title="المراسلات"
+        className="relative w-8 h-8 rounded-xl bg-gray-100 hover:bg-sky-50 hover:text-sky-600 text-gray-500 grid place-items-center transition">
+        <MessageSquare size={15} />
         {unread > 0 && (
-          <span className={`absolute -top-1 -right-1 rounded-full bg-red-500 text-white font-bold grid place-items-center leading-none ${
-            compact ? 'w-3.5 h-3.5 text-[8px]' : 'w-4 h-4 text-[9px]'}`}>
+          <span className="absolute -top-1 -right-1 rounded-full bg-red-500 text-white font-bold grid place-items-center leading-none w-4 h-4 text-[9px]">
             {unread > 9 ? '9+' : unread}
           </span>
         )}
