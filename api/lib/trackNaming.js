@@ -12,10 +12,12 @@
 // in it is in it, not in those. A course already under a track stays there.
 //
 // The money comes along: «مدفوع قبل السيستم» for the courses adds up on the
-// track, their payments count for the track, and their agreed prices become the
-// track's only when every course had one (else the track's catalogue price).
+// track and their payments count for the track. Nobody's balance moves: when
+// any of the courses carried money — a price, a booking, a payment — the track
+// costs what the courses were agreed at together; a client with none of that
+// takes the track's catalogue price.
 
-const { itemKey } = require('./agreedPrice');
+const { itemBalances, itemKey } = require('./agreedPrice');
 const { logClientEvent } = require('./clientHistory');
 
 function parseCrm(value) {
@@ -64,6 +66,8 @@ async function nameCompletedTracks(db, { tenantId, subscriberId, actor = null, d
   const plan = planTracks(tracks || await loadTracks(db, tenantId), enrolments);
   if (!plan.length || dryRun) return plan.map(({ track }) => ({ trackId: track.id, title: track.title, courses: track.courses.length }));
 
+  // What each course costs them now, before any of it moves.
+  const balances = await itemBalances(db, { tenantId, subscriberId });
   const [[subscriber]] = await db.query(
     'SELECT crm_json FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE', [subscriberId, tenantId]);
   const crm = parseCrm(subscriber?.crm_json);
@@ -82,13 +86,16 @@ async function nameCompletedTracks(db, { tenantId, subscriberId, actor = null, d
       [track.id, tenantId, subscriberId, ...track.courses]);
 
     const key = itemKey({ bundleId: track.id });
-    const coursePrices = track.courses.map(courseId => Number(customPrices[courseId]) || 0);
     const prior = track.courses.reduce((sum, courseId) => sum + (Number(priorPaid[courseId]) || 0), 0);
-    if (!(Number(customPrices[key]) > 0) && coursePrices.every(price => price > 0)) {
-      customPrices[key] = coursePrices.reduce((sum, price) => sum + price, 0);
+    const courseBalances = track.courses.map(courseId => balances.get(String(courseId)) || {});
+    const carriedMoney = track.courses.some((courseId, index) => Number(customPrices[courseId]) > 0
+      || Number(courseBalances[index].booked) > 0 || Number(courseBalances[index].paid) > 0 || Number(courseBalances[index].priorPaid) > 0);
+    let priced = Number(customPrices[key]) > 0 ? 'kept' : 'catalogue';
+    if (priced === 'catalogue' && carriedMoney) {
+      const together = courseBalances.reduce((sum, balance) => sum + (Number(balance.expected) || 0), 0);
+      if (together > 0) { customPrices[key] = together; priced = 'together'; }
     }
     if (prior > 0) priorPaid[key] = (Number(priorPaid[key]) || 0) + prior;
-    const dropped = track.courses.filter(courseId => Number(customPrices[courseId]) > 0);
     track.courses.forEach(courseId => { delete customPrices[courseId]; delete priorPaid[courseId]; });
 
     await logClientEvent(db, {
@@ -96,7 +103,7 @@ async function nameCompletedTracks(db, { tenantId, subscriberId, actor = null, d
       label: `اتجمعت كورسات «${track.title}» في المسار — العميل حاجز كل كورساته (${track.courses.length})`
         + (moved.affectedRows ? ` · ${moved.affectedRows} دفعة اتحسبت على المسار` : '')
         + (prior > 0 ? ` · مدفوع قبل السيستم ${prior}` : '')
-        + (dropped.length && !(Number(customPrices[key]) > 0) ? ' · أسعار الكورسات اتشالت والمسار بسعر الكتالوج' : ''),
+        + (priced === 'together' ? ` · سعر المسار ${customPrices[key]} = أسعار كورساته زي ما كانت` : priced === 'catalogue' ? ' · المسار بسعر الكتالوج' : ''),
     });
     done.push({ trackId: track.id, title: track.title, courses: track.courses.length, paymentsMoved: moved.affectedRows || 0 });
   }

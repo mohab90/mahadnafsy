@@ -85,6 +85,8 @@ test('the biggest track wins, and a course is under one track only', () => {
 test('a client holding every course of a track holds the track, money and all', async () => {
   const db = fakeDb([
     [/SELECT id, course_id FROM enrollments/, [[{ id: 'e1', course_id: 'c1' }, { id: 'e2', course_id: 'c2' }, { id: 'e3', course_id: 'c3' }]]],
+    [/SELECT course_id, bundle_id FROM enrollments/, [[{ course_id: 'c1', bundle_id: null }, { course_id: 'c2', bundle_id: null }, { course_id: 'c3', bundle_id: null }]]],
+    [/FROM payments WHERE tenant_id=\? AND subscriber_id=\?/, [[]]],
     [/FROM bundles b JOIN bundle_courses/, [[
       { id: 'b1', title: 'دبلومة علم النفس المتكامل', course_id: 'c1' },
       { id: 'b1', title: 'دبلومة علم النفس المتكامل', course_id: 'c2' },
@@ -98,21 +100,28 @@ test('a client holding every course of a track holds the track, money and all', 
   assert.deepEqual(find(db, /UPDATE enrollments SET bundle_id/).params, ['b1', 't', 'e1', 'e2', 'e3']);
   assert.match(find(db, /UPDATE payments SET bundle_id/).sql, /bundle_id IS NULL/, 'a payment already on a track stays there');
   const crm = JSON.parse(find(db, /UPDATE subscribers SET crm_json/).params[0]);
-  assert.deepEqual(crm.customPrices, { 'bundle:b1': 5000 }, 'every course had a price: the track costs their sum');
+  assert.deepEqual(crm.customPrices, { 'bundle:b1': 5000 }, 'the track costs what its courses were agreed at together');
   assert.deepEqual(crm.priorPaid, { 'bundle:b1': 500 });
   assert.equal(find(db, /INSERT INTO activity_logs/).params[2], 'track_named');
 });
 
-test('a track priced course by course only in part takes its catalogue price', async () => {
-  const db = fakeDb([
+test('nobody\'s balance moves: a track priced in part keeps what was owed', async () => {
+  const answers = crmJson => [
     [/SELECT id, course_id FROM enrollments/, [[{ id: 'e1', course_id: 'c1' }, { id: 'e2', course_id: 'c2' }]]],
+    [/SELECT course_id, bundle_id FROM enrollments/, [[{ course_id: 'c1', bundle_id: null }, { course_id: 'c2', bundle_id: null }]]],
+    [/FROM payments WHERE tenant_id=\? AND subscriber_id=\?/, [[]]],
     [/FROM bundles b JOIN bundle_courses/, [[{ id: 'b2', title: 'م', course_id: 'c1' }, { id: 'b2', title: 'م', course_id: 'c2' }]]],
-    [/SELECT crm_json FROM subscribers/, [[{ crm_json: JSON.stringify({ customPrices: { c1: 900 } }) }]]],
-  ]);
-  await nameCompletedTracks(db, { tenantId: 't', subscriberId: 's1' });
-  const crm = JSON.parse(find(db, /UPDATE subscribers SET crm_json/).params[0]);
-  assert.deepEqual(crm.customPrices, {});
-  assert.match(find(db, /INSERT INTO activity_logs/).params[5], /بسعر الكتالوج/);
+    [/SELECT crm_json FROM subscribers/, [[{ crm_json: JSON.stringify(crmJson) }]]],
+  ];
+  const priced = fakeDb(answers({ customPrices: { c1: 900 } }));
+  await nameCompletedTracks(priced, { tenantId: 't', subscriberId: 's1' });
+  assert.deepEqual(JSON.parse(find(priced, /UPDATE subscribers SET crm_json/).params[0]).customPrices, { 'bundle:b2': 900 },
+    'c1 owed 900 and c2 nothing known: the track owes the same 900');
+
+  const bare = fakeDb(answers({}));
+  await nameCompletedTracks(bare, { tenantId: 't', subscriberId: 's1' });
+  assert.deepEqual(JSON.parse(find(bare, /UPDATE subscribers SET crm_json/).params[0]).customPrices, {});
+  assert.match(find(bare, /INSERT INTO activity_logs/).params[5], /بسعر الكتالوج/, 'no money on it: the catalogue');
 });
 
 test('a dry run names nothing', async () => {
