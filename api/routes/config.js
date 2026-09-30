@@ -410,7 +410,14 @@ router.post('/api/admin/ai/generate', requireAuth, requireAdminOrStaff, requireP
     const status = Number(error.status);
     if (status >= 400 && status < 500) return res.status(status).json({ error: error.message });
     logger.error('[admin-ai]', { tenantId: req.tenantId, message: error.message });
-    res.status(502).json({ error: 'AI provider request failed' });
+    // The provider's own reason — a key of the wrong kind, a retired model, an
+    // exhausted quota — is what lets the admin fix it; lib/adminAi.js has
+    // already taken anything resembling a key out of it.
+    res.status(502).json({
+      error: error.providerMessage
+        ? `مزود الذكاء الاصطناعي رفض الطلب (${error.providerStatus}): ${error.providerMessage}`
+        : 'تعذر الوصول لمزود الذكاء الاصطناعي',
+    });
   }
 });
 

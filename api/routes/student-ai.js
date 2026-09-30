@@ -20,7 +20,7 @@ const { requireAuth } = require('../middleware/auth');
 const { aiLimiter } = require('../middleware/rateLimits');
 const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { getTenantSetting } = require('../lib/tenantSettings');
-const { generateAdminAi } = require('../lib/adminAi');
+const { generateAdminAi, resolveAiConfig } = require('../lib/adminAi');
 const { resolveClientContext } = require('../lib/clientContext');
 const { capturePublicLead } = require('../lib/publicLead');
 const { uuidv4 } = require('../lib/id');
@@ -185,8 +185,11 @@ function guidedReply(message, context, topic) {
 
 async function answer(req, context, topic, message, history) {
   const settings = await getTenantSetting('settings', { tenantId: req.tenantId, fallback: {} }).catch(() => ({}));
-  const agent = settings?.aiAgentConfig;
-  if (agent?.enabled && agent.apiKey && agent.model) {
+  // The site's own agent when one is set up; otherwise the key the institute
+  // set for the admin assistant, which was the only one set — so the site's
+  // assistant answered from a keyword list.
+  const agent = resolveAiConfig(settings, 'agent');
+  if (agent) {
     try {
       const text = await generateAdminAi(agent, {
         messages: [...history, { role: 'user', content: message }],

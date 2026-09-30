@@ -56,7 +56,9 @@ stub('../lib/tenantSettings', { getTenantSetting: async () => ({ aiAgentConfig: 
   enabled: true, provider: 'claude', apiKey: 'test', model: 'claude-sonnet-5', systemPrompt: 'اذكر إن فيه خصم 10% للطلبة القدام',
   knowledgeBase: [{ id: 'k1', type: 'faq', title: 'مواعيد المحاضرات', content: 'بالليل بتوقيت القاهرة' }],
 } }) });
-stub('../lib/adminAi', { generateAdminAi: async (_agent, payload) => {
+// The real choice of configuration; only the provider call is stubbed.
+const { resolveAiConfig } = require('../lib/adminAi');
+stub('../lib/adminAi', { resolveAiConfig, generateAdminAi: async (_agent, payload) => {
   seen.prompts.push(payload);
   if (aiFails) throw new Error('provider down');
   return 'رد من الذكاء الاصطناعي';

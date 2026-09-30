@@ -14,7 +14,7 @@ export default function AdminAiSettingsTab({ notify }: Props) {
 
   const [adminAiDraft, setAdminAiDraft] = useState<{
     provider: string; apiKey: string; model: string; temperature: number; maxTokens: number; systemPrompt: string;
-  }>({ provider: 'gemini', apiKey: '', model: 'gemini-2.0-flash-lite', temperature: 0.7, maxTokens: 1500, systemPrompt: '' });
+  }>({ provider: 'gemini', apiKey: '', model: 'gemini-2.5-flash', temperature: 0.7, maxTokens: 1500, systemPrompt: '' });
   const [adminAiSaved, setAdminAiSaved] = useState(false);
   const [aiPromptSuggestion, setAiPromptSuggestion] = useState('');
   const [aiPromptImproving, setAiPromptImproving] = useState(false);
@@ -64,7 +64,7 @@ export default function AdminAiSettingsTab({ notify }: Props) {
       setAdminAiDraft({
         provider: adminAiConfig.provider || 'gemini',
         apiKey: adminAiConfig.apiKey || '',
-        model: adminAiConfig.model || 'gemini-2.0-flash-lite',
+        model: adminAiConfig.model || 'gemini-2.5-flash',
         temperature: adminAiConfig.temperature ?? 0.7,
         maxTokens: adminAiConfig.maxTokens ?? 1500,
         systemPrompt: adminAiConfig.systemPrompt || '',
@@ -75,10 +75,30 @@ export default function AdminAiSettingsTab({ notify }: Props) {
   const handleSaveAdminAi = async () => {
     if (!await setAdminAiConfig(adminAiDraft)) {
       notify('error', 'تعذر حفظ إعدادات الذكاء الاصطناعي على السيرفر');
-      return;
+      return false;
     }
     setAdminAiSaved(true);
     setTimeout(() => setAdminAiSaved(false), 2500);
+    return true;
+  };
+
+  // «مش عاوز يشتغل معايا»: one tiny request with what is saved, and the
+  // provider's own answer or reason on screen.
+  const [aiTest, setAiTest] = useState<{ ok: boolean; text: string } | null>(null);
+  const [aiTesting, setAiTesting] = useState(false);
+  const handleTestAdminAi = async () => {
+    setAiTesting(true);
+    setAiTest(null);
+    try {
+      if (!await handleSaveAdminAi()) return;
+      const { text } = await mysqlAdmin.generateAdminAi({
+        messages: [{ role: 'user', content: 'رد بجملة واحدة قصيرة: الاتصال شغال.' }],
+        maxTokens: 60,
+      });
+      setAiTest({ ok: true, text: text || 'رد فاضي' });
+    } catch (err) {
+      setAiTest({ ok: false, text: err instanceof Error ? err.message : 'فشل الاختبار' });
+    } finally { setAiTesting(false); }
   };
 
   const handleImprovePrompt = async () => {
@@ -121,7 +141,7 @@ export default function AdminAiSettingsTab({ notify }: Props) {
                 <label className="text-xs font-bold text-gray-600 block mb-1">المزود</label>
                 <select value={adminAiDraft.provider} onChange={e => {
                   const p = e.target.value;
-                  const models: Record<string, string> = { gemini: 'gemini-2.0-flash-lite', openai: 'gpt-4o-mini', claude: 'claude-3-5-haiku-20241022' };
+                  const models: Record<string, string> = { gemini: 'gemini-2.5-flash', openai: 'gpt-4o-mini', claude: 'claude-sonnet-4-5' };
                   setAdminAiDraft({ ...adminAiDraft, provider: p, model: models[p] || '' });
                 }} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm">
                   <option value="gemini">Google Gemini</option>
@@ -134,10 +154,13 @@ export default function AdminAiSettingsTab({ notify }: Props) {
                 <select value={adminAiDraft.model} onChange={e => setAdminAiDraft({ ...adminAiDraft, model: e.target.value })}
                   className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm">
                   {adminAiDraft.provider === 'gemini' && <>
-                    <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite (مجاني ✓)</option>
-                    <option value="gemini-2.5-flash-preview-04-17">gemini-2.5-flash (أحدث)</option>
-                    <option value="gemini-1.5-flash">gemini-1.5-flash (مستقر)</option>
-                    <option value="gemini-1.5-pro">gemini-1.5-pro (أدق)</option>
+                    <option value="gemini-2.5-flash">gemini-2.5-flash (سريع — موصى به ✓)</option>
+                    <option value="gemini-2.5-pro">gemini-2.5-pro (أدق)</option>
+                    <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (أرخص)</option>
+                    {/* A retired model already saved stays selectable, so the screen shows what is stored. */}
+                    {!['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite'].includes(adminAiDraft.model) && (
+                      <option value={adminAiDraft.model}>{adminAiDraft.model} (قديم — السيرفر بيستخدم موديل حالي بداله)</option>
+                    )}
                   </>}
                   {adminAiDraft.provider === 'openai' && <>
                     <option value="gpt-4o-mini">gpt-4o-mini (اقتصادي)</option>
@@ -158,9 +181,9 @@ export default function AdminAiSettingsTab({ notify }: Props) {
               <input type="password" value={adminAiDraft.apiKey}
                 onChange={e => setAdminAiDraft({ ...adminAiDraft, apiKey: e.target.value })}
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono"
-                placeholder={adminAiDraft.provider === 'gemini' ? 'AIza...' : adminAiDraft.provider === 'openai' ? 'sk-...' : 'sk-ant-...'} />
+                placeholder={adminAiDraft.provider === 'gemini' ? 'AIza... أو AQ....' : adminAiDraft.provider === 'openai' ? 'sk-...' : 'sk-ant-...'} />
               <p className="text-xs text-gray-400 mt-1">
-                {adminAiDraft.provider === 'gemini' && <span>مجانًا من: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">aistudio.google.com/apikey</a></span>}
+                {adminAiDraft.provider === 'gemini' && <span>مفتاح من <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">aistudio.google.com/apikey</a> (بيبدأ بـ AIza) أو مفتاح Vertex AI من Google Cloud (بيبدأ بـ AQ.) — الاتنين شغالين. سيبها فاضية عشان تفضل على المفتاح المحفوظ.</span>}
                 {adminAiDraft.provider === 'openai' && <span>من: <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">platform.openai.com/api-keys</a> (يحتاج رصيد)</span>}
                 {adminAiDraft.provider === 'claude' && <span>من: <a href="https://console.anthropic.com/keys" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">console.anthropic.com/keys</a> (يحتاج رصيد)</span>}
               </p>
@@ -227,10 +250,21 @@ export default function AdminAiSettingsTab({ notify }: Props) {
               )}
             </div>
 
-            <button onClick={handleSaveAdminAi}
-              className="w-full py-2.5 bg-slate-700 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition flex items-center justify-center gap-2">
-              {adminAiSaved ? <><CheckCircle size={15} />تم الحفظ! ✅</> : <><Save size={15} />حفظ الإعدادات</>}
-            </button>
+            <div className="flex gap-2">
+              <button onClick={() => void handleSaveAdminAi()}
+                className="flex-1 py-2.5 bg-slate-700 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition flex items-center justify-center gap-2">
+                {adminAiSaved ? <><CheckCircle size={15} />تم الحفظ! ✅</> : <><Save size={15} />حفظ الإعدادات</>}
+              </button>
+              <button onClick={() => void handleTestAdminAi()} disabled={aiTesting}
+                className="px-4 py-2.5 border border-slate-300 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-50 transition flex items-center gap-2 disabled:opacity-60">
+                <Zap size={15} />{aiTesting ? 'جاري الاختبار…' : 'اختبار الاتصال'}
+              </button>
+            </div>
+            {aiTest && (
+              <p className={`text-xs rounded-xl px-3 py-2 border ${aiTest.ok ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                {aiTest.ok ? `✅ الاتصال شغال — الرد: ${aiTest.text}` : `❌ ${aiTest.text}`}
+              </p>
+            )}
           </div>
         </article>
 
