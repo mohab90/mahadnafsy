@@ -41,6 +41,8 @@ test('a request reads as what was done, in which part of the system', () => {
   // The 70,000 old rows kept the path in their label.
   assert.equal(describeLabel('create /api/admin/crm/leads/lead-1/interactions', 'crm').text, 'تسجيل تواصل مع ليد');
   assert.equal(describeLabel('اتمسح «علم النفس» من العميل — غلط', 'subscriber').area, 'العملاء');
+  assert.equal(describeLabel('update /api/admin/settings', 'settings').text, 'تعديل الإعدادات');
+  assert.equal(describeLabel('{"seo":{"error":"403"}}', 'ai-autopilot').text, 'تشغيل المساعد الذكي اليومي');
 });
 
 test('the department is the employee\'s, the owner\'s is the management', () => {
@@ -64,7 +66,7 @@ test('the audit row carries the name, the department and the details', () => {
   assert.match(audit, /NOT_WORTH_A_ROW/);
   const route = read('api/routes/admin-operations.js');
   assert.match(route, /LEFT JOIN staff st ON st\.tenant_id=a\.tenant_id AND \(st\.email=a\.actor OR st\.id=a\.actor\)/);
-  assert.match(route, /actorName: row\.actor_name \|\| \(isOwner \? 'المالك' : row\.actor\)/);
+  assert.ok(route.includes("actorName: row.actor_name || (isOwner ? 'المالك' : SYSTEM_ACTORS[row.actor] || row.actor)"));
   assert.match(read('api/migrations/229_v26_activity_names_and_certificate_shipping.sql'), /actor_name varchar\(255\)/);
   const tab = read('admin/pages/dashboard/tabs/ActivityTab.tsx');
   assert.match(tab, /\/admin\/activity-logs\?\$\{params\}/, 'filtered on the server');

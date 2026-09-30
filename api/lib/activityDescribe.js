@@ -83,6 +83,10 @@ const ACTS = [
   [/^tickets\/[^/]+\/reply/, () => 'رد على مشكلة عميل'],
   [/^tickets/, () => 'تعديل مشكلة عميل'],
   [/^join-us/, () => 'طلبات الانضمام'],
+  [/^ai\/autopilot\/run/, () => 'تشغيل المساعد الذكي يدوياً'],
+  [/^ai/, () => 'إعدادات الذكاء الاصطناعي'],
+  [/^reports\/whatsapp/, () => 'إعدادات تقرير الواتساب اليومي'],
+  [/^settings/, () => 'تعديل الإعدادات'],
 ];
 
 const METHOD_WORD = { POST: 'إضافة', PUT: 'تعديل', PATCH: 'تعديل', DELETE: 'حذف' };
@@ -100,6 +104,8 @@ function describeRequest(method, rawPath) {
 const OLD_LABEL = /^(create|update|delete) (\/api\/\S+)/;
 const OLD_VERB = { create: 'POST', update: 'PUT', delete: 'DELETE' };
 function describeLabel(label, entity) {
+  // The daily autopilot writes its results as JSON; the list says what it was.
+  if (entity === 'ai-autopilot') return { area: areaOf(entity), text: 'تشغيل المساعد الذكي اليومي' };
   const match = OLD_LABEL.exec(String(label || ''));
   if (!match) return { area: areaOf(entity), text: String(label || entity || '') };
   return describeRequest(OLD_VERB[match[1]], match[2]);
@@ -136,4 +142,7 @@ function summarizeBody(body) {
   return parts.length ? parts.join(' · ') : null;
 }
 
-module.exports = { areaOf, departmentOf, describeLabel, describeRequest, summarizeBody };
+/** Rows written by the system itself, under a name a person reads. */
+const SYSTEM_ACTORS = { 'ai-autopilot': 'المساعد الذكي (تلقائي)' };
+
+module.exports = { SYSTEM_ACTORS, areaOf, departmentOf, describeLabel, describeRequest, summarizeBody };

@@ -15,7 +15,7 @@ const { assertWritable } = require('../lib/periodLock');
 const { writeAuditEvent } = require('../lib/auditTrail');
 const { toNumbers } = require('../lib/mappers');
 const { addDaysToDateOnly, cairoDayStartUtc, safeDateOnly, cairoToday } = require('../lib/dates');
-const { departmentOf, describeLabel } = require('../lib/activityDescribe');
+const { SYSTEM_ACTORS, departmentOf, describeLabel } = require('../lib/activityDescribe');
 const { listEnv } = require('../lib/platformAccess');
 const { EXPENSE_CATEGORY_LABEL, expenseCategory } = require('../lib/expenseCategories');
 const { convertJoinUs } = require('./hr/talent');
@@ -279,9 +279,10 @@ router.get('/api/admin/activity-logs', requireAuth, requireAdminOrStaff, require
         entity: row.entity,
         entityId: row.entity_id,
         label: described.text,
-        details: row.details || null,
+        // A row whose label was not a sentence keeps it as its details.
+        details: row.details || (described.text !== row.label && !/^(create|update|delete) \//.test(row.label || '') ? row.label : null),
         actor: row.actor,
-        actorName: row.actor_name || (isOwner ? 'المالك' : row.actor),
+        actorName: row.actor_name || (isOwner ? 'المالك' : SYSTEM_ACTORS[row.actor] || row.actor),
         department: row.department || departmentOf({ role: row.actor_role, isOwner }) || '—',
         section: described.area,
         at: row.at,
