@@ -56,8 +56,6 @@ interface DashboardDirectContentRoutesProps {
   filteredContent: [string, string][];
   removeContentKey: (key: string) => Promise<boolean>;
   courses: Course[];
-  offerSelectedCourseId: string;
-  setOfferSelectedCourseId: Dispatch<SetStateAction<string>>;
   instituteGalleryUploadRef: RefObject<HTMLInputElement | null>;
   instituteGalleryUrlInput: string;
   setInstituteGalleryUrlInput: Dispatch<SetStateAction<string>>;
@@ -89,8 +87,6 @@ export function DashboardDirectContentRoutes({
   filteredContent,
   removeContentKey,
   courses,
-  offerSelectedCourseId,
-  setOfferSelectedCourseId,
   instituteGalleryUploadRef,
   instituteGalleryUrlInput,
   setInstituteGalleryUrlInput,
@@ -170,18 +166,7 @@ export function DashboardDirectContentRoutes({
       )}
 
       {activeTab === 'home_offer' && (
-        <DashboardHomeOfferPanel
-          fields={homeOfferFields}
-          content={content}
-          policyDrafts={policyDrafts}
-          setPolicyDrafts={setPolicyDrafts}
-          setContentValue={setContentValue}
-          setContentValues={setContentValues}
-          notify={notify}
-          courses={courses}
-          offerSelectedCourseId={offerSelectedCourseId}
-          setOfferSelectedCourseId={setOfferSelectedCourseId}
-        />
+        <DashboardHomeOfferPanel fields={homeOfferFields} notify={notify} />
       )}
 
       <ContentHubGenericPageEditor

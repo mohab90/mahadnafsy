@@ -25,6 +25,7 @@ const TYPE_PERMISSION = Object.freeze({
   lead: ['manage_leads', 'view_leads'],
   subscriber: ['manage_subscribers', 'view_client_db'],
   certificate: ['manage_certificates'],
+  consultation: ['view_consultations', 'manage_consultations'],
   system: ['manage_settings', 'manage_security'],
   alert: ['manage_settings', 'manage_security'],
 });

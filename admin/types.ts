@@ -165,6 +165,17 @@ export interface ConsultationItem {
   staffId?: string;
   name?: string;
   phone?: string;
+  /** 'HH:MM' on Cairo's clock, when the booking has an hour. */
+  sessionTime?: string;
+  /** The order paying for a booking made on the site. */
+  orderId?: string;
+  paidAt?: string;
+  /** site_express, site_regular, payment_link or admin. */
+  source?: string;
+  /** Booked on the site and not paid yet. */
+  awaitingPayment?: boolean;
+  /** A request that exists only as its order — booked before checkout opened consultations. */
+  orderOnly?: boolean;
 }
 
 export type BranchType = string;

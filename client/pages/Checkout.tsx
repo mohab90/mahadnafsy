@@ -5,7 +5,7 @@ import { useSiteData } from '../context/SiteDataContext';
 import { usePaymentAvailability, useManualPaymentMethods } from '../lib/usePaymentAvailability';
 import { paymentMethodLabel } from '../../shared/paymentMethods';
 import { compressImage } from '../../shared/imageCompress';
-import { getTherapistSessionPrice } from '../lib/consultations';
+import { expressPrice, getTherapistSessionPrice } from '../lib/consultations';
 import { cdnImg } from '../lib/img';
 import { instituteWhatsApp } from '../lib/whatsappLink';
 import { amountDueNow, installmentTotal, type PayMode } from '../../shared/enrollmentPricing';
@@ -118,7 +118,7 @@ const Checkout: React.FC = () => {
   } else if (type === 'consultation') {
       if (subtype === 'express') {
           itemTitle = 'جلسة استشارة سريعة (Express)';
-          itemPrice = Number(content[`express.price.${currency}`] || searchParams.get('price'));
+          itemPrice = expressPrice(content, currency);
           itemImage = content['consultation.expressImage'] || '';
           itemFound = true;
       } else {

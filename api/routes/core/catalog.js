@@ -563,10 +563,18 @@ router.post('/api/admin/consultations', requireAuth, requireAdminOrStaff, requir
 });
 router.patch('/api/admin/consultations/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_consultations'), async (req, res) => {
   try {
-    const { status, notes, meeting_link } = req.body;
+    const { status, notes, meeting_link } = req.body || {};
+    // Only what was sent. The bookings list sends the status alone, and this
+    // wrote NULL over the notes (a NOT NULL column) and the meeting link.
+    const sets = [];
+    const params = [];
+    if (status !== undefined) { sets.push('status=?'); params.push(String(status || 'pending').toUpperCase()); }
+    if (notes !== undefined) { sets.push('notes=?'); params.push(String(notes || '')); }
+    if (meeting_link !== undefined) { sets.push('meeting_link=?'); params.push(meeting_link || null); }
+    if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
     const [r] = await pool.query(
-      'UPDATE consultations SET status=?, notes=?, meeting_link=? WHERE id=? AND tenant_id=?',
-      [status||'pending', notes||null, meeting_link||null, req.params.id, req.tenantId]
+      `UPDATE consultations SET ${sets.join(', ')} WHERE id=? AND tenant_id=?`,
+      [...params, req.params.id, req.tenantId]
     );
     if (!r.affectedRows) return res.status(404).json({ error: 'Consultation not found' });
     res.json({ ok: true });

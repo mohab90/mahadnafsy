@@ -209,7 +209,6 @@ const Dashboard: React.FC = () => {
     newContentValue, setNewContentValue,
     contentEdits, setContentEdits,
     policyDrafts, setPolicyDrafts,
-    offerSelectedCourseId, setOfferSelectedCourseId,
     instituteGalleryUrlInput, setInstituteGalleryUrlInput,
     instituteGalleryUploadRef,
   } = useContentEditorDrafts(content);
@@ -788,8 +787,6 @@ const Dashboard: React.FC = () => {
                   filteredContent={filteredContent}
                   removeContentKey={removeContentKey}
                   courses={courses}
-                  offerSelectedCourseId={offerSelectedCourseId}
-                  setOfferSelectedCourseId={setOfferSelectedCourseId}
                   instituteGalleryUploadRef={instituteGalleryUploadRef}
                   instituteGalleryUrlInput={instituteGalleryUrlInput}
                   setInstituteGalleryUrlInput={setInstituteGalleryUrlInput}

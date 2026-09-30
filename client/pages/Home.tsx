@@ -10,6 +10,7 @@ import { isExpiryActive } from '../../shared/cairoDate';
 import { formatPrice, isDiscounted } from '../../shared/priceFormat';
 import { useSeo } from '../lib/useSeo';
 import { VideoSurface } from '../components/VideoSurface';
+import { expressPrice } from '../lib/consultations';
 
 // Countdown for the 24-hour offer, from the moment the admin started it
 // (offer.timerStartedAt, set by the "إعادة ضبط المؤقت" button on the offer
@@ -610,7 +611,8 @@ const Home: React.FC = () => {
       </section>
       )}
 
-      {/* SECTION: Express Consultation Banner */}
+      {/* SECTION: Express Consultation Banner — «اعرض قسم الاستشارة في الرئيسية» */}
+      {content['consultation.show_on_home'] !== 'false' && (
       <section className="py-20 bg-white relative overflow-hidden">
         {/* Subtle background accents */}
         <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-primary-50 rounded-full blur-[120px] opacity-60 -translate-x-1/2 -translate-y-1/2"></div>
@@ -690,10 +692,14 @@ const Home: React.FC = () => {
 
               {/* Price display */}
               <div className="flex items-end justify-center gap-2 mb-6">
-                <span className="text-6xl font-extrabold text-gray-900 leading-none">
-                  {content[`express.price.${currency}`] || (currency==='EGP'?'500':currency==='SAR'?'150':'40')}
-                </span>
-                <span className="text-2xl font-bold text-primary-600 mb-2">{currencySymbol}</span>
+                {expressPrice(content, currency) > 0 ? (<>
+                  <span className="text-6xl font-extrabold text-gray-900 leading-none">
+                    {expressPrice(content, currency).toLocaleString('ar-EG-u-nu-latn')}
+                  </span>
+                  <span className="text-2xl font-bold text-primary-600 mb-2">{currencySymbol}</span>
+                </>) : (
+                  <span className="text-2xl font-bold text-gray-700">احجز ونبلغك بالسعر</span>
+                )}
               </div>
 
               {/* Session type badges */}
@@ -717,6 +723,7 @@ const Home: React.FC = () => {
 
         </div>
       </section>
+      )}
 
       {/* SECTION: Testimonials */}
       <section className="py-24 bg-gray-50">

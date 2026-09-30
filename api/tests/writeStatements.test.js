@@ -50,14 +50,15 @@ test('every course column has a placeholder to put a value in', () => {
   assert.ok(columns.includes('access_months'), 'the column whose placeholder was missing is gone');
 });
 
-test('the Paymob consultation insert names only columns consultations has', () => {
-  const src = read('routes/public-orders.js');
-  const { columns, placeholders } = insertAt(src, 'INSERT IGNORE INTO consultations');
+test('the consultation insert names only columns consultations has', () => {
+  // The Paymob webhook no longer writes its own row: every way of paying
+  // settles the consultation lib/consultationRequests.js opened at checkout.
+  assert.ok(!read('routes/public-orders.js').includes('INSERT IGNORE INTO consultations'));
+  const { columns, placeholders } = insertAt(read('lib/consultationRequests.js'), 'INSERT INTO consultations');
   assert.ok(!columns.includes('therapist_name'),
     'therapist_name is back: it does not exist, and it rolls the whole payment back');
-  // NOW() fills created_at, so the placeholders are one short of the columns.
-  assert.equal(placeholders, columns.length - 1);
-  assert.ok(!/cd\.therapistName/.test(src), 'the parameter for the dropped column is still passed');
+  // 'PENDING' fills status and NOW() created_at, so two columns take no placeholder.
+  assert.equal(placeholders, columns.length - 2);
 });
 
 test('bundles gets the columns its save writes and its page reads', () => {

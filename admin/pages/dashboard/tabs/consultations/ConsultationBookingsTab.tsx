@@ -36,7 +36,9 @@ const bookingDate = (item: ConsultationItem) =>
 
 export function ConsultationBookingsTab({ notify }: { notify: NotifyFn }) {
   const { consultations, therapists } = useSiteData();
-  const [view, setView] = useState<ViewFilter>('upcoming');
+  // New requests first: they are what needs the desk, and «القادمة» holds
+  // only bookings already confirmed.
+  const [view, setView] = useState<ViewFilter>('pending');
   const [search, setSearch] = useState('');
   const [therapistFilter, setTherapistFilter] = useState('');
   const [busyId, setBusyId] = useState('');
@@ -68,7 +70,7 @@ export function ConsultationBookingsTab({ notify }: { notify: NotifyFn }) {
         }
         return true;
       })
-      .sort((a, b) => bookingDate(b).localeCompare(bookingDate(a)));
+      .sort((a, b) => String(b.createdAt || bookingDate(b)).localeCompare(String(a.createdAt || bookingDate(a))));
     // localStatus participates through statusOf.
   }, [consultations, view, search, therapistFilter, today, statusOf]);
 
@@ -107,8 +109,8 @@ export function ConsultationBookingsTab({ notify }: { notify: NotifyFn }) {
   };
 
   const FILTERS: { key: ViewFilter; label: string }[] = [
+    { key: 'pending', label: 'طلبات جديدة' },
     { key: 'upcoming', label: 'القادمة' },
-    { key: 'pending', label: 'في الانتظار' },
     { key: 'completed', label: 'المكتملة' },
     { key: 'cancelled', label: 'الملغاة' },
     { key: 'all', label: 'الكل' },
@@ -167,11 +169,16 @@ export function ConsultationBookingsTab({ notify }: { notify: NotifyFn }) {
                     </td>
                     <td className="px-3 py-2.5 text-gray-700">{item.therapistName || '—'}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
-                      <div className="text-gray-800 font-semibold">{bookingDate(item) || 'بدون تاريخ'}</div>
+                      <div className="text-gray-800 font-semibold">
+                        {item.source === 'site_express' ? 'يتحدد بالتواصل' : (bookingDate(item) || 'بدون تاريخ')}
+                        {item.sessionTime ? ` · ${item.sessionTime}` : ''}
+                      </div>
                       {item.slotLabel && <div className="text-gray-400 text-[10px]">{item.slotLabel}</div>}
+                      {item.createdAt && <div className="text-gray-400 text-[10px]">وصل {String(item.createdAt).slice(0, 10)}</div>}
                     </td>
                     <td className="px-3 py-2.5 text-gray-600">
-                      {{ individual: 'فردية', couple: 'زوجية', family: 'أسرية' }[item.sessionType] || item.sessionType || '—'}
+                      {item.source === 'site_express' ? 'جلسة سريعة'
+                        : ({ individual: 'فردية', couple: 'زوجية', family: 'أسرية' }[item.sessionType] || item.sessionType || '—')}
                     </td>
                     <td className="px-3 py-2.5 font-bold text-gray-800">
                       {item.amount ? `${Number(item.amount).toLocaleString('ar-EG-u-nu-latn')} ${item.currency || 'ج.م'}` : '—'}
@@ -180,8 +187,18 @@ export function ConsultationBookingsTab({ notify }: { notify: NotifyFn }) {
                       <span className={`px-2 py-0.5 rounded-lg border font-bold ${STATUS_STYLE[status] || 'bg-gray-50 text-gray-600 border-gray-200'}`}>
                         {STATUS_LABEL[status] || status}
                       </span>
+                      {item.orderId && (
+                        <div className={`mt-1 text-[10px] font-bold ${item.awaitingPayment ? 'text-amber-600' : 'text-emerald-600'}`}>
+                          {item.awaitingPayment ? 'لم يُدفع بعد' : 'مدفوع'}
+                        </div>
+                      )}
                     </td>
                     <td className="px-2 py-2">
+                      {item.orderOnly ? (
+                        <span className="text-[10px] text-gray-500 leading-4 block max-w-[160px]">
+                          طلب من الموقع قبل التحديث — كلّم العميل، والدفع من «الطلبات والمدفوعات».
+                        </span>
+                      ) : (
                       <div className="flex items-center gap-1">
                         {status === 'pending' && (
                           <button disabled={busy} onClick={() => void setStatus(item, 'confirmed', 'مؤكدة')}
@@ -212,6 +229,7 @@ export function ConsultationBookingsTab({ notify }: { notify: NotifyFn }) {
                           <Trash2 size={12} />
                         </button>
                       </div>
+                      )}
                     </td>
                   </tr>
                 );

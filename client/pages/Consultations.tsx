@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Therapist } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
 import { useEscapeKey } from '../../shared/ui/useEscapeKey';
-import { formatAvailabilitySlot, getTherapistActiveSlots, getTherapistSessionPrice, isConsultationEnabled, meetingProviderLabels } from '../lib/consultations';
+import { expressPrice as expressPriceIn, formatAvailabilitySlot, getTherapistActiveSlots, getTherapistSessionPrice, isConsultationEnabled, meetingProviderLabels } from '../lib/consultations';
 import { cdnImg } from '../lib/img';
 import { cairoDateOnly } from '../../shared/cairoDate';
 import { useSeo } from '../lib/useSeo';
@@ -37,10 +37,7 @@ const Consultations: React.FC = () => {
         const tid = content['express.therapistId'];
         return tid ? therapists.find((t) => t.id === tid) ?? null : null;
     }, [content, therapists]);
-    const expressPriceEGP = Number(content['express.price.EGP'] || '300');
-    const expressPriceSAR = Number(content['express.price.SAR'] || '100');
-    const expressPriceUSD = Number(content['express.price.USD'] || '20');
-    const expressPrice = currency === 'EGP' ? expressPriceEGP : currency === 'SAR' ? expressPriceSAR : expressPriceUSD;
+    const expressPrice = expressPriceIn(content, currency);
 
     const handleBookExpress = () => {
         navigate(`/checkout?type=consultation&subtype=express&price=${expressPrice}${expressTherapist ? `&therapistId=${expressTherapist.id}` : ''}`);
@@ -250,7 +247,7 @@ const Consultations: React.FC = () => {
                                     </div>
 
                                     <button onClick={handleBookExpress} className="w-full sm:w-auto bg-primary-600 hover:bg-primary-700 text-white font-bold py-4 px-8 rounded-xl transition shadow-lg shadow-primary-200 text-lg flex items-center justify-center gap-2">
-                                        احجز جلستك الآن ({expressPrice.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol})
+                                        احجز جلستك الآن{expressPrice > 0 ? ` (${expressPrice.toLocaleString('ar-EG-u-nu-latn')} ${currencySymbol})` : ''}
                                         <ChevronLeft className="rtl:rotate-180" />
                                     </button>
                                 </div>

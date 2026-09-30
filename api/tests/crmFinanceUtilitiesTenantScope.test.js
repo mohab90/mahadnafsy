@@ -243,6 +243,6 @@ test('public lead capture is tenant-deduped, serialized, assigned and audited at
   // Bulk distribution reads reps through the same tenant-scoped helper as
   // single-lead assignment, so it honours the CRM "التوزيع" screen.
   assert.match(route, /listDistributableReps\(tenantId, conn\)/);
-  assert.match(route, /SELECT id, name, price_egp, price_sar, price_usd FROM therapists[\s\S]*WHERE id=\? AND tenant_id=\?/);
+  assert.match(route, /SELECT id, name, price_egp, price_sar, price_usd(?:, session_duration_minutes)? FROM therapists[\s\S]*WHERE id=\? AND tenant_id=\?/);
   assert.doesNotMatch(route, /let id = item\.id/);
 });

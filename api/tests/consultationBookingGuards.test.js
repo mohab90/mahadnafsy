@@ -17,30 +17,31 @@ const codeOnly = source => source
   .join('\n');
 
 test('the slot lookup is scoped to the therapist on the order and to this tenant', () => {
-  const route = codeOnly(read('api/routes/payment-proofs.js'));
-
-  // Looked up by id alone, any slot id was accepted, and its meeting_link — a
-  // private join URL — was copied onto the customer's consultation and handed
-  // straight back by GET /api/me/consultations.
-  assert.ok(
-    !route.includes("FROM therapist_slots WHERE id=? LIMIT 1"),
-    'the slot is still resolved by id alone'
-  );
-  const lookup = route.slice(route.indexOf('FROM therapist_slots'), route.indexOf('FROM therapist_slots') + 400);
+  // The lookup lives in lib/consultationRequests.js now, shared by the
+  // checkout and both ways of paying.
+  const lib = codeOnly(read('api/lib/consultationRequests.js'));
+  for (const route of ['api/routes/payment-proofs.js', 'api/routes/lead-capture-crm.js', 'api/routes/public-orders.js']) {
+    // Looked up by id alone, any slot id was accepted, and its meeting_link — a
+    // private join URL — was copied onto the customer's consultation and handed
+    // straight back by GET /api/me/consultations.
+    assert.ok(!codeOnly(read(route)).includes('FROM therapist_slots WHERE id=? LIMIT 1'), `${route} resolves a slot by id alone`);
+  }
+  const lookup = lib.slice(lib.indexOf('FROM therapist_slots'), lib.indexOf('FROM therapist_slots') + 400);
   assert.match(lookup, /s\.therapist_id=\?/);
   assert.match(lookup, /s\.is_active=1/);
   assert.match(lookup, /t\.tenant_id=\?/);
   // And it is only attempted when the order actually names a therapist.
-  assert.match(route, /if \(extra\.slotId && extra\.therapistId\)/);
+  assert.match(lib, /if \(!slotId \|\| !therapistId\) return null;/);
 });
 
 test('a session date in the past is refused, on the Cairo day', () => {
-  const route = codeOnly(read('api/routes/lead-capture-crm.js'));
-  assert.match(route, /SESSION_DATE_INVALID/);
-  assert.match(route, /SESSION_DATE_PAST/);
-  assert.match(route, /sessionDate < dateOnlyInTimeZone\(\)/);
-  // The route has to be able to reach the helper.
-  assert.match(route, /require\('\.\.\/lib\/dates'\)/);
+  const lib = codeOnly(read('api/lib/consultationRequests.js'));
+  assert.match(lib, /SESSION_DATE_INVALID/);
+  assert.match(lib, /SESSION_DATE_PAST/);
+  assert.match(lib, /const today = cairoToday\(now\);/);
+  assert.match(lib, /if \(sessionDate < today\)/);
+  // And the checkout asks.
+  assert.match(codeOnly(read('api/routes/lead-capture-crm.js')), /const refused = bookingRuleError\(\{ sessionDate, slot, settings: consultationSettings\(content\) \}\);/);
 });
 
 test('neither booking page offers a day that has already gone', () => {
@@ -55,6 +56,7 @@ test('neither booking page offers a day that has already gone', () => {
 test('the date the customer picks still reaches the order untouched', () => {
   // The guard must not have changed what is stored: the desk and the customer
   // both read the wall-clock the booking page showed.
-  const proofs = codeOnly(read('api/routes/payment-proofs.js'));
-  assert.match(proofs, /\$\{extra\.sessionDate\} \$\{String\(bookedSlot\.start_time\)\.slice\(0, 5\)\}:00/);
+  const lib = codeOnly(read('api/lib/consultationRequests.js'));
+  assert.match(lib, /const start = slot\?\.start_time \? String\(slot\.start_time\)\.slice\(0, 5\) : '00:00';/);
+  assert.match(lib, /const sessionAt = sessionDate \? `\$\{sessionDate\} \$\{start\}:00` : null;/);
 });

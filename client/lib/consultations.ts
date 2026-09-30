@@ -56,6 +56,19 @@ export const findTherapistSlot = (therapist: Therapist, slotId?: string) => {
 
 export const isConsultationEnabled = (therapist: Therapist) => Boolean(therapist.consultationSettings?.enabled);
 
+/**
+ * The express session's price in one currency, 0 when none is set — the same
+ * rule the checkout charges by (api/lib/consultationRequests.js). The home page
+ * fell back to 500 and the consultations page to 300 when nothing was set, so
+ * the two showed different prices for one session and the checkout refused it.
+ */
+export const expressPrice = (content: Record<string, string>, currency: Currency): number => {
+  const direct = Number(content[`express.price.${currency}`]);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const legacy = Number(content['consultation.price_egp']);
+  return currency === 'EGP' && Number.isFinite(legacy) && legacy > 0 ? legacy : 0;
+};
+
 export const sortConsultationsByDate = (rows: ConsultationItem[]) =>
   [...rows].sort((left, right) => {
     const leftTime = new Date(left.sessionDate.replace(' ', 'T')).getTime();

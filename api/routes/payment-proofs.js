@@ -32,6 +32,7 @@ const {
   settlePaymentAttempt,
 } = require('../lib/paymentIntents');
 const { getTenantSetting } = require('../lib/tenantSettings');
+const { consultationSettings, settleConsultationForOrder } = require('../lib/consultationRequests');
 const { classifyPaymentProof, paymentProofReviewStep } = require('../lib/paymentProofReview');
 
 function tenantIdFor(req) {
@@ -461,53 +462,25 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
           actor: req.user?.email || 'system',
         }, conn);
       } else if (paymentType === 'CONSULTATION') {
-        const extra = tryJson(proof.order_notes, {});
-        const [updatedConsultation] = await conn.query(
-          `UPDATE consultations
-              SET status='CONFIRMED',amount=?,currency=?,subscriber_id=?,updated_at=NOW()
-            WHERE id=? AND tenant_id=? AND deleted_at IS NULL AND status IN ('PENDING','CONFIRMED')`,
-          [proof.amount, proof.currency || 'EGP', proof.subscriber_id, proof.item_id, tenantId]
-        );
-        // The hour the customer actually chose.
-        //
-        // session_date is a DATETIME and only the bare YYYY-MM-DD was arriving,
-        // so every booking was stored at 00:00 — the customer picked
-        // «الأحد • 18:00 - 19:00», their card read 00:00, and the desk had no
-        // record of the time they had agreed. The slot carries it; the booking
-        // pages have always put its id in the URL.
-        // Scoped to the therapist on the order, to this tenant, and to an active
-        // slot. Looked up by id alone, any slot id at all was accepted — and its
-        // meeting_link was copied onto the customer's consultation and handed
-        // back to them by GET /api/me/consultations. A booking made with someone
-        // else's slot id therefore returned that session's private join URL,
-        // across therapists and across tenants.
-        let bookedSlot = null;
-        if (extra.slotId && extra.therapistId) {
-          [[bookedSlot]] = await conn.query(
-            `SELECT s.id, s.start_time, s.timezone, s.meeting_link
-               FROM therapist_slots s
-               JOIN therapists t ON t.id = s.therapist_id
-              WHERE s.id=? AND s.therapist_id=? AND s.is_active=1 AND t.tenant_id=?
-              LIMIT 1`,
-            [extra.slotId, extra.therapistId, tenantId]
-          );
+        // The consultation opened at checkout (lib/consultationRequests.js) is
+        // settled here — paid, and confirmed when «تأكيد الحجز تلقائياً» is on.
+        // A payment link's order carries the consultation's own id; an order
+        // from before checkout opened one gets one opened from its details.
+        const content = await getTenantSetting('content', { tenantId, fallback: {}, db: conn });
+        if (proof.item_id && proof.item_id !== 'consultation') {
+          await conn.query('UPDATE consultations SET order_id=COALESCE(order_id, ?) WHERE id=? AND tenant_id=?',
+            [proof.order_id, proof.item_id, tenantId]);
         }
-        const sessionDateTime = extra.sessionDate && bookedSlot?.start_time
-          ? `${extra.sessionDate} ${String(bookedSlot.start_time).slice(0, 5)}:00`
-          : (extra.sessionDate || '');
-        if (!updatedConsultation.affectedRows) await conn.query(
-          `INSERT INTO consultations
-             (id, client_name, client_email, client_phone, therapist_id, session_type, session_date,
-              slot_id, timezone, meeting_link,
-              status, notes, amount, currency, subscriber_id, tenant_id, branch_id, created_at)
-           VALUES (?,?,?,?,?,?,COALESCE(NULLIF(?,''),NOW()),?,?,?,'PENDING',?,?,?,?,?,?,NOW())`,
-          [uuidv4(), proof.customer_name, proof.customer_email, proof.customer_phone,
-           extra.therapistId || null, String(extra.sessionType || 'INDIVIDUAL').toUpperCase(),
-           sessionDateTime,
-           bookedSlot?.id || null, bookedSlot?.timezone || null, bookedSlot?.meeting_link || null,
-           `Manual order ${proof.order_id}`, proof.amount, proof.currency || 'EGP',
-           proof.subscriber_id, tenantId, proof.branch_id || 'branch-other']
-        );
+        await settleConsultationForOrder(conn, {
+          tenantId,
+          order: {
+            id: proof.order_id, notes: proof.order_notes, branch_id: proof.branch_id,
+            customer_name: proof.customer_name, customer_email: proof.customer_email, customer_phone: proof.customer_phone,
+            amount: proof.amount, currency: proof.currency || 'EGP',
+          },
+          subscriberId: proof.subscriber_id,
+          autoConfirm: consultationSettings(content).autoConfirm,
+        });
       } else if (paymentType === 'CERTIFICATE') {
         const [result] = await conn.query(
           `UPDATE certificate_requests SET status='PAID', paid_amount=?, currency=?

@@ -62,11 +62,26 @@ router.get('/api/admin/consultations', requireAuth, requireAdminOrStaff, require
   try {
     const limit = parseLimit(req.query.limit, 500, 2000);
     const [rows] = await pool.query(
-      `SELECT c.*, t.name AS t_name, t.specialty AS t_specialty
-         FROM consultations c LEFT JOIN therapists t ON t.id=c.therapist_id
+      `SELECT c.*, t.name AS t_name, t.specialty AS t_specialty, o.status AS order_status
+         FROM consultations c
+         LEFT JOIN therapists t ON t.id=c.therapist_id
+         LEFT JOIN orders o ON o.id=c.order_id AND o.tenant_id=c.tenant_id
         WHERE c.tenant_id=? AND c.deleted_at IS NULL
-        ORDER BY c.session_date DESC LIMIT ?`,
+        ORDER BY c.created_at DESC LIMIT ?`,
       [req.tenantId, limit]
+    );
+    // Requests booked before checkout opened a consultation: the order is all
+    // there is, so it is listed as a request waiting for payment rather than
+    // left where the desk never looks.
+    const [waiting] = await pool.query(
+      `SELECT o.id, o.customer_name, o.customer_email, o.customer_phone, o.amount, o.currency,
+              o.notes, o.item_title, o.branch_id, o.subscriber_id, o.created_at
+         FROM orders o
+        WHERE o.tenant_id=? AND o.type='CONSULTATION' AND o.status='pending'
+          AND NOT EXISTS (SELECT 1 FROM consultations c WHERE c.tenant_id=o.tenant_id AND c.order_id=o.id)
+          AND o.item_title NOT LIKE '%اختبار%'
+        ORDER BY o.created_at DESC LIMIT 200`,
+      [req.tenantId]
     );
     // Mapped, like the therapist portal already does with this same table.
     //
@@ -97,6 +112,42 @@ router.get('/api/admin/consultations', requireAuth, requireAdminOrStaff, require
       subscriberId: row.subscriber_id || undefined,
       branchId: row.branch_id || undefined,
       createdAt: row.created_at,
+      // session_date holds the hour the customer picked, Cairo's wall clock,
+      // not an instant; the driver builds its Date on the process clock, so the
+      // hour is read back the same way. 00:00 is a booking with no hour.
+      sessionTime: (() => {
+        const at = row.session_date instanceof Date ? row.session_date : null;
+        const hhmm = at ? `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}` : '';
+        return hhmm && hhmm !== '00:00' && row.source !== 'site_express' ? hhmm : undefined;
+      })(),
+      orderId: row.order_id || undefined,
+      paidAt: row.paid_at || undefined,
+      source: row.source || undefined,
+      awaitingPayment: Boolean(row.order_id) && !row.paid_at && String(row.order_status || '').toLowerCase() !== 'paid',
+    })).concat(waiting.map(order => {
+      const notes = (() => { try { return JSON.parse(order.notes || '{}') || {}; } catch { return {}; } })();
+      const legacy = notes.consultationData || {};
+      const express = String(notes.subtype || legacy.sessionType || '').toLowerCase() === 'express';
+      return {
+        id: `order:${order.id}`,
+        clientName: order.customer_name || legacy.clientName || 'عميل',
+        clientEmail: order.customer_email || undefined,
+        clientPhone: order.customer_phone || legacy.clientPhone || undefined,
+        therapistId: notes.therapistId || legacy.therapistId || undefined,
+        sessionType: 'individual',
+        sessionDate: notes.sessionDate || legacy.sessionDate || order.created_at,
+        status: 'pending',
+        notes: order.item_title || '',
+        amount: Number(order.amount) || undefined,
+        currency: order.currency || undefined,
+        subscriberId: order.subscriber_id || undefined,
+        branchId: order.branch_id || undefined,
+        createdAt: order.created_at,
+        orderId: order.id,
+        source: express ? 'site_express' : 'site_regular',
+        awaitingPayment: true,
+        orderOnly: true,
+      };
     })));
   } catch (error) {
     logger.error('[admin-consultations]', error.message);

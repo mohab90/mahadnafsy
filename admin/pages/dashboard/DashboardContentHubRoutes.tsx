@@ -4,6 +4,7 @@ import { ContentHubPoliciesEditor, ContentHubSimpleEditor } from './ContentHubEd
 import { DashboardContentHubAdvancedPanel } from './DashboardContentHubAdvancedPanel';
 import { DashboardContentHubPanel } from './DashboardContentHubPanel';
 import { DashboardFooterSettingsPanel } from './DashboardFooterSettingsPanel';
+import { DashboardHomeOfferPanel } from './DashboardHomeOfferPanel';
 import { GeneralDashboardTabs } from './GeneralDashboardTabs';
 import type { InstituteBranch } from './dashboardShared';
 import type { TabKey } from './navigation';
@@ -95,18 +96,9 @@ export function DashboardContentHubRoutes({
                 instituteBranches={instituteBranches}
               />
             )}
+            {/* The offer's course, timer and texts — what «الصفحة الرئيسية» leads to. */}
             {(activeTab === 'content_hub' && contentHubSubTab === 'home_offer') && (
-              <ContentHubSimpleEditor
-                title="إدارة الصفحة الرئيسية"
-                fields={homeOfferFields}
-                successMessage="تم حفظ إعدادات الصفحة الرئيسية بنجاح."
-                content={content}
-                policyDrafts={policyDrafts}
-                setPolicyDrafts={setPolicyDrafts}
-                setContentValue={setContentValue}
-                setContentValues={setContentValues}
-                notify={notify}
-              />
+              <DashboardHomeOfferPanel fields={homeOfferFields} notify={notify} />
             )}
             {(activeTab === 'content_hub' && contentHubSubTab === 'about_page') && (
               <ContentHubSimpleEditor

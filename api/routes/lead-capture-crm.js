@@ -9,7 +9,7 @@ const logger = require('../lib/logger').child({ module: 'lead-capture-crm-route'
 const { pool } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
 const { getNextClientCode } = require('../lib/mappers');
-const { dateOnlyInTimeZone, sqlCairoDayStartUtc } = require('../lib/dates');
+const { sqlCairoDayStartUtc } = require('../lib/dates');
 const { normalizePhone } = require('../lib/helpers');
 const { LEAD_STATUSES, isOpenLeadStatus } = require('../lib/leadStatuses');
 const { branchIdForBranch, normalizeBranch } = require('../lib/branches');
@@ -27,6 +27,8 @@ const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { phoneIdentityClause } = require('../lib/leadMatching');
 const { isRealPhone } = require('../lib/phoneNumber');
 const { capturePublicLead } = require('../lib/publicLead');
+const { bookingRuleError, consultationSettings, expressPrice, findSlot, openConsultationRequest } = require('../lib/consultationRequests');
+const { createNotification } = require('../lib/notification');
 
 function routeError(res, error, message = 'lead capture crm route failed') {
   logger.error(message, error);
@@ -389,6 +391,8 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
     let basePrice = 0;
     let expectedCurrency = clientContext.currency;
     let canonicalTitle = String(itemTitle || '').trim().slice(0, 500);
+    // What a consultation checkout books, opened against its order below.
+    let consultationBooking = null;
     if (normalizedType === 'course') {
       const [[course]] = await conn.query(
         'SELECT id, title, title_ar, price_egp, price_sar, price_usd FROM courses WHERE id=? AND tenant_id=? LIMIT 1',
@@ -438,6 +442,7 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
           [itemId, tenantId]
         );
         if (!consultation) return res.status(404).json({ error: 'Consultation not found' });
+        consultationBooking = { existingId: consultation.id };
         // Either proof of ownership is enough. Email alone rejected every
         // WhatsApp-only client outright, since theirs is always the empty string.
         const ownsBySubscriber = identity?.id && String(consultation.subscriber_id || '') === String(identity.id);
@@ -448,34 +453,49 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
         }
         expectedAmount = Number(consultation.amount) || Number(paymentLink.amount) || 0;
         canonicalTitle = `Consultation - ${consultation.therapist_name}`;
+      } else if (String(req.body?.subtype || '').toLowerCase() === 'express') {
+        // Ahead of the therapist branch: the express button also carries the
+        // express doctor's id, and taking it as a regular booking charged that
+        // doctor's own price while the page showed the express one.
+        const content = await getTenantSetting('content', { tenantId, fallback: {}, db: conn });
+        expectedAmount = expressPrice(content, expectedCurrency);
+        if (!expectedAmount) {
+          return res.status(409).json({
+            error: 'سعر الجلسة السريعة لسه متحددش بالعملة دي — كلمنا على واتساب وهنحجزلك',
+            code: 'EXPRESS_PRICE_UNSET',
+          });
+        }
+        canonicalTitle = 'Express consultation';
+        const [[expressTherapist]] = content['express.therapistId']
+          ? await conn.query('SELECT id, name FROM therapists WHERE id=? AND tenant_id=? LIMIT 1', [content['express.therapistId'], tenantId])
+          : [[null]];
+        consultationBooking = {
+          therapistId: expressTherapist?.id || null, sessionDate: '', slot: null, source: 'site_express',
+          durationMinutes: consultationSettings(content).durationMinutes, label: 'جلسة سريعة',
+        };
       } else if (therapistId) {
         const [[therapist]] = await conn.query(
-          `SELECT id, name, price_egp, price_sar, price_usd FROM therapists
+          `SELECT id, name, price_egp, price_sar, price_usd, session_duration_minutes FROM therapists
             WHERE id=? AND tenant_id=? AND is_active=1 AND is_consultation_enabled=1 LIMIT 1`,
           [therapistId, tenantId]
         );
         if (!therapist) return res.status(404).json({ error: 'Therapist not available' });
-        // The booking page uses <input type="date"> and the date arrives in the
-        // URL, so nothing stopped a session being booked for a date that has
-        // already passed — it was stored verbatim and the desk found a
-        // consultation in its past. Judged on the Cairo day, which is the day
-        // the desk and the customer are both looking at.
+        // The date arrives in the URL, so it is checked here against the rules
+        // «إعدادات الاستشارات» sets — not in the past, not beyond the booking
+        // window, the slot on that weekday and far enough ahead — on the Cairo
+        // day the desk and the customer are both looking at.
+        const content = await getTenantSetting('content', { tenantId, fallback: {}, db: conn });
         const sessionDate = String(req.body?.sessionDate || '').trim();
-        if (sessionDate) {
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)) {
-            return res.status(400).json({ error: 'تاريخ الجلسة غير صالح', code: 'SESSION_DATE_INVALID' });
-          }
-          if (sessionDate < dateOnlyInTimeZone()) {
-            return res.status(400).json({ error: 'لا يمكن حجز جلسة في تاريخ مضى', code: 'SESSION_DATE_PAST' });
-          }
-        }
+        const slot = await findSlot(conn, { tenantId, therapistId, slotId: String(req.body?.slotId || '').trim() });
+        const refused = bookingRuleError({ sessionDate, slot, settings: consultationSettings(content) });
+        if (refused) return res.status(400).json(refused);
         expectedAmount = Number(therapist[`price_${expectedCurrency.toLowerCase()}`]) || 0;
         canonicalTitle = `Consultation - ${therapist.name}`;
-      } else if (String(req.body?.subtype || '').toLowerCase() === 'express') {
-        const content = await getTenantSetting('content', { tenantId, fallback: {}, db: conn });
-        const configured = Number(content[`express.price.${expectedCurrency}`]) || 0;
-        expectedAmount = configured;
-        canonicalTitle = 'Express consultation';
+        consultationBooking = {
+          therapistId, sessionDate, slot, source: 'site_regular',
+          durationMinutes: therapist.session_duration_minutes || consultationSettings(content).durationMinutes,
+          label: therapist.name,
+        };
       } else {
         return res.status(400).json({ error: 'therapistId required' });
       }
@@ -574,6 +594,8 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       sessionDate: req.body?.sessionDate || null,
       sessionType: req.body?.sessionType || null,
       subtype: req.body?.subtype || null,
+      // The hour the customer picked: without it every paid booking landed at 00:00.
+      slotId: req.body?.slotId || null,
       paymentLinkId: paymentLink?.id || null,
     });
     await conn.query(
@@ -599,8 +621,31 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       );
       if (Number(consumed.affectedRows) !== 1) throw new Error('Payment link redemption conflict');
     }
+    // «طلبات الاستشارات مش بتظهر ابدا»: the request is on the desk's list from
+    // this moment, unpaid, rather than only once a receipt is approved.
+    let openedConsultation = null;
+    if (consultationBooking?.existingId) {
+      await conn.query('UPDATE consultations SET order_id=? WHERE id=? AND tenant_id=?',
+        [orderId, consultationBooking.existingId, tenantId]);
+    } else if (consultationBooking) {
+      openedConsultation = await openConsultationRequest(conn, {
+        tenantId, orderId, branchId, subscriberId: subscriber?.id || null,
+        name: String(customerName || '').trim() || normalizedEmail.split('@')[0],
+        email: normalizedEmail || null, phone: String(customerPhone || identity?.phone || '').trim(),
+        therapistId: consultationBooking.therapistId, sessionDate: consultationBooking.sessionDate,
+        slot: consultationBooking.slot, sessionType: req.body?.sessionType, source: consultationBooking.source,
+        amount: expectedAmount, currency: expectedCurrency, durationMinutes: consultationBooking.durationMinutes,
+      });
+    }
     await conn.commit();
     transactionStarted = false;
+    if (openedConsultation?.created) {
+      const when = consultationBooking.sessionDate || 'موعد يتحدد بالتواصل';
+      createNotification('consultation', '🗓️ طلب استشارة جديد',
+        `${String(customerName || '').trim() || 'عميل'} · ${consultationBooking.label} · ${when} — لم يُدفع بعد`,
+        { consultationId: openedConsultation.id, orderId, link: '/dashboard/consultations' }, tenantId)
+        .catch(error => logger.warn('[checkout-intent] consultation notification failed', { error: error.message }));
+    }
     res.json({
       ok: true, orderId, amount: expectedAmount, currency: expectedCurrency,
       payMode: normalizedPayMode,

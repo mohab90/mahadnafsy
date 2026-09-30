@@ -24,6 +24,8 @@ const { enqueueFinanceEvent } = require('../lib/financeOutbox');
 const { ensureSubscriberForOrder } = require('../lib/subscriberProvisioning');
 const { createNotification } = require('../lib/notification');
 const { cairoToday } = require('../lib/dates');
+const { getTenantSetting } = require('../lib/tenantSettings');
+const { consultationSettings, settleConsultationForOrder } = require('../lib/consultationRequests');
 const {
   PAYMOB_HMAC_FIELDS,
   buildPaymobHmacPayload,
@@ -635,23 +637,18 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
       logger.info(`[paymob] Enrolled ${order.customer_email} in ${courseIds.join(',')} (order ${merchantOrderId})`);
     }
 
-    // 3. Auto-create consultation record
-    if (extra.consultationData) {
-      const cd = extra.consultationData;
-      // consultations has no therapist_name: every screen that shows one joins
-      // staff on therapist_id (`t.name AS therapist_name`). Naming it here threw
-      // ER_BAD_FIELD_ERROR inside this transaction, which rolled back the paid
-      // order, the enrolment and the payment row with it — a consultation paid
-      // for by card recorded nothing at all, which is why the table is empty.
-      await conn.query(
-        `INSERT IGNORE INTO consultations
-           (id, tenant_id, client_name, client_email, client_phone, therapist_id,
-            session_type, session_date, status, amount, currency, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,NOW())`,
-        [cd.id||uuidv4(), tenantId, cd.clientName||'', cd.clientEmail||'', cd.clientPhone||'',
-         cd.therapistId||'', cd.sessionType||'individual',
-         cd.sessionDate||'', 'pending', order.amount, order.currency]
-      );
+    // 3. The consultation this order pays for.
+    //
+    // It looked for extra.consultationData, which the checkout has never
+    // written, so a consultation paid by card recorded nothing. The checkout
+    // opens the consultation against the order now; this settles it, and opens
+    // one from the order's details for an order placed before that.
+    if (String(order.type || '').toUpperCase() === 'CONSULTATION') {
+      const content = await getTenantSetting('content', { tenantId, fallback: {}, db: conn });
+      await settleConsultationForOrder(conn, {
+        tenantId, order, subscriberId: sub?.id || null,
+        autoConfirm: consultationSettings(content).autoConfirm,
+      });
     }
 
     // 4. Record in payments table.

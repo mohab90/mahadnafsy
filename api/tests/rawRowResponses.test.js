@@ -180,11 +180,15 @@ test('a consultation is booked at the hour the customer picked', () => {
       `${page} must keep putting the slot in the URL`);
   }
 
-  const proofs = codeOnly(read('api/routes/payment-proofs.js'));
-  // The lookup is scoped now — see consultationBookingGuards.test.js, which
-  // owns that guard. What matters here is that the slot's start_time is still
-  // read at all, since that is the hour the booking is stored with.
-  assert.match(proofs, /s\.id, s\.start_time, s\.timezone, s\.meeting_link[\s\S]{0,80}FROM therapist_slots/);
-  assert.match(proofs, /\$\{extra\.sessionDate\} \$\{String\(bookedSlot\.start_time\)\.slice\(0, 5\)\}:00/);
-  assert.match(proofs, /slot_id, timezone, meeting_link/, 'the slot must be recorded, not just used');
+  // Booked at checkout and settled on payment, in lib/consultationRequests.js.
+  // The lookup is scoped — see consultationBookingGuards.test.js, which owns
+  // that guard. What matters here is that the slot's start_time is still read
+  // at all, since that is the hour the booking is stored with.
+  const lib = codeOnly(read('api/lib/consultationRequests.js'));
+  assert.match(lib, /s\.id, s\.day, s\.start_time, s\.timezone, s\.meeting_link[\s\S]{0,80}FROM therapist_slots/);
+  assert.match(lib, /const sessionAt = sessionDate \? `\$\{sessionDate\} \$\{start\}:00` : null;/);
+  assert.match(lib, /session_date, slot_id, timezone, meeting_link/, 'the slot must be recorded, not just used');
+  // The checkout keeps the slot on the order, so a payment arriving later
+  // still knows the hour.
+  assert.match(codeOnly(read('api/routes/lead-capture-crm.js')), /slotId: req\.body\?\.slotId \|\| null,/);
 });
