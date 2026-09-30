@@ -126,6 +126,12 @@ function mapCourse(r, materials) {
     titleAr: r.title_ar,
     description: r.description,
     shortDescription: r.short_description,
+    // What search engines read. The admin form saved these and the course page
+    // and the prerendered pages looked for them, but nothing carried them out
+    // of the table, so every course went to Google with its plain title.
+    seo_title: r.seo_title || undefined,
+    seo_description: r.seo_description || undefined,
+    seo_keywords: r.seo_keywords || undefined,
     instructor: r.instructor,
     instructorId: r.instructor_id || undefined,
     thumbnail: r.thumbnail,

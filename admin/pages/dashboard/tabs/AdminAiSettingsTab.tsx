@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Settings2, Bot, FileText, AlertCircle, Zap, Save, CheckCircle, Code2, Video } from 'lucide-react';
 import { useStaticData } from '../../../context/siteDataSlices';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { AiAutopilotPanel } from './ai/AiAutopilotPanel';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -133,6 +134,7 @@ export default function AdminAiSettingsTab({ notify }: Props) {
       </div>
 
       <div className="max-w-2xl space-y-4">
+        <AiAutopilotPanel notify={notify} />
         <article className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
           <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><Bot size={16} className="text-slate-500" />نموذج الذكاء الاصطناعي</h3>
           <div className="space-y-4">

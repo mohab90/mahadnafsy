@@ -118,6 +118,13 @@ function startBackgroundScheduler({ pool, logger, port }) {
     repeat(tick, 10 * 60 * 1000);
   }, 4 * 60 * 1000);
 
+  later(() => {
+    const tick = () => require('./aiAutopilot').queueDueAutopilot({ queue, logger })
+      .catch(error => logger.warn('[jobs] ai autopilot tick failed:', error.message));
+    tick();
+    repeat(tick, 15 * 60 * 1000);
+  }, 6 * 60 * 1000);
+
   const outbox = require('./outbox');
   const email = require('./email');
   const sms = require('./otpProvider');
@@ -135,6 +142,8 @@ function startBackgroundScheduler({ pool, logger, port }) {
     lead_score_refresh: scheduledJobs.leadScoreRefresh,
     lead_auto_archive: scheduledJobs.leadAutoArchive,
     subscription_billing: () => subscriptionBilling.runSubscriptionBilling(),
+    // «خلي السيستم يفيد نفسه»: SEO, community posts, study articles, quizzes.
+    ai_autopilot: ({ tenantId, date, only }) => require('./aiAutopilot').runAutopilot({ tenantId, date, only }),
     // A report that reached no number is retried; a switched-off one is not.
     owner_daily_report: async ({ tenantId, date }) => {
       const result = await ownerReports.sendOwnerDailyReport({ tenantId, date });

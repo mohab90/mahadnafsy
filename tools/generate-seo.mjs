@@ -110,11 +110,12 @@ function writePage(relUrl, html) {
   for (const c of courses) {
     const slug = c.slug || c.id;
     if (!slug) continue;
-    const description = summarise(c.shortDescription || c.description,
+    // The course's own search title and description first, when set.
+    const description = c.seo_description || summarise(c.shortDescription || c.description,
       `${c.title} — دبلومة معتمدة من معهد الدراسات النفسية.`);
     const html = render(shell, {
       url: `${SITE}/c/${slug}`,
-      title: `${c.title} | معهد الدراسات النفسية`,
+      title: `${c.seo_title || c.title} | معهد الدراسات النفسية`,
       description,
       image: c.thumbnail,
     });
