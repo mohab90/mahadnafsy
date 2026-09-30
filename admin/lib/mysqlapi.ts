@@ -72,7 +72,8 @@ async function apiFetch<T>(path: string, options: RequestInit = {}, auth = false
 let endingSession = false;
 function sessionIsOver(path: string): void {
   if (endingSession) return;
-  if (path.startsWith('/auth/login') || path.startsWith('/auth/logout')) return;
+  // A wrong current password is a 401 about the request, not a dead session.
+  if (path.startsWith('/auth/login') || path.startsWith('/auth/logout') || path.startsWith('/auth/update-password')) return;
   if (typeof window === 'undefined') return;
   if (window.location.pathname.startsWith('/auth')) return;
   endingSession = true;

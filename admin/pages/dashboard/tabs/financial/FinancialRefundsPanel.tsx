@@ -70,7 +70,11 @@ const day = (value?: string) => (value ? String(value).slice(0, 10) : '—');
 // `branch` scopes both the list and the decision: the finance tab renders this
 // per branch, and the server checks the caller may act on that branch.
 export default function FinancialRefundsPanel({ notify, branch }: { notify: Notify; branch?: string }) {
-  const { staffMembers, isAdmin } = useSiteData();
+  const { staffMembers, isAdmin, authUser } = useSiteData();
+  // Customer service reads and escalates; accepting, rejecting, adding and
+  // paying out are approve_refunds, which the server asks for each of them.
+  const canDecide = isAdmin || authUser?.permissions === '*'
+    || (Array.isArray(authUser?.permissions) && authUser.permissions.includes('approve_refunds'));
   const [addOpen, setAddOpen] = useState(false);
   const [rows, setRows] = useState<RefundRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -243,9 +247,9 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
         <button onClick={() => void load()} className="rounded-xl border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-50 flex items-center gap-1">
           <RefreshCw size={12} /> تحديث
         </button>
-        <button onClick={() => setAddOpen(true)} className="rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700 transition flex items-center gap-1">
+        {canDecide && <button onClick={() => setAddOpen(true)} className="rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700 transition flex items-center gap-1">
           <Plus size={12} /> إضافة استرداد
-        </button>
+        </button>}
       </div>
 
       {loading ? (
@@ -324,7 +328,7 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
                     </td>
                     <td className={td}>
                       <div className="flex flex-wrap gap-1">
-                        {isPending && (
+                        {isPending && canDecide && (
                           <>
                             <button disabled={working} onClick={() => decide(row, 'APPROVED')}
                               className="rounded-lg bg-emerald-600 px-2 py-1 font-bold text-white hover:bg-emerald-700 disabled:opacity-50">مقبول</button>
@@ -334,7 +338,7 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
                               className="rounded-lg bg-blue-600 px-2 py-1 font-bold text-white hover:bg-blue-700 disabled:opacity-50">هنعالجه</button>
                           </>
                         )}
-                        {status === 'APPROVED' && (
+                        {status === 'APPROVED' && canDecide && (
                           <button disabled={working} onClick={() => markRefunded(row)}
                             className="rounded-lg bg-teal-600 px-2 py-1 font-bold text-white hover:bg-teal-700 disabled:opacity-50 inline-flex items-center gap-1">
                             <BadgeCheck size={11} /> تم رد المبلغ

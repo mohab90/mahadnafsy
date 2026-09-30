@@ -31,6 +31,7 @@ type Props = {
   isNonAdminStaff: boolean;
   salesOwnDaqqiRounds: DaqqiRound[] | null;
   isReceptionDaqqi: boolean;
+  isSupport: boolean;
   leadsSalesTargets: SalesTarget[];
 };
 
@@ -53,6 +54,7 @@ export function DashboardGrowthOpsTabs({
   isNonAdminStaff,
   salesOwnDaqqiRounds,
   isReceptionDaqqi,
+  isSupport,
   leadsSalesTargets,
 }: Props) {
   // «ملف» on a sales rep opens that employee's own staff page.
@@ -84,8 +86,8 @@ export function DashboardGrowthOpsTabs({
             notify={notify}
             subscribersOverride={isNonAdminStaff ? salesOwnSubscribers : undefined}
             roundsOverride={isNonAdminStaff && salesOwnDaqqiRounds ? salesOwnDaqqiRounds : undefined}
-            hideCreateRound={isReceptionDaqqi}
-            requirePaymentApproval={isReceptionDaqqi}
+            hideCreateRound={isReceptionDaqqi || isSupport}
+            requirePaymentApproval={isReceptionDaqqi || isSupport}
             branchFilter={branchFilter}
           />
         </TabErrorBoundary>

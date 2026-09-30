@@ -3,6 +3,7 @@ import { MessageCircle, Pencil, Save, Settings2, Tags, Trash2 } from 'lucide-rea
 import type { StaffMember } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { toDialable } from '../../../lib/whatsappLink';
+import { ChangePasswordCard } from './ChangePasswordCard';
 
 type Notify = (kind: 'success' | 'error' | 'warning' | 'info', message: string) => void;
 type Template = { id: string; title: string; body: string };
@@ -92,6 +93,8 @@ export function MySettingsSection({ staff, notify }: { staff: StaffMember; notif
           <Save size={15} /> {saving ? 'جارٍ الحفظ…' : 'حفظ التغييرات'}
         </button>
       </section>
+
+      <ChangePasswordCard notify={notify} />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">

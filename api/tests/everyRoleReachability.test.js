@@ -33,7 +33,7 @@ const run = (script) => JSON.parse(execFileSync(
 test('every tab a role bar offers is one that role can open', () => {
   const { bars, findings } = run('role-bar-gate-scan.mjs');
   // Denominator: a scan that parsed no bars would pass while checking nothing.
-  assert.equal(bars, 6, `expected the six role bars, parsed ${bars}`);
+  assert.equal(bars, 7, `expected the seven role bars, parsed ${bars}`);
   assert.deepEqual(
     findings.map(f => `${f.role} · ${f.key} — ${f.why}`),
     [],

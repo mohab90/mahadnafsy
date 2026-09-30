@@ -138,11 +138,20 @@ test('CRM writes, bulk messaging and interaction deletion preserve role data sco
     isSuperAdmin: false,
   }, 'l');
   assert.equal(daqqi.scope, 'branch:DAQQI');
-  // IN (…) rather than = ? because a branch scope may now list several branches;
-  // for a single-branch scope like DAQQI the matched rows are identical.
-  assert.match(daqqi.sql, /l\.branch IN \(\?\)/);
-  assert.deepEqual(daqqi.params, ['DAQQI']);
-  assert.deepEqual(daqqi.params, ['DAQQI']);
+  // «الليدات المعينه لفريق الدقي فقط»: the Dokki desk gets the leads handed to
+  // its team, not every lead tagged DAQQI.
+  assert.match(daqqi.sql, /l\.assigned_sales_id IN \(SELECT id FROM staff WHERE tenant_id=\? AND LOWER\(role\) IN \('daqqi_manager','reception_daqqi'\)\)/);
+  assert.match(daqqi.sql, / OR l\.assigned_cs_id IN \(/);
+  assert.deepEqual(daqqi.params, ['tenant-a', 'tenant-a']);
+  // Any other branch scope is still its branch. IN (…) because a branch scope
+  // may list several branches.
+  const online = leadScope({
+    tenantId: 'tenant-a',
+    staffRecord: { id: 'staff-o', role: 'collection', data_scope: 'branch:ONLINE_EGYPT,ONLINE_SAUDI' },
+    isSuperAdmin: false,
+  }, 'l');
+  assert.match(online.sql, /l\.branch IN \(\?,\?\)/);
+  assert.deepEqual(online.params, ['ONLINE_EGYPT', 'ONLINE_SAUDI']);
 
   assert.match(admin, /WHERE l\.tenant_id=\? AND l\.id=\?\$\{writeScope\.sql\}/);
   assert.match(admin, /Lead branch is outside your data scope/);

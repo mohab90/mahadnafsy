@@ -167,6 +167,13 @@ test('employee requests: hours on a permission, the HR inbox, and payroll excusi
   assert.match(read('api/migrations/223_v26_permission_times.sql'), /ADD COLUMN IF NOT EXISTS start_time varchar\(5\)/);
 });
 
-test('booking is offered only to accounts that may record money', () => {
-  assert.match(read('admin/pages/Dashboard.tsx'), /\{\(isAdmin \|\| hasPermission\('manage_payments'\)\) && <Suspense fallback=\{null\}>\s*<DashboardQuickBooking/);
+// «زر حجز - دفعة في الاسفل دا لازم يكون ظاهر لكل الحسابات». It was hidden
+// from accounts the server would refuse; every role now holds manage_payments,
+// so the button is on every account and its save is never refused.
+test('booking is on every account, and every account may record it', () => {
+  assert.match(read('admin/pages/Dashboard.tsx'), /\n      <Suspense fallback=\{null\}>\s*<DashboardQuickBooking/);
+  const { ROLE_PERMS } = require('../constants/permissions');
+  for (const [role, perms] of Object.entries(ROLE_PERMS)) {
+    assert.ok(perms === '*' || perms.includes('manage_payments'), `${role} cannot record the booking it is offered`);
+  }
 });

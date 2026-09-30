@@ -14,6 +14,7 @@ type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type Props = {
   activeTab: TabKey;
   isCollectionRole: boolean;
+  isSupport: boolean;
   isOnlineManager: boolean;
   isAdmin: boolean;
   subscribers: SubscriberItem[];
@@ -36,11 +37,12 @@ const spinner = (color: string) => (
 export function DashboardCustomerServiceTabs({
   activeTab,
   isCollectionRole,
+  isSupport,
   isOnlineManager,
   isAdmin,
   notify,
 }: Props) {
-  if (activeTab === 'refund_requests' && (isCollectionRole || isOnlineManager || isAdmin)) {
+  if (activeTab === 'refund_requests' && (isCollectionRole || isSupport || isOnlineManager || isAdmin)) {
     return (
       <FinancialRefundsPanel
         notify={(message, tone) => notify(tone === 'error' ? 'error' : 'success', message)}

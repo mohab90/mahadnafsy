@@ -38,6 +38,7 @@ const BAR_ROLE = {
   isSalesOnly: 'sales',
   isCollectionRole: 'collection',
   isReceptionDaqqi: 'reception_daqqi',
+  isSupport: 'support',
   isDaqqiManager: 'daqqi_manager',
   isOnlineManager: 'online_manager',
   isSalesCollectionManager: 'sales_collection_manager',

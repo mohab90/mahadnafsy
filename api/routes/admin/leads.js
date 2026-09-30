@@ -21,7 +21,7 @@ const { createRepRotation, getNextSalesRep, listDistributableReps } = require('.
 const { DEFAULT_ARCHIVE_SOURCE, excludeArchiveSourcesSql } = require('../../lib/leadArchive');
 const { appendLeadInteraction, queueLeadWhatsAppBatch } = require('../../lib/leadInteractions');
 const { grantCourseEntitlement } = require('../../lib/entitlements');
-const { leadScope, branchesFromScope } = require('../../lib/leadAccess');
+const { leadScope, branchesFromScope, DAQQI_TEAM_ROLES } = require('../../lib/leadAccess');
 const { claimWhatsAppIdentity, findAccountByPhone } = require('../../lib/whatsappOtp');
 const {
   archiveLead,
@@ -204,6 +204,13 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
     } else if (staffRole === 'sales') {
       salesId = req.staffRecord.id;
       salesName = req.staffRecord.name || salesName;
+      crmData.assignedSalesId = salesId;
+      crmData.assignedSalesName = salesName;
+    } else if (isNew && !salesId && !csId && DAQQI_TEAM_ROLES.includes(staffRole)) {
+      // The Dokki desk sees the leads handed to its team (lib/leadAccess.js);
+      // one it adds went to the next sales rep and left its screen at once.
+      salesId = req.staffRecord.id;
+      salesName = req.staffRecord.name || null;
       crmData.assignedSalesId = salesId;
       crmData.assignedSalesName = salesName;
     } else if (isNew && !salesId && !csId && !skipAutoAssign) {

@@ -13,3 +13,4 @@ export const DashboardOnlineManagerPanels = React.lazy(() => import('./Dashboard
 export const DashboardQuickBooking = React.lazy(() => import('./DashboardQuickBooking').then(module => ({ default: module.DashboardQuickBooking })));
 export const DashboardSaasOpsTabs = React.lazy(() => import('./DashboardSaasOpsTabs').then(module => ({ default: module.DashboardSaasOpsTabs })));
 export const MyProfilePage = React.lazy(() => import('./my-profile/MyProfilePage'));
+export const OwnerProfilePage = React.lazy(() => import('./my-profile/OwnerProfilePage'));

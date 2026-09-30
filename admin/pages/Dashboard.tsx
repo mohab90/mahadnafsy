@@ -51,6 +51,7 @@ import {
   DashboardSaasOpsTabs,
   MyProfilePage,
   OverviewTab,
+  OwnerProfilePage,
 } from './dashboard/lazyDashboardComponents';
 import { isProfileTab } from './dashboard/my-profile/profileTabs';
 import { tabForUrl, urlForTab, urlToTabAlias } from './dashboard/tabUrlAliases';
@@ -408,6 +409,7 @@ const Dashboard: React.FC = () => {
     isSalesOnly,
     isCollectionRole,
     isReceptionDaqqi,
+    isSupport,
     isDaqqiManager,
     isOnlineManager,
     isSalesCollectionManager,
@@ -681,6 +683,7 @@ const Dashboard: React.FC = () => {
           isSalesOnly={isSalesOnly}
           isCollectionRole={isCollectionRole}
           isReceptionDaqqi={isReceptionDaqqi}
+          isSupport={isSupport}
           isOnlineManager={isOnlineManager}
           isDaqqiManager={isDaqqiManager}
           isSalesCollectionManager={isSalesCollectionManager}
@@ -817,7 +820,7 @@ const Dashboard: React.FC = () => {
               <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="h-6 w-6 animate-spin rounded-full border-2 border-sky-500 border-t-transparent" /></div>}>
                 <DashboardClientTabs
                   activeTab={activeTab}
-                  canViewDaqqiClients={isDaqqiManager || isReceptionDaqqi || isAdmin}
+                  canViewDaqqiClients={isDaqqiManager || isReceptionDaqqi || isSupport || isAdmin}
                   onlineClientsProps={{
                     canDeleteSubscriber: hasPermission('delete_subscribers'),
                     activeTab,
@@ -864,6 +867,7 @@ const Dashboard: React.FC = () => {
                 <DashboardCustomerServiceTabs
                   activeTab={activeTab}
                   isCollectionRole={isCollectionRole}
+                  isSupport={isSupport}
                   isOnlineManager={isOnlineManager}
                   isAdmin={isAdmin}
                   subscribers={subscribers}
@@ -1028,6 +1032,7 @@ const Dashboard: React.FC = () => {
                   isNonAdminStaff={isNonAdminStaff}
                   salesOwnDaqqiRounds={salesOwnDaqqiRounds}
                   isReceptionDaqqi={isReceptionDaqqi}
+                  isSupport={isSupport}
                   leadsSalesTargets={leadsSalesTargets}
                 />
               </Suspense>
@@ -1079,16 +1084,18 @@ const Dashboard: React.FC = () => {
               </Suspense>
             )}
 
-            {/* The page needs a staff record, and the owner account has a users
-                row without one. A screen that cannot draw has to say why. */}
+            {/* The owner account has a users row and no staff record: its own
+                page, with the password it could not change anywhere. */}
             {isProfileTab(activeTab) && !currentStaff && (
-              <div className="mx-auto max-w-md rounded-2xl border border-gray-200 bg-white p-8 text-center">
-                <h3 className="mb-2 text-base font-bold text-gray-900">صفحات الموظف غير متاحة لحسابك</h3>
-                <p className="text-sm leading-relaxed text-gray-500">
-                  الصفحات دي بتعرض ملفك الوظيفي وبياناتك كموظف، وحسابك الحالي مش مربوط بسجل موظف.
-                  لو المفروض يكون مربوط، أضف السجل من الموارد البشرية ← الموظفين بنفس البريد.
-                </p>
-              </div>
+              <Suspense fallback={null}>
+                <OwnerProfilePage
+                  name={authUser?.displayName || ''}
+                  email={authUser?.email || ''}
+                  isOwner={isAdmin}
+                  notify={notify}
+                  onNavigate={setActiveTabState}
+                />
+              </Suspense>
             )}
 
             </DashboardTabContainer>
@@ -1096,10 +1103,10 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Booking is recording money, so it is for whoever may: the button sat
-          on every account — HR, instructors — and opened a form the server
-          then refused with «Permission denied: manage_payments». */}
-      {(isAdmin || hasPermission('manage_payments')) && <Suspense fallback={null}>
+      {/* On every account: «لازم يكون ظاهر لكل الحسابات». Every role holds
+          manage_payments for it (api/constants/permissions.js), so the save is
+          not refused; a payment from someone who cannot approve waits PENDING. */}
+      <Suspense fallback={null}>
         <DashboardQuickBooking
           open={quickBookOpen}
           search={quickBookSearch}
@@ -1113,7 +1120,7 @@ const Dashboard: React.FC = () => {
           setSubPayDraft={setSubPayDraft}
           navigate={navigate}
         />
-      </Suspense>}
+      </Suspense>
 
     </div>
     <DashboardPaymentOverlays

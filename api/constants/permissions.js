@@ -127,6 +127,10 @@ const PERMISSIONS = Object.freeze({
 
 // ── 3. ROLE DEFAULT PERMISSIONS ───────────────────────────────────────────────
 // '*' = wildcard (full access, bypasses all checks)
+//
+// Every role holds manage_payments: «زر حجز - دفعة … لازم يكون ظاهر لكل
+// الحسابات». Recording is not approving — a payment from someone without
+// manage_financial is stored PENDING for accounts to review.
 const ROLE_PERMS = Object.freeze({
   [ROLES.ADMIN]:                    '*',
   [ROLES.MANAGER]:                  '*',
@@ -222,26 +226,26 @@ const ROLE_PERMS = Object.freeze({
     'ask_ai',
   ],
 
+  // «يقدر يشوف جدول الدقي وعملاء الدقي وعملاء الاونلاين فقط … ميشوفش الادارة
+  // وميشوفش العملاء المحتملين يشوف المشاكل الاستردادات والشهادات». Every
+  // client in both branches (DATA_SCOPE 'all'), no leads, no reports.
+  // manage_inbox is what opens the refunds list for this role; deciding a
+  // refund stays with approve_refunds. view_orders is the payment history in
+  // a client's file, not the orders screen, which is not on this role's bar.
   [ROLES.SUPPORT]: [
     'view_dashboard',
-    // view_leads, because «ليداتي» is a quick action on this role's own landing
-    // page and it answered «غير مصرح بالوصول». Scoped, not open: the data scope
-    // is 'assigned_cs', so leadAccess narrows every query to the leads of
-    // customers assigned to them — the record behind a ticket they are working,
-    // which is the whole reason the button is there.
-    'view_leads',
     'view_subscribers', 'manage_subscribers',
-    'view_orders',
-    'manage_inbox', 'manage_notifications',
-    'view_consultations',
-    'view_reports',
-    'view_client_db',
+    'view_orders', 'manage_payments',
+    'manage_daqqi',
+    'manage_inbox',
+    'manage_certificates',
     'bulk_whatsapp',
     'ask_ai',
   ],
 
   [ROLES.RECEPTION_DAQQI]: [
     'view_dashboard',
+    'manage_payments',
     'view_leads', 'manage_leads',
     'view_subscribers', 'manage_subscribers',
     'view_orders', 'manage_orders',
@@ -251,6 +255,7 @@ const ROLE_PERMS = Object.freeze({
 
   [ROLES.HR]: [
     'view_dashboard',
+    'manage_payments',
     'view_staff', 'manage_staff', 'view_hr', 'manage_hr',
     'view_reports', 'view_activity',
     'view_join_us', 'manage_join_us',
@@ -268,6 +273,7 @@ const ROLE_PERMS = Object.freeze({
 
   [ROLES.CONSULTANT]: [
     'view_dashboard',
+    'manage_payments',
     'view_consultations', 'manage_consultations',
     'view_subscribers',
     'view_leads',
@@ -276,12 +282,14 @@ const ROLE_PERMS = Object.freeze({
 
   [ROLES.TRAINER]: [
     'view_dashboard',
+    'manage_payments',
     'view_courses', 'manage_lectures',
     'view_consultations', 'manage_consultations',
   ],
 
   [ROLES.EXPERT]: [
     'view_dashboard',
+    'manage_payments',
     'view_courses',
     'view_consultations',
     // No view_subscribers. DATA_SCOPE for this role is 'none', so it returned
@@ -293,12 +301,14 @@ const ROLE_PERMS = Object.freeze({
 
   [ROLES.INSTRUCTOR]: [
     'view_dashboard',
+    'manage_payments',
     'view_courses', 'manage_lectures',
     'view_consultations', 'manage_consultations',
   ],
 
   [ROLES.OTHER]: [
     'view_dashboard',
+    'manage_payments',
   ],
 });
 
@@ -331,8 +341,7 @@ const DATA_SCOPE = Object.freeze({
   [ROLES.SALES]:      'assigned_sales',   // WHERE assigned_sales_id = me
   [ROLES.COLLECTION]: 'assigned_cs',      // WHERE assigned_cs_id = me
 
-  // View-only (subscribers they're linked to)
-  [ROLES.SUPPORT]:     'assigned_cs',
+  [ROLES.SUPPORT]:     'all',
   [ROLES.HR]:          'none',
   [ROLES.ACCOUNTANT]:  'all',
   [ROLES.CONSULTANT]:  'assigned_sales',

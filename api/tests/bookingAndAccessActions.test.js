@@ -116,7 +116,8 @@ test('the collection target is only fetched by the roles whose screen shows it',
   assert.match(sales, /router\.get\('\/api\/admin\/sales-targets'[\s\S]{0,140}requirePermission\('view_leads'\)/);
   const canRead = new Set(holders('view_leads'));
   const affected = holders('view_dashboard').filter(role => !canRead.has(role));
-  assert.deepEqual(affected.sort(), ['accountant', 'expert', 'hr', 'instructor', 'other', 'trainer']);
+  // support since «ميشوفش العملاء المحتملين»; its bar has no overview.
+  assert.deepEqual(affected.sort(), ['accountant', 'expert', 'hr', 'instructor', 'other', 'support', 'trainer']);
 });
 
 test('there is one payment screen, and every booking button opens it', () => {

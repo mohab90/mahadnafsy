@@ -13,7 +13,7 @@ const { tryJson, sanitize, parseLimit, parseOffset, parseCrm, calcLeadScoreServe
 const { COURSE_COLS, mapCourse, getNextClientCode } = require('../../lib/mappers');
 const { createNotification } = require('../../lib/notification');
 const { logLeadEvent } = require('../../lib/crm');
-const { branchesFromScope } = require('../../lib/leadAccess');
+const { branchesFromScope, leadScope } = require('../../lib/leadAccess');
 const { enqueueEmailSequence } = require('../../lib/emailSequence');
 const { ADMIN_EMAILS, requireAuth, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../../middleware/auth');
 const { VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES, normalizeDataScope, resolveDataScope, hasPermission, PERMISSIONS } = require('../../constants/permissions');
@@ -586,13 +586,12 @@ router.get('/api/staff/leads', requireAuth, requireAdminOrStaff, requirePermissi
       whereClause = `hidden = 0 AND (assigned_cs_id = ? OR id IN (SELECT lead_id FROM subscribers WHERE tenant_id=? AND assigned_cs_id=? AND lead_id IS NOT NULL))`;
       params.push(staffId, req.tenantId, staffId);
     }
-    // 'all' sees all leads; branch scopes see only their branch.
+    // 'all' sees all leads; branch scopes see what lib/leadAccess.js gives
+    // them — their branch, or the Dokki desk the leads handed to its team.
     else if (scope.startsWith('branch:')) {
-      const branches = branchesFromScope(scope);
-      whereClause = branches.length
-        ? `hidden = 0 AND branch IN (${branches.map(() => '?').join(',')})`
-        : '1=0';
-      params.push(...branches);
+      const branchScope = leadScope(req, 'leads');
+      whereClause = `hidden = 0${branchScope.sql}`;
+      params.push(...branchScope.params);
     }
 
     const limit  = parseLimit(req.query.limit, 5000, 20000);

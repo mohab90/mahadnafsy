@@ -20,6 +20,7 @@ export function useCurrentStaff({ currentStaff }: { currentStaff: StaffMember | 
     isSalesOnly: role === 'sales',
     isCollectionRole: role === 'collection',
     isReceptionDaqqi: role === 'reception_daqqi',
+    isSupport: role === 'support',
     isDaqqiManager: role === 'daqqi_manager',
     isOnlineManager: role === 'online_manager',
     isSalesCollectionManager: role === 'sales_collection_manager',

@@ -319,19 +319,18 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
   support: [
     'view_dashboard',
     // Mirrors api/constants/permissions.js — see the note there.
-    'view_leads',
     'view_subscribers', 'manage_subscribers',
-    'view_orders',
-    'manage_inbox', 'manage_notifications',
-    'view_consultations',
-    'view_reports',
-    'view_client_db',
+    'view_orders', 'manage_payments',
+    'manage_daqqi',
+    'manage_inbox',
+    'manage_certificates',
     'bulk_whatsapp',
     'ask_ai',
   ],
 
   reception_daqqi: [
     'view_dashboard',
+    'manage_payments',
     'view_leads', 'manage_leads',
     'view_subscribers', 'manage_subscribers',
     'view_orders', 'manage_orders',
@@ -341,6 +340,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
 
   hr: [
     'view_dashboard',
+    'manage_payments',
     'view_staff', 'manage_staff', 'view_hr', 'manage_hr',
     'view_reports', 'view_activity',
     'view_join_us', 'manage_join_us',
@@ -358,6 +358,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
 
   consultant: [
     'view_dashboard',
+    'manage_payments',
     'view_consultations', 'manage_consultations',
     'view_subscribers',
     'view_leads',
@@ -366,12 +367,14 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
 
   trainer: [
     'view_dashboard',
+    'manage_payments',
     'view_courses', 'manage_lectures',
     'view_consultations', 'manage_consultations',
   ],
 
   expert: [
     'view_dashboard',
+    'manage_payments',
     'view_courses',
     'view_consultations',
     // No view_subscribers — mirrors api/constants/permissions.js. The role's
@@ -382,12 +385,14 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
 
   instructor: [
     'view_dashboard',
+    'manage_payments',
     'view_courses', 'manage_lectures',
     'view_consultations', 'manage_consultations',
   ],
 
   other: [
     'view_dashboard',
+    'manage_payments',
   ],
 };
 
@@ -404,7 +409,7 @@ export const ROLE_DATA_SCOPE: Record<RoleKey, DataScope> = {
   reception_daqqi:          'branch:DAQQI',
   sales:                    'assigned_sales',
   collection:               'assigned_cs',
-  support:                  'assigned_cs',
+  support:                  'all',
   hr:                       'none',
   accountant:               'all',
   consultant:               'assigned_sales',

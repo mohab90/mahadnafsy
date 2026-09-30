@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Activity, AlarmClock, Banknote, BarChart3, Bell, BookOpen, CalendarDays,
-  ChevronDown, CreditCard, FileText, FolderKanban, Image, ListOrdered,
+  ChevronDown, CreditCard, FileText, FolderKanban, Headphones, Image, ListOrdered,
   LogOut, Menu, Monitor, RotateCcw, Shield, Tag, TrendingUp,
   UserCheck, UserCog, UserPlus, UserSearch, Users, Video, Wallet, MessageSquareText,
   type LucideIcon,
@@ -32,6 +32,7 @@ type Props = {
   isSalesOnly: boolean;
   isCollectionRole: boolean;
   isReceptionDaqqi: boolean;
+  isSupport: boolean;
   isOnlineManager: boolean;
   isDaqqiManager: boolean;
   isSalesCollectionManager: boolean;
@@ -207,7 +208,7 @@ function CompactRoleNav({
 
 export function DashboardNavigation(props: Props) {
   const {
-    isSalesOnly, isCollectionRole, isReceptionDaqqi, isOnlineManager, isDaqqiManager,
+    isSalesOnly, isCollectionRole, isReceptionDaqqi, isSupport, isOnlineManager, isDaqqiManager,
     isSalesCollectionManager, isAdmin, visibleMenuGroups, activeTab, setActiveTab,
     activeDropdownGroup, setActiveDropdownGroup, dropdownRect, setDropdownRect,
     notifRef,
@@ -222,7 +223,7 @@ export function DashboardNavigation(props: Props) {
   // bar was hidden for four of them and not for the Dokki manager or the sales
   // and collection manager, who got both — the whole panel's groups on top of
   // their own tabs.
-  const hasRoleBar = isSalesOnly || isCollectionRole || (isReceptionDaqqi && !isDaqqiManager)
+  const hasRoleBar = isSalesOnly || isCollectionRole || (isReceptionDaqqi && !isDaqqiManager) || isSupport
     || ((isDaqqiManager || isSalesCollectionManager || isOnlineManager) && !isAdmin);
   // Signing out has to tell the app, not only the server. This cleared the
   // cookie and navigated, so the panel stayed "signed in": the dashboard kept
@@ -460,6 +461,25 @@ export function DashboardNavigation(props: Props) {
                   { key: 'leads', label: 'العملاء المحتملين', icon: UserSearch },
                   { key: 'orders', label: 'مدفوعاتي', icon: CreditCard },
                   { key: 'staff_performance', label: 'إحصائياتي', icon: BarChart3 },
+                ]}
+                activeTab={activeTab} setActiveTab={setActiveTab}
+                currentStaff={currentStaff} salesDataLoading={salesDataLoading}
+                staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen} notify={notify}
+              />
+            )}
+
+            {/* ── Customer service horizontal nav (no sidebar) ──
+                Both branches' clients and the three desks the section works:
+                complaints, refunds, certificates. No leads, no management. */}
+            {isSupport && (
+              <CompactRoleNav
+                tabs={[
+                  { key: 'daqqi_schedule', label: 'جدول الدقي', icon: CalendarDays },
+                  { key: 'daqqi_clients', label: 'عملاء الدقي', icon: Users },
+                  { key: 'online_clients', label: 'عملاء الأونلاين', icon: UserCheck },
+                  { key: 'customer_inbox', label: 'المشاكل', icon: Headphones },
+                  { key: 'refund_requests', label: 'الاستردادات', icon: RotateCcw },
+                  { key: 'cert_requests', label: 'الشهادات', icon: FileText },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 currentStaff={currentStaff} salesDataLoading={salesDataLoading}

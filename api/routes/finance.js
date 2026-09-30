@@ -11,7 +11,7 @@ const { getBrandSettings } = require('../lib/brandSettings');
 const { getTenantSetting } = require('../lib/tenantSettings');
 const { applyRefundReversal } = require('../lib/refunds');
 const { createNotification } = require('../lib/notification');
-const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../middleware/auth');
 const { publicLimiter } = require('../middleware/rateLimits');
 const { branchIdForBranch, defaultDigitalBranch } = require('../lib/branches');
 const { financialRecordMatches, financialScopeClause, resolveFinancialScope } = require('../lib/financialScope');
@@ -1348,7 +1348,9 @@ router.put('/api/admin/finance/budgets', requireAuth, requireAdminOrStaff, requi
 });
 
 // ── Refund requests list & status update ──────────────────────────────────
-router.get('/api/admin/finance/refunds', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
+// Customer service reads the list and escalates (manage_inbox) without the
+// accounts screens; deciding and paying out stay on approve_refunds.
+router.get('/api/admin/finance/refunds', requireAuth, requireAdminOrStaff, requireAnyPermission('view_financial', 'manage_inbox'), async (req, res) => {
   try {
     const scope = resolveFinancialScope(req, {
       requestedBranch: req.query.branch || null,
@@ -1547,7 +1549,7 @@ router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdminOrStaff, r
 
 // Raise to senior management. Does not change the status: a request stays in
 // whatever state it was in while somebody senior looks at it.
-router.post('/api/admin/finance/refunds/:id/escalate', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
+router.post('/api/admin/finance/refunds/:id/escalate', requireAuth, requireAdminOrStaff, requireAnyPermission('view_financial', 'manage_inbox'), async (req, res) => {
   try {
     const note = String(req.body?.note || '').trim().slice(0, 2000);
     const [result] = await pool.query(

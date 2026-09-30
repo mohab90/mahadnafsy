@@ -258,9 +258,10 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
   const isCollectionRole = ['collection', 'online_manager', 'sales_collection_manager'].includes((staff.role || '').toLowerCase());
   // Whose day is a pipeline. The HR manager holds view_leads so the lists
   // arrive, and was shown «آخر النشاطات» over archived clients and «ليدات بدون
-  // موعد متابعة» — someone else's work on her own page.
+  // موعد متابعة» — someone else's work on her own page. Customer service has
+  // no leads at all since «ميشوفش العملاء المحتملين».
   const worksLeads = isSalesRole || isCollectionRole
-    || ['support', 'reception_daqqi', 'daqqi_manager'].includes((staff.role || '').toLowerCase());
+    || ['reception_daqqi', 'daqqi_manager'].includes((staff.role || '').toLowerCase());
 
   const avatarInitials = (staff.name || '?').split(' ').slice(0, 2).map(w => w[0]).join('');
 

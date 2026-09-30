@@ -94,12 +94,17 @@ for (const file of fs.readdirSync(DASH_DIR).filter(f => f.endsWith('.tsx'))) {
     for (const k of m[1].matchAll(/'([a-z_0-9]+)'/g)) claim(k[1], container);
 }
 
+// «ملفي»'s tabs, which Dashboard.tsx draws through isProfileTab(activeTab).
+const profileTabs = [...read(path.join(DASH_DIR, 'my-profile', 'profileTabs.ts'))
+  .match(/PROFILE_TABS = \[([^\]]*)\]/)[1].matchAll(/'([a-z_0-9]+)'/g)].map(m => m[1]);
+
 // Dashboard.tsx draws a number of tabs itself; those are ungated by definition.
 {
   const src = read(DASHBOARD);
   for (const m of src.matchAll(/activeTab\s*===\s*'([a-z_0-9]+)'/g)) claim(m[1], 'Dashboard');
   for (const m of src.matchAll(/\[([^\]]*?)\]\s*\.includes\(activeTab\)/g))
     for (const k of m[1].matchAll(/'([a-z_0-9]+)'/g)) claim(k[1], 'Dashboard');
+  if (src.includes('isProfileTab(activeTab)')) for (const key of profileTabs) claim(key, 'Dashboard');
 }
 
 // ── the nav ─────────────────────────────────────────────────────────────────
@@ -121,19 +126,16 @@ const navLeaves = [...nav.matchAll(/\{\s*key:\s*'([a-z_0-9]+)'\s*,\s*label:\s*'(
   .filter(t => !groupKeys.has(t.key));
 
 // navigation.tsx is not the whole nav. DashboardNavigation.tsx carries entries
-// of its own — the sales and collection bars, and the workspace switcher — and
-// DashboardMyWorkspace.tsx owns three more tabs that reach users through
-// bookmarks and the login redirect. Reading only navigation.tsx put those
-// outside the audit entirely: staff_home was never checked, and it draws an
-// empty page for any account without a staff record, which is what the owner
-// account is. A reachability audit that cannot see a screen cannot report it
-// unreachable.
-const extraNav = [
-  read(path.join(DASH_DIR, 'DashboardNavigation.tsx')),
-  read(path.join(DASH_DIR, 'DashboardMyWorkspace.tsx')),
-].join('\n');
+// of its own — the role bars — and «ملفي» owns three more tabs that reach users
+// through the profile icon, bookmarks and the login redirect
+// (my-profile/profileTabs.ts). Reading only navigation.tsx put those outside
+// the audit entirely: staff_home was never checked, and it drew an empty page
+// for any account without a staff record, which is what the owner account is.
+// A reachability audit that cannot see a screen cannot report it unreachable.
+const extraNav = read(path.join(DASH_DIR, 'DashboardNavigation.tsx'));
 const extraLeaves = [...extraNav.matchAll(/\{\s*key:\s*'([a-z_0-9]+)'\s*,\s*label:\s*'([^']+)'/g)]
   .map(m => ({ key: m[1], label: m[2] }))
+  .concat(profileTabs.map(key => ({ key, label: 'ملفي' })))
   .filter(t => !groupKeys.has(t.key));
 
 const seen = new Set();

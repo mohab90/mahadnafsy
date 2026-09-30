@@ -35,7 +35,8 @@ test('route-level permission tokens exist in the master permission registry', ()
 test('professional role scopes keep staff on original data slices only', () => {
   assert.equal(DATA_SCOPE.sales, 'assigned_sales');
   assert.equal(DATA_SCOPE.collection, 'assigned_cs');
-  assert.equal(DATA_SCOPE.support, 'assigned_cs');
+  // Customer service works every client of both branches, not its own.
+  assert.equal(DATA_SCOPE.support, 'all');
   assert.equal(DATA_SCOPE.hr, 'none');
   assert.equal(DATA_SCOPE.trainer, 'none');
   assert.equal(DATA_SCOPE.instructor, 'none');
@@ -57,7 +58,10 @@ test('sensitive modules are isolated from non-owner staff roles', () => {
   assert.equal(hasPermission({ role: 'sales' }, 'approve_refunds'), false);
   assert.equal(hasPermission({ role: 'support' }, 'manage_financial'), false);
   assert.equal(hasPermission({ role: 'accountant' }, 'manage_hr'), false);
-  assert.equal(hasPermission({ role: 'hr' }, 'manage_payments'), false);
+  // Every account records a booking; approving money is still accounts'.
+  assert.equal(hasPermission({ role: 'hr' }, 'manage_financial'), false);
+  assert.equal(hasPermission({ role: 'support' }, 'approve_refunds'), false);
+  assert.equal(hasPermission({ role: 'support' }, 'view_financial'), false);
   assert.equal(hasPermission({ role: 'instructor' }, 'view_client_db'), false);
 });
 
