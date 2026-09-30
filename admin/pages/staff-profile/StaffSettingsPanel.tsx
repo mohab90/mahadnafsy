@@ -41,7 +41,6 @@ export default function StaffSettingsPanel({
     } catch (err: unknown) {
       setSaveMsg(`❌ ${err instanceof Error ? err.message : 'فشل تعيين كلمة المرور'}`);
     }
-    setTimeout(() => setSaveMsg(''), 4000);
   };
   const [draft, setDraft] = useState<StaffMember | null>(null);
   const [password, setPassword] = useState('');
@@ -84,8 +83,16 @@ export default function StaffSettingsPanel({
     setSaving(true);
     setSaveMsg('');
     const payload: StaffMember = { ...draft };
+    const newPassword = password.trim();
+    if (newPassword && newPassword.length < 8) { setSaving(false); setSaveMsg('❌ كلمة المرور 8 أحرف على الأقل'); return; }
     try {
-      if (!draft.firebaseUid && password.trim()) {
+      // A password typed for an account that already signs in was dropped
+      // silently, so the employee kept the old one and got «wrong password».
+      if (draft.firebaseUid && newPassword) {
+        await mysqlAdmin.adminPost(`/admin/staff/${draft.id}/set-password`, { password: newPassword });
+        setPassword('');
+      }
+      if (!draft.firebaseUid && newPassword) {
         await createStaffAccount(payload, password.trim());
         await reloadStaffMembers();
       } else {
@@ -272,7 +279,7 @@ export default function StaffSettingsPanel({
                     <input
                       type={showPassword ? 'text' : 'password'}
                       className="w-full border border-indigo-200 rounded-xl px-4 py-2.5 text-sm pl-10 focus:outline-none focus:border-indigo-400"
-                      placeholder={staff.firebaseUid ? 'كلمة مرور جديدة (اتركها فارغة)' : 'كلمة مرور الدخول'}
+                      placeholder={staff.firebaseUid ? 'كلمة مرور جديدة — 8 أحرف على الأقل (أو اتركها فارغة)' : 'كلمة مرور الدخول — 8 أحرف على الأقل'}
                       value={password}
                       onChange={e => setPassword(e.target.value)}
                     />
@@ -284,7 +291,7 @@ export default function StaffSettingsPanel({
                   {staff.email && (
                     <button type="button" onClick={() => void handlePasswordReset()}
                       className="px-4 py-2.5 rounded-xl border border-indigo-200 text-indigo-700 text-sm font-bold hover:bg-indigo-50 transition whitespace-nowrap">
-                      إرسال رابط إعادة تعيين
+                      تعيين كلمة مرور مؤقتة
                     </button>
                   )}
                 </div>

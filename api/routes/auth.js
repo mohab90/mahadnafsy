@@ -1726,7 +1726,8 @@ router.post('/api/admin/force-reset-password', requireAuth, requireSuperAdmin, a
     );
     if (result.affectedRows === 0) return res.status(404).json({ error: 'User not found' });
     invalidateIdentity(req.tenantId, '', normalizedEmail);
-    res.json({ ok: true });
+    // The screen says «سلّمها للموظف» — it needs the password to hand over.
+    res.json({ ok: true, temporaryPassword: newPassword });
   } catch (err) {
     logger.error('[admin/force-reset-password]', err);
     res.status(500).json({ error: 'Reset failed' });
