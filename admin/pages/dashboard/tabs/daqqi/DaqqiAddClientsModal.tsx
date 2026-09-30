@@ -3,6 +3,8 @@
 // The selection stays in DaqqiScheduleTab because handleAddClientsToRound
 // reads it and writes through the parent.
 
+import { useState } from 'react';
+import { Search } from 'lucide-react';
 import type { Course, Bundle, SubscriberItem, DaqqiRound } from '../../../../types';
 import { isEnrolledInCourse } from './daqqiScheduleUtils';
 import { isCollected } from '../../../../lib/money';
@@ -22,8 +24,7 @@ export function DaqqiAddClientsModal({
   setDaqqiAddClientsSel,
   daqqiAddClientsCourseSel,
   setDaqqiAddClientsCourseSel,
-  daqqiShowAllClients,
-  setDaqqiShowAllClients,
+  assignedSubIds,
   handleAddClientsToRound,
 }: {
   enrolledLabels: (courses: Course[], bundles: Bundle[], ids: string[]) => string[];
@@ -37,46 +38,81 @@ export function DaqqiAddClientsModal({
   setDaqqiAddClientsSel: React.Dispatch<React.SetStateAction<Set<string>>>;
   daqqiAddClientsCourseSel: Record<string, string>;
   setDaqqiAddClientsCourseSel: React.Dispatch<React.SetStateAction<Record<string, string>>>;
-  daqqiShowAllClients: boolean;
-  setDaqqiShowAllClients: (value: boolean) => void;
+  /** Clients already placed in a round (مسكّنين). */
+  assignedSubIds: Set<string>;
   handleAddClientsToRound: () => void | Promise<void>;
 }) {
+  // «زر بحث بالاسم او برقم التليفون … وفلتر بالكورسات وفلتر بالمسكنين والغير
+  // مسكنين». The course filter starts on this round's course; «كل العملاء»
+  // is what the old «عرض جميع العملاء» box did.
+  const [search, setSearch] = useState('');
+  const [courseFilter, setCourseFilter] = useState('');
+  const [housing, setHousing] = useState<'all' | 'unhoused' | 'housed'>('unhoused');
   if (!daqqiAddClientsRoundId) return null;
       const addRound = daqqiRounds.find(r => r.id === daqqiAddClientsRoundId);
       const addCourse = addRound ? courses.find(c => c.id === addRound.courseId) : null;
       const alreadyIn = new Set(addRound?.attendees.map(a => a.subscriberId) ?? []);
+      const term = search.trim().toLowerCase();
+      const digits = term.replace(/\D/g, '');
+      const wantedCourse = courseFilter === '' ? addRound?.courseId || '' : courseFilter;
       const available = daqqiSubs.filter(s => {
         if (alreadyIn.has(s.id)) return false;
-        if (daqqiShowAllClients) return true;
-        return isEnrolledInCourse(bundles, s.enrolledCourseIds || [], addRound!.courseId);
+        if (wantedCourse !== 'all' && !isEnrolledInCourse(bundles, s.enrolledCourseIds || [], wantedCourse)) return false;
+        if (housing === 'housed' && !assignedSubIds.has(s.id)) return false;
+        if (housing === 'unhoused' && assignedSubIds.has(s.id)) return false;
+        if (term) {
+          const byName = String(s.name || '').toLowerCase().includes(term) || String(s.clientCode || '').toLowerCase().includes(term);
+          const byPhone = digits.length >= 3 && String(s.phone || '').replace(/\D/g, '').includes(digits);
+          if (!byName && !byPhone) return false;
+        }
+        return true;
       });
+      const closeModal = () => {
+        setDaqqiAddClientsRoundId(''); setDaqqiAddClientsSel(new Set()); setDaqqiAddClientsCourseSel({});
+        setSearch(''); setCourseFilter(''); setHousing('unhoused');
+      };
       return (
         <Modal
           open
-          onClose={() => { setDaqqiAddClientsRoundId(''); setDaqqiAddClientsSel(new Set()); setDaqqiAddClientsCourseSel({}); }}
+          onClose={closeModal}
           title="إضافة عملاء للروند"
           subtitle={`${addCourse?.titleAr || addCourse?.title || addRound?.courseId} — ${addRound?.code}`}
           size="xl"
           footer={(
             <>
-              <button onClick={() => { setDaqqiAddClientsRoundId(''); setDaqqiAddClientsSel(new Set()); setDaqqiAddClientsCourseSel({}); }} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm hover:bg-gray-200">إلغاء</button>
+              <button onClick={closeModal} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm hover:bg-gray-200">إلغاء</button>
               <button onClick={handleAddClientsToRound} disabled={daqqiAddClientsSel.size === 0} className="px-5 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 disabled:opacity-40 transition">إضافة ({daqqiAddClientsSel.size})</button>
             </>
           )}
         >
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <div className="relative min-w-[200px] flex-1">
+                <Search size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input value={search} onChange={event => setSearch(event.target.value)} placeholder="بحث بالاسم أو رقم التليفون أو الكود"
+                  className="w-full rounded-lg border border-gray-200 py-1.5 pl-3 pr-8 text-xs focus:border-primary-400 focus:outline-none" />
+              </div>
+              <select value={courseFilter} onChange={event => setCourseFilter(event.target.value)}
+                className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs" aria-label="فلتر بالكورس">
+                <option value="">حاجزين كورس الروند ده</option>
+                <option value="all">كل العملاء</option>
+                {courses.map(course => <option key={course.id} value={course.id}>{course.titleAr || course.title}</option>)}
+              </select>
+              <select value={housing} onChange={event => setHousing(event.target.value as typeof housing)}
+                className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs" aria-label="فلتر بالتسكين">
+                <option value="unhoused">غير مسكّنين</option>
+                <option value="housed">مسكّنين في روند</option>
+                <option value="all">الكل</option>
+              </select>
+            </div>
             <div className="flex items-center justify-between mb-3">
               <label className="flex items-center gap-2 text-xs font-bold text-gray-600 cursor-pointer">
                 <input type="checkbox" checked={daqqiAddClientsSel.size === available.length && available.length > 0} onChange={e => setDaqqiAddClientsSel(e.target.checked ? new Set(available.map(s => s.id)) : new Set())} />
                 تحديد الكل ({available.length})
               </label>
-              <label className="text-xs text-gray-600 flex items-center gap-1 cursor-pointer">
-                <input type="checkbox" checked={daqqiShowAllClients} onChange={e => { setDaqqiShowAllClients(e.target.checked); setDaqqiAddClientsSel(new Set()); setDaqqiAddClientsCourseSel({}); }} />
-                عرض جميع العملاء
-              </label>
             </div>
             {available.length === 0 ? (
               <div className="border border-dashed border-gray-300 rounded-xl p-8 text-center text-gray-400 text-sm">
-                {daqqiShowAllClients ? 'جميع عملاء الدقي مضافون لهذه الجولة بالفعل.' : 'لا يوجد عملاء حاجزين على هذا الكورس وغير مسكّنين.'}
+                مفيش عملاء بالبحث والفلاتر دي.
               </div>
             ) : (
               <div className="border border-gray-200 rounded-xl overflow-hidden mb-4 max-h-[55vh] overflow-y-auto">

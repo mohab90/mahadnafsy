@@ -533,7 +533,6 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
                   manualLimitDraft={manualLimitDraft}
                   setManualLimitDraft={setManualLimitDraft}
                   applyAccessLevel={applyAccessLevel}
-                  isAdmin={isAdmin}
                 />
               )}
 

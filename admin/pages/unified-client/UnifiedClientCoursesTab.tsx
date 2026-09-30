@@ -5,6 +5,7 @@ import { BookOpen, Plus, X } from 'lucide-react';
 import type { Course, SubscriberItem } from '../../types';
 import { normalizeAccess } from './constants';
 import { ClientCourseAccessPanel } from '../dashboard/tabs/online-clients-sections/ClientCourseAccessPanel';
+import { isOnlineClient } from '../dashboard/tabs/onlineClientsUtils';
 
 type AccessPreset = { p1: number; p2: number };
 
@@ -28,7 +29,6 @@ type UnifiedClientCoursesTabProps = {
   // 'preview' is a display state, not something this action can set: the
   // implementation and mysqlAdmin.updateEnrollmentAccess both take only these two.
   applyAccessLevel: (courseId: string, mode: 'full' | 'limited', lectureLimit?: number) => void | Promise<void>;
-  isAdmin: boolean;
 };
 
 export function UnifiedClientCoursesTab({
@@ -49,7 +49,6 @@ export function UnifiedClientCoursesTab({
   manualLimitDraft,
   setManualLimitDraft,
   applyAccessLevel,
-  isAdmin,
 }: UnifiedClientCoursesTabProps) {
   const [courseMutationId, setCourseMutationId] = useState<string | null>(null);
   const persistCourses = async (courseIds: string[], mutationId: string) => {
@@ -76,7 +75,7 @@ export function UnifiedClientCoursesTab({
                           did they buy, pay and can still watch" lives in
                           one component reachable from either. */}
                       <div className="border border-gray-100 rounded-xl p-3 bg-gray-50/50 mb-3">
-                        <ClientCourseAccessPanel subscriberId={subscriber.id} notify={notify} />
+                        <ClientCourseAccessPanel subscriber={subscriber} notify={notify} />
                       </div>
 
                       {/* Add course quick button */}
@@ -117,7 +116,10 @@ export function UnifiedClientCoursesTab({
     </Modal>
                       )}
 
-                      {subscriber.enrolledCourseIds.length === 0 ? (
+                      {/* Watching progress and video access: an online
+                          client's. A branch client's courses are the panel
+                          above. */}
+                      {!isOnlineClient(subscriber) ? null : subscriber.enrolledCourseIds.length === 0 ? (
                         <div className="text-center py-10 text-gray-400"><BookOpen size={40} className="mx-auto mb-2 text-gray-200" /><p>لا يوجد كورسات</p></div>
                       ) : subscriber.enrolledCourseIds.map(courseId => {
                         const course = courses.find(c => c.id === courseId);
@@ -230,10 +232,6 @@ export function UnifiedClientCoursesTab({
                             </div>
                             )}
 
-                            {isAdmin && (
-                            <button disabled={courseMutationId === courseId} onClick={() => void persistCourses(subscriber.enrolledCourseIds.filter(id => id !== courseId), courseId)}
-                              className="mt-2 text-xs text-red-400 hover:text-red-600 hover:underline disabled:opacity-50">{courseMutationId === courseId ? 'جارٍ الحفظ...' : 'إزالة من الاشتراك'}</button>
-                            )}
                           </div>
                         );
                       })}

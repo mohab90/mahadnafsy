@@ -17,7 +17,7 @@ import type { PermissionKey, RoleKey } from '../../../constants/permissions';
 import { useSubscriberStats } from '../hooks/useSubscriberStats';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { PaymentHistoryEntry, ExpenseItem } from '../../../types';
-import { branchMatches, type FinancialSubTab } from './financial/financialTabUtils';
+import { BRANCH_SUB_TABS, branchMatches, type FinancialSubTab } from './financial/financialTabUtils';
 import { blankPaymentDraft, type PaymentDraft } from '../../../components/PaymentModal';
 import { usePaymentBoxesWithHistory } from '../../../lib/paymentMethods';
 import { isOnlinePaidOrder } from '../../../context/site-data-hooks/normalizeOrders';
@@ -33,6 +33,7 @@ const FinancialInstallmentsPanel = React.lazy(() => import('./financial/Financia
 const FinancialOverviewPanel = React.lazy(() => import('./financial/FinancialOverviewPanel').then(module => ({ default: module.FinancialOverviewPanel })));
 const FinancialProfitLossPanel = React.lazy(() => import('./financial/FinancialProfitLossPanel').then(module => ({ default: module.FinancialProfitLossPanel })));
 const FinancialRefundsPanel = React.lazy(() => import('./financial/FinancialRefundsPanel'));
+const BoxesReportPanel = React.lazy(() => import('./financial/BoxesReportPanel').then(module => ({ default: module.BoxesReportPanel })));
 const PaymentModal = React.lazy(() => import('../../../components/PaymentModal'));
 const MonthlyRevenuePanel = React.lazy(() => import('./financial/MonthlyRevenuePanel').then(module => ({ default: module.MonthlyRevenuePanel })));
 const OutstandingPanel = React.lazy(() => import('./financial/OutstandingPanel').then(module => ({ default: module.OutstandingPanel })));
@@ -83,7 +84,8 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   const [expenseDateFrom, setExpenseDateFrom] = useState('');
   const [expenseDateTo, setExpenseDateTo] = useState('');
   const [expenseCategoryFilter, setExpenseCategoryFilter] = useState<string>('all');
-  const [financialSubTab, setFinancialSubTab] = useState<FinancialSubTab>('cockpit');
+  // A branch's books open on its boxes; the main books on the cockpit.
+  const [financialSubTab, setFinancialSubTab] = useState<FinancialSubTab>(branchFilter ? 'boxes' : 'cockpit');
   const {
     allProofs,
     proofsLoading,
@@ -190,7 +192,10 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   const loadDbPayments = async () => {
     setLoadingDbPayments(true);
     try {
-      const rows = await mysqlAdmin.getPayments() as unknown as typeof dbPayments;
+      // The branch's own, from the server. Unfiltered, «محاسبة الدقي» listed
+      // every payment in the company — the riyal and online ones with them —
+      // under Dokki's revenue and boxes.
+      const rows = await mysqlAdmin.getPayments(undefined, undefined, undefined, branchFilter) as unknown as typeof dbPayments;
       setDbPayments(rows ?? null);
     } catch { /* ignore */ }
     finally { setLoadingDbPayments(false); }
@@ -433,14 +438,16 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
       <div className="flex flex-wrap items-center justify-between gap-3">
         <FinancialSubTabs
           activeTab={financialSubTab}
+          allowed={branchFilter ? BRANCH_SUB_TABS : undefined}
           pendingProofsCount={pendingProofsCount}
           pendingReviewCount={pendingReviewCount}
           onChange={setFinancialSubTab}
           onOpenProofs={() => { if (!allProofs) loadAllProofs(); }}
         />
         <div className="flex gap-2">
-          {/* FX Rates widget */}
-          <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-xs">
+          {/* FX Rates widget — the main books' only: a branch takes pounds,
+              and «ليه بيظهرله فلوس بالريال» was this. */}
+          {!branchFilter && <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-xs">
             <span className="text-gray-500">ر.س =</span>
             <span className={`font-bold ${fxFresh ? 'text-gray-800' : 'text-red-600'}`}>{fxFresh ? `${sarRate} ج.م` : 'غير متاح'}</span>
             <span className="text-gray-400">|</span>
@@ -452,7 +459,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
                 ? <span className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin inline-block" />
                 : <TrendingUp size={12} className="text-emerald-600" />}
             </button>}
-          </div>
+          </div>}
           <button
             onClick={() => { setIsIncomeFormOpen(true); setIncomeSubjectId(''); setIncomeDraft(blankPaymentDraft()); }}
             className="flex items-center gap-1.5 bg-emerald-600 text-white px-3 py-2 rounded-xl text-sm font-bold hover:bg-emerald-700 transition">
@@ -482,6 +489,8 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
           onClose={() => { setIsIncomeFormOpen(false); setIncomeSubjectId(''); setIncomeDraft(blankPaymentDraft()); }}
         />
       )}
+
+      {financialSubTab === 'boxes' && <BoxesReportPanel branch={branchFilter || undefined} />}
 
       {financialSubTab === 'cockpit' && (
         <FinancialCockpitPanel
@@ -574,6 +583,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
               exportCSV={exportCSV}
               loadDbPayments={loadDbPayments}
               loadingDbPayments={loadingDbPayments}
+              branchView={!!branchFilter}
             />
 
             <FinancialOrdersTable

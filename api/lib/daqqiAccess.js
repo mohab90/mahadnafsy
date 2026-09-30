@@ -1,7 +1,9 @@
 'use strict';
 
+// SUPPORT: customer service works «جدول الدقي» from its own bar, and every
+// schedule route answered it «Access denied».
 const OPERATIONAL_ROLES = new Set([
-  'MANAGER', 'ADMIN', 'DAQQI_MANAGER', 'RECEPTION_DAQQI', 'INSTRUCTOR', 'TRAINER',
+  'MANAGER', 'ADMIN', 'DAQQI_MANAGER', 'RECEPTION_DAQQI', 'SUPPORT', 'INSTRUCTOR', 'TRAINER',
 ]);
 const MANAGEMENT_ROLES = new Set(['MANAGER', 'ADMIN', 'DAQQI_MANAGER']);
 

@@ -65,8 +65,25 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
   const {
     courses, bundles, therapists, staffMembers, subscribers: ctxSubscribers, updateSubscriber, addSubscriber, recordSubscriberPayment, reloadSubscribers,
     daqqiRounds: ctxRounds, addDaqqiRound: ctxAddDaqqiRound, updateDaqqiRound: ctxUpdateDaqqiRound,
-    deleteDaqqiRound, transferDaqqiAttendee, bulkSetDaqqiRounds, content, authUser, isAdmin,
+    deleteDaqqiRound, transferDaqqiAttendee, bulkSetDaqqiRounds, content, authUser, isAdmin, currentStaff,
   } = useSiteData();
+
+  // «خلي مسار واحد اللى بيظهر تحت الكورسات … او اقدر اختار»: the one path
+  // shown under each course, chosen by the Dokki manager for everyone.
+  const [coursePaths, setCoursePaths] = useState<Record<string, string>>({});
+  useEffect(() => {
+    mysqlAdmin.adminGet<Record<string, string>>('/admin/dokki/course-paths')
+      .then(paths => setCoursePaths(paths || {}))
+      .catch(() => setCoursePaths({}));
+  }, []);
+  const canChoosePath = isAdmin || currentStaff?.role === 'daqqi_manager';
+  const chooseCoursePath = async (courseId: string, bundleId: string) => {
+    try {
+      setCoursePaths(await mysqlAdmin.adminPut<Record<string, string>>('/admin/dokki/course-paths', { courseId, bundleId }));
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر حفظ المسار');
+    }
+  };
 
   // Track IDs of subscribers that this staff member is allowed to see.
   // When subscribersOverride is given, we use those IDs as the filter against ctxSubscribers
@@ -473,17 +490,19 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
     }
   };
 
-  const handleDaqqiTogglePostpone = async (roundId: string) => {
+  // «اشتغلت تمام — مشتغلش نعمل تأجيل»: this week's lecture, confirmed either
+  // way. A week confirmed as run leaves the postponed list, and the other way.
+  const handleDaqqiMarkWeek = async (roundId: string, held: boolean) => {
     const round = daqqiRounds.find(r => r.id === roundId);
     if (!round) return;
     const thisWeek = getCurrentWeekKey();
-    const existing = round.postponedWeeks || [];
-    const updatedWeeks = existing.includes(thisWeek)
-      ? existing.filter(w => w !== thisWeek)
-      : [...existing, thisWeek];
-    if (!await doUpdateRound({ ...round, postponedWeeks: updatedWeeks })) {
-      notify('error', 'تعذر تحديث تأجيل الأسبوع.');
-    }
+    const postponed = (round.postponedWeeks || []).filter(week => week !== thisWeek);
+    const heldWeeks = (round.heldWeeks || []).filter(week => week !== thisWeek);
+    const next = held
+      ? { ...round, postponedWeeks: postponed, heldWeeks: [...heldWeeks, thisWeek] }
+      : { ...round, postponedWeeks: [...postponed, thisWeek], heldWeeks };
+    if (!await doUpdateRound(next)) notify('error', 'تعذر تسجيل محاضرة الأسبوع.');
+    else notify('success', held ? 'اتسجل إن المحاضرة اشتغلت في ميعادها.' : 'اتسجل تأجيل محاضرة الأسبوع ده.');
   };
 
   const handleDaqqiAddComm = async (type: CommunicationRecord['type'], note: string) => {
@@ -600,7 +619,8 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
                   <th className="text-right px-3 py-2.5 border-b border-gray-200 font-semibold">القاعة</th>
                   <th className="text-right px-3 py-2.5 border-b border-gray-200 font-semibold">الحالة</th>
                   <th className="text-right px-3 py-2.5 border-b border-gray-200 font-semibold">المحاضرة</th>
-                  <th className="text-right px-3 py-2.5 border-b border-gray-200 font-semibold">محصّل / متبقي</th>
+                  <th className="text-right px-3 py-2.5 border-b border-gray-200 font-semibold">المحصّل</th>
+                  <th className="text-right px-3 py-2.5 border-b border-gray-200 font-semibold">المتبقي</th>
                   <th className="text-right px-3 py-2.5 border-b border-gray-200 font-semibold">الحاضرين</th>
                   <th className="text-right px-3 py-2.5 border-b border-gray-200 font-semibold">إجراءات</th>
                 </tr>
@@ -616,10 +636,14 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
                     (!daqqiFilterStatus || (r.status || 'new') === daqqiFilterStatus) &&
                     (!daqqiFilterReception || r.receptionId === daqqiFilterReception)
                   )
-                  .map(round => {
+                  .map((round, index) => {
                     return (
                       <DaqqiRoundRow
                         key={round.id}
+                        index={index}
+                        coursePath={coursePaths[round.courseId] || ''}
+                        canChoosePath={canChoosePath}
+                        onChoosePath={bundleId => void chooseCoursePath(round.courseId, bundleId)}
                         round={round}
                         isAdmin={isAdmin}
                         resetDaqqiPayDraft={resetDaqqiPayDraft}
@@ -642,7 +666,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
                         setDaqqiPostponeModal={setDaqqiPostponeModal}
                         setDaqqiTransferModal={setDaqqiTransferModal}
                         handleDaqqiMarkAttendance={handleDaqqiMarkAttendance}
-                        handleDaqqiTogglePostpone={handleDaqqiTogglePostpone}
+                        handleDaqqiMarkWeek={handleDaqqiMarkWeek}
                         handleRemoveAttendeeFromRound={handleRemoveAttendeeFromRound}
                         doUpdateRound={doUpdateRound}
                         notify={notify}
@@ -715,6 +739,11 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
                                   <span className="text-[10px] bg-white/80 text-gray-600 font-bold px-1.5 py-0.5 rounded-full border border-gray-200">{r.attendees.length} ✦</span>
                                 </div>
                                 <p className="text-[9px] text-gray-400 mt-1 font-mono">{r.startDate}</p>
+                                <button type="button"
+                                  onClick={event => { event.stopPropagation(); setDaqqiAddClientsRoundId(r.id); setDaqqiAddClientsSel(new Set()); }}
+                                  className="mt-1.5 w-full rounded-md border border-primary-200 bg-white/80 py-0.5 text-[10px] font-bold text-primary-700 hover:bg-primary-50">
+                                  + إضافة عملاء
+                                </button>
                               </div>
                             );
                           })}
@@ -774,8 +803,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
         setDaqqiAddClientsSel={setDaqqiAddClientsSel}
         daqqiAddClientsCourseSel={daqqiAddClientsCourseSel}
         setDaqqiAddClientsCourseSel={setDaqqiAddClientsCourseSel}
-        daqqiShowAllClients={daqqiShowAllClients}
-        setDaqqiShowAllClients={setDaqqiShowAllClients}
+        assignedSubIds={assignedSubIds}
         handleAddClientsToRound={handleAddClientsToRound}
       />
 

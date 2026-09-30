@@ -25,6 +25,77 @@ const { revokeCertificate } = require('./certificateLifecycle');
 const { dateOnlyInTimeZone } = require('./dates');
 const { ensureInvoiceForPayment, issueFinancialDocument } = require('./financialDocuments');
 
+// Money going back as a row of its own, negative, out of the box it leaves
+// from. Every figure in the system sums this column — the customer's paid
+// total, the vault, the branch P&L, the reports — so this one row makes all of
+// them right, and whatever payment did happen keeps saying what was paid.
+async function insertRefundRow(conn, {
+  tenantId, subscriberId, courseId, bundleId, amount, currency, paymentType, method,
+  branch, branchId, date, note, actor, sourcePaymentId = null,
+}) {
+  const refundId = uuidv4();
+  await conn.query(
+    `INSERT INTO payments
+       (id, tenant_id, subscriber_id, course_id, bundle_id, amount, currency, payment_type,
+        payment_method, transaction_id, is_installment, date, note, status, staff_name,
+        source, branch, branch_id, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,0,?,?,'paid',?,'refund',?,?,NOW())`,
+    [
+      refundId, tenantId, subscriberId, courseId || null, bundleId || null,
+      -amount, currency || 'EGP', paymentType || 'OTHER',
+      method || null, null, date, note, actor || null,
+      branch || null, branchId || null,
+    ],
+  );
+  await logPaymentAudit(refundId, 'create', null, 'paid', -amount, subscriberId, actor, tenantId, conn, true);
+  await postPaymentJournal({
+    paymentId: refundId, amount: -amount, currency: currency || 'EGP',
+    payType: paymentType || 'OTHER', date, actor, tenantId,
+    branch: branch || null, branchId: branchId || null,
+  }, conn);
+  await conn.query(
+    `INSERT INTO refunds (id, tenant_id, payment_id, subscriber_id, amount, currency, reason,
+                          status, requested_by, approved_by, journal_posted, created_at, resolved_at)
+     VALUES (?,?,?,?,?,?,?, 'done', ?, ?, 1, NOW(), NOW())`,
+    [uuidv4(), tenantId, sourcePaymentId || refundId, subscriberId, amount, currency || 'EGP',
+      sourcePaymentId ? 'استرداد جزئي' : 'استرداد بدون دفعة مسجّلة', actor || null, actor || null],
+  ).catch(() => { /* the ledger row is a record, not the refund itself */ });
+  return refundId;
+}
+
+// «عند الاسترداد لازم يتحدد دفعه العميل … مش لازم الخطوه دي ممكن نلغيها لان في
+// عملاء مش متسجلها دفعات». A refund for a course with no payment recorded
+// behind it — money a sheet said was paid, or paid before the system. It leaves
+// from the box named on the request, against the course it was for, and the
+// client keeps the course: taking it off is a separate decision
+// (lib/clientCourseActions.js).
+async function applyUnlinkedRefund({ subscriberId, item, refundAmount, refundCurrency, method, tenantId, actor, reason = null }, conn) {
+  const amount = Math.round(Number(refundAmount) * 100) / 100;
+  if (!Number.isFinite(amount) || amount <= 0) {
+    const error = new Error('مبلغ الاسترداد لازم يكون أكبر من صفر');
+    error.status = 400;
+    throw error;
+  }
+  const [[subscriber]] = await conn.query(
+    'SELECT branch, branch_id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriberId, tenantId]);
+  if (!subscriber) {
+    const error = new Error('العميل غير موجود');
+    error.status = 404;
+    throw error;
+  }
+  const refundDate = dateOnlyInTimeZone();
+  await assertWritable(refundDate, conn, tenantId);
+  const key = String(item || '');
+  const bundleId = key.startsWith('bundle:') ? key.slice(7) : null;
+  const refundPaymentId = await insertRefundRow(conn, {
+    tenantId, subscriberId, courseId: bundleId ? null : (key || null), bundleId,
+    amount, currency: refundCurrency, paymentType: bundleId ? 'BUNDLE' : (key ? 'COURSE' : 'OTHER'), method,
+    branch: subscriber.branch, branchId: subscriber.branch_id, date: refundDate, actor,
+    note: `استرداد${reason ? ` — ${String(reason).slice(0, 180)}` : ''}`,
+  });
+  return { refundPaymentId, refunded: amount, partial: true };
+}
+
 // Must run inside an existing transaction on `conn`. Call after the caller
 // has already row-locked and updated the refund_requests row itself — this
 // only handles the payment-side reversal. Returns { journalId, orderUpdated }
@@ -81,36 +152,15 @@ async function applyRefundReversal({ paymentId, subscriberId, refundAmount, refu
   await assertWritable(refundDate, conn, tenantId);
 
   if (isPartial) {
-    // Part of the money back: a row of its own, negative, out of the box the
-    // money was taken into. Every figure in the system sums this column — the
-    // customer's paid total, the vault, the branch P&L, the reports — so this
-    // one row makes all of them right, and the payment that did happen keeps
-    // saying what was paid.
+    // Part of the money back, out of the box the money was taken into.
     const refundedAmount = Math.round(requestedAmount * 100) / 100;
-    const refundId = uuidv4();
-    await conn.query(
-      `INSERT INTO payments
-         (id, tenant_id, subscriber_id, course_id, bundle_id, amount, currency, payment_type,
-          payment_method, transaction_id, is_installment, date, note, status, staff_name,
-          source, branch, branch_id, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,0,?,?,'paid',?,'refund',?,?,NOW())`,
-      [
-        refundId, tenantId, pay.subscriber_id, pay.course_id, pay.bundle_id,
-        -refundedAmount, pay.currency || 'EGP', pay.payment_type || 'OTHER',
-        pay.payment_method || null, null, refundDate,
-        `استرداد جزئي من دفعة ${pay.id}${reason ? ` — ${String(reason).slice(0, 180)}` : ''}`, actor || null,
-        pay.branch || null, pay.branch_id || null,
-      ],
-    );
-    await logPaymentAudit(
-      refundId, 'create', null, 'paid', -refundedAmount,
-      pay.subscriber_id, actor, tenantId, conn, true,
-    );
-    await postPaymentJournal({
-      paymentId: refundId, amount: -refundedAmount, currency: pay.currency || 'EGP',
-      payType: pay.payment_type || 'OTHER', date: refundDate, actor, tenantId,
-      branch: pay.branch || null, branchId: pay.branch_id || null,
-    }, conn);
+    const refundId = await insertRefundRow(conn, {
+      tenantId, subscriberId: pay.subscriber_id, courseId: pay.course_id, bundleId: pay.bundle_id,
+      amount: refundedAmount, currency: pay.currency, paymentType: pay.payment_type,
+      method: pay.payment_method, branch: pay.branch, branchId: pay.branch_id, date: refundDate, actor,
+      note: `استرداد جزئي من دفعة ${pay.id}${reason ? ` — ${String(reason).slice(0, 180)}` : ''}`,
+      sourcePaymentId: pay.id,
+    });
 
     // The commission follows the money that stayed. The enrolment does not
     // move: the customer has paid for part of this course and keeps it.
@@ -123,13 +173,6 @@ async function applyRefundReversal({ paymentId, subscriberId, refundAmount, refu
         WHERE payment_id=? AND tenant_id=? AND status IN ('PENDING','INCLUDED_IN_PAYROLL')`,
       [keptRatio, keptRatio, pay.id, tenantId],
     );
-    await conn.query(
-      `INSERT INTO refunds (id, tenant_id, payment_id, subscriber_id, amount, currency, reason,
-                            status, requested_by, approved_by, journal_posted, created_at, resolved_at)
-       VALUES (?,?,?,?,?,?,?, 'done', ?, ?, 1, NOW(), NOW())`,
-      [uuidv4(), tenantId, pay.id, pay.subscriber_id, refundedAmount, pay.currency || 'EGP',
-        'استرداد جزئي', actor || null, actor || null],
-    ).catch(() => { /* the ledger row is a record, not the refund itself */ });
 
     return {
       paymentId: pay.id, refundPaymentId: refundId, partial: true,
@@ -279,4 +322,4 @@ async function applyRefundReversal({ paymentId, subscriberId, refundAmount, refu
   return { journalId, orderUpdated: orderUpdateResult.affectedRows > 0 };
 }
 
-module.exports = { applyRefundReversal };
+module.exports = { applyRefundReversal, applyUnlinkedRefund };

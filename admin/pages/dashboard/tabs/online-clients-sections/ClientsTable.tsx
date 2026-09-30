@@ -488,7 +488,7 @@ export function ClientsTable({
       title={`صلاحية الكورسات — ${accessRow.name}`}
       size="lg"
     >
-            <ClientCourseAccessPanel subscriberId={accessRow.id} notify={notify} onChanged={() => { void reloadSubscribers(); }} />
+            <ClientCourseAccessPanel subscriber={accessRow} notify={notify} onChanged={() => { void reloadSubscribers(); }} />
     </Modal>
       )}
     </div>

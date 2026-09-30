@@ -106,7 +106,9 @@ router.get('/api/admin/payments', requireAuth, requireAdminOrStaff, requirePermi
       else { sql += ' AND p.status = ?'; params.push(String(status)); }
     }
     if (scope.branchId) {
-      sql += ' AND p.branch_id = ?';
+      // The branch's own clients (routes/finance.js, /finance/boxes): a payment
+      // filed under Dokki for an online client is not Dokki's money.
+      sql += ' AND p.branch_id = ? AND (s.id IS NULL OR s.branch_id = p.branch_id)';
       params.push(scope.branchId);
     } else if (scope.kind === 'assigned_cs' || scope.kind === 'assigned_sales') {
       const assignmentColumn = scope.kind === 'assigned_cs' ? 'assigned_cs_id' : 'assigned_sales_id';

@@ -19,9 +19,10 @@ function run(mw, req) {
   return out;
 }
 
-const ALLOWED_OPERATIONAL = ['MANAGER', 'ADMIN', 'DAQQI_MANAGER', 'RECEPTION_DAQQI', 'INSTRUCTOR', 'TRAINER'];
+// SUPPORT: customer service works «جدول الدقي» from its own bar.
+const ALLOWED_OPERATIONAL = ['MANAGER', 'ADMIN', 'DAQQI_MANAGER', 'RECEPTION_DAQQI', 'SUPPORT', 'INSTRUCTOR', 'TRAINER'];
 const ALLOWED_MANAGEMENT = ['MANAGER', 'ADMIN', 'DAQQI_MANAGER'];
-const OUTSIDERS = ['SALES', 'COLLECTION', 'SUPPORT', 'HR', 'ACCOUNTANT', 'CONSULTANT', 'EXPERT', 'OTHER', 'ONLINE_MANAGER'];
+const OUTSIDERS = ['SALES', 'COLLECTION', 'HR', 'ACCOUNTANT', 'CONSULTANT', 'EXPERT', 'OTHER', 'ONLINE_MANAGER'];
 
 test('requireDaqqiAccess admits every operational Daqqi role', () => {
   for (const role of ALLOWED_OPERATIONAL) {

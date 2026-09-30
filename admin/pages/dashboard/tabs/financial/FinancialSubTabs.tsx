@@ -14,6 +14,7 @@ import {
   XCircle,
   HandCoins,
   Landmark,
+  Vault,
 } from 'lucide-react';
 import type { FinancialSubTab } from './financialTabUtils';
 
@@ -51,7 +52,8 @@ type Primary = {
   leaves: Leaf[];
 };
 
-const primaries: Primary[] = [
+const allPrimaries: Primary[] = [
+  { id: 'boxes', label: 'الخزائن', icon: Vault, leaves: [['boxes', 'الخزائن', Vault]] },
   { id: 'orders', label: 'الإيرادات', icon: CreditCard, leaves: [['orders', 'الإيرادات', CreditCard]] },
   { id: 'expenses', label: 'المصروفات', icon: Wallet, leaves: [['expenses', 'المصروفات', Wallet]] },
   {
@@ -123,11 +125,10 @@ const primaries: Primary[] = [
   },
 ];
 
-const primaryOf = (tab: FinancialSubTab): Primary =>
-  primaries.find(p => p.leaves.some(([key]) => key === tab)) || primaries[0];
-
 interface FinancialSubTabsProps {
   activeTab: FinancialSubTab;
+  /** The screens this view offers; every one when absent. */
+  allowed?: FinancialSubTab[];
   pendingProofsCount: number;
   pendingReviewCount: number;
   onChange: (tab: FinancialSubTab) => void;
@@ -140,8 +141,14 @@ export function FinancialSubTabs({
   pendingReviewCount,
   onChange,
   onOpenProofs,
+  allowed,
 }: FinancialSubTabsProps) {
-  const active = primaryOf(activeTab);
+  const primaries = allowed
+    ? allPrimaries
+      .map(primary => ({ ...primary, leaves: primary.leaves.filter(([key]) => allowed.includes(key)) }))
+      .filter(primary => primary.leaves.length > 0)
+    : allPrimaries;
+  const active = primaries.find(p => p.leaves.some(([key]) => key === activeTab)) || primaries[0];
 
   const select = (tab: FinancialSubTab) => {
     onChange(tab);

@@ -169,7 +169,7 @@ router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requireP
   try {
     const [rounds] = await pool.query(
       `SELECT id, code, course_id, instructor_id, instructor_name, reception_id, reception_name,
-       day_of_week, start_date, time_slot, status, current_lecture, postponed_weeks_json, created_at, room
+       day_of_week, start_date, time_slot, status, current_lecture, postponed_weeks_json, held_weeks_json, created_at, room
        FROM daqqi_rounds WHERE tenant_id=? ORDER BY created_at DESC LIMIT 500`,
       [req.tenantId]
     );
@@ -199,6 +199,10 @@ router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requireP
       currentLecture: Number(r.current_lecture || 0),
       postponedWeeks: r.postponed_weeks_json ? (() => {
         try { return JSON.parse(r.postponed_weeks_json); } catch { return []; }
+      })() : [],
+      // The weeks the desk confirmed the lecture ran («اشتغلت تمام»).
+      heldWeeks: r.held_weeks_json ? (() => {
+        try { return JSON.parse(r.held_weeks_json); } catch { return []; }
       })() : [],
       createdAt: isoDt(r.created_at),
       attendees: (attendeesMap[r.id] || []).map(a => ({
@@ -259,6 +263,9 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
       throw error;
     }
     const postponedJson = JSON.stringify(postponedWeeks);
+    // Only when sent: a screen that does not know the field leaves it as it is.
+    const heldWeeks = Array.isArray(d.heldWeeks) ? d.heldWeeks.map(String).slice(0, 200) : null;
+    const heldJson = heldWeeks ? JSON.stringify(heldWeeks) : null;
     // A hall can hold one round per weekday slot. Checked here, before any
     // write, so a clash is refused rather than half-saved. Finished rounds are
     // excluded — they have released the room — and so is this round itself, so
@@ -384,14 +391,15 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
       savedCode = String(existing.code || savedCode);
       await conn.query(
         `UPDATE daqqi_rounds SET course_id=?,instructor_id=?,instructor_name=?,reception_id=?,reception_name=?,
-         day_of_week=?,start_date=?,time_slot=?,status=?,current_lecture=?,postponed_weeks_json=?,room=?
+         day_of_week=?,start_date=?,time_slot=?,status=?,current_lecture=?,postponed_weeks_json=?,
+         held_weeks_json=COALESCE(?, held_weeks_json),room=?
          WHERE id=? AND tenant_id=?`,
         [
           courseId, d.instructorId || d.instructor_id || null,
           d.instructorName || d.instructor_name || '', d.receptionId || d.reception_id || null,
           d.receptionName || d.reception_name || '', dayOfWeek,
           startDate, timeSlot, status,
-          currentLecture, postponedJson, room, id, req.tenantId,
+          currentLecture, postponedJson, heldJson, room, id, req.tenantId,
         ]
       );
     } else {
@@ -406,14 +414,14 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
       await conn.query(
         `INSERT INTO daqqi_rounds
           (id,code,course_id,instructor_id,instructor_name,reception_id,reception_name,
-           day_of_week,start_date,time_slot,status,current_lecture,postponed_weeks_json,created_at,room,tenant_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+           day_of_week,start_date,time_slot,status,current_lecture,postponed_weeks_json,held_weeks_json,created_at,room,tenant_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
           id, code, courseId,
           d.instructorId || d.instructor_id || null, d.instructorName || d.instructor_name || '',
           d.receptionId || d.reception_id || null, d.receptionName || d.reception_name || '',
           dayOfWeek, startDate, timeSlot, status,
-          currentLecture, postponedJson,
+          currentLecture, postponedJson, heldJson,
           toMysqlDt(d.createdAt || new Date().toISOString()),
           room, req.tenantId,
         ]

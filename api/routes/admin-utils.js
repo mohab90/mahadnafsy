@@ -14,6 +14,9 @@ const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
 const { leadScope } = require('../lib/leadAccess');
 const { sqlCairoToday, cairoToday } = require('../lib/dates');
+const { itemBalances, itemKey } = require('../lib/agreedPrice');
+const { itemTitle, parseItem } = require('../lib/clientCourseActions');
+const { logClientEvent } = require('../lib/clientHistory');
 
 // Timers belong to the central worker. Starting them from a route module made
 // every clustered API process send the same reminders and summaries again.
@@ -634,45 +637,75 @@ router.post('/api/me/refund-request', requireAuth, async (req, res) => {
 });
 
 // POST /api/admin/refund-requests/by-admin — admin initiates a refund request for a subscriber
+//
+// «استرداد جزئي لكورس محدد للعميل … عند الاسترداد لازم يتحدد دفعه العميل …
+// مش لازم الخطوه دي ممكن نلغيها لان في عملاء مش متسجلها دفعات». The payment is
+// optional now: a refund names the payment it comes out of, or the course it is
+// for (course_item: a course id, or 'bundle:<id>') — or both, the course then
+// being the payment's. Without a payment the amount is held to what the client
+// paid for that course here and before the system, when anything is recorded.
 router.post('/api/admin/refund-requests/by-admin', requireAuth, requireAdminOrStaff, requirePermission('approve_refunds'), async (req, res) => {
   try {
-    const { subscriber_id, payment_id, amount, currency = 'EGP', reason, refund_method } = req.body;
+    const { subscriber_id, payment_id, amount, currency = 'EGP', reason, refund_method, course_item } = req.body;
     const requestedAmount = Number(amount);
-    if (!subscriber_id || !payment_id || !reason || !Number.isFinite(requestedAmount) || requestedAmount <= 0) {
-      return res.status(400).json({ error: 'subscriber_id, payment_id, reason and a positive amount are required' });
+    if (!subscriber_id || !reason || !Number.isFinite(requestedAmount) || requestedAmount <= 0) {
+      return res.status(400).json({ error: 'subscriber_id, reason and a positive amount are required' });
+    }
+    if (!payment_id && !course_item) {
+      return res.status(400).json({ error: 'اختار الدفعة أو الكورس اللي الاسترداد ليه' });
     }
     const actor = req.staffRecord?.name || req.user?.email || 'admin';
     const tenantId = req.tenantId || resolveTenantId(req) || DEFAULT_TENANT_ID;
     const [[subInTenant]] = await pool.query(
-      'SELECT id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1',
+      'SELECT id, branch_id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1',
       [subscriber_id, tenantId]
     );
     if (!subInTenant) return res.status(404).json({ error: 'Subscriber not found' });
-    const [[payment]] = await pool.query(
-      `SELECT id, amount, currency, payment_method, source
-         FROM payments
-        WHERE id=? AND subscriber_id=? AND tenant_id=? AND status='paid' AND deleted_at IS NULL
-        LIMIT 1`,
-      [payment_id, subscriber_id, tenantId]
-    );
-    if (!payment) return res.status(404).json({ error: 'Eligible payment not found' });
-    // Same rule as the customer's own request above: up to the payment, not
-    // exactly it.
-    if (requestedAmount - Number(payment.amount || 0) > 0.01) {
-      return res.status(409).json({ error: `مبلغ الاسترداد أكبر من المدفوع (${Number(payment.amount || 0)})` });
+    let payment = null;
+    if (payment_id) {
+      [[payment]] = await pool.query(
+        `SELECT id, amount, currency, payment_method, source, course_id, bundle_id
+           FROM payments
+          WHERE id=? AND subscriber_id=? AND tenant_id=? AND status='paid' AND deleted_at IS NULL
+          LIMIT 1`,
+        [payment_id, subscriber_id, tenantId]
+      );
+      if (!payment) return res.status(404).json({ error: 'Eligible payment not found' });
+      // Same rule as the customer's own request above: up to the payment, not
+      // exactly it.
+      if (requestedAmount - Number(payment.amount || 0) > 0.01) {
+        return res.status(409).json({ error: `مبلغ الاسترداد أكبر من المدفوع (${Number(payment.amount || 0)})` });
+      }
+      if (String(currency).toUpperCase() !== String(payment.currency).toUpperCase()) {
+        return res.status(400).json({ error: 'Refund currency must match payment currency' });
+      }
+      if (/paymob/i.test(`${payment.payment_method || ''} ${payment.source || ''}`)) {
+        return res.status(409).json({ error: 'Paymob refunds are suspended until the gateway review is complete' });
+      }
+      // Skip if a PENDING refund request already exists for this payment.
+      const [[existing]] = await pool.query(
+        "SELECT id FROM refund_requests WHERE tenant_id=? AND payment_id=? AND status='PENDING' LIMIT 1",
+        [tenantId, payment_id]
+      );
+      if (existing) return res.json({ ok: true, id: existing.id, skipped: true });
     }
-    if (String(currency).toUpperCase() !== String(payment.currency).toUpperCase()) {
-      return res.status(400).json({ error: 'Refund currency must match payment currency' });
+    const item = String(course_item || '').trim().slice(0, 80)
+      || (payment ? itemKey({ courseId: payment.course_id, bundleId: payment.bundle_id }) : '') || null;
+    let refundCurrency = payment ? payment.currency : String(currency || 'EGP').toUpperCase();
+    if (!payment) {
+      // The box it leaves from, by name — «خزنة الدقي - كاش» — so the boxes
+      // report nets it there. A rail code, or «same as the payment» with no
+      // payment, would open a box of its own.
+      if (!refund_method || refund_method === 'same_as_payment') {
+        return res.status(400).json({ error: 'اختار الخزنة اللي الفلوس هتخرج منها' });
+      }
+      const balance = (await itemBalances(pool, { tenantId, subscriberId: subscriber_id })).get(item);
+      const paidForItem = (Number(balance?.paid) || 0) + (Number(balance?.priorPaid) || 0);
+      if (paidForItem > 0 && requestedAmount - paidForItem > 0.01) {
+        return res.status(409).json({ error: `مبلغ الاسترداد أكبر من المدفوع للكورس ده (${paidForItem})` });
+      }
+      if (balance?.currency) refundCurrency = balance.currency;
     }
-    if (/paymob/i.test(`${payment.payment_method || ''} ${payment.source || ''}`)) {
-      return res.status(409).json({ error: 'Paymob refunds are suspended until the gateway review is complete' });
-    }
-    // Skip if a PENDING refund request already exists for this payment.
-    const [[existing]] = await pool.query(
-      "SELECT id FROM refund_requests WHERE tenant_id=? AND payment_id=? AND status='PENDING' LIMIT 1",
-      [tenantId, payment_id]
-    );
-    if (existing) return res.json({ ok: true, id: existing.id, skipped: true });
 
     // The subscriber has to exist.
     //
@@ -691,15 +724,23 @@ router.post('/api/admin/refund-requests/by-admin', requireAuth, requireAdminOrSt
       return res.status(404).json({ error: 'Subscriber not found — cannot open a refund request against a client that does not exist' });
     }
 
+    // branch_id: the refunds screen is scoped by it, and without it a branch
+    // manager never saw a request for one of their own clients.
     const id = uuidv4();
     await pool.query(
-      'INSERT INTO refund_requests (id, tenant_id, subscriber_id, payment_id, amount, currency, reason, refund_method, status) VALUES (?,?,?,?,?,?,?,?,?)',
-      [id, tenantId, subscriber_id, payment_id, requestedAmount, payment.currency, String(reason).substring(0, 1000), refund_method || null, 'PENDING']
+      'INSERT INTO refund_requests (id, tenant_id, branch_id, subscriber_id, payment_id, amount, currency, reason, refund_method, status, course_item) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+      [id, tenantId, subInTenant.branch_id || null, subscriber_id, payment_id || null, requestedAmount, refundCurrency,
+        String(reason).substring(0, 1000), refund_method || null, 'PENDING', item]
     );
     await pool.query(
       'INSERT INTO activity_logs (id, tenant_id, action, entity, entity_id, label, actor) VALUES (?,?,?,?,?,?,?)',
-      [uuidv4(), tenantId, 'refund_created', 'refund_requests', id, `طلب استرداد بقيمة ${amount} ${currency} — بواسطة ${actor}`, actor]
+      [uuidv4(), tenantId, 'refund_created', 'refund_requests', id, `طلب استرداد بقيمة ${amount} ${refundCurrency} — بواسطة ${actor}`, actor]
     ).catch(() => {});
+    const title = item ? await itemTitle(pool, tenantId, parseItem(item)) : null;
+    await logClientEvent(pool, {
+      tenantId, subscriberId: subscriber_id, action: 'refund_requested', actor,
+      label: `طلب استرداد ${requestedAmount} ${refundCurrency}${title ? ` لـ«${title}»` : ''}${payment ? '' : ' (بدون دفعة مسجّلة)'} — ${String(reason).slice(0, 300)}`,
+    });
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

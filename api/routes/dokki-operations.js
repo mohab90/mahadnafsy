@@ -13,6 +13,7 @@ const { requireAuth, requireAdminOrStaff, requirePermission } = require('../midd
 const { requireDaqqiAccess, requireDaqqiManager } = require('../lib/daqqiAccess');
 const { verifyAttendanceQr } = require('../lib/attendanceQr');
 const { arabicWeekdaysForDate } = require('../lib/daqqiSchedule');
+const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
 
 function scopedTenantId(req) {
   return req.tenantId || resolveTenantId(req) || DEFAULT_TENANT_ID;
@@ -22,6 +23,36 @@ function routeError(res, error, message = 'dokki operation failed') {
   logger.error(message, error);
   return res.status(500).json({ error: 'Internal server error' });
 }
+
+// «خلي مسار واحد اللى بيظهر تحت الكورسات … او اقدر اختار ايه المسار اللي
+// يظهر»: a course in three paths showed all three under every round. The path
+// shown for each course is chosen once, here, for everyone.
+const COURSE_PATHS = 'daqqi_course_paths';
+router.get('/api/admin/dokki/course-paths', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
+  try {
+    res.json(await getTenantSetting(COURSE_PATHS, { tenantId: scopedTenantId(req), fallback: {} }) || {});
+  } catch (error) { routeError(res, error, 'course paths read failed'); }
+});
+
+router.put('/api/admin/dokki/course-paths', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiManager, async (req, res) => {
+  try {
+    const tenantId = scopedTenantId(req);
+    const courseId = String(req.body?.courseId || '').trim();
+    const bundleId = String(req.body?.bundleId || '').trim();
+    if (!courseId) return res.status(400).json({ error: 'courseId required' });
+    if (bundleId) {
+      const [[member]] = await pool.query(
+        'SELECT 1 AS ok FROM bundle_courses WHERE tenant_id=? AND bundle_id=? AND course_id=? LIMIT 1',
+        [tenantId, bundleId, courseId]
+      );
+      if (!member) return res.status(400).json({ error: 'الكورس ده مش جزء من المسار ده' });
+    }
+    const paths = { ...(await getTenantSetting(COURSE_PATHS, { tenantId, fallback: {} }) || {}) };
+    if (bundleId) paths[courseId] = bundleId; else delete paths[courseId];
+    await setTenantSetting(COURSE_PATHS, paths, { tenantId, actorId: req.user?.uid || req.user?.email });
+    res.json(paths);
+  } catch (error) { routeError(res, error, 'course paths save failed'); }
+});
 
 // GET /api/admin/dokki/classrooms
 router.get('/api/admin/dokki/classrooms', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {

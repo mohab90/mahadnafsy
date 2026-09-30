@@ -12,6 +12,8 @@ const { DEFAULT_TENANT_ID } = require('../../lib/tenantScope');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { itemBalances, itemKey, setAgreedPrice, setPriorPaid } = require('../../lib/agreedPrice');
 const { cairoDayStartUtc, isValidDateOnly } = require('../../lib/dates');
+const { isCourseManager, removeClientCourse, transferClientCourse } = require('../../lib/clientCourseActions');
+const { actorName } = require('../../lib/clientHistory');
 const { uuidv4 } = require('../../lib/id');
 
 // The same row-level rule the money screens use: the managers see everyone,
@@ -63,7 +65,7 @@ router.get('/api/admin/subscribers/:id/course-access', requireAuth, requireAdmin
          FROM enrollments e
          JOIN courses c ON c.id = e.course_id AND c.tenant_id = e.tenant_id
          LEFT JOIN bundles b ON b.id = e.bundle_id AND b.tenant_id = e.tenant_id
-        WHERE e.subscriber_id = ? AND e.tenant_id = ? AND c.deleted_at IS NULL
+        WHERE e.subscriber_id = ? AND e.tenant_id = ? AND c.deleted_at IS NULL AND e.status <> 'removed'
         ORDER BY e.enrolled_at DESC`,
       [req.params.id, tenantId]);
     // The money for what they bought — the course, or the track it came in —
@@ -322,6 +324,42 @@ router.post('/api/admin/subscribers/:id/course-access', requireAuth, requireAdmi
     res.status(e?.statusCode || 500).json({ error: e?.statusCode ? e.message : 'Internal server error' });
   }
 });
+
+// «خلي في امكانيه للمديرين بمسح كورس عميل كورس لعميل مش العميل كله» and
+// «تحويل لكورس محدد عند العميل» — lib/clientCourseActions.js. The reason is
+// required on a deletion for the same reason as on a lock: it is what the
+// client's history will say.
+const courseActionRoute = (action, run) => async (req, res) => {
+  const role = String(req.staffRecord?.role || '').toLowerCase();
+  if (!isCourseManager(req) && !(action === 'transfer' && role === 'accountant')) {
+    return res.status(403).json({ error: action === 'remove' ? 'مسح كورس من عميل للمديرين بس' : 'تحويل الكورس للمديرين والحسابات بس', code: 'MANAGERS_ONLY' });
+  }
+  const tenantId = req.tenantId || DEFAULT_TENANT_ID;
+  const reason = sanitize(String(req.body?.reason || ''), 300).trim();
+  if (action === 'remove' && !reason) return res.status(400).json({ error: 'اكتب سبب مسح الكورس — بيتسجل في ملف العميل' });
+  const scoped = await scopedSubscriber(req, req.params.id, tenantId).catch(() => ({ status: 500, error: 'Internal server error' }));
+  if (!scoped.subscriber) return res.status(scoped.status).json({ error: scoped.error });
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const body = req.body || {};
+    const result = await run(conn, { tenantId, subscriber: scoped.subscriber, reason, actor: actorName(req), body });
+    await conn.commit();
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    await conn.rollback().catch(() => {});
+    logger.error(`[course-${action}]`, e.message);
+    res.status(e?.statusCode || 500).json({ error: e?.statusCode ? e.message : 'Internal server error' });
+  } finally { conn.release(); }
+};
+
+router.post('/api/admin/subscribers/:id/course-remove', requireAuth, requireAdminOrStaff, requirePermission('manage_subscribers'),
+  courseActionRoute('remove', (conn, args) => removeClientCourse(conn, { ...args, item: args.body.item })));
+
+router.post('/api/admin/subscribers/:id/course-transfer', requireAuth, requireAdminOrStaff, requirePermission('manage_subscribers'),
+  courseActionRoute('transfer', (conn, args) => transferClientCourse(conn, {
+    ...args, item: args.body.item, toItem: args.body.toItem, price: args.body.price ?? null,
+  })));
 
 // Same permission, same reason: enrolling a customer and setting their video
 // count is a client action, not a catalogue one.

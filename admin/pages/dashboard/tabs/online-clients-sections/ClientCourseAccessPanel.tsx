@@ -1,9 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { CalendarClock, Check, Infinity as InfinityIcon, Loader2, Lock, Plus, Unlock } from 'lucide-react';
+import { ArrowLeftRight, CalendarClock, Check, Infinity as InfinityIcon, Loader2, Lock, Plus, RotateCcw, Trash2, Unlock } from 'lucide-react';
 
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 import { promptDialog } from '../../../../../shared/ui/promptDialog';
+import { Modal } from '../../../../../shared/ui/Modal';
 import { CAIRO_TIME_ZONE, cairoDateOnly } from '../../../../../shared/cairoDate';
+import { useSiteData } from '../../../../context/SiteDataContext';
+import { hasPermission, type PermissionKey, type RoleKey } from '../../../../constants/permissions';
+import type { SubscriberItem } from '../../../../types';
+import { isOnlineClient } from '../onlineClientsUtils';
+import { AddRefundModal } from '../financial/AddRefundModal';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -32,6 +38,9 @@ type CourseAccess = {
   priorPaid: number;
   remaining: number;
 };
+
+/** «للمديرين» — the same roles api/lib/clientCourseActions.js admits. */
+const MANAGER_ROLES = new Set(['admin', 'manager', 'online_manager', 'daqqi_manager', 'sales_collection_manager']);
 
 const fmt = (value: string | null) =>
   value ? new Date(value).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE }) : null;
@@ -63,14 +72,29 @@ const api = async (url: string, method: string, body?: unknown) => {
  * lock a course; the price, the money paid, the lecture count and the
  * subscription date were read-only, or not shown.
  */
-export const ClientCourseAccessPanel: React.FC<{ subscriberId: string; notify: NotifyFn; onChanged?: () => void }> = ({
-  subscriberId, notify, onChanged,
+export const ClientCourseAccessPanel: React.FC<{ subscriber: SubscriberItem; notify: NotifyFn; onChanged?: () => void }> = ({
+  subscriber, notify, onChanged,
 }) => {
+  const subscriberId = subscriber.id;
+  const { isAdmin, currentStaff, courses: catalogCourses, bundles: catalogBundles, reloadSubscribers } = useSiteData();
   const [rows, setRows] = useState<CourseAccess[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
   const [draft, setDraft] = useState<Record<string, string>>({});
+  const [refundItem, setRefundItem] = useState<CourseAccess | null>(null);
+  const [transfer, setTransfer] = useState<{ head: CourseAccess; to: string; price: string; reason: string } | null>(null);
   const base = `/api/admin/subscribers/${encodeURIComponent(subscriberId)}`;
+
+  // «عميل الدقي ليه بيظهرله تفاصيل الكورسات … اصلا هو مش اونلاين»: a client in
+  // a branch sees what they bought and what it cost, not lectures watched,
+  // months left and a lock for an online course they do not have.
+  const inBranch = !isOnlineClient(subscriber);
+  const role = String(currentStaff?.role || '').toLowerCase();
+  const canManage = isAdmin || MANAGER_ROLES.has(role);
+  const canTransfer = canManage || role === 'accountant';
+  const canRefund = isAdmin || hasPermission(currentStaff ? {
+    role: currentStaff.role as RoleKey, permissions: currentStaff.permissions as PermissionKey[] | undefined,
+  } : null, 'approve_refunds');
 
   const load = async () => {
     setLoading(true);
@@ -125,6 +149,33 @@ export const ClientCourseAccessPanel: React.FC<{ subscriberId: string; notify: N
       action === 'close' ? 'تم قفل الكورس على العميل' : 'تم فتح الكورس للعميل');
   };
 
+  // «مسح كورس لعميل مش العميل كله». The reason is what the history says.
+  const removeItem = async (head: CourseAccess) => {
+    const reason = await promptDialog({
+      title: `مسح «${head.itemTitle}» من العميل`,
+      message: 'الكورس بيتشال من العميل ومن رواند الدقي اللي لسه شغالة. الفلوس المدفوعة مش بتتمسح — لو هترجعها استخدم «استرداد»، ولو هتنقلها استخدم «تحويل». بيتسجل في هيستوري العميل باسمك.',
+      placeholder: 'سبب المسح',
+      confirmLabel: 'امسح الكورس',
+    });
+    if (reason === null || !reason.trim()) return;
+    await run(head.item, () => api(`${base}/course-remove`, 'POST', { item: head.item, reason: reason.trim() }), 'اتمسح الكورس من العميل');
+    refreshClient();
+  };
+
+  // The client's course list and count on the rest of the page come from the
+  // client record, not from this panel.
+  const refreshClient = () => { if (!onChanged) void reloadSubscribers(); };
+
+  const submitTransfer = async () => {
+    if (!transfer?.to) return;
+    const { head, to, price, reason } = transfer;
+    await run(head.item, () => api(`${base}/course-transfer`, 'POST', {
+      item: head.item, toItem: to, price: Number(price) > 0 ? Number(price) : null, reason: reason.trim(),
+    }), 'اتحوّل الكورس');
+    setTransfer(null);
+    refreshClient();
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-10 text-gray-400" dir="rtl">
@@ -153,6 +204,50 @@ export const ClientCourseAccessPanel: React.FC<{ subscriberId: string; notify: N
         كورسات العميل — السعر والمدفوع والصلاحية
       </div>
 
+      {refundItem && (
+        <AddRefundModal subscriber={subscriber} item={refundItem.item} itemTitle={refundItem.itemTitle} notify={notify}
+          onClose={() => setRefundItem(null)} onCreated={() => { void load(); onChanged?.(); }} />
+      )}
+      {transfer && (
+        <Modal open layer="top" size="sm" onClose={() => setTransfer(null)}
+          title={`تحويل «${transfer.head.itemTitle}» لكورس تاني`}
+          icon={<ArrowLeftRight size={16} className="text-indigo-600" />}
+          footer={(
+            <>
+              <button onClick={() => setTransfer(null)} className="px-4 py-2 rounded-xl text-sm font-bold border border-gray-200 text-gray-600">إلغاء</button>
+              <button disabled={!transfer.to || busyId === transfer.head.item} onClick={() => void submitTransfer()}
+                className="px-5 py-2 rounded-xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">حوّل</button>
+            </>
+          )}>
+          <div className="space-y-3 text-sm">
+            <label className="block text-xs font-bold text-gray-600">يتحوّل إلى
+              <select value={transfer.to} onChange={event => setTransfer({ ...transfer, to: event.target.value })}
+                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm">
+                <option value="">اختار الكورس أو المسار...</option>
+                {catalogBundles.filter(bundle => `bundle:${bundle.id}` !== transfer.head.item).map(bundle => (
+                  <option key={bundle.id} value={`bundle:${bundle.id}`}>📌 {bundle.title}</option>
+                ))}
+                {catalogCourses.filter(course => course.id !== transfer.head.item).map(course => (
+                  <option key={course.id} value={course.id}>{course.titleAr || course.title}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs font-bold text-gray-600">السعر المتفق عليه للكورس الجديد (اختياري)
+              <input type="number" min="1" value={transfer.price} placeholder="فاضي = سعر الكتالوج"
+                onChange={event => setTransfer({ ...transfer, price: event.target.value })}
+                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
+            </label>
+            <label className="block text-xs font-bold text-gray-600">السبب
+              <input value={transfer.reason} onChange={event => setTransfer({ ...transfer, reason: event.target.value })}
+                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
+            </label>
+            <p className="text-[11px] leading-5 text-gray-500">
+              المدفوع للكورس ده ({num(transfer.head.paid)} {transfer.head.currency}{transfer.head.priorPaid ? ` + ${num(transfer.head.priorPaid)} قبل السيستم` : ''}) بيتنقل للكورس الجديد، والعميل بيطلع من رواند الدقي بتاعة الكورس القديم. بيتسجل في هيستوري العميل باسمك.
+            </p>
+          </div>
+        </Modal>
+      )}
+
       {items.map(head => {
         const courses = rows.filter(row => row.item === head.item);
         const moneyBusy = busyId === head.item;
@@ -163,8 +258,25 @@ export const ClientCourseAccessPanel: React.FC<{ subscriberId: string; notify: N
         const remaining = Math.max(0, (Number(price) || 0) - head.paid - (Number(prior) || 0));
         return (
           <div key={head.item} className="rounded-2xl border border-gray-200 bg-gray-50/60 p-3 space-y-3">
-            <div className="font-extrabold text-gray-900 text-sm">
-              {head.item.startsWith('bundle:') ? '📌 ' : '🎓 '}{head.itemTitle}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="font-extrabold text-gray-900 text-sm">
+                {head.item.startsWith('bundle:') ? '📌 ' : '🎓 '}{head.itemTitle}
+              </div>
+              {/* On one course, not the whole client. */}
+              <div className="flex flex-wrap gap-1.5">
+                {canRefund && (
+                  <button disabled={moneyBusy} onClick={() => setRefundItem(head)}
+                    className={`${btn} bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100`}><RotateCcw size={11} /> استرداد</button>
+                )}
+                {canTransfer && (
+                  <button disabled={moneyBusy} onClick={() => setTransfer({ head, to: '', price: '', reason: '' })}
+                    className={`${btn} bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100`}><ArrowLeftRight size={11} /> تحويل لكورس تاني</button>
+                )}
+                {canManage && (
+                  <button disabled={moneyBusy} onClick={() => void removeItem(head)}
+                    className={`${btn} bg-red-50 text-red-700 border border-red-200 hover:bg-red-100`}><Trash2 size={11} /> حذف الكورس</button>
+                )}
+              </div>
             </div>
 
             {/* The money for it. The price is written on every payment for it
@@ -194,7 +306,17 @@ export const ClientCourseAccessPanel: React.FC<{ subscriberId: string; notify: N
             </div>
             <p className="text-[10px] text-gray-400">«مدفوع قبل السيستم» فلوس اتدفعت قبل ما دفعاته تتسجل هنا — بتتحسب في المتبقي ومش بتتحسب إيراد.</p>
 
-            {courses.map(row => {
+            {inBranch ? (
+              <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600 space-y-1">
+                {head.item.startsWith('bundle:') && courses.map(row => (
+                  <div key={row.enrollmentId} className="flex items-center gap-2">
+                    🎓 {row.title}
+                    {row.status !== 'active' && <span className="rounded bg-red-100 px-1.5 text-[10px] font-bold text-red-700">مقفول</span>}
+                  </div>
+                ))}
+                <p className="text-[11px] text-gray-400">كورس حضوري في الفرع — مفيش محاضرات أونلاين ولا مدة اشتراك. الحضور في «جدول الدقي».</p>
+              </div>
+            ) : courses.map(row => {
               const left = daysLeft(row.expiresAt);
               const expired = left !== null && left < 0;
               const busy = busyId === row.enrollmentId;

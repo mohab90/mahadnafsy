@@ -1,6 +1,7 @@
 import type { Currency, PaymentItemType } from '../../../../types';
 
 export type FinancialSubTab =
+  | 'boxes'
   | 'cockpit'
   | 'overview'
   | 'orders'
@@ -21,6 +22,15 @@ export type FinancialSubTab =
   | 'refunds'
   | 'advances'
   | 'operations';
+
+/**
+ * A branch's books («حسابات الدقي»): its money in and out, what is waiting on
+ * it and who owes it. The company screens — Paymob, the ledger, closing, the
+ * budget, the P&L, the team's commissions and advances — are the main books'.
+ */
+export const BRANCH_SUB_TABS: FinancialSubTab[] = [
+  'boxes', 'orders', 'expenses', 'review', 'proofs', 'refunds', 'installments', 'aging',
+];
 
 export const paymentTypeLabels: Record<PaymentItemType, string> = {
   course: 'كورس',

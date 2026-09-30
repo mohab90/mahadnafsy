@@ -9,6 +9,18 @@ import type { SettlementCurrency } from '../../lib/branchCurrency';
 import { normalizeInterestLevel } from '../dashboard/tabs/leadUtils';
 import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
 
+/** What the desk did to a client's courses and money (api/lib/clientHistory.js). */
+const CLIENT_EVENT_LABELS: Record<string, string> = {
+  course_removed: 'مسح كورس',
+  course_transferred: 'تحويل كورس',
+  refund_requested: 'طلب استرداد',
+  refund_approved: 'استرداد',
+  refund_rejected: 'رفض استرداد',
+  refund_handling: 'معالجة استرداد',
+  entitlement_granted: 'فتح كورس',
+  entitlement_revoked: 'قفل كورس',
+};
+
 type BookingMapEntry = {
   expectedEGP?: number;
   paidEGP?: number;
@@ -167,11 +179,15 @@ export function UnifiedClientOverviewTab({
                             رحلة العميل الموحّدة
                           </h3>
                           <div className="space-y-2">
-                            {timeline.slice(0, 12).map(event => (
-                              <div key={`${event.category}:${event.entity_id}:${event.occurred_at}`} className="flex items-start justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2">
+                            {timeline.slice(0, 20).map(event => (
+                              <div key={`${event.category}:${event.entity_id}:${event.occurred_at}`} className={`flex items-start justify-between gap-3 rounded-xl px-3 py-2 ${event.category === 'client' ? 'bg-amber-50 border border-amber-100' : 'bg-slate-50'}`}>
                                 <div className="min-w-0">
-                                  <p className="truncate text-xs font-bold text-slate-700">{event.title}</p>
-                                  <p className="text-[10px] text-slate-400">{event.event_type.replace(/_/g, ' ')}</p>
+                                  {/* A deletion, transfer or refund is read in full: it is the record of it. */}
+                                  <p className={`text-xs font-bold text-slate-700 ${event.category === 'client' ? 'whitespace-normal leading-5' : 'truncate'}`}>{event.title}</p>
+                                  <p className="text-[10px] text-slate-400">
+                                    {CLIENT_EVENT_LABELS[event.event_type] || event.event_type.replace(/_/g, ' ')}
+                                    {event.actor && <span className="font-semibold text-slate-500"> · بواسطة {event.actor}</span>}
+                                  </p>
                                 </div>
                                 <div className="shrink-0 text-left">
                                   {event.amount != null && <p className="text-xs font-bold text-emerald-700">{Number(event.amount).toLocaleString('ar-EG-u-nu-latn')} {event.currency}</p>}

@@ -40,6 +40,8 @@ interface FinancialOrdersControlsProps {
   exportCSV: (filename: string, rows: string[][], headers: string[]) => void;
   loadDbPayments: () => void;
   loadingDbPayments: boolean;
+  /** A branch's books: it takes no Paymob money, so no online card or filter. */
+  branchView?: boolean;
 }
 
 export function FinancialOrdersControls({
@@ -68,12 +70,13 @@ export function FinancialOrdersControls({
   exportCSV,
   loadDbPayments,
   loadingDbPayments,
+  branchView = false,
 }: FinancialOrdersControlsProps) {
   return (
     <>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className={`grid grid-cols-2 gap-3 ${branchView ? 'md:grid-cols-3' : 'md:grid-cols-4'}`}>
         {[
-          { label: 'أونلاين (Paymob)', val: onlineRevenueEGP, bg: 'bg-blue-600', sub: `${onlineRows.length} معاملة` },
+          ...(branchView ? [] : [{ label: 'أونلاين (Paymob)', val: onlineRevenueEGP, bg: 'bg-blue-600', sub: `${onlineRows.length} معاملة` }]),
           { label: 'يدوي (نقدي / بنكي)', val: manualRevenueEGP, bg: 'bg-amber-500', sub: `${manualRows.length} معاملة` },
           { label: hasFilters ? 'إجمالي المفلتر' : 'الإجمالي الكلي', val: hasFilters ? totalFiltered : totalRevenueEGP, bg: 'bg-emerald-600', sub: `${filteredRows.length} دفعة` },
           { label: 'متوسط الدفعة', val: Math.round(filteredRows.length > 0 ? totalFiltered / filteredRows.length : 0), bg: 'bg-violet-600', sub: 'ج.م لكل معاملة' },
@@ -145,10 +148,12 @@ export function FinancialOrdersControls({
             className={`text-xs px-3 py-1.5 rounded-full font-bold border transition ${!orderMethodFilter ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
             الكل ({allRows.length})
           </button>
+          {!branchView && (
           <button onClick={() => { setOrderMethodFilter(ONLINE_CHANNEL); setOrdersPage(1); }}
             className={`text-xs px-3 py-1.5 rounded-full font-bold border transition ${orderMethodFilter === ONLINE_CHANNEL ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'}`}>
             🌐 أونلاين ({onlineRows.length})
           </button>
+          )}
           {paymentMethods.map(m => {
             const count = manualRows.filter(r => r.channel === m).length;
             if (count === 0 && orderMethodFilter !== m) return null;

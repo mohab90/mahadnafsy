@@ -18,6 +18,10 @@ import { DAQQI_TIME_SLOT_COLORS as timeSlotColors, DAQQI_STATUS_COLORS as status
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 export function DaqqiRoundRow({
+  index,
+  coursePath,
+  canChoosePath,
+  onChoosePath,
   round,
   isAdmin,
   resetDaqqiPayDraft,
@@ -36,11 +40,17 @@ export function DaqqiRoundRow({
   setDaqqiPostponeModal,
   setDaqqiTransferModal,
   handleDaqqiMarkAttendance,
-  handleDaqqiTogglePostpone,
+  handleDaqqiMarkWeek,
   handleRemoveAttendeeFromRound,
   doUpdateRound,
   notify,
 }: {
+  /** Its place in the table, for the alternating rows. */
+  index: number;
+  /** The path chosen to show under this course, '' when none is. */
+  coursePath: string;
+  canChoosePath: boolean;
+  onChoosePath: (bundleId: string) => void;
   isAdmin: boolean;
   resetDaqqiPayDraft: (overrides?: Partial<PaymentDraft>) => void;
   setDaqqiCommModal: (value: { subscriberId: string; subscriberName: string; phone: string } | null) => void;
@@ -63,7 +73,7 @@ export function DaqqiRoundRow({
   setDaqqiPostponeModal: (value: { roundId: string; newDate: string } | null) => void;
   setDaqqiTransferModal: (value: { subscriberId: string; fromRoundId: string } | null) => void;
   handleDaqqiMarkAttendance: (roundId: string, subscriberId: string) => void | Promise<void>;
-  handleDaqqiTogglePostpone: (roundId: string) => void | Promise<void>;
+  handleDaqqiMarkWeek: (roundId: string, held: boolean) => void | Promise<void>;
   handleRemoveAttendeeFromRound: (roundId: string, subscriberId: string) => void | Promise<void>;
   doUpdateRound: (round: DaqqiRound) => Promise<boolean>;
   notify: NotifyFn;
@@ -77,13 +87,25 @@ export function DaqqiRoundRow({
                     const status = round.status || 'new';
                     return (
                       <React.Fragment key={round.id}>
-                        <tr className="hover:bg-primary-50/30 cursor-pointer transition-colors border-b border-gray-100" onClick={() => setDaqqiExpandedId(isExpanded ? '' : round.id)}>
+                        {/* «سطر خلفيه ابيض وسطر خلفيه رمادي». */}
+                        <tr className={`${index % 2 ? 'bg-gray-50' : 'bg-white'} hover:bg-primary-50/40 cursor-pointer transition-colors border-b border-gray-100`} onClick={() => setDaqqiExpandedId(isExpanded ? '' : round.id)}>
                           <td className="px-3 py-2.5 text-xs font-mono font-bold text-purple-700">{round.code || '—'}</td>
                           <td className="px-3 py-2.5 text-xs">
                             <span className="font-bold text-gray-800">{course?.titleAr || course?.title || round.courseId}</span>
-                            {courseBundles(bundles, round.courseId).map(b => (
-                              <div key={b.id} className="text-[10px] text-violet-600 font-semibold mt-0.5">مسار: {b.title}</div>
-                            ))}
+                            {/* One path, the one chosen for the course (the
+                                first until one is), not every path it is in. */}
+                            {(() => {
+                              const paths = courseBundles(bundles, round.courseId);
+                              const shown = paths.find(bundle => bundle.id === coursePath) || paths[0];
+                              if (!shown) return null;
+                              return canChoosePath && paths.length > 1 ? (
+                                <select value={shown.id} title="المسار اللي يظهر تحت الكورس ده"
+                                  onClick={event => event.stopPropagation()} onChange={event => onChoosePath(event.target.value)}
+                                  className="mt-0.5 block max-w-[230px] cursor-pointer rounded border border-dashed border-violet-200 bg-transparent px-1 text-[10px] font-semibold text-violet-600 hover:border-violet-400">
+                                  {paths.map(bundle => <option key={bundle.id} value={bundle.id}>مسار: {bundle.title}</option>)}
+                                </select>
+                              ) : <div className="text-[10px] text-violet-600 font-semibold mt-0.5">مسار: {shown.title}</div>;
+                            })()}
                           </td>
                           <td className="px-3 py-2.5 text-xs">
                             <span className="font-semibold text-gray-800">{round.dayOfWeek}</span>
@@ -128,9 +150,11 @@ export function DaqqiRoundRow({
                               );
                             })() : <span className="text-gray-300 text-xs">—</span>}
                           </td>
-                          <td className="px-3 py-2.5 text-xs">
-                            <div className="text-green-700 font-bold">{collected.toLocaleString('ar-EG-u-nu-latn')} ج.م</div>
-                            {remaining > 0 && <div className="text-amber-600 text-[11px]">متبقي: {remaining.toLocaleString('ar-EG-u-nu-latn')}</div>}
+                          <td className="px-3 py-2.5 text-xs font-bold text-green-700 whitespace-nowrap">{collected.toLocaleString('ar-EG-u-nu-latn')} ج.م</td>
+                          <td className="px-3 py-2.5 text-xs whitespace-nowrap">
+                            {remaining > 0
+                              ? <span className="font-bold text-amber-600">{remaining.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
+                              : <span className="text-green-600 text-[11px] font-bold">مكتمل</span>}
                           </td>
                           <td className="px-3 py-2.5 text-xs">
                             <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700 font-bold text-[11px]">{round.attendees.length} حاضر</span>
@@ -151,11 +175,19 @@ export function DaqqiRoundRow({
                                   if (deleted) notify('success', 'تم حذف الروند.');
                                 }} className="h-7 rounded bg-gray-50 text-red-400 hover:bg-red-50 hover:text-red-600 flex items-center justify-center transition" title="حذف الروند"><X size={12} /></button>}
                               </div>
+                              {/* «هل المحاضرة اشتغلت في موعدها او لاء»: this
+                                  week's lecture, answered either way. */}
                               {status === 'active' && (() => {
                                 const thisWeek = getCurrentWeekKey();
-                                const isPostponed = (round.postponedWeeks || []).includes(thisWeek);
+                                const postponed = (round.postponedWeeks || []).includes(thisWeek);
+                                const held = (round.heldWeeks || []).includes(thisWeek);
                                 return (
-                                  <button onClick={() => handleDaqqiTogglePostpone(round.id)} className={`w-full h-7 rounded flex items-center justify-center text-xs font-bold transition ${isPostponed ? 'bg-green-50 text-green-600 hover:bg-green-100' : 'bg-orange-50 text-orange-500 hover:bg-orange-100'}`} title={isPostponed ? 'رجع الأسبوع' : 'تأجيل الأسبوع'}>{isPostponed ? '↩ رجع الأسبوع' : '⏸ تأجيل الأسبوع'}</button>
+                                  <div className="grid grid-cols-1 gap-0.5" title="محاضرة الأسبوع ده اشتغلت في ميعادها؟">
+                                    <button onClick={() => handleDaqqiMarkWeek(round.id, true)}
+                                      className={`h-6 whitespace-nowrap rounded text-[10px] font-bold transition ${held ? 'bg-green-600 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>✓ اشتغلت</button>
+                                    <button onClick={() => handleDaqqiMarkWeek(round.id, false)} title="ماشتغلتش — تتأجل للأسبوع الجاي"
+                                      className={`h-6 whitespace-nowrap rounded text-[10px] font-bold transition ${postponed ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-600 hover:bg-orange-100'}`}>✗ ماشتغلتش</button>
+                                  </div>
                                 );
                               })()}
                             </div>
@@ -163,7 +195,7 @@ export function DaqqiRoundRow({
                         </tr>
                         {isExpanded && (
                           <tr>
-                            <td colSpan={12} className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                            <td colSpan={13} className="bg-gray-50 px-4 py-3 border-b border-gray-200">
                               <p className="text-xs font-bold text-gray-600 mb-2">قائمة الحاضرين ({round.attendees.length})</p>
                               {round.attendees.length === 0 ? (
                                 <p className="text-xs text-gray-400 italic">لم يُسجَّل حاضرون في هذه الجولة.</p>

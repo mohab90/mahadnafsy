@@ -145,9 +145,33 @@ async function setPriorPaid(db, { tenantId, subscriberId, courseId = null, bundl
   });
 }
 
+/**
+ * An item taken off a client (lib/clientCourseActions.js): its agreed price and
+ * «مدفوع قبل السيستم» go, and — when it moves to another item — what was paid
+ * before the system moves with it. Returns what was there, for the history.
+ */
+async function releaseItemMoney(db, { tenantId, subscriberId, from, to = null }) {
+  const released = { price: 0, priorPaid: 0 };
+  await updateCrm(db, { tenantId, subscriberId }, crm => {
+    const key = itemKey(from);
+    released.price = Number(crm.customPrices?.[key]) || 0;
+    released.priorPaid = Number(crm.priorPaid?.[key]) || 0;
+    const customPrices = { ...(crm.customPrices || {}) };
+    const priorPaid = { ...(crm.priorPaid || {}) };
+    delete customPrices[key];
+    delete priorPaid[key];
+    if (to && released.priorPaid > 0) {
+      priorPaid[itemKey(to)] = (Number(priorPaid[itemKey(to)]) || 0) + released.priorPaid;
+    }
+    crm.customPrices = customPrices;
+    crm.priorPaid = priorPaid;
+  });
+  return released;
+}
+
 /** The client's «مدفوع قبل السيستم», summed, for balances that read payments alone. */
 function priorPaidTotal(crmJson) {
   return Object.values(parseCrm(crmJson).priorPaid || {}).reduce((sum, value) => sum + (Number(value) || 0), 0);
 }
 
-module.exports = { agreedPrice, itemBalances, itemKey, priorPaidTotal, resolveAgreed, setAgreedPrice, setPriorPaid };
+module.exports = { agreedPrice, itemBalances, itemKey, priorPaidTotal, releaseItemMoney, resolveAgreed, setAgreedPrice, setPriorPaid };

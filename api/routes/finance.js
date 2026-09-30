@@ -9,7 +9,9 @@ const { pool } = require('../lib/db');
 const { tryJson, validate } = require('../lib/helpers');
 const { getBrandSettings } = require('../lib/brandSettings');
 const { getTenantSetting } = require('../lib/tenantSettings');
-const { applyRefundReversal } = require('../lib/refunds');
+const { applyRefundReversal, applyUnlinkedRefund } = require('../lib/refunds');
+const { itemTitle, parseItem } = require('../lib/clientCourseActions');
+const { logClientEvent } = require('../lib/clientHistory');
 const { createNotification } = require('../lib/notification');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../middleware/auth');
 const { publicLimiter } = require('../middleware/rateLimits');
@@ -1347,9 +1349,54 @@ router.put('/api/admin/finance/budgets', requireAuth, requireAdminOrStaff, requi
   } finally { conn.release(); }
 });
 
+// «محتاجين يظهر كل وسائل الدفع اللى تمت للدقي وكل وسيله دفع خزنتها كام من
+// الدقي بتقرير يومي واسبوعي وكل 15 وكل 30 يوم». Every box money came into, and
+// what it took over today and the last 7, 15 and 30 days. A refund is a
+// negative row in the box it left from, so it is netted here as everywhere.
+// «فودافون كاش  7722» and «فودافون كاش 7722» are one box typed twice.
+//
+// A branch's money is its own clients' money: the payment filed under the
+// branch and the client in it. 13 payments filed under Dokki belong to online
+// clients, and were what the Dokki manager saw as «فلوس مدفوعه في الاونلاين».
+const BOX_WINDOWS = [1, 7, 15, 30];
+router.get('/api/admin/finance/boxes', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
+  try {
+    const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null });
+    const today = dateOnlyInTimeZone();
+    const since = days => addDaysToDateOnly(today, 1 - days);
+    const [rows] = await pool.query(
+      `SELECT COALESCE(NULLIF(REGEXP_REPLACE(TRIM(p.payment_method), ' {2,}', ' '), ''), 'غير محدد') AS method, p.currency,
+              ${BOX_WINDOWS.map(days => `SUM(CASE WHEN p.date >= ? THEN p.amount ELSE 0 END) AS total_${days},
+              SUM(CASE WHEN p.date >= ? AND p.amount > 0 THEN 1 ELSE 0 END) AS count_${days}`).join(',\n              ')}
+         FROM payments p
+         LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
+        WHERE p.tenant_id = ? AND p.deleted_at IS NULL AND (p.status = 'paid' OR p.status IS NULL)
+          AND p.date >= ? AND p.date <= ?${scope.branchId ? ' AND p.branch_id = ? AND (s.id IS NULL OR s.branch_id = p.branch_id)' : ''}
+        GROUP BY method, p.currency
+        ORDER BY total_30 DESC`,
+      [...BOX_WINDOWS.flatMap(days => [since(days), since(days)]), req.tenantId, since(30), today,
+        ...(scope.branchId ? [scope.branchId] : [])]);
+    res.json({
+      branch: scope.branch || null,
+      today,
+      windows: Object.fromEntries(BOX_WINDOWS.map(days => [days, since(days)])),
+      boxes: rows.map(row => ({
+        method: row.method,
+        currency: row.currency || 'EGP',
+        totals: Object.fromEntries(BOX_WINDOWS.map(days => [days, Number(row[`total_${days}`]) || 0])),
+        counts: Object.fromEntries(BOX_WINDOWS.map(days => [days, Number(row[`count_${days}`]) || 0])),
+      })),
+    });
+  } catch (e) {
+    logger.error('[finance/boxes]', e.message);
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
+  }
+});
+
 // ── Refund requests list & status update ──────────────────────────────────
 // Customer service reads the list and escalates (manage_inbox) without the
 // accounts screens; deciding and paying out stay on approve_refunds.
+
 router.get('/api/admin/finance/refunds', requireAuth, requireAdminOrStaff, requireAnyPermission('view_financial', 'manage_inbox'), async (req, res) => {
   try {
     const scope = resolveFinancialScope(req, {
@@ -1419,7 +1466,7 @@ router.get('/api/admin/finance/refunds', requireAuth, requireAdminOrStaff, requi
       LEFT JOIN staff esc ON esc.id = rr.escalated_by AND esc.tenant_id=rr.tenant_id
       LEFT JOIN staff blame ON blame.id = rr.blamed_staff_id AND blame.tenant_id=rr.tenant_id
       LEFT JOIN payments p ON p.id = rr.payment_id AND p.tenant_id=rr.tenant_id
-      LEFT JOIN courses c ON c.id = p.course_id AND c.tenant_id=rr.tenant_id
+      LEFT JOIN courses c ON c.id = COALESCE(p.course_id, rr.course_item) AND c.tenant_id=rr.tenant_id
       WHERE rr.tenant_id=? AND rr.deleted_at IS NULL${scopeSql}
       ORDER BY rr.created_at DESC LIMIT 200
     `, [req.tenantId, ...scopeParams]);
@@ -1473,7 +1520,9 @@ router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdminOrStaff, r
       await conn.rollback();
       return res.status(409).json({ error: 'Refund request has already been resolved' });
     }
-    if (normalizedStatus === 'APPROVED' && !rr.payment_id) {
+    // A refund for a course with no payment behind it is approved against the
+    // course (lib/refunds.js#applyUnlinkedRefund); one with neither is not.
+    if (normalizedStatus === 'APPROVED' && !rr.payment_id && !rr.course_item) {
       await conn.rollback();
       return res.status(409).json({ error: 'A refund cannot be approved without a linked payment' });
     }
@@ -1516,7 +1565,21 @@ router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdminOrStaff, r
         // Without this it read «استرداد جزئي من دفعة <id>» and stopped there.
         reason: decisionNote || rr.reason || null,
       }, conn);
+    } else if (normalizedStatus === 'APPROVED') {
+      await applyUnlinkedRefund({
+        subscriberId: rr.subscriber_id, item: rr.course_item, refundAmount: refundedAmount,
+        refundCurrency: rr.currency, method: rr.refund_method, tenantId, actor,
+        reason: decisionNote || rr.reason || null,
+      }, conn);
     }
+    const refundTitle = rr.course_item ? await itemTitle(conn, tenantId, parseItem(rr.course_item)) : null;
+    await logClientEvent(conn, {
+      tenantId, subscriberId: rr.subscriber_id, actor,
+      action: `refund_${normalizedStatus.toLowerCase()}`,
+      label: normalizedStatus === 'APPROVED'
+        ? `اتعمل استرداد ${refundedAmount} ${rr.currency || 'EGP'}${refundTitle ? ` لـ«${refundTitle}»` : ''}${!rr.payment_id && rr.refund_method ? ` من ${rr.refund_method}` : ''}`
+        : `طلب الاسترداد ${normalizedStatus === 'REJECTED' ? 'اترفض' : 'اتعالج'} — ${decisionNote}`,
+    });
 
     await logFinancialAudit({
       entityType: 'refund_request',

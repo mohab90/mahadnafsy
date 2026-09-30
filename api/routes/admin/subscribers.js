@@ -159,7 +159,7 @@ router.get('/api/staff/subscribers/:id/timeline',
         [req.params.id, req.tenantId, ...scope.params]
       );
       if (!subscriber) return res.status(404).json({ error: 'Subscriber not found' });
-      const timeline = await listCustomerTimeline(req.tenantId, subscriber.id);
+      const timeline = await listCustomerTimeline(req.tenantId, subscriber.id, pool, { staff: true });
       const canSeeMoney = req.isSuperAdmin || hasPermission(req.staffRecord, 'view_financial');
       res.json(canSeeMoney ? timeline : timeline.map(({ amount: _amount, currency: _currency, ...event }) => event));
     } catch (error) {

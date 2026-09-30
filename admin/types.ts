@@ -506,7 +506,8 @@ export interface SubscriberItem {
 }
 
 export interface CustomerTimelineEvent {
-  category: 'order' | 'payment' | 'learning' | 'certificate' | 'support';
+  /** 'client': a course deleted or transferred, a refund asked for or made (api/lib/clientHistory.js). */
+  category: 'order' | 'payment' | 'learning' | 'certificate' | 'support' | 'client';
   event_type: string;
   entity_id: string;
   occurred_at: string;
@@ -514,6 +515,8 @@ export interface CustomerTimelineEvent {
   status?: string;
   amount?: number;
   currency?: string;
+  /** Who did it. */
+  actor?: string | null;
 }
 
 export type DaqqiDayOfWeek = 'الأحد' | 'الاثنين' | 'الثلاثاء' | 'الأربعاء' | 'الخميس' | 'الجمعة' | 'السبت';
@@ -554,6 +557,8 @@ export interface DaqqiRound {
   currentLecture?: number;
   attendees: DaqqiRoundAttendee[];
   postponedWeeks?: string[];
+  /** Weeks the desk confirmed the lecture ran («اشتغلت تمام»). */
+  heldWeeks?: string[];
   createdAt: string;
 }
 

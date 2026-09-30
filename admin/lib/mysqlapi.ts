@@ -637,13 +637,14 @@ export const mysqlAdmin = {
     }
   },
   getDiscounts:            ()             => apiFetch<AR[]>('/admin/discounts', {}, A),
-  getPayments:             async (startDate?: string, endDate?: string, maxRows = 50000) => {
+  getPayments:             async (startDate?: string, endDate?: string, maxRows = 50000, branch?: string) => {
     const all: AR[] = [];
     const pageSize = 5000;
     while (all.length < maxRows) {
       const p = new URLSearchParams({ limit: String(pageSize), offset: String(all.length) });
       if (startDate) p.set('startDate', startDate);
       if (endDate)   p.set('endDate', endDate);
+      if (branch)    p.set('branch', branch);
       const page = await apiFetch<AR[]>(`/admin/payments?${p}`, {}, A);
       all.push(...page);
       if (page.length < pageSize) break;
@@ -780,8 +781,10 @@ export const mysqlAdmin = {
   // nothing in the admin ever called it, so a refund could only ever start from
   // the customer's side.
   createRefundByAdmin: (payload: {
-    subscriber_id: string; payment_id: string; amount: number;
+    subscriber_id: string; payment_id?: string | null; amount: number;
     currency: string; reason: string; refund_method: string;
+    /** The course it is for: a course id, or 'bundle:<id>'. */
+    course_item?: string | null;
   }) => post('/admin/refund-requests/by-admin', payload as unknown as AR),
 
   // ── Orders ──

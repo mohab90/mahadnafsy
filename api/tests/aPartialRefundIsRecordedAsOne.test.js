@@ -39,16 +39,21 @@ test('more than was paid is still refused, and so is nothing', () => {
     'the institute cannot give back more than it took');
 });
 
+// The row is written by insertRefundRow, which a refund with no payment
+// behind it (applyUnlinkedRefund) writes through too.
+const PARTIAL = SOURCE.slice(SOURCE.indexOf('if (isPartial)'), SOURCE.indexOf("UPDATE payments SET status='refunded'"));
+const ROW = SOURCE.slice(SOURCE.indexOf('async function insertRefundRow'), SOURCE.indexOf('async function applyUnlinkedRefund'));
+
 test('the money going out is a row of its own, against the same box', () => {
-  const partial = SOURCE.slice(SOURCE.indexOf('if (isPartial)'), SOURCE.indexOf('if (isPartial)') + 1800);
-  assert.match(partial, /INSERT INTO payments/, 'the refund is recorded as a payment row');
-  assert.match(partial, /-refundedAmount|0 - |negative/i, 'and it is negative');
-  assert.match(partial, /pay\.payment_method/, 'out of the box the money was taken into');
-  assert.match(partial, /postPaymentJournal/, 'with its own journal entry');
+  assert.match(PARTIAL, /insertRefundRow\(/, 'the partial case writes the refund row');
+  assert.match(ROW, /INSERT INTO payments/, 'the refund is recorded as a payment row');
+  assert.match(ROW, /-amount/, 'and it is negative');
+  assert.match(PARTIAL, /pay\.payment_method/, 'out of the box the money was taken into');
+  assert.match(ROW, /postPaymentJournal/, 'with its own journal entry');
 });
 
 test('a partial refund leaves the enrolment and scales the commission', () => {
-  const partial = SOURCE.slice(SOURCE.indexOf('if (isPartial)'), SOURCE.indexOf('if (isPartial)') + 2400);
+  const partial = PARTIAL;
   assert.ok(!partial.includes('revokeCourseEntitlement'),
     'the customer has paid for part of the course and keeps it');
   assert.match(partial, /commission_amount/, 'the commission follows the money that stayed');

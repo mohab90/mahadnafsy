@@ -103,6 +103,10 @@ export function useStaffOwnData({
             receptionId: String(r.reception_id || r.receptionId || ''),
             receptionName: String(r.reception_name || r.receptionName || ''),
             dayOfWeek: (r.day_of_week || r.dayOfWeek || '') as DaqqiRound['dayOfWeek'],
+            // Carried, or the next save of the round sent none and the server
+            // cleared the hall the round was booked in.
+            room: String(r.room || ''),
+            heldWeeks: Array.isArray(r.heldWeeks) ? (r.heldWeeks as string[]) : [],
             startDate: String(r.start_date || r.startDate || '').slice(0, 10),
             timeSlot: (r.time_slot || r.timeSlot || 'مساءً') as DaqqiRound['timeSlot'],
             status: ((r.status || 'new') as string).toLowerCase() as DaqqiRound['status'],
