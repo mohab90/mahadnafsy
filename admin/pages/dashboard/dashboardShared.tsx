@@ -579,6 +579,8 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   // reports and was shown both, then refused by the server.
   overview:           'view_financial',
   kpi_dashboard:      'view_financial',
+  // The owner and the managers, as GET /api/admin/reports/management is.
+  management_reports: 'manage_settings',
   analytics:          'view_reports',
   ask_ai:             'ask_ai',
   ai_dev:             'ai_dev',

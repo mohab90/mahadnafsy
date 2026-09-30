@@ -50,6 +50,7 @@ export type TabKey =
   | 'sales_planning'
   | 'overview'
   | 'kpi_dashboard'
+  | 'management_reports'
   | 'policies'
   | 'about_page'
   | 'home_offer'
@@ -166,6 +167,9 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     icon: LayoutDashboard,
     color: 'text-slate-700',
     items: [
+      // «تقارير الإدارة»: money per branch and department, the best sellers,
+      // the leaders and every team's report, over one period.
+      { key: 'management_reports', label: 'تقارير الإدارة', icon: BarChart3 },
       { key: 'kpi_dashboard', label: 'لوحة KPI للمدير', icon: BarChart3 },
       { key: 'overview', label: 'نظرة عامة', icon: BarChart3 },
       { key: 'activity', label: 'سجل النشاط', icon: Activity },

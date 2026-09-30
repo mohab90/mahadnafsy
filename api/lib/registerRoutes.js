@@ -16,6 +16,7 @@ const routeModules = [
   ['/', '../routes/analytics'],
   ['/', '../routes/crm-advanced'],
   ['/', '../routes/crm-forecast'],
+  ['/', '../routes/management-reports'],
   ['/', '../routes/crm-sequences'],
   ['/', '../routes/crm-quotes'],
   ['/', '../routes/crm-coaching'],

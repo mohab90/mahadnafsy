@@ -11,6 +11,7 @@ import {
 import type { TabKey } from './navigation';
 import { TabErrorBoundary } from '../../../shared/ui/TabErrorBoundary';
 import type { DaqqiRound, LeadItem, SalesTarget, StaffMember, SubscriberItem } from '../../types';
+import { TeamReportPanel } from './tabs/reports/TeamReportPanel';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -126,7 +127,10 @@ export function DashboardGrowthOpsTabs({
     return (
       <Suspense fallback={fallback('border-teal-500')}>
         <TabErrorBoundary>
-          <OnlineTeamTab notify={notify} />
+          <div className="space-y-6">
+            <TeamReportPanel team="online" notify={(type, text) => notify(type, text)} />
+            <OnlineTeamTab notify={notify} />
+          </div>
         </TabErrorBoundary>
       </Suspense>
     );

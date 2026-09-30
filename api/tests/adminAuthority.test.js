@@ -232,7 +232,10 @@ test('each team screen has a figures-only source, and خدمة العملاء ha
   const shared = read(path.join('..', 'admin', 'pages', 'dashboard', 'dashboardShared.tsx'));
   assert.match(shared, /cx_team:\s*\['manage_inbox', 'view_perf_cx'\]/);
   assert.match(read(path.join('..', 'admin', 'pages', 'dashboard', 'dashboardTabGroups.ts')), /'cx_team'/);
-  assert.match(read(path.join('..', 'admin', 'pages', 'dashboard', 'GeneralDashboardTabs.tsx')), /key: 'cx_team', Component: CxTeamTab/);
+  // The team's daily report above it (TeamReportPanel), the scoreboard below.
+  const general = read(path.join('..', 'admin', 'pages', 'dashboard', 'GeneralDashboardTabs.tsx'));
+  assert.match(general, /key: 'cx_team', Component: CxTeamWithReport/);
+  assert.match(general, /function CxTeamWithReport[\s\S]{0,300}<CxTeamTab notify=\{notify\} \/>/);
   assert.match(read(path.join('..', 'admin', 'pages', 'dashboard', 'navigation.tsx')), /key: 'cx_team', label: 'أداء فريق خدمة العملاء'/);
 
   // The two older screens read the server's figures now.

@@ -8,6 +8,7 @@ import SalesPlanningTab from './tabs/SalesPlanningTab';
 import { TabErrorBoundary } from '../../../shared/ui/TabErrorBoundary';
 import type { TabKey } from './navigation';
 import type { NotifyFn } from '../../types';
+import { TeamReportPanel } from './tabs/reports/TeamReportPanel';
 import {
   AnalyticsTab,
   ArchivedClientsTab,
@@ -69,9 +70,20 @@ const spinnerClassByTone: Record<NonNullable<NotifyTabEntry['spinner']>, string>
   amber: 'border-amber-500',
 };
 
+// Each team's daily report opens its team's screen, as the sales team's does.
+function CxTeamWithReport({ notify }: { notify: NotifyFn }) {
+  return (
+    <div className="space-y-6">
+      <TeamReportPanel team="support" notify={(type, text) => notify(type, text)} />
+      <CxTeamTab notify={notify} />
+    </div>
+  );
+}
+
 function DaqqiStatsWithAttendance({ notify }: { notify: NotifyFn }) {
   return (
     <div className="space-y-6">
+      <TeamReportPanel team="daqqi" notify={(type, text) => notify(type, text)} />
       <AnalyticsTab notify={notify} />
       <DaqqiAttendanceTab notify={(message, type) => notify(type || 'info', message)} />
     </div>
@@ -89,7 +101,7 @@ const notifyTabs: NotifyTabEntry[] = [
   { key: 'faq_manager', Component: FaqManagerTab, spinner: 'primary' },
   { key: 'nps_dashboard', Component: NpsDashboardTab, spinner: 'primary' },
   { key: 'daqqi_team', Component: DaqqiTeamTab, spinner: 'primary' },
-  { key: 'cx_team', Component: CxTeamTab, spinner: 'primary' },
+  { key: 'cx_team', Component: CxTeamWithReport, spinner: 'primary' },
   { key: 'daqqi_accounting', Component: FinancialTab, branchFilter: 'daqqi', spinner: 'emerald' },
   { key: 'daqqi_stats', Component: DaqqiStatsWithAttendance, spinner: 'blue' },
   { key: 'financial_reports', Component: FinancialReportsHub, spinner: 'amber' },

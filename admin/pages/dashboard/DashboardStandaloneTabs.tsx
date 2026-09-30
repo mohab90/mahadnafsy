@@ -7,6 +7,7 @@ import {
   DaqqiAttendanceTab,
   CourseWaitlistTab,
   KpiDashboardTab,
+  ManagementReportsTab,
   LiveStreamsTab,
   NotificationsAdminTab,
   QuizzesTab,
@@ -28,6 +29,14 @@ interface DashboardStandaloneTabsProps {
 export function DashboardStandaloneTabs({ activeTab, isSalesOnly, notify }: DashboardStandaloneTabsProps) {
   return (
     <>
+      {activeTab === 'management_reports' && (
+        <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-b-2 border-slate-600" /></div>}>
+          <TabErrorBoundary>
+            <ManagementReportsTab notify={(type, text) => notify(type, text)} />
+          </TabErrorBoundary>
+        </Suspense>
+      )}
+
       {activeTab === 'kpi_dashboard' && (
         <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-b-2 border-indigo-600" /></div>}>
           <KpiDashboardTab notify={notify} />
