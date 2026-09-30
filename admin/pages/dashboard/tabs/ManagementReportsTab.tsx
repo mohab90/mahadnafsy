@@ -4,6 +4,7 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { cairoDateOnly, cairoDaysAgo } from '../../../../shared/cairoDate';
 import { REPORT_RANGES, TEAM_LABELS, type RangeKey, type TeamKey } from './reports/teamReportColumns';
 import { TeamReportTable } from './reports/TeamReportTable';
+import { OwnerWhatsappReportCard } from './reports/OwnerWhatsappReportCard';
 
 /**
  * «تقارير الإدارة»: the institute's money, per branch, department and type,
@@ -107,6 +108,8 @@ export default function ManagementReportsTab({ notify }: { notify: (type: 'succe
           </button>
         </div>
       </header>
+
+      <OwnerWhatsappReportCard notify={notify} />
 
       {!report ? (
         <div className="py-16 text-center text-gray-400">{loading ? 'جارٍ تجهيز التقرير…' : 'مفيش بيانات'}</div>

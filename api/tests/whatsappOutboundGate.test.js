@@ -21,6 +21,7 @@ const KNOWN_CATEGORIES = new Set([
   'staff_alert',   // messages to staff, not customers
   'inbox_reply',   // a staff reply inside the messaging inbox
   'channel_test',  // the "اختبار" button on a channel
+  'owner_report',  // the daily report to the numbers saved in «تقارير الإدارة» — always open
 ]);
 
 const senderFiles = () => {

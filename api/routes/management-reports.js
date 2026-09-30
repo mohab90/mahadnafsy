@@ -10,6 +10,10 @@ const { hasPermission } = require('../constants/permissions');
 const { reportRange } = require('../lib/teamDailyReport');
 const { TEAM_REPORTS } = require('../lib/teamReports');
 const { buildManagementReport } = require('../lib/managementReport');
+const { SECTION, composeOwnerReport, ownerReportSettings, sendOwnerDailyReport } = require('../lib/ownerDailyReport');
+const { setTenantSetting } = require('../lib/tenantSettings');
+const { toDialable } = require('../lib/phoneNumber');
+const { cairoToday } = require('../lib/dates');
 
 const router = express.Router();
 
@@ -45,6 +49,41 @@ router.get('/api/admin/reports/management', requireAuth, requireAdmin, async (re
   try {
     res.json(await buildManagementReport({ tenantId: req.tenantId, ...reportRange(req.query) }));
   } catch (error) { failed(res, error, 'management-report'); }
+});
+
+// «التقرير اليومي على واتساب»: its numbers and hour, and what today's reads.
+router.get('/api/admin/reports/whatsapp', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const settings = await ownerReportSettings(req.tenantId);
+    const today = cairoToday();
+    const report = await buildManagementReport({ tenantId: req.tenantId, from: today, to: today, today });
+    res.json({ ...settings, preview: composeOwnerReport(report) });
+  } catch (error) { failed(res, error, 'owner-report-settings'); }
+});
+
+router.put('/api/admin/reports/whatsapp', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const phones = (Array.isArray(req.body?.phones) ? req.body.phones : String(req.body?.phones || '').split(/[,،\s]+/))
+      .map(phone => String(phone).trim()).filter(Boolean);
+    const invalid = phones.filter(phone => !toDialable(phone));
+    if (invalid.length) return res.status(400).json({ error: `رقم مش صحيح: ${invalid.join('، ')}` });
+    const hour = Number(req.body?.hour);
+    await setTenantSetting(SECTION, {
+      enabled: req.body?.enabled === true,
+      phones: phones.slice(0, 5),
+      hour: Number.isInteger(hour) && hour >= 0 && hour <= 23 ? hour : 21,
+    }, { tenantId: req.tenantId, actorId: req.user?.uid || req.user?.email });
+    res.json({ ok: true, ...(await ownerReportSettings(req.tenantId)) });
+  } catch (error) { failed(res, error, 'owner-report-save'); }
+});
+
+// «ابعت دلوقتي»: today's report, now, to the saved numbers.
+router.post('/api/admin/reports/whatsapp/send-now', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const result = await sendOwnerDailyReport({ tenantId: req.tenantId, force: true });
+    if (result.reason === 'no_numbers') return res.status(400).json({ error: 'احفظ رقم واتساب الأول' });
+    res.json(result);
+  } catch (error) { failed(res, error, 'owner-report-send'); }
 });
 
 module.exports = router;

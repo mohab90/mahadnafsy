@@ -43,11 +43,17 @@ const OUTBOUND_ALLOWED = new Set(
   OUTBOUND_ALLOWLIST_RAW.split(',').map(part => part.trim().toLowerCase()).filter(Boolean)
 );
 
+// Always open, whatever the allowlist: the institute's daily report to the
+// numbers its owner saved in «تقارير الإدارة» (lib/ownerDailyReport.js) — one
+// message a day to its own people, never to a customer, which is not the
+// traffic the allowlist exists to stop.
+const ALWAYS_ALLOWED = new Set(['owner_report']);
+
 function isCategoryAllowed(category) {
   if (OUTBOUND_ALLOW_ALL) return true;
   const name = String(category || '').trim().toLowerCase();
   if (!name) return false;
-  return OUTBOUND_ALLOWED.has(name);
+  return ALWAYS_ALLOWED.has(name) || OUTBOUND_ALLOWED.has(name);
 }
 
 function envSecret(name) {

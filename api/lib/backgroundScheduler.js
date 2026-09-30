@@ -108,6 +108,16 @@ function startBackgroundScheduler({ pool, logger, port }) {
     repeat(dripCampaigns, 15 * 60 * 1000);
   }, 2 * 60 * 1000);
 
+  // «يبعتي تقرير يومي علي الواتس اب بتاعي»: queued once its hour has come,
+  // one a day by its dedupe key.
+  const ownerReports = require('./ownerDailyReport');
+  later(() => {
+    const tick = () => ownerReports.queueDueOwnerReports({ queue, logger })
+      .catch(error => logger.warn('[jobs] owner report tick failed:', error.message));
+    tick();
+    repeat(tick, 10 * 60 * 1000);
+  }, 4 * 60 * 1000);
+
   const outbox = require('./outbox');
   const email = require('./email');
   const sms = require('./otpProvider');
@@ -125,6 +135,13 @@ function startBackgroundScheduler({ pool, logger, port }) {
     lead_score_refresh: scheduledJobs.leadScoreRefresh,
     lead_auto_archive: scheduledJobs.leadAutoArchive,
     subscription_billing: () => subscriptionBilling.runSubscriptionBilling(),
+    // A report that reached no number is retried; a switched-off one is not.
+    owner_daily_report: async ({ tenantId, date }) => {
+      const result = await ownerReports.sendOwnerDailyReport({ tenantId, date });
+      if (!result.sent && result.results?.length) {
+        throw new Error(`owner report not delivered: ${result.results.map(r => r.reason).join(', ')}`);
+      }
+    },
   };
   const worker = async () => {
     try {
