@@ -16,7 +16,7 @@ const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8
 const sees = (role, type) => visibleBroadcastTypes({ role }).includes(type);
 
 test('a broadcast reaches the people it is about, not everyone', () => {
-  for (const type of ['payment', 'lead', 'subscriber', 'delivery_failed', 'ticket', 'refund']) {
+  for (const type of ['payment', 'lead', 'subscriber', 'delivery_failed', 'ticket', 'refund', 'consultation']) {
     assert.equal(sees('sales', type), false, `a sales rep sees every ${type} broadcast`);
   }
   assert.equal(sees('hr', 'payment'), false, 'manage_payments, which every role holds for booking, is not an audience');

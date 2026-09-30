@@ -31,7 +31,7 @@ const TYPE_AUDIENCE = Object.freeze({
   whatsapp: { perms: ['manage_leads'] },
   messenger: { perms: ['manage_leads'] },
   certificate: { perms: ['manage_certificates'] },
-  consultation: { perms: ['view_consultations', 'manage_consultations'], roles: ['support'] },
+  consultation: { perms: ['manage_consultations'], roles: ['support'] },
   community: { perms: ['manage_community'] },
   system: { perms: ADMINS },
   alert: { perms: ADMINS },
