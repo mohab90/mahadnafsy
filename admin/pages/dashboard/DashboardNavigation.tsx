@@ -2,8 +2,8 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Activity, AlarmClock, Banknote, BarChart3, Bell, BookOpen, CalendarDays,
-  ChevronDown, CreditCard, FileText, FolderKanban, Headphones, Image, ListOrdered,
-  LogOut, Menu, Monitor, RotateCcw, Shield, Tag, TrendingUp,
+  CalendarCheck, ChevronDown, CreditCard, FileText, FolderKanban, Headphones, Image, ListOrdered,
+  LogOut, Menu, Monitor, RotateCcw, Shield, Star, Tag, TrendingUp,
   UserCheck, UserCog, UserPlus, UserSearch, Users, Video, Wallet, MessageSquareText,
   type LucideIcon,
 } from 'lucide-react';
@@ -469,8 +469,9 @@ export function DashboardNavigation(props: Props) {
             )}
 
             {/* ── Customer service horizontal nav (no sidebar) ──
-                Both branches' clients and the three desks the section works:
-                complaints, refunds, certificates. No leads, no management. */}
+                Both branches' clients and the desks the section works:
+                complaints, refunds, certificates, consultations and the
+                service hub. No leads, no management. */}
             {isSupport && (
               <CompactRoleNav
                 tabs={[
@@ -480,6 +481,8 @@ export function DashboardNavigation(props: Props) {
                   { key: 'customer_inbox', label: 'المشاكل', icon: Headphones },
                   { key: 'refund_requests', label: 'الاستردادات', icon: RotateCcw },
                   { key: 'cert_requests', label: 'الشهادات', icon: FileText },
+                  { key: 'consultations', label: 'الاستشارات', icon: CalendarCheck },
+                  { key: 'service_hub', label: 'الدعم والجودة', icon: Star },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 currentStaff={currentStaff} salesDataLoading={salesDataLoading}

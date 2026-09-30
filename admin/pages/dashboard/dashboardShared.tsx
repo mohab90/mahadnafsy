@@ -654,7 +654,8 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   faq_manager:        'manage_inbox',
   // Customer service reads refunds on manage_inbox, as the list route does.
   refund_requests:    ['manage_orders', 'manage_inbox'],
-  nps_dashboard:      'view_reports',
+  // Customer service reads satisfaction, as the route allows.
+  nps_dashboard:      ['view_reports', 'manage_inbox'],
   notifications:      'manage_notifications',
   enps_dashboard:      'view_hr',
   offboarding:         'manage_hr',

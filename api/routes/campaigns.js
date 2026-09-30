@@ -11,7 +11,7 @@ const { htmlEmail } = require('../lib/email');
 const { createNotification } = require('../lib/notification');
 const outbox = require('../lib/outbox');
 const { createUnsubscribeToken, verifyUnsubscribeToken, setMarketingConsent, filterSuppressed, destinationHash } = require('../lib/marketingConsent');
-const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requirePermissionOrOwnRows } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requireAnyPermission, requirePermission, requirePermissionOrOwnRows } = require('../middleware/auth');
 const { publicLimiter } = require('../middleware/rateLimits');
 const { assertSafeWebhookUrl } = require('../lib/webhookSecurity');
 const WEBHOOK_EVENTS = new Set([
@@ -463,7 +463,8 @@ router.delete('/api/admin/budgets/:id', requireAuth, requireAdmin, async (req, r
 // ── FEATURE: NPS / Customer Satisfaction ─────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 
-router.get('/api/admin/nps', requireAuth, requireAdmin, async (req, res) => {
+// Customer service reads satisfaction and sends the survey — «جزء الدعم والجودة كله».
+router.get('/api/admin/nps', requireAuth, requireAdminOrStaff, requireAnyPermission('view_reports', 'manage_inbox'), async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT id, subscriber_id, subscriber_email, score, comment, payment_id,
@@ -496,7 +497,7 @@ router.post('/api/nps/respond', publicLimiter, async (req, res) => {
 });
 
 // Admin: manually send NPS to subscriber
-router.post('/api/admin/nps/send', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/nps/send', requireAuth, requireAdminOrStaff, requireAnyPermission('view_reports', 'manage_inbox'), async (req, res) => {
   let conn;
   try {
     const { subscriber_id } = req.body;

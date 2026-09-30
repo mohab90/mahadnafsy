@@ -232,6 +232,9 @@ const ROLE_PERMS = Object.freeze({
   // manage_inbox is what opens the refunds list for this role; deciding a
   // refund stays with approve_refunds. view_orders is the payment history in
   // a client's file, not the orders screen, which is not on this role's bar.
+  // «خليهم يشوفو الاستشارات وصفحه رسائل التواصل او جزء الدعم والجودة كله»:
+  // the bookings desk and the whole service hub (tickets, contact messages,
+  // FAQ, satisfaction).
   [ROLES.SUPPORT]: [
     'view_dashboard',
     'view_subscribers', 'manage_subscribers',
@@ -239,6 +242,8 @@ const ROLE_PERMS = Object.freeze({
     'manage_daqqi',
     'manage_inbox',
     'manage_certificates',
+    'view_consultations', 'manage_consultations',
+    'view_contacts', 'manage_contacts',
     'bulk_whatsapp',
     'ask_ai',
   ],

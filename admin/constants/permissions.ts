@@ -324,6 +324,8 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
     'manage_daqqi',
     'manage_inbox',
     'manage_certificates',
+    'view_consultations', 'manage_consultations',
+    'view_contacts', 'manage_contacts',
     'bulk_whatsapp',
     'ask_ai',
   ],
