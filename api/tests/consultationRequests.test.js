@@ -101,7 +101,7 @@ test('every way of paying goes through the same consultation', () => {
   const paymob = read('api/routes/public-orders.js');
   assert.match(paymob, /if \(String\(order\.type \|\| ''\)\.toUpperCase\(\) === 'CONSULTATION'\) \{/);
   assert.ok(!paymob.includes('INSERT IGNORE INTO consultations'), 'the card path wrote its own row, from data the checkout never sent');
-  assert.match(read('api/routes/notifications.js'), /consultation: \['view_consultations', 'manage_consultations'\]/);
+  assert.match(read('api/lib/notificationAudience.js'), /consultation: \{ perms: \['view_consultations', 'manage_consultations'\]/);
 });
 
 test('changing a booking\'s status keeps its notes and meeting link', () => {

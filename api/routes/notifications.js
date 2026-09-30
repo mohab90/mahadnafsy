@@ -6,29 +6,15 @@ const router = express.Router();
 const { pool } = require('../lib/db');
 const { ensureNotificationsTable } = require('../lib/notification');
 const { requireAuth, requireAdminOrStaff, requirePermission, requirePermissionOrOwnRows } = require('../middleware/auth');
-const { hasPermission: _hasPermission } = require('../constants/permissions');
+const { visibleBroadcastTypes, TYPE_AUDIENCE } = require('../lib/notificationAudience');
 
 const viewerKey = req => req.staffRecord?.id
   ? `staff:${req.staffRecord.id}`
   : `admin:${req.user?.uid || String(req.user?.email || '').toLowerCase()}`;
 
-// Which permission a broadcast of each type requires to be worth showing. A
-// notification addressed to a person by name is always theirs; these govern the
-// unaddressed ones, which is where "every notification in the system" would
-// otherwise mean an accountant reading HR notices and a receptionist reading
-// refund decisions. A type absent from this map is general and goes to everyone.
-const TYPE_PERMISSION = Object.freeze({
-  payment: ['view_financial', 'manage_financial', 'manage_payments'],
-  refund: ['view_financial', 'manage_financial'],
-  hr: ['view_hr', 'manage_hr'],
-  ticket: ['manage_inbox', 'manage_support', 'view_support'],
-  lead: ['manage_leads', 'view_leads'],
-  subscriber: ['manage_subscribers', 'view_client_db'],
-  certificate: ['manage_certificates'],
-  consultation: ['view_consultations', 'manage_consultations'],
-  system: ['manage_settings', 'manage_security'],
-  alert: ['manage_settings', 'manage_security'],
-});
+// What the bell holds: the last 30 days. Older broadcasts are not news, and a
+// new employee opened a bell reading thousands unread.
+const WINDOW_SQL = ' AND n.created_at >= NOW() - INTERVAL 30 DAY';
 
 /**
  * The bell used to be gated on manage_notifications / manage_inbox, so an
@@ -40,10 +26,8 @@ const TYPE_PERMISSION = Object.freeze({
 const visibilitySql = req => {
   if (req.isSuperAdmin) return { sql: '', params: [] };
   const staffId = req.staffRecord?.id || '';
-  const allowedTypes = Object.entries(TYPE_PERMISSION)
-    .filter(([, perms]) => perms.some(perm => _hasPermission(req.staffRecord, perm)))
-    .map(([type]) => type);
-  const restricted = Object.keys(TYPE_PERMISSION);
+  const allowedTypes = visibleBroadcastTypes(req.staffRecord);
+  const restricted = Object.keys(TYPE_AUDIENCE);
 
   // Mine, or a broadcast whose type I am cleared for, or a general broadcast.
   const typeClause = allowedTypes.length
@@ -66,12 +50,21 @@ router.get('/api/admin/notifications', requireAuth, requireAdminOrStaff, require
          FROM notifications n
          LEFT JOIN notification_reads r
            ON r.notification_id=n.id AND r.tenant_id=n.tenant_id AND r.viewer_key=?
-        WHERE n.tenant_id=?${visibility.sql}
+        WHERE n.tenant_id=?${WINDOW_SQL}${visibility.sql}
         ORDER BY n.created_at DESC LIMIT 100`,
       [viewerKey(req), req.tenantId, ...visibility.params]
     );
-    const unread = rows.filter(r => !r.read_at).length;
-    res.json({ rows, unread });
+    // Counted over everything the viewer can see, not the 100 rows sent: the
+    // badge read «99» for anyone with more unread than fit on the list.
+    const [[{ unread }]] = await pool.query(
+      `SELECT COUNT(*) AS unread
+         FROM notifications n
+         LEFT JOIN notification_reads r
+           ON r.notification_id=n.id AND r.tenant_id=n.tenant_id AND r.viewer_key=?
+        WHERE n.tenant_id=?${WINDOW_SQL}${visibility.sql} AND r.read_at IS NULL AND n.read_at IS NULL`,
+      [viewerKey(req), req.tenantId, ...visibility.params]
+    );
+    res.json({ rows, unread: Number(unread) || 0 });
   } catch (e) {
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });

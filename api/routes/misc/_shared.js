@@ -131,7 +131,7 @@ async function runFollowUpReminders(tenantId = DEFAULT_TENANT) {
     // Leads due for follow-up today
     const [leads] = await pool.query(`
       SELECT l.id, l.name, l.phone, l.email,
-             l.next_follow_up_date, l.status, l.source,
+             l.next_follow_up_date, l.status, l.source, l.assigned_sales_id,
              st.name AS staff_name, st.phone AS staff_phone, st.email AS staff_email
       FROM leads l
       LEFT JOIN staff st ON st.id = l.assigned_sales_id AND st.tenant_id = l.tenant_id
@@ -176,10 +176,11 @@ async function runFollowUpReminders(tenantId = DEFAULT_TENANT) {
         }).catch(() => {});
       }
 
-      // Push admin notification
-      createNotification('info', `تذكير متابعة: ${lead.name}`,
-        `موعد متابعة ${lead.name} (${lead.staff_name || 'غير محدد'}) — اليوم`,
-        { link: '/dashboard?tab=leads', leadId: lead.id }, tenantId
+      // To the rep whose follow-up it is, as one line for the day; to
+      // management only while the lead has nobody.
+      createNotification('info', '📞 متابعات النهارده', `${lead.name} — موعد متابعته النهارده`,
+        { link: '/dashboard?tab=leads', leadId: lead.id, lastName: lead.name }, tenantId, lead.assigned_sales_id || null,
+        { coalesceMinutes: 24 * 60, summarize: (count, data) => `عندك ${count} متابعة النهارده — آخرهم ${data.lastName || 'ليد'}` }
       ).catch(() => {});
 
       // Log to avoid re-send

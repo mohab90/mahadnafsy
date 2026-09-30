@@ -870,7 +870,7 @@ async function recordSubscriberPayment(req, res) {
     }
     // Notify admins of new payment
     if (isPaid) {
-      createNotification('payment', '💰 دفعة جديدة', `دفعة ${payment.amount} ${payment.currency || 'EGP'} من مشترك`, { subscriberId: subscriber_id, paymentId: id, amount: payment.amount }, req.tenantId).catch(() => {});
+      createNotification('payment', '💰 دفعة جديدة', `${subRow.name || 'عميل'} — ${payment.amount} ${payment.currency || 'EGP'}${req.staffRecord?.name ? ` · سجّلها ${req.staffRecord.name}` : ''}`, { subscriberId: subscriber_id, paymentId: id, amount: payment.amount }, req.tenantId).catch(() => {});
       // Send receipt email to subscriber
       if (subRow.email) {
         let courseLabel = '';

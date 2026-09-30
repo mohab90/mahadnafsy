@@ -160,6 +160,12 @@ async function announceDeadLetter(row, error) {
     },
     row.tenant_id,
     systemic ? null : staffId,
+    // Still unread, the same alert grows a count instead of a new row: an
+    // outage stays one line for the day, a run of undelivered messages one
+    // line per owner.
+    systemic
+      ? { coalesceMinutes: 24 * 60, summarize: count => `فشل الإرسال على القناة كلها (${count} مرة النهارده): ${String(error?.message || error || '').slice(0, 120)}` }
+      : { coalesceMinutes: 60, summarize: count => `${count} رسالة ${channelLabel} لم تصل — آخرها ${name ? `${name} — ` : ''}${recipient}` },
   );
 }
 

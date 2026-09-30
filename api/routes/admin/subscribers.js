@@ -1017,7 +1017,8 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
     }
     // Notify admins of new subscriber registration
     if (isNewSub) {
-      createNotification('subscriber', '🎉 مشترك جديد', `${safeName || 'مشترك جديد'} انضم للمنصة`, { subscriberId: id, phone: safePhone }, tenantId).catch(() => {});
+      createNotification('subscriber', '🎉 مشتركين جدد', `${safeName || 'مشترك جديد'} انضم للمنصة`, { subscriberId: id, lastName: safeName }, tenantId, null,
+        { coalesceMinutes: 60, summarize: (count, data) => `${count} مشترك جديد انضموا — آخرهم ${data.lastName || 'مشترك'}` }).catch(() => {});
     }
   } catch (e) {
     if (e.code === 'ER_DUP_ENTRY' && e.message.includes('email')) {

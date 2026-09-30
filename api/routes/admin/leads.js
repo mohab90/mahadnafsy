@@ -332,11 +332,16 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
         await conn.query('UPDATE leads SET next_follow_up_date=? WHERE id=? AND tenant_id=? AND next_follow_up_date IS NULL', [followUpDate, id, tenantId]);
         await logLeadEventStrict(id, 'followup_set', `موعد متابعة تلقائي: ${followUpDate}`, { date: followUpDate, auto: true }, tenantId, conn);
       }
-      // Notify assigned sales staff (or all admins) of new lead
-      postCommitNotifications.push(() => createNotification('lead', '📋 ليد جديد',
-        `${safeName || 'مجهول'} — ${safeSource || 'بدون مصدر'}${safePhone ? ' | ' + safePhone : ''}`,
-        { leadId: id, assignedSalesId: salesId }, tenantId
-      ));
+      // To the rep who has it, or to management while nobody does — one line
+      // per burst, not one row per lead for the whole of sales.
+      const leadLine = `${safeName || 'مجهول'} — ${safeSource || 'بدون مصدر'}`;
+      postCommitNotifications.push(() => (salesId
+        ? createNotification('lead', '📋 ليدز جديدة ليك', leadLine,
+          { leadId: id, lastName: safeName }, tenantId, salesId,
+          { coalesceMinutes: 30, summarize: (count, data) => `اتضاف ليك ${count} ليد جديد — آخرهم ${data.lastName || 'ليد'}` })
+        : createNotification('lead', '📋 ليدز جديدة مستنية توزيع', leadLine,
+          { leadId: id, lastName: safeName }, tenantId, null,
+          { coalesceMinutes: 30, summarize: (count, data) => `${count} ليد جديد مستني توزيع — آخرهم ${data.lastName || 'ليد'}` })));
       // Welcome the lead automatically, same journey step the public capture
       // forms and website registration use — a lead added by staff was the one
       // door that produced no welcome at all. Queued through the outbox (retry +
@@ -356,10 +361,11 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
       // Assignment changed?
       if (crmData.assignedSalesId && crmData.assignedSalesId !== prevCrm.assignedSalesId) {
         await logLeadEventStrict(id, 'assigned', `تعيين لـ: ${crmData.assignedSalesName || crmData.assignedSalesId}`, { salesId: crmData.assignedSalesId, salesName: crmData.assignedSalesName }, tenantId, conn);
-        postCommitNotifications.push(() => createNotification('lead', '👤 تعيين ليد',
-          `${safeName || 'ليد'} تم تعيينه لـ: ${crmData.assignedSalesName || crmData.assignedSalesId}`,
-          { leadId: id, assignedSalesId: crmData.assignedSalesId, assignedSalesName: crmData.assignedSalesName }, tenantId
-        ));
+        // To the rep it was handed to. It went to every sales account,
+        // naming whoever got it — 1,182 of these in one week.
+        postCommitNotifications.push(() => createNotification('lead', '👤 ليدز اتعينت ليك',
+          safeName || 'ليد', { leadId: id, lastName: safeName }, tenantId, crmData.assignedSalesId,
+          { coalesceMinutes: 30, summarize: (count, data) => `اتعين ليك ${count} ليد — آخرهم ${data.lastName || 'ليد'}` }));
       }
       // Follow-up date set/changed?
       if (crmData.nextFollowUpDate && crmData.nextFollowUpDate !== prevCrm.nextFollowUpDate) {
