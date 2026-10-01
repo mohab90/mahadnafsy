@@ -470,10 +470,15 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
           error.statusCode = 400;
           throw error;
         }
+        // A client with no number of their own — a family number kept on one
+        // member, a certificate-only client — is a client all the same. The
+        // roster's phone is NOT NULL, so their NULL failed the insert and took
+        // the whole save down with a 500 («Column 'phone' cannot be null»,
+        // eight times on 1 Oct 2026): their other number, else none.
         const [attendeeInsert] = await conn.query(
           `INSERT INTO daqqi_attendees
              (round_id,subscriber_id,tenant_id,name,phone,booked_at,amount_paid,attended_lectures)
-           SELECT ?,s.id,?,s.name,s.phone,?,
+           SELECT ?,s.id,?,s.name,COALESCE(NULLIF(s.phone,''), NULLIF(s.whatsapp,''), ''),?,
              COALESCE((
                SELECT SUM(p.amount_egp) FROM payments p
                 WHERE p.tenant_id=s.tenant_id AND p.subscriber_id=s.id

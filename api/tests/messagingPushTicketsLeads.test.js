@@ -5,7 +5,7 @@
 // stay closed; a health card and a resend bounded to recent messages; staff
 // phones that receive the bell; tickets no queue saw, and tickets that never
 // closed; a call logged as it is placed; the owner's payments credited to an
-// employee; leads left waiting under the day's caps; Dokki clients in no round;
+// employee; leads left waiting under the day's caps;
 // confirmations that say what they confirm; schema.sql as production has it;
 // and a course page a search engine reads as a course.
 
@@ -319,13 +319,6 @@ test('the owner names who brought a payment, the name rides on that payment only
   assert.doesNotMatch(modal, /useSiteData\(\)/);
   // The server keeps the name it is given only from someone who may approve.
   assert.match(read('api/routes/subscriber-payments.js'), /: \(requestedStaffId \|\| req\.staffRecord\?\.id \|\| null\);/);
-});
-
-test('Dokki shows the clients booked on a running round\'s course and in no round', () => {
-  const dokki = read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx');
-  assert.match(dokki, /&& isEnrolledInCourse\(bundles, sub\.enrolledCourseIds \|\| \[\], round\.courseId\)\)\.length/);
-  // The API lower-cases a round's status (routes/daqqi-rounds.js), so 'finished' is the word.
-  assert.match(dokki, /\.filter\(round => round\.status !== 'finished'\)/);
 });
 
 test('a confirmation says what it confirms, not «delete» by default', () => {

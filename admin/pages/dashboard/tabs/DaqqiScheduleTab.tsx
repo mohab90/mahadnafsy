@@ -13,6 +13,7 @@ import type {
   Bundle, Course,
 } from '../../../types';
 import { DaqqiScheduleHeader } from './daqqi/DaqqiScheduleHeader';
+import { DaqqiOverviewStrip } from './daqqi/DaqqiOverviewStrip';
 import { DaqqiCommunicationModal } from './daqqi/DaqqiCommunicationModal';
 import { DaqqiRoundEditorModal } from './daqqi/DaqqiRoundEditorModal';
 import { blankPaymentDraft, type PaymentDraft } from '../../../components/PaymentModal';
@@ -28,8 +29,8 @@ import {
   blankDaqqiDraft,
   calcCurrentLecture,
   enrolledLabels,
+  daqqiOverview,
   getCurrentWeekKey,
-  isEnrolledInCourse,
   normalizeDaqqiBranchId,
   parseDaqqiBranchIds,
   type DaqqiDraftType,
@@ -207,17 +208,13 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
   const timeSlotColors = DAQQI_TIME_SLOT_COLORS;
   const assignedSubIds = new Set(daqqiRounds.flatMap(r => r.attendees.map(a => a.subscriberId)));
 
-  // «الدقي: الحضور صفر». On 1 Oct the 13 rounds held no one: 1,920 Dokki
-  // clients, none placed. For each round still running, the clients booked on
-  // its course and in no round — placed from here in two taps.
-  const unplacedByRound = daqqiRounds
-    .filter(round => round.status !== 'finished')
-    .map(round => ({
-      round,
-      count: daqqiSubs.filter(sub => !assignedSubIds.has(sub.id)
-        && isEnrolledInCourse(bundles, sub.enrolledCourseIds || [], round.courseId)).length,
-    }))
-    .filter(entry => entry.count > 0);
+  // The branch in numbers, above the schedule. (A list of «سكّن N» per round sat
+  // here for a day: the same people counted once for every round of their
+  // course, sixteen lines of it — one figure says it.)
+  const overview = daqqiOverview({
+    rounds: daqqiRounds, clients: daqqiSubs, bundles, weekKey: getCurrentWeekKey(),
+    priceOf: courseId => courses.find(course => course.id === courseId)?.price?.EGP ?? 0,
+  });
 
   const handleInitCreateRound = () => {
     if (!daqqiDraft.courseId || !daqqiDraft.instructorId || !daqqiDraft.receptionId || !daqqiDraft.startDate) {
@@ -272,9 +269,12 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
   const handleAddClientsToRound = async () => {
     const round = daqqiRounds.find(r => r.id === daqqiAddClientsRoundId);
     if (!round) return;
-    const newSubs = subscribers.filter(
-      s => daqqiBranchIds.has(s.branch || '') && daqqiAddClientsSel.has(s.id) && !round.attendees.find(a => a.subscriberId === s.id)
+    // The same list the dialog offers: filtered on the branch id alone, a client
+    // whose branch is spelt another way was ticked and silently left out.
+    const newSubs = daqqiSubs.filter(
+      s => daqqiAddClientsSel.has(s.id) && !round.attendees.find(a => a.subscriberId === s.id)
     );
+    if (!newSubs.length) { notify('info', 'اختار عميل واحد على الأقل مش موجود في الروند.'); return; }
     const newAttendees = [
       ...round.attendees,
       ...newSubs.map(s => {
@@ -289,6 +289,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
       notify('error', 'تعذر إضافة العملاء إلى الروند.');
       return;
     }
+    notify('success', `اتسكّن ${newSubs.length.toLocaleString('ar-EG-u-nu-latn')} عميل في روند ${round.code || ''}.`);
     setDaqqiAddClientsRoundId('');
     setDaqqiAddClientsSel(new Set());
     setDaqqiAddClientsCourseSel({});
@@ -573,23 +574,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
 
 
 
-      {unplacedByRound.length > 0 && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 space-y-2">
-          <p className="text-sm font-extrabold text-amber-900">عملاء حاجزين ومش مسكّنين في روند</p>
-          <div className="flex flex-wrap gap-1.5">
-            {unplacedByRound.map(({ round, count }) => {
-              const course = courses.find(item => item.id === round.courseId);
-              return (
-                <button key={round.id} type="button"
-                  onClick={() => { setDaqqiAddClientsRoundId(round.id); setDaqqiAddClientsSel(new Set()); }}
-                  className="rounded-xl border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-amber-900 hover:bg-amber-100">
-                  {course?.titleAr || course?.title || round.courseId} — {round.dayOfWeek} {round.timeSlot}: سكّن {count.toLocaleString('ar-EG-u-nu-latn')}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      <DaqqiOverviewStrip overview={overview} />
 
       {/* The clients table that sat here was removed by request — this page is
           the schedule. Adding a client moved to the header. */}
@@ -637,23 +622,29 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
               </button>
             )}
           </div>
-          <div className="overflow-x-auto rounded-xl border border-gray-200">
-            <table className="w-full text-sm min-w-[1050px]">
+          {/* «خلي تصميم الجدول علي اد الصفحه ميبقاش في سكرول يمين وشمال»:
+              ten columns at fixed shares of the page in place of thirteen
+              spread over 1,050px — day, slot, date and hall share a cell, as
+              do the lecturer and the reception. «المحصّل» and «المتبقي» stay
+              apart, as asked on 30 Sep. Only a screen under 1,024px, too narrow for nine, still scrolls. */}
+          <div className="overflow-x-auto rounded-xl border border-gray-200 lg:overflow-x-visible">
+            <table className="w-full table-fixed text-sm min-w-[920px] lg:min-w-0">
+              <colgroup>
+                <col className="w-[5%]" /><col className="w-[15%]" /><col className="w-[12%]" /><col className="w-[12%]" /><col className="w-[9%]" />
+                <col className="w-[7%]" /><col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[16%]" />
+              </colgroup>
               <thead>
                 <tr className="bg-gray-50 text-gray-700 text-xs">
-                  <th className="text-right px-3 py-2.5 border-b border-gray-200 font-semibold">الكود</th>
-                  <th className="text-right px-3 py-2.5 border-b border-gray-200 font-semibold">الكورس</th>
-                  <th className="text-right px-3 py-2.5 border-b border-gray-200 font-semibold">اليوم / التاريخ</th>
-                  <th className="text-right px-3 py-2.5 border-b border-gray-200 font-semibold">الموعد</th>
-                  <th className="text-right px-3 py-2.5 border-b border-gray-200 font-semibold">المحاضر</th>
-                  <th className="text-right px-3 py-2.5 border-b border-gray-200 font-semibold">الريسبشن</th>
-                  <th className="text-right px-3 py-2.5 border-b border-gray-200 font-semibold">القاعة</th>
-                  <th className="text-right px-3 py-2.5 border-b border-gray-200 font-semibold">الحالة</th>
-                  <th className="text-right px-3 py-2.5 border-b border-gray-200 font-semibold">المحاضرة</th>
-                  <th className="text-right px-3 py-2.5 border-b border-gray-200 font-semibold">المحصّل</th>
-                  <th className="text-right px-3 py-2.5 border-b border-gray-200 font-semibold">المتبقي</th>
-                  <th className="text-right px-3 py-2.5 border-b border-gray-200 font-semibold">الحاضرين</th>
-                  <th className="text-right px-3 py-2.5 border-b border-gray-200 font-semibold">إجراءات</th>
+                  <th className="text-right px-2 py-2.5 border-b border-gray-200 font-semibold">الكود</th>
+                  <th className="text-right px-2 py-2.5 border-b border-gray-200 font-semibold">الكورس</th>
+                  <th className="text-right px-2 py-2.5 border-b border-gray-200 font-semibold">الميعاد والقاعة</th>
+                  <th className="text-right px-2 py-2.5 border-b border-gray-200 font-semibold">المحاضر والريسبشن</th>
+                  <th className="text-right px-2 py-2.5 border-b border-gray-200 font-semibold">الحالة</th>
+                  <th className="text-center px-1 py-2.5 border-b border-gray-200 font-semibold whitespace-nowrap">المحاضرة</th>
+                  <th className="text-right px-2 py-2.5 border-b border-gray-200 font-semibold whitespace-nowrap">المحصّل</th>
+                  <th className="text-right px-2 py-2.5 border-b border-gray-200 font-semibold whitespace-nowrap">المتبقي</th>
+                  <th className="text-right px-1 py-2.5 border-b border-gray-200 font-semibold whitespace-nowrap">الحاضرين</th>
+                  <th className="text-right px-2 py-2.5 border-b border-gray-200 font-semibold">إجراءات</th>
                 </tr>
               </thead>
               <tbody>
