@@ -24,6 +24,7 @@ const { repTakesLead } = require('../lib/leadAssignmentPolicy');
 const { excludeArchiveSourcesSql } = require('../lib/leadArchive');
 const { resolveClientContext } = require('../lib/clientContext');
 const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
+const { ensureSubscriberForOrder } = require('../lib/subscriberProvisioning');
 const { phoneIdentityClause } = require('../lib/leadMatching');
 const { isRealPhone } = require('../lib/phoneNumber');
 const { capturePublicLead } = require('../lib/publicLead');
@@ -334,7 +335,17 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
     // email at all and used to be turned away here — unable to buy anything.
     const identity = await resolveSubscriberRow(req, ['id', 'lead_id', 'email', 'phone']);
     const accountEmail = String(email || identity?.email || '').toLowerCase().trim();
-    if (!accountEmail && !identity) return res.status(401).json({ error: 'Authenticated customer required' });
+    // A new customer signs up with a number alone and has no client record until
+    // they buy: no email, no record — and this turned them away with a 401. From
+    // 8 Sep 2026 every order attempted on the site was refused here (19 of 19).
+    // The account's own number is the identity; their record is opened below.
+    let accountPhone = '';
+    if (!accountEmail && !identity) {
+      const [[account]] = await pool.query(
+        'SELECT phone FROM users WHERE id=? AND tenant_id=? AND is_active=1 LIMIT 1', [uid, scopedTenantId(req)]);
+      accountPhone = String(account?.phone || '').trim();
+      if (!accountPhone) return res.status(401).json({ error: 'Authenticated customer required' });
+    }
     const normalizedType = String(itemType || '').toLowerCase();
     if (!['course', 'bundle', 'consultation', 'certificate'].includes(normalizedType)) {
       return res.status(400).json({ error: 'Invalid item type' });
@@ -354,7 +365,8 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
     const normalizedEmail = accountEmail || requestedEmail;
     // «متخلص السيستم يقبل عميل دفع بدون رقم تليفون حقيقي»: the order carries a
     // number the institute can reach — the one typed here, else the account's.
-    if (!isRealPhone(String(customerPhone || identity?.phone || '').trim())) {
+    const contactPhone = String(customerPhone || identity?.phone || accountPhone || '').trim();
+    if (!isRealPhone(contactPhone)) {
       return res.status(400).json({
         error: 'اكتب رقم موبايل صحيح (واتساب) علشان نتواصل معاك بخصوص الطلب — مصري أو بكود الدولة.',
         code: 'PHONE_REQUIRED',
@@ -524,12 +536,22 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
     transactionStarted = true;
     // Locked by id: the subscriber was already resolved from the account, so the
     // body cannot steer this at somebody else's record.
-    const [[subscriber]] = identity
+    let [[subscriber]] = identity
       ? await conn.query(
         'SELECT id, lead_id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
         [identity.id, tenantId]
       )
       : [[null]];
+    // The account with a number and no email: its client record is opened here,
+    // tied to the account, so the order has an owner — the receipt upload and the
+    // card confirmation both find the customer through it. The email typed on
+    // the form is contact detail, not identity, and is not written to the record.
+    if (!subscriber && !accountEmail) {
+      subscriber = await ensureSubscriberForOrder(conn, {
+        tenantId, uid, email: '', name: String(customerName || '').trim(), phone: accountPhone,
+        fallbackBranch: branch, fallbackBranchId: branchId,
+      });
+    }
     if (paymentLink) {
       const [[lockedLink]] = await conn.query(
         `SELECT id,subscriber_id,expires_at,used_at
@@ -570,7 +592,7 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       [leadId, tenantId,
        String(customerName || normalizedEmail.split('@')[0] || 'عميل').trim().slice(0, 255),
        normalizedEmail || null,
-       String(customerPhone || identity?.phone || '').trim().slice(0, 50), branch, branchId, crmJson]
+       contactPhone.slice(0, 50), branch, branchId, crmJson]
     );
     // Reuse of a recent pending order is keyed on the customer. With no email the
     // subscriber link is the only safe key — matching on customer_email='' would
@@ -608,7 +630,7 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
          customer_phone=VALUES(customer_phone), notes=VALUES(notes), tenant_id=VALUES(tenant_id), branch_id=VALUES(branch_id)`,
       [orderId, subscriber?.id || null, itemId || normalizedType, canonicalTitle || normalizedType,
        normalizedType.toUpperCase(), expectedAmount, expectedCurrency,
-       String(customerName || '').trim().slice(0, 255), normalizedEmail || null, String(customerPhone || identity?.phone || '').trim().slice(0, 50),
+       String(customerName || '').trim().slice(0, 255), normalizedEmail || null, contactPhone.slice(0, 50),
        normalizedType === 'course' ? itemId : null, normalizedType === 'bundle' ? itemId : null,
        notes, tenantId, branchId]
     );
@@ -631,7 +653,7 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       openedConsultation = await openConsultationRequest(conn, {
         tenantId, orderId, branchId, subscriberId: subscriber?.id || null,
         name: String(customerName || '').trim() || normalizedEmail.split('@')[0],
-        email: normalizedEmail || null, phone: String(customerPhone || identity?.phone || '').trim(),
+        email: normalizedEmail || null, phone: contactPhone,
         therapistId: consultationBooking.therapistId, sessionDate: consultationBooking.sessionDate,
         slot: consultationBooking.slot, sessionType: req.body?.sessionType, source: consultationBooking.source,
         amount: expectedAmount, currency: expectedCurrency, durationMinutes: consultationBooking.durationMinutes,

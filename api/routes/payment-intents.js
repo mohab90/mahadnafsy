@@ -5,6 +5,7 @@ const router = express.Router();
 const logger = require('../lib/logger').child({ module: 'payment-intents-route' });
 const { pool } = require('../lib/db');
 const { ensureSubscriberForOrder } = require('../lib/subscriberProvisioning');
+const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { getOrCreatePaymentIntent } = require('../lib/paymentIntents');
 const { requireAuth } = require('../middleware/auth');
 const { publicLimiter } = require('../middleware/rateLimits');
@@ -26,31 +27,42 @@ router.post('/api/me/payment-intents', requireAuth, publicLimiter, async (req, r
     const email = String(req.user?.email || '').toLowerCase().trim();
     const orderId = String(req.body?.order_id || '').trim();
     const provider = String(req.body?.provider || 'manual').toLowerCase();
-    if (!email || !orderId) return res.status(400).json({ error: 'order_id and authenticated email required' });
+    if (!orderId) return res.status(400).json({ error: 'order_id required' });
+    // The order is the customer's by its client link or by the account's email.
+    // Requiring the email turned away every client who signs in with a number —
+    // most of them — at the step before the transfer receipt.
+    const identity = await resolveSubscriberRow(req, ['id', 'email']);
+    const ownerEmail = email || String(identity?.email || '').toLowerCase().trim();
+    if (!identity && !ownerEmail) return res.status(400).json({ error: 'authenticated identity required' });
     if (provider !== 'manual') {
       return res.status(503).json({ error: 'Online payment is disabled pending provider approval', code: 'PAYMOB_DISABLED' });
     }
     await conn.beginTransaction();
     started = true;
+    const ownership = [];
+    const ownershipParams = [];
+    if (identity?.id) { ownership.push('subscriber_id=?'); ownershipParams.push(identity.id); }
+    if (ownerEmail) { ownership.push('LOWER(TRIM(customer_email))=?'); ownershipParams.push(ownerEmail); }
     const [[order]] = await conn.query(
       `SELECT id,amount,currency,status,customer_name,customer_phone,customer_email,
               subscriber_id,tenant_id,branch_id
          FROM orders
-        WHERE id=? AND tenant_id=? AND LOWER(TRIM(customer_email))=?
+        WHERE id=? AND tenant_id=? AND (${ownership.join(' OR ')})
         LIMIT 1 FOR UPDATE`,
-      [orderId, tenantId, email]
+      [orderId, tenantId, ...ownershipParams]
     );
     if (!order) return await rollback(conn, res, 404, 'Order not found');
     if (String(order.status).toLowerCase() !== 'pending') {
       return await rollback(conn, res, 409, 'Order is not pending payment');
     }
     const subscriber = await ensureSubscriberForOrder(conn, {
-      tenantId, uid: req.user.uid, email, name: order.customer_name, phone: order.customer_phone,
+      tenantId, uid: req.user.uid, subscriberId: identity?.id || null, email: ownerEmail,
+      name: order.customer_name, phone: order.customer_phone,
       fallbackBranch: branchForId(order.branch_id), fallbackBranchId: order.branch_id,
     });
     await conn.query('UPDATE orders SET subscriber_id=? WHERE id=? AND tenant_id=?', [subscriber.id, order.id, tenantId]);
     const intent = await getOrCreatePaymentIntent(conn, {
-      tenantId, order, subscriberId: subscriber.id, actor: req.user.uid || email, provider,
+      tenantId, order, subscriberId: subscriber.id, actor: req.user.uid || ownerEmail, provider,
       idempotencyKey: req.get('Idempotency-Key') || req.body?.idempotency_key,
     });
     await conn.commit();

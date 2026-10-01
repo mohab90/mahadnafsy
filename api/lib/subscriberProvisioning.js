@@ -16,30 +16,76 @@
 const { uuidv4 } = require('./id');
 const { getNextClientCode } = require('./mappers');
 const { toIdentity } = require('./phoneNumber');
+const { phoneVariants } = require('./subscriberIdentity');
+const { findLeadByContact } = require('./leadMatching');
 const logger = require('./logger');
 
 // Must run inside an existing transaction on `conn` (uses FOR UPDATE locks).
 // Returns { id, lead_id, branch, branch_id } — either the existing subscriber
 // row or a newly-created one linked to a matching lead when found.
+//
+// The customer is known by an email, by their account (uid), by the client an
+// order already names (subscriberId) or by their number. An email used to be
+// required — and signup has asked for a number alone since WhatsApp sign-in, so
+// every new customer, and every client imported from the sheets, had none:
+// from 8 Sep 2026 not one order was placed on the site (19 attempts, 19 refused).
 async function ensureSubscriberForOrder(conn, {
-  tenantId, uid = null, email, name, phone = '', fallbackBranch = 'ONLINE_EGYPT', fallbackBranchId = null,
+  tenantId, uid = null, subscriberId = null, email, name, phone = '', fallbackBranch = 'ONLINE_EGYPT', fallbackBranchId = null,
 }) {
   const normalizedEmail = String(email || '').toLowerCase().trim();
-  if (!normalizedEmail) throw new Error('ensureSubscriberForOrder requires a customer email');
+  if (!normalizedEmail && !uid && !subscriberId && !toIdentity(phone)) {
+    throw new Error('ensureSubscriberForOrder requires an identity: an email, an account, a client or a number');
+  }
 
-  let [[sub]] = await conn.query(
-    'SELECT id, lead_id, branch, branch_id, assigned_sales_id, tenant_id FROM subscribers WHERE tenant_id=? AND (firebase_uid=? OR LOWER(TRIM(email))=?) LIMIT 1 FOR UPDATE',
-    [tenantId, uid || '', normalizedEmail]
-  );
+  const COLUMNS = 'id, lead_id, branch, branch_id, assigned_sales_id, tenant_id';
+  let sub = null;
+  if (subscriberId) {
+    [[sub]] = await conn.query(
+      `SELECT ${COLUMNS} FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
+      [subscriberId, tenantId]
+    );
+  }
+  if (!sub && normalizedEmail) {
+    [[sub]] = await conn.query(
+      'SELECT id, lead_id, branch, branch_id, assigned_sales_id, tenant_id FROM subscribers WHERE tenant_id=? AND (firebase_uid=? OR LOWER(TRIM(email))=?) LIMIT 1 FOR UPDATE',
+      [tenantId, uid || '', normalizedEmail]
+    );
+  } else if (!sub && uid) {
+    // No email: never matched on a blank one, which every email-less client shares.
+    [[sub]] = await conn.query(
+      `SELECT ${COLUMNS} FROM subscribers WHERE tenant_id=? AND firebase_uid=? LIMIT 1 FOR UPDATE`,
+      [tenantId, uid]
+    );
+  }
+  // With no email the number is the identity — as it is at sign-in
+  // (lib/subscriberIdentity.js) — so the client who holds it is this customer.
+  const variants = normalizedEmail ? [] : phoneVariants(toIdentity(phone));
+  if (!sub && variants.length) {
+    [[sub]] = await conn.query(
+      `SELECT ${COLUMNS} FROM subscribers
+        WHERE tenant_id=? AND phone IN (${variants.map(() => '?').join(',')}) AND deleted_at IS NULL
+        ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
+      [tenantId, ...variants]
+    );
+  }
   if (sub) {
     if (uid) await conn.query('UPDATE subscribers SET firebase_uid=COALESCE(firebase_uid,?) WHERE id=? AND tenant_id=?', [uid, sub.id, tenantId]);
     return sub;
   }
 
-  const [[lead]] = await conn.query(
-    'SELECT id, branch, branch_id, assigned_sales_id, assigned_sales_name, assigned_cs_id, assigned_cs_name FROM leads WHERE tenant_id=? AND LOWER(TRIM(email))=? AND hidden=0 ORDER BY created_at DESC LIMIT 1 FOR UPDATE',
-    [tenantId, normalizedEmail]
-  );
+  const LEAD_COLUMNS = 'id, branch, branch_id, assigned_sales_id, assigned_sales_name, assigned_cs_id, assigned_cs_name';
+  let lead = null;
+  if (normalizedEmail) {
+    [[lead]] = await conn.query(
+      'SELECT id, branch, branch_id, assigned_sales_id, assigned_sales_name, assigned_cs_id, assigned_cs_name FROM leads WHERE tenant_id=? AND LOWER(TRIM(email))=? AND hidden=0 ORDER BY created_at DESC LIMIT 1 FOR UPDATE',
+      [tenantId, normalizedEmail]
+    );
+  } else {
+    const byNumber = await findLeadByContact(conn, { tenantId, phone });
+    if (byNumber) {
+      [[lead]] = await conn.query(`SELECT ${LEAD_COLUMNS} FROM leads WHERE id=? LIMIT 1 FOR UPDATE`, [byNumber.id]);
+    }
+  }
   // subscribers has UNIQUE (tenant_id, phone). This used to insert `phone || ''`
   // with the number exactly as typed, so a payment could not be recorded when
   //   * the customer gave no phone: '' is a value, and production already holds
@@ -72,7 +118,7 @@ async function ensureSubscriberForOrder(conn, {
     }
   }
 
-  const subscriberId = uuidv4();
+  const newId = uuidv4();
   const clientCode = await getNextClientCode(conn);
   const branch = lead?.branch || fallbackBranch;
   const branchId = lead?.branch_id || fallbackBranchId || null;
@@ -82,8 +128,9 @@ async function ensureSubscriberForOrder(conn, {
         assigned_sales_id, assigned_sales_name, assigned_cs_id, assigned_cs_name,
         notes, is_active, tenant_id, created_at)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,NOW())`,
-    [subscriberId, uid || null, clientCode, lead?.id || null, name || normalizedEmail.split('@')[0],
-     normalizedEmail, phoneValue, branch, branchId,
+    // NULL, never '': email is unique per tenant, and a second blank would collide.
+    [newId, uid || null, clientCode, lead?.id || null, name || normalizedEmail.split('@')[0] || 'عميل',
+     normalizedEmail || null, phoneValue, branch, branchId,
      lead?.assigned_sales_id || null, lead?.assigned_sales_name || null,
      lead?.assigned_cs_id || null, lead?.assigned_cs_name || null, note, tenantId]
   );
@@ -98,7 +145,7 @@ async function ensureSubscriberForOrder(conn, {
     await insert(null, `رقم الهاتف ${phoneForRow} سُجّل لعميل آخر في نفس اللحظة — تم تسجيل الدفعة بدون الرقم؛ راجِع للدمج.`);
   }
   return {
-    id: subscriberId,
+    id: newId,
     lead_id: lead?.id || null,
     branch,
     branch_id: branchId,

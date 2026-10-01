@@ -454,7 +454,10 @@ async function customerNotificationViewer(req) {
       LIMIT 1`,
     email ? [req.tenantId, uid, email] : [req.tenantId, uid]
   );
-  if (!subscriber) throw Object.assign(new Error('Subscriber account not found'), { status: 404 });
+  // An account that has not bought yet has no client record, and the notices are
+  // for every signed-in customer: it reads them under its own key. (This threw a
+  // 404 — «Subscriber account not found», 39 times in two days — on each sign-in.)
+  if (!subscriber) return `user:${uid}`;
   return `subscriber:${subscriber.id}`;
 }
 

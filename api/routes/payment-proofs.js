@@ -107,7 +107,8 @@ router.post('/api/me/payment-proof', requireAuth, async (req, res) => {
     if (existingProof) { await conn.rollback(); transactionStarted = false; return res.status(409).json({ error: 'A payment proof already exists for this order' }); }
 
     const sub = await ensureSubscriberForOrder(conn, {
-      tenantId, uid, email: ownerEmail, name: order.customer_name, phone: order.customer_phone,
+      tenantId, uid, subscriberId: identity?.id || null, email: ownerEmail,
+      name: order.customer_name, phone: order.customer_phone,
       fallbackBranch: branchForId(order.branch_id),
       fallbackBranchId: order.branch_id,
     });

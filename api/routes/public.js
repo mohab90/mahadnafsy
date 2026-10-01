@@ -850,7 +850,10 @@ router.get('/api/quizzes', publicLimiter, requireAuth, async (req, res) => {
 router.get('/api/live-streams', requireAuth, async (req, res) => {
   try {
     const sub = await resolveSubscriberRow(req, ['id']);
-    if (!sub) return res.status(403).json({ error: 'يجب أن تكون مشتركاً لعرض البث المباشر' });
+    // An account that has not bought yet has no client record. The site asks for
+    // the streams on every sign-in and ignores a refusal, so the 403 this sent
+    // was only noise in the log (39 in two days): no streams is the answer.
+    if (!sub) return res.json([]);
     const [rows] = await pool.query(
       `SELECT ${LIVE_STREAM_COLS}
        FROM live_streams WHERE tenant_id=? ORDER BY scheduled_at DESC LIMIT 200`, [req.tenantId]);

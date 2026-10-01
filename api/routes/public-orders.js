@@ -571,8 +571,12 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
     // was falsy — the payment succeeded but the customer never got the course
     // (LMS-01). ensureSubscriberForOrder creates one, linked to a matching
     // lead when found, exactly like the manual-transfer-proof path already did.
+    // By the client the order names when it has no email: a customer who signs
+    // in with a number has none, and the capture — the money already taken —
+    // failed here with nothing enrolled.
     sub = await ensureSubscriberForOrder(conn, {
       tenantId,
+      subscriberId: order.subscriber_id || null,
       email: order.customer_email,
       name: order.customer_name,
       phone: order.customer_phone,

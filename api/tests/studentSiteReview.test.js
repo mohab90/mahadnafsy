@@ -63,7 +63,8 @@ test('checkout takes a WhatsApp-only customer, and keeps a real phone', () => {
   assert.match(page, /const emailOk = customerEmail\.trim\(\) \? customerEmail\.includes\('@'\) : !authUser\?\.email;/);
   assert.match(page, /const canPay = !!customerName\.trim\(\) && emailOk && customerPhone\.replace\(\/\\D\/g, ''\)\.length >= 9/);
   const route = read('api/routes/lead-capture-crm.js');
-  assert.match(route, /if \(!isRealPhone\(String\(customerPhone \|\| identity\?\.phone \|\| ''\)\.trim\(\)\)\) \{/);
+  // The number typed, else the client's, else the account's own.
+  assert.match(route, /const contactPhone = String\(customerPhone \|\| identity\?\.phone \|\| accountPhone \|\| ''\)\.trim\(\);\s+if \(!isRealPhone\(contactPhone\)\) \{/);
 });
 
 test('a locked lecture sends an enrolled student to their balance, not to buy again', () => {
