@@ -92,6 +92,13 @@ function startBackgroundScheduler({ pool, logger, port }) {
     scheduledJobs.daqqiSessionReminder();
     repeat(scheduledJobs.daqqiSessionReminder, 60 * 60 * 1000);
   }, 3 * 60 * 1000);
+  // Leads left waiting once every rep reached the day's cap (lib/leadBacklog.js).
+  later(() => {
+    const backlog = () => require('./leadBacklog').runLeadBacklog()
+      .catch(error => logger.warn('[jobs] lead backlog failed:', error.message));
+    backlog();
+    repeat(backlog, 60 * 60 * 1000);
+  }, 8 * 60 * 1000);
   later(() => {
     scheduledJobs.leadRetargeting();
     repeat(scheduledJobs.leadRetargeting, 24 * 60 * 60 * 1000);
@@ -163,8 +170,12 @@ function startBackgroundScheduler({ pool, logger, port }) {
           email.sendEmail(recipient, subject, html || body || '', { tenantId, category }),
         // channelId decides which identity it goes out from — the company
         // number, or the rep's own WhatsApp the campaign was composed against.
-        whatsapp: ({ recipient, message, tenantId, channelId, staffId }) =>
-          sendWhatsApp(recipient, message || '', { tenantId, channelId, staffId, category: 'broadcast' }),
+        // The category the message was queued with. Every queued message was
+        // sent as 'broadcast' — a receipt, a welcome, a reply to a ticket, an
+        // alert to a rep — so the gate refused them all as bulk messaging, and
+        // opening 'payment' could never have let a receipt through.
+        whatsapp: ({ recipient, message, tenantId, channelId, staffId, category }) =>
+          sendWhatsApp(recipient, message || '', { tenantId, channelId, staffId, category: category || 'broadcast' }),
         messenger: async ({ recipient, message, tenantId, channelId }) => {
           const { getSendableChannel } = require('./messagingChannels');
           const resolved = await getSendableChannel({ tenantId, channelId, kind: 'messenger' });

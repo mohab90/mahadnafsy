@@ -46,7 +46,8 @@ test('it is sent once a day, to the saved numbers only, through its own category
   assert.match(lib, /sendWhatsApp\(phone, text, \{ tenantId, category: 'owner_report' \}\)/);
   assert.match(lib, /if \(!settings\.phones\.length\) return \{ sent: 0, reason: 'no_numbers' \};/, 'nothing goes out before a number is saved');
   const gate = read('api/lib/whatsapp.js');
-  assert.match(gate, /const ALWAYS_ALLOWED = new Set\(\['owner_report'\]\);/);
+  // Open beside it: alerts to the institute's own staff, never a customer.
+  assert.match(gate, /const ALWAYS_ALLOWED = new Set\(\['owner_report', 'staff_alert'\]\);/);
   const users = ['lib', 'routes'].flatMap(dir => fs.readdirSync(path.join(__dirname, '..', dir), { recursive: true })
     .filter(file => String(file).endsWith('.js') && read(`api/${dir}/${file}`).includes("category: 'owner_report'"))
     .map(file => `${dir}/${String(file).split(path.sep).join('/')}`));

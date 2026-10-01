@@ -96,6 +96,11 @@ export function ClientsTable({
   const [accessRow, setAccessRow] = React.useState<SubscriberItem | null>(null);
   // «تواصل» records the contact here; it opened the client page instead.
   const [contactRow, setContactRow] = React.useState<SubscriberItem | null>(null);
+  // «المكالمات مش متسجلة»: in 30 days only sales logged one. Calling or opening
+  // WhatsApp from the table now opens the contact log beside it, the kind
+  // already picked, so the result is one tap.
+  const [contactType, setContactType] = React.useState<'call' | 'whatsapp'>('call');
+  const logContact = (row: SubscriberItem, type: 'call' | 'whatsapp') => { setContactType(type); setContactRow(row); };
   const certCatalog = useCertificateCatalog();
   const navigate = useNavigate();
   const todayOnlineStr = cairoDateOnly();
@@ -295,13 +300,13 @@ export function ClientsTable({
                     setSubPayDraft(prev => ({ ...prev, bookingType: (row.enrolledCourseIds||[]).length > 0 ? 'installment' : 'new_booking' }));
                   }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-emerald-50 hover:text-emerald-600 flex items-center justify-center transition"><Wallet size={12}/></button>
                   <button title="الأقساط" onClick={()=>setInstallmentsRow(row)} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-teal-50 hover:text-teal-600 flex items-center justify-center transition"><CalendarClock size={12}/></button>
-                  <button title="تواصل" onClick={()=>setContactRow(row)} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition"><Phone size={12}/></button>
+                  <button title="تواصل" onClick={()=>logContact(row, 'call')} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition"><Phone size={12}/></button>
                 </div>
                 <div className={`grid gap-0.5 ${canDeleteSubscriber?'grid-cols-4':'grid-cols-3'}`}>
                   {/* Opens the chat. It set a row for a WhatsApp dialog that no
                       screen ever drew, so pressing it did nothing. */}
                   {waLink(row.phone) ? (
-                    <a title="واتساب" href={waLink(row.phone) || undefined} target="_blank" rel="noreferrer"
+                    <a title="واتساب" href={waLink(row.phone) || undefined} target="_blank" rel="noreferrer" onClick={() => logContact(row, 'whatsapp')}
                       className="h-7 rounded border border-gray-200 bg-white text-gray-900 hover:bg-gray-900 hover:text-white flex items-center justify-center transition"><WhatsAppIcon size={13}/></a>
                   ) : (
                     <span title="مفيش رقم" className="h-7 rounded bg-gray-50 text-gray-300 flex items-center justify-center"><WhatsAppIcon size={13}/></span>
@@ -339,7 +344,7 @@ export function ClientsTable({
                   }} />
                 </td>
                 <td className="px-2 py-2 border border-gray-200">
-                  <ClientNameCell row={row} clientCode={clientCode} navigate={navigate} />
+                  <ClientNameCell row={row} clientCode={clientCode} navigate={navigate} onCall={() => logContact(row, 'call')} />
                 </td>
                 {vc.branch && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] whitespace-nowrap"><span className="rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">{placeLabel(row)}</span></td>}
                 {vc.createdAt  && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{cairoDay(row.createdAt)||'—'}</td>}
@@ -402,7 +407,7 @@ export function ClientsTable({
                   )}
                   {ci === 0 && (
                     <td rowSpan={rowSpan} className="px-2 py-2 border border-gray-200 align-top">
-                      <ClientNameCell row={row} clientCode={clientCode} navigate={navigate} />
+                      <ClientNameCell row={row} clientCode={clientCode} navigate={navigate} onCall={() => logContact(row, 'call')} />
                     </td>
                   )}
                   {vc.branch && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] whitespace-nowrap"><span className="rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">{placeLabel(row)}</span></td>}
@@ -468,6 +473,7 @@ export function ClientsTable({
       {contactRow && (
         <ClientContactDialog
           subscriber={contactRow}
+          initialType={contactType}
           notify={notify}
           onClose={() => setContactRow(null)}
           onSaved={(entry, updatedAt) => {

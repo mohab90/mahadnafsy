@@ -184,7 +184,8 @@ async function trigger(event, ctx = {}, opts = {}) {
       if (!recipient) continue;
       const content = step.build(ctx);
       const subject = typeof step.subject === 'function' ? step.subject(ctx) : (step.subject || null);
-      const payload = step.channel === 'email' ? { body: content, ...(step.category ? { category: step.category } : {}) } : { message: content };
+      const category = step.category || EVENT_CATEGORY[event] || 'crm';
+      const payload = step.channel === 'email' ? { body: content, category } : { message: content, category };
       await outbox.enqueue({
         channel: step.channel, recipient, subject, payload,
         tenantId,
@@ -195,6 +196,15 @@ async function trigger(event, ctx = {}, opts = {}) {
     logger.info('[lifecycle] triggered', { event, to: ctx.email || ctx.phone });
   } catch (e) { logger.warn('[lifecycle] trigger failed', { event, err: e.message }); }
 }
+
+// What each journey message is, for the outbound gate (lib/whatsapp.js): a
+// step's own category wins, else its event's.
+const EVENT_CATEGORY = {
+  lead_created: 'welcome', enrolled: 'welcome',
+  payment_received: 'payment',
+  contact_received: 'crm', join_us_received: 'crm', certificate_ready: 'crm',
+  checkout_abandoned: 'reminder', abandoned_interest: 'reminder', learner_stalled: 'reminder',
+};
 
 // ISO-week stamp for weekly dedupe keys.
 function weekStamp(d = new Date()) {
@@ -319,4 +329,4 @@ async function describe(tenantId = DEFAULT_TENANT) {
   return { enabled: cfg.enabled, events };
 }
 
-module.exports = { trigger, scanScheduled, getConfig, invalidateConfig, describe, JOURNEY };
+module.exports = { trigger, scanScheduled, getConfig, invalidateConfig, describe, JOURNEY, EVENT_CATEGORY };

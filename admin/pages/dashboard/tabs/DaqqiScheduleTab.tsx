@@ -29,6 +29,7 @@ import {
   calcCurrentLecture,
   enrolledLabels,
   getCurrentWeekKey,
+  isEnrolledInCourse,
   normalizeDaqqiBranchId,
   parseDaqqiBranchIds,
   type DaqqiDraftType,
@@ -205,6 +206,18 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
   const timeSlotsList = DAQQI_TIME_SLOTS;
   const timeSlotColors = DAQQI_TIME_SLOT_COLORS;
   const assignedSubIds = new Set(daqqiRounds.flatMap(r => r.attendees.map(a => a.subscriberId)));
+
+  // «الدقي: الحضور صفر». On 1 Oct the 13 rounds held no one: 1,920 Dokki
+  // clients, none placed. For each round still running, the clients booked on
+  // its course and in no round — placed from here in two taps.
+  const unplacedByRound = daqqiRounds
+    .filter(round => round.status !== 'finished')
+    .map(round => ({
+      round,
+      count: daqqiSubs.filter(sub => !assignedSubIds.has(sub.id)
+        && isEnrolledInCourse(bundles, sub.enrolledCourseIds || [], round.courseId)).length,
+    }))
+    .filter(entry => entry.count > 0);
 
   const handleInitCreateRound = () => {
     if (!daqqiDraft.courseId || !daqqiDraft.instructorId || !daqqiDraft.receptionId || !daqqiDraft.startDate) {
@@ -559,6 +572,24 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
       />
 
 
+
+      {unplacedByRound.length > 0 && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+          <p className="text-sm font-extrabold text-amber-900">عملاء حاجزين ومش مسكّنين في روند</p>
+          <div className="flex flex-wrap gap-1.5">
+            {unplacedByRound.map(({ round, count }) => {
+              const course = courses.find(item => item.id === round.courseId);
+              return (
+                <button key={round.id} type="button"
+                  onClick={() => { setDaqqiAddClientsRoundId(round.id); setDaqqiAddClientsSel(new Set()); }}
+                  className="rounded-xl border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-amber-900 hover:bg-amber-100">
+                  {course?.titleAr || course?.title || round.courseId} — {round.dayOfWeek} {round.timeSlot}: سكّن {count.toLocaleString('ar-EG-u-nu-latn')}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* The clients table that sat here was removed by request — this page is
           the schedule. Adding a client moved to the header. */}

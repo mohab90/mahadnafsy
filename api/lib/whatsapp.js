@@ -44,10 +44,49 @@ const OUTBOUND_ALLOWED = new Set(
 );
 
 // Always open, whatever the allowlist: the institute's daily report to the
-// numbers its owner saved in «تقارير الإدارة» (lib/ownerDailyReport.js) — one
-// message a day to its own people, never to a customer, which is not the
-// traffic the allowlist exists to stop.
-const ALWAYS_ALLOWED = new Set(['owner_report']);
+// numbers its owner saved in «تقارير الإدارة» (lib/ownerDailyReport.js), and
+// alerts to its own staff (a lead gone quiet, lib/crmSla.js) — messages to its
+// own people, never to a customer, which is not the traffic the allowlist
+// exists to stop.
+const ALWAYS_ALLOWED = new Set(['owner_report', 'staff_alert']);
+
+// The kinds the owner opens from the panel («قنوات الرسائل ← أنواع الرسائل»),
+// on top of the env allowlist: tenant setting 'whatsapp_outbound', read through
+// a one-minute cache. The decision to resume customer messages after the bans is
+// the owner's, so it is a switch in the panel and not an edit on the server.
+const PANEL_CATEGORIES = new Set(['welcome', 'reminder', 'payment', 'crm', 'inbox_reply', 'automation', 'broadcast']);
+const panelCache = new Map();
+async function panelAllowed(tenantId) {
+  const key = String(tenantId || DEFAULT_TENANT);
+  const hit = panelCache.get(key);
+  if (hit && Date.now() - hit.at < 60_000) return hit.value;
+  let value = new Set();
+  try {
+    const saved = await getTenantSetting('whatsapp_outbound', { tenantId: key, fallback: {} }) || {};
+    value = new Set((Array.isArray(saved.categories) ? saved.categories : [])
+      .map(name => String(name).toLowerCase()).filter(name => PANEL_CATEGORIES.has(name)));
+  } catch (_) { value = hit?.value || new Set(); }
+  panelCache.set(key, { value, at: Date.now() });
+  return value;
+}
+function invalidateOutbound(tenantId) {
+  if (tenantId) panelCache.delete(String(tenantId));
+  else panelCache.clear();
+}
+async function isCategoryOpen(category, tenantId) {
+  if (isCategoryAllowed(category)) return true;
+  const name = String(category || '').trim().toLowerCase();
+  return !!name && (await panelAllowed(tenantId)).has(name);
+}
+/** What may leave, and why: for the health card. */
+async function outboundState(tenantId) {
+  return {
+    env: OUTBOUND_ALLOW_ALL ? ['all'] : [...OUTBOUND_ALLOWED],
+    always: [...ALWAYS_ALLOWED],
+    panel: [...(await panelAllowed(tenantId))],
+    switchable: [...PANEL_CATEGORIES],
+  };
+}
 
 function isCategoryAllowed(category) {
   if (OUTBOUND_ALLOW_ALL) return true;
@@ -198,7 +237,7 @@ async function sendWhatsApp(phone, message, options = {}) {
     // Refused before the number is even normalised, before any channel budget is
     // claimed, and before the provider is touched — a blocked category must cost
     // the account nothing at all.
-    if (!isCategoryAllowed(opts.category)) {
+    if (!await isCategoryOpen(opts.category, tenantId)) {
       logger.info('[WhatsApp] outbound category is disabled — not sending', {
         category: String(opts.category || '(none)'),
         allowed: OUTBOUND_ALLOW_ALL ? 'all' : [...OUTBOUND_ALLOWED].join(',') || '(none)',
@@ -322,6 +361,6 @@ function isTransientSendFailure(reason) {
 }
 
 module.exports = {
-  describeReason, getWaCfg, invalidateWaCfg, isTransientSendFailure,
-  providerCredentialState, resolveProvider, sendWhatsApp,
+  describeReason, getWaCfg, invalidateOutbound, invalidateWaCfg, isCategoryOpen, isTransientSendFailure,
+  outboundState, providerCredentialState, resolveProvider, sendWhatsApp,
 };

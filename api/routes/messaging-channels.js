@@ -17,11 +17,12 @@ const router = express.Router();
 const logger = require('../lib/logger').child({ module: 'messaging-channels' });
 const { pool } = require('../lib/db');
 const channels = require('../lib/messagingChannels');
-const { sendWhatsApp } = require('../lib/whatsapp');
+const { invalidateOutbound, isCategoryOpen, outboundState, sendWhatsApp } = require('../lib/whatsapp');
+const { setTenantSetting } = require('../lib/tenantSettings');
 const { verifyMessengerCredentials } = require('../lib/messenger');
 const { verifyWapilot, listWapilotInstances } = require('../lib/whatsappWapilot');
 const { toDialable } = require('../lib/phoneNumber');
-const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { FULL_ACCESS_ROLES } = require('../constants/permissions');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
 
@@ -352,12 +353,15 @@ router.post('/api/admin/messaging/outbox/requeue', ...manage, bulkOperationLimit
     const channel = req.body?.channel ? String(req.body.channel).slice(0, 20) : null;
     const errorLike = req.body?.errorLike ? String(req.body.errorLike).slice(0, 120) : null;
     const limit = Math.min(2000, Math.max(1, Number.parseInt(req.body?.limit || '500', 10)));
+    // Recent messages only: a payment receipt from August sent again in October
+    // is noise, and a whole summer of them at once is how a number gets banned.
+    const hours = Math.min(168, Math.max(1, Number.parseInt(req.body?.hours || '72', 10)));
 
     // tenant_id stays literal in every statement below rather than hiding in a
     // built string: the tenant-scope guard reads the SQL text, and a filter it
     // cannot see is one nobody reviews either.
-    const extra = [];
-    const params = [req.tenantId];
+    const extra = ['AND created_at > DATE_SUB(NOW(), INTERVAL ? HOUR)'];
+    const params = [req.tenantId, hours];
     if (channel) { extra.push('AND channel=?'); params.push(channel); }
     if (errorLike) { extra.push('AND last_error LIKE ?'); params.push('%' + errorLike + '%'); }
     const extraSql = extra.join(' ');
@@ -389,20 +393,57 @@ router.post('/api/admin/messaging/outbox/requeue', ...manage, bulkOperationLimit
       });
     }
 
-    const [result] = await pool.query(
-      `UPDATE message_outbox
-          SET status='pending', attempts=0, last_error=NULL, next_attempt_at=NOW(),
-              locked_at=NULL, locked_by=NULL
+    // A WhatsApp message whose kind is still closed would only die again, and a
+    // wrong number stays wrong: those stay where they are.
+    const [candidates] = await pool.query(
+      `SELECT id, channel, last_error, JSON_UNQUOTE(JSON_EXTRACT(payload_json, '$.category')) AS category
+         FROM message_outbox
         WHERE tenant_id=? AND status='dead' ${extraSql}
         ORDER BY created_at ASC
         LIMIT ?`,
       [...params, limit]
     );
+    const ids = [];
+    for (const row of candidates) {
+      if (/invalid_number/.test(String(row.last_error || ''))) continue;
+      if (row.channel === 'whatsapp' && !await isCategoryOpen(row.category, req.tenantId)) continue;
+      ids.push(row.id);
+    }
+    const [result] = ids.length ? await pool.query(
+      `UPDATE message_outbox
+          SET status='pending', attempts=0, last_error=NULL, next_attempt_at=NOW(),
+              locked_at=NULL, locked_by=NULL
+        WHERE tenant_id=? AND status='dead' AND id IN (${ids.map(() => '?').join(',')})`,
+      [req.tenantId, ...ids]
+    ) : [{ affectedRows: 0 }];
     logger.info('[outbox-requeue]', {
       actor: req.user?.email || null, channel, errorLike, requeued: result.affectedRows,
     });
-    res.json({ ok: true, requeued: result.affectedRows, eligible, health, stillFailing });
+    res.json({ ok: true, requeued: result.affectedRows, skipped: candidates.length - ids.length, eligible, health, stillFailing });
   } catch (error) { fail(res, error, 'outbox requeue failed'); }
+});
+
+// «قرار رسايل واتساب للعملاء»: which kinds of WhatsApp message may leave. The
+// env allowlist and the always-open kinds (the owner's report, staff alerts)
+// stand; the owner opens the rest here, one switch per kind, and each number's
+// daily limit still caps how many go out.
+router.get('/api/admin/messaging/outbound', ...view, async (req, res) => {
+  try {
+    res.json(await outboundState(req.tenantId));
+  } catch (error) { fail(res, error, 'outbound state failed'); }
+});
+
+router.put('/api/admin/messaging/outbound', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const state = await outboundState(req.tenantId);
+    const categories = (Array.isArray(req.body?.categories) ? req.body.categories : [])
+      .map(name => String(name).toLowerCase()).filter(name => state.switchable.includes(name));
+    await setTenantSetting('whatsapp_outbound', { categories: [...new Set(categories)] },
+      { tenantId: req.tenantId, actorId: req.user?.uid || req.user?.email });
+    invalidateOutbound(req.tenantId);
+    logger.info('[outbound-categories]', { actor: req.user?.email || null, categories });
+    res.json(await outboundState(req.tenantId));
+  } catch (error) { fail(res, error, 'outbound save failed'); }
 });
 
 

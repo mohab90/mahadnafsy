@@ -170,7 +170,7 @@ async function queueLeadWhatsAppBatch({
       await outbox.enqueue({
         channel: 'whatsapp',
         recipient: phone,
-        payload: { message: personalized },
+        payload: { message: personalized, category: 'crm' },
         tenantId,
         refType: 'lead',
         refId: lead.id,

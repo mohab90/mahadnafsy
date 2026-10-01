@@ -7,7 +7,8 @@ const router = express.Router();
 const { pool } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
 const logger = require('../lib/logger').child({ module: 'push-route' });
-const { isPushConfigured, publicVapidKey, sendPushNotification } = require('../lib/push');
+const { getPublicKey, sendPushNotification } = require('../lib/push');
+const { listEnv } = require('../lib/platformAccess');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { requireAuth } = require('../middleware/auth');
 const { resolveSubscriberId } = require('../lib/subscriberIdentity');
@@ -28,13 +29,22 @@ function subscriberIdForUser(req) {
 }
 
 // GET /api/push/vapid-public-key
-router.get('/api/push/vapid-public-key', publicLimiter, (_req, res) => {
-  res.json({
-    ok: true,
-    enabled: isPushConfigured(),
-    publicKey: isPushConfigured() ? publicVapidKey : null,
-  });
+router.get('/api/push/vapid-public-key', publicLimiter, async (_req, res) => {
+  const publicKey = await getPublicKey().catch(() => null);
+  res.json({ ok: true, enabled: !!publicKey, publicKey });
 });
+
+// Whose phone this is, for the staff notifications (lib/staffPush.js): the
+// employee by their email, or the owner by the admin list.
+async function staffIdentity(req) {
+  const email = String(req.user?.email || '').toLowerCase().trim();
+  const owners = new Set(listEnv('ADMIN_EMAILS').map(item => item.toLowerCase()));
+  const isAdmin = !!req.isSuperAdmin || (email && owners.has(email));
+  if (!email) return { staffId: null, isAdmin };
+  const [[staff]] = await pool.query(
+    'SELECT id FROM staff WHERE tenant_id=? AND email=? AND deleted_at IS NULL LIMIT 1', [scopedTenantId(req), email]);
+  return { staffId: staff?.id || null, isAdmin };
+}
 
 // POST /api/push/subscribe
 router.post('/api/push/subscribe', requireAuth, async (req, res) => {
@@ -44,16 +54,19 @@ router.post('/api/push/subscribe', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'valid push subscription required' });
     }
 
-    const subscriberId = await subscriberIdForUser(req);
+    const { staffId, isAdmin } = await staffIdentity(req);
+    const subscriberId = staffId || isAdmin ? null : await subscriberIdForUser(req);
     const hash = endpointHash(subscription);
     await pool.query(
       `INSERT INTO push_subscriptions
-         (id, tenant_id, user_uid, subscriber_id, endpoint_hash, subscription_json, user_agent, is_active)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+         (id, tenant_id, user_uid, subscriber_id, staff_id, is_admin, endpoint_hash, subscription_json, user_agent, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
        ON DUPLICATE KEY UPDATE
          tenant_id = VALUES(tenant_id),
          user_uid = VALUES(user_uid),
          subscriber_id = VALUES(subscriber_id),
+         staff_id = VALUES(staff_id),
+         is_admin = VALUES(is_admin),
          subscription_json = VALUES(subscription_json),
          user_agent = VALUES(user_agent),
          is_active = 1,
@@ -63,13 +76,15 @@ router.post('/api/push/subscribe', requireAuth, async (req, res) => {
         scopedTenantId(req),
         req.user?.uid || null,
         subscriberId,
+        staffId,
+        isAdmin ? 1 : 0,
         hash,
         JSON.stringify(subscription),
         String(req.headers['user-agent'] || '').slice(0, 500),
       ]
     );
 
-    res.status(201).json({ ok: true, enabled: isPushConfigured(), subscriberId });
+    res.status(201).json({ ok: true, enabled: true, subscriberId, staff: !!staffId || isAdmin });
   } catch (error) {
     logger.error('push subscribe failed', error);
     res.status(500).json({ error: 'Failed to subscribe' });

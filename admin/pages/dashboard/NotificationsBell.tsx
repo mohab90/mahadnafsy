@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Bell, X, CheckCheck, Banknote, RotateCcw, Users, UserPlus, Ticket,
   Award, Settings, AlertTriangle, Info, type LucideIcon,
 } from 'lucide-react';
 
 import { mysqlAdmin } from '../../lib/mysqlapi';
+import { devicePushState, enableDevicePush, type DevicePushState } from '../../lib/devicePush';
 import type { TabKey } from './navigation';
 import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
 
@@ -75,6 +76,15 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({
   rows, setRows, unread, setUnread, open, setOpen, panelRef, onNavigate,
 }) => {
   const [filter, setFilter] = useState<string>('all');
+  // This device's notifications (lib/devicePush.ts), read when the bell opens.
+  const [pushState, setPushState] = useState<DevicePushState | 'working'>('off');
+  useEffect(() => {
+    if (open) void devicePushState().then(setPushState).catch(() => setPushState('unsupported'));
+  }, [open]);
+  const turnOnPush = async () => {
+    setPushState('working');
+    setPushState(await enableDevicePush().catch(() => 'unavailable' as const));
+  };
   const [unreadOnly, setUnreadOnly] = useState(false);
 
   // Only offer filters for kinds that are actually present.
@@ -146,6 +156,23 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({
               <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600 p-1" aria-label="إغلاق"><X size={14} /></button>
             </div>
           </div>
+
+          {pushState !== 'unsupported' && (
+            <div className={`flex items-center justify-between gap-2 px-4 py-2 border-b border-gray-100 text-[11px] ${pushState === 'enabled' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-900'}`}>
+              <span className="font-bold">
+                {pushState === 'enabled' ? '📱 الإشعارات بتوصل الجهاز ده حتى لو اللوحة مقفولة'
+                  : pushState === 'denied' ? '📱 الإشعارات مرفوضة من المتصفح — فعّلها من إعدادات الموقع في المتصفح'
+                    : pushState === 'unavailable' ? '📱 تعذر التفعيل دلوقتي — جرّب تاني'
+                      : '📱 خلي الإشعارات توصل الموبايل/الجهاز ده'}
+              </span>
+              {(pushState === 'off' || pushState === 'unavailable' || pushState === 'working') && (
+                <button onClick={() => void turnOnPush()} disabled={pushState === 'working'}
+                  className="shrink-0 rounded-lg bg-amber-600 px-2.5 py-1 font-bold text-white hover:bg-amber-700 disabled:opacity-50">
+                  {pushState === 'working' ? '…' : 'فعّل'}
+                </button>
+              )}
+            </div>
+          )}
 
           {rows.length > 0 && (
             <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-100 overflow-x-auto">

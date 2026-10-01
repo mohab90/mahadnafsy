@@ -400,7 +400,7 @@ router.post('/api/admin/live-sessions', requireAuth, requireAdmin, async (req, r
         }, conn);
         if (student.phone) await outbox.enqueue({
           channel: 'whatsapp', recipient: student.phone,
-          payload: { message: `جلسة مباشرة جديدة\nالموعد: ${sessionDate}\n${meeting_url}${meeting_pass ? `\nكلمة المرور: ${meeting_pass}` : ''}` },
+          payload: { message: `جلسة مباشرة جديدة\nالموعد: ${sessionDate}\n${meeting_url}${meeting_pass ? `\nكلمة المرور: ${meeting_pass}` : ''}`, category: 'reminder' },
           tenantId: req.tenantId, dedupeKey: `live-session:${req.tenantId}:${id}:whatsapp:${student.id}`, refType: 'live_session', refId: id,
         }, conn);
       }

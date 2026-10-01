@@ -7,10 +7,12 @@
 import type { SubscriberItem } from '../../../../types';
 import { waLink } from '../../../../lib/whatsappLink';
 
-export default function ClientNameCell({ row, clientCode, navigate }: {
+export default function ClientNameCell({ row, clientCode, navigate, onCall }: {
   row: SubscriberItem;
   clientCode: string;
   navigate: (to: string) => void;
+  /** The call is also the place to log it: the dialer opens, and so does «تواصل». */
+  onCall?: () => void;
 }) {
   return (
     <div className="min-w-0">
@@ -19,7 +21,7 @@ export default function ClientNameCell({ row, clientCode, navigate }: {
         const displayName = isEnglish ? row.name.trim().split(/\s+/).slice(0,2).join(' ') : row.name;
         return <button onClick={()=>navigate(`/client/${clientCode}`)} className="font-bold text-gray-800 hover:text-primary-700 text-[11px] block truncate max-w-[110px]" dir={isEnglish?'ltr':'rtl'}>{displayName}</button>;
       })()}
-      <a href={`tel:${row.phone}`} className="text-xs font-semibold text-blue-600">{row.phone}</a>
+      <a href={`tel:${row.phone}`} onClick={onCall} className="text-xs font-semibold text-blue-600">{row.phone}</a>
       {/* No payment is taken for a client who cannot be reached (the server
           refuses it), so the number to fix is shown before anyone tries. */}
       {!waLink(row.phone) && (

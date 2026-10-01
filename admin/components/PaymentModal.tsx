@@ -5,10 +5,11 @@
 import React, { useState } from 'react';
 import { cairoDateOnly } from '../../shared/cairoDate';
 import { CreditCard, X } from 'lucide-react';
-import { useStaticData } from '../context/siteDataSlices';
+import { useCrmData, useStaticData } from '../context/siteDataSlices';
 import { useCertificateCatalog } from '../lib/certificateCatalog';
 import { agreedPriceFor } from '../lib/agreedPrice';
 import { mysqlAdmin } from '../lib/mysqlapi';
+import { attributeNextPayment } from '../lib/paymentAttribution';
 import type {
   PaymentItemType, PaymentHistoryEntry,
   ExtraCertificateRequest,
@@ -16,6 +17,7 @@ import type {
 import { usePaymentBoxes } from '../lib/paymentMethods';
 import { isCollected } from '../lib/money';
 import { Modal } from '../../shared/ui/Modal';
+import { confirmDialog } from '../../shared/ui/confirmDialog';
 
 // ── Shared draft type ──────────────────────────────────────────────────────
 export interface PaymentDraft {
@@ -256,7 +258,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   subjectOptions, onSubjectChange,
   branchLabel,
 }) => {
-  const { courses, bundles, content, authUser } = useStaticData();
+  const { courses, bundles, content, authUser, isAdmin } = useStaticData();
+  const { staffMembers } = useCrmData();
   // The certificates «تسعير الشهادات» lists — its own, not eight written here.
   const certCatalog = useCertificateCatalog();
   const [printData, setPrintData] = useState<PrintData | null>(null);
@@ -267,6 +270,13 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   // runs on some renders and not others.
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  // «الدفعة دي جت عن طريق مين؟» — the owner records payments from an account
+  // with no staff row, so without this none of them names whose money it was.
+  // An admin login with no staff row is the owner, matched as useSignedInStaff does.
+  const ownEmail = String(authUser?.email || '').toLowerCase().trim();
+  const asksWhoBroughtIt = isAdmin && mode !== 'new'
+    && !staffMembers.some(member => String(member.email || '').toLowerCase().trim() === ownEmail);
+  const [broughtBy, setBroughtBy] = useState('');
   // «تكملة»: the course being completed into a track; '' when not upgrading.
   const [upgradeFrom, setUpgradeFrom] = useState<string | null>(null);
 
@@ -478,6 +488,15 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   // ── Submit handler ─────────────────────────────────────────────────────
   const handleSubmit = async (shouldPrint: boolean) => {
     if (!isValid || submitting) return;
+    // A digit too many would record millions against a course with thousands left.
+    // Asked, not refused: a client paying ahead is real.
+    const chosen = enrolledOptions.find(option => option.cid === d.courseId);
+    const left = chosen && _effPx > 0 ? Math.max(0, _effPx - chosen.paid) : null;
+    if (!upgrading && left !== null && _amtPaid > left && !await confirmDialog({
+      title: 'المبلغ أكبر من المتبقي',
+      message: `${_amtPaid.toLocaleString('ar-EG-u-nu-latn')} ${d.currency} أكبر من المتبقي على «${chosen?.label}» (${left.toLocaleString('ar-EG-u-nu-latn')}). تسجّلها كده؟`,
+      confirmLabel: 'سجّلها',
+    })) return;
     setSubmitting(true);
     setSubmitError('');
     try {
@@ -489,6 +508,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       // changed it; otherwise the server uses the one agreed.
       const changedPrice = _customExp > 0 || _discPct > 0;
       const shownPrice = _effPx > 0 ? String(_effPx) : d.customExpected;
+      if (asksWhoBroughtIt) attributeNextPayment(broughtBy);
       if (upgrading && upgradeFrom) {
         // The course becomes part of the track first, its money with it; the
         // payment is then an instalment on the track, at the price set here.
@@ -511,6 +531,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'تعذر حفظ الدفعة. حاول مرة أخرى.');
     } finally {
+      // Never carried to a later payment, whatever happened to this one.
+      attributeNextPayment(null);
       setSubmitting(false);
     }
   };
@@ -576,6 +598,20 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
               ))}
             </div>
           )}
+          {asksWhoBroughtIt && (
+            <label className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">
+              الدفعة دي جت عن طريق مين؟
+              <select value={broughtBy} onChange={e => setBroughtBy(e.target.value)}
+                className="min-w-[160px] flex-1 rounded-lg border border-amber-200 bg-white px-2 py-1 text-xs font-bold text-gray-800">
+                <option value="">المالك — مش موظف</option>
+                {staffMembers.filter(member => member.status !== 'inactive').map(member => (
+                  <option key={member.id} value={member.id}>{member.name}</option>
+                ))}
+              </select>
+              <span className="w-full text-[10px] font-normal text-amber-800">بتتحسب للموظف ده في تقاريره وعمولته.</span>
+            </label>
+          )}
+
           {/* ── 1: Booking type chips ── */}
           <div className={`grid gap-3 ${upgradeCandidates.length ? 'grid-cols-3' : 'grid-cols-2'}`}>
             {[

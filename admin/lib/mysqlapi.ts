@@ -3,6 +3,7 @@
 // ══════════════════════════════════════════════════════════════
 
 import { AuthUser, CrmInsights, CxPerformance, DaqqiPerformance, OnlinePerformance, SalesTeamPerformance, ScoredLeadsResult, StaffLeadPerformance, SubscriberStats } from '../types';
+import { takePaymentAttribution } from './paymentAttribution';
 
 // Relative by default — always targets whatever origin actually served the page
 // (Nginx-proxied in every real deploy). A hardcoded absolute production URL here
@@ -796,8 +797,15 @@ export const mysqlAdmin = {
   deleteOrder:       (id: string) => del(`/admin/orders/${id}`),
 
   // ── Subscriber Payments (payments table) ──
-  saveSubscriberPayment: (subscriber_id: string, payment: AR) => post('/admin/subscriber-payments', { subscriber_id, payment }),
-  saveLeadPayment: (lead_id: string, payment: AR, subscriber?: { email?: string; nationalId?: string }) =>
+  // The employee the owner named in the payment dialog (lib/paymentAttribution.ts).
+  saveSubscriberPayment: (subscriber_id: string, payment: AR) => {
+    const staffId = takePaymentAttribution();
+    return post('/admin/subscriber-payments', { subscriber_id, payment: staffId && !payment.staffId ? { ...payment, staffId } : payment });
+  },
+  saveLeadPayment: (lead_id: string, payment: AR, subscriber?: { email?: string; nationalId?: string }) => {
+    const staffId = takePaymentAttribution();
+    if (staffId && !payment.staffId) payment = { ...payment, staffId };
+    return (
     apiFetch<{
       ok: boolean;
       id: string;
@@ -809,7 +817,8 @@ export const mysqlAdmin = {
       '/admin/subscriber-payments',
       { method: 'POST', body: JSON.stringify({ lead_id, payment, subscriber }) },
       A,
-    ),
+    ));
+  },
   // paymentMethod is only needed when settling a payment that was stored
   // without one — the API refuses to mark money received without saying how it
   // arrived, and nothing else can edit a stored method.

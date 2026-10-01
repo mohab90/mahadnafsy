@@ -54,7 +54,7 @@ test('«تواصل» on a client row opens that client\'s contact form', () => {
   // the client's page — «ليه في الاونلاين لما بضغط علي زر تواصل بيفتح صفحة
   // العميل». The form opens over the table now.
   const table = read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx');
-  assert.match(table, /title="تواصل" onClick=\{\(\)=>setContactRow\(row\)\}/);
+  assert.match(table, /title="تواصل" onClick=\{\(\)=>logContact\(row, 'call'\)\}/);
   assert.match(table, /<ClientContactDialog\s/);
   assert.match(read('admin/pages/UnifiedClientPage.tsx'), /addCommunication\?: boolean \} \| null\)\?\.addCommunication\) openContact\(\)/);
   for (const file of ['admin/pages/Dashboard.tsx', 'admin/pages/dashboard/hooks/useSubscriberModals.ts', 'admin/pages/dashboard/tabs/OnlineClientsTab.tsx']) {

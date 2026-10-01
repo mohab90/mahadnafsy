@@ -23,14 +23,14 @@ async function enqueueOverdueLeadAlerts(limit = 200) {
     const message = `متابعة CRM متأخرة ${days} يوم: ${row.name || row.id}`;
     if (row.staff_email) {
       await outbox.enqueue({
-        channel: 'email', recipient: row.staff_email, subject: 'تنبيه متابعة CRM متأخرة', payload: { body: message }, tenantId: row.tenant_id,
+        channel: 'email', recipient: row.staff_email, subject: 'تنبيه متابعة CRM متأخرة', payload: { body: message, category: 'staff_alert' }, tenantId: row.tenant_id,
         dedupeKey: `crm-sla:${row.tenant_id}:${row.id}:${today}:email`, refType: 'crm_sla', refId: row.id,
       });
       queued++;
     }
     if (row.staff_phone) {
       await outbox.enqueue({
-        channel: 'whatsapp', recipient: row.staff_phone, payload: { message }, tenantId: row.tenant_id,
+        channel: 'whatsapp', recipient: row.staff_phone, payload: { message, category: 'staff_alert' }, tenantId: row.tenant_id,
         dedupeKey: `crm-sla:${row.tenant_id}:${row.id}:${today}:whatsapp`, refType: 'crm_sla', refId: row.id,
       });
       queued++;

@@ -1,19 +1,21 @@
 import { useState } from 'react';
-import { Radio, Megaphone, MessageCircle, Inbox } from 'lucide-react';
+import { Activity, Radio, Megaphone, MessageCircle, Inbox } from 'lucide-react';
 import { MessagingChannelsPanel } from './messaging/MessagingChannelsPanel';
 import { WhatsappCampaignsPanel } from './messaging/WhatsappCampaignsPanel';
 import { MyWhatsappChannelPanel } from './messaging/MyWhatsappChannelPanel';
 import { InboxPanel } from './messaging/InboxPanel';
+import { MessagesHealthPanel } from './messaging/MessagesHealthPanel';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
-type View = 'inbox' | 'channels' | 'campaigns' | 'mine';
+type View = 'inbox' | 'channels' | 'campaigns' | 'mine' | 'health';
 
 const VIEWS: { key: View; label: string; icon: typeof Radio; hint: string }[] = [
   { key: 'inbox', label: 'صندوق الرسائل', icon: Inbox, hint: 'ردود العملاء' },
   { key: 'mine', label: 'واتسابي', icon: MessageCircle, hint: 'اربط رقمك الشخصي' },
   { key: 'channels', label: 'قنوات المراسلة', icon: Radio, hint: 'أرقام الشركة والموظفين' },
   { key: 'campaigns', label: 'حملات الواتساب', icon: Megaphone, hint: 'رسائل تسويقية مجدولة' },
+  { key: 'health', label: 'صحة الرسايل', icon: Activity, hint: 'اللي اتبعت واللي فشل وليه، وأنواع الرسايل المسموحة' },
 ];
 
 /**
@@ -50,6 +52,7 @@ export default function MessagingHubTab({ notify }: { notify: NotifyFn }) {
       {view === 'mine' && <MyWhatsappChannelPanel notify={notify} />}
       {view === 'channels' && <MessagingChannelsPanel notify={notify} />}
       {view === 'campaigns' && <WhatsappCampaignsPanel notify={notify} />}
+      {view === 'health' && <MessagesHealthPanel notify={notify} />}
     </div>
   );
 }

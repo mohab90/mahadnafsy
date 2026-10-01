@@ -33,7 +33,11 @@ export type ConfirmOptions = {
   message?: string;
   confirmLabel?: string;
   cancelLabel?: string;
-  /** 'danger' paints the confirm button red. Default, since these guard deletes. */
+  /**
+   * 'danger' paints the confirm button red. Default, since most of these guard
+   * deletes — but the words stay «تأكيد»: a resend or a placement titled
+   * «تأكيد الحذف» told the person they were about to delete something.
+   */
   tone?: 'danger' | 'normal';
 };
 
@@ -61,7 +65,7 @@ const ConfirmBox: React.FC<{ options: ConfirmOptions; onAnswer: (ok: boolean) =>
         <div className="mb-3 flex items-start justify-between gap-3">
           <h3 className="flex items-center gap-2 text-base font-bold text-gray-900">
             {danger && <AlertTriangle size={18} className="shrink-0 text-red-500" />}
-            {options.title || (danger ? 'تأكيد الحذف' : 'تأكيد')}
+            {options.title || 'تأكيد'}
           </h3>
           <button onClick={() => onAnswer(false)} aria-label="إغلاق"
             className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
@@ -80,7 +84,7 @@ const ConfirmBox: React.FC<{ options: ConfirmOptions; onAnswer: (ok: boolean) =>
             className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-bold text-white ${
               danger ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`}
           >
-            {options.confirmLabel || (danger ? 'تأكيد الحذف' : 'تأكيد')}
+            {options.confirmLabel || 'تأكيد'}
           </button>
           <button
             onClick={() => onAnswer(false)}

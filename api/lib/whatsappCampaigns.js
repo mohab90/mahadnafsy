@@ -175,7 +175,7 @@ async function queueCampaign({ tenantId, campaign, recipients, channelId = null 
     const outboxId = await outbox.enqueue({
       channel: 'whatsapp',
       recipient: person.dialable,
-      payload: { message, channelId, campaignId: campaign.id },
+      payload: { message, channelId, campaignId: campaign.id, category: 'broadcast' },
       tenantId,
       // The stagger IS the throttle.
       sendAt: startAt + index * gapMs,

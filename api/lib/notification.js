@@ -67,6 +67,13 @@ async function createNotification(type, title, message, data = {}, tenantId = DE
       data = { ...data, count: 1 };
     }
     await insertNotification(pool, type, title, message, data, tenantId, recipientStaffId);
+    // And to their phones (lib/staffPush.js) — a folded repeat above does not
+    // ring again; a new one does. Production only: a test or a local run must
+    // not reach for subscriptions through the real pool.
+    if (process.env.NODE_ENV === 'production') setImmediate(() => {
+      require('./staffPush').pushToStaff({ tenantId, type, title, message, recipientStaffId })
+        .catch(error => logger.warn('[notify] push failed:', error.message));
+    });
   } catch (e) {
     logger.warn('[notify] createNotification error:', e.message);
   }

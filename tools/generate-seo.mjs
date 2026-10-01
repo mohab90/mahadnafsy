@@ -68,12 +68,31 @@ async function getJson(path) {
   return res.json();
 }
 
+// What a search engine reads as «this page is a course, taught by the
+// institute» — the rich result a plain title and description cannot earn. No
+// price: the site's price follows the visitor's country.
+function courseJsonLd({ name, description, url, image }) {
+  const data = {
+    '@context': 'https://schema.org',
+    '@type': 'Course',
+    name,
+    description,
+    url,
+    inLanguage: 'ar',
+    ...(image ? { image } : {}),
+    provider: { '@type': 'EducationalOrganization', name: 'معهد الدراسات النفسية', url: `${SITE}/` },
+  };
+  // A description can hold «</script>»; escaped, it cannot close the tag.
+  return `<script type="application/ld+json">${JSON.stringify(data).replace(/<\//g, '<\\/')}</script>`;
+}
+
 /** Swap the shell's meta block for this page's. */
-function render(shell, { url, title, description, image }) {
+function render(shell, { url, title, description, image, jsonLd = '' }) {
   const t = esc(title);
   const d = esc(description);
   const u = esc(url);
   return shell
+    .replace('</head>', `${jsonLd}</head>`)
     .replace(/<title>[\s\S]*?<\/title>/, `<title>${t}</title>`)
     .replace(/<meta name="description" content="[^"]*"/, `<meta name="description" content="${d}"`)
     .replace(/<meta property="og:url" content="[^"]*"/, `<meta property="og:url" content="${u}"`)
@@ -118,6 +137,7 @@ function writePage(relUrl, html) {
       title: `${c.seo_title || c.title} | معهد الدراسات النفسية`,
       description,
       image: c.thumbnail,
+      jsonLd: courseJsonLd({ name: c.title, description, url: `${SITE}/c/${slug}`, image: c.thumbnail }),
     });
     writePage(`/c/${slug}`, html);
     if (c.id && c.id !== slug) writePage(`/course/${c.id}`, html);
@@ -134,6 +154,7 @@ function writePage(relUrl, html) {
       title: `${b.title} — مسار | معهد الدراسات النفسية`,
       description,
       image: b.thumbnail || b.courses?.[0]?.thumbnail,
+      jsonLd: courseJsonLd({ name: b.title, description, url: `${SITE}/bundle/${b.id}`, image: b.thumbnail || b.courses?.[0]?.thumbnail }),
     });
     writePage(`/bundle/${b.id}`, html);
     urls.push({ loc: `/bundle/${b.id}`, priority: '0.8', changefreq: 'weekly' });

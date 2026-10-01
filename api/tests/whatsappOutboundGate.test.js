@@ -46,7 +46,9 @@ test('the gate refuses anything that does not name an allowed category', () => {
   assert.match(source, /function isCategoryAllowed/);
   assert.match(source, /WHATSAPP_OUTBOUND_CATEGORIES\s*\?\?\s*'otp'/,
     'the default allowlist must be otp alone');
-  assert.match(source, /if \(!isCategoryAllowed\(opts\.category\)\) \{/);
+  // The env allowlist first, then what the owner opened in the panel.
+  assert.match(source, /if \(!await isCategoryOpen\(opts\.category, tenantId\)\) \{/);
+  assert.match(source, /async function isCategoryOpen\(category, tenantId\) \{\n  if \(isCategoryAllowed\(category\)\) return true;/);
   assert.match(source, /return \{ ok: false, reason: 'category_disabled'/);
   // A missing category is a refusal, so a send added later fails closed.
   assert.match(source, /if \(!name\) return false;/);
@@ -60,7 +62,7 @@ test('the refusal happens before the provider and before any budget is claimed',
   assert.ok(bodyStart > -1);
   const body = source.slice(bodyStart);
 
-  const gateAt = body.indexOf('isCategoryAllowed(opts.category)');
+  const gateAt = body.indexOf('isCategoryOpen(opts.category, tenantId)');
   assert.ok(gateAt > -1, 'the gate must be inside sendWhatsApp');
   for (const later of ['toDialable(phone)', 'claimSendBudget', 'await _sendMeta(', 'await _sendGreenApi(']) {
     const at = body.indexOf(later);
@@ -101,7 +103,8 @@ test('every sendWhatsApp call names a category, and every category is a known on
         else if (source[end] === ')') { depth--; if (depth === 0) { end++; break; } }
       }
       const call = source.slice(index, end);
-      const match = call.match(/category:\s*'([a-z_]+)'/);
+      // A queued message carries its own category; the worker falls back to one.
+      const match = call.match(/category:\s*(?:category\s*\|\|\s*)?'([a-z_]+)'/);
       if (!match) offenders.push(`${file}:${source.slice(0, index).split('\n').length}`);
       else used.add(match[1]);
       index = source.indexOf('sendWhatsApp(', end);

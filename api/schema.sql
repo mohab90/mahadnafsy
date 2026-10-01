@@ -583,6 +583,9 @@ CREATE TABLE `bundles` (
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `deleted_at` timestamp NULL DEFAULT NULL,
+  `thumbnail` text DEFAULT NULL COMMENT 'Card and og:image URL, as courses.thumbnail.',
+  `details_content_json` longtext DEFAULT NULL COMMENT 'Page-builder content for the bundle detail page.',
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp() COMMENT 'Touched by the ON DUPLICATE KEY UPDATE branch of a bundle save.',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_bundles_tenant_slug` (`tenant_id`,`slug`),
   KEY `idx_bundles_tenant` (`tenant_id`),
@@ -899,8 +902,14 @@ CREATE TABLE `community_events` (
   `speaker` varchar(200) DEFAULT NULL,
   `event_type` varchar(100) DEFAULT NULL,
   `platform` varchar(100) DEFAULT NULL,
+  `slug` varchar(160) DEFAULT NULL,
+  `content` mediumtext DEFAULT NULL,
+  `speaker_ids` text DEFAULT NULL,
+  `event_time` varchar(5) DEFAULT NULL,
+  `previous_slug` varchar(160) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `idx_community_events_tenant_created` (`tenant_id`,`created_at`)
+  KEY `idx_community_events_tenant_created` (`tenant_id`,`created_at`),
+  UNIQUE KEY `uq_community_events_slug` (`tenant_id`,`slug`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1391,6 +1400,10 @@ CREATE TABLE `crm_assignment_members` (
   `last_assigned_at` datetime DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `intake_limit` int(11) DEFAULT NULL COMMENT 'Max leads assigned per intake_period. NULL = no rate cap.',
+  `intake_period` enum('day','fortnight','month') NOT NULL DEFAULT 'day' COMMENT 'Window intake_limit is counted over.',
+  `course_ids_json` text DEFAULT NULL COMMENT 'Courses/tracks this rep receives. NULL = all.',
+  `sources_json` text DEFAULT NULL COMMENT 'Lead sources this rep receives. NULL = all.',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_crm_assignment_scope` (`tenant_id`,`staff_id`,`branch_key`,`team_key`),
   KEY `idx_crm_assignment_pick` (`tenant_id`,`team_key`,`branch_key`,`is_available`,`last_assigned_at`),
@@ -3161,6 +3174,7 @@ CREATE TABLE `leads` (
   `messenger_psid` varchar(64) DEFAULT NULL COMMENT 'Page-scoped id — the only identifier Messenger gives us',
   `messenger_last_inbound_at` datetime DEFAULT NULL COMMENT 'Drives the 24h reply window: outside it Meta rejects plain text',
   `assigned_at` datetime DEFAULT NULL,
+  `score_refreshed_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `idx_leads_fb_lead_id` (`fb_lead_id`),
   UNIQUE KEY `uq_leads_tenant_client_code` (`tenant_id`,`client_code`),
@@ -3189,7 +3203,8 @@ CREATE TABLE `leads` (
   KEY `idx_leads_tenant_sales_created` (`tenant_id`,`assigned_sales_id`,`created_at`),
   KEY `idx_leads_tenant_sales_updated` (`tenant_id`,`assigned_sales_id`,`updated_at`),
   KEY `idx_leads_tenant_forecast_close` (`tenant_id`,`expected_close_date`,`forecast_category`,`assigned_sales_id`,`hidden`),
-  KEY `idx_leads_assigned_today` (`tenant_id`,`assigned_sales_id`,`assigned_at`)
+  KEY `idx_leads_assigned_today` (`tenant_id`,`assigned_sales_id`,`assigned_at`),
+  KEY `idx_leads_score_refreshed` (`tenant_id`,`score_refreshed_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -3266,6 +3281,8 @@ CREATE TABLE `leaves` (
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `policy_id` varchar(36) DEFAULT NULL,
+  `start_time` varchar(5) DEFAULT NULL,
+  `end_time` varchar(5) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_leaves_staff` (`staff_id`),
   KEY `idx_leaves_dates` (`start_date`,`end_date`),
@@ -3963,6 +3980,7 @@ CREATE TABLE `payments` (
   `cert_type` varchar(100) DEFAULT NULL,
   `certificate_request_id` varchar(36) DEFAULT NULL,
   `review_overdue_notified_at` datetime DEFAULT NULL COMMENT 'When the >24h pending-review alert was raised for this payment.',
+  `linked_transfer_id` varchar(36) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `idx_payments_txn` (`transaction_id`),
   KEY `idx_payments_subscriber` (`subscriber_id`),
@@ -3986,6 +4004,7 @@ CREATE TABLE `payments` (
   KEY `idx_payments_tenant_branch_date_status` (`tenant_id`,`branch_id`,`date`,`status`,`deleted_at`),
   KEY `idx_payments_tenant_staff_status_date` (`tenant_id`,`staff_id`,`status`,`date`),
   KEY `idx_payments_pending_review` (`tenant_id`,`status`,`review_overdue_notified_at`),
+  KEY `idx_payments_linked_transfer` (`tenant_id`,`linked_transfer_id`),
   CONSTRAINT `fk_payments_bundle` FOREIGN KEY (`bundle_id`) REFERENCES `bundles` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_payments_certificate_request` FOREIGN KEY (`certificate_request_id`) REFERENCES `certificate_requests` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_payments_course` FOREIGN KEY (`course_id`) REFERENCES `courses` (`id`) ON DELETE SET NULL,
@@ -4219,6 +4238,8 @@ CREATE TABLE `push_subscriptions` (
   `tenant_id` varchar(36) DEFAULT NULL,
   `user_uid` varchar(100) DEFAULT NULL,
   `subscriber_id` varchar(36) DEFAULT NULL,
+  `staff_id` varchar(36) DEFAULT NULL,
+  `is_admin` tinyint(1) NOT NULL DEFAULT 0,
   `endpoint_hash` char(64) NOT NULL,
   `subscription_json` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL CHECK (json_valid(`subscription_json`)),
   `user_agent` varchar(500) DEFAULT NULL,
@@ -4232,7 +4253,8 @@ CREATE TABLE `push_subscriptions` (
   KEY `idx_push_subscriber` (`subscriber_id`),
   KEY `idx_push_uid` (`user_uid`),
   KEY `idx_push_active` (`is_active`),
-  KEY `idx_push_tenant` (`tenant_id`)
+  KEY `idx_push_tenant` (`tenant_id`),
+  KEY `idx_push_tenant_staff` (`tenant_id`,`staff_id`,`is_active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -5009,6 +5031,7 @@ CREATE TABLE `subscribers` (
   `is_unsubscribed` tinyint(1) NOT NULL DEFAULT 0,
   `unsubscribed_at` timestamp NULL DEFAULT NULL,
   `source` varchar(120) DEFAULT NULL,
+  `assigned_cs_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_subs_tenant_phone` (`tenant_id`,`phone`),
   UNIQUE KEY `uq_subs_tenant_code` (`tenant_id`,`client_code`),
@@ -5032,7 +5055,8 @@ CREATE TABLE `subscribers` (
   KEY `idx_subscribers_tenant_created_id` (`tenant_id`,`created_at`,`id`),
   KEY `idx_subscribers_tenant_branch_created` (`tenant_id`,`branch_id`,`created_at`),
   KEY `idx_subscribers_tenant_active_deleted` (`tenant_id`,`is_active`,`deleted_at`),
-  KEY `idx_subscribers_tenant_phone` (`tenant_id`,`phone`)
+  KEY `idx_subscribers_tenant_phone` (`tenant_id`,`phone`),
+  KEY `idx_subscribers_cs_at` (`tenant_id`,`assigned_cs_id`,`assigned_cs_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -5692,3 +5716,79 @@ CREATE TABLE `work_schedules` (
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
+
+-- Tables production has that this file lacked (synced 1 Oct 2026).
+CREATE TABLE `community_event_registrations` (
+  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `tenant_id` varchar(64) NOT NULL,
+  `event_id` varchar(100) NOT NULL,
+  `name` varchar(200) NOT NULL,
+  `phone` varchar(40) NOT NULL,
+  `phone_identity` varchar(40) NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `studied_before` tinyint(1) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_event_registration` (`tenant_id`,`event_id`,`phone_identity`),
+  KEY `idx_event_registrations_event` (`tenant_id`,`event_id`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `customer_devices` (
+  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `tenant_id` varchar(64) NOT NULL,
+  `user_id` varchar(100) NOT NULL,
+  `device_hash` char(64) NOT NULL,
+  `last_ip` varchar(45) DEFAULT NULL,
+  `user_agent` varchar(255) DEFAULT NULL,
+  `first_seen_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `last_seen_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_customer_device` (`tenant_id`,`user_id`,`device_hash`),
+  KEY `idx_customer_devices_user` (`tenant_id`,`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `incoming_transfers` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `amount` decimal(12,2) NOT NULL,
+  `currency` varchar(3) NOT NULL DEFAULT 'EGP',
+  `method` varchar(100) NOT NULL,
+  `reference` varchar(191) DEFAULT NULL,
+  `sender_name` varchar(255) DEFAULT NULL,
+  `sender_phone` varchar(40) DEFAULT NULL,
+  `received_on` date NOT NULL,
+  `note` text DEFAULT NULL,
+  `recorded_by` varchar(36) DEFAULT NULL,
+  `recorded_by_name` varchar(255) DEFAULT NULL,
+  `payment_id` varchar(100) DEFAULT NULL,
+  `linked_at` datetime DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_incoming_transfer_payment` (`tenant_id`,`payment_id`),
+  UNIQUE KEY `uq_incoming_transfer_ref` (`tenant_id`,`method`,`reference`),
+  KEY `idx_incoming_transfers_tenant` (`tenant_id`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `subscriber_requests` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `requested_by` varchar(36) NOT NULL,
+  `requested_by_name` varchar(255) DEFAULT NULL,
+  `lead_id` varchar(64) DEFAULT NULL,
+  `name` varchar(300) NOT NULL,
+  `phone` varchar(40) DEFAULT NULL,
+  `email` varchar(255) DEFAULT NULL,
+  `amount` decimal(12,2) NOT NULL,
+  `currency` varchar(3) NOT NULL DEFAULT 'EGP',
+  `body_json` longtext NOT NULL,
+  `status` varchar(16) NOT NULL DEFAULT 'pending',
+  `review_note` text DEFAULT NULL,
+  `reviewed_by` varchar(36) DEFAULT NULL,
+  `reviewed_by_name` varchar(255) DEFAULT NULL,
+  `reviewed_at` datetime DEFAULT NULL,
+  `subscriber_id` varchar(36) DEFAULT NULL,
+  `payment_id` varchar(100) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_subscriber_requests_status` (`tenant_id`,`status`,`created_at`),
+  KEY `idx_subscriber_requests_by` (`tenant_id`,`requested_by`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

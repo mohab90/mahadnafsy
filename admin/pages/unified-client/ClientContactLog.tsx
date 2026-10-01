@@ -68,14 +68,16 @@ export function ContactTimeline({ entries, loading, compact = false }: { entries
  * «تواصل» — record a contact where the client is, with the history beside it.
  * The online table's button opened the client page instead.
  */
-export function ClientContactDialog({ subscriber, notify, onClose, onSaved }: {
+export function ClientContactDialog({ subscriber, notify, onClose, onSaved, initialType = 'call' }: {
   subscriber: { id: string; name: string };
+  /** Opened from the call or WhatsApp button: that kind, already picked. */
+  initialType?: 'call' | 'whatsapp';
   notify: Notify;
   onClose: () => void;
   onSaved?: (entry: ContactEntry & { staffId?: string | null }, updatedAt?: string) => void;
 }) {
   const { entries, loading, reload } = useClientContacts(subscriber.id);
-  const [draft, setDraft] = useState({ type: 'call', date: cairoDateTimeInput(), notes: '', outcome: '', nextFollowUp: '' });
+  const [draft, setDraft] = useState<{ type: string; date: string; notes: string; outcome: string; nextFollowUp: string }>({ type: initialType, date: cairoDateTimeInput(), notes: '', outcome: '', nextFollowUp: '' });
   const [saving, setSaving] = useState(false);
 
   // «مش لازم اكتب في التواصل مدام اخترت نتيجه»: a result is enough.

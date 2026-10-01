@@ -40,22 +40,36 @@ const ownsTicket = (ticket, subscriber, email) => Boolean(ticket && (
 const departmentsForRole = role => Object.entries(DEPARTMENT_ROLES)
   .filter(([, roles]) => roles.includes(String(role || '').toLowerCase()))
   .map(([department]) => department);
+// The categories each department owns (lib/ticketRouting.js), so a ticket the
+// SLA sweep escalated is still its department's to answer.
+const categoriesOf = departments => Object.entries(CATEGORY_META)
+  .filter(([, meta]) => departments.includes(meta.department)).map(([category]) => category);
 const ticketScope = (req, alias = 't') => {
   if (req.isSuperAdmin || ['manager', 'admin'].includes(String(req.staffRecord?.role || '').toLowerCase())) {
     return { sql: '1=1', params: [] };
   }
   const departments = departmentsForRole(req.staffRecord?.role);
   if (!departments.length) return { sql: '1=0', params: [] };
+  // 16 tickets had no department (made before routing existed) and 13 had been
+  // escalated to management, which moved them out of customer service's list —
+  // 29 of the 41 open tickets were in no employee's queue at all.
+  const categories = categoriesOf(departments);
+  const unrouted = departments.includes('support') ? ` OR ${alias}.department IS NULL` : '';
+  const escalated = categories.length
+    ? ` OR (${alias}.escalated_at IS NOT NULL AND ${alias}.category IN (${categories.map(() => '?').join(',')}))` : '';
   return {
-    sql: `(${alias}.department IN (${departments.map(() => '?').join(',')}) OR ${alias}.assigned_to=?)`,
-    params: [...departments, req.staffRecord?.id || ''],
+    sql: `(${alias}.department IN (${departments.map(() => '?').join(',')}) OR ${alias}.assigned_to=?${unrouted}${escalated})`,
+    params: [...departments, req.staffRecord?.id || '', ...categories],
   };
 };
 const canAccessTicket = (req, ticket) => {
   if (!ticket) return false;
   if (req.isSuperAdmin || ['manager', 'admin'].includes(String(req.staffRecord?.role || '').toLowerCase())) return true;
+  const departments = departmentsForRole(req.staffRecord?.role);
   return ticket.assigned_to === req.staffRecord?.id
-    || departmentsForRole(req.staffRecord?.role).includes(ticket.department);
+    || departments.includes(ticket.department)
+    || (!ticket.department && departments.includes('support'))
+    || (!!ticket.escalated_at && categoriesOf(departments).includes(ticket.category));
 };
 
 async function actorOf(req) {
@@ -569,7 +583,8 @@ router.post('/api/admin/tickets/:id/reply', requireAuth, requireAdminOrStaff, re
     if (!phone && t.subscriber_email) { const [[subscriber]] = await conn.query('SELECT phone FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, String(t.subscriber_email).toLowerCase().trim()]); phone = subscriber?.phone || null; }
     if (phone) await outbox.enqueue({
       channel: 'whatsapp', recipient: phone,
-      payload: { message: `رد جديد على تذكرتك "${t.subject || ''}":\n\n${String(body)}\n\nتابع المحادثة من لوحة التحكم.` },
+      // A reply to a request the client opened — the inbox's own kind of message.
+      payload: { message: `رد جديد على تذكرتك "${t.subject || ''}":\n\n${String(body)}\n\nتابع المحادثة من لوحة التحكم.`, category: 'inbox_reply' },
       tenantId: req.tenantId, dedupeKey: `ticket-reply-wa:${req.tenantId}:${replyId}`, refType: 'support_ticket', refId: req.params.id,
     }, conn);
     await conn.commit(); conn.release(); conn = null;
@@ -1137,18 +1152,21 @@ async function slaSweep() {
         await logTicketEvent(pool, { tenantId: t.tenant_id, ticketId: t.id, type: 'note', to: 'sla_breach', detail: 'تجاوز زمن الاستجابة (SLA)' });
          createNotification('ticket', '⏰ تجاوز زمن الاستجابة', `تذكرة لم يُرد عليها ضمن المهلة: ${t.subject || ''}`, { ticketId: t.id }, t.tenant_id, t.assigned_to || null).catch(() => {});
       }
-      if (breachMs > 6 * 3600 * 1000) { // >6h past due → auto-escalate to management
+      if (breachMs > 6 * 3600 * 1000) { // >6h past due → escalate: management is told
+        // The ticket stays with its department and its owner. Moving it to
+        // management took it out of customer service's list — and management
+        // does not answer tickets — so escalated tickets were answered by no one.
         const assignee = await pickAssignee(pool, t.tenant_id, 'management');
         await pool.query(
-          "UPDATE support_tickets SET department='management', priority='high', escalated_at=NOW(), assigned_to=?, updated_at=NOW() WHERE id=? AND tenant_id=? AND escalated_at IS NULL",
-          [assignee?.id || null, t.id, t.tenant_id]);
+          "UPDATE support_tickets SET priority='high', escalated_at=NOW(), updated_at=NOW() WHERE id=? AND tenant_id=? AND escalated_at IS NULL",
+          [t.id, t.tenant_id]);
         await logTicketEvent(pool, { tenantId: t.tenant_id, ticketId: t.id, type: 'escalated', actorName: 'النظام', to: assignee?.name || 'الإدارة', detail: 'تصعيد تلقائي (تجاوز SLA)' });
         // Alert the manager it was escalated to (in-app + WhatsApp if we have a phone).
          createNotification('ticket', '⚠️ تصعيد تلقائي (SLA)', `تذكرة تجاوزت المهلة وصُعّدت للإدارة: ${t.subject || ''}`, { ticketId: t.id, department: 'management' }, t.tenant_id, assignee?.id || null).catch(() => {});
         if (assignee?.id) {
           try {
             const [[mgr]] = await pool.query('SELECT phone FROM staff WHERE id=? AND tenant_id=? LIMIT 1', [assignee.id, t.tenant_id]);
-            const notifyWhatsApp = (phone, message) => require('../lib/whatsapp').sendWhatsApp(phone, message, { tenantId: t.tenant_id });
+            const notifyWhatsApp = (phone, message) => require('../lib/whatsapp').sendWhatsApp(phone, message, { tenantId: t.tenant_id, category: 'staff_alert' });
             if (mgr?.phone) notifyWhatsApp(mgr.phone, `⚠️ تذكرة دعم تجاوزت زمن الاستجابة وتم تصعيدها إليك: ${t.subject || ''}`).catch(() => {});
           } catch { /* whatsapp best-effort */ }
         }
@@ -1156,8 +1174,42 @@ async function slaSweep() {
     }
   } catch (e) { logger.warn('[cs/slaSweep]', e.message); }
 }
+// «ولا تذكرة دعم اتقفلت». A ticket the team answered, where the client has
+// said nothing for seven days since, is resolved: the answer stood. Recorded on
+// the ticket's timeline, and its owner is told; the client can reopen it by
+// replying, as ever.
+const AUTO_RESOLVE_DAYS = 7;
+async function autoResolveSweep() {
+  try {
+    const [rows] = await pool.query(
+      `SELECT t.id, t.tenant_id, t.assigned_to, t.subject
+         FROM support_tickets t
+        WHERE t.deleted_at IS NULL AND t.status='in_progress' AND t.first_response_at IS NOT NULL
+          AND (SELECT MAX(tr.created_at) FROM ticket_replies tr
+                WHERE tr.ticket_id=t.id AND tr.tenant_id=t.tenant_id AND UPPER(tr.author_type)='STAFF')
+              < DATE_SUB(NOW(), INTERVAL ? DAY)
+          AND NOT EXISTS (SELECT 1 FROM ticket_replies tr
+                WHERE tr.ticket_id=t.id AND tr.tenant_id=t.tenant_id AND UPPER(tr.author_type)<>'STAFF'
+                  AND tr.created_at > (SELECT MAX(s.created_at) FROM ticket_replies s
+                                        WHERE s.ticket_id=t.id AND s.tenant_id=t.tenant_id AND UPPER(s.author_type)='STAFF'))
+        LIMIT 100`, [AUTO_RESOLVE_DAYS]);
+    for (const t of rows) {
+      const [result] = await pool.query(
+        "UPDATE support_tickets SET status='resolved', resolved_at=NOW(), updated_at=NOW() WHERE id=? AND tenant_id=? AND status='in_progress'",
+        [t.id, t.tenant_id]);
+      if (!result.affectedRows) continue;
+      await logTicketEvent(pool, {
+        tenantId: t.tenant_id, ticketId: t.id, type: 'status', actorName: 'النظام', to: 'resolved',
+        detail: `اتقفلت تلقائياً — الفريق رد ومفيش رد من العميل ${AUTO_RESOLVE_DAYS} أيام`,
+      });
+      createNotification('ticket', 'تذكرة اتقفلت تلقائياً', `مفيش رد من العميل ${AUTO_RESOLVE_DAYS} أيام بعد ردكم: ${t.subject || ''}`,
+        { ticketId: t.id }, t.tenant_id, t.assigned_to || null).catch(() => {});
+    }
+  } catch (e) { logger.warn('[cs/autoResolveSweep]', e.message); }
+}
+
 function scheduleSlaSweep() {
-  const iv = setInterval(() => { slaSweep().catch(() => {}); }, 10 * 60 * 1000); // every 10 min
+  const iv = setInterval(() => { slaSweep().catch(() => {}); autoResolveSweep().catch(() => {}); }, 10 * 60 * 1000); // every 10 min
   if (iv.unref) iv.unref();
   return iv;
 }
@@ -1165,3 +1217,6 @@ scheduleSlaSweep();
 
 module.exports = router;
 module.exports.createRoutedTicket = createRoutedTicket;
+module.exports.ticketScope = ticketScope;
+module.exports.canAccessTicket = canAccessTicket;
+module.exports.autoResolveSweep = autoResolveSweep;
