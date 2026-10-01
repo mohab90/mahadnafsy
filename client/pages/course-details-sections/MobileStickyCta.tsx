@@ -27,7 +27,7 @@ export const MobileStickyCta: React.FC<MobileStickyCtaProps> = ({
   const strikePrice = discountedPrice !== null ? currentPrice : oldPrice;
   const payPrice = discountedPrice !== null ? discountedPrice : currentPrice;
   return (
-    <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] pb-8 md:pb-4">
+    <div data-sticky-cta="lg" className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] pb-8 md:pb-4">
        <div className="flex gap-2 items-center max-w-lg mx-auto">
            <div className="flex-shrink-0">
                {currentPrice > 0 ? (

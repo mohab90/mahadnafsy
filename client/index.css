@@ -194,3 +194,14 @@
 .resize-handle:active {
   border-left-color: #6366f1;
 }
+
+/* On a phone the course page pins its price and «احجز» to the foot of the
+   screen, and the client's account pins its tabs there. The two floating
+   buttons (WhatsApp, «استفسر الآن») sat on top of them — over the price and
+   over «سجل بياناتك». Where such a bar is on the page, they ride above it. */
+@media (max-width: 1023px) {
+  body:has([data-sticky-cta="lg"]) .floating-action { bottom: 9.25rem; }
+}
+@media (max-width: 767px) {
+  body:has([data-sticky-cta="md"]) .floating-action { bottom: 5rem; }
+}

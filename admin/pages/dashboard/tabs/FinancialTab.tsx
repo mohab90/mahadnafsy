@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cairoDateOnly, cairoMonthOnly, cairoDay, cairoMonthStart } from '../../../../shared/cairoDate';
 import {
   Plus, TrendingUp,
@@ -419,7 +419,13 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
     toEGP,
   );
 
-  const notifyLegacy = (msg: string, type?: 'success' | 'error') => notify(type || 'info', msg);
+  // One function for the life of the screen. Written inline it was new on every
+  // render, and the panels below reload when their notify changes: a refused
+  // request raised a toast, the toast re-rendered this screen, the new notify
+  // reloaded the panel — 177 requests to the cockpit in one minute on 30 Sep 2026.
+  const notifyRef = useRef(notify);
+  notifyRef.current = notify;
+  const notifyLegacy = useCallback((msg: string, type?: 'success' | 'error') => notifyRef.current(type || 'info', msg), []);
 
   return (
     <div className="space-y-5">

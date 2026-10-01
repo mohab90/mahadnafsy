@@ -53,7 +53,11 @@ export function useStaffOwnData({
         hasPermission(staffRef, 'view_subscribers')
           ? mysqlAdmin.listStaffSubscribers() as Promise<unknown>
           : Promise.resolve([] as unknown),
-        mysqlAdmin.listStaffLeads()       as Promise<unknown>,
+        // And only for a role that may see leads: one that may not was refused
+        // this on every page load (403, 76 times in two days of the log).
+        hasPermission(staffRef, 'view_leads')
+          ? mysqlAdmin.listStaffLeads() as Promise<unknown>
+          : Promise.resolve([] as unknown),
       ]);
 
       const mySubs:  SubscriberItem[] = subsRaw.status  === 'fulfilled' ? subsRaw.value  as SubscriberItem[]  : [];

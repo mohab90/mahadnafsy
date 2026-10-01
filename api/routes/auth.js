@@ -64,6 +64,11 @@ function hashOtp({ tenantId, email, type, code }) {
 // then be unreachable by anyone once email sign-in was ever disabled — see
 // claimWhatsAppIdentity below for why a COLLIDING number is still allowed
 // through with a warning rather than blocking the signup outright.
+// 27 of 32 signups in two days ended here (29–30 Sep 2026): the number already
+// had an account — a client from the sheets, or someone signing up twice. «رقم
+// الهاتف مستخدم بالفعل» told them that and nothing else; this says how to get in.
+const PHONE_TAKEN_MESSAGE = 'الرقم ده عليه حساب عندنا بالفعل. ادخل من «الدخول برقم الواتساب» وهيوصلك كود على نفس الرقم، ومن غير كلمة مرور.';
+
 router.post('/api/auth/register', registerLimiter, requireDb, requireTenantQuota('users'),
   validateBody({
     email:    v => v === undefined || v === null || v === '' || isEmail(v) || 'البريد الإلكتروني غير صحيح',
@@ -107,7 +112,7 @@ router.post('/api/auth/register', registerLimiter, requireDb, requireTenantQuota
       'SELECT id FROM users WHERE tenant_id=? AND phone = ? LIMIT 1',
       [tenantId, normalizeWhatsAppNumber(phone)]
     );
-    if (phoneTaken) return res.status(409).json({ error: 'رقم الهاتف مستخدم بالفعل', code: 'PHONE_ALREADY_REGISTERED' });
+    if (phoneTaken) return res.status(409).json({ error: PHONE_TAKEN_MESSAGE, code: 'PHONE_ALREADY_REGISTERED' });
     await conn.beginTransaction();
     transactionStarted = true;
     const id = uuidv4();
@@ -248,7 +253,7 @@ router.post('/api/user/signup', registerLimiter, requireDb, requireTenantQuota('
       'SELECT id FROM users WHERE tenant_id=? AND phone = ? LIMIT 1',
       [tenantId, normalizeWhatsAppNumber(phone)]
     );
-    if (phoneTaken) return res.status(409).json({ error: 'رقم الهاتف مستخدم بالفعل', code: 'PHONE_ALREADY_REGISTERED' });
+    if (phoneTaken) return res.status(409).json({ error: PHONE_TAKEN_MESSAGE, code: 'PHONE_ALREADY_REGISTERED' });
     await conn.beginTransaction();
     transactionStarted = true;
     const id = uuidv4();

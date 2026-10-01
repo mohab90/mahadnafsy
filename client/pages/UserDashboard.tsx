@@ -1161,7 +1161,7 @@ const UserDashboard: React.FC = () => {
         </div>
 
         {/* Mobile bottom tab bar */}
-        <div className="md:hidden fixed bottom-0 inset-x-0 bg-white border-t border-gray-100 flex z-50 shadow-md">
+        <div data-sticky-cta="md" className="md:hidden fixed bottom-0 inset-x-0 bg-white border-t border-gray-100 flex z-50 shadow-md">
           {tabs.map(t => (
             <button
               key={t.id}
