@@ -125,4 +125,11 @@ test('the deploy script uses the release it was given', () => {
   // only be answered by reading files on the box, which is how the rollback
   // went unnoticed for as long as it did.
   assert.match(script, /APP_RELEASE=\$R/);
+
+  // Run without its archives (1 Oct 2026: the upload had failed), it stamped
+  // the new release name on the old code and restarted staging. It stops
+  // before the first deploy now, having changed nothing.
+  assert.ok(script.includes('[ -s "/staging/$R-$part.tgz" ] || {'), 'a missing archive must stop the run');
+  assert.ok(script.indexOf('for part in api admin client; do') < script.indexOf('deploy() {'),
+    'the archives are checked before anything is backed up, stamped or restarted');
 });

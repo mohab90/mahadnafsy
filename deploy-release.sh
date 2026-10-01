@@ -16,6 +16,17 @@ set -uo pipefail
 R=${1:-mahad-2fe36419b325}
 TS=$(date +%Y%m%d-%H%M%S)
 
+# All three archives, or nothing. On 2026-10-01 the upload failed (scp run from
+# a folder that did not hold the release) and this script ran anyway: every tar
+# failed, the old code was stamped with the new release name, and staging was
+# restarted on it.
+for part in api admin client; do
+  [ -s "/staging/$R-$part.tgz" ] || {
+    echo "MISSING /staging/$R-$part.tgz - upload the release first. Nothing was changed."
+    exit 1
+  }
+done
+
 h()  { curl -s --max-time 15 "http://127.0.0.1:$1/api/health" 2>/dev/null; }
 ok() { h "$1" | grep -q '"status":"ok"'; }
 
