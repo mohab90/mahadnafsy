@@ -338,6 +338,30 @@ test('a confirmation says what it confirms, not «delete» by default', () => {
 
 // ── Schema and search ───────────────────────────────────────────────────────
 
+test('no table in schema.sql names a column or a key twice', () => {
+  // `uq_subs_tenant_phone` stood twice on subscribers: MySQL refuses the whole
+  // CREATE TABLE («Duplicate key name»), so a fresh database had no clients table.
+  const schema = read('api/schema.sql').split('\r\n').join('\n');
+  const tick = String.fromCharCode(96);
+  const table = new RegExp('CREATE TABLE ' + tick + '([a-z0-9_]+)' + tick + ' \\(\\n([\\s\\S]*?)\\n\\) ENGINE', 'g');
+  const column = new RegExp('^\\s*' + tick + '([A-Za-z0-9_]+)' + tick + ' ');
+  const key = new RegExp('^\\s*(?:UNIQUE |FULLTEXT )?KEY ' + tick + '([A-Za-z0-9_]+)' + tick);
+  const twice = [];
+  let match, tables = 0;
+  while ((match = table.exec(schema))) {
+    tables += 1;
+    const seen = new Set();
+    for (const line of match[2].split('\n')) {
+      const name = (line.match(key) || [])[1] ? `key ${line.match(key)[1]}` : (line.match(column) || [])[1] ? `column ${line.match(column)[1]}` : null;
+      if (!name) continue;
+      if (seen.has(name)) twice.push(`${match[1]}: ${name}`);
+      seen.add(name);
+    }
+  }
+  assert.ok(tables > 100, `read ${tables} tables`);
+  assert.deepEqual(twice, []);
+});
+
 test('schema.sql has what production has', () => {
   const schema = read('api/schema.sql');
   for (const table of ['community_event_registrations', 'customer_devices', 'incoming_transfers', 'subscriber_requests']) {
