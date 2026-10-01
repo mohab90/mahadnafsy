@@ -253,7 +253,10 @@ const Auth: React.FC = () => {
             }
             const arabicMessages: Record<string, string> = {
                 'Email already registered': 'هذا البريد الإلكتروني مستخدم بالفعل، حاول تسجيل الدخول.',
-                'Invalid credentials': 'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
+                // 211 failed sign-ins in a week were addresses with no account,
+                // about seven tries each — mostly clients who joined by phone.
+                // One wording for both failures, so it says nothing of which.
+                'Invalid credentials': 'البريد الإلكتروني أو كلمة المرور غير صحيحة. لو اشتركت برقم موبايلك، ادخل من «💬 الدخول برقم الواتساب» تحت.',
                 'Email and password required': 'يرجى إدخال البريد الإلكتروني وكلمة المرور.',
                 'Password must be at least 8 characters': 'يجب أن تكون كلمة المرور 8 أحرف على الأقل.',
                 'Login failed': 'حدث خطأ في الخادم، حاول مرة أخرى.',
