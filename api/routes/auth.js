@@ -1152,7 +1152,7 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
     const [rows] = await conn.execute('SELECT id, email, name, phone FROM users WHERE id = ? AND tenant_id=?', [req.user.uid, req.tenantId]);
     if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
     const u = rows[0];
-    let isAdmin = ADMIN_EMAILS.includes(u.email) || ADMIN_UIDS.includes(u.id);
+    let isAdmin = ADMIN_EMAILS.includes(String(u.email || '').trim().toLowerCase()) || ADMIN_UIDS.includes(u.id);
     let staffPermissions = null;
     if (!isAdmin) {
       // Staff with a full-access role — the list requireAdmin enforces. This
@@ -1991,7 +1991,7 @@ router.post('/api/auth/2fa/disable', requireAuth, async (req, res) => {
       [req.tenantId, email]
     ).catch(() => [[null]]);
     const policy = await getMfaPolicy(req.tenantId);
-    const forcedAdmin = ADMIN_EMAILS.includes(req.user.email) || ADMIN_UIDS.includes(req.user.uid);
+    const forcedAdmin = ADMIN_EMAILS.includes(String(req.user.email || '').trim().toLowerCase()) || ADMIN_UIDS.includes(req.user.uid);
     if (policy.enabled && (forcedAdmin || policyRequiresStaff(policy, staff))) {
       return res.status(409).json({
         error: 'لا يمكن تعطيل المصادقة الثنائية لأن سياسة أمان المؤسسة تفرضها على هذا الحساب',

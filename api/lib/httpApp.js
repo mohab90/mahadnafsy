@@ -24,26 +24,74 @@ const { cleanupMemoryPresence } = require('./onlineUsers');
 const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
 eventLoopDelay.enable();
 
-function corsConfig() {
+function originPolicy() {
   const configured = (process.env.ALLOWED_ORIGINS || '').split(',').map((value) => value.trim());
   const allowed = process.env.NODE_ENV === 'production'
     ? configured.filter((origin) => origin && !origin.includes('localhost') && !origin.includes('127.0.0.1'))
     : configured;
   const local = (origin) => process.env.NODE_ENV !== 'production'
     && /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(origin);
+  return (origin) => !origin || allowed.includes(origin) || local(origin);
+}
+
+/**
+ * A browser request that changes something, carries the session cookie, and
+ * names an Origin the institute does not own is refused.
+ *
+ * The session cookie is SameSite=None (the admin and the API live on different
+ * hosts), so a page on any other site can make the browser attach it. CORS stops
+ * that page READING the answer; it does not stop the request being made, and a
+ * write does not need its answer read. Browsers always send Origin on a
+ * cross-site write, so checking it closes that without a token. Same-origin
+ * requests (Origin host = the host asked), the allow-list in ALLOWED_ORIGINS and
+ * requests with no cookie — webhooks, provider callbacks, scripts using a bearer
+ * header — are untouched.
+ */
+function csrfOriginGuard() {
+  const isAllowed = originPolicy();
+  const SAFE = new Set(['GET', 'HEAD', 'OPTIONS']);
+  return (req, res, next) => {
+    if (SAFE.has(req.method)) return next();
+    const origin = req.headers.origin;
+    if (!origin || !/(?:^|;\s*)authToken=/.test(req.headers.cookie || '')) return next();
+    if (isAllowed(origin)) return next();
+    try {
+      const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
+      if (host && new URL(origin).host.toLowerCase() === host) return next();
+    } catch (_) { /* a malformed Origin is refused below */ }
+    return res.status(403).json({ error: 'Origin not allowed', code: 'ORIGIN_NOT_ALLOWED' });
+  };
+}
+
+function corsConfig() {
+  const isAllowed = originPolicy();
   return {
-    origin: (origin, callback) => callback(null, !origin || allowed.includes(origin) || local(origin)),
+    origin: (origin, callback) => callback(null, isAllowed(origin)),
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS', 'PUT'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Tenant-Id', 'Idempotency-Key'],
     credentials: true,
   };
 }
 
+// The internals (memory, CPU, pool, queue depths, Redis) are for the people who run
+// the server. A caller on the box itself, or one holding HEALTH_TOKEN, gets them;
+// anybody else gets only whether the service is up — which is all an uptime
+// monitor needs, and nothing a stranger can use to time an attack.
+function privilegedHealthCaller(req) {
+  const token = String(process.env.HEALTH_TOKEN || '');
+  const given = String(req.headers['x-health-token'] || '');
+  if (token && given.length === token.length
+    && require('crypto').timingSafeEqual(Buffer.from(given), Buffer.from(token))) return true;
+  const ip = String(req.socket?.remoteAddress || '').replace(/^::ffff:/, '');
+  const forwarded = Boolean(req.headers['x-forwarded-for']);
+  return !forwarded && (ip === '127.0.0.1' || ip === '::1');
+}
+
 function registerHealthRoutes(app, pool) {
   app.get('/api/health/live', (_req, res) => {
     res.json({ status: 'ok', service: 'mahad-api', time: new Date().toISOString() });
   });
-  app.get('/api/health/detailed', async (_req, res) => {
+  app.get('/api/health/detailed', async (req, res) => {
     const started = Date.now();
     let db = { ok: false, ms: null, error: null };
     try {
@@ -54,6 +102,9 @@ function registerHealthRoutes(app, pool) {
     }
     const redis = await require('./rateLimitStore').redisHealth();
     const dependenciesOk = db.ok && (!redis.enabled || redis.ok);
+    if (!privilegedHealthCaller(req)) {
+      return res.status(dependenciesOk ? 200 : 503).json({ status: dependenciesOk ? 'ok' : 'degraded' });
+    }
     const memory = process.memoryUsage();
     const rawPool = pool.pool || {};
     const totalConnections = rawPool._allConnections?.length || 0;
@@ -83,10 +134,11 @@ function registerHealthRoutes(app, pool) {
       time: new Date().toISOString(),
     });
   });
-  app.get('/api/health/queues', async (_req, res) => {
+  app.get('/api/health/queues', async (req, res) => {
     try {
       const jobs = await require('./jobQueue').healthSnapshot();
       const ok = jobs.stale === 0 && jobs.dead === 0;
+      if (!privilegedHealthCaller(req)) return res.status(ok ? 200 : 503).json({ status: ok ? 'ok' : 'degraded' });
       res.status(ok ? 200 : 503).json({
         status: ok ? 'ok' : 'degraded',
         backend: 'mysql',
@@ -113,6 +165,7 @@ function createHttpApp({ pool, brandAssetRoot }) {
   const corsOptions = corsConfig();
   app.options('*', cors(corsOptions));
   app.use(cors(corsOptions));
+  app.use(csrfOriginGuard());
   app.use(helmet({
     contentSecurityPolicy: {
       directives: {
@@ -201,4 +254,4 @@ function createHttpApp({ pool, brandAssetRoot }) {
   return app;
 }
 
-module.exports = { createHttpApp, corsConfig, registerHealthRoutes };
+module.exports = { createHttpApp, corsConfig, csrfOriginGuard, registerHealthRoutes };

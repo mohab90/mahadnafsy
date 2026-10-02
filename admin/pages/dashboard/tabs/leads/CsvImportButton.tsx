@@ -34,8 +34,17 @@ export function CsvImportButton({ notify, onImported }: {
         };
       }).filter(lead => lead.name && lead.phone);
       if (!leads.length) throw new Error('لم يتم العثور على أعمدة name/phone');
-      const result = await mysqlAdmin.importLeads(leads);
-      notify('success', `تم استيراد ${result.imported} ليد · تخطي: ${result.skipped}`);
+      // The server takes 500 rows a request; a longer file goes in batches and the
+      // answers are added up, instead of the whole file being refused.
+      const BATCH = 500;
+      let imported = 0;
+      let skipped = 0;
+      for (let start = 0; start < leads.length; start += BATCH) {
+        const part = await mysqlAdmin.importLeads(leads.slice(start, start + BATCH));
+        imported += Number(part.imported) || 0;
+        skipped += Number(part.skipped) || 0;
+      }
+      notify('success', `تم استيراد ${imported} ليد · تخطي: ${skipped} (من ${leads.length} صف)`);
       onImported();
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'فشل الاستيراد');

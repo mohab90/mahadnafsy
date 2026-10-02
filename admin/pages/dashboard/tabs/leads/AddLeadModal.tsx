@@ -4,6 +4,7 @@
 // seventeen unrelated exports. It still re-exports this, so the ten files that
 // import from it are untouched.
 
+import { latinDigits } from '../../../../../shared/latinDigits';
 import { useState } from 'react';
 import { Modal } from '../../../../../shared/ui/Modal';
 import { Plus, Tag, UserPlus, X } from 'lucide-react';
@@ -49,7 +50,7 @@ export function AddLeadModal({ courses, bundles, salesReps, leads, sources, bran
     if (!draft.phone.trim()) return setErr('رقم الهاتف مطلوب');
     if (!draft.branch) return setErr('الفرع مطلوب — اختر الفرع أولاً');
     if (!overrideDup) {
-      const normalise = (p?: string | null) => (p || '').replace(/\D/g, '');
+      const normalise = (p?: string | null) => latinDigits(p || '').replace(/\D/g, '');
       const draftPhone = normalise(draft.phone);
       const dup = leads.find(l => !l.hidden && draftPhone.length >= 7 && normalise(l.phone) === draftPhone);
       if (dup) { setDupInfo({ name: dup.name, status: dup.status }); return; }
@@ -91,7 +92,7 @@ export function AddLeadModal({ courses, bundles, salesReps, leads, sources, bran
             </div>
             <div>
               <label className="text-xs font-bold text-gray-600 mb-1 block">رقم الهاتف *</label>
-              <input value={draft.phone} onChange={e => set('phone', e.target.value)}
+              <input value={draft.phone} onChange={e => set('phone', latinDigits(e.target.value))}
                 placeholder="01XXXXXXXXX" dir="ltr"
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
             </div>

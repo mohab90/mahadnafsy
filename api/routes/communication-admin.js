@@ -8,6 +8,7 @@ const { pool } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
 const { getWaCfg, invalidateWaCfg, resolveProvider, sendWhatsApp } = require('../lib/whatsapp');
 const { branchIdForBranch, defaultDigitalBranch } = require('../lib/branches');
+const { toIdentity, identitySpellings } = require('../lib/phoneNumber');
 const { getFbLeadConfig } = require('../lib/facebookLeadAds');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { setTenantSetting } = require('../lib/tenantSettings');
@@ -154,7 +155,7 @@ router.post('/api/admin/leads/import', requireAuth, requireAdmin, async (req, re
   try {
     const { leads } = req.body;
     if (!Array.isArray(leads) || leads.length === 0) return res.status(400).json({ error: 'leads array required' });
-    if (leads.length > 500) return res.status(400).json({ error: 'Max 500 leads per import' });
+    if (leads.length > 500) return res.status(413).json({ error: 'الاستيراد محدود بـ 500 ليد في المرة الواحدة — قسّم الملف على دفعات.', code: 'IMPORT_BATCH_TOO_LARGE', maxRows: 500 });
 
     // Pre-filter invalid rows
     const valid = [], errors = [];
@@ -166,20 +167,27 @@ router.post('/api/admin/leads/import', requireAuth, requireAdmin, async (req, re
     let imported = 0, skipped = 0;
     if (valid.length > 0) {
       const tenantId = scopedTenantId(req);
-      const phones = valid.map(l => l.phone);
-      const ph = phones.map(() => '?').join(',');
-      // Batch-check existing phones in one query each
-      const [subRows] = await pool.query(`SELECT phone FROM subscribers WHERE phone IN (${ph}) AND tenant_id=?`, [...phones, tenantId]);
-      const [leadRows] = await pool.query(`SELECT phone FROM leads WHERE phone IN (${ph}) AND hidden=0 AND tenant_id=?`, [...phones, tenantId]);
-      const existPhones = new Set([...subRows.map(r => r.phone), ...leadRows.map(r => r.phone)]);
+      // Matched by the number's identity, every spelling of it: «0101…», «+20101…»
+      // and «20101…» are one person. Comparing the typed string let the same
+      // client in again under a different spelling (the unique key is on the raw
+      // text), and a sheet's own repeats were counted as imported while
+      // INSERT IGNORE quietly dropped them.
+      const spellings = [...new Set(valid.flatMap(l => [l.phone, ...identitySpellings(l.phone)]))];
+      const ph = spellings.map(() => '?').join(',');
+      const [subRows] = await pool.query(`SELECT phone FROM subscribers WHERE phone IN (${ph}) AND tenant_id=?`, [...spellings, tenantId]);
+      const [leadRows] = await pool.query(`SELECT phone FROM leads WHERE phone IN (${ph}) AND hidden=0 AND tenant_id=?`, [...spellings, tenantId]);
+      const existIdentities = new Set([...subRows, ...leadRows].map(r => toIdentity(r.phone)).filter(Boolean));
+      const seenInFile = new Set();
 
       const insertRows = [], insertParams = [];
       for (const l of valid) {
-        if (existPhones.has(l.phone)) {
+        const identity = toIdentity(l.phone);
+        if (identity && (existIdentities.has(identity) || seenInFile.has(identity))) {
           skipped++;
           errors.push(`${l.phone} موجود بالفعل`);
           continue;
         }
+        if (identity) seenInFile.add(identity);
         const importBranch = defaultDigitalBranch(l.branch);
         insertRows.push('(?,?,?,?,?,?,?,?,?,?,?)');
         insertParams.push(

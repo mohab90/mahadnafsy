@@ -60,13 +60,20 @@ router.get('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePermi
     const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null });
     const branchSql = scope.branchId ? ' AND branch_id=?' : '';
     const params = scope.branchId ? [scopedTenantId(req), scope.branchId] : [scopedTenantId(req)];
+    // 500 was a fixed cut, and the screens total what they are handed: the
+    // expense cards, the category split and the analytics all stopped counting at
+    // the 500th row without a word. Five thousand is the ceiling now, and the
+    // answer says when it was reached (X-Truncated) so a total is not mistaken
+    // for the whole.
+    const limit = parseLimit(req.query.limit, 5000, 5000);
     const [rows] = await pool.query(
       `SELECT id, description, amount, currency, fx_rate_to_egp, amount_egp, fx_source,
        category, date, receipt_url, note, staff_id, branch_id,
        vat_rate, vat_amount, amount_before_vat, created_at
        FROM expenses WHERE tenant_id=? AND deleted_at IS NULL${branchSql}
-       ORDER BY date DESC LIMIT 500`,
-      params);
+       ORDER BY date DESC LIMIT ?`,
+      [...params, limit]);
+    if (rows.length >= limit) res.setHeader('X-Truncated', 'true');
     res.json(rows.map(row => ({
       ...toNumbers(row, EXPENSE_MONEY),
       category: EXPENSE_CATEGORY_LABEL[row.category] || 'أخرى',
@@ -345,7 +352,8 @@ router.get('/api/admin/join-us', requireAuth, requireAdminOrStaff, requirePermis
               cn.body contact_note, cn.author_name contacted_by_name,
               cn.created_at contact_note_at,
               a.stage applicant_stage, a.hired_staff_id, a.interview_at applicant_interview_at,
-              a.branch applicant_branch, a.education, a.experience_years, a.experience_places,
+              a.branch applicant_branch, a.education, a.experience_years, a.experience_places
+,
               a.job_id, jp.title job_title
          FROM join_us_applications j
          LEFT JOIN job_applicants a

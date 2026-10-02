@@ -33,10 +33,12 @@ test('a partial amount is accepted', () => {
 });
 
 test('more than was paid is still refused, and so is nothing', () => {
-  const guard = SOURCE.slice(SOURCE.indexOf('const requestedAmount'), SOURCE.indexOf('const requestedAmount') + 700);
+  const guard = SOURCE.slice(SOURCE.indexOf('const requestedAmount'), SOURCE.indexOf('const requestedAmount') + 1400);
   assert.match(guard, /requestedAmount <= 0/, 'zero or negative is not a refund');
-  assert.match(guard, /requestedAmount - paidAmount > 0\.01/,
-    'the institute cannot give back more than it took');
+  assert.match(guard, /requestedAmount - refundable > 0\.01/,
+    'the institute cannot give back more than it took, less what already went back');
+  assert.match(SOURCE, /refundable = Math\.round\(\(paidAmount - alreadyRefunded\)/,
+    'measured against what is still refundable, not the original amount');
 });
 
 // The row is written by insertRefundRow, which a refund with no payment

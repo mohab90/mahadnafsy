@@ -504,6 +504,31 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
     }
   };
 
+  // A tap on the wrong person used to be permanent. Takes back the mark for the
+  // lecture the round is on now (the one the button marks).
+  const handleDaqqiUnmarkAttendance = async (roundId: string, subscriberId: string) => {
+    const round = daqqiRounds.find(r => r.id === roundId);
+    if (!round) return;
+    const session = Math.max(1, Number(round.currentLecture) || 1);
+    if (!await confirmDialog(`إلغاء تسجيل حضور المحاضرة ${session} لهذا العميل؟`)) return;
+    try {
+      const response = await fetch(`/api/admin/daqqi-rounds/${encodeURIComponent(roundId)}/attendance/${encodeURIComponent(subscriberId)}/${session}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: adminAuthHeaders(true),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'تعذر إلغاء تسجيل الحضور.');
+      setAttendanceCounts(previous => ({
+        ...previous,
+        [`${roundId}:${subscriberId}`]: Math.max(0, (previous[`${roundId}:${subscriberId}`] ?? (round.attendees.find(a => a.subscriberId === subscriberId)?.attendedLectures || 0)) - 1),
+      }));
+      notify('success', 'تم إلغاء تسجيل الحضور.');
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر إلغاء تسجيل الحضور.');
+    }
+  };
+
   // «اشتغلت تمام — مشتغلش نعمل تأجيل»: this week's lecture, confirmed either
   // way. A week confirmed as run leaves the postponed list, and the other way.
   const handleDaqqiMarkWeek = async (roundId: string, held: boolean) => {
@@ -688,6 +713,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
                         setDaqqiPostponeModal={setDaqqiPostponeModal}
                         setDaqqiTransferModal={setDaqqiTransferModal}
                         handleDaqqiMarkAttendance={handleDaqqiMarkAttendance}
+                        handleDaqqiUnmarkAttendance={handleDaqqiUnmarkAttendance}
                         handleDaqqiMarkWeek={handleDaqqiMarkWeek}
                         handleRemoveAttendeeFromRound={handleRemoveAttendeeFromRound}
                         doUpdateRound={doUpdateRound}

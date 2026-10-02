@@ -77,6 +77,17 @@ function cairoToday(now = new Date()) {
   return dateOnlyInTimeZone(now, CAIRO);
 }
 
+/**
+ * The month it is in Cairo, as the default for a report or a payroll run.
+ * `new Date().getMonth()` is the server's month, and the server runs in UTC: for
+ * the first three hours of a month in Cairo it still answered the month before,
+ * so a payroll opened at 1 a.m. on the 1st defaulted to last month.
+ */
+function cairoYearMonth(now = new Date()) {
+  const [year, month] = cairoToday(now).split('-').map(Number);
+  return { year, month };
+}
+
 /** Cairo's wall clock: the date, 'HH:MM', and minutes since midnight. */
 function cairoClock(now = new Date()) {
   const p = zonedDateTimeParts(now, CAIRO);
@@ -161,6 +172,7 @@ module.exports = {
   addDaysToDateOnly,
   isValidDateOnly,
   cairoToday,
+  cairoYearMonth,
   cairoClock,
   cairoOffsetMinutes,
   cairoDayStartUtc,

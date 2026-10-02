@@ -49,6 +49,15 @@ const DEAD_SESSION_ERRORS = new Set(['Unauthorized', 'Invalid token', 'Token rev
 // promise settles, so this is a pile-up fix and not a cache. GET only.
 const inFlightGets = new Map<string, Promise<unknown>>();
 
+// Only a read is repeated automatically. A write that timed out or lost its
+// answer may well have been carried out — the response is what was lost — and
+// sending it again records the payment, the note, the expense or the delete a
+// second time. The person is told it failed and decides; nothing here guesses.
+const canRetry = (options: RequestInit): boolean => {
+  const method = String(options?.method || 'GET').toUpperCase();
+  return method === 'GET' || method === 'HEAD';
+};
+
 async function apiFetch<T>(path: string, options: RequestInit = {}, auth = false, _retry = 0): Promise<T> {
   const method = (options.method || 'GET').toUpperCase();
   if (method === 'GET' && _retry === 0) {
@@ -75,7 +84,7 @@ async function apiFetchInner<T>(path: string, options: RequestInit = {}, auth = 
     const res = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include', signal: controller.signal });
     clearTimeout(timeoutId);
     // Auto-retry on 502/503/504 (server restarting) — 1 extra attempt only.
-    if ((res.status === 502 || res.status === 503 || res.status === 504) && _retry < MAX_RETRIES) {
+    if ((res.status === 502 || res.status === 503 || res.status === 504) && _retry < MAX_RETRIES && canRetry(options)) {
       await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS));
       return apiFetch<T>(path, options, auth, _retry + 1);
     }
@@ -98,7 +107,7 @@ async function apiFetchInner<T>(path: string, options: RequestInit = {}, auth = 
     // passes its own signal — every abort comes from the timeout above.
     const isRetryableNetworkError = err instanceof TypeError
       || (err instanceof DOMException && err.name === 'AbortError');
-    if (isRetryableNetworkError && _retry < MAX_RETRIES) {
+    if (isRetryableNetworkError && _retry < MAX_RETRIES && canRetry(options)) {
       await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS));
       return apiFetch<T>(path, options, auth, _retry + 1);
     }
@@ -638,7 +647,8 @@ export const mysqlPaymob = {
 export const mysqlAuth = {
   login: (email: string, password: string) =>
     apiFetch<{
-      ok: boolean;      user?: AuthUser;
+      ok: boolean;
+      user?: AuthUser;
       totpRequired?: boolean;
       pendingToken?: string;
     }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),

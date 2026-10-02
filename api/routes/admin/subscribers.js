@@ -30,6 +30,7 @@ const { keyset } = require('../../lib/pagination');
 const { branchIdForBranch } = require('../../lib/branches');
 const { syncCourseEntitlements } = require('../../lib/entitlements');
 const { listCustomerTimeline } = require('../../lib/customerTimeline');
+const { staffOwnsEmail, STAFF_EMAIL_REFUSAL } = require('../../lib/staffEmailGuard');
 function sendRouteError(res, err) {
   if (res.headersSent) return;
   const dbCodes = new Set(['ECONNREFUSED', 'ETIMEDOUT', 'PROTOCOL_CONNECTION_LOST', 'ER_SERVER_LOST']);
@@ -366,6 +367,12 @@ router.post('/api/staff/enrollment-welcome', requireAuth, requireAdminOrStaff, r
 
   const conn = await pool.getConnection();
   try {
+    // A staff address never gets a customer login here (lib/staffEmailGuard.js):
+    // this route creates the account AND sends its password, to a phone number
+    // the caller supplies.
+    if (await staffOwnsEmail(conn, req.tenantId, normEmail, ADMIN_EMAILS)) {
+      return res.status(STAFF_EMAIL_REFUSAL.status).json(STAFF_EMAIL_REFUSAL.body);
+    }
     const [[existing]] = await conn.execute('SELECT id FROM users WHERE tenant_id=? AND email = ? LIMIT 1', [req.tenantId, normEmail]);
 
     let isNew = false;
@@ -396,7 +403,7 @@ router.post('/api/staff/enrollment-welcome', requireAuth, requireAdminOrStaff, r
 
     const videosLine = isOnline
       ? `<div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:12px 16px; margin:12px 0;">
-           <p style="margin:0; color:#166534; font-weight:bold;">✅ تم فتح أول <strong>20 درس</strong> تلقائياً في الكورس المسجَّل — يمكنك البدء الآن!</p>
+           <p style="margin:0; color:#166534; font-weight:bold;">✅ تم تسجيلك في الكورس — يمكنك الدخول للمنصة ومتابعة المحتوى المتاح لك الآن.</p>
          </div>`
       : `<div style="background:#fefce8; border:1px solid #fde68a; border-radius:8px; padding:12px 16px; margin:12px 0;">
            <p style="margin:0; color:#854d0e;">📅 سيتم إضافة المحتوى الخاص بك خلال الموعد المحدد مع فريقنا.</p>
@@ -446,11 +453,15 @@ router.post('/api/staff/enrollment-welcome', requireAuth, requireAdminOrStaff, r
 
     logger.info(`[enrollment-welcome] Email sent to ${normEmail} | new=${isNew} | online=${isOnline}`);
 
-    // Send WhatsApp welcome if phone provided
+    // WhatsApp welcome, if a number was given. It never carries the temporary
+    // password: the number came from the request, not from the account, so a
+    // password sent to it would go to whoever typed it. The password is in the
+    // email to the account's own address, and sign-in by WhatsApp code needs
+    // none.
     if (phone) {
       const waMsg = isOnline
-        ? `مرحباً ${personName} 🎉\nتم تسجيلك بنجاح في: ${courseLabel}\n✅ تم فتح أول 20 درس تلقائياً — يمكنك البدء الآن!\n🌐 ${siteUrl}${isNew ? `\n\nبيانات دخولك:\nالإيميل: ${normEmail}\nكلمة المرور: ${tempPass}` : ''}`
-        : `مرحباً ${personName} 🎉\nتم تسجيلك بنجاح في: ${courseLabel}\n📅 سيتم إضافة المحتوى خلال الموعد المحدد مع فريقنا.\n🌐 ${siteUrl}${isNew ? `\n\nبيانات دخولك:\nالإيميل: ${normEmail}\nكلمة المرور: ${tempPass}` : ''}`;
+        ? `مرحباً ${personName} 🎉\nتم تسجيلك بنجاح في: ${courseLabel}\nللدخول افتح ${siteUrl} واختر "الدخول برقم الواتساب" — هيوصلك كود على نفس الرقم.${isNew ? '\nوبيانات الدخول بالإيميل اتبعتت على بريدك.' : ''}`
+        : `مرحباً ${personName} 🎉\nتم تسجيلك بنجاح في: ${courseLabel}\n📅 سيتم إضافة المحتوى خلال الموعد المحدد مع فريقنا.\n🌐 ${siteUrl}${isNew ? '\nبيانات الدخول بالإيميل اتبعتت على بريدك.' : ''}`;
       try { await sendWhatsApp(phone, waMsg, { tenantId: req.tenantId, category: 'welcome' }); logger.info(`[enrollment-welcome] WA sent to ${phone}`); }
       catch (waErr) { logger.warn('[enrollment-welcome] WA failed:', waErr.message); }
     }
@@ -909,6 +920,14 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
     if (credentialUpdate) {
       const currentLoginEmail = String(credentialUpdate.currentEmail || existingSub?.email || '').toLowerCase().trim();
       const nextLoginEmail = safeEmail || currentLoginEmail;
+      // A customer's login is never given a staff member's address, nor taken
+      // from one: staff are resolved by email alone, so doing either hands the
+      // seat to whoever chose the password. See lib/staffEmailGuard.js.
+      for (const address of new Set([currentLoginEmail, nextLoginEmail].filter(Boolean))) {
+        if (await staffOwnsEmail(conn, tenantId, address, ADMIN_EMAILS)) {
+          return res.status(STAFF_EMAIL_REFUSAL.status).json(STAFF_EMAIL_REFUSAL.body);
+        }
+      }
       const [[account]] = await conn.query(
         `SELECT id, email FROM users
          WHERE tenant_id=? AND (id=? OR email=?) LIMIT 1 FOR UPDATE`,

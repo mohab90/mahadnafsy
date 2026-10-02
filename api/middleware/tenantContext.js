@@ -110,6 +110,11 @@ function extractSignedTenant(req) {
   try {
     const payload = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] });
     const tenantId = payload.tid || payload.tenant_id;
+    // The signature is verified, so the uid is trustworthy as a rate-limit key.
+    // The admin limiter runs before requireAuth and had no user to key on, so
+    // every employee behind one office address shared one 400-a-minute bucket
+    // per endpoint (middleware/rateLimits.js).
+    if (payload.uid) req.signedUid = String(payload.uid);
     // A valid legacy token without tid belongs to the original/default
     // institute. Do not let an untrusted header move that session elsewhere.
     return tenantId ? String(tenantId) : DEFAULT_TENANT;

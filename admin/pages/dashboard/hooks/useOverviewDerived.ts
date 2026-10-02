@@ -21,6 +21,9 @@ export function useOverviewDerived(
   /** Whole-table lead figures. Optional so a caller that has not been updated
    *  still compiles and falls back to counting the array. */
   leadStats?: LeadStats | null,
+  /** Revenue from the books. When present it replaces the browser's own sum,
+   *  which only ever saw the newest 500 orders and payments. */
+  serverRevenue?: { totalEgp: number; monthEgp: number; todayEgp: number } | null,
 ) {
   const overviewStats = useMemo(() => {
     // Rates and fallbacks from lib/money, which mirrors the API's. This read
@@ -62,7 +65,7 @@ export function useOverviewDerived(
       .slice(0, 5);
     // Today stats
     const todayStr = cairoDateOnly();
-    const todayRevenue = paidOrders
+    const todayRevenueLocal = paidOrders
       .filter(o => cairoDay(o.createdAt) === todayStr)
       .reduce((sum, o) => sum + toEGP(o), 0)
       + subscribers.reduce((s, sub) => s + (sub.paymentHistory ?? [])
@@ -79,8 +82,10 @@ export function useOverviewDerived(
       + subscribers.reduce((s, sub) => s + (sub.paymentHistory ?? [])
         .filter(p => !p.isInstallment && cairoDay(p.at).slice(0, 7) === thisMonthStr)
         .reduce((ps, p) => ps + toEGP(p), 0), 0);
-    return { totalRevenue, leadsBySource, courseEnrollments, consultsByStatus, salesStats: salesStatsCalc, recentLeads, paidOrders, todayRevenue, todayNewSubscribers, todayNewLeads, monthRevenue };
-  }, [orders, subscribers, leads, courses, staffMembers, consultations, content, leadStats]);
+    const books = serverRevenue || null;
+    const todayRevenue = books ? books.todayEgp : todayRevenueLocal;
+    return { totalRevenue: books ? books.totalEgp : totalRevenue, leadsBySource, courseEnrollments, consultsByStatus, salesStats: salesStatsCalc, recentLeads, paidOrders, todayRevenue, todayNewSubscribers, todayNewLeads, monthRevenue: books ? books.monthEgp : monthRevenue };
+  }, [orders, subscribers, leads, courses, staffMembers, consultations, content, leadStats, serverRevenue]);
 
   return { overviewStats };
 }

@@ -59,7 +59,9 @@ test('a refunded payment is never counted as money collected', () => {
       paymentSums += 1;
       // isRefundable is the opposite question, asked by the refund dialog:
       // that one lists refundable payments on purpose.
-      if (/isCollected|status === 'paid'|isRefundable/.test(window)) continue;
+      // status === 'pending' is the same question asked the other way: the sum of
+      // money recorded and awaiting approval, shown beside the collected figure.
+      if (/isCollected|status === 'paid'|status === 'pending'|isRefundable/.test(window)) continue;
       unguarded.push(`${rel}:${source.slice(0, match.index).split('\n').length}`);
     }
   }

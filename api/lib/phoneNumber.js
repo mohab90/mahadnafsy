@@ -22,6 +22,12 @@
 
 // Egypt. The institute operates here, and it is the only country whose code is
 // stripped for the identity key — see toIdentity below.
+// ٠١٢٣٤٥٦٧٨٩ and ۰۱۲۳۴۵۶۷۸۹ → 0123456789. `\D` treats Arabic-Indic digits as
+// not-digits, so a number typed on an Arabic keyboard collapsed to nothing.
+const latinDigits = value => String(value)
+  .replace(/[\u0660-\u0669]/g, digit => String(digit.charCodeAt(0) - 0x0660))
+  .replace(/[\u06f0-\u06f9]/g, digit => String(digit.charCodeAt(0) - 0x06f0));
+
 const DEFAULT_COUNTRY_CODE = String(process.env.WA_DEFAULT_COUNTRY_CODE || '20');
 
 // Egyptian mobile: 10 national digits, always 10 / 11 / 12 / 15 after the trunk
@@ -35,7 +41,7 @@ const EG_MOBILE_NATIONAL = /^1[0125]\d{8}$/;
  * Junk returns '' rather than something that could accidentally match a record.
  */
 function toIdentity(input) {
-  let digits = String(input == null ? '' : input).replace(/\D/g, '');
+  let digits = latinDigits(String(input == null ? '' : input)).replace(/\D/g, '');
   if (!digits) return '';
   digits = digits.replace(/^00/, '');                  // 00<country> → <country>
   if (digits.startsWith(DEFAULT_COUNTRY_CODE)) {
@@ -124,6 +130,7 @@ function isRealPhone(input) {
 
 module.exports = {
   DEFAULT_COUNTRY_CODE,
+  latinDigits,
   isRealPhone,
   toIdentity,
   toDialable,

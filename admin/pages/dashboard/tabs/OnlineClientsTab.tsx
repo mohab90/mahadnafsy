@@ -112,7 +112,8 @@ export default function OnlineClientsTab({
   // the dropdowns below sit inside conditional blocks and callbacks.
   const paymentBoxes = usePaymentBoxes(content['finance.payment_methods']);
 
-  // Collection role — online clients tab state  const [collOnlineSearch, setCollOnlineSearch] = useState('');
+  // Collection role — online clients tab state
+  const [collOnlineSearch, setCollOnlineSearch] = useState('');
   const [collOnlinePage, setCollOnlinePage] = useState(1);
   const [collOnlineDateFrom, setCollOnlineDateFrom] = useState('');
   const [collOnlineDateTo, setCollOnlineDateTo] = useState('');
@@ -201,7 +202,8 @@ export default function OnlineClientsTab({
   const [convertRefundAmount, setConvertRefundAmount] = useState('');
   const [convertRefundMethod, setConvertRefundMethod] = useState('');
   const [convertRefundPaymentId, setConvertRefundPaymentId] = useState('');
-  const [convertSaving, setConvertSaving] = useState(false);  // New subscriber popup (online manager)
+  const [convertSaving, setConvertSaving] = useState(false);
+  // New subscriber popup (online manager)
   const [omNewSubOpen, setOmNewSubOpen] = useState(false);
   const [omNewSubDraft, setOmNewSubDraft] = useState<{name:string;phone:string;email:string;password:string;branch:string;amount:string;currency:'EGP'|'SAR'|'USD';paymentMethod:string;date:string;transactionId:string;note:string;referredBy:string;courses:{courseId:string;accessType:'full'|'limited';videoCount:string;discount:string;customPrice:string}[]}>({ name: '', phone: '', email: '', password: '', branch: '', amount: '', currency: 'EGP', paymentMethod: '', date: cairoDateOnly(), transactionId: '', note: '', referredBy: '', courses: [{courseId:'',accessType:'full',videoCount:'',discount:'',customPrice:''}] });
   const [omNewSubSaving, setOmNewSubSaving] = useState(false);

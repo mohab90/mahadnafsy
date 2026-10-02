@@ -160,7 +160,7 @@ export function ClientsTable({
             const courseRows = clientItems(row, courses, bundles, branchCurrency).map(item => ({
               cid: item.item,
               label: item.isTrack ? `📌 ${item.title}` : item.title,
-              expected: item.expected, paid: item.paid, remaining: item.remaining, cur: item.currency,
+              expected: item.expected, paid: item.paid, pending: item.pending, remaining: item.remaining, cur: item.currency,
             }));
             const instPlans = row.installmentPlans || [];
             const nextInst = instPlans.flatMap(p => (p.entries||[]).filter(e=>!e.paidAt).map(e=>({dueDate:e.dueDate,amount:e.amount,currency:p.currency,note:e.note||p.courseTitle||''}))).sort((a,b)=>a.dueDate.localeCompare(b.dueDate))[0] || null;
@@ -429,6 +429,11 @@ export function ClientsTable({
                   </td>}
                   {vc.paid && <td className="px-2 py-2 border border-gray-200 text-center text-[11px] font-bold text-emerald-700">
                     {cr.paid > 0 ? `${cr.paid.toLocaleString('ar-EG-u-nu-latn')} ${currFmt(cr.cur)}` : '—'}
+                    {cr.pending > 0 && (
+                      <div className="text-[10px] font-semibold text-amber-600" title="مبلغ مسجَّل ومستلم لكن لسه ما اتعتمدش من الإدارة المالية — مش محسوب في المدفوع ولا المتبقي لحد الاعتماد">
+                        ⏳ {cr.pending.toLocaleString('ar-EG-u-nu-latn')} {currFmt(cr.cur)} بانتظار الاعتماد
+                      </div>
+                    )}
                   </td>}
                   {vc.remaining && <td className="px-2 py-2 border border-gray-200 text-center text-[11px] font-bold">
                     {cr.remaining > 0 ? <span className="text-red-600">{cr.remaining.toLocaleString('ar-EG-u-nu-latn')} {currFmt(cr.cur)}</span> : <span className="text-emerald-600 text-[10px]">✅ مكتمل</span>}

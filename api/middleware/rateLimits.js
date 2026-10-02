@@ -15,7 +15,7 @@ const normalizedAction = req => {
 };
 const tenant = req => safe(req.tenantId || 'tenant-public');
 const actor = req => safe(
-  req.user?.uid || req.user?.email || req.body?.email
+  req.user?.uid || req.signedUid || req.user?.email || req.body?.email
   || pendingTokenIdentity(req.body?.pendingToken) || 'anonymous'
 );
 const ip = req => safe(ipKeyGenerator(req.ip));
@@ -57,7 +57,10 @@ const publicRequestMax = req => /^(GET|HEAD)$/i.test(req.method)
 
 const adminLimiter = limiter('privileged', {
   windowMs: minute, max: 400, mode: 'user', message: retryMinute,
-  skip: req => req.path === '/api/admin/server-status',
+  // originalUrl, not path: inside app.use('/api/admin') the path is already
+  // relative to the mount ('/server-status'), so the old comparison never matched
+  // and the status poll was counted like any other call.
+  skip: req => String(req.originalUrl || '').split('?')[0] === '/api/admin/server-status',
 });
 const loginLimiter = [
   limiter('login-ip', {

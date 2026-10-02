@@ -6,7 +6,7 @@ const { hasPermission } = require('../../constants/permissions');
 const { getEffectiveHrPolicy } = require('../../lib/hrPolicy');
 const { getFxToEgp, getFxSnapshot, isFxSnapshotUsable } = require('../../lib/finance');
 const { computePayrollLine } = require('../../lib/payrollCalc');
-const { dateOnlyInTimeZone } = require('../../lib/dates');
+const { dateOnlyInTimeZone, cairoYearMonth } = require('../../lib/dates');
 const { toNumbers } = require('../../lib/mappers');
 
 // Every money column on a payslip, including the aliases this file's SELECTs
@@ -73,13 +73,15 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
   let transactionStarted = false;
   try {
     const { month, year, notes } = req.body;
-    const m = parseInt(month) || new Date().getMonth() + 1;
-    const y = parseInt(year)  || new Date().getFullYear();
+    const m = parseInt(month) || cairoYearMonth().month;
+    const y = parseInt(year)  || cairoYearMonth().year;
     // Guard against malformed input (e.g. a combined "YYYY-MM" string) overflowing
     // the small month/year columns and surfacing as an opaque 500.
     if (m < 1 || m > 12 || y < 2000 || y > 2100) {
       return res.status(400).json({ error: 'شهر أو سنة غير صالحة' });
     }
+    const monthStart = `${y}-${String(m).padStart(2, '0')}-01`;
+    const nextMonthStart = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
     const tenantId = req.tenantId || req.user?.tenant_id || 'tenant-default';
     const branchId = req.body?.branch_id || 'branch-all';
     const allowedBranchIds = new Set(['branch-all', 'branch-other', 'branch-daqqi', 'branch-tagamoa', 'branch-online-egypt', 'branch-online-saudi', 'branch-online-abroad']);
@@ -201,12 +203,13 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
                AND lp.type='LATE_PERMIT' AND lp.status='APPROVED' AND a.date BETWEEN lp.start_date AND lp.end_date)
           THEN 0 ELSE a.late_minutes END), 0) AS late_minutes,
         COALESCE(SUM(CASE WHEN a.status IN ('PRESENT','LATE','REMOTE') THEN 1
-                          WHEN a.status='HALF_DAY' THEN 0.5 ELSE 0 END),0) AS present_days
+                          WHEN a.status='HALF_DAY' THEN 0.5 ELSE 0 END),0) AS present_days,
+        COUNT(*) AS logged_days
       FROM attendance_logs a
       LEFT JOIN leaves l ON l.tenant_id=a.tenant_id AND l.id=a.leave_id
-      WHERE a.tenant_id=? AND a.staff_id IN (?) AND MONTH(a.date)=? AND YEAR(a.date)=?
+      WHERE a.tenant_id=? AND a.staff_id IN (?) AND a.date >= ? AND a.date < ?
       GROUP BY a.staff_id
-    `, [tenantId, empIds, m, y]) : [[]];
+    `, [tenantId, empIds, monthStart, nextMonthStart]) : [[]];
     const attMap = Object.fromEntries(attBatch.map(r => [r.staff_id, r]));
 
     // Batch commissions — UNIFIED source: crm_commissions rows written at payment time
@@ -297,6 +300,10 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
       fees.count += Number(row.count || 0);
     }
 
+    const attendanceWarnings = [];
+    const nowInCairo = cairoYearMonth();
+    const isClosedMonth = y < nowInCairo.year || (y === nowInCairo.year && m < nowInCairo.month);
+
     // For each employee, calculate net salary (now pure in-memory — no per-employee DB queries for att/comm/adv)
     for (const emp of employees) {
       const salaryCurrency = String(emp.salary_currency || 'EGP').toUpperCase();
@@ -305,6 +312,16 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
       // Attendance from batch map
       const attStats = attMap[emp.staff_id] || { absent_days: 0, late_minutes: 0, present_days: 0 };
       const presentDays = Number(attStats.present_days) || 0;
+      // A day nobody marked is not an absence, as far as this run can tell — and it
+      // costs the employee nothing. Absence is only ever deducted from a row marked
+      // ABSENT, and nothing marks one automatically, so an employee with no record
+      // for most of a closed month calculates exactly like one who attended every
+      // day. It is reported here instead of being deducted: marking absences by
+      // itself would dock pay for anyone not using the check-in yet.
+      if (isClosedMonth) {
+        const unmarkedDays = Math.max(0, Math.floor(Number(workDaysPerMonth) || 26) - (Number(attStats.logged_days) || 0));
+        if (unmarkedDays > 0) attendanceWarnings.push({ staffId: emp.staff_id, name: emp.name, unmarkedDays });
+      }
       const bonusTotal = bonusMap[emp.staff_id]?.bonus || 0;
       const deductionTotal = bonusMap[emp.staff_id]?.deduction || 0;
 
@@ -412,6 +429,9 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
     res.json({
       run: toNumbers(updatedRun, PAYROLL_RUN_MONEY),
       items: items.map(item => toNumbers(item, PAYROLL_ITEM_MONEY)),
+      // Employees with days in a closed month that nobody marked present, absent or
+      // on leave. Review them before approving: none of those days was deducted.
+      attendanceWarnings,
     });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
@@ -734,8 +754,8 @@ router.post('/api/admin/hr/attendance/import', requireAuth, requireAdminOrStaff,
       return res.status(413).json({ error: 'CSV must be text and no larger than 2 MB' });
     }
 
-    const m = parseInt(month) || new Date().getMonth() + 1;
-    const y = parseInt(year)  || new Date().getFullYear();
+    const m = parseInt(month) || cairoYearMonth().month;
+    const y = parseInt(year)  || cairoYearMonth().year;
     if (m < 1 || m > 12 || y < 2000 || y > 2100) {
       return res.status(400).json({ error: 'Invalid attendance month or year' });
     }
@@ -915,8 +935,8 @@ router.post('/api/admin/hr/attendance/import', requireAuth, requireAdminOrStaff,
 router.get('/api/admin/hr/attendance/summary', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const { month, year } = req.query;
-    const m = parseInt(month) || new Date().getMonth() + 1;
-    const y = parseInt(year)  || new Date().getFullYear();
+    const m = parseInt(month) || cairoYearMonth().month;
+    const y = parseInt(year)  || cairoYearMonth().year;
     const [rows] = await pool.query(`
       SELECT s.id, s.name, s.role, s.image, d.name AS department_name,
         COUNT(CASE WHEN a.status IN ('PRESENT','LATE') THEN 1 END) AS present_days,

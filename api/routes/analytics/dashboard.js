@@ -6,7 +6,7 @@ const router  = express.Router();
 const { pool, cached } = require('../../lib/db');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { resolveDataScope } = require('../../constants/permissions');
-const { dateOnlyInTimeZone, addDaysToDateOnly, sqlCairoDayStartUtc } = require('../../lib/dates');
+const { dateOnlyInTimeZone, addDaysToDateOnly, sqlCairoDayStartUtc, cairoDayStartUtc, cairoToday } = require('../../lib/dates'); const { resolveFinancialScope, financialScopeClause } = require('../../lib/financialScope');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Admin Dashboard KPI Snapshot ────────────────────────────────
@@ -312,6 +312,48 @@ router.get('/api/admin/kpi/summary', requireAuth, requireAdminOrStaff, requirePe
       generatedAt: new Date().toISOString(),
     });
   } catch (e) { logger.error('[kpi/summary]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// GET /api/admin/overview/revenue — the money figures on the overview screen, from
+// the books.
+//
+// The screen added them up in the browser from the 500 newest orders and payments
+// it had loaded (both lists are capped), converted at the settings' rates rather
+// than each payment's own EGP snapshot, and counted nothing that a refund took
+// back (the negative rows are left out of the orders list). Right while the
+// institute had a few hundred payments, wrong as soon as it had more, and never
+// equal to the accounting screen. This sums payments.amount_egp — refund rows
+// included, being negative — in the Cairo day and month, for whatever the caller
+// is allowed to see.
+router.get('/api/admin/overview/revenue', requireAuth, requireAdminOrStaff, requirePermission('view_dashboard'), async (req, res) => {
+  try {
+    const scope = resolveFinancialScope(req, { allowAssigned: true });
+    const clause = financialScopeClause(scope, { branchColumn: 'p.branch_id', subscriberAlias: 's' });
+    const today = cairoToday();
+    const monthStart = cairoDayStartUtc(`${today.slice(0, 7)}-01`);
+    const dayStart = cairoDayStartUtc(today);
+    const [[row]] = await pool.query(
+      `SELECT COALESCE(SUM(p.amount_egp),0) AS total,
+              COALESCE(SUM(CASE WHEN p.date >= ? THEN p.amount_egp END),0) AS this_month,
+              COALESCE(SUM(CASE WHEN p.date >= ? THEN p.amount_egp END),0) AS today,
+              COUNT(*) AS payments
+         FROM payments p
+         LEFT JOIN subscribers s ON s.id=p.subscriber_id AND s.tenant_id=p.tenant_id
+        WHERE p.tenant_id=? AND p.status IN ('paid','confirmed') AND p.deleted_at IS NULL${clause.sql}`,
+      [monthStart, dayStart, req.tenantId, ...clause.params]
+    );
+    res.json({
+      totalEgp: Number(row.total) || 0,
+      monthEgp: Number(row.this_month) || 0,
+      todayEgp: Number(row.today) || 0,
+      payments: Number(row.payments) || 0,
+      asOf: today,
+    });
+  } catch (e) {
+    if (e?.status) return res.status(e.status).json({ error: e.message, code: e.code });
+    logger.error('[overview-revenue]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 module.exports = router;

@@ -88,7 +88,7 @@ router.patch('/api/admin/notifications/read-all', requireAuth, requireAdminOrSta
       `INSERT INTO notification_reads (notification_id, tenant_id, viewer_key, read_at)
        SELECT n.id, n.tenant_id, ?, NOW()
          FROM notifications n
-        WHERE n.tenant_id=?${visibility.sql}
+        WHERE n.tenant_id=?${WINDOW_SQL}${visibility.sql}
        ON DUPLICATE KEY UPDATE read_at=VALUES(read_at)`,
       [viewerKey(req), req.tenantId, ...visibility.params]);
     res.json({ ok: true });

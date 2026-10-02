@@ -20,16 +20,51 @@ function ipv4Number(value) {
   return value.split('.').reduce((total, octet) => ((total << 8) | Number(octet)) >>> 0, 0);
 }
 
+// IPv6 as a 128-bit number, so a rule can be an exact address or a prefix.
+function ipv6Number(value) {
+  if (isIP(value) !== 6) return null;
+  let text = value.split('%')[0];
+  const embedded = text.match(/^(.*:)(\d+\.\d+\.\d+\.\d+)$/);
+  if (embedded) {
+    const v4 = ipv4Number(embedded[2]);
+    if (v4 === null) return null;
+    text = `${embedded[1]}${(v4 >>> 16).toString(16)}:${(v4 & 0xffff).toString(16)}`;
+  }
+  const [head, tail, extra] = text.split('::');
+  if (extra !== undefined) return null;
+  const left = head ? head.split(':') : [];
+  const right = tail !== undefined && tail ? tail.split(':') : [];
+  const missing = 8 - left.length - right.length;
+  if (tail === undefined ? left.length !== 8 : missing < 0) return null;
+  const groups = tail === undefined ? left : [...left, ...Array(missing).fill('0'), ...right];
+  return groups.reduce((total, group) => (total << 16n) | BigInt(parseInt(group || '0', 16)), 0n);
+}
+
+// Both address families. This accepted IPv4 only — an IPv6 client matched no
+// rule at all — so once enforcement was on, every employee whose carrier hands
+// out IPv6 was locked out of the panel even from a network that was listed.
 function matches(ipValue, ruleValue) {
   const ip = normalizeIp(ipValue);
   const [network, prefixText, extra] = normalizeIp(ruleValue).split('/');
-  if (extra !== undefined || isIP(ip) !== 4 || isIP(network) !== 4) return false;
-  if (prefixText === undefined) return network === ip;
-  if (!/^\d{1,2}$/.test(prefixText)) return false;
+  if (extra !== undefined) return false;
+  const family = isIP(ip);
+  if (!family || isIP(network) !== family) return false;
+  if (prefixText !== undefined && !/^\d{1,3}$/.test(prefixText)) return false;
+  if (family === 4) {
+    if (prefixText === undefined) return network === ip;
+    const prefix = Number(prefixText);
+    if (prefix < 0 || prefix > 32) return false;
+    const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+    return (ipv4Number(ip) & mask) === (ipv4Number(network) & mask);
+  }
+  const a = ipv6Number(ip);
+  const b = ipv6Number(network);
+  if (a === null || b === null) return false;
+  if (prefixText === undefined) return a === b;
   const prefix = Number(prefixText);
-  if (prefix < 0 || prefix > 32) return false;
-  const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
-  return (ipv4Number(ip) & mask) === (ipv4Number(network) & mask);
+  if (prefix < 0 || prefix > 128) return false;
+  const shift = BigInt(128 - prefix);
+  return (a >> shift) === (b >> shift);
 }
 
 function isLoopback(ip) {
@@ -77,5 +112,5 @@ async function enforceAdminIpWhitelist(req, res, next) {
 module.exports = {
   enforceAdminIpWhitelist,
   invalidateIpWhitelist,
-  _test: { ipv4Number, matches, normalizeIp },
+  _test: { ipv4Number, ipv6Number, matches, normalizeIp },
 };

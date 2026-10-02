@@ -36,7 +36,8 @@ const hrLeavesPanel = read('..', 'admin', 'pages', 'dashboard', 'tabs', 'hr-sect
 
 test('disabled users are rejected by every authenticated request and cache can be invalidated immediately', () => {
   assert.match(auth, /async function activeIdentity/);
-  assert.match(auth, /SELECT is_active,\s*session_version,\s*totp_enabled,\s*active_session_id,\s*active_session_ip_hash,\s*name FROM users/);
+  assert.match(auth, /const columns = 'is_active,session_version,totp_enabled,active_session_id,active_session_ip_hash,name'/);
+  assert.match(auth, /SELECT \$\{columns\} FROM users WHERE tenant_id=\? AND id=\? LIMIT 1/);
   assert.match(auth, /Account disabled or unavailable/);
   assert.match(auth, /function invalidateIdentity/);
 });

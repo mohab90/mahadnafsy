@@ -608,7 +608,23 @@ router.post('/api/admin/daqqi-rounds/:roundId/attendance', requireAuth, requireA
       await conn.rollback();
       return res.status(404).json({ error: 'Attendee not found in round' });
     }
-    if (Number(attendee.attended_lectures || 0) >= sessionNumber) {
+    // Has THIS session been marked for this person? The check used to be
+    // `attended_lectures >= sessionNumber`, treating the counter as "the last
+    // session attended". It is a count, not a position: someone who attended
+    // sessions 1 and 3 (count 2) was refused session 2, and marking 2 before 1
+    // refused 1 later — so a late correction was impossible. The events are what
+    // say which sessions were marked.
+    //
+    // A client with no events at all predates them and keeps the old rule, so
+    // their carried-over count is not marked a second time.
+    const [[marked]] = await conn.query(
+      `SELECT COUNT(*) AS total, COALESCE(SUM(session_number=?),0) AS this_session
+         FROM daqqi_attendance_events WHERE tenant_id=? AND round_id=? AND subscriber_id=?`,
+      [sessionNumber, req.tenantId, req.params.roundId, subscriberId]
+    );
+    const alreadyMarked = Number(marked?.this_session) > 0
+      || (Number(marked?.total) === 0 && Number(attendee.attended_lectures || 0) >= sessionNumber);
+    if (alreadyMarked) {
       await conn.rollback();
       return res.status(409).json({ error: 'Attendance is already recorded for this session' });
     }
@@ -642,6 +658,52 @@ router.post('/api/admin/daqqi-rounds/:roundId/attendance', requireAuth, requireA
       return res.status(409).json({ error: 'Attendance is already recorded for this session' });
     }
     logger.error('[daqqi-attendance-mark]', error.message);
+    sendRouteError(res, error);
+  } finally {
+    conn.release();
+  }
+});
+
+// Takes back a session marked by mistake. There was no way to: the only
+// corrections were to remove the person from the round or to edit the database,
+// so a wrong tap stayed in the attendance report, the statistics and anything
+// that reads attended_lectures.
+router.delete('/api/admin/daqqi-rounds/:roundId/attendance/:subscriberId/:sessionNumber', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
+  const sessionNumber = Number(req.params.sessionNumber);
+  if (!Number.isInteger(sessionNumber) || sessionNumber < 1) return res.status(400).json({ error: 'Invalid sessionNumber' });
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[event]] = await conn.query(
+      `SELECT id,status FROM daqqi_attendance_events
+        WHERE tenant_id=? AND round_id=? AND subscriber_id=? AND session_number=? LIMIT 1 FOR UPDATE`,
+      [req.tenantId, req.params.roundId, req.params.subscriberId, sessionNumber]
+    );
+    if (!event) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'لا يوجد تسجيل حضور لهذه المحاضرة' });
+    }
+    await conn.query('DELETE FROM daqqi_attendance_events WHERE id=? AND tenant_id=?', [event.id, req.tenantId]);
+    if (event.status === 'PRESENT') {
+      await conn.query(
+        `UPDATE daqqi_attendees SET attended_lectures=GREATEST(attended_lectures-1,0)
+          WHERE tenant_id=? AND round_id=? AND subscriber_id=?`,
+        [req.tenantId, req.params.roundId, req.params.subscriberId]
+      );
+    }
+    await writeAuditEvent({
+      action: 'DAQQI_ATTENDANCE_UNMARKED',
+      entityType: 'DAQQI_ATTENDANCE',
+      entityId: event.id,
+      metadata: { roundId: req.params.roundId, subscriberId: req.params.subscriberId, sessionNumber },
+      req,
+      db: conn,
+    });
+    await conn.commit();
+    res.json({ ok: true, removed: event.id, sessionNumber });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    logger.error('[daqqi-attendance-unmark]', error.message);
     sendRouteError(res, error);
   } finally {
     conn.release();

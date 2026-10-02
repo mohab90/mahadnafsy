@@ -45,7 +45,8 @@ type Props = {
   dropdownRect: DOMRect | null;
   setDropdownRect: React.Dispatch<React.SetStateAction<DOMRect | null>>;
   leads: LeadItem[];
-  subscribers: SubscriberItem[];  notifRef: React.RefObject<HTMLDivElement | null>;
+  subscribers: SubscriberItem[];
+  notifRef: React.RefObject<HTMLDivElement | null>;
   notifOpen: boolean;
   setNotifOpen: React.Dispatch<React.SetStateAction<boolean>>;
   notifRows: NotifRow[];

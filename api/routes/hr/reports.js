@@ -3,12 +3,12 @@ const { Router } = require('express');
 const router = Router();
 const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 const { getEffectiveHrPolicy } = require('../../lib/hrPolicy');
-const { sqlCairoToday, cairoToday } = require('../../lib/dates');
+const { sqlCairoToday, cairoToday, cairoYearMonth } = require('../../lib/dates');
 
 router.get('/api/admin/hr/reports/summary', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
-    const m = Number(req.query.month) || new Date().getMonth() + 1;
-    const y = Number(req.query.year)  || new Date().getFullYear();
+    const m = Number(req.query.month) || cairoYearMonth().month;
+    const y = Number(req.query.year)  || cairoYearMonth().year;
 
     const [[headcount]] = await pool.query(`
       SELECT COUNT(*) AS total, SUM(is_active) AS active,
@@ -182,8 +182,8 @@ router.get('/api/staff/me/hr', requireAuth, async (req, res) => {
   try {
     const staff = await _resolveStaffByUser(req);
     if (!staff) return res.status(404).json({ error: 'Staff record not found' });
-    const m = Number(req.query.month) || new Date().getMonth() + 1;
-    const y = Number(req.query.year)  || new Date().getFullYear();
+    const m = Number(req.query.month) || cairoYearMonth().month;
+    const y = Number(req.query.year)  || cairoYearMonth().year;
     if (!Number.isInteger(m) || m < 1 || m > 12 || !Number.isInteger(y) || y < 2020 || y > 2100) {
       return res.status(400).json({ error: 'Invalid month or year' });
     }

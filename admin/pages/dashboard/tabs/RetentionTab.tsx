@@ -12,7 +12,8 @@ function getLast12Months() {
 }
 
 export default function RetentionTab() {
-  const { subscribers, courses } = useSiteData();  const months = getLast12Months();
+  const { subscribers, courses } = useSiteData();
+  const months = getLast12Months();
 
   const activeSubs = useMemo(() =>
     subscribers.filter(s => !['finished','paused','refunded','leads'].includes(s.clientStatus || '')),

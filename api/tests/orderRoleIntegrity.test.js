@@ -14,7 +14,7 @@ const ordersUi = fs.readFileSync(
 test('order reads and operational mutations enforce permissions and financial data scope', () => {
   assert.match(ordersRoute, /router\.get\('\/api\/admin\/orders', requireAuth, requireAdminOrStaff, requirePermission\('view_orders'\)/);
   assert.match(ordersRoute, /resolveFinancialScope\(req,[\s\S]*allowAssigned: true/);
-  assert.match(ordersRoute, /router\.post\('\/api\/admin\/orders\/:id\/confirm-payment', requireAuth, requireAdminOrStaff, requirePermission\('manage_payments'\)/);
+  assert.match(ordersRoute, /router\.post\('\/api\/admin\/orders\/:id\/confirm-payment', requireAuth, requireAdminOrStaff, requirePermission\('manage_financial'\)/);
   assert.match(ordersRoute, /cannot approve its payment/);
 });
 

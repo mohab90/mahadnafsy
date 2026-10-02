@@ -5,7 +5,7 @@ const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, re
 const { createLeaveRequest, getEffectiveHrPolicy, leaveAllowance, HOUR_PERMITS, LEAVE_LABELS_AR } = require('../../lib/hrPolicy');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { toNumbers } = require('../../lib/mappers');
-const { cairoClock, sqlCairoToday, cairoToday } = require('../../lib/dates');
+const { cairoClock, sqlCairoToday, cairoToday, cairoYearMonth } = require('../../lib/dates');
 const dateOnly = value => value instanceof Date
   ? value.toISOString().slice(0, 10)
   : String(value || '').slice(0, 10);
@@ -21,9 +21,9 @@ const validDateOnly = value => {
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === text;
 };
 const reportMonth = (month, year) => {
-  const now = new Date();
-  const m = month === undefined ? now.getMonth() + 1 : Number(month);
-  const y = year === undefined ? now.getFullYear() : Number(year);
+  const now = cairoYearMonth();
+  const m = month === undefined ? now.month : Number(month);
+  const y = year === undefined ? now.year : Number(year);
   if (!Number.isInteger(m) || m < 1 || m > 12 || !Number.isInteger(y) || y < 2000 || y > 2100) return null;
   const start = `${y}-${String(m).padStart(2, '0')}-01`;
   const nextDate = new Date(Date.UTC(y, m, 1));

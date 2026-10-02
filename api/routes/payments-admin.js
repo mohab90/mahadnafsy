@@ -6,6 +6,7 @@ const router = express.Router();
 
 const { pool } = require('../lib/db');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { cairoToday } = require('../lib/dates');
 
 // PATCH /api/admin/payments/:id/status — approve or reject a payment (admin/manager)
 // (removed dead duplicate PATCH /api/admin/payments/:id/status — live in an earlier-mounted router)
@@ -48,14 +49,20 @@ router.get('/api/admin/commissions/monthly', requireAuth, requireAdmin, async (r
   try {
     const months   = Math.min(12, Math.max(1, parseInt(req.query.months || '6')));
     const staffId  = req.query.staffId || null;
-    const fromDate = new Date();
-    fromDate.setMonth(fromDate.getMonth() - (months - 1));
-    fromDate.setDate(1);
-    const from = fromDate.toISOString().slice(0, 7); // YYYY-MM
+    // Calendar months counted back from this one by arithmetic on year*12+month,
+    // not Date.setMonth: on the 29th–31st setMonth overflowed (Aug 31 − 2 months
+    // is «Jun 31» = 1 July), so the report skipped a month and the columns below
+    // no longer lined up with the rows.
+    const [nowYear, nowMonth] = cairoToday().split('-').map(Number);
+    const monthKeys = Array.from({ length: months }, (_, index) => {
+      const total = nowYear * 12 + (nowMonth - 1) - (months - 1) + index;
+      return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, '0')}`;
+    });
+    const from = monthKeys[0]; // YYYY-MM
 
     let sql = `
       SELECT
-        DATE_FORMAT(c.created_at, '%Y-%m')  AS month,
+        CONCAT(c.year, '-', LPAD(c.month, 2, '0')) AS month,
         c.staff_id,
         COALESCE(s.name, c.staff_id)        AS staff_name,
         COUNT(*)                             AS deals_count,
@@ -63,7 +70,7 @@ router.get('/api/admin/commissions/monthly', requireAuth, requireAdmin, async (r
         SUM(c.payment_amount)                AS total_payment
       FROM crm_commissions c
       LEFT JOIN staff s ON s.id = c.staff_id AND s.tenant_id = c.tenant_id
-      WHERE c.tenant_id = ? AND DATE_FORMAT(c.created_at, '%Y-%m') >= ?
+      WHERE c.tenant_id = ? AND c.status <> 'CANCELLED' AND CONCAT(c.year, '-', LPAD(c.month, 2, '0')) >= ?
     `;
     const params = [req.tenantId, from];
     if (staffId) { sql += ' AND c.staff_id = ?'; params.push(staffId); }
@@ -72,12 +79,7 @@ router.get('/api/admin/commissions/monthly', requireAuth, requireAdmin, async (r
     const [rows] = await pool.query(sql, params);
 
     // Build calendar month array for the period
-    const allMonths = [];
-    for (let i = 0; i < months; i++) {
-      const d = new Date(fromDate);
-      d.setMonth(d.getMonth() + i);
-      allMonths.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-    }
+    const allMonths = monthKeys;
 
     // Distinct staff list
     const staffList = [...new Map(rows.map(r => [r.staff_id, r.staff_name])).entries()]

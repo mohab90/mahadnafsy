@@ -32,16 +32,29 @@ const {
 const { getMfaPolicy, policyRequiresStaff } = require('../lib/mfaPolicy');
 const { getClientIp, hashClientIp } = require('../lib/clientContext');
 
-const ADMIN_EMAILS = listEnv('ADMIN_EMAILS');
+// Lower-cased on both sides, like PLATFORM_ADMIN_EMAILS: an owner written
+// «Name@Gmail.com» in the environment was never recognised, because the token's
+// address is lower-case.
+const ADMIN_EMAILS = listEnv('ADMIN_EMAILS', value => value.toLowerCase());
+const isAdminEmail = email => ADMIN_EMAILS.includes(String(email || '').trim().toLowerCase());
 const ADMIN_UIDS = listEnv('ADMIN_UIDS');
 async function activeIdentity(tenantId, payload) {
   if (!payload.uid && !payload.email) return null;
-  const [[user]] = await pool.query(
-    `SELECT is_active,session_version,totp_enabled,active_session_id,active_session_ip_hash,name FROM users
-      WHERE tenant_id=? AND (id=? OR (?<>'' AND LOWER(TRIM(email))=?)) LIMIT 1`,
-    [tenantId, payload.uid || '', String(payload.email || '').toLowerCase().trim(),
-      String(payload.email || '').toLowerCase().trim()]
-  );
+  // By id first — the primary key. One query that said `id=? OR LOWER(TRIM(email))=?`
+  // could use no index (a function on the column inside an OR), so every
+  // authenticated request scanned the tenant's users, and when two accounts
+  // matched one each way LIMIT 1 picked either. The address is only the fallback
+  // for a token whose id no longer resolves.
+  const columns = 'is_active,session_version,totp_enabled,active_session_id,active_session_ip_hash,name';
+  let user = null;
+  if (payload.uid) {
+    [[user]] = await pool.query(`SELECT ${columns} FROM users WHERE tenant_id=? AND id=? LIMIT 1`, [tenantId, payload.uid]);
+  }
+  const email = String(payload.email || '').toLowerCase().trim();
+  if (!user && email) {
+    [[user]] = await pool.query(
+      `SELECT ${columns} FROM users WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1`, [tenantId, email]);
+  }
   const identity = user
     ? {
       active: Boolean(user.is_active),
@@ -238,7 +251,7 @@ async function requireAuth(req, res, next) {
 
 async function requireAdmin(req, res, next) {
   const { email, uid } = req.user || {};
-  if (ADMIN_EMAILS.includes(email) || ADMIN_UIDS.includes(uid)) {
+  if (isAdminEmail(email) || ADMIN_UIDS.includes(uid)) {
     req.isSuperAdmin = true;
     if (await enforceMfa(req, res, null, [], true)) return next();
     return;
@@ -264,7 +277,7 @@ async function requireAdmin(req, res, next) {
 const SUPER_ADMIN_ROLES = ['admin', 'manager'];
 async function requireSuperAdmin(req, res, next) {
   const { email, uid } = req.user || {};
-  if (ADMIN_EMAILS.includes(email) || ADMIN_UIDS.includes(uid)) {
+  if (isAdminEmail(email) || ADMIN_UIDS.includes(uid)) {
     req.isSuperAdmin = true;
     if (await enforceMfa(req, res, null, [], true)) return next();
     return;
@@ -283,7 +296,7 @@ async function requireSuperAdmin(req, res, next) {
 
 async function requireAdminOrOnlineManager(req, res, next) {
   const { email, uid } = req.user || {};
-  if (ADMIN_EMAILS.includes(email) || ADMIN_UIDS.includes(uid)) {
+  if (isAdminEmail(email) || ADMIN_UIDS.includes(uid)) {
     req.isSuperAdmin = true;
     if (await enforceMfa(req, res, null, [], true)) return next();
     return;
@@ -302,7 +315,7 @@ async function requireAdminOrOnlineManager(req, res, next) {
 
 async function requireAdminOrOnlineManagerOrCollection(req, res, next) {
   const { email, uid } = req.user || {};
-  if (ADMIN_EMAILS.includes(email) || ADMIN_UIDS.includes(uid)) {
+  if (isAdminEmail(email) || ADMIN_UIDS.includes(uid)) {
     req.isSuperAdmin = true;
     if (await enforceMfa(req, res, null, [], true)) return next();
     return;
@@ -321,7 +334,7 @@ async function requireAdminOrOnlineManagerOrCollection(req, res, next) {
 
 async function requireAdminOrStaff(req, res, next) {
   const { email, uid } = req.user || {};
-  if (ADMIN_EMAILS.includes(email) || ADMIN_UIDS.includes(uid)) {
+  if (isAdminEmail(email) || ADMIN_UIDS.includes(uid)) {
     req.isSuperAdmin = true;
     return next();
   }

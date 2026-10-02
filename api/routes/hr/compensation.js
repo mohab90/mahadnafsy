@@ -5,7 +5,7 @@ const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, re
 const { createLeaveRequest, getEffectiveHrPolicy, LEAVE_LABELS_AR } = require('../../lib/hrPolicy');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { toNumbers } = require('../../lib/mappers');
-const { cairoToday } = require('../../lib/dates');
+const { cairoToday, cairoYearMonth } = require('../../lib/dates');
 
 router.get('/api/admin/hr/compensation/pending', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
@@ -532,8 +532,8 @@ router.get('/api/staff/me/payslip', requireAuth, async (req, res) => {
   try {
     const staff = await _resolveStaffByUser(req);
     if (!staff) return res.status(404).json({ error: 'Staff record not found' });
-    const m = Number(req.query.month) || new Date().getMonth() + 1;
-    const y = Number(req.query.year)  || new Date().getFullYear();
+    const m = Number(req.query.month) || cairoYearMonth().month;
+    const y = Number(req.query.year)  || cairoYearMonth().year;
     const [[item]] = await pool.query(`
       SELECT pi.*, pr.month, pr.year, pr.status AS run_status,
              s.name AS staff_name, s.role, d.name AS department_name

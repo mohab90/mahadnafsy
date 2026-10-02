@@ -15,7 +15,11 @@ import { isCollected } from './money';
 export const itemKeyOf = (payment: Pick<PaymentHistoryEntry, 'courseId' | 'bundleId'>): string =>
   payment.bundleId ? `bundle:${payment.bundleId}` : (payment.courseId || '');
 
-const isCoursePayment = (payment: PaymentHistoryEntry) => !payment.paymentType || payment.paymentType === 'course';
+// A row that names a course or track and is typed «other» is that course's money:
+// 'other' is what the API says for a row whose payment_type was never set, and
+// leaving it out turned an old booking into «المدفوع 0».
+const isCoursePayment = (payment: PaymentHistoryEntry) => !payment.paymentType || payment.paymentType === 'course'
+  || (payment.paymentType === 'other' && Boolean(payment.courseId || payment.bundleId));
 
 /** What has come in for an item, optionally in one currency. */
 export function paidFor(subscriber: Pick<SubscriberItem, 'paymentHistory'>, item: string, currency?: string): number {
@@ -25,11 +29,30 @@ export function paidFor(subscriber: Pick<SubscriberItem, 'paymentHistory'>, item
     .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
 }
 
+/**
+ * Money recorded for an item that no one with approval rights has confirmed yet.
+ *
+ * A payment taken at the Dokki front desk (or by a sales rep) is stored as
+ * 'pending' until accounts approve it — the person recording money may not be
+ * the one approving it. The table counted collected money only, so a client who
+ * had handed over cash read «المدفوع 0» for as long as the approval waited, which
+ * is what the whole of the Dokki list looked like. It is still not "paid", so it
+ * stays out of the balance, but it is shown beside the zero instead of vanishing.
+ */
+export function pendingFor(subscriber: Pick<SubscriberItem, 'paymentHistory'>, item: string, currency?: string): number {
+  return (subscriber.paymentHistory || [])
+    .filter(payment => payment.status === 'pending' && isCoursePayment(payment) && itemKeyOf(payment) === item
+      && (!currency || payment.currency === currency))
+    .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
+}
+
 type PricedCatalogueItem = { id: string; title: string; price?: unknown; courses?: { id: string }[] };
 
 export type ClientItem = {
   item: string; title: string; isTrack: boolean; currency: string;
   expected: number; paid: number; remaining: number;
+  /** Recorded but not yet approved — not counted in `paid`. */
+  pending: number;
 };
 
 const catalogueIn = (price: unknown, currency: string): number => {
@@ -65,7 +88,8 @@ export function clientItems(
     const currency = (subscriber.paymentHistory || []).find(payment => itemKeyOf(payment) === item)?.currency || fallbackCurrency;
     const expected = agreedPriceFor(subscriber, item, catalogueIn(entry?.price, currency), currency);
     const paid = paidFor(subscriber, item, currency) + (Number(subscriber.priorPaid?.[item]) || 0);
-    return { item, title: entry?.title || item, isTrack, currency, expected, paid, remaining: Math.max(0, expected - paid) };
+    const pending = pendingFor(subscriber, item, currency);
+    return { item, title: entry?.title || item, isTrack, currency, expected, paid, pending, remaining: Math.max(0, expected - paid) };
   });
 }
 

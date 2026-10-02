@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const route = fs.readFileSync(path.join(__dirname, '..', 'routes', 'payments-admin.js'), 'utf8');
 
 test('commissions/monthly is tenant-scoped (previously leaked every tenant\'s commission data to any authenticated admin)', () => {
-  assert.match(route, /WHERE c\.tenant_id = \? AND DATE_FORMAT/);
+  assert.match(route, /WHERE c\.tenant_id = \? AND c\.status <> 'CANCELLED' AND CONCAT/);
   assert.match(route, /const params = \[req\.tenantId, from\];/);
 });
 

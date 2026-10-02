@@ -38,6 +38,15 @@ const RETRY_BACKOFF_MS = 1_000;
 // GET only. Two POSTs that look alike are two intended writes.
 const inFlightGets = new Map<string, Promise<unknown>>();
 
+// Only a read is repeated automatically. A write that timed out or lost its
+// answer may well have been carried out — the response is what was lost — and
+// sending it again records the payment, the note, the expense or the delete a
+// second time. The person is told it failed and decides; nothing here guesses.
+const canRetry = (options: RequestInit): boolean => {
+  const method = String(options?.method || 'GET').toUpperCase();
+  return method === 'GET' || method === 'HEAD';
+};
+
 async function apiFetch<T>(path: string, options: RequestInit = {}, auth = false, _retry = 0): Promise<T> {
   const method = (options.method || 'GET').toUpperCase();
   if (method === 'GET' && _retry === 0) {
@@ -154,7 +163,7 @@ async function apiFetchInner<T>(path: string, options: RequestInit = {}, auth = 
     const res = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include', cache: 'no-store', signal: controller.signal });
     clearTimeout(timeoutId);
     // Auto-retry on 502/503/504 (server restarting) — 1 extra attempt only.
-    if ((res.status === 502 || res.status === 503 || res.status === 504) && _retry < MAX_RETRIES) {
+    if ((res.status === 502 || res.status === 503 || res.status === 504) && _retry < MAX_RETRIES && canRetry(options)) {
       await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS));
       return apiFetch<T>(path, options, auth, _retry + 1);
     }
@@ -175,7 +184,7 @@ async function apiFetchInner<T>(path: string, options: RequestInit = {}, auth = 
     // passes its own signal — every abort comes from the timeout above.
     const isRetryableNetworkError = err instanceof TypeError
       || (err instanceof DOMException && err.name === 'AbortError');
-    if (isRetryableNetworkError && _retry < MAX_RETRIES) {
+    if (isRetryableNetworkError && _retry < MAX_RETRIES && canRetry(options)) {
       await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS));
       return apiFetch<T>(path, options, auth, _retry + 1);
     }
@@ -454,6 +463,10 @@ export const mysqlAdmin = {
     fetchAllPages(offset => `/admin/leads?limit=${pageSize}&offset=${offset}`, pageSize, maxRows),
   // Server-side pipeline/KPI aggregates — the whole leads table summarised in one
   // query, so the CRM shows correct counts without loading every row.
+  // Revenue from the books (payments.amount_egp, refunds netted) — the overview
+  // used to add up the 500 newest orders in the browser.
+  getOverviewRevenue:      (): Promise<{ totalEgp: number; monthEgp: number; todayEgp: number; payments: number; asOf: string }> =>
+    apiFetch(`/admin/overview/revenue`, {}, A),
   getLeadStats:            (): Promise<{ total: number; byStatus: Record<string, number>; assigned: number; unassigned: number; totalDealValue: number; byOwner: Record<string, { total: number; converted: number; avgScore: number; comms: Record<string, number> }>; bySource: Record<string, number>; byMonth: Record<string, { total: number; converted: number }>; avgScore: number; totalCommunications: number; createdToday: number }> =>
     apiFetch(`/admin/leads/stats`, {}, A),
   // The CRM workspace panels — reminders, weekly scorecard, redistribution
@@ -575,7 +588,7 @@ export const mysqlAdmin = {
   listAllConsultations:    (limit = 500)  => apiFetch<AR[]>(`/admin/consultations?limit=${limit}`, {}, A),
   listAllExpenses:         ()             => apiFetch<AR[]>('/admin/expenses', {}, A),
   listActivityLogs:        (limit = 200)  => apiFetch<AR[]>(`/admin/activity-logs?limit=${limit}`, {}, A),
-  listAllOrders:           (limit = 500)  => apiFetch<AR[]>(`/admin/orders?limit=${limit}`, {}, A),
+  listAllOrders:           (limit = 2000)  => apiFetch<AR[]>(`/admin/orders?limit=${limit}`, {}, A),
   listAbandonedCheckouts:  (hours = 2)     => apiFetch<AR[]>(`/admin/abandoned-checkouts?hours=${hours}`, {}, A),
   runAbandonedCheckout:    (hours = 24, limit = 100) => apiFetch<{ ok: boolean; scanned: number; sent: number; failed: number; skipped: number }>('/admin/automation/abandoned-checkout/run', { method: 'POST', body: JSON.stringify({ hours, limit }) }, A),
   smartRouteLeads:         (mode: 'all' | 'unassigned' = 'unassigned', limit = 100) => apiFetch<{ ok: boolean; assigned: number; reps: number }>('/admin/crm/leads/smart-route', { method: 'POST', body: JSON.stringify({ mode, limit }) }, A),
@@ -1121,7 +1134,8 @@ export const mysqlPaymob = {
 export const mysqlAuth = {
   login: (email: string, password: string) =>
     apiFetch<{
-      ok: boolean;      user?: AuthUser;
+      ok: boolean;
+      user?: AuthUser;
       totpRequired?: boolean;
       pendingToken?: string;
     }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),

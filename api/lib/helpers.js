@@ -2,13 +2,21 @@
 // ── Input Sanitization ────────────────────────────────────────────────────────
 // Strips HTML tags and dangerous characters from user-supplied strings.
 // Applied at system boundaries (lead/subscriber saves) to prevent XSS stored in DB.
+// Removes markup from text a person typed. It strips HTML — script blocks,
+// comments and real tags (`<` followed by a letter, `/`, `!` or `?`) — and
+// nothing else. It used to remove every `<...>` span and every `on\w+=`, which
+// is not markup: «السعر <500 أو >200» lost the middle of the sentence, and
+// «Condition=cash» came out as «Ccash» (the `on…=` inside «Condition=»). Output
+// is also encoded where it is displayed, so this is the second layer, not the
+// only one, and it does not need to be destructive to be useful.
 function sanitize(str, maxLen = 1000) {
   if (!str || typeof str !== 'string') return str;
   return str
-    .replace(/<script[\s\S]*?<\/script>/gi, '')  // strip script blocks
-    .replace(/<[^>]*>/g, '')                       // strip all HTML tags
+    .replace(/<script[\s\S]*?<\/script>/gi, '')   // strip script blocks
+    .replace(/<style[\s\S]*?<\/style>/gi, '')     // and style blocks
+    .replace(/<!--[\s\S]*?-->/g, '')               // comments
+    .replace(/<\/?[a-z!?][^>]*>/gi, '')            // real tags only
     .replace(/javascript:/gi, '')                  // strip javascript: URIs
-    .replace(/on\w+=/gi, '')                       // strip inline event handlers
     .trim()
     .substring(0, maxLen);
 }

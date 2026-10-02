@@ -44,6 +44,7 @@ const { branchIdForBranch } = require('../../lib/branches');
 const { postPaymentJournal, logPaymentAudit } = require('../../lib/finance');
 const { bulkOperationLimiter } = require('../../middleware/rateLimits');
 const { assertWritable } = require('../../lib/periodLock');
+const { staffOwnsEmail, STAFF_EMAIL_REFUSAL } = require('../../lib/staffEmailGuard');
 function cleanLegacyLeadText(value) {
   if (typeof value !== 'string') return value;
   return value
@@ -107,7 +108,9 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
     const safeEmail  = (email  || '').toLowerCase().trim().substring(0, 255);
     const safePhone  = ((phone  || '').replace(/[^\d+\-\s()]/g, '').trim().substring(0, 30)) || null;
     const safeNotes  = sanitize(notes,  2000);
-    const safeSource = sanitize(source, 200);
+    // leads.source is NOT NULL: a lead added without one stood as «حقل مطلوب فاضي»
+    // with no word on which field.
+    const safeSource = sanitize(source, 200) || 'غير محدد';
     const normalizedRequestedStatus = normalizeLeadStatus(status || 'new');
     // Auto-generate client_code for new leads if not provided
     let code = clientCode || client_code || null;
@@ -135,6 +138,22 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
         return res.status(409).json({
           error: `رقم الهاتف ${safePhone} مسجل بالفعل في العملاء المحتملين (${existLead.name || ''})`,
           existingId: existLead.id,
+          type: 'lead',
+        });
+      }
+    }
+    // A changed number is checked too. Only a NEW lead was, so editing a phone to
+    // one another lead holds ran into the unique key and answered with a generic
+    // «فيه سجل بنفس البيانات» that did not say whose number it was.
+    if (!isNew && safePhone && String(existing.phone || '') !== safePhone) {
+      const holder = await findLeadByIdentity({
+        tenantId, phone: safePhone, excludeId: id, db: conn, forUpdate: true,
+      });
+      if (holder) {
+        await conn.rollback();
+        return res.status(409).json({
+          error: `رقم الهاتف ${safePhone} مسجل بالفعل لليد ${holder.name || ''}`,
+          existingId: holder.id,
           type: 'lead',
         });
       }
@@ -359,7 +378,12 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
         await logLeadEventStrict(id, 'status_changed', `تغيير الحالة: ${STATUS_AR[normalizedPrev] || normalizedPrev} ← ${STATUS_AR[normalizedNew] || normalizedNew}`, { from: normalizedPrev, to: normalizedNew }, tenantId, conn);
       }
       // Assignment changed?
-      if (crmData.assignedSalesId && crmData.assignedSalesId !== prevCrm.assignedSalesId) {
+      // Against the column, which every assignment path keeps current — not the
+      // creation-time copy in crm_json, which lags it (the same stale mirror the
+      // lists stopped reading). Comparing with the copy missed a reassignment to
+      // whoever the copy happened to name, and announced one that had not moved.
+      const previousSalesId = existing?.assigned_sales_id || null;
+      if (crmData.assignedSalesId && String(crmData.assignedSalesId) !== String(previousSalesId || '')) {
         await logLeadEventStrict(id, 'assigned', `تعيين لـ: ${crmData.assignedSalesName || crmData.assignedSalesId}`, { salesId: crmData.assignedSalesId, salesName: crmData.assignedSalesName }, tenantId, conn);
         // To the rep it was handed to. It went to every sales account,
         // naming whoever got it — 1,182 of these in one week.
@@ -1103,6 +1127,12 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
     let tempPass = null;
     let isNewUser = false;
     let existingUser = null;
+    // A lead carrying a staff member's address is not turned into a login for
+    // it (lib/staffEmailGuard.js) — the new account would be that staff member.
+    if (normEmail && await staffOwnsEmail(conn, req.tenantId, normEmail, ADMIN_EMAILS)) {
+      await conn.rollback().catch(() => {});
+      return res.status(STAFF_EMAIL_REFUSAL.status).json(STAFF_EMAIL_REFUSAL.body);
+    }
     if (normEmail) {
       [[existingUser]] = await conn.query('SELECT id FROM users WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, normEmail]);
     }

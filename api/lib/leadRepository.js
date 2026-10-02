@@ -1,6 +1,7 @@
 'use strict';
 
 const { pool } = require('./db');
+const { identitySpellings } = require('./phoneNumber');
 
 async function findLeadById({
   tenantId, leadId, db = pool, includeHidden = false, forUpdate = false,
@@ -20,7 +21,13 @@ async function findLeadByIdentity({
 }) {
   const clauses = [];
   const params = [tenantId];
-  if (phone) { clauses.push('phone=?'); params.push(phone); }
+  if (phone) {
+    // Every spelling of the number: 0101…, +20101… and 20101… are one person, and
+    // the unique key on the raw text lets all three in.
+    const spellings = [...new Set([phone, ...identitySpellings(phone)])];
+    clauses.push(`phone IN (${spellings.map(() => '?').join(',')})`);
+    params.push(...spellings);
+  }
   if (email) { clauses.push('email = ?'); params.push(email); }
   if (!clauses.length) return null;
   if (excludeId) params.push(excludeId);

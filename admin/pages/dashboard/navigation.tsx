@@ -245,7 +245,7 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'daqqi_team', label: 'فريق الدقي', icon: Users },
       { key: 'daqqi_accounting', label: 'محاسبة الدقي', icon: CreditCard },
       { key: 'daqqi_stats', label: 'الإحصائيات والحضور', icon: BarChart3 },
-      { key: 'waitlist', label: 'قائمة الانتظار', icon: Clock },
+      { key: 'waitlist', label: 'انتظار الدقي', icon: Clock },
     ],
   },
   {
@@ -341,7 +341,7 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'lectures', label: 'المحاضرات', icon: ListOrdered },
       { key: 'bundles', label: 'المسارات والباقات', icon: FolderKanban },
       { key: 'quizzes', label: 'الاختبارات', icon: FileText },
-      { key: 'course_waitlist', label: 'قوائم الانتظار', icon: Clock },
+      { key: 'course_waitlist', label: 'انتظار الكورسات', icon: Clock },
       { key: 'live_streams', label: 'البث المباشر', icon: Video },
       { key: 'community', label: 'إدارة المجتمع', icon: MessageSquareText },
     ],

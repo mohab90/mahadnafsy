@@ -91,8 +91,8 @@ test('the claims that were already handled stay handled', () => {
   // deliberately. They were, until the desk asked for them; what has to stay
   // true is the guard underneath, which is that nothing larger than the
   // payment can be handed back.
-  assert.match(refunds, /requestedAmount - paidAmount > 0\.01/,
-    'the institute cannot give back more than it took');
+  assert.match(refunds, /requestedAmount - refundable > 0\.01/,
+    'the institute cannot give back more than it took (less what already went back)');
 
   const cohorts = read('api/lib/learningCohorts.js');
   const guard = cohorts.slice(cohorts.indexOf('async function addCohortMember'), cohorts.indexOf('INSERT INTO cohort_members'));

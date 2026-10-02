@@ -21,7 +21,7 @@
 const { pool } = require('./db');
 const { uuidv4 } = require('./id');
 const logger = require('./logger').child({ lib: 'commissionCalc' });
-const { sqlCairoToday } = require('./dates');
+const { sqlCairoToday, dateOnlyInTimeZone } = require('./dates');
 
 /**
  * Work out the rate for a staff member: an explicit active rule wins, otherwise
@@ -58,7 +58,19 @@ async function resolveRate(db, { tenantId, staffId, amount }) {
  */
 async function recordCommissionForPayment({ tenantId, paymentId, subscriberId, amount, branchId }, db = pool) {
   if (!tenantId || !paymentId || !subscriberId) throw new Error('tenantId, paymentId and subscriberId are required');
-  const paid = Number(amount) || 0;
+  // In EGP and in the month the payment belongs to. This took the amount in the
+  // payment's own currency (a 1,000 SAR payment became 1,000 «pounds» of
+  // commission base, summed into payroll as EGP) and the month from the server's
+  // UTC clock, so a payment after midnight in Cairo landed in the month before.
+  // The manual-payment path (lib/paymentCompensation.js) already does both.
+  let paid = Number(amount) || 0;
+  let when = dateOnlyInTimeZone();
+  try {
+    const [[snapshot]] = await db.query(
+      'SELECT amount_egp, date FROM payments WHERE id=? AND tenant_id=? LIMIT 1', [paymentId, tenantId]);
+    if (Number(snapshot?.amount_egp) > 0) paid = Number(snapshot.amount_egp);
+    if (snapshot?.date) when = snapshot.date instanceof Date ? dateOnlyInTimeZone(snapshot.date) : String(snapshot.date).slice(0, 10);
+  } catch (_) { /* the amount we were handed is the fallback */ }
   if (paid <= 0) return { written: false, reason: 'non_positive_amount' };
 
   const [[subscriber]] = await db.query(
@@ -72,7 +84,6 @@ async function recordCommissionForPayment({ tenantId, paymentId, subscriberId, a
   if (!(rate > 0)) return { written: false, reason: 'no_rate' };
 
   const commission = Number((paid * rate / 100).toFixed(2));
-  const now = new Date();
   await db.query(
     `INSERT INTO crm_commissions
        (id, tenant_id, branch_id, staff_id, payment_id, rule_id, client_id, client_type,
@@ -82,7 +93,7 @@ async function recordCommissionForPayment({ tenantId, paymentId, subscriberId, a
     [uuidv4(), tenantId, branchId || 'branch-other', staffId, paymentId, ruleId, subscriberId, 'subscriber',
       paid, commission,
       JSON.stringify({ rate, calc_type: 'PERCENTAGE', rule_id: ruleId, trigger: 'payment' }),
-      now.getMonth() + 1, now.getFullYear()]
+      Number(when.slice(5, 7)), Number(when.slice(0, 4))]
   );
   logger.info('commission recorded', { paymentId, staffId, commission, rate });
   return { written: true, amount: commission };

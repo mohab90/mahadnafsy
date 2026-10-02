@@ -6,7 +6,7 @@
 // and this row receives it.
 
 import React from 'react';
-import { X, UserPlus, Pencil, CalendarDays, UserCheck, MessageCircle, CreditCard, Eye, ArrowLeftRight } from 'lucide-react';
+import { X, UserPlus, Pencil, CalendarDays, UserCheck, MessageCircle, CreditCard, Eye, ArrowLeftRight, Undo2 } from 'lucide-react';
 import type { Course, Bundle, SubscriberItem, DaqqiRound } from '../../../../types';
 import type { DaqqiDraftType } from './daqqiScheduleUtils';
 import { toDialable } from '../../../../lib/whatsappLink';
@@ -40,6 +40,7 @@ export function DaqqiRoundRow({
   setDaqqiPostponeModal,
   setDaqqiTransferModal,
   handleDaqqiMarkAttendance,
+  handleDaqqiUnmarkAttendance,
   handleDaqqiMarkWeek,
   handleRemoveAttendeeFromRound,
   doUpdateRound,
@@ -73,6 +74,8 @@ export function DaqqiRoundRow({
   setDaqqiPostponeModal: (value: { roundId: string; newDate: string } | null) => void;
   setDaqqiTransferModal: (value: { subscriberId: string; fromRoundId: string } | null) => void;
   handleDaqqiMarkAttendance: (roundId: string, subscriberId: string) => void | Promise<void>;
+  /** Takes back the current lecture's mark, for a tap on the wrong person. */
+  handleDaqqiUnmarkAttendance: (roundId: string, subscriberId: string) => void | Promise<void>;
   handleDaqqiMarkWeek: (roundId: string, held: boolean) => void | Promise<void>;
   handleRemoveAttendeeFromRound: (roundId: string, subscriberId: string) => void | Promise<void>;
   doUpdateRound: (round: DaqqiRound) => Promise<boolean>;
@@ -255,6 +258,7 @@ export function DaqqiRoundRow({
                                                   {status === 'active' && <span className="text-gray-400 text-xs">/{calcCurrentLecture(round.startDate, round.postponedWeeks)}</span>}
                                                 </div>
                                                 <button onClick={e => { e.stopPropagation(); handleDaqqiMarkAttendance(round.id, a.subscriberId); }} className="p-1 rounded-lg bg-teal-50 text-teal-600 hover:bg-teal-100 transition" title="تسجيل حضور"><UserCheck size={11} /></button>
+                                                <button onClick={e => { e.stopPropagation(); handleDaqqiUnmarkAttendance(round.id, a.subscriberId); }} className="p-1 rounded-lg bg-gray-50 text-gray-500 hover:bg-amber-50 hover:text-amber-600 transition" title="تراجع عن تسجيل الحضور (للمحاضرة الحالية)"><Undo2 size={11} /></button>
                                               </div>
                                             </td>
                                             <td className="py-1.5 pr-4">

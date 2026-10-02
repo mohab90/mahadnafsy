@@ -87,6 +87,11 @@ export default function HrPayrollPanel({ notify, canManageFinance, canManagePayr
       if (res.ok) {
         const data = await res.json();
         notify('success', `تم احتساب كشف الرواتب ✅`);
+        // Days nobody marked are not deducted — say so, with names, before approval.
+        const gaps = (data.attendanceWarnings || []) as { name: string; unmarkedDays: number }[];
+        if (gaps.length) {
+          notify('info', `⚠ ${gaps.length} موظف عندهم أيام في الشهر محدش سجّل فيها حضور أو غياب أو إجازة، ومش متخصمة: ${gaps.slice(0, 5).map(g => `${g.name} (${g.unmarkedDays})`).join('، ')}${gaps.length > 5 ? '…' : ''}. راجع الحضور قبل الاعتماد.`);
+        }
         fetchPayrollRuns();
         setSelectedRun(data.run || data);
         setPayrollItems(data.items || []);

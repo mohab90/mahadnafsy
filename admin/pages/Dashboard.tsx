@@ -46,7 +46,8 @@ import {
   DashboardCustomerServiceTabs,
   DashboardDirectContentRoutes,
   DashboardFinanceTabs,
-  DashboardGrowthOpsTabs,  DashboardOnlineManagerPanels,
+  DashboardGrowthOpsTabs,
+  DashboardOnlineManagerPanels,
   DashboardQuickBooking,
   DashboardSaasOpsTabs,
   MyProfilePage,
@@ -60,6 +61,7 @@ import { useNotificationsBell } from './dashboard/useNotificationsBell';
 import { useStaffOwnData } from './dashboard/useStaffOwnData';
 import { useDashboardDerived } from './dashboard/useDashboardDerived';
 import { useBranches } from '../hooks/useBranches';
+import { useVisibleInterval } from '../../shared/useVisibleInterval';
 
 import {
   TAB_PERMISSION_MAP,
@@ -276,7 +278,8 @@ const Dashboard: React.FC = () => {
   const { tab: urlTab, param: urlParam } = useParams<{ tab: string; param?: string }>();
   const [activeTabState, setActiveTabState] = useState<TabKey>((urlTab as TabKey) || 'overview');
   const [pendingProofsCount, setPendingProofsCount] = useState(0);
-  const [onlineMgrAcademyOpen, setOnlineMgrAcademyOpen] = useState(false);  // -- Horizontal dropdown nav state --
+  const [onlineMgrAcademyOpen, setOnlineMgrAcademyOpen] = useState(false);
+  // -- Horizontal dropdown nav state --
   const [activeDropdownGroup, setActiveDropdownGroup] = useState<string|null>(null);
   const [dropdownRect, setDropdownRect] = useState<DOMRect | null>(null);
 
@@ -597,7 +600,17 @@ const Dashboard: React.FC = () => {
     else if (fullSubscriberTabs.has(activeTab)) void loadFullSubscribers();
   }, [activeTab, loadFullCrmData, loadFullLeads, loadFullSubscribers]);
 
-  const { overviewStats } = useOverviewDerived(orders, subscribers, leads, courses, staffMembers, consultations, content, leadStats);
+  // The books' own revenue (the browser's sum only sees the newest 500 orders and
+  // payments). Refreshed on a slow timer while the tab is in view; a failure
+  // leaves the browser's figure on screen, as before.
+  const [booksRevenue, setBooksRevenue] = useState<{ totalEgp: number; monthEgp: number; todayEgp: number } | null>(null);
+  const refreshBooksRevenue = useCallback(() => {
+    if (!authUser) return;
+    mysqlAdmin.getOverviewRevenue().then(setBooksRevenue).catch(() => { /* keep the local figure */ });
+  }, [authUser]);
+  useVisibleInterval(refreshBooksRevenue, 5 * 60 * 1000);
+
+  const { overviewStats } = useOverviewDerived(orders, subscribers, leads, courses, staffMembers, consultations, content, leadStats, booksRevenue);
 
   const exportFilteredOrdersCsv = (rows: OrderItem[]) => exportOrdersCsv(rows);
 
@@ -695,7 +708,8 @@ const Dashboard: React.FC = () => {
           dropdownRect={dropdownRect}
           setDropdownRect={setDropdownRect}
           leads={leads}
-          subscribers={subscribers}          notifRef={notifRef}
+          subscribers={subscribers}
+          notifRef={notifRef}
           notifOpen={notifOpen}
           setNotifOpen={setNotifOpen}
           notifRows={notifRows}

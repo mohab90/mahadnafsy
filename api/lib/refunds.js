@@ -96,6 +96,72 @@ async function applyUnlinkedRefund({ subscriberId, item, refundAmount, refundCur
   return { refundPaymentId, refunded: amount, partial: true };
 }
 
+
+// What has already gone back against one payment.
+//
+// A partial refund leaves the payment itself saying what was paid and writes a
+// negative row of its own, so "how much is left to refund" is not on the payment.
+// It used to be computed from nothing: every partial refund was checked against
+// the ORIGINAL amount, so two refunds of 700 on a payment of 1000 both passed
+// and 1400 went back — each time with a journal line, and with the commission
+// scaled again on top of the last scaling. Read from both places a refund is
+// recorded (the `refunds` ledger row, and the negative payment row whose note
+// names the payment) and take the larger, so one of them failing to write — the
+// ledger insert is allowed to — cannot hide a refund from the next check.
+async function refundedSoFar(conn, tenantId, pay) {
+  let viaLedger = 0;
+  let viaRows = 0;
+  try {
+    const [ledger] = await conn.query(
+      "SELECT COALESCE(SUM(amount),0) AS total FROM refunds WHERE tenant_id=? AND payment_id=? AND status IN ('done','approved','refunded')",
+      [tenantId, pay.id],
+    );
+    viaLedger = Number(ledger?.[0]?.total) || 0;
+  } catch (_) { /* the ledger is only one of the two sources */ }
+  try {
+    const [rows] = await conn.query(
+      "SELECT COALESCE(-SUM(amount),0) AS total FROM payments WHERE tenant_id=? AND subscriber_id=? AND source='refund' AND amount<0 AND deleted_at IS NULL AND note LIKE ?",
+      [tenantId, pay.subscriber_id, `%من دفعة ${pay.id}%`],
+    );
+    viaRows = Number(rows?.[0]?.total) || 0;
+  } catch (_) { /* as above */ }
+  return Math.round(Math.max(viaLedger, viaRows) * 100) / 100;
+}
+
+
+// A commission that has already been PAID cannot be cancelled or scaled — the
+// money has left. The refund used to touch only PENDING and INCLUDED rows, so a
+// rep kept the full commission on a sale the customer then got back, with
+// nothing to say so. It is taken back as an approved deduction in the month the
+// refund happens, which the next payroll run subtracts (payroll.js reads
+// employee_bonuses type 'deduction'). `share` is the part of the payment that
+// went back: 1 for all of it.
+async function clawBackPaidCommission(conn, { tenantId, paymentId, share, actor, refundDate, reason }) {
+  let rows = [];
+  try {
+    [rows] = await conn.query(
+      "SELECT id, staff_id, commission_amount FROM crm_commissions WHERE payment_id=? AND tenant_id=? AND status='PAID'",
+      [paymentId, tenantId],
+    );
+  } catch (_) { return 0; }
+  const month = Number(String(refundDate).slice(5, 7));
+  const year = Number(String(refundDate).slice(0, 4));
+  let clawed = 0;
+  for (const row of rows || []) {
+    const amount = Math.round(Number(row.commission_amount) * Math.min(1, Math.max(0, share)) * 100) / 100;
+    if (!(amount > 0)) continue;
+    await conn.query(
+      `INSERT INTO employee_bonuses (id, tenant_id, staff_id, type, amount, status, currency, reason, for_month, for_year, created_by, approved_by, approved_at)
+       VALUES (?,?,?,'deduction',?,'APPROVED','EGP',?,?,?,?,?,NOW())`,
+      [uuidv4(), tenantId, row.staff_id, amount,
+        `استرجاع عمولة اتصرفت قبل كده — دفعة ${paymentId} اتردّ منها ${Math.round(Math.min(1, share) * 100)}%${reason ? ` (${String(reason).slice(0, 120)})` : ''}`,
+        month, year, actor || null, actor || null],
+    );
+    clawed += amount;
+  }
+  return clawed;
+}
+
 // Must run inside an existing transaction on `conn`. Call after the caller
 // has already row-locked and updated the refund_requests row itself — this
 // only handles the payment-side reversal. Returns { journalId, orderUpdated }
@@ -134,12 +200,19 @@ async function applyRefundReversal({ paymentId, subscriberId, refundAmount, refu
     error.status = 400;
     throw error;
   }
-  if (requestedAmount - paidAmount > 0.01) {
-    const error = new Error(`مبلغ الاسترداد أكبر من المدفوع (${paidAmount})`);
+  const alreadyRefunded = await refundedSoFar(conn, tenantId, pay);
+  const refundable = Math.round((paidAmount - alreadyRefunded) * 100) / 100;
+  if (requestedAmount - refundable > 0.01) {
+    const error = new Error(alreadyRefunded > 0.01
+      ? `مبلغ الاسترداد أكبر من المتبقي القابل للاسترداد (${refundable}) — اتسترد ${alreadyRefunded} من ${paidAmount} قبل كده`
+      : `مبلغ الاسترداد أكبر من المدفوع (${paidAmount})`);
     error.status = 409;
     throw error;
   }
-  const isPartial = paidAmount - requestedAmount > 0.01;
+  // After any earlier refund this is a partial one whatever its size: the full
+  // path rewrites the payment as 'refunded' and reverses all of it, which would
+  // count the part that already went back a second time.
+  const isPartial = alreadyRefunded > 0.01 || paidAmount - requestedAmount > 0.01;
   if (String(refundCurrency || '').toUpperCase() !== String(pay.currency || 'EGP').toUpperCase()) {
     const error = new Error('Refund currency must match the payment currency');
     error.status = 409;
@@ -164,7 +237,12 @@ async function applyRefundReversal({ paymentId, subscriberId, refundAmount, refu
 
     // The commission follows the money that stayed. The enrolment does not
     // move: the customer has paid for part of this course and keeps it.
-    const keptRatio = Math.max(0, (paidAmount - refundedAmount) / (paidAmount || 1));
+    await clawBackPaidCommission(conn, {
+      tenantId, paymentId: pay.id, share: refundedAmount / (paidAmount || 1), actor, refundDate, reason,
+    });
+    // Of what is left to refund, not of the original: the commission already
+    // carries the earlier refunds.
+    const keptRatio = Math.max(0, (refundable - refundedAmount) / (refundable || 1));
     await conn.query(
       `UPDATE crm_commissions
           SET payment_amount = ROUND(payment_amount * ?, 2),
@@ -176,7 +254,8 @@ async function applyRefundReversal({ paymentId, subscriberId, refundAmount, refu
 
     return {
       paymentId: pay.id, refundPaymentId: refundId, partial: true,
-      refunded: refundedAmount, remaining: Math.round((paidAmount - refundedAmount) * 100) / 100,
+      refunded: refundedAmount, remaining: Math.round((refundable - refundedAmount) * 100) / 100,
+      fullyRefunded: refundable - refundedAmount <= 0.01,
     };
   }
 
@@ -195,6 +274,7 @@ async function applyRefundReversal({ paymentId, subscriberId, refundAmount, refu
       WHERE payment_id=? AND tenant_id=? AND status IN ('PENDING','INCLUDED_IN_PAYROLL')`,
     [pay.id, tenantId]
   );
+  await clawBackPaidCommission(conn, { tenantId, paymentId: pay.id, share: 1, actor, refundDate, reason });
   // The instructor's share goes with the salesperson's, for the same reason.
   //
   // Only the commission was being cancelled. A payment whose instructor fee had

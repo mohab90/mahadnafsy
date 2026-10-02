@@ -206,7 +206,13 @@ router.post('/api/admin/orders', requireAuth, requireAdminOrStaff, requirePermis
 // the same transfer can never confirm two different orders (closing PAY-06:
 // a single transfer being reusable across multiple orders was never actually
 // enforced despite migration 022's comment saying that was the intent).
-router.post('/api/admin/orders/:id/confirm-payment', requireAuth, requireAdminOrStaff, requirePermission('manage_payments'), async (req, res) => {
+// manage_financial, not manage_payments. manage_payments is every role's default
+// (it is what lets a rep or the front desk RECORD money), and this route does
+// the opposite job: it books the order as paid, posts the journal, opens the
+// course and pays the commission. Approving money is what every other approval
+// route asks manage_financial for — proof review, payment status, pending
+// payments — and recording and approving stay separate duties.
+router.post('/api/admin/orders/:id/confirm-payment', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   const conn = await pool.getConnection();
   try {
     const { linkedTransferId } = req.body || {};
@@ -231,6 +237,15 @@ router.post('/api/admin/orders/:id/confirm-payment', requireAuth, requireAdminOr
     if (order.staff_id && String(order.staff_id) === String(req.staffRecord?.id || '')) {
       await conn.rollback();
       return res.status(403).json({ error: 'The employee who recorded an order cannot approve its payment' });
+    }
+    // Nor the rep who earns the commission on it: the payment's commission goes
+    // to the client's assigned sales rep (lib/orderPaymentConfirmation.js), so
+    // that rep confirming the order is confirming their own pay.
+    if (subscriber?.assigned_sales_id && req.staffRecord?.id
+      && String(subscriber.assigned_sales_id) === String(req.staffRecord.id) && !req.isSuperAdmin
+      && !['admin', 'manager'].includes(String(req.staffRecord.role || '').toLowerCase())) {
+      await conn.rollback();
+      return res.status(403).json({ error: 'مندوب المبيعات المسئول عن العميل ما يقدرش يأكد دفع طلبه — لازم حد تاني من الحسابات' });
     }
     if (String(order.status).toLowerCase() !== 'pending') {
       await conn.rollback();
