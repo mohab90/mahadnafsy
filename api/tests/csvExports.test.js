@@ -223,9 +223,8 @@ test('what the writer writes, the leads import reads back', () => {
 // being reachable as well as for being correct.
 const IMPORT_SCREENS = [
   ['admin/pages/dashboard/tabs/leads/CsvImportButton.tsx', 'استيراد CSV on the leads desk'],
-  ['admin/pages/dashboard/tabs/leads/ArchiveTab.tsx', 'أرشيف الليدز'],
-  // The old-data screen reads through shared/sheetImport.ts, which reads a CSV
-  // through the shared reader beside it.
+  // The old-data screen and the leads archive (ArchiveTab) read through
+  // shared/sheetImport.ts, which reads a CSV through the shared reader beside it.
   ['shared/sheetImport.ts', 'استيراد البيانات القديمة'],
 ];
 

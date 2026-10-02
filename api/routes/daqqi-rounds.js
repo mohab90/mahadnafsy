@@ -213,6 +213,9 @@ router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requireP
         amountPaid: Number(a.amount_paid || 0),
         amountPending: Number(a.pending_amount || 0),
         amountUnlinked: Number(a.unlinked_amount || 0),
+        // Paid before the system (crm_json.priorPaid for this round's course) — not a
+        // collection of any period, so it stays out of amountPaid and the revenue sums.
+        amountPrior: Number(a.prior_paid || 0),
         attendedLectures: Number(a.attended_lectures || 0),
         // The client is archived but their attendance stands — see lib/daqqiAttendees.js.
         archived: Boolean(Number(a.archived || 0)),

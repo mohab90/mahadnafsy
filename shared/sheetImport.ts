@@ -45,6 +45,9 @@ export const foldText = (value: SheetCell | undefined) => latinDigits(String(val
 
 const cellText = (value: SheetCell | undefined) => String(value ?? '').replace(DIRECTION_MARKS, '').replace(/\s+/g, ' ').trim();
 
+/** A cell as one line of text, direction marks and runs of spaces gone. */
+export const sheetCellText = cellText;
+
 // ── columns ──────────────────────────────────────────────────────────────────
 
 export type SheetField = 'date' | 'name' | 'phone' | 'email' | 'course' | 'expected' | 'paid' | 'refund'
@@ -133,6 +136,30 @@ export function splitPhones(raw: SheetCell | undefined): { phones: string[]; bad
     }
   }
   return { phones, bad };
+}
+
+/**
+ * The phone of a lead row: what splitPhones can vouch for, and failing that any
+ * number that is plausibly one, as written.
+ *
+ * splitPhones is exact about Egypt and the long international forms, which is what
+ * a client sheet needs. A lead sheet is mostly numbers from abroad, and a Saudi
+ * mobile written without its country code («501234567», nine digits) is none of
+ * those — so every row of an international sheet read as «no phone» and was
+ * skipped, which is what «دولي قديم» did with a file that was fine. The server
+ * normalises and refuses what it cannot use; rejecting here only hid the rows.
+ */
+export function leadPhone(raw: SheetCell | undefined): { phone: string; others: string[] } {
+  const { phones } = splitPhones(raw);
+  if (phones.length) return { phone: phones[0], others: phones.slice(1) };
+  if (raw === null || raw === undefined) return { phone: '', others: [] };
+  const text = typeof raw === 'number' ? String(Math.round(raw)) : latinDigits(String(raw)).replace(DIRECTION_MARKS, '');
+  if (/^\s*#/.test(text)) return { phone: '', others: [] };
+  const first = text.split(/[/\\,،|;\n]+|\s{2,}/).map(part => part.trim()).find(part => part.replace(/\D/g, '').length >= 7);
+  if (!first) return { phone: '', others: [] };
+  const digits = first.replace(/\D/g, '');
+  if (digits.length > 15 || PLACEHOLDER.test(digits)) return { phone: '', others: [] };
+  return { phone: `${first.trim().startsWith('+') ? '+' : ''}${digits}`, others: [] };
 }
 
 // ── amounts and dates ────────────────────────────────────────────────────────
@@ -336,6 +363,25 @@ export function paidBefore(row: Partial<Pick<SheetClientRow, '_expected' | '_pai
 
 // ── files ────────────────────────────────────────────────────────────────────
 
+/**
+ * The text of a CSV file's bytes.
+ *
+ * `file.text()` reads UTF-8 and nothing else. Excel on an Arabic Windows saves a
+ * CSV as Windows-1256 unless the person picks «CSV UTF-8», and «Unicode Text» is
+ * UTF-16: read as UTF-8 both come out as question marks and boxes, no heading
+ * matches, and the screen says the file has no names or phones.
+ */
+export function decodeSheetText(buffer: ArrayBuffer): { text: string; encoding: string } {
+  const bytes = new Uint8Array(buffer);
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return { text: new TextDecoder('utf-16le').decode(bytes.subarray(2)), encoding: 'utf-16le' };
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return { text: new TextDecoder('utf-16be').decode(bytes.subarray(2)), encoding: 'utf-16be' };
+  try {
+    return { text: new TextDecoder('utf-8', { fatal: true }).decode(bytes), encoding: 'utf-8' };
+  } catch {
+    return { text: new TextDecoder('windows-1256').decode(bytes), encoding: 'windows-1256' };
+  }
+}
+
 /** CSV or TSV text as one tab. */
 export function readCsvTab(text: string, name = 'CSV'): SheetTab {
   const clean = text.replace(/^\ufeff/, '');
@@ -432,5 +478,5 @@ export async function readSheetFile(file: File): Promise<SheetTab[]> {
   const name = file.name.toLowerCase();
   if (name.endsWith('.xlsx') || name.endsWith('.xlsm')) return readXlsx(await file.arrayBuffer());
   if (name.endsWith('.xls')) throw new Error('الملف بصيغة Excel القديمة (.xls) — احفظه xlsx أو CSV وارفعه تاني');
-  return [readCsvTab(await file.text(), file.name.replace(/\.[^.]+$/, '') || 'CSV')];
+  return [readCsvTab(decodeSheetText(await file.arrayBuffer()).text, file.name.replace(/\.[^.]+$/, '') || 'CSV')];
 }

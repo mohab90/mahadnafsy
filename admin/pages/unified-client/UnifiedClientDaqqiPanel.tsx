@@ -33,7 +33,10 @@ export function UnifiedClientDaqqiPanel({ rounds, courses, subscriber }: Unified
         const roundCourse = courses.find(course => course.id === round.courseId);
         const attendee = round.attendees.find(item => item.subscriberId === subscriber.id);
         const coursePrice = roundCourse?.price?.EGP ?? 0;
-        const remaining = coursePrice > 0 ? Math.max(0, coursePrice - (attendee?.amountPaid ?? 0)) : 0;
+        // Collected here plus paid before the system (crm_json.priorPaid) — the client's
+        // own page must read the same figure as the round's roster.
+        const paidToward = (attendee?.amountPaid ?? 0) + (attendee?.amountPrior ?? 0);
+        const remaining = coursePrice > 0 ? Math.max(0, coursePrice - paidToward) : 0;
 
         return (
           <div key={round.id} className="border border-gray-200 rounded-xl p-4 bg-white shadow-sm">
@@ -69,8 +72,8 @@ export function UnifiedClientDaqqiPanel({ rounds, courses, subscriber }: Unified
             {attendee && (
               <div className="mt-3 grid grid-cols-3 gap-2">
                 <div className="bg-green-50 rounded-lg p-2 text-center border border-green-100">
-                  <p className="font-extrabold text-green-700">{(attendee.amountPaid || 0).toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
-                  <p className="text-[10px] text-gray-400">مدفوع</p>
+                  <p className="font-extrabold text-green-700">{paidToward.toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
+                  <p className="text-[10px] text-gray-400">مدفوع{(attendee.amountPrior ?? 0) > 0 ? ' (شامل قبل السيستم)' : ''}</p>
                 </div>
                 <div className={`rounded-lg p-2 text-center border ${remaining > 0 ? 'bg-red-50 border-red-100' : 'bg-green-50 border-green-100'}`}>
                   {remaining > 0 ? (

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { NavigateFunction } from 'react-router-dom';
 import { AlertCircle, Archive, Upload, Users } from 'lucide-react';
 import type { Bundle, Course, LeadItem, LeadStatus, NewLeadDraft, StaffMember, SubscriberItem } from '../../../../types';
@@ -7,7 +7,10 @@ import { LeadTable } from '../LeadTable';
 import { LEAD_STATUS_CFG, crmStatusLabels } from './LeadSubcomponents';
 import { BRANCH_LABELS_AR, normalizeBranch, type BranchKey } from '../../../../constants/branches';
 import { courseBadgeLabel, matchCourseOrBundle, toRawCourse } from './leadCourseLabel';
-import { parseCsvRows, detectCsvDelimiter } from '../../../../../shared/csv';
+import {
+  detectLayout, foldText, leadPhone, readSheetFile, sheetCellText,
+  type SheetField, type SheetTab, type TabLayout,
+} from '../../../../../shared/sheetImport';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 
 /**
@@ -24,23 +27,66 @@ const normKey = (value: string) => String(value || '')
   .toLowerCase()
   .replace(/[_\s\-().[\]/\\]+/g, '');
 
-const COLUMN_ALIASES = {
-  name: ['fullname', 'name', 'الاسم', 'اسم', 'اسمالعميل', 'الاسمالكامل', 'الاسمبالكامل'],
-  phone: ['phonenumber', 'phone', 'mobile', 'mobilenumber', 'whatsapp', 'الهاتف', 'الموبايل',
-    'رقمالهاتف', 'رقمالموبايل', 'تليفون', 'التليفون', 'موبايل', 'رقم', 'رقمالواتس', 'واتساب'],
-  branch: ['اخترالفرع', 'الفرع', 'branch', 'الفرعالاقرب', 'فرع'],
-  course: ['الكورس', 'course', 'الدبلومة', 'الدبلوم', 'الكورسالمطلوب', 'البرنامج', 'coursename'],
-  email: ['email', 'البريدالالكتروني', 'ايميل', 'الايميل', 'mail'],
-  notes: ['notes', 'ملاحظات', 'ملاحظة', 'note', 'comment'],
-} as const;
+/**
+ * A sheet as it was read: its tabs, the one being imported, which column is which,
+ * and which column holds the branch (the shared reader has no field for it).
+ *
+ * The screen used to cut the file with its own reader — UTF-8 text only, a short
+ * list of exact heading spellings, one tab. A real sheet failed it three ways:
+ * an .xlsx opened as garbage, a CSV saved by Arabic Excel (Windows-1256) read as
+ * boxes, and a phone column called «رقم التليفون» matched nothing — and the only
+ * sign was a preview full of «مطلوب». It reads through shared/sheetImport.ts now,
+ * the reader the old-data screens already use, and the person can correct any
+ * column that was guessed wrong.
+ */
+type ImportSheet = { tabs: SheetTab[]; tabIndex: number; layout: TabLayout; branchCol: number };
+type LeadImportRow = Record<string, string>;
+type LeadImportContext = { branchOptions: { id: string; label: string }[]; courses: Course[]; bundles: Bundle[] };
 
-const pick = (row: Record<string, string>, aliases: readonly string[]) => {
-  for (const alias of aliases) {
-    const hit = row[alias];
-    if (hit && hit.trim()) return hit.trim();
-  }
-  return '';
-};
+const IMPORT_FIELDS: Array<{ key: SheetField | 'branch'; label: string }> = [
+  { key: 'name', label: 'الاسم' }, { key: 'phone', label: 'الهاتف' }, { key: 'email', label: 'الإيميل' },
+  { key: 'course', label: 'الكورس' }, { key: 'notes', label: 'ملاحظات' }, { key: 'branch', label: 'الفرع' },
+];
+
+/** The column whose heading names a branch and which is not already something else. */
+function branchColumnOf(tab: SheetTab, layout: TabLayout): number {
+  if (layout.headerRow < 0) return -1;
+  const taken = new Set(Object.values(layout.columns));
+  return (tab.rows[layout.headerRow] || []).findIndex((heading, index) => !taken.has(index) && /فرع|branch/.test(foldText(heading)));
+}
+
+/** A column as the person sees it in the pickers: its heading, or its place and a sample. */
+function columnLabel(tab: SheetTab, layout: TabLayout, index: number): string {
+  const heading = layout.headerRow >= 0 ? sheetCellText(tab.rows[layout.headerRow]?.[index]) : '';
+  const sample = sheetCellText(tab.rows[layout.headerRow + 1]?.[index]).slice(0, 18);
+  return heading || `عمود ${index + 1}${sample ? ` (${sample})` : ''}`;
+}
+
+function buildLeadRows(sheet: ImportSheet, ctx: LeadImportContext): LeadImportRow[] {
+  const tab = sheet.tabs[sheet.tabIndex];
+  const { layout } = sheet;
+  const columns = layout.columns;
+  const text = (row: Array<string | number | null>, field: SheetField) => (columns[field] === undefined ? '' : sheetCellText(row[columns[field] as number]));
+  return tab.rows.slice(layout.headerRow + 1).map((row, index) => {
+    const { phone, others } = columns.phone === undefined ? { phone: '', others: [] as string[] } : leadPhone(row[columns.phone]);
+    const notes = [text(row, 'notes'), others.length ? `أرقام أخرى: ${others.join(' ، ')}` : ''].filter(Boolean).join(' — ');
+    const branchRaw = sheet.branchCol >= 0 ? sheetCellText(row[sheet.branchCol]) : '';
+    const courseRaw = text(row, 'course');
+    return {
+      _id: `${tab.name}:${layout.headerRow + 2 + index}`,
+      _name: text(row, 'name'),
+      _phone: phone,
+      _email: text(row, 'email').toLowerCase(),
+      _notes: notes,
+      _branchRaw: branchRaw,
+      _courseRaw: courseRaw,
+      // Resolved now (not at import time) so the preview can show whether each
+      // branch/course actually matched before anything is written.
+      _branchKey: matchBranch(branchRaw, ctx.branchOptions) || '',
+      _courseId: matchCourseOrBundle(courseRaw, ctx.courses, ctx.bundles) || '',
+    };
+  }).filter(row => row._name || row._phone || row._email || row._notes);
+}
 
 /** Free-text branch from a sheet → canonical BranchKey, or null to keep raw. */
 function matchBranch(raw: string, options: { id: string; label: string }[]): BranchKey | null {
@@ -111,7 +157,7 @@ export interface ArchiveTabProps {
   onShowAll?: () => void;
 }
 export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLeads, notify, courses, bundles, navigate, deleteLead, addSubscriber, updateSubscriber, subscribers, salesReps, isSalesOnly, canManageLeads, onBook, branchOptions, sources, title = 'محلي قديم — الاستيراد والتعيين الجماعي', defaultSource = 'محلي قديم', customFilter, hideImport = false, panels, matchesFilters, onShowAll }: ArchiveTabProps) {
-  const [archiveParsed, setArchiveParsed] = useState<Record<string, string>[]>([]);
+  const [archiveSheet, setArchiveSheet] = useState<ImportSheet | null>(null);
   const [archiveParseErr, setArchiveParseErr] = useState('');
   const [archiveImporting, setArchiveImporting] = useState(false);
   const [archiveImportResult, setArchiveImportResult] = useState<{ created: number; dupes: number; errors: number } | null>(null);
@@ -137,43 +183,56 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
   const showDistributePanel = showDeskTools && panels?.distribute !== false;
   const showDataPanel = panels?.data !== false;
 
-  const parseArchiveFile = (file: File) => {
-    setArchiveParseErr('');
-    setArchiveParsed([]);
+  const importContext = useMemo<LeadImportContext>(() => ({ branchOptions, courses, bundles }), [branchOptions, courses, bundles]);
+  const archiveParsed = useMemo(
+    () => (archiveSheet ? buildLeadRows(archiveSheet, importContext) : []), [archiveSheet, importContext]);
+  const usableRow = (row: LeadImportRow) => Boolean(row._name && row._phone);
+  const validImportIds = archiveParsed.filter(usableRow).map(row => row._id);
+  const incompleteRows = archiveParsed.length - validImportIds.length;
+
+  // Every change to what is read starts the ticks again from the rows that can be
+  // written, so the count on the button is the count about to be uploaded.
+  const adoptSheet = (sheet: ImportSheet | null) => {
+    setArchiveSheet(sheet);
     setArchiveImportResult(null);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = (e.target?.result as string) || '';
-      // The delimiter used to be «a tab appears anywhere in the file, so the
-      // file is tab-separated» — one tab inside one note switched the whole
-      // sheet. It is counted on the header line now, outside quotes.
-      const [headerRow, ...body] = parseCsvRows(text, detectCsvDelimiter(text.split(/\r?\n/)[0] || ''));
-      if (!headerRow || body.length === 0) { setArchiveParseErr('الملف فارغ أو لا يحتوي على بيانات'); return; }
-      const headers = headerRow.map(normKey);
-      const rows: Record<string, string>[] = [];
-      for (let i = 0; i < body.length; i++) {
-        const vals = body[i];
-        if (vals.every(v => !v)) continue;
-        const row: Record<string, string> = {};
-        headers.forEach((h, idx) => { row[h] = vals[idx] || ''; });
-        row._name   = pick(row, COLUMN_ALIASES.name);
-        row._phone  = pick(row, COLUMN_ALIASES.phone);
-        row._email  = pick(row, COLUMN_ALIASES.email);
-        row._notes  = pick(row, COLUMN_ALIASES.notes);
-        row._branchRaw = pick(row, COLUMN_ALIASES.branch);
-        row._courseRaw = pick(row, COLUMN_ALIASES.course);
-        // Resolved now (not at import time) so the preview can show whether each
-        // branch/course actually matched before anything is written.
-        row._branchKey = matchBranch(row._branchRaw, branchOptions) || '';
-        row._courseId = matchCourseOrBundle(row._courseRaw, courses, bundles) || '';
-        row._id     = `arch-${Date.now()}-${i}`;
-        rows.push(row);
-      }
-      setArchiveParsed(rows);
-      setArchiveSelectedIds(new Set(rows.map(r => r._id)));
-    };
-    reader.onerror = () => setArchiveParseErr('خطأ في قراءة الملف');
-    reader.readAsText(file, 'UTF-8');
+    setArchiveSelectedIds(new Set(sheet ? buildLeadRows(sheet, importContext).filter(usableRow).map(row => row._id) : []));
+  };
+
+  const parseArchiveFile = async (file: File) => {
+    setArchiveParseErr('');
+    adoptSheet(null);
+    try {
+      const tabs = (await readSheetFile(file)).filter(tab => tab.rows.length > 0);
+      if (!tabs.length) { setArchiveParseErr('الملف فارغ أو لا يحتوي على بيانات'); return; }
+      const layouts = tabs.map(tab => detectLayout(tab.rows));
+      // The first tab that reads as a list of people; failing that, the first.
+      const found = layouts.findIndex(layout => layout.columns.name !== undefined && layout.columns.phone !== undefined);
+      const tabIndex = found >= 0 ? found : 0;
+      adoptSheet({ tabs, tabIndex, layout: layouts[tabIndex], branchCol: branchColumnOf(tabs[tabIndex], layouts[tabIndex]) });
+    } catch (error) {
+      setArchiveParseErr(error instanceof Error ? error.message : 'خطأ في قراءة الملف');
+    }
+  };
+
+  const chooseImportTab = (tabIndex: number) => {
+    if (!archiveSheet) return;
+    const layout = detectLayout(archiveSheet.tabs[tabIndex].rows);
+    adoptSheet({ ...archiveSheet, tabIndex, layout, branchCol: branchColumnOf(archiveSheet.tabs[tabIndex], layout) });
+  };
+
+  /** One column is one field: choosing it for this one takes it from whichever had it. */
+  const setImportColumn = (field: SheetField | 'branch', value: string) => {
+    if (!archiveSheet) return;
+    const column = value === '' ? undefined : Number(value);
+    if (field === 'branch') { adoptSheet({ ...archiveSheet, branchCol: column ?? -1 }); return; }
+    const columns = { ...archiveSheet.layout.columns };
+    for (const key of Object.keys(columns) as SheetField[]) if (columns[key] === column) delete columns[key];
+    if (column === undefined) delete columns[field]; else columns[field] = column;
+    adoptSheet({
+      ...archiveSheet,
+      layout: { ...archiveSheet.layout, columns, guessed: false },
+      branchCol: column !== undefined && archiveSheet.branchCol === column ? -1 : archiveSheet.branchCol,
+    });
   };
 
   const doImport = async () => {
@@ -366,9 +425,9 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
             </select>
           </div>
           <div>
-            <label className="text-xs font-bold text-gray-600 mb-1 block">ملف CSV أو TSV</label>
-            <input type="file" accept=".csv,.tsv,.txt"
-              onChange={e => { const f = e.target.files?.[0]; if (f) parseArchiveFile(f); }}
+            <label className="text-xs font-bold text-gray-600 mb-1 block">ملف Excel (.xlsx) أو CSV</label>
+            <input type="file" accept=".xlsx,.xlsm,.csv,.tsv,.txt"
+              onChange={e => { const f = e.target.files?.[0]; if (f) void parseArchiveFile(f); e.target.value = ''; }}
               className="text-sm text-gray-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer" />
           </div>
         </div>
@@ -384,8 +443,8 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
             <code className="bg-indigo-50 text-indigo-700 px-1 rounded mx-1 font-bold">الكورس</code>
           </p>
           <p className="text-[10px] text-gray-400">
-            الاسم والهاتف إلزاميان. تُقبل أيضًا مسميات بديلة (name / الاسم، phone / الهاتف / الموبايل، الفرع، email، notes / ملاحظات)،
-            وفروق الشرطة السفلية والمسافات والحروف الكبيرة لا تهم.
+            الاسم والهاتف إلزاميان. الأعمدة بتتعرف عليها من عناوينها (الاسم، التليفون / الموبايل / الجوال، الفرع، email، ملاحظات…) وتقدر تصحّح أي عمود بعد الرفع.
+            الملف ممكن يكون Excel أو CSV (UTF-8 أو Windows-1256)، والأرقام اللي ناقصها الصفر أو فيها مسافات وشرط بتتظبط لوحدها.
           </p>
         </div>
         {archiveParseErr && (
@@ -393,12 +452,62 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
             <AlertCircle size={15} /> {archiveParseErr}
           </div>
         )}
+        {archiveSheet && (
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
+            {archiveSheet.tabs.length > 1 && (
+              <label className="flex flex-wrap items-center gap-2 text-xs font-bold text-gray-700">
+                التاب المستورد:
+                <select value={archiveSheet.tabIndex} onChange={e => chooseImportTab(Number(e.target.value))}
+                  className="border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white">
+                  {archiveSheet.tabs.map((tab, index) => <option key={tab.name + index} value={index}>{tab.name} ({tab.rows.length})</option>)}
+                </select>
+              </label>
+            )}
+            <p className="text-[11px] font-bold text-gray-600">
+              {archiveSheet.layout.guessed
+                ? 'الملف مفيهوش صف عناوين — الأعمدة اتخمّنت من محتواها، راجعها:'
+                : 'الأعمدة اللي اتعرفت عليها — صحّح أي واحد غلط:'}
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              {IMPORT_FIELDS.map(field => {
+                const value = field.key === 'branch'
+                  ? (archiveSheet.branchCol >= 0 ? archiveSheet.branchCol : '')
+                  : (archiveSheet.layout.columns[field.key] ?? '');
+                const tab = archiveSheet.tabs[archiveSheet.tabIndex];
+                const width = Math.max(0, ...tab.rows.slice(0, 50).map(row => row.length));
+                const required = field.key === 'name' || field.key === 'phone';
+                return (
+                  <label key={field.key} className="text-[11px] font-bold text-gray-600 space-y-0.5 block">
+                    <span>{field.label}{required ? ' *' : ''}</span>
+                    <select value={value} onChange={e => setImportColumn(field.key, e.target.value)}
+                      className={`w-full border rounded-lg px-2 py-1 text-xs bg-white ${required && value === '' ? 'border-red-300' : 'border-gray-200'}`}>
+                      <option value="">— مفيش —</option>
+                      {Array.from({ length: width }, (_, index) => (
+                        <option key={index} value={index}>{columnLabel(tab, archiveSheet.layout, index)}</option>
+                      ))}
+                    </select>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {archiveSheet && archiveParsed.length > 0 && validImportIds.length === 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700 flex items-center gap-2">
+            <AlertCircle size={15} /> مفيش ولا صف فيه اسم ورقم هاتف مع بعض. اختار عمود الاسم وعمود الهاتف من فوق.
+          </div>
+        )}
+        {archiveSheet && validImportIds.length > 0 && incompleteRows > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs font-bold text-amber-800" role="status">
+            {incompleteRows} صف ناقص اسم أو رقم هاتف صالح — مش هيتستورد (باهت في الجدول تحت).
+          </div>
+        )}
         {archiveParsed.length > 0 && (
           <>
             <div className="flex items-center justify-between flex-wrap gap-2">
               <span className="text-sm font-bold text-gray-700">{archiveParsed.length} صف — محدد: {archiveSelectedIds.size}</span>
               <div className="flex gap-2">
-                <button onClick={() => setArchiveSelectedIds(new Set(archiveParsed.map(r => r._id)))} className="text-xs px-3 py-1.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 font-bold">تحديد الكل</button>
+                <button onClick={() => setArchiveSelectedIds(new Set(validImportIds))} className="text-xs px-3 py-1.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 font-bold">تحديد الكل</button>
                 <button onClick={() => setArchiveSelectedIds(new Set())} className="text-xs px-3 py-1.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 font-bold">إلغاء الكل</button>
               </div>
             </div>
@@ -406,7 +515,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
               <table className="w-full text-xs">
                 <thead className="bg-gray-50 sticky top-0">
                   <tr>
-                    <th className="py-2 px-3 text-right font-bold text-gray-600 w-8"><input type="checkbox" checked={archiveSelectedIds.size === archiveParsed.length} onChange={e => setArchiveSelectedIds(e.target.checked ? new Set(archiveParsed.map(r => r._id)) : new Set())} className="w-3.5 h-3.5" /></th>
+                    <th className="py-2 px-3 text-right font-bold text-gray-600 w-8"><input type="checkbox" checked={validImportIds.length > 0 && archiveSelectedIds.size === validImportIds.length} onChange={e => setArchiveSelectedIds(e.target.checked ? new Set(validImportIds) : new Set())} className="w-3.5 h-3.5" /></th>
                     <th className="py-2 px-3 text-right font-bold text-gray-600">الاسم</th>
                     <th className="py-2 px-3 text-right font-bold text-gray-600">الهاتف</th>
                     <th className="py-2 px-3 text-right font-bold text-gray-600">الفرع</th>

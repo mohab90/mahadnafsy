@@ -81,6 +81,13 @@ export function clientItems(
   const inTracks = new Set([...keys].filter(item => item.startsWith('bundle:'))
     .flatMap(item => bundles.find(bundle => `bundle:${bundle.id}` === item)?.courses?.map(course => course.id) || []));
   (subscriber.enrolledCourseIds || []).forEach(id => { if (id && !inTracks.has(id)) keys.add(id); });
+  // «مدفوع قبل السيستم» names its course. A client whose only trace of a course is
+  // that money — no payment row, no saved price, no enrolment — had no item, so
+  // the table said «لا يوجد» and «—» under المدفوع for money that is in the
+  // database: 1,609 of the 1,919 Dokki clients. The money is the evidence.
+  Object.entries(subscriber.priorPaid || {}).forEach(([item, amount]) => {
+    if (item && Number(amount) > 0 && !item.startsWith('multi:') && !inTracks.has(item)) keys.add(item);
+  });
 
   return [...keys].map(item => {
     const isTrack = item.startsWith('bundle:');

@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import { StaffActivityChart } from './StaffActivityChart';
 import { cairoDateOnly, cairoDateTime, cairoMonthOnly, cairoDay, cairoDaysAgo } from '../../../../shared/cairoDate';
 import {
   User, TrendingUp, Clock, CheckCircle, Activity, Calendar,
@@ -132,7 +133,6 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
       };
     });
 
-    const maxCalls = Math.max(...last7.map(d => d.calls), 1);
 
     // Recent activity — leads updated in last 3 days
     const recentActivity = [...myLeads]
@@ -154,7 +154,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
         ? Math.round(Number(hrSnapshot?.kpi?.leads_converted || 0) / Number(hrSnapshot?.kpi?.leads_assigned || 1) * 100)
         : convRate,
       overdueFollowups, todayFollowups, newThisMonth: newThisMonth.length,
-      callsThisMonth, revenueThisMonth, last7, maxCalls, recentActivity,
+      callsThisMonth, revenueThisMonth, last7, recentActivity,
       urgentLeads, commission, commissionRate,
     };
   }, [leads, today, thisMonth, staff, hrSnapshot]);
@@ -442,39 +442,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
                 <Activity size={15} className="text-indigo-500" />
                 نشاطي — آخر 7 أيام
               </h4>
-              <div className="flex items-end gap-1.5 h-28">
-                {stats.last7.map((d, i) => {
-                  const heightPct = Math.max(4, (d.calls / stats.maxCalls) * 100);
-                  const isToday = d.day === today;
-                  return (
-                    <div key={d.day} className="flex-1 flex flex-col items-center gap-1">
-                      <span className="text-[9px] text-gray-400 font-medium">{d.calls > 0 ? d.calls : ''}</span>
-                      <div className="w-full relative">
-                        <div
-                          className="w-full rounded-t-md transition-all duration-500"
-                          style={{
-                            height: `${Math.round(heightPct * 0.8)}px`,
-                            background: isToday
-                              ? 'linear-gradient(180deg,#6366f1,#4f46e5)'
-                              : i === stats.last7.length - 1
-                                ? 'linear-gradient(180deg,#10b981,#059669)'
-                                : 'linear-gradient(180deg,#a5b4fc,#818cf8)',
-                            opacity: d.calls === 0 ? 0.25 : 1,
-                            minHeight: '6px',
-                          }}
-                        />
-                        {d.converted > 0 && (
-                          <div
-                            className="absolute bottom-0 left-0 right-0 rounded-t-md bg-emerald-500 opacity-70"
-                            style={{ height: `${Math.round((d.converted / stats.maxCalls) * 100 * 0.8)}px`, minHeight: '4px' }}
-                          />
-                        )}
-                      </div>
-                      <span className={`text-[9px] ${isToday ? 'text-indigo-600 font-bold' : 'text-gray-400'}`}>{d.label}</span>
-                    </div>
-                  );
-                })}
-              </div>
+              <StaffActivityChart days={stats.last7} today={today} />
               <div className="flex items-center gap-4 mt-3 text-[10px] text-gray-400">
                 <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-400 inline-block" /> مكالمات</span>
                 <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 inline-block" /> تحويلات</span>

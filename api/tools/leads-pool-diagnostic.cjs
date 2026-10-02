@@ -1,0 +1,97 @@
+#!/usr/bin/env node
+'use strict';
+// Read-only. Where did the new leads go?
+//
+// Run on the server:  node api/tools/leads-pool-diagnostic.cjs [tenant-id]
+//
+// «محلي جديد» lists only the live waiting pool: visible, no sales rep, no
+// collection officer, not an imported archive, not in a final status, and not
+// international. A lead can be missing from it for any of those reasons and the
+// tab says nothing. This puts every lead in the first bucket that applies, in the
+// order the screen applies them, so «the count is too low» becomes a list of
+// numbers with a reason each.
+require('dotenv').config();
+const { pool } = require('../lib/db');
+const { ARCHIVE_SOURCE_PREFIXES } = require('../lib/leadArchive');
+const { TERMINAL_LEAD_STATUSES } = require('../lib/leadStatuses');
+
+const TENANT = process.argv[2] || process.env.DEFAULT_TENANT_ID || 'tenant-default';
+const terminal = [...TERMINAL_LEAD_STATUSES];
+const archiveLike = ARCHIVE_SOURCE_PREFIXES.map(() => `TRIM(COALESCE(source,'')) LIKE ?`).join(' OR ');
+const archiveParams = ARCHIVE_SOURCE_PREFIXES.map(prefix => `${prefix}%`);
+const intl = `(UPPER(REPLACE(REPLACE(COALESCE(branch,''),'-','_'),' ','_')) IN ('ONLINE_ABROAD','ONLINE_SAUDI') OR TRIM(COALESCE(source,'')) LIKE 'دولي%')`;
+const noOwner = `assigned_sales_id IS NULL AND (assigned_cs_id IS NULL OR assigned_cs_id='')`;
+const live = `tenant_id=? AND deleted_at IS NULL`;
+
+(async () => {
+  const one = async (sql, params = []) => (await pool.query(sql, params))[0];
+
+  const [[totals]] = await pool.query(
+    `SELECT COUNT(*) AS all_rows,
+            SUM(hidden=1) AS hidden_rows,
+            SUM(hidden=0) AS visible_rows,
+            SUM(hidden=0 AND ${noOwner}) AS visible_without_owner
+       FROM leads WHERE ${live}`, [TENANT]);
+  console.log('Leads in the database (not deleted):', JSON.stringify(totals));
+
+  const [[buckets]] = await pool.query(
+    `SELECT
+       SUM(${archiveLike}) AS imported_archive,
+       SUM(NOT (${archiveLike}) AND LOWER(status) IN (${terminal.map(() => '?').join(',')})) AS final_status,
+       SUM(NOT (${archiveLike}) AND LOWER(status) NOT IN (${terminal.map(() => '?').join(',')}) AND ${intl}) AS dawli_new,
+       SUM(NOT (${archiveLike}) AND LOWER(status) NOT IN (${terminal.map(() => '?').join(',')}) AND NOT ${intl}) AS local_new
+       FROM leads WHERE ${live} AND hidden=0 AND ${noOwner}`,
+    [...archiveParams, ...archiveParams, ...terminal, ...archiveParams, ...terminal,
+      ...archiveParams, ...terminal, TENANT]);
+  console.log('\nVisible leads with no owner, by where they appear:');
+  console.log(`  «محلي جديد»  (the waiting pool)        : ${buckets.local_new || 0}`);
+  console.log(`  «دولي جديد»                            : ${buckets.dawli_new || 0}`);
+  console.log(`  imported archive («… قديم»/«استيراد»)  : ${buckets.imported_archive || 0}`);
+  console.log(`  final status (never distributed)       : ${buckets.final_status || 0}`);
+
+  const byStatus = await one(
+    `SELECT LOWER(status) AS status, COUNT(*) AS n FROM leads
+      WHERE ${live} AND hidden=0 AND ${noOwner} AND NOT (${archiveLike})
+        AND LOWER(status) IN (${terminal.map(() => '?').join(',')})
+      GROUP BY LOWER(status) ORDER BY n DESC`, [TENANT, ...archiveParams, ...terminal]);
+  if (byStatus.length) {
+    console.log('\n  final-status rows with no owner, by status:');
+    byStatus.forEach(row => console.log(`    ${row.status}: ${row.n}`));
+  }
+
+  // The job that turns cold unowned leads into «archived» — off unless the owner
+  // set a number of days.
+  try {
+    const [[setting]] = await pool.query(
+      `SELECT config_json FROM tenant_settings WHERE tenant_id=? AND section='crm_settings' LIMIT 1`, [TENANT]);
+    const cfg = setting ? JSON.parse(setting.config_json || '{}') : {};
+    console.log(`\nAuto-archive of cold leads (crm_settings.autoArchiveDays): ${Number(cfg.autoArchiveDays) > 0 ? `ON — ${cfg.autoArchiveDays} days` : 'off'}`);
+  } catch (error) {
+    console.log('\nAuto-archive setting: could not read —', error.message);
+  }
+  const [[arch]] = await pool.query(
+    `SELECT COUNT(*) AS n FROM leads WHERE ${live} AND hidden=0 AND status='archived'`, [TENANT]);
+  console.log(`Leads with status «archived» (any owner): ${arch.n}`);
+
+  console.log('\nNew leads per day, last 14 days — and what became of them:');
+  const perDay = await one(
+    `SELECT DATE(created_at) AS day, COUNT(*) AS created,
+            SUM(hidden=1) AS hidden_now,
+            SUM(hidden=0 AND assigned_sales_id IS NOT NULL) AS with_rep,
+            SUM(hidden=0 AND ${noOwner} AND LOWER(status) IN (${terminal.map(() => '?').join(',')})) AS unowned_final,
+            SUM(hidden=0 AND ${noOwner} AND LOWER(status) NOT IN (${terminal.map(() => '?').join(',')})) AS unowned_waiting
+       FROM leads WHERE ${live} AND created_at >= DATE_SUB(CURDATE(), INTERVAL 14 DAY)
+      GROUP BY DATE(created_at) ORDER BY day DESC`, [...terminal, ...terminal, TENANT]);
+  console.log('  day         created  with-rep  unowned-waiting  unowned-final  hidden');
+  perDay.forEach(row => console.log(
+    `  ${String(row.day instanceof Date ? row.day.toISOString().slice(0, 10) : row.day).padEnd(11)} ${String(row.created).padStart(7)} ${String(row.with_rep || 0).padStart(9)} ${String(row.unowned_waiting || 0).padStart(16)} ${String(row.unowned_final || 0).padStart(14)} ${String(row.hidden_now || 0).padStart(7)}`));
+
+  const bySource = await one(
+    `SELECT COALESCE(NULLIF(TRIM(source),''),'(بدون مصدر)') AS source, COUNT(*) AS n FROM leads
+      WHERE ${live} AND hidden=0 AND ${noOwner} AND LOWER(status) NOT IN (${terminal.map(() => '?').join(',')})
+      GROUP BY 1 ORDER BY n DESC LIMIT 12`, [TENANT, ...terminal]);
+  console.log('\nWaiting pool by source (top 12):');
+  bySource.forEach(row => console.log(`  ${row.n}\t${row.source}`));
+
+  await pool.end().catch(() => {});
+})().catch(error => { console.error('leads-pool-diagnostic:', error.message); process.exit(2); });

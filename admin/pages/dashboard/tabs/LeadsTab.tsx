@@ -55,7 +55,7 @@ import { LeadEmptyDiagnostics } from './leads/LeadEmptyDiagnostics';
 import { useLeadActions } from './leads/useLeadActions';
 import { useLeadCrmBootstrap } from './leads/useLeadCrmBootstrap';
 import { useLeadRemoteReminders } from './leads/useLeadRemoteReminders';
-import { isLocalNewLead } from './leads/leadSourceGroups';
+import { explainUnassigned, isLocalNewLead } from './leads/leadSourceGroups';
 import type { TabKey } from '../navigation';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
@@ -84,7 +84,7 @@ const LeadSectionFallback = () => (
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLeads, salesOwnSubscribers, salesDataLoading, fetchSalesData, setActiveTab: setActiveDashboardTab, branchFilter: workspaceBranchFilter }: LeadsTabProps) {
   const {
-    leads, leadStats, loadFullCrmData, staffMembers, subscribers, courses, bundles, updateLead, addLead,
+    leads, leadStats, loadFullCrmData, loadFullLeads, staffMembers, subscribers, courses, bundles, updateLead, addLead,
     reloadLeads, reloadSubscribers, deleteLead, addSubscriber, updateSubscriber,
     authUser, isAdmin, recordSubscriberPayment, bulkRedistributeLeads,
     currentStaff: contextStaff,
@@ -114,9 +114,29 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   // table is paginated and the panels beside it read aggregates, so nothing here
   // needs them until one of these four views is opened. loadFullCrmData()
   // de-duplicates its own in-flight promise, so repeated switching is one fetch.
+  //
+  // The pull takes seconds, and until it lands the pools count whatever has
+  // arrived — a «محلي جديد» of a few leads that grows by itself — so the screen
+  // says it is still loading, against the server's own total, instead of showing
+  // the partial number as if it were the pool.
+  const [fullLeadsState, setFullLeadsState] = useState<'loading' | 'ready' | 'failed'>('ready');
+  const [fullLeadsAttempt, setFullLeadsAttempt] = useState(0);
   useEffect(() => {
     if (fullLeadArraySubTabs.has(subTab)) void loadFullCrmData();
-  }, [subTab, loadFullCrmData]);
+  }, [subTab, loadFullCrmData, fullLeadsAttempt]);
+  // loadFullCrmData settles both tables whatever happens, so it cannot tell a
+  // failed leads pull from a finished one; loadFullLeads (the same cached
+  // promise) rejects, and that is what the banner follows.
+  useEffect(() => {
+    if (!fullLeadArraySubTabs.has(subTab)) return undefined;
+    let alive = true;
+    setFullLeadsState('loading');
+    loadFullLeads().then(
+      () => { if (alive) setFullLeadsState('ready'); },
+      () => { if (alive) setFullLeadsState('failed'); },
+    );
+    return () => { alive = false; };
+  }, [subTab, loadFullLeads, fullLeadsAttempt]);
   const { crmSettings, setCrmSettings, pipelineStages, reloadPipeline, selfStaff } =
     useLeadCrmBootstrap(notify);
   const {
@@ -275,6 +295,9 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   // "محلي جديد" pool — the same predicate LeadArchiveViews lists, so the badge,
   // the counter and the table agree.
   const unassignedLeads = useMemo(() => leads.filter(isLocalNewLead), [leads]);
+  // Where the leads nobody owns are, including the ones this tab does not list.
+  const unassignedBreakdown = useMemo(
+    () => (subTab === 'localNew' ? explainUnassigned(leads) : null), [leads, subTab]);
 
   const { weeklyScorecard, smartRedistCandidates } = useLeadOpsInsights(leads, salesReps, smartIdleDays, crmInsights);
 
@@ -451,6 +474,17 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
       {/* ─── border separator under the top row ─── */}
       <div className="border-b border-gray-100 -mt-1" />
 
+      {fullLeadArraySubTabs.has(subTab) && leadStats && leads.length < leadStats.total && fullLeadsState !== 'ready' && (
+        <div className={`flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold ${fullLeadsState === 'failed' ? 'border-red-200 bg-red-50 text-red-800' : 'border-sky-200 bg-sky-50 text-sky-800'}`} role="status">
+          {fullLeadsState === 'failed'
+            ? <span>تعذّر تحميل كل الليدز — الأرقام هنا جزئية ({leads.length.toLocaleString('ar-EG-u-nu-latn')} من {leadStats.total.toLocaleString('ar-EG-u-nu-latn')}).</span>
+            : <span>جاري تحميل كل الليدز… {leads.length.toLocaleString('ar-EG-u-nu-latn')} من {leadStats.total.toLocaleString('ar-EG-u-nu-latn')} — الأعداد تحت مؤقتة لحد ما يخلص.</span>}
+          {fullLeadsState === 'failed' && (
+            <button type="button" onClick={() => setFullLeadsAttempt(count => count + 1)} className="rounded-lg bg-red-600 px-3 py-1 text-white hover:bg-red-700">إعادة المحاولة</button>
+          )}
+        </div>
+      )}
+
       {/* The archive views render the same table with the same actions, so
           they get the same controls — they had none at all. */}
       <LeadFilterBar
@@ -586,6 +620,22 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
               )}
             </div>
           </div>
+          {unassignedBreakdown && unassignedBreakdown.withoutOwner > unassignedBreakdown.localNew && (
+            <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 space-y-1" role="status">
+              <p className="font-bold">
+                في {unassignedBreakdown.withoutOwner.toLocaleString('ar-EG-u-nu-latn')} ليد بدون مندوب، المعروض هنا منهم {unassignedBreakdown.localNew.toLocaleString('ar-EG-u-nu-latn')} بس. الباقي موجود في أماكن تانية:
+              </p>
+              <ul className="list-disc pr-5 space-y-0.5">
+                {unassignedBreakdown.dawliNew > 0 && <li>{unassignedBreakdown.dawliNew.toLocaleString('ar-EG-u-nu-latn')} في تبويب «دولي جديد»</li>}
+                {unassignedBreakdown.archiveSource > 0 && <li>{unassignedBreakdown.archiveSource.toLocaleString('ar-EG-u-nu-latn')} داتا مستوردة قديمة (محلي قديم / دولي قديم)</li>}
+                {unassignedBreakdown.terminal.map(t => (
+                  <li key={t.status}>
+                    {t.count.toLocaleString('ar-EG-u-nu-latn')} حالتهم «{t.label}» — مش بتتوزع{t.status === 'archived' ? ' (الأرشفة التلقائية للليدات اللي محدش كلمها، من إعدادات الـCRM)' : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {/* The list itself is LeadArchiveViews' below — the one with bulk
               assignment. This section drew a second copy of the same pool, so
               the tab showed every waiting lead twice. */}

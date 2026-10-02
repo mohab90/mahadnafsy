@@ -534,6 +534,8 @@ export interface DaqqiRoundAttendee {
   amountPending?: number;
   /** Collected course money that names no course or track, so it cannot be tied to a round. */
   amountUnlinked?: number;
+  /** Paid for this course before the system (crm_json.priorPaid) — shown with المدفوع, not in revenue. */
+  amountPrior?: number;
   attendedLectures?: number;
   // The client has since been archived. The booking and its attendance stay on
   // the round as history — the row is labelled, never dropped from the list.

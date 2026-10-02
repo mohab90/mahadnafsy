@@ -227,7 +227,12 @@ export function DaqqiRoundRow({
                                     </thead>
                                     <tbody>
                                       {round.attendees.map(a => {
-                                        const aRem = coursePrice > 0 ? Math.max(0, coursePrice - a.amountPaid) : 0;
+                                        // What the client has paid toward this course: collected here, plus what
+                                        // they paid before the system (a column of its own — it was never a payment
+                                        // row, and the revenue sums above must not count it).
+                                        const aPrior = a.amountPrior ?? 0;
+                                        const aPaid = a.amountPaid + aPrior;
+                                        const aRem = coursePrice > 0 ? Math.max(0, coursePrice - aPaid) : 0;
                                         const attSub = subscribers.find(s => s.id === a.subscriberId);
                                         return (
                                           <tr key={a.subscriberId} className="border-t border-sky-100">
@@ -247,7 +252,12 @@ export function DaqqiRoundRow({
                                               : <span className="text-gray-400">من غير رقم</span>}</td>
                                             <td className="py-1.5 pr-4 text-gray-500">{a.bookedAt}</td>
                                             <td className="py-1.5 pr-4 font-semibold text-green-700">
-                                              {a.amountPaid.toLocaleString('ar-EG-u-nu-latn')} ج.م
+                                              {aPaid.toLocaleString('ar-EG-u-nu-latn')} ج.م
+                                              {aPrior > 0 && (
+                                                <div className="text-[10px] font-semibold text-gray-500" title="مدفوع للكورس ده قبل السيستم — محسوب في المدفوع والمتبقي، ومش داخل في إيراد الفترة">
+                                                  منها {aPrior.toLocaleString('ar-EG-u-nu-latn')} ج.م قبل السيستم
+                                                </div>
+                                              )}
                                               {(a.amountPending ?? 0) > 0 && (
                                                 <div className="text-[10px] font-semibold text-amber-600" title="مبلغ مسجّل ومستلم لكن لسه ما اتعتمدش من الحسابات — مش محسوب في المدفوع لحد الاعتماد">
                                                   ⏳ {(a.amountPending ?? 0).toLocaleString('ar-EG-u-nu-latn')} ج.م بانتظار الاعتماد
@@ -276,7 +286,7 @@ export function DaqqiRoundRow({
                                             <td className="py-1.5 pr-4">
                                               <div className="grid grid-cols-5 gap-0.5">
                                                 <button disabled={!a.phone} onClick={e => { e.stopPropagation(); window.open(`https://wa.me/${toDialable(a.phone)}`, '_blank'); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-teal-50 hover:text-teal-600 flex items-center justify-center transition disabled:opacity-40 disabled:hover:bg-gray-50 disabled:hover:text-gray-500" title={a.phone ? 'واتساب' : 'العميل من غير رقم'}><MessageCircle size={12} /></button>
-                                                <button onClick={e => { e.stopPropagation(); setDaqqiPayModal({ subscriberId: a.subscriberId, subscriberName: a.name, roundId: round.id, attendeeAmountPaid: a.amountPaid }); resetDaqqiPayDraft({ courseId: round.courseId || '' }); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-green-50 hover:text-green-600 flex items-center justify-center transition" title="تسجيل دفعة"><CreditCard size={12} /></button>
+                                                <button onClick={e => { e.stopPropagation(); setDaqqiPayModal({ subscriberId: a.subscriberId, subscriberName: a.name, roundId: round.id, attendeeAmountPaid: aPaid }); resetDaqqiPayDraft({ courseId: round.courseId || '' }); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-green-50 hover:text-green-600 flex items-center justify-center transition" title="تسجيل دفعة"><CreditCard size={12} /></button>
                                                 <button onClick={e => { e.stopPropagation(); const s = subscribers.find(x => x.id === a.subscriberId); navigate(`/client/${s?.clientCode || a.subscriberId}`); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition" title="عرض الملف"><Eye size={12} /></button>
                                                 <button onClick={e => { e.stopPropagation(); setDaqqiTransferModal({ subscriberId: a.subscriberId, fromRoundId: round.id }); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-amber-50 hover:text-amber-600 flex items-center justify-center transition" title="نقل لروند أخرى"><ArrowLeftRight size={12} /></button>
                                                 <button onClick={e => { e.stopPropagation(); handleRemoveAttendeeFromRound(round.id, a.subscriberId); }} className="h-7 rounded bg-gray-50 text-red-400 hover:bg-red-50 hover:text-red-600 flex items-center justify-center transition" title="حذف من الروند"><X size={12} /></button>

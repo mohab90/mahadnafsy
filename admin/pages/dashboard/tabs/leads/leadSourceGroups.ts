@@ -77,3 +77,52 @@ export const isLocalNewLead = (lead: PoolLead): boolean => isUndistributedLead(l
 
 /** «دولي جديد». */
 export const isDawliNewLead = (lead: PoolLead): boolean => isUndistributedLead(lead) && isInternationalLead(lead);
+
+/** Arabic names for the statuses that take a lead out of the waiting pool. */
+const TERMINAL_STATUS_AR: Record<string, string> = {
+  archived: 'مؤرشف', lost: 'مفقود', converted: 'محوّل', won: 'تم الإغلاق بنجاح', closed: 'مغلق',
+  not_interested: 'غير مهتم', not_interested_hidden: 'غير مهتم (مخفي)', wrong_number: 'رقم خاطئ',
+  unqualified: 'غير مؤهل', disqualified: 'مستبعد',
+};
+
+export interface UnassignedBreakdown {
+  /** Every visible lead with no sales rep and no collection officer. */
+  withoutOwner: number;
+  /** In «محلي جديد». */
+  localNew: number;
+  /** In «دولي جديد». */
+  dawliNew: number;
+  /** Imported archive rows — they wait in «محلي قديم» / «دولي قديم», not here. */
+  archiveSource: number;
+  /** Closed out by status, so never handed out: one entry per status. */
+  terminal: Array<{ status: string; label: string; count: number }>;
+}
+
+/**
+ * Where every lead that nobody owns actually is.
+ *
+ * «محلي جديد» lists only the live waiting pool, so a lead without a rep can be
+ * absent from it for three reasons that look identical from the tab: it is
+ * international, it carries an archive source, or its status is final — most
+ * often «archived», which the cold-lead job writes without touching the owner.
+ * The tab said «غير موزّع: 12» and nothing about the rest, so the desk read the
+ * gap as leads that had vanished. This counts each reason.
+ */
+export const explainUnassigned = (leads: ReadonlyArray<PoolLead>): UnassignedBreakdown => {
+  let withoutOwner = 0; let localNew = 0; let dawliNew = 0; let archiveSource = 0;
+  const terminal = new Map<string, number>();
+  for (const lead of leads) {
+    if (lead.hidden || lead.assignedSalesId || lead.assignedCsId) continue;
+    withoutOwner++;
+    if (isArchiveSource(lead.source)) { archiveSource++; continue; }
+    const status = String(lead.status || '').trim().toLowerCase();
+    if (TERMINAL_LEAD_STATUSES.has(status)) { terminal.set(status, (terminal.get(status) || 0) + 1); continue; }
+    if (isInternationalLead(lead)) dawliNew++; else localNew++;
+  }
+  return {
+    withoutOwner, localNew, dawliNew, archiveSource,
+    terminal: [...terminal.entries()]
+      .map(([status, count]) => ({ status, label: TERMINAL_STATUS_AR[status] || status, count }))
+      .sort((a, b) => b.count - a.count),
+  };
+};
