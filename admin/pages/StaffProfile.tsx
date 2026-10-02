@@ -319,7 +319,7 @@ const StaffProfile: React.FC = () => {
 
       {/* ── Tab bar — sticks under the hero while scrolling ── */}
       <div className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur px-4 md:px-8">
-        <div className="mx-auto flex max-w-6xl gap-0 overflow-x-auto">
+        <div className="mx-auto flex max-w-6xl min-w-0 gap-0 overflow-x-auto">
           {tabs.map(tab => (
             <button
               key={tab.key}
@@ -341,7 +341,7 @@ const StaffProfile: React.FC = () => {
       </div>
 
       {/* ── Page body ── */}
-      <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6">
+      <div className="p-4 md:p-8 max-w-6xl min-w-0 mx-auto space-y-6">
 
         {/* ══ OVERVIEW TAB — the professional at-a-glance profile ══ */}
         {activeTab === 'overview' && (
@@ -505,7 +505,7 @@ const StaffProfile: React.FC = () => {
               return (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Calls chart */}
-                  <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+                  <div className="min-w-0 overflow-hidden bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
                     <h4 className="text-sm font-bold text-blue-700 mb-3">📞 المكالمات — آخر 7 أيام</h4>
                     <svg viewBox={`0 0 ${totalW} ${H + 28}`} className="w-full" style={{ direction: 'ltr' }}>
                       {days.map((_, i) => {
@@ -525,7 +525,7 @@ const StaffProfile: React.FC = () => {
                     </svg>
                   </div>
                   {/* Conversions chart */}
-                  <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+                  <div className="min-w-0 overflow-hidden bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
                     <h4 className="text-sm font-bold text-green-700 mb-3">✅ التحويلات لحجوزات — آخر 7 أيام</h4>
                     <svg viewBox={`0 0 ${totalW} ${H + 28}`} className="w-full" style={{ direction: 'ltr' }}>
                       {days.map((_, i) => {

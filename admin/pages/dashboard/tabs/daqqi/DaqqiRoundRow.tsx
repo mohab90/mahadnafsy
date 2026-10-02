@@ -246,7 +246,19 @@ export function DaqqiRoundRow({
                                               ? <a href={`tel:${a.phone}`} className="text-blue-600 hover:underline">{a.phone}</a>
                                               : <span className="text-gray-400">من غير رقم</span>}</td>
                                             <td className="py-1.5 pr-4 text-gray-500">{a.bookedAt}</td>
-                                            <td className="py-1.5 pr-4 font-semibold text-green-700">{a.amountPaid.toLocaleString('ar-EG-u-nu-latn')} ج.م</td>
+                                            <td className="py-1.5 pr-4 font-semibold text-green-700">
+                                              {a.amountPaid.toLocaleString('ar-EG-u-nu-latn')} ج.م
+                                              {(a.amountPending ?? 0) > 0 && (
+                                                <div className="text-[10px] font-semibold text-amber-600" title="مبلغ مسجّل ومستلم لكن لسه ما اتعتمدش من الحسابات — مش محسوب في المدفوع لحد الاعتماد">
+                                                  ⏳ {(a.amountPending ?? 0).toLocaleString('ar-EG-u-nu-latn')} ج.م بانتظار الاعتماد
+                                                </div>
+                                              )}
+                                              {(a.amountUnlinked ?? 0) > 0 && (
+                                                <div className="text-[10px] font-semibold text-sky-600" title="دفعات اتحصّلت للعميل من غير ما تتربط بكورس أو مسار — ما اتحسبتش على الروند ده تلقائي. اربطها من ملف العميل">
+                                                  + {(a.amountUnlinked ?? 0).toLocaleString('ar-EG-u-nu-latn')} ج.م غير مربوطة بكورس
+                                                </div>
+                                              )}
+                                            </td>
                                             <td className="py-1.5 pr-4 text-gray-600">{coursePrice > 0 ? `${coursePrice.toLocaleString('ar-EG-u-nu-latn')} ج.م` : '—'}</td>
                                             <td className="py-1.5 pr-4">
                                               {coursePrice > 0 ? aRem > 0 ? <span className="font-semibold text-amber-600">{aRem.toLocaleString('ar-EG-u-nu-latn')} ج.م</span> : <span className="text-green-500 text-[10px] font-bold">مكتمل ✓</span> : <span className="text-gray-300">—</span>}

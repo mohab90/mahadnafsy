@@ -211,6 +211,8 @@ router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requireP
         phone: a.phone,
         bookedAt: ymd(a.booked_at),
         amountPaid: Number(a.amount_paid || 0),
+        amountPending: Number(a.pending_amount || 0),
+        amountUnlinked: Number(a.unlinked_amount || 0),
         attendedLectures: Number(a.attended_lectures || 0),
         // The client is archived but their attendance stands — see lib/daqqiAttendees.js.
         archived: Boolean(Number(a.archived || 0)),

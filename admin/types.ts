@@ -530,6 +530,10 @@ export interface DaqqiRoundAttendee {
   phone: string;
   bookedAt: string;
   amountPaid: number;
+  /** Recorded for this course but not yet approved by accounts — not in amountPaid. */
+  amountPending?: number;
+  /** Collected course money that names no course or track, so it cannot be tied to a round. */
+  amountUnlinked?: number;
   attendedLectures?: number;
   // The client has since been archived. The booking and its attendance stay on
   // the round as history — the row is labelled, never dropped from the list.

@@ -37,7 +37,7 @@ async function getDaqqiAttendees(db, tenantId, roundIds = []) {
             da.attended_lectures,
             (s.id IS NULL OR s.deleted_at IS NOT NULL) AS archived,
             COALESCE((
-              SELECT SUM(p.amount_egp)
+              SELECT SUM(COALESCE(p.amount_egp, p.amount))
                 FROM payments p
                WHERE p.tenant_id=da.tenant_id
                  AND p.subscriber_id=da.subscriber_id
@@ -49,7 +49,38 @@ async function getDaqqiAttendees(db, tenantId, roundIds = []) {
                           AND bc.bundle_id=p.bundle_id
                           AND bc.course_id=dr.course_id
                      ))
-            ), da.amount_paid, 0) AS amount_paid
+            ), da.amount_paid, 0) AS amount_paid,
+            -- Recorded for this round's course and not yet approved. The desk's
+            -- own payments are PENDING until accounts approve them, so the roster
+            -- read «المدفوع 0» for every client who had handed cash over.
+            COALESCE((
+              SELECT SUM(COALESCE(p.amount_egp, p.amount))
+                FROM payments p
+               WHERE p.tenant_id=da.tenant_id
+                 AND p.subscriber_id=da.subscriber_id
+                 AND p.status='pending'
+                 AND p.deleted_at IS NULL
+                 AND (p.course_id=dr.course_id OR EXISTS (
+                       SELECT 1 FROM bundle_courses bc
+                        WHERE bc.tenant_id=p.tenant_id
+                          AND bc.bundle_id=p.bundle_id
+                          AND bc.course_id=dr.course_id
+                     ))
+            ), 0) AS pending_amount,
+            -- Collected course money that names no course and no track (old rows,
+            -- imports). It cannot be tied to a round without guessing, so it is
+            -- shown apart rather than counted or dropped.
+            COALESCE((
+              SELECT SUM(COALESCE(p.amount_egp, p.amount))
+                FROM payments p
+               WHERE p.tenant_id=da.tenant_id
+                 AND p.subscriber_id=da.subscriber_id
+                 AND p.status='paid'
+                 AND p.deleted_at IS NULL
+                 AND p.amount > 0
+                 AND p.course_id IS NULL AND p.bundle_id IS NULL
+                 AND p.payment_type IN ('COURSE','OTHER')
+            ), 0) AS unlinked_amount
        FROM daqqi_attendees da
        JOIN daqqi_rounds dr
          ON dr.id=da.round_id AND dr.tenant_id=da.tenant_id

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { BarChart3 } from 'lucide-react';
 import { fmtMoney, fmtNum, monthLabel, monthShort, type TimelinePoint } from './types';
 
@@ -12,9 +12,13 @@ const METRICS: { key: MetricKey; label: string; color: string; kind: 'money' | '
   { key: 'converted', label: 'التحويلات', color: '#db2777', kind: 'count' },
 ];
 
-// Chart geometry in viewBox units — rendered LTR (numeric axes read better
-// that way even on an RTL page, same as the existing charts in this app) and
-// scaled responsively by CSS, so it stays sharp at any width.
+// Chart geometry in pixels — rendered LTR (numeric axes read better that way even
+// on an RTL page, same as the existing charts in this app). The width is the
+// width of the box it sits in, measured, and never more: it used to be sized by
+// the number of months (34px each, floor 320) with a 900px minimum width, so a
+// tenure of a couple of years drew a chart wider than a phone's screen — or than
+// the page itself, whenever a parent could not shrink — and the text scaled down
+// with it. Measured, the bars narrow instead and the labels keep their size.
 const H = 210;
 const PAD_L = 46;
 const PAD_R = 12;
@@ -44,7 +48,21 @@ export default function StaffTimelineChart({ timeline }: { timeline: TimelinePoi
   const bar = METRICS.find(m => m.key === barMetric)!;
   const line = lineMetric === 'none' ? null : METRICS.find(m => m.key === lineMetric)!;
 
-  const W = Math.max(320, timeline.length * 34 + PAD_L + PAD_R);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [boxWidth, setBoxWidth] = useState(0);
+  useLayoutEffect(() => {
+    const node = wrapRef.current;
+    if (!node) return undefined;
+    const measure = () => setBoxWidth(Math.floor(node.getBoundingClientRect().width));
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [timeline.length]);
+
+  // Until measured (first paint) a safe default; never narrower than the padding.
+  const W = Math.max(PAD_L + PAD_R + 60, boxWidth || 320);
   const plotW = W - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
 
@@ -54,7 +72,7 @@ export default function StaffTimelineChart({ timeline }: { timeline: TimelinePoi
   }), [timeline, barMetric, line]);
 
   const slot = timeline.length > 0 ? plotW / timeline.length : plotW;
-  const barW = Math.min(22, Math.max(4, slot * 0.55));
+  const barW = Math.min(22, Math.max(2, slot * 0.55));
   const xOf = (i: number) => PAD_L + slot * i + slot / 2;
   const yBar = (v: number) => PAD_T + plotH - (v / barMax) * plotH;
   const yLine = (v: number) => PAD_T + plotH - (v / lineMax) * plotH;
@@ -72,7 +90,7 @@ export default function StaffTimelineChart({ timeline }: { timeline: TimelinePoi
   const active = hover != null ? timeline[hover] : null;
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+    <div className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
         <div>
           <h3 className="flex items-center gap-2 text-base font-bold text-gray-800">
@@ -114,8 +132,8 @@ export default function StaffTimelineChart({ timeline }: { timeline: TimelinePoi
         <p className="py-12 text-center text-sm text-gray-400">لا توجد بيانات بعد لعرض المسار.</p>
       ) : (
         <>
-          <div className="overflow-x-auto">
-            <svg viewBox={`0 0 ${W} ${H}`} style={{ direction: 'ltr', width: '100%', minWidth: Math.min(W, 900) }} role="img">
+          <div ref={wrapRef} className="w-full min-w-0 overflow-hidden">
+            <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ direction: 'ltr', display: 'block', maxWidth: '100%' }} role="img">
               {/* gridlines + primary axis labels */}
               {[0, 0.25, 0.5, 0.75, 1].map(t => {
                 const y = PAD_T + plotH * (1 - t);
@@ -161,7 +179,8 @@ export default function StaffTimelineChart({ timeline }: { timeline: TimelinePoi
 
               {/* x labels — thinned out so they never collide */}
               {timeline.map((p, i) => {
-                const every = Math.ceil(timeline.length / 14);
+                // As many labels as fit: about 38px each.
+                const every = Math.max(1, Math.ceil(timeline.length / Math.max(2, Math.floor(plotW / 38))));
                 if (i % every !== 0 && i !== timeline.length - 1) return null;
                 return (
                   <text key={p.ym} x={xOf(i)} y={H - 8} textAnchor="middle" fontSize="8.5" fill="#94a3b8">

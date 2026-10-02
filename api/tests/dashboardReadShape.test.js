@@ -138,7 +138,10 @@ test('lead distribution hands out only the leads that are still open', () => {
 
 test('a Dokki round counts only the money paid for its own course', () => {
   const attendees = codeOnly(read('api/lib/daqqiAttendees.js'));
-  assert.ok(!attendees.includes('p.course_id IS NULL'),
+  // The money counted for the round (up to «AS amount_paid») never takes a payment
+  // with no course; the separate «unlinked» figure that follows shows those apart.
+  const counted = attendees.slice(0, attendees.indexOf('AS amount_paid'));
+  assert.ok(!counted.includes('p.course_id IS NULL'),
     'course_id is NULL for certificates, consultations, books and every bundle payment');
   assert.ok(attendees.includes('bc.course_id=dr.course_id'),
     'a bundle containing this round’s course still counts, as the booking INSERT already had it');
