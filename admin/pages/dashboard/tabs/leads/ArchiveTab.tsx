@@ -373,7 +373,14 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
       const source = assignDest === 'main' ? mainSource
         : assignDest === 'archive' ? (archiveSource || defaultSource)
         : lead.source;
-      await updateLead({ ...lead, source, assignedSalesId: staff.id, assignedSalesName: staff.name });
+      // Handing a lead to a rep puts it in play. One the cold-lead job had archived
+      // used to keep that status on the rep's list — terminal, so it never reached
+      // their reminders or their work queue — and was taken straight back by the
+      // next run. It arrives as new, with the status change on its timeline.
+      await updateLead({
+        ...lead, source, assignedSalesId: staff.id, assignedSalesName: staff.name,
+        status: (lead.status as string) === 'archived' ? 'new' : lead.status,
+      });
       done++;
     }
     setBulkAssigning2(false);

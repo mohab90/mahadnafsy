@@ -59,6 +59,9 @@ export const crmStatusLabels: Record<string, string> = {
   no_answer: 'لا يرد', no_answer_wa: 'لا يرد+واتس', no_answer_nowa: 'لا يرد-واتس',
   wrong_number: 'رقم غلط/مقفول', with_colleague: 'مع زميل آخر',
   not_interested_hidden: 'مش مهتم ومخفي', closed: 'مغلق', converted: 'تحول لمشترك', lost: 'مفقود', other: 'أخرى',
+  // Statuses the server writes that the status picker does not offer. 18,809 of
+  // 20,367 leads were «archived» and the table printed the English key for each.
+  archived: 'مؤرشف', won: 'تم بنجاح', unqualified: 'غير مؤهل', disqualified: 'مستبعد',
 };
 
 export const paymentTypeLabels: Record<string, string> = {

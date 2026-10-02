@@ -22,6 +22,13 @@
  *     work, however old.
  *   - never given a follow-up date. Someone intended to come back to it.
  *   - still in an opening status. Anything further along is being worked.
+ *   - OWNED. A lead nobody was given has not been neglected by anyone — it is
+ *     waiting for a desk to hand it out. On 3 October 2026, with the job set to
+ *     7 days, 1,868 leads with no rep were in the archive: 90 were new enquiries
+ *     that had simply not been distributed yet (a cap reached, a rep switched
+ *     off), and 1,778 were imported «محلي/دولي قديم» rows that exist precisely to
+ *     be distributed by hand. Archiving them took them out of «محلي جديد» and out
+ *     of every distribution, with nothing on any screen saying where they went.
  */
 
 const { logLeadEventStrict } = require('./crm');
@@ -53,17 +60,24 @@ async function archiveColdLeads(pool, { olderThanDays, tenantId = 'tenant-defaul
   // stamps on every assignment), and its return to play (a 'restored' or
   // 'status_changed' entry in its timeline). This job's own note is 'status',
   // and is not among them.
+  //
+  // An 'assigned' entry counts as well: a lead handed to a collection officer
+  // is put in front of them without assigned_at (that column is the sales
+  // rep's), so the hourly run took every one of them off the officer's list as
+  // soon as it came round — they hold exactly the old, uncontacted data this
+  // job is written for.
   const where = `
       l.tenant_id = ?
       AND l.deleted_at IS NULL
       AND l.hidden = 0
+      AND (l.assigned_sales_id IS NOT NULL OR NULLIF(l.assigned_cs_id, '') IS NOT NULL)
       AND l.status IN (${COLD_STATUSES.map(() => '?').join(',')})
       AND l.next_follow_up_date IS NULL
       AND l.created_at < DATE_SUB(NOW(), INTERVAL ? DAY)
       AND COALESCE(l.assigned_at, l.created_at) < DATE_SUB(NOW(), INTERVAL ? DAY)
       AND NOT EXISTS (SELECT 1 FROM lead_timeline t
                        WHERE t.lead_id = l.id AND t.tenant_id = l.tenant_id
-                         AND t.event_type IN ('restored', 'status_changed')
+                         AND t.event_type IN ('restored', 'status_changed', 'assigned')
                          AND t.at >= DATE_SUB(NOW(), INTERVAL ? DAY))
       AND NOT EXISTS (SELECT 1 FROM communications c WHERE c.lead_id = l.id)`;
   const params = [tenantId, ...COLD_STATUSES, days, days, days];

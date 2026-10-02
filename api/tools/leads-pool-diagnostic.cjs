@@ -127,11 +127,44 @@ const live = `tenant_id=? AND deleted_at IS NULL`;
         : (r.max_open_leads != null && (openBy.get(String(r.id)) || 0) >= r.max_open_leads) ? 'at the open-leads cap'
         : (r.intake_limit != null && (quota.get(String(r.id)) || 0) >= r.intake_limit) ? 'intake limit reached'
         : (r.course_ids_json || r.sources_json) ? 'rules limit which leads (course/source)' : '';
-      console.log(`  ${takes ? 'YES' : ' no'}  ${String(r.name).padEnd(24)} open=${openBy.get(String(r.id)) || 0}${r.max_open_leads != null ? '/' + r.max_open_leads : ''}`
+      console.log(`  ${takes ? 'YES' : ' no'}  ${String(r.name).padEnd(24)} branch=${r.branch_key ?? '-'} open=${openBy.get(String(r.id)) || 0}${r.max_open_leads != null ? '/' + r.max_open_leads : ''}`
         + `  intake=${quota.get(String(r.id)) || 0}${r.intake_limit != null ? '/' + r.intake_limit + ' per ' + r.intake_period : ''}${why ? '  ← ' + why : ''}`);
     }
   } catch (error) {
     console.log('\nSales reps: could not read —', error.message);
+  }
+
+  // The rule at capture time is per lead — its branch, its source, its courses —
+  // so «a rep has room» is not the same as «this lead can be handed to them».
+  // Each distinct kind of waiting lead is asked the question the capture path asks.
+  try {
+    const { listDistributableReps } = require('../lib/leadAssignment');
+    const [waiting] = await pool.query(
+      `SELECT branch, source, interested_course_ids_json AS courses FROM leads
+        WHERE ${live} AND hidden=0 AND ${noOwner} AND NOT (${archiveLike})
+          AND LOWER(status) NOT IN (${terminal.map(() => '?').join(',')})`,
+      [TENANT, ...archiveParams, ...terminal]);
+    const kinds = new Map();
+    for (const lead of waiting) {
+      let courseIds = [];
+      try { courseIds = JSON.parse(lead.courses || '[]') || []; } catch { courseIds = []; }
+      const key = JSON.stringify([lead.branch || '', lead.source || '', courseIds.slice().sort()]);
+      const entry = kinds.get(key) || { branch: lead.branch || '(none)', source: lead.source || '(none)', courseIds, n: 0 };
+      entry.n += 1; kinds.set(key, entry);
+    }
+    console.log('\nWaiting leads — how many reps could take each kind right now (0 = the capture path finds nobody):');
+    const rows = [];
+    for (const entry of kinds.values()) {
+      const reps = await listDistributableReps(TENANT, pool, {
+        branch: entry.branch === '(none)' ? undefined : entry.branch,
+        lead: { source: entry.source === '(none)' ? '' : entry.source, courseIds: entry.courseIds },
+      });
+      rows.push({ ...entry, reps: reps.length });
+    }
+    rows.sort((a, b) => a.reps - b.reps || b.n - a.n).slice(0, 25).forEach(row => console.log(
+      `  ${String(row.n).padStart(4)} leads  reps=${row.reps}  branch=${row.branch}  source=${row.source}${row.courseIds.length ? '  courses=' + row.courseIds.length : ''}`));
+  } catch (error) {
+    console.log('\nWaiting leads per kind: could not read —', error.message);
   }
 
   console.log('\nNew leads per day, last 14 days — and what became of them:');

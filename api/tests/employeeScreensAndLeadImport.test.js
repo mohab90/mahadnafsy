@@ -213,3 +213,38 @@ test('the import screen reads through the shared sheet reader and lets the perso
   // And the reader itself decodes bytes rather than assuming UTF-8.
   assert.match(read('shared/sheetImport.ts'), /decodeSheetText\(await file\.arrayBuffer\(\)\)/);
 });
+
+// ── what the cold-lead job did to the pools (3 Oct 2026: 18,809 of 20,367 leads archived) ──
+
+test('handing an archived lead to a rep brings it back as new', () => {
+  const tab = read('admin/pages/dashboard/tabs/leads/ArchiveTab.tsx');
+  assert.match(tab, /status: \(lead\.status as string\) === 'archived' \? 'new' : lead\.status,/);
+});
+
+test('the status the job writes can be labelled and filtered', () => {
+  assert.match(read('admin/pages/dashboard/tabs/leads/LeadSubcomponents.tsx'), /archived: 'مؤرشف'/);
+  assert.match(read('admin/pages/dashboard/tabs/leads/LeadFilterBar.tsx'), /<option value=\{'archived' as LeadStatus\}>📦 مؤرشف<\/option>/);
+});
+
+test('the restore tool counts first, writes only with --apply, and only undoes what the job did', () => {
+  const script = read('api/tools/restore-archived-unowned-leads.cjs');
+  assert.match(script, /const APPLY = args\.includes\('--apply'\);/);
+  assert.match(script, /if \(!APPLY\) \{[\s\S]{0,200}return;/, 'a run without --apply returns before any write');
+  // Narrow: the job's own timeline entry, still unowned, still archived, still visible.
+  assert.match(script, /t\.meta_json LIKE '%"actor":"system"%'/);
+  assert.match(script, /l\.assigned_sales_id IS NULL AND \(l\.assigned_cs_id IS NULL OR l\.assigned_cs_id=''\)/);
+  assert.match(script, /l\.status='archived'/);
+  // The update re-checks the status, as the job's own does.
+  assert.match(script, /WHERE tenant_id=\? AND status='archived' AND id IN/);
+  // The meta the job writes is what the filter looks for.
+  const job = read('api/lib/leadAutoArchive.js');
+  assert.match(job, /\{ from: 'cold', to: 'archived', actor: 'system', olderThanDays: days \}/);
+  const written = JSON.stringify({ from: 'cold', to: 'archived', actor: 'system', olderThanDays: 7 });
+  assert.ok(written.includes('"actor":"system"') && written.includes('"to":"archived"'));
+});
+
+test('the diagnostic asks the capture path\'s own question for each kind of waiting lead', () => {
+  const script = read('api/tools/leads-pool-diagnostic.cjs');
+  assert.match(script, /listDistributableReps\(TENANT, pool, \{\s*branch:/);
+  assert.match(script, /courseIds: entry\.courseIds/);
+});

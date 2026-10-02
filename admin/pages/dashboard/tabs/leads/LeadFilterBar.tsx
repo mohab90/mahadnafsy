@@ -121,6 +121,10 @@ export function LeadFilterBar({
         ).map(s => (
           <option key={s} value={s}>{STATUS_CFG[s].label}</option>
         ))}
+        {/* Not a status anyone picks — the cold-lead job writes it — but on 3 Oct 2026
+            it was the status of 18,809 of the 20,367 leads, and with no option here
+            there was no way to list them. */}
+        <option value={'archived' as LeadStatus}>📦 مؤرشف</option>
       </select>
       {(courses.length > 0 || bundles.length > 0) && (
         <select

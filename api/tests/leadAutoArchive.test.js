@@ -140,7 +140,15 @@ test('a lead is cold N days after it was last put in front of someone, not after
   await archiveColdLeads(pool, { olderThanDays: 7 });
   const { sql, params } = pool.calls[0];
   assert.match(sql, /COALESCE\(l\.assigned_at, l\.created_at\) < DATE_SUB\(NOW\(\), INTERVAL \? DAY\)/);
-  assert.match(sql, /t\.event_type IN \('restored', 'status_changed'\)/);
+  assert.match(sql, /t\.event_type IN \('restored', 'status_changed', 'assigned'\)/,
+    'an assignment — to a rep or to a collection officer — is the lead being put in front of someone');
   assert.doesNotMatch(sql, /'status'\)/, "the job's own note must not keep a lead warm");
   assert.strictEqual(params.filter(value => value === 7).length, 3, 'every age test uses the configured days');
+});
+
+test('a lead nobody owns is never archived: it is waiting for a desk, not neglected by anyone', async () => {
+  const pool = stubPool([[[{ eligible: 0 }]]]);
+  await archiveColdLeads(pool, { olderThanDays: 7 });
+  const { sql } = pool.calls[0];
+  assert.match(sql, /\(l\.assigned_sales_id IS NOT NULL OR NULLIF\(l\.assigned_cs_id, ''\) IS NOT NULL\)/);
 });
