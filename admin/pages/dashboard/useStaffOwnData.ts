@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { LeadItem, SubscriberItem, OrderItem, DaqqiRound, StaffMember, Bundle, Course } from '../../types';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import { hasPermission } from '../../constants/permissions';
@@ -34,6 +34,10 @@ export function useStaffOwnData({
   const [salesOwnDaqqiRounds, setSalesOwnDaqqiRounds] = useState<DaqqiRound[] | null>(null);
   const [onlineTeamMembers, setOnlineTeamMembers] = useState<StaffMember[]>([]);
   const [salesDataLoading, setSalesDataLoading] = useState(false);
+  // True once a first full list has been shown. Until then the list is published
+  // page by page as it arrives; afterwards a refresh builds the new list quietly and
+  // swaps it in, so a two-minute refresh never shrinks the table back to one page.
+  const loadedOnceRef = useRef(false);
 
   const fetchSalesData = useCallback(async () => {
     // Staff only. The online manager counted as an admin here once, from a list
@@ -50,8 +54,26 @@ export function useStaffOwnData({
         // Only for a role that may see clients. HR, the accountant and the
         // instructors were refused this on every page load (403) for a list the
         // screen then dropped.
+        //
+        // Streamed. This was one request for every client in the role's scope —
+        // 2,000 rows per page, all pages awaited, with each client's payments,
+        // enrolments and certificates — and nothing showed until the last page
+        // was in. The first page now paints the table and the rest fills in.
         hasPermission(staffRef, 'view_subscribers')
-          ? mysqlAdmin.listStaffSubscribers() as Promise<unknown>
+          ? (async () => {
+            const collected: SubscriberItem[] = [];
+            await mysqlAdmin.streamSubscribers({ staff: true }, page => {
+              collected.push(...(page as unknown as SubscriberItem[]));
+              if (!loadedOnceRef.current) {
+                const partial = [...collected];
+                setSalesOwnSubscribers(partial);
+                setStaffScopedSubscribers(partial);
+              }
+            });
+            loadedOnceRef.current = true;
+            // Newest first, as the server orders them (pages can land out of order).
+            return collected.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))) as unknown;
+          })()
           : Promise.resolve([] as unknown),
         // And only for a role that may see leads: one that may not was refused
         // this on every page load (403, 76 times in two days of the log).

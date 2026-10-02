@@ -5053,6 +5053,7 @@ CREATE TABLE `subscribers` (
   KEY `idx_subscribers_source` (`source`),
   KEY `idx_subscribers_tenant_created_id` (`tenant_id`,`created_at`,`id`),
   KEY `idx_subscribers_tenant_branch_created` (`tenant_id`,`branch_id`,`created_at`),
+  KEY `idx_subscribers_tenant_branch_listing` (`tenant_id`,`branch`,`is_active`,`deleted_at`,`created_at`),
   KEY `idx_subscribers_tenant_active_deleted` (`tenant_id`,`is_active`,`deleted_at`),
   KEY `idx_subscribers_tenant_phone` (`tenant_id`,`phone`),
   KEY `idx_subscribers_cs_at` (`tenant_id`,`assigned_cs_id`,`assigned_cs_at`)

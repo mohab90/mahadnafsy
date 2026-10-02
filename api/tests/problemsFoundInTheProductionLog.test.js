@@ -66,5 +66,5 @@ test('a role that may not see clients is not sent to fetch them', () => {
   // HR, the accountant and the instructors were refused /staff/subscribers on
   // every page load.
   assert.match(read('admin/pages/dashboard/useStaffOwnData.ts'),
-    /hasPermission\(staffRef, 'view_subscribers'\)\s*\?\s*mysqlAdmin\.listStaffSubscribers\(\)/);
+    /hasPermission\(staffRef, 'view_subscribers'\)\s*\?\s*\(async \(\) => \{[\s\S]{0,200}mysqlAdmin\.streamSubscribers\(\{ staff: true \}/);
 });

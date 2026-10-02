@@ -67,6 +67,9 @@ export interface SiteDataShape {
   loadFullLeads: () => Promise<void>;
   /** Just the subscribers table — for the client screens, which read no leads. */
   loadFullSubscribers: () => Promise<void>;
+  /** One branch's clients only ('DAQQI'), page by page — for the screens about a
+   *  single branch, which otherwise read the 500 newest clients of every branch. */
+  loadBranchSubscribers: (branch: string) => Promise<void>;
   staffMembers: StaffMember[];
   consultations: ConsultationItem[];
   lectures: CourseLectureItem[];
@@ -468,7 +471,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.uid, isAdmin]);
 
-  const { loadFullCrmData, loadFullLeads, loadFullSubscribers } = useAdminDataRuntime({
+  const { loadFullCrmData, loadFullLeads, loadFullSubscribers, loadBranchSubscribers } = useAdminDataRuntime({
     authUser, isHydratingRef, dbContentLoadedRef, lastCRMWriteRef,
     subscribersRef, leadsRef, staffMembersRef, contentRef,
     setRemoteReady, setSubscribers, setLeads, setStaffMembers, setConsultations,
@@ -643,6 +646,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     loadFullCrmData,
     loadFullLeads,
     loadFullSubscribers,
+    loadBranchSubscribers,
     staffMembers,
     consultations,
     lectures,

@@ -221,6 +221,12 @@ export const fullSubscriberTabs = new Set<string>([
   // the oldest clients, who are precisely the ones carrying arrears. A
   // collection officer was working a list missing the debts it exists to chase.
   'online_hub',
+  // These two read every client's installment plans / subscription rows out of the
+  // subscribers array. Absent from every set they were counting the 500 newest
+  // clients — and plans and renewals owed by the older ones are exactly the ones a
+  // collection officer is looking for.
+  'installment_plans',
+  'subscriptions',
 ]);
 
 /** Genuinely reads both tables. */
@@ -246,3 +252,21 @@ export const fullCrmDataTabs = new Set<string>([
   // to be the real ones.
   'online_team',
 ]);
+
+/**
+ * Screens about ONE branch's clients, and the branch they read.
+ *
+ * They used to read the bootstrap page — the 500 newest clients of every branch —
+ * and count their own branch out of it, so «عملاء الدقي» said 140 for a branch
+ * with many more. The full table fixed the count and cost the wait: every client
+ * of every branch, with payments, enrolments and certificates, before the first
+ * row could paint. A screen listed here asks the database for its branch alone, in
+ * pages, and opens on the first one (SiteData: loadBranchSubscribers).
+ */
+export const branchSubscriberTabs: Readonly<Record<string, string>> = Object.freeze({
+  daqqi_clients: 'DAQQI',
+  daqqi_schedule: 'DAQQI',
+  daqqi_accounting: 'DAQQI',
+  daqqi_stats: 'DAQQI',
+  daqqi_attendance: 'DAQQI',
+});

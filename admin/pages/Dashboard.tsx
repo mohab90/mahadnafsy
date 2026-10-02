@@ -27,7 +27,7 @@ import { useToast } from '../../shared/ui/Toast';
 import type { PaymentDraft } from '../components/PaymentModal';
 import { createClientPaymentDraft } from '../lib/clientActionDrafts';
 import { currencyForBranch } from '../lib/branchCurrency';
-import { contentHubRouteTabs, directContentTabs, fullCrmDataTabs, fullLeadTabs, fullSubscriberTabs, growthOpsTabs, saasOpsTabs } from './dashboard/dashboardTabGroups';
+import { branchSubscriberTabs, contentHubRouteTabs, directContentTabs, fullCrmDataTabs, fullLeadTabs, fullSubscriberTabs, growthOpsTabs, saasOpsTabs } from './dashboard/dashboardTabGroups';
 import { useStaffRoleRedirects } from './dashboard/hooks/useStaffRoleRedirects';
 import { useCurrentStaff } from './dashboard/hooks/useCurrentStaff';
 import { useOrdersDerived } from './dashboard/hooks/useOrdersDerived';
@@ -101,6 +101,7 @@ const Dashboard: React.FC = () => {
     loadFullCrmData,
     loadFullLeads,
     loadFullSubscribers,
+    loadBranchSubscribers,
     staffMembers,
     consultations,
     orders,
@@ -598,7 +599,9 @@ const Dashboard: React.FC = () => {
     if (fullCrmDataTabs.has(activeTab)) void loadFullCrmData();
     else if (fullLeadTabs.has(activeTab)) void loadFullLeads();
     else if (fullSubscriberTabs.has(activeTab)) void loadFullSubscribers();
-  }, [activeTab, loadFullCrmData, loadFullLeads, loadFullSubscribers]);
+    // A branch screen reads that branch only — see branchSubscriberTabs.
+    else if (branchSubscriberTabs[activeTab]) loadBranchSubscribers(branchSubscriberTabs[activeTab]).catch(() => { /* retried on the next visit */ });
+  }, [activeTab, loadFullCrmData, loadFullLeads, loadFullSubscribers, loadBranchSubscribers]);
 
   // The books' own revenue (the browser's sum only sees the newest 500 orders and
   // payments). Refreshed on a slow timer while the tab is in view; a failure

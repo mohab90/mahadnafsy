@@ -52,7 +52,24 @@ const TENANT = process.argv[2] || process.env.DEFAULT_TENANT_ID || 'tenant-defau
     else buckets.noPaymentsAtAll.push(s);
   }
 
-  console.log(`Dokki clients: ${subs.length}`);
+  // Where the Dokki data lives: the database, row counts as of now. (The code carries
+  // none — admin/context/siteDataSeed.ts is empty arrays, and no migration inserts a client.)
+  const [[where]] = await pool.query(
+    `SELECT
+       (SELECT COUNT(*) FROM subscribers WHERE tenant_id=? AND UPPER(REPLACE(branch,'-','_'))='DAQQI') AS subscribers_all,
+       (SELECT COUNT(*) FROM subscribers WHERE tenant_id=? AND UPPER(REPLACE(branch,'-','_'))='DAQQI' AND deleted_at IS NULL AND is_active=1) AS subscribers_active,
+       (SELECT COUNT(*) FROM subscribers WHERE tenant_id=? AND UPPER(REPLACE(branch,'-','_'))='DAQQI' AND (deleted_at IS NOT NULL OR is_active=0)) AS subscribers_archived,
+       (SELECT COUNT(*) FROM daqqi_rounds WHERE tenant_id=?) AS rounds,
+       (SELECT COUNT(*) FROM daqqi_attendees WHERE tenant_id=?) AS round_bookings,
+       (SELECT COUNT(DISTINCT da.subscriber_id) FROM daqqi_attendees da
+          JOIN subscribers s ON s.id=da.subscriber_id AND s.tenant_id=da.tenant_id
+         WHERE da.tenant_id=? AND UPPER(REPLACE(COALESCE(s.branch,''),'-','_'))<>'DAQQI') AS booked_but_not_dokki_branch`,
+    [TENANT, TENANT, TENANT, TENANT, TENANT, TENANT]);
+  console.log('Rows in the database for the Dokki branch:', JSON.stringify(where));
+  if (Number(where.booked_but_not_dokki_branch) > 0) {
+    console.log(`NOTE: ${where.booked_but_not_dokki_branch} client(s) are booked into Dokki rounds but their branch is not DAQQI — they are on the rosters and NOT in «عملاء الدقي».`);
+  }
+  console.log(`Dokki clients (not deleted): ${subs.length}`);
   console.log(`  reads a paid figure          : ${buckets.counted.length}`);
   console.log(`  only PENDING (awaiting approval): ${buckets.pendingOnly.length}   ← recorded at the desk, not approved`);
   console.log(`  paid but not a COURSE payment   : ${buckets.notCoursePayments.length}   ← type/course missing on the row`);

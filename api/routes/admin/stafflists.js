@@ -199,6 +199,81 @@ router.get('/api/admin/subscribers/stats', requireAuth, requireAdminOrStaff, req
   } catch (e) { logger.error('[route]', e.message); sendRouteError(res, e); }
 });
 
+
+// ?branch=DAQQI (or a comma list). A screen about one branch used to receive a
+// page of every branch's clients — the 500 newest of the whole institute — and
+// count the branch's own out of whatever happened to be in it: the Dokki list read
+// 140 clients when the branch has far more, because only 140 of the newest 500
+// were Dokki's. Filtering at the database returns the branch's clients, all of
+// them, in pages. ANDed with the caller's data scope, never instead of it.
+function branchFilter(req, column = 's.branch') {
+  const raw = String(req.query.branch || '').trim();
+  if (!raw) return { sql: '', params: [] };
+  const branches = [...new Set(raw.split(',')
+    .map(value => value.trim().toUpperCase().replace(/[-\s]/g, '_'))
+    .filter(value => VALID_BRANCHES.has(value)))];
+  // Named but none of them real: nothing, rather than everything.
+  if (!branches.length) return { sql: ' AND 1=0', params: [] };
+  return { sql: ` AND ${column} IN (${branches.map(() => '?').join(',')})`, params: branches };
+}
+
+// The data-scope clause every subscriber list shares, as one function. The list,
+// the count and the stats each carried their own copy of this block.
+function subscriberScope(req) {
+  const isSuper = !!req.isSuperAdmin;
+  const scope = resolveDataScope(req.staffRecord, { isSuperAdmin: isSuper, fallback: 'assigned_sales' });
+  if (scope === 'none') return { none: true };
+  let clause = '1=1';
+  const params = [];
+  if (scope.startsWith('branch:')) {
+    const branches = branchesFromScope(scope);
+    clause = branches.length ? `s.branch IN (${branches.map(() => '?').join(',')})` : '1=0';
+    params.push(...branches);
+  } else if (scope === 'assigned_sales') {
+    const staffId = req.staffRecord?.id;
+    if (!staffId) return { forbidden: true };
+    clause = `(s.assigned_sales_id = ? OR (s.lead_id IS NOT NULL AND EXISTS (SELECT 1 FROM leads l WHERE l.id = s.lead_id AND l.tenant_id=s.tenant_id AND l.assigned_sales_id = ?)))`;
+    params.push(staffId, staffId);
+  } else if (scope === 'assigned_cs') {
+    const staffId = req.staffRecord?.id;
+    if (!staffId) return { forbidden: true };
+    clause = 's.assigned_cs_id = ?';
+    params.push(staffId);
+  }
+  return { clause, params };
+}
+
+// GET /api/admin/subscribers/count?branch=DAQQI — how many, and in which status,
+// answered by the database in one small query instead of by loading every row and
+// counting them in the browser. Same population as the list beside it (active,
+// not staff, inside the caller's scope), so the number printed above a table is
+// the number the table will end up holding.
+router.get('/api/admin/subscribers/count', requireAuth, requireAdminOrStaff, requirePermission('view_subscribers'), async (req, res) => {
+  try {
+    const scope = subscriberScope(req);
+    if (scope.none) return res.json({ total: 0, byStatus: {} });
+    if (scope.forbidden) return res.status(403).json({ error: 'Staff record required' });
+    const branch = branchFilter(req);
+    const adminExclusions = ADMIN_EMAILS.length > 0
+      ? `AND (s.email IS NULL OR s.email NOT IN (${ADMIN_EMAILS.map(() => '?').join(',')}))`
+      : '';
+    const [rows] = await pool.query(
+      `SELECT CASE WHEN JSON_VALID(s.crm_json) THEN COALESCE(JSON_UNQUOTE(JSON_EXTRACT(s.crm_json,'$.clientStatus')),'') ELSE '' END AS client_status,
+              COUNT(*) AS cnt
+         FROM subscribers s
+        WHERE s.tenant_id = ? AND s.deleted_at IS NULL AND s.is_active=1 AND (${scope.clause})${branch.sql} AND NOT EXISTS (
+          SELECT 1 FROM staff st WHERE st.tenant_id=s.tenant_id AND st.email = s.email AND st.is_active = 1
+        ) ${adminExclusions}
+        GROUP BY client_status`,
+      [req.tenantId, ...scope.params, ...branch.params, ...ADMIN_EMAILS.map(e => e.toLowerCase())]
+    );
+    const byStatus = {};
+    let total = 0;
+    for (const row of rows) { byStatus[row.client_status || ''] = Number(row.cnt); total += Number(row.cnt); }
+    res.json({ total, byStatus });
+  } catch (e) { logger.error('[route]', e.message); sendRouteError(res, e); }
+});
+
 router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePermission('view_subscribers'), async (req, res) => {
   try {
     const limit  = parseLimit(req.query.limit, 500, 5000);
@@ -269,6 +344,9 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
       searchClause += ' AND s.status = ?';
       searchParams.push(statusFilter);
     }
+    const byBranch = branchFilter(req);
+    searchClause += byBranch.sql;
+    searchParams.push(...byBranch.params);
 
     const [rows] = await pool.query(
       `SELECT s.*,
@@ -280,7 +358,7 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
        WHERE s.tenant_id = ? AND s.deleted_at IS NULL AND s.is_active=1 AND (${scopeClause}) AND NOT EXISTS (
          SELECT 1 FROM staff st WHERE st.tenant_id=s.tenant_id AND st.email = s.email AND st.is_active = 1
        ) ${adminExclusions}${searchClause}
-       ORDER BY s.created_at DESC LIMIT ? OFFSET ?`,
+       ORDER BY s.created_at DESC, s.id DESC LIMIT ? OFFSET ?`,
       [req.tenantId, ...scopeParams, ...ADMIN_EMAILS.map(e => e.toLowerCase()), ...searchParams, limit, offset]
     );
     if (rows.length === 0) return res.json([]);
@@ -439,7 +517,8 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePe
 
     const limit  = parseLimit(req.query.limit, 5000, 10000);
     const offset = parseOffset(req.query.offset || 0);
-    params.push(limit, offset);
+    const byBranch = branchFilter(req);
+    params.push(...byBranch.params, limit, offset);
 
     const [rows] = await pool.query(
       `SELECT s.*,
@@ -448,8 +527,8 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePe
        FROM subscribers s
        LEFT JOIN staff ss ON ss.id = s.assigned_sales_id AND ss.tenant_id=s.tenant_id
        LEFT JOIN staff cs ON cs.id = s.assigned_cs_id AND cs.tenant_id=s.tenant_id
-       WHERE s.tenant_id = ? AND s.deleted_at IS NULL AND (${whereClause})
-       ORDER BY s.created_at DESC LIMIT ? OFFSET ?`,
+       WHERE s.tenant_id = ? AND s.deleted_at IS NULL AND (${whereClause})${byBranch.sql}
+       ORDER BY s.created_at DESC, s.id DESC LIMIT ? OFFSET ?`,
       params
     );
     if (rows.length === 0) return res.json([]);

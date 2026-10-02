@@ -119,10 +119,26 @@ function withTimeout<T>(promise: Promise<T>, ms = 7000): Promise<T> {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+/**
+ * The clients already held, with `incoming` laid over them by id.
+ *
+ * A page that arrives is added to what is on screen; it does not replace it. The
+ * background refresh used to replace the whole array with the newest 500, so a
+ * branch's clients loaded for its screen vanished two minutes later and the
+ * count fell back to however many of them were among the newest 500.
+ */
+function mergeSubscribers(current: SubscriberItem[], incoming: SubscriberItem[]): SubscriberItem[] {
+  const byId = new Map<string, SubscriberItem>();
+  for (const row of current) byId.set(row.id, row);
+  for (const row of incoming) byId.set(row.id, row);
+  return newestFirst([...byId.values()]);
+}
+
 export function useAdminDataRuntime(state: RuntimeState): {
   loadFullCrmData: () => Promise<void>;
   loadFullLeads: () => Promise<void>;
   loadFullSubscribers: () => Promise<void>;
+  loadBranchSubscribers: (branch: string) => Promise<void>;
 } {
   const {
     authUser, isHydratingRef, dbContentLoadedRef, lastCRMWriteRef,
@@ -365,7 +381,10 @@ export function useAdminDataRuntime(state: RuntimeState): {
           setLeads(leads);
         }
         if (subscribersRes.status === 'fulfilled' && (subscribersRes.value as unknown[]).length > 0) {
-          const subscribers = normalizeSubscribers(subscribersRes.value);
+          const fresh = normalizeSubscribers(subscribersRes.value);
+          // The whole table, when it was pulled, is replaced by the whole table.
+          // A page is laid over what is held — see mergeSubscribers.
+          const subscribers = fullSubsRef.current ? fresh : mergeSubscribers(subscribersRef.current, fresh);
           subscribersRef.current = subscribers;
           setSubscribers(subscribers);
         }
@@ -449,11 +468,44 @@ export function useAdminDataRuntime(state: RuntimeState): {
     return fullSubsRef.current;
   }, [subscribersRef, setSubscribers]);
 
+  // One branch's clients, for the screens about that branch.
+  //
+  // «عدد عملاء الدقي بيظهر 140 وهما أكتر»: those screens read the bootstrap page —
+  // the 500 newest clients of ALL branches — and counted their branch's out of it.
+  // The full table was the only other way, and it is the slow one (every client of
+  // every branch, with payments, enrolments, certificates and plans, pulled in
+  // 5,000-row pages). This asks the database for the branch only, 300 at a time:
+  // the first page lands almost at once and the table opens on it, the rest fills
+  // in behind. The real total comes from /count in the same moment, so the number
+  // is right before the last page is.
+  const branchLoadsRef = useRef(new Map<string, Promise<void>>());
+  const loadBranchSubscribers = useCallback((branch: string): Promise<void> => {
+    const existing = branchLoadsRef.current.get(branch);
+    if (existing) return existing;
+    const run = (async () => {
+      try {
+        await mysqlAdmin.streamSubscribers({ branch }, page => {
+          const rows = normalizeSubscribers(page);
+          const merged = mergeSubscribers(subscribersRef.current, rows);
+          subscribersRef.current = merged;
+          setSubscribers(merged);
+        });
+      } catch (error) {
+        // Forgotten on failure, so the next visit tries again instead of keeping
+        // a rejected promise for the rest of the session.
+        branchLoadsRef.current.delete(branch);
+        throw error;
+      }
+    })();
+    branchLoadsRef.current.set(branch, run);
+    return run;
+  }, [subscribersRef, setSubscribers]);
+
   // Both halves, for the screens that genuinely read both. Settled rather than
   // all-or-nothing so one table failing still delivers the other.
   const loadFullCrmData = useCallback(async () => {
     await Promise.allSettled([loadFullLeads(), loadFullSubscribers()]);
   }, [loadFullLeads, loadFullSubscribers]);
 
-  return { loadFullCrmData, loadFullLeads, loadFullSubscribers };
+  return { loadFullCrmData, loadFullLeads, loadFullSubscribers, loadBranchSubscribers };
 }

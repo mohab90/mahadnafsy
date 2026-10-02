@@ -15,6 +15,9 @@ type OnlineClientsKpiStripProps = {
   fmtK: (value: number) => string;
   /** «محلي / سعودي / دولي» for an online client, null for a branch one. */
   marketOf: (subscriber: SubscriberItem) => 'local' | 'saudi' | 'intl' | null;
+  /** The branch's real figures from the database (the Dokki tab). Shown while the
+   *  rows are still arriving, so the number is right before the table is full. */
+  serverCount?: { total: number; byStatus: Record<string, number> } | null;
 };
 
 type Stat = { label: string; value: string | number; icon: ElementType; tone: string };
@@ -34,13 +37,17 @@ const TERMINAL = ['finished', 'paused', 'refunded', 'refund_pending'];
  * clients are, and what came in — instead of nine tall tiles.
  */
 export function OnlineClientsKpiStrip({
-  isDaqqiClientsTab, allCombined, collTodayRev, collWeekRev, collMonthRev, collTotalRem, fmtK, marketOf,
+  isDaqqiClientsTab, allCombined, collTodayRev, collWeekRev, collMonthRev, collTotalRem, fmtK, marketOf, serverCount,
 }: OnlineClientsKpiStripProps) {
+  const arriving = Boolean(isDaqqiClientsTab && serverCount && allCombined.length < serverCount.total);
+  const byStatus = serverCount?.byStatus || {};
   const clients: Stat[] = isDaqqiClientsTab ? [
-    { label: 'عملاء الدقي', value: allCombined.length, icon: Users, tone: 'indigo' },
-    { label: 'نشطين', value: allCombined.filter(s => !TERMINAL.includes(s.clientStatus || '')).length, icon: CheckCircle2, tone: 'emerald' },
-    { label: 'منتهين', value: allCombined.filter(s => s.clientStatus === 'finished').length, icon: GraduationCap, tone: 'green' },
-    { label: 'متوقفين', value: allCombined.filter(s => s.clientStatus === 'paused').length, icon: CirclePause, tone: 'amber' },
+    { label: 'عملاء الدقي', value: arriving ? serverCount!.total : allCombined.length, icon: Users, tone: 'indigo' },
+    { label: 'نشطين', value: arriving
+      ? serverCount!.total - TERMINAL.reduce((sum, status) => sum + (byStatus[status] || 0), 0)
+      : allCombined.filter(s => !TERMINAL.includes(s.clientStatus || '')).length, icon: CheckCircle2, tone: 'emerald' },
+    { label: 'منتهين', value: arriving ? (byStatus.finished || 0) : allCombined.filter(s => s.clientStatus === 'finished').length, icon: GraduationCap, tone: 'green' },
+    { label: 'متوقفين', value: arriving ? (byStatus.paused || 0) : allCombined.filter(s => s.clientStatus === 'paused').length, icon: CirclePause, tone: 'amber' },
   ] : [
     { label: 'إجمالي العملاء', value: allCombined.length, icon: Users, tone: 'slate' },
     { label: 'محلي', value: allCombined.filter(s => marketOf(s) === 'local').length, icon: MapPin, tone: 'violet' },

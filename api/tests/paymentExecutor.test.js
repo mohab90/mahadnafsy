@@ -26,7 +26,7 @@ function fakeDb({ staff = [], users = [], audit = [] }) {
         const ids = params.slice(1);
         return [audit.filter(a => ids.includes(a.payment_id))];
       }
-      if (/FROM staff[\s\S]*LOWER\(TRIM\(email\)\) IN/.test(sql)) {
+      if (/FROM staff[\s\S]*email IN/.test(sql)) {
         const emails = params.slice(1);
         return [staff.filter(s => s.email && emails.includes(s.email.toLowerCase())).map(s => ({ email: s.email.toLowerCase(), name: s.name }))];
       }

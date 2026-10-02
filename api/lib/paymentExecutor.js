@@ -70,10 +70,14 @@ async function resolvePaymentExecutors(db, tenantId, rows) {
   const nameOfEmail = new Map();
   if (emails.length) {
     const [[staffByEmail], [usersByEmail]] = await Promise.all([
+      // `email IN (...)`, not LOWER(TRIM(email)) IN (...): the column is compared
+      // case-insensitively already (utf8mb4_unicode_ci), and a function over it
+      // meant a scan of the whole users table on every page of every client list.
+      // The key the answer is filed under is still lower-cased and trimmed.
       db.query(`SELECT LOWER(TRIM(email)) email, name FROM staff
-                 WHERE tenant_id=? AND deleted_at IS NULL AND LOWER(TRIM(email)) IN (${placeholders(emails)})`, [tenantId, ...emails]),
+                 WHERE tenant_id=? AND deleted_at IS NULL AND email IN (${placeholders(emails)})`, [tenantId, ...emails]),
       db.query(`SELECT LOWER(TRIM(email)) email, name FROM users
-                 WHERE tenant_id=? AND LOWER(TRIM(email)) IN (${placeholders(emails)})`, [tenantId, ...emails]),
+                 WHERE tenant_id=? AND email IN (${placeholders(emails)})`, [tenantId, ...emails]),
     ]);
     for (const row of usersByEmail) if (String(row.name || '').trim()) nameOfEmail.set(row.email, String(row.name).trim());
     for (const row of staffByEmail) if (String(row.name || '').trim()) nameOfEmail.set(row.email, String(row.name).trim());

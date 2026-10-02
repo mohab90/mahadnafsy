@@ -112,6 +112,20 @@ export default function OnlineClientsTab({
   // the dropdowns below sit inside conditional blocks and callbacks.
   const paymentBoxes = usePaymentBoxes(content['finance.payment_methods']);
 
+  // The Dokki branch's real client count, from the database, the moment the tab
+  // opens. The rows arrive in pages behind it (SiteData.loadBranchSubscribers), so
+  // the figure above the table is right long before the table is full — it used to
+  // be however many of the 500 newest clients of all branches were Dokki's.
+  const [daqqiServerCount, setDaqqiServerCount] = useState<{ total: number; byStatus: Record<string, number> } | null>(null);
+  React.useEffect(() => {
+    if (activeTab !== 'daqqi_clients') return undefined;
+    let cancelled = false;
+    mysqlAdmin.countSubscribers('DAQQI')
+      .then(result => { if (!cancelled) setDaqqiServerCount(result); })
+      .catch(() => { /* the loaded rows are counted instead */ });
+    return () => { cancelled = true; };
+  }, [activeTab]);
+
   // Collection role — online clients tab state
   const [collOnlineSearch, setCollOnlineSearch] = useState('');
   const [collOnlinePage, setCollOnlinePage] = useState(1);
@@ -407,7 +421,14 @@ export default function OnlineClientsTab({
                     collTotalRem={collTotalRem}
                     fmtK={fmtK}
                     marketOf={s => (isOnlineClient(s) ? subscriberMarket(s) : null)}
+                    serverCount={isDaqqiClientsTab ? daqqiServerCount : null}
                   />
+                  {isDaqqiClientsTab && daqqiServerCount && allCombined.length < daqqiServerCount.total && (
+                    <div className="mb-2 flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-[11px] font-bold text-indigo-700" role="status">
+                      <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-600" />
+                      جاري تحميل باقي العملاء… {allCombined.length.toLocaleString('ar-EG-u-nu-latn')} من {daqqiServerCount.total.toLocaleString('ar-EG-u-nu-latn')}
+                    </div>
+                  )}
 
                   {/* === Tabs row === */}
                   <ViewTabsBar
