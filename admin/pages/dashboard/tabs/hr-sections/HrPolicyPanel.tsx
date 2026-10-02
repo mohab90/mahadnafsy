@@ -39,6 +39,24 @@ export default function HrPolicyPanel({ notify }: { notify: Notify }) {
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<Draft>(fromPolicy());
   const current = policies[0];
+  // Automatic absence is a separate switch from the policy versions: it is not a
+  // number that applies from a date, it is whether the system marks the day.
+  const [autoAbsence, setAutoAbsence] = useState<boolean | null>(null);
+  useEffect(() => {
+    mysqlAdmin.adminGet<{ enabled: boolean }>('/admin/hr/auto-absence')
+      .then(result => setAutoAbsence(Boolean(result.enabled)))
+      .catch(() => setAutoAbsence(null));
+  }, []);
+  const toggleAutoAbsence = async () => {
+    const next = !autoAbsence;
+    try {
+      await mysqlAdmin.adminPut('/admin/hr/auto-absence', { enabled: next });
+      setAutoAbsence(next);
+      notify('success', next ? 'تم تفعيل الغياب التلقائي — من الليلة بيتسجل غياب لأي يوم عمل محدش سجّل فيه حاجة' : 'تم إيقاف الغياب التلقائي');
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر تغيير الإعداد');
+    }
+  };
   const load = useCallback(async () => {
     try {
       const rows = await mysqlAdmin.adminGet<Policy[]>('/admin/hr/policies');
@@ -90,6 +108,15 @@ export default function HrPolicyPanel({ notify }: { notify: Notify }) {
       )}
       {open && (
         <div className="mt-4 border-t border-gray-100 pt-4">
+          {autoAbsence !== null && (
+            <label className="flex items-start gap-2 text-xs text-gray-700 bg-gray-50 rounded-lg p-2 mb-3 cursor-pointer">
+              <input type="checkbox" checked={autoAbsence} onChange={toggleAutoAbsence} className="mt-0.5" />
+              <span>
+                <b>غياب تلقائي</b> — أي موظف له جدول عمل ومسجّلش حضور ولا إجازة في يوم عمل يتسجل له «غياب» تلقائي ويتخصم في المسير.
+                <span className="block text-gray-500">مقفول افتراضيًا. فعّله بعد ما كل الموظفين يبدأوا يسجلوا حضور، وإلا هيتخصم منهم أيام مش غايبينها.</span>
+              </span>
+            </label>
+          )}
           <p className="text-xs text-amber-700 bg-amber-50 rounded-lg p-2 mb-3">
             الحفظ ينشئ نسخة جديدة مؤرخة ولا يغيّر السياسات التاريخية المرتبطة بالطلبات السابقة.
           </p>

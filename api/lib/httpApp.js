@@ -59,6 +59,19 @@ function csrfOriginGuard() {
       const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
       if (host && new URL(origin).host.toLowerCase() === host) return next();
     } catch (_) { /* a malformed Origin is refused below */ }
+    // Report-only unless CSRF_ORIGIN_ENFORCE=true. Behind the reference nginx the
+    // Host the API sees is the upstream's, not the site's, so «same origin as the
+    // host asked» cannot be told from here, and a deployment whose ALLOWED_ORIGINS
+    // does not list its own admin and site origins would have every write refused
+    // the moment this shipped. Turn enforcement on after the log shows no
+    // legitimate origin being reported (set ALLOWED_ORIGINS to the site's and the
+    // admin's https origins first).
+    if (String(process.env.CSRF_ORIGIN_ENFORCE || '').toLowerCase() !== 'true') {
+      require('./logger').warn('[csrf] write from an unlisted origin (not blocked: CSRF_ORIGIN_ENFORCE is off)', {
+        origin, method: req.method, path: req.path,
+      });
+      return next();
+    }
     return res.status(403).json({ error: 'Origin not allowed', code: 'ORIGIN_NOT_ALLOWED' });
   };
 }
@@ -174,7 +187,18 @@ function createHttpApp({ pool, brandAssetRoot }) {
       },
     },
   }));
-  app.use(express.json({ limit: '10mb', verify: (req, _res, buffer) => { req.rawBody = buffer; } }));
+  // 10 MB is for signed-in users (a transfer receipt, a picture); a request with
+  // no session — every public form, webhook and scan — gets 1 MB. The body used
+  // to be read in full up to 10 MB for anyone, before any rate limit could look at
+  // it, so a stranger could make the server buffer and parse ten megabytes a call.
+  const keepRaw = (req, _res, buffer) => { req.rawBody = buffer; };
+  const signedInParser = express.json({ limit: '10mb', verify: keepRaw });
+  const anonymousParser = express.json({ limit: '1mb', verify: keepRaw });
+  app.use((req, res, next) => {
+    const hasSession = /(?:^|;\s*)authToken=/.test(req.headers.cookie || '')
+      || /^Bearer\s+\S+/i.test(req.headers.authorization || '');
+    return (hasSession ? signedInParser : anonymousParser)(req, res, next);
+  });
   app.use(sanitizeBody);
   app.use(securityHeaders);
   app.use((req, res, next) => {

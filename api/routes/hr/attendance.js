@@ -47,6 +47,24 @@ async function attendanceStart(db, tenantId, staffId, date) {
   return { isOffDay: false, start: 9 * 60 + Number(policy.grace_minutes || 0) };
 }
 
+// Automatic absence: off unless HR switches it on (lib/autoAbsence.js).
+router.get('/api/admin/hr/auto-absence', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
+  try {
+    const { getTenantSetting } = require('../../lib/tenantSettings');
+    const setting = await getTenantSetting('hr_auto_absence', { tenantId: req.tenantId, fallback: {} }) || {};
+    res.json({ enabled: setting.enabled === true });
+  } catch (error) { logger.error('[hr/auto-absence]', error.message); hrError(res, error); }
+});
+router.put('/api/admin/hr/auto-absence', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
+  try {
+    const { setTenantSetting } = require('../../lib/tenantSettings');
+    const enabled = req.body?.enabled === true;
+    await setTenantSetting('hr_auto_absence', { enabled, changedBy: req.staffRecord?.id || req.user?.uid || null, changedAt: new Date().toISOString() }, { tenantId: req.tenantId });
+    await writeAuditEvent({ action: `hr.auto_absence.${enabled ? 'enabled' : 'disabled'}`, entityType: 'HR_POLICY', entityId: 'auto-absence', req });
+    res.json({ ok: true, enabled });
+  } catch (error) { logger.error('[hr/auto-absence]', error.message); hrError(res, error); }
+});
+
 router.get('/api/admin/hr/policies', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const [rows] = await pool.query(

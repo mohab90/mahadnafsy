@@ -85,7 +85,9 @@ test('the IP whitelist matches IPv6 addresses and prefixes as well as IPv4', () 
 // ── cross-site writes with the session cookie ────────────────────────────────
 test('a write from another site that carries the session cookie is refused', async () => {
   const prior = process.env.ALLOWED_ORIGINS;
+  const priorEnforce = process.env.CSRF_ORIGIN_ENFORCE;
   process.env.ALLOWED_ORIGINS = 'https://admin.example.com';
+  process.env.CSRF_ORIGIN_ENFORCE = 'true';
   try {
     const { csrfOriginGuard } = require('../lib/httpApp');
     const app = express();
@@ -103,7 +105,23 @@ test('a write from another site that carries the session cookie is refused', asy
     });
   } finally {
     if (prior === undefined) delete process.env.ALLOWED_ORIGINS; else process.env.ALLOWED_ORIGINS = prior;
+    if (priorEnforce === undefined) delete process.env.CSRF_ORIGIN_ENFORCE; else process.env.CSRF_ORIGIN_ENFORCE = priorEnforce;
   }
+});
+
+test('with enforcement off (the default) an unlisted origin is reported, not blocked', async () => {
+  const priorEnforce = process.env.CSRF_ORIGIN_ENFORCE;
+  delete process.env.CSRF_ORIGIN_ENFORCE;
+  try {
+    const { csrfOriginGuard } = require('../lib/httpApp');
+    const app = express();
+    app.use(csrfOriginGuard());
+    app.all('/w', (_req, res) => res.json({ ok: true }));
+    await withServer(app, async base => {
+      const res = await fetch(`${base}/w`, { method: 'POST', headers: { cookie: 'authToken=abc', origin: 'https://evil.example' } });
+      assert.equal(res.status, 200);
+    });
+  } finally { if (priorEnforce !== undefined) process.env.CSRF_ORIGIN_ENFORCE = priorEnforce; }
 });
 
 // ── staff addresses ──────────────────────────────────────────────────────────

@@ -52,6 +52,25 @@ function startBackgroundScheduler({ pool, logger, port }) {
 
   require('./hrAuditRetentionJob').scheduleHrAuditRetention({ pool, logger });
 
+  // Yesterday's unmarked working days, for tenants that switched automatic
+  // absence on (lib/autoAbsence.js — off by default). Hourly and idempotent: the
+  // insert ignores a day that already has a row, so repeats and a second instance
+  // change nothing.
+  later(() => {
+    const run = async () => {
+      try {
+        const { markAutoAbsences } = require('./autoAbsence');
+        const [tenants] = await pool.query("SELECT id FROM tenants WHERE status='active'").catch(() => [[]]);
+        for (const tenant of (tenants.length ? tenants : [{ id: process.env.DEFAULT_TENANT_ID || 'tenant-default' }])) {
+          const result = await markAutoAbsences({ pool, tenantId: tenant.id });
+          if (result.marked) logger.info(`[jobs] auto-absence ${tenant.id} ${result.date}: ${result.marked}`);
+        }
+      } catch (error) { logger.warn('[jobs] auto-absence failed:', error.message); }
+    };
+    run();
+    repeat(run, 60 * 60 * 1000);
+  }, 5 * 60 * 1000);
+
   later(() => {
     const sync = () => syncAllConfiguredSheets()
       .then(result => {
