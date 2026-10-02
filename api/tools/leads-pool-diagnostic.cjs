@@ -64,7 +64,9 @@ const live = `tenant_id=? AND deleted_at IS NULL`;
   try {
     const [[setting]] = await pool.query(
       `SELECT config_json FROM tenant_settings WHERE tenant_id=? AND section='crm_settings' LIMIT 1`, [TENANT]);
-    const cfg = setting ? JSON.parse(setting.config_json || '{}') : {};
+    // A JSON column comes back from the driver already parsed; a text one does not.
+    const raw = setting ? setting.config_json : null;
+    const cfg = !raw ? {} : (typeof raw === 'string' ? JSON.parse(raw) : raw);
     console.log(`\nAuto-archive of cold leads (crm_settings.autoArchiveDays): ${Number(cfg.autoArchiveDays) > 0 ? `ON — ${cfg.autoArchiveDays} days` : 'off'}`);
   } catch (error) {
     console.log('\nAuto-archive setting: could not read —', error.message);
@@ -72,6 +74,65 @@ const live = `tenant_id=? AND deleted_at IS NULL`;
   const [[arch]] = await pool.query(
     `SELECT COUNT(*) AS n FROM leads WHERE ${live} AND hidden=0 AND status='archived'`, [TENANT]);
   console.log(`Leads with status «archived» (any owner): ${arch.n}`);
+
+  const [[archivedSplit]] = await pool.query(
+    `SELECT SUM(assigned_sales_id IS NOT NULL) AS with_rep,
+            SUM(assigned_sales_id IS NULL) AS without_rep,
+            SUM(NOT EXISTS (SELECT 1 FROM communications c WHERE c.lead_id=leads.id)) AS never_contacted
+       FROM leads WHERE ${live} AND hidden=0 AND status='archived'`, [TENANT]);
+  console.log(`  of those: with a rep ${archivedSplit.with_rep || 0}, without ${archivedSplit.without_rep || 0}, never contacted ${archivedSplit.never_contacted || 0}`);
+
+  const byStatusAll = await one(
+    `SELECT LOWER(status) AS status, COUNT(*) AS n FROM leads WHERE ${live} AND hidden=0
+      GROUP BY LOWER(status) ORDER BY n DESC LIMIT 12`, [TENANT]);
+  console.log('\nAll visible leads by status:');
+  byStatusAll.forEach(row => console.log(`  ${String(row.n).padStart(6)}  ${row.status}`));
+
+  const ages = await one(
+    `SELECT CASE WHEN created_at >= CURDATE() THEN '1 today'
+                 WHEN created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) THEN '2 1-7 days'
+                 WHEN created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) THEN '3 8-30 days'
+                 ELSE '4 older than 30 days' END AS bucket, COUNT(*) AS n
+       FROM leads WHERE ${live} AND hidden=0 AND ${noOwner} AND NOT (${archiveLike})
+        AND LOWER(status) NOT IN (${terminal.map(() => '?').join(',')})
+      GROUP BY bucket ORDER BY bucket`, [TENANT, ...archiveParams, ...terminal]);
+  console.log('\nWaiting pool (no owner, live status, not an import) by age:');
+  ages.forEach(row => console.log(`  ${row.bucket.slice(2).padEnd(22)} ${row.n}`));
+
+  // Why a new lead is not handed out: the reps and their limits, as the capture
+  // path reads them (lib/leadAssignment.js listDistributableReps).
+  try {
+    const { listDistributableReps } = require('../lib/leadAssignment');
+    const { intakeByStaff } = require('../lib/assignmentQuota');
+    const eligible = new Set((await listDistributableReps(TENANT, pool)).map(rep => String(rep.id)));
+    const [staff] = await pool.query(
+      `SELECT s.id, s.name, p.branch_key, p.is_available, p.max_open_leads, p.intake_limit, p.intake_period,
+              p.course_ids_json, p.sources_json
+         FROM staff s LEFT JOIN crm_assignment_members p
+           ON p.tenant_id=s.tenant_id AND p.staff_id=s.id AND p.team_key='sales'
+        WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL AND UPPER(s.role)='SALES'
+        ORDER BY s.name`, [TENANT]);
+    const [open] = await pool.query(
+      `SELECT assigned_sales_id AS id, COUNT(*) AS n FROM leads
+        WHERE tenant_id=? AND hidden=0 AND status NOT IN ('converted','lost','archived','disqualified')
+          AND assigned_sales_id IS NOT NULL GROUP BY assigned_sales_id`, [TENANT]);
+    const openBy = new Map(open.map(row => [String(row.id), Number(row.n)]));
+    const quota = await intakeByStaff(TENANT, staff.filter(r => r.intake_limit != null)
+      .map(r => ({ staff_id: r.id, intake_period: r.intake_period })), pool);
+    console.log(`\nSales reps (${eligible.size} of ${new Set(staff.map(r => r.id)).size} can take a new lead right now):`);
+    for (const r of staff) {
+      const takes = eligible.has(String(r.id));
+      const why = r.branch_key == null ? 'no row on the «التوزيع» screen'
+        : !r.is_available ? 'switched off'
+        : (r.max_open_leads != null && (openBy.get(String(r.id)) || 0) >= r.max_open_leads) ? 'at the open-leads cap'
+        : (r.intake_limit != null && (quota.get(String(r.id)) || 0) >= r.intake_limit) ? 'intake limit reached'
+        : (r.course_ids_json || r.sources_json) ? 'rules limit which leads (course/source)' : '';
+      console.log(`  ${takes ? 'YES' : ' no'}  ${String(r.name).padEnd(24)} open=${openBy.get(String(r.id)) || 0}${r.max_open_leads != null ? '/' + r.max_open_leads : ''}`
+        + `  intake=${quota.get(String(r.id)) || 0}${r.intake_limit != null ? '/' + r.intake_limit + ' per ' + r.intake_period : ''}${why ? '  ← ' + why : ''}`);
+    }
+  } catch (error) {
+    console.log('\nSales reps: could not read —', error.message);
+  }
 
   console.log('\nNew leads per day, last 14 days — and what became of them:');
   const perDay = await one(
