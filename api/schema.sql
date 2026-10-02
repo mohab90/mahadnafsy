@@ -4370,7 +4370,7 @@ CREATE TABLE `recurring_expenses` (
 
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `recruitment_notes` (
+CREATE TABLE IF NOT EXISTS `recruitment_notes` (
   `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `ref_type` enum('join_us','applicant') NOT NULL,
@@ -4852,7 +4852,7 @@ CREATE TABLE `staff_absences` (
 
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `staff_documents` (
+CREATE TABLE IF NOT EXISTS `staff_documents` (
   `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `staff_id` varchar(36) NOT NULL,
