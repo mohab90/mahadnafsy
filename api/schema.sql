@@ -167,7 +167,7 @@ CREATE TABLE `accounts_payable_payments` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `activity_logs` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `action` varchar(50) NOT NULL,
   `entity` varchar(100) NOT NULL,
@@ -192,7 +192,7 @@ CREATE TABLE `activity_logs` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `activity_logs_archive` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `action` varchar(50) NOT NULL,
   `entity` varchar(100) NOT NULL,
@@ -236,7 +236,7 @@ CREATE TABLE `admin_notifications` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `attendance_import_batches` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `filename` varchar(255) NOT NULL,
   `month` tinyint(3) unsigned NOT NULL,
   `year` smallint(5) unsigned NOT NULL,
@@ -260,7 +260,7 @@ CREATE TABLE `attendance_import_batches` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `attendance_logs` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `staff_id` varchar(36) NOT NULL,
   `branch` enum('DAQQI','TAGAMOA','ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_ABROAD','OTHER') DEFAULT NULL,
   `date` date NOT NULL,
@@ -390,7 +390,7 @@ CREATE TABLE `automation_log` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `automation_workflows` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(36) NOT NULL DEFAULT 'tenant-default',
   `name` varchar(500) NOT NULL,
   `description` text DEFAULT NULL,
@@ -414,7 +414,7 @@ CREATE TABLE `automation_workflows` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `backup_logs` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `filename` varchar(255) NOT NULL,
   `size_bytes` bigint(20) DEFAULT NULL,
   `status` enum('SUCCESS','FAILED') NOT NULL DEFAULT 'SUCCESS',
@@ -519,7 +519,7 @@ CREATE TABLE `branches` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `budgets` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(36) NOT NULL DEFAULT 'tenant-default',
   `branch` varchar(30) DEFAULT NULL,
   `branch_id` varchar(36) NOT NULL DEFAULT 'branch-all',
@@ -562,7 +562,7 @@ CREATE TABLE `bundle_courses` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `bundles` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `title` varchar(500) NOT NULL,
   `title_en` varchar(500) DEFAULT NULL,
   `slug` varchar(255) DEFAULT NULL,
@@ -676,7 +676,7 @@ CREATE TABLE `certificate_lifecycle_events` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `certificate_requests` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `subscriber_id` varchar(36) DEFAULT NULL,
   `course_id` varchar(36) DEFAULT NULL,
   `type` enum('SOCIAL_SOLIDARITY','AIN_SHAMS','EXPERIENCE_EXTERNAL','PRACTICE_EXTERNAL','NATIONAL_COUNCIL','AMERICAN_BOARD','INSTITUTE','OTHER') NOT NULL,
@@ -817,7 +817,7 @@ CREATE TABLE `cohort_members` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `commission_rules` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `name` varchar(255) NOT NULL,
   `staff_id` varchar(36) DEFAULT NULL,
   `apply_to_roles` longtext DEFAULT NULL CHECK (json_valid(`apply_to_roles`)),
@@ -832,7 +832,7 @@ CREATE TABLE `commission_rules` (
   `currency` enum('EGP','SAR','USD') NOT NULL DEFAULT 'EGP',
   `priority` int(11) NOT NULL DEFAULT 1,
   `stackable` tinyint(1) NOT NULL DEFAULT 0,
-  `effective_from` date NOT NULL DEFAULT curdate(),
+  `effective_from` date NOT NULL DEFAULT (curdate()),
   `effective_to` date DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
   `created_by` varchar(36) DEFAULT NULL,
@@ -852,7 +852,7 @@ CREATE TABLE `commission_rules` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `communications` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `lead_id` varchar(36) DEFAULT NULL,
   `subscriber_id` varchar(36) DEFAULT NULL,
@@ -1057,7 +1057,7 @@ CREATE TABLE `connector_events` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `consultations` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `client_name` varchar(255) NOT NULL,
   `client_email` varchar(255) DEFAULT NULL,
   `client_phone` varchar(50) DEFAULT NULL,
@@ -1105,7 +1105,7 @@ CREATE TABLE `consultations` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `contact_messages` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `name` varchar(255) NOT NULL,
   `email` varchar(255) DEFAULT NULL,
   `phone` varchar(50) NOT NULL,
@@ -1131,7 +1131,7 @@ CREATE TABLE `contact_messages` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `course_chapters` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `course_id` varchar(36) NOT NULL,
   `title` varchar(500) NOT NULL,
   `sort_order` int(11) NOT NULL DEFAULT 0,
@@ -1173,7 +1173,7 @@ CREATE TABLE `course_cohorts` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `course_completions` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `subscriber_id` varchar(36) NOT NULL,
   `course_id` varchar(36) NOT NULL,
   `certificate_code` varchar(50) NOT NULL,
@@ -1206,7 +1206,7 @@ CREATE TABLE `course_completions` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `course_lectures` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `course_id` varchar(36) NOT NULL,
   `chapter_id` varchar(36) DEFAULT NULL,
   `title` varchar(500) NOT NULL,
@@ -1237,7 +1237,7 @@ CREATE TABLE `course_lectures` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `course_materials` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `course_id` varchar(36) NOT NULL,
   `title` varchar(500) NOT NULL,
   `url` text NOT NULL,
@@ -1256,7 +1256,7 @@ CREATE TABLE `course_materials` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `course_quizzes` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `course_id` varchar(36) NOT NULL,
   `title` varchar(500) NOT NULL,
   `questions_json` longtext NOT NULL,
@@ -1303,7 +1303,7 @@ CREATE TABLE `course_ratings` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `course_waitlist` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `course_id` varchar(36) NOT NULL,
   `subscriber_id` varchar(36) DEFAULT NULL,
@@ -1328,7 +1328,7 @@ CREATE TABLE `course_waitlist` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `courses` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `course_code` varchar(50) DEFAULT NULL,
   `slug` varchar(255) DEFAULT NULL,
   `title` varchar(500) NOT NULL,
@@ -1450,7 +1450,7 @@ CREATE TABLE `crm_coaching_reviews` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `crm_commissions` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `staff_id` varchar(36) NOT NULL,
   `payment_id` varchar(100) DEFAULT NULL,
   `rule_id` varchar(36) DEFAULT NULL,
@@ -1753,7 +1753,7 @@ CREATE TABLE `daqqi_attendees` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `daqqi_rounds` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `code` varchar(50) NOT NULL,
   `course_id` varchar(36) NOT NULL,
   `instructor_id` varchar(36) DEFAULT NULL,
@@ -1813,7 +1813,7 @@ CREATE TABLE `daqqi_waitlist` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `disciplinary_records` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `staff_id` varchar(36) NOT NULL,
   `type` enum('warning','verbal_warning','written_warning','suspension','termination','other') DEFAULT 'warning',
   `severity` enum('low','medium','high') DEFAULT 'medium',
@@ -1841,7 +1841,7 @@ CREATE TABLE `disciplinary_records` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `discount_rules` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `type` enum('COURSE','BUNDLE','ALL_COURSES','THERAPIST_CONSULTATION','ALL_CONSULTATIONS') NOT NULL,
   `target_id` varchar(36) DEFAULT NULL,
   `discount_percent` decimal(5,2) NOT NULL,
@@ -1862,7 +1862,7 @@ CREATE TABLE `discount_rules` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `drip_campaigns` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `name` varchar(500) NOT NULL,
   `trigger_event` varchar(255) NOT NULL DEFAULT 'subscription_created' COMMENT 'subscription_created|lead_status:interested|consultation_completed|payment_received',
   `audience` enum('subscribers','leads','all') NOT NULL DEFAULT 'subscribers',
@@ -1886,7 +1886,7 @@ CREATE TABLE `drip_campaigns` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `drip_enrollments` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(36) NOT NULL DEFAULT 'tenant-default',
   `sequence_id` varchar(36) NOT NULL,
   `lead_id` varchar(36) DEFAULT NULL,
@@ -1926,7 +1926,7 @@ CREATE TABLE `drip_enrollments` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `drip_sequences` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(36) NOT NULL DEFAULT 'tenant-default',
   `name` varchar(200) NOT NULL,
   `description` text DEFAULT NULL,
@@ -1954,7 +1954,7 @@ CREATE TABLE `drip_sequences` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `email_campaigns` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `title` varchar(500) NOT NULL,
   `subject` varchar(500) NOT NULL,
   `body_html` text NOT NULL,
@@ -1980,7 +1980,7 @@ CREATE TABLE `email_campaigns` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `email_sequence_queue` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `step_id` varchar(36) NOT NULL,
   `recipient_email` varchar(320) NOT NULL,
@@ -2004,7 +2004,7 @@ CREATE TABLE `email_sequence_queue` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `email_sequence_steps` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `sequence_id` varchar(36) NOT NULL,
   `step_order` tinyint(3) unsigned NOT NULL DEFAULT 1,
@@ -2024,7 +2024,7 @@ CREATE TABLE `email_sequence_steps` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `email_sequences` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `name` varchar(200) NOT NULL,
   `trigger_event` enum('registration','enrollment','payment','lead_created') NOT NULL DEFAULT 'registration',
@@ -2042,7 +2042,7 @@ CREATE TABLE `email_sequences` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `employee_bonuses` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `staff_id` varchar(36) NOT NULL,
   `type` enum('bonus','deduction') DEFAULT 'bonus',
   `amount` decimal(12,2) NOT NULL,
@@ -2071,7 +2071,7 @@ CREATE TABLE `employee_bonuses` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `employee_documents` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `staff_id` varchar(36) NOT NULL,
   `title` varchar(300) NOT NULL,
   `category` enum('contract','id','certificate','medical','other') DEFAULT 'other',
@@ -2096,7 +2096,7 @@ CREATE TABLE `employee_documents` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `employee_onboarding` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `staff_id` varchar(36) NOT NULL,
   `template_id` varchar(36) DEFAULT NULL,
   `started_at` timestamp NULL DEFAULT current_timestamp(),
@@ -2119,7 +2119,7 @@ CREATE TABLE `employee_onboarding` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `employee_onboarding_items` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `onboarding_id` varchar(36) NOT NULL,
   `task_title` varchar(300) NOT NULL,
   `category` varchar(50) DEFAULT 'other',
@@ -2142,7 +2142,7 @@ CREATE TABLE `employee_onboarding_items` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `enps_responses` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `staff_id` varchar(36) NOT NULL,
   `score` tinyint(3) unsigned NOT NULL COMMENT '0-10',
@@ -2162,7 +2162,7 @@ CREATE TABLE `enps_responses` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `enrollments` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `subscriber_id` varchar(36) NOT NULL,
   `course_id` varchar(36) DEFAULT NULL,
   `bundle_id` varchar(36) DEFAULT NULL,
@@ -2233,7 +2233,7 @@ CREATE TABLE `entitlement_events` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `expenses` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `description` text NOT NULL,
   `amount` decimal(12,2) NOT NULL,
   `currency` enum('EGP','SAR','USD') NOT NULL DEFAULT 'EGP',
@@ -2269,7 +2269,7 @@ CREATE TABLE `expenses` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `faq_entries` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `question` varchar(500) NOT NULL,
   `answer` text NOT NULL,
@@ -2444,7 +2444,7 @@ CREATE TABLE `financial_documents` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `forum_posts` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `author_id` varchar(36) NOT NULL COMMENT 'subscriber.id',
   `author_name` varchar(200) DEFAULT NULL,
   `course_id` varchar(36) DEFAULT NULL COMMENT 'NULL = general community, set = course-specific',
@@ -2490,7 +2490,7 @@ CREATE TABLE `forum_upvotes` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `hr_audit_logs` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `action` varchar(100) NOT NULL,
   `entity_type` varchar(50) NOT NULL,
   `entity_id` varchar(36) DEFAULT NULL,
@@ -2515,7 +2515,7 @@ CREATE TABLE `hr_audit_logs` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `hr_departments` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `name` varchar(255) NOT NULL,
   `branch` enum('DAQQI','TAGAMOA','ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_ABROAD','ALL') NOT NULL DEFAULT 'ALL',
   `manager_id` varchar(36) DEFAULT NULL,
@@ -2618,7 +2618,7 @@ CREATE TABLE `installment_entries` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `installment_plans` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `subscriber_id` varchar(100) NOT NULL,
   `payment_id` varchar(100) DEFAULT NULL,
   `title` varchar(200) DEFAULT NULL,
@@ -2654,7 +2654,7 @@ CREATE TABLE `installment_plans` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `instructor_fees` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `staff_id` varchar(36) NOT NULL,
   `course_id` varchar(36) DEFAULT NULL,
   `source_payment_id` varchar(100) DEFAULT NULL,
@@ -2722,7 +2722,7 @@ CREATE TABLE `instructor_rate_change_requests` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `instructor_rates` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `staff_id` varchar(36) NOT NULL,
   `consultation_rate_type` enum('per_session','percentage','per_hour') DEFAULT 'per_session',
   `consultation_rate_value` decimal(12,2) DEFAULT 0.00,
@@ -2810,7 +2810,7 @@ CREATE TABLE `ip_whitelist` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `issued_certificates` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `subscriber_id` varchar(36) NOT NULL,
   `course_id` varchar(36) NOT NULL,
   `certificate_number` varchar(100) NOT NULL,
@@ -2832,7 +2832,7 @@ CREATE TABLE `issued_certificates` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `job_applicants` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `job_id` varchar(36) NOT NULL,
   `name` varchar(200) NOT NULL,
   `email` varchar(200) DEFAULT NULL,
@@ -2887,7 +2887,7 @@ CREATE TABLE `job_applicants` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `job_postings` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `title` varchar(200) NOT NULL,
   `department_id` varchar(36) DEFAULT NULL,
   `branch` varchar(30) DEFAULT NULL,
@@ -2941,7 +2941,7 @@ CREATE TABLE `job_queue` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `join_us_applications` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `name` varchar(255) NOT NULL,
   `email` varchar(255) NOT NULL,
   `phone` varchar(50) NOT NULL,
@@ -2978,7 +2978,7 @@ CREATE TABLE `join_us_applications` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `journal_entries` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `ref_type` varchar(50) NOT NULL COMMENT 'payment | refund | payroll | adjustment',
   `ref_id` varchar(191) DEFAULT NULL,
   `entry_date` date NOT NULL,
@@ -3007,7 +3007,7 @@ CREATE TABLE `journal_entries` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `journal_entry_lines` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `entry_id` varchar(36) NOT NULL,
   `account_code` varchar(20) NOT NULL,
   `account_name` varchar(200) NOT NULL,
@@ -3026,7 +3026,7 @@ CREATE TABLE `journal_entry_lines` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `kpi_actuals` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `staff_id` varchar(36) NOT NULL,
   `metric` varchar(100) NOT NULL,
   `actual_value` decimal(12,2) NOT NULL DEFAULT 0.00,
@@ -3050,7 +3050,7 @@ CREATE TABLE `kpi_actuals` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `kpi_targets` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `staff_id` varchar(36) NOT NULL,
   `metric` varchar(100) NOT NULL,
   `target_value` decimal(12,2) NOT NULL,
@@ -3120,7 +3120,7 @@ CREATE TABLE `lead_timeline` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `leads` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `client_code` varchar(50) DEFAULT NULL,
   `name` varchar(255) NOT NULL,
   `email` varchar(255) DEFAULT NULL,
@@ -3267,7 +3267,7 @@ CREATE TABLE `leave_requests` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `leaves` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `staff_id` varchar(36) NOT NULL,
   `type` enum('ANNUAL','SICK','UNPAID','MATERNITY','EMERGENCY','PERMISSION','OTHER','LATE_PERMIT','EARLY_LEAVE') NOT NULL DEFAULT 'ANNUAL',
   `start_date` date NOT NULL,
@@ -3299,7 +3299,7 @@ CREATE TABLE `leaves` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `lecture_completions` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `subscriber_id` varchar(36) NOT NULL,
   `lecture_id` varchar(36) NOT NULL,
   `course_id` varchar(36) DEFAULT NULL,
@@ -3324,7 +3324,7 @@ CREATE TABLE `lecture_completions` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `lecture_progress` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `subscriber_id` varchar(36) NOT NULL,
   `lecture_id` varchar(36) NOT NULL,
   `course_id` varchar(36) DEFAULT NULL,
@@ -3345,7 +3345,7 @@ CREATE TABLE `lecture_progress` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `live_sessions` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `course_id` varchar(36) DEFAULT NULL,
   `title` varchar(255) NOT NULL DEFAULT '',
@@ -3374,7 +3374,7 @@ CREATE TABLE `live_sessions` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `live_streams` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `title` varchar(500) NOT NULL,
   `instructor_id` varchar(36) DEFAULT NULL,
   `instructor_name` varchar(255) NOT NULL,
@@ -3571,7 +3571,7 @@ CREATE TABLE `messaging_channels` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `notification_broadcasts` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `title` varchar(500) NOT NULL,
   `body` text NOT NULL,
   `type` varchar(20) NOT NULL DEFAULT 'info',
@@ -3632,7 +3632,7 @@ CREATE TABLE `notifications` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `nps_responses` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `subscriber_id` varchar(36) DEFAULT NULL,
   `subscriber_email` varchar(255) DEFAULT NULL,
   `score` tinyint(3) unsigned NOT NULL COMMENT '0-10',
@@ -3657,7 +3657,7 @@ CREATE TABLE `nps_responses` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `onboarding_tasks` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `template_id` varchar(36) NOT NULL,
   `title` varchar(300) NOT NULL,
   `description` text DEFAULT NULL,
@@ -3678,7 +3678,7 @@ CREATE TABLE `onboarding_tasks` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `onboarding_templates` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `name` varchar(200) NOT NULL,
   `role` varchar(100) DEFAULT NULL,
   `description` text DEFAULT NULL,
@@ -3697,7 +3697,7 @@ CREATE TABLE `onboarding_templates` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `orders` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `type` enum('COURSE','BUNDLE','CONSULTATION','CERTIFICATE','OTHER') NOT NULL,
   `item_id` varchar(36) NOT NULL,
   `item_title` varchar(500) NOT NULL,
@@ -4019,7 +4019,7 @@ CREATE TABLE `payments` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `payroll_items` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `payroll_run_id` varchar(36) NOT NULL,
   `staff_id` varchar(36) NOT NULL,
   `base_salary` decimal(10,2) NOT NULL DEFAULT 0.00,
@@ -4073,7 +4073,7 @@ CREATE TABLE `payroll_period_locks` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `payroll_runs` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `month` tinyint(3) unsigned NOT NULL,
   `year` smallint(5) unsigned NOT NULL,
   `status` enum('DRAFT','CALCULATED','APPROVED','PAID','CANCELLED') NOT NULL DEFAULT 'DRAFT',
@@ -4104,7 +4104,7 @@ CREATE TABLE `payroll_runs` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `performance_appraisals` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `staff_id` varchar(36) NOT NULL,
   `reviewer_email` varchar(200) DEFAULT NULL,
   `reviewer_id` varchar(100) DEFAULT NULL,
@@ -4293,7 +4293,7 @@ CREATE TABLE `queue_jobs` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `quiz_attempts` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `subscriber_id` varchar(36) NOT NULL,
   `course_id` varchar(36) NOT NULL,
   `quiz_id` varchar(36) NOT NULL,
@@ -4321,7 +4321,7 @@ CREATE TABLE `quiz_attempts` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `recruitment_notes` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `ref_type` enum('join_us','applicant') NOT NULL,
   `ref_id` varchar(36) NOT NULL,
@@ -4342,7 +4342,7 @@ CREATE TABLE `recruitment_notes` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `recurring_expenses` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `title` varchar(200) NOT NULL,
   `amount_egp` decimal(12,2) NOT NULL,
   `category` varchar(100) DEFAULT NULL,
@@ -4507,7 +4507,7 @@ CREATE TABLE `reminder_log` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `retargeting_log` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `lead_id` varchar(36) NOT NULL,
   `channel` enum('WHATSAPP','EMAIL') NOT NULL,
@@ -4584,7 +4584,7 @@ CREATE TABLE `salary_advances` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `salary_structures` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `staff_id` varchar(36) NOT NULL,
   `base_salary` decimal(10,2) NOT NULL DEFAULT 0.00,
   `housing_allowance` decimal(10,2) NOT NULL DEFAULT 0.00,
@@ -4716,7 +4716,7 @@ CREATE TABLE `site_config` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `sla_rules` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `priority` enum('LOW','MEDIUM','HIGH','URGENT') NOT NULL,
   `first_response_hours` smallint(6) NOT NULL DEFAULT 24,
   `resolution_hours` smallint(6) NOT NULL DEFAULT 72,
@@ -4733,7 +4733,7 @@ CREATE TABLE `sla_rules` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `sms_campaigns` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `title` varchar(500) NOT NULL,
   `message` text NOT NULL,
   `audience` enum('all','subscribers','leads','manual') NOT NULL DEFAULT 'all',
@@ -4778,7 +4778,7 @@ CREATE TABLE `sms_settings` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `staff` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `firebase_uid` varchar(128) DEFAULT NULL,
   `name` varchar(255) NOT NULL,
   `email` varchar(255) NOT NULL,
@@ -4853,7 +4853,7 @@ CREATE TABLE `staff_absences` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `staff_documents` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `staff_id` varchar(36) NOT NULL,
   `doc_type` enum('NATIONAL_ID','PHOTOS','QUALIFICATION','BIRTH_CERT','WORK_STUB','INSURANCE_PRINT','MILITARY') NOT NULL,
@@ -4874,7 +4874,7 @@ CREATE TABLE `staff_documents` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `staff_kpis` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `staff_id` varchar(36) NOT NULL,
   `period` varchar(7) NOT NULL COMMENT 'YYYY-MM',
   `metric` varchar(100) NOT NULL COMMENT 'e.g. leads_converted, calls_made, nps_score',
@@ -4922,7 +4922,7 @@ CREATE TABLE `staff_messages` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `staff_offboarding` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `staff_id` varchar(36) NOT NULL,
   `staff_name` varchar(255) DEFAULT NULL,
@@ -4996,7 +4996,7 @@ CREATE TABLE `subscriber_subscriptions` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `subscribers` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `firebase_uid` varchar(128) DEFAULT NULL,
   `client_code` varchar(50) DEFAULT NULL,
   `lead_id` varchar(100) DEFAULT NULL,
@@ -5111,7 +5111,7 @@ CREATE TABLE `subscriptions` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `support_canned_responses` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `title` varchar(200) NOT NULL,
   `body` text NOT NULL,
@@ -5131,7 +5131,7 @@ CREATE TABLE `support_canned_responses` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `support_messages` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `ticket_id` varchar(36) NOT NULL,
   `author_type` enum('subscriber','staff','system') NOT NULL DEFAULT 'staff',
   `author_name` varchar(255) DEFAULT NULL,
@@ -5149,7 +5149,7 @@ CREATE TABLE `support_messages` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `support_tickets` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `ticket_code` varchar(20) DEFAULT NULL,
   `subscriber_id` varchar(36) DEFAULT NULL,
   `subscriber_email` varchar(255) DEFAULT NULL,
@@ -5218,7 +5218,7 @@ CREATE TABLE `support_tickets` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `tasks` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(36) NOT NULL DEFAULT 'tenant-default',
   `title` varchar(500) NOT NULL,
   `description` text DEFAULT NULL,
@@ -5428,7 +5428,7 @@ CREATE TABLE `tenants` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `testimonials` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `name` varchar(255) NOT NULL,
   `role` varchar(255) NOT NULL,
   `text` text NOT NULL,
@@ -5449,7 +5449,7 @@ CREATE TABLE `testimonials` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `therapist_slots` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `therapist_id` varchar(36) NOT NULL,
   `day` varchar(20) NOT NULL,
   `start_time` varchar(10) NOT NULL,
@@ -5471,7 +5471,7 @@ CREATE TABLE `therapist_slots` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `therapists` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `name` varchar(255) NOT NULL,
   `specialty` varchar(255) NOT NULL,
   `image` text NOT NULL,
@@ -5510,7 +5510,7 @@ CREATE TABLE `therapists` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `ticket_events` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(36) NOT NULL DEFAULT 'tenant-default',
   `ticket_id` varchar(36) NOT NULL,
   `event_type` varchar(50) NOT NULL,
@@ -5532,7 +5532,7 @@ CREATE TABLE `ticket_events` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `ticket_replies` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `ticket_id` varchar(36) NOT NULL,
   `author_id` varchar(36) DEFAULT NULL,
@@ -5616,7 +5616,7 @@ CREATE TABLE `users` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `webhooks` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `name` varchar(255) NOT NULL,
   `url` varchar(1000) NOT NULL,
   `secret` varchar(255) DEFAULT NULL,
@@ -5694,7 +5694,7 @@ CREATE TABLE `whatsapp_campaigns` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `work_schedules` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `staff_id` varchar(36) NOT NULL,
   `day_of_week` tinyint(4) NOT NULL COMMENT '0=Sun 6=Sat',
   `start_time` time NOT NULL DEFAULT '09:00:00',
@@ -5719,7 +5719,7 @@ CREATE TABLE `work_schedules` (
 
 -- Tables production has that this file lacked (synced 1 Oct 2026).
 CREATE TABLE `community_event_registrations` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(64) NOT NULL,
   `event_id` varchar(100) NOT NULL,
   `name` varchar(200) NOT NULL,
@@ -5733,7 +5733,7 @@ CREATE TABLE `community_event_registrations` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `customer_devices` (
-  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
   `tenant_id` varchar(64) NOT NULL,
   `user_id` varchar(100) NOT NULL,
   `device_hash` char(64) NOT NULL,
