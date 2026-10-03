@@ -5,7 +5,7 @@ import { paymentOrigin, PAYMENT_ORIGIN, PAYMENT_ORIGIN_CLASS } from '../../../li
 import { useNavigate } from 'react-router-dom';
 import {
   CheckCircle, Clock, CreditCard, Download,
-  Plus, Search, TrendingUp, Trash2, Wallet, XCircle,
+  Plus, Search, TrendingUp, Trash2, Upload, Wallet, XCircle,
 } from 'lucide-react';
 import type { Bundle, Course, OrderItem, StaffMember, SubscriberItem } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -15,6 +15,9 @@ import { PAYMENT_METHOD_CODES, paymentMethodLabel, normalizePaymentMethod } from
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 import { BRANCH_LABELS_AR, normalizeBranch } from '../../../constants/branches';
 import { AddTransferModal, IncomingTransfersTable, useIncomingTransfers, type IncomingTransfer } from './orders/IncomingTransfers';
+import { ImportTransfersModal } from './orders/ImportTransfersModal';
+import { transferMatch } from '../../../../shared/transferSheet';
+import { foldText } from '../../../../shared/sheetImport';
 
 // What an order's payment_method can hold. The four rails a customer may pick,
 // plus the three the gateways and the desk write: a card charge, a Paymob
@@ -124,6 +127,10 @@ export default function OrdersTab({
   const paymentBoxes = usePaymentBoxes(content['finance.payment_methods']);
   const navigate = useNavigate();
   const ledger = useIncomingTransfers(canManageFinancial);
+  const [showImportTransfers, setShowImportTransfers] = React.useState(false);
+  // The «ربط» lists: the likeliest match first, and a search across the rest.
+  const [linkQuery, setLinkQuery] = React.useState('');
+  const matchesQuery = (text: string) => foldText(linkQuery).split(' ').filter(Boolean).every(word => foldText(text).includes(word));
   // Approving is when the accounts team says the money arrived, so it is when
   // the method has to be known — and older rows reached the review queue
   // without one. Nothing else can edit a stored method, so it is asked for
@@ -687,6 +694,10 @@ export default function OrdersTab({
                       className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-4 py-2 rounded-full shadow-md shadow-blue-200 transition">
                       <Plus size={15} /> إضافة تحويل
                     </button>
+                    <button onClick={() => setShowImportTransfers(true)}
+                      className="inline-flex items-center gap-2 bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 text-sm font-bold px-4 py-2 rounded-full transition">
+                      <Upload size={15} /> رفع ملف التحويلات
+                    </button>
                   </div>
 
                   {/* ── Filters ── */}
@@ -764,7 +775,7 @@ export default function OrdersTab({
                   {/* ── Transfers Table (separate view) ── */}
                   {orderReviewTab === 'transfers' ? (
                     <IncomingTransfersTable transfers={ledger.transfers} loading={ledger.loading} canLink={canManageFinancial}
-                      onLink={row => setLinkTransferModal({ row })} onAdd={() => setShowAddTransfer(true)} />
+                      onLink={row => { setLinkQuery(''); setLinkTransferModal({ row }); }} onAdd={() => setShowAddTransfer(true)} />
                   ) : (
                   /* ── Normal Orders Table ── */
                   <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
@@ -881,7 +892,7 @@ export default function OrdersTab({
                                           className="text-[10px] bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-lg font-bold transition">
                                           ✕ رفض
                                         </button>
-                                        <button onClick={() => setLinkOrderModal({ row })}
+                                        <button onClick={() => { setLinkQuery(''); setLinkOrderModal({ row }); }}
                                           className="text-[10px] bg-violet-600 hover:bg-violet-700 text-white px-2 py-1 rounded-lg font-bold transition" title="ربط بتحويل وتأكيد">
                                           🔗 ربط
                                         </button>
@@ -934,6 +945,11 @@ export default function OrdersTab({
                   {linkTransferModal && (() => {
                     const transfer = linkTransferModal.row;
                     const pendingOrders = effectiveOrders.filter(r => r.status === 'pending' && r.type !== 'transfer');
+                    const rankedOrders = pendingOrders
+                      .filter(order => matchesQuery([order.customerName, order.itemTitle, order.amount, order.transactionId].join(' ')))
+                      .map(order => ({ order, ...transferMatch({ amount: Number(order.amount), currency: order.currency, method: order.paymentMethod, reference: order.transactionId, customerName: order.customerName, date: order.createdAt }, transfer) }))
+                      .sort((a, b) => b.score - a.score)
+                      .slice(0, 100);
                     return (
                       <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" dir="rtl">
                         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setLinkTransferModal(null)} />
@@ -951,10 +967,16 @@ export default function OrdersTab({
                             <div className="text-blue-600 text-xs mt-1">{transfer.senderName || 'غير محدد'} — {transfer.method}{transfer.reference ? ` · #${transfer.reference}` : ''} — {Number(transfer.amount).toLocaleString('ar-EG-u-nu-latn')} {transfer.currency}</div>
                           </div>
                           <p className="text-xs text-gray-500 flex-shrink-0">اختر دفعة عميل قيد المراجعة لربطها بهذا التحويل وتأكيدها تلقائياً.</p>
+                          {pendingOrders.length > 0 && (
+                            <input value={linkQuery} onChange={e => setLinkQuery(e.target.value)} placeholder="بحث باسم العميل أو الكورس أو المبلغ…"
+                              className="flex-shrink-0 w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-violet-200" />
+                          )}
                           <div className="overflow-y-auto flex-1 space-y-2 min-h-0">
                             {pendingOrders.length === 0 ? (
                               <div className="text-center py-8 text-gray-400 text-sm">لا توجد دفعات قيد المراجعة حالياً</div>
-                            ) : pendingOrders.map(order => (
+                            ) : rankedOrders.length === 0 ? (
+                              <div className="text-center py-8 text-gray-400 text-sm">مفيش دفعة بالبحث ده</div>
+                            ) : rankedOrders.map(({ order, reasons }) => (
                               <button key={order.id}
                                 onClick={async () => {
                                   try {
@@ -973,6 +995,11 @@ export default function OrdersTab({
                                     <div className="font-semibold text-gray-800 text-sm group-hover:text-violet-700 truncate">{order.customerName}</div>
                                     <div className="text-xs text-gray-500 mt-0.5 truncate">{order.itemTitle} · {order.paymentMethod}</div>
                                     <div className="text-[10px] text-gray-400 mt-0.5 font-mono">#{order.id.slice(-8)}</div>
+                                    {reasons.length > 0 && (
+                                      <div className="mt-1 flex flex-wrap gap-1">
+                                        {reasons.map(reason => <span key={reason} className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">{reason}</span>)}
+                                      </div>
+                                    )}
                                   </div>
                                   <div className="text-right flex-shrink-0">
                                     <div className="font-extrabold text-emerald-700 text-sm">{order.amount?.toLocaleString('ar-EG-u-nu-latn')} {order.currency}</div>
@@ -999,6 +1026,12 @@ export default function OrdersTab({
                   {linkOrderModal && (() => {
                     const order = linkOrderModal.row;
                     const availableTransfers = ledger.transfers.filter(transfer => !transfer.paymentId);
+                    const payment = { amount: Number(order.amount), currency: order.currency, method: order.paymentMethod, reference: order.transactionId, customerName: order.customerName, date: order.createdAt };
+                    const rankedTransfers = availableTransfers
+                      .filter(transfer => matchesQuery([transfer.reference, transfer.senderName, transfer.senderPhone, transfer.note, transfer.amount].join(' ')))
+                      .map(transfer => ({ transfer, ...transferMatch(payment, transfer) }))
+                      .sort((a, b) => b.score - a.score)
+                      .slice(0, 100);
                     return (
                       <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" dir="rtl">
                         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setLinkOrderModal(null)} />
@@ -1015,11 +1048,17 @@ export default function OrdersTab({
                             <div className="font-bold text-amber-800">الدفعة المحددة</div>
                             <div className="text-amber-600 text-xs mt-1">{order.customerName} — {order.itemTitle} — {order.amount?.toLocaleString('ar-EG-u-nu-latn')} {order.currency}</div>
                           </div>
-                          <p className="text-xs text-gray-500 flex-shrink-0">اختر تحويلاً من القائمة لربط هذه الدفعة به. سيتم تأكيد الدفعة تلقائياً.</p>
+                          <p className="text-xs text-gray-500 flex-shrink-0">اختر تحويلاً من القائمة لربط هذه الدفعة به. سيتم تأكيد الدفعة تلقائياً. الأقرب (نفس الرقم/المبلغ/الاسم) فوق.</p>
+                          {availableTransfers.length > 0 && (
+                            <input value={linkQuery} onChange={e => setLinkQuery(e.target.value)} placeholder="بحث برقم العملية أو المحوِّل أو الاسم أو المبلغ…"
+                              className="flex-shrink-0 w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-violet-200" />
+                          )}
                           <div className="overflow-y-auto flex-1 space-y-2 min-h-0">
                             {availableTransfers.length === 0 ? (
                               <div className="text-center py-8 text-gray-400 text-sm">لا توجد تحويلات متاحة — أضف تحويلاً أولاً من تبويب "التحويلات"</div>
-                            ) : availableTransfers.map(transfer => (
+                            ) : rankedTransfers.length === 0 ? (
+                              <div className="text-center py-8 text-gray-400 text-sm">مفيش تحويل بالبحث ده</div>
+                            ) : rankedTransfers.map(({ transfer, reasons }) => (
                               <button key={transfer.id}
                                 onClick={async () => {
                                   try {
@@ -1035,8 +1074,14 @@ export default function OrdersTab({
                                 className="w-full text-right border border-gray-200 hover:border-violet-400 hover:bg-violet-50 rounded-xl px-4 py-3 transition group">
                                 <div className="flex items-center justify-between gap-3">
                                   <div className="min-w-0">
-                                    <div className="font-semibold text-gray-800 text-sm group-hover:text-violet-700 truncate">{transfer.senderName || 'غير محدد'}</div>
+                                    <div className="font-semibold text-gray-800 text-sm group-hover:text-violet-700 truncate">{transfer.senderName || transfer.senderPhone || 'غير محدد'}</div>
                                     <div className="text-xs text-gray-500 mt-0.5 truncate">{transfer.method}{transfer.reference ? ` · #${transfer.reference}` : ''}</div>
+                                    {transfer.note && <div className="text-[10px] text-gray-400 mt-0.5 truncate">{transfer.note}</div>}
+                                    {reasons.length > 0 && (
+                                      <div className="mt-1 flex flex-wrap gap-1">
+                                        {reasons.map(reason => <span key={reason} className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">{reason}</span>)}
+                                      </div>
+                                    )}
                                   </div>
                                   <div className="text-right flex-shrink-0">
                                     <div className="font-extrabold text-blue-700 text-sm">{Number(transfer.amount).toLocaleString('ar-EG-u-nu-latn')} {transfer.currency}</div>
@@ -1056,6 +1101,11 @@ export default function OrdersTab({
                       </div>
                     );
                   })()}
+
+                  {showImportTransfers && (
+                    <ImportTransfersModal boxes={paymentBoxes} notify={notify} onClose={() => setShowImportTransfers(false)}
+                      onSaved={async () => { setOrderReviewTab('transfers'); await ledger.reload(); }} />
+                  )}
 
                   {showAddTransfer && (
                     <AddTransferModal boxes={paymentBoxes} notify={notify} onClose={() => setShowAddTransfer(false)}

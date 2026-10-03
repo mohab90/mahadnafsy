@@ -3,6 +3,8 @@ import { ArrowLeftRight, Link2 } from 'lucide-react';
 import { Modal } from '../../../../../shared/ui/Modal';
 import { cairoDateOnly, cairoDay } from '../../../../../shared/cairoDate';
 import { isCashBox } from '../../../../../shared/paymentMethods';
+import { foldText } from '../../../../../shared/sheetImport';
+import { transferMatch } from '../../../../../shared/transferSheet';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { usePaymentBoxes } from '../../../../lib/paymentMethods';
 import { useStaticData } from '../../../../context/siteDataSlices';
@@ -13,7 +15,7 @@ export type TransferLink =
 
 type LedgerTransfer = {
   id: string; amount: number; currency: string; method: string; reference: string | null;
-  senderName: string | null; receivedOn: string; createdAt: string;
+  senderName: string | null; senderPhone: string | null; note: string | null; receivedOn: string; createdAt: string;
 };
 
 /**
@@ -22,8 +24,8 @@ type LedgerTransfer = {
  * (recorded as it is linked). The server refuses a transfer that already
  * confirmed another payment, and an operation number used twice on one box.
  */
-export function LinkTransferDialog({ title, amount, currency, method, reference, date, busy, onConfirm, onClose }: {
-  title: string; amount: number; currency: string; method?: string | null; reference?: string | null; date?: string | null;
+export function LinkTransferDialog({ title, customerName, amount, currency, method, reference, date, busy, onConfirm, onClose }: {
+  title: string; customerName?: string | null; amount: number; currency: string; method?: string | null; reference?: string | null; date?: string | null;
   busy: boolean; onConfirm: (link: TransferLink | null) => void; onClose: () => void;
 }) {
   const { content } = useStaticData();
@@ -31,6 +33,7 @@ export function LinkTransferDialog({ title, amount, currency, method, reference,
   const [mode, setMode] = useState<'new' | 'ledger'>('new');
   const [ledger, setLedger] = useState<LedgerTransfer[]>([]);
   const [picked, setPicked] = useState('');
+  const [query, setQuery] = useState('');
   const [draft, setDraft] = useState({
     amount: String(amount || ''), currency: currency || 'EGP', method: method || '', reference: reference || '',
     receivedOn: date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : cairoDateOnly(), senderName: '', senderPhone: '', note: '',
@@ -38,13 +41,29 @@ export function LinkTransferDialog({ title, amount, currency, method, reference,
 
   useEffect(() => {
     mysqlAdmin.adminGet<LedgerTransfer[]>('/admin/incoming-transfers?unlinked=1')
-      .then(rows => { setLedger(Array.isArray(rows) ? rows : []); if (Array.isArray(rows) && rows.length) setMode('ledger'); })
+      .then(rows => {
+        const list = Array.isArray(rows) ? rows : [];
+        setLedger(list);
+        if (list.length) setMode('ledger');
+        // The payment's own operation number on the ledger is the one.
+        const typed = String(reference || '').replace(/\s+/g, '');
+        const same = typed ? list.find(transfer => transfer.reference === typed) : undefined;
+        if (same) setPicked(same.id);
+      })
       .catch(() => setLedger([]));
-  }, []);
+  }, [reference]);
 
-  // The same amount first: that is nearly always the one.
-  const sorted = useMemo(() => [...ledger].sort((a, b) =>
-    (Number(b.amount) === amount && b.currency === currency ? 1 : 0) - (Number(a.amount) === amount && a.currency === currency ? 1 : 0)), [ledger, amount, currency]);
+  // The likeliest first — its operation number, the amount, the customer the
+  // accounts sheet names, the box, the day — and the person's search over the rest.
+  const sorted = useMemo(() => {
+    const words = foldText(query).split(' ').filter(Boolean);
+    const payment = { amount, currency, method, reference, customerName, date };
+    return ledger
+      .filter(transfer => !words.length || words.every(word => foldText([transfer.reference, transfer.senderName, transfer.senderPhone, transfer.note, transfer.amount].join(' ')).includes(word)))
+      .map(transfer => ({ transfer, ...transferMatch(payment, transfer) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 100);
+  }, [ledger, query, amount, currency, method, reference, customerName, date]);
   const cash = isCashBox(method);
   const ready = mode === 'ledger' ? !!picked
     : Number(draft.amount) > 0 && !!draft.method.trim() && !!draft.reference.trim();
@@ -60,23 +79,31 @@ export function LinkTransferDialog({ title, amount, currency, method, reference,
         </div>
 
         {mode === 'ledger' ? (
-          sorted.length === 0 ? (
+          ledger.length === 0 ? (
             <p className="rounded-xl bg-gray-50 py-6 text-center text-xs text-gray-400">مفيش تحويلات متسجلة لسه — سجّل اللي وصل من «تحويل وصل دلوقتي».</p>
           ) : (
+            <div className="space-y-1.5">
+            <input value={query} onChange={e => setQuery(e.target.value)} placeholder="بحث برقم العملية أو المحوِّل أو الاسم أو المبلغ…"
+              className="w-full rounded-xl border border-gray-200 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-violet-200" />
             <div className="max-h-64 space-y-1.5 overflow-y-auto">
-              {sorted.map(transfer => (
+              {sorted.length === 0 && <p className="py-4 text-center text-xs text-gray-400">مفيش تحويل بالبحث ده</p>}
+              {sorted.map(({ transfer, reasons }) => (
                 <label key={transfer.id}
                   className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 transition ${picked === transfer.id ? 'border-violet-500 bg-violet-50' : 'border-gray-200 hover:border-violet-300'}`}>
                   <input type="radio" name="transfer" checked={picked === transfer.id} onChange={() => setPicked(transfer.id)} className="accent-violet-600" />
                   <div className="min-w-0 flex-1">
                     <div className="font-bold text-gray-800">{Number(transfer.amount).toLocaleString('ar-EG-u-nu-latn')} {transfer.currency} · {transfer.method}</div>
-                    <div className="truncate text-[11px] text-gray-500" dir="ltr">#{transfer.reference || '—'} · {cairoDay(transfer.receivedOn)}{transfer.senderName ? ` · ${transfer.senderName}` : ''}</div>
+                    <div className="truncate text-[11px] text-gray-500" dir="ltr">#{transfer.reference || '—'} · {cairoDay(transfer.receivedOn)}{transfer.senderName || transfer.senderPhone ? ` · ${transfer.senderName || transfer.senderPhone}` : ''}</div>
+                    {transfer.note && <div className="truncate text-[10px] text-gray-400">{transfer.note}</div>}
                   </div>
-                  {Number(transfer.amount) === amount && transfer.currency === currency && (
-                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">نفس المبلغ</span>
+                  {reasons.length > 0 && (
+                    <div className="flex flex-col items-end gap-0.5">
+                      {reasons.map(reason => <span key={reason} className="whitespace-nowrap rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">{reason}</span>)}
+                    </div>
                   )}
                 </label>
               ))}
+            </div>
             </div>
           )
         ) : (

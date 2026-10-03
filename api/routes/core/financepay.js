@@ -16,7 +16,7 @@ const { grantCourseEntitlement } = require('../../lib/entitlements');
 const { financialRecordMatches, resolveFinancialScope } = require('../../lib/financialScope');
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../../lib/paymentEntitlementAccess');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
-const { isCashMethod, linkTransfer, recordTransfer } = require('../../lib/incomingTransfers');
+const { importTransfers, isCashMethod, linkTransfer, recordTransfer } = require('../../lib/incomingTransfers');
 const { mustLinkTransfer, TRANSFER_REQUIRED } = require('../../lib/paymentApprovalPolicy');
 
 // This is the only manual status transition endpoint for an existing payment.
@@ -288,7 +288,7 @@ router.get('/api/admin/incoming-transfers', requireAuth, requireAdminOrStaff, re
          LEFT JOIN payments p ON p.id=t.payment_id AND p.tenant_id=t.tenant_id
          LEFT JOIN subscribers s ON s.id=p.subscriber_id AND s.tenant_id=t.tenant_id
         WHERE t.tenant_id=?${unlinked ? ' AND t.payment_id IS NULL' : ''}
-        ORDER BY t.created_at DESC LIMIT 300`, [req.tenantId]);
+        ORDER BY t.received_on DESC, t.created_at DESC LIMIT 3000`, [req.tenantId]);
     res.json(rows.map(row => ({
       id: row.id, amount: Number(row.amount) || 0, currency: row.currency, method: row.method, reference: row.reference,
       senderName: row.sender_name, senderPhone: row.sender_phone, receivedOn: row.received_on, note: row.note,
@@ -315,6 +315,24 @@ router.post('/api/admin/incoming-transfers', requireAuth, requireAdminOrStaff, r
   } catch (error) {
     const statusCode = error.statusCode || 500;
     if (statusCode >= 500) logger.error('[incoming-transfers/create]', error.message);
+    res.status(statusCode).json({ error: statusCode < 500 ? error.message : 'Internal server error' });
+  }
+});
+
+// «رفع ملف التحويلات»: the accounts team's sheet, read on the screen (shared/transferSheet.ts).
+router.post('/api/admin/incoming-transfers/import', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+  try {
+    if (!req.isSuperAdmin && String(req.staffRecord?.role || '').toLowerCase() === 'collection') {
+      return res.status(403).json({ error: 'تسجيل التحويلات الواردة شغل المسئول' });
+    }
+    const result = await importTransfers(pool, {
+      tenantId: req.tenantId, transfers: req.body?.transfers,
+      actor: { id: req.staffRecord?.id, name: req.staffRecord?.name || req.user?.email },
+    });
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    if (statusCode >= 500) logger.error('[incoming-transfers/import]', error.message);
     res.status(statusCode).json({ error: statusCode < 500 ? error.message : 'Internal server error' });
   }
 });
