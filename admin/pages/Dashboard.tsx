@@ -102,6 +102,8 @@ const Dashboard: React.FC = () => {
     loadFullLeads,
     loadFullSubscribers,
     loadBranchSubscribers,
+    daqqiRounds: siteDaqqiRounds,
+    bulkSetDaqqiRounds,
     staffMembers,
     consultations,
     orders,
@@ -457,6 +459,7 @@ const Dashboard: React.FC = () => {
     courses,
     setStaffScopedSubscribers,
     setStaffScopedLeads,
+    setStaffScopedRounds: bulkSetDaqqiRounds,
     mergeContent,
   });
   const {
@@ -844,7 +847,10 @@ const Dashboard: React.FC = () => {
                     bundles,
                     staffMembers,
                     content,
-                    salesOwnDaqqiRounds: salesOwnDaqqiRounds ?? [],
+                    // The context's rounds, not the staff copy: that one is null for an admin
+                    // (every client read «غير مسكن») and, for the desk, only changed on the
+                    // next poll — a client housed a moment ago did not show as housed.
+                    salesOwnDaqqiRounds: siteDaqqiRounds,
                     setSalesOwnDaqqiRounds,
                     salesOwnLeads: salesOwnLeads ?? [],
                     updateSubscriber,

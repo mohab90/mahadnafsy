@@ -12,6 +12,7 @@ const { requireDaqqiAccess } = require('../lib/daqqiAccess');
 const { writeAuditEvent } = require('../lib/auditTrail');
 const { getDaqqiAttendees } = require('../lib/daqqiAttendees');
 const { ymd } = require('../lib/helpers');
+const { branchIdForBranch } = require('../lib/branches');
 
 const { mysqlWeekdayFromArabic } = require('../lib/daqqiSchedule');
 const { sqlCairoToday, cairoToday } = require('../lib/dates');
@@ -517,6 +518,18 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
             : 'Subscriber not found');
           error.statusCode = blockedAsArchived ? 409 : 404;
           throw error;
+        }
+        // A client housed in a Dokki round is a Dokki client. «عملاء الدقي» lists the
+        // branch, so one booked from another branch (a lead converted online, a client
+        // filed under «أخرى») was on the round's roster and nowhere on the clients
+        // screen — and the desk, whose scope is the branch, could not open them. The
+        // booking moves them; their payments keep the branch they were taken in.
+        if (!alreadyBooked) {
+          await conn.query(
+            `UPDATE subscribers SET branch='DAQQI', branch_id=?, updated_at=NOW()
+              WHERE id=? AND tenant_id=? AND (branch IS NULL OR branch<>'DAQQI')`,
+            [branchIdForBranch('DAQQI'), subId, req.tenantId]
+          );
         }
       }
     }

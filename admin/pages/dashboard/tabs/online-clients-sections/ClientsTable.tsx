@@ -125,7 +125,7 @@ export function ClientsTable({
             <th className="text-right px-2 py-2 border border-gray-200 font-semibold relative select-none" style={cw['name']?{width:cw['name']}:{}}>الاسم<span onMouseDown={e=>startColResize('name',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>
             {/* عملائي holds every branch now, so which one a client belongs to
                 has to be readable on the row rather than implied by the tab. */}
-            {vc.branch && <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] whitespace-nowrap relative select-none" style={cw['branch']?{width:cw['branch']}:{}}>{isDaqqiClientsTab ? 'الفرع' : 'السوق'}<span onMouseDown={e=>startColResize('branch',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
+            {vc.branch && !isDaqqiClientsTab && <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] whitespace-nowrap relative select-none" style={cw['branch']?{width:cw['branch']}:{}}>{isDaqqiClientsTab ? 'الفرع' : 'السوق'}<span onMouseDown={e=>startColResize('branch',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
             {vc.createdAt  && <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] whitespace-nowrap relative select-none" style={cw['createdAt']?{width:cw['createdAt']}:{}}>تاريخ الاشتراك<span onMouseDown={e=>startColResize('createdAt',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
             {vc.courses    && <th className="text-right px-2 py-2 border border-gray-200 font-semibold relative select-none" style={cw['courses']?{width:cw['courses']}:{}}>الكورسات<span onMouseDown={e=>startColResize('courses',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
             {vc.value      && <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] relative select-none" style={cw['value']?{width:cw['value']}:{}}>القيمة<span onMouseDown={e=>startColResize('value',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
@@ -346,7 +346,7 @@ export function ClientsTable({
                 <td className="px-2 py-2 border border-gray-200">
                   <ClientNameCell row={row} clientCode={clientCode} navigate={navigate} onCall={() => logContact(row, 'call')} />
                 </td>
-                {vc.branch && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] whitespace-nowrap"><span className="rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">{placeLabel(row)}</span></td>}
+                {vc.branch && !isDaqqiClientsTab && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] whitespace-nowrap"><span className="rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">{placeLabel(row)}</span></td>}
                 {vc.createdAt  && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{cairoDay(row.createdAt)||'—'}</td>}
                 {vc.courses    && <td className="px-3 py-2 border border-gray-200 text-xs text-gray-400">لا يوجد</td>}
                 {vc.value      && <td className="px-2 py-2 border border-gray-200 text-center text-gray-300 text-xs">—</td>}
@@ -410,7 +410,7 @@ export function ClientsTable({
                       <ClientNameCell row={row} clientCode={clientCode} navigate={navigate} onCall={() => logContact(row, 'call')} />
                     </td>
                   )}
-                  {vc.branch && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] whitespace-nowrap"><span className="rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">{placeLabel(row)}</span></td>}
+                  {vc.branch && !isDaqqiClientsTab && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] whitespace-nowrap"><span className="rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">{placeLabel(row)}</span></td>}
                   {vc.createdAt && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{crFirstPayDate||'—'}</td>}
                   {vc.courses && <td className="px-2 py-2 border border-gray-200 text-[11px] text-gray-700 max-w-[160px] truncate" title={cr.label}>{cr.label}</td>}
                   {/* Paid above the recorded value is not an accounting error,

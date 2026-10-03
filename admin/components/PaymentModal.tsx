@@ -210,6 +210,12 @@ interface SubjectInfo {
   extraCertificateRequests?: ExtraCertificateRequest[];
   branch?: string;
   email?: string;
+  /** Prices agreed per course/track, and money paid before the system (crm_json.priorPaid). */
+  customPrices?: Record<string, number>;
+  priorPaid?: Record<string, number>;
+  /** Courses/tracks the caller knows the client holds though no enrolment says so — the
+   *  Dokki desk passes the course of the round the payment is opened from. */
+  heldItemIds?: string[];
 }
 
 interface BranchOption { id: string; label: string; }
@@ -342,7 +348,21 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     }
   });
 
-  const enrolledIds: string[] = subject.enrolledCourseIds || [];
+  // What the client holds. The list was the enrolments alone, and a client who has
+  // not been enrolled yet — the Dokki desk's, whose access opens when a payment is
+  // approved — held nothing: «قسط» listed no course to pay towards and «تكملة لمسار»
+  // never appeared. A course also counts when money has gone against it (collected
+  // or waiting), when a price was agreed for it, when «مدفوع قبل السيستم» names it,
+  // and when the caller says the client is housed in it.
+  const heldByMoney: string[] = [
+    ...(subject.paymentHistory || [])
+      .filter(p => p.status !== 'failed' && p.status !== 'refunded')
+      .map(p => p.courseId || (p.bundleId ? `bundle:${p.bundleId}` : '')),
+    ...Object.keys(subject.customPrices || {}).filter(key => !key.startsWith('multi:')),
+    ...Object.entries(subject.priorPaid || {}).filter(([, amount]) => Number(amount) > 0).map(([key]) => key),
+    ...(subject.heldItemIds || []),
+  ].filter(Boolean);
+  const enrolledIds: string[] = [...new Set([...(subject.enrolledCourseIds || []), ...heldByMoney])];
 
   // Auto-detect bundles: if ALL courses of a bundle are in enrolledIds but bundle:ID isn't explicit,
   // treat it as a bundle enrollment and collapse individual courses into one entry.
@@ -362,7 +382,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   }
 
   const buildPaid = (cid: string, bCourseIds?: string[]) =>
-    payHistory.filter(p => {
+    (Number(subject.priorPaid?.[cid]) || 0) + payHistory.filter(p => {
       if (p.currency !== d.currency) return false;
       const effId = p.courseId || (p.bundleId ? `bundle:${p.bundleId}` : null);
       if (effId === cid) return true;
@@ -952,7 +972,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
             )}
             {/* ⚡ Quick "all remaining" for installment */}
             {d.bookingType === 'installment' && d.courseId && (() => {
-              const alreadyPaid = coursePayMap[d.courseId]?.paid ?? 0;
+              const alreadyPaid = (coursePayMap[d.courseId]?.paid ?? 0) + (Number(subject.priorPaid?.[d.courseId]) || 0);
               // Against the price agreed. It used the catalogue, so «كل
               // المتبقي» asked a client booked at a discount for list price.
               const bal = _effPx > 0 ? Math.max(0, _effPx - alreadyPaid) : 0;

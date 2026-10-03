@@ -341,6 +341,12 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
     }
   };
 
+  const refreshRounds = async () => {
+    try {
+      bulkSetDaqqiRounds(await mysqlAdmin.listAllDaqqiRounds() as unknown as DaqqiRound[]);
+    } catch { /* the list on screen stays; the next poll catches up */ }
+  };
+
   const handleDaqqiPay = async (submitted: PaymentDraft, shouldPrint = false) => {
     if (!daqqiPayModal) return;
     const daqqiPayDraft = submitted;
@@ -404,12 +410,11 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
       notify('error', error instanceof Error ? error.message : 'تعذر تسجيل الدفعة.');
       return;
     }
-    if (daqqiPayModal.roundId && !requirePaymentApproval) {
-      const r = daqqiRounds.find(r => r.id === daqqiPayModal.roundId);
-      if (r && !await doUpdateRound({ ...r, attendees: r.attendees.map(a => a.subscriberId === daqqiPayModal.subscriberId ? { ...a, amountPaid: a.amountPaid + amount } : a) })) {
-        notify('error', 'تم تسجيل الدفعة، لكن تعذر تحديث إجمالي العميل داخل الروند.');
-      }
-    }
+    // The roster's paid, pending and prior money are worked out on the server from the
+    // payments themselves, so the rounds are read back — which also shows a payment
+    // waiting for approval as such. This added the amount in the browser and saved the
+    // whole round to do it, and showed nothing at all for a payment that was pending.
+    await refreshRounds();
     // No receipt built here and no closing here. PaymentModal builds the
     // same receipt from the same draft — including prevPaid, remaining and
     // the expected total — and calls onClose once it is dismissed. Closing
@@ -655,14 +660,15 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
           <div className="overflow-x-auto rounded-xl border border-gray-200 lg:overflow-x-visible">
             <table className="w-full table-fixed text-sm min-w-[920px] lg:min-w-0">
               <colgroup>
-                <col className="w-[5%]" /><col className="w-[15%]" /><col className="w-[12%]" /><col className="w-[12%]" /><col className="w-[9%]" />
-                <col className="w-[7%]" /><col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[16%]" />
+                <col className="w-[5%]" /><col className="w-[14%]" /><col className="w-[11%]" /><col className="w-[8%]" /><col className="w-[11%]" /><col className="w-[8%]" />
+                <col className="w-[6%]" /><col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[7%]" /><col className="w-[14%]" />
               </colgroup>
               <thead>
                 <tr className="bg-gray-50 text-gray-700 text-xs">
                   <th className="text-right px-2 py-2.5 border-b border-gray-200 font-semibold">الكود</th>
                   <th className="text-right px-2 py-2.5 border-b border-gray-200 font-semibold">الكورس</th>
-                  <th className="text-right px-2 py-2.5 border-b border-gray-200 font-semibold">الميعاد والقاعة</th>
+                  <th className="text-right px-2 py-2.5 border-b border-gray-200 font-semibold">الميعاد</th>
+                  <th className="text-right px-2 py-2.5 border-b border-gray-200 font-semibold">القاعة</th>
                   <th className="text-right px-2 py-2.5 border-b border-gray-200 font-semibold">المحاضر والريسبشن</th>
                   <th className="text-right px-2 py-2.5 border-b border-gray-200 font-semibold">الحالة</th>
                   <th className="text-center px-1 py-2.5 border-b border-gray-200 font-semibold whitespace-nowrap">المحاضرة</th>
@@ -897,6 +903,14 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
               branch: paySubject?.branch,
               enrolledCourseIds: paySubject?.enrolledCourseIds,
               paymentHistory: paySubject?.paymentHistory,
+              customPrices: paySubject?.customPrices,
+              priorPaid: paySubject?.priorPaid,
+              // The round the payment is opened from is a booking: its course is held, so
+              // «قسط» lists it and «تكملة لمسار» can offer the tracks it belongs to.
+              heldItemIds: (() => {
+                const round = daqqiPayModal.roundId ? daqqiRounds.find(candidate => candidate.id === daqqiPayModal.roundId) : undefined;
+                return round?.courseId ? [round.courseId] : [];
+              })(),
               extraCertificateRequests: paySubject?.extraCertificateRequests,
             }}
             draft={daqqiPayDraft}

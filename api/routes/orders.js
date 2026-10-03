@@ -1,6 +1,7 @@
 'use strict';
 const logger = require('../lib/logger');
 const express = require('express');
+const { mustLinkTransfer, TRANSFER_REQUIRED } = require('../lib/paymentApprovalPolicy');
 const router = express.Router();
 const { uuidv4 } = require('../lib/id');
 
@@ -108,6 +109,7 @@ router.get('/api/admin/orders', requireAuth, requireAdminOrStaff, requirePermiss
         staff_name: executors.get(p.id) ?? null,
         branch_id: p.branch_id || null,
         notes: p.note || null,
+        is_installment: Boolean(p.is_installment),
         created_at: safeIsoString(p.date) || new Date().toISOString(),
         linked_transfer_id: null,
         source: 'crm',
@@ -250,6 +252,12 @@ router.post('/api/admin/orders/:id/confirm-payment', requireAuth, requireAdminOr
     if (String(order.status).toLowerCase() !== 'pending') {
       await conn.rollback();
       return res.status(409).json({ error: 'Order is not pending — it may already be confirmed' });
+    }
+    // The manager accepts; anyone else ties the payment to the transfer that
+    // brought it (cash excepted) — see lib/paymentApprovalPolicy.js.
+    if (!linkedTransferId && mustLinkTransfer(req, order.payment_method)) {
+      await conn.rollback();
+      return res.status(TRANSFER_REQUIRED.status).json(TRANSFER_REQUIRED.body);
     }
 
     // The transfer is one on the ledger (lib/incomingTransfers.js). It was an

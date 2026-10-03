@@ -17,6 +17,7 @@ const { financialRecordMatches, resolveFinancialScope } = require('../../lib/fin
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../../lib/paymentEntitlementAccess');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { isCashMethod, linkTransfer, recordTransfer } = require('../../lib/incomingTransfers');
+const { mustLinkTransfer, TRANSFER_REQUIRED } = require('../../lib/paymentApprovalPolicy');
 
 // This is the only manual status transition endpoint for an existing payment.
 // Refunds are deliberately handled by the refund workflow because they require
@@ -106,6 +107,12 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
       if (String(recorder?.role || '').toLowerCase() === 'collection' && !transfer && !isCashMethod(settledMethod)) {
         await conn.rollback(); transactionStarted = false;
         return res.status(400).json({ error: 'اربط الدفعة بالتحويل اللي وصل قبل الاعتماد', code: 'TRANSFER_REQUIRED' });
+      }
+      // The manager accepts; anyone else ties the payment to the transfer that
+      // brought it (cash excepted) — see lib/paymentApprovalPolicy.js.
+      if (!transfer && mustLinkTransfer(req, settledMethod)) {
+        await conn.rollback(); transactionStarted = false;
+        return res.status(TRANSFER_REQUIRED.status).json(TRANSFER_REQUIRED.body);
       }
       if (transfer) {
         await linkTransfer(conn, {

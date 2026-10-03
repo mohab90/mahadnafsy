@@ -229,18 +229,26 @@ export default function OnlineClientsTab({
 
               const isDaqqiClientsTab = activeTab === 'daqqi_clients';
               // Housing map: subscriberId → { roundId, roundCode, receptionId, receptionName }
+              // The client follows the round: whoever is the round's reception is the
+              // person responsible for the client in it. A client in several rounds
+              // follows the latest booking, a running round over a finished one — the
+              // first round in the list used to win, whatever its age.
               const housingMap = new Map<string, { roundId: string; roundCode: string; receptionId: string; receptionName: string }>();
               if (isDaqqiClientsTab) {
+                const chosen = new Map<string, { bookedAt: string; live: boolean }>();
                 (salesOwnDaqqiRounds ?? []).forEach((round: DaqqiRound) => {
                   (round.attendees ?? []).forEach((att: DaqqiRoundAttendee) => {
-                    if (!housingMap.has(att.subscriberId)) {
-                      housingMap.set(att.subscriberId, {
-                        roundId: round.id,
-                        roundCode: round.code || round.id.slice(0,6),
-                        receptionId: round.receptionId,
-                        receptionName: round.receptionName,
-                      });
-                    }
+                    const bookedAt = String(att.bookedAt || '');
+                    const live = round.status !== 'finished';
+                    const held = chosen.get(att.subscriberId);
+                    if (held && (held.live && !live || (held.live === live && held.bookedAt >= bookedAt))) return;
+                    chosen.set(att.subscriberId, { bookedAt, live });
+                    housingMap.set(att.subscriberId, {
+                      roundId: round.id,
+                      roundCode: round.code || round.id.slice(0,6),
+                      receptionId: round.receptionId,
+                      receptionName: round.receptionName,
+                    });
                   });
                 });
               }
@@ -272,8 +280,17 @@ export default function OnlineClientsTab({
               // Prefer staff-scoped data when it is present, but fall back to context data.
               // Production can temporarily return an empty scoped list after API/date issues;
               // falling back keeps managers from seeing an empty CRM while the full context is loaded.
-              const scopedOrContextSubscribers =
-                salesOwnSubscribers.length > 0 ? salesOwnSubscribers : subscribers;
+              //
+              // A payment or a booking reloads the context's list at once, while the
+              // desk's own copy is rebuilt only on the next poll. Reading the own copy
+              // alone is why an instalment recorded a moment ago did not show on the
+              // client: the row was the one fetched before it.
+              const scopedOrContextSubscribers = salesOwnSubscribers.length > 0
+                ? (() => {
+                  const fresh = new Map(subscribers.map(row => [row.id, row]));
+                  return salesOwnSubscribers.map(row => fresh.get(row.id) ?? row);
+                })()
+                : subscribers;
               const masterList = isDaqqiClientsTab
                 ? scopedOrContextSubscribers
                 : (isAdmin && !isOnlineManager ? subscribers : scopedOrContextSubscribers);

@@ -13,6 +13,8 @@ interface StaffOwnDataArgs {
   courses: Course[];
   setStaffScopedSubscribers: (s: SubscriberItem[]) => void;
   setStaffScopedLeads: (l: LeadItem[]) => void;
+  /** The rounds into the context too, so the schedule and the clients screen read one copy. */
+  setStaffScopedRounds?: (r: DaqqiRound[]) => void;
   mergeContent: (c: Record<string, string>) => void;
 }
 
@@ -26,7 +28,7 @@ interface StaffOwnDataArgs {
  */
 export function useStaffOwnData({
   isAdmin, isOnlineManager, staffSelf, currentStaff, bundles, courses,
-  setStaffScopedSubscribers, setStaffScopedLeads, mergeContent,
+  setStaffScopedSubscribers, setStaffScopedLeads, setStaffScopedRounds, mergeContent,
 }: StaffOwnDataArgs) {
   const [salesOwnLeads, setSalesOwnLeads] = useState<LeadItem[]>([]);
   const [salesOwnSubscribers, setSalesOwnSubscribers] = useState<SubscriberItem[]>([]);
@@ -116,7 +118,7 @@ export function useStaffOwnData({
       setSalesOwnOrders(syntheticOrders);
 
       // Daqqi rounds — only for daqqi roles
-      const isDaqqiRole = staffRef.role === 'daqqi_manager' || staffRef.role === 'reception_daqqi';
+      const isDaqqiRole = staffRef.role === 'daqqi_manager' || staffRef.role === 'reception_daqqi' || staffRef.role === 'manager';
       if (isDaqqiRole) {
         try {
           const roundsRaw = (await mysqlAdmin.listAllDaqqiRounds()) as unknown as Record<string, unknown>[];
@@ -146,6 +148,7 @@ export function useStaffOwnData({
             createdAt: String(r.created_at || r.createdAt || ''),
           }));
           setSalesOwnDaqqiRounds(parsedRounds);
+          setStaffScopedRounds?.(parsedRounds);
         } catch { setSalesOwnDaqqiRounds([]); }
       }
 

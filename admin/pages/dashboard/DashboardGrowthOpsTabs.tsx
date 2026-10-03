@@ -86,7 +86,9 @@ export function DashboardGrowthOpsTabs({
           <DaqqiScheduleTab
             notify={notify}
             subscribersOverride={isNonAdminStaff ? salesOwnSubscribers : undefined}
-            roundsOverride={isNonAdminStaff && salesOwnDaqqiRounds ? salesOwnDaqqiRounds : undefined}
+            // Rounds come from the context for everyone: the desk's copy is pushed into it
+            // (useStaffOwnData), so a booking made on this screen shows at once instead of
+            // after the next two-minute poll.
             hideCreateRound={isReceptionDaqqi || isSupport}
             requirePaymentApproval={isReceptionDaqqi || isSupport}
             branchFilter={branchFilter}

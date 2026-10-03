@@ -95,29 +95,33 @@ test('the save seats exactly whom the dialog offered, and says so', () => {
   assert.match(page, /notify\('success', `اتسكّن \$\{newSubs\.length\.toLocaleString\('ar-EG-u-nu-latn'\)\} عميل في روند/);
 });
 
-test('the table is ten columns at the page\'s width, not thirteen over 1,050px', () => {
+test('the table is eleven columns at the page\'s width, not thirteen over 1,050px', () => {
   const page = read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx');
   const table = page.slice(page.indexOf('<table className="w-full table-fixed'), page.indexOf('</thead>', page.indexOf('<table className="w-full table-fixed')));
   assert.match(table, /^<table className="w-full table-fixed text-sm min-w-\[920px\] lg:min-w-0">/);
   assert.doesNotMatch(page, /min-w-\[1050px\]/);
   const shares = [...table.matchAll(/<col className="w-\[(\d+)%\]" \/>/g)].map(match => Number(match[1]));
-  assert.equal(shares.length, 10);
+  // Eleven since the hall got a column of its own («خلي عمود القاعه عمود لوحده»).
+  assert.equal(shares.length, 11);
   assert.equal(shares.reduce((sum, share) => sum + share, 0), 100);
-  assert.equal((table.match(/<th /g) || []).length, 10);
+  assert.equal((table.match(/<th /g) || []).length, 11);
+  assert.match(table, /الميعاد<\/th>\s*<th[^>]*>القاعة<\/th>/);
   // «المحصّل» and «المتبقي» apart, as asked on 30 Sep.
   assert.match(table, /المحصّل<\/th>\s*<th[^>]*>المتبقي<\/th>/);
   const row = read('admin/pages/dashboard/tabs/daqqi/DaqqiRoundRow.tsx');
   const summary = row.slice(row.indexOf('<React.Fragment'), row.indexOf('{isExpanded && ('));
-  assert.equal((summary.match(/<td /g) || []).length, 10, 'a cell for every heading');
-  assert.match(row, /<td colSpan=\{10\} /);
+  assert.equal((summary.match(/<td /g) || []).length, 11, 'a cell for every heading');
+  assert.match(row, /<td colSpan=\{11\} /);
   assert.doesNotMatch(row, /min-w-\[100px\]/);
 });
 
 test('the week\'s two answers sit side by side, and the open round\'s clients on their own ground', () => {
   const row = read('admin/pages/dashboard/tabs/daqqi/DaqqiRoundRow.tsx');
-  assert.match(row, /<div className="grid grid-cols-2 gap-0\.5" title="محاضرة الأسبوع ده اشتغلت في ميعادها؟">/);
-  assert.ok(row.indexOf('✓ اشتغلت') < row.indexOf('✗ ماشتغلتش'));
-  assert.match(row, /<td colSpan=\{10\} className="border-b border-sky-200 border-r-4 border-r-sky-400 bg-sky-50 px-4 py-3">/);
+  // Small ✓ / ✗ in the same line as the other action icons (the actions column is
+  // narrow now), the «worked» answer first.
+  assert.match(row, /title="المحاضرة اشتغلت في ميعادها الأسبوع ده"/);
+  assert.ok(row.indexOf('title="المحاضرة اشتغلت في ميعادها الأسبوع ده"') < row.indexOf('title="ماشتغلتش — تتأجل للأسبوع الجاي"'));
+  assert.match(row, /<td colSpan=\{11\} className="border-b border-sky-200 border-r-4 border-r-sky-400 bg-sky-50 px-4 py-3">/);
   assert.match(row, /isExpanded \? 'bg-sky-100\/70' : index % 2 \? 'bg-gray-50' : 'bg-white'/);
   assert.doesNotMatch(row, /<td colSpan=\{13\} className="bg-gray-50/);
 });

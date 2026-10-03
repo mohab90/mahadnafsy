@@ -36,6 +36,12 @@ export function normalizeOrders(rows: unknown): OrderItem[] {
     // on the revenue screen.
     leadSource: (row.leadSource ?? row.lead_source ?? undefined) as string | undefined,
     source: (row.source ?? undefined) as string | undefined,
+    // Which branch the money belongs to, and whether it is an instalment — the
+    // review list showed neither, so a payment could not be told apart from the
+    // course it was for.
+    branchId: (row.branchId ?? row.branch_id ?? undefined) as string | undefined,
+    isInstallment: Boolean(row.isInstallment ?? row.is_installment),
+    note: (row.note ?? row.notes ?? undefined) as string | undefined,
   }));
 }
 

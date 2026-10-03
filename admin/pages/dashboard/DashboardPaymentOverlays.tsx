@@ -75,6 +75,8 @@ export function DashboardPaymentOverlays({
               phone: subscriber.phone,
               enrolledCourseIds: subscriber.enrolledCourseIds,
               paymentHistory: subscriber.paymentHistory,
+              customPrices: subscriber.customPrices,
+              priorPaid: subscriber.priorPaid,
               extraCertificateRequests: subscriber.extraCertificateRequests,
               branch: subscriber.branch,
               email: subscriber.email,

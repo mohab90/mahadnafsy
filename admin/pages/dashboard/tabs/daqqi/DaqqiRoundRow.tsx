@@ -86,7 +86,10 @@ export function DaqqiRoundRow({
                     const coursePrice = course?.price?.EGP ?? 0;
                     const collected = round.attendees.reduce((sum, a) => sum + a.amountPaid, 0);
                     const expected = coursePrice * round.attendees.length;
-                    const remaining = Math.max(0, expected - collected);
+                    // What was paid before the system is owed no more, so it comes off the
+                    // balance — but it is not «المحصّل», which is money taken in the period.
+                    const priorTotal = round.attendees.reduce((sum, a) => sum + (a.amountPrior ?? 0), 0);
+                    const remaining = Math.max(0, expected - collected - priorTotal);
                     const status = round.status || 'new';
                     return (
                       <React.Fragment key={round.id}>
@@ -111,7 +114,7 @@ export function DaqqiRoundRow({
                               ) : <div className="text-[10px] text-violet-600 font-semibold mt-0.5 break-words">مسار: {shown.title}</div>;
                             })()}
                           </td>
-                          {/* Day, slot, start date and hall: one cell. */}
+                          {/* Day, slot and start date: one cell. The hall has its own column. */}
                           <td className="px-2 py-2.5 text-xs">
                             <div className="flex flex-wrap items-center gap-1">
                               <span className="font-semibold text-gray-800">{round.dayOfWeek}</span>
@@ -124,7 +127,12 @@ export function DaqqiRoundRow({
                             {round.startDate
                               ? <div className="text-gray-400 text-[11px] mt-0.5">من {round.startDate}</div>
                               : <div className="text-amber-600 text-[11px] font-bold mt-0.5">بدون تاريخ — عدّل الروند</div>}
-                            {(round.room || round.roomName) && <div className="text-gray-500 text-[11px] break-words">{round.room || round.roomName}</div>}
+                          </td>
+                          {/* «خلي عمود القاعه عمود لوحده». */}
+                          <td className="px-2 py-2.5 text-xs">
+                            {(round.room || round.roomName)
+                              ? <span className="inline-block max-w-full break-words rounded-md bg-slate-100 px-1.5 py-0.5 font-semibold text-slate-700">{round.room || round.roomName}</span>
+                              : <span className="text-gray-300">—</span>}
                           </td>
                           <td className="px-2 py-2.5 text-xs">
                             <div className="text-gray-800 break-words">{round.instructorName || '—'}</div>
@@ -166,22 +174,22 @@ export function DaqqiRoundRow({
                           <td className="px-2 py-2.5 text-xs">
                             <span className="inline-block px-2 py-0.5 rounded-full bg-green-50 text-green-700 font-bold text-[11px] whitespace-nowrap">{round.attendees.length} حاضر</span>
                           </td>
-                          <td className="px-2 py-2" onClick={e => e.stopPropagation()}>
-                            <div className="flex flex-col gap-0.5">
-                              <div className={`grid ${isAdmin ? 'grid-cols-4' : 'grid-cols-3'} gap-0.5`}>
-                                <button onClick={() => { setDaqqiAddClientsRoundId(round.id); setDaqqiAddClientsSel(new Set()); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition" title="+ عملاء"><UserPlus size={12} /></button>
-                                <button onClick={() => { setDaqqiEditRoundId(round.id); setDaqqiEditDraft({ courseId: round.courseId, instructorId: round.instructorId, receptionId: round.receptionId, roomId: round.room || round.roomName || round.roomId || '', dayOfWeek: round.dayOfWeek, startDate: round.startDate, timeSlot: round.timeSlot }); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-amber-50 hover:text-amber-600 flex items-center justify-center transition" title="تعديل"><Pencil size={12} /></button>
-                                <button onClick={() => setDaqqiPostponeModal({ roundId: round.id, newDate: round.startDate })} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-orange-50 hover:text-orange-600 flex items-center justify-center transition" title="تأجيل موعد"><CalendarDays size={12} /></button>
-                                {isAdmin && <button onClick={async () => {
-                                  if (!confirm(`حذف روند ${course?.titleAr || round.code}؟`)) return;
-                                  const deleted = await deleteDaqqiRound(round.id);
-                                  // Only the success case is announced here. A refusal
-                                  // already raises site-persist-error carrying the actual
-                                  // reason, and saying "تعذر حذف الروند" next to it put two
-                                  // toasts on screen, the vaguer one on top.
-                                  if (deleted) notify('success', 'تم حذف الروند.');
-                                }} className="h-7 rounded bg-gray-50 text-red-400 hover:bg-red-50 hover:text-red-600 flex items-center justify-center transition" title="حذف الروند"><X size={12} /></button>}
-                              </div>
+                          {/* Small icon buttons on one line; the week's two answers sit in the
+                              same line as tiny ✓ / ✗ instead of a second full-width row. */}
+                          <td className="px-1 py-2" onClick={e => e.stopPropagation()}>
+                            <div className="flex flex-wrap items-center justify-center gap-0.5">
+                              <button onClick={() => { setDaqqiAddClientsRoundId(round.id); setDaqqiAddClientsSel(new Set()); }} className="h-6 w-6 shrink-0 rounded bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition" title="+ عملاء"><UserPlus size={11} /></button>
+                              <button onClick={() => { setDaqqiEditRoundId(round.id); setDaqqiEditDraft({ courseId: round.courseId, instructorId: round.instructorId, receptionId: round.receptionId, roomId: round.room || round.roomName || round.roomId || '', dayOfWeek: round.dayOfWeek, startDate: round.startDate, timeSlot: round.timeSlot }); }} className="h-6 w-6 shrink-0 rounded bg-gray-50 text-gray-500 hover:bg-amber-50 hover:text-amber-600 flex items-center justify-center transition" title="تعديل"><Pencil size={11} /></button>
+                              <button onClick={() => setDaqqiPostponeModal({ roundId: round.id, newDate: round.startDate })} className="h-6 w-6 shrink-0 rounded bg-gray-50 text-gray-500 hover:bg-orange-50 hover:text-orange-600 flex items-center justify-center transition" title="تأجيل موعد"><CalendarDays size={11} /></button>
+                              {isAdmin && <button onClick={async () => {
+                                if (!confirm(`حذف روند ${course?.titleAr || round.code}؟`)) return;
+                                const deleted = await deleteDaqqiRound(round.id);
+                                // Only the success case is announced here. A refusal
+                                // already raises site-persist-error carrying the actual
+                                // reason, and saying "تعذر حذف الروند" next to it put two
+                                // toasts on screen, the vaguer one on top.
+                                if (deleted) notify('success', 'تم حذف الروند.');
+                              }} className="h-6 w-6 shrink-0 rounded bg-gray-50 text-red-400 hover:bg-red-50 hover:text-red-600 flex items-center justify-center transition" title="حذف الروند"><X size={11} /></button>}
                               {/* «هل المحاضرة اشتغلت في موعدها او لاء»: this
                                   week's lecture, answered either way. */}
                               {status === 'active' && (() => {
@@ -189,12 +197,12 @@ export function DaqqiRoundRow({
                                 const postponed = (round.postponedWeeks || []).includes(thisWeek);
                                 const held = (round.heldWeeks || []).includes(thisWeek);
                                 return (
-                                  <div className="grid grid-cols-2 gap-0.5" title="محاضرة الأسبوع ده اشتغلت في ميعادها؟">
-                                    <button onClick={() => handleDaqqiMarkWeek(round.id, true)}
-                                      className={`h-6 min-w-0 truncate rounded px-0.5 text-[9px] xl:text-[10px] font-bold transition ${held ? 'bg-green-600 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>✓ اشتغلت</button>
+                                  <>
+                                    <button onClick={() => handleDaqqiMarkWeek(round.id, true)} title="المحاضرة اشتغلت في ميعادها الأسبوع ده"
+                                      className={`h-6 w-6 shrink-0 rounded text-[11px] font-bold transition ${held ? 'bg-green-600 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>✓</button>
                                     <button onClick={() => handleDaqqiMarkWeek(round.id, false)} title="ماشتغلتش — تتأجل للأسبوع الجاي"
-                                      className={`h-6 min-w-0 truncate rounded px-0.5 text-[9px] xl:text-[10px] font-bold transition ${postponed ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-600 hover:bg-orange-100'}`}>✗ ماشتغلتش</button>
-                                  </div>
+                                      className={`h-6 w-6 shrink-0 rounded text-[11px] font-bold transition ${postponed ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-600 hover:bg-orange-100'}`}>✗</button>
+                                  </>
                                 );
                               })()}
                             </div>
@@ -206,7 +214,7 @@ export function DaqqiRoundRow({
                                 the same grey as every other row, so the list read as
                                 part of the course under it. Sky, with a bar down the
                                 side, and the list itself on white. */}
-                            <td colSpan={10} className="border-b border-sky-200 border-r-4 border-r-sky-400 bg-sky-50 px-4 py-3">
+                            <td colSpan={11} className="border-b border-sky-200 border-r-4 border-r-sky-400 bg-sky-50 px-4 py-3">
                               <p className="text-xs font-bold text-sky-900 mb-2">قائمة الحاضرين ({round.attendees.length})</p>
                               {round.attendees.length === 0 ? (
                                 <p className="text-xs text-sky-800/70">لسه محدش اتسكّن في الروند ده.</p>

@@ -115,7 +115,9 @@ export function daqqiOverview({ rounds, clients, bundles, priceOf, weekKey }: {
   for (const round of open) {
     const paid = round.attendees.reduce((sum, a) => sum + (Number(a.amountPaid) || 0), 0);
     collected += paid;
-    remaining += Math.max(0, priceOf(round.courseId) * round.attendees.length - paid);
+    // Paid before the system is owed no more, though it is not collected in the period.
+    const prior = round.attendees.reduce((sum, a) => sum + (Number(a.amountPrior) || 0), 0);
+    remaining += Math.max(0, priceOf(round.courseId) * round.attendees.length - paid - prior);
   }
   return {
     clients: clients.length,

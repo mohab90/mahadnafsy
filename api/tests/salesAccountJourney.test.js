@@ -128,8 +128,10 @@ test('the online screen holds online clients, and says which market each is in',
   assert.match(tab, /branch: true,/, 'the market column is not switched on');
 
   const table = codeOnly(read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx'));
-  assert.match(table, /vc\.branch && <th/);
-  assert.match(table, /vc\.branch && <td[^\n]*\{placeLabel\(row\)\}/);
+  // The Dokki clients screen is all one branch, so it has no branch column at all
+  // («شيل عمود الفرع ان كل العملاء هنا في الدقي طبعا»); the online one keeps its market.
+  assert.match(table, /vc\.branch && !isDaqqiClientsTab && <th/);
+  assert.match(table, /vc\.branch && !isDaqqiClientsTab && <td[^\n]*\{placeLabel\(row\)\}/);
   assert.match(table, /isOnlineClient\(row\) \? MARKET_LABELS\[subscriberMarket\(row\)\] : branchLabel\(row\.branch\)/);
 });
 

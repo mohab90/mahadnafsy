@@ -669,6 +669,10 @@ export interface OrderItem {
   leadSource?: string;
   source?: string;
   clientEmail?: string;
+  /** branch-online-egypt, branch-daqqi … — as the server stores it. */
+  branchId?: string;
+  /** A payment taken in instalments rather than a first booking. */
+  isInstallment?: boolean;
 }
 
 export interface TestimonialItem {

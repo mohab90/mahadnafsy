@@ -13,6 +13,7 @@ import { toEgp } from '../../../lib/money';
 import { downloadCsv } from '../../../../shared/csv';
 import { PAYMENT_METHOD_CODES, paymentMethodLabel, normalizePaymentMethod } from '../../../../shared/paymentMethods';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
+import { BRANCH_LABELS_AR, normalizeBranch } from '../../../constants/branches';
 import { AddTransferModal, IncomingTransfersTable, useIncomingTransfers, type IncomingTransfer } from './orders/IncomingTransfers';
 
 // What an order's payment_method can hold. The four rails a customer may pick,
@@ -129,9 +130,33 @@ export default function OrdersTab({
   // here rather than leaving a payment that can never be approved.
   const [approveMethod, setApproveMethod] = React.useState<Record<string, string>>({});
 
+  // Who may accept a payment outright: the manager. Everybody else with the
+  // financial permission confirms against the transfer that brought the money
+  // («🔗 ربط») — the server holds the same line (lib/paymentApprovalPolicy.js).
+  const approverRole = String(currentStaff?.role || '').toLowerCase();
+  const canAcceptDirectly = isAdmin || approverRole === 'manager';
+
+  // One list, two tables behind it. /api/admin/orders returns the orders table and,
+  // after it, every payment a person recorded at a desk (source «crm»): an
+  // instalment, a booking. A desk payment's id is a payments row, not an order, so
+  // confirming it through the orders route answered «Order not found» — which this
+  // screen then printed as «تحقق من أن الطلب لسه قيد المراجعة» for every instalment
+  // a desk had recorded.
+  const isDeskPayment = (row: OrderItem) => row.source === 'crm';
+  // The list fills in «MANUAL» when the payment row has no method; that is not one.
+  const storedMethodOf = (row: OrderItem) => {
+    const method = String(row.paymentMethod || '').trim();
+    return !method || method.toLowerCase() === 'manual' ? '' : method;
+  };
+  const messageOf = (error: unknown, fallback: string) => (error instanceof Error && error.message ? error.message : fallback);
+
   const handleConfirmOrder = async (row: OrderItem) => {
     if (!canManageFinancial) {
       notify('error', 'تأكيد المدفوعات يتطلب صلاحية الإدارة المالية.');
+      return;
+    }
+    if (!canAcceptDirectly) {
+      notify('info', 'القبول المباشر للمدير. اضغط «🔗 ربط» واربط الدفعة بالتحويل اللي وصل.');
       return;
     }
     if (!isAdmin && row.staffId && row.staffId === currentStaff?.id) {
@@ -139,11 +164,40 @@ export default function OrdersTab({
       return;
     }
     try {
-      await mysqlAdmin.adminPost(`/admin/orders/${row.id}/confirm-payment`, {});
+      if (isDeskPayment(row)) {
+        const method = storedMethodOf(row) || approveMethod[row.id] || '';
+        if (!method) { notify('error', 'اختار طريقة الدفع الأول من القايمة جنب الدفعة.'); return; }
+        await mysqlAdmin.updatePaymentStatus(row.id, 'paid', undefined, method);
+      } else {
+        await mysqlAdmin.adminPost(`/admin/orders/${row.id}/confirm-payment`, {});
+      }
       await Promise.all([reloadOrders(), reloadSubscribers()]);
       notify('success', `✅ تم تأكيد دفعة ${row.customerName} بنجاح`);
-    } catch {
-      notify('error', 'تعذر تأكيد الدفعة — تحقق من أن الطلب لسه قيد المراجعة.');
+    } catch (error) {
+      // The server's own reason, not a guess at it.
+      notify('error', messageOf(error, 'تعذر تأكيد الدفعة.'));
+    }
+  };
+
+  const handleRejectOrder = async (row: OrderItem) => {
+    try {
+      if (isDeskPayment(row)) {
+        await mysqlAdmin.updatePaymentStatus(row.id, 'failed');
+        await Promise.all([reloadOrders(), reloadSubscribers()]);
+      } else {
+        await updateOrderStatus(row.id, 'failed');
+      }
+    } catch (error) {
+      notify('error', messageOf(error, 'تعذر رفض الدفعة.'));
+    }
+  };
+
+  // Confirm a pending row against a transfer on the ledger.
+  const confirmWithTransfer = async (row: OrderItem, transfer: IncomingTransfer) => {
+    if (isDeskPayment(row)) {
+      await mysqlAdmin.updatePaymentStatus(row.id, 'paid', undefined, storedMethodOf(row) || transfer.method, { transferId: transfer.id });
+    } else {
+      await mysqlAdmin.adminPost(`/admin/orders/${row.id}/confirm-payment`, { linkedTransferId: transfer.id });
     }
   };
 
@@ -715,12 +769,13 @@ export default function OrdersTab({
                   /* ── Normal Orders Table ── */
                   <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
                     <div className="overflow-x-auto">
-                      <table className="w-full text-xs min-w-[1000px] border-collapse">
+                      <table className="w-full text-xs min-w-[1080px] border-collapse">
                         <thead>
                           <tr className="bg-gradient-to-l from-emerald-50 to-white text-gray-700 border-b border-gray-200">
                             <th className="px-3 py-3 font-bold text-right border-l border-gray-100">#</th>
                             <th className="px-3 py-3 font-bold text-right border-l border-gray-100">العميل</th>
-                            <th className="px-3 py-3 font-bold text-right border-l border-gray-100">المنتج</th>
+                            <th className="px-3 py-3 font-bold text-center border-l border-gray-100">الفرع</th>
+                            <th className="px-3 py-3 font-bold text-right border-l border-gray-100">الدفعة خاصة بإيه</th>
                             <th className="px-3 py-3 font-bold text-center border-l border-gray-100">النوع</th>
                             <th className="px-3 py-3 font-bold text-center border-l border-gray-100">المبلغ</th>
                             <th className="px-3 py-3 font-bold text-center border-l border-gray-100">وسيلة الدفع</th>
@@ -746,6 +801,12 @@ export default function OrdersTab({
                               if (t === 'consultation') return 'استشارة'; if (t === 'bundle') return 'مسار تعليمي';
                               return row.itemTitle || '—';
                             })();
+                            // What the payment is for: the course or the track it names, else the title.
+                            const heldCourse = row.courseId ? courses.find(course => course.id === row.courseId) : undefined;
+                            const heldBundle = row.bundleId ? bundles.find(bundle => bundle.id === row.bundleId) : undefined;
+                            const forTitle = heldBundle ? `📌 ${heldBundle.title}` : (heldCourse?.titleAr || heldCourse?.title || productTitle);
+                            const branchKey = normalizeBranch(String(row.branchId || '').replace(/^branch-/i, '').replace(/-/g, '_'));
+                            const branchText = branchKey ? BRANCH_LABELS_AR[branchKey] : '—';
                             return (
                               <tr key={row.id} className={`border-b border-gray-100 ${rowBg} transition-colors`}>
                                 <td className="px-3 py-2.5 font-mono text-gray-400 border-l border-gray-100 whitespace-nowrap">
@@ -758,8 +819,20 @@ export default function OrdersTab({
                                         className="font-semibold text-gray-800 hover:text-emerald-700 text-[11px] text-right block hover:underline underline-offset-2">{row.customerName || '—'}</button>
                                     : <span className="text-gray-600 text-[11px]">{row.customerName || '—'}</span>}
                                 </td>
-                                <td className="px-3 py-2.5 border-l border-gray-100 max-w-[160px]">
-                                  <span className="text-[11px] text-gray-700 line-clamp-1" title={productTitle}>{productTitle}</span>
+                                <td className="px-3 py-2.5 border-l border-gray-100 text-center text-[10px] whitespace-nowrap">
+                                  <span className="rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">{branchText}</span>
+                                </td>
+                                {/* Which booking the money is for: the course or the track by name,
+                                    and whether it is an instalment — the column used to say only
+                                    «course» / «other» for every desk payment. */}
+                                <td className="px-3 py-2.5 border-l border-gray-100 max-w-[200px]">
+                                  <span className="text-[11px] font-semibold text-gray-800 line-clamp-2" title={forTitle}>{forTitle}</span>
+                                  {(row.isInstallment || row.note) && (
+                                    <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] text-gray-500">
+                                      {row.isInstallment && <span className="rounded-full bg-blue-50 px-1.5 py-0.5 font-bold text-blue-700 border border-blue-200">قسط</span>}
+                                      {row.note && <span className="line-clamp-1" title={String(row.note)}>{String(row.note)}</span>}
+                                    </div>
+                                  )}
                                 </td>
                                 <td className="px-3 py-2.5 border-l border-gray-100 text-center">
                                   {typeBadge(row.type)}
@@ -788,11 +861,23 @@ export default function OrdersTab({
                                   <div className="flex items-center justify-center gap-1">
                                     {isPending && canManageFinancial && (
                                       <>
-                                        <button onClick={() => handleConfirmOrder(row)}
-                                          className="text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded-lg font-bold transition">
-                                          ✓ قبول
-                                        </button>
-                                        <button onClick={() => updateOrderStatus(row.id, 'failed')}
+                                        {/* A desk payment with no method on its row asks for one, as the
+                                            online manager's list does: approving is when it is known. */}
+                                        {canAcceptDirectly && isDeskPayment(row) && !storedMethodOf(row) && (
+                                          <select aria-label="طريقة الدفع" value={approveMethod[row.id] || ''}
+                                            onChange={event => setApproveMethod(prev => ({ ...prev, [row.id]: event.target.value }))}
+                                            className={`text-[10px] rounded-lg px-1 py-1 border-2 font-bold max-w-[110px] ${approveMethod[row.id] ? 'border-gray-200 bg-white' : 'border-amber-400 bg-amber-50 text-amber-800'}`}>
+                                            <option value="">طريقة الدفع…</option>
+                                            {paymentBoxes.map((method: string) => <option key={method} value={method}>{method}</option>)}
+                                          </select>
+                                        )}
+                                        {canAcceptDirectly && (
+                                          <button onClick={() => handleConfirmOrder(row)}
+                                            className="text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded-lg font-bold transition">
+                                            ✓ قبول
+                                          </button>
+                                        )}
+                                        <button onClick={() => handleRejectOrder(row)}
                                           className="text-[10px] bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-lg font-bold transition">
                                           ✕ رفض
                                         </button>
@@ -815,7 +900,7 @@ export default function OrdersTab({
                           })}
                           {tabRows.length === 0 && (
                             <tr>
-                              <td colSpan={10} className="py-12 text-center text-gray-400">
+                              <td colSpan={11} className="py-12 text-center text-gray-400">
                                 <div className="flex flex-col items-center gap-2">
                                   <CreditCard size={28} className="text-gray-200" />
                                   <span className="text-sm">لا توجد طلبات في هذا التصنيف</span>
@@ -827,7 +912,7 @@ export default function OrdersTab({
                         {tabRows.length > 0 && (
                           <tfoot>
                             <tr className="bg-gradient-to-l from-emerald-50 to-white border-t-2 border-emerald-100">
-                              <td colSpan={4} className="px-3 py-2.5 font-bold text-gray-600 text-xs">الإجمالي ({tabRows.length} طلب)</td>
+                              <td colSpan={5} className="px-3 py-2.5 font-bold text-gray-600 text-xs">الإجمالي ({tabRows.length} طلب)</td>
                               <td className="px-3 py-2.5 text-center font-extrabold text-emerald-700 text-[12px]">{tabTotal.toLocaleString('ar-EG-u-nu-latn')} ج</td>
                               <td colSpan={5} />
                             </tr>
@@ -873,7 +958,7 @@ export default function OrdersTab({
                               <button key={order.id}
                                 onClick={async () => {
                                   try {
-                                    await mysqlAdmin.adminPost(`/admin/orders/${order.id}/confirm-payment`, { linkedTransferId: transfer.id });
+                                    await confirmWithTransfer(order, transfer);
                                     await Promise.all([reloadOrders(), reloadSubscribers(), ledger.reload()]);
                                     notify('success', `✅ تم ربط التحويل بدفعة ${order.customerName} (${order.itemTitle}) وتأكيدها`);
                                     setLinkTransferModal(null);
@@ -938,7 +1023,7 @@ export default function OrdersTab({
                               <button key={transfer.id}
                                 onClick={async () => {
                                   try {
-                                    await mysqlAdmin.adminPost(`/admin/orders/${order.id}/confirm-payment`, { linkedTransferId: transfer.id });
+                                    await confirmWithTransfer(order, transfer);
                                     await Promise.all([reloadOrders(), reloadSubscribers(), ledger.reload()]);
                                     notify('success', `✅ تم ربط دفعة ${order.customerName} بالتحويل #${transfer.reference || ''} وتأكيدها`);
                                     setLinkOrderModal(null);
