@@ -909,6 +909,9 @@ export const mysqlAdmin = {
   // ── Daqqi Rounds ──
   saveDaqqiRound:   (o: AR) => post('/admin/daqqi-rounds', o),
   deleteDaqqiRound: (id: string) => del(`/admin/daqqi-rounds/${id}`),
+  /** «تسكين»: seats one client in a round — one row, not the whole round posted back. */
+  addDaqqiAttendee: (roundId: string, subscriberId: string) =>
+    post(`/admin/daqqi-rounds/${encodeURIComponent(roundId)}/attendees`, { subscriberId }),
   removeDaqqiAttendee: (roundId: string, subscriberId: string) =>
     del(`/admin/daqqi-rounds/${encodeURIComponent(roundId)}/attendees/${encodeURIComponent(subscriberId)}`),
   transferDaqqiAttendee: (data: { subscriberId: string; fromRoundId: string; toRoundId: string }) =>

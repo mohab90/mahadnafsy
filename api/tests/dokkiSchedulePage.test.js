@@ -84,8 +84,11 @@ test('a client with no number of their own is seated like any other', () => {
   assert.ok(route.includes("SELECT ?,s.id,?,s.name,COALESCE(NULLIF(s.phone,''), NULLIF(s.whatsapp,''), ''),?,"));
   assert.doesNotMatch(route, /SELECT \?,s\.id,\?,s\.name,s\.phone,\?,/);
   const row = read('admin/pages/dashboard/tabs/daqqi/DaqqiRoundRow.tsx');
-  assert.match(row, /<span className="text-gray-400">من غير رقم<\/span>/);
-  assert.match(row, /<button disabled=\{!a\.phone\} onClick=\{e => \{ e\.stopPropagation\(\); window\.open\(`https:\/\/wa\.me\//);
+  // The number sits under the name; a client with none says so, and has no WhatsApp to press.
+  assert.match(row, /: <span className="text-\[11px\] text-gray-400">من غير رقم<\/span>/);
+  assert.match(row, /const waHref = waLink\(a\.phone\);/);
+  assert.match(row, /\{waHref \? \(\s*<a title="واتساب" href=\{waHref\}/);
+  assert.match(row, /<span title="العميل من غير رقم"/);
 });
 
 test('the save seats exactly whom the dialog offered, and says so', () => {

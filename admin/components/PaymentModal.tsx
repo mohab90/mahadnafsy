@@ -5,7 +5,7 @@
 import { latinDigits } from '../../shared/latinDigits';
 import React, { useState } from 'react';
 import { cairoDateOnly } from '../../shared/cairoDate';
-import { CreditCard, X } from 'lucide-react';
+import { CreditCard, Home, X } from 'lucide-react';
 import { useCrmData, useStaticData } from '../context/siteDataSlices';
 import { useCertificateCatalog } from '../lib/certificateCatalog';
 import { agreedPriceFor } from '../lib/agreedPrice';
@@ -19,6 +19,8 @@ import { usePaymentBoxes } from '../lib/paymentMethods';
 import { isCollected } from '../lib/money';
 import { Modal } from '../../shared/ui/Modal';
 import { confirmDialog } from '../../shared/ui/confirmDialog';
+import { DaqqiRoundPicker } from '../pages/dashboard/tabs/daqqi/DaqqiRoundPicker';
+import { roundLabel } from '../pages/dashboard/tabs/daqqi/daqqiScheduleUtils';
 
 // ── Shared draft type ──────────────────────────────────────────────────────
 export interface PaymentDraft {
@@ -45,6 +47,11 @@ export interface PaymentDraft {
   // 'new' mode only: the person is being created by this form.
   name?: string;
   phone?: string;
+  /**
+   * «تسكين»: the Dokki round this booking seats the client in. Only a Dokki booking
+   * carries one; the server seats them when it records the booking.
+   */
+  daqqiRoundId?: string;
 }
 
 export interface ExtraPayItem {
@@ -81,6 +88,7 @@ export const blankPaymentDraft = (opts?: {
   nationalId: '',
   name: '',
   phone: '',
+  daqqiRoundId: '',
 });
 
 // ── PrintReceipt sub-component ─────────────────────────────────────────────
@@ -266,7 +274,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   branchLabel,
 }) => {
   const { courses, bundles, content, authUser, isAdmin } = useStaticData();
-  const { staffMembers } = useCrmData();
+  const { staffMembers, daqqiRounds } = useCrmData();
   // The certificates «تسعير الشهادات» lists — its own, not eight written here.
   const certCatalog = useCertificateCatalog();
   const [printData, setPrintData] = useState<PrintData | null>(null);
@@ -289,6 +297,14 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
   const d = draft;
   const set = (partial: Partial<PaymentDraft>) => setDraft({ ...d, ...partial });
+
+  // «تسكين»: a Dokki booking can seat the client in a round as it is recorded. The
+  // button shows once the branch is Dokki — the one picked here for a lead or a new
+  // client, the client's own for an existing one — and the desk can see the rounds.
+  const [housingOpen, setHousingOpen] = useState(false);
+  const bookingBranch = String((mode === 'subscriber' ? (subject.branch || d.branch) : d.branch) || '').toUpperCase().replace(/[-\s]/g, '_');
+  const canHouse = bookingBranch === 'DAQQI' && d.bookingType === 'new_booking' && (daqqiRounds || []).length > 0;
+  const housingRound = d.daqqiRoundId ? (daqqiRounds || []).find(round => round.id === d.daqqiRoundId) : undefined;
 
   // Who this payment is for. In 'new' mode they do not exist yet, so it is
   // whoever is being typed into the form.
@@ -1198,6 +1214,40 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                 {branchOptions.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}
               </select>
             </div>
+          )}
+
+          {/* ── 7c: Dokki: seat the client in a round with the booking ── */}
+          {canHouse && (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50/60 px-3 py-2">
+              <button
+                type="button"
+                onClick={() => setHousingOpen(true)}
+                className="flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-bold text-indigo-700 transition hover:bg-indigo-100"
+              >
+                <Home size={13} /> تسكين في روند
+              </button>
+              {housingRound ? (
+                <>
+                  <span className="min-w-0 flex-1 truncate text-xs font-semibold text-indigo-900" title={roundLabel(housingRound, courses)}>{roundLabel(housingRound, courses)}</span>
+                  <button type="button" onClick={() => set({ daqqiRoundId: '' })} className="text-xs font-bold text-red-500 hover:text-red-700" title="إلغاء التسكين">✕</button>
+                </>
+              ) : (
+                <span className="text-xs text-indigo-700/80">اختياري — العميل بيتسكّن في الروند أول ما الحجز يتسجّل.</span>
+              )}
+            </div>
+          )}
+          {housingOpen && (
+            <Modal open onClose={() => setHousingOpen(false)} layer="over" size="md" title="تسكين في روند" subtitle={personName || undefined} icon={<Home size={18} className="text-indigo-600" />}>
+              <DaqqiRoundPicker
+                rounds={daqqiRounds || []}
+                courses={courses}
+                selectedId={d.daqqiRoundId || ''}
+                onSelect={roundId => { set({ daqqiRoundId: roundId }); setHousingOpen(false); }}
+                clientCourseIds={(d.courseId?.startsWith('bundle:')
+                  ? (bundles.find(b => b.id === d.courseId.replace('bundle:', ''))?.courses || []).map(c => c.id)
+                  : d.courseId ? [d.courseId] : [])}
+              />
+            </Modal>
           )}
 
           {/* ── 8: Payment details ── */}

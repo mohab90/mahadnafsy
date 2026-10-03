@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { cairoDateOnly } from '../../../shared/cairoDate';
 import type { MutableRefObject } from 'react';
 import type { DaqqiRound } from '../../types';
 import { mysqlAdmin } from '../../lib/mysqlapi';
+import { ROUNDS_CHANGED_EVENT } from '../../lib/daqqiHousing';
 
 type Track = (action: string, entity: string, label: string) => void;
 
@@ -23,6 +24,8 @@ const DAQQI_RULES: Array<[RegExp, string]> = [
     'لا يمكن نقل عميل بعد بدء تسجيل الحضور — سجل الروند يُحفظ كما هو.'],
   [/An attendee with attendance history cannot be removed/i,
     'لا يمكن شطب عميل له سجل حضور من الروند.'],
+  [/An archived client cannot be booked into a round/i,
+    'العميل ده مؤرشف — رجّعه من الأرشيف الأول وبعدين سكّنه.'],
 ];
 
 export const daqqiRuleMessage = (raw: string) => {
@@ -120,6 +123,46 @@ export function useDaqqiRoundsState(
     }
   };
 
+  // «تسكين»: seat one client. The server writes the one row and works the client's
+  // money out for the round, so the rounds are read back rather than patched here.
+  const bookDaqqiAttendee = async (subscriberId: string, roundId: string) => {
+    lastCRMWriteRef.current = Date.now();
+    try {
+      await mysqlAdmin.addDaqqiAttendee(roundId, subscriberId);
+      const fresh = await mysqlAdmin.listAllDaqqiRounds();
+      setDaqqiRounds(fresh as unknown as DaqqiRound[]);
+      track('update', 'daqqiRound', `book:${subscriberId}`);
+      return true;
+    } catch (err) {
+      window.dispatchEvent(new CustomEvent('site-persist-error', {
+        detail: {
+          field: 'daqqiRound', name: `book:${subscriberId}`,
+          reason: daqqiRuleMessage(err instanceof Error ? err.message : String(err)),
+        },
+      }));
+      return false;
+    }
+  };
+
+  // The rosters changed somewhere that does not own them — a booking that seated a
+  // client («حجز ودفع»). Read them again, but only for someone who already has them:
+  // the rounds route is for the Dokki desk and asking for it from any other account
+  // is a refusal, not a refresh.
+  const refreshDaqqiRounds = async () => {
+    try {
+      const fresh = await mysqlAdmin.listAllDaqqiRounds();
+      setDaqqiRounds(fresh as unknown as DaqqiRound[]);
+    } catch { /* the screens keep what they have */ }
+  };
+  const hasRounds = useRef(false);
+  hasRounds.current = daqqiRounds.length > 0;
+  useEffect(() => {
+    const onChanged = () => { if (hasRounds.current) void refreshDaqqiRounds(); };
+    window.addEventListener(ROUNDS_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(ROUNDS_CHANGED_EVENT, onChanged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Bulk-load daqqi rounds without triggering DB saves (for non-admin staff initial load)
   const bulkSetDaqqiRounds = (rounds: DaqqiRound[]) => {
     setDaqqiRounds(prev => {
@@ -133,5 +176,5 @@ export function useDaqqiRoundsState(
     });
   };
 
-  return { daqqiRounds, setDaqqiRounds, addDaqqiRound, updateDaqqiRound, deleteDaqqiRound, transferDaqqiAttendee, bulkSetDaqqiRounds };
+  return { daqqiRounds, setDaqqiRounds, addDaqqiRound, updateDaqqiRound, deleteDaqqiRound, transferDaqqiAttendee, bookDaqqiAttendee, refreshDaqqiRounds, bulkSetDaqqiRounds };
 }

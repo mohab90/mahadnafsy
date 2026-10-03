@@ -136,7 +136,9 @@ test('the booking snapshot cannot resurface privacy-erased contact details', () 
   );
   assert.match(
     privacyService,
-    /UPDATE daqqi_attendees SET name=\?,phone=NULL/,
+    /UPDATE daqqi_attendees SET name=\?,phone=''/,
+    // The column is NOT NULL: a NULL here is refused under strict mode and the whole
+    // erasure fails for anyone who was ever seated in a round. Empty is erased.
     'erasure must clear the attendee snapshot too, or the fallback leaks it back',
   );
 });

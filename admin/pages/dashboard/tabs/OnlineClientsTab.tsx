@@ -16,6 +16,7 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { normBranchId } from '../dashboardShared';
 import PaymentModal, { blankPaymentDraft, type PaymentDraft } from '../../../components/PaymentModal';
 import { createClientWithPayment } from '../../../lib/createClientWithPayment';
+import { announceRoundsChanged, housingOutcome } from '../../../lib/daqqiHousing';
 import SectionCustomTabs from './SectionCustomTabs';
 
 // Kept beside the component so the URL parser and the tab strip agree on what
@@ -184,18 +185,22 @@ export default function OnlineClientsTab({
   // which never reached the books.
   const handleNewCollectionClient = async (draft: PaymentDraft) => {
     const result = await createClientWithPayment(draft, { branch: draft.branch || 'ONLINE_EGYPT', source: 'staff' });
-    notify('info', result.pendingReview
-      ? `اتبعت حجز ${(draft.name || '').trim()} للمسئول — هيتضاف بعد ما يراجع التحويل ويعتمده`
-      : `✅ تم إضافة ${(draft.name || '').trim()}`);
+    const housing = housingOutcome([result]);
+    if (housing.changed) announceRoundsChanged();
+    notify('info', (result.pendingReview
+      ? `اتبعت حجز ${(draft.name || '').trim()} للمسئول — هيتضاف ويتسكّن بعد ما يراجع التحويل ويعتمده`
+      : `✅ تم إضافة ${(draft.name || '').trim()}`) + housing.text);
   };
   const handleNewDaqqiClient = async (draft: PaymentDraft) => {
     const result = await createClientWithPayment(draft, { branch: draft.branch || 'DAQQI', source: 'reception' });
     const fresh = await mysqlAdmin.listAllSubscribers();
     setSalesOwnSubscribers(fresh as unknown as SubscriberItem[]);
-    notify(result.approvalRequired ? 'info' : 'success',
-      result.approvalRequired
+    const housing = housingOutcome([result]);
+    if (housing.changed) announceRoundsChanged();
+    notify(result.approvalRequired || housing.warning ? 'info' : 'success',
+      (result.approvalRequired
         ? `✅ تم إضافة ${(draft.name || '').trim()} والدفعة بانتظار اعتماد المالية`
-        : `✅ تم إضافة ${(draft.name || '').trim()} بنجاح`);
+        : `✅ تم إضافة ${(draft.name || '').trim()} بنجاح`) + housing.text);
   };
   const [daqqiSettingsOpen, setDaqqiSettingsOpen] = useState(false);
   // The staff-built tabs dialog, opened from this screen's own settings menu.
@@ -678,7 +683,6 @@ export default function OnlineClientsTab({
                       rounds={salesOwnDaqqiRounds ?? []}
                       housingMap={housingMap}
                       setRoundId={setDaqqiHousingRoundId}
-                      setRounds={setSalesOwnDaqqiRounds}
                       notify={notify}
                       onClose={() => setDaqqiHousingModal(null)}
                     />

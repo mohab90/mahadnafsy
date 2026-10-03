@@ -5,6 +5,7 @@ import { ArrowLeftRight, BookOpen, X } from 'lucide-react';
 
 import type { Course, DaqqiRound, SubscriberItem } from '../../../../types';
 import { getCurrentWeekKey } from './daqqiScheduleUtils';
+import { DaqqiRoundPicker } from './DaqqiRoundPicker';
 
 export type DaqqiTransferModalState = { subscriberId: string; fromRoundId: string } | null;
 export type DaqqiPostponeModalState = { roundId: string; newDate: string } | null;
@@ -55,23 +56,10 @@ export const DaqqiTransferRoundModal: React.FC<TransferModalProps> = ({
         </div>
         <div>
           <label className="text-xs text-gray-600 font-bold mb-2 block">اختر الروند المستهدف</label>
-          {available.length === 0 ? <p className="text-sm text-gray-400 italic py-6 text-center">لا توجد روندات أخرى متاحة للنقل.</p> : (
-            <div className="space-y-2 max-h-64 overflow-y-auto mb-4">
-              {available.map(round => (
-                <div
-                  key={round.id}
-                  onClick={() => setTargetId(round.id)}
-                  className={`flex items-center gap-3 border rounded-xl px-3 py-2.5 cursor-pointer transition ${targetId === round.id ? 'border-amber-400 bg-amber-50' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-gray-800 truncate">{courseTitle(courses, round.courseId)} <span className="text-xs text-gray-400 font-mono">{round.code}</span></p>
-                    <p className="text-xs text-gray-500">{round.dayOfWeek} - {round.timeSlot}{round.startDate ? ` - ${round.startDate}` : ' - بدون تاريخ'}</p>
-                  </div>
-                  <span className="text-xs bg-green-50 text-green-700 font-bold px-2 py-0.5 rounded-full flex-shrink-0">{round.attendees.length} حاضر</span>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="mb-4">
+            <DaqqiRoundPicker rounds={available} courses={courses} selectedId={targetId} onSelect={setTargetId}
+              clientCourseIds={fromRound ? [fromRound.courseId] : []} emptyText="لا توجد روندات أخرى متاحة للنقل." />
+          </div>
         </div>
         <div className="flex gap-3">
           <button onClick={onClose} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm hover:bg-gray-200">إلغاء</button>
@@ -139,36 +127,10 @@ export const DaqqiToskeenRoundModal: React.FC<ToskeenModalProps> = ({
         )}
         <div>
           <label className="text-xs text-gray-600 font-bold mb-2 block">اختر الروند</label>
-          {available.length === 0 ? <p className="text-sm text-gray-400 italic py-6 text-center">العميل مسكن في جميع الروندات المتاحة.</p> : (
-            <div className="space-y-2 max-h-64 overflow-y-auto mb-4">
-              {available.map(round => {
-                const isMatchingCourse = subscriber?.enrolledCourseIds.includes(round.courseId) ?? false;
-                return (
-                  <div
-                    key={round.id}
-                    onClick={() => setTargetRoundId(round.id)}
-                    className={`flex items-center gap-3 border rounded-xl px-3 py-2.5 cursor-pointer transition ${
-                      targetRoundId === round.id
-                        ? 'border-amber-400 bg-amber-50 shadow-sm'
-                        : isMatchingCourse
-                          ? 'border-blue-300 bg-blue-50/60 hover:border-blue-400'
-                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <p className="text-sm font-bold text-gray-800 truncate">{courseTitle(courses, round.courseId)} <span className="text-xs text-gray-400 font-mono">#{round.code}</span></p>
-                        {isMatchingCourse && <span className="text-[10px] bg-blue-100 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded-full font-bold flex-shrink-0">كورس العميل</span>}
-                      </div>
-                      <p className="text-xs text-gray-500">{round.dayOfWeek} - {round.timeSlot}{round.startDate ? ` - ${round.startDate}` : ' - بدون تاريخ'}</p>
-                      {round.receptionName && <p className="text-[10px] text-gray-400 mt-0.5">{round.receptionName}</p>}
-                    </div>
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${round.status === 'active' ? 'bg-green-50 text-green-700' : round.status === 'new' ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>{round.attendees.length} حاضر</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <div className="mb-4">
+            <DaqqiRoundPicker rounds={available} courses={courses} selectedId={targetRoundId} onSelect={setTargetRoundId}
+              clientCourseIds={subscriber?.enrolledCourseIds || []} emptyText="العميل مسكن في جميع الروندات المتاحة." />
+          </div>
         </div>
         <div className="flex gap-3">
           <button onClick={onClose} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm hover:bg-gray-200">إلغاء</button>

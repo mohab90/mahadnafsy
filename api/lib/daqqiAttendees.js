@@ -26,16 +26,20 @@
 // attendance report overstated Dokki revenue by the same amount again. The
 // booking INSERT in daqqi-rounds.js always had the strict predicate; only the
 // read carried a looser copy.
-async function getDaqqiAttendees(db, tenantId, roundIds = []) {
+async function getDaqqiAttendees(db, tenantId, roundIds = [], { withRevenue = false } = {}) {
   if (roundIds.length === 0) return [];
   const placeholders = roundIds.map(() => '?').join(',');
   const [rows] = await db.query(
-    `SELECT da.round_id, da.subscriber_id,
+    `SELECT da.round_id, da.subscriber_id, dr.course_id,
             COALESCE(s.name, da.name) AS name,
             COALESCE(s.phone, da.phone) AS phone,
             da.booked_at,
             da.attended_lectures,
             (s.id IS NULL OR s.deleted_at IS NOT NULL) AS archived,
+            -- The figure stored at booking (da.amount_paid) is only a fallback for a
+            -- client with no payment row at all for this course — a sheet import. Once
+            -- any row exists, even a refunded or deleted one, the payments decide: the
+            -- stored figure kept reading «900» for a client whose 900 had been refunded.
             COALESCE((
               SELECT SUM(COALESCE(p.amount_egp, p.amount))
                 FROM payments p
@@ -49,7 +53,18 @@ async function getDaqqiAttendees(db, tenantId, roundIds = []) {
                           AND bc.bundle_id=p.bundle_id
                           AND bc.course_id=dr.course_id
                      ))
-            ), da.amount_paid, 0) AS amount_paid,
+            ), CASE WHEN EXISTS (
+                 SELECT 1 FROM payments p
+                  WHERE p.tenant_id=da.tenant_id
+                    AND p.subscriber_id=da.subscriber_id
+                    AND (p.course_id=dr.course_id OR EXISTS (
+                          SELECT 1 FROM bundle_courses bc
+                           WHERE bc.tenant_id=p.tenant_id
+                             AND bc.bundle_id=p.bundle_id
+                             AND bc.course_id=dr.course_id
+                        ))
+               ) THEN 0 ELSE da.amount_paid END, 0) AS amount_paid,
+            ${withRevenue ? REVENUE_SQL : ''}
             -- Recorded for this round's course and not yet approved. The desk's
             -- own payments are PENDING until accounts approve them, so the roster
             -- read «المدفوع 0» for every client who had handed cash over.
@@ -101,5 +116,42 @@ async function getDaqqiAttendees(db, tenantId, roundIds = []) {
   );
   return rows;
 }
+
+// What this round earned, for the reports — only asked for by the ones that sum money over
+// rounds, since it is one more lookup per client on every call. Declared below the function
+// that uses it: the money counted for the round is the first thing in the query and this is not.
+const REVENUE_SQL = `-- What this round earned, for the reports. amount_paid above is what the CLIENT
+            -- has paid toward the course, so a track's money shows whole on each of its
+            -- courses' rounds — right for the client's page, and summed over rounds it
+            -- counts the same payment three times. Here a payment that names a course is
+            -- that course's, and one that names only a track is split across its courses.
+            COALESCE((
+              SELECT SUM(COALESCE(p.amount_egp, p.amount) / CASE
+                       WHEN p.course_id IS NULL AND p.bundle_id IS NOT NULL
+                       THEN GREATEST(1, (SELECT COUNT(*) FROM bundle_courses b2
+                                          WHERE b2.tenant_id=p.tenant_id AND b2.bundle_id=p.bundle_id))
+                       ELSE 1 END)
+                FROM payments p
+               WHERE p.tenant_id=da.tenant_id
+                 AND p.subscriber_id=da.subscriber_id
+                 AND p.status='paid'
+                 AND p.deleted_at IS NULL
+                 AND (p.course_id=dr.course_id OR (p.course_id IS NULL AND EXISTS (
+                       SELECT 1 FROM bundle_courses bc
+                        WHERE bc.tenant_id=p.tenant_id
+                          AND bc.bundle_id=p.bundle_id
+                          AND bc.course_id=dr.course_id
+                     )))
+            ), CASE WHEN EXISTS (
+                 SELECT 1 FROM payments p
+                  WHERE p.tenant_id=da.tenant_id
+                    AND p.subscriber_id=da.subscriber_id
+                    AND (p.course_id=dr.course_id OR EXISTS (
+                          SELECT 1 FROM bundle_courses bc
+                           WHERE bc.tenant_id=p.tenant_id
+                             AND bc.bundle_id=p.bundle_id
+                             AND bc.course_id=dr.course_id
+                        ))
+               ) THEN 0 ELSE da.amount_paid END, 0) AS revenue_share,`;
 
 module.exports = { getDaqqiAttendees };

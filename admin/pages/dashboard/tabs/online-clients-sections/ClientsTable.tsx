@@ -3,7 +3,7 @@ import { cairoDateOnly, cairoDay, cairoDaysAhead } from '../../../../../shared/c
 import { Modal } from '../../../../../shared/ui/Modal';
 import { useNavigate } from 'react-router-dom';
 import {
-  CalendarClock, ExternalLink, Phone, Receipt, RefreshCw, Trash2, Wallet,
+  CalendarClock, ExternalLink, Home, Phone, Receipt, RefreshCw, Trash2, Wallet,
 } from 'lucide-react';
 import type {
   Bundle, CommunicationRecord, Course, 
@@ -312,9 +312,9 @@ export function ClientsTable({
                     <span title="مفيش رقم" className="h-7 rounded bg-gray-50 text-gray-300 flex items-center justify-center"><WhatsAppIcon size={13}/></span>
                   )}
                   {isDaqqiClientsTab ? (
-                    <button title={rowHousing ? `مسكن في روند ${rowHousing.roundCode}` : 'تسكين في روند'} onClick={()=>{ setDaqqiHousingModal(row); setDaqqiHousingRoundId(rowHousing?.roundId||''); }}
-                      className={`h-7 rounded flex items-center justify-center transition text-xs font-bold ${rowHousing ? 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100' : 'bg-gray-50 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600'}`}>
-                      🏠
+                    <button title={rowHousing ? `مسكن في روند ${rowHousing.roundCode} — تسكين في روند تاني` : 'تسكين في روند'} onClick={()=>{ setDaqqiHousingModal(row); setDaqqiHousingRoundId(''); }}
+                      className={`h-7 rounded flex items-center justify-center transition ${rowHousing ? 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100' : 'bg-gray-50 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600'}`}>
+                      <Home size={12}/>
                     </button>
                   ) : !isCollection ? (
                     <button title="تفاصيل الكورسات والصلاحية والمدفوعات" onClick={()=>setAccessRow(row)}

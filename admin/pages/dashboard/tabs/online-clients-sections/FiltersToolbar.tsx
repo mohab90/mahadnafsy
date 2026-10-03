@@ -89,10 +89,10 @@ export function FiltersToolbar({
               <option value="unhoused">غير مسكنين ❌</option>
             </select>
             <select value={daqqiRoundFilter} onChange={e=>{setDaqqiRoundFilter(e.target.value);setCollOnlinePage(1);}}
-              className="border border-indigo-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none max-w-[180px]">
+              className="border border-indigo-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none max-w-[240px]">
               <option value="">كل الروندات</option>
               {(salesOwnDaqqiRounds ?? []).map((r: DaqqiRound) => (
-                <option key={r.id} value={r.id}>{r.code} — {r.receptionName}</option>
+                <option key={r.id} value={r.id}>{r.code} — {r.instructorName || 'محاضر غير محدد'} — {r.dayOfWeek} {r.timeSlot}</option>
               ))}
             </select>
             {/* فلتر رسيبشن الدقي */}

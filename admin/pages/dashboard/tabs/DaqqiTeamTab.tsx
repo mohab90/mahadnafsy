@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Users, Calendar, BookOpen, ChevronDown, User } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import type { DaqqiPerformance } from '../../../types';
+import type { DaqqiPerformance, DaqqiRound } from '../../../types';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -12,6 +12,22 @@ const ROLE_LABELS: Record<string, string> = {
   daqqi_manager: 'مدير دقي',
   instructor: 'مدرب',
   trainer: 'مدرب',
+};
+
+// Only when the server's figures did not arrive. A client's money is what they paid toward the
+// course — a track's money shows on each of its courses — so each client counts once per track.
+const revenueOf = (rounds: DaqqiRound[]) => {
+  const counted = new Set<string>();
+  let sum = 0;
+  for (const round of rounds) {
+    for (const attendee of round.attendees) {
+      const key = `${attendee.subscriberId}|${attendee.trackId || round.courseId}`;
+      if (counted.has(key)) continue;
+      counted.add(key);
+      sum += attendee.amountPaid;
+    }
+  }
+  return sum;
 };
 
 const DaqqiTeamTab: React.FC<Props> = () => {
@@ -50,11 +66,11 @@ const DaqqiTeamTab: React.FC<Props> = () => {
   const newRounds = daqqiRounds.filter(r => r.status === 'new');
 
   const totalAttendees = daqqiRounds.reduce((s, r) => s + r.attendees.length, 0);
-  const totalRevenue = daqqiRounds.reduce((s, r) => s + r.attendees.reduce((a, at) => a + at.amountPaid, 0), 0);
+  const totalRevenue = revenueOf(daqqiRounds);
 
   // Each person's figures, from the server where it answered and from the
-  // rounds array otherwise. The two agree; the server is simply the only source
-  // a performance-only viewer has.
+  // rounds array otherwise. The server is the only source a performance-only
+  // viewer has, and the only one that shares a track's money across its courses.
   const serverByInstructor = useMemo(() => new Map(
     (perf?.byInstructor || []).filter(row => row.id).map(row => [String(row.id), row])), [perf]);
   const serverByReception = useMemo(() => new Map(
@@ -68,7 +84,7 @@ const DaqqiTeamTab: React.FC<Props> = () => {
       rounds,
       roundCount: counted ? counted.rounds : rounds.length,
       attendees: counted ? counted.students : rounds.reduce((s, r) => s + r.attendees.length, 0),
-      revenue: counted ? counted.revenue : rounds.reduce((s, r) => s + r.attendees.reduce((a, at) => a + at.amountPaid, 0), 0),
+      revenue: counted ? counted.revenue : revenueOf(rounds),
       active: counted ? counted.active : rounds.filter(r => r.status === 'active').length,
     };
   }).sort((a, b) => b.revenue - a.revenue), [instructors, daqqiRounds, serverByInstructor]);

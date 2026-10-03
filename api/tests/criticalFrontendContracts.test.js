@@ -540,9 +540,13 @@ test('Dokki round edits are server-first and attendee transfers are atomic', () 
   assert.match(transferRoute, /INSERT INTO daqqi_attendees/);
   assert.match(transferRoute, /await conn\.commit\(\)/);
   assert.match(transferRoute, /await conn\.rollback\(\)/);
+  // «تسكين» of one client is one row on the server, then the rounds read back — not the
+  // whole round posted from what the screen last loaded.
+  assert.match(state, /await mysqlAdmin\.addDaqqiAttendee/);
   const housing = read('admin/pages/dashboard/tabs/DaqqiHousingModal.tsx');
-  assert.match(housing, /mysqlAdmin\.transferDaqqiAttendee/);
-  assert.match(housing, /catch \{[\s\S]{0,160}لم يتم تغيير الروندات/);
+  assert.match(housing, /transferDaqqiAttendee\(subscriber\.id, decision\.from\.id, round\.id\)/);
+  assert.match(housing, /bookDaqqiAttendee\(subscriber\.id, round\.id\)/);
+  assert.match(housing, /if \(!saved\) \{[\s\S]{0,120}لم يتم تغيير الروندات/);
 });
 
 test('staff password reset uses the privileged server-generated credential flow', () => {

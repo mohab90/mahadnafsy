@@ -219,8 +219,10 @@ async function anonymizeSubscriber({ tenantId, subscriberId, actorId, db }) {
     `UPDATE certificate_requests SET custom_name=NULL,name_ar=NULL,name_en=NULL,nationality=NULL,
        id_number=NULL,note=NULL,admin_note=NULL WHERE tenant_id=? AND subscriber_id=?`,
     [tenantId, subscriberId]);
+  // daqqi_attendees.phone is NOT NULL: NULL here was refused under strict SQL mode and the
+  // whole erasure failed for anyone who had ever been seated in a Dokki round. Empty is erased.
   await run('attendance',
-    'UPDATE daqqi_attendees SET name=?,phone=NULL WHERE tenant_id=? AND subscriber_id=?',
+    "UPDATE daqqi_attendees SET name=?,phone='' WHERE tenant_id=? AND subscriber_id=?",
     [deletedLabel, tenantId, subscriberId]);
   await run('orders',
     `UPDATE orders SET customer_name=?,customer_email=?,customer_phone=NULL,notes=NULL

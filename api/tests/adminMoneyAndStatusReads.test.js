@@ -78,7 +78,9 @@ test('a refunded payment is never counted as money collected', () => {
   // The window runs past reduce( on purpose: some of these guard inside the
   // filter and some inside the reduce body.
   const sums = daqqi.match(/paymentHistory \|\| \[\]\)[\s\S]{0,320}/g) || [];
-  assert.ok(sums.length >= 3, `expected the roster's payment sums, found ${sums.length}`);
+  // Two: the new-round and add-clients saves. «تسكين» of one client no longer sums the
+  // browser's copy of their payments — the server seats them and works the figure out.
+  assert.ok(sums.length >= 2, `expected the roster's payment sums, found ${sums.length}`);
   for (const sum of sums) {
     assert.ok(sum.includes("p.status === 'paid'"), 'every roster sum must exclude refunds');
   }

@@ -1051,7 +1051,7 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requi
              SUM(p.amount_egp) AS revenue, COUNT(*) AS cnt
       FROM payments p
       LEFT JOIN courses c ON c.id = p.course_id AND c.tenant_id = p.tenant_id
-      WHERE p.tenant_id=? AND p.date >= ? AND p.status='paid'${paymentAliasScopeSql}
+      WHERE p.tenant_id=? AND p.date >= ? AND p.status='paid' AND p.deleted_at IS NULL${paymentAliasScopeSql}
       GROUP BY p.course_id ORDER BY revenue DESC LIMIT 5
     `, scope.branchId ? [req.tenantId, monthStart, scope.branchId] : [req.tenantId, monthStart]);
 
@@ -1061,7 +1061,7 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requi
              SUM(p.amount_egp) AS collected, COUNT(*) AS deals
       FROM payments p
       LEFT JOIN staff s ON s.id = p.staff_id AND s.tenant_id = p.tenant_id
-      WHERE p.tenant_id=? AND p.date >= ? AND p.status='paid' AND p.staff_id IS NOT NULL${paymentAliasScopeSql}
+      WHERE p.tenant_id=? AND p.date >= ? AND p.status='paid' AND p.deleted_at IS NULL AND p.staff_id IS NOT NULL${paymentAliasScopeSql}
       GROUP BY p.staff_id ORDER BY collected DESC LIMIT 5
     `, scope.branchId ? [req.tenantId, monthStart, scope.branchId] : [req.tenantId, monthStart]);
 
@@ -1070,7 +1070,7 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requi
       SELECT COALESCE(payment_method,'غير محدد') AS method,
              SUM(amount_egp) AS revenue
       FROM payments
-      WHERE tenant_id=? AND date >= ? AND status='paid'${paymentScopeSql}
+      WHERE tenant_id=? AND date >= ? AND status='paid' AND deleted_at IS NULL${paymentScopeSql}
       GROUP BY payment_method ORDER BY revenue DESC
     `, scope.branchId ? [req.tenantId, monthStart, scope.branchId] : [req.tenantId, monthStart]);
 
@@ -1122,10 +1122,13 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requi
       : [req.tenantId, monthStart, currentMonth.endDate]);
 
     // ── Cross-section: Daqqi revenue this month ────────────────────────
+    // By the branch the money was taken at — what the branch P&L and the team report read.
+    // It read `source='daqqi'`, which only the schedule's own payment dialog sets, so a Dokki
+    // client who paid through their page, a booking or a lead's «حجز ودفع» was not counted.
     const [[daqqiRev]] = await pool.query(`
       SELECT COALESCE(SUM(p.amount_egp),0) AS v
       FROM payments p
-      WHERE p.tenant_id=? AND p.date >= ? AND p.status='paid' AND p.source='daqqi'${paymentAliasScopeSql}
+      WHERE p.tenant_id=? AND p.date >= ? AND p.status='paid' AND p.deleted_at IS NULL AND p.branch='DAQQI'${paymentAliasScopeSql}
     `, scope.branchId ? [req.tenantId, monthStart, scope.branchId] : [req.tenantId, monthStart]);
 
     // ── Alerts ─────────────────────────────────────────────────────────

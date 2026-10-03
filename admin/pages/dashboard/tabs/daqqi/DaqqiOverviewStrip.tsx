@@ -24,7 +24,7 @@ export function DaqqiOverviewStrip({ overview }: { overview: ReturnType<typeof d
       note: `${num(overview.week.postponed)} اتأجلت · ${num(overview.week.unanswered)} لسه متسجلتش`,
       tone: overview.week.unanswered > 0 ? 'attention' : undefined,
     },
-    { label: 'محصّل الروندات المفتوحة', value: `${num(overview.collected)} ج.م`, note: `المتبقي ${num(overview.remaining)} ج.م` },
+    { label: 'محصّل الروندات المفتوحة', value: `${num(overview.collected)} ج.م`, note: `المتبقي ${num(overview.remaining)} ج.م${overview.prior > 0 ? ` · قبل السيستم ${num(overview.prior)}` : ''}` },
   ];
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">

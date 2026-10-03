@@ -95,9 +95,9 @@ export function useCrmCoreState(
   const recordSubscriberPayment = async (
     subscriberId: string,
     payment: Record<string, unknown>,
-  ): Promise<{ ok: boolean; id: string; status: string; approvalRequired?: boolean }> => {
+  ): Promise<{ ok: boolean; id: string; status: string; approvalRequired?: boolean; housed?: string }> => {
     const result = await mysqlAdmin.saveSubscriberPayment(subscriberId, payment) as {
-      ok: boolean; id: string; status?: string; approvalRequired?: boolean;
+      ok: boolean; id: string; status?: string; approvalRequired?: boolean; housed?: string;
     };
     // Money and entitlements are committed together by the API. Always reload
     // the server projection instead of granting access through crm_json locally.
@@ -107,6 +107,7 @@ export function useCrmCoreState(
       id: result.id,
       status: result.status || 'pending',
       approvalRequired: result.approvalRequired,
+      housed: result.housed,
     };
   };
 

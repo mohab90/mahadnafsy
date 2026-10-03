@@ -11,6 +11,8 @@ const { bulkOperationLimiter } = require('../middleware/rateLimits');
 const { requireDaqqiAccess } = require('../lib/daqqiAccess');
 const { writeAuditEvent } = require('../lib/auditTrail');
 const { getDaqqiAttendees } = require('../lib/daqqiAttendees');
+const { attachAttendeeMoney } = require('../lib/daqqiAttendeeMoney');
+const { seatSubscriberInRound } = require('../lib/daqqiHousing');
 const { ymd } = require('../lib/helpers');
 const { branchIdForBranch } = require('../lib/branches');
 
@@ -104,9 +106,12 @@ router.get('/api/admin/daqqi-performance', requireAuth, requireAdminOrStaff,
   requireAnyPermission(PERMISSIONS.MANAGE_DAQQI, PERMISSIONS.VIEW_PERF_DAQQI), async (req, res) => {
     try {
       const tenant = [req.tenantId];
-      const [[byStatus], [[totals]], [byInstructor], [byReception]] = await Promise.all([
+      const [[byStatus], [[totals]], [byInstructor], [byReception], [roundOwners]] = await Promise.all([
         pool.query('SELECT status, COUNT(*) n FROM daqqi_rounds WHERE tenant_id=? GROUP BY status', tenant),
-        pool.query('SELECT COUNT(*) students, COALESCE(SUM(amount_paid),0) revenue FROM daqqi_attendees WHERE tenant_id=?', tenant),
+        // Seats only. The money is read below from the payments themselves: the figure kept
+        // on the attendee row is what the client had paid when they were booked, and it was
+        // never updated — a client booked before paying, which is most of them, counted 0.
+        pool.query('SELECT COUNT(*) students FROM daqqi_attendees WHERE tenant_id=?', tenant),
         // COUNT(DISTINCT r.id): the attendee join multiplies a round by its
         // attendees, so counting rows here would report a busy round as several.
         pool.query(
@@ -114,14 +119,12 @@ router.get('/api/admin/daqqi-performance', requireAuth, requireAdminOrStaff,
                   COALESCE(NULLIF(TRIM(r.instructor_name),''), s.name, '—') name,
                   COUNT(DISTINCT r.id) rounds,
                   COUNT(DISTINCT CASE WHEN r.status='ACTIVE' THEN r.id END) active,
-                  COUNT(a.subscriber_id) students,
-                  COALESCE(SUM(a.amount_paid),0) revenue
+                  COUNT(a.subscriber_id) students
              FROM daqqi_rounds r
              LEFT JOIN daqqi_attendees a ON a.round_id=r.id AND a.tenant_id=r.tenant_id
              LEFT JOIN staff s ON s.id=r.instructor_id AND s.tenant_id=r.tenant_id
             WHERE r.tenant_id=?
-            GROUP BY r.instructor_id, name
-            ORDER BY revenue DESC, rounds DESC`, tenant),
+            GROUP BY r.instructor_id, name`, tenant),
         pool.query(
           `SELECT r.reception_id id,
                   COALESCE(NULLIF(TRIM(r.reception_name),''), s.name, '—') name,
@@ -134,7 +137,29 @@ router.get('/api/admin/daqqi-performance', requireAuth, requireAdminOrStaff,
             WHERE r.tenant_id=?
             GROUP BY r.reception_id, name
             ORDER BY rounds DESC`, tenant),
+        // Which instructor each round is filed under, spelt as the grouping above spells it.
+        pool.query(
+          `SELECT r.id, r.instructor_id,
+                  COALESCE(NULLIF(TRIM(r.instructor_name),''), s.name, '—') name
+             FROM daqqi_rounds r
+             LEFT JOIN staff s ON s.id=r.instructor_id AND s.tenant_id=r.tenant_id
+            WHERE r.tenant_id=?`, tenant),
       ]);
+
+      // What each round earned — the payments of its clients for its course, a track's
+      // money shared across the track's courses (lib/daqqiAttendees.js revenue_share).
+      const earnedByRound = new Map();
+      const seats = roundOwners.length
+        ? await getDaqqiAttendees(pool, req.tenantId, roundOwners.map(round => round.id), { withRevenue: true }) : [];
+      for (const seat of seats) {
+        earnedByRound.set(seat.round_id, (earnedByRound.get(seat.round_id) || 0) + Number(seat.revenue_share || 0));
+      }
+      const earnedByInstructor = new Map();
+      for (const round of roundOwners) {
+        const key = `${round.instructor_id || ''}\u0000${round.name}`;
+        earnedByInstructor.set(key, (earnedByInstructor.get(key) || 0) + (earnedByRound.get(round.id) || 0));
+      }
+      const round2 = value => Math.round(value * 100) / 100;
 
       // daqqi_rounds.status is ENUM('NEW','ACTIVE','FINISHED') and MariaDB
       // answers with the declared spelling, so a strict comparison against
@@ -150,8 +175,10 @@ router.get('/api/admin/daqqi-performance', requireAuth, requireAdminOrStaff,
           new: counted('new'),
         },
         students: Number(totals?.students || 0),
-        revenue: Number(totals?.revenue || 0),
-        byInstructor: byInstructor.map(row => ({ ...row, revenue: Number(row.revenue || 0) })),
+        revenue: round2([...earnedByRound.values()].reduce((sum, value) => sum + value, 0)),
+        byInstructor: byInstructor
+          .map(row => ({ ...row, revenue: round2(earnedByInstructor.get(`${row.id || ''}\u0000${row.name}`) || 0) }))
+          .sort((a, b) => b.revenue - a.revenue || Number(b.rounds) - Number(a.rounds)),
         byReception,
         // Whether this caller may also see the rounds themselves. The screen
         // hides its schedule for anyone who cannot, instead of drawing an empty
@@ -176,7 +203,10 @@ router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requireP
     );
     if (rounds.length === 0) return res.json([]);
 
-    const attendees = await getDaqqiAttendees(pool, req.tenantId, rounds.map(round => round.id));
+    // The money fields — prior payments under a track's key, the price the client
+    // agreed for the course or the track — read in bulk for the whole roster.
+    const attendees = await attachAttendeeMoney(pool, req.tenantId,
+      await getDaqqiAttendees(pool, req.tenantId, rounds.map(round => round.id)));
     const attendeesMap = {};
     for (const a of attendees) {
       if (!attendeesMap[a.round_id]) attendeesMap[a.round_id] = [];
@@ -217,6 +247,14 @@ router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requireP
         // Paid before the system (crm_json.priorPaid for this round's course) — not a
         // collection of any period, so it stays out of amountPaid and the revenue sums.
         amountPrior: Number(a.prior_paid || 0),
+        // What this client agreed for the course — or for the track they hold it in —
+        // and that track. null when nothing is priced; the screen then uses the catalogue.
+        agreedPrice: a.agreed_price == null ? null : Number(a.agreed_price),
+        trackId: a.track_id || null,
+        trackTitle: a.track_title || null,
+        // Collected money that names no course, counted here because this is the only
+        // course the client has. Shown on its own line, never in the period's revenue.
+        amountUnlinkedApplied: Number(a.unlinked_applied || 0),
         attendedLectures: Number(a.attended_lectures || 0),
         // The client is archived but their attendance stands — see lib/daqqiAttendees.js.
         archived: Boolean(Number(a.archived || 0)),
@@ -789,6 +827,36 @@ router.post('/api/admin/daqqi-rounds/transfer-attendee', requireAuth, requireAdm
   }
 });
 
+// POST /api/admin/daqqi-rounds/:roundId/attendees  { subscriberId }
+//
+// «تسكين»: seating one client in a round is a roster change, so it writes one
+// row. The admin did it by posting the whole round back with the client added,
+// which rebuilds every attendee row from what that screen last loaded — so a
+// client another desk had seated a minute earlier, and not yet on this screen,
+// was deleted by the save. Seating the same client twice is a no-op, not an error.
+router.post('/api/admin/daqqi-rounds/:roundId/attendees', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
+  const subscriberId = String(req.body?.subscriberId || '').trim();
+  if (!subscriberId) return res.status(400).json({ error: 'subscriberId is required' });
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const seat = await seatSubscriberInRound(conn, { tenantId: req.tenantId, roundId: req.params.roundId, subscriberId, req });
+    if (seat.status === 'seated') {
+      await conn.commit();
+      return res.json({ ok: true, roundId: seat.roundId, code: seat.code });
+    }
+    await conn.rollback();
+    if (seat.status === 'already') return res.json({ ok: true, alreadyBooked: true, roundId: seat.roundId, code: seat.code });
+    if (seat.status === 'no_round') return res.status(404).json({ error: 'Round not found' });
+    if (seat.status === 'archived') return res.status(409).json({ error: 'An archived client cannot be booked into a round' });
+    return res.status(404).json({ error: 'Subscriber not found' });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    logger.error('[daqqi-book-attendee]', error.message);
+    sendRouteError(res, error);
+  } finally { conn.release(); }
+});
+
 // DELETE /api/admin/daqqi-rounds/:roundId/attendees/:subscriberId
 //
 // Taking one client off a round is a roster change, so it touches one row.
@@ -809,14 +877,26 @@ router.delete('/api/admin/daqqi-rounds/:roundId/attendees/:subscriberId', requir
       await conn.rollback();
       return res.status(404).json({ error: 'Round not found' });
     }
-    const [result] = await conn.query(
-      'DELETE FROM daqqi_attendees WHERE tenant_id=? AND round_id=? AND subscriber_id=?',
+    const [[seat]] = await conn.query(
+      `SELECT attended_lectures FROM daqqi_attendees
+        WHERE tenant_id=? AND round_id=? AND subscriber_id=? LIMIT 1 FOR UPDATE`,
       [req.tenantId, req.params.roundId, req.params.subscriberId]
     );
-    if (!result.affectedRows) {
+    if (!seat) {
       await conn.rollback();
       return res.status(404).json({ error: 'Client is not booked into this round' });
     }
+    // The round save refuses to drop a client who has attendance, and so does this: the
+    // button used to delete the seat and leave the attendance events behind it, so the
+    // report and the statistics lost a person who had sat lectures. Take the marks back first.
+    if (Number(seat.attended_lectures || 0) > 0) {
+      await conn.rollback();
+      return res.status(409).json({ error: 'An attendee with attendance history cannot be removed from a round' });
+    }
+    await conn.query(
+      'DELETE FROM daqqi_attendees WHERE tenant_id=? AND round_id=? AND subscriber_id=?',
+      [req.tenantId, req.params.roundId, req.params.subscriberId]
+    );
     await conn.commit();
     res.json({ ok: true });
   } catch (error) {
@@ -1011,7 +1091,7 @@ router.get('/api/admin/daqqi/attendance-monthly', requireAuth, requireAdminOrSta
     if (!rounds.length) return res.json({ months: [], totals: null });
 
     const roundIds = rounds.map(r => r.id);
-    const attendees = await getDaqqiAttendees(pool, req.tenantId, roundIds);
+    const attendees = await getDaqqiAttendees(pool, req.tenantId, roundIds, { withRevenue: true });
 
     const attByRound = {};
     for (const a of attendees) {
@@ -1033,7 +1113,8 @@ router.get('/api/admin/daqqi/attendance-monthly', requireAuth, requireAdminOrSta
       m.attendees += atts.length;
       m.sessions += sessions;
       for (const a of atts) {
-        m.revenue += Number(a.amount_paid || 0);
+        // What the round earned: a track's money shared across its courses, not counted whole on each.
+        m.revenue += Number(a.revenue_share || 0);
         if (sessions > 0) {
           m.pctSum += Math.min(100, Math.round((Number(a.attended_lectures || 0) / sessions) * 100));
           m.pctCount += 1;
@@ -1050,7 +1131,7 @@ router.get('/api/admin/daqqi/attendance-monthly', requireAuth, requireAdminOrSta
         rounds: m.rounds,
         attendees: m.attendees,
         sessions: m.sessions,
-        revenue: m.revenue,
+        revenue: Math.round(m.revenue * 100) / 100,
         avgAttendancePct: m.pctCount ? Math.round(m.pctSum / m.pctCount) : null,
         topReception: Object.entries(m.receptions).sort((a, b) => b[1] - a[1])[0]?.[0] || '—',
       }));
@@ -1059,7 +1140,7 @@ router.get('/api/admin/daqqi/attendance-monthly', requireAuth, requireAdminOrSta
       rounds: t.rounds + m.rounds,
       attendees: t.attendees + m.attendees,
       sessions: t.sessions + m.sessions,
-      revenue: t.revenue + m.revenue,
+      revenue: Math.round((t.revenue + m.revenue) * 100) / 100,
     }), { rounds: 0, attendees: 0, sessions: 0, revenue: 0 });
     const allPct = monthsOut.filter(m => m.avgAttendancePct !== null);
     totals.avgAttendancePct = allPct.length

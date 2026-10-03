@@ -6,13 +6,15 @@
 // and this row receives it.
 
 import React from 'react';
-import { X, UserPlus, Pencil, CalendarDays, UserCheck, MessageCircle, CreditCard, Eye, ArrowLeftRight, Undo2 } from 'lucide-react';
-import type { Course, Bundle, SubscriberItem, DaqqiRound } from '../../../../types';
+import { X, UserPlus, Pencil, CalendarDays, UserCheck, ExternalLink, Wallet, Phone, ArrowLeftRight, Undo2 } from 'lucide-react';
+import type { Course, Bundle, CommunicationRecord, SubscriberItem, DaqqiRound } from '../../../../types';
 import type { DaqqiDraftType } from './daqqiScheduleUtils';
-import { toDialable } from '../../../../lib/whatsappLink';
+import { waLink } from '../../../../lib/whatsappLink';
+import { WhatsAppIcon } from '../../../../components/WhatsAppIcon';
+import { cairoDay } from '../../../../../shared/cairoDate';
 import type { DaqqiPayModalState } from './useDaqqiPaymentState';
 import type { PaymentDraft } from '../../../../components/PaymentModal';
-import { calcCurrentLecture, getCurrentWeekKey, courseBundles } from './daqqiScheduleUtils';
+import { attendeeMoney, lastContactOf, roundMoney, calcCurrentLecture, getCurrentWeekKey, courseBundles } from './daqqiScheduleUtils';
 import { DAQQI_TIME_SLOT_COLORS as timeSlotColors, DAQQI_STATUS_COLORS as statusColorsMap } from './daqqiScheduleConfig';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -37,6 +39,8 @@ export function DaqqiRoundRow({
   setDaqqiAddClientsRoundId,
   setDaqqiAddClientsSel,
   setDaqqiPayModal,
+  setDaqqiCommModal,
+  localComms,
   setDaqqiPostponeModal,
   setDaqqiTransferModal,
   handleDaqqiMarkAttendance,
@@ -54,7 +58,10 @@ export function DaqqiRoundRow({
   onChoosePath: (bundleId: string) => void;
   isAdmin: boolean;
   resetDaqqiPayDraft: (overrides?: Partial<PaymentDraft>) => void;
-  setDaqqiCommModal: (value: { subscriberId: string; subscriberName: string; phone: string } | null) => void;
+  /** Opens the contact log for a client: the kind already picked (call or WhatsApp). */
+  setDaqqiCommModal: (value: { subscriberId: string; subscriberName: string; phone: string; type: 'call' | 'whatsapp' } | null) => void;
+  /** Contacts logged since the list was loaded, by client, so the column answers at once. */
+  localComms: Record<string, CommunicationRecord[]>;
   setDaqqiToskeenSubId: (id: string | null) => void;
   deleteDaqqiRound: (id: string) => Promise<boolean>;
   attendanceCounts: Record<string, number>;
@@ -84,12 +91,13 @@ export function DaqqiRoundRow({
                     const course = courses.find(c => c.id === round.courseId);
                     const isExpanded = daqqiExpandedId === round.id;
                     const coursePrice = course?.price?.EGP ?? 0;
-                    const collected = round.attendees.reduce((sum, a) => sum + a.amountPaid, 0);
-                    const expected = coursePrice * round.attendees.length;
-                    // What was paid before the system is owed no more, so it comes off the
-                    // balance — but it is not «المحصّل», which is money taken in the period.
-                    const priorTotal = round.attendees.reduce((sum, a) => sum + (a.amountPrior ?? 0), 0);
-                    const remaining = Math.max(0, expected - collected - priorTotal);
+                    // «في الكورس نفسه قاري 0»: the round's figure left out what clients paid before
+                    // the system, which is most of what Dokki's clients have paid. It is the sum of
+                    // the clients' own figures below, so the two always agree.
+                    const money = roundMoney(round, coursePrice);
+                    const collected = money.paid;
+                    const priorTotal = money.prior + money.applied;
+                    const remaining = money.remaining;
                     const status = round.status || 'new';
                     return (
                       <React.Fragment key={round.id}>
@@ -129,9 +137,9 @@ export function DaqqiRoundRow({
                               : <div className="text-amber-600 text-[11px] font-bold mt-0.5">بدون تاريخ — عدّل الروند</div>}
                           </td>
                           {/* «خلي عمود القاعه عمود لوحده». */}
-                          <td className="px-2 py-2.5 text-xs">
+                          <td className="px-1 py-2.5 text-[11px]">
                             {(round.room || round.roomName)
-                              ? <span className="inline-block max-w-full break-words rounded-md bg-slate-100 px-1.5 py-0.5 font-semibold text-slate-700">{round.room || round.roomName}</span>
+                              ? <span className="inline-block max-w-full break-words rounded-md bg-slate-100 px-1 py-0.5 text-[10px] font-semibold leading-tight text-slate-700">{round.room || round.roomName}</span>
                               : <span className="text-gray-300">—</span>}
                           </td>
                           <td className="px-2 py-2.5 text-xs">
@@ -165,7 +173,10 @@ export function DaqqiRoundRow({
                               );
                             })() : <span className="text-gray-300 text-xs">—</span>}
                           </td>
-                          <td className="px-2 py-2.5 text-xs font-bold text-green-700">{collected.toLocaleString('ar-EG-u-nu-latn')} ج.م</td>
+                          <td className="px-2 py-2.5 text-xs font-bold text-green-700">
+                            {collected.toLocaleString('ar-EG-u-nu-latn')} ج.م
+                            {priorTotal > 0 && <div className="text-[10px] font-semibold text-gray-500" title="مدفوع قبل السيستم — محسوب هنا، ومش داخل في إيراد الفترة">منها {priorTotal.toLocaleString('ar-EG-u-nu-latn')} قبل السيستم</div>}
+                          </td>
                           <td className="px-2 py-2.5 text-xs">
                             {remaining > 0
                               ? <span className="font-bold text-amber-600">{remaining.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
@@ -220,17 +231,17 @@ export function DaqqiRoundRow({
                                 <p className="text-xs text-sky-800/70">لسه محدش اتسكّن في الروند ده.</p>
                               ) : (
                                 <div className="overflow-x-auto rounded-xl border border-sky-200 bg-white px-3 py-2">
-                                  <table className="w-full text-xs min-w-[500px]">
+                                  <table className="w-full text-xs min-w-[760px]">
                                     <thead>
                                       <tr className="text-sky-900">
                                         <th className="text-right pb-1 pr-1 font-semibold">الاسم</th>
-                                        <th className="text-right pb-1 pr-4 font-semibold">الهاتف</th>
-                                        <th className="text-right pb-1 pr-4 font-semibold">تاريخ الحجز</th>
-                                        <th className="text-right pb-1 pr-4 font-semibold">المدفوع</th>
-                                        <th className="text-right pb-1 pr-4 font-semibold">سعر الكورس</th>
-                                        <th className="text-right pb-1 pr-4 font-semibold">المتبقي</th>
-                                        <th className="text-right pb-1 pr-4 font-semibold">الحضور</th>
-                                        <th className="text-right pb-1 pr-4 font-semibold">إجراءات</th>
+                                        <th className="text-right pb-1 pr-3 font-semibold">تاريخ الحجز</th>
+                                        <th className="text-right pb-1 pr-3 font-semibold">المدفوع</th>
+                                        <th className="text-right pb-1 pr-3 font-semibold">سعر الكورس</th>
+                                        <th className="text-right pb-1 pr-3 font-semibold">المتبقي</th>
+                                        <th className="text-right pb-1 pr-3 font-semibold">الحضور</th>
+                                        <th className="text-right pb-1 pr-3 font-semibold">التواصل</th>
+                                        <th className="text-right pb-1 pr-3 font-semibold">إجراءات</th>
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -238,12 +249,16 @@ export function DaqqiRoundRow({
                                         // What the client has paid toward this course: collected here, plus what
                                         // they paid before the system (a column of its own — it was never a payment
                                         // row, and the revenue sums above must not count it).
-                                        const aPrior = a.amountPrior ?? 0;
-                                        const aPaid = a.amountPaid + aPrior;
-                                        const aRem = coursePrice > 0 ? Math.max(0, coursePrice - aPaid) : 0;
+                                        const { prior: aPrior, applied: aApplied, paid: aPaid, price: aPrice, remaining: aRem } = attendeeMoney(a, coursePrice);
                                         const attSub = subscribers.find(s => s.id === a.subscriberId);
+                                        const waHref = waLink(a.phone);
+                                        const lastComm = lastContactOf(attSub, localComms[a.subscriberId]);
+                                        const followUp = attSub?.nextFollowUpDate || lastComm?.nextFollowUp || '';
+                                        const contactTarget = (type: 'call' | 'whatsapp') => setDaqqiCommModal({ subscriberId: a.subscriberId, subscriberName: a.name, phone: a.phone, type });
+                                        const iconButton = 'h-7 w-7 shrink-0 rounded bg-gray-50 text-gray-500 flex items-center justify-center transition';
                                         return (
-                                          <tr key={a.subscriberId} className="border-t border-sky-100">
+                                          <tr key={a.subscriberId} className="border-t border-sky-100 align-top">
+                                            {/* «اسم العميل تحته رقم التليفون». */}
                                             <td className="py-1.5 pr-1">
                                               <div className="flex items-center gap-1.5">
                                                 <span className="font-bold text-gray-800">{a.name}</span>
@@ -251,19 +266,29 @@ export function DaqqiRoundRow({
                                                   <span className="text-[9px] font-bold text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded-full whitespace-nowrap" title="عميل مؤرشف — يظل محفوظاً في سجل الروند">مؤرشف</span>
                                                 )}
                                               </div>
-                                              {attSub?.clientCode && (
-                                                <button onClick={e => { e.stopPropagation(); navigate(`/client/${attSub.clientCode}`); }} className="text-[10px] font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded hover:bg-indigo-100 mt-0.5 inline-block">#{attSub.clientCode}</button>
-                                              )}
+                                              <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                                                {a.phone
+                                                  ? <a href={`tel:${a.phone}`} dir="ltr" className="text-[11px] text-blue-600 hover:underline">{a.phone}</a>
+                                                  : <span className="text-[11px] text-gray-400">من غير رقم</span>}
+                                                {attSub?.clientCode && (
+                                                  <button onClick={e => { e.stopPropagation(); navigate(`/client/${attSub.clientCode}`); }} className="text-[10px] font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded hover:bg-indigo-100 inline-block">#{attSub.clientCode}</button>
+                                                )}
+                                              </div>
                                             </td>
-                                            <td className="py-1.5 pr-4">{a.phone
-                                              ? <a href={`tel:${a.phone}`} className="text-blue-600 hover:underline">{a.phone}</a>
-                                              : <span className="text-gray-400">من غير رقم</span>}</td>
-                                            <td className="py-1.5 pr-4 text-gray-500">{a.bookedAt}</td>
-                                            <td className="py-1.5 pr-4 font-semibold text-green-700">
+                                            <td className="py-1.5 pr-3 text-gray-500 whitespace-nowrap">{a.bookedAt}</td>
+                                            <td className="py-1.5 pr-3 font-semibold text-green-700">
                                               {aPaid.toLocaleString('ar-EG-u-nu-latn')} ج.م
+                                              {a.trackTitle && (
+                                                <div className="text-[10px] font-semibold text-violet-600" title="العميل حاجز المسار ده — الدفع والسعر على المسار كله">مسار: {a.trackTitle}</div>
+                                              )}
                                               {aPrior > 0 && (
                                                 <div className="text-[10px] font-semibold text-gray-500" title="مدفوع للكورس ده قبل السيستم — محسوب في المدفوع والمتبقي، ومش داخل في إيراد الفترة">
                                                   منها {aPrior.toLocaleString('ar-EG-u-nu-latn')} ج.م قبل السيستم
+                                                </div>
+                                              )}
+                                              {aApplied > 0 && (
+                                                <div className="text-[10px] font-semibold text-sky-600" title="دفعات اتحصّلت للعميل من غير ما تتسجل على كورس — اتحسبت هنا لأن ده الكورس الوحيد عنده">
+                                                  منها {aApplied.toLocaleString('ar-EG-u-nu-latn')} ج.م من غير كورس محدد
                                                 </div>
                                               )}
                                               {(a.amountPending ?? 0) > 0 && (
@@ -271,17 +296,17 @@ export function DaqqiRoundRow({
                                                   ⏳ {(a.amountPending ?? 0).toLocaleString('ar-EG-u-nu-latn')} ج.م بانتظار الاعتماد
                                                 </div>
                                               )}
-                                              {(a.amountUnlinked ?? 0) > 0 && (
-                                                <div className="text-[10px] font-semibold text-sky-600" title="دفعات اتحصّلت للعميل من غير ما تتربط بكورس أو مسار — ما اتحسبتش على الروند ده تلقائي. اربطها من ملف العميل">
+                                              {(a.amountUnlinked ?? 0) > 0 && aApplied === 0 && (
+                                                <div className="text-[10px] font-semibold text-sky-600" title="دفعات اتحصّلت للعميل من غير ما تتربط بكورس أو مسار، وعنده أكتر من كورس — ما اتحسبتش على الروند ده تلقائي. اربطها من ملف العميل">
                                                   + {(a.amountUnlinked ?? 0).toLocaleString('ar-EG-u-nu-latn')} ج.م غير مربوطة بكورس
                                                 </div>
                                               )}
                                             </td>
-                                            <td className="py-1.5 pr-4 text-gray-600">{coursePrice > 0 ? `${coursePrice.toLocaleString('ar-EG-u-nu-latn')} ج.م` : '—'}</td>
-                                            <td className="py-1.5 pr-4">
-                                              {coursePrice > 0 ? aRem > 0 ? <span className="font-semibold text-amber-600">{aRem.toLocaleString('ar-EG-u-nu-latn')} ج.م</span> : <span className="text-green-500 text-[10px] font-bold">مكتمل ✓</span> : <span className="text-gray-300">—</span>}
+                                            <td className="py-1.5 pr-3 text-gray-600">{aPrice > 0 ? `${aPrice.toLocaleString('ar-EG-u-nu-latn')} ج.م` : '—'}</td>
+                                            <td className="py-1.5 pr-3">
+                                              {aPrice > 0 ? aRem > 0 ? <span className="font-semibold text-amber-600">{aRem.toLocaleString('ar-EG-u-nu-latn')} ج.م</span> : <span className="text-green-500 text-[10px] font-bold">مكتمل ✓</span> : <span className="text-gray-300">—</span>}
                                             </td>
-                                            <td className="py-1.5 pr-4">
+                                            <td className="py-1.5 pr-3">
                                               <div className="flex items-center gap-1.5">
                                                 <div className="flex items-center gap-0.5">
                                                   <span className="font-extrabold text-blue-700 text-xs">{a.attendedLectures || 0}</span>
@@ -291,13 +316,33 @@ export function DaqqiRoundRow({
                                                 <button onClick={e => { e.stopPropagation(); handleDaqqiUnmarkAttendance(round.id, a.subscriberId); }} className="p-1 rounded-lg bg-gray-50 text-gray-500 hover:bg-amber-50 hover:text-amber-600 transition" title="تراجع عن تسجيل الحضور (للمحاضرة الحالية)"><Undo2 size={11} /></button>
                                               </div>
                                             </td>
-                                            <td className="py-1.5 pr-4">
-                                              <div className="grid grid-cols-5 gap-0.5">
-                                                <button disabled={!a.phone} onClick={e => { e.stopPropagation(); window.open(`https://wa.me/${toDialable(a.phone)}`, '_blank'); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-teal-50 hover:text-teal-600 flex items-center justify-center transition disabled:opacity-40 disabled:hover:bg-gray-50 disabled:hover:text-gray-500" title={a.phone ? 'واتساب' : 'العميل من غير رقم'}><MessageCircle size={12} /></button>
-                                                <button onClick={e => { e.stopPropagation(); setDaqqiPayModal({ subscriberId: a.subscriberId, subscriberName: a.name, roundId: round.id, attendeeAmountPaid: aPaid }); resetDaqqiPayDraft({ courseId: round.courseId || '' }); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-green-50 hover:text-green-600 flex items-center justify-center transition" title="تسجيل دفعة"><CreditCard size={12} /></button>
-                                                <button onClick={e => { e.stopPropagation(); const s = subscribers.find(x => x.id === a.subscriberId); navigate(`/client/${s?.clientCode || a.subscriberId}`); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition" title="عرض الملف"><Eye size={12} /></button>
-                                                <button onClick={e => { e.stopPropagation(); setDaqqiTransferModal({ subscriberId: a.subscriberId, fromRoundId: round.id }); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-amber-50 hover:text-amber-600 flex items-center justify-center transition" title="نقل لروند أخرى"><ArrowLeftRight size={12} /></button>
-                                                <button onClick={e => { e.stopPropagation(); handleRemoveAttendeeFromRound(round.id, a.subscriberId); }} className="h-7 rounded bg-gray-50 text-red-400 hover:bg-red-50 hover:text-red-600 flex items-center justify-center transition" title="حذف من الروند"><X size={12} /></button>
+                                            {/* آخر تواصل مع العميل ونتيجته وموعد المتابعة. */}
+                                            <td className="py-1.5 pr-3 min-w-[130px] max-w-[190px]">
+                                              {lastComm || followUp ? (
+                                                <div className="space-y-0.5">
+                                                  {lastComm?.outcome && <div className="font-extrabold text-emerald-700">{lastComm.outcome}</div>}
+                                                  {lastComm?.notes && <div className="text-gray-600 line-clamp-2" title={lastComm.notes}>{lastComm.notes}</div>}
+                                                  {lastComm && <div className="text-[10px] text-gray-400">{lastComm.staffName ? `${lastComm.staffName} · ` : ''}{cairoDay(lastComm.date)}</div>}
+                                                  {followUp && <div className="inline-block rounded-lg border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700 whitespace-nowrap">📅 المتابعة: {followUp.slice(0, 10)}</div>}
+                                                </div>
+                                              ) : <span className="text-gray-300">—</span>}
+                                            </td>
+                                            {/* «اول حاجه ايقونه ملف العميل بعدها الدفع بعدها التواصل بعدها الواتس
+                                                وبعدها نقل لروند تانيه واخيرا مسح من الروند» — the same icons as
+                                                «عملاء الدقي», in that order. */}
+                                            <td className="py-1.5 pr-3">
+                                              <div className="flex items-center gap-0.5">
+                                                <button title="ملف العميل" onClick={e => { e.stopPropagation(); navigate(`/client/${attSub?.clientCode || a.subscriberId}`); }} className={`${iconButton} hover:bg-primary-50 hover:text-primary-600`}><ExternalLink size={12} /></button>
+                                                <button title="تسجيل دفعة" onClick={e => { e.stopPropagation(); setDaqqiPayModal({ subscriberId: a.subscriberId, subscriberName: a.name, roundId: round.id, attendeeAmountPaid: aPaid }); resetDaqqiPayDraft({ courseId: round.courseId || '' }); }} className={`${iconButton} hover:bg-emerald-50 hover:text-emerald-600`}><Wallet size={12} /></button>
+                                                <button title="تواصل" onClick={e => { e.stopPropagation(); contactTarget('call'); }} className={`${iconButton} hover:bg-blue-50 hover:text-blue-600`}><Phone size={12} /></button>
+                                                {waHref ? (
+                                                  <a title="واتساب" href={waHref} target="_blank" rel="noreferrer" onClick={e => { e.stopPropagation(); contactTarget('whatsapp'); }}
+                                                    className="h-7 w-7 shrink-0 rounded border border-gray-200 bg-white text-gray-900 hover:bg-gray-900 hover:text-white flex items-center justify-center transition"><WhatsAppIcon size={13} /></a>
+                                                ) : (
+                                                  <span title="العميل من غير رقم" className="h-7 w-7 shrink-0 rounded bg-gray-50 text-gray-300 flex items-center justify-center"><WhatsAppIcon size={13} /></span>
+                                                )}
+                                                <button title="نقل لروند أخرى" onClick={e => { e.stopPropagation(); setDaqqiTransferModal({ subscriberId: a.subscriberId, fromRoundId: round.id }); }} className={`${iconButton} hover:bg-amber-50 hover:text-amber-600`}><ArrowLeftRight size={12} /></button>
+                                                <button title="مسح من الروند" onClick={e => { e.stopPropagation(); handleRemoveAttendeeFromRound(round.id, a.subscriberId); }} className={`${iconButton} text-red-400 hover:bg-red-50 hover:text-red-600`}><X size={12} /></button>
                                               </div>
                                             </td>
                                           </tr>

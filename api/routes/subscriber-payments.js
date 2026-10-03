@@ -31,6 +31,7 @@ const { isRealPhone } = require('../lib/phoneNumber');
 const { VALID_BRANCHES } = require('../constants/permissions');
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../lib/paymentEntitlementAccess');
 const { isCashMethod, linkTransfer } = require('../lib/incomingTransfers');
+const { seatInOwnTransaction } = require('../lib/daqqiHousing');
 
 /**
  * Money recorded from a collection account is the manager's to confirm —
@@ -113,6 +114,14 @@ async function recordSubscriberPayment(req, res) {
     const requestedStatus = String(payment.status || 'paid').toLowerCase();
     if (!['paid', 'pending'].includes(requestedStatus)) {
       return res.status(400).json({ error: 'New manual payments must be paid or pending' });
+    }
+    // «تسكين» with the booking: a Dokki booking may name the round the client is seated
+    // in. Checked before any money is recorded, so a stale round is told at once.
+    const daqqiRoundId = String(req.body.daqqiRoundId || payment?.daqqiRoundId || '').trim();
+    if (daqqiRoundId) {
+      const [[round]] = await pool.query(
+        'SELECT id FROM daqqi_rounds WHERE id=? AND tenant_id=? LIMIT 1', [daqqiRoundId, req.tenantId]);
+      if (!round) return res.status(400).json({ error: 'الروند اللي اخترته مش موجود — حدّث الصفحة واختار روند تاني' });
     }
     // Recording and approving money are separate responsibilities.
     const canApprovePayment = !reviewedByManager(req) && Boolean(
@@ -435,7 +444,8 @@ async function recordSubscriberPayment(req, res) {
     if (reviewedByManager(req) && (createFromLead || createFromDraft)) {
       const requestId = uuidv4();
       const { password: _password, ...draftWithoutSecret } = subscriberDraft || {};
-      const body = { lead_id: leadId || null, subscriber: draftWithoutSecret, payment: { ...payment, id: undefined } };
+      // The round rides along, so the client is seated when the manager approves.
+      const body = { lead_id: leadId || null, subscriber: draftWithoutSecret, payment: { ...payment, id: undefined }, ...(daqqiRoundId ? { daqqiRoundId } : {}) };
       await pool.query(
         `INSERT INTO subscriber_requests
            (id, tenant_id, requested_by, requested_by_name, lead_id, name, phone, email, amount, currency, body_json)
@@ -908,6 +918,16 @@ async function recordSubscriberPayment(req, res) {
       // The receipt: the amount, and what of the course it opened.
       queuePaymentReceipt(paymentTenantId, id);
     }
+    // The booking is committed; seating is its own step, and a client who paid but
+    // could not be seated is told so rather than losing the payment with it.
+    let housed;
+    if (daqqiRoundId) {
+      housed = await seatInOwnTransaction(pool, { tenantId: paymentTenantId, roundId: daqqiRoundId, subscriberId: subscriber_id, req })
+        .then(seat => seat.status === 'already' ? 'seated' : seat.status, error => {
+          logger.warn('[subscriber-payment] seating after the booking failed', { error: error.message });
+          return 'failed';
+        });
+    }
     res.json({
       ok: true,
       id,
@@ -915,6 +935,7 @@ async function recordSubscriberPayment(req, res) {
       subscriberCreated: createFromLead || createFromDraft,
       status: storedStatus,
       approvalRequired: storedStatus === 'pending',
+      ...(housed ? { housed } : {}),
     });
   } catch (e) {
     if (conn) { await conn.rollback().catch(() => {}); conn.release(); conn = null; }

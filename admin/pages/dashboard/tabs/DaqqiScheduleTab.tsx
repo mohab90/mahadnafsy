@@ -14,7 +14,9 @@ import type {
 } from '../../../types';
 import { DaqqiScheduleHeader } from './daqqi/DaqqiScheduleHeader';
 import { DaqqiOverviewStrip } from './daqqi/DaqqiOverviewStrip';
-import { DaqqiCommunicationModal } from './daqqi/DaqqiCommunicationModal';
+import { ClientContactDialog } from '../../unified-client/ClientContactLog';
+import { housingOutcome } from '../../../lib/daqqiHousing';
+import { daqqiRuleMessage } from '../../../context/site-data-hooks/useDaqqiRoundsState';
 import { DaqqiRoundEditorModal } from './daqqi/DaqqiRoundEditorModal';
 import { blankPaymentDraft, type PaymentDraft } from '../../../components/PaymentModal';
 import { createClientWithPayment } from '../../../lib/createClientWithPayment';
@@ -67,7 +69,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
   const {
     courses, bundles, therapists, staffMembers, subscribers: ctxSubscribers, updateSubscriber, addSubscriber, recordSubscriberPayment, reloadSubscribers,
     daqqiRounds: ctxRounds, addDaqqiRound: ctxAddDaqqiRound, updateDaqqiRound: ctxUpdateDaqqiRound,
-    deleteDaqqiRound, transferDaqqiAttendee, bulkSetDaqqiRounds, content, authUser, isAdmin, currentStaff,
+    deleteDaqqiRound, transferDaqqiAttendee, bookDaqqiAttendee, bulkSetDaqqiRounds, content, authUser, isAdmin, currentStaff,
   } = useSiteData();
 
   // «خلي مسار واحد اللى بيظهر تحت الكورسات … او اقدر اختار»: the one path
@@ -165,7 +167,10 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
   const [daqqiTransferModal, setDaqqiTransferModal] = useState<{ subscriberId: string; fromRoundId: string } | null>(null);
   const [daqqiPostponeModal, setDaqqiPostponeModal] = useState<{ roundId: string; newDate: string } | null>(null);
   const [daqqiToskeenSubId, setDaqqiToskeenSubId] = useState<string | null>(null);
-  const [daqqiCommModal, setDaqqiCommModal] = useState<{ subscriberId: string; subscriberName: string; phone: string } | null>(null);
+  const [daqqiCommModal, setDaqqiCommModal] = useState<{ subscriberId: string; subscriberName: string; phone: string; type: 'call' | 'whatsapp' } | null>(null);
+  // Contacts logged from here since the list loaded, by client: the «التواصل» column
+  // answers at once, before the client list is read again.
+  const [localComms, setLocalComms] = useState<Record<string, CommunicationRecord[]>>({});
   const [daqqiAddClientModal, setDaqqiAddClientModal] = useState(false);
   const [newClientDraft, setNewClientDraft] = useState<PaymentDraft>(blankPaymentDraft({ branch: 'DAQQI' }));
 
@@ -331,13 +336,17 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
   // round's own validation — so a round saved before start_date was required
   // refused to let anyone be removed from it.
   const handleRemoveAttendeeFromRound = async (roundId: string, subscriberId: string) => {
+    const round = daqqiRounds.find(r => r.id === roundId);
+    const attendee = round?.attendees.find(a => a.subscriberId === subscriberId);
+    // The last button in the row, one tap from «نقل»: asked before it is done.
+    if (!await confirmDialog(`مسح ${attendee?.name || 'العميل'} من روند ${round?.code || ''}؟ بيفضل في «عملاء الدقي» ودفعاته زي ما هي.`)) return;
     try {
       await mysqlAdmin.removeDaqqiAttendee(roundId, subscriberId);
       bulkSetDaqqiRounds(daqqiRounds.map(r => (r.id === roundId
         ? { ...r, attendees: r.attendees.filter(a => a.subscriberId !== subscriberId) }
         : r)));
     } catch (err) {
-      notify('error', err instanceof Error ? err.message : 'تعذر حذف العميل من الروند.');
+      notify('error', daqqiRuleMessage(err instanceof Error ? err.message : '') || 'تعذر حذف العميل من الروند.');
     }
   };
 
@@ -383,9 +392,13 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
         paymentMethod: daqqiPayDraft.paymentMethod || undefined,
         fromAccountNumber: daqqiPayDraft.fromAccountNumber || undefined,
         source: 'daqqi' as const,
+        // Taken at the Dokki desk, so it is the Dokki branch's money — the vault, the branch
+        // P&L and the owner's daily report read this column, and a client filed under another
+        // branch carried their own onto a payment this desk took.
+        branch: 'DAQQI',
         at: daqqiPayDraft.date,
         status: requirePaymentApproval ? 'pending' : 'paid',
-      },
+      } as PaymentHistoryEntry,
       ...(daqqiPayDraft.extraItems || []).filter(i => i.amount && Number(i.amount) > 0).map((i, ix) => ({
         id: `dq-pay-${Date.now()}-x${ix}`,
         amount: Number(i.amount),
@@ -395,6 +408,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
         note: [i.label, daqqiPayDraft.note].filter(Boolean).join(' | ') || undefined,
         paymentMethod: daqqiPayDraft.paymentMethod || undefined,
         source: 'daqqi' as const,
+        branch: 'DAQQI',
         at: daqqiPayDraft.date,
         status: requirePaymentApproval ? 'pending' : ('paid' as 'paid'),
       } as PaymentHistoryEntry)),
@@ -457,11 +471,10 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
     if (otherRound && !await confirmDialog(`${sub.name} مُسكَّن بالفعل في روند ${otherRound.code} لنفس الكورس. تسكينه في روند إضافي (${round.code})؟`)) {
       return;
     }
-    const paid = (sub.paymentHistory || []).reduce((sum, p) => (
-      p.currency === 'EGP' && (!p.status || p.status === 'paid') ? sum + Number(p.amount) : sum
-    ), 0);
-    const newAttendee = { subscriberId: sub.id, name: sub.name, phone: sub.phone, bookedAt: cairoDateOnly(), amountPaid: paid };
-    if (!await doUpdateRound({ ...round, attendees: [...round.attendees, newAttendee] })) {
+    // One row written on the server, then the rounds read back — the whole round is
+    // not posted from what this screen last loaded, which could delete a client
+    // another desk had just seated.
+    if (!await bookDaqqiAttendee(sub.id, round.id)) {
       notify('error', 'تعذر تسكين العميل في الروند.');
       return;
     }
@@ -549,22 +562,6 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
     else notify('success', held ? 'اتسجل إن المحاضرة اشتغلت في ميعادها.' : 'اتسجل تأجيل محاضرة الأسبوع ده.');
   };
 
-  const handleDaqqiAddComm = async (type: CommunicationRecord['type'], note: string) => {
-    if (!daqqiCommModal || !note.trim()) return;
-    const sub = subscribers.find(s => s.id === daqqiCommModal.subscriberId);
-    if (!sub) return;
-    const rec: CommunicationRecord = {
-      id: `dq-comm-${Date.now()}`, type,
-      date: cairoDateOnly(), notes: note.trim(),
-    };
-    const saved = await updateSubscriber({ ...sub, communications: [...(sub.communications ?? []), rec] });
-    if (!saved) {
-      notify('error', 'فشل تسجيل التواصل. لم يتم اعتماد التغيير.');
-      return;
-    }
-    notify('success', 'تم تسجيل التواصل بنجاح.');
-  };
-
   // Was: build a paymentHistory array in the browser and hand it to
   // saveSubscriber. That wrote the money onto the subscriber record and
   // nowhere else — no payments row, no journal line, no approval step — so
@@ -575,11 +572,14 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
   const handleDaqqiAddNewClient = async (draft: PaymentDraft) => {
     const result = await createClientWithPayment(draft, { branch: draft.branch || 'DAQQI', source: 'reception' });
     await reloadSubscribers();
+    // Seated with the booking when a round was picked: read the rosters back.
+    const housing = housingOutcome([result]);
+    if (housing.changed) await refreshRounds();
     notify(
-      result.approvalRequired ? 'info' : 'success',
-      result.approvalRequired
+      result.approvalRequired || housing.warning ? 'info' : 'success',
+      (result.approvalRequired
         ? 'تم إضافة العميل وإرسال الدفعة للمراجعة ✓ — بانتظار موافقة المدير'
-        : result.paid ? 'تم إضافة العميل وتسجيل الدفعة بنجاح.' : 'تم إضافة العميل بنجاح.',
+        : result.paid ? 'تم إضافة العميل وتسجيل الدفعة بنجاح.' : 'تم إضافة العميل بنجاح.') + housing.text,
     );
   };
 
@@ -660,15 +660,15 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
           <div className="overflow-x-auto rounded-xl border border-gray-200 lg:overflow-x-visible">
             <table className="w-full table-fixed text-sm min-w-[920px] lg:min-w-0">
               <colgroup>
-                <col className="w-[5%]" /><col className="w-[14%]" /><col className="w-[11%]" /><col className="w-[8%]" /><col className="w-[11%]" /><col className="w-[8%]" />
-                <col className="w-[6%]" /><col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[7%]" /><col className="w-[14%]" />
+                <col className="w-[5%]" /><col className="w-[15%]" /><col className="w-[12%]" /><col className="w-[5%]" /><col className="w-[11%]" /><col className="w-[8%]" />
+                <col className="w-[6%]" /><col className="w-[9%]" /><col className="w-[8%]" /><col className="w-[7%]" /><col className="w-[14%]" />
               </colgroup>
               <thead>
                 <tr className="bg-gray-50 text-gray-700 text-xs">
                   <th className="text-right px-2 py-2.5 border-b border-gray-200 font-semibold">الكود</th>
                   <th className="text-right px-2 py-2.5 border-b border-gray-200 font-semibold">الكورس</th>
                   <th className="text-right px-2 py-2.5 border-b border-gray-200 font-semibold">الميعاد</th>
-                  <th className="text-right px-2 py-2.5 border-b border-gray-200 font-semibold">القاعة</th>
+                  <th className="text-right px-1 py-2.5 border-b border-gray-200 font-semibold">القاعة</th>
                   <th className="text-right px-2 py-2.5 border-b border-gray-200 font-semibold">المحاضر والريسبشن</th>
                   <th className="text-right px-2 py-2.5 border-b border-gray-200 font-semibold">الحالة</th>
                   <th className="text-center px-1 py-2.5 border-b border-gray-200 font-semibold whitespace-nowrap">المحاضرة</th>
@@ -701,6 +701,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
                         isAdmin={isAdmin}
                         resetDaqqiPayDraft={resetDaqqiPayDraft}
                         setDaqqiCommModal={setDaqqiCommModal}
+                        localComms={localComms}
                         setDaqqiToskeenSubId={setDaqqiToskeenSubId}
                         deleteDaqqiRound={deleteDaqqiRound}
                         attendanceCounts={attendanceCounts}
@@ -950,11 +951,19 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
         onUpdateRound={doUpdateRound}
         notify={notify}
       />
-      <DaqqiCommunicationModal
-        target={daqqiCommModal}
-        onClose={() => setDaqqiCommModal(null)}
-        onSubmit={handleDaqqiAddComm}
-      />
+      {daqqiCommModal && (
+        <ClientContactDialog
+          subscriber={{ id: daqqiCommModal.subscriberId, name: daqqiCommModal.subscriberName }}
+          initialType={daqqiCommModal.type}
+          notify={notify}
+          onClose={() => setDaqqiCommModal(null)}
+          onSaved={entry => {
+            const record = { id: entry.id, type: entry.type as CommunicationRecord['type'], date: entry.date, notes: entry.notes, outcome: entry.outcome || undefined, nextFollowUp: entry.nextFollowUp || undefined, staffName: entry.staffName || undefined };
+            setLocalComms(prev => ({ ...prev, [daqqiCommModal.subscriberId]: [...(prev[daqqiCommModal.subscriberId] || []), record] }));
+            void reloadSubscribers();
+          }}
+        />
+      )}
     </article>
   );
 };

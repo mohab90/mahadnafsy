@@ -34,6 +34,8 @@ export type NewClientResult = {
    * manager to confirm the transfer (api/routes/subscriber-payments.js).
    */
   pendingReview?: boolean;
+  /** «تسكين» with the booking: how seating the client in the chosen round went. */
+  housed?: string;
 };
 
 export async function createClientWithPayment(
@@ -65,7 +67,12 @@ export async function createClientWithPayment(
     const created = await mysqlAdmin.adminPost<{ ok: boolean; id?: string }>(
       '/admin/subscribers', { ...subscriber, isActive: true },
     );
-    return { subscriberId: created?.id, approvalRequired: false, paid: false };
+    // No payment to carry the round, so the client is seated on their own.
+    let housed: string | undefined;
+    if (draft.daqqiRoundId && created?.id) {
+      housed = await mysqlAdmin.addDaqqiAttendee(draft.daqqiRoundId, created.id).then(() => 'seated', () => 'failed');
+    }
+    return { subscriberId: created?.id, approvalRequired: false, paid: false, ...(housed ? { housed } : {}) };
   }
 
   if (!draft.paymentMethod) throw new Error('اختر وسيلة الدفع قبل تسجيل الدفعة');
@@ -73,9 +80,10 @@ export async function createClientWithPayment(
 
   const isBundle = draft.courseId.startsWith('bundle:');
   const result = await mysqlAdmin.adminPost<{
-    ok: boolean; subscriberId: string; approvalRequired?: boolean; status?: string;
+    ok: boolean; subscriberId: string; approvalRequired?: boolean; status?: string; housed?: string;
   }>('/admin/subscriber-payments', {
     subscriber,
+    ...(draft.daqqiRoundId ? { daqqiRoundId: draft.daqqiRoundId } : {}),
     payment: {
       amount,
       currency: draft.currency,
@@ -98,5 +106,6 @@ export async function createClientWithPayment(
     approvalRequired: !!result?.approvalRequired,
     paid: true,
     pendingReview: result?.status === 'pending_review',
+    ...(result?.housed ? { housed: result.housed } : {}),
   };
 }

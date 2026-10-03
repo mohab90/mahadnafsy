@@ -9,6 +9,7 @@ import { normBranchId } from './dashboardShared';
 import { isCollected } from '../../lib/money';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import { priceForCurrency } from './dashboardHelpers';
+import { announceRoundsChanged, housingOutcome } from '../../lib/daqqiHousing';
 
 type Notify = (type: 'success' | 'error' | 'info', msg: string) => void;
 
@@ -34,7 +35,7 @@ interface HandleSubPaymentDeps {
   recordSubscriberPayment: (
     subscriberId: string,
     payment: Record<string, unknown>,
-  ) => Promise<{ status: string; approvalRequired?: boolean }>;
+  ) => Promise<{ status: string; approvalRequired?: boolean; housed?: string }>;
   reloadSubscribers: () => Promise<void>;
   notify: Notify;
   currentStaff: StaffMember | null;
@@ -98,7 +99,8 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
         staffId: currentStaff?.id || undefined,
         staffName: currentStaff?.name || undefined,
         status: 'paid',
-      };
+        ...(subPayDraft.daqqiRoundId ? { daqqiRoundId: subPayDraft.daqqiRoundId } : {}),
+      } as PaymentHistoryEntry;
       newEntries.push(entry);
       if (isBundleItem && bObj) {
         const bundleCourseIds = bObj.courses.map((c: { id: string }) => c.id);
@@ -149,7 +151,8 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
       staffId: currentStaff?.id || undefined,
       staffName: currentStaff?.name || undefined,
       status: 'paid',
-    };
+      ...(subPayDraft.daqqiRoundId ? { daqqiRoundId: subPayDraft.daqqiRoundId } : {}),
+    } as PaymentHistoryEntry;
     updated = { ...updated, paymentHistory: [...(updated.paymentHistory || []), entry] };
 
     if (subPayDraft.paymentType === 'course') {
@@ -270,7 +273,7 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
   const newEntries = (updated.paymentHistory || []).filter(payment => !existingIds.has(payment.id));
   if (!newEntries.length) throw new Error('No valid payment entries were produced');
   try {
-    const results: Array<{ status: string; approvalRequired?: boolean }> = [];
+    const results: Array<{ status: string; approvalRequired?: boolean; housed?: string }> = [];
     for (const entry of newEntries) {
       results.push(await recordSubscriberPayment(
         freshSub.id,
@@ -278,11 +281,13 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
       ));
     }
     await reloadSubscribers();
+    const housing = housingOutcome(results);
+    if (housing.changed) announceRoundsChanged();
     notify(
-      'success',
-      results.some(result => result.approvalRequired)
+      housing.warning ? 'info' : 'success',
+      (results.some(result => result.approvalRequired)
         ? 'تم تسجيل الدفعة كمعلّقة وتنتظر اعتماد الإدارة المالية.'
-        : 'تم تسجيل الدفعة والقيد المحاسبي وتحديث الاشتراك بنجاح.',
+        : 'تم تسجيل الدفعة والقيد المحاسبي وتحديث الاشتراك بنجاح.') + housing.text,
     );
   } catch (error) {
     notify('error', error instanceof Error ? error.message : 'تعذر تسجيل الدفعة.');
@@ -302,7 +307,7 @@ interface HandleLeadPaymentDeps {
   recordSubscriberPayment: (
     subscriberId: string,
     payment: Record<string, unknown>,
-  ) => Promise<{ status: string; approvalRequired?: boolean }>;
+  ) => Promise<{ status: string; approvalRequired?: boolean; housed?: string }>;
   reloadLeads: () => Promise<void>;
   reloadSubscribers: () => Promise<void>;
   notify: Notify;
@@ -396,6 +401,7 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
         source: isReceptionDaqqi ? 'reception' : 'staff',
         staffId: currentStaff?.id,
         staffName: currentStaff?.name,
+        ...(leadPayDraft.daqqiRoundId ? { daqqiRoundId: leadPayDraft.daqqiRoundId } : {}),
       });
     });
   } else {
@@ -417,6 +423,7 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
       source: isReceptionDaqqi ? 'reception' : 'staff',
       staffId: currentStaff?.id,
       staffName: currentStaff?.name,
+      ...(leadPayDraft.daqqiRoundId ? { daqqiRoundId: leadPayDraft.daqqiRoundId } : {}),
     });
   }
   (leadPayDraft.extraItems || [])
@@ -440,7 +447,7 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
   if (payEntries.length !== 1) {
     throw new Error('تسجيل أكثر من بند دفع في عملية واحدة متوقف مؤقتًا لحين اعتماد مسار تجزئة الدفع.');
   }
-  const results: Array<{ status: string; approvalRequired?: boolean }> = [];
+  const results: Array<{ status: string; approvalRequired?: boolean; housed?: string }> = [];
   try {
     const result = existingSub
       ? await recordSubscriberPayment(existingSub.id, payEntries[0])
@@ -451,7 +458,7 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
             email: leadPayDraft.email || freshLead.email,
             nationalId: leadPayDraft.nationalId || undefined,
           },
-        ) as { status: string; approvalRequired?: boolean };
+        ) as { status: string; approvalRequired?: boolean; housed?: string };
     results.push(result);
     await Promise.all([reloadSubscribers(), reloadLeads()]);
   } catch (error) {
@@ -472,13 +479,15 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
   const isPendingApproval = results.some(result => result.approvalRequired || result.status === 'pending');
   // A collection account's new customer is not added yet — only asked for.
   const sentForReview = results.some(result => result.status === 'pending_review');
+  const housing = housingOutcome(results);
+  if (housing.changed) announceRoundsChanged();
   notify(
-    'success',
-    sentForReview
-      ? `اتبعت حجز ${freshLead.name} للمسئول — العميل هيتضاف بعد ما يراجع التحويل ويعتمده.`
+    housing.warning ? 'info' : 'success',
+    (sentForReview
+      ? `اتبعت حجز ${freshLead.name} للمسئول — العميل هيتضاف ويتسكّن بعد ما يراجع التحويل ويعتمده.`
       : isPendingApproval
       ? `تم تسجيل دفعة ${freshLead.name} كمعلّقة وتنتظر اعتماد الإدارة المالية.`
-      : `تم تسجيل دفعة ${freshLead.name}${_notifCourse ? ' — ' + _notifCourse : ''} | ${_notifAmt.toLocaleString('ar-EG-u-nu-latn')} ${leadPayDraft.currency}`,
+      : `تم تسجيل دفعة ${freshLead.name}${_notifCourse ? ' — ' + _notifCourse : ''} | ${_notifAmt.toLocaleString('ar-EG-u-nu-latn')} ${leadPayDraft.currency}`) + housing.text,
   );
   if (leadPayDraft.paymentType === 'course' && !isPendingApproval) {
     const _welcomeEmail = leadPayDraft.email || freshLead.email;

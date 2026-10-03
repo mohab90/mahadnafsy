@@ -89,6 +89,8 @@ export interface SiteDataShape {
   updateDaqqiRound: (item: DaqqiRound) => Promise<boolean>;
   deleteDaqqiRound: (id: string) => Promise<boolean>;
   transferDaqqiAttendee: (subscriberId: string, fromRoundId: string, toRoundId: string) => Promise<boolean>;
+  /** Seats one client in a round and re-reads the rounds. */
+  bookDaqqiAttendee: (subscriberId: string, roundId: string) => Promise<boolean>;
   bulkSetDaqqiRounds: (rounds: DaqqiRound[]) => void;
   joinUsApplications: JoinUsApplication[];
   addJoinUsApplication: (item: JoinUsApplication) => Promise<boolean>;
@@ -212,7 +214,7 @@ export interface SiteDataShape {
   recordSubscriberPayment: (
     subscriberId: string,
     payment: Record<string, unknown>,
-  ) => Promise<{ ok: boolean; id: string; status: string; approvalRequired?: boolean }>;
+  ) => Promise<{ ok: boolean; id: string; status: string; approvalRequired?: boolean; housed?: string }>;
   logout: () => void;
   refreshAuth: () => void;
   // Scoped data for non-admin staff (set by Dashboard after fetchSalesData)
@@ -269,7 +271,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   } = useLecturesChaptersState(initial.lectures || defaultLectures, initial.chapters || [], lastLocalConfigWriteRef, track);
   const { expenses, setExpenses, addExpense, updateExpense, deleteExpense } =
     useExpensesState((initial as typeof seedData & { expenses?: ExpenseItem[] }).expenses || [], lastCRMWriteRef, track);
-  const { daqqiRounds, setDaqqiRounds, addDaqqiRound, updateDaqqiRound, deleteDaqqiRound, transferDaqqiAttendee, bulkSetDaqqiRounds } =
+  const { daqqiRounds, setDaqqiRounds, addDaqqiRound, updateDaqqiRound, deleteDaqqiRound, transferDaqqiAttendee, bookDaqqiAttendee, bulkSetDaqqiRounds } =
     useDaqqiRoundsState((initial as typeof seedData & { daqqiRounds?: DaqqiRound[] }).daqqiRounds || [], lastCRMWriteRef, track);
   const { staffMembers, setStaffMembers, staffMembersRef, reloadStaffMembers, addStaffMember, updateStaffMember, deleteStaffMember } =
     useStaffState(initial.staffMembers || defaultStaffMembers, lastCRMWriteRef, track);
@@ -740,6 +742,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     updateDaqqiRound,
     deleteDaqqiRound,
     transferDaqqiAttendee,
+    bookDaqqiAttendee,
     bulkSetDaqqiRounds,
     joinUsApplications,
     addJoinUsApplication,

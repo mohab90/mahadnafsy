@@ -77,8 +77,11 @@ test('the round roster reads prior money for the round\'s own course, apart from
   // Revenue sums read amountPaid; prior money must not be folded into it.
   assert.doesNotMatch(route, /amountPaid: Number\(a\.amount_paid \|\| 0\) \+/);
   const row = read('admin/pages/dashboard/tabs/daqqi/DaqqiRoundRow.tsx');
-  assert.match(row, /const aPaid = a\.amountPaid \+ aPrior;/);
-  assert.match(row, /const aRem = coursePrice > 0 \? Math\.max\(0, coursePrice - aPaid\) : 0;/);
+  // The row's figures come from one place, with the prior money added and the price the client agreed.
+  assert.match(row, /attendeeMoney\(a, coursePrice\)/);
+  const utils = read('admin/pages/dashboard/tabs/daqqi/daqqiScheduleUtils.ts');
+  assert.match(utils, /const paid = collected \+ prior \+ applied;/);
+  assert.match(utils, /remaining: price > 0 \? Math\.max\(0, price - paid\) : 0/);
 });
 
 // ── 1. the 7-day chart ───────────────────────────────────────────────────────
