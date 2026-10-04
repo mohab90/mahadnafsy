@@ -658,7 +658,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
                 في {unassignedBreakdown.withoutOwner.toLocaleString('ar-EG-u-nu-latn')} ليد بدون مندوب، المعروض هنا منهم {unassignedBreakdown.localNew.toLocaleString('ar-EG-u-nu-latn')} بس. الباقي موجود في أماكن تانية:
               </p>
               <ul className="list-disc pr-5 space-y-0.5">
-                {unassignedBreakdown.dawliNew > 0 && <li>{unassignedBreakdown.dawliNew.toLocaleString('ar-EG-u-nu-latn')} في تبويب «دولي جديد»</li>}
+                {unassignedBreakdown.dawliNew > 0 && <li>{unassignedBreakdown.dawliNew.toLocaleString('ar-EG-u-nu-latn')} في تبويب «داتا سعودي»</li>}
                 {unassignedBreakdown.archiveSource > 0 && <li>{unassignedBreakdown.archiveSource.toLocaleString('ar-EG-u-nu-latn')} داتا مستوردة قديمة (محلي قديم / دولي قديم)</li>}
                 {unassignedBreakdown.terminal.map(t => (
                   <li key={t.status}>

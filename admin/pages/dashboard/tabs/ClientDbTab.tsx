@@ -60,8 +60,8 @@ const CLIENT_TYPE_INFO: Record<string, { label: string; entity: string; color: s
   QATAMIYA:         { label: 'القطامية',             entity: 'مشترك',       color: 'bg-emerald-100 text-emerald-700'},
   LEAD_LOCAL_NEW:   { label: 'محلي جديد',            entity: 'عميل محتمل',  color: 'bg-amber-100 text-amber-700'   },
   LEAD_LOCAL_OLD:   { label: 'محلي قديم',            entity: 'عميل محتمل',  color: 'bg-amber-100 text-amber-700'   },
-  LEAD_INTL_NEW:    { label: 'دولي جديد',            entity: 'عميل محتمل',  color: 'bg-orange-100 text-orange-700' },
-  LEAD_INTL_OLD:    { label: 'دولي قديم',            entity: 'عميل محتمل',  color: 'bg-orange-100 text-orange-700' },
+  LEAD_INTL_NEW:    { label: 'داتا سعودي',            entity: 'عميل محتمل',  color: 'bg-orange-100 text-orange-700' },
+  LEAD_INTL_OLD:    { label: 'داتا سعودي',            entity: 'عميل محتمل',  color: 'bg-orange-100 text-orange-700' },
 };
 
 // Derive legacy subType from clientType for filters/stats

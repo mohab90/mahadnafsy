@@ -133,6 +133,9 @@ export interface ArchiveTabProps {
   sources: string[];
   title?: string;
   defaultSource?: string;
+  /** The tab's name where it differs from the source its imports are stamped
+   *  with — «داتا سعودي» stores its rows as «دولي قديم». */
+  tabLabel?: string;
   customFilter?: (lead: LeadItem) => boolean;
   hideImport?: boolean;
   /**
@@ -156,13 +159,14 @@ export interface ArchiveTabProps {
   /** Clears the filter bar and the workspace branch, so the whole pool shows. */
   onShowAll?: () => void;
 }
-export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLeads, notify, courses, bundles, navigate, deleteLead, addSubscriber, updateSubscriber, subscribers, salesReps, isSalesOnly, canManageLeads, onBook, branchOptions, sources, title = 'محلي قديم — الاستيراد والتعيين الجماعي', defaultSource = 'محلي قديم', customFilter, hideImport = false, panels, matchesFilters, onShowAll }: ArchiveTabProps) {
+export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLeads, notify, courses, bundles, navigate, deleteLead, addSubscriber, updateSubscriber, subscribers, salesReps, isSalesOnly, canManageLeads, onBook, branchOptions, sources, title = 'محلي قديم — الاستيراد والتعيين الجماعي', defaultSource = 'محلي قديم', tabLabel, customFilter, hideImport = false, panels, matchesFilters, onShowAll }: ArchiveTabProps) {
   const [archiveSheet, setArchiveSheet] = useState<ImportSheet | null>(null);
   const [archiveParseErr, setArchiveParseErr] = useState('');
   const [archiveImporting, setArchiveImporting] = useState(false);
   const [archiveImportResult, setArchiveImportResult] = useState<{ created: number; dupes: number; errors: number } | null>(null);
   const [archiveSelectedIds, setArchiveSelectedIds] = useState<Set<string>>(new Set());
   const [archiveSource, setArchiveSource] = useState(defaultSource);
+  const tabName = tabLabel || defaultSource;
   const [bulkAssignSrc, setBulkAssignSrc] = useState('');
   const [bulkAssignRole, setBulkAssignRole] = useState<'sales' | 'collection'>('sales');
   const [bulkSelectedLeadIds, setBulkSelectedLeadIds] = useState<Set<string>>(new Set());
@@ -282,7 +286,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
     await reloadLeads();
     if (created > 0) {
       notify('success', importDest === 'archive'
-        ? `تم استيراد ${created} عميل — موجودون في تاب ${defaultSource} بانتظار التوزيع`
+        ? `تم استيراد ${created} عميل — موجودون في تاب ${tabName} بانتظار التوزيع`
         : `تم استيراد ${created} عميل — ظاهرون في جدول الداتا بانتظار التوزيع`);
     }
   };
@@ -427,7 +431,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
             <label className="text-xs font-bold text-gray-600 mb-1 block">وجهة الداتا</label>
             <select value={importDest} onChange={e => setImportDest(e.target.value as 'archive' | 'main')}
               className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white min-w-[190px]">
-              <option value="archive">تبقى في تاب {defaultSource}</option>
+              <option value="archive">تبقى في تاب {tabName}</option>
               <option value="main">تنزل في جدول الداتا</option>
             </select>
           </div>
@@ -633,7 +637,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
               className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white min-w-[200px]">
               <option value="keep">اتركها مكانها</option>
               <option value="main">انزلها في جدول الداتا</option>
-              <option value="archive">أبقها في تاب {defaultSource}</option>
+              <option value="archive">أبقها في تاب {tabName}</option>
             </select>
           </div>
           <button disabled={!bulkAssignSrc || bulkSelectedLeadIds.size === 0 || bulkAssigning2} onClick={doBulkAssign}

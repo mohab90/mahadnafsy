@@ -31,31 +31,22 @@ export function LeadArchiveViews({ subTab, ...archiveProps }: LeadArchiveViewsPr
     );
   }
 
-  if (subTab === 'dawliNew') {
-    return (
-      <ArchiveTab
-        key={subTab}
-        {...archiveProps}
-        title="دولي جديد — عملاء بلا مندوب مبيعات"
-        hideImport
-        customFilter={isDawliNewLead}
-      />
-    );
-  }
-
   // A rep gets a plain list — no import, no bulk assign — so the heading should
   // not advertise tooling they cannot see.
   const salesOnly = archiveProps.isSalesOnly;
 
-  if (subTab === 'dawliOld') {
+  // «داتا سعودي»: the international leads waiting for a rep (was «دولي جديد»)
+  // and the imported international data (was «دولي قديم»), in one list.
+  if (subTab === 'dawliOld' || subTab === 'dawliNew') {
     return (
       <ArchiveTab
-        key={subTab}
+        key="dawliOld"
         {...archiveProps}
-        title={salesOnly ? 'داتا دولي' : 'دولي قديم - الاستيراد والتعيين الجماعي'}
+        title={salesOnly ? 'داتا سعودي' : 'داتا سعودي — الاستيراد والتعيين الجماعي'}
         defaultSource="دولي قديم"
-        customFilter={lead => !lead.hidden && isArchiveSource(lead.source)
-          && isInternationalLead(lead)}
+        tabLabel="داتا سعودي"
+        customFilter={lead => isDawliNewLead(lead)
+          || (!lead.hidden && isArchiveSource(lead.source) && isInternationalLead(lead))}
       />
     );
   }
