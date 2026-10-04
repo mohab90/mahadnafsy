@@ -41,6 +41,15 @@ const tenantId = arg('tenant', process.env.DEFAULT_TENANT_ID || 'tenant-default'
        FROM orders WHERE tenant_id=? AND created_at >= NOW() - INTERVAL ? DAY`, [tenantId, days]);
   console.log(`\norders: paid ${Number(orders.paid || 0)} · pending ${Number(orders.pending || 0)} · failed ${Number(orders.failed || 0)}`);
   console.log(`newest paid: ${orders.last_paid || '—'} · newest order: ${orders.last_created || '—'}`);
+  // Pending orders: a customer who opened the payment page. Paid ones should
+  // turn PAID within a minute through the callback; old pending ones are either
+  // abandoned (nothing in Paymob's dashboard for that order) or a callback that
+  // never reached the server (a successful transaction in Paymob's dashboard).
+  const [pending] = await pool.query(
+    `SELECT id, created_at, amount, currency, customer_name, item_title FROM orders
+      WHERE tenant_id=? AND status='PENDING' AND created_at >= NOW() - INTERVAL ? DAY ORDER BY created_at DESC LIMIT 20`,
+    [tenantId, days]).catch(() => [[]]);
+  pending.forEach(o => console.log(`    pending ${o.id} · ${o.created_at} · ${o.amount} ${o.currency} · ${o.customer_name || ''} · ${o.item_title || ''}`));
   const [uncredited] = await pool.query(
     `SELECT o.id, o.amount, o.currency, o.paid_at, o.transaction_id FROM orders o
       WHERE o.tenant_id=? AND o.status='PAID' AND o.paid_at >= NOW() - INTERVAL ? DAY
