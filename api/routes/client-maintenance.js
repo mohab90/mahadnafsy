@@ -4,7 +4,7 @@ const express = require('express');
 const router = express.Router();
 
 const { pool } = require('../lib/db');
-const { branchIdForBranch } = require('../lib/branches');
+const { branchIdForBranch, defaultDigitalBranch } = require('../lib/branches');
 const { listBranches } = require('../lib/branchesRepo');
 const { buildBranchCandidates, inferBranchFromLead } = require('../lib/branchInference');
 const { getNextClientCode } = require('../lib/mappers');
@@ -182,15 +182,28 @@ router.post('/api/admin/fix-auto-subscribers', requireAuth, requireAdmin, async 
       coded++;
     }
 
-    // 4. Fix branch: subscribers with branch NULL or 'أخرى' but no crm_json branch → set 'online'
+    // 4. A record the site created on its own with no branch is the online
+    //    branch's — the one every self-signup is filed under
+    //    (lib/branches.js#defaultDigitalBranch).
+    //
+    //    This wrote 'اون لاين' into subscribers.branch, an ENUM of codes; under
+    //    STRICT_TRANS_TABLES the UPDATE failed and took steps 1–3 down with it,
+    //    every time a branch-less client existed. It also moved every OTHER
+    //    client (a branch staff chose) to online. Only branch-less, site-made
+    //    rows now, as the header above always said.
+    const onlineBranch = defaultDigitalBranch(null);
     const [wrongBranch] = await conn.query(
-      `SELECT id FROM subscribers WHERE tenant_id=? AND (branch IS NULL OR branch = '' OR branch = 'أخرى' OR branch = 'اخري' OR branch = 'other')`,
+      `SELECT id FROM subscribers
+        WHERE tenant_id=? AND (branch IS NULL OR branch = '') AND crm_json LIKE '%"source":"auto"%'`,
       [tenantId]
     );
     if (wrongBranch.length > 0) {
       const bIds = wrongBranch.map(r => r.id);
       const bph = bIds.map(() => '?').join(',');
-      await conn.query(`UPDATE subscribers SET branch = 'اون لاين' WHERE tenant_id=? AND id IN (${bph})`, [tenantId, ...bIds]);
+      await conn.query(
+        `UPDATE subscribers SET branch = ?, branch_id = ? WHERE tenant_id=? AND id IN (${bph})`,
+        [onlineBranch, branchIdForBranch(onlineBranch), tenantId, ...bIds]
+      );
       branchFixed = wrongBranch.length;
     }
 

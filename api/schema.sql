@@ -4428,7 +4428,7 @@ CREATE TABLE `refund_requests` (
   `amount` decimal(10,2) NOT NULL DEFAULT 0.00,
   `currency` varchar(10) DEFAULT 'EGP',
   `reason` text DEFAULT NULL,
-  `status` enum('PENDING','APPROVED','REJECTED','HANDLING') DEFAULT 'PENDING',
+  `status` enum('PENDING','APPROVED','REJECTED','HANDLING','REFUNDED') DEFAULT 'PENDING',
   `admin_note` text DEFAULT NULL,
   `refund_method` varchar(100) DEFAULT NULL,
   `created_at` datetime DEFAULT current_timestamp(),

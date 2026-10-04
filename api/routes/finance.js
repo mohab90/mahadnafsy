@@ -1606,7 +1606,9 @@ router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdminOrStaff, r
     await logFinancialAudit({
       entityType: 'refund_request',
       entityId: req.params.id,
-      action: normalizedStatus === 'APPROVED' ? 'approved' : 'rejected',
+      // HANDLING was written as 'rejected': the audit said a request was
+      // refused when it had been settled another way.
+      action: normalizedStatus.toLowerCase(),
       oldData: { status: rr.status, payment_id: rr.payment_id || null },
       newData: { status: normalizedStatus, notes: notes || null },
       amount: rr.amount,
@@ -1681,18 +1683,30 @@ router.post('/api/admin/finance/refunds/:id/blame', requireAuth, requireAdmin, a
 // gap between the two is exactly what the refund desk is chasing.
 router.post('/api/admin/finance/refunds/:id/mark-refunded', requireAuth, requireAdminOrStaff, requirePermission('approve_refunds'), async (req, res) => {
   try {
+    // The same row-level rule the decision itself (PUT above) applies: a branch
+    // accountant confirmed another branch's refunds by id.
+    const scope = resolveFinancialScope(req, { requestedBranch: null, allowAssigned: true });
     const [[rr]] = await pool.query(
-      'SELECT status FROM refund_requests WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
+      `SELECT rr.status, rr.branch_id, s.assigned_cs_id, s.assigned_sales_id
+         FROM refund_requests rr
+         LEFT JOIN subscribers s ON s.id = rr.subscriber_id AND s.tenant_id = rr.tenant_id
+        WHERE rr.id=? AND rr.tenant_id=? AND rr.deleted_at IS NULL LIMIT 1`,
       [req.params.id, req.tenantId]);
-    if (!rr) return res.status(404).json({ error: 'الطلب غير موجود' });
+    if (!rr || !financialRecordMatches(scope, rr)) return res.status(404).json({ error: 'الطلب غير موجود' });
     if (String(rr.status).toUpperCase() !== 'APPROVED') {
       return res.status(409).json({ error: 'لا يمكن تأكيد رد المبلغ قبل اعتماد الطلب' });
     }
-    await pool.query(
-      "UPDATE refund_requests SET status='REFUNDED', refunded_at=NOW() WHERE id=? AND tenant_id=?",
+    // Conditional, so two confirmations at once write one REFUNDED.
+    const [done] = await pool.query(
+      "UPDATE refund_requests SET status='REFUNDED', refunded_at=NOW() WHERE id=? AND tenant_id=? AND status='APPROVED'",
       [req.params.id, req.tenantId]);
+    if (!done.affectedRows) return res.status(409).json({ error: 'الطلب اتأكد قبل كده' });
     res.json({ ok: true, message: 'تم تأكيد رد المبلغ للعميل' });
-  } catch (e) { logger.error('[finance/refunds mark-refunded]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    logger.error('[finance/refunds mark-refunded]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // Archive, not erase: a money decision keeps its trail.
