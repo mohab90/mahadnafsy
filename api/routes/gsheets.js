@@ -216,7 +216,7 @@ setInterval(async () => {
       const settings = await getTenantSetting('crm_settings', { tenantId, fallback: {} });
       const sheets = Array.isArray(settings?.sheets) ? settings.sheets : [];
       if (sheets.some(s => s.autoSync)) {
-        const r = await syncAllConfiguredSheets(tenantId);
+        const r = await syncAllConfiguredSheets(tenantId, { autoOnly: true });
         if (r.imported > 0) logger.info(`[gsheet-auto] tenant=${tenantId} imported ${r.imported} leads`);
       }
     }

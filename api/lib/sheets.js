@@ -168,6 +168,8 @@ function leadPlacement(lead) {
  * @param {boolean} [options.dryRun] count and classify, write nothing
  * @param {string} [options.autoAssign] override the tenant's distribution mode
  * @param {Function} [options.fetchCsv] how a tab's CSV is fetched (tests)
+ * @param {boolean} [options.autoOnly] only the sheets ticked «مزامنة تلقائية» (the timers)
+ * @param {string} [options.only] only the sheet whose name, sheet id or gid contains this
  */
 async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT, options = {}) {
   const report = { imported: 0, skipped: 0, outsideWindow: 0, sheets: [] };
@@ -175,7 +177,14 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT, options = {}) 
     const settings = await getTenantSetting('crm_settings', { tenantId, fallback: {} });
     // Use only sheets explicitly stored for this tenant. Seed sheets are UI hints,
     // never implicit import sources.
-    const sheets = Array.isArray(settings?.sheets) ? settings.sheets : [];
+    // The timers used to read every saved sheet, ticked or not, so the
+    // «مزامنة تلقائية» box changed nothing. A sheet saved before the box
+    // existed has no autoSync field and stays synced.
+    const only = String(options.only || '').trim().toLowerCase();
+    const sheets = (Array.isArray(settings?.sheets) ? settings.sheets : [])
+      .filter(sheet => !options.autoOnly || sheet.autoSync !== false)
+      .filter(sheet => !only || [sheet.name, sheet.sheetId, sheet.gid, ...(Array.isArray(sheet.gids) ? sheet.gids : [])]
+        .some(value => String(value || '').toLowerCase().includes(only)));
     const autoAssign = ['rr', 'least', 'none'].includes(options.autoAssign) ? options.autoAssign
       : ['rr', 'least', 'none'].includes(settings?.autoAssign) ? settings.autoAssign : 'rr';
     const configuredWindow = Number(settings?.sheetImportWindowDays);

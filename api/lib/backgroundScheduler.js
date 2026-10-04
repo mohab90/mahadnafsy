@@ -73,7 +73,7 @@ function startBackgroundScheduler({ pool, logger, port }) {
   }, 5 * 60 * 1000);
 
   later(() => {
-    const sync = lockedJob('sheets_sync', () => syncAllConfiguredSheets()
+    const sync = lockedJob('sheets_sync', () => syncAllConfiguredSheets(undefined, { autoOnly: true })
       .then(result => {
         if (result?.imported) logger.info(`[jobs] Google Sheets imported=${result.imported}`);
       })

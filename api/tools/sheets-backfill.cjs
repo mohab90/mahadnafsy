@@ -7,6 +7,8 @@
  *   node tools/sheets-backfill.cjs                # report only (default 14 days)
  *   node tools/sheets-backfill.cjs --days 14 --apply
  *   node tools/sheets-backfill.cjs --all --apply  # every row, whatever its date
+ *   node tools/sheets-backfill.cjs --all --sheet "اسم الشيت"   # one sheet only (name, sheet id or gid)
+ *   node tools/sheets-backfill.cjs --list         # the saved sheets, and which are ticked for auto sync
  *
  * Report per sheet tab:
  *   rows        rows in the tab
@@ -31,7 +33,18 @@ const tenantId = arg('tenant', process.env.DEFAULT_TENANT_ID || 'tenant-default'
 (async () => {
   const { syncAllConfiguredSheets } = require('../lib/sheets');
   const { pool } = require('../lib/db');
-  const report = await syncAllConfiguredSheets(tenantId, { windowDays: days, dryRun: !apply });
+  if (process.argv.includes('--list')) {
+    const { getTenantSetting } = require('../lib/tenantSettings');
+    const settings = await getTenantSetting('crm_settings', { tenantId, fallback: {} });
+    for (const sheet of settings?.sheets || []) {
+      console.log(`${sheet.autoSync === false ? '☐ not ticked' : '☑ auto sync '} · ${sheet.name || '—'} · ${sheet.sheetId} · gid ${sheet.gid || '—'}`);
+    }
+    await pool.end();
+    return;
+  }
+  const only = arg('sheet', '');
+  const report = await syncAllConfiguredSheets(tenantId, { windowDays: days, dryRun: !apply, only });
+  if (only && !report.sheets.length) console.log(`no saved sheet matches «${only}» — see --list`);
   console.log(`${apply ? 'IMPORTED' : 'REPORT (nothing written — add --apply)'} · tenant ${tenantId} · window ${days ? `${days} days` : 'all rows'}\n`);
   for (const sheet of report.sheets) {
     const e = sheet.existing;

@@ -30,7 +30,8 @@ const CSV = [
   `l:4,${iso(3)},محذوف,01012000002,`,
   `l:5,${iso(40)},قديم,01012000005,`,
 ].join('\n');
-const fetchCsv = async () => CSV;
+// The second, unticked sheet is empty: the sync tests count the first one's rows.
+const fetchCsv = async url => (url.includes('B'.repeat(30)) ? 'name,phone\n' : CSV);
 
 async function clean() {
   for (const table of ['lead_timeline', 'lead_interactions', 'communications', 'leads', 'tenant_settings']) {
@@ -47,7 +48,11 @@ before(async () => {
   await pool.query("INSERT IGNORE INTO tenants (id, slug, name, status) VALUES (?, ?, 'Sheets IT', 'suspended')", [TENANT, TENANT]);
   const { setTenantSetting } = require('../../lib/tenantSettings');
   await setTenantSetting('crm_settings', {
-    autoAssign: 'none', sheets: [{ sheetId: 'A'.repeat(30), gid: '1', name: 'فيسبوك' }],
+    autoAssign: 'none', sheets: [
+      { sheetId: 'A'.repeat(30), gid: '1', name: 'فيسبوك' },
+      // Not ticked: the timers skip it, a report or a manual sync still reads it.
+      { sheetId: 'B'.repeat(30), gid: '2', name: 'شيت مش متعلم', autoSync: false },
+    ],
   }, { tenantId: TENANT });
   await pool.query(
     `INSERT INTO leads (id, tenant_id, name, phone, source, status, hidden, created_at) VALUES
@@ -87,6 +92,15 @@ test('the sync imports the missing recent rows once, with the multi-line answer 
   // The deleted lead is not brought back.
   const [[hidden]] = await pool.query("SELECT COUNT(*) n FROM leads WHERE tenant_id=? AND phone='1012000002'", [TENANT]);
   assert.equal(Number(hidden.n), 1);
+});
+
+test('the timers read only the ticked sheets; --sheet picks one by name or gid', { skip }, async () => {
+  const names = report => report.sheets.map(sheet => sheet.name);
+  const all = await sheets.syncAllConfiguredSheets(TENANT, { dryRun: true, fetchCsv });
+  assert.deepEqual(names(all), ['فيسبوك', 'شيت مش متعلم']);
+  assert.deepEqual(names(await sheets.syncAllConfiguredSheets(TENANT, { dryRun: true, autoOnly: true, fetchCsv })), ['فيسبوك']);
+  assert.deepEqual(names(await sheets.syncAllConfiguredSheets(TENANT, { dryRun: true, only: 'مش متعلم', fetchCsv })), ['شيت مش متعلم']);
+  assert.deepEqual(names(await sheets.syncAllConfiguredSheets(TENANT, { dryRun: true, only: '1', fetchCsv })).includes('فيسبوك'), true);
 });
 
 test('dates: ISO is exact, an unambiguous slashed date is read, an ambiguous one is not guessed', () => {
