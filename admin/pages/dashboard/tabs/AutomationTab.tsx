@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { copyText } from '../../../../shared/copyText';
 import { cairoDateOnly } from '../../../../shared/cairoDate';
 import { AlertCircle, CheckCircle, Copy, Edit2, Play, Plus, Save, Settings, Trash2, Zap } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
@@ -89,7 +90,7 @@ const AutomationTab: React.FC<Props> = ({ notify, setActiveTab }) => {
   const [fbCopied, setFbCopied] = useState(false);
   const FB_WEBHOOK_URL = 'https://mahadnafsy.com/api/webhooks/facebook-leads';
   const copyWebhookUrl = () => {
-    navigator.clipboard.writeText(FB_WEBHOOK_URL).then(() => { setFbCopied(true); setTimeout(() => setFbCopied(false), 2000); });
+    void copyText(FB_WEBHOOK_URL).then(ok => { if (!ok) return; setFbCopied(true); setTimeout(() => setFbCopied(false), 2000); });
   };
   useEffect(() => {
     mysqlAdmin.getFbLeadConfig().then((cfg: any) => {

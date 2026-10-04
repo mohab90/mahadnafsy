@@ -385,7 +385,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
             <UnifiedClientSidebarPromoCard
               lead={lead}
               promoCopied={promoCopied}
-              onCopyPromo={() => { navigator.clipboard.writeText(lead.promoCode!).then(() => { setPromoCopied(true); setTimeout(() => setPromoCopied(false), 2000); }); }}
+              onCopyPromo={() => { navigator.clipboard.writeText(lead.promoCode!).then(() => { setPromoCopied(true); setTimeout(() => setPromoCopied(false), 2000); }).catch(() => {}); }}
               onGeneratePromo={handleGeneratePromo}
             />
           )}

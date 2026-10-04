@@ -1,4 +1,5 @@
 import React, { useState, useRef, useMemo, useCallback } from 'react';
+import { copyText } from '../../../../shared/copyText';
 import { AlertCircle, Bot, RefreshCw, Send, Trash2, Users, Zap, Copy, Check, ChevronDown, ChevronUp, Sparkles, TrendingUp, DollarSign } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -257,7 +258,8 @@ ${customPrompt}
   // ── Copied message state ──────────────────────────────────────────────────
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const copyMsg = (text: string, idx: number) => {
-    navigator.clipboard.writeText(text).then(() => {
+    void copyText(text).then(ok => {
+      if (!ok) return;
       setCopiedIdx(idx);
       setTimeout(() => setCopiedIdx(null), 2000);
     });

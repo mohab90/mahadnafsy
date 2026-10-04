@@ -12,6 +12,11 @@ export const directContentTabs = new Set<string>([
   'page_contact',
   'page_joinus',
   'page_community',
+  // Drawn by DashboardDirectContentRoutes like the others above, but missing
+  // here — so opening them by link showed an empty page.
+  'page_course_details',
+  'page_bundle_details',
+  'page_misc',
 ]);
 
 export const contentHubRouteTabs = new Set<string>([

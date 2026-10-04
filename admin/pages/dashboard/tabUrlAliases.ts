@@ -20,6 +20,11 @@ const URL_TO_TAB: Record<string, TabKey> = {
   my_clients: 'online_clients',
   subscribers: 'online_clients',
   online_clients: 'online_clients',
+  // Keys of screens since merged into a hub. Opened by an old link they drew
+  // an empty page; they land on the screen that holds them now.
+  analytics: 'analytics_hub',
+  ai_dev: 'ask_ai',
+  hub_advanced: 'content_hub',
 };
 
 /** The address-bar spelling for a tab key. */

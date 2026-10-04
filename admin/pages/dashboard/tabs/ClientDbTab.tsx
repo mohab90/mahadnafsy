@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { copyText } from '../../../../shared/copyText';
 import {
   Search, Users, UserCheck, UserPlus, MessageSquare,
   CreditCard, Download, ExternalLink, BookOpen, CheckSquare, Square, Trash2,
@@ -603,7 +604,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
                 .filter(c => selectedIds.has(`${c.type}-${c.id}`) && c.phone)
                 .map(c => c.phone)
                 .join('\n');
-              navigator.clipboard.writeText(phones).then(() => notify('success', 'تم نسخ الأرقام'));
+              void copyText(phones).then(ok => notify(ok ? 'success' : 'error', ok ? 'تم نسخ الأرقام' : 'تعذر النسخ — المتصفح منع الوصول للحافظة'));
             }}
             className="flex items-center gap-1.5 bg-green-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-green-700 transition"
           >
