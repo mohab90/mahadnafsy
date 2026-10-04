@@ -60,5 +60,7 @@ test('the badge, the counter and the one list all read that predicate', () => {
   assert.doesNotMatch(tab, /rows=\{unassignedLeads\}/, 'the tab draws the pool once, in LeadArchiveViews');
   const views = read('admin/pages/dashboard/tabs/leads/LeadArchiveViews.tsx');
   assert.match(views, /customFilter=\{isLocalNewLead\}/);
-  assert.match(views, /customFilter=\{isDawliNewLead\}/);
+  // The international pool is now half of «داتا سعودي», which lists it beside
+  // the imported international data — still through the same predicate.
+  assert.match(views, /customFilter=\{lead => isDawliNewLead\(lead\)/);
 });
