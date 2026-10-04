@@ -376,7 +376,7 @@ async function runPaymentDueReminders(tenantId = DEFAULT_TENANT) {
               <p>📅 <strong>تاريخ الاستحقاق:</strong> ${p.due_date}</p>
               <p>⏳ <strong>المتبقي:</strong> ${daysLeft} يوم</p>
             </div>
-            <p style="margin-top:16px;">شكراً لثقتك في <strong>معهد مهاد للدراسات النفسية</strong> 💚</p>
+            <p style="margin-top:16px;">شكراً لثقتك في <strong>معهد الدراسات النفسية</strong> 💚</p>
             <p style="color:#94a3b8;font-size:11px;">أُرسل تلقائياً</p>
           </div>`,
         }).catch(() => {});
