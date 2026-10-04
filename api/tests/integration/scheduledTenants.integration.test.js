@@ -41,3 +41,22 @@ test('one tenant failing does not skip the rest', { skip }, async () => {
   await forEachActiveTenant(dailyReport, fake);
   assert.deepEqual(seen, ['tenant-a', 'tenant-b', 'tenant-c']);
 });
+
+test('a timer job runs once when two processes fire it together, and again after', { skip }, async () => {
+  const { withJobLock } = require('../../lib/jobLock');
+  let runs = 0;
+  const reminders = async () => { runs++; await new Promise(resolve => setTimeout(resolve, 300)); return 'sent'; };
+  const mysql = require('mysql2/promise');
+  const other = mysql.createPool({ host: process.env.DB_HOST, user: process.env.DB_USER, password: process.env.DB_PASSWORD, database: process.env.DB_NAME });
+  let results;
+  try {
+    results = await Promise.all([withJobLock('it-reminders', reminders), withJobLock('it-reminders', reminders, other)]);
+  } finally { await other.end(); }
+  assert.equal(runs, 1, 'the second process skipped the overlapping run');
+  assert.deepEqual(results.map(r => (r === 'sent' ? 'ran' : r?.skipped ? 'skipped' : r)).sort(), ['ran', 'skipped']);
+  await withJobLock('it-reminders', reminders);
+  assert.equal(runs, 2, 'the lock is released once the run ends');
+  await assert.rejects(withJobLock('it-reminders', async () => { throw new Error('boom'); }), /boom/);
+  await withJobLock('it-reminders', reminders);
+  assert.equal(runs, 3, 'a failed run releases the lock too');
+});

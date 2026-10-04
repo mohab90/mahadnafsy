@@ -56,8 +56,9 @@ function startBackgroundScheduler({ pool, logger, port }) {
   // absence on (lib/autoAbsence.js — off by default). Hourly and idempotent: the
   // insert ignores a day that already has a row, so repeats and a second instance
   // change nothing.
+  const { lockedJob } = require('./jobLock');
   later(() => {
-    const run = async () => {
+    const run = lockedJob('auto_absence', async () => {
       try {
         const { markAutoAbsences } = require('./autoAbsence');
         const [tenants] = await pool.query("SELECT id FROM tenants WHERE status='active'").catch(() => [[]]);
@@ -66,28 +67,28 @@ function startBackgroundScheduler({ pool, logger, port }) {
           if (result.marked) logger.info(`[jobs] auto-absence ${tenant.id} ${result.date}: ${result.marked}`);
         }
       } catch (error) { logger.warn('[jobs] auto-absence failed:', error.message); }
-    };
+    });
     run();
     repeat(run, 60 * 60 * 1000);
   }, 5 * 60 * 1000);
 
   later(() => {
-    const sync = () => syncAllConfiguredSheets()
+    const sync = lockedJob('sheets_sync', () => syncAllConfiguredSheets()
       .then(result => {
         if (result?.imported) logger.info(`[jobs] Google Sheets imported=${result.imported}`);
       })
-      .catch(error => logger.warn('[jobs] Google Sheets sync failed:', error.message));
+      .catch(error => logger.warn('[jobs] Google Sheets sync failed:', error.message)));
     sync();
     repeat(sync, 30 * 60 * 1000);
   }, 20000);
   // Collection officers' linked sheets (lib/collectionSheets.js), offset from
   // the leads sync above.
   later(() => {
-    const sync = () => require('./collectionSheets').syncAllCollectionSheets()
+    const sync = lockedJob('collection_sheets_sync', () => require('./collectionSheets').syncAllCollectionSheets()
       .then(result => {
         if (result?.created) logger.info(`[jobs] collection sheets created=${result.created}`);
       })
-      .catch(error => logger.warn('[jobs] collection sheets sync failed:', error.message));
+      .catch(error => logger.warn('[jobs] collection sheets sync failed:', error.message)));
     sync();
     repeat(sync, 30 * 60 * 1000);
   }, 5 * 60 * 1000);
@@ -104,32 +105,35 @@ function startBackgroundScheduler({ pool, logger, port }) {
   schedule('lead_auto_archive', 24 * 60 * 60 * 1000, 20 * 60 * 1000);
   schedule('subscription_billing', 24 * 60 * 60 * 1000, 5 * 60 * 1000, { tenantId: 'system' });
 
-  const automation = () => require('./automationEngine')
+  const automation = lockedJob('automation', () => require('./automationEngine')
     .runAutomationWorkflows({ actor: 'scheduled-automation' })
-    .catch(error => logger.warn('[jobs] automation failed:', error.message));
+    .catch(error => logger.warn('[jobs] automation failed:', error.message)));
   later(() => { automation(); repeat(automation, 24 * 60 * 60 * 1000); }, 90000);
   later(() => {
-    scheduledJobs.daqqiSessionReminder();
-    repeat(scheduledJobs.daqqiSessionReminder, 60 * 60 * 1000);
+    const reminder = lockedJob('daqqi_session_reminder', scheduledJobs.daqqiSessionReminder);
+    reminder();
+    repeat(reminder, 60 * 60 * 1000);
   }, 3 * 60 * 1000);
   // Leads left waiting once every rep reached the day's cap (lib/leadBacklog.js).
   later(() => {
-    const backlog = () => require('./leadBacklog').runLeadBacklog()
-      .catch(error => logger.warn('[jobs] lead backlog failed:', error.message));
+    const backlog = lockedJob('lead_backlog', () => require('./leadBacklog').runLeadBacklog()
+      .catch(error => logger.warn('[jobs] lead backlog failed:', error.message)));
     backlog();
     repeat(backlog, 60 * 60 * 1000);
   }, 8 * 60 * 1000);
   later(() => {
-    scheduledJobs.leadRetargeting();
-    repeat(scheduledJobs.leadRetargeting, 24 * 60 * 60 * 1000);
+    const retargeting = lockedJob('lead_retargeting', scheduledJobs.leadRetargeting);
+    retargeting();
+    repeat(retargeting, 24 * 60 * 60 * 1000);
   }, 5 * 60 * 1000);
   later(() => {
-    scheduledJobs.waitlistNotify();
-    repeat(scheduledJobs.waitlistNotify, 30 * 60 * 1000);
+    const waitlist = lockedJob('waitlist_notify', scheduledJobs.waitlistNotify);
+    waitlist();
+    repeat(waitlist, 30 * 60 * 1000);
   }, 7 * 60 * 1000);
-  const dripCampaigns = () => require('./dripCampaigns')
+  const dripCampaigns = lockedJob('crm_drip', () => require('./dripCampaigns')
     .processDripCampaigns({ pool, logger })
-    .catch(error => logger.warn('[jobs] CRM drip failed:', error.message));
+    .catch(error => logger.warn('[jobs] CRM drip failed:', error.message)));
   later(() => {
     dripCampaigns();
     repeat(dripCampaigns, 15 * 60 * 1000);
