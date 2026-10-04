@@ -9,7 +9,28 @@ type Item = {
   amount: number;
   currency: string;
   created_by_name?: string;
+  fee_type?: string;
+  note?: string | null;
+  pay_basis?: string | null;
+  retention_bonus_type?: string | null;
+  retention_bonus_value?: number | null;
 };
+const FEE_TYPE: Record<string, string> = { lecture: 'محاضرة', retention: 'مكافأة تدوير', training: 'تدريب', consultation: 'استشارة', fixed: 'حصة من دفعة' };
+const BASIS: Record<string, string> = { per_lecture: 'بالمحاضرة', per_hour: 'بالساعة', revenue_share: 'نسبة من الدفعة' };
+
+// What the reviewer is approving, in words: a rate change says how the
+// instructor will be paid, a fee says what it is for.
+function describe(kind: string, item: Item): string {
+  if (kind === 'rates' && item.pay_basis) {
+    const amount = Number(item.amount).toLocaleString('ar-EG-u-nu-latn');
+    const basis = item.pay_basis === 'revenue_share' ? `${amount}% من الدفعة` : `${BASIS[item.pay_basis]}: ${amount} ${item.currency}`;
+    const retention = item.retention_bonus_type
+      ? ` · تدوير ${Number(item.retention_bonus_value).toLocaleString('ar-EG-u-nu-latn')}${item.retention_bonus_type === 'percentage' ? '%' : ` ${item.currency}`}` : '';
+    return basis + retention;
+  }
+  if (kind === 'fees') return `${FEE_TYPE[item.fee_type || ''] || ''}${item.note ? ` — ${item.note}` : ''}`;
+  return '';
+}
 type Pending = { salaries: Item[]; adjustments: Item[]; fees: Item[]; rates: Item[] };
 type Kind = keyof Pending;
 const EMPTY: Pending = { salaries: [], adjustments: [], fees: [], rates: [] };
@@ -66,7 +87,8 @@ export default function HrCompensationApprovals({ notify }: { notify: Notify }) 
             {pending[kind].map(item => (
               <div key={item.id} className="flex flex-wrap items-center gap-2 border-t border-gray-50 py-2 text-xs">
                 <span className="font-bold text-gray-800">{item.staff_name}</span>
-                <span className="text-gray-600">{Number(item.amount).toLocaleString('ar-EG-u-nu-latn')} {item.currency}</span>
+                <span className="text-gray-600">{kind === 'rates' && item.pay_basis ? describe(kind, item) : `${Number(item.amount).toLocaleString('ar-EG-u-nu-latn')} ${item.currency}`}</span>
+                {kind === 'fees' && <span className="text-gray-500">{describe(kind, item)}</span>}
                 <span className="text-gray-400">{item.created_by_name ? `أنشأه ${item.created_by_name}` : ''}</span>
                 <span className="flex-1" />
                 <button disabled={busy === item.id} onClick={() => review(kind, item, false)}

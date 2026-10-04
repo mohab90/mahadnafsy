@@ -162,6 +162,17 @@ async function clawBackPaidCommission(conn, { tenantId, paymentId, share, actor,
   return clawed;
 }
 
+// The retention bonus a payment earned its instructor (lib/instructorPay.js)
+// goes when the payment does. A paid one is left, as the instructor's share is.
+async function rejectRetentionBonus(conn, { tenantId, paymentId }) {
+  await conn.query(
+    `UPDATE instructor_fees SET status='rejected'
+      WHERE trigger_payment_id=? AND tenant_id=? AND fee_type='retention'
+        AND status IN ('pending','approved','included_in_payroll')`,
+    [paymentId, tenantId]
+  );
+}
+
 // A refunded payment's courses close unless another payment still covers them.
 // Refund rows are negative 'paid' rows on the same course; they cover nothing
 // (`p.amount > 0`) — counted as a grant they kept access open after partial
@@ -317,7 +328,10 @@ async function applyRefundReversal({ paymentId, subscriberId, refundAmount, refu
     // Partial refunds that add up to the whole payment are a full refund in
     // all but the bookkeeping: the customer keeps nothing they paid for, so
     // nothing they paid for stays open — as when it goes back in one go.
-    if (refundable - refundedAmount <= 0.01) await revokeAccessWithoutOtherGrant(conn, { tenantId, pay, actor });
+    if (refundable - refundedAmount <= 0.01) {
+      await revokeAccessWithoutOtherGrant(conn, { tenantId, pay, actor });
+      await rejectRetentionBonus(conn, { tenantId, paymentId: pay.id });
+    }
 
     return {
       paymentId: pay.id, refundPaymentId: refundId, partial: true,
@@ -357,6 +371,7 @@ async function applyRefundReversal({ paymentId, subscriberId, refundAmount, refu
       WHERE source_payment_id=? AND tenant_id=? AND status IN ('pending','approved','included_in_payroll')`,
     [pay.id, tenantId]
   );
+  await rejectRetentionBonus(conn, { tenantId, paymentId: pay.id });
 
   await revokeAccessWithoutOtherGrant(conn, { tenantId, pay, actor });
 

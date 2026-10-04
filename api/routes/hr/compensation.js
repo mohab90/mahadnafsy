@@ -38,7 +38,10 @@ router.get('/api/admin/hr/compensation/pending', requireAuth, requireAdminOrStaf
         [req.tenantId]
       ),
       pool.query(
-        `SELECT r.id,r.staff_id,s.name AS staff_name,r.lecture_rate_per_hour AS amount,
+        `SELECT r.id,r.staff_id,s.name AS staff_name,
+                CASE r.pay_basis WHEN 'per_lecture' THEN r.lecture_rate WHEN 'revenue_share' THEN r.revenue_share_pct
+                     ELSE r.lecture_rate_per_hour END AS amount,
+                r.pay_basis,r.retention_bonus_type,r.retention_bonus_value,
                 r.currency,r.created_at,c.name AS created_by_name
            FROM instructor_rate_change_requests r
            JOIN staff s ON s.id=r.staff_id AND s.tenant_id=r.tenant_id
@@ -58,7 +61,8 @@ router.get('/api/admin/hr/instructors/:staffId/rates', requireAuth, requireAdmin
   try {
     const [[row]] = await pool.query(
       `SELECT id, staff_id, consultation_rate_type, consultation_rate_value, lecture_rate_per_hour,
-              training_rate_per_hour, currency, notes, updated_at
+              training_rate_per_hour, currency, notes, updated_at,
+              pay_basis, lecture_rate, lecture_hours, revenue_share_pct, retention_bonus_type, retention_bonus_value
        FROM instructor_rates WHERE tenant_id=? AND staff_id=?`, [req.tenantId, req.params.staffId]
     );
     res.json(row || null);
@@ -82,6 +86,9 @@ router.put('/api/admin/hr/instructors/:staffId/rates', requireAuth, requireAdmin
         || (rateType === 'percentage' && amounts[0] > 100)) {
       return res.status(400).json({ error: 'Invalid instructor rate values' });
     }
+    // How the lectures are paid (lib/instructorPay.js) and the retention bonus.
+    const pay = instructorPayFields(req.body);
+    if (pay.error) return res.status(400).json({ error: pay.error });
     await conn.beginTransaction(); transactionStarted = true;
     const [[ownedStaff]] = await conn.query(
       'SELECT id FROM staff WHERE tenant_id=? AND id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
@@ -104,10 +111,12 @@ router.put('/api/admin/hr/instructors/:staffId/rates', requireAuth, requireAdmin
     await conn.query(
       `INSERT INTO instructor_rate_change_requests
         (id,tenant_id,staff_id,consultation_rate_type,consultation_rate_value,
-         lecture_rate_per_hour,training_rate_per_hour,currency,notes,requested_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+         lecture_rate_per_hour,training_rate_per_hour,currency,notes,requested_by,
+         pay_basis,lecture_rate,lecture_hours,revenue_share_pct,retention_bonus_type,retention_bonus_value)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [id, req.tenantId, req.params.staffId, rateType, ...amounts, normalizedCurrency,
-        notes ? String(notes).slice(0, 5000) : null, req.staffRecord?.id || null]
+        notes ? String(notes).slice(0, 5000) : null, req.staffRecord?.id || null,
+        pay.payBasis, pay.lectureRate, pay.lectureHours, pay.revenueSharePct, pay.retentionType, pay.retentionValue]
     );
     await writeAuditEvent({
       action: 'hr.instructor_rate.requested', entityType: 'instructor_rate_change', entityId: id,
@@ -121,6 +130,74 @@ router.put('/api/admin/hr/instructors/:staffId/rates', requireAuth, requireAdmin
     logger.error('[hr/instructor-rates/request]', e.message);
     hrError(res, e);
   } finally { conn.release(); }
+});
+
+// The pay fields of a rate change (migration 234), checked.
+function instructorPayFields(body = {}) {
+  const payBasis = body.pay_basis ? String(body.pay_basis) : 'revenue_share';
+  if (!['revenue_share', 'per_lecture', 'per_hour'].includes(payBasis)) return { error: 'طريقة حساب المحاضر غير صحيحة' };
+  const num = value => (value === undefined || value === null || value === '' ? null : Number(value));
+  const lectureRate = num(body.lecture_rate);
+  const lectureHours = num(body.lecture_hours);
+  const revenueSharePct = num(body.revenue_share_pct);
+  const retentionType = body.retention_bonus_type ? String(body.retention_bonus_type) : null;
+  const retentionValue = num(body.retention_bonus_value);
+  for (const value of [lectureRate, lectureHours, revenueSharePct, retentionValue]) {
+    if (value !== null && (!Number.isFinite(value) || value < 0 || value > 10000000)) return { error: 'قيمة غير صحيحة في حساب المحاضر' };
+  }
+  if (revenueSharePct !== null && revenueSharePct > 100) return { error: 'النسبة لازم تكون من 0 لـ100' };
+  if (lectureHours !== null && lectureHours > 24) return { error: 'ساعات المحاضرة لازم تكون أقل من 24' };
+  if (retentionType && !['fixed', 'percentage'].includes(retentionType)) return { error: 'نوع مكافأة التدوير غير صحيح' };
+  if (retentionType === 'percentage' && retentionValue > 100) return { error: 'نسبة مكافأة التدوير لازم تكون من 0 لـ100' };
+  if (payBasis === 'per_lecture' && !(lectureRate > 0)) return { error: 'اكتب سعر المحاضرة' };
+  if (payBasis === 'per_hour' && !(Number(body.lecture_rate_per_hour) > 0)) return { error: 'اكتب سعر الساعة' };
+  return {
+    payBasis, lectureRate, lectureHours, revenueSharePct,
+    retentionType: retentionType && retentionValue > 0 ? retentionType : null,
+    retentionValue: retentionType && retentionValue > 0 ? retentionValue : null,
+  };
+}
+
+/**
+ * «أجور المحاضرين» — every instructor, how they are paid, and the month's
+ * lectures and bonuses as recorded (lib/instructorPay.js), by status.
+ */
+router.get('/api/admin/hr/instructor-pay', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
+  try {
+    const month = Number(req.query.month);
+    const year = Number(req.query.year);
+    if (!(month >= 1 && month <= 12) || !(year >= 2000 && year <= 2100)) return res.status(400).json({ error: 'شهر أو سنة غير صالحة' });
+    // An instructor is a staff account that teaches: linked to a therapist,
+    // named on a course, holding a rate, or in a teaching role.
+    const [instructors] = await pool.query(
+      `SELECT s.id AS staff_id, s.name, s.role,
+              ir.pay_basis, ir.lecture_rate, ir.lecture_rate_per_hour, ir.lecture_hours, ir.revenue_share_pct,
+              ir.retention_bonus_type, ir.retention_bonus_value, ir.currency,
+              (SELECT COUNT(*) FROM instructor_rate_change_requests r
+                WHERE r.tenant_id=s.tenant_id AND r.staff_id=s.id AND r.status='PENDING') AS pending_rate_change
+         FROM staff s
+         LEFT JOIN instructor_rates ir ON ir.staff_id=s.id AND ir.tenant_id=s.tenant_id
+        WHERE s.tenant_id=? AND s.deleted_at IS NULL AND s.is_active=1
+          AND (ir.id IS NOT NULL
+            OR UPPER(s.role) IN ('INSTRUCTOR','TRAINER','EXPERT','CONSULTANT')
+            OR EXISTS (SELECT 1 FROM therapists t WHERE t.tenant_id=s.tenant_id AND t.staff_id=s.id)
+            OR EXISTS (SELECT 1 FROM courses c WHERE c.tenant_id=s.tenant_id AND c.instructor_id=s.id AND c.deleted_at IS NULL))
+        ORDER BY s.name`,
+      [req.tenantId]
+    );
+    const [fees] = await pool.query(
+      `SELECT f.id, f.staff_id, f.fee_type, f.status, f.total_amount, f.currency, f.hours, f.lecture_date, f.note,
+              f.source_key, f.course_id, c.title AS course_title, f.daqqi_round_id, f.subscriber_id, sub.name AS subscriber_name,
+              f.created_at
+         FROM instructor_fees f
+         LEFT JOIN courses c ON c.id=f.course_id AND c.tenant_id=f.tenant_id
+         LEFT JOIN subscribers sub ON sub.id=f.subscriber_id AND sub.tenant_id=f.tenant_id
+        WHERE f.tenant_id=? AND f.period_month=? AND f.period_year=?
+        ORDER BY f.lecture_date, f.created_at`,
+      [req.tenantId, month, year]
+    );
+    res.json({ instructors, fees });
+  } catch (e) { hrError(res, e); }
 });
 
 router.put('/api/admin/hr/instructor-rate-proposals/:id/status', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
@@ -152,16 +229,23 @@ router.put('/api/admin/hr/instructor-rate-proposals/:id/status', requireAuth, re
       await conn.query(
         `INSERT INTO instructor_rates
           (id,tenant_id,staff_id,consultation_rate_type,consultation_rate_value,
-           lecture_rate_per_hour,training_rate_per_hour,currency,notes)
-         VALUES (UUID(),?,?,?,?,?,?,?,?)
+           lecture_rate_per_hour,training_rate_per_hour,currency,notes,
+           pay_basis,lecture_rate,lecture_hours,revenue_share_pct,retention_bonus_type,retention_bonus_value)
+         VALUES (UUID(),?,?,?,?,?,?,?,?,COALESCE(?,'revenue_share'),?,?,?,?,?)
          ON DUPLICATE KEY UPDATE
            consultation_rate_type=VALUES(consultation_rate_type),
            consultation_rate_value=VALUES(consultation_rate_value),
            lecture_rate_per_hour=VALUES(lecture_rate_per_hour),
            training_rate_per_hour=VALUES(training_rate_per_hour),
-           currency=VALUES(currency),notes=VALUES(notes),updated_at=NOW()`,
+           currency=VALUES(currency),notes=VALUES(notes),
+           pay_basis=VALUES(pay_basis),lecture_rate=VALUES(lecture_rate),lecture_hours=VALUES(lecture_hours),
+           revenue_share_pct=VALUES(revenue_share_pct),
+           retention_bonus_type=VALUES(retention_bonus_type),retention_bonus_value=VALUES(retention_bonus_value),
+           updated_at=NOW()`,
         [req.tenantId, proposal.staff_id, proposal.consultation_rate_type, proposal.consultation_rate_value,
-          proposal.lecture_rate_per_hour, proposal.training_rate_per_hour, proposal.currency, proposal.notes]
+          proposal.lecture_rate_per_hour, proposal.training_rate_per_hour, proposal.currency, proposal.notes,
+          proposal.pay_basis, proposal.lecture_rate, proposal.lecture_hours, proposal.revenue_share_pct,
+          proposal.retention_bonus_type, proposal.retention_bonus_value]
       );
     }
     await conn.query(
@@ -320,7 +404,14 @@ router.get('/api/admin/hr/instructor-fees', requireAuth, requireAdminOrStaff, re
 // POST /api/admin/hr/instructor-fees — create a fee record
 router.post('/api/admin/hr/instructor-fees', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
-    const { staff_id, course_id, daqqi_round_id, fee_type, hours, rate_per_hour, fixed_amount, currency, period_month, period_year, note } = req.body;
+    const { staff_id, course_id, daqqi_round_id, fee_type, hours, rate_per_hour, fixed_amount, currency, note } = req.body;
+    let { period_month, period_year } = req.body;
+    // A lecture added by hand carries its date, and is filed in that month.
+    const lectureDate = /^\d{4}-\d{2}-\d{2}$/.test(String(req.body.lecture_date || '')) ? String(req.body.lecture_date) : null;
+    if (lectureDate) { period_year = Number(lectureDate.slice(0, 4)); period_month = Number(lectureDate.slice(5, 7)); }
+    if (fee_type && !['lecture', 'training', 'consultation', 'fixed', 'retention'].includes(fee_type)) {
+      return res.status(400).json({ error: 'نوع الأجر غير صحيح' });
+    }
     if (!staff_id) return res.status(400).json({ error: 'staff_id required' });
     const total = fixed_amount
       ? Number(fixed_amount)
@@ -331,14 +422,14 @@ router.post('/api/admin/hr/instructor-fees', requireAuth, requireAdminOrStaff, r
     }
     const id = uuidv4();
     const [created] = await pool.query(
-      `INSERT INTO instructor_fees (id, tenant_id, staff_id, course_id, daqqi_round_id, fee_type, hours, rate_per_hour, fixed_amount, total_amount, currency, period_month, period_year, note, created_by)
-       SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+      `INSERT INTO instructor_fees (id, tenant_id, staff_id, course_id, daqqi_round_id, fee_type, hours, rate_per_hour, fixed_amount, total_amount, currency, period_month, period_year, note, created_by, lecture_date)
+       SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
        FROM staff s
        WHERE s.tenant_id=? AND s.id=? AND s.deleted_at IS NULL
          AND (? IS NULL OR EXISTS (SELECT 1 FROM courses c WHERE c.tenant_id=? AND c.id=?))`,
       [id, req.tenantId, staff_id, course_id||null, daqqi_round_id||null, fee_type||'lecture',
        hours||null, rate_per_hour||null, fixed_amount||null, total,
-       currency||'EGP', period_month||null, period_year||null, note||null, req.staffRecord?.id || req.user?.uid || null,
+       currency||'EGP', period_month||null, period_year||null, note||null, req.staffRecord?.id || req.user?.uid || null, lectureDate,
        req.tenantId, staff_id, course_id||null, req.tenantId, course_id||null]
     );
     if (!created.affectedRows) return res.status(404).json({ error: 'Staff or course not found in tenant' });

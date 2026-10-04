@@ -1,6 +1,7 @@
 'use strict';
 
 const { uuidv4 } = require('./id');
+const { recordRetentionBonus } = require('./instructorPay');
 const { dateOnlyInTimeZone } = require('./dates');
 
 function paymentPeriod(value) {
@@ -81,13 +82,16 @@ async function recordPaymentCompensation({ paymentId, tenantId, commissionStaffI
 
   if (String(payment.payment_type || '').toUpperCase() === 'COURSE' && payment.course_id) {
     const [[course]] = await db.query(
-      `SELECT c.instructor_id,ir.revenue_share_pct
+      `SELECT c.instructor_id,ir.revenue_share_pct,ir.pay_basis
          FROM courses c
          LEFT JOIN instructor_rates ir ON ir.tenant_id=c.tenant_id AND ir.staff_id=c.instructor_id
         WHERE c.id=? AND c.tenant_id=? AND c.deleted_at IS NULL LIMIT 1`,
       [payment.course_id, tenantId],
     );
-    const share = Number(course?.revenue_share_pct) || 0;
+    // A share of the payment is how revenue_share instructors are paid; one paid
+    // by the lecture or the hour earns from the lectures they deliver
+    // (lib/instructorPay.js), not from the money.
+    const share = (course?.pay_basis || 'revenue_share') === 'revenue_share' ? (Number(course?.revenue_share_pct) || 0) : 0;
     if (share < 0 || share > 100) throw new Error('Invalid instructor revenue share');
     if (course?.instructor_id && share > 0) {
       const fee = Number((amountEgp * share / 100).toFixed(2));
@@ -106,6 +110,10 @@ async function recordPaymentCompensation({ paymentId, tenantId, commissionStaffI
       );
     }
   }
+
+  // A client who studied with this course's instructor before: the
+  // instructor's retention bonus, whatever basis they are paid on.
+  await recordRetentionBonus(db, { tenantId, payment, amountEgp, actor });
 }
 
 module.exports = { paymentPeriod, recordPaymentCompensation };
