@@ -5036,7 +5036,6 @@ CREATE TABLE `subscribers` (
   UNIQUE KEY `uq_subs_tenant_phone` (`tenant_id`,`phone`),
   UNIQUE KEY `uq_subs_tenant_code` (`tenant_id`,`client_code`),
   UNIQUE KEY `uq_subscribers_tenant_firebase` (`tenant_id`,`firebase_uid`),
-  UNIQUE KEY `uq_subs_code` (`client_code`),
   UNIQUE KEY `uq_subs_tenant_email` (`tenant_id`,`email`(191)),
   KEY `idx_subscribers_created_at` (`created_at`),
   KEY `idx_subscribers_tenant` (`tenant_id`),

@@ -11,14 +11,7 @@ const { logLoginAttempt } = require('../../lib/loginAudit');
 const { createNotification } = require('../../lib/notification');
 const { cairoToday, addDaysToDateOnly } = require('../../lib/dates');
 
-async function forEachActiveTenant(task) {
-  let tenantIds = [DEFAULT_TENANT];
-  try {
-    const [rows] = await pool.query("SELECT id FROM tenants WHERE status='active'");
-    if (rows.length) tenantIds = rows.map((row) => row.id);
-  } catch (_) { /* SaaS schema may not be installed during early bootstrap. */ }
-  for (const tenantId of tenantIds) await task(tenantId);
-}
+const { forEachActiveTenant } = require('../../lib/scheduledTenants');
 
 async function logLogin(userId, email, req, status, failureReason = null) {
   return logLoginAttempt({ userId, email, req, status, failureReason });

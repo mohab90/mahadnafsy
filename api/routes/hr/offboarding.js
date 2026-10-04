@@ -104,7 +104,11 @@ router.post('/api/admin/hr/offboarding', requireAuth, requireAdminOrStaff, requi
 });
 
 async function assignedWork(conn, tenantId, staffId) {
-  const [results] = await Promise.all([
+  // Every result, not the first: `const [results] = await Promise.all(…)` kept
+  // the tasks query alone, read its rows as if they were seven results, and
+  // summed to NaN — `NaN > 0` is false, so an employee with open leads, clients
+  // and tickets was switched off with all of it still on their name.
+  const results = await Promise.all([
     conn.query(
       "SELECT COUNT(*) total FROM tasks WHERE tenant_id=? AND assigned_to=? AND status IN ('todo','in_progress')",
       [tenantId, staffId]
