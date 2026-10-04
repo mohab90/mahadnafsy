@@ -24,7 +24,7 @@ const { getTenantSetting } = require('../../lib/tenantSettings');
 const {
   ADMIN_EMAILS, requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, invalidateIdentity,
 } = require('../../middleware/auth');
-const { DATA_SCOPE, VALID_BRANCHES, FULL_ACCESS_ROLES, hasPermission } = require('../../constants/permissions');
+const { DATA_SCOPE, VALID_BRANCHES, FULL_ACCESS_ROLES, hasPermission, resolveDataScope } = require('../../constants/permissions');
 const { safeIsoString, safeDateOnly } = require('../../lib/dates');
 const { keyset } = require('../../lib/pagination');
 const { branchIdForBranch } = require('../../lib/branches');
@@ -177,6 +177,12 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
     const code = req.params.code;
     const isAdminReq = !!req.isSuperAdmin || String(req.staffRecord?.role || '').toUpperCase() === 'ADMIN';
     const staffId = req.staffRecord?.id;
+    // A role whose data scope is every client opens any client. The list below
+    // named three roles by hand and left out customer service — scope 'all',
+    // the role whose work is any caller — so every client it opened, from the
+    // client database or a payment, read «ليس لديك صلاحية» and showed as
+    // «العميل غير موجود».
+    const seesEveryClient = resolveDataScope(req.staffRecord, { isSuperAdmin: req.isSuperAdmin }) === 'all';
 
     // ── 1. Try subscriber (by id or client_code) ────────────────────────────
     const [subRows] = await pool.query(
@@ -195,7 +201,7 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
         const staffRole = (req.staffRecord?.role || '').toLowerCase();
         // Roles with full subscriber access — can see any client
         const fullAccessRoles = ['online_manager', 'daqqi_manager', 'manager'];
-        if (fullAccessRoles.includes(staffRole)) {
+        if (fullAccessRoles.includes(staffRole) || seesEveryClient) {
           // allow full access
         } else if (staffRole === 'reception_daqqi') {
           // reception_daqqi can see any daqqi-branch subscriber
@@ -337,7 +343,7 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
       if (!isAdminReq) {
         const staffRole2 = (req.staffRecord?.role || '').toLowerCase();
         const fullAccessRoles2 = ['online_manager', 'daqqi_manager', 'manager'];
-        if (!fullAccessRoles2.includes(staffRole2) && r.assigned_sales_id !== staffId && r.assigned_cs_id !== staffId) {
+        if (!fullAccessRoles2.includes(staffRole2) && !seesEveryClient && r.assigned_sales_id !== staffId && r.assigned_cs_id !== staffId) {
           return res.status(403).json({ error: 'ليس لديك صلاحية الوصول لهذا العميل' });
         }
       }

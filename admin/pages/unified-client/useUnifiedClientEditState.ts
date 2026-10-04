@@ -102,7 +102,10 @@ export function useUnifiedClientEditState(params: Params) {
       assignedCsName: subDraft.assignedCsName || undefined,
       discount: Number(subDraft.discount) || undefined,
     };
-    const emailChanged = subDraft.email.trim().toLowerCase() !== subscriber.email.trim().toLowerCase();
+    // A client added by phone has no email — null, not '' — and calling trim()
+    // on it threw before anything was sent: «بحاول اعمل تعديل في ملف العميل مش
+    // بيتحفظ». Nothing was saved and nothing said why.
+    const emailChanged = (subDraft.email || '').trim().toLowerCase() !== (subscriber.email || '').trim().toLowerCase();
     const password = credNewPassword.trim();
     try {
       if (isAdmin || isOnlineManager) {

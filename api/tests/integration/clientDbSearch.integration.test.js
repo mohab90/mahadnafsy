@@ -69,3 +69,23 @@ test('customer service, without view_leads, gets the whole database', { skip }, 
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.rows.length, 4);
 });
+
+test('customer service opens any client\'s file, assigned to it or not', { skip }, async () => {
+  // GET /api/staff/client/:code named three roles by hand; customer service
+  // (data scope 'all') got 403 and the page read «العميل غير موجود».
+  await pool.query("UPDATE subscribers SET deleted_at=NULL, is_active=1 WHERE id='cdb-sub-1'");
+  const subs = require('../../routes/admin/subscribers');
+  const layer = subs.stack.find(l => l.route?.path === '/api/staff/client/:code' && l.route.methods.get);
+  const call = async staff => {
+    const res = { statusCode: 200, body: null, status(c) { this.statusCode = c; return this; }, json(b) { this.body = b; return this; } };
+    await layer.route.stack.at(-1).handle({ params: { code: 'CDB1' }, query: {}, body: {}, headers: {}, tenantId: TENANT,
+      user: { uid: staff.id }, staffRecord: staff, isSuperAdmin: false, ip: '127.0.0.1', get: () => undefined }, res);
+    return res;
+  };
+  const support = await call({ id: 'cdb-cs', role: 'support', tenant_id: TENANT });
+  assert.equal(support.statusCode, 200, JSON.stringify(support.body));
+  assert.equal(support.body.data.name, 'نورا الأرشيف');
+  // A sales rep still sees only their own clients.
+  const sales = await call({ id: 'cdb-rep', role: 'sales', tenant_id: TENANT });
+  assert.equal(sales.statusCode, 403);
+});

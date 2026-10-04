@@ -17,6 +17,8 @@ type Row = {
   createdAt: string;
 };
 
+const CLOSED_PLACES = new Set(['أرشيف العملاء', 'ليد محذوف', 'ليد مدمج في آخر']);
+
 const PLACE_STYLE: Record<string, string> = {
   'عميل أونلاين': 'bg-blue-100 text-blue-700',
   'عميل الدقي': 'bg-violet-100 text-violet-700',
@@ -79,7 +81,12 @@ export function WholeDatabaseSearch({ query }: { query: string }) {
             </thead>
             <tbody>
               {rows.map(row => {
-                const profile = row.kind !== 'registration' ? `/client/${row.clientCode || row.id}` : null;
+                // The profile page opens live records only: a deleted client is
+                // restored from «أرشيف العملاء», and a deleted or merged lead has
+                // no page of its own — the row says where it is instead of
+                // linking to «العميل غير موجود».
+                const opensProfile = row.kind !== 'registration' && !CLOSED_PLACES.has(row.place);
+                const profile = opensProfile ? `/client/${row.clientCode || row.id}` : null;
                 return (
                   <tr key={`${row.kind}:${row.id}`} className="border-b border-gray-50 hover:bg-gray-50">
                     <td className="py-1.5 px-2">
