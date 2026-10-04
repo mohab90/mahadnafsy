@@ -25,6 +25,8 @@ type LeadPipelineBoardProps = {
   instituteBranches: { id: string; label: string }[];
   courses: Course[];
   bundles: Bundle[];
+  /** Each column's true size when the cards are a server page (useServerLeadBoard). */
+  columnTotals?: Record<string, number>;
 };
 
 export function LeadPipelineBoard({
@@ -47,6 +49,7 @@ export function LeadPipelineBoard({
   instituteBranches,
   courses,
   bundles,
+  columnTotals,
 }: LeadPipelineBoardProps) {
   return (
     <div className="space-y-4">
@@ -61,7 +64,8 @@ export function LeadPipelineBoard({
             const colLeads = scoredLeads.filter(l => l.status === status);
             const limit = colLimit[status];
             const visible = colLeads.slice(0, limit);
-            const remaining = colLeads.length - visible.length;
+            const columnSize = columnTotals ? (columnTotals[status] || 0) : colLeads.length;
+            const remaining = columnSize - visible.length;
             const cfg = STATUS_CFG[status];
             const isDropTarget = dragOverCol === status;
 
@@ -84,7 +88,7 @@ export function LeadPipelineBoard({
                 <div className="px-3 py-2.5 flex items-center justify-between border-b border-gray-100">
                   <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${cfg.color}`}>{cfg.label}</span>
                   <span className="text-xs text-gray-400 font-bold bg-white border border-gray-200 rounded-full w-5 h-5 flex items-center justify-center">
-                    {colLeads.length}
+                    {columnSize}
                   </span>
                 </div>
 

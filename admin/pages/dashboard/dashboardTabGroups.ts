@@ -108,8 +108,9 @@ export const saasOpsTabs = new Set<string>([
 /** Sub-tabs of the leads screen that genuinely need every lead in memory.
  *
  *  The screen itself is not in `fullCrmDataTabs`; the reminder / performance /
- *  analytics panels read server aggregates instead. The pipeline board still
- *  scans the array: it renders every card.
+ *  analytics panels read server aggregates instead. The pipeline board reads
+ *  each column's count and first cards from GET /admin/leads/board
+ *  (leads/useServerLeadBoard.ts), under the same filters as the table.
  *
  *  Duplicate review reads GET /admin/leads/duplicates itself, and the
  *  reminders' undated queues («محدش كلمهم», «وعدوا بالدفع») now come from
@@ -129,7 +130,8 @@ export const saasOpsTabs = new Set<string>([
  *  LeadsTab calls loadFullCrmData() when one of these opens, so the 30,964-row
  *  fetch happens on the screens that need it and nowhere else. */
 export const fullLeadArraySubTabs = new Set<string>([
-  'pipeline',
+  // Empty: every lead sub-tab reads its own server data now. Kept so a future
+  // screen that truly must scan every lead has one place to declare it.
 ]);
 
 /**

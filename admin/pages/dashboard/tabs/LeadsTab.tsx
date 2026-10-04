@@ -20,6 +20,7 @@ import { useLeadSubTab } from './leads/useLeadSubTab';
 import type { ConvertLeadModalState } from './leads/ConvertLeadModal';
 import { useLeadPerformanceData } from './leads/useLeadPerformanceData';
 import { useServerLeadTable } from './leads/useServerLeadTable';
+import { useServerLeadBoard } from './leads/useServerLeadBoard';
 import { useLeadFilteringData } from './leads/useLeadFilteringData';
 import { useLeadQuickCommunication } from './leads/useLeadQuickCommunication';
 import { useLeadRemindersData } from './leads/useLeadRemindersData';
@@ -30,6 +31,7 @@ import { useLeadAnalyticsData } from './leads/useLeadAnalyticsData';
 import { useLeadEffectiveRecords } from './leads/useLeadEffectiveRecords';
 import { useSalesTargetsStorage } from './leads/useSalesTargetsStorage';
 import {
+  PIPELINE_COLS,
   STATUS_CFG,
   // getScoreBreakdown intentionally NOT imported — this file defines a richer local version
 } from './leadUtils';
@@ -366,6 +368,23 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     showHiddenLeads, rottenFilter, salesSourceFilter, leadsFollowupFilter,
   }, instituteBranches);
   const refreshServerTable = serverTable.refresh;
+
+  // The pipeline board reads each column's count and first cards from the
+  // server under the same filters (leads/useServerLeadBoard.ts).
+  const boardColumns = useMemo(() => {
+    const configured = pipelineStages.length
+      ? pipelineStages.filter(stage => stage.showInPipeline).map(stage => stage.status as LeadStatus)
+      : PIPELINE_COLS;
+    return statusFilter.size === 0 ? configured : configured.filter(status => statusFilter.has(status));
+  }, [pipelineStages, statusFilter]);
+  const serverBoard = useServerLeadBoard(subTab === 'pipeline', {
+    searchTerm, assignFilter, tagFilter, sourceFilter, courseFilter, branchFilter, singleStatus,
+    showHiddenLeads, rottenFilter, salesSourceFilter, leadsFollowupFilter,
+  }, instituteBranches, boardColumns, colLimit);
+  // A column shows when it is one the desk always works, or when leads are in it.
+  const BOARD_ALWAYS_ON: LeadStatus[] = ['new', 'interested_booking', 'interested_followup', 'no_answer_wa', 'no_answer_nowa', 'not_interested'];
+  const boardStatusCols = boardColumns.filter(status => BOARD_ALWAYS_ON.includes(status) || (serverBoard.counts[status] || 0) > 0);
+  const refreshServerBoard = serverBoard.refresh;
   // An edit made from the table changes the row on the server; the page is
   // re-read so it shows what was saved.
   const tableUpdateLead = useCallback(async (item: LeadItem) => {
@@ -434,6 +453,11 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     convertLeadModal, setConvertLeadModal, setSelectedId, setSyncingSheet,
     setDistributing, setMigratingBranches,
   });
+  // A card dragged to another column changes it on the server; the board is re-read.
+  const boardStatusChange = useCallback(async (lead: LeadItem, status: LeadStatus) => {
+    await handleStatusChange(lead, status);
+    refreshServerBoard();
+  }, [handleStatusChange, refreshServerBoard]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   // Puts old unassigned data away in "محلي قديم" in one server call — the
@@ -573,9 +597,16 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
       {/* ═══════════════ PIPELINE ═══════════════ */}
       {subTab === 'pipeline' && (
         <Suspense fallback={<LeadSectionFallback />}>
+          {serverBoard.error && (
+            <div className="mb-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              تعذّر تحميل البايبلاين: {serverBoard.error}
+              <button type="button" onClick={refreshServerBoard} className="mr-2 underline">إعادة المحاولة</button>
+            </div>
+          )}
           <LeadPipelineBoard
-            activeStatusCols={activeStatusCols}
-            scoredLeads={scoredLeads}
+            activeStatusCols={boardStatusCols}
+            scoredLeads={serverBoard.rows}
+            columnTotals={serverBoard.counts}
             colLimit={colLimit}
             setColLimit={setColLimit}
             dragOverCol={dragOverCol}
@@ -586,8 +617,8 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
             selectedLeadIds={selectedLeadIds}
             setSelectedLeadIds={setSelectedLeadIds}
             setSelectedId={setSelectedId}
-            handleStatusChange={handleStatusChange}
-            onOutcomeRecorded={reloadLeads}
+            handleStatusChange={boardStatusChange}
+            onOutcomeRecorded={async () => { await reloadLeads(); refreshServerBoard(); }}
             openLeadBook={openLeadBook}
             onLogContact={openContactLog}
             instituteBranches={instituteBranches}

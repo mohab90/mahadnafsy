@@ -31,13 +31,12 @@ const stripComments = source => source
 test('the leads landing table pages on the server, the scanning views still load the table', () => {
   const groups = stripComments(read('admin/pages/dashboard/dashboardTabGroups.ts'));
   const set = groups.match(/fullLeadArraySubTabs = new Set<string>\(\[([\s\S]*?)\]\)/)?.[1];
-  assert.ok(set, 'fullLeadArraySubTabs must still be a literal set this can read');
+  assert.ok(set !== undefined, 'fullLeadArraySubTabs must still be a literal set this can read');
   const members = [...set.matchAll(/'([a-zA-Z]+)'/g)].map(m => m[1]);
   assert.ok(!members.includes('table'),
     'the table reads one page from /admin/leads/table — downloading every lead for it is the cost this removed');
-  assert.ok(members.includes('pipeline'), 'the pipeline board renders every card');
-  // Duplicate review and the reminders' queues are answered by the server now.
-  for (const served of ['duplicates', 'reminders']) {
+  // The board, duplicate review and the reminders' queues are answered by the server now.
+  for (const served of ['pipeline', 'duplicates', 'reminders']) {
     assert.ok(!members.includes(served), `${served} reads its own server data`);
   }
   // The pool tabs read their pool from GET /admin/leads/pool instead.

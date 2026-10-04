@@ -2144,6 +2144,64 @@ router.get('/api/admin/leads/table', requireAuth, requireAdminOrStaff, requirePe
   } catch (e) { logger.error('[leads-table]', e.message); sendRouteError(res, e); }
 });
 
+// GET /api/admin/leads/board — the pipeline board, filtered like the table
+// (the same query string, lib/leadTableFilter.js), grouped by status: each
+// column's true count and its first cards. The board used to load every lead and
+// group them in the browser, the last CRM screen that did.
+//   statuses=new,contacted,…  the columns asked for
+//   limits=new:30,…           cards per column (default 15, at most 500)
+const BOARD_STATUS = /^[a-z_]{1,40}$/;
+router.get('/api/admin/leads/board', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
+  try {
+    const statuses = [...new Set(String(req.query.statuses || '').split(',').map(v => v.trim().toLowerCase()).filter(v => BOARD_STATUS.test(v)))].slice(0, 40);
+    const accessScope = leadScope(req, 'l');
+    if (accessScope.none) return res.json({ counts: {}, rows: [] });
+    const limits = {};
+    for (const pair of String(req.query.limits || '').split(',')) {
+      const [status, n] = pair.split(':');
+      if (BOARD_STATUS.test(status || '')) limits[status] = Math.min(Math.max(parseInt(n, 10) || 15, 1), 500);
+    }
+    const role = String(req.staffRecord?.role || '').toLowerCase();
+    const salesOnly = !req.isSuperAdmin && ['sales', 'collection'].includes(role);
+    const filter = leadTableFilter(req.query, { today: cairoToday(), salesOnly });
+    const search = leadTableSearch(req.query.q);
+    const hidden = req.query.hidden === '1' ? 1 : 0;
+    const where = ` AND l.hidden = ?${accessScope.sql}${filter.sql}${search ? ` AND ${search.sql}` : ''}`;
+    const whereParams = [hidden, ...accessScope.params, ...filter.params, ...(search?.params || [])];
+
+    // Every status's count, so a column the board does not show yet but that
+    // holds leads can still be offered (the browser showed a column once any
+    // visible lead was in it).
+    const [countRows] = await pool.query(
+      `SELECT l.status, COUNT(*) AS n FROM leads l WHERE l.tenant_id = ?${where} GROUP BY l.status`,
+      [req.tenantId, ...whereParams]);
+    // The collation already groups 'NEW' with 'new'; the key is lowercased here,
+    // as mapLeadRow lowercases the status the cards carry.
+    const counts = {};
+    for (const r of countRows) {
+      const key = String(r.status || 'new').toLowerCase();
+      counts[key] = (counts[key] || 0) + Number(r.n);
+    }
+    // One small query per column, each riding idx_leads_tenant_status_created.
+    const pages = await Promise.all(statuses.filter(status => counts[status]).map(status => pool.query(
+      `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.status, l.lead_type, l.branch,
+              l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
+              l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
+              l.assigned_cs_id, COALESCE(cs.name, l.assigned_cs_name) AS assigned_cs_name,
+              l.notes, l.last_follow_up, l.next_follow_up_date, l.crm_json, l.hidden, l.score, l.created_at, l.updated_at,
+              (SELECT COUNT(*) FROM communications lc WHERE lc.tenant_id = l.tenant_id AND lc.lead_id = l.id) AS communication_count
+         FROM leads l
+         LEFT JOIN staff ss ON ss.id = l.assigned_sales_id AND ss.tenant_id = l.tenant_id
+         LEFT JOIN staff cs ON cs.id = l.assigned_cs_id AND cs.tenant_id = l.tenant_id
+        WHERE l.tenant_id = ?${where} AND l.status = ?
+        ORDER BY l.created_at DESC, l.id DESC LIMIT ?`,
+      [req.tenantId, ...whereParams, status, limits[status] || 15]).then(([rows]) => rows)));
+    const rows = pages.flat();
+    const commsByLead = await communicationsByLead({ tenantId: req.tenantId, leadIds: rows.map(row => row.id) });
+    res.json({ counts, rows: rows.map(r => mapLeadRow(r, commsByLead)) });
+  } catch (e) { logger.error('[leads-board]', e.message); sendRouteError(res, e); }
+});
+
 // GET /api/admin/leads/pool?view=localNew|dawli|archive
 // One pool tab's leads (lib/leadPoolFilter.js) instead of every lead for the
 // browser to filter. Capped: an imported archive can run to six figures, and a

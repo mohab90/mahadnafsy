@@ -28,6 +28,29 @@ export type LeadTableFilters = {
   leadsFollowupFilter: string;
 };
 
+/** The filter bar as the query string GET /admin/leads/table and /board read. */
+export function leadTableQuery(filters: LeadTableFilters, instituteBranches: BranchOption[]): string {
+  const params = new URLSearchParams();
+  const set = (key: string, value: string | null | undefined) => { if (value) params.set(key, value); };
+  set('q', filters.searchTerm.trim());
+  set('assigned', [...filters.assignFilter].join(','));
+  set('tag', filters.tagFilter);
+  set('sources', [...filters.sourceFilter].join(','));
+  set('course', filters.courseFilter);
+  if (filters.branchFilter) {
+    set('branch', filters.branchFilter);
+    // The browser matched the branch by id or by its label.
+    set('branchLabel', instituteBranches.find(branch => branch.id === filters.branchFilter)?.label
+      || BRANCH_ENUM_LABELS[filters.branchFilter] || '');
+  }
+  set('status', filters.singleStatus);
+  if (filters.showHiddenLeads) params.set('hidden', '1');
+  if (filters.rottenFilter) { params.set('rotten', '1'); params.set('staleDays', String(getStaleDays()[0])); }
+  set('salesSource', filters.salesSourceFilter);
+  if (filters.leadsFollowupFilter !== 'all') params.set('followup', filters.leadsFollowupFilter);
+  return params.toString();
+}
+
 export const SERVER_TABLE_PAGE_SIZE = 100;
 
 export function useServerLeadTable(enabled: boolean, filters: LeadTableFilters, instituteBranches: BranchOption[]) {
@@ -44,29 +67,12 @@ export function useServerLeadTable(enabled: boolean, filters: LeadTableFilters, 
     return () => clearTimeout(timer);
   }, [filters.searchTerm]);
 
-  const query = useMemo(() => {
-    const params = new URLSearchParams();
-    const set = (key: string, value: string | null | undefined) => { if (value) params.set(key, value); };
-    set('q', search.trim());
-    set('assigned', [...filters.assignFilter].join(','));
-    set('tag', filters.tagFilter);
-    set('sources', [...filters.sourceFilter].join(','));
-    set('course', filters.courseFilter);
-    if (filters.branchFilter) {
-      set('branch', filters.branchFilter);
-      // The browser matched the branch by id or by its label.
-      set('branchLabel', instituteBranches.find(branch => branch.id === filters.branchFilter)?.label
-        || BRANCH_ENUM_LABELS[filters.branchFilter] || '');
-    }
-    set('status', filters.singleStatus);
-    if (filters.showHiddenLeads) params.set('hidden', '1');
-    if (filters.rottenFilter) { params.set('rotten', '1'); params.set('staleDays', String(getStaleDays()[0])); }
-    set('salesSource', filters.salesSourceFilter);
-    if (filters.leadsFollowupFilter !== 'all') params.set('followup', filters.leadsFollowupFilter);
-    return params.toString();
-  }, [search, filters.assignFilter, filters.tagFilter, filters.sourceFilter, filters.courseFilter, filters.branchFilter,
-    filters.singleStatus, filters.showHiddenLeads, filters.rottenFilter, filters.salesSourceFilter, filters.leadsFollowupFilter,
-    instituteBranches]);
+  // Keyed on the filter fields, not the object, which is rebuilt every render.
+  const query = useMemo(() => leadTableQuery({ ...filters, searchTerm: search }, instituteBranches),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [search, filters.assignFilter, filters.tagFilter, filters.sourceFilter, filters.courseFilter, filters.branchFilter,
+      filters.singleStatus, filters.showHiddenLeads, filters.rottenFilter, filters.salesSourceFilter, filters.leadsFollowupFilter,
+      instituteBranches]);
 
   // A new filter starts from the first page.
   const lastQuery = useRef(query);

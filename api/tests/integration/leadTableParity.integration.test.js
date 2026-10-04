@@ -134,3 +134,21 @@ test('the server table returns exactly what the browser predicate selected', { s
     assert.deepEqual(got.sort(), expected, label);
   }
 });
+
+test('the pipeline board: each column\'s count and first cards are the browser\'s', { skip }, async () => {
+  const leads = JSON.parse(JSON.stringify(await call('/api/admin/leads', { limit: '5000' })));
+  const { effectiveLeads } = B.useLeadEffectiveRecords({ leads, subscribers: [], isSalesOnly: false });
+  const base = { effectiveLeads, leads, salesReps: [], selectedId: null, isSalesOnly: false, assignFilter: new Set(), searchTerm: '', tagFilter: null, sourceFilter: new Set(), courseFilter: null, branchFilter: null, singleStatus: '', showHiddenLeads: false, rottenFilter: false, salesSourceFilter: '', leadsFollowupFilter: 'all', statusFilter: new Set(), instituteBranches: [] };
+  for (const [label, browserArgs, query] of [['default', {}, {}], ['source', { sourceFilter: new Set(['facebook']) }, { sources: 'facebook' }]]) {
+    const { scoredLeads } = B.useLeadFilteringData({ ...base, ...browserArgs });
+    const statuses = [...new Set(scoredLeads.map(l => l.status))];
+    assert.ok(statuses.length >= 4, 'fixture spreads over columns');
+    const board = await call('/api/admin/leads/board', { ...query, statuses: statuses.join(','), limits: `${statuses[0]}:40` });
+    for (const status of statuses) {
+      const column = scoredLeads.filter(l => l.status === status);
+      assert.equal(board.counts[status], column.length, `${label} ${status}: count`);
+      const limit = status === statuses[0] ? 40 : 15;
+      assert.deepEqual(board.rows.filter(r => r.status === status).map(r => r.id), column.slice(0, limit).map(l => l.id), `${label} ${status}: first cards`);
+    }
+  }
+});
