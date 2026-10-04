@@ -90,11 +90,11 @@ test('the orders list resolves the lead source instead of the browser doing it',
     'the order row must carry lead_source');
 });
 
-test('no aggregate route reads leads.score', () => {
-  // The column is zero for every bulk-imported lead and stale for the rest;
-  // LEAD_SCORE_SQL recomputes the formula instead. Guarded here as well as in
-  // leadAggregates.test.js because a new route is exactly where it would creep
-  // back in.
-  assert.ok(!/SUM\(l\.score\)|AVG\(l\.score\)/.test(leadsRoute),
-    'the stored score column must not be aggregated');
+test('the stored score is read only where the refresh keeps it current', () => {
+  // leads.score is aggregated now (the formula per request cost 45 s at 500k
+  // leads), which is only right because lib/leadScoreRefresh.js rewrites it from
+  // LEAD_SCORE_SQL every hour. Guarded here as well as in leadAggregates.test.js.
+  const refresh = fs.readFileSync(path.join(__dirname, '..', 'lib', 'leadScoreRefresh.js'), 'utf8');
+  assert.ok(/SUM\(l\.score\)/.test(leadsRoute));
+  assert.ok(refresh.includes('${LEAD_SCORE_SQL}'), 'the refresh must write the formula');
 });

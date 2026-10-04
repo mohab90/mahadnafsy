@@ -95,9 +95,10 @@ function startBackgroundScheduler({ pool, logger, port }) {
   schedule('installment_reminder', 60 * 60 * 1000);
   schedule('pending_payment_reminder', 24 * 60 * 60 * 1000, 2 * 60 * 1000);
   schedule('fx_refresh', 24 * 60 * 60 * 1000, 30000);
-  // Every 6h, offset well clear of the reminder sweeps so the two aren't
-  // competing for connections on the same table.
-  schedule('lead_score_refresh', 6 * 60 * 60 * 1000, 3 * 60 * 1000);
+  // Hourly, and soon after boot: the CRM screens read leads.score instead of
+  // computing the formula live, so the column must be current — after a deploy
+  // too, not six hours later.
+  schedule('lead_score_refresh', 60 * 60 * 1000, 90 * 1000);
   // Daily, and offset well past the score refresh so the two are not
   // rewriting the same rows at once.
   schedule('lead_auto_archive', 24 * 60 * 60 * 1000, 20 * 60 * 1000);

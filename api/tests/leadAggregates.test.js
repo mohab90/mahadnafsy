@@ -12,14 +12,20 @@ const route = fs.readFileSync(path.join(root, 'api/routes/admin/leads.js'), 'utf
 // route module opens the pool at import, so this reads it as text — the same
 // approach the sibling Dokki tests take.
 
-test('the score is computed, never read from the leads.score column', () => {
-  // 15,974 of 29,272 production rows have score = 0 because no import ever
-  // scored them, and even a backfilled column would drift: the formula decays
-  // with time and the column only changes when the lead is written.
-  assert.ok(route.includes('LEAD_SCORE_SQL'), 'the SQL formula must exist');
-  assert.ok(!/SUM\(l\.score\)/.test(route),
-    'SUM(l.score) would report 0 for every rep whose leads were bulk-imported');
-  assert.ok(!/AVG\(l\.score\)/.test(route), 'same for AVG(l.score)');
+const scoreSql = fs.readFileSync(path.join(root, 'api/lib/leadScoreSql.js'), 'utf8');
+const scoreRefresh = fs.readFileSync(path.join(root, 'api/lib/leadScoreRefresh.js'), 'utf8');
+
+test('leads.score is aggregated only because the refresh keeps it equal to the formula', () => {
+  // 15,974 of 29,272 production rows once had score = 0 because no import ever
+  // scored them, and the formula decays with time. The screens may read the
+  // column only because the hourly job rewrites it from LEAD_SCORE_SQL — every
+  // visible lead, closed ones included, since the KPI mean covers them too.
+  assert.ok(/SUM\(l\.score\)/.test(route), 'the KPI screen reads the stored score');
+  assert.ok(scoreRefresh.includes('SET l.score = ${LEAD_SCORE_SQL}'),
+    'the refresh must write the SQL formula itself, not a second implementation');
+  assert.ok(!/status NOT IN/.test(scoreRefresh),
+    'every visible lead is refreshed — skipping closed ones leaves their scores stale in the mean');
+  assert.match(scoreRefresh, /hidden = 0 AND deleted_at IS NULL/);
 });
 
 test('the score formula covers every status the JavaScript original scores', () => {
@@ -29,7 +35,7 @@ test('the score formula covers every status the JavaScript original scores', () 
     .map(m => m[1]);
   assert.ok(jsStatuses.length > 10, 'sanity: the JS status table was found');
 
-  const sql = route.slice(route.indexOf('const LEAD_SCORE_SQL'));
+  const sql = scoreSql.slice(scoreSql.indexOf('const LEAD_SCORE_SQL'));
   const caseBlock = sql.slice(0, sql.indexOf('END'));
   for (const status of jsStatuses) {
     assert.ok(caseBlock.includes(`'${status}'`),
@@ -68,11 +74,13 @@ test('the insights route scopes by role like its siblings', () => {
 });
 
 test('the redistribution list is bounded and deterministic', () => {
-  const start = route.indexOf('const [idleRows] = await pool.query');
-  const body = route.slice(start, start + 1600);
+  const start = route.indexOf('const idleWhere =');
+  const body = route.slice(start, route.indexOf('const [loadRows]', start));
+  assert.ok(start > -1, 'the idle-lead search must exist');
   assert.ok(body.includes('LIMIT 50'), 'only the 50 shown should be fetched');
-  assert.ok(body.includes('ORDER BY last_activity ASC, l.id ASC'),
+  assert.ok(body.includes('ORDER BY l.created_at ASC, l.id ASC') && body.includes('ORDER BY last_activity ASC, lead_id ASC'),
     'without a tie-break the same query returns a different 50 each call');
-  assert.ok(body.includes('HAVING DATE(last_activity)'),
+  assert.ok(body.includes('.slice(0, 50)'), 'the merged list is cut to the 50 shown');
+  assert.ok(body.includes('HAVING DATE(MAX(date))') && body.includes('INTERVAL ? DAY + INTERVAL 1 DAY'),
     'the idle boundary floors to the calendar day, as the browser did');
 });

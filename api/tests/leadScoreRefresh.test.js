@@ -1,109 +1,93 @@
 'use strict';
-// The scores this job maintains decide the order reps work their pipeline, so
-// the rules worth pinning are: it only writes when the score actually changed,
-// it never touches terminal leads, and it must not disturb updated_at — that
-// column drives the stale-lead reports and this job's own sweep order.
+// The CRM screens aggregate leads.score, so the rules worth pinning are: the job
+// writes the shared SQL formula and nothing else, it reaches every visible lead
+// (not a capped slice), it only writes rows whose score moved, and it never
+// disturbs updated_at — that column drives the stale-lead reports.
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { refreshLeadScores, CLOSED_STATUSES } = require('../lib/leadScoreRefresh');
+const { refreshLeadScores } = require('../lib/leadScoreRefresh');
+const { LEAD_SCORE_SQL } = require('../lib/leadScoreSql');
 
-/** Minimal pool double: records every query and returns canned SELECT rows. */
-function mockPool(selectRows) {
+/** Pool double: serves `ids` in primary-key pages and records every query. */
+function mockPool(ids, { changed = () => 1 } = {}) {
   const queries = [];
   return {
     queries,
     async query(sql, params) {
       queries.push({ sql, params });
-      if (/^\s*SELECT/i.test(sql)) return [selectRows, []];
-      return [{ affectedRows: 1 }, []];
+      if (/^\s*SELECT id FROM leads/i.test(sql)) {
+        const after = params[0];
+        const size = params.at(-1);
+        return [ids.filter(id => id > after).slice(0, size).map(id => ({ id })), []];
+      }
+      return [{ affectedRows: changed(params[0]) }, []];
     },
   };
 }
+const updates = pool => pool.queries.filter(q => /^\s*UPDATE leads l/i.test(q.sql));
 
-const lead = (over = {}) => ({
-  id: 'l1', tenant_id: 't1', status: 'new', interest_level: 'HIGH',
-  next_follow_up_date: null, interested_course_ids_json: null,
-  created_at: '2026-01-01 00:00:00', score: 0, crm_json: null, ...over,
+test('every visible lead is reached, batch after batch, not a capped slice', async () => {
+  const ids = Array.from({ length: 23 }, (_, i) => `lead-${String(i).padStart(3, '0')}`);
+  const pool = mockPool(ids);
+  const { scanned } = await refreshLeadScores(pool, { batch: 5 });
+  assert.equal(scanned, 23);
+  const written = updates(pool).flatMap(q => q.params[1]);
+  assert.deepEqual(written, ids, 'each lead appears in exactly one batch, in key order');
 });
 
-test('writes only the leads whose score actually changed', async () => {
-  const pool = mockPool([lead({ id: 'a', score: 0 }), lead({ id: 'b', score: 0 })]);
-  const { scanned, updated } = await refreshLeadScores(pool);
-  assert.equal(scanned, 2);
-  assert.equal(updated, 2);
-  assert.equal(pool.queries.filter(q => /^UPDATE leads SET score = /i.test(q.sql)).length, 2);
-});
-
-test('a lead already holding the right score is not rewritten', async () => {
-  // Score it once to learn the expected value, then feed that value back in.
-  const probe = mockPool([lead()]);
-  await refreshLeadScores(probe);
-  const written = probe.queries.find(q => /^UPDATE leads SET score = /i.test(q.sql));
-  const settledScore = written.params[0];
-
-  const pool = mockPool([lead({ score: settledScore })]);
-  const { scanned, updated } = await refreshLeadScores(pool);
-  assert.equal(scanned, 1);
-  assert.equal(updated, 0, 'an unchanged score must not cost a write');
-  assert.equal(pool.queries.filter(q => /^UPDATE leads SET score = /i.test(q.sql)).length, 0);
+test('the update writes the shared formula and only where the score moved', async () => {
+  const pool = mockPool(['a', 'b']);
+  await refreshLeadScores(pool);
+  const [update] = updates(pool);
+  assert.ok(update.sql.includes(`SET l.score = ${LEAD_SCORE_SQL}`), 'the formula the screens used, not a copy');
+  assert.ok(update.sql.includes(`l.score <> ${LEAD_SCORE_SQL}`), 'an unchanged score must not cost a write');
 });
 
 test('the update preserves updated_at explicitly', async () => {
   // leads.updated_at is ON UPDATE current_timestamp(), so without an explicit
-  // assignment every rescore would mark neglected leads as freshly worked and
-  // hide them from the stale-lead reports.
-  const pool = mockPool([lead()]);
+  // assignment every rescore would mark neglected leads as freshly worked.
+  const pool = mockPool(['a']);
   await refreshLeadScores(pool);
-  const written = pool.queries.find(q => /^UPDATE leads SET score = /i.test(q.sql));
-  assert.match(written.sql, /updated_at\s*=\s*updated_at/);
+  assert.match(updates(pool)[0].sql, /l\.updated_at = l\.updated_at/);
 });
 
-test('terminal statuses are excluded from the sweep', async () => {
+test('hidden and soft-deleted leads are not scored; closed ones are', async () => {
   const pool = mockPool([]);
   await refreshLeadScores(pool);
-  const select = pool.queries.find(q => /^\s*SELECT/i.test(q.sql));
-  assert.match(select.sql, /status NOT IN/);
-  for (const status of ['converted', 'lost', 'archived']) {
-    assert.ok(select.params.includes(status), `${status} must be excluded`);
-  }
-  // Re-scoring a closed lead is pure write cost on the busiest table.
-  assert.ok(CLOSED_STATUSES.includes('converted'));
-});
-
-test('hidden and soft-deleted leads are never rescored', async () => {
-  const pool = mockPool([]);
-  await refreshLeadScores(pool);
-  const select = pool.queries.find(q => /^\s*SELECT/i.test(q.sql));
+  const select = pool.queries[0];
   assert.match(select.sql, /hidden = 0/);
   assert.match(select.sql, /deleted_at IS NULL/);
+  assert.doesNotMatch(select.sql, /status NOT IN/, 'the KPI mean covers closed leads, so they are kept current too');
 });
 
-test('the batch is always capped, however the caller is called', async () => {
-  for (const [requested, expected] of [[50, 50], [999999, 10000], [0, 2000], [-5, 2000]]) {
+test('communications are matched on tenant as well as lead', async () => {
+  const pool = mockPool(['a']);
+  await refreshLeadScores(pool);
+  assert.match(updates(pool)[0].sql, /lc\.lead_id = l\.id AND lc\.tenant_id = l\.tenant_id/);
+});
+
+test('the batch size is bounded, however the caller asks', async () => {
+  for (const [requested, expected] of [[50, 50], [999999, 20000], [0, 5000], [-5, 5000], ['x', 5000]]) {
     const pool = mockPool([]);
-    await refreshLeadScores(pool, { limit: requested });
-    const select = pool.queries.find(q => /^\s*SELECT/i.test(q.sql));
-    assert.equal(select.params.at(-1), expected, `limit ${requested}`);
+    await refreshLeadScores(pool, { batch: requested });
+    assert.equal(pool.queries[0].params.at(-1), expected, `batch ${requested}`);
   }
 });
 
 test('a tenant filter is applied when one is given, and omitted when not', async () => {
   const scoped = mockPool([]);
   await refreshLeadScores(scoped, { tenantId: 't1' });
-  const a = scoped.queries.find(q => /^\s*SELECT/i.test(q.sql));
-  assert.match(a.sql, /l\.tenant_id = \?/);
-  assert.equal(a.params[0], 't1');
+  assert.match(scoped.queries[0].sql, /tenant_id = \?/);
+  assert.equal(scoped.queries[0].params[1], 't1');
 
   const all = mockPool([]);
   await refreshLeadScores(all);
-  const b = all.queries.find(q => /^\s*SELECT/i.test(q.sql));
-  assert.doesNotMatch(b.sql, /l\.tenant_id = \?/);
+  assert.doesNotMatch(all.queries[0].sql, /tenant_id = \?/);
 });
 
-test('every write is tenant-scoped', async () => {
-  const pool = mockPool([lead({ tenant_id: 't-9' })]);
-  await refreshLeadScores(pool);
-  const written = pool.queries.find(q => /^UPDATE leads SET score = /i.test(q.sql));
-  assert.match(written.sql, /tenant_id = \?/);
-  assert.ok(written.params.includes('t-9'));
+test('updated counts the rows the database actually changed', async () => {
+  const pool = mockPool(['a', 'b', 'c'], { changed: () => 2 });
+  const { scanned, updated } = await refreshLeadScores(pool);
+  assert.equal(scanned, 3);
+  assert.equal(updated, 2);
 });
