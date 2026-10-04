@@ -5,7 +5,7 @@ import { paymentOrigin, PAYMENT_ORIGIN, PAYMENT_ORIGIN_CLASS } from '../../../li
 import { useNavigate } from 'react-router-dom';
 import {
   CheckCircle, Clock, CreditCard, Download,
-  Plus, Search, TrendingUp, Trash2, Upload, Wallet, XCircle,
+  Plus, Search, TrendingUp, Trash2, Wallet, XCircle,
 } from 'lucide-react';
 import type { Bundle, Course, OrderItem, StaffMember, SubscriberItem } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -15,7 +15,6 @@ import { PAYMENT_METHOD_CODES, paymentMethodLabel, normalizePaymentMethod } from
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 import { BRANCH_LABELS_AR, normalizeBranch } from '../../../constants/branches';
 import { AddTransferModal, IncomingTransfersTable, useIncomingTransfers, type IncomingTransfer } from './orders/IncomingTransfers';
-import { ImportTransfersModal } from './orders/ImportTransfersModal';
 import { transferMatch } from '../../../../shared/transferSheet';
 import { foldText } from '../../../../shared/sheetImport';
 
@@ -127,7 +126,6 @@ export default function OrdersTab({
   const paymentBoxes = usePaymentBoxes(content['finance.payment_methods']);
   const navigate = useNavigate();
   const ledger = useIncomingTransfers(canManageFinancial);
-  const [showImportTransfers, setShowImportTransfers] = React.useState(false);
   // The «ربط» lists: the likeliest match first, and a search across the rest.
   const [linkQuery, setLinkQuery] = React.useState('');
   const matchesQuery = (text: string) => foldText(linkQuery).split(' ').filter(Boolean).every(word => foldText(text).includes(word));
@@ -694,10 +692,6 @@ export default function OrdersTab({
                       className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-4 py-2 rounded-full shadow-md shadow-blue-200 transition">
                       <Plus size={15} /> إضافة تحويل
                     </button>
-                    <button onClick={() => setShowImportTransfers(true)}
-                      className="inline-flex items-center gap-2 bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 text-sm font-bold px-4 py-2 rounded-full transition">
-                      <Upload size={15} /> رفع ملف التحويلات
-                    </button>
                   </div>
 
                   {/* ── Filters ── */}
@@ -1101,11 +1095,6 @@ export default function OrdersTab({
                       </div>
                     );
                   })()}
-
-                  {showImportTransfers && (
-                    <ImportTransfersModal boxes={paymentBoxes} notify={notify} onClose={() => setShowImportTransfers(false)}
-                      onSaved={async () => { setOrderReviewTab('transfers'); await ledger.reload(); }} />
-                  )}
 
                   {showAddTransfer && (
                     <AddTransferModal boxes={paymentBoxes} notify={notify} onClose={() => setShowAddTransfer(false)}

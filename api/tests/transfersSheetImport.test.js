@@ -158,9 +158,10 @@ test('the route and the screen', () => {
   assert.match(handler, /=== 'collection'\) \{\s+return res\.status\(403\)/, 'recording what arrived is the manager\'s, as for one transfer');
   assert.match(route, /ORDER BY t\.received_on DESC, t\.created_at DESC LIMIT 3000/, 'every free transfer reaches the «ربط» lists');
   const tab = read('admin/pages/dashboard/tabs/OrdersTab.tsx');
-  assert.match(tab, /<ImportTransfersModal boxes=\{paymentBoxes\}/);
+  // «شيل زر التحميل دا … مش هنحتاج نضيف بالك تاني»: the sheets go in once, on
+  // the server (tools/import-transfer-sheet.cjs), and the page has no upload.
+  assert.doesNotMatch(tab, /رفع ملف التحويلات|ImportTransfersModal/);
   assert.match(tab, /rankedTransfers = availableTransfers/);
-  const modal = read('admin/pages/dashboard/tabs/orders/ImportTransfersModal.tsx');
-  assert.match(modal, /adminPost<ImportResult>\('\/admin\/incoming-transfers\/import', \{ transfers: rows \}\)/);
-  assert.match(modal, /disabled=\{!total \|\| missingBox\.length > 0/, 'a tab is not uploaded before its box is chosen');
+  const tool = read('api/tools/import-transfer-sheet.cjs');
+  assert.match(tool, /importTransfers\(pool, \{ tenantId, transfers,/, 'the server import goes through the same importer');
 });
