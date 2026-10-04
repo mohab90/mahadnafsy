@@ -268,7 +268,7 @@ test('manual payment retries the complete transaction after transient MySQL dead
 test('certificate lifecycle and receipt rendering fail closed', () => {
   const certificates = read('api/routes/certificates.js');
   const certTab = read('admin/pages/dashboard/tabs/CertRequestsTab.tsx');
-  const receiptTable = read('admin/pages/dashboard/tabs/financial/FinancialOrdersTable.tsx');
+  const receiptTable = read('admin/pages/dashboard/tabs/financial/PaymentsRegister.tsx');
   const receiptClient = read('admin/pages/unified-client/UnifiedClientSubscriberPaymentsPanel.tsx');
   const safeHtml = read('admin/lib/safeHtml.ts');
 
@@ -281,7 +281,8 @@ test('certificate lifecycle and receipt rendering fail closed', () => {
   assert.match(certTab, /await mysqlAdmin\.updateCertificateRequest/);
   assert.match(certTab, /await mysqlAdmin\.deleteCertificateRequest/);
   assert.match(safeHtml, /replace\(\/\[&<>\"'\]\/g/);
-  assert.match(receiptTable, /escapeHtml\(row\.name\)/);
+  assert.match(receiptTable, /escapeHtml\(row\.client\.name \|\| '—'\)/);
+  assert.match(receiptTable, /escapeHtml\(row\.service\)/);
   assert.match(receiptClient, /escapeHtml\(clientName\)/);
 });
 

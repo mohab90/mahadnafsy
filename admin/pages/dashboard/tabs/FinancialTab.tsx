@@ -5,8 +5,7 @@ import {
 } from 'lucide-react';
 import { FinancialSubTabs } from './financial/FinancialSubTabs';
 import { PaymobPaymentsPanel } from './financial/PaymobPaymentsPanel';
-import { FinancialOrdersControls } from './financial/FinancialOrdersControls';
-import { FinancialOrdersTable } from './financial/FinancialOrdersTable';
+import { PaymentsRegister } from './financial/PaymentsRegister';
 import { useFinancialCommissionsData } from './financial/useFinancialCommissionsData';
 import { useFinancialOrdersData } from './financial/useFinancialOrdersData';
 import { usePaymentProofsReview } from './financial/usePaymentProofsReview';
@@ -560,50 +559,11 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
           exportCSV={exportCSV}
         />
       )}
-      {financialSubTab === 'orders' && (() => {
-        return (
-          <div className="space-y-4">
-            <FinancialOrdersControls
-              onlineRevenueEGP={onlineRevenueEGP}
-              manualRevenueEGP={manualRevenueEGP}
-              totalRevenueEGP={totalRevenueEGP}
-              onlineRows={onlineRows}
-              manualRows={manualRows}
-              filteredRows={filteredRows}
-              allRows={allRows}
-              byType={byType}
-              totalFiltered={totalFiltered}
-              hasFilters={hasFilters}
-              orderSearch={orderSearch}
-              setOrderSearch={setOrderSearch}
-              orderDateFrom={orderDateFrom}
-              setOrderDateFrom={setOrderDateFrom}
-              orderDateTo={orderDateTo}
-              setOrderDateTo={setOrderDateTo}
-              orderTypeFilter={orderTypeFilter}
-              setOrderTypeFilter={setOrderTypeFilter}
-              orderMethodFilter={orderMethodFilter}
-              setOrderMethodFilter={setOrderMethodFilter}
-              setOrdersPage={setOrdersPage}
-              paymentMethods={PAYMENT_METHODS}
-              exportCSV={exportCSV}
-              loadDbPayments={loadDbPayments}
-              loadingDbPayments={loadingDbPayments}
-              branchView={!!branchFilter}
-            />
-
-            <FinancialOrdersTable
-              pageRows={pageRows}
-              filteredRows={filteredRows}
-              totalFiltered={totalFiltered}
-              hasFilters={hasFilters}
-              pageCount={pageCount}
-              ordersPage={ordersPage}
-              setOrdersPage={setOrdersPage}
-            />
-          </div>
-        );
-      })()}
+      {/* The payments register, from the server: numbered, the service by name,
+          channels merged, who recorded each, the client one click away. */}
+      {financialSubTab === 'orders' && (
+        <PaymentsRegister branch={branchFilter || undefined} initialMethod={orderMethodFilter || undefined} />
+      )}
 
       {/* Expenses sub-tab */}
       {financialSubTab === 'expenses' && (

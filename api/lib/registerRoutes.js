@@ -13,6 +13,7 @@ const routeModules = [
   ['/', '../routes/finance-operations'],
   ['/', '../routes/finance-documents'],
   ['/', '../routes/finance-planning'],
+  ['/', '../routes/finance-payments-register'],
   ['/', '../routes/analytics'],
   ['/', '../routes/crm-advanced'],
   ['/', '../routes/crm-forecast'],
