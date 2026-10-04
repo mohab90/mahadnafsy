@@ -9,6 +9,7 @@ import { useBranches } from '../../../hooks/useBranches';
 import { useNavigate } from 'react-router-dom';
 import { LoginHistoryPanel } from './client-db/LoginHistoryPanel';
 import { LoginAccountsPanel } from './client-db/LoginAccountsPanel';
+import { WholeDatabaseSearch } from './client-db/WholeDatabaseSearch';
 import ArchivedClientsTab from './ArchivedClientsTab';
 import { toDialable } from '../../../lib/whatsappLink';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
@@ -580,6 +581,11 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
           </span>
         </div>
       </div>
+
+      {/* Every person in the system, whatever the arrays above hold — archived
+          clients, every kind of lead, site sign-ups — with where they are and
+          where they came from. */}
+      <WholeDatabaseSearch query={search} />
 
       {/* Bulk action bar */}
       {selectedIds.size > 0 && (

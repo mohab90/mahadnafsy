@@ -238,6 +238,8 @@ const ROLE_PERMS = Object.freeze({
   [ROLES.SUPPORT]: [
     'view_dashboard',
     'view_subscribers', 'manage_subscribers',
+    // The whole client database — see admin/constants/permissions.ts.
+    'view_client_db',
     'view_orders', 'manage_payments',
     'manage_daqqi',
     'manage_inbox',

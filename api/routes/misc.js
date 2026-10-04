@@ -8,5 +8,6 @@ router.use(require('./misc/messaging'));
 router.use(require('./misc/billing'));
 router.use(require('./misc/analytics'));
 router.use(require('./misc/reminders'));
+router.use(require('./misc/clientDbSearch'));
 router.use(require('./misc/admincfg'));
 module.exports = router;

@@ -320,6 +320,9 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
     'view_dashboard',
     // Mirrors api/constants/permissions.js — see the note there.
     'view_subscribers', 'manage_subscribers',
+    // The whole client database: a caller is looked up among every client,
+    // lead, archive and site sign-up, not only among the subscribers.
+    'view_client_db',
     'view_orders', 'manage_payments',
     'manage_daqqi',
     'manage_inbox',

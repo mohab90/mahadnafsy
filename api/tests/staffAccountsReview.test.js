@@ -138,9 +138,10 @@ test('a transfer confirms one payment, and a cash box needs none', async () => {
   assert.ok(free.calls.some(sql => /UPDATE payments SET linked_transfer_id=\?/.test(sql)));
 });
 
-test('the accounts screen stays with admin, accountant and online manager; everyone else gets «مدفوعاتي»', () => {
+test('the accounts screen stays with admin, accountant, online manager and customer service; everyone else gets «مدفوعاتي»', () => {
   const tabs = read('admin/pages/dashboard/DashboardFinanceTabs.tsx');
-  assert.match(tabs, /props\.isAdmin \|\| props\.isOnlineManager \|\| String\(props\.currentStaff\?\.role \|\| ''\)\.toLowerCase\(\) === 'accountant'/);
+  // Customer service answers callers about any payment (owner, «اظهرلها صفحه المدفوعات»).
+  assert.match(tabs, /props\.isAdmin \|\| props\.isOnlineManager\n  \|\| \['accountant', 'support'\]\.includes\(String\(props\.currentStaff\?\.role \|\| ''\)\.toLowerCase\(\)\)/);
   assert.match(tabs, /<StaffPaymentsTab/);
   const page = read('admin/pages/dashboard/tabs/staff-payments/StaffPaymentsTab.tsx');
   // A track's payment is named by the track.

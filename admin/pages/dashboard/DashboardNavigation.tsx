@@ -479,6 +479,11 @@ export function DashboardNavigation(props: Props) {
                   { key: 'daqqi_schedule', label: 'جدول الدقي', icon: CalendarDays },
                   { key: 'daqqi_clients', label: 'عملاء الدقي', icon: Users },
                   { key: 'online_clients', label: 'عملاء الأونلاين', icon: UserCheck },
+                  // «خلي يظهرها قاعده البيانات كامله … واظهرلها صفحه المدفوعات»:
+                  // a caller is looked up among every person the institute holds,
+                  // and the desk sees the payments to answer about them.
+                  { key: 'client', label: 'قاعدة البيانات', icon: UserSearch },
+                  { key: 'orders', label: 'المدفوعات', icon: CreditCard },
                   { key: 'customer_inbox', label: 'المشاكل', icon: Headphones },
                   { key: 'refund_requests', label: 'الاستردادات', icon: RotateCcw },
                   { key: 'cert_requests', label: 'الشهادات', icon: FileText },

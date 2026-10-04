@@ -16,8 +16,11 @@ const StaffPaymentsTab = React.lazy(() => import('./tabs/staff-payments/StaffPay
  * الحالي للادارة والمحاسب والمسئول للاونلاين فقط». Everybody else who takes
  * money (sales, collection, the Daqqi desk) gets «مدفوعاتي» in their own design.
  */
+// Customer service is here too: they answer callers about any payment, not
+// about payments they took themselves — «مدفوعاتي» would show them nothing.
 const keepsTheAccounts = (props: React.ComponentProps<typeof OrdersTabComponent>) =>
-  props.isAdmin || props.isOnlineManager || String(props.currentStaff?.role || '').toLowerCase() === 'accountant';
+  props.isAdmin || props.isOnlineManager
+  || ['accountant', 'support'].includes(String(props.currentStaff?.role || '').toLowerCase());
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 

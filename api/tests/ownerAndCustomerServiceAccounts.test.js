@@ -47,7 +47,12 @@ test('customer service works both branches\' clients and its three desks, and no
   for (const p of ['view_subscribers', 'manage_daqqi', 'manage_inbox', 'manage_certificates', 'manage_payments']) {
     assert.ok(perms.has(p), `support lost ${p}`);
   }
-  for (const p of ['view_leads', 'view_reports', 'view_client_db', 'view_financial', 'approve_refunds', 'view_hr', 'view_staff']) {
+  // «حساب مسئول خدمه العملاء الاونلاين خلي يظهرها قاعده البيانات كامله …
+  // واظهرلها صفحه المدفوعات»: the client database (read-only search) and the
+  // payments page. Still no lead management, reports, ledgers or HR.
+  assert.ok(perms.has('view_client_db'), 'support searches the whole client database');
+  assert.ok(perms.has('view_orders'), 'support sees the payments page');
+  for (const p of ['view_leads', 'view_reports', 'view_financial', 'approve_refunds', 'view_hr', 'view_staff']) {
     assert.ok(!perms.has(p), `support holds ${p}`);
   }
   assert.equal(DATA_SCOPE.support, 'all');
@@ -57,7 +62,7 @@ test('customer service works both branches\' clients and its three desks, and no
   const bar = nav.slice(nav.indexOf('{isSupport && ('), nav.indexOf('{/* ── Daqqi Manager horizontal nav'));
   const tabs = [...bar.matchAll(/\{ key: '([a-z_]+)'/g)].map(m => m[1]);
   // «خليهم يشوفو الاستشارات … جزء الدعم والجودة كله».
-  assert.deepEqual(tabs, ['daqqi_schedule', 'daqqi_clients', 'online_clients', 'customer_inbox', 'refund_requests', 'cert_requests', 'consultations', 'service_hub']);
+  assert.deepEqual(tabs, ['daqqi_schedule', 'daqqi_clients', 'online_clients', 'client', 'orders', 'customer_inbox', 'refund_requests', 'cert_requests', 'consultations', 'service_hub']);
   for (const p of ['view_consultations', 'manage_consultations', 'view_contacts', 'manage_contacts']) {
     assert.ok(perms.has(p), `support cannot open ${p}`);
   }
