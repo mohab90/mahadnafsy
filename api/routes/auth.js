@@ -1579,7 +1579,7 @@ router.post('/api/auth/verify-otp', otpLimiter, async (req, res) => {
     const [[row]] = await conn.query(
       `SELECT id, user_id FROM otp_codes
         WHERE tenant_id=? AND user_id=? AND code=? AND type=? AND used=0
-          AND delivery_status='accepted' AND expires_at > NOW()
+          AND delivery_status IN ('accepted','sent','delivered','read') AND expires_at > NOW()
         ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
       [req.tenantId, account.id, hashOtp({
         tenantId: req.tenantId, email: safeEmail, type, code,

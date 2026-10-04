@@ -21,10 +21,10 @@ test('WhatsApp provider statuses normalize to the delivery lifecycle', () => {
 });
 
 test('delivery receipt updates only a matching provider message and preserves monotonic status', async () => {
-  let captured;
+  const queries = [];
   const db = {
     async query(sql, params) {
-      captured = { sql, params };
+      queries.push({ sql, params });
       return [{ affectedRows: 1 }];
     },
   };
@@ -34,9 +34,15 @@ test('delivery receipt updates only a matching provider message and preserves mo
     status: 'delivered',
     timestamp: 1_700_000_000,
   }, db), true);
+  const captured = queries.find(q => /UPDATE message_outbox/.test(q.sql));
   assert.match(captured.sql, /provider_message_id=\?/);
   assert.match(captured.sql, /FIELD\(\?, 'accepted','sent','delivered','read'\)/);
   assert.deepEqual(captured.params.slice(-2), ['meta', 'wamid.123']);
+  // Sign-in codes follow the same receipt (they are sent outside the outbox).
+  const codes = queries.find(q => /UPDATE otp_codes/.test(q.sql));
+  assert.ok(codes, 'the receipt reaches otp_codes too');
+  assert.equal(codes.params.at(-1), 'wamid.123');
+  assert.match(codes.sql, /used=IF\(\?='failed', 1, used\)/, 'a bounced code is spent');
 });
 
 test('outbox and signed webhook routes persist provider acceptance and receipts', () => {

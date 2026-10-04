@@ -16,7 +16,7 @@
 const crypto = require('crypto');
 const { pool } = require('./db');
 const { uuidv4 } = require('./id');
-const { describeReason, sendWhatsApp } = require('./whatsapp');
+const { describeReason, isTransientSendFailure, sendWhatsApp } = require('./whatsapp');
 const { toIdentity, isPlausible, identitySpellings } = require('./phoneNumber');
 const { resolveSecret } = require('./secretResolver');
 const logger = require('./logger');
@@ -38,6 +38,7 @@ const LOGIN_CODES_PER_HOUR = Math.max(1, Number(process.env.WA_LOGIN_CODES_PER_H
 // on «إرسال», or an impatient «إعادة الإرسال» — sends nothing and leaves that
 // code live. Issuing a new one used to invalidate the first: the customer got
 // two messages, typed the code from the first, and was told it was wrong.
+const OTP_RETRY_DELAY_MS = Math.max(0, Number(process.env.WA_OTP_RETRY_DELAY_MS ?? 1500));
 const RESEND_COOLDOWN_SECONDS = Math.max(0, Number(process.env.WA_OTP_RESEND_SECONDS || 60));
 
 /**
@@ -243,13 +244,24 @@ async function requestLoginCode({ tenantId, phone }) {
     const opening = isNewAccount
       ? 'أهلاً بك في معهد الدراسات النفسية 🌿\nرمز إنشاء حسابك'
       : 'رمز الدخول';
-    result = await sendWhatsApp(
+    const send = () => sendWhatsApp(
       normalized,
       `${opening}: ${code}\nصالح لمدة ${CODE_TTL_MINUTES} دقائق. لا تشاركه مع أحد.`,
       // The sign-in code. This is the one category that stays on when every
       // other kind of outbound message is stopped — see the gate in lib/whatsapp.js.
       { tenantId, category: 'otp' }
-    );
+    ).catch(error => ({ ok: false, reason: error.message }));
+    result = await send();
+    // One more try when the failure is the kind that passes — a timeout, a
+    // 429, a provider 5xx. The customer was told «حاول لاحقاً» for a blip that
+    // a second attempt a moment later gets through, and their next request then
+    // waited out the cooldown. A refused number or a stopped channel is not
+    // retried: the same answer would come back.
+    if (!result?.ok && isTransientSendFailure(result?.reason)) {
+      logger.warn('[wa-otp] transient delivery failure — retrying once', { reason: describeReason(result?.reason) });
+      await new Promise(resolve => setTimeout(resolve, OTP_RETRY_DELAY_MS));
+      result = await send();
+    }
   } catch (error) {
     result = { ok: false, reason: error.message };
   }

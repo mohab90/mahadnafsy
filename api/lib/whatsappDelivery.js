@@ -66,7 +66,26 @@ async function applyDeliveryStatus({
       String(messageId),
     ]
   );
-  return result.affectedRows > 0;
+  // Sign-in and reset codes are sent directly, not through the outbox, and
+  // record the provider's id on their own row. Same forward-only rule; a code
+  // whose message failed is spent, so the cooldown and the hourly cap (which
+  // skip failed codes) let the customer ask for another straight away.
+  const [codeResult] = await db.query(
+    `UPDATE otp_codes
+        SET delivery_status=CASE
+              WHEN ?='failed' THEN 'failed'
+              WHEN delivery_status IN ('failed','pending') THEN delivery_status
+              WHEN FIELD(?, 'accepted','sent','delivered','read')
+                   > FIELD(delivery_status, 'accepted','sent','delivered','read')
+                THEN ?
+              ELSE delivery_status
+            END,
+            used=IF(?='failed', 1, used),
+            delivery_error_code=IF(?='failed', LEFT(COALESCE(?, 'delivery_failed'), 80), delivery_error_code)
+      WHERE provider_message_id=? AND delivery_status<>'failed'`,
+    [normalized, normalized, normalized, normalized, normalized, error ? String(error) : null, String(messageId)]
+  );
+  return result.affectedRows > 0 || codeResult.affectedRows > 0;
 }
 
 module.exports = { applyDeliveryStatus, eventDate, normalizeDeliveryStatus };
