@@ -18,15 +18,17 @@ after(() => pool.end().catch(() => {}));
 test('two processes firing the same job at the same minute run it once', { skip }, async () => {
   let runs = 0;
   async function reminderJob() { runs++; await new Promise(resolve => setTimeout(resolve, 300)); }
+  // One run per active tenant — however many this database holds.
+  const [[{ tenants }]] = await pool.query("SELECT GREATEST(COUNT(*), 1) AS tenants FROM tenants WHERE status='active'");
   // A second pool stands in for the second process: GET_LOCK is per connection.
   const mysql = require('mysql2/promise');
   const other = mysql.createPool({ host: process.env.DB_HOST, user: process.env.DB_USER, password: process.env.DB_PASSWORD, database: process.env.DB_NAME });
   try {
     await Promise.all([forEachActiveTenant(reminderJob), forEachActiveTenant(reminderJob, other)]);
   } finally { await other.end(); }
-  assert.equal(runs, 1);
+  assert.equal(runs, Number(tenants), 'the second process skipped the run');
   await forEachActiveTenant(reminderJob);
-  assert.equal(runs, 2, 'the lock is released once the run ends');
+  assert.equal(runs, 2 * Number(tenants), 'the lock is released once the run ends');
 });
 
 test('one tenant failing does not skip the rest', { skip }, async () => {

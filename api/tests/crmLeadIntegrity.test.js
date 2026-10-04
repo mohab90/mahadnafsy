@@ -278,8 +278,10 @@ test('the converted-lead check is defined once and used by both readers', async 
   assert.match(LIVE_SUBSCRIBER_FOR_LEAD, /s\.deleted_at IS NULL/,
     'a deleted customer is not a customer');
   assert.match(LIVE_SUBSCRIBER_FOR_LEAD, /s\.lead_id=l\.id/);
-  assert.match(LIVE_SUBSCRIBER_FOR_LEAD, /LOWER\(TRIM\(s\.email\)\)=LOWER\(TRIM\(l\.email\)\)/,
+  assert.match(LIVE_SUBSCRIBER_FOR_LEAD, /s\.email=TRIM\(l\.email\)/,
     'matching by email is what stops it flagging customers linked another way');
+  assert.doesNotMatch(LIVE_SUBSCRIBER_FOR_LEAD, /LOWER\(TRIM\(s\.email\)\)/,
+    'a function around subscribers.email puts uq_subs_tenant_email out of reach — every lead scans the clients');
   assert.match(LIVE_SUBSCRIBER_FOR_LEAD, /s\.phone=l\.phone/);
 
   // And both readers use it rather than spelling it out again.

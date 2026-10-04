@@ -37,7 +37,6 @@ const migrationReady = runMigrationsOnStartup
   ? require('./lib/migrationRunner').runMigrations(pool)
   : Promise.resolve({ baseline: 0, applied: 0, failed: 0, bootstrapped: 0, unavailable: false, skipped: true });
 if (!runMigrationsOnStartup) logger.info('[startup] migrations are delegated to the release job');
-require('./lib/reconcileJob').startReconcileMonitor(pool);
 const app = createHttpApp({ pool, brandAssetRoot });
 
 migrationReady.then(migrationResult => {
@@ -60,8 +59,15 @@ migrationReady.then(migrationResult => {
     require('./lib/rbacOverrides').startRbacRefresh();
     require('./lib/messageTemplates').startTemplatesRefresh();
     startBackgroundScheduler({ pool, logger, port: PORT });
+    // After the migrations, not beside them: its whole-table checks held the
+    // tables a migration's CREATE INDEX was waiting for.
+    require('./lib/reconcileJob').startReconcileMonitor(pool);
   });
 }).catch(error => {
   logger.error('[FATAL] API not started because database preparation failed:', error.message);
   process.exitCode = 1;
+  // Exit rather than linger. The process used to stay alive on its open pool and
+  // timers after this — an API with no port, still running its integrity
+  // monitor against the database — until someone noticed and killed it.
+  setTimeout(() => process.exit(1), 500).unref?.();
 });

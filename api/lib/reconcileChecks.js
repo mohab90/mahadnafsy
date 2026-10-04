@@ -15,14 +15,22 @@
  *
  * `l` is the leads alias the caller must use.
  */
+//
+// Three EXISTS, one per link, each an index lookup — (tenant_id, lead_id),
+// uq_subs_tenant_email, uq_subs_tenant_phone. Written as one EXISTS with the
+// three links OR-ed inside and LOWER(TRIM()) around subscribers.email, it could
+// use no index: every converted lead scanned the tenant's subscribers. At 30k
+// converted leads and 50k clients that ran for minutes, at boot, holding the
+// tables against the migrations beside it. LOWER is unnecessary under
+// utf8mb4_unicode_ci, and stored emails are trimmed (the write paths trim;
+// migration 207 cleaned the rest), so only the lead's side is trimmed.
 const LIVE_SUBSCRIBER_FOR_LEAD = `
-  EXISTS (
-    SELECT 1 FROM subscribers s
-     WHERE s.tenant_id=l.tenant_id AND s.deleted_at IS NULL
-       AND (s.lead_id=l.id
-         OR (l.email<>'' AND LOWER(TRIM(s.email))=LOWER(TRIM(l.email)))
-         OR (l.phone<>'' AND s.phone=l.phone))
-  )`;
+  (EXISTS (SELECT 1 FROM subscribers s
+            WHERE s.tenant_id=l.tenant_id AND s.deleted_at IS NULL AND s.lead_id=l.id)
+   OR (l.email<>'' AND EXISTS (SELECT 1 FROM subscribers s
+            WHERE s.tenant_id=l.tenant_id AND s.deleted_at IS NULL AND s.email=TRIM(l.email)))
+   OR (l.phone<>'' AND EXISTS (SELECT 1 FROM subscribers s
+            WHERE s.tenant_id=l.tenant_id AND s.deleted_at IS NULL AND s.phone=l.phone)))`;
 
 const CHECKS = [
   {
