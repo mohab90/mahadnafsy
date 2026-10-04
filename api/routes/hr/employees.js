@@ -308,7 +308,7 @@ router.put('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
         return res.status(400).json({ error: 'Invalid employment type' });
       }
     }
-    if (updates.monthly_target_type && !['egp', 'clients'].includes(updates.monthly_target_type)) {
+    if (updates.monthly_target_type && !['egp', 'clients', 'bookings'].includes(updates.monthly_target_type)) {
       await conn.rollback(); transactionStarted = false;
       return res.status(400).json({ error: 'Invalid target type' });
     }

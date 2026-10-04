@@ -29,7 +29,7 @@ export interface StaffProfileData {
     joinedAt: string | null;
     commissionRate: number;
     monthlyTarget: number;
-    monthlyTargetType: 'egp' | 'clients';
+    monthlyTargetType: 'egp' | 'clients' | 'bookings';
     monthlyBonus: number;
   };
   today: { date: string; calls: number; touches: number; bookings: number; revenue: number; leads: number };

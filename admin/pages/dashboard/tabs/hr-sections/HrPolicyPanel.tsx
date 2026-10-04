@@ -17,6 +17,15 @@ type Policy = {
   weekend_days_json: number[];
   effective_from: string;
   effective_to: string | null;
+  // The attendance rules the fingerprint sheet is judged by (migration 243).
+  work_start_time?: string;
+  work_end_time?: string;
+  morning_permit_minutes?: number;
+  evening_permit_minutes?: number;
+  morning_permits_per_month?: number;
+  evening_permits_per_month?: number;
+  late_tiers_json?: { over: number; days: number }[];
+  early_leave_tiered?: number;
 };
 type Draft = Omit<Policy, 'id' | 'version' | 'effective_to'>;
 
@@ -29,9 +38,19 @@ const fromPolicy = (policy?: Policy): Draft => ({
   grace_minutes: Number(policy?.grace_minutes ?? 15),
   overtime_multiplier: Number(policy?.overtime_multiplier ?? 1.5),
   audit_retention_days: Number(policy?.audit_retention_days ?? 2555),
-  weekend_days_json: policy?.weekend_days_json ?? [5, 6],
+  weekend_days_json: policy?.weekend_days_json ?? [5],
   effective_from: tomorrow(),
+  work_start_time: String(policy?.work_start_time ?? '11:00').slice(0, 5),
+  work_end_time: String(policy?.work_end_time ?? '18:30').slice(0, 5),
+  morning_permit_minutes: Number(policy?.morning_permit_minutes ?? 120),
+  evening_permit_minutes: Number(policy?.evening_permit_minutes ?? 90),
+  morning_permits_per_month: Number(policy?.morning_permits_per_month ?? 1),
+  evening_permits_per_month: Number(policy?.evening_permits_per_month ?? 1),
+  late_tiers_json: policy?.late_tiers_json ?? [{ over: 10, days: 0.25 }, { over: 30, days: 0.5 }, { over: 120, days: 1 }],
+  early_leave_tiered: Number(policy?.early_leave_tiered ?? 1),
 });
+const DAY_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+const DAY_FRACTIONS: [number, string][] = [[0.25, 'ربع يوم'], [0.5, 'نص يوم'], [0.75, 'تلات تربع'], [1, 'يوم كامل']];
 
 export default function HrPolicyPanel({ notify }: { notify: Notify }) {
   const [policies, setPolicies] = useState<Policy[]>([]);
@@ -103,7 +122,7 @@ export default function HrPolicyPanel({ notify }: { notify: Notify }) {
       </button>
       {current && !open && (
         <p className="text-xs text-gray-500 mt-2">
-          سنوي {current.annual_leave_days} يوم · مرضي {current.sick_leave_days} يوم · سماح {current.grace_minutes} دقيقة · سارية من {String(current.effective_from).slice(0, 10)}
+          العمل {String(current.work_start_time ?? '11:00').slice(0, 5)}–{String(current.work_end_time ?? '18:30').slice(0, 5)} · إجازة {(current.weekend_days_json || []).map(d => DAY_NAMES[d]).join(' و')} · سنوي {current.annual_leave_days} يوم · سارية من {String(current.effective_from).slice(0, 10)}
         </p>
       )}
       {open && (
@@ -120,6 +139,58 @@ export default function HrPolicyPanel({ notify }: { notify: Notify }) {
           <p className="text-xs text-amber-700 bg-amber-50 rounded-lg p-2 mb-3">
             الحفظ ينشئ نسخة جديدة مؤرخة ولا يغيّر السياسات التاريخية المرتبطة بالطلبات السابقة.
           </p>
+          <div className="mb-4 space-y-3 rounded-xl border border-indigo-100 bg-indigo-50/40 p-3">
+            <h4 className="text-sm font-bold text-gray-800">الحضور والانصراف (بيتحسب بيها شيت البصمة)</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <label className="text-xs text-gray-600">بداية العمل
+                <input type="time" value={draft.work_start_time} onChange={e => setDraft(v => ({ ...v, work_start_time: e.target.value }))} className="mt-1 w-full border border-gray-200 rounded-lg px-2 py-1.5" />
+              </label>
+              <label className="text-xs text-gray-600">نهاية العمل
+                <input type="time" value={draft.work_end_time} onChange={e => setDraft(v => ({ ...v, work_end_time: e.target.value }))} className="mt-1 w-full border border-gray-200 rounded-lg px-2 py-1.5" />
+              </label>
+              {numberField('morning_permit_minutes', 'الإذن الصباحي (دقيقة)')}
+              {numberField('evening_permit_minutes', 'الإذن المسائي (دقيقة)')}
+              {numberField('morning_permits_per_month', 'أذونات صباحية في الشهر')}
+              {numberField('evening_permits_per_month', 'أذونات مسائية في الشهر')}
+            </div>
+            <div className="text-xs text-gray-600">
+              أيام الإجازة الأسبوعية
+              <div className="mt-1 flex flex-wrap gap-2">
+                {DAY_NAMES.map((name, day) => (
+                  <label key={day} className="flex items-center gap-1 rounded-lg bg-white px-2 py-1">
+                    <input type="checkbox" checked={draft.weekend_days_json.includes(day)}
+                      onChange={e => setDraft(v => ({ ...v, weekend_days_json: e.target.checked ? [...v.weekend_days_json, day].sort() : v.weekend_days_json.filter(d => d !== day) }))} />
+                    {name}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="text-xs text-gray-600">
+              خصم التأخير
+              <div className="mt-1 space-y-1.5">
+                {(draft.late_tiers_json || []).map((tier, index) => (
+                  <div key={index} className="flex flex-wrap items-center gap-2">
+                    <span>تأخير أكتر من</span>
+                    <input type="number" min={0} value={tier.over} className="w-20 border border-gray-200 rounded-lg px-2 py-1"
+                      onChange={e => setDraft(v => ({ ...v, late_tiers_json: (v.late_tiers_json || []).map((t, i) => (i === index ? { ...t, over: Number(e.target.value) } : t)) }))} />
+                    <span>دقيقة يخصم</span>
+                    <select value={tier.days} className="border border-gray-200 rounded-lg px-2 py-1"
+                      onChange={e => setDraft(v => ({ ...v, late_tiers_json: (v.late_tiers_json || []).map((t, i) => (i === index ? { ...t, days: Number(e.target.value) } : t)) }))}>
+                      {DAY_FRACTIONS.map(([days, label]) => <option key={days} value={days}>{label}</option>)}
+                    </select>
+                    <button type="button" className="text-red-500" onClick={() => setDraft(v => ({ ...v, late_tiers_json: (v.late_tiers_json || []).filter((_, i) => i !== index) }))}>حذف</button>
+                  </div>
+                ))}
+                {(draft.late_tiers_json || []).length < 6 && (
+                  <button type="button" className="text-indigo-600" onClick={() => setDraft(v => ({ ...v, late_tiers_json: [...(v.late_tiers_json || []), { over: 60, days: 0.5 }] }))}>+ شريحة</button>
+                )}
+              </div>
+              <label className="mt-2 flex items-center gap-1.5">
+                <input type="checkbox" checked={Boolean(draft.early_leave_tiered)} onChange={e => setDraft(v => ({ ...v, early_leave_tiered: e.target.checked ? 1 : 0 }))} />
+                نفس الخصم على الانصراف بدري
+              </label>
+            </div>
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {numberField('annual_leave_days', 'الإجازة السنوية')}
             {numberField('sick_leave_days', 'الإجازة المرضية')}

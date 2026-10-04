@@ -8,6 +8,9 @@ const { getFxToEgp, getFxSnapshot, isFxSnapshotUsable } = require('../../lib/fin
 const { computePayrollLine } = require('../../lib/payrollCalc');
 const { dateOnlyInTimeZone, cairoYearMonth } = require('../../lib/dates');
 const { toNumbers } = require('../../lib/mappers');
+const { readDeviceSheet } = require('../../lib/attendanceSheet');
+const { importAttendanceMonth } = require('../../lib/attendanceImport');
+const { writeAuditEvent } = require('../../lib/auditTrail');
 
 // Every money column on a payslip, including the aliases this file's SELECTs
 // add. The panel adds four deductions together and totals the column; against
@@ -155,7 +158,7 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
 
     // Get all active staff with salary structures
     const [employees] = await conn.query(`
-      SELECT s.id AS staff_id, s.name, s.commission_rate,
+      SELECT s.id AS staff_id, s.name, s.commission_rate, s.base_salary AS staff_base_salary,
         ss.base_salary, ss.housing_allowance, ss.transport_allowance,
         ss.food_allowance, ss.other_fixed, ss.deduction_social_insurance, ss.deduction_tax,
         ss.other_allowances_json,ss.currency AS salary_currency
@@ -175,6 +178,17 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
        WHERE s.is_active=1 AND s.deleted_at IS NULL AND s.tenant_id=?
          AND (?='branch-all' OR s.branch_id=?)
     `, [y, m, y, m, y, m, y, m, tenantId, branchId, branchId]);
+    // The basic salary HR types on the employee («الراتب الأساسي», staff.base_salary)
+    // counts when no approved salary structure covers the month; a structure,
+    // with its allowances and approval trail, wins when there is one.
+    for (const employee of employees) {
+      if (employee.base_salary == null && Number(employee.staff_base_salary) > 0) {
+        employee.base_salary = employee.staff_base_salary;
+        employee.salary_source = 'staff_file';
+      } else {
+        employee.salary_source = employee.base_salary == null ? null : 'salary_structure';
+      }
+    }
     const missingSalary = employees.filter(employee => employee.base_salary == null);
     if (missingSalary.length) {
       await conn.rollback();
@@ -201,7 +215,10 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
         COALESCE(SUM(CASE WHEN EXISTS (
             SELECT 1 FROM leaves lp WHERE lp.tenant_id=a.tenant_id AND lp.staff_id=a.staff_id
                AND lp.type='LATE_PERMIT' AND lp.status='APPROVED' AND a.date BETWEEN lp.start_date AND lp.end_date)
-          THEN 0 ELSE a.late_minutes END), 0) AS late_minutes,
+          THEN 0 WHEN a.deduction_days IS NOT NULL THEN 0 ELSE a.late_minutes END), 0) AS late_minutes,
+        -- Days judged under the policy's tiers (fingerprint sheet import) carry
+        -- their own deduction in days; only older rows are charged per minute.
+        COALESCE(SUM(a.deduction_days), 0) AS late_deduction_days,
         COALESCE(SUM(CASE WHEN a.status IN ('PRESENT','LATE','REMOTE') THEN 1
                           WHEN a.status='HALF_DAY' THEN 0.5 ELSE 0 END),0) AS present_days,
         COUNT(*) AS logged_days
@@ -360,6 +377,7 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
         instructorFeeCount: feeMap[emp.staff_id]?.count || 0,
         commissionSource, totalSalesEgp: Math.round(totalSales * 100) / 100,
         bonusTotal, deductionTotal, dedSocial, dedTax, unpaidLeaveDays, salaryCurrency, salaryFx,
+        salarySource: emp.salary_source, lateDeductionDays: Number(attStats.late_deduction_days) || 0,
         policyId: policy.id, policyVersion: policy.version,
       });
       await conn.query(`
@@ -740,6 +758,49 @@ router.put('/api/admin/hr/payroll/items/:itemId', requireAuth, requireAdminOrSta
 // HR — ATTENDANCE IMPORT (CSV/text)
 // ══════════════════════════════════════════════════════════════════════════════
 
+// POST /api/admin/hr/attendance/import-sheet — the fingerprint device's export
+// for a whole month (.xlsx, .csv or the device's attlog), judged under the
+// company policy (lib/attendanceSheet.js → lib/attendanceImport.js →
+// lib/attendancePolicy.js). Body: { fileBase64, filename, month: 'YYYY-MM',
+// dryRun }. dryRun returns the report and every judged day without writing.
+router.post('/api/admin/hr/attendance/import-sheet', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
+  const conn = await pool.getConnection();
+  let transactionStarted = false;
+  try {
+    const { fileBase64, filename, month, dryRun } = req.body || {};
+    if (typeof fileBase64 !== 'string' || !fileBase64) return res.status(400).json({ error: 'ارفع شيت البصمة' });
+    const buffer = Buffer.from(fileBase64.replace(/^data:[^,]*,/, ''), 'base64');
+    if (!buffer.length || buffer.length > 8 * 1024 * 1024) return res.status(413).json({ error: 'الملف لازم يكون أقل من 8 ميجا' });
+    const sheet = readDeviceSheet(buffer, { filename: String(filename || ''), month: String(month || '') });
+    if (!sheet.punches.length) {
+      return res.status(400).json({
+        error: `مفيش بصمات في الشيت لشهر ${month}`, code: 'NO_PUNCHES',
+        skipped: sheet.skipped, rowsRead: sheet.rowsRead,
+      });
+    }
+    if (!dryRun) { await conn.beginTransaction(); transactionStarted = true; }
+    const report = await importAttendanceMonth(dryRun ? pool : conn, {
+      tenantId: req.tenantId, month: String(month || ''), punches: sheet.punches,
+      actorId: req.staffRecord?.id || req.user?.uid || null, filename: String(filename || '').slice(0, 255), dryRun: Boolean(dryRun),
+    });
+    if (transactionStarted) {
+      await conn.commit(); transactionStarted = false;
+      await writeAuditEvent({
+        action: 'hr.attendance.sheet_imported', entityType: 'attendance_import_batch', entityId: report.batchId,
+        severity: 'info', metadata: { month, employees: report.employees.length, days: report.daysWritten }, req,
+      }).catch(() => {});
+    }
+    res.json({ ok: true, ...report, rowsRead: sheet.rowsRead, skipped: sheet.skipped });
+  } catch (error) {
+    if (transactionStarted) await conn.rollback().catch(() => {});
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message, code: error.code });
+    logger.error('[hr/attendance/import-sheet]', error.message);
+    hrError(res, error);
+  } finally {
+    conn.release();
+  }
+});
+
 // POST /api/admin/hr/attendance/import — import attendance from CSV text
 // Expects body: { csv: "...", month, year, filename }
 // CSV format: employee_id OR name, date, check_in, check_out
@@ -944,13 +1005,18 @@ router.get('/api/admin/hr/attendance/summary', requireAuth, requireAdminOrStaff,
         COUNT(CASE WHEN a.status='LATE' THEN 1 END) AS late_days,
         COALESCE(SUM(a.late_minutes),0) AS total_late_minutes,
         COUNT(CASE WHEN a.status='LEAVE' THEN 1 END) AS leave_days,
+        COALESCE(SUM(a.early_leave_minutes),0) AS total_early_minutes,
+        COALESCE(SUM(a.deduction_days),0) AS deduction_days,
+        COUNT(a.review_flag) AS flagged_days,
+        s.biometric_user_no,
         COUNT(a.id) AS total_records
       FROM staff s
       LEFT JOIN hr_departments d ON d.id=s.department_id AND d.tenant_id=s.tenant_id
-      LEFT JOIN attendance_logs a ON a.staff_id=s.id AND a.tenant_id=s.tenant_id AND MONTH(a.date)=? AND YEAR(a.date)=?
+      LEFT JOIN attendance_logs a ON a.staff_id=s.id AND a.tenant_id=s.tenant_id
+        AND a.date >= ? AND a.date < ? + INTERVAL 1 MONTH
       WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL
       GROUP BY s.id ORDER BY s.name
-    `, [m, y, req.tenantId]);
+    `, [`${y}-${String(m).padStart(2, '0')}-01`, `${y}-${String(m).padStart(2, '0')}-01`, req.tenantId]);
     res.json(rows);
   } catch (e) { logger.error('[hr/payroll]', e.message); hrError(res, e); }
 });

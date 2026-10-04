@@ -52,8 +52,9 @@ test('PERMISSION is half of one day, and has to be one day', () => {
 });
 
 test('weekend days are excluded from the count', () => {
-  // Thu..Mon = 5 calendar days, minus Fri+Sat = 3 working days
-  assert.equal(calculateLeaveDays(THU, MON, 'ANNUAL'), 3);
+  // Thu..Mon = 5 calendar days, minus Friday (the company's one day off) = 4
+  assert.equal(calculateLeaveDays(THU, MON, 'ANNUAL'), 4);
+  assert.equal(calculateLeaveDays(THU, MON, 'ANNUAL', { weekend_days_json: [5, 6] }), 3);
   assert.equal(calculateLeaveDays(THU, THU, 'ANNUAL'), 1);
 });
 
@@ -63,7 +64,7 @@ test('MATERNITY counts calendar days including weekends', () => {
 });
 
 test('a range that is entirely weekend is rejected, not silently zero', () => {
-  const err = caught(() => calculateLeaveDays(FRI, SAT, 'ANNUAL'));
+  const err = caught(() => calculateLeaveDays(FRI, FRI, 'ANNUAL'));
   assert.equal(err.statusCode, 400);
   assert.match(err.message, /no working days/);
 });
@@ -74,9 +75,9 @@ test('a custom weekend policy is honoured, as JSON string or array', () => {
   assert.equal(calculateLeaveDays(THU, MON, 'ANNUAL', { weekend_days_json: '[0]' }), 4);
 });
 
-test('a malformed weekend policy falls back to the default Fri/Sat weekend', () => {
-  assert.equal(calculateLeaveDays(THU, MON, 'ANNUAL', { weekend_days_json: '{not json' }), 3);
-  assert.equal(calculateLeaveDays(THU, MON, 'ANNUAL', { weekend_days_json: null }), 3);
+test('a malformed weekend policy falls back to the default Friday weekend', () => {
+  assert.equal(calculateLeaveDays(THU, MON, 'ANNUAL', { weekend_days_json: '{not json' }), 4);
+  assert.equal(calculateLeaveDays(THU, MON, 'ANNUAL', { weekend_days_json: null }), 4);
   // out-of-range day numbers are discarded rather than shifting the weekend
   assert.equal(calculateLeaveDays(THU, MON, 'ANNUAL', { weekend_days_json: [99, 5, 6] }), 3);
 });
@@ -93,7 +94,7 @@ test('default policy keeps payroll-relevant constants intact', () => {
   assert.equal(DEFAULT_POLICY.work_days_per_month, 26);
   assert.equal(DEFAULT_POLICY.workday_minutes, 480);
   assert.equal(DEFAULT_POLICY.overtime_multiplier, 1.5);
-  assert.deepEqual(DEFAULT_POLICY.weekend_days_json, [5, 6]);
+  assert.deepEqual(DEFAULT_POLICY.weekend_days_json, [5]); // «احنا الجمعه اجازه»
 });
 
 // «اذن تاخير صباحي او مسائي»: an hour off one day, which the request has to name.

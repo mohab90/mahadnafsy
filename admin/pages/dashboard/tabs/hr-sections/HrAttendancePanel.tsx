@@ -1,5 +1,5 @@
-// Monthly attendance: the per-employee summary, a manual entry form, and a CSV
-// import for the fingerprint device.
+// Monthly attendance: the per-employee summary, a manual entry form, and the
+// fingerprint sheet upload (HrFingerprintUpload).
 //
 // Lifted out of HRTab.tsx with its own state — the month, the summary rows and
 // both modals were read by this tab and nothing else.
@@ -10,6 +10,7 @@ import { X, Plus, Calendar, Clock, Upload } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 import type { StaffMember } from '../../../../types';
 import HrPolicyPanel from './HrPolicyPanel';
+import HrFingerprintUpload from './HrFingerprintUpload';
 
 type Notify = (type: 'success' | 'error' | 'info', message: string) => void;
 type AttendanceSummaryRow = {
@@ -21,6 +22,9 @@ type AttendanceSummaryRow = {
   late_days: number;
   total_late_minutes: number;
   leave_days: number;
+  total_early_minutes?: number;
+  deduction_days?: number;
+  flagged_days?: number;
 };
 
 export default function HrAttendancePanel({ notify, staff }: {
@@ -33,9 +37,7 @@ export default function HrAttendancePanel({ notify, staff }: {
   const [loadingAtt, setLoadingAtt] = useState(false);
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [manualEntry, setManualEntry] = useState({ staff_id: '', date: cairoDateOnly(), check_in: '', check_out: '', status: 'PRESENT', notes: '' });
-  const [showCsvImport, setShowCsvImport] = useState(false);
-  const [csvText, setCsvText] = useState('');
-  const [importResult, setImportResult] = useState<{ imported: number; skipped: number; errors: string[] } | null>(null);
+  const [showUpload, setShowUpload] = useState(false);
 
   const fetchAttendanceSummary = useCallback(async () => {
     const [y, mo] = attMonth.split('-');
@@ -63,24 +65,6 @@ export default function HrAttendancePanel({ notify, staff }: {
     } catch { notify('error', 'خطأ في الاتصال'); }
   }, [manualEntry, notify, fetchAttendanceSummary]);
 
-  const submitCsvImport = useCallback(async () => {
-    if (!csvText.trim()) return;
-    try {
-      const [y, mo] = attMonth.split('-');
-      const res = await fetch('/api/admin/hr/attendance/import', {
-        method: 'POST', credentials: 'include',
-        headers: adminAuthHeaders(true),
-        body: JSON.stringify({ csvText, month: parseInt(mo), year: parseInt(y) }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setImportResult(data);
-        notify('success', `تم استيراد ${data.imported} سجل ✅`);
-        fetchAttendanceSummary();
-      } else { const d = await res.json(); notify('error', d.error || 'فشل الاستيراد'); }
-    } catch { notify('error', 'خطأ في الاتصال'); }
-  }, [csvText, attMonth, notify, fetchAttendanceSummary]);
-
   // The panel only mounts while its tab is open, so mounting is the cue to load.
   useEffect(() => { fetchAttendanceSummary(); }, [fetchAttendanceSummary]);
 
@@ -93,7 +77,7 @@ export default function HrAttendancePanel({ notify, staff }: {
           <input type="month" value={attMonth} onChange={e => setAttMonth(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-2 text-sm"/>
           <button onClick={() => fetchAttendanceSummary()} className="px-4 py-2 bg-slate-600 text-white rounded-xl text-sm font-bold hover:bg-slate-700 transition">تحديث</button>
           <button onClick={() => setShowManualEntry(true)} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition flex items-center gap-2"><Plus size={14}/> تسجيل يدوي</button>
-          <button onClick={() => setShowCsvImport(true)} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition flex items-center gap-2"><Upload size={14}/> استيراد CSV</button>
+          <button onClick={() => setShowUpload(true)} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition flex items-center gap-2"><Upload size={14}/> رفع شيت البصمة</button>
         </div>
 
         {/* Summary table */}
@@ -113,11 +97,13 @@ export default function HrAttendancePanel({ notify, staff }: {
                   <th className="px-4 py-3 text-center">متأخر</th>
                   <th className="px-4 py-3 text-center">دقائق التأخير</th>
                   <th className="px-4 py-3 text-center">إجازة</th>
+                  <th className="px-4 py-3 text-center">خصم التأخير</th>
+                  <th className="px-4 py-3 text-center">مراجعة</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {attSummary.length === 0 ? (
-                  <tr><td colSpan={6} className="text-center py-12 text-gray-400">
+                  <tr><td colSpan={8} className="text-center py-12 text-gray-400">
                     <Clock size={32} className="mx-auto mb-2 opacity-20"/><p className="text-sm">لا بيانات حضور لهذا الشهر</p>
                   </td></tr>
                 ) : attSummary.map(row => (
@@ -136,6 +122,8 @@ export default function HrAttendancePanel({ notify, staff }: {
                     <td className="px-4 py-3 text-center"><span className={`px-2 py-0.5 rounded-full text-xs font-bold ${row.late_days > 0 ? 'bg-amber-100 text-amber-700' : 'text-gray-300'}`}>{row.late_days || 0}</span></td>
                     <td className="px-4 py-3 text-center text-xs text-gray-600">{row.total_late_minutes > 0 ? `${row.total_late_minutes} د` : '—'}</td>
                     <td className="px-4 py-3 text-center text-xs text-blue-600 font-semibold">{row.leave_days > 0 ? row.leave_days : '—'}</td>
+                    <td className="px-4 py-3 text-center text-xs">{Number(row.deduction_days) > 0 ? <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">{Number(row.deduction_days)} يوم</span> : <span className="text-gray-300">—</span>}</td>
+                    <td className="px-4 py-3 text-center text-xs">{Number(row.flagged_days) > 0 ? <span title="أيام فيها بصمة واحدة بس" className="text-amber-700">{row.flagged_days} يوم</span> : <span className="text-gray-300">—</span>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -177,33 +165,9 @@ export default function HrAttendancePanel({ notify, staff }: {
     </Modal>
         )}
 
-        {/* CSV Import modal */}
-        {showCsvImport && (
-    <Modal
-      open
-      onClose={() => { setShowCsvImport(false); setImportResult(null); setCsvText(''); }}
-      title="استيراد الحضور من CSV"
-      icon={<Upload size={16} />}
-    >
-              <div className="space-y-3">
-                <div className="bg-blue-50 text-blue-700 text-xs rounded-xl p-3">
-                  <p className="font-bold mb-1">تنسيق الأعمدة المطلوب:</p>
-                  <code>employee_id أو name, date, check_in, check_out</code>
-                </div>
-                <input type="month" value={attMonth} onChange={e => setAttMonth(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"/>
-                <textarea value={csvText} onChange={e => setCsvText(e.target.value)} rows={8} placeholder="الصق محتوى CSV هنا..." className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono resize-none"/>
-                {importResult && (
-                  <div className={`rounded-xl p-3 text-sm ${importResult.errors.length > 0 ? 'bg-amber-50 border border-amber-200 text-amber-700' : 'bg-emerald-50 border border-emerald-200 text-emerald-700'}`}>
-                    <p className="font-bold">تم الاستيراد: {importResult.imported} سجل · تجاهل: {importResult.skipped}</p>
-                    {importResult.errors.slice(0, 5).map((err, i) => <p key={i} className="text-xs mt-1 opacity-80">{err}</p>)}
-                  </div>
-                )}
-              </div>
-              <div className="flex gap-2 mt-4">
-                <button onClick={submitCsvImport} disabled={!csvText.trim()} className="flex-1 py-2 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition disabled:opacity-50 flex items-center justify-center gap-2"><Upload size={14}/> استيراد</button>
-                <button onClick={() => { setShowCsvImport(false); setImportResult(null); setCsvText(''); }} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition">إغلاق</button>
-              </div>
-    </Modal>
+        {showUpload && (
+          <HrFingerprintUpload month={attMonth} notify={notify} onClose={() => setShowUpload(false)}
+            onImported={month => { setAttMonth(month); void fetchAttendanceSummary(); }} />
         )}
       </div>
   );

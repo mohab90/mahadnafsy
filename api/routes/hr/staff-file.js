@@ -15,6 +15,7 @@ const logger = require('../../lib/logger').child({ module: 'hr-staff-file' });
 const { pool } = require('../../lib/db');
 const { uuidv4 } = require('../../lib/id');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
+const { hasPermission } = require('../../constants/permissions');
 
 const view = [requireAuth, requireAdminOrStaff, requirePermission('view_hr')];
 const manage = [requireAuth, requireAdminOrStaff, requirePermission('manage_hr')];
@@ -154,6 +155,90 @@ router.put('/api/admin/hr/staff/:staffId/pay', ...managePay, async (req, res) =>
   } catch (error) {
     logger.error('[staff-pay/update]', error.message);
     hrError(res, error);
+  }
+});
+
+// ── Employee basics, all employees on one screen ─────────────────────────────
+// «لازم ندخل الراتب الأساسي لكل موظف ورقمه في البصمة … رقم التارجيت لكل موظف
+// سواء كان عدد عملاء او عدد حجوزات او فلوس». One table HR fills in once:
+// the basic salary (payroll's fallback when no salary structure is approved),
+// the number on the fingerprint device (what a device sheet is matched on),
+// and the monthly target in clients, bookings or money.
+const TARGET_TYPES = new Set(['clients', 'bookings', 'egp']);
+
+router.get('/api/admin/hr/staff-basics', ...view, async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, name, role, branch_id, base_salary, biometric_user_no, monthly_target, monthly_target_type, monthly_bonus
+         FROM staff WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL ORDER BY name`, [req.tenantId]);
+    res.json(rows.map(r => ({
+      id: r.id, name: r.name, role: r.role, branchId: r.branch_id,
+      baseSalary: r.base_salary == null ? null : Number(r.base_salary),
+      biometricNo: r.biometric_user_no || '',
+      targetType: TARGET_TYPES.has(r.monthly_target_type) ? r.monthly_target_type : null,
+      targetValue: r.monthly_target == null ? null : Number(r.monthly_target),
+      targetBonus: r.monthly_bonus == null ? null : Number(r.monthly_bonus),
+    })));
+  } catch (error) {
+    logger.error('[staff-basics/get]', error.message);
+    hrError(res, error);
+  }
+});
+
+router.put('/api/admin/hr/staff-basics', ...manage, async (req, res) => {
+  const rows = Array.isArray(req.body?.rows) ? req.body.rows : null;
+  if (!rows || !rows.length || rows.length > 500) return res.status(400).json({ error: 'مفيش تعديلات' });
+  const canPay = Boolean(req.isSuperAdmin || (req.staffRecord && hasPermission(req.staffRecord, 'manage_financial')));
+  const num = value => (value === '' || value == null ? null : Number(value));
+  const updates = [];
+  for (const row of rows) {
+    const id = String(row?.id || '');
+    if (!id) return res.status(400).json({ error: 'موظف من غير رقم' });
+    const fields = {};
+    if (row.biometricNo !== undefined) {
+      const bio = String(row.biometricNo ?? '').trim();
+      if (bio && !/^[A-Za-z0-9_-]{1,32}$/.test(bio)) return res.status(400).json({ error: `رقم البصمة «${bio}» مش صالح` });
+      fields.biometric_user_no = bio || null;
+    }
+    if (row.targetType !== undefined) {
+      const type = row.targetType ? String(row.targetType) : null;
+      if (type && !TARGET_TYPES.has(type)) return res.status(400).json({ error: 'نوع التارجت لازم يكون عملاء أو حجوزات أو فلوس' });
+      fields.monthly_target_type = type;
+    }
+    for (const [key, column] of [['targetValue', 'monthly_target'], ['targetBonus', 'monthly_bonus'], ['baseSalary', 'base_salary']]) {
+      if (row[key] === undefined) continue;
+      const value = num(row[key]);
+      if (value !== null && (!Number.isFinite(value) || value < 0 || value > 10000000)) {
+        return res.status(400).json({ error: 'الأرقام لازم تكون موجبة' });
+      }
+      fields[column] = value;
+    }
+    if ('base_salary' in fields && !canPay) {
+      return res.status(403).json({ error: 'تعديل الراتب محتاج صلاحية الحسابات' });
+    }
+    if (Object.keys(fields).length) updates.push({ id, fields });
+  }
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    for (const { id, fields } of updates) {
+      const columns = Object.keys(fields);
+      const assignments = columns.map(c => c + '=?').join(', ');
+      const [result] = await conn.query(
+        `UPDATE staff SET ${assignments} WHERE id=? AND tenant_id=?`,
+        [...columns.map(c => fields[c]), id, req.tenantId]);
+      if (!result.affectedRows) throw Object.assign(new Error('موظف مش موجود'), { statusCode: 404 });
+    }
+    await conn.commit();
+    res.json({ ok: true, updated: updates.length });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'رقم البصمة ده متسجل لموظف تاني' });
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+    logger.error('[staff-basics/put]', error.message);
+    hrError(res, error);
+  } finally {
+    conn.release();
   }
 });
 

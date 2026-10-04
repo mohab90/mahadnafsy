@@ -3,7 +3,7 @@ import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, Briefcase, Search, BarChart3, ChevronRight, UserPlus, Pencil,
-  CalendarCheck, CalendarOff, Wallet, UserCheck, UserX, Layers, Inbox,
+  CalendarCheck, CalendarOff, Wallet, UserCheck, UserX, Layers, Inbox, Fingerprint,
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
@@ -18,6 +18,7 @@ import HrPayrollPanel from './hr-sections/HrPayrollPanel';
 import HrAttendancePanel from './hr-sections/HrAttendancePanel';
 import HrLeavesPanel from './hr-sections/HrLeavesPanel';
 import HrRequestsInbox from './hr-sections/HrRequestsInbox';
+import HrStaffBasicsPanel from './hr-sections/HrStaffBasicsPanel';
 import { ROLE_LABELS, ROLE_COLORS } from './hr-sections/hrLabels';
 import { fmtMoney } from './hr-sections/hrFormat';
 
@@ -85,7 +86,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
   // this screen at all.
   const [showAddStaff, setShowAddStaff] = useState(false);
   // «طلبات الموظفين» first: what employees asked for is what HR answers first.
-  const [subTab, setSubTab] = useState<'requests' | 'directory' | 'performance' | 'attendance' | 'leaves' | 'payroll' | 'recruitment'>('requests');
+  const [subTab, setSubTab] = useState<'requests' | 'directory' | 'basics' | 'performance' | 'attendance' | 'leaves' | 'payroll' | 'recruitment'>('requests');
   const [pendingRequests, setPendingRequests] = useState(0);
   // Deciding a request is manage_hr on the server; view_hr alone reads the list.
   const canManageHr = isAdmin || Boolean(currentStaff && hasPermission({
@@ -230,6 +231,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
         {([
           ['requests', 'طلبات الموظفين', Inbox],
           ['directory', 'دليل الموظفين', Users],
+          ['basics', 'الرواتب والبصمة والتارجت', Fingerprint],
           ['performance', 'الأداء والتارجت', BarChart3],
           ['attendance', 'الحضور والغياب', CalendarCheck],
           ['leaves', 'الإجازات', CalendarOff],
@@ -332,7 +334,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
                       <div className="mb-1 flex items-baseline justify-between text-[10px]">
                         <span className="text-gray-400">التارجت</span>
                         <span className="font-bold tabular-nums text-gray-600">
-                          {tType === 'clients' ? `${member.monthlyTarget} عميل` : fmtMoney(member.monthlyTarget!)}
+                          {tType === 'clients' ? `${member.monthlyTarget} عميل` : tType === 'bookings' ? `${member.monthlyTarget} حجز` : fmtMoney(member.monthlyTarget!)}
                           <span className={`mr-1 ${tPct >= 100 ? 'text-emerald-600' : 'text-gray-400'}`}>· {Math.round(tPct)}%</span>
                         </span>
                       </div>
@@ -440,6 +442,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
         </div>
       )}
 
+      {subTab === 'basics' && <HrStaffBasicsPanel notify={notify} canEditSalary={canManageFinance} />}
       {subTab === 'attendance' && <HrAttendancePanel notify={notify} staff={safeStaff} />}
 
       {subTab === 'leaves' && <HrLeavesPanel notify={notify} staff={safeStaff} />}

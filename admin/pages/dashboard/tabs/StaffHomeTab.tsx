@@ -377,7 +377,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
             todayFollowupCount: stats.todayFollowups.length,
             last7: stats.last7,
             monthlyTarget: (staff as StaffMember & { monthlyTarget?: number }).monthlyTarget,
-            monthlyTargetType: (staff as StaffMember & { monthlyTargetType?: 'egp' | 'clients' }).monthlyTargetType,
+            monthlyTargetType: (staff as StaffMember & { monthlyTargetType?: 'egp' | 'clients' | 'bookings' }).monthlyTargetType,
           }}
         />
         </>

@@ -12,8 +12,21 @@ const DEFAULT_POLICY = Object.freeze({
   grace_minutes: 15,
   overtime_multiplier: 1.5,
   audit_retention_days: 2555,
-  weekend_days_json: [5, 6],
+  // Friday off, 11:00–18:30, a monthly morning permission of 2 h and evening
+  // one of 1.5 h, lateness >10 min ¼ day, >30 ½, >2 h a whole day — the
+  // institute's own rules (migration 243), used until HR saves a policy.
+  weekend_days_json: [5],
+  work_start_time: '11:00:00',
+  work_end_time: '18:30:00',
+  morning_permit_minutes: 120,
+  evening_permit_minutes: 90,
+  morning_permits_per_month: 1,
+  evening_permits_per_month: 1,
+  late_tiers_json: [{ over: 10, days: 0.25 }, { over: 30, days: 0.5 }, { over: 120, days: 1 }],
+  early_leave_tiered: 1,
 });
+const ATTENDANCE_POLICY_COLUMNS = `work_start_time,work_end_time,morning_permit_minutes,evening_permit_minutes,
+            morning_permits_per_month,evening_permits_per_month,late_tiers_json,early_leave_tiered`;
 // LATE_PERMIT / EARLY_LEAVE are إذن تأخير and إذن انصراف مبكر. They ride the
 // same request-and-approve flow as leave because that is what they are — a
 // request a manager says yes or no to — but they are not days off, which is
@@ -55,21 +68,24 @@ function permitWindow(type, startTime, endTime) {
 const parseWeekendDays = value => {
   try {
     const parsed = typeof value === 'string' ? JSON.parse(value) : value;
-    return Array.isArray(parsed) ? parsed.map(Number).filter(day => day >= 0 && day <= 6) : [5, 6];
-  } catch { return [5, 6]; }
+    return Array.isArray(parsed) ? parsed.map(Number).filter(day => day >= 0 && day <= 6) : [...DEFAULT_POLICY.weekend_days_json];
+  } catch { return [...DEFAULT_POLICY.weekend_days_json]; }
 };
 
 async function getEffectiveHrPolicy(db, tenantId, date = cairoToday()) {
   const [[row]] = await db.query(
     `SELECT id,version,annual_leave_days,sick_leave_days,work_days_per_month,
             workday_minutes,grace_minutes,overtime_multiplier,audit_retention_days,
-            weekend_days_json,effective_from,effective_to
+            weekend_days_json,effective_from,effective_to,${ATTENDANCE_POLICY_COLUMNS}
        FROM hr_policy_versions
       WHERE tenant_id=? AND effective_from<=? AND (effective_to IS NULL OR effective_to>=?)
       ORDER BY effective_from DESC,version DESC LIMIT 1`,
     [tenantId, date, date]
   );
-  return row ? { ...row, weekend_days_json: parseWeekendDays(row.weekend_days_json) } : DEFAULT_POLICY;
+  if (!row) return DEFAULT_POLICY;
+  let tiers = DEFAULT_POLICY.late_tiers_json;
+  try { if (row.late_tiers_json) tiers = JSON.parse(row.late_tiers_json); } catch { /* keep the default */ }
+  return { ...row, weekend_days_json: parseWeekendDays(row.weekend_days_json), late_tiers_json: tiers };
 }
 
 function calculateLeaveDays(startDate, endDate, type, policy = DEFAULT_POLICY) {
@@ -141,6 +157,7 @@ function leaveAllowance(policy, type) {
 }
 
 module.exports = {
+  ATTENDANCE_POLICY_COLUMNS,
   DEFAULT_POLICY, HOUR_PERMITS, LEAVE_LABELS_AR, LEAVE_TYPES, calculateLeaveDays, createLeaveRequest,
   getEffectiveHrPolicy, leaveAllowance, permitWindow,
 };

@@ -49,7 +49,8 @@ export default function StaffAchievements({ data }: { data: StaffProfileData }) 
 
     // Target hit in the current month, using the same rule the HR report uses.
     const current = timeline[timeline.length - 1];
-    if (current && staff.monthlyTarget > 0) {
+    // Bookings are counted by the HR performance report, not in this timeline.
+    if (current && staff.monthlyTarget > 0 && staff.monthlyTargetType !== 'bookings') {
       const progress = staff.monthlyTargetType === 'clients' ? current.converted : current.revenue;
       if (progress >= staff.monthlyTarget) {
         out.push({

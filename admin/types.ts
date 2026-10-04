@@ -395,7 +395,7 @@ export interface StaffMember {
   dataScope?: '' | 'all' | 'none' | 'assigned_sales' | 'assigned_cs' | string;
   // ── HR fields ────────────────────────────────────────────────────────────
   salary?: number;                           // Monthly base salary (EGP)
-  monthlyTargetType?: 'egp' | 'clients';    // Target is revenue or client count
+  monthlyTargetType?: 'egp' | 'clients' | 'bookings';    // Target is revenue, client count or bookings
   monthlyTarget?: number;                    // Target value (EGP or count)
   monthlyLeadsTarget?: number;               // Monthly conversion/lead-count target
   monthlyBonus?: number;                     // Fixed monthly bonus on target hit (EGP)

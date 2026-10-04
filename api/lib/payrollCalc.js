@@ -71,7 +71,10 @@ function computePayrollLine(emp = {}, ctx = {}) {
   const dailyRate  = baseSalary / safeWorkDays;
   const minuteRate = baseSalary / (safeWorkDays * safeWorkMinutes);
   const absenceDeduction = dailyRate * absentDays;
-  const lateDeduction    = minuteRate * lateMins;
+  // Days the policy's tiers judged (¼, ½, a whole day) cost that fraction of
+  // the daily rate; minutes on older rows are still charged per minute.
+  const lateDeductionDays = Number(attendance.late_deduction_days) || 0;
+  const lateDeduction    = minuteRate * lateMins + dailyRate * lateDeductionDays;
 
   // crm_commissions is authoritative when it has rows; the percentage of sales
   // is only a fallback, so a rep is never paid on both bases at once.
@@ -114,7 +117,7 @@ function computePayrollLine(emp = {}, ctx = {}) {
   return {
     housing, transport, food, otherFixed, totalAllowances,
     dedSocial, dedTax,
-    absentDays, lateMins, dailyRate, minuteRate, absenceDeduction, lateDeduction,
+    absentDays, lateMins, lateDeductionDays, dailyRate, minuteRate, absenceDeduction, lateDeduction,
     commission, commissionCount, commissionSource,
     // advanceDeduction is what was due this month; advanceApplied is what the
     // salary could actually absorb, and is the figure the books must use.

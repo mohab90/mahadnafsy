@@ -2,7 +2,7 @@
 const { Router } = require('express');
 const router = Router();
 const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
-const { createLeaveRequest, getEffectiveHrPolicy, leaveAllowance, HOUR_PERMITS, LEAVE_LABELS_AR } = require('../../lib/hrPolicy');
+const { createLeaveRequest, getEffectiveHrPolicy, leaveAllowance, HOUR_PERMITS, LEAVE_LABELS_AR, ATTENDANCE_POLICY_COLUMNS, DEFAULT_POLICY } = require('../../lib/hrPolicy');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { toNumbers } = require('../../lib/mappers');
 const { cairoClock, sqlCairoToday, cairoToday, cairoYearMonth } = require('../../lib/dates');
@@ -70,7 +70,7 @@ router.get('/api/admin/hr/policies', requireAuth, requireAdminOrStaff, requirePe
     const [rows] = await pool.query(
       `SELECT id,version,annual_leave_days,sick_leave_days,work_days_per_month,
               workday_minutes,grace_minutes,overtime_multiplier,audit_retention_days,weekend_days_json,
-              effective_from,effective_to,created_by,created_at
+              effective_from,effective_to,created_by,created_at,${ATTENDANCE_POLICY_COLUMNS}
          FROM hr_policy_versions WHERE tenant_id=?
         ORDER BY version DESC LIMIT 50`,
       [req.tenantId]
@@ -81,6 +81,7 @@ router.get('/api/admin/hr/policies', requireAuth, requireAdminOrStaff, requirePe
         try { return typeof row.weekend_days_json === 'string' ? JSON.parse(row.weekend_days_json) : row.weekend_days_json; }
         catch { return [5, 6]; }
       })(),
+      late_tiers_json: (() => { try { return JSON.parse(row.late_tiers_json); } catch { return DEFAULT_POLICY.late_tiers_json; } })(),
     })));
   } catch (error) {
     logger.error('[hr/policies]', error.message);
@@ -96,6 +97,25 @@ router.post('/api/admin/hr/policies', requireAuth, requireAdminOrStaff, requireP
       annual_leave_days, sick_leave_days, work_days_per_month, workday_minutes,
       grace_minutes, overtime_multiplier, audit_retention_days, weekend_days_json, effective_from,
     } = req.body;
+    // The attendance rules (migration 243). Omitted fields keep the defaults.
+    const att = {
+      start: String(req.body.work_start_time ?? DEFAULT_POLICY.work_start_time).slice(0, 5),
+      end: String(req.body.work_end_time ?? DEFAULT_POLICY.work_end_time).slice(0, 5),
+      morningMin: Number(req.body.morning_permit_minutes ?? DEFAULT_POLICY.morning_permit_minutes),
+      eveningMin: Number(req.body.evening_permit_minutes ?? DEFAULT_POLICY.evening_permit_minutes),
+      morningCount: Number(req.body.morning_permits_per_month ?? DEFAULT_POLICY.morning_permits_per_month),
+      eveningCount: Number(req.body.evening_permits_per_month ?? DEFAULT_POLICY.evening_permits_per_month),
+      tiers: Array.isArray(req.body.late_tiers_json) ? req.body.late_tiers_json : DEFAULT_POLICY.late_tiers_json,
+      earlyTiered: req.body.early_leave_tiered === undefined ? 1 : (req.body.early_leave_tiered ? 1 : 0),
+    };
+    const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+    const tiersOk = att.tiers.length <= 6 && att.tiers.every(t => Number.isFinite(Number(t.over)) && Number(t.over) >= 0
+      && Number(t.over) <= 600 && Number(t.days) > 0 && Number(t.days) <= 1);
+    if (!HHMM.test(att.start) || !HHMM.test(att.end) || att.end <= att.start || !tiersOk
+      || ![att.morningMin, att.eveningMin].every(v => Number.isInteger(v) && v >= 0 && v <= 480)
+      || ![att.morningCount, att.eveningCount].every(v => Number.isInteger(v) && v >= 0 && v <= 31)) {
+      return res.status(400).json({ error: 'مواعيد العمل أو الأذونات أو شرائح التأخير مش صحيحة' });
+    }
     const values = {
       annual: Number(annual_leave_days), sick: Number(sick_leave_days),
       workDays: Number(work_days_per_month), workMinutes: Number(workday_minutes),
@@ -136,11 +156,14 @@ router.post('/api/admin/hr/policies', requireAuth, requireAdminOrStaff, requireP
       `INSERT INTO hr_policy_versions
         (id,tenant_id,version,annual_leave_days,sick_leave_days,work_days_per_month,
          workday_minutes,grace_minutes,overtime_multiplier,audit_retention_days,
-         weekend_days_json,effective_from,created_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         weekend_days_json,effective_from,created_by,${ATTENDANCE_POLICY_COLUMNS})
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [id, req.tenantId, version, values.annual, values.sick, values.workDays,
         values.workMinutes, values.grace, values.overtime, values.retention, JSON.stringify(weekend),
-        effective_from, req.staffRecord?.id || req.user?.uid || null]
+        effective_from, req.staffRecord?.id || req.user?.uid || null,
+        `${att.start}:00`, `${att.end}:00`, att.morningMin, att.eveningMin, att.morningCount, att.eveningCount,
+        JSON.stringify(att.tiers.map(t => ({ over: Number(t.over), days: Number(t.days) })).sort((a, b) => a.over - b.over)),
+        att.earlyTiered]
     );
     await writeAuditEvent({
       action: 'hr.policy.created',
@@ -299,8 +322,11 @@ router.put('/api/admin/hr/leaves/:id/status', requireAuth, requireAdminOrStaff, 
       }
       const start = new Date(`${dateOnly(leave.start_date)}T12:00:00Z`);
       const end = new Date(`${dateOnly(leave.end_date)}T12:00:00Z`);
+      // getEffectiveHrPolicy already parsed this into an array; JSON.parse on
+      // an array threw, so a custom weekend fell back to Friday+Saturday.
       const weekends = new Set((() => {
-        try { return JSON.parse(policy.weekend_days_json || '[5,6]').map(Number); } catch { return [5, 6]; }
+        const days = policy.weekend_days_json;
+        try { return (Array.isArray(days) ? days : JSON.parse(days || '[5]')).map(Number); } catch { return [5]; }
       })());
       for (const date = start; date <= end; date.setUTCDate(date.getUTCDate() + 1)) {
         if (leave.type !== 'MATERNITY' && weekends.has(date.getUTCDay())) continue;
@@ -470,7 +496,11 @@ router.put('/api/admin/hr/salary/:id/status', requireAuth, requireAdminOrStaff, 
   } finally { conn.release(); }
 });
 
-router.get('/api/admin/hr/attendance/:staffId', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
+// /api/admin/hr/attendance/summary (routes/hr/payroll.js) is registered after
+// this file, so without the guard below «summary» was read as an employee id
+// and the monthly attendance table always came back empty.
+router.get('/api/admin/hr/attendance/:staffId', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res, next) => {
+  if (req.params.staffId === 'summary') return next();
   try {
     const { staffId } = req.params;
     const { month, year } = req.query;

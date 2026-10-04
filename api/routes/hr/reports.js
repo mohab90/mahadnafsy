@@ -119,12 +119,17 @@ router.get('/api/admin/hr/reports/performance', requireAuth, requireAdminOrStaff
     const endDate = end.toISOString().slice(0, 10);
     const [rows] = await pool.query(
       `SELECT s.id AS staff_id,s.name,s.role,s.monthly_target,s.monthly_target_type,s.monthly_bonus,
-              COALESCE(p.revenue,0) revenue,COALESCE(p.orders_count,0) orders_count,
+              COALESCE(p.revenue,0) revenue,COALESCE(p.orders_count,0) orders_count,COALESCE(p.bookings_count,0) bookings_count,
               COALESCE(c.commission,0) commission,
               COALESCE(l.leads_count,0) leads_count,COALESCE(l.converted_count,0) converted_count
          FROM staff s
          LEFT JOIN (
-           SELECT staff_id,SUM(amount_egp) revenue,COUNT(*) orders_count
+           -- A booking is a client in a course or track the employee took money
+           -- for this month: the second instalment of the same booking is not a
+           -- second booking.
+           SELECT staff_id,SUM(amount_egp) revenue,COUNT(*) orders_count,
+                  COUNT(DISTINCT IF(amount>0 AND (course_id IS NOT NULL OR bundle_id IS NOT NULL),
+                    CONCAT(subscriber_id,'|',COALESCE(course_id,''),'|',COALESCE(bundle_id,'')), NULL)) bookings_count
              FROM payments
             WHERE tenant_id=? AND status='paid' AND deleted_at IS NULL
               AND date>=? AND date<?
@@ -153,13 +158,16 @@ router.get('/api/admin/hr/reports/performance', requireAuth, requireAdminOrStaff
       const converted = Number(row.converted_count || 0);
       const targetType = row.monthly_target_type || 'egp';
       const target = Number(row.monthly_target || 0);
-      const progress = targetType === 'clients' ? converted : revenue;
+      const bookings = Number(row.bookings_count || 0);
+      const progress = targetType === 'clients' ? converted : targetType === 'bookings' ? bookings : revenue;
       const targetPct = target > 0 ? Math.min(100, Math.round(progress / target * 100)) : 0;
       return {
         ...row,
         revenue,
         commission: Number(row.commission || 0),
         orders_count: Number(row.orders_count || 0),
+        bookings_count: bookings,
+        target_progress: progress,
         leads_count: Number(row.leads_count || 0),
         converted_count: converted,
         conversion_rate: Number(row.leads_count) > 0 ? Math.round(converted / Number(row.leads_count) * 100) : 0,

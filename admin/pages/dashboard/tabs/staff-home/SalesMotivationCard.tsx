@@ -11,7 +11,7 @@ export interface MotivationStats {
   /** { day, calls, converted } for the last 7 days, oldest first. */
   last7: { day: string; label: string; calls: number; converted: number }[];
   monthlyTarget?: number;
-  monthlyTargetType?: 'egp' | 'clients';
+  monthlyTargetType?: 'egp' | 'clients' | 'bookings';
   name: string;
 }
 
@@ -69,7 +69,9 @@ export default function SalesMotivationCard({ stats }: { stats: MotivationStats 
 
   const target = Number(stats.monthlyTarget || 0);
   const progressValue = stats.monthlyTargetType === 'clients' ? stats.convertedThisMonth : stats.revenueThisMonth;
-  const targetPct = target > 0 ? Math.min(100, Math.round((progressValue / target) * 100)) : null;
+  // A bookings target is counted by the server (HR performance report); this
+  // card has no bookings figure, so it shows no progress rather than a wrong one.
+  const targetPct = target > 0 && stats.monthlyTargetType !== 'bookings' ? Math.min(100, Math.round((progressValue / target) * 100)) : null;
   const remaining = target > 0 ? Math.max(0, target - progressValue) : 0;
 
   // The single most useful thing to say right now, in priority order.
