@@ -46,6 +46,8 @@ type Props = {
   setShowHiddenLeads: Dispatch<SetStateAction<boolean>>;
   totalConverted: number;
   totalLost: number;
+  /** Every source in use, from the server's counts — effectiveLeads may be one page. */
+  knownSources?: string[];
   visibleLeadsCount: number;
 };
 
@@ -75,6 +77,7 @@ export function LeadFilterBar({
   setShowHiddenLeads,
   totalConverted,
   totalLost,
+  knownSources = [],
   visibleLeadsCount,
 }: Props) {
   if (!visible) return null;
@@ -87,7 +90,7 @@ export function LeadFilterBar({
       ]
     : enumEntries;
   const sourceOptions = [...new Map(
-    effectiveLeads.map(l => l.source?.trim() || '').filter(Boolean)
+    [...effectiveLeads.map(l => l.source?.trim() || ''), ...knownSources.map(source => source.trim())].filter(Boolean)
       .map(s => [s.toLowerCase(), s] as [string, string])
   ).values()].sort((a, b) => a.localeCompare(b, 'ar'));
   const hasActiveFilters = assignFilter.size > 0 || singleStatus || courseFilter || branchFilter || searchTerm || showHiddenLeads || salesSourceFilter || leadsFollowupFilter !== 'all';

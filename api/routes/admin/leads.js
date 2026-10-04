@@ -40,6 +40,7 @@ const { ADMIN_EMAILS, requireAuth, requireAdmin, requireAdminOrStaff, requirePer
 const { VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES } = require('../../constants/permissions');
 const { safeIsoString, safeDateOnly, sqlCairoToday, sqlCairoDayStartUtc, cairoToday, addDaysToDateOnly, cairoDayStartUtc } = require('../../lib/dates');
 const { keyset } = require('../../lib/pagination');
+const { leadTableFilter, leadTableSearch } = require('../../lib/leadTableFilter');
 const { identitySpellings } = require('../../lib/phoneNumber');
 const { branchIdForBranch } = require('../../lib/branches');
 const { postPaymentJournal, logPaymentAudit } = require('../../lib/finance');
@@ -2051,6 +2052,56 @@ router.get('/api/admin/leads/stats', requireAuth, requireAdminOrStaff, requirePe
       createdToday: Number(todayRow?.cnt || 0),
     });
   } catch (e) { logger.error('[leads-stats]', e.message); sendRouteError(res, e); }
+});
+
+// GET /api/admin/leads/table — one page of the CRM's main table, filtered and
+// counted in the database (lib/leadTableFilter.js). The table used to download
+// every lead to filter them in the browser, which stops working past the
+// browser fetch's 50,000-row cap: the newest tenth was shown as the whole.
+router.get('/api/admin/leads/table', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
+  try {
+    const accessScope = leadScope(req, 'l');
+    const pageSize = Math.min(Math.max(parseInt(req.query.pageSize, 10) || 100, 1), 500);
+    const page = Math.max(parseInt(req.query.page, 10) || 0, 0);
+    if (accessScope.none) return res.json({ rows: [], total: 0, page, pageSize });
+    // A rep's table is their own leads, whatever the desk filters say — the same
+    // split the browser made on its role.
+    const role = String(req.staffRecord?.role || '').toLowerCase();
+    const salesOnly = !req.isSuperAdmin && ['sales', 'collection'].includes(role);
+    const filter = leadTableFilter(req.query, { today: cairoToday(), salesOnly });
+    const search = leadTableSearch(req.query.q);
+    const hidden = req.query.hidden === '1' ? 1 : 0;
+    const where = ` AND l.hidden = ?${accessScope.sql}${filter.sql}${search ? ` AND ${search.sql}` : ''}`;
+    const whereParams = [hidden, ...accessScope.params, ...filter.params, ...(search?.params || [])];
+
+    // The count reads every matching lead, so a page turn under the same
+    // filters skips it (withTotal=0) — the client already holds the total.
+    const counted = req.query.withTotal !== '0';
+    const [[countRow], [rows]] = await Promise.all([
+      counted
+        ? pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.tenant_id = ?${where}`, [req.tenantId, ...whereParams])
+          .then(([result]) => result)
+        : [null],
+      // Deferred join, as in the list below: the OFFSET walks ids only.
+      pool.query(
+        `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.status, l.lead_type, l.branch,
+                l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
+                l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
+                l.assigned_cs_id, COALESCE(cs.name, l.assigned_cs_name) AS assigned_cs_name,
+                l.notes, l.last_follow_up, l.next_follow_up_date, l.crm_json, l.hidden, l.score, l.created_at, l.updated_at,
+                (SELECT COUNT(*) FROM communications lc WHERE lc.tenant_id = l.tenant_id AND lc.lead_id = l.id) AS communication_count
+           FROM (SELECT l.id FROM leads l WHERE l.tenant_id = ?${where}
+                  ORDER BY l.created_at DESC, l.id DESC LIMIT ? OFFSET ?) pg
+           JOIN leads l ON l.id = pg.id AND l.tenant_id = ?
+           LEFT JOIN staff ss ON ss.id = l.assigned_sales_id AND ss.tenant_id = l.tenant_id
+           LEFT JOIN staff cs ON cs.id = l.assigned_cs_id AND cs.tenant_id = l.tenant_id
+          ORDER BY l.created_at DESC, l.id DESC`,
+        [req.tenantId, ...whereParams, pageSize, page * pageSize, req.tenantId],
+      ),
+    ]);
+    const commsByLead = await communicationsByLead({ tenantId: req.tenantId, leadIds: rows.map(row => row.id) });
+    res.json({ rows: rows.map(r => mapLeadRow(r, commsByLead)), total: counted ? Number(countRow?.total || 0) : null, page, pageSize });
+  } catch (e) { logger.error('[leads-table]', e.message); sendRouteError(res, e); }
 });
 
 // The indexed form of a free-text lead search, or null when there is none.

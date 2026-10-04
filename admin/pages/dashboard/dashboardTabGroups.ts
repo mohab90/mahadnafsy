@@ -113,15 +113,11 @@ export const saasOpsTabs = new Set<string>([
  *  dawliOld, archive) filter the whole table — the archive specifically lists
  *  hidden rows, which the paged fetch never returns at all.
  *
- *  'table' is here because the claim that used to stand in this comment — that
- *  the landing table is "paginated and searched on the server" — was not true of
- *  the code. LeadTable slices its `rows` prop 100 at a time in the browser, and
- *  `rows` is whatever the array holds, which on this screen was the 500-row
- *  bootstrap page. So the table read "500 عميل — عرض 1–100" against 30,964 real
- *  leads, and the desk could not see, search or distribute the other 30,464. One
- *  rep alone holds 2,613. Until the table genuinely pages against the server it
- *  has to hold the table it claims to be showing — the rule at the top of this
- *  file: a screen computing over a partial array is wrong, and wrong is worse.
+ *  'table' is not here any more: it pages against GET /admin/leads/table
+ *  (leads/useServerLeadTable.ts), which filters and counts in the database.
+ *  It was here because it sliced the whole array in the browser — the
+ *  500-row bootstrap page read as "500 عميل" against 30,964 real leads — and
+ *  holding the whole array stops being possible past the fetch's 50,000-row cap.
  *
  *  LeadsTab calls loadFullCrmData() when one of these opens, so the 30,964-row
  *  fetch happens on the screens that need it and nowhere else. */
@@ -133,7 +129,6 @@ export const fullLeadArraySubTabs = new Set<string>([
   'dawliNew',
   'dawliOld',
   'archive',
-  'table',
   // 'reminders' builds two of its queues — never contacted, and promised to pay
   // — by scanning the array, because no server aggregate answers either one.
   // Left out, it scanned the 500-row bootstrap page: the board showed a handful

@@ -19,6 +19,7 @@ import { DEFAULT_SOURCES, isOnlineSource } from './crmConstants';
 import { useLeadSubTab } from './leads/useLeadSubTab';
 import type { ConvertLeadModalState } from './leads/ConvertLeadModal';
 import { useLeadPerformanceData } from './leads/useLeadPerformanceData';
+import { useServerLeadTable } from './leads/useServerLeadTable';
 import { useLeadFilteringData } from './leads/useLeadFilteringData';
 import { useLeadQuickCommunication } from './leads/useLeadQuickCommunication';
 import { useLeadRemindersData } from './leads/useLeadRemindersData';
@@ -343,6 +344,29 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     leadsFollowupFilter !== 'all'
   );
 
+  // The main table pages against the server instead of filtering the whole
+  // leads array (leads/useServerLeadTable.ts).
+  const serverTable = useServerLeadTable(subTab === 'table', {
+    searchTerm, assignFilter, tagFilter, sourceFilter, courseFilter, branchFilter, singleStatus,
+    showHiddenLeads, rottenFilter, salesSourceFilter, leadsFollowupFilter,
+  }, instituteBranches);
+  const refreshServerTable = serverTable.refresh;
+  // An edit made from the table changes the row on the server; the page is
+  // re-read so it shows what was saved.
+  const tableUpdateLead = useCallback(async (item: LeadItem) => {
+    const result = await updateLead(item);
+    refreshServerTable();
+    return result;
+  }, [updateLead, refreshServerTable]);
+  const tableReloadLeads = useCallback(async () => {
+    await reloadLeads();
+    refreshServerTable();
+  }, [reloadLeads, refreshServerTable]);
+  const tableDeleteLead = useCallback(async (id: string) => {
+    await (deleteLead ?? (() => Promise.resolve()))(id);
+    refreshServerTable();
+  }, [deleteLead, refreshServerTable]);
+
   const clearLeadFilters = useCallback(() => {
     setSearchTerm('');
     setAssignFilter(new Set());
@@ -513,16 +537,17 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         setShowHiddenLeads={setShowHiddenLeads}
         totalConverted={totalConverted}
         totalLost={totalLost}
-        visibleLeadsCount={visibleLeads.length}
+        knownSources={Object.keys(leadStats?.bySource || {})}
+        visibleLeadsCount={subTab === 'table' ? serverTable.total : visibleLeads.length}
       />
 
       <LeadEmptyDiagnostics
-        visible={subTab === 'pipeline' || subTab === 'table'}
+        visible={subTab === 'pipeline' || (subTab === 'table' && !serverTable.loading && !serverTable.error)}
         isSalesOnly={isSalesOnly}
         salesDataLoading={salesDataLoading}
         totalLeads={leadStats?.total ?? leads.length}
-        effectiveCount={effectiveLeads.length}
-        visibleCount={visibleLeads.length}
+        effectiveCount={subTab === 'table' ? (leadStats?.total ?? effectiveLeads.length) : effectiveLeads.length}
+        visibleCount={subTab === 'table' ? serverTable.total : visibleLeads.length}
         filtersActive={leadFiltersActive}
         currentStaffName={currentStaff?.name || selfStaff?.name || authUser?.email || ''}
         onClearFilters={clearLeadFilters}
@@ -562,15 +587,22 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
       {/* ─── TABLE VIEW ──────────────────────────────────────────────── */}
       {subTab === 'table' && (
         <Suspense fallback={<LeadSectionFallback />}>
+          {serverTable.error && (
+            <div className="mb-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              تعذّر تحميل الجدول: {serverTable.error}
+              <button type="button" onClick={refreshServerTable} className="mr-2 underline">إعادة المحاولة</button>
+            </div>
+          )}
           <LeadTable
-            rows={scoredLeads}
+            rows={serverTable.rows}
+            paging={{ page: serverTable.page, pageSize: serverTable.pageSize, total: serverTable.total, onPageChange: serverTable.setPage, loading: serverTable.loading }}
             showCourseCol={true}
             courses={courses}
             bundles={bundles}
             navigate={navigate}
-            updateLead={updateLead}
-            reloadLeads={reloadLeads}
-            deleteLead={deleteLead ?? (() => Promise.resolve())}
+            updateLead={tableUpdateLead}
+            reloadLeads={tableReloadLeads}
+            deleteLead={tableDeleteLead}
             addSubscriber={addSubscriber ?? ((_: SubscriberItem) => Promise.resolve(false))}
             updateSubscriber={updateSubscriber ?? (() => Promise.resolve())}
             subscribers={effectiveSubs}

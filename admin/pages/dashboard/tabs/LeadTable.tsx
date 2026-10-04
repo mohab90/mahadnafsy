@@ -50,9 +50,12 @@ type LeadTableProps = {
   onBook: (row: LeadItem) => void;
   branchOptions: { id: string; label: string }[];
   sources: string[];
+  /** When the server pages the table, `rows` is that one page and this says
+   *  where it sits; without it the table slices `rows` itself. */
+  paging?: { page: number; pageSize: number; total: number; onPageChange: (page: number) => void; loading?: boolean };
 };
 
-export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, courses, bundles, navigate, updateLead, reloadLeads, deleteLead, subscribers, salesStaff, isSalesOnly, canManageLeads, onSalesClick, onBook, branchOptions, sources }) => {
+export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, courses, bundles, navigate, updateLead, reloadLeads, deleteLead, subscribers, salesStaff, isSalesOnly, canManageLeads, onSalesClick, onBook, branchOptions, sources, paging }) => {
   // Deduplicated branch options: merge instituteBranches with ENUM fallbacks without duplicates
   const mergedBranchOpts = React.useMemo(() => {
     const enumEntries = Object.entries(BRANCH_ENUM_LABELS).map(([id, label]) => ({ id, label }));
@@ -126,14 +129,20 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
   const [bulkStatus, setBulkStatus] = React.useState<LeadStatus | ''>('');
   const [bulkSalesId, setBulkSalesId] = React.useState('');
   // ─── Pagination state ────────────────────────────────────────────────
-  const PAGE_SIZE = 100;
-  const [currentPage, setCurrentPage] = React.useState(0);
+  const PAGE_SIZE = paging?.pageSize ?? 100;
+  const [localPage, setLocalPage] = React.useState(0);
   // Reset to page 0 when rows change (filter/search)
   const prevRowsLenRef = React.useRef(rows.length);
-  if (prevRowsLenRef.current !== rows.length) { prevRowsLenRef.current = rows.length; if (currentPage !== 0) setCurrentPage(0); }
-  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  if (!paging && prevRowsLenRef.current !== rows.length) { prevRowsLenRef.current = rows.length; if (localPage !== 0) setLocalPage(0); }
+  const totalRows = paging ? paging.total : rows.length;
+  const currentPage = paging ? paging.page : localPage;
+  const setCurrentPage = (next: number | ((page: number) => number)) => {
+    const value = typeof next === 'function' ? next(currentPage) : next;
+    if (paging) paging.onPageChange(value); else setLocalPage(value);
+  };
+  const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
   const safePage = Math.min(currentPage, totalPages - 1);
-  const pageRows = rows.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+  const pageRows = paging ? rows : rows.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
   const tableBodyRef = React.useRef<HTMLDivElement>(null);
 
@@ -487,7 +496,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
             })}
           </tbody>
         </table>
-        {rows.length === 0 && <p className="text-sm text-gray-400 mt-4 text-center py-6">لا توجد نتائج.</p>}
+        {rows.length === 0 && <p className="text-sm text-gray-400 mt-4 text-center py-6">{paging?.loading ? 'جاري التحميل…' : 'لا توجد نتائج.'}</p>}
       </div>
 
       {/* ── Pagination controls ──
@@ -497,15 +506,14 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
       {totalPages > 1 && (
         <div className="flex flex-row-reverse items-center justify-between mt-3 px-1">
           <span className="text-xs text-gray-500">
-            {rows.length} عميل — عرض {safePage * PAGE_SIZE + 1}–{Math.min((safePage + 1) * PAGE_SIZE, rows.length)}
+            {totalRows.toLocaleString('ar-EG-u-nu-latn')} عميل — عرض {safePage * PAGE_SIZE + 1}–{Math.min((safePage + 1) * PAGE_SIZE, totalRows)}
           </span>
           <div className="flex items-center gap-1">
             <button disabled={safePage === 0} onClick={() => setCurrentPage(0)}
               className="px-2 py-1 text-xs rounded-lg bg-gray-100 hover:bg-gray-200 disabled:opacity-40 font-bold">«</button>
             <button disabled={safePage === 0} onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
               className="px-3 py-1 text-xs rounded-lg bg-gray-100 hover:bg-gray-200 disabled:opacity-40">السابق</button>
-            {Array.from({ length: totalPages }, (_, i) => i)
-              .filter(i => Math.abs(i - safePage) <= 2)
+            {Array.from({ length: Math.min(5, totalPages) }, (_, k) => Math.max(0, Math.min(safePage - 2, totalPages - 5)) + k)
               .map(i => (
                 <button key={i} onClick={() => setCurrentPage(i)}
                   className={`px-2.5 py-1 text-xs rounded-lg font-bold ${i === safePage ? 'bg-primary-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}`}>

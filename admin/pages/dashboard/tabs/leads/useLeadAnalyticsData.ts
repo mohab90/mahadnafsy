@@ -66,10 +66,18 @@ export function useLeadAnalyticsData(leads: LeadItem[], effectiveLeads: LeadItem
       .sort((a, b) => b.value - a.value);
   }, [leads, leadStats]);
 
-  const totals = useMemo(() => ({
-    converted: effectiveLeads.filter(lead => lead.status === 'converted').length,
-    lost: effectiveLeads.filter(lead => lead.status === 'lost').length,
-  }), [effectiveLeads]);
+  // From the server's counts while the array is only a page of the table — the
+  // main table no longer downloads every lead, and counting the bootstrap page
+  // would report a few hundred as the institute's conversions.
+  const totals = useMemo(() => {
+    if (leadStats && leads.length < leadStats.total) {
+      return { converted: leadStats.byStatus?.converted || 0, lost: leadStats.byStatus?.lost || 0 };
+    }
+    return {
+      converted: effectiveLeads.filter(lead => lead.status === 'converted').length,
+      lost: effectiveLeads.filter(lead => lead.status === 'lost').length,
+    };
+  }, [effectiveLeads, leads.length, leadStats]);
 
   return { monthlyTrend, funnelData, sourcesData, totalConverted: totals.converted, totalLost: totals.lost };
 }

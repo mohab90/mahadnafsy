@@ -15,9 +15,12 @@
 --     refresh (lib/leadScoreRefresh.js) instead of being computed per request.
 --   idx_leads_tenant_hidden_source_status — the source breakdown and the
 --     scoring screen's filter dropdowns.
---   idx_comm_tenant_date_lead — "this week's calls per rep" in CRM insights
---     starts from the week's communications instead of every assigned lead:
---     10.7 s → 0.6 s.
+--   idx_comm_tenant_date — "this week's calls per rep" in CRM insights starts
+--     from the week's communications instead of every assigned lead: 10.7 s →
+--     1.1 s. Deliberately not covering: a covering (tenant, date, lead, type)
+--     was preferred by the per-lead last-contact GROUP BY too, which then
+--     sorted in a temporary table (0.9 s → 6.7 s) instead of walking
+--     idx_comm_tenant_lead_date in order.
 --   idx_comm_tenant_lead_type — communications per rep per channel on the KPI
 --     screen, answered from the index: 5.0 s → 1.8 s.
 --   ft_leads_name_email — the lead search box. Whole words look up the index
@@ -40,8 +43,8 @@ CREATE INDEX IF NOT EXISTS idx_leads_tenant_hidden_score
 CREATE INDEX IF NOT EXISTS idx_leads_tenant_hidden_source_status
   ON leads (tenant_id, hidden, source, status);
 
-CREATE INDEX IF NOT EXISTS idx_comm_tenant_date_lead
-  ON communications (tenant_id, date, lead_id, type);
+CREATE INDEX IF NOT EXISTS idx_comm_tenant_date
+  ON communications (tenant_id, date);
 
 CREATE INDEX IF NOT EXISTS idx_comm_tenant_lead_type
   ON communications (tenant_id, lead_id, type);
