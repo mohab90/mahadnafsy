@@ -56,7 +56,8 @@ import { LeadEmptyDiagnostics } from './leads/LeadEmptyDiagnostics';
 import { useLeadActions } from './leads/useLeadActions';
 import { useLeadCrmBootstrap } from './leads/useLeadCrmBootstrap';
 import { useLeadRemoteReminders } from './leads/useLeadRemoteReminders';
-import { explainUnassigned, isLocalNewLead } from './leads/leadSourceGroups';
+import { isLocalNewLead } from './leads/leadSourceGroups';
+import { poolViewOf, useLeadPool, useLocalNewCount } from './leads/useLeadPool';
 import type { TabKey } from '../navigation';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
@@ -296,9 +297,23 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   // "محلي جديد" pool — the same predicate LeadArchiveViews lists, so the badge,
   // the counter and the table agree.
   const unassignedLeads = useMemo(() => leads.filter(isLocalNewLead), [leads]);
+  // The pool tabs read their own pool from the server (leads/useLeadPool.ts)
+  // instead of filtering every lead here.
+  const poolView = poolViewOf(subTab);
+  const leadPool = useLeadPool(poolView);
+  // The server's count everywhere: on «محلي جديد» from the pool itself, on
+  // every other tab from a count-only request. What is loaded is the fallback.
+  const serverLocalNewCount = useLocalNewCount(`${leads.length}:${leadPool.total}:${distributing}:${archiving}`);
+  const unassignedCount = poolView === 'localNew' && leadPool.ready ? leadPool.total : (serverLocalNewCount ?? unassignedLeads.length);
   // Where the leads nobody owns are, including the ones this tab does not list.
-  const unassignedBreakdown = useMemo(
-    () => (subTab === 'localNew' ? explainUnassigned(leads) : null), [leads, subTab]);
+  const unassignedBreakdown = subTab === 'localNew' ? leadPool.breakdown : null;
+  // A distribution or a move to the archive changes the pool on the server.
+  const poolBusy = distributing || archiving;
+  const wasPoolBusy = useRef(false);
+  useEffect(() => {
+    if (wasPoolBusy.current && !poolBusy) leadPool.reload();
+    wasPoolBusy.current = poolBusy;
+  }, [poolBusy, leadPool.reload]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { weeklyScorecard, smartRedistCandidates } = useLeadOpsInsights(leads, salesReps, smartIdleDays, crmInsights);
 
@@ -455,7 +470,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         canManageDuplicates={isAdmin}
         totalOfflineLeads={offlineLeadTotal}
         overdueCount={overdueLeads.length}
-        unassignedCount={unassignedLeads.length}
+        unassignedCount={unassignedCount}
         subTab={subTab}
         setSubTab={setSubTab}
         onAddLead={() => setShowAddLead(true)}
@@ -631,8 +646,8 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
               <p className="text-xs text-gray-500 mt-0.5">ليدات بدون مندوب مبيعات — وزّعها يدوياً من الجدول (عمود "المندوب") أو تلقائياً بالتساوي</p>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-sm text-gray-500">غير موزّع: <strong className="text-amber-600">{unassignedLeads.length}</strong></span>
-              {isAdmin && <button onClick={handleDistribute} disabled={distributing || unassignedLeads.length === 0}
+              <span className="text-sm text-gray-500">غير موزّع: <strong className="text-amber-600">{unassignedCount.toLocaleString('ar-EG-u-nu-latn')}</strong></span>
+              {isAdmin && <button onClick={handleDistribute} disabled={distributing || unassignedCount === 0}
                 className="flex items-center gap-1.5 bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-emerald-700 disabled:opacity-40 transition whitespace-nowrap">
                 {distributing ? 'جارٍ التوزيع...' : 'توزيع تلقائي'}
               </button>}
@@ -643,7 +658,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
                     <input type="date" value={archiveBefore} onChange={e => setArchiveBefore(e.target.value)}
                       className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs" />
                   </label>
-                  <button onClick={handleMoveToArchive} disabled={archiving || unassignedLeads.length === 0}
+                  <button onClick={handleMoveToArchive} disabled={archiving || unassignedCount === 0}
                     title="ينقل العملاء غير الموزّعين إلى تبويب محلي قديم — بدون حذف"
                     className="bg-gray-700 text-white px-4 py-2 rounded-xl text-sm hover:bg-gray-800 disabled:opacity-40 transition whitespace-nowrap">
                     {archiving ? 'جارٍ النقل...' : 'نقل للأرشيف'}
@@ -807,19 +822,33 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
       {/* online25 section moved to Dashboard.tsx */}
 
       <Suspense fallback={null}>
+        {poolView && (leadPool.error || leadPool.truncated || (leadPool.loading && !leadPool.ready)) && (
+          <div className={`mb-3 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold ${leadPool.error ? 'border-red-200 bg-red-50 text-red-800' : 'border-sky-200 bg-sky-50 text-sky-800'}`} role="status">
+            {leadPool.error
+              ? <><span>تعذّر تحميل القائمة: {leadPool.error}</span>
+                  <button type="button" onClick={leadPool.reload} className="rounded-lg bg-red-600 px-3 py-1 text-white hover:bg-red-700">إعادة المحاولة</button></>
+              : leadPool.truncated
+                ? <span>القائمة فيها {leadPool.total.toLocaleString('ar-EG-u-nu-latn')} عميل — المعروض أحدث {leadPool.rows.length.toLocaleString('ar-EG-u-nu-latn')}. استخدم الفلاتر أو البحث عشان توصل للباقي.</span>
+                : <span>جاري التحميل…</span>}
+          </div>
+        )}
         <LeadArchiveViews
           subTab={subTab}
-          leads={leads}
+          leads={poolView ? leadPool.rows : leads}
           matchesFilters={matchesFilters}
           staffMembers={staffMembers}
           addLead={addLead}
-          updateLead={updateLead}
-          reloadLeads={reloadLeads}
+          updateLead={async lead => {
+            const saved = await updateLead(lead);
+            if (saved !== false) leadPool.patch(lead);
+            return saved;
+          }}
+          reloadLeads={async () => { await reloadLeads(); leadPool.reload(); }}
           notify={notify}
           courses={courses}
           bundles={bundles}
           navigate={navigate}
-          deleteLead={deleteLead ?? (() => Promise.resolve())}
+          deleteLead={async id => { await (deleteLead ?? (() => Promise.resolve()))(id); leadPool.drop(id); }}
           addSubscriber={addSubscriber ?? ((_: SubscriberItem) => Promise.resolve(false))}
           updateSubscriber={updateSubscriber ?? (() => Promise.resolve())}
           subscribers={effectiveSubs}

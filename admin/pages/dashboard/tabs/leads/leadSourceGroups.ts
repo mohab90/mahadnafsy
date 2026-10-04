@@ -98,6 +98,8 @@ export interface UnassignedBreakdown {
   terminal: Array<{ status: string; label: string; count: number }>;
 }
 
+export const terminalStatusLabel = (status: string): string => TERMINAL_STATUS_AR[status] || status;
+
 /**
  * Where every lead that nobody owns actually is.
  *

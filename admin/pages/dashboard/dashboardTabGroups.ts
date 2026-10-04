@@ -110,9 +110,12 @@ export const saasOpsTabs = new Set<string>([
  *  The screen itself is not in `fullCrmDataTabs`; the reminder / performance /
  *  analytics panels read server aggregates instead. These sub-tabs still scan
  *  the array: the pipeline board renders every card, the duplicate finder
- *  compares every pair, and the four archive-family views (localNew, dawliNew,
- *  dawliOld, archive) filter the whole table — the archive specifically lists
- *  hidden rows, which the paged fetch never returns at all.
+ *  compares every pair.
+ *
+ *  The pool views (localNew, dawliOld/dawliNew = «داتا سعودي», archive) are not
+ *  here any more: each reads its own pool from GET /admin/leads/pool
+ *  (leads/useLeadPool.ts, api/lib/leadPoolFilter.js), filtered by the server
+ *  with the same rules leadSourceGroups.ts applies.
  *
  *  'table' is not here any more: it pages against GET /admin/leads/table
  *  (leads/useServerLeadTable.ts), which filters and counts in the database.
@@ -126,10 +129,6 @@ export const fullLeadArraySubTabs = new Set<string>([
   'pipeline',
   'duplicates',
   'communications',
-  'localNew',
-  'dawliNew',
-  'dawliOld',
-  'archive',
   // 'reminders' builds two of its queues — never contacted, and promised to pay
   // — by scanning the array, because no server aggregate answers either one.
   // Left out, it scanned the 500-row bootstrap page: the board showed a handful

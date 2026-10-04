@@ -41,6 +41,7 @@ const { VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES } = require('../../consta
 const { safeIsoString, safeDateOnly, sqlCairoToday, sqlCairoDayStartUtc, cairoToday, addDaysToDateOnly, cairoDayStartUtc } = require('../../lib/dates');
 const { keyset } = require('../../lib/pagination');
 const { leadTableFilter, leadTableSearch } = require('../../lib/leadTableFilter');
+const { leadPoolFilter, unassignedBreakdown } = require('../../lib/leadPoolFilter');
 const { identitySpellings } = require('../../lib/phoneNumber');
 const { branchIdForBranch } = require('../../lib/branches');
 const { postPaymentJournal, logPaymentAudit } = require('../../lib/finance');
@@ -2102,6 +2103,47 @@ router.get('/api/admin/leads/table', requireAuth, requireAdminOrStaff, requirePe
     const commsByLead = await communicationsByLead({ tenantId: req.tenantId, leadIds: rows.map(row => row.id) });
     res.json({ rows: rows.map(r => mapLeadRow(r, commsByLead)), total: counted ? Number(countRow?.total || 0) : null, page, pageSize });
   } catch (e) { logger.error('[leads-table]', e.message); sendRouteError(res, e); }
+});
+
+// GET /api/admin/leads/pool?view=localNew|dawli|archive
+// One pool tab's leads (lib/leadPoolFilter.js) instead of every lead for the
+// browser to filter. Capped: an imported archive can run to six figures, and a
+// tab that holds 20,000 rows has stopped being read row by row — `total` says
+// how many there really are, so the screen can say so.
+const POOL_LIMIT = 20000;
+router.get('/api/admin/leads/pool', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
+  try {
+    const view = String(req.query.view || '');
+    const filter = leadPoolFilter(view);
+    if (!filter) return res.status(400).json({ error: 'view must be localNew, dawli or archive' });
+    const accessScope = leadScope(req, 'l');
+    if (accessScope.none) return res.json({ rows: [], total: 0, truncated: false, breakdown: null });
+    const where = `${accessScope.sql}${filter.sql}`;
+    const whereParams = [...accessScope.params, ...filter.params];
+    // countOnly: the «محلي جديد» badge, shown on every CRM tab, needs the number alone.
+    const countOnly = req.query.countOnly === '1';
+    const [[[countRow]], [rows], breakdown] = await Promise.all([
+      pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.tenant_id = ?${where}`, [req.tenantId, ...whereParams]),
+      countOnly ? [[]] : pool.query(
+        `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.status, l.lead_type, l.branch,
+                l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
+                l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
+                l.assigned_cs_id, COALESCE(cs.name, l.assigned_cs_name) AS assigned_cs_name,
+                l.notes, l.last_follow_up, l.next_follow_up_date, l.crm_json, l.hidden, l.score, l.created_at, l.updated_at,
+                (SELECT COUNT(*) FROM communications lc WHERE lc.tenant_id = l.tenant_id AND lc.lead_id = l.id) AS communication_count
+           FROM leads l
+           LEFT JOIN staff ss ON ss.id = l.assigned_sales_id AND ss.tenant_id = l.tenant_id
+           LEFT JOIN staff cs ON cs.id = l.assigned_cs_id AND cs.tenant_id = l.tenant_id
+          WHERE l.tenant_id = ?${where}
+          ORDER BY l.created_at DESC, l.id DESC LIMIT ${POOL_LIMIT}`, [req.tenantId, ...whereParams]),
+      view === 'localNew' && !countOnly ? unassignedBreakdown(pool, req.tenantId, accessScope) : null,
+    ]);
+    const total = Number(countRow?.total || 0);
+    // The rows' own communication_count carries the number the tables show; the
+    // full message history is the lead page's to load.
+    if (countOnly) return res.json({ total });
+    res.json({ rows: rows.map(r => mapLeadRow(r, new Map())), total, truncated: total > rows.length, breakdown });
+  } catch (e) { logger.error('[leads-pool]', e.message); sendRouteError(res, e); }
 });
 
 // The indexed form of a free-text lead search, or null when there is none.
