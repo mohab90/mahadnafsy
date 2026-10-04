@@ -379,7 +379,8 @@ setInterval(async () => {
     }
     if (created) logger.info(`[cron recurring] created ${created} expense(s)`);
   } catch (e) { logger.warn('[cron recurring]', e.message); }
-}, 60000);
+// unref: a test or tool that loads this file must still be able to exit.
+}, 60000).unref?.();
 
 // Structured Installment Plans used to live here — a duplicate, older
 // implementation of the same feature routes/installments.js now owns

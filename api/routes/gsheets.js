@@ -10,6 +10,7 @@ const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
 const { requireAuth, requireAdmin, requirePermission } = require('../middleware/auth');
 const { isHtmlResponse, fetchCsvFollowRedirects, syncAllConfiguredSheets } = require('../lib/sheets');
 const { parseCsv } = require('../lib/csv');
+const { withJobLock } = require('../lib/jobLock');
 const { matchCourseId } = require('../lib/courseMatch');
 const { createRepRotation, listDistributableReps } = require('../lib/leadAssignment');
 const { toIdentity } = require('../lib/phoneNumber');
@@ -206,22 +207,29 @@ router.post('/api/admin/leads/gsheet-sync-all', requireAuth, requireAdmin, requi
 // anything until the admin deliberately configures and enables a sheet.
 // (Guarded root cause of the 2026-07-10 incident where an empty test box silently
 //  pulled 10k+ real customer leads from the hardcoded sheets on a timer.)
+// Under the same lock as lib/backgroundScheduler.js's sheet sync: both import
+// the default tenant's sheets, and two processes (a release overlapping the old
+// one) each ran this one too.
 let _gsheetAutoRunning = false;
 setInterval(async () => {
   if (_gsheetAutoRunning) return;
   _gsheetAutoRunning = true;
   try {
-    const [tenants] = await pool.query("SELECT id FROM tenants WHERE status='active'").catch(() => [[{ id: 'tenant-default' }]]);
-    for (const { id: tenantId } of tenants) {
-      const settings = await getTenantSetting('crm_settings', { tenantId, fallback: {} });
-      const sheets = Array.isArray(settings?.sheets) ? settings.sheets : [];
-      if (sheets.some(s => s.autoSync)) {
-        const r = await syncAllConfiguredSheets(tenantId, { autoOnly: true });
-        if (r.imported > 0) logger.info(`[gsheet-auto] tenant=${tenantId} imported ${r.imported} leads`);
+    await withJobLock('sheets_sync', async () => {
+      const [tenants] = await pool.query("SELECT id FROM tenants WHERE status='active'").catch(() => [[{ id: 'tenant-default' }]]);
+      for (const { id: tenantId } of tenants) {
+        const settings = await getTenantSetting('crm_settings', { tenantId, fallback: {} });
+        const sheets = Array.isArray(settings?.sheets) ? settings.sheets : [];
+        if (sheets.some(s => s.autoSync)) {
+          const r = await syncAllConfiguredSheets(tenantId, { autoOnly: true });
+          if (r.imported > 0) logger.info(`[gsheet-auto] tenant=${tenantId} imported ${r.imported} leads`);
+        }
       }
-    }
+    });
   } catch(e) { logger.error('[gsheet-auto]', e.message); }
   finally { _gsheetAutoRunning = false; }
-}, 15 * 60 * 1000);
+// unref: a timer is not a reason for the process to stay up (a test or a tool
+// that loads this file would otherwise never exit).
+}, 15 * 60 * 1000).unref?.();
 
 module.exports = router;
