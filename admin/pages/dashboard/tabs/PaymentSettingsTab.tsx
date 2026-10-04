@@ -27,6 +27,8 @@ export default function PaymentSettingsTab({ notify }: { notify: NotifyFn }) {
   useEffect(() => {
     fetch('/api/admin/sys-config?section=payment_gateway', { credentials: 'include', headers: adminAuthHeaders() })
       .then(res => res.ok ? res.json() : DEFAULT_CONFIG)
+      // A section with nothing saved answers `null`; data.manual would throw.
+      .then(saved => saved || DEFAULT_CONFIG)
       .then(data => setConfig({ ...DEFAULT_CONFIG, ...data, manual: { ...DEFAULT_CONFIG.manual, ...(data.manual || {}) }, paymob: { ...DEFAULT_CONFIG.paymob, ...(data.paymob || {}) } }))
       .catch(() => notify('error', 'فشل تحميل إعدادات الدفع'));
   }, [notify]);

@@ -26,7 +26,10 @@ export default function LeadSourcesSettingsTab({ notify }: { notify: NotifyFn })
 
   useEffect(() => {
     fetch('/api/admin/sys-config?section=lead_source_connectors', { credentials: 'include', headers: adminAuthHeaders() })
+      // null until the section has been saved once: a tenant that never set
+      // up a connector got «فشل تحميل مصادر الليد» on every visit.
       .then(res => res.ok ? res.json() : DEFAULT_CONFIG)
+      .then(saved => saved || DEFAULT_CONFIG)
       .then(data => setConfig({
         ...DEFAULT_CONFIG,
         ...data,
