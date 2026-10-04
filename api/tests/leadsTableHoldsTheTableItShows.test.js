@@ -35,8 +35,10 @@ test('the leads landing table pages on the server, the scanning views still load
   const members = [...set.matchAll(/'([a-zA-Z]+)'/g)].map(m => m[1]);
   assert.ok(!members.includes('table'),
     'the table reads one page from /admin/leads/table — downloading every lead for it is the cost this removed');
-  for (const required of ['pipeline', 'duplicates']) {
-    assert.ok(members.includes(required), `${required} scans the whole array too`);
+  assert.ok(members.includes('pipeline'), 'the pipeline board renders every card');
+  // Duplicate review and the reminders' queues are answered by the server now.
+  for (const served of ['duplicates', 'reminders']) {
+    assert.ok(!members.includes(served), `${served} reads its own server data`);
   }
   // The pool tabs read their pool from GET /admin/leads/pool instead.
   for (const pool of ['localNew', 'dawliOld', 'dawliNew', 'archive']) {

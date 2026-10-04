@@ -108,9 +108,12 @@ export const saasOpsTabs = new Set<string>([
 /** Sub-tabs of the leads screen that genuinely need every lead in memory.
  *
  *  The screen itself is not in `fullCrmDataTabs`; the reminder / performance /
- *  analytics panels read server aggregates instead. These sub-tabs still scan
- *  the array: the pipeline board renders every card, the duplicate finder
- *  compares every pair.
+ *  analytics panels read server aggregates instead. The pipeline board still
+ *  scans the array: it renders every card.
+ *
+ *  Duplicate review reads GET /admin/leads/duplicates itself, and the
+ *  reminders' undated queues («محدش كلمهم», «وعدوا بالدفع») now come from
+ *  crm-insights with the dated ones, so neither needs every lead.
  *
  *  The pool views (localNew, dawliOld/dawliNew = «داتا سعودي», archive) are not
  *  here any more: each reads its own pool from GET /admin/leads/pool
@@ -127,14 +130,6 @@ export const saasOpsTabs = new Set<string>([
  *  fetch happens on the screens that need it and nowhere else. */
 export const fullLeadArraySubTabs = new Set<string>([
   'pipeline',
-  'duplicates',
-  'communications',
-  // 'reminders' builds two of its queues — never contacted, and promised to pay
-  // — by scanning the array, because no server aggregate answers either one.
-  // Left out, it scanned the 500-row bootstrap page: the board showed a handful
-  // of rows and looked unchanged no matter what was added to it, while 14,795
-  // untouched leads and every open payment promise sat outside the slice.
-  'reminders',
 ]);
 
 /**

@@ -85,14 +85,16 @@ export function useLeadRemindersData({
     // Oldest first, because the lead that has waited longest is the one going
     // cold. Capped, because a list of eleven thousand is the thing the rep is
     // already ignoring; a day's work is what belongs on a day's screen.
-    const untouched: ReminderLead[] = leads
+    // The server queues both when it can (crm-insights); the array is the
+    // fallback, and only ever as complete as what is loaded.
+    const untouched: ReminderLead[] = (insights?.untouched ?? leads
       .filter(lead =>
         !lead.hidden
         && lead.status === 'new'
         && !lead.nextFollowUpDate
         && !(lead.communications || []).length)
       .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')))
-      .slice(0, UNTOUCHED_LIMIT)
+      .slice(0, UNTOUCHED_LIMIT))
       .map(lead => ({ ...lead, daysOverdue: 0, isToday: false, isUpcoming: false }));
 
 
@@ -107,7 +109,7 @@ export function useLeadRemindersData({
     // almost nobody does. Those that carry a date lead, oldest first; the rest
     // follow by age, so a promise made three weeks ago cannot hide behind one
     // made this morning.
-    const promised: ReminderLead[] = leads
+    const promised: ReminderLead[] = (insights?.promised ?? leads)
       .filter(lead => !lead.hidden && lead.status === 'interested_booking')
       .map(lead => ({
         ...lead,

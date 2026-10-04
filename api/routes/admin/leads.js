@@ -1569,7 +1569,7 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
   try {
     const accessScope = leadScope(req, 'l');
     if (accessScope.none) {
-      return res.json({ reminders: [], scorecard: [], redistCandidates: [], idleDays: 0 });
+      return res.json({ reminders: [], untouched: [], promised: [], scorecard: [], redistCandidates: [], idleDays: 0 });
     }
     const scopeClause = accessScope.sql;
     const scopeParams = accessScope.params;
@@ -1611,11 +1611,48 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
       [req.tenantId, ...scopeParams, ...CLOSED],
     );
 
+    // ── 1b. The two undated queues beside them ──────────────────────────────
+    // «محدش كلمهم»: new leads with no follow-up date and no contact at all,
+    // oldest first, the fifty the panel shows. «وعدوا بالدفع»: every lead at
+    // interested_booking, dated promises first. Both used to scan every lead in
+    // the browser, which held the whole table for one tab.
+    // The follow-up date as mapLeadRow reads it: the column, else crm_json's.
+    const followUpSql = `COALESCE(DATE_FORMAT(l.next_follow_up_date, '%Y-%m-%d'),
+      NULLIF(LEFT(IF(JSON_VALID(l.crm_json) AND JSON_TYPE(JSON_EXTRACT(l.crm_json, '$.nextFollowUpDate')) = 'STRING',
+        JSON_UNQUOTE(JSON_EXTRACT(l.crm_json, '$.nextFollowUpDate')), ''), 10), ''))`;
+    const queueColumns = `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.status, l.lead_type, l.branch,
+              l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
+              l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
+              l.assigned_cs_id, COALESCE(cs.name, l.assigned_cs_name) AS assigned_cs_name,
+              l.notes, l.last_follow_up, l.next_follow_up_date, l.crm_json, l.hidden, l.score,
+              l.created_at, l.updated_at,
+              (SELECT COUNT(*) FROM communications lc
+                WHERE lc.tenant_id=l.tenant_id AND lc.lead_id=l.id) AS communication_count
+         FROM leads l
+         LEFT JOIN staff ss ON ss.id = l.assigned_sales_id AND ss.tenant_id = l.tenant_id
+         LEFT JOIN staff cs ON cs.id = l.assigned_cs_id AND cs.tenant_id = l.tenant_id`;
+    const [[untouchedRows], [promisedRows]] = await Promise.all([
+      pool.query(
+        `${queueColumns}
+        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+          AND l.status = 'new' AND ${followUpSql} IS NULL
+          AND NOT EXISTS (SELECT 1 FROM communications c WHERE c.tenant_id = l.tenant_id AND c.lead_id = l.id)
+        ORDER BY l.created_at ASC, l.id ASC
+        LIMIT 50`, [req.tenantId, ...scopeParams]),
+      pool.query(
+        `${queueColumns}
+        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause} AND l.status = 'interested_booking'
+        ORDER BY ${followUpSql} IS NULL, ${followUpSql}, l.created_at ASC, l.id ASC
+        LIMIT 500`, [req.tenantId, ...scopeParams]),
+    ]);
+
     const commsByLead = await communicationsByLead({
       tenantId: req.tenantId,
-      leadIds: reminderRows.map(row => row.id),
+      leadIds: [...reminderRows, ...untouchedRows, ...promisedRows].map(row => row.id),
     });
     const reminders = reminderRows.map(r => mapLeadRow(r, commsByLead));
+    const untouched = untouchedRows.map(r => mapLeadRow(r, commsByLead));
+    const promised = promisedRows.map(r => mapLeadRow(r, commsByLead));
 
     // completionRate counts leads whose follow-up date has already passed —
     // including closed ones the list above excludes, matching what the browser
@@ -1863,6 +1900,8 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
     res.json({
       idleDays,
       reminders,
+      untouched,
+      promised,
       remindersCompletionRate: totalDue > 0 ? Math.round((completedDue / totalDue) * 100) : 0,
       scorecard: [...scorecardById.values()],
       redistCandidates,

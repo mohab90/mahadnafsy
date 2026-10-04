@@ -164,3 +164,23 @@ test('the idle-lead search returns the fifty the single query did', { skip }, as
   const { body } = await get('/api/admin/leads/crm-insights');
   assert.deepEqual(body.redistCandidates.map(r => r.lead.id), old.map(r => r.id));
 });
+
+test('the reminders\' undated queues come from the server, as the browser picked them', { skip }, async () => {
+  await pool.query("UPDATE leads SET status='interested_booking' WHERE tenant_id=? AND id IN ('ls-lead-01','ls-lead-07')", [TENANT]);
+  await pool.query("UPDATE leads SET next_follow_up_date='2026-07-01' WHERE tenant_id=? AND id='ls-lead-07'", [TENANT]);
+  // Two leads nobody has called: the oldest must lead the queue.
+  await pool.query(
+    `INSERT INTO leads (id, tenant_id, client_code, name, phone, source, status, created_at, updated_at, hidden) VALUES
+       ('ls-cold-1', ?, 'C99001', 'بارد قديم', '1017999001', 'facebook', 'new', '2026-05-01 09:00:00', NOW(), 0),
+       ('ls-cold-2', ?, 'C99002', 'بارد أحدث', '1017999002', 'facebook', 'NEW', '2026-05-03 09:00:00', NOW(), 0)`, [TENANT, TENANT]);
+  const { body } = await get('/api/admin/leads/crm-insights');
+  const all = (await get('/api/admin/leads', { limit: '500' })).body;
+  // useLeadRemindersData's own rules over every lead.
+  const untouched = all
+    .filter(l => !l.hidden && l.status === 'new' && !l.nextFollowUpDate && !(l.communications || []).length)
+    .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)) || a.id.localeCompare(b.id))
+    .slice(0, 50).map(l => l.id);
+  assert.deepEqual(untouched.slice(0, 2), ['ls-cold-1', 'ls-cold-2']);
+  assert.deepEqual(body.untouched.map(l => l.id), untouched);
+  assert.deepEqual(body.promised.map(l => l.id), ['ls-lead-07', 'ls-lead-01'], 'a dated promise leads');
+});

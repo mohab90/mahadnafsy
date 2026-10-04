@@ -1396,6 +1396,9 @@ export interface CrmInsights {
   /** Whole leads, but only those with a follow-up date inside the panel's
    *  window — 14 rows on production, not 26,887. */
   reminders: LeadItem[];
+  /** «محدش كلمهم» and «وعدوا بالدفع», queued by the server (older APIs omit them). */
+  untouched?: LeadItem[];
+  promised?: LeadItem[];
   remindersCompletionRate: number;
   scorecard: CrmScorecardRow[];
   redistCandidates: CrmRedistCandidate[];
