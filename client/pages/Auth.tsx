@@ -22,7 +22,7 @@ const Auth: React.FC = () => {
   const [waCode, setWaCode] = useState('');
   // «إعادة الإرسال» opens after the same minute the API keeps the code it just
   // sent (lib/whatsappOtp.js RESEND_COOLDOWN_SECONDS); before, the only way to
-  // ask again was «تغيير الرقم» and typing the number over.
+  // ask again was going back a step and typing the number over.
   const RESEND_AFTER_SECONDS = 60;
   const [resendIn, setResendIn] = useState(0);
   useEffect(() => {
