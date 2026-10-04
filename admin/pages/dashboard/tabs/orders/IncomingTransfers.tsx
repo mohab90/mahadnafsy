@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
-import { ArrowUpRight, Link2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ArrowUpRight, Link2, Search } from 'lucide-react';
 import { Modal } from '../../../../../shared/ui/Modal';
 import { cairoDateOnly, cairoDay } from '../../../../../shared/cairoDate';
 import { isCashBox } from '../../../../../shared/paymentMethods';
+import { foldText } from '../../../../../shared/sheetImport';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { toEgp } from '../../../../lib/money';
 
@@ -42,6 +43,24 @@ export function IncomingTransfersTable({ transfers, loading, canLink, onLink, on
   const linked = transfers.filter(transfer => transfer.paymentId);
   const totalEgp = transfers.reduce((sum, transfer) => sum + toEgp(transfer.amount, transfer.currency), 0);
   const cell = 'px-3 py-2.5 border-l border-gray-100';
+  // A month of the accounts team's sheet is hundreds of rows: find one by its
+  // number, who sent it, the customer the sheet names, or the amount.
+  const [query, setQuery] = useState('');
+  const [box, setBox] = useState('');
+  const [state, setState] = useState<'' | 'free' | 'linked'>('');
+  const boxes = useMemo(() => [...new Set(transfers.map(transfer => transfer.method))], [transfers]);
+  const shown = useMemo(() => {
+    const words = foldText(query).split(' ').filter(Boolean);
+    return transfers.filter(transfer => {
+      if (box && transfer.method !== box) return false;
+      if (state === 'free' && transfer.paymentId) return false;
+      if (state === 'linked' && !transfer.paymentId) return false;
+      if (!words.length) return true;
+      const text = foldText([transfer.reference, transfer.senderName, transfer.senderPhone, transfer.note, transfer.customerName, transfer.amount].join(' '));
+      return words.every(word => text.includes(word));
+    });
+  }, [transfers, query, box, state]);
+  const field = 'rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-200';
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -57,6 +76,23 @@ export function IncomingTransfersTable({ transfers, loading, canLink, onLink, on
           </div>
         ))}
       </div>
+      {transfers.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[200px] flex-1">
+            <Search size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input value={query} onChange={event => setQuery(event.target.value)} placeholder="رقم العملية، المحوِّل، اسم العميل، المبلغ…"
+              className={`${field} w-full pr-7`} />
+          </div>
+          <select value={box} onChange={event => setBox(event.target.value)} className={field}>
+            <option value="">كل الحسابات</option>
+            {boxes.map(name => <option key={name} value={name}>{name}</option>)}
+          </select>
+          <select value={state} onChange={event => setState(event.target.value as typeof state)} className={field}>
+            <option value="">الكل</option><option value="free">متاح للربط</option><option value="linked">مربوط</option>
+          </select>
+          <span className="text-[11px] text-gray-500">{shown.length} تحويل{shown.length > 500 ? ' (أول 500 معروضين)' : ''}</span>
+        </div>
+      )}
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px] border-collapse text-xs">
@@ -68,7 +104,7 @@ export function IncomingTransfersTable({ transfers, loading, canLink, onLink, on
               </tr>
             </thead>
             <tbody>
-              {transfers.slice(0, 300).map(transfer => (
+              {shown.slice(0, 500).map(transfer => (
                 <tr key={transfer.id} className={`border-b border-gray-100 transition-colors ${transfer.paymentId ? 'hover:bg-emerald-50/30' : 'bg-amber-50/30 hover:bg-amber-50/60'}`}>
                   <td className={`${cell} font-mono text-[10px] text-blue-600`} dir="ltr">#{transfer.reference || '—'}</td>
                   <td className={cell}>
@@ -96,6 +132,9 @@ export function IncomingTransfersTable({ transfers, loading, canLink, onLink, on
                   </td>
                 </tr>
               ))}
+              {transfers.length > 0 && shown.length === 0 && (
+                <tr><td colSpan={9} className="py-8 text-center text-xs text-gray-400">مفيش تحويل بالبحث ده</td></tr>
+              )}
               {transfers.length === 0 && (
                 <tr>
                   <td colSpan={9} className="py-12 text-center text-gray-400">

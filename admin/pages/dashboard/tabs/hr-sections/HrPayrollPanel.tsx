@@ -11,6 +11,7 @@ import { PAYROLL_STATUS_LABELS, PAYROLL_STATUS_COLORS } from './hrLabels';
 import { fmtMoney } from './hrFormat';
 import HrCompensationApprovals from './HrCompensationApprovals';
 import HrAdvancesPanel from './HrAdvancesPanel';
+import HrInstructorPayPanel from './HrInstructorPayPanel';
 
 type Notify = (type: 'success' | 'error' | 'info', message: string) => void;
 type PayrollRun = {
@@ -122,6 +123,7 @@ export default function HrPayrollPanel({ notify, canManageFinance, canManagePayr
       <div className="space-y-4">
         <HrCompensationApprovals notify={notify} />
         <HrAdvancesPanel notify={notify} canDisburse={canManageFinance} />
+        <HrInstructorPayPanel notify={notify} canManage={canManagePayroll} />
         {/* Server payroll section */}
         <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
           <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><Wallet size={16}/> كشوف الرواتب الرسمية</h3>

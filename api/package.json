@@ -9,7 +9,7 @@
     "dev": "node kill-port.js --watch",
     "dev:clean": "node kill-port.js",
     "test:unit": "node --test tests/*.test.js",
-    "test:integration": "node --test tests/integration/*.test.js",
+    "test:integration": "node --test --test-concurrency=1 tests/integration/*.test.js",
     "migrate": "node tools/migrate.cjs",
     "migrate:verify": "node tools/verify-migrations.cjs",
     "restore:rehearsal": "node tools/backup-restore-rehearsal.cjs",

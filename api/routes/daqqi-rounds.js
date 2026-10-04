@@ -1,5 +1,6 @@
 'use strict';
 const logger = require('../lib/logger');
+const { syncRoundLectures } = require('../lib/instructorPay');
 const express = require('express');
 const router = express.Router();
 const { uuidv4 } = require('../lib/id');
@@ -422,7 +423,7 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
     let savedCode = String(d.code || '');
 
     const [[existing]] = await conn.query(
-      'SELECT id,code,status FROM daqqi_rounds WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
+      'SELECT id,code,status,held_weeks_json FROM daqqi_rounds WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
       [id, req.tenantId]
     );
     const transitions = { NEW: ['NEW', 'ACTIVE'], ACTIVE: ['ACTIVE', 'FINISHED'], FINISHED: ['FINISHED'] };
@@ -470,6 +471,18 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
           room, req.tenantId,
         ]
       );
+    }
+
+    // The instructor's lecture fees follow the weeks marked held, in this
+    // transaction (lib/instructorPay.js): one per week newly held, the pending
+    // one taken back for a week no longer held.
+    if (heldJson !== null) {
+      await syncRoundLectures(conn, {
+        tenantId: req.tenantId,
+        round: { id, code: savedCode, instructor_id: d.instructorId || d.instructor_id || null, course_id: courseId, held_weeks_json: heldJson },
+        previousHeld: existing ? existing.held_weeks_json : '[]',
+        actor: req.staffRecord?.id || null,
+      });
     }
 
     if (Array.isArray(d.attendees)) {

@@ -1,6 +1,7 @@
 'use strict';
 /**
- * Sales commission for a recorded payment.
+ * Sales commission (and the instructor's share) for a payment the Paymob
+ * callback recorded.
  *
  * Lifted out of the Paymob callback, where it ran in a `setImmediate` whose
  * catch only logged a warning. That made it the one piece of money in the flow
@@ -15,88 +16,56 @@
  * payment rolls back the job goes with it, and if the payment commits the job is
  * committed too and will run.
  *
- * Idempotent by construction: crm_commissions has a unique key covering the
- * payment, so a retry updates the same row rather than paying twice.
+ * The rule itself is lib/paymentCompensation.js, the one every other payment
+ * path runs. This file used to carry its own copy, and the two had drifted: the
+ * copy wrote no instructor_fees at all — an online course payment never paid its
+ * instructor's share, the same payment at the desk did — took the commission
+ * rule in force on the day the job ran rather than on the payment's date, and
+ * credited only the client's rep, never the payment's own employee.
+ *
+ * Idempotent: crm_commissions and instructor_fees each have a unique key on the
+ * payment, and the writes are ON DUPLICATE KEY UPDATE, so a retry updates the
+ * same rows rather than paying twice.
  */
 const { pool } = require('./db');
-const { uuidv4 } = require('./id');
 const logger = require('./logger').child({ lib: 'commissionCalc' });
-const { sqlCairoToday, dateOnlyInTimeZone } = require('./dates');
+const { recordPaymentCompensation } = require('./paymentCompensation');
 
 /**
- * Work out the rate for a staff member: an explicit active rule wins, otherwise
- * the rate on the staff row.
- */
-async function resolveRate(db, { tenantId, staffId, amount }) {
-  const [[rule]] = await db.query(
-    `SELECT id, percentage_value FROM commission_rules
-      WHERE tenant_id=? AND is_active=1 AND calc_type='PERCENTAGE'
-        AND (staff_id=? OR (staff_id IS NULL AND JSON_CONTAINS(COALESCE(apply_to_roles,'[]'),
-             JSON_QUOTE((SELECT role FROM staff WHERE id=? AND tenant_id=? LIMIT 1)))))
-        AND effective_from <= ${sqlCairoToday()} AND (effective_to IS NULL OR effective_to >= ${sqlCairoToday()})
-        AND (min_payment IS NULL OR min_payment <= ?)
-      ORDER BY staff_id DESC, priority ASC LIMIT 1`,
-    [tenantId, staffId, staffId, tenantId, Number(amount)]
-  ).catch(() => [[null]]);
-
-  if (rule?.percentage_value) return { rate: Number(rule.percentage_value), ruleId: rule.id };
-
-  const [[staff]] = await db.query(
-    'SELECT commission_rate FROM staff WHERE id=? AND tenant_id=? LIMIT 1',
-    [staffId, tenantId]
-  ).catch(() => [[null]]);
-  return { rate: Number(staff?.commission_rate || 0), ruleId: null };
-}
-
-/**
- * Record the commission owed on one payment.
- *
- * @returns {Promise<{written: boolean, reason?: string, amount?: number}>}
- *   `written:false` with a reason is a normal outcome (no assigned rep, no rate)
- *   — it must not be reported as failure, or the queue would retry forever.
+ * @returns {Promise<{written: boolean, reason?: string}>}
+ *   `written:false` with a reason is a normal outcome (the payment was refunded
+ *   or deleted before the job ran, or holds no amount) — it must not be
+ *   reported as failure, or the queue would retry it until it is marked dead.
  *   A genuine fault throws, so the outbox retries it.
  */
-async function recordCommissionForPayment({ tenantId, paymentId, subscriberId, amount, branchId }, db = pool) {
-  if (!tenantId || !paymentId || !subscriberId) throw new Error('tenantId, paymentId and subscriberId are required');
-  // In EGP and in the month the payment belongs to. This took the amount in the
-  // payment's own currency (a 1,000 SAR payment became 1,000 «pounds» of
-  // commission base, summed into payroll as EGP) and the month from the server's
-  // UTC clock, so a payment after midnight in Cairo landed in the month before.
-  // The manual-payment path (lib/paymentCompensation.js) already does both.
-  let paid = Number(amount) || 0;
-  let when = dateOnlyInTimeZone();
+async function recordCommissionForPayment({ tenantId, paymentId }, db = pool) {
+  if (!tenantId || !paymentId) throw new Error('tenantId and paymentId are required');
+  const conn = await db.getConnection();
   try {
-    const [[snapshot]] = await db.query(
-      'SELECT amount_egp, date FROM payments WHERE id=? AND tenant_id=? LIMIT 1', [paymentId, tenantId]);
-    if (Number(snapshot?.amount_egp) > 0) paid = Number(snapshot.amount_egp);
-    if (snapshot?.date) when = snapshot.date instanceof Date ? dateOnlyInTimeZone(snapshot.date) : String(snapshot.date).slice(0, 10);
-  } catch (_) { /* the amount we were handed is the fallback */ }
-  if (paid <= 0) return { written: false, reason: 'non_positive_amount' };
-
-  const [[subscriber]] = await db.query(
-    'SELECT assigned_sales_id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1',
-    [subscriberId, tenantId]
-  );
-  const staffId = subscriber?.assigned_sales_id || null;
-  if (!staffId) return { written: false, reason: 'no_assigned_sales' };
-
-  const { rate, ruleId } = await resolveRate(db, { tenantId, staffId, amount: paid });
-  if (!(rate > 0)) return { written: false, reason: 'no_rate' };
-
-  const commission = Number((paid * rate / 100).toFixed(2));
-  await db.query(
-    `INSERT INTO crm_commissions
-       (id, tenant_id, branch_id, staff_id, payment_id, rule_id, client_id, client_type,
-        payment_amount, commission_amount, calc_details, month, year, status, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'PENDING',NOW())
-     ON DUPLICATE KEY UPDATE commission_amount=VALUES(commission_amount)`,
-    [uuidv4(), tenantId, branchId || 'branch-other', staffId, paymentId, ruleId, subscriberId, 'subscriber',
-      paid, commission,
-      JSON.stringify({ rate, calc_type: 'PERCENTAGE', rule_id: ruleId, trigger: 'payment' }),
-      Number(when.slice(5, 7)), Number(when.slice(0, 4))]
-  );
-  logger.info('commission recorded', { paymentId, staffId, commission, rate });
-  return { written: true, amount: commission };
+    await conn.beginTransaction();
+    const [[payment]] = await conn.query(
+      `SELECT status, amount_egp FROM payments
+        WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
+      [paymentId, tenantId]
+    );
+    if (!payment || !['paid', 'confirmed'].includes(String(payment.status || '').toLowerCase())) {
+      await conn.rollback();
+      return { written: false, reason: 'payment_not_paid' };
+    }
+    if (!(Number(payment.amount_egp) > 0)) {
+      await conn.rollback();
+      return { written: false, reason: 'non_positive_amount' };
+    }
+    await recordPaymentCompensation({ paymentId, tenantId, actor: 'paymob' }, conn);
+    await conn.commit();
+    logger.info('payment compensation recorded', { paymentId });
+    return { written: true };
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    throw error;
+  } finally {
+    conn.release();
+  }
 }
 
 module.exports = { recordCommissionForPayment };

@@ -20,6 +20,7 @@ const { describeReason, sendWhatsApp } = require('./whatsapp');
 const { toIdentity, isPlausible, identitySpellings } = require('./phoneNumber');
 const { resolveSecret } = require('./secretResolver');
 const logger = require('./logger');
+const { ensureLeadForUser } = require('./registrationLead');
 
 const CODE_TTL_MINUTES = Math.max(1, Number(process.env.WA_OTP_TTL_MINUTES || 10));
 const MAX_ATTEMPTS = Math.max(1, Number(process.env.WA_OTP_MAX_ATTEMPTS || 5));
@@ -33,6 +34,11 @@ const SIGNUP_CODES_PER_HOUR = Math.max(1, Number(process.env.WA_SIGNUP_CODES_PER
 // and rotating IPs could therefore send unlimited WhatsApp messages to any
 // registered customer — their phone, and the institute's send budget.
 const LOGIN_CODES_PER_HOUR = Math.max(1, Number(process.env.WA_LOGIN_CODES_PER_HOUR || 6));
+// A second request for a number whose code went out moments ago — a double tap
+// on «إرسال», or an impatient «إعادة الإرسال» — sends nothing and leaves that
+// code live. Issuing a new one used to invalidate the first: the customer got
+// two messages, typed the code from the first, and was told it was wrong.
+const RESEND_COOLDOWN_SECONDS = Math.max(0, Number(process.env.WA_OTP_RESEND_SECONDS || 60));
 
 /**
  * Reduce anything a user might type to comparable digits.
@@ -153,7 +159,31 @@ async function requestLoginCode({ tenantId, phone }) {
   // response told anyone watching whether a number was registered. Now both
   // paths do the same work and answer the same way.
   const isNewAccount = !user;
-  {
+  // One request per number at a time: the cooldown and the hourly cap below
+  // are a read followed by a write, and two requests in the same instant both
+  // passed the read. The lock is held until the new code is committed.
+  const lockName = `wa-otp:${crypto.createHash('sha256').update(`${tenantId}:${normalized}`).digest('hex').slice(0, 40)}`;
+  const conn = await pool.getConnection();
+  let locked = false;
+  const code = generateCode();
+  const id = uuidv4();
+  try {
+    const [[lock]] = await conn.query('SELECT GET_LOCK(?, 5) AS acquired', [lockName]);
+    if (Number(lock?.acquired) !== 1) return { ok: true, delivered: false, isNewAccount };
+    locked = true;
+
+    if (RESEND_COOLDOWN_SECONDS > 0) {
+      const [[live]] = await conn.query(
+        `SELECT id FROM otp_codes
+          WHERE tenant_id=? AND phone=? AND type='login' AND used=0 AND expires_at > NOW()
+            AND delivery_status <> 'failed' AND created_at > DATE_SUB(NOW(), INTERVAL ? SECOND)
+          LIMIT 1`,
+        [tenantId, normalized, RESEND_COOLDOWN_SECONDS]
+      );
+      // The code already on its way stays the one to type.
+      if (live) return { ok: true, delivered: false, isNewAccount, cooldown: true };
+    }
+
     // The IP limiter cannot carry this alone: once codes reach numbers with no
     // account, rotating IPs would turn the institute's own WhatsApp into a way
     // to message strangers. This caps a single number regardless of source.
@@ -168,7 +198,7 @@ async function requestLoginCode({ tenantId, phone }) {
     // September three refused codes (UltraMsg stopped) made the fourth request
     // answer «sent» and send nothing.
     const cap = isNewAccount ? SIGNUP_CODES_PER_HOUR : LOGIN_CODES_PER_HOUR;
-    const [[recent]] = await pool.query(
+    const [[recent]] = await conn.query(
       `SELECT COUNT(*) AS n FROM otp_codes
         WHERE tenant_id=? AND phone=? AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)
           AND delivery_status <> 'failed'`,
@@ -179,12 +209,7 @@ async function requestLoginCode({ tenantId, phone }) {
       // Reported as success so the throttle itself cannot be used to probe.
       return { ok: true, delivered: false, isNewAccount };
     }
-  }
 
-  const code = generateCode();
-  const id = uuidv4();
-  const conn = await pool.getConnection();
-  try {
     await conn.beginTransaction();
     await conn.query(
       "UPDATE otp_codes SET used=1 WHERE tenant_id=? AND phone=? AND type='login' AND used=0",
@@ -200,6 +225,7 @@ async function requestLoginCode({ tenantId, phone }) {
     await conn.rollback().catch(() => {});
     throw error;
   } finally {
+    if (locked) await conn.query('SELECT RELEASE_LOCK(?)', [lockName]).catch(() => {});
     conn.release();
   }
 
@@ -344,6 +370,18 @@ async function verifyLoginCode({ tenantId, phone, code, name = null }) {
       );
       created = true;
       logger.info('[wa-otp] created an account from a verified WhatsApp number');
+      // A signup is a potential client, by WhatsApp as by email (routes/auth.js
+      // /register does the same): without this the account existed and no
+      // salesperson ever had a lead to call. Best-effort — a lead that cannot be
+      // written must not refuse somebody the login they just verified.
+      try {
+        await ensureLeadForUser(conn, {
+          tenantId,
+          user: { id: userId, name: String(name || '').trim().slice(0, 200), email: null, phone: normalized },
+        });
+      } catch (leadError) {
+        logger.warn('[wa-otp] could not add the signup to the client base', { error: leadError.message });
+      }
     } else {
       await conn.query(
         'UPDATE users SET phone_verified_at = NOW() WHERE id=? AND tenant_id=?',
@@ -420,4 +458,5 @@ module.exports = {
   verifyLoginCode,
   CODE_TTL_MINUTES,
   MAX_ATTEMPTS,
+  RESEND_COOLDOWN_SECONDS,
 };

@@ -83,4 +83,29 @@ async function linkTransfer(conn, { tenantId, paymentId, link, actor = {} }) {
 // «كاش» alone is cash; «فودافون كاش» is a wallet. Same rule as shared/paymentMethods.ts isCashBox.
 const isCashMethod = method => /نقد|خزن/.test(String(method || '')) || /^\s*(cash|كاش)\s*$/i.test(String(method || ''));
 
-module.exports = { cleanTransfer, recordTransfer, linkTransfer, isCashMethod };
+/**
+ * «رفع ملف التحويلات» — a sheet of what arrived, one row per transfer. Each row
+ * stands alone: an operation number already on the box (an earlier upload of
+ * the same sheet, or a transfer typed in by hand) is counted, not refused, so
+ * uploading the sheet again as it grows adds only its new rows.
+ */
+const IMPORT_LIMIT = 3000;
+
+async function importTransfers(db, { tenantId, transfers, actor = {} }) {
+  if (!Array.isArray(transfers) || !transfers.length) throw refused('الملف مافيهوش تحويلات', 400);
+  if (transfers.length > IMPORT_LIMIT) throw refused(`الحد ${IMPORT_LIMIT} تحويل في المرة — قسّم الملف`, 400);
+  const result = { created: 0, existing: 0, failed: [] };
+  for (let index = 0; index < transfers.length; index++) {
+    try {
+      await recordTransfer(db, { tenantId, transfer: transfers[index], actor });
+      result.created += 1;
+    } catch (error) {
+      if (error?.code === 'TRANSFER_DUPLICATE') { result.existing += 1; continue; }
+      if (!error?.statusCode || error.statusCode >= 500) throw error;
+      result.failed.push({ index, error: error.message });
+    }
+  }
+  return result;
+}
+
+module.exports = { cleanTransfer, recordTransfer, linkTransfer, importTransfers, isCashMethod, IMPORT_LIMIT };

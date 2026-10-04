@@ -939,7 +939,13 @@ router.post('/api/webhooks/paymob', paymobLimiter, async (req, res) => {
     res.status(200).json({ ok: true });
   } catch (e) {
     logger.error('[paymob/webhook]', e.message);
-    res.status(200).json({ ok: false, reason: 'processing_error' });
+    // A 200 here told Paymob the callback was delivered: a captured payment
+    // whose crediting failed (database down, period lock, a deadlock) was never
+    // sent again and the order stayed unpaid. finalisePaymobOrder is safe to
+    // repeat — a lock, the order's own status, and the transaction id — so a
+    // retry credits it once. A bad signature or a disabled gateway stays 200:
+    // sending those again changes nothing.
+    res.status(500).json({ ok: false, reason: 'processing_error' });
   }
 });
 

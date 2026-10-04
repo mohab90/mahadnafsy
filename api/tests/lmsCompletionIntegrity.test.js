@@ -51,6 +51,7 @@ test('completeCourse: rejects with 409 when there is no paid tenant enrollment',
 test('completeCourse: requireFullProgress defaults to true (LMS-07) — rejects incomplete lectures even when the caller omits the flag', async () => {
   const conn = mockConn([
     { match: 'FROM subscribers s', rows: [{ subscriber_id: 's1', name: 'Test', email: 't@x.com', course_id: 'c1', title: 'Course', price_egp: 100, enrollment_id: 'e1' }] },
+    { match: 'FROM payments p', rows: [{ ok: 1 }] },
     { match: 'FROM course_lectures', rows: [{ total: 5, completed: 3 }] },
   ]);
   await assert.rejects(
@@ -62,6 +63,7 @@ test('completeCourse: requireFullProgress defaults to true (LMS-07) — rejects 
 test('completeCourse: requireFullProgress=true rejects when lectures are incomplete', async () => {
   const conn = mockConn([
     { match: 'FROM subscribers s', rows: [{ subscriber_id: 's1', name: 'Test', email: 't@x.com', course_id: 'c1', title: 'Course', price_egp: 100, enrollment_id: 'e1' }] },
+    { match: 'FROM payments p', rows: [{ ok: 1 }] },
     { match: 'FROM course_lectures', rows: [{ total: 5, completed: 3 }] },
   ]);
   await assert.rejects(
@@ -76,6 +78,7 @@ test('completeCourse: 80% of lectures is enough to earn the certificate', async 
   // — asserted above — still does not. ceil() keeps 80% of 5 at 4, never 3.
   const conn = mockConn([
     { match: 'FROM subscribers s', rows: [{ subscriber_id: 's1', name: 'Test', email: 't@x.com', course_id: 'c1', title: 'Course', price_egp: 100, enrollment_id: 'e1' }] },
+    { match: 'FROM payments p', rows: [{ ok: 1 }] },
     { match: 'FROM course_lectures', rows: [{ total: 5, completed: 4 }] },
     { match: 'FROM course_quizzes', rows: [{ required_count: 0, passed_count: 0 }] },
     { match: 'FROM course_completions', rows: [] },
@@ -105,6 +108,7 @@ test('completeCourse: rejects certificate issuance until every required quiz is 
 test('completeCourse: requireFullProgress=true succeeds once all lectures are done, and records tenant_id on the completion row', async () => {
   const conn = mockConn([
     { match: 'FROM subscribers s', rows: [{ subscriber_id: 's1', name: 'Test', email: 't@x.com', course_id: 'c1', title: 'Course', price_egp: 100, enrollment_id: 'e1' }] },
+    { match: 'FROM payments p', rows: [{ ok: 1 }] },
     { match: 'FROM course_lectures', rows: [{ total: 5, completed: 5 }] },
     { match: 'FROM course_quizzes q', rows: [{ required_count: 1, passed_count: 1 }] },
     { match: 'FROM course_completions', rows: [] }, // not already completed

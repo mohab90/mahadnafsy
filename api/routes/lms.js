@@ -2,6 +2,7 @@
 const express  = require('express');
 const router   = express.Router();
 const { uuidv4 } = require('../lib/id');
+const { recordDeliveredLecture, withdrawDeliveredLecture } = require('../lib/instructorPay');
 
 const { pool, cacheInvalidate } = require('../lib/db');
 const { tryJson, validate } = require('../lib/helpers');
@@ -28,7 +29,7 @@ const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = re
 const { bulkOperationLimiter, publicLimiter } = require('../middleware/rateLimits');
 
 const { escapeHtml } = require('../lib/html');
-const { cairoToday } = require('../lib/dates');
+const { cairoToday, dateOnlyInTimeZone } = require('../lib/dates');
 
 function validHttpUrl(value) {
   try { return ['http:', 'https:'].includes(new URL(String(value)).protocol); } catch { return false; }
@@ -437,6 +438,25 @@ router.patch('/api/admin/live-sessions/:id', requireAuth, requireAdmin, async (r
               duration_min, status, recording_url, notes, created_by, created_at
        FROM live_sessions WHERE id=? AND tenant_id=?`, [req.params.id, req.tenantId]
     );
+    // A session that ended is a lecture delivered: the course instructor's fee
+    // when they are paid by the lecture or the hour (lib/instructorPay.js), its
+    // hours the session's own length. Reopened, the pending fee goes back.
+    const wasEnded = String(current.status).toLowerCase() === 'ended';
+    const isEnded = String(row?.status || '').toLowerCase() === 'ended';
+    if (isEnded !== wasEnded && row?.course_id) {
+      const sourceKey = `live:${row.id}`;
+      if (isEnded) {
+        const [[course]] = await pool.query('SELECT instructor_id FROM courses WHERE id=? AND tenant_id=? LIMIT 1', [row.course_id, req.tenantId]);
+        await recordDeliveredLecture(pool, {
+          tenantId: req.tenantId, instructorId: course?.instructor_id || null, courseId: row.course_id, sourceKey,
+          date: row.starts_at ? dateOnlyInTimeZone(new Date(row.starts_at)) : cairoToday(),
+          hours: Number(row.duration_min) > 0 ? Number(row.duration_min) / 60 : null,
+          note: `جلسة أونلاين — ${row.title || ''}`.trim(), actor: req.staffRecord?.id || null,
+        });
+      } else {
+        await withdrawDeliveredLecture(pool, { tenantId: req.tenantId, sourceKey });
+      }
+    }
     res.json(row);
   } catch (e) { res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
 });

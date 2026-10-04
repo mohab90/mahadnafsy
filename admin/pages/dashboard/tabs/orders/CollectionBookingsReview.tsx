@@ -151,6 +151,7 @@ export function CollectionBookingsReview({ notify, onChanged }: { notify: Notify
       {target && (
         <LinkTransferDialog
           title={target.kind === 'request' ? `${target.row.name} — عميل جديد` : target.row.subscriberName}
+          customerName={target.kind === 'request' ? target.row.name : target.row.subscriberName}
           amount={target.row.amount}
           currency={target.row.currency}
           method={target.kind === 'request' ? target.row.payment.paymentMethod : target.row.paymentMethod}

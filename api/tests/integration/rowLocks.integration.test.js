@@ -13,11 +13,14 @@
 //
 // Nothing is committed — both transactions roll back — so it reads the database
 // it runs against without changing it.
-const { test } = require('node:test');
+const { test, after } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 const { pool } = require('../../lib/db');
+
+// The pool stays open otherwise and the run never ends.
+after(() => pool.end().catch(() => {}));
 
 const MONEY_TABLES = ['payments', 'orders', 'journal_entries', 'enrollments', 'leads', 'subscribers'];
 

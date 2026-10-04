@@ -730,6 +730,23 @@ console.log('\n27. Unimported app files');
   }
 }
 
+// «تأكيد رد المبلغ» wrote status='REFUNDED' into an ENUM that has no such
+// member, and «صيانة العملاء» wrote 'اون لاين' into subscribers.branch: under
+// STRICT_TRANS_TABLES both failed every time. enum-value-audit existed, ran
+// separately, and could not see either (it skipped any SQL string holding a
+// quote). It reads them now, and runs here, where a failure stops the release.
+console.log('\n28. Values written into ENUM columns');
+{
+  const scan = spawnSync(process.execPath, [join(ROOT, 'tools', 'enum-value-audit.cjs')], { encoding: 'utf8' });
+  const out = `${scan.stdout || ''}${scan.stderr || ''}`;
+  if (scan.status === 0) {
+    pass('enum writes: every value written into an ENUM column is one it accepts');
+  } else {
+    for (const line of out.split('\n').filter(line => /^\s+(api\/|\S+ ←)/.test(line)).slice(0, 12)) console.log(`     ${line.trim()}`);
+    fail('a value written into an ENUM column the column refuses — run: npm run audit:enums');
+  }
+}
+
 // ── Summary ──────────────────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 if (warnings === 0) {

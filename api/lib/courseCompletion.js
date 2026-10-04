@@ -4,6 +4,7 @@ const { pool } = require('./db');
 const { uuidv4 } = require('./id');
 const { certificateCode, writeCertificateEvent } = require('./certificateLifecycle');
 const outbox = require('./outbox');
+const { hasPaidForCourse } = require('./coursePaid');
 
 const { escapeHtml } = require('./html');
 
@@ -30,15 +31,15 @@ async function completeCourse({
          JOIN enrollments e ON e.subscriber_id=s.id AND e.tenant_id=s.tenant_id AND e.course_id=?
           AND e.status='active' AND e.access_type='full'
          JOIN courses c ON c.id=e.course_id AND c.tenant_id=e.tenant_id AND c.deleted_at IS NULL
-        WHERE s.id=? AND s.tenant_id=? AND s.deleted_at IS NULL
-          AND (COALESCE(c.price_egp,0)<=0 OR EXISTS (
-            SELECT 1 FROM payments p
-             WHERE p.tenant_id=s.tenant_id AND p.subscriber_id=s.id AND p.status='paid' AND p.deleted_at IS NULL
-               AND (p.course_id=c.id OR EXISTS (SELECT 1 FROM bundle_courses bc
-                 WHERE bc.tenant_id=p.tenant_id AND bc.bundle_id=p.bundle_id AND bc.course_id=c.id))
-          )) LIMIT 1 FOR UPDATE`,
+        WHERE s.id=? AND s.tenant_id=? AND s.deleted_at IS NULL LIMIT 1 FOR UPDATE`,
       [courseId, subscriberId, tenantId]
     );
+    // A free course needs no payment; any other one is paid for by a payment
+    // row or by «مدفوع قبل السيستم» (lib/coursePaid.js).
+    if (eligibility && Number(eligibility.price_egp || 0) > 0
+        && !(await hasPaidForCourse(conn, { tenantId, subscriberId, courseId }))) {
+      const error = new Error('Paid tenant enrollment is required'); error.statusCode = 409; throw error;
+    }
     if (!eligibility) {
       const error = new Error('Paid tenant enrollment is required'); error.statusCode = 409; throw error;
     }

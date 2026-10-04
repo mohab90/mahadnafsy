@@ -19,6 +19,9 @@ function compensationDb(payment, { ruleRate = 5, instructorShare = 10 } = {}) {
         return [[{ instructor_id: 'instructor-1', revenue_share_pct: instructorShare }]];
       }
       if (sql.includes('INSERT INTO crm_commissions') || sql.includes('INSERT INTO instructor_fees')) return [{}];
+      // The retention bonus check (lib/instructorPay.js): this instructor has none.
+      if (sql.includes('SELECT instructor_id FROM courses')) return [[{ instructor_id: 'instructor-1' }]];
+      if (sql.includes('FROM instructor_rates WHERE')) return [[null]];
       throw new Error(`Unexpected query: ${sql}`);
     },
   };
