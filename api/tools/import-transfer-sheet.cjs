@@ -28,7 +28,7 @@ const forcedBox = arg('box', null);
 const fallbackBox = arg('unmatched-box', null);
 if (!file || !fs.existsSync(file)) { console.error('usage: node tools/import-transfer-sheet.cjs <file.xlsx> [--apply] [--box "<account>"]'); process.exit(2); }
 
-const fold = value => String(value ?? '').replace(/[إأآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, ' ').trim();
+const fold = value => String(value ?? '').replace(/[\u0660-\u0669]/g, d => String(d.charCodeAt(0) - 0x0660)).replace(/[إأآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, ' ').trim();
 const { canonicalChannel } = require('../lib/paymentChannels');
 const digitsOf = value => String(value ?? '').replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x0660)).replace(/\D/g, '');
 
@@ -63,7 +63,7 @@ function boxFor(account, boxes) {
        SELECT payment_method AS method FROM payments WHERE tenant_id=? AND payment_method IS NOT NULL AND payment_method<>''
        UNION SELECT method FROM incoming_transfers WHERE tenant_id=?) m`, [tenantId, tenantId]);
   const boxes = known.map(row => row.method);
-  const transfers = []; const problems = [];
+  const transfers = []; const problems = []; const mapping = new Map();
   for (const tab of tabs) {
     const [heading, ...rows] = tab.rows;
     const col = words => (heading || []).findIndex(cell => words.some(word => fold(cell).includes(word)));
@@ -73,7 +73,11 @@ function boxFor(account, boxes) {
       const reference = digitsOf(row[at.reference]) || String(row[at.reference] ?? '').trim();
       const amount = Number(digitsOf(row[at.amount]) ? String(row[at.amount]).replace(/[^\d.]/g, '') : NaN);
       if (!reference || !(amount > 0)) { problems.push(`${tab.name} row ${index + 2}: missing number or amount`); return; }
-      const box = forcedBox || boxFor(at.box >= 0 ? row[at.box] : tab.name, boxes) || fallbackBox;
+      const account = at.box >= 0 ? row[at.box] : tab.name;
+      const matched = forcedBox || boxFor(account, boxes);
+      const box = matched || fallbackBox;
+      const key = `${account} → ${box || '—'}${!matched && box ? '  (--unmatched-box: no known account has this number)' : ''}`;
+      mapping.set(key, (mapping.get(key) || 0) + 1);
       if (!box) { problems.push(`${tab.name} row ${index + 2}: account «${at.box >= 0 ? row[at.box] : tab.name}» matches no single known account — pass --box`); return; }
       const phone = at.phone >= 0 ? digitsOf(row[at.phone]) : '';
       transfers.push({
@@ -86,6 +90,8 @@ function boxFor(account, boxes) {
   const byBox = transfers.reduce((map, t) => map.set(t.method, (map.get(t.method) || 0) + 1), new Map());
   console.log(`${transfers.length} transfer(s) read, ${transfers.reduce((s, t) => s + t.amount, 0).toLocaleString('en')} EGP`);
   for (const [box, n] of byBox) console.log(`  ${box}: ${n}`);
+  console.log('\nsheet account → account recorded on:');
+  for (const [line, n] of mapping) console.log(`  ${line}: ${n}`);
   if (problems.length) { console.log(`\n${problems.length} row(s) not read:`); problems.slice(0, 30).forEach(p => console.log(`  - ${p}`)); }
   if (!apply) { console.log('\nNothing written — run again with --apply.'); await pool.end(); return; }
   const result = await importTransfers(pool, { tenantId, transfers, actor: { name: 'استيراد شيت التحويلات غير المؤكدة' } });
