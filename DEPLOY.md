@@ -205,7 +205,7 @@ npm --prefix api run readiness:production:live
      واشترك في `messages`. الطلبات بتتوقّع بـ `WHATSAPP_APP_SECRET`.
    - Messenger وInstagram: `https://<api>/api/webhooks/messenger` بالـ verify token اللي في `MESSENGER_WEBHOOK_VERIFY_TOKEN`،
      واشترك في `messages` للصفحة (object `page`) وللانستجرام (object `instagram`).
-4. **أنواع الرسائل:** «قنوات الرسائل ← صحة الرسايل ← أنواع الرسائل»: افتح «الرد على العملاء» (`inbox_reply`) علشان
+4. **أنواع الرسائل:** «التسويق ← صحة الرسايل ← أنواع رسايل الواتساب المسموح بيها»: افتح «الرد على العملاء» (`inbox_reply`) علشان
    الرد من الصندوق، و«الحملات الجماعية» (`broadcast`) علشان الحملات.
 5. **الحملات الترويجية:** بتتبعت بقالب متوافق عليه من WhatsApp Manager. اللي يكتب «إلغاء» أو STOP، أو يدوس زرار
    إيقاف الرسائل في القالب، بيتشال من الحملات تلقائياً.

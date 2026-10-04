@@ -237,7 +237,7 @@ router.post('/api/admin/whatsapp-campaigns/:id/send', ...manage, bulkOperationLi
     if (!await require('../lib/whatsapp').isCategoryOpen('broadcast', req.tenantId)) {
       await conn.rollback(); transactionStarted = false;
       return res.status(409).json({
-        error: 'إرسال الحملات مقفول — افتحه من «قنوات الرسائل ← صحة الرسايل ← أنواع الرسائل» (الحملات الجماعية)',
+        error: 'إرسال الحملات مقفول — افتحه من «صحة الرسايل ← أنواع رسايل الواتساب المسموح بيها» (الحملات الجماعية)',
         code: 'BROADCAST_DISABLED',
       });
     }
