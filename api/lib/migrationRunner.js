@@ -158,6 +158,16 @@ async function prepareIdempotentStatement(pool, statement) {
     return `CREATE ${standaloneCreate[1] || ''}INDEX \`${standaloneCreate[2]}\` ON \`${standaloneCreate[3]}\`${standaloneCreate[4]}`;
   }
 
+  // Unguarded CREATE TABLE / CREATE INDEX against a database bootstrapped from
+  // schema.sql: the object already exists in its final shape (see the ALTER
+  // actions below for why the files cannot simply gain IF NOT EXISTS).
+  const plainCreateTable = statement.match(/^CREATE\s+TABLE\s+(?!IF\b)`?([A-Za-z0-9_$]+)`?\s*\(/i);
+  if (plainCreateTable && await objectExists(pool, 'table', plainCreateTable[1])) return null;
+  const plainCreateIndex = statement.match(
+    /^CREATE\s+(?:UNIQUE\s+|FULLTEXT\s+)?INDEX\s+(?!IF\b)`?([A-Za-z0-9_$]+)`?\s+ON\s+`?([A-Za-z0-9_$]+)`?/i
+  );
+  if (plainCreateIndex && await objectExists(pool, 'index', plainCreateIndex[2], plainCreateIndex[1])) return null;
+
   const alter = statement.match(
     /^ALTER\s+TABLE\s+(IF\s+EXISTS\s+)?`?([A-Za-z0-9_$]+)`?\s+([\s\S]+)$/i
   );
@@ -166,25 +176,61 @@ async function prepareIdempotentStatement(pool, statement) {
   if (guardedTable && !await objectExists(pool, 'table', table)) return null;
 
   const kept = [];
+  // Names this same statement drops: "DROP INDEX x, ADD UNIQUE KEY x (…)"
+  // redefines x, and the add must not be skipped for an index that exists only
+  // until the drop beside it runs (migration 171 does exactly this).
+  const droppedHere = new Set();
+  const existsAfterDrops = async (kind, name) => !droppedHere.has(`${kind}:${name.toLowerCase()}`)
+    && objectExists(pool, kind, table, name);
   for (const originalAction of splitAlterActions(actionSql)) {
     let action = originalAction;
     const addColumn = action.match(/^ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+`?([A-Za-z0-9_$]+)`?/i);
     const addIndex = action.match(/^ADD\s+(?:UNIQUE\s+)?(?:INDEX|KEY)\s+IF\s+NOT\s+EXISTS\s+`?([A-Za-z0-9_$]+)`?/i);
     const addConstraint = action.match(/^ADD\s+CONSTRAINT\s+IF\s+NOT\s+EXISTS\s+`?([A-Za-z0-9_$]+)`?/i);
     const dropIndex = action.match(/^DROP\s+(?:INDEX|KEY)\s+IF\s+EXISTS\s+`?([A-Za-z0-9_$]+)`?/i);
+    // The same two actions written without a guard. A database bootstrapped
+    // from schema.sql already has every index in its final shape, so replaying
+    // migration 065's "DROP INDEX uniq_payroll_run, ADD UNIQUE KEY
+    // uniq_payroll_run_scope" against it failed on the drop and stopped every
+    // migration after it. The files cannot gain the guard themselves: they are
+    // checksummed, and production recorded the unguarded text. An index, column
+    // or constraint that is already gone has been dropped; one already there
+    // has been added.
+    const plainDropIndex = !dropIndex && action.match(/^DROP\s+(?:INDEX|KEY)\s+`?([A-Za-z0-9_$]+)`?\s*$/i);
+    const plainAddIndex = !addIndex && action.match(/^ADD\s+(?:UNIQUE\s+)?(?:INDEX|KEY)\s+`?([A-Za-z0-9_$]+)`?\s*\(/i);
+    const plainAddColumn = !addColumn && action.match(/^ADD\s+(?:COLUMN\s+)?`?([A-Za-z0-9_$]+)`?\s+(?!KEY\b|INDEX\b|UNIQUE\b|CONSTRAINT\b|PRIMARY\b|FOREIGN\b|FULLTEXT\b)[A-Za-z]/i);
+    const plainDropColumn = action.match(/^DROP\s+(?:COLUMN\s+)?(?!IF\b|INDEX\b|KEY\b|FOREIGN\b|PRIMARY\b|CONSTRAINT\b|CHECK\b)`?([A-Za-z0-9_$]+)`?\s*$/i);
+    const plainAddConstraint = !addConstraint && action.match(/^ADD\s+CONSTRAINT\s+`?([A-Za-z0-9_$]+)`?/i);
+    const plainDropForeignKey = action.match(/^DROP\s+(?:FOREIGN\s+KEY|CONSTRAINT)\s+`?([A-Za-z0-9_$]+)`?\s*$/i);
     if (addColumn) {
-      if (await objectExists(pool, 'column', table, addColumn[1])) continue;
+      if (await existsAfterDrops('column', addColumn[1])) continue;
       action = action.replace(/\s+IF\s+NOT\s+EXISTS/i, '');
     } else if (addIndex) {
-      if (await objectExists(pool, 'index', table, addIndex[1])) continue;
+      if (await existsAfterDrops('index', addIndex[1])) continue;
       action = action.replace(/\s+IF\s+NOT\s+EXISTS/i, '');
     } else if (addConstraint) {
-      if (await objectExists(pool, 'constraint', table, addConstraint[1])) continue;
+      if (await existsAfterDrops('constraint', addConstraint[1])) continue;
       action = action.replace(/\s+IF\s+NOT\s+EXISTS/i, '');
     } else if (dropIndex) {
       if (!await objectExists(pool, 'index', table, dropIndex[1])) continue;
       action = action.replace(/\s+IF\s+EXISTS/i, '');
+    } else if (plainDropIndex && !await objectExists(pool, 'index', table, plainDropIndex[1])) {
+      continue;
+    } else if (plainAddIndex && await existsAfterDrops('index', plainAddIndex[1])) {
+      continue;
+    } else if (plainAddColumn && await existsAfterDrops('column', plainAddColumn[1])) {
+      continue;
+    } else if (plainDropColumn && !await objectExists(pool, 'column', table, plainDropColumn[1])) {
+      continue;
+    } else if (plainAddConstraint && await existsAfterDrops('constraint', plainAddConstraint[1])) {
+      continue;
+    } else if (plainDropForeignKey && !await objectExists(pool, 'constraint', table, plainDropForeignKey[1])) {
+      continue;
     }
+    const dropped = dropIndex || plainDropIndex ? ['index', (dropIndex || plainDropIndex)[1]]
+      : plainDropColumn ? ['column', plainDropColumn[1]]
+        : plainDropForeignKey ? ['constraint', plainDropForeignKey[1]] : null;
+    if (dropped) droppedHere.add(`${dropped[0]}:${dropped[1].toLowerCase()}`);
     kept.push(action);
   }
   return kept.length ? `ALTER TABLE \`${table}\` ${kept.join(', ')}` : null;

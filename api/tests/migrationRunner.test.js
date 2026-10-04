@@ -134,3 +134,52 @@ test('MariaDB idempotency guards become metadata-checked MySQL DDL', async () =>
   assert.match(prepared, /ADD INDEX idx_tenant/);
   assert.match(prepared, /DROP INDEX idx_old/);
 });
+
+// A pool whose information_schema answers from a fixed set of existing objects.
+function schemaPool(existing) {
+  return {
+    async query(sql, params) {
+      const kind = /information_schema\.tables/i.test(sql) ? 'table'
+        : /information_schema\.columns/i.test(sql) ? 'column'
+          : /information_schema\.statistics/i.test(sql) ? 'index' : 'constraint';
+      const [table, name] = params;
+      return [[{ object_exists: existing.has(name == null ? `${kind}:${table}` : `${kind}:${table}.${name}`) ? 1 : 0 }]];
+    },
+  };
+}
+
+test('unguarded actions replay as no-ops against a database already in final shape', async () => {
+  // A database bootstrapped from schema.sql replays every migration past the
+  // baseline. Migration 065 drops an index the snapshot no longer has and adds
+  // one it already has; 095 adds a column that is already there; 178 creates a
+  // table that exists. Each stopped the runner and every migration after it.
+  const pool = schemaPool(new Set([
+    'index:payroll_runs.uniq_payroll_run_scope', 'column:daqqi_waitlist.tenant_id',
+    'table:cash_flow_forecast_assumptions', 'index:leads.idx_existing',
+  ]));
+  assert.equal(await prepareIdempotentStatement(pool,
+    'ALTER TABLE payroll_runs DROP INDEX uniq_payroll_run, ADD UNIQUE KEY uniq_payroll_run_scope (tenant_id, branch_id, month, year)'), null);
+  assert.equal(await prepareIdempotentStatement(pool,
+    "ALTER TABLE daqqi_waitlist ADD COLUMN tenant_id VARCHAR(64) NOT NULL DEFAULT 'tenant-default'"), null);
+  assert.equal(await prepareIdempotentStatement(pool, 'CREATE TABLE cash_flow_forecast_assumptions (id INT)'), null);
+  assert.equal(await prepareIdempotentStatement(pool, 'CREATE INDEX idx_existing ON leads (name)'), null);
+  // Absent objects are still created.
+  assert.match(await prepareIdempotentStatement(pool, 'CREATE TABLE brand_new (id INT)'), /CREATE TABLE brand_new/);
+  assert.match(await prepareIdempotentStatement(pool, 'ALTER TABLE leads ADD COLUMN fresh INT, DROP COLUMN gone'),
+    /^ALTER TABLE `leads` ADD COLUMN fresh INT$/);
+});
+
+test('an index dropped and re-added in one statement is redefined, not lost', async () => {
+  // Migration 171: DROP INDEX x, ADD UNIQUE KEY x (new columns). The add must
+  // not be skipped because x exists — it exists only until the drop beside it
+  // runs. Skipping it left bank_reconciliations without its unique key.
+  const pool = schemaPool(new Set(['index:bank_reconciliations.uq_bank_reconciliation_period']));
+  for (const sql of [
+    'ALTER TABLE bank_reconciliations DROP INDEX uq_bank_reconciliation_period, ADD UNIQUE KEY uq_bank_reconciliation_period (tenant_id, period_start)',
+    'ALTER TABLE bank_reconciliations DROP INDEX IF EXISTS uq_bank_reconciliation_period, ADD UNIQUE KEY IF NOT EXISTS uq_bank_reconciliation_period (tenant_id, period_start)',
+  ]) {
+    const prepared = await prepareIdempotentStatement(pool, sql);
+    assert.match(prepared, /DROP INDEX uq_bank_reconciliation_period/);
+    assert.match(prepared, /ADD UNIQUE KEY uq_bank_reconciliation_period \(tenant_id, period_start\)/);
+  }
+});
