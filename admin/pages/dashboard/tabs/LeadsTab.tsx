@@ -58,7 +58,7 @@ import { LeadEmptyDiagnostics } from './leads/LeadEmptyDiagnostics';
 import { useLeadActions } from './leads/useLeadActions';
 import { useLeadCrmBootstrap } from './leads/useLeadCrmBootstrap';
 import { useLeadRemoteReminders } from './leads/useLeadRemoteReminders';
-import { isLocalNewLead } from './leads/leadSourceGroups';
+import { isLocalNewLead, TERMINAL_LEAD_STATUSES } from './leads/leadSourceGroups';
 import { poolViewOf, useLeadPool, useLocalNewCount } from './leads/useLeadPool';
 import type { TabKey } from '../navigation';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -377,20 +377,36 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
       : PIPELINE_COLS;
     return statusFilter.size === 0 ? configured : configured.filter(status => statusFilter.has(status));
   }, [pipelineStages, statusFilter]);
+  // Open leads whose status is not a configured column — 'contacted',
+  // 'interested', 'follow_up' from before the current stages — get a column of
+  // their own after the configured ones. The board used to drop them without a
+  // word: 11,770 leads on the review data were nowhere on it. They are known
+  // from the counts, so the first load asks once more with their columns.
+  const [boardExtras, setBoardExtras] = useState<string[]>([]);
   const serverBoard = useServerLeadBoard(subTab === 'pipeline', {
     searchTerm, assignFilter, tagFilter, sourceFilter, courseFilter, branchFilter, singleStatus,
     showHiddenLeads, rottenFilter, salesSourceFilter, leadsFollowupFilter,
-  }, instituteBranches, boardColumns, colLimit);
-  // A column shows when it is one the desk always works, or when leads are in it.
+  }, instituteBranches, [...boardColumns, ...boardExtras] as LeadStatus[], colLimit);
+  useEffect(() => {
+    const next = statusFilter.size > 0 ? [] : Object.entries(serverBoard.counts)
+      .filter(([status, count]) => count > 0 && !boardColumns.includes(status as LeadStatus) && !TERMINAL_LEAD_STATUSES.has(status))
+      .sort((a, b) => b[1] - a[1])
+      .map(([status]) => status);
+    setBoardExtras(current => (current.join() === next.join() ? current : next));
+  }, [serverBoard.counts, boardColumns, statusFilter]);
+  // A configured column shows when the desk always works it, or when leads are in it.
   const BOARD_ALWAYS_ON: LeadStatus[] = ['new', 'interested_booking', 'interested_followup', 'no_answer_wa', 'no_answer_nowa', 'not_interested'];
-  const boardStatusCols = boardColumns.filter(status => BOARD_ALWAYS_ON.includes(status) || (serverBoard.counts[status] || 0) > 0);
+  const boardStatusCols = [
+    ...boardColumns.filter(status => BOARD_ALWAYS_ON.includes(status) || (serverBoard.counts[status] || 0) > 0),
+    ...boardExtras,
+  ] as LeadStatus[];
   const refreshServerBoard = serverBoard.refresh;
-  // Leads whose status is not a column at all — 'contacted', 'interested' and
-  // the like from before the current stages. The board used to drop them
-  // without a word; thousands of leads were nowhere on it.
+  // Closed statuses (archived, wrong number…) stay off the board; the strip
+  // above it counts them and opens them in the table.
   const LEGACY_STATUS_AR: Record<string, string> = { follow_up: 'متابعة', archived: 'مؤرشف' };
   const boardHiddenStatuses = Object.entries(serverBoard.counts)
-    .filter(([status, count]) => count > 0 && !boardColumns.includes(status as LeadStatus) && statusFilter.size === 0)
+    .filter(([status, count]) => count > 0 && !boardColumns.includes(status as LeadStatus)
+      && TERMINAL_LEAD_STATUSES.has(status) && statusFilter.size === 0)
     .sort((a, b) => b[1] - a[1]);
   // An edit made from the table changes the row on the server; the page is
   // re-read so it shows what was saved.
@@ -612,7 +628,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
           )}
           {boardHiddenStatuses.length > 0 && (
             <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900" role="status">
-              <span className="font-bold">عملاء في حالات مش ظاهرة كأعمدة هنا:</span>
+              <span className="font-bold">عملاء في حالات مقفولة (مش في البايبلاين):</span>
               {boardHiddenStatuses.map(([status, count]) => (
                 <button key={status} type="button"
                   onClick={() => { setSingleStatus(status as LeadStatus); setSubTab('table'); }}
@@ -620,7 +636,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
                   {STATUS_CFG[status as LeadStatus]?.label || LEGACY_STATUS_AR[status] || status}: {count.toLocaleString('ar-EG-u-nu-latn')}
                 </button>
               ))}
-              <span className="text-amber-700">— اضغط لعرضهم في الجدول، أو ضيف الحالة كعمود من إعدادات البايبلاين.</span>
+              <span className="text-amber-700">— اضغط لعرضهم في الجدول.</span>
             </div>
           )}
           <LeadPipelineBoard

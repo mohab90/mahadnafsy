@@ -5,6 +5,8 @@ import { LeadCard } from './LeadSubcomponents';
 
 type ScoredLead = LeadItem & { _score?: number };
 
+const LEGACY_COLUMN_AR: Record<string, string> = { follow_up: 'متابعة' };
+
 type LeadPipelineBoardProps = {
   activeStatusCols: LeadStatus[];
   scoredLeads: ScoredLead[];
@@ -62,11 +64,17 @@ export function LeadPipelineBoard({
           )}
           {activeStatusCols.map(status => {
             const colLeads = scoredLeads.filter(l => l.status === status);
-            const limit = colLimit[status];
+            const limit = colLimit[status] || 15;
             const visible = colLeads.slice(0, limit);
             const columnSize = columnTotals ? (columnTotals[status] || 0) : colLeads.length;
             const remaining = columnSize - visible.length;
-            const cfg = STATUS_CFG[status];
+            // A status from before the current stages ('follow_up') has no
+            // entry in STATUS_CFG; its column still needs a name and colours.
+            const cfg = STATUS_CFG[status] || {
+              label: LEGACY_COLUMN_AR[status] || status,
+              color: 'bg-gray-100 text-gray-700 border-gray-200',
+              colColor: 'border-t-gray-400',
+            };
             const isDropTarget = dragOverCol === status;
 
             return (
