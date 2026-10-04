@@ -138,7 +138,7 @@ test('the catalogue decides the price, not the caller', () => {
   assert.match(src, /PRICE_MISMATCH/);
   assert.match(src, /!priceMatches\(amount, catalogPrice\)/);
   // paymob-init: charges from the reserved row, never from the body.
-  assert.match(src, /SELECT amount, currency FROM orders WHERE id=\? AND tenant_id=\?/);
+  assert.match(src, /SELECT amount, currency(, [a-z_, ]+)? FROM orders WHERE id=\? AND tenant_id=\?/);
   assert.ok(!/const \{[^}]*\bamount\b[^}]*\} = req\.body[\s\S]{0,400}?paymobIntention/.test(src),
     'paymob-init reads an amount from the request body again');
 

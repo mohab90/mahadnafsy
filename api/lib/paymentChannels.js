@@ -20,7 +20,7 @@
 
 const CASH_BOX = 'خزنة الدقي - كاش';
 
-const INVISIBLE = /[‎‏‪-‮⁦-⁩﻿ ]/g;
+const INVISIBLE = /[\u200E\u200F\u202A-\u202E\u2066-\u2069\uFEFF\u00A0]/g;
 
 const fold = value => String(value ?? '')
   .replace(INVISIBLE, ' ')

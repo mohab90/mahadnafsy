@@ -16,7 +16,7 @@ const { grantCourseEntitlement } = require('../lib/entitlements');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { awardPointsForPayment } = require('../lib/loyalty');
 const { DEFAULT_TENANT_ID } = require('../lib/tenantScope');
-const { postPaymentJournal, logPaymentAudit } = require('../lib/finance');
+const { postPaymentJournal, logPaymentAudit, toEgp } = require('../lib/finance');
 const { assertWritable } = require('../lib/periodLock');
 const { transitionLead } = require('../lib/leadState');
 const { findLeadByContact } = require('../lib/leadMatching');
@@ -265,6 +265,30 @@ async function paymobIntention({ paymob, amountCents, currency, orderId, itemTit
   return { key, clientSecret: body.client_secret, intentionId: body.id };
 }
 
+// Paymob Egypt charges in EGP only: a SAR order sent as SAR never reached its
+// dashboard. The order keeps the customer's price; the EGP figure asked of
+// Paymob is fixed on the order the first time, so a retried checkout charges
+// the same amount and the webhook can check the capture against it.
+// Returns null when no fresh exchange rate is available — guessing one would
+// charge the customer a wrong price.
+async function paymobCharge(orderId, tenantId, order) {
+  const currency = String(order.currency || 'EGP').toUpperCase();
+  if (currency === 'EGP') return { amount: Number(order.amount), currency: 'EGP' };
+  if (Number(order.charge_amount) > 0 && String(order.charge_currency || '').toUpperCase() === 'EGP') {
+    return { amount: Number(order.charge_amount), currency: 'EGP' };
+  }
+  let egp;
+  try { egp = await toEgp(order.amount, currency, tenantId); } catch (e) {
+    logger.warn('[paymob-init] no EGP rate for order', { orderId, currency, reason: e.message });
+    return null;
+  }
+  if (!(egp > 0)) return null;
+  await pool.query(
+    'UPDATE orders SET charge_amount=?, charge_currency=?, charge_fx_rate=? WHERE id=? AND tenant_id=?',
+    [egp, 'EGP', egp / Number(order.amount), orderId, tenantId]);
+  return { amount: egp, currency: 'EGP' };
+}
+
 const paymobIntentionReady = paymob => Boolean(paymob?.secret_key && paymob?.integration_id_unified);
 
 router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
@@ -280,14 +304,23 @@ router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
     // a second call here could ask Paymob for a different figure — and the
     // webhook would still credit the order in full.
     const [[reserved]] = await pool.query(
-      'SELECT amount, currency FROM orders WHERE id=? AND tenant_id=? LIMIT 1',
+      'SELECT amount, currency, charge_amount, charge_currency FROM orders WHERE id=? AND tenant_id=? LIMIT 1',
       [orderId, req.tenantId || DEFAULT_TENANT_ID]);
     if (!reserved) return res.status(404).json({ error: 'الطلب مش موجود — احجز الأول' });
-    const amount = Number(reserved.amount);
-    if (!Number.isFinite(amount) || amount <= 0) {
+    const orderAmount = Number(reserved.amount);
+    if (!Number.isFinite(orderAmount) || orderAmount <= 0) {
       return res.status(409).json({ error: 'الطلب مالوش مبلغ صالح', code: 'INVALID_ORDER_AMOUNT' });
     }
-    const currency = reserved.currency || requestedCurrency;
+    const charge = await paymobCharge(orderId, req.tenantId || DEFAULT_TENANT_ID, {
+      ...reserved, currency: reserved.currency || requestedCurrency,
+    });
+    if (!charge) {
+      return res.status(503).json({
+        ok: false, code: 'FX_UNAVAILABLE',
+        error: 'تعذر تحويل المبلغ للجنيه حاليا — جرّب تاني بعد شوية أو ادفع بطريقة تانية.',
+      });
+    }
+    const { amount, currency } = charge;
 
     const paymob = config.paymob || {};
 
@@ -324,6 +357,7 @@ router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
         paymentKey: intention.key,
         paymobOrderId: intention.intentionId || null,
         iframeUrl: checkoutUrl,
+        charged: charge,
       });
     }
 
@@ -363,6 +397,7 @@ router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
       paymentKey: paymentKey.token,
       paymobOrderId: order.id,
       iframeUrl: `https://accept.paymob.com/api/acceptance/iframes/${iframeId}?payment_token=${encodeURIComponent(paymentKey.token)}`,
+      charged: charge,
     });
   } catch (e) {
     logger.warn('[paymob-init]', e.message);
@@ -507,7 +542,7 @@ async function finalisePaymobOrder(merchantOrderId, transactionId, capture = nul
 
 async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture = null) {
   const [[order]] = await pool.query(
-    `SELECT id, type, item_id, item_title, amount, currency, payment_method, customer_name,
+    `SELECT id, type, item_id, item_title, amount, currency, charge_amount, charge_currency, payment_method, customer_name,
      customer_email, customer_phone, status, transaction_id, coupon_code, subscriber_id,
      course_id, bundle_id, notes, staff_id, staff_name, tenant_id, branch_id, created_at, paid_at
      FROM orders WHERE id = ? LIMIT 1`, [merchantOrderId]);
@@ -532,21 +567,26 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
   // gateway signs amount_cents, so this is not about a forged payload — it is
   // about the order and the intention drifting apart between reservation and
   // capture, and about a partial capture being booked as a full one.
+  // A foreign-currency order was charged in EGP (paymobCharge); that is what
+  // Paymob captured, so that is what the capture is checked against.
+  const charged = Number(order.charge_amount) > 0 && order.charge_currency
+    ? { amount: order.charge_amount, currency: order.charge_currency }
+    : { amount: order.amount, currency: order.currency };
   if (capture && Number.isFinite(capture.amountCents)) {
-    const expectedCents = Math.round(Number(order.amount || 0) * 100);
+    const expectedCents = Math.round(Number(charged.amount || 0) * 100);
     if (expectedCents > 0 && capture.amountCents !== expectedCents) {
       logger.error('[paymob] captured amount does not match the order — not crediting', {
         merchantOrderId, transactionId,
         capturedCents: capture.amountCents, expectedCents,
-        capturedCurrency: capture.currency || null, orderCurrency: order.currency || null,
+        capturedCurrency: capture.currency || null, orderCurrency: charged.currency || null,
       });
       return { found: true, amountMismatch: true };
     }
-    if (capture.currency && order.currency
-        && String(capture.currency).toUpperCase() !== String(order.currency).toUpperCase()) {
+    if (capture.currency && charged.currency
+        && String(capture.currency).toUpperCase() !== String(charged.currency).toUpperCase()) {
       logger.error('[paymob] captured currency does not match the order — not crediting', {
         merchantOrderId, transactionId,
-        capturedCurrency: capture.currency, orderCurrency: order.currency,
+        capturedCurrency: capture.currency, orderCurrency: charged.currency,
       });
       return { found: true, currencyMismatch: true };
     }
@@ -959,3 +999,4 @@ router._test = {
 
 module.exports = router;
 module.exports.syncLeadDealValue = syncLeadDealValue;
+module.exports._paymobCharge = paymobCharge;

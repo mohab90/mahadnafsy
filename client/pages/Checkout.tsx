@@ -430,6 +430,9 @@ const Checkout: React.FC = () => {
                               : <><CreditCard size={16} /> ادفع الآن — محفظة أو بطاقة أو فوري ({finalAmount} {currencySymbol})</>}
                           </button>
                           <p className="mt-2 text-center text-[11px] text-gray-400">دفع آمن عبر بوابة Paymob — أو أكمل بالتحويل البنكي بالأسفل</p>
+                          {settlementCurrency !== 'EGP' && (
+                            <p className="mt-1 text-center text-[11px] text-amber-600">صفحة الدفع هتطلب المبلغ بالجنيه المصري بسعر الصرف النهارده.</p>
+                          )}
                         </div>
                       )}
 
@@ -544,6 +547,9 @@ const Checkout: React.FC = () => {
                               : <><CreditCard size={17} /> ادفع الآن — محفظة أو بطاقة أو فوري — {finalAmount} {currencySymbol}</>
                             }
                           </button>
+                          {settlementCurrency !== 'EGP' && (
+                            <p className="mb-2 text-center text-[11px] text-amber-600">صفحة الدفع هتطلب المبلغ بالجنيه المصري بسعر الصرف النهارده.</p>
+                          )}
                           {/* The transfer route is still a first-class option, not
                               a fallback nobody can find: this creates the same
                               order and stops on the receipt-upload panel. */}
