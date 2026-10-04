@@ -41,7 +41,10 @@ export function getRottenLevel(lead: LeadItem): 0 | 1 | 2 | 3 | 4 {
     : null;
   const refDate = lastComm ? cairoDay(lastComm.date) : (lead.createdAt ? cairoDay(lead.createdAt) : null);
   if (!refDate) return 0;
-  const days = Math.floor((Date.now() - new Date(refDate).getTime()) / 86_400_000);
+  // Whole calendar days on the Cairo clock. Measured from UTC midnight of the
+  // Cairo day it read a day short from midnight to 3 a.m. Cairo time, and a
+  // lead went stale three hours later than the server's table said.
+  const days = Math.round((Date.parse(cairoDay(Date.now())) - Date.parse(refDate)) / 86_400_000);
   for (let tier = staleDays.length; tier >= 1; tier--) {
     if (days >= staleDays[tier - 1]) return tier as 1 | 2 | 3 | 4;
   }

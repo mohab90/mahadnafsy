@@ -7,6 +7,7 @@ const { applyDeliveryStatus } = require('../lib/whatsappDelivery');
 const {
   recordInboundMessage, extractMetaMessages, extractGreenApiMessage,
 } = require('../lib/whatsappInbound');
+const { channelByExternalId } = require('../lib/messagingChannels');
 const { whatsappWebhookLimiter } = require('../middleware/rateLimits');
 const logger = require('../lib/logger');
 
@@ -38,21 +39,39 @@ router.post('/api/webhooks/whatsapp/meta', whatsappWebhookLimiter, async (req, r
   }
 
   try {
+    // The number a change was sent to says whose it is: one Meta app can carry
+    // the numbers of more than one tenant, and the host the webhook reached
+    // says nothing about that.
+    const routes = new Map();
+    const route = async phoneNumberId => {
+      if (!routes.has(phoneNumberId)) {
+        const channel = await channelByExternalId(phoneNumberId).catch(() => null);
+        routes.set(phoneNumberId, { tenantId: channel?.tenant_id || req.tenantId, channelId: channel?.id || null });
+      }
+      return routes.get(phoneNumberId);
+    };
     const statuses = (req.body?.entry || []).flatMap(entry =>
-      (entry.changes || []).flatMap(change => change.value?.statuses || []));
-    const updated = await Promise.all(statuses.map(status => applyDeliveryStatus({
-      provider: 'meta',
-      messageId: status.id,
-      status: status.status,
-      timestamp: status.timestamp,
-      error: status.errors?.length ? JSON.stringify(status.errors) : null,
-    })));
+      (entry.changes || []).flatMap(change => (change.value?.statuses || [])
+        .map(status => ({ ...status, phoneNumberId: change.value?.metadata?.phone_number_id || null }))));
+    const updated = [];
+    for (const status of statuses) {
+      const { tenantId } = await route(status.phoneNumberId);
+      updated.push(await applyDeliveryStatus({
+        provider: 'meta',
+        tenantId,
+        messageId: status.id,
+        status: status.status,
+        timestamp: status.timestamp,
+        error: status.errors?.length ? JSON.stringify(status.errors) : null,
+      }));
+    }
     // Inbound replies ride in the same payload as statuses and used to be
     // dropped: the customer answered and nobody in the institute ever knew.
-    const inbound = await Promise.all(
-      extractMetaMessages(req.body).map(message =>
-        recordInboundMessage({ tenantId: req.tenantId, ...message }))
-    );
+    const inbound = [];
+    for (const { phoneNumberId, ...message } of extractMetaMessages(req.body)) {
+      const { tenantId, channelId } = await route(phoneNumberId);
+      inbound.push(await recordInboundMessage({ tenantId, channelId, ...message }));
+    }
     return res.json({
       received: true,
       updated: updated.filter(Boolean).length,

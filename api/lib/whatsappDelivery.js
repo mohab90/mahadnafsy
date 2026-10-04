@@ -21,6 +21,7 @@ function eventDate(timestamp) {
 
 async function applyDeliveryStatus({
   provider,
+  tenantId = null,
   messageId,
   status,
   timestamp,
@@ -85,7 +86,26 @@ async function applyDeliveryStatus({
       WHERE provider_message_id=? AND delivery_status<>'failed'`,
     [normalized, normalized, normalized, normalized, normalized, error ? String(error) : null, String(messageId)]
   );
-  return result.affectedRows > 0 || codeResult.affectedRows > 0;
+  // A reply typed in the team inbox went straight to the provider and keeps its
+  // id on its timeline row: the ticks the rep sees under it. Only with the
+  // tenant — uq_comm_tenant_provider_msg leads with it, and without it this
+  // would read the whole timeline for every status Meta sends.
+  let commResult = { affectedRows: 0 };
+  if (tenantId) {
+    [commResult] = await db.query(
+      `UPDATE communications
+          SET delivery_status=CASE
+                WHEN ?='failed' THEN 'failed'
+                WHEN delivery_status='failed' THEN delivery_status
+                WHEN FIELD(?, 'accepted','sent','delivered','read')
+                     > FIELD(COALESCE(delivery_status,'accepted'), 'accepted','sent','delivered','read')
+                  THEN ?
+                ELSE delivery_status
+              END
+        WHERE tenant_id=? AND provider_message_id=? AND direction='OUT'`,
+      [normalized, normalized, normalized, tenantId, String(messageId)]);
+  }
+  return result.affectedRows > 0 || codeResult.affectedRows > 0 || commResult.affectedRows > 0;
 }
 
 module.exports = { applyDeliveryStatus, eventDate, normalizeDeliveryStatus };

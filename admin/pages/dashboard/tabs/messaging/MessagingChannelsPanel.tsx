@@ -32,7 +32,7 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
     displayNumber: '',
     instanceId: '', apiToken: '',
     wapilotKey: '', wapilotInstance: '',
-    metaPhoneId: '', metaToken: '',
+    metaPhoneId: '', metaToken: '', metaWabaId: '',
     pageId: '', pageAccessToken: '',
     dailySendLimit: 1000,
     makeDefault: false,
@@ -56,7 +56,8 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
       return { pageId: draft.pageId.trim(), pageAccessToken: draft.pageAccessToken.trim() };
     }
     if (draft.provider === 'meta') {
-      return { metaPhoneId: draft.metaPhoneId.trim(), metaToken: draft.metaToken.trim() };
+      // The Business Account id is optional for sending; the templates list needs it.
+      return { metaPhoneId: draft.metaPhoneId.trim(), metaToken: draft.metaToken.trim(), ...(draft.metaWabaId.trim() ? { metaWabaId: draft.metaWabaId.trim() } : {}) };
     }
     if (draft.provider === 'wapilot') {
       return { apiKey: draft.wapilotKey.trim(), instance: draft.wapilotInstance.trim() };
@@ -81,7 +82,7 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
       });
       notify('success', 'تمت إضافة القناة — اختبرها عشان تتأكد');
       setShowAdd(false);
-      setDraft(d => ({ ...d, label: '', displayNumber: '', instanceId: '', apiToken: '', metaPhoneId: '', metaToken: '', pageId: '', pageAccessToken: '', wapilotKey: '', wapilotInstance: '' }));
+      setDraft(d => ({ ...d, label: '', displayNumber: '', instanceId: '', apiToken: '', metaPhoneId: '', metaToken: '', metaWabaId: '', pageId: '', pageAccessToken: '', wapilotKey: '', wapilotInstance: '' }));
       await load();
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذرت إضافة القناة');
@@ -399,6 +400,11 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Access Token</label>
                   <input type="password" value={draft.metaToken} onChange={e => setDraft(d => ({ ...d, metaToken: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-mono" />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">WhatsApp Business Account ID (للقوالب)</label>
+                  <input value={draft.metaWabaId} onChange={e => setDraft(d => ({ ...d, metaWabaId: e.target.value }))}
                     className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-mono" />
                 </div>
               </>

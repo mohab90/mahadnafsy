@@ -198,8 +198,11 @@ function startBackgroundScheduler({ pool, logger, port }) {
         // sent as 'broadcast' — a receipt, a welcome, a reply to a ticket, an
         // alert to a rep — so the gate refused them all as bulk messaging, and
         // opening 'payment' could never have let a receipt through.
-        whatsapp: ({ recipient, message, tenantId, channelId, staffId, category }) =>
-          sendWhatsApp(recipient, message || '', { tenantId, channelId, staffId, category: category || 'broadcast' }),
+        // A campaign on an approved Meta template carries it in the payload;
+        // the text beside it is only the preview the campaign screen shows.
+        whatsapp: ({ recipient, message, template, tenantId, channelId, staffId, category }) => (template
+          ? require('./whatsapp').sendWhatsAppTemplate(recipient, template, { tenantId, channelId, category: category || 'broadcast' })
+          : sendWhatsApp(recipient, message || '', { tenantId, channelId, staffId, category: category || 'broadcast' })),
         messenger: async ({ recipient, message, tenantId, channelId }) => {
           const { getSendableChannel } = require('./messagingChannels');
           const resolved = await getSendableChannel({ tenantId, channelId, kind: 'messenger' });

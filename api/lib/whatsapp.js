@@ -149,6 +149,10 @@ function resolveProvider(cfg) {
 // window Meta only allows pre-approved TEMPLATE messages; free-form text there is
 // rejected (handled as a normal API error). Matches the format the watchdog uses.
 async function _sendMeta(normalized, message, cfg) {
+  return _sendMetaPayload(normalized, { type: 'text', text: { body: message } }, cfg);
+}
+
+async function _sendMetaPayload(normalized, content, cfg) {
   const token   = cfg.metaToken   || envSecret('WHATSAPP_TOKEN');
   const phoneId = cfg.metaPhoneId || process.env.WHATSAPP_PHONE_ID;
   if (!token || !phoneId) {
@@ -158,7 +162,7 @@ async function _sendMeta(normalized, message, cfg) {
   const res = await fetch(`https://graph.facebook.com/v19.0/${phoneId}/messages`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messaging_product: 'whatsapp', to: normalized, type: 'text', text: { body: message } }),
+    body: JSON.stringify({ messaging_product: 'whatsapp', to: normalized, ...content }),
   });
   const data = await res.json();
   if (!res.ok) { logger.warn('[WhatsApp] Meta API error:', data); return { ok: false, provider: 'meta', reason: data }; }
@@ -324,6 +328,103 @@ async function sendWhatsApp(phone, message, options = {}) {
   }
 }
 
+/** {name, language, params} → the template object Meta's send API takes. */
+function buildTemplatePayload({ name, language, params = [] }) {
+  // Meta refuses an empty parameter; a dash reads better than a failed send.
+  const parameters = (Array.isArray(params) ? params : [])
+    .map(value => ({ type: 'text', text: String(value ?? '').trim().slice(0, 1000) || '-' }));
+  return {
+    name: String(name || '').trim(),
+    language: { code: String(language || 'ar').trim() || 'ar' },
+    ...(parameters.length ? { components: [{ type: 'body', parameters }] } : {}),
+  };
+}
+
+/**
+ * Send an approved template — the only message Meta delivers to someone who
+ * has not written in the last 24 hours, so the only way to start a
+ * conversation or send a promotion from the company number. Same gate, same
+ * channel resolution and same daily budget as sendWhatsApp; a template needs
+ * the official API, so any other provider is refused rather than sent as text.
+ *
+ * @param {object} template { name, language, params: string[] }
+ */
+async function sendWhatsAppTemplate(phone, template, options = {}) {
+  try {
+    const tenantId = options.tenantId || DEFAULT_TENANT;
+    if (!await isCategoryOpen(options.category, tenantId)) {
+      return { ok: false, reason: 'category_disabled', category: options.category || null };
+    }
+    const normalized = toDialable(phone);
+    if (!normalized) return { ok: false, reason: 'invalid_number' };
+    if (!String(template?.name || '').trim()) return { ok: false, reason: 'template_required' };
+
+    const channels = require('./messagingChannels');
+    const resolved = await channels.getSendableChannel({
+      tenantId, channelId: options.channelId || null, kind: 'whatsapp',
+    }).catch(() => null);
+    let cfg;
+    let channelId = null;
+    if (resolved) {
+      channelId = resolved.row.id;
+      if (resolved.row.provider !== 'meta') return { ok: false, reason: 'templates_need_meta', channelId };
+      const withinBudget = await channels.claimSendBudget(tenantId, channelId).catch(() => true);
+      if (!withinBudget) return { ok: false, reason: 'daily_limit_reached', channelId };
+      cfg = resolved.credentials;
+    } else {
+      if (options.channelId) return { ok: false, reason: 'channel_unavailable', channelId: options.channelId };
+      cfg = await getWaCfg(tenantId);
+      if (resolveProvider(cfg) !== 'meta') return { ok: false, reason: 'templates_need_meta' };
+    }
+    const result = await _sendMetaPayload(normalized, { type: 'template', template: buildTemplatePayload(template) }, cfg);
+    if (resolved && result.ok) await channels.markChannelConnected(tenantId, channelId).catch(() => {});
+    return { ...result, channelId };
+  } catch (e) {
+    logger.warn('[WhatsApp] sendWhatsAppTemplate error:', e.message);
+    return { ok: false, reason: e.message };
+  }
+}
+
+/**
+ * The company number's approved templates, from Meta. Needs the WhatsApp
+ * Business Account id saved with the channel (metaWabaId): templates belong to
+ * the account, not the number.
+ *
+ * @returns {Promise<{ok: boolean, templates?: object[], reason?: string}>}
+ */
+async function listMetaTemplates(tenantId) {
+  const channels = require('./messagingChannels');
+  const resolved = await channels.getSendableChannel({ tenantId, kind: 'whatsapp' }).catch(() => null);
+  const cfg = resolved?.row.provider === 'meta' ? resolved.credentials : (resolved ? null : await getWaCfg(tenantId));
+  if (!cfg) return { ok: false, reason: 'templates_need_meta' };
+  const token = cfg.metaToken || envSecret('WHATSAPP_TOKEN');
+  const wabaId = cfg.metaWabaId || process.env.WHATSAPP_WABA_ID;
+  if (!token || !wabaId) return { ok: false, reason: 'waba_missing' };
+  const res = await fetch(
+    `https://graph.facebook.com/v19.0/${encodeURIComponent(wabaId)}/message_templates?fields=name,language,status,category,components&limit=200`,
+    { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10000) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, reason: data?.error?.message || `HTTP ${res.status}` };
+  return { ok: true, templates: (data.data || []).map(describeTemplate) };
+}
+
+/** A Meta template → what the composer needs: its text, how many {{n}} to fill, and whether this sender can fill it. */
+function describeTemplate(t) {
+  const components = Array.isArray(t.components) ? t.components : [];
+  const body = components.find(c => c.type === 'BODY')?.text || '';
+  const header = components.find(c => c.type === 'HEADER');
+  const params = Math.max(0, ...[...body.matchAll(/\{\{(\d+)\}\}/g)].map(m => Number(m[1])));
+  // Only body variables are filled here. A header with a variable or a picture,
+  // or a button with a variable link, needs values this sender does not send.
+  const needsMore = Boolean(header && (header.format !== 'TEXT' || /\{\{/.test(header.text || '')))
+    || components.some(c => c.type === 'BUTTONS' && (c.buttons || []).some(b => /\{\{/.test(b.url || '')));
+  return {
+    name: t.name, language: t.language, status: t.status, category: t.category,
+    body, header: header?.format === 'TEXT' ? header.text : null, params,
+    usable: t.status === 'APPROVED' && !needsMore,
+  };
+}
+
 /** Provider errors arrive as objects; store something a human can act on. */
 function describeReason(reason) {
   if (!reason) return 'فشل الإرسال';
@@ -363,4 +464,5 @@ function isTransientSendFailure(reason) {
 module.exports = {
   describeReason, getWaCfg, invalidateOutbound, invalidateWaCfg, isCategoryOpen, isTransientSendFailure,
   outboundState, providerCredentialState, resolveProvider, sendWhatsApp,
+  sendWhatsAppTemplate, listMetaTemplates, describeTemplate, buildTemplatePayload,
 };

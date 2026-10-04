@@ -10,8 +10,7 @@ const crypto = require('node:crypto');
 const express = require('express');
 const { resolveSecret } = require('../lib/secretResolver');
 const { extractMessengerMessages, recordInboundMessenger } = require('../lib/messenger');
-const { getSendableChannel } = require('../lib/messagingChannels');
-const { pool } = require('../lib/db');
+const { getSendableChannel, channelByExternalId } = require('../lib/messagingChannels');
 const { whatsappWebhookLimiter } = require('../middleware/rateLimits');
 const logger = require('../lib/logger');
 
@@ -51,24 +50,18 @@ router.post('/api/webhooks/messenger', whatsappWebhookLimiter, async (req, res) 
     const messages = extractMessengerMessages(req.body);
     if (!messages.length) return res.json({ received: true, inbound: 0 });
 
-    const channel = await getSendableChannel({ tenantId: req.tenantId, kind: 'messenger' }).catch(() => null);
-
+    // The page a message came to says whose it is (Instagram names the
+    // account instead, so it falls back to the tenant's page). The reply
+    // window is kept on the lead by recordInboundMessenger.
+    const fallback = await getSendableChannel({ tenantId: req.tenantId, kind: 'messenger' }).catch(() => null);
     const results = [];
     for (const message of messages) {
+      const routed = await channelByExternalId(message.pageId).catch(() => null);
       results.push(await recordInboundMessenger({
-        tenantId: req.tenantId,
-        channelId: channel?.row?.id || null,
+        tenantId: routed?.tenant_id || req.tenantId,
+        channelId: routed?.id || fallback?.row?.id || null,
         ...message,
       }));
-      // The 24h reply window starts from the customer's last message. Kept on
-      // the lead so the inbox can grey out replies that Meta would reject.
-      if (message.psid) {
-        await pool.query(
-          `UPDATE leads SET messenger_last_inbound_at = NOW(), updated_at = updated_at
-            WHERE tenant_id=? AND messenger_psid=?`,
-          [req.tenantId, message.psid]
-        ).catch(() => {});
-      }
     }
     return res.json({ received: true, inbound: results.filter(r => r.recorded).length });
   } catch (error) {

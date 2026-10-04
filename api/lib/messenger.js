@@ -21,7 +21,28 @@
 const { pool } = require('./db');
 const { uuidv4 } = require('./id');
 const { createNotification } = require('./notification');
+const { upsertThread, recordOnThread } = require('./inboxThreads');
 const logger = require('./logger');
+
+/**
+ * Instagram Direct rides the same Messenger Platform: the same webhook (object
+ * 'instagram' instead of 'page'), the same send endpoint and the page's own
+ * token, an Instagram-scoped id in place of the PSID. What differs is only
+ * where the id and the reply window live on the lead and how the timeline
+ * labels the message.
+ */
+const PLATFORM = {
+  messenger: {
+    idColumn: 'messenger_psid', windowColumn: 'messenger_last_inbound_at', type: 'MESSENGER',
+    idPrefix: 'msgr:', source: 'messenger_inbound', visitor: 'زائر ماسنجر',
+    newTitle: '🆕 زائر جديد كلّمنا على الماسنجر', title: 'رسالة ماسنجر جديدة', empty: '(رسالة ماسنجر بدون نص)',
+  },
+  instagram: {
+    idColumn: 'instagram_id', windowColumn: 'instagram_last_inbound_at', type: 'INSTAGRAM',
+    idPrefix: 'ig:', source: 'instagram_inbound', visitor: 'زائر انستجرام',
+    newTitle: '🆕 زائر جديد كلّمنا على الانستجرام', title: 'رسالة انستجرام جديدة', empty: '(رسالة انستجرام بدون نص)',
+  },
+};
 
 const GRAPH = 'https://graph.facebook.com/v19.0';
 const REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -99,19 +120,21 @@ function isWithinReplyWindow(lastInboundAt) {
   return Number.isFinite(at) && Date.now() - at < REPLY_WINDOW_MS;
 }
 
-/** Messenger webhook body → the messages in it. */
+/** Messenger (or Instagram) webhook body → the messages in it. */
 function extractMessengerMessages(payload) {
-  if (payload?.object !== 'page') return [];
+  const platform = payload?.object === 'page' ? 'messenger' : payload?.object === 'instagram' ? 'instagram' : null;
+  if (!platform) return [];
   return (payload.entry || []).flatMap(entry =>
     (entry.messaging || [])
       // Echoes are the page's own outbound messages coming back; recording them
       // would duplicate every reply an agent sends.
       .filter(event => event.message && !event.message.is_echo)
       .map(event => ({
+        platform,
         providerMessageId: event.message.mid,
         psid: event.sender?.id,
         pageId: entry.id,
-        body: event.message.text || '',
+        body: event.message.text || ((event.message.attachments || []).length ? '📎 مرفق' : ''),
         // Messenger timestamps are milliseconds; WhatsApp's are seconds.
         timestamp: event.timestamp ? Math.floor(event.timestamp / 1000) : null,
         attachments: (event.message.attachments || []).length,
@@ -129,20 +152,22 @@ function extractMessengerMessages(payload) {
  *
  * @returns {Promise<{id, name, assigned_sales_id}|null>}
  */
-async function createLeadFromMessenger({ tenantId, psid, text }, db = pool) {
+async function createLeadFromMessenger({ tenantId, psid, text, platform = 'messenger' }, db = pool) {
   const { getNextSalesRep } = require('./leadAssignment');
+  const p = PLATFORM[platform];
   const id = uuidv4();
-  const name = 'زائر ماسنجر';
+  const name = p.visitor;
   try {
     const rep = await getNextSalesRep(tenantId, db, {
-      lead: { source: 'messenger_inbound', courseIds: [] },
+      lead: { source: p.source, courseIds: [] },
     }).catch(() => null);
+    // Column names come from PLATFORM above, never from the request.
     const [result] = await db.query(
       `INSERT INTO leads
-         (id, tenant_id, name, source, status, notes, messenger_psid,
-          messenger_last_inbound_at, assigned_sales_id, assigned_sales_name, hidden, created_at)
-       VALUES (?,?,?, 'messenger_inbound', 'new', ?, ?, NOW(), ?, ?, 0, NOW())`,
-      [id, tenantId, name, String(text || '').slice(0, 500) || null, psid,
+         (id, tenant_id, name, source, status, notes, ${p.idColumn},
+          ${p.windowColumn}, assigned_sales_id, assigned_sales_name, hidden, created_at)
+       VALUES (?,?,?,?, 'new', ?, ?, NOW(), ?, ?, 0, NOW())`,
+      [id, tenantId, name, p.source, String(text || '').slice(0, 500) || null, psid,
        rep?.id || null, rep?.name || null]
     );
     if (!result.affectedRows) return null;
@@ -154,7 +179,7 @@ async function createLeadFromMessenger({ tenantId, psid, text }, db = pool) {
     logger.warn('[messenger] lead creation failed, re-checking', error.message);
     const [[existing]] = await db.query(
       `SELECT id, name, assigned_sales_id FROM leads
-        WHERE tenant_id=? AND messenger_psid=? AND hidden=0 LIMIT 1`,
+        WHERE tenant_id=? AND ${p.idColumn}=? AND hidden=0 LIMIT 1`,
       [tenantId, psid]
     );
     return existing || null;
@@ -170,13 +195,15 @@ async function createLeadFromMessenger({ tenantId, psid, text }, db = pool) {
  * can merge it into an existing customer from the inbox once they know who it
  * is.
  */
-async function recordInboundMessenger({ tenantId, channelId, providerMessageId, psid, body, timestamp }, db = pool) {
+async function recordInboundMessenger({ tenantId, channelId, providerMessageId, psid, body, timestamp, platform = 'messenger' }, db = pool) {
   if (!providerMessageId || !psid) return { recorded: false, reason: 'incomplete' };
+  const p = PLATFORM[platform];
+  if (!p) return { recorded: false, reason: 'unknown_platform' };
   const text = String(body || '').slice(0, 4000).trim();
 
   let [[lead]] = await db.query(
     `SELECT id, name, assigned_sales_id FROM leads
-      WHERE tenant_id=? AND messenger_psid=? AND hidden=0 LIMIT 1`,
+      WHERE tenant_id=? AND ${p.idColumn}=? AND hidden=0 LIMIT 1`,
     [tenantId, psid]
   );
 
@@ -190,7 +217,7 @@ async function recordInboundMessenger({ tenantId, channelId, providerMessageId, 
   // through the same conversation.
   let isNewLead = false;
   if (!lead) {
-    lead = await createLeadFromMessenger({ tenantId, psid, text }, db);
+    lead = await createLeadFromMessenger({ tenantId, psid, text, platform }, db);
     isNewLead = Boolean(lead);
   }
 
@@ -202,11 +229,11 @@ async function recordInboundMessenger({ tenantId, channelId, providerMessageId, 
     `INSERT IGNORE INTO communications
        (id, tenant_id, lead_id, type, direction, provider_message_id, channel_id,
         date, notes, outcome, staff_id, created_at)
-     VALUES (?,?,?, 'MESSENGER', 'IN', ?, ?, ?, ?, ?, ?, NOW())`,
+     VALUES (?,?,?,?, 'IN', ?, ?, ?, ?, ?, ?, NOW())`,
     [
-      id, tenantId, lead?.id || null,
-      `msgr:${providerMessageId}`, channelId || null, when,
-      text || '(رسالة ماسنجر بدون نص)',
+      id, tenantId, lead?.id || null, p.type,
+      `${p.idPrefix}${providerMessageId}`, channelId || null, when,
+      text || p.empty,
       // The PSID is kept on the row itself so messages that arrived before
       // anyone knew who this was can be adopted onto the lead the moment a
       // human makes the link. Without it those messages stay orphaned forever.
@@ -216,19 +243,38 @@ async function recordInboundMessenger({ tenantId, channelId, providerMessageId, 
   );
   if (!result.affectedRows) return { recorded: false, reason: 'duplicate' };
 
+  // The reply window starts at the customer's last message.
+  if (lead?.id) {
+    await db.query(`UPDATE leads SET ${p.windowColumn}=?, updated_at=updated_at WHERE tenant_id=? AND id=?`,
+      [when, tenantId, lead.id]).catch(() => {});
+  }
+
+  let owner = lead?.assigned_sales_id || null;
+  try {
+    const thread = await upsertThread(db, {
+      tenantId, platform, contactKey: psid, channelId: channelId || null,
+      leadId: lead?.id || null, contactName: lead?.name || null, ownerStaffId: lead?.assigned_sales_id || null,
+    });
+    await recordOnThread(db, { tenantId, threadId: thread.id, communicationId: id, direction: 'IN', text, at: when });
+    owner = thread.assigned_staff_id || owner;
+  } catch (error) {
+    logger.warn('[messenger] team inbox update failed', error.message);
+  }
+
   await createNotification(
-    'messenger',
-    isNewLead ? '🆕 زائر جديد كلّمنا على الماسنجر' : 'رسالة ماسنجر جديدة',
+    platform,
+    isNewLead ? p.newTitle : p.title,
     `${lead?.name || 'زائر'}: ${text.slice(0, 120) || 'رسالة'}`,
     { leadId: lead?.id || null, psid, communicationId: id },
     tenantId,
-    lead?.assigned_sales_id || null
+    owner
   );
 
   return { recorded: true, id, leadId: lead?.id || null, matched: Boolean(lead), createdLead: isNewLead };
 }
 
 module.exports = {
+  PLATFORM,
   REPLY_WINDOW_MS,
   verifyMessengerCredentials,
   sendMessengerMessage,

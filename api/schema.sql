@@ -861,7 +861,7 @@ CREATE TABLE `communications` (
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `lead_id` varchar(36) DEFAULT NULL,
   `subscriber_id` varchar(36) DEFAULT NULL,
-  `type` enum('CALL','WHATSAPP','EMAIL','MEETING','NOTE','PAYMENT_FOLLOWUP','NEW_COURSE_SALE','CERTIFICATE','MESSENGER') NOT NULL,
+  `type` enum('CALL','WHATSAPP','EMAIL','MEETING','NOTE','PAYMENT_FOLLOWUP','NEW_COURSE_SALE','CERTIFICATE','MESSENGER','INSTAGRAM') NOT NULL,
   `date` datetime NOT NULL,
   `notes` text NOT NULL,
   `outcome` text DEFAULT NULL,
@@ -871,8 +871,11 @@ CREATE TABLE `communications` (
   `direction` enum('OUT','IN') NOT NULL DEFAULT 'OUT' COMMENT 'IN = received from the customer via the WhatsApp webhook',
   `provider_message_id` varchar(128) DEFAULT NULL COMMENT 'Provider id of the inbound message — the idempotency key',
   `channel_id` varchar(36) DEFAULT NULL COMMENT 'messaging_channels.id the message arrived on or was sent from',
+  `thread_id` varchar(36) DEFAULT NULL,
+  `delivery_status` varchar(16) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_comm_tenant_provider_msg` (`tenant_id`,`provider_message_id`),
+  KEY `idx_comm_thread_date` (`thread_id`,`date`),
   KEY `idx_comm_lead` (`lead_id`),
   KEY `idx_comm_subscriber` (`subscriber_id`),
   KEY `idx_comm_tenant_lead_date` (`tenant_id`,`lead_id`,`date`),
@@ -2571,6 +2574,40 @@ CREATE TABLE `hr_policy_versions` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `inbox_threads`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `inbox_threads` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `platform` enum('whatsapp','messenger','instagram') NOT NULL,
+  `contact_key` varchar(64) NOT NULL COMMENT 'dialable number, Messenger PSID or Instagram id',
+  `channel_id` varchar(36) DEFAULT NULL,
+  `lead_id` varchar(36) DEFAULT NULL,
+  `subscriber_id` varchar(36) DEFAULT NULL,
+  `contact_name` varchar(255) DEFAULT NULL,
+  `assigned_staff_id` varchar(36) DEFAULT NULL,
+  `assigned_at` datetime DEFAULT NULL,
+  `status` enum('open','closed') NOT NULL DEFAULT 'open',
+  `unread_count` int(11) NOT NULL DEFAULT 0,
+  `last_direction` enum('IN','OUT') DEFAULT NULL,
+  `last_preview` varchar(200) DEFAULT NULL,
+  `last_message_at` datetime DEFAULT NULL,
+  `last_inbound_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_inbox_thread_contact` (`tenant_id`,`platform`,`contact_key`),
+  KEY `idx_inbox_thread_recent` (`tenant_id`,`status`,`last_message_at`),
+  KEY `idx_inbox_thread_staff` (`tenant_id`,`assigned_staff_id`,`last_message_at`),
+  KEY `idx_inbox_thread_lead` (`tenant_id`,`lead_id`),
+  KEY `idx_inbox_thread_subscriber` (`tenant_id`,`subscriber_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `inbox_conversations`
 --
 
@@ -3186,12 +3223,15 @@ CREATE TABLE `leads` (
   `merged_into_lead_id` varchar(100) DEFAULT NULL,
   `messenger_psid` varchar(64) DEFAULT NULL COMMENT 'Page-scoped id — the only identifier Messenger gives us',
   `messenger_last_inbound_at` datetime DEFAULT NULL COMMENT 'Drives the 24h reply window: outside it Meta rejects plain text',
+  `instagram_id` varchar(64) DEFAULT NULL,
+  `instagram_last_inbound_at` datetime DEFAULT NULL,
   `assigned_at` datetime DEFAULT NULL,
   `score_refreshed_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `idx_leads_fb_lead_id` (`fb_lead_id`),
   UNIQUE KEY `uq_leads_tenant_client_code` (`tenant_id`,`client_code`),
   UNIQUE KEY `uq_leads_tenant_psid` (`tenant_id`,`messenger_psid`),
+  UNIQUE KEY `uq_leads_tenant_instagram` (`tenant_id`,`instagram_id`),
   UNIQUE KEY `uq_leads_tenant_phone` (`tenant_id`,`phone`),
   KEY `idx_leads_status` (`status`),
   KEY `idx_leads_email` (`email`),
@@ -3568,8 +3608,10 @@ CREATE TABLE `messaging_channels` (
   `created_by` varchar(190) DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `external_id` varchar(64) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_channel_owner_kind` (`tenant_id`,`owner_staff_id`,`kind`),
+  KEY `idx_channel_external` (`external_id`),
   KEY `idx_channel_tenant_kind` (`tenant_id`,`kind`,`is_active`),
   KEY `idx_channel_owner` (`tenant_id`,`owner_staff_id`),
   KEY `fk_channel_staff` (`owner_staff_id`),
@@ -5763,6 +5805,9 @@ CREATE TABLE `whatsapp_campaigns` (
   `created_by` varchar(190) DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `template_name` varchar(512) DEFAULT NULL,
+  `template_language` varchar(16) DEFAULT NULL,
+  `template_params_json` varchar(2000) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_wacamp_tenant_status` (`tenant_id`,`status`,`created_at`),
   KEY `idx_wacamp_channel` (`tenant_id`,`channel_id`)

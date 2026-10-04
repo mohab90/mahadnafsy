@@ -27,6 +27,16 @@ const logger = require('./logger');
 const { sqlCairoToday } = require('./dates');
 
 const KINDS = ['whatsapp', 'messenger'];
+
+/**
+ * The id Meta files a webhook under: the number's phone_number_id, the page
+ * id. Kept in plain text beside the sealed credentials so an incoming message
+ * can be matched to the channel (and the tenant) it came to.
+ */
+function externalIdFor(credentials) {
+  const value = credentials?.metaPhoneId || credentials?.pageId || null;
+  return value ? String(value).trim().slice(0, 64) : null;
+}
 const PROVIDERS = { whatsapp: ['meta', 'green-api', 'wapilot'], messenger: ['messenger'] };
 const STATUSES = ['pending', 'connected', 'disconnected', 'error'];
 
@@ -133,6 +143,36 @@ async function getSendableChannel({ tenantId, channelId = null, staffId = null, 
   return null;
 }
 
+/**
+ * The company channel a webhook came to, by Meta's id for it. A webhook names
+ * the number (or page) it was sent to, and that, not the host it arrived on,
+ * says whose message it is.
+ */
+let externalIdsFilled = false;
+async function fillExternalIds(db) {
+  // Channels saved before external_id existed hold the id only inside the
+  // sealed credentials; opened once per process, written once per channel.
+  externalIdsFilled = true;
+  const [rows] = await db.query(
+    `SELECT id, credentials_sealed FROM messaging_channels
+      WHERE external_id IS NULL AND credentials_sealed IS NOT NULL LIMIT 500`);
+  for (const row of rows) {
+    let externalId = null;
+    try { externalId = externalIdFor(open(row.credentials_sealed)); } catch { continue; }
+    if (externalId) await db.query('UPDATE messaging_channels SET external_id=? WHERE id=?', [externalId, row.id]);
+  }
+}
+
+async function channelByExternalId(externalId, db = pool) {
+  if (!externalId) return null;
+  if (!externalIdsFilled) await fillExternalIds(db).catch(error => logger.warn('[channels] external id fill failed', error.message));
+  const [[row]] = await db.query(
+    `SELECT id, tenant_id, kind, provider FROM messaging_channels
+      WHERE external_id=? AND is_active=1 ORDER BY owner_staff_id IS NOT NULL, is_default DESC LIMIT 1`,
+    [String(externalId)]);
+  return row || null;
+}
+
 // ── Writing ──────────────────────────────────────────────────────────────────
 
 async function createChannel({
@@ -154,11 +194,11 @@ async function createChannel({
   await db.query(
     `INSERT INTO messaging_channels
        (id, tenant_id, kind, provider, owner_staff_id, label, display_number,
-        credentials_sealed, status, is_default, daily_send_limit, created_by)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+        credentials_sealed, external_id, status, is_default, daily_send_limit, created_by)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       id, tenantId, kind, provider, ownerStaffId || null, trimmedLabel, number,
-      credentials ? seal(credentials) : null,
+      credentials ? seal(credentials) : null, externalIdFor(credentials),
       // Always 'pending': saved credentials are a claim, not proof. Only a
       // successful send (or, for Messenger, a token check) makes it 'connected'.
       'pending',
@@ -188,8 +228,8 @@ async function updateChannel(tenantId, id, patch, db = pool) {
   if (patch.credentials !== undefined) {
     // Re-sealing resets the connection state: new credentials are unverified
     // until a send or a test proves them.
-    sets.push('credentials_sealed = ?', "status = 'pending'", 'last_error = NULL');
-    params.push(patch.credentials ? seal(patch.credentials) : null);
+    sets.push('credentials_sealed = ?', 'external_id = ?', "status = 'pending'", 'last_error = NULL');
+    params.push(patch.credentials ? seal(patch.credentials) : null, externalIdFor(patch.credentials));
   }
   if (!sets.length) return getChannelById(tenantId, id, db);
   params.push(tenantId, id);
@@ -275,6 +315,8 @@ module.exports = {
   listChannels,
   getChannelById,
   getSendableChannel,
+  channelByExternalId,
+  externalIdFor,
   createChannel,
   updateChannel,
   setDefaultChannel,

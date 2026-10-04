@@ -13,7 +13,7 @@
 // a field out of crm_json because its column was empty, so does this.
 
 const { ARCHIVE_SOURCE_PREFIXES } = require('./leadArchive');
-const { addDaysToDateOnly } = require('./dates');
+const { addDaysToDateOnly, cairoDayStartUtc } = require('./dates');
 
 // admin/pages/dashboard/tabs/crmConstants.ts ONLINE_EXCLUDED_SOURCES
 const ONLINE_EXCLUDED_SOURCES = ['أونلاين 2025', 'تحويل من عملاء الأونلاين'];
@@ -93,11 +93,14 @@ function leadTableFilter(query, { today, salesOnly }) {
   // at least the first stale threshold, on a lead that can still go stale.
   const staleDays = Math.floor(Number(query.staleDays));
   if (query.rotten === '1' && staleDays > 0) {
-    const cutoff = addDaysToDateOnly(today, -staleDays);
+    // Stale = last touched on or before the Cairo day staleDays ago. Times are
+    // stored in UTC, so the boundary is the UTC instant that Cairo day ends —
+    // not the bare date, which moved it by Cairo's two or three hours.
+    const boundary = cairoDayStartUtc(addDaysToDateOnly(today, -staleDays + 1));
     add(`l.status NOT IN (?)
-      AND NOT EXISTS (SELECT 1 FROM communications sc WHERE sc.tenant_id = l.tenant_id AND sc.lead_id = l.id AND sc.date >= ? + INTERVAL 1 DAY)
-      AND (EXISTS (SELECT 1 FROM communications sc WHERE sc.tenant_id = l.tenant_id AND sc.lead_id = l.id) OR l.created_at < ? + INTERVAL 1 DAY)`,
-    NEVER_STALE, cutoff, cutoff);
+      AND NOT EXISTS (SELECT 1 FROM communications sc WHERE sc.tenant_id = l.tenant_id AND sc.lead_id = l.id AND sc.date >= ?)
+      AND (EXISTS (SELECT 1 FROM communications sc WHERE sc.tenant_id = l.tenant_id AND sc.lead_id = l.id) OR l.created_at < ?)`,
+    NEVER_STALE, boundary, boundary);
   }
 
   const window = String(query.followup || '');

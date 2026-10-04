@@ -45,6 +45,28 @@ function renderTemplate(template, values = {}) {
   }).trim();
 }
 
+/** What a campaign can say about one person. */
+function personValues(person) {
+  return { name: person.name || '', clientCode: person.client_code || '', status: person.status || '' };
+}
+
+/**
+ * The approved Meta template this campaign sends, filled for one person, or
+ * null for a plain-text campaign. template_params_json holds what fills {{1}},
+ * {{2}}… in order, each itself written with {{name}}-style placeholders.
+ */
+function templateFor(campaign, person) {
+  if (!campaign.template_name) return null;
+  let params = [];
+  try { params = JSON.parse(campaign.template_params_json || '[]'); } catch { params = []; }
+  const values = personValues(person);
+  return {
+    name: campaign.template_name,
+    language: campaign.template_language || 'ar',
+    params: (Array.isArray(params) ? params : []).map(param => renderTemplate(param, values) || '-'),
+  };
+}
+
 /** The placeholders a template actually uses — for the composer's preview. */
 function templateVariables(template) {
   return [...new Set([...String(template || '').matchAll(/\{\{\s*(\w+)\s*\}\}/g)].map(m => m[1]))];
@@ -90,6 +112,11 @@ async function buildAudience({ tenantId, audience, filter = {}, limit = MAX_RECI
     const where = ["s.tenant_id=?", 's.deleted_at IS NULL', 's.is_active=1', 's.phone IS NOT NULL', "s.phone<>''"];
     const params = [tenantId];
     if (filter.branchId) { where.push('s.branch_id=?'); params.push(String(filter.branchId)); }
+    // Everyone enrolled in one course: the audience for its next level.
+    if (filter.courseId) {
+      where.push('EXISTS (SELECT 1 FROM enrollments e WHERE e.tenant_id=s.tenant_id AND e.subscriber_id=s.id AND e.course_id=?)');
+      params.push(String(filter.courseId));
+    }
     params.push(cap);
     const [rows] = await db.query(
       `SELECT s.id, s.name, s.phone, s.client_code
@@ -164,18 +191,15 @@ async function queueCampaign({ tenantId, campaign, recipients, channelId = null 
 
   let queued = 0;
   for (const [index, person] of recipients.entries()) {
-    const message = renderTemplate(campaign.message_template, {
-      name: person.name || '',
-      clientCode: person.client_code || '',
-      status: person.status || '',
-    });
+    const message = renderTemplate(campaign.message_template, personValues(person));
     if (!message) continue;   // an empty render would send a blank message
+    const template = templateFor(campaign, person);
 
     const recipientId = uuidv4();
     const outboxId = await outbox.enqueue({
       channel: 'whatsapp',
       recipient: person.dialable,
-      payload: { message, channelId, campaignId: campaign.id, category: 'broadcast' },
+      payload: { message, ...(template ? { template } : {}), channelId, campaignId: campaign.id, category: 'broadcast' },
       tenantId,
       // The stagger IS the throttle.
       sendAt: startAt + index * gapMs,
@@ -223,6 +247,8 @@ module.exports = {
   MAX_THROTTLE,
   renderTemplate,
   templateVariables,
+  templateFor,
+  personValues,
   buildAudience,
   queueCampaign,
   recordSkipped,

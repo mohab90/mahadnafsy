@@ -29,7 +29,8 @@ function fail(res, error, message) {
   return res.status(500).json({ error: 'Internal server error' });
 }
 
-const COLUMNS = `id, name, message_template, channel_id, audience, audience_filter,
+const COLUMNS = `id, name, message_template, template_name, template_language, template_params_json,
+  channel_id, audience, audience_filter,
   throttle_per_minute, status, scheduled_at, sent_at, recipient_count, sent_count,
   fail_count, skipped_count, created_by, created_at, updated_at`;
 
@@ -47,20 +48,62 @@ router.get('/api/admin/whatsapp-campaigns', ...view, async (req, res) => {
   } catch (error) { fail(res, error, 'campaign list failed'); }
 });
 
+/**
+ * An approved Meta template, as the composer sends it: { name, language,
+ * params: ['{{name}}', …] }. Checked here so a campaign cannot be saved with a
+ * template the send would be refused for.
+ */
+function readTemplate(body) {
+  const name = String(body.templateName || '').trim();
+  if (!name) return { name: null, language: null, params: null };
+  if (!/^[a-z0-9_]{1,512}$/.test(name)) throw Object.assign(new Error('اسم القالب مش صحيح'), { statusCode: 400 });
+  const language = String(body.templateLanguage || 'ar').trim();
+  if (!/^[a-z]{2,3}(_[A-Z]{2})?$/.test(language)) throw Object.assign(new Error('لغة القالب مش صحيحة'), { statusCode: 400 });
+  const params = Array.isArray(body.templateParams) ? body.templateParams.map(p => String(p ?? '').slice(0, 300)) : [];
+  if (params.length > 10) throw Object.assign(new Error('القالب فيه متغيرات أكتر من المسموح'), { statusCode: 400 });
+  return { name, language, params: JSON.stringify(params) };
+}
+
+/** The company number's approved templates, from Meta. */
+router.get('/api/admin/whatsapp-campaigns/templates', ...view, async (req, res) => {
+  try {
+    const result = await require('../lib/whatsapp').listMetaTemplates(req.tenantId);
+    if (!result.ok) {
+      const REASONS = {
+        templates_need_meta: 'القوالب محتاجة رقم الشركة على واتساب الرسمي (Meta Cloud API)',
+        waba_missing: 'ضيف «WhatsApp Business Account ID» في بيانات قناة رقم الشركة',
+      };
+      return res.json({ templates: [], error: REASONS[result.reason] || `ميتا رفضت: ${result.reason}` });
+    }
+    res.json({ templates: result.templates });
+  } catch (error) { fail(res, error, 'template list failed'); }
+});
+
+/** How many numbers asked to stop promotional messages. */
+router.get('/api/admin/whatsapp-campaigns/opt-outs', ...view, async (req, res) => {
+  try {
+    const [[row]] = await pool.query(
+      "SELECT COUNT(*) AS total FROM marketing_suppressions WHERE tenant_id=? AND channel='whatsapp'", [req.tenantId]);
+    res.json({ total: Number(row.total) || 0 });
+  } catch (error) { fail(res, error, 'opt-out count failed'); }
+});
+
 router.post('/api/admin/whatsapp-campaigns', ...manage, async (req, res) => {
   try {
     const { name, messageTemplate, audience, audienceFilter, channelId, throttlePerMinute, scheduledAt } = req.body || {};
     if (!String(name || '').trim()) return res.status(400).json({ error: 'اسم الحملة مطلوب' });
     if (!String(messageTemplate || '').trim()) return res.status(400).json({ error: 'نص الرسالة مطلوب' });
+    const template = readTemplate(req.body || {});
 
     const id = uuidv4();
     await pool.query(
       `INSERT INTO whatsapp_campaigns
-         (id, tenant_id, name, message_template, channel_id, audience, audience_filter,
-          throttle_per_minute, scheduled_at, created_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+         (id, tenant_id, name, message_template, template_name, template_language, template_params_json,
+          channel_id, audience, audience_filter, throttle_per_minute, scheduled_at, created_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         id, req.tenantId, String(name).trim().slice(0, 200), String(messageTemplate).trim(),
+        template.name, template.language, template.params,
         channelId || null,
         ['leads', 'subscribers', 'all', 'manual', 'segment'].includes(audience) ? audience : 'leads',
         audienceFilter ? JSON.stringify(audienceFilter) : null,
@@ -99,6 +142,11 @@ router.patch('/api/admin/whatsapp-campaigns/:id', ...manage, async (req, res) =>
       params.push(Math.max(campaigns.MIN_THROTTLE, Math.min(Number(throttlePerMinute) || 60, campaigns.MAX_THROTTLE)));
     }
     if (scheduledAt !== undefined) { sets.push('scheduled_at=?'); params.push(scheduledAt || null); }
+    if (req.body?.templateName !== undefined) {
+      const template = readTemplate(req.body);
+      sets.push('template_name=?', 'template_language=?', 'template_params_json=?');
+      params.push(template.name, template.language, template.params);
+    }
     if (!sets.length) return res.json({ ok: true, unchanged: true });
     params.push(req.params.id, req.tenantId);
     await pool.query(`UPDATE whatsapp_campaigns SET ${sets.join(', ')} WHERE id=? AND tenant_id=?`, params);
@@ -147,9 +195,8 @@ router.post('/api/admin/whatsapp-campaigns/:id/preview', ...view, bulkOperationL
       samples: recipients.slice(0, 5).map(person => ({
         name: person.name,
         phone: person.dialable,
-        message: campaigns.renderTemplate(campaign.message_template, {
-          name: person.name || '', clientCode: person.client_code || '', status: person.status || '',
-        }),
+        message: campaigns.renderTemplate(campaign.message_template, campaigns.personValues(person)),
+        templateParams: campaigns.templateFor(campaign, person)?.params || null,
       })),
       skipReasons: skipped.slice(0, 20).map(s => ({ name: s.name, phone: s.phone, reason: s.reason })),
     });
@@ -183,6 +230,16 @@ router.post('/api/admin/whatsapp-campaigns/:id/send', ...manage, bulkOperationLi
         await conn.rollback(); transactionStarted = false;
         return res.status(409).json({ error: 'القناة المختارة غير متصلة — اختبرها أولاً' });
       }
+    }
+
+    // Refused before anything is queued: a closed category would have every
+    // message dead-lettered on its first attempt, a campaign that "sent" nothing.
+    if (!await require('../lib/whatsapp').isCategoryOpen('broadcast', req.tenantId)) {
+      await conn.rollback(); transactionStarted = false;
+      return res.status(409).json({
+        error: 'إرسال الحملات مقفول — افتحه من «قنوات الرسائل ← صحة الرسايل ← أنواع الرسائل» (الحملات الجماعية)',
+        code: 'BROADCAST_DISABLED',
+      });
     }
 
     const { recipients, skipped } = await campaigns.buildAudience({

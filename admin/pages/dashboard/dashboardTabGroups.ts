@@ -39,6 +39,7 @@ export const contentHubRouteTabs = new Set<string>([
   'footer_settings',
   'customer_inbox',
   'whatsapp_web',
+  'team_inbox',
   'service_hub',
   'tasks_board',
   'installment_plans',

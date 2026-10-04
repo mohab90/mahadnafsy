@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { pool } = require('./db');
 const { uuidv4 } = require('./id');
 const { resolveSecret } = require('./secretResolver');
+const { toDialable } = require('./phoneNumber');
 
 const SUBJECT_TABLES = Object.freeze({ lead: 'leads', subscriber: 'subscribers' });
 const CHANNEL_COLUMNS = Object.freeze({ email: 'email', sms: 'phone', whatsapp: 'phone' });
@@ -14,15 +15,37 @@ function tokenSecret() {
   return String(secret);
 }
 
+// A number is kept in the form it is dialled in (201012345678), however the
+// record spells it. It used to be the digits as written, so an opt-out saved
+// from a lead stored as 01012345678 never matched the campaign checking
+// 201012345678, and the person who said stop kept getting promotions.
+const PHONE_CHANNELS = new Set(['sms', 'whatsapp']);
+
 function normalizeDestination(channel, value) {
   const raw = String(value || '').trim();
   if (channel === 'email') return raw.toLowerCase();
-  if (channel === 'sms' || channel === 'whatsapp') return raw.replace(/\D/g, '');
+  if (PHONE_CHANNELS.has(channel)) return toDialable(raw) || raw.replace(/\D/g, '');
   return raw;
 }
 
 function destinationHash(channel, value) {
   return crypto.createHash('sha256').update(`${channel}:${normalizeDestination(channel, value)}`).digest('hex');
+}
+
+/** The hash an opt-out saved before numbers were normalised carries. */
+function legacyPhoneHash(channel, value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  return digits ? crypto.createHash('sha256').update(`${channel}:${digits}`).digest('hex') : null;
+}
+
+/** Every hash this destination may have been suppressed under. */
+function hashesOf(channel, value) {
+  const hashes = [destinationHash(channel, value)];
+  if (PHONE_CHANNELS.has(channel)) {
+    const legacy = legacyPhoneHash(channel, value);
+    if (legacy && legacy !== hashes[0]) hashes.push(legacy);
+  }
+  return hashes;
 }
 
 function encode(value) {
@@ -64,7 +87,10 @@ async function setMarketingConsent({ tenantId, subjectType, subjectId, channel, 
     }
     const hash = destinationHash(channel, subject.destination);
     if (subscribed) {
-      await conn.query('DELETE FROM marketing_suppressions WHERE tenant_id=? AND channel=? AND destination_hash=?', [tenantId, channel, hash]);
+      const hashes = hashesOf(channel, subject.destination);
+      await conn.query(
+        `DELETE FROM marketing_suppressions WHERE tenant_id=? AND channel=? AND destination_hash IN (${hashes.map(() => '?').join(',')})`,
+        [tenantId, channel, ...hashes]);
     } else {
       await conn.query(
         `INSERT INTO marketing_suppressions (tenant_id,channel,destination_hash,subject_type,subject_id)
@@ -88,7 +114,7 @@ async function setMarketingConsent({ tenantId, subjectType, subjectId, channel, 
 }
 
 async function filterSuppressed(tenantId, channel, recipients, key, db = pool) {
-  const unique = [...new Set(recipients.map(item => destinationHash(channel, item[key])).filter(Boolean))];
+  const unique = [...new Set(recipients.flatMap(item => hashesOf(channel, item[key])).filter(Boolean))];
   if (!unique.length) return recipients;
   const blocked = new Set();
   for (let i = 0; i < unique.length; i += 500) {
@@ -99,7 +125,7 @@ async function filterSuppressed(tenantId, channel, recipients, key, db = pool) {
     );
     rows.forEach(row => blocked.add(row.destination_hash));
   }
-  return recipients.filter(item => !blocked.has(destinationHash(channel, item[key])));
+  return recipients.filter(item => !hashesOf(channel, item[key]).some(hash => blocked.has(hash)));
 }
 
 module.exports = { createUnsubscribeToken, verifyUnsubscribeToken, setMarketingConsent, filterSuppressed, destinationHash, normalizeDestination };

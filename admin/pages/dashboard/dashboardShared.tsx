@@ -649,6 +649,8 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   customer_inbox:     'manage_inbox',
   // Each rep's own WhatsApp; the API scopes every chat to the person signed in.
   whatsapp_web:       'manage_inbox',
+  // The shared company inbox; the API decides which conversations each rep sees.
+  team_inbox:         'manage_inbox',
   service_hub:        'manage_inbox',
   cx_team:            ['manage_inbox', 'view_perf_cx'],
   join_us:            'view_join_us',

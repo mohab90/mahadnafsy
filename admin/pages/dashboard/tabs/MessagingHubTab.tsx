@@ -3,7 +3,7 @@ import { Activity, Radio, Megaphone, MessageCircle, Inbox } from 'lucide-react';
 import { MessagingChannelsPanel } from './messaging/MessagingChannelsPanel';
 import { WhatsappCampaignsPanel } from './messaging/WhatsappCampaignsPanel';
 import { MyWhatsappChannelPanel } from './messaging/MyWhatsappChannelPanel';
-import { InboxPanel } from './messaging/InboxPanel';
+import TeamInboxTab from './whatsapp/TeamInboxTab';
 import { MessagesHealthPanel } from './messaging/MessagesHealthPanel';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -11,7 +11,7 @@ type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type View = 'inbox' | 'channels' | 'campaigns' | 'mine' | 'health';
 
 const VIEWS: { key: View; label: string; icon: typeof Radio; hint: string }[] = [
-  { key: 'inbox', label: 'صندوق الرسائل', icon: Inbox, hint: 'ردود العملاء' },
+  { key: 'inbox', label: 'صندوق الرسائل', icon: Inbox, hint: 'واتساب الشركة والماسنجر والانستجرام' },
   { key: 'mine', label: 'واتسابي', icon: MessageCircle, hint: 'اربط رقمك الشخصي' },
   { key: 'channels', label: 'قنوات المراسلة', icon: Radio, hint: 'أرقام الشركة والموظفين' },
   { key: 'campaigns', label: 'حملات الواتساب', icon: Megaphone, hint: 'رسائل تسويقية مجدولة' },
@@ -48,7 +48,8 @@ export default function MessagingHubTab({ notify }: { notify: NotifyFn }) {
         ))}
       </div>
 
-      {view === 'inbox' && <InboxPanel notify={notify} />}
+      {/* The same team inbox the sales bar opens (tabs/whatsapp/TeamInboxTab.tsx). */}
+      {view === 'inbox' && <TeamInboxTab notify={notify} />}
       {view === 'mine' && <MyWhatsappChannelPanel notify={notify} />}
       {view === 'channels' && <MessagingChannelsPanel notify={notify} />}
       {view === 'campaigns' && <WhatsappCampaignsPanel notify={notify} />}

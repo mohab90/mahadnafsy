@@ -20,10 +20,19 @@ const { uuidv4 } = require('./id');
 const { toIdentity, toDialable } = require('./phoneNumber');
 const { createNotification } = require('./notification');
 const { getNextSalesRep } = require('./leadAssignment');
+const { upsertThread, recordOnThread } = require('./inboxThreads');
+const { setMarketingConsent } = require('./marketingConsent');
 const logger = require('./logger');
 
 const MAX_BODY = 4000;
 const INBOUND_LEAD_SOURCE = 'whatsapp_inbound';
+
+// «إلغاء» / STOP, typed or pressed (a marketing template's opt-out button
+// answers with its own text): the person is taken off promotional messages.
+// Matched against the whole message only — «عايز ألغي الحجز» is a question
+// for a rep, not an unsubscribe.
+const OPT_OUT = /^\s*(stop|unsubscribe|الغاء|إلغاء|الغاء الاشتراك|إلغاء الاشتراك|ايقاف|إيقاف|ايقاف الرسائل|إيقاف الرسائل|stop promotions)\s*[.!]?\s*$/i;
+const isOptOut = text => OPT_OUT.test(String(text || ''));
 
 /**
  * Find who this number belongs to. Subscribers win over leads: a paying client
@@ -111,7 +120,7 @@ async function createLeadFromInbound({ tenantId, from, text }, db = pool) {
  * @param {object} message { providerMessageId, from, body, timestamp }
  * @returns {Promise<{recorded: boolean, reason?: string, id?: string}>}
  */
-async function recordInboundMessage({ tenantId, providerMessageId, from, body, timestamp }, db = pool) {
+async function recordInboundMessage({ tenantId, channelId = null, providerMessageId, from, body, timestamp }, db = pool) {
   if (!providerMessageId || !from) return { recorded: false, reason: 'incomplete' };
   const text = String(body || '').slice(0, MAX_BODY).trim();
 
@@ -136,17 +145,44 @@ async function recordInboundMessage({ tenantId, providerMessageId, from, body, t
   // retry must not append the same message to the timeline twice.
   const [result] = await db.query(
     `INSERT IGNORE INTO communications
-       (id, tenant_id, lead_id, subscriber_id, type, direction, provider_message_id,
+       (id, tenant_id, lead_id, subscriber_id, type, direction, provider_message_id, channel_id,
         date, notes, staff_id, created_at)
-     VALUES (?,?,?,?, 'WHATSAPP', 'IN', ?, ?, ?, ?, NOW())`,
+     VALUES (?,?,?,?, 'WHATSAPP', 'IN', ?, ?, ?, ?, ?, NOW())`,
     [
       id, tenantId,
       sender.kind === 'lead' ? sender.id : null,
       sender.kind === 'subscriber' ? sender.id : null,
-      providerMessageId, when, text || '(رسالة بدون نص)', sender.staff_id || null,
+      providerMessageId, channelId, when, text || '(رسالة بدون نص)', sender.staff_id || null,
     ]
   );
   if (!result.affectedRows) return { recorded: false, reason: 'duplicate' };
+
+  // The team inbox. The message is already on the timeline; a conversation
+  // that fails to update is a stale list, not a lost message.
+  let owner = sender.staff_id || null;
+  try {
+    const thread = await upsertThread(db, {
+      tenantId, platform: 'whatsapp', contactKey: toDialable(from), channelId,
+      leadId: sender.kind === 'lead' ? sender.id : null,
+      subscriberId: sender.kind === 'subscriber' ? sender.id : null,
+      contactName: sender.name || null, ownerStaffId: sender.staff_id || null,
+    });
+    await recordOnThread(db, { tenantId, threadId: thread.id, communicationId: id, direction: 'IN', text, at: when });
+    owner = thread.assigned_staff_id || owner;
+  } catch (error) {
+    logger.warn('[wa-inbound] team inbox update failed', error.message);
+  }
+
+  let optedOut = false;
+  if (isOptOut(text)) {
+    optedOut = await setMarketingConsent({
+      tenantId, subjectType: sender.kind, subjectId: sender.id, channel: 'whatsapp',
+      subscribed: false, source: 'whatsapp_reply',
+    }).then(() => true).catch(error => {
+      logger.warn('[wa-inbound] opt-out not recorded', error.message);
+      return false;
+    });
+  }
 
   // Notify the owner. Without a recipient this goes to everyone, which is the
   // right fallback for an unassigned lead — better seen by all than by nobody.
@@ -158,11 +194,17 @@ async function recordInboundMessage({ tenantId, providerMessageId, from, body, t
     `${sender.name || 'عميل'}: ${text.slice(0, 120) || 'رسالة'}`,
     { [sender.kind === 'lead' ? 'leadId' : 'subscriberId']: sender.id, communicationId: id },
     tenantId,
-    sender.staff_id || null
+    owner
   );
 
-  return { recorded: true, id, senderKind: sender.kind, senderId: sender.id, createdLead: isNewLead };
+  return { recorded: true, id, senderKind: sender.kind, senderId: sender.id, createdLead: isNewLead, optedOut };
 }
+
+// A picture or a voice note has no text; the rep still needs to see one came.
+const MEDIA_LABEL = {
+  image: '📷 صورة', audio: '🎤 رسالة صوتية', voice: '🎤 رسالة صوتية', video: '🎬 فيديو',
+  document: '📄 ملف', sticker: 'ملصق', location: '📍 موقع', contacts: '👤 جهة اتصال',
+};
 
 /** Meta Cloud API webhook body → the messages in it. */
 function extractMetaMessages(payload) {
@@ -171,7 +213,11 @@ function extractMetaMessages(payload) {
       (change.value?.messages || []).map(message => ({
         providerMessageId: message.id,
         from: message.from,
-        body: message.text?.body || message.button?.text || message.interactive?.list_reply?.title || '',
+        // Which of the company's numbers it came to — the channel it is filed under.
+        phoneNumberId: change.value?.metadata?.phone_number_id || null,
+        body: message.text?.body || message.button?.text
+          || message.interactive?.button_reply?.title || message.interactive?.list_reply?.title
+          || MEDIA_LABEL[message.type] || '',
         timestamp: message.timestamp,
       }))
     )
@@ -198,4 +244,5 @@ module.exports = {
   identifySender,
   extractMetaMessages,
   extractGreenApiMessage,
+  isOptOut,
 };

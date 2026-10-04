@@ -26,6 +26,7 @@ import {
   ListOrdered,
   Megaphone,
   MessageCircle,
+  Inbox,
   MessageSquareText,
   Monitor,
   RotateCcw,
@@ -89,6 +90,8 @@ export type TabKey =
   | 'customer_inbox'
   // The rep's own WhatsApp, linked by QR (tabs/whatsapp/WhatsAppWebTab.tsx).
   | 'whatsapp_web'
+  // The company WhatsApp, page and Instagram, shared by the team (tabs/whatsapp/TeamInboxTab.tsx).
+  | 'team_inbox'
   | 'service_hub'
   | 'join_us'
   | 'contacts'
@@ -194,7 +197,8 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     color: 'text-emerald-600',
     items: [
       { key: 'leads', label: 'العملاء المحتملون', icon: UserPlus },
-      { key: 'whatsapp_web', label: 'واتساب', icon: MessageCircle },
+      { key: 'team_inbox', label: 'صندوق الرسائل', icon: Inbox },
+      { key: 'whatsapp_web', label: 'واتسابي', icon: MessageCircle },
       { key: 'sales_hub', label: 'فريق المبيعات والتقارير', icon: Users },
       // Four entries around one pipeline: two about working it — follow-ups and
       // scoring — and two about where it is heading. The rep checking today and

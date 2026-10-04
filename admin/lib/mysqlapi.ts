@@ -374,6 +374,8 @@ export interface WhatsappCampaign {
   sent_count: number;
   fail_count: number;
   skipped_count: number;
+  template_name?: string | null;
+  template_language?: string | null;
   variables?: string[];
   created_at: string;
 }
@@ -386,6 +388,10 @@ export interface WhatsappCampaignInput {
   channelId?: string | null;
   throttlePerMinute?: number;
   scheduledAt?: string | null;
+  // An approved Meta template; params fill its {{1}}, {{2}}… in order.
+  templateName?: string | null;
+  templateLanguage?: string | null;
+  templateParams?: string[];
 }
 
 export interface WhatsappCampaignPreview {

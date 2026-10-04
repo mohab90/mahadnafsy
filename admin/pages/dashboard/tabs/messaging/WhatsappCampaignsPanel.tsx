@@ -8,6 +8,7 @@ import {
   type WhatsappCampaignRecipient,
 } from '../../../../lib/mysqlapi';
 import { cairoInputToUtc } from '../../../../../shared/cairoDate';
+import { CampaignTemplatePicker, templatePreview, type TemplateChoice } from './CampaignTemplatePicker';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -61,7 +62,12 @@ export function WhatsappCampaignsPanel({ notify }: { notify: NotifyFn }) {
   const [draft, setDraft] = useState({
     name: '', messageTemplate: '', audience: 'leads' as WhatsappCampaign['audience'],
     channelId: '', throttlePerMinute: 60, scheduledAt: '',
+    // The company number on the official API sends approved templates only.
+    mode: 'template' as 'template' | 'text', template: null as TemplateChoice,
+    status: '', source: '', courseId: '',
   });
+  const [optOuts, setOptOuts] = useState<number | null>(null);
+  const [courses, setCourses] = useState<{ id: string; title: string }[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -72,19 +78,36 @@ export function WhatsappCampaignsPanel({ notify }: { notify: NotifyFn }) {
       ]);
       setCampaigns(list);
       setChannels(chans);
+      mysqlAdmin.adminGet<{ total: number }>('/admin/whatsapp-campaigns/opt-outs').then(r => setOptOuts(r.total), () => setOptOuts(null));
     } catch { notify('error', 'تعذر تحميل الحملات'); }
     finally { setLoading(false); }
   }, [notify]);
   useEffect(() => { void load(); }, [load]);
 
+  useEffect(() => {
+    if (!showNew || courses.length) return;
+    mysqlAdmin.listAllCourses().then(rows => setCourses(rows.map(row => ({ id: String(row.id), title: String(row.title || row.name || row.id) }))), () => {});
+  }, [showNew, courses.length]);
+
   const create = async () => {
     if (!draft.name.trim()) { notify('error', 'اسم الحملة مطلوب'); return; }
-    if (!draft.messageTemplate.trim()) { notify('error', 'نص الرسالة مطلوب'); return; }
+    const template = draft.mode === 'template' ? draft.template : null;
+    if (draft.mode === 'template' && !template) { notify('error', 'اختار القالب'); return; }
+    const messageTemplate = template ? templatePreview(template) : draft.messageTemplate.trim();
+    if (!messageTemplate) { notify('error', 'نص الرسالة مطلوب'); return; }
+    const audienceFilter: Record<string, string> = {};
+    if (draft.status.trim()) audienceFilter.status = draft.status.trim();
+    if (draft.source.trim()) audienceFilter.source = draft.source.trim();
+    if (draft.courseId) audienceFilter.courseId = draft.courseId;
     setBusyId('new');
     try {
       await mysqlAdmin.createWhatsappCampaign({
         name: draft.name.trim(),
-        messageTemplate: draft.messageTemplate.trim(),
+        messageTemplate,
+        templateName: template?.name || null,
+        templateLanguage: template?.language || null,
+        templateParams: template?.params || [],
+        audienceFilter: Object.keys(audienceFilter).length ? audienceFilter : undefined,
         audience: draft.audience,
         channelId: draft.channelId || null,
         throttlePerMinute: draft.throttlePerMinute,
@@ -94,7 +117,7 @@ export function WhatsappCampaignsPanel({ notify }: { notify: NotifyFn }) {
       });
       notify('success', 'تم إنشاء الحملة — راجع المستقبلين قبل الإرسال');
       setShowNew(false);
-      setDraft(d => ({ ...d, name: '', messageTemplate: '', scheduledAt: '' }));
+      setDraft(d => ({ ...d, name: '', messageTemplate: '', scheduledAt: '', template: null, status: '', source: '', courseId: '' }));
       await load();
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر إنشاء الحملة');
@@ -157,6 +180,7 @@ export function WhatsappCampaignsPanel({ notify }: { notify: NotifyFn }) {
         <div>
           <h2 className="text-xl font-bold flex items-center gap-2"><Megaphone size={22} />حملات الواتساب</h2>
           <p className="text-emerald-50 text-sm mt-1">رسائل تسويقية مجدولة بإيقاع آمن على الرقم</p>
+          {optOuts !== null && <p className="text-emerald-100 text-xs mt-1">{optOuts} رقم طلبوا يوقفوا الرسائل — مش بيتبعتلهم.</p>}
         </div>
         <button
           onClick={() => setShowNew(v => !v)}
@@ -198,6 +222,23 @@ export function WhatsappCampaignsPanel({ notify }: { notify: NotifyFn }) {
                 <option value="subscribers">المشتركون</option>
                 <option value="all">الكل</option>
               </select>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {draft.audience !== 'subscribers' && (
+                  <>
+                    <input value={draft.status} onChange={e => setDraft(d => ({ ...d, status: e.target.value }))}
+                      placeholder="حالة الليد (اختياري)" className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs" />
+                    <input value={draft.source} onChange={e => setDraft(d => ({ ...d, source: e.target.value }))}
+                      placeholder="المصدر (اختياري)" className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs" />
+                  </>
+                )}
+                {draft.audience !== 'leads' && (
+                  <select value={draft.courseId} onChange={e => setDraft(d => ({ ...d, courseId: e.target.value }))}
+                    className="col-span-2 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs">
+                    <option value="">المشتركين في أي كورس</option>
+                    {courses.map(course => <option key={course.id} value={course.id}>{course.title}</option>)}
+                  </select>
+                )}
+              </div>
             </div>
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">تُرسل من</label>
@@ -239,6 +280,18 @@ export function WhatsappCampaignsPanel({ notify }: { notify: NotifyFn }) {
             </div>
           </div>
 
+          <div className="flex gap-2">
+            {(['template', 'text'] as const).map(mode => (
+              <button key={mode} type="button" onClick={() => setDraft(d => ({ ...d, mode }))}
+                className={`rounded-xl border px-3 py-1.5 text-xs font-bold ${draft.mode === mode ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-gray-200 text-gray-500'}`}>
+                {mode === 'template' ? 'قالب متوافق عليه (رقم الشركة الرسمي)' : 'نص حر (أرقام غير رسمية)'}
+              </button>
+            ))}
+          </div>
+
+          {draft.mode === 'template' ? (
+            <CampaignTemplatePicker value={draft.template} onChange={template => setDraft(d => ({ ...d, template }))} />
+          ) : (
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">نص الرسالة</label>
             <textarea
@@ -254,6 +307,7 @@ export function WhatsappCampaignsPanel({ notify }: { notify: NotifyFn }) {
               <code className="bg-gray-100 px-1 rounded">{'{{status}}'}</code>
             </p>
           </div>
+          )}
 
           <div className="flex justify-end gap-2">
             <button onClick={() => setShowNew(false)}
