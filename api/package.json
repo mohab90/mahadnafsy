@@ -14,6 +14,7 @@
     "migrate:verify": "node tools/verify-migrations.cjs",
     "restore:rehearsal": "node tools/backup-restore-rehearsal.cjs",
     "reconcile": "node tools/reconcile.cjs",
+    "perf-report": "node tools/perf-report.cjs",
     "backfill:payment-journals": "node tools/backfill-payment-journals.cjs",
     "purge:internal-broadcasts": "node tools/purge-internal-broadcasts.cjs",
     "repair:enroll-paid": "node tools/enroll-paid-without-access.cjs",
