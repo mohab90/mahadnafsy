@@ -195,7 +195,25 @@ router.get('/api/admin/subscribers/stats', requireAuth, requireAdminOrStaff, req
       total += count;
     }
 
-    res.json({ total, byBranch });
+    // paidBySubscriber=1: what each of those clients has paid, net, in EGP.
+    // The retention and subscriptions screens summed a totalPaid the subscriber
+    // list never carries, so every revenue figure on them read 0 ج.
+    let paidBySubscriber;
+    if (req.query.paidBySubscriber === '1') {
+      const [paidRows] = await pool.query(
+        `SELECT p.subscriber_id AS id,
+                SUM(COALESCE(p.amount_egp, CASE WHEN COALESCE(p.currency, 'EGP') = 'EGP' THEN p.amount END)) AS egp
+           FROM payments p
+           JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
+          WHERE p.tenant_id = ? AND p.status = 'paid' AND p.deleted_at IS NULL
+            AND s.deleted_at IS NULL ${adminExclusions} AND ${scopeClause}
+          GROUP BY p.subscriber_id`,
+        params,
+      );
+      paidBySubscriber = Object.fromEntries(paidRows.map(r => [r.id, Math.round(Number(r.egp) || 0)]));
+    }
+
+    res.json({ total, byBranch, ...(paidBySubscriber ? { paidBySubscriber } : {}) });
   } catch (e) { logger.error('[route]', e.message); sendRouteError(res, e); }
 });
 

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { cairoMonthOnly, cairoDay, cairoMonthStart } from '../../../../shared/cairoDate';
 import { BookOpen, Users, DollarSign, BarChart3, Star } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { usePaidBySubscriber } from '../../../hooks/usePaidBySubscriber';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 type Range = 'month' | '3months' | '6months' | 'all';
@@ -44,6 +45,8 @@ function getRangeStart(range: Range): string {
 
 export default function SubscriptionsTab() {
   const { subscribers, courses } = useSiteData();
+  // What each client paid (the list itself carries no total).
+  const paid = usePaidBySubscriber();
   const [range, setRange] = useState<Range>('6months');
   const [statusFilter, setStatusFilter] = useState('all');
   const earliestMonth = useMemo(() => subscribers.reduce((min, s) => {
@@ -66,9 +69,9 @@ export default function SubscriptionsTab() {
       month: m.slice(5),
       اشتراكات: subscribers.filter(s => cairoDay(s.createdAt).slice(0, 7) === m).length,
       إيراد: subscribers.filter(s => cairoDay(s.createdAt).slice(0, 7) === m)
-                        .reduce((acc, s) => acc + (Number(s.totalPaid) || 0), 0),
+                        .reduce((acc, s) => acc + (paid?.[s.id] || 0), 0),
     })),
-    [subscribers, months]
+    [subscribers, months, paid]
   );
 
   // Course enrollment breakdown
@@ -80,13 +83,13 @@ export default function SubscriptionsTab() {
         const c = courses.find(c => c.id === cid);
         if (!map[cid]) map[cid] = { name: c?.title || cid, count: 0, revenue: 0 };
         map[cid].count++;
-        map[cid].revenue += Number(s.totalPaid) || 0;
+        map[cid].revenue += paid?.[s.id] || 0;
       });
     });
     return Object.values(map).sort((a, b) => b.count - a.count).slice(0, 8);
-  }, [subscribers, courses]);
+  }, [subscribers, courses, paid]);
 
-  const totalRevenue = useMemo(() => filtered.reduce((acc, s) => acc + (Number(s.totalPaid) || 0), 0), [filtered]);
+  const totalRevenue = useMemo(() => filtered.reduce((acc, s) => acc + (paid?.[s.id] || 0), 0), [filtered, paid]);
   const avgRevenue = filtered.length > 0 ? Math.round(totalRevenue / filtered.length) : 0;
   const activeCount = filtered.filter(s => s.clientStatus === 'active' || !s.clientStatus).length;
 

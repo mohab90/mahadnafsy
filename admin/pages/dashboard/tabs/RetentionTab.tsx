@@ -3,6 +3,7 @@ import { Users, UserCheck, BarChart3, RefreshCw, Star } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar, Legend, PieChart, Pie, Cell } from 'recharts';
 import { cairoDay, cairoMonthStart } from '../../../../shared/cairoDate';
+import { usePaidBySubscriber } from '../../../hooks/usePaidBySubscriber';
 
 
 const COLORS = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4'];
@@ -13,6 +14,7 @@ function getLast12Months() {
 
 export default function RetentionTab() {
   const { subscribers, courses } = useSiteData();
+  const paid = usePaidBySubscriber();
   const months = getLast12Months();
 
   const activeSubs = useMemo(() =>
@@ -41,11 +43,11 @@ export default function RetentionTab() {
           map[cid] = { name: course?.title || cid, count: 0, revenue: 0 };
         }
         map[cid].count++;
-        map[cid].revenue += Number(s.totalPaid) || 0;
+        map[cid].revenue += paid?.[s.id] || 0;
       });
     });
     return Object.values(map).sort((a, b) => b.count - a.count).slice(0, 8);
-  }, [subscribers, courses]);
+  }, [subscribers, courses, paid]);
 
   // Status breakdown
   const statusBreakdown = useMemo(() => {
@@ -64,11 +66,12 @@ export default function RetentionTab() {
     return total > 0 ? Math.round((active / total) * 100) : 0;
   }, [subscribers, activeSubs]);
 
-  // Avg revenue per subscriber
+  // Avg revenue per subscriber, from what each one actually paid.
   const avgRevenue = useMemo(() => {
-    const total = subscribers.reduce((acc, s) => acc + (Number(s.totalPaid) || 0), 0);
-    return subscribers.length > 0 ? Math.round(total / subscribers.length) : 0;
-  }, [subscribers]);
+    if (!paid || !subscribers.length) return 0;
+    const total = subscribers.reduce((acc, s) => acc + (paid[s.id] || 0), 0);
+    return Math.round(total / subscribers.length);
+  }, [subscribers, paid]);
 
   return (
     <div className="space-y-5" dir="rtl">
