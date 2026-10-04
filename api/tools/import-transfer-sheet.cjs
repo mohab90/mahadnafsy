@@ -7,8 +7,8 @@
  *
  *   node tools/import-transfer-sheet.cjs <file.xlsx>            # report only
  *   node tools/import-transfer-sheet.cjs <file.xlsx> --apply
- *   … --box "فودافون كاش 7711"    the account, when the sheet's «الخزنة» number
- *                                  does not name exactly one known account
+ *   … --box "فودافون كاش 7711"    every row on this account, whatever «الخزنة» says
+ *   … --unmatched-box "انستا باي"  only the rows whose «الخزنة» names no known account
  *
  * Columns: رقم العملية · الهاتف · المبلغ · الخزنة (the receiving account's
  * number). There is no date column: a transfer is recorded with today's date
@@ -24,16 +24,32 @@ const file = process.argv[2];
 const apply = process.argv.includes('--apply');
 const tenantId = arg('tenant', process.env.DEFAULT_TENANT_ID || 'tenant-default');
 const forcedBox = arg('box', null);
+// For the rows whose account matches no known box only — the rest keep theirs.
+const fallbackBox = arg('unmatched-box', null);
 if (!file || !fs.existsSync(file)) { console.error('usage: node tools/import-transfer-sheet.cjs <file.xlsx> [--apply] [--box "<account>"]'); process.exit(2); }
 
 const fold = value => String(value ?? '').replace(/[إأآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, ' ').trim();
+const { canonicalChannel } = require('../lib/paymentChannels');
 const digitsOf = value => String(value ?? '').replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x0660)).replace(/\D/g, '');
 
-/** The known account whose number is in the sheet's «الخزنة» number — its last four digits. */
-function boxFor(accountNumber, boxes) {
-  const digits = digitsOf(accountNumber);
-  const hits = boxes.filter(box => (fold(box).match(/\d{3,}/g) || []).some(group => digits.endsWith(group) || digits.includes(group)));
-  return hits.length === 1 ? hits[0] : null;
+/**
+ * The known account the sheet's «الخزنة» names: a box whose number is in it
+ * (its last digits) and whose rail fits («انستا …» is never a Vodafone wallet).
+ * The same box is often written several ways («فودافون كاش 4645» twice), so the
+ * matches are folded to one channel (lib/paymentChannels.js) and the transfer is
+ * recorded under that one clean name. Null when it is not exactly one box.
+ */
+function boxFor(account, boxes) {
+  const text = fold(account);
+  const digits = digitsOf(account);
+  const instapay = /انستا|insta/.test(text);
+  const hits = boxes.filter(box => {
+    const name = fold(box);
+    if (instapay !== /انستا|insta/.test(name)) return false;
+    return (name.match(/\d{3,}/g) || []).some(group => digits.endsWith(group) || digits.includes(group));
+  });
+  const channels = [...new Set(hits.map(canonicalChannel))];
+  return channels.length === 1 ? channels[0] : null;
 }
 
 (async () => {
@@ -57,7 +73,7 @@ function boxFor(accountNumber, boxes) {
       const reference = digitsOf(row[at.reference]) || String(row[at.reference] ?? '').trim();
       const amount = Number(digitsOf(row[at.amount]) ? String(row[at.amount]).replace(/[^\d.]/g, '') : NaN);
       if (!reference || !(amount > 0)) { problems.push(`${tab.name} row ${index + 2}: missing number or amount`); return; }
-      const box = forcedBox || boxFor(at.box >= 0 ? row[at.box] : tab.name, boxes);
+      const box = forcedBox || boxFor(at.box >= 0 ? row[at.box] : tab.name, boxes) || fallbackBox;
       if (!box) { problems.push(`${tab.name} row ${index + 2}: account «${at.box >= 0 ? row[at.box] : tab.name}» matches no single known account — pass --box`); return; }
       const phone = at.phone >= 0 ? digitsOf(row[at.phone]) : '';
       transfers.push({
