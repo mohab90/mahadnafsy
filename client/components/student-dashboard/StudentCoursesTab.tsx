@@ -1,6 +1,9 @@
 import { Link } from 'react-router-dom';
 import { BookOpen, CheckCircle, Clock, DollarSign, MessageSquare, Play } from 'lucide-react';
 
+// The type is stored in English ('Recorded'); it reached the card as is.
+const COURSE_TYPE_AR: Record<string, string> = { Recorded: 'مسجل', Live: 'بث مباشر', Mix: 'مختلط' };
+
 import type { Course, CourseLectureItem, SubscriberItem } from '../../types';
 import { toDialable } from '../../lib/whatsappLink';
 import { moneySuffix, type CourseBalance, type InstallmentModalState } from '../../lib/itemBalance';
@@ -77,7 +80,9 @@ export function StudentCoursesTab({
         return (
           <div key={course.id} className="group overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition hover:shadow-md">
             <div className="relative h-44 overflow-hidden">
-              <img src={course.thumbnail} alt={course.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+              {course.thumbnail
+                ? <img src={course.thumbnail} alt={course.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+                : <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary-100 to-primary-50 text-primary-400"><BookOpen size={48} /></div>}
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
               <span className={`absolute right-3 top-3 rounded-full px-2.5 py-1 text-xs font-bold ${isFull ? 'bg-green-500 text-white' : 'bg-yellow-400 text-gray-900'}`}>
                 {isFull ? 'وصول كامل' : 'جزئي'}
@@ -87,7 +92,7 @@ export function StudentCoursesTab({
 
             <div className="p-4">
               <div className="mb-3 flex items-center gap-3 text-xs text-gray-500">
-                <span className="flex items-center gap-1"><Clock size={12} /> {course.hours ? `${course.hours} ساعة` : course.duration || course.type}</span>
+                <span className="flex items-center gap-1"><Clock size={12} /> {course.hours ? `${course.hours} ساعة` : course.duration || COURSE_TYPE_AR[course.type] || course.type}</span>
                 <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> مشترك</span>
               </div>
 

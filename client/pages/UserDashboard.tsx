@@ -803,7 +803,10 @@ const UserDashboard: React.FC = () => {
                             className="bg-white rounded-2xl overflow-hidden border border-gray-100 flex gap-3 p-3 items-center hover: hover:border-primary-200 text-right w-full group glass-card-premium shadow-xl shadow-gray-200/50 hover:shadow-2xl hover:shadow-primary-500/20 transition-all duration-300 hover:-translate-y-2 border-white/50 backdrop-blur-xl bg-white/70"
                           >
                             <div className="relative flex-shrink-0">
-                              <img src={course.thumbnail} alt={course.title} className="w-14 h-14 rounded-xl object-cover" />
+                              {/* A course with no image showed a broken-image box here. */}
+                              {course.thumbnail
+                                ? <img src={course.thumbnail} alt={course.title} className="w-14 h-14 rounded-xl object-cover" />
+                                : <div className="w-14 h-14 rounded-xl bg-primary-50 text-primary-500 flex items-center justify-center"><BookOpen size={22} /></div>}
                               <div className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
                                 <Play size={18} className="text-white" />
                               </div>

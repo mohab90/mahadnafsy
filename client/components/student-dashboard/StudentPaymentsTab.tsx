@@ -279,7 +279,7 @@ export function StudentPaymentsTab({
       )}
 
       <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[560px] whitespace-nowrap text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50">
               <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">المبلغ</th>

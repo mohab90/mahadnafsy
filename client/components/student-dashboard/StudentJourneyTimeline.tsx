@@ -58,8 +58,17 @@ const eventLabel = (event: TimelineEvent) => {
   // An unrecognised money state must not borrow the item's title and look
   // settled — say plainly that it is still with the accounts team.
   if (!isConfirmed(event)) return 'في انتظار تأكيد الحسابات';
-  return event.title || event.status;
+  return titleText(event.title) || event.status;
 };
+
+// The server fills title with the payment type when a payment names no course,
+// and currency with its code; both reached the student in English.
+const TITLE_AR: Record<string, string> = {
+  COURSE: 'حجز كورس', BUNDLE: 'باقة', CONSULTATION: 'استشارة', CERTIFICATE: 'شهادة',
+  INSTALLMENT: 'قسط', DEPOSIT: 'دفعة مقدمة', OTHER: 'دفعة',
+};
+const CURRENCY_AR: Record<string, string> = { EGP: 'ج.م', SAR: 'ر.س', USD: '$' };
+const titleText = (title?: string | null) => TITLE_AR[String(title || '').trim().toUpperCase()] || title;
 
 export function StudentJourneyTimeline() {
   const [events, setEvents] = useState<TimelineEvent[]>([]);
@@ -87,7 +96,7 @@ export function StudentJourneyTimeline() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-bold text-gray-800">{eventLabel(event)}</p>
-                    <p className="text-xs text-gray-500 truncate">{event.title}</p>
+                    <p className="text-xs text-gray-500 truncate">{titleText(event.title)}</p>
                     {!isConfirmed(event) && (
                       <span className="mt-1 inline-block rounded-lg bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
                         لم يتم تأكيد الدفع بعد
@@ -99,7 +108,7 @@ export function StudentJourneyTimeline() {
                       a submitted screenshot looked like a completed payment. */}
                   {event.amount != null && (
                     <span className={`text-xs font-bold ${isConfirmed(event) ? 'text-emerald-700' : 'text-amber-700'}`}>
-                      {Number(event.amount).toLocaleString('ar-EG-u-nu-latn')} {event.currency}
+                      {Number(event.amount).toLocaleString('ar-EG-u-nu-latn')} {CURRENCY_AR[String(event.currency || '').toUpperCase()] || event.currency}
                     </span>
                   )}
                 </div>
