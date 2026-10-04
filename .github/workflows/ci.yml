@@ -19,17 +19,21 @@ jobs:
   static-checks:
     name: API lint + quality gate
     runs-on: ubuntu-latest
-    # Throwaway MySQL container migrated fresh on every run; it never holds live data.
+    # Throwaway database container migrated fresh on every run; it never holds
+    # live data. MariaDB 10.11, the engine production runs: MySQL 8 accepted
+    # SQL production rejects and rejected SQL production accepts (ALTER … IF
+    # NOT EXISTS, REGEXP_SUBSTR, case-insensitive ENUMs), so a green run there
+    # said little about a deploy.
     services:
       mysql:
-        image: mysql:8
+        image: mariadb:10.11
         env:
-          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
-          MYSQL_DATABASE: mahad_ci
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: 'yes'
+          MARIADB_DATABASE: mahad_ci
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1"
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=10

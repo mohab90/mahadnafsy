@@ -151,7 +151,7 @@ async function prepareIdempotentStatement(pool, statement) {
   }
 
   const standaloneCreate = statement.match(
-    /^CREATE\s+(UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS\s+`?([A-Za-z0-9_$]+)`?\s+ON\s+`?([A-Za-z0-9_$]+)`?([\s\S]+)$/i
+    /^CREATE\s+((?:UNIQUE|FULLTEXT)\s+)?INDEX\s+IF\s+NOT\s+EXISTS\s+`?([A-Za-z0-9_$]+)`?\s+ON\s+`?([A-Za-z0-9_$]+)`?([\s\S]+)$/i
   );
   if (standaloneCreate) {
     if (await objectExists(pool, 'index', standaloneCreate[3], standaloneCreate[2])) return null;
