@@ -41,6 +41,8 @@ function renameStored(raw) {
   if (raw == null) return raw;
   try { return JSON.stringify(renameValue(JSON.parse(raw))); } catch { return renameText(raw); }
 }
+// A native JSON column comes back from mysql2 already parsed; keep everything as text.
+const asText = v => (v == null || typeof v === 'string' ? v : Buffer.isBuffer(v) ? v.toString('utf8') : JSON.stringify(v));
 // Re-stringifying turns \u escapes back into the letters they stand for.
 const unescaped = raw => { try { return JSON.stringify(JSON.parse(raw)); } catch { return String(raw); } };
 const sameJson = (a, b) => { try { return JSON.stringify(JSON.parse(a)) === b; } catch { return a === b; } };
@@ -51,9 +53,9 @@ const sameJson = (a, b) => { try { return JSON.stringify(JSON.parse(a)) === b; }
   const [siteConfig] = await pool.query('SELECT `key`, value FROM site_config');
 
   const rows = [
-    ...tenants.map(t => ({ table: 'tenants', id: t.id, label: `tenant ${t.id}`, before: t.name, after: renameText(t.name) })),
-    ...settings.map(s => ({ table: 'tenant_settings', id: s.id, label: `${s.tenant_id} / ${s.section}`, before: s.config_json, after: renameStored(s.config_json) })),
-    ...siteConfig.map(c => ({ table: 'site_config', id: c.key, label: `site_config ${c.key}`, before: c.value, after: renameStored(c.value) })),
+    ...tenants.map(t => ({ table: 'tenants', id: t.id, label: `tenant ${t.id}`, before: asText(t.name), after: renameText(asText(t.name)) })),
+    ...settings.map(s => ({ table: 'tenant_settings', id: s.id, label: `${s.tenant_id} / ${s.section}`, before: asText(s.config_json), after: renameStored(asText(s.config_json)) })),
+    ...siteConfig.map(c => ({ table: 'site_config', id: c.key, label: `site_config ${c.key}`, before: asText(c.value), after: renameStored(asText(c.value)) })),
   ];
   const changes = rows.filter(row => !sameJson(row.before, row.after));
 
