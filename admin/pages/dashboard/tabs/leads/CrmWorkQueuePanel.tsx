@@ -2,6 +2,25 @@ import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Clock3, PhoneCall, RefreshCw, Sparkles } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 
+/** api/lib/crmWorkQueue.js's reason codes, in the desk's words. They used to show raw. */
+function reasonLabel(code: string): string {
+  const [key, value] = code.split(':');
+  switch (key) {
+    case 'follow_up_overdue': return `متابعة متأخرة ${value} يوم`;
+    case 'follow_up_due_today': return 'متابعة النهارده';
+    case 'follow_up_due_24h': return 'متابعة خلال 24 ساعة';
+    case 'missing_follow_up': return 'مفيش ميعاد متابعة';
+    case 'first_response_sla_breached': return 'اتأخر أول تواصل';
+    case 'new_uncontacted': return 'جديد محدش كلمه';
+    case 'silent_days': return `ساكت من ${value} يوم`;
+    case 'high_interest': return 'اهتمام عالي';
+    case 'forecast_commit': return 'متوقع يقفل';
+    case 'deal_value': return 'قيمة صفقة عالية';
+    case 'sequence_active': return 'في تسلسل متابعة';
+    default: return code;
+  }
+}
+
 type Band = 'critical' | 'high' | 'medium' | 'low';
 
 interface WorkItem {
@@ -103,7 +122,7 @@ export function CrmWorkQueuePanel({ onOpenLead }: { onOpenLead: (leadId: string)
           <span className="min-w-0 flex-1">
             <strong className="block truncate text-sm text-gray-900">{item.name}</strong>
             <span className="block truncate text-[11px] text-gray-500">
-              {item.assigned_sales_name || 'غير معيّن'} · {item.reasons.slice(0, 2).join(' · ')}
+              {item.assigned_sales_name || 'غير معيّن'} · {item.reasons.slice(0, 2).map(reasonLabel).join(' · ')}
             </span>
           </span>
           <span className="text-left">

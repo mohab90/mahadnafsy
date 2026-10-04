@@ -385,6 +385,13 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const BOARD_ALWAYS_ON: LeadStatus[] = ['new', 'interested_booking', 'interested_followup', 'no_answer_wa', 'no_answer_nowa', 'not_interested'];
   const boardStatusCols = boardColumns.filter(status => BOARD_ALWAYS_ON.includes(status) || (serverBoard.counts[status] || 0) > 0);
   const refreshServerBoard = serverBoard.refresh;
+  // Leads whose status is not a column at all — 'contacted', 'interested' and
+  // the like from before the current stages. The board used to drop them
+  // without a word; thousands of leads were nowhere on it.
+  const LEGACY_STATUS_AR: Record<string, string> = { follow_up: 'متابعة', archived: 'مؤرشف' };
+  const boardHiddenStatuses = Object.entries(serverBoard.counts)
+    .filter(([status, count]) => count > 0 && !boardColumns.includes(status as LeadStatus) && statusFilter.size === 0)
+    .sort((a, b) => b[1] - a[1]);
   // An edit made from the table changes the row on the server; the page is
   // re-read so it shows what was saved.
   const tableUpdateLead = useCallback(async (item: LeadItem) => {
@@ -601,6 +608,19 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
             <div className="mb-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
               تعذّر تحميل البايبلاين: {serverBoard.error}
               <button type="button" onClick={refreshServerBoard} className="mr-2 underline">إعادة المحاولة</button>
+            </div>
+          )}
+          {boardHiddenStatuses.length > 0 && (
+            <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900" role="status">
+              <span className="font-bold">عملاء في حالات مش ظاهرة كأعمدة هنا:</span>
+              {boardHiddenStatuses.map(([status, count]) => (
+                <button key={status} type="button"
+                  onClick={() => { setSingleStatus(status as LeadStatus); setSubTab('table'); }}
+                  className="rounded-full border border-amber-300 bg-white px-2 py-0.5 hover:bg-amber-100">
+                  {STATUS_CFG[status as LeadStatus]?.label || LEGACY_STATUS_AR[status] || status}: {count.toLocaleString('ar-EG-u-nu-latn')}
+                </button>
+              ))}
+              <span className="text-amber-700">— اضغط لعرضهم في الجدول، أو ضيف الحالة كعمود من إعدادات البايبلاين.</span>
             </div>
           )}
           <LeadPipelineBoard
