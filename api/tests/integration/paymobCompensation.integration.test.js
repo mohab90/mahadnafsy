@@ -15,9 +15,18 @@ const skip = !ENABLED && 'no DB_* configured';
 const TENANT = 'tenant-paymob-comp-it';
 let pool; let calc;
 
+// Rows a run left behind (an interrupted run, a failed delete) must not
+// break the next one: cleared before as well as after.
+async function clean() {
+  for (const table of ['crm_commissions', 'instructor_fees', 'payments', 'subscribers', 'commission_rules', 'courses', 'instructor_rates', 'staff']) {
+    await pool.query(`DELETE FROM ${table} WHERE tenant_id=?`, [TENANT]).catch(() => {});
+  }
+}
+
 before(async () => {
   if (!ENABLED) return;
   ({ pool } = require('../../lib/db'));
+  await clean();
   calc = require('../../lib/commissionCalc');
   await pool.query(
     `INSERT INTO staff (id, tenant_id, name, email, phone, role, is_active, joined_at, commission_rate) VALUES
@@ -41,9 +50,7 @@ before(async () => {
 });
 after(async () => {
   if (!ENABLED) return;
-  for (const table of ['crm_commissions', 'instructor_fees', 'payments', 'subscribers', 'commission_rules', 'courses', 'instructor_rates', 'staff']) {
-    await pool.query(`DELETE FROM ${table} WHERE tenant_id=?`, [TENANT]).catch(() => {});
-  }
+  await clean();
   await pool.end();
 });
 

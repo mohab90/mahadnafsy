@@ -1,5 +1,6 @@
 'use strict';
 const logger = require('../lib/logger');
+const { hasPaidForCourse } = require('../lib/coursePaid');
 const express = require('express');
 const router  = express.Router();
 
@@ -468,6 +469,18 @@ router.delete('/api/admin/certificate-requests/:id', requireAuth, requireAdminOr
 // ── Customer certificate request → single source of truth = certificate_requests table ──
 // (Previously the client wrote cert requests into crm_json.extraCertificateRequests, which the
 //  admin never read → requests vanished. Now customers write to the same table the admin manages.)
+/** May this client ask for a certificate: enrolled, completed, and paid for it (lib/coursePaid.js). */
+async function certificateEligible(db, { tenantId, subscriberId, courseId }) {
+  const [[enrolled]] = await db.query(
+    `SELECT e.id
+       FROM enrollments e
+       JOIN course_completions cc ON cc.subscriber_id=e.subscriber_id AND cc.course_id=e.course_id AND cc.tenant_id=e.tenant_id AND cc.status='active'
+      WHERE e.subscriber_id=? AND e.course_id=? AND e.tenant_id=? AND e.status='active' LIMIT 1`,
+    [subscriberId, courseId, tenantId]
+  );
+  return Boolean(enrolled) && hasPaidForCourse(db, { tenantId, subscriberId, courseId });
+}
+
 router.post('/api/me/certificate-request', requireAuth, async (req, res) => {
   try {
     const tenantId = req.tenantId || req.user?.tenant_id || 'tenant-default';
@@ -478,21 +491,7 @@ router.post('/api/me/certificate-request', requireAuth, async (req, res) => {
     const type = certificateTypeCodes(pricingConfig).has(String(b.type || '').toUpperCase()) ? String(b.type).toUpperCase() : 'OTHER';
     const nationality = CERT_NATS.includes(String(b.nationality || '').toUpperCase()) ? String(b.nationality).toUpperCase() : null;
     if (!b.courseId) return res.status(400).json({ error: 'courseId required' });
-    const [[eligible]] = await pool.query(
-      `SELECT e.id
-         FROM enrollments e
-         JOIN course_completions cc ON cc.subscriber_id=e.subscriber_id AND cc.course_id=e.course_id AND cc.tenant_id=e.tenant_id AND cc.status='active'
-        WHERE e.subscriber_id=? AND e.course_id=? AND e.tenant_id=? AND e.status='active'
-          AND EXISTS (
-            SELECT 1 FROM payments p
-             WHERE p.subscriber_id=e.subscriber_id AND p.tenant_id=e.tenant_id
-               AND p.status='paid' AND p.deleted_at IS NULL
-               AND (p.course_id=e.course_id OR EXISTS (
-                 SELECT 1 FROM bundle_courses bc WHERE bc.bundle_id=p.bundle_id AND bc.course_id=e.course_id AND bc.tenant_id=e.tenant_id
-               ))
-          ) LIMIT 1`,
-      [sub.id, b.courseId, tenantId]
-    );
+    const eligible = await certificateEligible(pool, { tenantId, subscriberId: sub.id, courseId: b.courseId });
     if (!eligible) return res.status(409).json({ error: 'certificate_not_eligible', message: 'يجب دفع وإتمام الكورس أولاً' });
     const [[duplicate]] = await pool.query(
       `SELECT id FROM certificate_requests
@@ -536,3 +535,4 @@ router.post('/api/me/certificate-request', requireAuth, async (req, res) => {
 });
 
 module.exports = router;
+module.exports.certificateEligible = certificateEligible;

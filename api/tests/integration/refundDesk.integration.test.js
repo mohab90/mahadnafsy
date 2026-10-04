@@ -31,9 +31,17 @@ async function call(method, route, { id, body = {}, staff }) {
 }
 const DOKKI_ACCOUNTANT = { id: 'st-dokki', name: 'محاسب الدقي', role: 'accountant', data_scope: 'branch:DAQQI' };
 
+// Rows a run left behind (an interrupted run, a failed delete) must not
+// break the next one: cleared before as well as after.
+async function clean() {
+  await pool.query('DELETE FROM refund_requests WHERE tenant_id=?', [TENANT]);
+  await pool.query('DELETE FROM financial_audit_log WHERE tenant_id=?', [TENANT]).catch(() => {});
+}
+
 before(async () => {
   if (!ENABLED) return;
   ({ pool } = require('../../lib/db'));
+  await clean();
   router = require('../../routes/finance');
   await pool.query(
     `INSERT INTO refund_requests (id, tenant_id, subscriber_id, amount, currency, status, branch_id)
@@ -44,8 +52,7 @@ before(async () => {
 });
 after(async () => {
   if (!ENABLED) return;
-  await pool.query('DELETE FROM refund_requests WHERE tenant_id=?', [TENANT]);
-  await pool.query('DELETE FROM financial_audit_log WHERE tenant_id=?', [TENANT]).catch(() => {});
+  await clean();
   await pool.end();
 });
 

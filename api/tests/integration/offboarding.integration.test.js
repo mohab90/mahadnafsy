@@ -28,9 +28,18 @@ async function close(body) {
   return res;
 }
 
+// Rows a run left behind (an interrupted run, a failed delete) must not
+// break the next one: cleared before as well as after.
+async function clean() {
+  for (const table of ['staff_offboarding', 'leads', 'staff', 'audit_events']) {
+    await pool.query(`DELETE FROM ${table} WHERE tenant_id=?`, [TENANT]).catch(() => {});
+  }
+}
+
 before(async () => {
   if (!ENABLED) return;
   ({ pool } = require('../../lib/db'));
+  await clean();
   router = require('../../routes/hr/offboarding');
   await pool.query(
     `INSERT INTO staff (id, tenant_id, name, email, phone, role, is_active, joined_at) VALUES
@@ -46,9 +55,7 @@ before(async () => {
 });
 after(async () => {
   if (!ENABLED) return;
-  for (const table of ['staff_offboarding', 'leads', 'staff', 'audit_events']) {
-    await pool.query(`DELETE FROM ${table} WHERE tenant_id=?`, [TENANT]).catch(() => {});
-  }
+  await clean();
   await pool.end();
 });
 

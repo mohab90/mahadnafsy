@@ -37,15 +37,22 @@ const TENANT = 'tenant-otp-it';
 let otp; let pool;
 const codeFor = phone => [...sent].reverse().find(s => s.to.endsWith(phone.slice(-9)))?.code;
 
+// Rows a run left behind (an interrupted run, a failed delete) must not
+// break the next one: cleared before as well as after.
+async function clean() {
+  for (const table of ['otp_codes', 'leads', 'users', 'staff']) await pool.query(`DELETE FROM ${table} WHERE tenant_id=?`, [TENANT]);
+}
+
 before(async () => {
   if (!ENABLED) return;
   otp = require('../../lib/whatsappOtp');
   ({ pool } = require('../../lib/db'));
+  await clean();
   await pool.query('INSERT IGNORE INTO client_code_counter (id, next_value) VALUES (1, 10001)');
 });
 after(async () => {
   if (!ENABLED) return;
-  for (const table of ['otp_codes', 'leads', 'users', 'staff']) await pool.query(`DELETE FROM ${table} WHERE tenant_id=?`, [TENANT]);
+  await clean();
   await pool.end();
 });
 
