@@ -29,6 +29,7 @@ const { itemBalances } = require('../lib/agreedPrice');
 const { grantCourseEntitlement } = require('../lib/entitlements');
 const { queuePaymentReceipt } = require('../lib/paymentReceipt');
 const { isRealPhone } = require('../lib/phoneNumber');
+const { recordPaymentCompensation } = require('../lib/paymentCompensation');
 
 async function requireScopedSubscriber(req, subscriberId, db = pool) {
   const [[subscriber]] = await db.query(
@@ -218,6 +219,14 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
     // connection, so the payment and its audit row live or die together.
     await logPaymentAudit(payId, 'create', null, 'paid', paidAmount, plan.subscriber_id,
       req.user?.email || req.staffRecord?.name || 'system', req.tenantId, conn, true);
+    // The rep's commission and the instructor's share, as on every other paid
+    // payment (desk, approval, transfer proof, Paymob). An instalment wrote
+    // neither: the money of every payment plan reached no commission and no
+    // instructor fee. On the same transaction, after the journal has written
+    // the EGP snapshot the rule reads.
+    await recordPaymentCompensation({
+      paymentId: payId, tenantId: req.tenantId, actor: req.user?.email || req.staffRecord?.name || 'installment',
+    }, conn);
 
     // What the instalment opens, as every other paid payment does: more
     // lectures in proportion to what is now paid, the whole course once it is
@@ -266,6 +275,9 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
     res.json({ ok: true, paymentId: payId, status: update.status, paidCount: update.paidCount });
   } catch (e) {
     await conn.rollback().catch(() => {});
+    // A closed period (lib/periodLock, 409) is the desk's to know, in words.
+    const refused = e.status || e.statusCode;
+    if (refused >= 400 && refused < 500) return res.status(refused).json({ error: e.message });
     logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
   } finally { conn.release(); }
 });

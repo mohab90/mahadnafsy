@@ -38,6 +38,7 @@ const { getMfaPolicy, policyRequiresStaff } = require('../lib/mfaPolicy');
 const { requireTenantQuota } = require('../middleware/tenantQuota');
 const { resolveClientContext, getClientIp, hashClientIp } = require('../lib/clientContext');
 const { ensureLeadForUser } = require('../lib/registrationLead');
+const { recordPaymentCompensation } = require('../lib/paymentCompensation');
 const { createSessionBinding, rotateSingleSession, closeSingleSession } = require('../lib/singleSession');
 const { registerCustomerDevice } = require('../lib/customerDevices');
 const { getSharingLock, enforceSharingLimit } = require('../lib/accountSharingGuard');
@@ -705,6 +706,12 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
           date: paymentDate, actor: req.user?.email || 'create-account', tenantId,
         }, conn);
         if (!journalId) throw new Error('First payment journal posting failed');
+        // Commission and the instructor's share, as every other approved payment
+        // records them; one left pending gets them when it is approved
+        // (core/financepay.js). This one, approved here, got neither.
+        await recordPaymentCompensation({
+          paymentId, tenantId, actor: req.user?.email || 'create-account',
+        }, conn);
       }
       // Logged whether it was approved or left pending: who took the money and
       // which of the two states it landed in is precisely what someone asks

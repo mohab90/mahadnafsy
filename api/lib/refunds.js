@@ -162,6 +162,54 @@ async function clawBackPaidCommission(conn, { tenantId, paymentId, share, actor,
   return clawed;
 }
 
+// A refunded payment's courses close unless another payment still covers them.
+// Refund rows are negative 'paid' rows on the same course; they cover nothing
+// (`p.amount > 0`) — counted as a grant they kept access open after partial
+// refunds had returned the whole payment.
+async function revokeAccessWithoutOtherGrant(conn, { tenantId, pay, actor }) {
+  if (!pay.course_id && !pay.bundle_id) return;
+  let courseIds = pay.course_id ? [pay.course_id] : [];
+  if (pay.bundle_id) {
+    const [rows] = await conn.query(
+      `SELECT bc.course_id FROM bundle_courses bc
+       JOIN bundles b ON b.id=bc.bundle_id AND b.tenant_id=bc.tenant_id
+       WHERE bc.tenant_id=? AND bc.bundle_id=?`,
+      [tenantId, pay.bundle_id]
+    );
+    courseIds = rows.map(row => row.course_id);
+  }
+  for (const courseId of [...new Set(courseIds)]) {
+    const [[otherGrant]] = await conn.query(
+      `SELECT p.id FROM payments p
+       WHERE p.tenant_id=? AND p.subscriber_id=? AND p.id<>?
+         AND p.status IN ('paid','confirmed') AND p.deleted_at IS NULL AND p.amount > 0
+         AND (p.course_id=? OR EXISTS (
+           SELECT 1 FROM bundle_courses bc
+            WHERE bc.tenant_id=p.tenant_id AND bc.bundle_id=p.bundle_id AND bc.course_id=?
+         )) LIMIT 1`,
+      [tenantId, pay.subscriber_id, pay.id, courseId, courseId]
+    );
+    if (!otherGrant) {
+      await revokeCourseEntitlement({
+        tenantId, subscriberId: pay.subscriber_id, courseId,
+        source: 'refund', actor, reason: `Payment ${pay.id} refunded`,
+      }, conn);
+      const [[completion]] = await conn.query(
+        `SELECT id FROM course_completions
+         WHERE tenant_id=? AND subscriber_id=? AND course_id=? AND status='active'
+         LIMIT 1 FOR UPDATE`,
+        [tenantId, pay.subscriber_id, courseId]
+      );
+      if (completion) {
+        await revokeCertificate({
+          tenantId, completionId: completion.id, actor,
+          reason: `Payment ${pay.id} refunded and no other paid entitlement remains`,
+        }, conn);
+      }
+    }
+  }
+}
+
 // Must run inside an existing transaction on `conn`. Call after the caller
 // has already row-locked and updated the refund_requests row itself — this
 // only handles the payment-side reversal. Returns { journalId, orderUpdated }
@@ -251,6 +299,25 @@ async function applyRefundReversal({ paymentId, subscriberId, refundAmount, refu
         WHERE payment_id=? AND tenant_id=? AND status IN ('PENDING','INCLUDED_IN_PAYROLL')`,
       [keptRatio, keptRatio, pay.id, tenantId],
     );
+    // The instructor's share follows the same money. Only the commission was
+    // scaled: the fee kept its full amount, and when partial refunds added up
+    // to the whole payment it stayed approved at 30% of money the institute
+    // had given back — payroll pays approved fees. A fee already 'paid' is
+    // left alone, as on the full refund below.
+    await conn.query(
+      `UPDATE instructor_fees
+          SET total_amount = ROUND(total_amount * ?, 2),
+              fixed_amount = ROUND(COALESCE(fixed_amount, 0) * ?, 2),
+              status = IF(? <= 0, 'rejected', status),
+              note = CONCAT(COALESCE(note,''),' | خُفّضت بعد استرداد جزئي')
+        WHERE source_payment_id=? AND tenant_id=? AND status IN ('pending','approved','included_in_payroll')`,
+      [keptRatio, keptRatio, keptRatio, pay.id, tenantId],
+    );
+
+    // Partial refunds that add up to the whole payment are a full refund in
+    // all but the bookkeeping: the customer keeps nothing they paid for, so
+    // nothing they paid for stays open — as when it goes back in one go.
+    if (refundable - refundedAmount <= 0.01) await revokeAccessWithoutOtherGrant(conn, { tenantId, pay, actor });
 
     return {
       paymentId: pay.id, refundPaymentId: refundId, partial: true,
@@ -291,48 +358,7 @@ async function applyRefundReversal({ paymentId, subscriberId, refundAmount, refu
     [pay.id, tenantId]
   );
 
-  if (pay.course_id || pay.bundle_id) {
-    let courseIds = pay.course_id ? [pay.course_id] : [];
-    if (pay.bundle_id) {
-      const [rows] = await conn.query(
-        `SELECT bc.course_id FROM bundle_courses bc
-         JOIN bundles b ON b.id=bc.bundle_id AND b.tenant_id=bc.tenant_id
-         WHERE bc.tenant_id=? AND bc.bundle_id=?`,
-        [tenantId, pay.bundle_id]
-      );
-      courseIds = rows.map(row => row.course_id);
-    }
-    for (const courseId of [...new Set(courseIds)]) {
-      const [[otherGrant]] = await conn.query(
-        `SELECT p.id FROM payments p
-         WHERE p.tenant_id=? AND p.subscriber_id=? AND p.id<>?
-           AND p.status IN ('paid','confirmed') AND p.deleted_at IS NULL
-           AND (p.course_id=? OR EXISTS (
-             SELECT 1 FROM bundle_courses bc
-              WHERE bc.tenant_id=p.tenant_id AND bc.bundle_id=p.bundle_id AND bc.course_id=?
-           )) LIMIT 1`,
-        [tenantId, pay.subscriber_id, pay.id, courseId, courseId]
-      );
-      if (!otherGrant) {
-        await revokeCourseEntitlement({
-          tenantId, subscriberId: pay.subscriber_id, courseId,
-          source: 'refund', actor, reason: `Payment ${pay.id} refunded`,
-        }, conn);
-        const [[completion]] = await conn.query(
-          `SELECT id FROM course_completions
-           WHERE tenant_id=? AND subscriber_id=? AND course_id=? AND status='active'
-           LIMIT 1 FOR UPDATE`,
-          [tenantId, pay.subscriber_id, courseId]
-        );
-        if (completion) {
-          await revokeCertificate({
-            tenantId, completionId: completion.id, actor,
-            reason: `Payment ${pay.id} refunded and no other paid entitlement remains`,
-          }, conn);
-        }
-      }
-    }
-  }
+  await revokeAccessWithoutOtherGrant(conn, { tenantId, pay, actor });
 
   // orders is the "online twin" of payments — a refund must flip it too, or
   // the order stays "paid" forever and every order-facing view (list, CSV
