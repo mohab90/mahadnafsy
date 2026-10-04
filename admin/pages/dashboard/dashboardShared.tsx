@@ -647,6 +647,8 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   hr_analytics:       'view_hr',
   lecturer_applications: 'view_join_us',
   customer_inbox:     'manage_inbox',
+  // Each rep's own WhatsApp; the API scopes every chat to the person signed in.
+  whatsapp_web:       'manage_inbox',
   service_hub:        'manage_inbox',
   cx_team:            ['manage_inbox', 'view_perf_cx'],
   join_us:            'view_join_us',

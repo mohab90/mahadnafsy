@@ -5609,6 +5609,74 @@ CREATE TABLE `users` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `wa_web_chats`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `wa_web_chats` (
+  `tenant_id` varchar(64) NOT NULL,
+  `staff_id` varchar(64) NOT NULL,
+  `jid` varchar(128) NOT NULL,
+  `phone` varchar(32) DEFAULT NULL,
+  `name` varchar(255) DEFAULT NULL,
+  `lead_id` varchar(64) DEFAULT NULL,
+  `subscriber_id` varchar(64) DEFAULT NULL,
+  `matched_at` datetime DEFAULT NULL,
+  `last_message` varchar(500) DEFAULT NULL,
+  `last_at` datetime DEFAULT NULL,
+  `unread` int(11) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`tenant_id`,`staff_id`,`jid`),
+  KEY `idx_wa_chats_recent` (`tenant_id`,`staff_id`,`last_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `wa_web_messages`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `wa_web_messages` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `tenant_id` varchar(64) NOT NULL,
+  `staff_id` varchar(64) NOT NULL,
+  `jid` varchar(128) NOT NULL,
+  `wa_id` varchar(128) NOT NULL,
+  `from_me` tinyint(1) NOT NULL DEFAULT 0,
+  `sent_by_system` tinyint(1) NOT NULL DEFAULT 0,
+  `body` text DEFAULT NULL,
+  `kind` varchar(32) NOT NULL DEFAULT 'text',
+  `status` varchar(16) DEFAULT NULL,
+  `sent_at` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_wa_msg` (`tenant_id`,`staff_id`,`wa_id`),
+  KEY `idx_wa_msg_chat` (`tenant_id`,`staff_id`,`jid`,`sent_at`),
+  KEY `idx_wa_msg_counts` (`tenant_id`,`sent_by_system`,`sent_at`,`staff_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `wa_web_sessions`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `wa_web_sessions` (
+  `tenant_id` varchar(64) NOT NULL,
+  `staff_id` varchar(64) NOT NULL,
+  `status` enum('disconnected','linking','connected','logged_out') NOT NULL DEFAULT 'disconnected',
+  `phone` varchar(32) DEFAULT NULL,
+  `wa_name` varchar(255) DEFAULT NULL,
+  `linked_at` datetime DEFAULT NULL,
+  `last_seen_at` datetime DEFAULT NULL,
+  `last_error` varchar(255) DEFAULT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`tenant_id`,`staff_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `webhooks`
 --
 

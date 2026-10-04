@@ -87,6 +87,8 @@ export type TabKey =
   | 'archived_clients'
   | 'registrations'
   | 'customer_inbox'
+  // The rep's own WhatsApp, linked by QR (tabs/whatsapp/WhatsAppWebTab.tsx).
+  | 'whatsapp_web'
   | 'service_hub'
   | 'join_us'
   | 'contacts'
@@ -192,6 +194,7 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     color: 'text-emerald-600',
     items: [
       { key: 'leads', label: 'العملاء المحتملون', icon: UserPlus },
+      { key: 'whatsapp_web', label: 'واتساب', icon: MessageCircle },
       { key: 'sales_hub', label: 'فريق المبيعات والتقارير', icon: Users },
       // Four entries around one pipeline: two about working it — follow-ups and
       // scoring — and two about where it is heading. The rep checking today and

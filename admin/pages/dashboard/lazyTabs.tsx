@@ -18,6 +18,7 @@ export const ContactsTab = lazy(() => import('./tabs/ContactsTab'));
 export const CohortAnalysisTab = lazy(() => import('./tabs/CohortAnalysisTab'));
 export const CoursesTab = lazy(() => import('./tabs/CoursesTab'));
 export const CustomerInboxTab = lazy(() => import('./tabs/CustomerInboxTab'));
+export const WhatsAppWebTab = lazy(() => import('./tabs/whatsapp/WhatsAppWebTab'));
 export const ServiceHubTab = lazy(() => import('./tabs/ServiceHubTab'));
 export const DaqqiAttendanceTab = lazy(() => import('./tabs/DaqqiAttendanceTab'));
 export const DaqqiScheduleTab = lazy(() => import('./tabs/DaqqiScheduleTab'));

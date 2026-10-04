@@ -18,3 +18,4 @@ dist/
 
 # ── Image-proxy on-disk cache (warmed at runtime, never committed) ────────────
 .img-cache/
+.data/

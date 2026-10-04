@@ -4,7 +4,7 @@ import {
   Activity, AlarmClock, Banknote, BarChart3, Bell, BookOpen, CalendarDays,
   CalendarCheck, ChevronDown, CreditCard, FileText, FolderKanban, Headphones, Image, ListOrdered,
   LogOut, Menu, Monitor, RotateCcw, Shield, Star, Tag, TrendingUp,
-  UserCheck, UserCog, UserPlus, UserSearch, Users, Video, Wallet, MessageSquareText,
+  UserCheck, UserCog, UserPlus, UserSearch, Users, Video, Wallet, MessageSquareText, MessageCircle,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -428,6 +428,7 @@ export function DashboardNavigation(props: Props) {
                   // icon at the end of the bar, the same one in every account.
                   { key: 'leads', label: 'العملاء المحتملون', icon: UserPlus },
                   { key: 'online_clients', label: 'عملائي', icon: UserCheck },
+                  { key: 'whatsapp_web', label: 'واتساب', icon: MessageCircle },
                   { key: 'orders', label: 'مدفوعاتي', icon: CreditCard },
                   { key: 'staff_performance', label: 'إحصائياتي', icon: BarChart3 },
                 ]}
@@ -443,6 +444,7 @@ export function DashboardNavigation(props: Props) {
                 tabs={[
                   { key: 'online_clients', label: 'عملاء الأونلاين', icon: UserCheck },
                   { key: 'leads', label: 'العملاء المحتملين', icon: UserSearch },
+                  { key: 'whatsapp_web', label: 'واتساب', icon: MessageCircle },
                   // الاستردادات live inside مدفوعاتي now, in its design.
                   { key: 'orders', label: 'مدفوعاتي', icon: CreditCard },
                   { key: 'overview', label: 'إحصائياتي', icon: BarChart3 },
@@ -521,6 +523,7 @@ export function DashboardNavigation(props: Props) {
                   { key: 'sales_hub', label: 'فريق المبيعات', icon: TrendingUp },
                   { key: 'online_clients', label: 'عملاء الأونلاين', icon: UserCheck },
                   { key: 'online_hub', label: 'فريق التحصيل', icon: Monitor },
+                  { key: 'whatsapp_web', label: 'واتساب', icon: MessageCircle },
                   { key: 'orders', label: 'الطلبات والمدفوعات', icon: CreditCard },
                   { key: 'financial', label: 'التقارير المالية', icon: BarChart3 },
                   { key: 'activity', label: 'سجل النشاط', icon: Activity },

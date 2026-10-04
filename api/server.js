@@ -62,6 +62,8 @@ migrationReady.then(migrationResult => {
     // After the migrations, not beside them: its whole-table checks held the
     // tables a migration's CREATE INDEX was waiting for.
     require('./lib/reconcileJob').startReconcileMonitor(pool);
+    // Reps' linked WhatsApp sessions (the «واتساب» tab).
+    require('./lib/whatsappWeb').startWhatsappWeb();
   });
 }).catch(error => {
   logger.error('[FATAL] API not started because database preparation failed:', error.message);

@@ -5,10 +5,10 @@ const assert = require('node:assert/strict');
 const { routeModules } = require('../lib/registerRoutes');
 
 test('route registry preserves one ordered mount for every router module', () => {
-  // 78 since ../routes/finance-payments-register was added. The count is pinned
+  // 79 since ../routes/whatsapp-web was added. The count is pinned
   // so a module cannot be dropped from the registry unnoticed — a route file
   // that exists and is never mounted answers 404 with nothing anywhere saying why.
-  assert.equal(routeModules.length, 78);
+  assert.equal(routeModules.length, 79);
   assert.deepEqual(routeModules[0], ['/', '../routes/auth']);
   assert.deepEqual(routeModules.at(-1), ['/', '../routes/tenant-domains']);
 
