@@ -1137,7 +1137,7 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requi
       scope.branchId ? [req.tenantId, scope.branchId] : [req.tenantId]
     );
     const [[pendingReviews]] = await pool.query(
-      `SELECT COUNT(*) AS n FROM payments WHERE tenant_id=? AND status='pending'${paymentScopeSql}`,
+      `SELECT COUNT(*) AS n FROM payments WHERE tenant_id=? AND status='pending' AND deleted_at IS NULL${paymentScopeSql}`,
       scope.branchId ? [req.tenantId, scope.branchId] : [req.tenantId]
     );
     // Any unpaid instalment whose date has passed — not the one at index

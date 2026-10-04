@@ -60,7 +60,11 @@ const CHECKS = [
     key: 'nonpositive_paid',
     name: 'no paid payment with a non-positive amount',
     severity: 'warn',
-    sql: `SELECT COUNT(*) AS n FROM payments WHERE status = 'paid' AND amount <= 0`,
+    // A partial refund is written as a negative 'paid' row with source
+    // 'refund' (lib/refunds.js insertRefundRow), by design: it was counted here
+    // as bad data, so every partial refund raised this warning.
+    sql: `SELECT COUNT(*) AS n FROM payments
+           WHERE status = 'paid' AND amount <= 0 AND deleted_at IS NULL AND COALESCE(source, '') <> 'refund'`,
     hint: 'A paid record for 0 or negative money is almost always bad data.',
   },
   {
