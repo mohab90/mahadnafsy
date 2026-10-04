@@ -22,11 +22,12 @@ import {
 import { ScoreBadge } from './LeadScoreAndTimeline';
 import LeadOutcomeButtons from './LeadOutcomeButtons';
 import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
+import { TERMINAL_LEAD_STATUSES } from '../../../../../shared/leadStatuses';
 
 
 // A lead in one of these is finished; offering "did they answer" on it would
 // be inviting a rep to reopen something that is closed.
-const CLOSED_FOR_OUTCOMES = new Set(['converted', 'lost', 'not_interested', 'not_interested_hidden', 'wrong_number', 'archived', 'disqualified', 'unqualified', 'won', 'closed']);
+const CLOSED_FOR_OUTCOMES = TERMINAL_LEAD_STATUSES;
 
 export function LeadCard({ lead, score, onSelect, onStatusChange, onBook, onContact, onOutcomeRecorded, canManageLeads, instituteBranches, courses, bundles }: {
   lead: LeadItem;

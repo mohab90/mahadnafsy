@@ -1,7 +1,7 @@
 'use strict';
 
 const { pool } = require('./db');
-const { isInterestedLeadStatus } = require('./leadStatuses');
+const { isInterestedLeadStatus, TERMINAL_SQL } = require('./leadStatuses');
 const { sqlCairoToday } = require('./dates');
 
 const CATEGORY_PROBABILITY = Object.freeze({
@@ -300,7 +300,7 @@ async function loadCrmForecast({
               l.assigned_sales_id,l.assigned_sales_name
          FROM leads l
         WHERE l.tenant_id=? AND l.hidden=0 AND l.deleted_at IS NULL
-          AND l.status NOT IN ('lost','junk','converted','won')${scope.sql || ''}
+          AND l.status NOT IN ${TERMINAL_SQL}${scope.sql || ''}
         ORDER BY l.expected_close_date,l.id LIMIT 10000`,
       [tenantId, ...scopedParams]
     ),

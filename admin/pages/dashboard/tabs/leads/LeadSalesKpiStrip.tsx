@@ -1,6 +1,7 @@
 import type { LeadItem, SubscriberItem } from '../../../../types';
 import { cairoDateOnly, cairoMonthOnly, cairoDay, cairoDaysAgo } from '../../../../../shared/cairoDate';
 import { isCollected } from '../../../../lib/money';
+import { isOpenLeadStatus } from '../../../../../shared/leadStatuses';
 
 type Props = {
   isSalesOnly: boolean;
@@ -20,9 +21,9 @@ export function LeadSalesKpiStrip({ isSalesOnly, effectiveLeads, effectiveSubs }
     n + (l.communications || []).filter(c => cairoDay(c.date) >= weekAgoStr).length, 0);
   const monthConverted = effectiveLeads.filter(l =>
     l.status === 'converted' && cairoDay(l.updatedAt || l.createdAt).slice(0, 7) === thisMonthStr).length;
-  const totalActive = effectiveLeads.filter(l => !['converted', 'lost', 'not_interested_hidden'].includes(l.status || '')).length;
+  const totalActive = effectiveLeads.filter(l => isOpenLeadStatus(l.status)).length;
   const overdueCount = effectiveLeads.filter(l =>
-    l.nextFollowUpDate && l.nextFollowUpDate < todayStr && !['converted', 'lost'].includes(l.status || '')).length;
+    l.nextFollowUpDate && l.nextFollowUpDate < todayStr && isOpenLeadStatus(l.status)).length;
   const totalCollected = (effectiveSubs || []).reduce((s, sub) =>
     s + (sub.paymentHistory || []).reduce((a: number, p) =>
       a + (isCollected(p) && p.currency === 'EGP' ? (p.amount || 0) : 0), 0)

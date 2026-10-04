@@ -46,7 +46,7 @@ const ALLOWED = new Map([
   // here and covered by the initialiser test further down instead — a source
   // scan cannot see into the fragment. Line numbers are deliberately NOT used
   // for these: pinning a line means every edit above it breaks this test.
-  ['routes/hr/staffprofile.js:167', 'guarded inside the derived table'],
+  ['routes/hr/staffprofile.js:168', 'guarded inside the derived table'],
 ]);
 
 function jsFiles(dir) {
@@ -138,7 +138,8 @@ test('the scan can actually see a breach', () => {
     fs.writeFileSync(f, original.replace(guard,
       "FROM payments WHERE tenant_id=? AND status IN ('paid','confirmed')"));
     const broken = scan();
-    assert.ok(broken.includes('routes/analytics/dashboard.js:65'),
+    // By file, not line: an import added above it should not break the probe.
+    assert.ok(broken.some(hit => hit.startsWith('routes/analytics/dashboard.js:')),
       'the KPI query lost its guard and the scan said nothing');
   } finally {
     fs.writeFileSync(f, original);

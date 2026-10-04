@@ -120,6 +120,7 @@ export function LeadFilterBar({
         <option value="">كل الحالات</option>
         {(Object.keys(STATUS_CFG) as LeadStatus[]).filter(s =>
           !['not_interested_hidden'].includes(s) &&
+          // lead-status-subset: the two the desk table does not hold (see useLeadFilteringData)
           (isSalesOnly || !['converted', 'lost'].includes(s))
         ).map(s => (
           <option key={s} value={s}>{STATUS_CFG[s].label}</option>

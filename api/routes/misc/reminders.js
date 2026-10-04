@@ -1,4 +1,5 @@
 'use strict';
+const { TERMINAL_SQL } = require('../../lib/leadStatuses');
 const logger = require('../../lib/logger');
 const { uuidv4 } = require('../../lib/id');
 const { pool } = require('../../lib/db');
@@ -29,7 +30,7 @@ router.get('/api/admin/leads/due-today', requireAuth, requireAdminOrStaff, requi
       FROM leads l
       LEFT JOIN staff st ON st.id = l.assigned_sales_id AND st.tenant_id = l.tenant_id
       WHERE l.tenant_id = ? AND l.next_follow_up_date >= ${sqlCairoToday()} AND l.next_follow_up_date < ${sqlCairoToday()} + INTERVAL 1 DAY
-        AND l.status NOT IN ('converted','disqualified','archived')
+        AND l.status NOT IN ${TERMINAL_SQL}
         ${scope.sql}
       ORDER BY l.name`, [req.tenantId, ...scope.params]);
     res.json({ date: new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' }), count: leads.length, leads });
@@ -155,9 +156,9 @@ router.get('/api/admin/automation/stats', requireAuth, requireAdmin, async (req,
     const today = cairoToday();
 
     const [[{ followup_due }]] = await pool.query(
-      `SELECT COUNT(*) AS followup_due FROM leads WHERE tenant_id=? AND next_follow_up_date >= ? AND next_follow_up_date < DATE_ADD(?, INTERVAL 1 DAY) AND status NOT IN ('converted','disqualified','archived')`, [req.tenantId, today, today]);
+      `SELECT COUNT(*) AS followup_due FROM leads WHERE tenant_id=? AND next_follow_up_date >= ? AND next_follow_up_date < DATE_ADD(?, INTERVAL 1 DAY) AND status NOT IN ${TERMINAL_SQL}`, [req.tenantId, today, today]);
     const [[{ followup_overdue }]] = await pool.query(
-      `SELECT COUNT(*) AS followup_overdue FROM leads WHERE tenant_id=? AND next_follow_up_date < ? AND status NOT IN ('converted','disqualified','archived')`, [req.tenantId, today]);
+      `SELECT COUNT(*) AS followup_overdue FROM leads WHERE tenant_id=? AND next_follow_up_date < ? AND status NOT IN ${TERMINAL_SQL}`, [req.tenantId, today]);
     const [[{ payment_due_3d }]] = await pool.query(
       `SELECT COUNT(*) AS payment_due_3d FROM payments WHERE tenant_id=? AND status='pending' AND is_installment=1 AND date >= ? AND date < DATE_ADD(?, INTERVAL 4 DAY) AND deleted_at IS NULL`, [req.tenantId, today, today]);
     const [[{ payment_overdue }]] = await pool.query(

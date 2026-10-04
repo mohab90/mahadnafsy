@@ -4,7 +4,7 @@ const express = require('express');
 const router  = express.Router();
 
 const { pool } = require('../../lib/db');
-const { isInterestedLeadStatus } = require('../../lib/leadStatuses');
+const { isInterestedLeadStatus, TERMINAL_SQL } = require('../../lib/leadStatuses');
 const { getTenantSetting, setTenantSetting } = require('../../lib/tenantSettings');
 const { leadScope } = require('../../lib/leadAccess');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
@@ -63,7 +63,7 @@ router.get('/api/admin/leads/scoring', requireAuth, requireAdminOrStaff, require
              (SELECT COUNT(*) FROM communications lc WHERE lc.tenant_id = l.tenant_id AND lc.lead_id = l.id) AS comm_count
       FROM leads l
       LEFT JOIN staff st ON st.id = l.assigned_sales_id AND st.tenant_id = l.tenant_id
-      WHERE l.tenant_id = ? AND l.hidden = 0 AND l.status NOT IN ('converted','lost','junk')${scope.sql}
+      WHERE l.tenant_id = ? AND l.hidden = 0 AND l.status NOT IN ${TERMINAL_SQL}${scope.sql}
       ORDER BY l.created_at DESC LIMIT 1000`, params);
 
     const weights = await getTenantSetting('lead_scoring_config', { tenantId: req.tenantId, fallback: DEFAULT_WEIGHTS });
@@ -113,6 +113,7 @@ router.post('/api/admin/leads/scoring/recalculate', requireAuth, requireAdmin, a
              l.next_follow_up_date AS follow_up_date, l.created_at, l.enrolled_course_id,
              (SELECT COUNT(*) FROM communications lc WHERE lc.tenant_id = l.tenant_id AND lc.lead_id = l.id) AS comm_count
       FROM leads l
+      -- lead-status-subset: converted leads stay in, the scores are compared against them
       WHERE l.tenant_id = ? AND l.hidden = 0 AND l.status NOT IN ('lost','junk')
     `, [req.tenantId]);
 
@@ -153,7 +154,7 @@ router.get('/api/admin/leads/scoring/leaderboard', requireAuth, requireAdminOrSt
              l.assigned_sales_name
       FROM leads l
       LEFT JOIN courses c ON c.id = l.enrolled_course_id AND c.tenant_id = l.tenant_id
-      WHERE l.tenant_id = ? AND l.hidden = 0 AND l.status NOT IN ('lost','junk','converted')
+      WHERE l.tenant_id = ? AND l.hidden = 0 AND l.status NOT IN ${TERMINAL_SQL}
         ${scope.sql}
       ORDER BY l.score DESC
       LIMIT ?

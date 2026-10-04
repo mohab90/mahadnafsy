@@ -1,5 +1,6 @@
 'use strict';
 
+const { TERMINAL_SQL } = require('../lib/leadStatuses');
 const express = require('express');
 const router = express.Router();
 
@@ -295,7 +296,7 @@ router.post('/api/admin/crm/leads/smart-route', requireAuth, requireAdmin, requi
        FROM leads
        WHERE tenant_id=? AND hidden=0
          AND (?='all' OR (assigned_sales_id IS NULL AND (assigned_cs_id IS NULL OR assigned_cs_id='')))
-         AND status NOT IN ('converted','lost','archived','disqualified')${archive.sql}
+         AND status NOT IN ${TERMINAL_SQL}${archive.sql}
        ORDER BY score DESC, created_at ASC LIMIT ? FOR UPDATE`,
       [tenantId, mode, ...archive.params, limit]
     );

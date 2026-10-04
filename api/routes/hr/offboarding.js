@@ -1,4 +1,5 @@
 'use strict';
+const { TERMINAL_LIST } = require('../../lib/leadStatuses');
 const { Router } = require('express');
 const router = Router();
 const {
@@ -16,7 +17,8 @@ const DEFAULT_CHECKLIST = [
   { task: 'مقابلة إنهاء الخدمة', done: false },
   { task: 'تسليم المهام والملفات', done: false },
 ];
-const TERMINAL_LEAD_STATUSES = ['closed', 'converted', 'lost', 'won', 'archived', 'disqualified'];
+// A lead that said no is not open work to hand a colleague.
+const TERMINAL_LEAD_STATUSES = TERMINAL_LIST;
 const parseChecklist = value => {
   try {
     const parsed = typeof value === 'string' ? JSON.parse(value) : value;

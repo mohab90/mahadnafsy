@@ -153,7 +153,8 @@ test('offset pages (deferred join) and cursor pages walk the list exactly', { sk
 
 test('the idle-lead search returns the fifty the single query did', { skip }, async () => {
   const { sqlCairoToday } = require('../../lib/dates');
-  const excluded = ['converted', 'lost', 'not_interested_hidden', 'wrong_number'];
+  // Redistribution leaves out every finished lead — the one list, lib/leadStatuses.js.
+  const excluded = require('../../lib/leadStatuses').TERMINAL_LIST;
   const [old] = await pool.query(
     `SELECT l.id, COALESCE((SELECT MAX(c.date) FROM communications c WHERE c.tenant_id = l.tenant_id AND c.lead_id = l.id), l.created_at) AS last_activity
        FROM leads l

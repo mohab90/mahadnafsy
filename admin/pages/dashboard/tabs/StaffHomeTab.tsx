@@ -15,6 +15,7 @@ import { hasPermission, type PermissionKey, type RoleKey } from '../../../consta
 import SalesMotivationCard from './staff-home/SalesMotivationCard';
 import { SalesOffersStrip, type SalesOffer } from './leads/SalesOffersPanel';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
+import { isOpenLeadStatus } from '../../../../shared/leadStatuses';
 
 type TabKey = string;
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -97,13 +98,13 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
 
     // Overdue follow-ups (past date, still active)
     const overdueFollowups = myLeads.filter(
-      l => !['converted', 'lost', 'not_interested_hidden'].includes(l.status || '')
+      l => isOpenLeadStatus(l.status)
         && l.nextFollowUpDate && l.nextFollowUpDate < today,
     );
 
     // Today's follow-ups
     const todayFollowups = myLeads.filter(
-      l => !['converted', 'lost', 'not_interested_hidden'].includes(l.status || '')
+      l => isOpenLeadStatus(l.status)
         && l.nextFollowUpDate === today,
     );
 

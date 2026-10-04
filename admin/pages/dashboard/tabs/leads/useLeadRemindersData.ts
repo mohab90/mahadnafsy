@@ -3,6 +3,7 @@ import { cairoDateOnly, cairoDay, cairoDaysAhead } from '../../../../../shared/c
 import type React from 'react';
 import type { CommunicationRecord, CrmInsights, LeadItem } from '../../../../types';
 import { calcLeadScore } from '../leadUtils';
+import { isOpenLeadStatus } from '../../../../../shared/leadStatuses';
 
 export type ReminderLead = LeadItem & {
   daysOverdue: number;
@@ -55,7 +56,7 @@ export function useLeadRemindersData({
     // rows costs nothing and keeps one definition of a reminder in this file.
     const source = insights?.reminders ?? leads;
     const remindersAll: ReminderLead[] = source.filter(lead =>
-      !lead.hidden && lead.nextFollowUpDate && !['converted', 'lost', 'not_interested_hidden'].includes(lead.status)
+      !lead.hidden && lead.nextFollowUpDate && isOpenLeadStatus(lead.status)
     ).map(lead => ({
       ...lead,
       daysOverdue: lead.nextFollowUpDate! < todayStr

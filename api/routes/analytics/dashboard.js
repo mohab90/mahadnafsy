@@ -1,4 +1,5 @@
 'use strict';
+const { TERMINAL_SQL } = require('../../lib/leadStatuses');
 const logger = require('../../lib/logger');
 const express = require('express');
 const router  = express.Router();
@@ -67,7 +68,7 @@ router.get('/api/admin/dashboard/kpi', requireAuth, requireAdminOrStaff, require
         SELECT COUNT(*) AS total,
           SUM(CASE WHEN DATE_FORMAT(created_at,'%Y-%m')=? THEN 1 ELSE 0 END) AS this_month,
           SUM(CASE WHEN DATE_FORMAT(created_at,'%Y-%m')=? THEN 1 ELSE 0 END) AS last_month,
-          SUM(CASE WHEN status NOT IN ('lost','junk','converted') THEN 1 ELSE 0 END) AS active
+          SUM(CASE WHEN status NOT IN ${TERMINAL_SQL} THEN 1 ELSE 0 END) AS active
         FROM leads WHERE tenant_id=? AND hidden=0`, [curM, prevM, req.tenantId]),
       pool.query(`
         SELECT COUNT(*) AS total,

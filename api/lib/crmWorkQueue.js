@@ -1,6 +1,8 @@
 'use strict';
 
-const CLOSED = new Set(['converted', 'lost', 'archived', 'disqualified', 'not_interested', 'wrong_number', 'junk']);
+const { TERMINAL_LEAD_STATUSES } = require('./leadStatuses');
+
+const CLOSED = TERMINAL_LEAD_STATUSES;
 const DAY_MS = 86400000;
 
 function dateMs(value) {

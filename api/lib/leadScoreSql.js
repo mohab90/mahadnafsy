@@ -1,5 +1,7 @@
 'use strict';
 
+const { TERMINAL_SQL } = require('./leadStatuses');
+
 // calcLeadScoreServer(), expressed in SQL.
 //
 // lib/helpers.js holds the JavaScript original and remains the version the write
@@ -59,7 +61,7 @@ const LEAD_SCORE_SQL = `
               AND JSON_TYPE(JSON_EXTRACT(l.crm_json, '$.interestedCourseIds')) = 'ARRAY',
               JSON_LENGTH(JSON_EXTRACT(l.crm_json, '$.interestedCourseIds')), NULL),
            0) > 0, 10, 0)
-    - IF(l.status IN ('converted','lost','not_interested','not_interested_hidden','wrong_number'),
+    - IF(l.status IN ${TERMINAL_SQL},
          0,
          IF(lc.last_comm IS NOT NULL,
             GREATEST(0, LEAST((FLOOR(TIMESTAMPDIFF(SECOND, DATE(lc.last_comm), NOW()) / 86400) - 7) * 2, 30)),

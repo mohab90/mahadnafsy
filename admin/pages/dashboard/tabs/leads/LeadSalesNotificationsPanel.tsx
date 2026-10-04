@@ -6,6 +6,7 @@ import type { LeadItem, LeadStatus, StaffMember } from '../../../../types';
 import { LEAD_STATUS_CFG } from './LeadSubcomponents';
 import { toDialable } from '../../../../lib/whatsappLink';
 import { useSiteData } from '../../../../context/SiteDataContext';
+import { isOpenLeadStatus } from '../../../../../shared/leadStatuses';
 
 /**
  * «متابعات السيلز» — the one follow-up drawer.
@@ -103,7 +104,7 @@ export function LeadSalesNotificationsPanel({
   // hand, and a rule about who you are belongs where that is known.
   const isNonAdminStaff = !isAdmin && !!currentStaff;
   const scopedLeads = (isNonAdminStaff ? salesOwnLeads : leads)
-    .filter(lead => !(['converted', 'lost'] as string[]).includes(lead.status));
+    .filter(lead => isOpenLeadStatus(lead.status));
   const overdue = scopedLeads
     .filter(l => l.nextFollowUpDate && l.nextFollowUpDate < todayStr)
     .sort((a, b) => (a.nextFollowUpDate || '').localeCompare(b.nextFollowUpDate || ''));

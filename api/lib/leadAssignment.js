@@ -1,5 +1,6 @@
 'use strict';
 
+const { TERMINAL_SQL } = require('./leadStatuses');
 const { pool } = require('./db');
 const { logLeadEventStrict } = require('./crm');
 const { findLeadById } = require('./leadRepository');
@@ -33,7 +34,7 @@ async function listDistributableReps(tenantId, db = pool, options = {}) {
   const [loads] = await db.query(
     `SELECT assigned_sales_id,COUNT(*) active_leads FROM leads
       WHERE tenant_id=? AND hidden=0
-        AND status NOT IN ('converted','lost','archived','disqualified')
+        AND status NOT IN ${TERMINAL_SQL}
         AND assigned_sales_id IS NOT NULL GROUP BY assigned_sales_id`,
     [tenantId]
   );
@@ -243,7 +244,7 @@ async function createBatchAssigner(tenantId, db = pool, options = {}) {
   const [loads] = await db.query(
     `SELECT assigned_sales_id,COUNT(*) active_leads FROM leads
       WHERE tenant_id=? AND hidden=0
-        AND status NOT IN ('converted','lost','archived','disqualified')
+        AND status NOT IN ${TERMINAL_SQL}
         AND assigned_sales_id IS NOT NULL GROUP BY assigned_sales_id`,
     [tenantId]
   );

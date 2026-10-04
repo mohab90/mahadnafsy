@@ -10,6 +10,7 @@
  * series at all. These endpoints answer with just the aggregates the page
  * draws, so the page stays fast regardless of CRM size.
  */
+const { CONVERTED_SQL } = require('../../lib/leadStatuses');
 const { Router } = require('express');
 const router = Router();
 const {
@@ -120,7 +121,7 @@ router.get('/api/admin/hr/staff/:id/profile', requireAuth, requireAdminOrStaff, 
       ),
       pool.query(
         `SELECT DATE_FORMAT(created_at,'%Y-%m') ym, COUNT(*) leads,
-                SUM(status IN ('converted','won')) converted
+                SUM(status IN ${CONVERTED_SQL}) converted
            FROM leads
           WHERE tenant_id=? AND assigned_sales_id=? AND deleted_at IS NULL AND created_at>=?
           GROUP BY ym ORDER BY ym`,
@@ -194,7 +195,7 @@ router.get('/api/admin/hr/staff/:id/profile', requireAuth, requireAdminOrStaff, 
              WHERE tenant_id=? AND assigned_sales_id=? AND deleted_at IS NULL) AS lifetime_leads,
            (SELECT COUNT(*) FROM leads
              WHERE tenant_id=? AND assigned_sales_id=? AND deleted_at IS NULL
-               AND status IN ('converted','won')) AS lifetime_converted`,
+               AND status IN ${CONVERTED_SQL}) AS lifetime_converted`,
         [req.tenantId, id, req.tenantId, id, req.tenantId, id, req.tenantId, id,
           req.tenantId, id, req.tenantId, id, req.tenantId, id]
       ),
@@ -316,7 +317,7 @@ async function buildStaffReport(tenantId, id, key) {
       [tenantId, id, from, to]
     ),
     pool.query(
-      `SELECT COUNT(*) leads, SUM(status IN ('converted','won')) converted,
+      `SELECT COUNT(*) leads, SUM(status IN ${CONVERTED_SQL}) converted,
               SUM(status='lost') lost, SUM(status='new') untouched
          FROM leads
         WHERE tenant_id=? AND assigned_sales_id=? AND deleted_at IS NULL

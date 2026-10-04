@@ -1,7 +1,7 @@
 'use strict';
 
 const { pool } = require('./db');
-const { LEAD_STATUSES, normalizeLeadStatus } = require('./leadStatuses');
+const { LEAD_STATUSES, normalizeLeadStatus, TERMINAL_LEAD_STATUSES } = require('./leadStatuses');
 
 const labels = {
   new: 'جديد', contacted: 'تم التواصل', interested: 'مهتم',
@@ -14,7 +14,7 @@ const labels = {
   unqualified: 'غير مؤهل', disqualified: 'مستبعد', archived: 'مؤرشف', other: 'أخرى',
 };
 const visible = new Set(['new', 'interested_booking', 'interested_followup', 'no_answer_wa', 'no_answer_nowa', 'not_interested']);
-const terminal = new Set(['wrong_number', 'not_interested', 'not_interested_hidden', 'closed', 'converted', 'lost', 'won', 'unqualified', 'disqualified', 'archived']);
+const terminal = TERMINAL_LEAD_STATUSES;
 
 const DEFAULT_PIPELINE = [...LEAD_STATUSES].map((status, index) => ({
   status,

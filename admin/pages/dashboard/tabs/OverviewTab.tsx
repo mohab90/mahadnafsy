@@ -14,6 +14,7 @@ import { useCrmData } from '../../../context/siteDataSlices';
 import type { TabKey } from '../navigation';
 import { isCollected, toEgp } from '../../../lib/money';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
+import { isOpenLeadStatus } from '../../../../shared/leadStatuses';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -123,6 +124,7 @@ export default function OverviewTab({
                 const myContacted = myLeads.filter(l => l.status === 'contacted').length;
                 const myInterested = myLeads.filter(l => l.status === 'interested').length;
                 const myConverted = myLeads.filter(l => l.status === 'converted').length;
+                // lead-status-subset: the losses this card counts, not every finished lead
                 const myLost = myLeads.filter(l => ['lost','not_interested_hidden'].includes(l.status || '')).length;
                 const mySubs = salesOwnSubscribers;
                 const myRevenueSubs = mySubs.flatMap(s => (s.paymentHistory || []).filter(isCollected)).reduce((acc, p) => {
@@ -167,7 +169,7 @@ export default function OverviewTab({
                   { title: 'إيراداتي هذا الشهر', value: `${Math.round(myRevenueSubs.thisMonth).toLocaleString('ar-EG-u-nu-latn')} ج`, icon: BarChart3, bg: 'bg-green-50', text: 'text-green-600', border: 'border-green-200' },
                   { title: 'عمولتي هذا الشهر', value: myCommRate > 0 ? `${myCommission.toLocaleString('ar-EG-u-nu-latn')} ج` : '—', icon: Percent, bg: 'bg-orange-50', text: 'text-orange-600', border: 'border-orange-200' },
                   { title: 'معدل التحويل', value: `${myLeads.length > 0 ? Math.round((myConverted / myLeads.length) * 100) : 0}%`, icon: TrendingUp, bg: 'bg-pink-50', text: 'text-pink-600', border: 'border-pink-200' },
-                  { title: 'متابعات متأخرة', value: myLeads.filter(l => l.nextFollowUpDate && l.nextFollowUpDate < todayStr && !['converted','lost'].includes(l.status || '')).length, icon: Clock, bg: 'bg-red-50', text: 'text-red-600', border: 'border-red-200' },
+                  { title: 'متابعات متأخرة', value: myLeads.filter(l => l.nextFollowUpDate && l.nextFollowUpDate < todayStr && isOpenLeadStatus(l.status)).length, icon: Clock, bg: 'bg-red-50', text: 'text-red-600', border: 'border-red-200' },
                 ];
                 return (
                   <div className="space-y-6">
@@ -369,8 +371,8 @@ export default function OverviewTab({
                     })()}
                     {/* ── Today's follow-ups ──────────────────────────────── */}
                     {(() => {
-                      const dueToday = myLeads.filter(l => l.nextFollowUpDate === todayStr && !['converted','lost'].includes(l.status || ''));
-                      const overdue = myLeads.filter(l => l.nextFollowUpDate && l.nextFollowUpDate < todayStr && !['converted','lost'].includes(l.status || ''));
+                      const dueToday = myLeads.filter(l => l.nextFollowUpDate === todayStr && isOpenLeadStatus(l.status));
+                      const overdue = myLeads.filter(l => l.nextFollowUpDate && l.nextFollowUpDate < todayStr && isOpenLeadStatus(l.status));
                       if (dueToday.length === 0 && overdue.length === 0) return null;
                       return (
                         <article className="bg-white border border-red-200 rounded-2xl p-6 shadow-sm">

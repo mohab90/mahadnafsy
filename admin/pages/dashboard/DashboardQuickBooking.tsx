@@ -7,6 +7,7 @@ import type { PaymentDraft } from '../../components/PaymentModal';
 import { createClientPaymentDraft } from '../../lib/clientActionDrafts';
 import { currencyForBranch } from '../../lib/branchCurrency';
 import { realCourseIds } from './tabs/leads/leadCourseLabel';
+import { isOpenLeadStatus } from '../../../shared/leadStatuses';
 
 type DashboardQuickBookingProps = {
   open: boolean;
@@ -86,7 +87,7 @@ function QuickBookingModal({
   const q = search.trim().toLowerCase();
   const qDigits = q.replace(/\D/g, '');
   const matchedLeads: LeadItem[] = q.length < 2 ? [] : leads
-    .filter((lead) => !['converted', 'lost'].includes(lead.status))
+    .filter((lead) => isOpenLeadStatus(lead.status))
     .filter((lead) =>
       lead.name.toLowerCase().includes(q) ||
       (lead.phone || '').includes(q) ||

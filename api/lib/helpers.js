@@ -80,7 +80,7 @@ function calcLeadScoreServer(status, interestLevel, commsArr, nextFollowUpDate, 
   if ((Array.isArray(interestedCourseIds) ? interestedCourseIds.length : 0) > 0) score += 10;
 
   // ── Time-based decay (skip terminal states) ──
-  if (!['converted','lost','not_interested','not_interested_hidden','wrong_number'].includes(s)) {
+  if (!require('./leadStatuses').TERMINAL_LEAD_STATUSES.has(s)) {
     const now = Date.now();
     let lastContactMs = null;
     for (const c of comms) {

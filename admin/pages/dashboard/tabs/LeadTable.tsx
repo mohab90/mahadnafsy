@@ -10,6 +10,7 @@ import { crmStatusLabels } from '../dashboardShared';
 import { toDialable } from '../../../lib/whatsappLink';
 import { courseBadgeLabel, isRawCourse } from './leads/leadCourseLabel';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
+import { isOpenLeadStatus } from '../../../../shared/leadStatuses';
 
 const LEAD_STATUS_CFG = STATUS_CFG;
 
@@ -241,7 +242,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
               const daysSinceContact = lastCommEntry
                 ? Math.floor((Date.now() - new Date(cairoDay(lastCommEntry.date)).getTime()) / 86_400_000)
                 : null;
-              const isStale = agingDays > 14 && !['converted', 'lost', 'not_interested'].includes(row.status);
+              const isStale = agingDays > 14 && isOpenLeadStatus(row.status);
               const rottenLv = getRottenLevel(row);
               const rottenCfg = ROTTEN_CFG[rottenLv];
               return (
@@ -562,6 +563,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                 </div>
               </div>
               {/* ── Lost Reason (appears when not_interested / not_interested_hidden / lost) ── */}
+              {/* lead-status-subset: the outcomes that need a reason — the ones where the lead said no */}
               {['not_interested', 'not_interested_hidden', 'lost'].includes(contactDraft.newStatus) && (
                 <div>
                   <label className="text-xs font-bold text-red-700 mb-1 block">سبب عدم الاهتمام / الخسارة *</label>

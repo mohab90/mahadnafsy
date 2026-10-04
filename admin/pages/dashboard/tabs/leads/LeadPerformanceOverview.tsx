@@ -6,6 +6,7 @@ import type { NotifyFn } from '../CrmSettingsModal';
 import { useCrmData } from '../../../../context/siteDataSlices';
 import { calcLeadScore } from '../leadUtils';
 import { LEAD_STATUS_CFG, ScoreBadge, crmStatusLabels } from './LeadSubcomponents';
+import { isOpenLeadStatus } from '../../../../../shared/leadStatuses';
 
 type SalesPerformanceRow = {
   rep: StaffMember;
@@ -87,7 +88,7 @@ export function LeadPerformanceOverview({
   // aggregate is still in flight.
   const activeLeadCount = leadStats
     ? Math.max(0, leadStats.total - (leadStats.byStatus?.converted || 0) - (leadStats.byStatus?.lost || 0))
-    : leads.filter(l => !['converted', 'lost'].includes(l.status) && !l.hidden).length;
+    : leads.filter(l => isOpenLeadStatus(l.status) && !l.hidden).length;
 
   return (
     <div className="space-y-6">
@@ -469,9 +470,9 @@ export function LeadPerformanceOverview({
         </h4>
         <div className="grid grid-cols-3 gap-4">
           {[
-            { label: 'سكور عالي (70+)', count: scoredLeads.filter(l => l._score >= 70 && !['converted','lost'].includes(l.status)).length, color: 'bg-emerald-500' },
-            { label: 'متوسط (40–69)',   count: scoredLeads.filter(l => l._score >= 40 && l._score < 70 && !['converted','lost'].includes(l.status)).length, color: 'bg-amber-500' },
-            { label: 'منخفض (<40)',     count: scoredLeads.filter(l => l._score < 40 && !['converted','lost'].includes(l.status)).length, color: 'bg-gray-400' },
+            { label: 'سكور عالي (70+)', count: scoredLeads.filter(l => l._score >= 70 && isOpenLeadStatus(l.status)).length, color: 'bg-emerald-500' },
+            { label: 'متوسط (40–69)',   count: scoredLeads.filter(l => l._score >= 40 && l._score < 70 && isOpenLeadStatus(l.status)).length, color: 'bg-amber-500' },
+            { label: 'منخفض (<40)',     count: scoredLeads.filter(l => l._score < 40 && isOpenLeadStatus(l.status)).length, color: 'bg-gray-400' },
           ].map(s => (
             <div key={s.label} className="text-center">
               <div className={`${s.color} text-white text-3xl font-extrabold rounded-2xl py-5 mb-2`}>{s.count}</div>

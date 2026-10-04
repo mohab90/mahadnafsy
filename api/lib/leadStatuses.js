@@ -1,5 +1,10 @@
 'use strict';
 
+// What a lead's status means, for the whole API. shared/leadStatuses.ts is the
+// browser's copy, kept identical by tests/leadStatusVocabulary.test.js, and
+// that test also refuses a hand-written list of statuses anywhere else: «closed»
+// used to be spelled out in a dozen places and no two agreed.
+
 const LEAD_STATUSES = new Set([
   'new', 'contacted', 'interested', 'interested_booking', 'interested_followup',
   'not_interested', 'not_interested_hidden', 'no_answer', 'no_answer_wa',
@@ -24,6 +29,10 @@ const TERMINAL_LEAD_STATUSES = new Set([
   'wrong_number', 'unqualified', 'disqualified', 'archived',
 ]);
 
+// A sale. «مغلق» (closed) is not one: it ends the lead without a booking, and
+// the HR reports that counted it as converted credited reps with sales.
+const CONVERTED_LEAD_STATUSES = new Set(['converted', 'won']);
+
 const INTERESTED_LEAD_STATUSES = new Set([
   'interested', 'interested_booking', 'interested_followup',
 ]);
@@ -43,6 +52,23 @@ function isOpenLeadStatus(value) {
   return !TERMINAL_LEAD_STATUSES.has(String(value || '').trim().toLowerCase());
 }
 
+function isConvertedLeadStatus(value) {
+  return CONVERTED_LEAD_STATUSES.has(String(value || '').trim().toLowerCase());
+}
+
+// For SQL: `status NOT IN (?)` with a list as the one parameter, or the list
+// written in as `status NOT IN ${TERMINAL_SQL}` where the statement's
+// parameters are positional. These are the constants above, never input, and
+// every member is checked to be a bare word before it is quoted.
+const TERMINAL_LIST = Object.freeze([...TERMINAL_LEAD_STATUSES]);
+const CONVERTED_LIST = Object.freeze([...CONVERTED_LEAD_STATUSES]);
+const sqlList = values => {
+  if (!values.every(v => /^[a-z_]+$/.test(v))) throw new Error('lead status constants must be bare words');
+  return `(${values.map(v => `'${v}'`).join(',')})`;
+};
+const TERMINAL_SQL = sqlList(TERMINAL_LIST);
+const CONVERTED_SQL = sqlList(CONVERTED_LIST);
+
 /** Any shade of interested, however finely the desk recorded it. */
 function isInterestedLeadStatus(value) {
   return INTERESTED_LEAD_STATUSES.has(String(value || '').trim().toLowerCase());
@@ -51,7 +77,13 @@ function isInterestedLeadStatus(value) {
 module.exports = {
   LEAD_STATUSES,
   TERMINAL_LEAD_STATUSES,
+  CONVERTED_LEAD_STATUSES,
   INTERESTED_LEAD_STATUSES,
+  TERMINAL_LIST,
+  CONVERTED_LIST,
+  TERMINAL_SQL,
+  CONVERTED_SQL,
+  isConvertedLeadStatus,
   normalizeLeadStatus,
   isOpenLeadStatus,
   isInterestedLeadStatus,

@@ -1,5 +1,6 @@
 'use strict';
 
+const { TERMINAL_SQL } = require('./leadStatuses');
 const { pool } = require('./db');
 const outbox = require('./outbox');
 const logger = require('./logger').child({ lib: 'crmSla' });
@@ -12,7 +13,7 @@ async function enqueueOverdueLeadAlerts(limit = 200) {
        FROM leads l
        JOIN staff s ON s.id=l.assigned_sales_id AND s.tenant_id=l.tenant_id AND s.is_active=1 AND s.deleted_at IS NULL
       WHERE l.hidden=0 AND l.deleted_at IS NULL AND l.next_follow_up_date<${sqlCairoToday()}
-        AND l.status NOT IN ('converted','lost','archived','disqualified','not_interested','wrong_number')
+        AND l.status NOT IN ${TERMINAL_SQL}
       ORDER BY l.next_follow_up_date ASC LIMIT ?`,
     [Math.min(Math.max(Number(limit) || 200, 1), 500)]
   );

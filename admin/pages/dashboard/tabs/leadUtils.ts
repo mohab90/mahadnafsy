@@ -1,5 +1,6 @@
 import type { LeadItem, LeadStatus } from '../../../types';
 import { cairoDay } from '../../../../shared/cairoDate';
+import { isOpenLeadStatus } from '../../../../shared/leadStatuses';
 
 /**
  * How long a lead has gone without a follow-up, in tiers.
@@ -34,7 +35,7 @@ export function getStaleDays(): number[] {
 
 /** 0 = followed up recently; 1..4 = past the first, second, third, fourth threshold. */
 export function getRottenLevel(lead: LeadItem): 0 | 1 | 2 | 3 | 4 {
-  if (['converted', 'lost', 'not_interested', 'not_interested_hidden', 'wrong_number'].includes(lead.status)) return 0;
+  if (!isOpenLeadStatus(lead.status)) return 0;
   const comms = lead.communications || [];
   const lastComm = comms.length
     ? [...comms].sort((a, b) => b.date.localeCompare(a.date))[0]
@@ -90,8 +91,7 @@ export function calcLeadScore(lead: LeadItem): number {
   if (lead.nextFollowUpDate) score += 5;
   if ((lead.interestedCourseIds?.length || 0) > 0) score += 10;
 
-  const terminalStatuses: LeadStatus[] = ['converted', 'lost', 'not_interested', 'not_interested_hidden', 'wrong_number'];
-  if (!terminalStatuses.includes(lead.status)) {
+  if (isOpenLeadStatus(lead.status)) {
     const now = Date.now();
     const comms = lead.communications ?? [];
     const lastContactMs = comms.length

@@ -1,4 +1,5 @@
 'use strict';
+const { CONVERTED_SQL } = require('../../lib/leadStatuses');
 const { Router } = require('express');
 const router = Router();
 const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
@@ -713,7 +714,7 @@ router.get('/api/admin/hr/kpi/:staffId', requireAuth, requireAdminOrStaff, requi
     const [[actuals]] = await pool.query(`
       SELECT
         (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND created_at>=? AND created_at<?) AS leads_assigned,
-        (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND status IN ('closed','converted') AND updated_at>=? AND updated_at<?) AS leads_converted,
+        (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND status IN ${CONVERTED_SQL} AND updated_at>=? AND updated_at<?) AS leads_converted,
         (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND status='contacted' AND updated_at>=? AND updated_at<?) AS leads_contacted,
         (SELECT COALESCE(SUM(amount_egp),0) FROM payments WHERE tenant_id=? AND staff_id=? AND status='paid' AND date>=? AND date<? AND deleted_at IS NULL) AS revenue_generated,
         (SELECT COUNT(*) FROM payments WHERE tenant_id=? AND staff_id=? AND status='paid' AND date>=? AND date<? AND deleted_at IS NULL) AS sales_count,

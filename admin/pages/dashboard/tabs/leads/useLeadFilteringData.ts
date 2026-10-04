@@ -11,6 +11,7 @@ import {
   getRottenLevel,
 } from '../leadUtils';
 import { normBranchId } from './leadBranchUtils';
+import { isOpenLeadStatus } from '../../../../../shared/leadStatuses';
 
 type FollowupFilter =
   | 'all'
@@ -148,6 +149,7 @@ export function useLeadFilteringData({
     // read 28,568 — a number that answered no question anyone was asking.
     // A rep sees only their own leads anyway, so this is a no-op for them.
     (isSalesOnly || !!lead.assignedSalesId) &&
+    // lead-status-subset: the desk table hides only what moved elsewhere (a sale to the clients, a loss to the archive); api/lib/leadTableFilter.js the same
     !['converted', 'lost'].includes((lead.status || '').toLowerCase()) &&
     matchesFilters(lead)
   ), [effectiveLeads, showHiddenLeads, isSalesOnly, matchesFilters]);
@@ -168,7 +170,7 @@ export function useLeadFilteringData({
 
   const overdueLeads = useMemo(() =>
     leads
-      .filter((lead) => !lead.hidden && lead.nextFollowUpDate && lead.nextFollowUpDate <= today && !['converted', 'lost'].includes(lead.status))
+      .filter((lead) => !lead.hidden && lead.nextFollowUpDate && lead.nextFollowUpDate <= today && isOpenLeadStatus(lead.status))
       .sort((a, b) => (a.nextFollowUpDate || '').localeCompare(b.nextFollowUpDate || '')),
     [leads, today]
   );

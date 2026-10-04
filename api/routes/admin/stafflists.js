@@ -1,4 +1,5 @@
 'use strict';
+const { CONVERTED_SQL } = require('../../lib/leadStatuses');
 const logger = require('../../lib/logger');
 const crypto   = require('crypto');
 const express  = require('express');
@@ -90,7 +91,7 @@ router.get('/api/admin/online-performance', requireAuth, requireAdminOrStaff,
              ) cs ON cs.id = st.id
              LEFT JOIN (
                SELECT assigned_sales_id id, COUNT(*) leads,
-                      SUM(CASE WHEN status IN ('converted','won') THEN 1 ELSE 0 END) converted
+                      SUM(CASE WHEN status IN ${CONVERTED_SQL} THEN 1 ELSE 0 END) converted
                  FROM leads
                 WHERE tenant_id=? AND branch IN ('ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_INTERNATIONAL') AND assigned_sales_id IS NOT NULL
                 GROUP BY assigned_sales_id

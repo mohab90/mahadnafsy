@@ -54,6 +54,15 @@ for (const f of ['../schema.sql', ...files]) {
   }
 }
 
+// leads.status is a VARCHAR, so the database takes any spelling — the same
+// typo an ENUM would refuse is stored silently and the lead drops out of every
+// screen. Its vocabulary lives in api/lib/leadStatuses.js and is checked here
+// as if it were an ENUM ('follow_up' and 'junk' are old values still in data).
+{
+  const statuses = require(path.join(ROOT, 'api', 'lib', 'leadStatuses.js'));
+  enums.set('leads.status', new Set([...statuses.LEAD_STATUSES, ...statuses.TERMINAL_LEAD_STATUSES, 'follow_up']));
+}
+
 // An unqualified column is resolved against the tables of its own statement
 // only. Resolving it against the whole schema instead — "this name is an enum
 // somewhere, so treat every use of it as that enum" — reports `action` in a

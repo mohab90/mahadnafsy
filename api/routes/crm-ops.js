@@ -1,5 +1,6 @@
 'use strict';
 
+const { TERMINAL_SQL } = require('../lib/leadStatuses');
 const express = require('express');
 const router = express.Router();
 
@@ -29,7 +30,7 @@ router.get('/api/admin/crm/stale-leads', requireAuth, requireAdminOrStaff, requi
         DATEDIFF(NOW(), COALESCE(MAX(c.date), l.last_follow_up, l.created_at)) AS days_silent
       FROM leads l
       LEFT JOIN communications c ON c.tenant_id = l.tenant_id AND c.lead_id = l.id
-      WHERE l.tenant_id=? AND l.hidden=0 AND l.status NOT IN ('converted','lost','not_interested')`;
+      WHERE l.tenant_id=? AND l.hidden=0 AND l.status NOT IN ${TERMINAL_SQL}`;
     const params = [req.tenantId];
     const scope = leadScope(req, 'l');
     sql += scope.sql;
@@ -58,7 +59,7 @@ router.get('/api/admin/crm/follow-up-due', requireAuth, requireAdminOrStaff, req
       WHERE l.tenant_id=? AND l.hidden=0
         AND l.next_follow_up_date IS NOT NULL
         AND l.next_follow_up_date <= ${sqlCairoToday()}
-        AND l.status NOT IN ('converted','lost')`;
+        AND l.status NOT IN ${TERMINAL_SQL}`;
     const params = [req.tenantId];
     const scope = leadScope(req, 'l');
     sql += scope.sql;
@@ -112,7 +113,7 @@ router.get('/api/admin/crm/work-queue', requireAuth, requireAdminOrStaff, requir
             GROUP BY tenant_id,lead_id
          ) seq ON seq.tenant_id=l.tenant_id AND seq.lead_id=l.id
         WHERE l.tenant_id=? AND l.hidden=0 AND l.deleted_at IS NULL
-          AND l.status NOT IN ('converted','lost','archived','disqualified','not_interested','wrong_number','junk')
+          AND l.status NOT IN ${TERMINAL_SQL}
           ${scope.sql}
         ORDER BY l.score DESC,l.created_at ASC
         LIMIT ?`,

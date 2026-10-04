@@ -1,3 +1,4 @@
+import { TERMINAL_LEAD_STATUSES } from '../../../../../shared/leadStatuses';
 /**
  * Which lead sources belong to an archive tab rather than the live pool.
  *
@@ -38,14 +39,8 @@ export const isInternationalLead = (lead: { branch?: string | null; source?: str
   return String(lead.source || '').trim().startsWith('دولي');
 };
 
-/**
- * Statuses that end a lead's life — api/lib/leadStatuses.js TERMINAL_LEAD_STATUSES,
- * which the distributor reads. Keep the two identical.
- */
-export const TERMINAL_LEAD_STATUSES = new Set([
-  'converted', 'lost', 'won', 'closed', 'not_interested', 'not_interested_hidden',
-  'wrong_number', 'unqualified', 'disqualified', 'archived',
-]);
+/** Statuses that end a lead's life — the one list, shared/leadStatuses.ts. */
+export { TERMINAL_LEAD_STATUSES };
 
 type PoolLead = {
   hidden?: boolean; assignedSalesId?: string | null; assignedCsId?: string | null; source?: string | null;

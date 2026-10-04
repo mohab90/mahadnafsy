@@ -4,6 +4,7 @@
  * journey and the drop-off between stages so the owner can *see* where money
  * leaks. Every probe is guarded so one missing table never fails the response.
  */
+const { CONVERTED_SQL, TERMINAL_SQL } = require('../lib/leadStatuses');
 const logger = require('../lib/logger');
 const express = require('express');
 const router = express.Router();
@@ -32,7 +33,7 @@ router.get('/api/admin/funnel', requireAuth, requireAdminOrStaff, requirePermiss
         n(`SELECT COUNT(*) FROM leads l WHERE ${lw}
             AND (l.status IN ('interested','interested_booking','interested_followup','converted','won')
               OR l.interest_level='HIGH')`, lp),
-        n(`SELECT COUNT(*) FROM leads l WHERE ${lw} AND l.status IN ('converted','won')`, lp),
+        n(`SELECT COUNT(*) FROM leads l WHERE ${lw} AND l.status IN ${CONVERTED_SQL}`, lp),
         n(`SELECT COUNT(DISTINCT s.id) FROM leads l
             JOIN subscribers s ON s.lead_id=l.id AND s.tenant_id=l.tenant_id
             WHERE ${lw}`, lp),
@@ -134,7 +135,7 @@ router.get('/api/admin/action-center', requireAuth, requireAdmin, async (req, re
   try {
     const [pendingProofs, overdueFollowups, uncontacted, pendingCerts, newJoinUs, newContact, failedMsgs] = await Promise.all([
       n("SELECT COUNT(*) FROM payment_proofs WHERE tenant_id=? AND status='PENDING'", [req.tenantId]),
-      n("SELECT COUNT(*) FROM leads WHERE tenant_id=? AND hidden=0 AND next_follow_up_date IS NOT NULL AND next_follow_up_date < NOW() AND status NOT IN ('converted','lost')", [req.tenantId]),
+      n(`SELECT COUNT(*) FROM leads WHERE tenant_id=? AND hidden=0 AND next_follow_up_date IS NOT NULL AND next_follow_up_date < NOW() AND status NOT IN ${TERMINAL_SQL}`, [req.tenantId]),
       n("SELECT COUNT(*) FROM leads WHERE tenant_id=? AND hidden=0 AND status='new' AND created_at < (NOW() - INTERVAL 1 DAY)", [req.tenantId]),
       n("SELECT COUNT(*) FROM certificate_requests WHERE tenant_id=? AND status='PENDING'", [req.tenantId]),
       n("SELECT COUNT(*) FROM join_us_applications WHERE tenant_id=? AND LOWER(COALESCE(status,'new')) IN ('new','pending')", [req.tenantId]),

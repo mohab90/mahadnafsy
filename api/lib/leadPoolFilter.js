@@ -11,13 +11,11 @@
 // so the tab downloads its pool and nothing else.
 
 const { ARCHIVE_SOURCE_PREFIXES } = require('./leadArchive');
+const { TERMINAL_LIST } = require('./leadStatuses');
 
 // leadSourceGroups.ts — keep the lists identical.
 const INTERNATIONAL_BRANCHES = ['ONLINE_ABROAD', 'ONLINE_SAUDI'];
-const TERMINAL_LEAD_STATUSES = [
-  'converted', 'lost', 'won', 'closed', 'not_interested', 'not_interested_hidden',
-  'wrong_number', 'unqualified', 'disqualified', 'archived',
-];
+const TERMINAL_LEAD_STATUSES = TERMINAL_LIST;
 const VIEWS = ['localNew', 'dawli', 'archive'];
 
 const escapeLike = value => String(value).replace(/[\\%_]/g, match => `\\${match}`);

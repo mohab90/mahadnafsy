@@ -13,6 +13,7 @@
  * Scans :  learner_stalled · installment_due
  */
 const { pool } = require('./db');
+const { TERMINAL_SQL } = require('./leadStatuses');
 const { escapeHtml } = require('./html');
 const logger = require('./logger');
 const outbox = require('./outbox');
@@ -253,7 +254,7 @@ async function scanScheduled() {
       FROM leads l
       LEFT JOIN courses c ON c.id = l.enrolled_course_id AND c.tenant_id = l.tenant_id
       WHERE l.hidden = 0
-        AND l.status NOT IN ('converted','lost')
+        AND l.status NOT IN ${TERMINAL_SQL}
         AND l.created_at < (NOW() - INTERVAL 3 DAY)
         AND l.created_at > (NOW() - INTERVAL 21 DAY)
         AND (l.deal_value IS NULL OR l.deal_value = 0)
@@ -281,7 +282,7 @@ async function scanScheduled() {
       LEFT JOIN courses c ON c.id = l.enrolled_course_id AND c.tenant_id = l.tenant_id
       WHERE l.hidden = 0
         AND l.source = 'checkout_intent'
-        AND l.status NOT IN ('converted','lost')
+        AND l.status NOT IN ${TERMINAL_SQL}
         AND l.created_at < (NOW() - INTERVAL 2 HOUR)
         AND l.created_at > (NOW() - INTERVAL 3 DAY)
         AND (l.deal_value IS NULL OR l.deal_value = 0)

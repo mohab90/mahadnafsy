@@ -13,6 +13,7 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { fxRates, toEgp } from '../../../lib/money';
 import type { SalesTarget, StaffLeadPerformance } from '../../../types';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
+import { isOpenLeadStatus } from '../../../../shared/leadStatuses';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type TimeRange = 'today' | '7d' | '30d' | 'month' | 'all';
@@ -130,7 +131,7 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
         : myLeads.filter(l => l.status === 'lost').length;
       const activeCount = agg
         ? Math.max(0, agg.leads - convertedCount - lostCount)
-        : myLeads.filter(l => !['converted', 'lost'].includes(l.status || '')).length;
+        : myLeads.filter(l => isOpenLeadStatus(l.status)).length;
       const convRate = percent(convertedCount, totalLeads);
 
       // Revenue from orders attributed to this staff
@@ -151,7 +152,7 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
         !l.hidden &&
         l.assignedSalesId === s.id &&
         l.nextFollowUpDate === TODAY &&
-        !['converted', 'lost'].includes(l.status || '')
+        isOpenLeadStatus(l.status)
       ).length;
 
       return {

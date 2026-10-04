@@ -14,11 +14,12 @@
 
 const { ARCHIVE_SOURCE_PREFIXES } = require('./leadArchive');
 const { addDaysToDateOnly, cairoDayStartUtc } = require('./dates');
+const { TERMINAL_LIST } = require('./leadStatuses');
 
 // admin/pages/dashboard/tabs/crmConstants.ts ONLINE_EXCLUDED_SOURCES
 const ONLINE_EXCLUDED_SOURCES = ['أونلاين 2025', 'تحويل من عملاء الأونلاين'];
-// leadUtils.ts getRottenLevel: these statuses are never stale.
-const NEVER_STALE = ['converted', 'lost', 'not_interested', 'not_interested_hidden', 'wrong_number'];
+// A finished lead is never stale (leadUtils.ts getRottenLevel asks the same set).
+const NEVER_STALE = TERMINAL_LIST;
 const FOLLOWUP_WINDOWS = new Set(['no_followup', 'today', 'overdue', 'past3d', 'past7d', 'past30d', 'next3d', 'next7d']);
 
 const crmText = path => `IF(JSON_VALID(l.crm_json) AND JSON_TYPE(JSON_EXTRACT(l.crm_json, '${path}')) NOT IN ('NULL'),
@@ -63,6 +64,7 @@ function leadTableFilter(query, { today, salesOnly }) {
     add(`COALESCE(l.source, '') NOT IN (${ONLINE_EXCLUDED_SOURCES.map(() => '?').join(',')})`, ...ONLINE_EXCLUDED_SOURCES);
     add("l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''");
   }
+  // lead-status-subset: the desk table hides only what moved elsewhere (a sale to the clients, a loss to the archive); a not-interested lead stays to be called again — useLeadFilteringData.ts the same
   add("l.status NOT IN ('converted', 'lost')");
   add("(TRIM(COALESCE(l.name, '')) <> '' OR TRIM(COALESCE(l.phone, '')) <> '')");
 

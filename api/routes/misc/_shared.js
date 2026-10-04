@@ -1,4 +1,5 @@
 'use strict';
+const { TERMINAL_SQL } = require('../../lib/leadStatuses');
 const logger = require('../../lib/logger');
 const { escapeHtml } = require('../../lib/html');
 const { uuidv4 } = require('../../lib/id');
@@ -129,7 +130,7 @@ async function runFollowUpReminders(tenantId = DEFAULT_TENANT) {
       FROM leads l
       LEFT JOIN staff st ON st.id = l.assigned_sales_id AND st.tenant_id = l.tenant_id
       WHERE l.tenant_id = ? AND l.next_follow_up_date >= ? AND l.next_follow_up_date < DATE_ADD(?, INTERVAL 1 DAY)
-        AND l.status NOT IN ('converted','disqualified','archived')
+        AND l.status NOT IN ${TERMINAL_SQL}
       LIMIT 100`, [tenantId, today, today]);
 
     let sent = 0;

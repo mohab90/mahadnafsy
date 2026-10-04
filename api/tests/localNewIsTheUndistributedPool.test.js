@@ -25,8 +25,14 @@ let groups;
 test.before(async () => {
   const { stripTypeScriptTypes } = require('node:module');
   assert.equal(typeof stripTypeScriptTypes, 'function', 'the gate needs Node 22.13 or newer');
-  const js = stripTypeScriptTypes(read('admin/pages/dashboard/tabs/leads/leadSourceGroups.ts'));
-  groups = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
+  // The statuses come from shared/leadStatuses.ts; loaded the same way and
+  // linked in by its own address, since a data: module has no folder to be
+  // relative to.
+  const url = js => `data:text/javascript;base64,${Buffer.from(js).toString('base64')}`;
+  const shared = url(stripTypeScriptTypes(read('shared/leadStatuses.ts')));
+  const js = stripTypeScriptTypes(read('admin/pages/dashboard/tabs/leads/leadSourceGroups.ts'))
+    .replace(/from '(?:\.\.\/)+shared\/leadStatuses'/, `from '${shared}'`);
+  groups = await import(url(js));
 });
 
 test('the screen closes the same statuses the distributor does', () => {

@@ -2,16 +2,10 @@ import { useMemo } from 'react';
 import { cairoDateOnly, cairoDay, cairoDaysAgo } from '../../../../../shared/cairoDate';
 
 import type { CrmInsights, LeadItem, StaffMember } from '../../../../types';
+import { isOpenLeadStatus } from '../../../../../shared/leadStatuses';
 
 type LeadStatusLike = LeadItem['status'];
 
-const CLOSED_STATUSES: LeadStatusLike[] = ['converted', 'lost', 'not_interested_hidden'];
-const REDISTRIBUTION_EXCLUDED_STATUSES: LeadStatusLike[] = [
-  'converted',
-  'lost',
-  'not_interested_hidden',
-  'wrong_number',
-];
 
 /**
  * The weekly scorecard and the redistribution suggestions.
@@ -74,7 +68,7 @@ export function useLeadOpsInsights(
       const overdueOwn = repLeads.filter(lead =>
         lead.nextFollowUpDate &&
         lead.nextFollowUpDate < todayStr &&
-        !['converted', 'lost'].includes(lead.status),
+        isOpenLeadStatus(lead.status),
       ).length;
 
       return { rep, calls, wa, meetings, totalComms, followupsDone, newLeadsThisWeek, overdueOwn };
@@ -109,7 +103,7 @@ export function useLeadOpsInsights(
         rep.id,
         leads.filter(lead =>
           lead.assignedSalesId === rep.id &&
-          !CLOSED_STATUSES.includes(lead.status),
+          isOpenLeadStatus(lead.status),
         ).length,
       ]),
     );
@@ -118,7 +112,7 @@ export function useLeadOpsInsights(
       .filter(lead =>
         !lead.hidden &&
         lead.assignedSalesId &&
-        !REDISTRIBUTION_EXCLUDED_STATUSES.includes(lead.status),
+        isOpenLeadStatus(lead.status),
       )
       .map(lead => {
         const sorted = [...(lead.communications || [])]

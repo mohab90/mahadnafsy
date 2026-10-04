@@ -11,6 +11,7 @@
  * through logLeadEvent()). A fix applied to one silently never reached the
  * other. This module is the one engine both callers now use.
  */
+const { TERMINAL_SQL } = require('./leadStatuses');
 const { pool } = require('./db');
 const { tryJson } = require('./helpers');
 const { sendWhatsApp } = require('./whatsapp');
@@ -74,7 +75,7 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
             + CASE l.interest_level WHEN 'high' THEN 30 WHEN 'medium' THEN 15 ELSE 5 END
             ) AS score
           FROM leads l
-          WHERE l.tenant_id=? AND l.hidden = 0 AND l.status NOT IN ('converted','lost')
+          WHERE l.tenant_id=? AND l.hidden = 0 AND l.status NOT IN ${TERMINAL_SQL}
           HAVING score >= ?
         `, [tid, threshold]);
         matchedLeads = rows;
@@ -137,7 +138,7 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
           FROM leads
           WHERE tenant_id=? AND hidden = 0
             AND updated_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
-            AND status NOT IN ('converted','lost')
+            AND status NOT IN ${TERMINAL_SQL}
         `, [tid]);
         matchedLeads = rows;
       }
@@ -215,7 +216,7 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
           SELECT id, name, email, phone, status, assigned_sales_name
           FROM leads
           WHERE tenant_id=? AND (next_follow_up_date IS NULL OR next_follow_up_date < DATE_SUB(NOW(), INTERVAL 3 DAY))
-            AND status NOT IN ('won','lost','unqualified')
+            AND status NOT IN ${TERMINAL_SQL}
         `, [tid]);
         matchedLeads = rows;
       }
@@ -319,7 +320,7 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
             SELECT lead_id, MAX(date) AS last_date FROM communications WHERE tenant_id=? GROUP BY lead_id
           ) c ON c.lead_id = l.id
           WHERE l.tenant_id=? AND l.hidden = 0
-            AND l.status NOT IN ('converted','lost')
+            AND l.status NOT IN ${TERMINAL_SQL}
             AND TIMESTAMPDIFF(HOUR, COALESCE(c.last_date, l.created_at), NOW()) >= ?
         `, [tid, tid, hours]);
         matchedLeads = rows;

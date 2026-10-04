@@ -1,6 +1,7 @@
 import React from 'react';
 import { cairoDateOnly, cairoDay, cairoDaysAgo } from '../../../shared/cairoDate';
 import type { LeadItem, SubscriberItem, StaffMember } from '../../types';
+import { isOpenLeadStatus } from '../../../shared/leadStatuses';
 
 interface DashboardBadgesArgs {
   currentStaff: StaffMember | null | undefined;
@@ -24,7 +25,7 @@ export function useDashboardBadges({
   // Badge count for staff notification bell (overdue + today followup leads)
   const _staffNotifTodayStr = cairoDateOnly();
   const staffNotifBadge = currentStaff ? (isNonAdminStaff ? salesOwnLeads : leads).filter(l =>
-    !['converted', 'lost'].includes(l.status) && l.nextFollowUpDate && l.nextFollowUpDate <= _staffNotifTodayStr
+    isOpenLeadStatus(l.status) && l.nextFollowUpDate && l.nextFollowUpDate <= _staffNotifTodayStr
   ).length : 0;
 
   // Online manager: collection/installment follow-up badge

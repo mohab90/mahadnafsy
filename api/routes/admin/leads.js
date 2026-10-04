@@ -9,7 +9,7 @@ const { generateTemporaryPassword } = require('../../lib/secureCredentials');
 
 const { pool, cacheInvalidate } = require('../../lib/db');
 const { pickCollectionOfficer, subscriberMarket } = require('../../lib/collectionDistribution');
-const { LEAD_STATUSES, isOpenLeadStatus } = require('../../lib/leadStatuses');
+const { LEAD_STATUSES, isOpenLeadStatus, TERMINAL_LIST, TERMINAL_SQL } = require('../../lib/leadStatuses');
 const { mailer } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
 const { tryJson, sanitize, parseLimit, parseOffset, parseCrm, calcLeadScoreServer, ymd, sendRouteError } = require('../../lib/helpers');
@@ -1580,8 +1580,8 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
 
     // Closed leads are excluded below in the same spellings the browser used, so
     // the two paths cannot disagree about what "open" means.
-    const CLOSED = ['converted', 'lost', 'not_interested_hidden'];
-    const REDIST_EXCLUDED = [...CLOSED, 'wrong_number'];
+    const CLOSED = TERMINAL_LIST;
+    const REDIST_EXCLUDED = TERMINAL_LIST;
     const closedSql = CLOSED.map(() => '?').join(',');
     const redistSql = REDIST_EXCLUDED.map(() => '?').join(',');
 
@@ -1760,7 +1760,7 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
           AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
           AND l.next_follow_up_date IS NOT NULL
           AND l.next_follow_up_date < ${sqlCairoToday()}
-          AND l.status NOT IN ('converted','lost')
+          AND l.status NOT IN ${TERMINAL_SQL}
         GROUP BY l.assigned_sales_id`,
       [req.tenantId, ...scopeParams],
     );

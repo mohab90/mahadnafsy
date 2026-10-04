@@ -1,4 +1,5 @@
 'use strict';
+const { isConvertedLeadStatus, CONVERTED_SQL } = require('../../lib/leadStatuses');
 const logger = require('../../lib/logger');
 const express = require('express');
 const router  = express.Router();
@@ -31,7 +32,7 @@ router.get('/api/admin/reports/sales-performance', requireAuth, requireAdminOrSt
       FROM staff st
       LEFT JOIN (
         SELECT assigned_sales_id, COUNT(*) AS total_leads,
-          SUM(CASE WHEN status IN ('converted','won') THEN 1 ELSE 0 END) AS converted
+          SUM(CASE WHEN status IN ${CONVERTED_SQL} THEN 1 ELSE 0 END) AS converted
         FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) AND assigned_sales_id IS NOT NULL GROUP BY assigned_sales_id
       ) ld ON ld.assigned_sales_id = st.id
       LEFT JOIN (
@@ -73,10 +74,10 @@ router.get('/api/admin/reports/lead-funnel', requireAuth, requireAdminOrStaff, r
     const to   = req.query.to   || cairoToday();
     const args = [req.tenantId, from, to];
     const [byStatus] = await pool.query(`SELECT status, COUNT(*) AS count FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) GROUP BY status ORDER BY count DESC`, args);
-    const [bySource] = await pool.query(`SELECT source, COUNT(*) AS total, SUM(CASE WHEN status IN ('converted','won') THEN 1 ELSE 0 END) AS converted FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) GROUP BY source ORDER BY total DESC`, args);
-    const [byBranch] = await pool.query(`SELECT branch, COUNT(*) AS total, SUM(CASE WHEN status IN ('converted','won') THEN 1 ELSE 0 END) AS converted FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) GROUP BY branch ORDER BY total DESC`, args);
+    const [bySource] = await pool.query(`SELECT source, COUNT(*) AS total, SUM(CASE WHEN status IN ${CONVERTED_SQL} THEN 1 ELSE 0 END) AS converted FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) GROUP BY source ORDER BY total DESC`, args);
+    const [byBranch] = await pool.query(`SELECT branch, COUNT(*) AS total, SUM(CASE WHEN status IN ${CONVERTED_SQL} THEN 1 ELSE 0 END) AS converted FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) GROUP BY branch ORDER BY total DESC`, args);
     const total     = byStatus.reduce((s, r) => s + Number(r.count), 0);
-    const converted = byStatus.filter(r => ['converted','won'].includes(r.status)).reduce((s, r) => s + Number(r.count), 0);
+    const converted = byStatus.filter(r => isConvertedLeadStatus(r.status)).reduce((s, r) => s + Number(r.count), 0);
     const lost      = byStatus.filter(r => r.status === 'lost').reduce((s, r) => s + Number(r.count), 0);
     res.json({
       from, to, total, converted, lost,
