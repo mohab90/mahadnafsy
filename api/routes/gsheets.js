@@ -9,6 +9,7 @@ const { getNextClientCode } = require('../lib/mappers');
 const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
 const { requireAuth, requireAdmin, requirePermission } = require('../middleware/auth');
 const { isHtmlResponse, fetchCsvFollowRedirects, syncAllConfiguredSheets } = require('../lib/sheets');
+const { parseCsv } = require('../lib/csv');
 const { matchCourseId } = require('../lib/courseMatch');
 const { createRepRotation, listDistributableReps } = require('../lib/leadAssignment');
 const { toIdentity } = require('../lib/phoneNumber');
@@ -30,10 +31,11 @@ router.post('/api/admin/leads/gsheet-test', requireAuth, requireAdmin, requirePe
         hint: 'الشيت غير منشور للعموم — اضغط "مشاركة" في Google Sheets ثم اختر "أي شخص لديه الرابط" بصلاحية القراءة فقط',
       });
     }
-    const lines = csvText.split('\n').map(l => l.trim()).filter(Boolean);
-    if (lines.length === 0) return res.json({ ok: true, accessible: true, rows: 0, headers: [], hint: 'الشيت فارغ' });
-    const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
-    res.json({ ok: true, accessible: true, rows: lines.length - 1, headers, hint: lines.length > 1 ? `يحتوي على ${lines.length - 1} صف` : 'لا توجد بيانات بعد الهيدر' });
+    // Rows, not lines: an answer with a line break in it is one row.
+    const table = parseCsv(csvText);
+    if (table.length === 0) return res.json({ ok: true, accessible: true, rows: 0, headers: [], hint: 'الشيت فارغ' });
+    const headers = table[0].map(h => String(h).trim());
+    res.json({ ok: true, accessible: true, rows: table.length - 1, headers, hint: table.length > 1 ? `يحتوي على ${table.length - 1} صف` : 'لا توجد بيانات بعد الهيدر' });
   } catch (e) { res.status(500).json({ ok: false, accessible: false, reason: 'Internal server error' }); }
 });
 
@@ -52,9 +54,11 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
     }
 
     // Parse CSV
-    const lines = csvText.split('\n').map(l => l.trim()).filter(Boolean);
-    if (lines.length < 2) return res.json({ ok: true, imported: 0, skipped: 0, message: 'الشيت فارغ' });
-    const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim().toLowerCase());
+    // A real CSV reader: an answer with a line break used to cut its row in two
+    // and shift the phone into the wrong column (lib/csv.js).
+    const table = parseCsv(csvText);
+    if (table.length < 2) return res.json({ ok: true, imported: 0, skipped: 0, message: 'الشيت فارغ' });
+    const headers = table[0].map(h => String(h).trim().toLowerCase());
 
     // Map common column names to our fields — flexible matching (includes Facebook Lead Ads field names)
     const colIdx = (names) => {
@@ -102,11 +106,10 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
     const knownPhones = new Set(existing.map(row => toIdentity(row.phone)).filter(Boolean));
 
     let imported = 0, skipped = 0;
-    const dataLines = lines.slice(1);
+    const dataLines = table.slice(1);
     for (let i = 0; i < dataLines.length; i++) {
       // Parse CSV row (handle quoted fields)
-      const row = dataLines[i].match(/(".*?"|[^,]+|(?<=,)(?=,)|(?<=,)$|^(?=,))/g)
-        ?.map(v => v.replace(/^"|"$/g, '').trim()) ?? dataLines[i].split(',').map(v => v.trim());
+      const row = dataLines[i].map(v => String(v ?? '').trim());
       const name  = nameCol  !== -1 ? (row[nameCol]  || '').trim() : '';
       const phone = phoneCol !== -1 ? (row[phoneCol] || '').trim() : '';
       const email = emailCol !== -1 ? (row[emailCol] || '').trim() : '';

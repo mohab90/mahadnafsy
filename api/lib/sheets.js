@@ -9,6 +9,7 @@ const { createBatchAssigner } = require('./leadAssignment');
 const { getNextClientCode } = require('./mappers');
 const { getTenantSetting } = require('./tenantSettings');
 const { DEFAULT_TENANT } = require('../middleware/tenantContext');
+const { parseCsv } = require('./csv');
 
 // Convenience seed sheets — offered as a starting point in the admin CRM settings
 // UI ONLY. They are NEVER auto-synced on their own: autoSync is false here and the
@@ -58,14 +59,155 @@ function fetchCsvFollowRedirects(url, maxRedirects = 5) {
   });
 }
 
-async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT) {
+// Rows dated further back than this are not imported by the automatic sync.
+// The sheets keep every row they ever received, and the sync used to read
+// them with a line-by-line split that broke on any answer containing a line
+// break — so a fixed reader would otherwise turn months of rows that never made
+// it in into "new" leads for the reps overnight. Recent rows are the ones a
+// rep can still act on; an older one is for tools/sheets-backfill.cjs to
+// report and someone to decide on. Undated rows are always read.
+const DEFAULT_IMPORT_WINDOW_DAYS = 14;
+
+const DATE_HEADINGS = ['created_time', 'timestamp', 'تاريخ', 'التاريخ', 'الوقت', 'date', 'time'];
+
+/**
+ * When a sheet row arrived, or null when the cell is empty or ambiguous.
+ * ISO (Facebook's created_time) is exact. A slashed date is read only when the
+ * day and month cannot be confused (one of them above 12); 3/9 could be either,
+ * and an undated row is imported rather than wrongly left out.
+ */
+function rowDate(value) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) {
+    const date = new Date(text.replace(' ', 'T'));
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  const slashed = text.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (!slashed) return null;
+  const [, first, second, year, hour = '0', minute = '0', sec = '0'] = slashed;
+  let month; let day;
+  if (Number(first) > 12 && Number(second) <= 12) { day = first; month = second; }
+  else if (Number(second) > 12 && Number(first) <= 12) { month = first; day = second; }
+  else if (first === second) { month = first; day = second; }
+  else return null;
+  const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(sec));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/** One tab of a linked sheet, read into lead fields. */
+async function readSheetTab(sheet, gid, fetchCsv = fetchCsvFollowRedirects) {
+  const csvUrl = `https://docs.google.com/spreadsheets/d/${sheet.sheetId}/export?format=csv${gid ? `&gid=${gid}` : ''}`;
+  const csvText = await fetchCsv(csvUrl).catch(err => {
+    logger.warn(`[gsheet-auto] fetch error for "${sheet.name}" gid=${gid || 'default'}: ${err.message}`);
+    return '';
+  });
+  if (!csvText || isHtmlResponse(csvText)) {
+    logger.warn(`[gsheet-auto] Sheet "${sheet.name}" (${sheet.sheetId}) is PRIVATE or unreachable — Fix: Google Sheets → Share → Anyone with link → Viewer`);
+    return { error: 'unreachable', rows: [] };
+  }
+  // A real CSV reader. This was csvText.split('\n') and a quote-toggling split
+  // on commas: an answer with a line break in it — a Facebook form's free-text
+  // question, a note — cut its row in two, the second half read as a row of its
+  // own, and the person's phone landed in whatever column the break left it
+  // in. Rows were skipped or imported as nonsense, silently, every 15 minutes.
+  const table = parseCsv(csvText);
+  if (table.length < 2) return { rows: [], headers: table[0] || [] };
+  const headers = table[0].map(h => String(h).trim().toLowerCase());
+  const colIdx = (names) => { for (const n of names) { const i = headers.findIndex(h => h.includes(n)); if (i !== -1) return i; } return -1; };
+  const nameCol   = colIdx(['full_name','الاسم_الكامل','الاسم الكامل','name','الاسم','اسم']);
+  const phoneCol  = colIdx(['phone_number','رقم_الهاتف','رقم الهاتف','phone','هاتف','تليفون','موبايل','mobile','tel','whatsapp']);
+  const emailCol  = colIdx(['email','ايميل','إيميل','mail']);
+  const sourceCol = colIdx(['source','مصدر','channel']);
+  const notesCol  = colIdx(['notes','ملاحظات','note','comment','message','رسالة']);
+  const dateCol   = colIdx(DATE_HEADINGS);
+  // FB custom questions: branch + course/diploma type
+  const branchCol = colIdx(['اختر_الفرع','اختر الفرع','branch','فرع','الفرع','فرعك','فرع الدراسة','المدينة','مكان الدراسة','موقع الفرع','location','city']);
+  const courseCol = colIdx(['اختر_نوع','اختر نوع','دبلومة','دبلوم','الكورس','كورس','course','program','البرنامج','دورة','diploma','برنامج الدراسة','اختر البرنامج']);
+  const resolvedBranchCol = branchCol !== -1 ? branchCol : headers.findIndex(h => h.includes('فرع') || h.includes('branch') || h.includes('مدين') || h.includes('location'));
+  const resolvedCourseCol = courseCol !== -1 ? courseCol : headers.findIndex(h => h.includes('كورس') || h.includes('دبلوم') || h.includes('برنامج') || h.includes('course'));
+  logger.info(`[gsheet-auto] Sheet "${sheet.name}" gid=${gid||'default'} headers: ${JSON.stringify(headers.slice(0,12))} | branchCol=${resolvedBranchCol}`);
+  if (nameCol === -1 && phoneCol === -1) {
+    logger.warn(`[gsheet-auto] Sheet "${sheet.name}" columns not recognized. Headers: ${JSON.stringify(headers.slice(0,8))}`);
+    return { error: 'columns_not_recognized', rows: [], headers };
+  }
+  const cell = (row, index) => (index !== -1 ? String(row[index] ?? '').trim() : '');
+  const rows = table.slice(1).map((row, index) => ({
+    index,
+    rawName: cell(row, nameCol),
+    phone: cell(row, phoneCol).replace(/[\s-]/g, ''),
+    email: cell(row, emailCol),
+    source: sourceCol !== -1 ? cell(row, sourceCol) : String(sheet.name || 'Google Sheet').trim(),
+    rawNotes: cell(row, notesCol),
+    rawBranch: cell(row, resolvedBranchCol),
+    rawCourse: cell(row, resolvedCourseCol),
+    arrivedAt: dateCol !== -1 ? rowDate(row[dateCol]) : null,
+  }));
+  return { rows, headers, dated: dateCol !== -1 };
+}
+
+// Normalize branch string → DB ENUM value
+const normBranch = (v) => { if(!v)return null; const s=v.trim().toLowerCase().replace(/[\s_\-]/g,''); if(s.includes('دقي')||s.includes('daqqi')||s.includes('dokki'))return'DAQQI'; if(s.includes('تجمع')||s.includes('tagamoa')||s.includes('tagamo')||s.includes('قاهرةالجديدة')||s.includes('cairo')||s.includes('قاطميه')||s.includes('قاطميةs')||s.includes('qatat'))return'TAGAMOA'; if(s.includes('online')||s.includes('اونلاين')||s.includes('أونلاين')||s.includes('اونلاين')||s.includes('اون')){if(s.includes('سعودي')||s.includes('saudi'))return'ONLINE_SAUDI';if(s.includes('خارج')||s.includes('abroad'))return'ONLINE_ABROAD';return'ONLINE_EGYPT';} return s.length>=2?'OTHER':null; };
+
+/** Where an existing lead stands — why a sheet row that is "already in" may not be on the table. */
+function leadPlacement(lead) {
+  if (!lead) return 'missing';
+  if (lead.merged_into_lead_id) return 'merged';
+  if (lead.deleted_at || Number(lead.hidden) === 1) return 'hidden';
+  if (String(lead.status || '').toLowerCase() === 'archived') return 'archived';
+  if (!lead.assigned_sales_id) return 'unassigned';
+  return 'visible';
+}
+
+/**
+ * Import the rows of every configured sheet that the CRM does not hold yet.
+ *
+ * @param {string} tenantId
+ * @param {object} [options]
+ * @param {number|null} [options.windowDays] dated rows older than this are left out (null = all)
+ * @param {boolean} [options.dryRun] count and classify, write nothing
+ * @param {string} [options.autoAssign] override the tenant's distribution mode
+ * @param {Function} [options.fetchCsv] how a tab's CSV is fetched (tests)
+ */
+async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT, options = {}) {
+  const report = { imported: 0, skipped: 0, outsideWindow: 0, sheets: [] };
   try {
     const settings = await getTenantSetting('crm_settings', { tenantId, fallback: {} });
     // Use only sheets explicitly stored for this tenant. Seed sheets are UI hints,
     // never implicit import sources.
     const sheets = Array.isArray(settings?.sheets) ? settings.sheets : [];
-    const autoAssign = ['rr', 'least', 'none'].includes(settings?.autoAssign) ? settings.autoAssign : 'rr';
-    let totalImported = 0, totalSkipped = 0;
+    const autoAssign = ['rr', 'least', 'none'].includes(options.autoAssign) ? options.autoAssign
+      : ['rr', 'least', 'none'].includes(settings?.autoAssign) ? settings.autoAssign : 'rr';
+    const configuredWindow = Number(settings?.sheetImportWindowDays);
+    const windowDays = options.windowDays !== undefined ? options.windowDays
+      : (Number.isFinite(configuredWindow) && configuredWindow > 0 ? configuredWindow : DEFAULT_IMPORT_WINDOW_DAYS);
+    const since = windowDays ? Date.now() - windowDays * 86400000 : null;
+    const dryRun = Boolean(options.dryRun);
+
+    // Every lead the tenant has ever held counts as "already imported" —
+    // including the deleted (hidden) and the merged. Checking only visible
+    // leads meant every lead an admin deleted came back on the next sync:
+    // «شيتات بتترجع بعد المسح». Compared as identities, not as text: the same
+    // person arrives as "p:+201227155562" from Facebook and as "1227155562"
+    // from an older sheet. Loaded once for all sheets, not once per tab.
+    const [existing] = await pool.execute(
+      `SELECT id, phone, name, status, hidden, deleted_at, merged_into_lead_id, assigned_sales_id
+         FROM leads WHERE tenant_id=?`, [tenantId]);
+    const byPhone = new Map();
+    const byName = new Map();
+    for (const lead of existing) {
+      const identity = toIdentity(lead.phone);
+      if (identity && !byPhone.has(identity)) byPhone.set(identity, lead);
+      const name = String(lead.name || '').trim().toLowerCase();
+      if (name && !byName.has(name)) byName.set(name, lead);
+    }
+
+    const [dbCourses] = await pool.execute('SELECT id, title FROM courses WHERE tenant_id=? AND is_published=1 AND deleted_at IS NULL', [tenantId]);
+    const [dbBundles] = await pool.execute(
+      'SELECT id, title FROM bundles WHERE tenant_id=? AND is_published=1 AND deleted_at IS NULL', [tenantId]);
+    // Name-to-course matching lives in lib/courseMatch.js, shared with the manual import.
+    const findCourseId = (raw) => matchCourseId(raw, dbCourses, dbBundles);
+
     for (const sheet of sheets) {
       if (!/^[A-Za-z0-9_-]{20,120}$/.test(String(sheet.sheetId || ''))) continue;
       try {
@@ -73,152 +215,110 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT) {
         const rawGids = Array.isArray(sheet.gids) ? sheet.gids
           : (sheet.gid || '').split(',').map(g => g.trim()).filter(Boolean);
         if (rawGids.some((gid) => !/^\d{1,20}$/.test(String(gid)))) continue;
-        // If no GIDs configured, sync the default tab (no gid param)
         const gidList = rawGids.length > 0 ? rawGids : [''];
         for (const gid of gidList) {
-        const csvUrl = `https://docs.google.com/spreadsheets/d/${sheet.sheetId}/export?format=csv${gid ? `&gid=${gid}` : ''}`;
-        const csvText = await fetchCsvFollowRedirects(csvUrl).catch(err => { logger.warn(`[gsheet-auto] fetch error for "${sheet.name}" gid=${gid||'default'}: ${err.message}`); return ''; });
-        if (!csvText || isHtmlResponse(csvText)) {
-          logger.warn(`[gsheet-auto] Sheet "${sheet.name}" (${sheet.sheetId}) is PRIVATE or unreachable — Fix: Google Sheets → Share → Anyone with link → Viewer`);
-          continue;
-        }
-        const lines = csvText.split('\n').map(l => l.trim()).filter(Boolean);
-        if (lines.length < 2) continue;
-        // Parse CSV headers properly (handle quoted values)
-        const parseRow = (line) => { const r=[]; let cur='',inQ=false; for(const c of line){if(c==='"'){inQ=!inQ;}else if(c===','&&!inQ){r.push(cur.trim());cur='';}else{cur+=c;}} r.push(cur.trim()); return r; };
-        const headers = parseRow(lines[0]).map(h => h.replace(/^"|"$/g, '').trim().toLowerCase());
-        const colIdx = (names) => { for (const n of names) { const i = headers.findIndex(h => h.includes(n)); if (i !== -1) return i; } return -1; };
-        // Facebook Lead Ads column names
-        const nameCol   = colIdx(['full_name','الاسم_الكامل','الاسم الكامل','name','الاسم','اسم']);
-        const phoneCol  = colIdx(['phone_number','رقم_الهاتف','رقم الهاتف','phone','هاتف','تليفون','موبايل','mobile','tel','whatsapp']);
-        const emailCol  = colIdx(['email','ايميل','إيميل','mail']);
-        const sourceCol = colIdx(['source','مصدر','channel']);
-        const notesCol  = colIdx(['notes','ملاحظات','note','comment','message','رسالة']);
-        // FB custom questions: branch + course/diploma type
-        // Broad detection: FB exports use question text as header — try many Arabic/English variations
-        const branchCol = colIdx(['اختر_الفرع','اختر الفرع','branch','فرع','الفرع','فرعك','فرع الدراسة','المدينة','مكان الدراسة','موقع الفرع','location','city']);
-        const courseCol = colIdx(['اختر_نوع','اختر نوع','دبلومة','دبلوم','الكورس','كورس','course','program','البرنامج','دورة','diploma','برنامج الدراسة','اختر البرنامج']);
-        // If branchCol still not found, scan ALL headers for Arabic text containing 'فرع' clue
-        const resolvedBranchCol = branchCol !== -1 ? branchCol : headers.findIndex(h => h.includes('فرع') || h.includes('branch') || h.includes('مدين') || h.includes('location'));
-        logger.info(`[gsheet-auto] Sheet "${sheet.name}" gid=${gid||'default'} headers: ${JSON.stringify(headers.slice(0,12))} | branchCol=${resolvedBranchCol}`);
-        const resolvedCourseCol = courseCol !== -1 ? courseCol : headers.findIndex(h => h.includes('كورس') || h.includes('دبلوم') || h.includes('برنامج') || h.includes('course'));
-
-        if (isHtmlResponse(lines[0] + lines[1])) { logger.warn(`[gsheet-auto] Sheet "${sheet.name}" returned HTML — not public`); continue; }
-        if (nameCol === -1 && phoneCol === -1) { logger.warn(`[gsheet-auto] Sheet "${sheet.name}" columns not recognized. Headers: ${JSON.stringify(headers.slice(0,8))}`); continue; }
-        // Normalize branch string → DB ENUM value
-        const normBranch = (v) => { if(!v)return null; const s=v.trim().toLowerCase().replace(/[\s_\-]/g,''); if(s.includes('دقي')||s.includes('daqqi')||s.includes('dokki'))return'DAQQI'; if(s.includes('تجمع')||s.includes('tagamoa')||s.includes('tagamo')||s.includes('قاهرةالجديدة')||s.includes('cairo')||s.includes('قاطميه')||s.includes('قاطميةs')||s.includes('qatat'))return'TAGAMOA'; if(s.includes('online')||s.includes('اونلاين')||s.includes('أونلاين')||s.includes('اونلاين')||s.includes('اون')){if(s.includes('سعودي')||s.includes('saudi'))return'ONLINE_SAUDI';if(s.includes('خارج')||s.includes('abroad'))return'ONLINE_ABROAD';return'ONLINE_EGYPT';} return s.length>=2?'OTHER':null; };
-        // Load courses for fuzzy matching (use is_published not is_active)
-        const [dbCourses] = await pool.execute('SELECT id, title FROM courses WHERE tenant_id=? AND is_published=1 AND deleted_at IS NULL', [tenantId]);
-        // Bundles are searched too: the sheets name a learning path as readily as a
-        // single course, and a path is a perfectly good thing to want.
-        const [dbBundles] = await pool.execute(
-          'SELECT id, title FROM bundles WHERE tenant_id=? AND is_published=1 AND deleted_at IS NULL', [tenantId]);
-        // Name-to-course matching lives in lib/courseMatch.js. It used to be
-        // written out here and again, differently, in routes/gsheets.js, so the
-        // automatic sync and the manual import disagreed about what a lead wanted.
-        const findCourseId = (raw) => matchCourseId(raw, dbCourses, dbBundles);
-        // One picker for the whole run. It loads the roster, the open-lead
-        // counts and each rep's intake for the current period once, then hands
-        // out in memory — the copy that used to live here re-queried the load
-        // for every single row, and honoured neither cap. Only reps switched on
-        // in the CRM "التوزيع" screen take part, so a rep hired after that
-        // screen was saved no longer collects the whole import.
-        const assigner = await createBatchAssigner(tenantId, pool);
-        // Every lead the tenant has ever held counts as "already imported" —
-        // including the deleted (hidden) and the merged. Checking only visible
-        // leads meant every lead an admin deleted came back on the next
-        // 15-minute sync: «شيتات بتترجع بعد المسح».
-        //
-        // Compared as identities, not as text: the same person arrives as
-        // "p:+201227155562" from Facebook and as "1227155562" from an older
-        // sheet, and matching the strings treats them as two people.
-        const [existingPh] = await pool.execute('SELECT phone, name FROM leads WHERE tenant_id=?', [tenantId]);
-        const phSet   = new Set(existingPh.map(r => toIdentity(r.phone)).filter(Boolean));
-        const nameSet = new Set(existingPh.map(r=>(r.name||'').trim().toLowerCase()).filter(Boolean));
-        const dataLines = lines.slice(1);
-        for (let i = 0; i < dataLines.length; i++) {
-          const row = parseRow(dataLines[i]).map(v => v.replace(/^"|"$/g,'').trim());
-          const rawName   = nameCol   !== -1 ? (row[nameCol]  ||'').trim() : '';
-          const phone     = phoneCol  !== -1 ? (row[phoneCol] ||'').trim().replace(/[\s-]/g,'') : '';
-          const email     = emailCol  !== -1 ? (row[emailCol] ||'').trim() : '';
-          const source    = sourceCol !== -1 ? (row[sourceCol]||'').trim() : String(sheet.name || 'Google Sheet').trim();
-          const rawNotes  = notesCol  !== -1 ? (row[notesCol] ||'').trim() : '';
-          const rawBranch = resolvedBranchCol !== -1 ? (row[resolvedBranchCol]||'').trim() : '';
-          const rawCourse = resolvedCourseCol !== -1 ? (row[resolvedCourseCol]||'').trim() : '';
-          // Detect when name column actually contains a course/option key (FB option values use underscores + Arabic)
-          // Skip rows where both name and phone are empty (header-only rows, blank lines)
-          if (!rawName.trim() && !phone.trim()) { totalSkipped++; continue; }
-          const isLikelyCourse = rawName.includes('_') && (/[\u0621-\u064a]/.test(rawName) || rawName.length > 30);
-          const name = (!rawName || isLikelyCourse) ? (phone || rawName || `lead-${i}`) : rawName;
-          const normPhone = toIdentity(phone);
-          if (normPhone && phSet.has(normPhone)) { totalSkipped++; continue; }
-          // If no phone, dedup by exact name match (prevents re-importing on server restart)
-          if (!normPhone && name && nameSet.has(name.toLowerCase())) { totalSkipped++; continue; }
-          if (normPhone) phSet.add(normPhone);
-          if (!normPhone && name) nameSet.add(name.toLowerCase());
-          const branch   = normBranch(rawBranch);
-          const courseId = findCourseId(rawCourse || (isLikelyCourse ? rawName : '')) || findCourseId(sheet.defaultCourse);
-          const matchedCourseTitle = courseId ? dbCourses.find(c => c.id === courseId)?.title : null;
-          const noteParts = [];
-          if (rawBranch) noteParts.push(`الفرع: ${rawBranch}`);
-          if (rawCourse || (isLikelyCourse && rawName)) noteParts.push(`الكورس: ${matchedCourseTitle || rawCourse || rawName}`);
-          if (rawNotes)  noteParts.push(rawNotes);
-          const notes = noteParts.join(' | ') || null;
-          // What a person actually wrote, as opposed to the branch and course
-          // labels around it. Only this belongs in the contact history.
-          const humanNote = rawNotes ? String(rawNotes).trim() : null;
-          let salesId = null, salesName = null;
-          if (autoAssign !== 'none') {
-            // null means every rep is at a cap. The lead stays unassigned
-            // rather than pushing someone past a limit the owner set.
-            const rep = assigner.next({ source: source || 'Facebook Lead Ads', courseIds: courseId ? [courseId] : [] });
-            if (rep) { salesId = rep.id; salesName = rep.name; }
+          const tab = await readSheetTab(sheet, gid, options.fetchCsv);
+          const sheetReport = {
+            name: sheet.name || sheet.sheetId, gid: gid || null, error: tab.error || null, dated: Boolean(tab.dated),
+            rows: tab.rows.length, inWindow: 0, outsideWindow: 0, imported: 0,
+            existing: { visible: 0, unassigned: 0, archived: 0, hidden: 0, merged: 0 },
+            importedRows: [],
+          };
+          report.sheets.push(sheetReport);
+          if (!tab.rows.length) continue;
+          // One picker for the whole run (lib/leadAssignment.js): loads the roster,
+          // open loads and intake once and honours each rep's caps.
+          const assigner = dryRun || autoAssign === 'none' ? null : await createBatchAssigner(tenantId, pool);
+          for (const row of tab.rows) {
+            const { rawName, phone, email, source, rawNotes, rawBranch, rawCourse } = row;
+            // Skip rows where both name and phone are empty (blank lines)
+            if (!rawName && !phone) { report.skipped++; continue; }
+            if (since && row.arrivedAt && row.arrivedAt.getTime() < since) {
+              sheetReport.outsideWindow++; report.outsideWindow++; continue;
+            }
+            sheetReport.inWindow++;
+            // A name cell holding a Facebook option key (underscores + Arabic) is a course, not a person.
+            const isLikelyCourse = rawName.includes('_') && (/[ء-ي]/.test(rawName) || rawName.length > 30);
+            const name = (!rawName || isLikelyCourse) ? (phone || rawName || `lead-${row.index}`) : rawName;
+            const normPhone = toIdentity(phone);
+            const known = normPhone ? byPhone.get(normPhone) : byName.get(name.toLowerCase());
+            if (known) {
+              sheetReport.existing[leadPlacement(known)]++;
+              report.skipped++;
+              continue;
+            }
+            if (dryRun) {
+              sheetReport.imported++;
+              sheetReport.importedRows.push({ name, phone: normPhone || phone, arrivedAt: row.arrivedAt });
+              const placeholder = { status: 'new', assigned_sales_id: 'pending' };
+              if (normPhone) byPhone.set(normPhone, placeholder); else byName.set(name.toLowerCase(), placeholder);
+              continue;
+            }
+            const branch   = normBranch(rawBranch);
+            const courseId = findCourseId(rawCourse || (isLikelyCourse ? rawName : '')) || findCourseId(sheet.defaultCourse);
+            const matchedCourseTitle = courseId ? dbCourses.find(c => c.id === courseId)?.title : null;
+            const noteParts = [];
+            if (rawBranch) noteParts.push(`الفرع: ${rawBranch}`);
+            if (rawCourse || (isLikelyCourse && rawName)) noteParts.push(`الكورس: ${matchedCourseTitle || rawCourse || rawName}`);
+            if (rawNotes)  noteParts.push(rawNotes);
+            const notes = noteParts.join(' | ') || null;
+            // What a person actually wrote, as opposed to the branch and course
+            // labels around it. Only this belongs in the contact history.
+            const humanNote = rawNotes ? String(rawNotes).trim() : null;
+            let salesId = null, salesName = null;
+            if (assigner) {
+              // null means every rep is at a cap. The lead stays unassigned
+              // rather than pushing someone past a limit the owner set.
+              const rep = assigner.next({ source: source || 'Facebook Lead Ads', courseIds: courseId ? [courseId] : [] });
+              if (rep) { salesId = rep.id; salesName = rep.name; }
+            }
+            let code = null;
+            try { const conn2 = await pool.getConnection(); try { code = await getNextClientCode(conn2); } finally { conn2.release(); } } catch(_){}
+            const crmJson = JSON.stringify({ assignedSalesId: salesId, assignedSalesName: salesName, interestedCourseIds: courseId ? [courseId] : [], rawBranch: rawBranch || null });
+            const leadId = `lead-gs-${Date.now()}-${row.index}`;
+            const [insertResult] = await pool.execute(
+              `INSERT IGNORE INTO leads (id, tenant_id, client_code, name, email, phone, source, status, notes, branch, interested_course_ids_json, assigned_sales_id, assigned_sales_name, assigned_at, crm_json, hidden, created_at) VALUES (?,?,?,?,?,?,?,'new',?,?,?,?,?,CASE WHEN ? IS NULL THEN NULL ELSE NOW() END,?,0,NOW())`,
+              [leadId, tenantId, code, name, email||'', normPhone||phone||null, source||'Facebook Lead Ads', notes, branch||null, courseId ? JSON.stringify([courseId]) : null, salesId, salesName, salesId, crmJson]
+            );
+            if (!insertResult.affectedRows) { report.skipped++; continue; }
+            const added = { id: leadId, status: 'new', assigned_sales_id: salesId, hidden: 0 };
+            if (normPhone) byPhone.set(normPhone, added); else byName.set(name.toLowerCase(), added);
+            // A timeline entry only when a person wrote something. The branch and
+            // course labels are on the lead already; none of it is contact, and
+            // stamping it marked uncontacted leads as followed up.
+            if (humanNote) {
+              await appendLeadInteraction({
+                tenantId,
+                leadId,
+                interaction: { type: 'note', notes: humanNote },
+                actor: { name: 'google-sheets-sync' },
+              });
+            }
+            sheetReport.imported++;
+            report.imported++;
           }
-          let code = null;
-          try { const conn2 = await pool.getConnection(); try { code = await getNextClientCode(conn2); } finally { conn2.release(); } } catch(_){}
-          const crmJson = JSON.stringify({ assignedSalesId: salesId, assignedSalesName: salesName, interestedCourseIds: courseId ? [courseId] : [], rawBranch: rawBranch || null });
-          const leadId = `lead-gs-${Date.now()}-${i}`;
-          const [insertResult] = await pool.execute(
-            `INSERT IGNORE INTO leads (id, tenant_id, client_code, name, email, phone, source, status, notes, branch, interested_course_ids_json, assigned_sales_id, assigned_sales_name, assigned_at, crm_json, hidden, created_at) VALUES (?,?,?,?,?,?,?,'new',?,?,?,?,?,CASE WHEN ? IS NULL THEN NULL ELSE NOW() END,?,0,NOW())`,
-            [leadId, tenantId, code, name, email||'', normPhone||phone||null, source||'Facebook Lead Ads', notes, branch||null, courseId ? JSON.stringify([courseId]) : null, salesId, salesName, salesId, crmJson]
-          );
-          if (!insertResult.affectedRows) { totalSkipped++; continue; }
-          // A timeline entry only when a person wrote something.
-          //
-          // This used to fire for every imported lead, because `notes` also
-          // carried the branch and course labels. That put a NOTE in the
-          // history of leads nobody had contacted — and since
-          // appendLeadInteraction also stamps last_follow_up and
-          // last_contact_note, it marked them as followed up on import day.
-          // One sync in August did that to 8,663 leads, which was 65% of
-          // every last-follow-up record in the CRM. The branch and course are
-          // already on the lead, in leads.branch, leads.notes and
-          // interested_course_ids_json; none of it was ever contact.
-          if (humanNote) {
-            await appendLeadInteraction({
-              tenantId,
-              leadId,
-              interaction: { type: 'note', notes: humanNote },
-              actor: { name: 'google-sheets-sync' },
-            });
+          if (assigner) {
+            // Rotation lives on the policy rows now, not in a single shared index.
+            await assigner.flush();
+            const shared = assigner.summary();
+            if (shared.length) {
+              logger.info('[gsheet-sync-all] assigned', {
+                sheet: sheet.name || sheet.sheetId,
+                distribution: shared.map(rep => `${rep.name}:${rep.given}`).join(', '),
+              });
+            }
           }
-          totalImported++;
+          if (sheetReport.outsideWindow) {
+            logger.info(`[gsheet-auto] "${sheet.name}" gid=${gid || 'default'}: ${sheetReport.outsideWindow} row(s) older than ${windowDays} days left out`);
+          }
         }
-        // Rotation lives on the policy rows now, not in a single shared index,
-        // so it survives a rep being added or removed mid-run.
-        await assigner.flush();
-        const shared = assigner.summary();
-        if (shared.length) {
-          logger.info('[gsheet-sync-all] assigned', {
-            sheet: sheet.name || sheet.sheetId,
-            distribution: shared.map(rep => `${rep.name}:${rep.given}`).join(', '),
-          });
-        }
-        } // end gidList loop
       } catch(sheetErr) { logger.error('[gsheet-sync-all] sheet error:', sheetErr.message); }
     }
-    return { imported: totalImported, skipped: totalSkipped };
-  } catch(e) { logger.error('[gsheet-sync-all]', e.message); return { imported: 0, skipped: 0 }; }
+    return report;
+  } catch(e) { logger.error('[gsheet-sync-all]', e.message); return report; }
 }
 
-module.exports = { DEFAULT_GSHEETS, isHtmlResponse, fetchCsvFollowRedirects, syncAllConfiguredSheets };
+module.exports = {
+  DEFAULT_GSHEETS, DEFAULT_IMPORT_WINDOW_DAYS, isHtmlResponse, fetchCsvFollowRedirects, leadPlacement, readSheetTab, rowDate,
+  syncAllConfiguredSheets,
+};
