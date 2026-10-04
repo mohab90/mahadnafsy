@@ -1240,7 +1240,7 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
     const sendTenantWhatsApp = (phone, message) => sendWhatsApp(phone, message, { tenantId, category: 'crm' });
     if (lead.phone) {
       sendTenantWhatsApp(lead.phone.replace(/\D/g, ''),
-        `أهلاً ${lead.name} 🎉\nتم تفعيل اشتراكك في معهد مهاد للدراسات النفسية.\nيسعدنا انضمامك لأسرتنا. 💚`
+        `أهلاً ${lead.name} 🎉\nتم تفعيل اشتراكك في معهد الدراسات النفسية.\nيسعدنا انضمامك لأسرتنا. 💚`
       ).catch(() => {});
     }
     if (lead.email) {

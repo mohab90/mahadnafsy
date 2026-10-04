@@ -356,7 +356,7 @@ async function runPaymentDueReminders(tenantId = DEFAULT_TENANT) {
 
       // WhatsApp to client
       if (p.phone) {
-        const msg = `مرحباً ${p.name} 👋\nهذا تذكير بموعد دفعتك القادمة:\n💰 المبلغ: ${amountFmt}\n📅 الموعد: ${p.due_date} (خلال ${daysLeft} يوم${daysLeft === 1 ? '' : 'أ'})\n\nشكراً لثقتك في معهد مهاد 💚`;
+        const msg = `مرحباً ${p.name} 👋\nهذا تذكير بموعد دفعتك القادمة:\n💰 المبلغ: ${amountFmt}\n📅 الموعد: ${p.due_date} (خلال ${daysLeft} يوم${daysLeft === 1 ? '' : 'أ'})\n\nشكراً لثقتك في معهد الدراسات النفسية 💚`;
         sendWhatsApp(p.phone.replace(/\D/g, ''), msg, { tenantId, category: 'crm' }).catch(() => {});
       }
 

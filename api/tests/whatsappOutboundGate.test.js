@@ -136,7 +136,7 @@ test('the welcome message the desk switched off is actually gated now', () => {
   const auth = read('routes/auth.js');
   // It was fired on every signup with no check of any kind, which is why turning
   // "رسائل الترحيب" off in the admin panel changed nothing.
-  assert.match(auth, /نرحب بك في معهد مهاد للدراسات النفسية[\s\S]{0,200}category: 'welcome'/);
+  assert.match(auth, /نرحب بك في معهد الدراسات النفسية[\s\S]{0,200}category: 'welcome'/);
 });
 
 test('the WhatsApp key is entered where the codes are sent from', () => {

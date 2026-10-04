@@ -307,7 +307,7 @@ router.post('/api/user/signup', registerLimiter, requireDb, requireTenantQuota('
     });
     setAuthCookie(res, token);
     res.json({ ok: true, user: { uid: id, email: normalizedEmail, displayName: (name || '').trim() } });
-    if (phone) sendWhatsApp(phone, `أهلاً وسهلاً ${(name || '').trim() || ''}! 🎉\nنرحب بك في معهد مهاد للدراسات النفسية.\nيمكنك الآن الدخول لحسابك واستعراض كورساتنا المتاحة.\nللتواصل أو الاستفسار راسلنا هنا. 💚`, { tenantId: req.tenantId, category: 'welcome' }).catch(() => {});
+    if (phone) sendWhatsApp(phone, `أهلاً وسهلاً ${(name || '').trim() || ''}! 🎉\nنرحب بك في معهد الدراسات النفسية.\nيمكنك الآن الدخول لحسابك واستعراض كورساتنا المتاحة.\nللتواصل أو الاستفسار راسلنا هنا. 💚`, { tenantId: req.tenantId, category: 'welcome' }).catch(() => {});
   } catch (err) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[user/signup]', err);
