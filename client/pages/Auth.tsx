@@ -20,6 +20,16 @@ const Auth: React.FC = () => {
   const [waStep, setWaStep] = useState(0);
   const [waPhone, setWaPhone] = useState('');
   const [waCode, setWaCode] = useState('');
+  // «إعادة الإرسال» opens after the same minute the API keeps the code it just
+  // sent (lib/whatsappOtp.js RESEND_COOLDOWN_SECONDS); before, the only way to
+  // ask again was «تغيير الرقم» and typing the number over.
+  const RESEND_AFTER_SECONDS = 60;
+  const [resendIn, setResendIn] = useState(0);
+  useEffect(() => {
+    if (resendIn <= 0) return undefined;
+    const timer = window.setTimeout(() => setResendIn(seconds => seconds - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [resendIn]);
   const [waName, setWaName] = useState('');
   const [forgotMode, setForgotMode] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
@@ -86,9 +96,27 @@ const Auth: React.FC = () => {
         try {
             await mysqlAuth.requestWaOtp(waPhone.trim());
             setWaStep(1);
+            setResendIn(RESEND_AFTER_SECONDS);
         } catch (err) {
             const msg = err instanceof Error ? err.message : '';
             setNotice({ type: 'error', text: msg || 'تعذّر إرسال الرمز. تأكد من الرقم وحاول مرة أخرى.' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleWaResend = async () => {
+        if (resendIn > 0 || loading) return;
+        setLoading(true);
+        setNotice(null);
+        setWaCode('');
+        try {
+            await mysqlAuth.requestWaOtp(waPhone.trim());
+            setResendIn(RESEND_AFTER_SECONDS);
+            setNotice({ type: 'success', text: 'بعتنا رمز جديد — استخدم آخر رمز وصلك.' });
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : '';
+            setNotice({ type: 'error', text: msg || 'تعذّر إرسال الرمز. حاول مرة أخرى.' });
         } finally {
             setLoading(false);
         }
@@ -527,7 +555,13 @@ const Auth: React.FC = () => {
                   {loading ? 'جاري التحقق...' : 'دخول'}
                 </button>
                 <button
-                  type="button" onClick={() => { setWaStep(0); setWaCode(''); }}
+                  type="button" onClick={() => { void handleWaResend(); }} disabled={loading || resendIn > 0}
+                  className="w-full text-green-700 text-sm font-medium hover:text-green-800 disabled:text-gray-400"
+                >
+                  {resendIn > 0 ? `إعادة إرسال الرمز بعد ${resendIn} ثانية` : 'إعادة إرسال الرمز'}
+                </button>
+                <button
+                  type="button" onClick={() => { setWaStep(0); setWaCode(''); setResendIn(0); }}
                   className="w-full text-gray-500 text-sm hover:text-gray-700"
                 >
                   تغيير الرقم
