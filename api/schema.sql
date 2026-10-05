@@ -2598,6 +2598,45 @@ CREATE TABLE `hr_policy_versions` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `inbox_notes`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `inbox_notes` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `thread_id` varchar(36) NOT NULL,
+  `staff_id` varchar(36) DEFAULT NULL,
+  `body` text NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_inbox_notes_thread` (`tenant_id`,`thread_id`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `inbox_quick_replies`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `inbox_quick_replies` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `title` varchar(120) NOT NULL,
+  `shortcut` varchar(40) DEFAULT NULL,
+  `body` text NOT NULL,
+  `created_by` varchar(36) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_inbox_quick_reply_shortcut` (`tenant_id`,`shortcut`),
+  KEY `idx_inbox_quick_replies` (`tenant_id`,`title`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `inbox_threads`
 --
 
@@ -2622,6 +2661,10 @@ CREATE TABLE `inbox_threads` (
   `last_inbound_at` datetime DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `labels` varchar(500) DEFAULT NULL,
+  `bot_paused` tinyint(1) NOT NULL DEFAULT 0,
+  `bot_replies` int(11) NOT NULL DEFAULT 0,
+  `bot_last_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_inbox_thread_contact` (`tenant_id`,`platform`,`contact_key`),
   KEY `idx_inbox_thread_recent` (`tenant_id`,`status`,`last_message_at`),
