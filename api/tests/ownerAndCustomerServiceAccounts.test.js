@@ -5,6 +5,7 @@
 // المشاكل الاستردادات والشهادات»، and hana's «wrong password» after her
 // password was changed from her staff page.
 
+const { authRouteSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -23,7 +24,7 @@ test('a password typed on a staff page is set, and a reset shows what it set', (
   const reset = panel.slice(panel.indexOf('const handlePasswordReset'), panel.indexOf('const [draft, setDraft]'));
   assert.ok(reset.includes('temporaryPassword') && !reset.includes('setTimeout'),
     'the temporary password vanished before it could be copied');
-  assert.match(read('api/routes/auth.js'), /res\.json\(\{ ok: true, temporaryPassword: newPassword \}\)/);
+  assert.match(authRouteSource(), /res\.json\(\{ ok: true, temporaryPassword: newPassword \}\)/);
 });
 
 test('every account changes its own password, the owner included', () => {

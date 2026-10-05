@@ -15,6 +15,7 @@
 // person converts one by hand: the shared contact matcher first, so the
 // campaign that already found them is not written down twice.
 
+const { authRouteSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -30,8 +31,8 @@ test('one routine creates the lead, and both callers use it', () => {
   assert.ok(lib.includes('INSERT INTO leads') && lib.includes('source'), 'the insert has to name the source column');
   assert.ok(lib.includes("'تسجيل دخول'"), 'where the lead came from has to survive — it is how the desk reads the list');
 
-  const auth = read('api/routes/auth.js');
-  assert.ok(auth.includes("require('../lib/registrationLead')"), 'signing up must reach the client base');
+  const auth = authRouteSource();
+  assert.match(auth, /require\('(?:\.\.\/)+lib\/registrationLead'\)/, 'signing up must reach the client base');
   const registrations = read('api/routes/registrations.js');
   assert.ok(registrations.includes("require('../lib/registrationLead')"),
     'converting by hand and converting on signup must be the same routine, or they will drift');
@@ -41,7 +42,7 @@ test('the signup does not fail over the lead', () => {
   // The account is the thing being created. A lead that cannot be written —
   // a duplicate, a branch that resolves to nothing — must not take the signup
   // down with it, or a customer cannot register at all.
-  const auth = read('api/routes/auth.js');
+  const auth = authRouteSource();
   const callAt = auth.indexOf('await ensureLeadForUser(');
   assert.ok(callAt > 0, 'the signup does not create the lead at all');
   const around = auth.slice(callAt - 200, callAt + 400);

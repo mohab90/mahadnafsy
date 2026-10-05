@@ -68,7 +68,7 @@ test('every path that makes a payment paid queues it, and none writes its own', 
     'routes/orders.js': /queuePaymentReceipt\(req\.tenantId, paymentId\);/,
     'routes/public-orders.js': /queuePaymentReceipt\(tenantId, payId\);/,
     'routes/installments.js': /queuePaymentReceipt\(req\.tenantId, payId\);/,
-    'routes/auth.js': /if \(firstPaymentId\) queuePaymentReceipt\(tenantId, firstPaymentId\);/,
+    'routes/auth/staffAccounts.js': /if \(firstPaymentId\) queuePaymentReceipt\(tenantId, firstPaymentId\);/,
   };
   for (const [rel, pattern] of Object.entries(paths)) assert.match(read(rel), pattern, rel);
   assert.doesNotMatch(read('routes/subscriber-payments.js'), /إيصال الدفع — معهد الدراسات النفسية/);

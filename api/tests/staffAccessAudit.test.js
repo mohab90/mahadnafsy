@@ -12,6 +12,7 @@
 //
 // Run: npm run test:unit
 
+const { authRouteSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -70,7 +71,7 @@ test('creating a login does not move the employee to another branch', () => {
   // branch_id, and the fallback was the literal 'branch-other'. So giving the
   // Dokki manager a login would have moved her out of Dokki — and out of every
   // branch-wide broadcast (hr/staffprofile.js selects staff by branch_id).
-  const src = read('routes/auth.js');
+  const src = authRouteSource();
   assert.match(src, /const branchId = req\.body\.branch_id \?\? req\.body\.branchId \?\? staffByEmail\?\.branch_id \?\? 'branch-other';/);
   assert.match(src, /SELECT id, role, branch_id FROM staff WHERE tenant_id=\?/);
   assert.ok(!/req\.body\.branch_id \|\| 'branch-other'/.test(src),

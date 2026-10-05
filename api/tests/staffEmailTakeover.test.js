@@ -21,6 +21,7 @@
 // hands back the manager's row and with it isSuperAdmin. Full tenant takeover.
 // MFA does not intervene — the policy is off by default and does not cover this
 // role in any case.
+const { authRouteSource } = require('./_authRouteSource');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -32,7 +33,7 @@ const codeOnly = source => source
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-const auth = codeOnly(read('routes/auth.js'));
+const auth = codeOnly(authRouteSource());
 
 // The guard, as the two routes that always had it write it.
 const GUARD = /SELECT id FROM staff WHERE tenant_id=\? AND LOWER\(TRIM\(email\)\) COLLATE utf8mb4_unicode_ci = \? AND is_active = 1/;

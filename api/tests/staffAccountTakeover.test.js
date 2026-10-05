@@ -18,6 +18,7 @@
 //
 // Run: npm run test:unit
 
+const { authRouteSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -37,7 +38,7 @@ function handler(src, route, nextRoute) {
 }
 
 test('staff-account refuses to reset an owner, a manager, or a customer for a non-owner', () => {
-  const h = handler(read('routes/auth.js'), "'/api/admin/staff-account'", '/api/admin/check-account');
+  const h = handler(authRouteSource(), "'/api/admin/staff-account'", '/api/admin/check-account');
 
   // All refusals come before the password is touched.
   const firstPasswordWrite = h.indexOf('UPDATE users SET password_hash');
@@ -63,7 +64,7 @@ test('staff-account refuses to reset an owner, a manager, or a customer for a no
 test('staff-account releases its connection exactly once', () => {
   // An early return that also called conn.release() ran the finally's release
   // too — handing one connection back to the pool twice.
-  const h = handler(read('routes/auth.js'), "'/api/admin/staff-account'", '/api/admin/check-account');
+  const h = handler(authRouteSource(), "'/api/admin/staff-account'", '/api/admin/check-account');
   const releases = h.match(/conn\.release\(\)/g) || [];
   assert.equal(releases.length, 1, `expected one release, found ${releases.length}`);
   assert.match(h, /\} finally \{ conn\.release\(\); \}/);

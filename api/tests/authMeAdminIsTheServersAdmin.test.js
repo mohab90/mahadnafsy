@@ -11,6 +11,7 @@
 // server for admin lists it then refused. On production that was نشوى, who is
 // to see the Dokki branch only.
 
+const { authRouteSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -20,11 +21,11 @@ const ROOT = path.join(__dirname, '..', '..');
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 test('auth/me decides admin with the list the server enforces', () => {
-  const auth = read('api/routes/auth.js');
+  const auth = authRouteSource();
   assert.ok(!auth.includes('FULL_ACCESS_ROLES_AUTH'), 'auth.js keeps a list of its own');
   const handler = auth.slice(auth.indexOf("router.get('/api/auth/me'"), auth.indexOf('res.json({ uid: u.id'));
   assert.ok(handler.includes('FULL_ACCESS_ROLES.includes('), 'auth/me must use the shared FULL_ACCESS_ROLES');
-  const imported = auth.split('\n').find(l => l.includes("require('../constants/permissions')"));
+  const imported = auth.split('\n').find(l => /require\('(?:\.\.\/)+constants\/permissions'\)/.test(l));
   assert.ok(imported && imported.includes('FULL_ACCESS_ROLES'), `FULL_ACCESS_ROLES must come from constants/permissions: ${imported}`);
 });
 

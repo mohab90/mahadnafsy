@@ -1,5 +1,6 @@
 'use strict';
 
+const { authRouteSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -8,7 +9,7 @@ const path = require('node:path');
 const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
 
 test('password-reset OTPs are HMAC protected at rest and verified from delivered mail', () => {
-  const auth = read('routes/auth.js');
+  const auth = authRouteSource();
   const schema = read('schema.sql');
   const migration = read('migrations/159_v25_otp_secret_storage.sql');
   const smoke = read('tools/forgot-password-smoke.cjs');

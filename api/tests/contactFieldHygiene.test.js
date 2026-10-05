@@ -1,5 +1,6 @@
 'use strict';
 
+const { authRouteSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -37,7 +38,7 @@ const root = path.join(__dirname, '..', '..');
 // actually true rather than what the header says.
 
 test('auth email lookups normalise both sides, which is why padding never hid an account', () => {
-  const auth = fs.readFileSync(path.join(root, 'api/routes/auth.js'), 'utf8');
+  const auth = authRouteSource();
   const normalised = (auth.match(/LOWER\(TRIM\(email\)\)/g) || []).length;
   assert.ok(normalised >= 4,
     `expected auth lookups to compare LOWER(TRIM(email)); found ${normalised}`);

@@ -8,6 +8,7 @@
 //   · on a phone the two floating buttons sat on the course's price and «احجز»;
 //   · the not-found page kept the last page's title.
 
+const { authRouteSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
@@ -16,7 +17,7 @@ const path = require('path');
 const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8');
 
 test('a number that already has an account is told how to get in', () => {
-  const auth = read('api/routes/auth.js');
+  const auth = authRouteSource();
   const message = auth.match(/const PHONE_TAKEN_MESSAGE = '([^']+)';/);
   assert.ok(message, 'one wording for both signup routes');
   assert.match(message[1], /الدخول برقم الواتساب/);

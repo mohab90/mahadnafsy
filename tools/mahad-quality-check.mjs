@@ -4,7 +4,7 @@
  * Quick static quality scan — runs without building or starting the server.
  * Exit code 0 = all checks passed, 1 = one or more warnings/failures.
  */
-import { readdirSync, readFileSync, statSync } from 'fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { join, extname } from 'path';
 import { spawnSync } from 'child_process';
 import { scanTenantViolations } from './tenant-scope-scan.mjs';
@@ -142,7 +142,9 @@ else fail('validateBody middleware missing');
 if (validateMw.includes('stripHtml')) pass('XSS stripping (stripHtml) present');
 else warn('XSS stripping missing');
 
-const authRoutes = readText(join(ROOT, 'api/routes/auth.js')) || '';
+// routes/auth.js assembles its parts from routes/auth/; the check reads them all.
+const authRoutes = [readText(join(ROOT, 'api/routes/auth.js')) || '',
+  ...(existsSync(join(ROOT, 'api/routes/auth')) ? readdirSync(join(ROOT, 'api/routes/auth')).map(f => readText(join(ROOT, 'api/routes/auth', f)) || '') : [])].join('\n');
 if (authRoutes.includes('validateBody')) pass('auth.js uses validateBody');
 else warn('auth.js missing validateBody');
 
@@ -553,7 +555,8 @@ console.log('\n23. Client-identity guard (subscriber lookup by email alone)');
 
   for (const file of walk(join(ROOT, 'api', 'routes'), '.js')) {
     const rel = file.replace(/\\/g, '/').replace(ROOT.replace(/\\/g, '/'), '').replace(/^\//, '');
-    if (IDENTITY_EXEMPT.has(rel)) continue;
+    // routes/auth.js is assembled from routes/auth/*.js: the parts are the sign-in flows themselves.
+    if (IDENTITY_EXEMPT.has(rel) || rel.startsWith('api/routes/auth/')) continue;
     const src = readText(file);
     if (!src) continue;
     for (const sql of sqlLiterals(src)) {

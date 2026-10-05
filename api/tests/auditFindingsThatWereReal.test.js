@@ -5,6 +5,7 @@
 // at the bottom with what the code actually does, so the next reader does not
 // re-open them.
 
+const { authRouteSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -18,7 +19,7 @@ test('a query on a pooled connection is awaited before the handler lets it go', 
   // released it. A query still running on a connection that has gone back to
   // the pool belongs to the next request: its result lands in someone else's
   // session and mysql2 can be left mid-packet.
-  const auth = read('api/routes/auth.js');
+  const auth = authRouteSource();
   const referral = auth.slice(auth.indexOf('Referral attribution'), auth.indexOf('Referral attribution') + 900);
   const calls = referral.split('\n').filter(line => line.includes('conn.query('));
   assert.ok(calls.length >= 2, `expected the referral updates, found ${calls.length}`);

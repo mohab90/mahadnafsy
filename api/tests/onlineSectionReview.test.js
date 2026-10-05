@@ -10,6 +10,7 @@
 //     Tagamoa clients the markets never counted;
 //   «متخلص السيستم يقبل عميل دفع بدون رقم تليفون حقيقي».
 
+const { authRouteSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -95,7 +96,7 @@ test('no payment is recorded for a client without a real phone', () => {
   const payments = read('api/routes/subscriber-payments.js');
   assert.match(payments, /if \(!isRealPhone\(subRow\.phone\)\) \{\s+return res\.status\(400\)\.json\(\{/);
   assert.match(read('api/routes/installments.js'), /if \(!isRealPhone\(plan\.subscriber_phone\)\) \{/);
-  assert.match(read('api/routes/auth.js'), /if \(firstPayment && Number\(firstPayment\.amount\) > 0\) \{\s+\/\/ No money against a client who cannot be reached[^\n]*\n\s+if \(!isRealPhone\(phone\)\)/);
+  assert.match(authRouteSource(), /if \(firstPayment && Number\(firstPayment\.amount\) > 0\) \{\s+\/\/ No money against a client who cannot be reached[^\n]*\n\s+if \(!isRealPhone\(phone\)\)/);
 });
 
 test('the archive sits inside «قاعدة العملاء»; a refund starts from a payment', () => {

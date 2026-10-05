@@ -1,5 +1,6 @@
 'use strict';
 
+const { authRouteSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -51,7 +52,7 @@ test('automatic staff assignment measures workload inside the same tenant', () =
 });
 
 test('account creation first payment is period-locked and journaled atomically', () => {
-  const auth = read('routes/auth.js');
+  const auth = authRouteSource();
   assert.match(auth, /assertWritable\(paymentDate, conn, tenantId\)/);
   assert.match(auth, /postPaymentJournal\([\s\S]*tenantId[\s\S]*\}, conn\)/);
   assert.match(auth, /Payment subscriber not found in tenant/);

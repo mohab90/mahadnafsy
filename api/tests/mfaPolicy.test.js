@@ -1,11 +1,12 @@
 'use strict';
+const { authRouteSource } = require('./_authRouteSource');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
 const read = (...parts) => fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8');
-const authRoute = read('routes', 'auth.js');
+const authRoute = authRouteSource();
 const authMiddleware = read('middleware', 'auth.js');
 const adminConfig = read('routes', 'misc', 'admincfg.js');
 const securityUi = read('..', 'admin', 'pages', 'dashboard', 'tabs', 'SecurityDashboardTab.tsx');

@@ -1,10 +1,11 @@
 'use strict';
+const { authRouteSource } = require('./_authRouteSource');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const auth = fs.readFileSync(path.join(__dirname, '..', 'routes', 'auth.js'), 'utf8');
+const auth = authRouteSource();
 const slice = (from, to) => auth.slice(auth.indexOf(from), auth.indexOf(to));
 const forgot = slice("router.post('/api/auth/forgot-password'", "router.post('/api/auth/verify-otp'");
 const verify = slice("router.post('/api/auth/verify-otp'", "router.post('/api/auth/reset-password'");

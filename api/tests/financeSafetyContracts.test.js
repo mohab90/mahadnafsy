@@ -1,5 +1,6 @@
 'use strict';
 
+const { authRouteSource } = require('./_authRouteSource');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -215,7 +216,7 @@ test('payment review and certificate settlement preserve tenant and workflow ide
 });
 
 test('account onboarding and finance screens keep payments in the ledger-backed workflow', () => {
-  const auth = read('api/routes/auth.js');
+  const auth = authRouteSource();
   const onlineClients = read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx');
   const financialTab = read('admin/pages/dashboard/tabs/FinancialTab.tsx');
   const financialRows = read('admin/pages/dashboard/tabs/financial/useFinancialOrdersData.ts');

@@ -1,4 +1,5 @@
 'use strict';
+const { authRouteSource } = require('./_authRouteSource');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -6,7 +7,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const read = relative => fs.readFileSync(path.join(__dirname, '..', relative), 'utf8');
-const auth = read('routes/auth.js');
+const auth = authRouteSource();
 const middleware = read('middleware/auth.js');
 const token = read('lib/token.js');
 const migration = read('migrations/134_v25_session_revocation.sql');

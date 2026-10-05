@@ -13,6 +13,7 @@
  * calls with different permissions — the staff row needs manage_staff, the
  * login needs super admin — reported as one. Run: npm run test:unit
  */
+const { authRouteSource } = require('./_authRouteSource');
 const fs = require('node:fs');
 const path = require('node:path');
 const { test } = require('node:test');
@@ -81,7 +82,7 @@ test('onboarding an employee with a login is an HR action, not an owner-only one
   // for the login is what broke the flow: HR created the staff row, the login
   // was refused, and nothing could finish it — and hiding the password field
   // made it worse, because the form still demanded one it no longer offered.
-  const auth = read('api/routes/auth.js');
+  const auth = authRouteSource();
   assert.match(auth, /router\.post\('\/api\/admin\/staff-account', requireAuth, requireAdminOrStaff, requirePermission\('manage_staff'\)/);
   assert.match(route, /router\.post\('\/api\/admin\/staff', requireAuth, requireAdminOrStaff, requirePermission\('manage_staff'\)/);
 

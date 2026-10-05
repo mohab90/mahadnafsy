@@ -23,6 +23,7 @@
 //
 // Run: npm run test:unit
 
+const { authRouteSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -88,7 +89,7 @@ test('a course keeps its access window when it is read back', () => {
 });
 
 test('nothing writes to a registrations table — there is none', () => {
-  const src = read('routes/auth.js');
+  const src = authRouteSource();
   assert.ok(!/INTO registrations\b/i.test(src),
     'the INSERT that threw ER_NO_SUCH_TABLE on every signup is back');
   // "التسجيلات" is a view over users, which is why the table was never missed.

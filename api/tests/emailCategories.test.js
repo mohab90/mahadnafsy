@@ -13,6 +13,7 @@
 //
 // Each path now names what it is, so the variable can be set to the
 // transactional categories alone and do what it was built for.
+const { authRouteSource } = require('./_authRouteSource');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -67,7 +68,7 @@ test('the security-critical paths name themselves', () => {
   // (lib/otpProvider.js sendOtp was listed here as «the login code»; nothing
   // ever called it, and it is gone. Sign-in codes go by WhatsApp, then email
   // from routes/auth.js.)
-  assert.match(codeOnly(read('routes/auth.js')),
+  assert.match(codeOnly(authRouteSource()),
     /sendEmailBase\(to, subject, html, \{ tenantId: req\.tenantId, category: 'otp' \}\)/,
     'the password-reset code');
   // Every paid payment's receipt — recorded, approved, accepted, ordered or

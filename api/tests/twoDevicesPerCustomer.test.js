@@ -5,6 +5,7 @@
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-only-device-limit-secret-0123456789-abcdefghijklmnopqrstuvwxyz';
 
+const { authRouteSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -110,7 +111,7 @@ test('customers are counted at every sign-in, staff never; the screen shows the 
   const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8');
   const session = read('api/lib/singleSession.js');
   assert.match(session, /if \(!allowConcurrent\) await registerCustomerDevice\(conn, \{ tenantId, userId, req \}\);/);
-  const auth = read('api/routes/auth.js');
+  const auth = authRouteSource();
   assert.equal(auth.split('await registerCustomerDevice(conn, { tenantId, userId: id, req });').length - 1, 2, 'both sign-ups');
   assert.match(auth, /err\?\.code === 'DEVICE_LIMIT' && !res\.headersSent/);
   const screen = read('client/pages/Auth.tsx');

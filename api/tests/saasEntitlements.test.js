@@ -1,4 +1,5 @@
 'use strict';
+const { authRouteSource } = require('./_authRouteSource');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -8,7 +9,7 @@ const read = relative => fs.readFileSync(path.join(__dirname, '..', relative), '
 const scope = read('lib/tenantScope.js');
 const quota = read('middleware/tenantQuota.js');
 const saas = read('routes/saas-admin.js');
-const auth = read('routes/auth.js');
+const auth = authRouteSource();
 const staff = read('routes/staff.js');
 const catalog = read('routes/admin/catalog.js');
 const talent = read('routes/hr/talent.js');

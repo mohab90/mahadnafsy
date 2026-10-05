@@ -1,5 +1,6 @@
 'use strict';
 
+const { authRouteSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -127,13 +128,13 @@ test('only the codes are tagged otp — nothing else rides the exemption', () =>
   // lib/otpProvider.js was on this list for sendOtp, which nothing called; it
   // is gone. The rule is unchanged — otp is the exemption, and only a code
   // may carry it.
-  assert.deepEqual(otpBearing.sort(), ['lib/whatsappOtp.js', 'routes/auth.js'],
+  assert.deepEqual(otpBearing.sort(), ['lib/whatsappOtp.js', 'routes/auth/passwordReset.js'],
     'otp is the one category that sends while everything else is stopped; '
     + 'only the sign-in code and the password-reset code may carry it');
 });
 
 test('the welcome message the desk switched off is actually gated now', () => {
-  const auth = read('routes/auth.js');
+  const auth = authRouteSource();
   // It was fired on every signup with no check of any kind, which is why turning
   // "رسائل الترحيب" off in the admin panel changed nothing.
   assert.match(auth, /نرحب بك في معهد مهاد للدراسات النفسية[\s\S]{0,200}category: 'welcome'/);

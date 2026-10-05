@@ -3,6 +3,7 @@
 // Values the customer-facing app had more than one copy of, and two screens
 // that told the customer something that was not true.
 
+const { authRouteSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -92,7 +93,7 @@ test('the 2FA panel does not claim a code was sent', () => {
   // string being asserted absent, and would satisfy the check on its own.
   const auth = codeOnly(read('client/pages/Auth.tsx'));
   // TOTP: POST /api/auth/login answers totpRequired and sends nothing at all.
-  const api = read('api/routes/auth.js');
+  const api = authRouteSource();
   assert.match(api, /totpRequired: true, pendingToken/);
   assert.ok(!auth.includes('تم إرسال رمز التحقق إلى'),
     'the 2FA step tells the user to wait for a code that is never sent');

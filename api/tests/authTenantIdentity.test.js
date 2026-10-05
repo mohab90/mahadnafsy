@@ -1,4 +1,5 @@
 'use strict';
+const { authRouteSource } = require('./_authRouteSource');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -15,7 +16,7 @@ test('user, staff, OTP and login security identities are unique and indexed per 
 });
 
 test('login, password reset and 2FA never resolve an identity outside request tenant', () => {
-  const auth = read('routes/auth.js');
+  const auth = authRouteSource();
   const audit = read('lib/loginAudit.js');
   assert.match(auth, /FROM users WHERE tenant_id=\? AND email = \? AND is_active = 1/);
   assert.match(auth, /FROM subscribers WHERE tenant_id=\? AND LOWER\(TRIM\(email\)\)/);

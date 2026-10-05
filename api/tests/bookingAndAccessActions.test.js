@@ -14,6 +14,7 @@
 //   4. A booking taken at the Daqqi desk opened a different payment form from
 //      the same booking taken online.
 
+const { authRouteSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -69,7 +70,7 @@ test('a lead with a phone and no email can be converted', () => {
 test('signing in by phone is real, which is what makes the above safe', () => {
   // If login were email-only, a phone-only account would be one nobody could
   // ever enter — the conversion would succeed and lock the customer out.
-  const auth = codeOnly(read('api/routes/auth.js'));
+  const auth = codeOnly(authRouteSource());
   assert.ok(auth.includes('const phoneIdentity = identifierIsEmail ? null : normalizeWhatsAppNumber(rawIdentifier);'),
     'the login route no longer accepts a phone as the identifier');
 });

@@ -1,5 +1,6 @@
 'use strict';
 
+const { authRouteSource } = require('./_authRouteSource');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -152,7 +153,7 @@ test('unified client mutations wait for canonical persistence before reporting s
 test('customer profile names persist through the self-service API before success feedback', () => {
   const dashboard = read('client/pages/UserDashboard.tsx');
   const clientApi = read('client/lib/mysqlapi.ts');
-  const authRoute = read('api/routes/auth.js');
+  const authRoute = authRouteSource();
   assert.match(dashboard, /await mysqlAuth\.updateProfile\(undefined, value\)/);
   assert.match(dashboard, /await refreshMySubscriber\(\)/);
   assert.doesNotMatch(dashboard, /updateSubscriber\(\{ \.\.\.sub, nameEn/);
@@ -552,7 +553,7 @@ test('Dokki round edits are server-first and attendee transfers are atomic', () 
 test('staff password reset uses the privileged server-generated credential flow', () => {
   const profile = read('admin/pages/staff-profile/StaffSettingsPanel.tsx');
   const api = read('admin/lib/mysqlapi.ts');
-  const auth = read('api/routes/auth.js');
+  const auth = authRouteSource();
 
   assert.match(profile, /mysqlAuth\.forceResetPassword\(staff\.email\)/);
   assert.doesNotMatch(profile, /Math\.random\(\)/);
@@ -640,7 +641,7 @@ test('orders and recruiting forms never report success before canonical persiste
 
 test('staff account and consultation creation commit their cross-module writes atomically', () => {
   const profile = read('admin/pages/staff-profile/StaffSettingsPanel.tsx');
-  const auth = read('api/routes/auth.js');
+  const auth = authRouteSource();
   const catalog = read('api/routes/core/catalog.js');
 
   assert.match(profile, /await createStaffAccount\(payload, password\.trim\(\)\)/);

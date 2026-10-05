@@ -166,7 +166,7 @@ test('readRequestedPermissions tells "absent" apart from "empty"', () => {
 
 test('every route that writes permissions_json goes through the helper', () => {
   const writers = [
-    ['routes/auth.js', 'staff-account'],
+    ['routes/auth/staffAccounts.js', 'staff-account'],
     ['routes/staff.js', 'staff create'],
     ['routes/hr/talent.js', 'hire from applicant'],
   ];

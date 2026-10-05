@@ -7,6 +7,7 @@
 // catalogue), the instalment list and «كل المتبقي» (catalogue), the totals bar
 // (bookings only), the access panel and the collections list (bookings only,
 // and course rows only). An instalment recorded no price at all.
+const { authRouteSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -79,7 +80,7 @@ test('the dialog hands the handler the price it shows; an instalment only a pric
   const handler = read('admin/pages/dashboard/dashboardPaymentHandlers.ts');
   assert.match(handler, /\? \(_singleCustom > 0 \? _singleCustom : undefined\)/);
   // «مشترك جديد»: each course's own price or discount, not just the first's.
-  const account = read('api/routes/auth.js');
+  const account = authRouteSource();
   assert.match(account, /if \(price\) await setAgreedPrice\(conn, \{ tenantId, subscriberId: responseSubscriber\.id, courseId, bundleId, price \}\);/);
 });
 
