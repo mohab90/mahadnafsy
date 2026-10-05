@@ -125,3 +125,17 @@ test('no discount where the course has none, and no booking without the Arabic t
   const sameId = await book({ subscriber_id: 'sub-bp-2', client: CLIENT, payment: payment({ priceTier: 'DAQQI' }) });
   assert.equal(sameId.statusCode, 409, 'one national ID, two clients');
 });
+
+test('a percentage button takes that much off the branch list price; any other figure is refused', { skip }, async () => {
+  const client = { ...CLIENT, nameAr: 'منى سامي حسن', nationalId: '' };
+  const odd = await book({ subscriber_id: 'sub-bp-2', client, payment: payment({ priceTier: 'DAQQI', discountPct: 12 }) });
+  assert.equal(odd.body?.code, 'TIER_NOT_PRICED', JSON.stringify([odd.statusCode, odd.body]));
+  const both = await book({ subscriber_id: 'sub-bp-2', client, payment: payment({ priceTier: 'DAQQI', discountPct: 10, useDiscount: true }) });
+  assert.equal(both.body?.code, 'TIER_NOT_PRICED', 'the course discount and a percentage do not stack');
+  const wrong = await book({ subscriber_id: 'sub-bp-2', client, payment: payment({ priceTier: 'DAQQI', discountPct: 20, courseExpected: 2500 }) });
+  assert.equal(wrong.body?.code, 'PRICE_MISMATCH');
+  const ok = await book({ subscriber_id: 'sub-bp-2', client, payment: payment({ priceTier: 'DAQQI', discountPct: 20, courseExpected: 2000 }) });
+  assert.equal(ok.statusCode, 200, JSON.stringify(ok.body));
+  const [[row]] = await pool.query("SELECT course_expected FROM payments WHERE tenant_id=? AND subscriber_id='sub-bp-2' ORDER BY created_at DESC LIMIT 1", [TENANT]);
+  assert.equal(Number(row.course_expected), 2000, '20% off 2,500');
+});

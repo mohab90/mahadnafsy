@@ -439,10 +439,13 @@ async function recordSubscriberPayment(req, res) {
         itemId: bundleId || courseId,
         tier: priceTier,
         useDiscount: Boolean(payment.useDiscount),
+        discountPct: Number(payment.discountPct) || 0,
       });
       if (!tierPrice) {
         return res.status(400).json({
-          error: payment.useDiscount
+          error: Number(payment.discountPct)
+            ? 'نسبة الخصم دي مش مسموحة'
+            : payment.useDiscount
             ? 'الكورس ده مالوش سعر خصم في الفرع ده'
             : 'الكورس ده مش متسعّر للفرع ده — حط سعره من صفحة الكورس الأول',
           code: 'TIER_NOT_PRICED',

@@ -50,9 +50,10 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
   if (!subPayRow) return;
   const courseItemsComputed = draft.paymentType === 'course'
     ? [
-        { courseId: draft.courseId, amount: draft.amount, customExpected: draft.customExpected, discountPct: draft.discountPct, useDiscount: draft.useDiscount },
+        { courseId: draft.courseId, amount: draft.amount, customExpected: draft.customExpected, discountPct: draft.discountPct, useDiscount: draft.useDiscount, tierDiscountPct: draft.tierDiscountPct || 0 },
+        // The percentage buttons are the main course's; an added course is its tier's price or discount price.
         ...draft.extraItems.filter(i => i.type === 'course').map(i => ({
-          courseId: i.courseId || '', amount: i.amount, customExpected: i.customExpected || '', discountPct: i.discountPct || '', useDiscount: i.useDiscount,
+          courseId: i.courseId || '', amount: i.amount, customExpected: i.customExpected || '', discountPct: i.discountPct || '', useDiscount: i.useDiscount, tierDiscountPct: 0,
         })),
       ].filter(item => item.courseId && item.amount)
     : [];
@@ -102,7 +103,7 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
         status: 'paid',
         ...(subPayDraft.daqqiRoundId ? { daqqiRoundId: subPayDraft.daqqiRoundId } : {}),
         // The branch tier and the client's real name (lib/bookingIdentity.ts); the server prices it.
-        ...(subPayDraft.bookingType === 'new_booking' ? bookingTierFields({ ...draft, useDiscount: item.useDiscount }) : {}),
+        ...(subPayDraft.bookingType === 'new_booking' ? bookingTierFields({ ...draft, useDiscount: item.useDiscount, tierDiscountPct: item.tierDiscountPct }) : {}),
       } as PaymentHistoryEntry;
       newEntries.push(entry);
       if (isBundleItem && bObj) {
@@ -332,9 +333,10 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
   if (!leadPayRow) return;
   const courseItemsComputed = draft.paymentType === 'course'
     ? [
-        { courseId: draft.courseId, amount: draft.amount, customExpected: draft.customExpected, discountPct: draft.discountPct, useDiscount: draft.useDiscount },
+        { courseId: draft.courseId, amount: draft.amount, customExpected: draft.customExpected, discountPct: draft.discountPct, useDiscount: draft.useDiscount, tierDiscountPct: draft.tierDiscountPct || 0 },
+        // The percentage buttons are the main course's; an added course is its tier's price or discount price.
         ...draft.extraItems.filter(i => i.type === 'course').map(i => ({
-          courseId: i.courseId || '', amount: i.amount, customExpected: i.customExpected || '', discountPct: i.discountPct || '', useDiscount: i.useDiscount,
+          courseId: i.courseId || '', amount: i.amount, customExpected: i.customExpected || '', discountPct: i.discountPct || '', useDiscount: i.useDiscount, tierDiscountPct: 0,
         })),
       ].filter(item => item.courseId && item.amount)
     : [];
@@ -405,7 +407,7 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
         staffId: currentStaff?.id,
         staffName: currentStaff?.name,
         ...(leadPayDraft.daqqiRoundId ? { daqqiRoundId: leadPayDraft.daqqiRoundId } : {}),
-        ...(leadPayDraft.bookingType === 'new_booking' ? bookingTierFields({ ...draft, useDiscount: item.useDiscount }) : {}),
+        ...(leadPayDraft.bookingType === 'new_booking' ? bookingTierFields({ ...draft, useDiscount: item.useDiscount, tierDiscountPct: item.tierDiscountPct }) : {}),
       });
     });
   } else {

@@ -21,7 +21,7 @@ import { Modal } from '../../shared/ui/Modal';
 import { confirmDialog } from '../../shared/ui/confirmDialog';
 import { DaqqiRoundPicker } from '../pages/dashboard/tabs/daqqi/DaqqiRoundPicker';
 import { roundLabel } from '../pages/dashboard/tabs/daqqi/daqqiScheduleUtils';
-import { getCatalogPricing, tierForBranch, formatMoney, type CatalogPricing, type PriceTierKey, type TierPrice } from '../lib/catalogPricing';
+import { DISCOUNT_PERCENTS, getCatalogPricing, tierForBranch, formatMoney, type CatalogPricing, type PriceTierKey, type TierPrice } from '../lib/catalogPricing';
 import { arabicNameProblem, englishNameProblem, nationalIdProblem } from '../lib/bookingIdentity';
 
 // ── Shared draft type ──────────────────────────────────────────────────────
@@ -62,6 +62,12 @@ export interface PaymentDraft {
    */
   priceTier?: PriceTierKey | '';
   useDiscount?: boolean;
+  /**
+   * «زر الخصم 5 و10 و15 و20 و25 و30 و40 و50%»: a percentage off the chosen
+   * branch's list price, for the main course. The server takes only these
+   * (DISCOUNT_PERCENTS in api/lib/priceTiers.js); 0 = none.
+   */
+  tierDiscountPct?: number;
   /** «اسم العميل الحقيقي عربي ثلاثي … بالانجليزي … تاكيد علي رقم التليفون». */
   nameAr?: string;
   nameEn?: string;
@@ -107,6 +113,7 @@ export const blankPaymentDraft = (opts?: {
   daqqiRoundId: '',
   priceTier: '',
   useDiscount: false,
+  tierDiscountPct: 0,
   nameAr: '',
   nameEn: '',
   phoneConfirmed: false,
@@ -379,12 +386,15 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     : undefined;
   const tierOptions: TierPrice[] = itemPricing?.tiers || [];
   const chosenTier = tierBooking ? tierOptions.find(tier => tier.key === d.priceTier) : undefined;
+  const tierPct = Number(d.tierDiscountPct) || 0;
   const tierPx = chosenTier?.price != null
-    ? (d.useDiscount && chosenTier.discountPrice != null ? chosenTier.discountPrice : chosenTier.price)
+    ? (tierPct ? Math.round(chosenTier.price * (100 - tierPct) / 100)
+      : d.useDiscount && chosenTier.discountPrice != null ? chosenTier.discountPrice : chosenTier.price)
     : null;
   const chooseTier = (tier: TierPrice) => set({
     priceTier: tier.key,
     useDiscount: false,
+    tierDiscountPct: 0,
     currency: tier.currency,
     // A lead or a new client is booked at the branch the price belongs to.
     ...(mode !== 'subscriber' ? { branch: tier.branch } : {}),
@@ -406,7 +416,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     const known = tierForBranch(mode === 'subscriber' ? (subject.branch || d.branch) : d.branch);
     const tier = pricing?.tiers.find(row => row.key === (d.priceTier || known) && row.price != null);
     set({
-      courseId, customExpected: '', discountPct: '', useDiscount: false,
+      courseId, customExpected: '', discountPct: '', useDiscount: false, tierDiscountPct: 0,
       priceTier: tier?.key || '',
       ...(tier ? { currency: tier.currency } : {}),
     });
@@ -423,8 +433,19 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const _effPx = tierBooking
     ? (tierPx ?? 0)
     : (_customExp > 0 ? _customExp : (_discPct > 0 && _basePx > 0 ? Math.round(_basePx * (1 - _discPct / 100)) : _basePx));
-  const _hasDiscount = tierBooking ? Boolean(d.useDiscount && chosenTier?.discountPrice != null) : (_effPx > 0 && _sysPx > 0 && _effPx < _sysPx);
+  const _hasDiscount = tierBooking ? Boolean(tierPct || (d.useDiscount && chosenTier?.discountPrice != null)) : (_effPx > 0 && _sysPx > 0 && _effPx < _sysPx);
   const _amtPaid = Number(d.amount) || 0;
+  const noteField = (
+    <div>
+      <label className="block text-xs font-bold text-gray-600 mb-1.5">ملاحظة <span className="text-gray-400 font-normal">(اختياري)</span></label>
+      <input
+        type="text" placeholder="اختياري"
+        value={d.note}
+        onChange={e => set({ note: e.target.value })}
+        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+      />
+    </div>
+  );
   const _extraTotal = (d.extraItems || []).reduce((s, i) => s + (Number(i.amount) || 0), 0);
   const _grandTotal = _amtPaid + _extraTotal;
   const _remaining = _effPx > 0 && _amtPaid > 0 ? Math.max(0, _effPx - _amtPaid) : 0;
@@ -973,37 +994,33 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                     <p className="mb-2 text-xs font-extrabold text-gray-700">الفرع <span className="text-red-500">*</span> <span className="font-normal text-gray-400">— السعر بيظهر بعملة الفرع</span></p>
                     {!catalogPricing && !pricingError && <p className="text-xs text-gray-400">بنحمّل أسعار الفروع…</p>}
                     {pricingError && <p className="text-xs font-bold text-red-600">{pricingError}</p>}
-                    <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-                      {tierOptions.map(tier => {
-                        const selected = d.priceTier === tier.key;
-                        const priced = tier.price != null;
-                        return (
-                          <button key={tier.key} type="button" disabled={!priced}
-                            onClick={() => chooseTier(tier)}
-                            className={`rounded-xl border-2 px-2.5 py-2 text-right transition ${selected ? 'border-red-500 bg-red-50' : priced ? 'border-gray-200 hover:border-red-300' : 'border-dashed border-gray-200 opacity-50 cursor-not-allowed'}`}>
-                            <span className={`block text-xs font-bold ${selected ? 'text-red-800' : 'text-gray-700'}`}>{tier.label}</span>
-                            <span className="block text-sm font-extrabold tabular-nums text-gray-900">{priced ? formatMoney(tier.price, tier.currency) : 'مش متسعّر'}</span>
-                            {tier.discountPrice != null && <span className="block text-[10px] font-bold text-emerald-700">فيه سعر خصم</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    {/* «مينفعش يظهر كل الاسعار دي — يظهر السعر بناءا علي الفرع اللى بيختار»:
+                        the branches as a list, and only the chosen one's price. */}
+                    {catalogPricing && (
+                      <select
+                        value={d.priceTier || ''}
+                        onChange={e => { const tier = tierOptions.find(t => t.key === e.target.value); if (tier) chooseTier(tier); }}
+                        className={`w-full rounded-xl border-2 px-3 py-2 text-sm font-semibold ${d.priceTier ? 'border-gray-200 bg-white' : 'border-red-400 bg-red-50 text-red-700'}`}
+                      >
+                        <option value="">— اختار الفرع —</option>
+                        {tierOptions.map(tier => (
+                          <option key={tier.key} value={tier.key} disabled={tier.price == null}>
+                            {tier.label}{tier.price == null ? ' (مش متسعّر)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     {chosenTier && tierPx != null && (
                       <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-gray-50 px-3 py-2">
-                        <span className="text-xs font-bold text-gray-500">سعر الكورس:</span>
-                        {d.useDiscount && chosenTier.discountPrice != null ? (
+                        <span className="text-xs font-bold text-gray-500">سعر الكورس في {chosenTier.label}:</span>
+                        {_hasDiscount ? (
                           <>
                             <span className="text-xs text-gray-400 line-through tabular-nums">{formatMoney(chosenTier.price, chosenTier.currency)}</span>
-                            <span className="text-base font-extrabold text-emerald-700 tabular-nums">{formatMoney(chosenTier.discountPrice, chosenTier.currency)}</span>
+                            <span className="text-base font-extrabold text-emerald-700 tabular-nums">{formatMoney(tierPx, chosenTier.currency)}</span>
+                            <span className="text-[11px] font-bold text-emerald-700">{tierPct ? `خصم ${tierPct}%` : 'سعر الخصم'}</span>
                           </>
                         ) : (
                           <span className="text-base font-extrabold text-gray-900 tabular-nums">{formatMoney(chosenTier.price, chosenTier.currency)}</span>
-                        )}
-                        {chosenTier.discountPrice != null && !lockPrice && (
-                          <button type="button" onClick={() => set({ useDiscount: !d.useDiscount })}
-                            className={`mr-auto rounded-lg border px-3 py-1 text-xs font-extrabold transition ${d.useDiscount ? 'border-gray-300 bg-white text-gray-600' : 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'}`}>
-                            {d.useDiscount ? 'رجّع السعر الأساسي' : '🏷️ اعرض سعر الخصم'}
-                          </button>
                         )}
                       </div>
                     )}
@@ -1114,6 +1131,24 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
               autoFocus
             />
             <span className="text-xs text-gray-500 font-semibold">{d.currency}</span>
+            {/* «جمب المقدم زر الخصم 5 و10 … و50% وايضا زر الخصم اللي مرفوع من الكورسات» */}
+            {tierBooking && chosenTier && !lockPrice && (
+              <div className="flex flex-wrap items-center gap-1" role="group" aria-label="الخصم">
+                <span className="text-[11px] font-bold text-gray-500">خصم:</span>
+                {chosenTier.discountPrice != null && (
+                  <button type="button" onClick={() => set({ useDiscount: !d.useDiscount, tierDiscountPct: 0 })} aria-pressed={Boolean(d.useDiscount)}
+                    className={`rounded-lg border px-2 py-1 text-[11px] font-extrabold transition ${d.useDiscount ? 'border-emerald-500 bg-emerald-600 text-white' : 'border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-50'}`}>
+                    🏷️ خصم الكورس
+                  </button>
+                )}
+                {DISCOUNT_PERCENTS.map(pct => (
+                  <button key={pct} type="button" onClick={() => set({ tierDiscountPct: tierPct === pct ? 0 : pct, useDiscount: false })} aria-pressed={tierPct === pct}
+                    className={`rounded-lg border px-1.5 py-1 text-[11px] font-extrabold tabular-nums transition ${tierPct === pct ? 'border-red-500 bg-red-600 text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-red-50'}`}>
+                    {pct}%
+                  </button>
+                ))}
+              </div>
+            )}
             {isCert && d.courseId && lockPrice && _effPx > 0 && (
               <span className="text-xs font-bold text-gray-500 whitespace-nowrap">السعر المتفق عليه: {_effPx.toLocaleString('ar-EG-u-nu-latn')} {d.currency}</span>
             )}
@@ -1324,7 +1359,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                     className={`w-full border rounded-xl px-3 py-2 text-sm font-mono ${d.email && !d.email.includes('@') ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
                   />
                 </div>
-                {branchOptions.length > 0 && (
+                {/* In a course booking the branch is the one picked with the price, above. */}
+                {tierBooking ? noteField : branchOptions.length > 0 && (
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1.5">الفرع</label>
                     <select
@@ -1341,8 +1377,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
             </div>
           )}
 
-          {/* ── 7b: Lead-only: branch selector ── */}
-          {mode === 'lead' && (
+          {/* ── 7b: Lead-only: branch selector — in a course booking it is the one picked with the price ── */}
+          {mode === 'lead' && !tierBooking && (
             <div>
               <label className="block text-xs font-bold text-gray-700 mb-1.5">الفرع <span className="text-red-500">*</span></label>
               <select
@@ -1491,6 +1527,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                   className={`w-full border rounded-xl px-3 py-2 text-sm font-mono ${d.email && !d.email.includes('@') ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
                 />
               </div>
+              {noteField}
               {!tierBooking && <div>
                 <label className="block text-xs font-bold text-gray-600 mb-1.5">الرقم القومي <span className="text-gray-400 font-normal">(اختياري)</span></label>
                 <input
@@ -1502,15 +1539,9 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
               </div>}
             </div>
           )}
-          <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5">ملاحظة</label>
-            <input
-              type="text" placeholder="اختياري"
-              value={d.note}
-              onChange={e => set({ note: e.target.value })}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-            />
-          </div>
+          {/* «خلي مربع الملاحظات جمب البريد الالكتروني وبنفس حجمه»: beside the email
+              where there is one (a lead, a new client booking a course), alone otherwise. */}
+          {!(mode === 'lead' || (mode === 'new' && tierBooking)) && noteField}
 
           {/* ── 9: Payment summary ── */}
           {_amtPaid > 0 && (() => {

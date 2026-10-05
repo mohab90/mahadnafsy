@@ -35,6 +35,9 @@ export interface CatalogPricing {
   items: { course: Record<string, ItemPricing>; bundle: Record<string, ItemPricing> };
 }
 
+/** The percentage buttons beside المقدم — the server accepts these only (api/lib/priceTiers.js). */
+export const DISCOUNT_PERCENTS = [5, 10, 15, 20, 25, 30, 40, 50] as const;
+
 export const BONUS_ROLE_LABELS: Record<BonusRole, string> = {
   sales: 'السيلز',
   service: 'الرسيبشن / التحصيل / خدمة العملاء',

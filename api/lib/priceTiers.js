@@ -200,12 +200,26 @@ async function syncOnlineTiersFromColumns(db, { tenantId, type, itemId }) {
  * its discount price when the rep chose it. Null when the catalogue cannot say
  * (unknown item, unpriced tier, or a discount that does not exist).
  */
-async function resolveTierPrice(db, { tenantId, type, itemId, tier, useDiscount = false }) {
+/**
+ * The percentages the desk may take off a branch's list price
+ * («زر الخصم 5 و10 و15 و20 و25 و30 و40 و50%»). Any other figure is refused:
+ * a percentage is a button, not a field.
+ */
+const DISCOUNT_PERCENTS = Object.freeze([5, 10, 15, 20, 25, 30, 40, 50]);
+
+async function resolveTierPrice(db, { tenantId, type, itemId, tier, useDiscount = false, discountPct = 0 }) {
   if (!TIER_BY_KEY.has(tier)) return null;
   const pricing = await getItemPricing(db, { tenantId, type, itemId });
   if (!pricing) return null;
   const entry = pricing.tiers.find(row => row.key === tier);
   if (!entry || entry.price == null) return null;
+  const pct = Number(discountPct) || 0;
+  if (pct) {
+    if (useDiscount || !DISCOUNT_PERCENTS.includes(pct)) return null;
+    // Whole units of the currency, as every price the desk quotes.
+    const price = Math.round(entry.price * (100 - pct) / 100);
+    return { tier, currency: entry.currency, branch: entry.branch, price, listPrice: entry.price, discounted: true, discountPct: pct };
+  }
   if (useDiscount) {
     if (entry.discountPrice == null) return null;
     return { tier, currency: entry.currency, branch: entry.branch, price: entry.discountPrice, listPrice: entry.price, discounted: true };
@@ -223,4 +237,5 @@ module.exports = {
   saveItemPricing,
   syncOnlineTiersFromColumns,
   resolveTierPrice,
+  DISCOUNT_PERCENTS,
 };
