@@ -36,7 +36,8 @@ test('a stated expectation still wins', () => {
   // An agreed price below list — a discount, a partial enrolment — is exactly
   // what supplying courseExpected is for. The fallback must only apply when
   // nothing was supplied.
-  assert.match(code, /let resolvedExpected = courseExpected;/);
+  // A tier the desk chose is the catalogue's price for that branch (lib/priceTiers.js).
+  assert.match(code, /let resolvedExpected = tierPrice \? tierPrice\.price : courseExpected;/);
   assert.match(code, /if \(resolvedExpected == null && \(courseId \|\| bundleId\)\)/);
 });
 

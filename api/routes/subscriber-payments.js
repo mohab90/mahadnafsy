@@ -32,6 +32,15 @@ const { VALID_BRANCHES } = require('../constants/permissions');
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../lib/paymentEntitlementAccess');
 const { isCashMethod, linkTransfer } = require('../lib/incomingTransfers');
 const { seatInOwnTransaction } = require('../lib/daqqiHousing');
+const { resolveTierPrice, PRICE_TIERS } = require('../lib/priceTiers');
+const { priceMatches } = require('../lib/catalogPrice');
+const { validateBookingIdentity, applyBookingIdentity } = require('../lib/bookingIdentity');
+
+const PRICE_TIER_KEYS = new Set(PRICE_TIERS.map(tier => tier.key));
+// Tiers whose clients carry an Egyptian national ID; the others may carry a
+// passport or a residence number instead.
+const EGYPTIAN_ID_TIERS = new Set(['DAQQI', 'TAGAMOA', 'ONLINE_EGYPT']);
+const TIER_NATIONALITY = { ONLINE_EGYPT: 'EGYPTIAN', ONLINE_EGYPT_FOREIGN: 'NON_EGYPTIAN_EGYPT' };
 
 /**
  * Money recorded from a collection account is the manager's to confirm —
@@ -413,7 +422,46 @@ async function recordSubscriberPayment(req, res) {
     // price, else their booking's, else the catalogue (lib/agreedPrice.js). An
     // instalment used to record nothing here, so it could not open lectures in
     // proportion and the next payment on the course had no price to agree with.
-    let resolvedExpected = courseExpected;
+    // «اختيار السعر الصح بيكون بعد اختيار الكورس والفرع»: the desk names the
+    // tier (the branch, and for online Egypt the nationality) and whether the
+    // client gets the discount price; the price itself comes from the
+    // catalogue (lib/priceTiers.js), so a booking is never charged a figure
+    // somebody typed. A figure the screen computed has to agree with it.
+    const priceTier = String(payment.priceTier || '').toUpperCase() || null;
+    let tierPrice = null;
+    if (priceTier && (courseId || bundleId)) {
+      if (!PRICE_TIER_KEYS.has(priceTier)) return res.status(400).json({ error: 'Unknown price tier', code: 'PRICE_TIER_UNKNOWN' });
+      tierPrice = await resolveTierPrice(pool, {
+        tenantId: paymentTenantId,
+        type: bundleId ? 'bundle' : 'course',
+        itemId: bundleId || courseId,
+        tier: priceTier,
+        useDiscount: Boolean(payment.useDiscount),
+      });
+      if (!tierPrice) {
+        return res.status(400).json({
+          error: payment.useDiscount
+            ? 'الكورس ده مالوش سعر خصم في الفرع ده'
+            : 'الكورس ده مش متسعّر للفرع ده — حط سعره من صفحة الكورس الأول',
+          code: 'TIER_NOT_PRICED',
+        });
+      }
+      if (tierPrice.currency !== paymentCurrency) {
+        return res.status(400).json({ error: `السعر في الفرع ده بالـ${tierPrice.currency} — الدفعة لازم تكون بنفس العملة`, code: 'TIER_CURRENCY_MISMATCH' });
+      }
+      if (courseExpected != null && !priceMatches(courseExpected, tierPrice.price)) {
+        return res.status(409).json({ error: 'السعر اتغير — حدّث الصفحة', code: 'PRICE_MISMATCH', price: tierPrice.price });
+      }
+    }
+    // «اسم العميل الحقيقي عربي ثلاثي … بالانجليزي … الرقم القومي»: taken with
+    // every booking that names a tier, and the Arabic triple name is required.
+    let bookingIdentity = null;
+    if (priceTier || req.body.client) {
+      const checked = validateBookingIdentity(req.body.client, { egyptian: !priceTier || EGYPTIAN_ID_TIERS.has(priceTier) });
+      if (!checked.ok) return res.status(400).json({ error: checked.error, code: checked.code });
+      bookingIdentity = checked.identity;
+    }
+    let resolvedExpected = tierPrice ? tierPrice.price : courseExpected;
     if (resolvedExpected == null && (courseId || bundleId)) {
       // Read through the pool: this runs before the transaction opens, and the
       // price is not part of what this write must see consistently.
@@ -670,6 +718,15 @@ async function recordSubscriberPayment(req, res) {
         };
       }
     }
+    if (bookingIdentity) {
+      await applyBookingIdentity(conn, {
+        tenantId: paymentTenantId,
+        subscriberId: subscriber_id,
+        identity: bookingIdentity,
+        nationality: TIER_NATIONALITY[priceTier] || null,
+      });
+      subRow.name = bookingIdentity.nameAr;
+    }
     if (safeType === 'CERTIFICATE') {
       await applyCertificatePayment({
         id,
@@ -722,7 +779,7 @@ async function recordSubscriberPayment(req, res) {
     // an instalment at the new price does not disagree with the booking's. An
     // instalment with no price brings the item's rows to the agreed one too,
     // so the access check below never finds two prices for one course.
-    if (resolvedExpected != null && (courseExpected != null || payment.isInstallment)
+    if (resolvedExpected != null && (courseExpected != null || tierPrice || payment.isInstallment)
       && (courseId || bundleId) && ['COURSE', 'BUNDLE'].includes(safeType)) {
       await setAgreedPrice(conn, {
         tenantId: paymentTenantId, subscriberId: subscriber_id, courseId, bundleId, price: resolvedExpected,

@@ -2,6 +2,7 @@
 
 const { uuidv4 } = require('./id');
 const { recordRetentionBonus } = require('./instructorPay');
+const { recordBookingBonuses } = require('./bookingBonuses');
 const { dateOnlyInTimeZone } = require('./dates');
 
 function paymentPeriod(value) {
@@ -18,8 +19,8 @@ function paymentPeriod(value) {
 async function recordPaymentCompensation({ paymentId, tenantId, commissionStaffId = null, actor = 'system' }, db) {
   if (!paymentId || !tenantId || !db?.query) throw new Error('Payment compensation requires payment, tenant and transaction');
   const [[payment]] = await db.query(
-    `SELECT p.id,p.subscriber_id,p.course_id,p.payment_type,p.amount,p.amount_egp,p.currency,
-            p.is_installment,p.date,p.staff_id,p.branch_id,s.assigned_sales_id
+    `SELECT p.id,p.subscriber_id,p.course_id,p.bundle_id,p.payment_type,p.amount,p.amount_egp,p.currency,
+            p.is_installment,p.course_expected,p.date,p.staff_id,p.branch_id,s.assigned_sales_id,s.assigned_cs_id
        FROM payments p
        LEFT JOIN subscribers s ON s.id=p.subscriber_id AND s.tenant_id=p.tenant_id
       WHERE p.id=? AND p.tenant_id=? AND p.status IN ('paid','confirmed')
@@ -114,6 +115,9 @@ async function recordPaymentCompensation({ paymentId, tenantId, commissionStaffI
   // A client who studied with this course's instructor before: the
   // instructor's retention bonus, whatever basis they are paid on.
   await recordRetentionBonus(db, { tenantId, payment, amountEgp, actor });
+
+  // The course's own booking bonuses — sales, the desk, the lecturer.
+  await recordBookingBonuses(db, { tenantId, payment, amountEgp, actor });
 }
 
 module.exports = { paymentPeriod, recordPaymentCompensation };

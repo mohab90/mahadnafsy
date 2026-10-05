@@ -591,6 +591,7 @@ CREATE TABLE `bundles` (
   `thumbnail` text DEFAULT NULL COMMENT 'Card and og:image URL, as courses.thumbnail.',
   `details_content_json` longtext DEFAULT NULL COMMENT 'Page-builder content for the bundle detail page.',
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp() COMMENT 'Touched by the ON DUPLICATE KEY UPDATE branch of a bundle save.',
+  `booking_bonuses_json` longtext DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_bundles_tenant_slug` (`tenant_id`,`slug`),
   KEY `idx_bundles_tenant` (`tenant_id`),
@@ -646,6 +647,27 @@ CREATE TABLE `cash_flow_forecast_assumptions` (
   CONSTRAINT `chk_cash_forecast_amount` CHECK (`amount` > 0 and `amount_egp` > 0 and `fx_rate_to_egp` > 0),
   CONSTRAINT `chk_cash_forecast_confidence` CHECK (`confidence_pct` >= 0 and `confidence_pct` <= 100),
   CONSTRAINT `chk_cash_forecast_dates` CHECK (`end_date` is null or `end_date` >= `start_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `catalog_prices`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `catalog_prices` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
+  `item_type` enum('course','bundle') NOT NULL,
+  `item_id` varchar(36) NOT NULL,
+  `tier` varchar(32) NOT NULL,
+  `price` decimal(12,2) DEFAULT NULL,
+  `discount_price` decimal(12,2) DEFAULT NULL,
+  `updated_by` varchar(36) DEFAULT NULL,
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_catalog_prices_item_tier` (`tenant_id`,`item_type`,`item_id`,`tier`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1381,6 +1403,7 @@ CREATE TABLE `courses` (
   `deleted_at` timestamp NULL DEFAULT NULL,
   `max_students` int(10) unsigned DEFAULT NULL COMMENT 'NULL = unlimited',
   `access_months` int(11) DEFAULT NULL COMMENT 'How many months of access a new enrolment gets. NULL = unlimited.',
+  `booking_bonuses_json` longtext DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_courses_tenant_slug` (`tenant_id`,`slug`),
   KEY `idx_courses_published` (`is_published`,`sort_order`),

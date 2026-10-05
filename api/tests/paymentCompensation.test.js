@@ -22,6 +22,8 @@ function compensationDb(payment, { ruleRate = 5, instructorShare = 10 } = {}) {
       // The retention bonus check (lib/instructorPay.js): this instructor has none.
       if (sql.includes('SELECT instructor_id FROM courses')) return [[{ instructor_id: 'instructor-1' }]];
       if (sql.includes('FROM instructor_rates WHERE')) return [[null]];
+      // The course's booking bonuses (lib/bookingBonuses.js): none set.
+      if (sql.includes('SELECT booking_bonuses_json')) return [[{ booking_bonuses_json: null }]];
       throw new Error(`Unexpected query: ${sql}`);
     },
   };

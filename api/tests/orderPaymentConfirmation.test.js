@@ -42,6 +42,8 @@ function mockConn(responses) {
       if (sql.includes('FROM commission_rules')) return [[null]];
       if (sql.includes('SELECT commission_rate FROM staff')) return [[null]];
       if (sql.includes('LEFT JOIN instructor_rates')) return [[null]];
+      // The course's booking bonuses (lib/bookingBonuses.js): none set.
+      if (sql.includes('SELECT booking_bonuses_json')) return [[{ booking_bonuses_json: null }]];
       if (sql.includes('SELECT * FROM financial_documents')) return [[]];
       if (sql.includes('INSERT INTO finance_document_sequences')) return [{}];
       if (sql.includes('SELECT next_number FROM finance_document_sequences')) {
