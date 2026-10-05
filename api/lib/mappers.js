@@ -225,6 +225,9 @@ function mapBundle(r, allCourses = []) {
     originalPrice: { EGP: money(r.orig_price_egp), SAR: money(r.orig_price_sar), USD: money(r.orig_price_usd) },
     detailsContent: tryJson(r.details_content_json, {}),
     isPublished: !!r.is_published,
+    seo_title: r.seo_title || undefined,
+    seo_description: r.seo_description || undefined,
+    seo_keywords: r.seo_keywords || undefined,
     courses,
   };
 }

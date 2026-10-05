@@ -14,6 +14,8 @@ import type { TabKey } from '../navigation';
 import TestimonialsPanel from './courses/TestimonialsPanel';
 import BundlesPanel from './courses/BundlesPanel';
 import CatalogPricingPanel from './courses/CatalogPricingPanel';
+import SeoScorePanel from './courses/SeoScorePanel';
+import type { SeoInput } from '../../../lib/seoScore';
 import LecturesPanel from './courses/LecturesPanel';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -153,6 +155,24 @@ export default function CoursesTab({
     const text = `${course.title} ${course.instructor} ${course.category} ${course.level}`.toLowerCase();
     return text.includes(courseListSearch.toLowerCase());
   });
+  // What the SEO score reads — the draft as it stands, so the score moves while typing.
+  const seoInput = useMemo<SeoInput>(() => ({
+    kind: 'course',
+    title: courseDraft.title,
+    titleEn: courseDraft.titleEn,
+    seoTitle: courseDraft.seo_title,
+    seoDescription: courseDraft.seo_description,
+    seoKeywords: courseDraft.seo_keywords,
+    slug: courseDraft.slug,
+    shortDescription: courseDraft.shortDescription,
+    description: courseDraft.description,
+    thumbnail: courseDraft.thumbnail,
+    videoUrl: courseDraft.promoVideoUrl,
+    outlineCount: courseModulesDraft.filter(m => m.title.trim()).length,
+    hasPrice: Object.values(courseDraft.price || {}).some(v => Number(v) > 0),
+    instructor: courseDraft.instructor,
+    published: courseDraft.isPublished !== false,
+  }), [courseDraft, courseModulesDraft]);
   // ── Handlers ──────────────────────────────────────────────────────────────
   const getEditorRef = (field: RichField) => (field === 'shortDescription' ? shortDescriptionRef : descriptionRef);
   const focusEditor = (field: RichField) => { setActiveRichField(field); getEditorRef(field).current?.focus(); };
@@ -724,7 +744,8 @@ const saveCourse = async () => {
 
           {/* ── SEO Fields ── */}
           <div className="border border-violet-200 rounded-2xl p-4 bg-violet-50 space-y-3 mt-2">
-            <p className="text-xs font-bold text-violet-700 mb-1">🔍 إعدادات SEO (اختياري)</p>
+            <p className="text-xs font-bold text-violet-700 mb-1">🔍 الظهور في جوجل (SEO) — التقييم والمقترحات</p>
+            <SeoScorePanel input={seoInput} />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="md:col-span-2">
                 <label className="block text-xs font-semibold text-gray-600 mb-1">عنوان SEO (seo_title) — يظهر في نتائج البحث</label>

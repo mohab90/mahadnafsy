@@ -297,17 +297,28 @@ router.post('/api/admin/bundles', requireAuth, requireAdminOrStaff, requirePermi
     const isPublished  = b.is_published != null ? (b.is_published ? 1 : 0) : (b.isPublished != null ? (b.isPublished ? 1 : 0) : 0);
     const sortOrder    = b.sort_order    ?? b.sortOrder    ?? 0;
     const courseIds    = b.course_ids    ?? b.courseIds    ?? null;
+    const seoText      = (value, max) => (value == null || String(value).trim() === '' ? null : String(value).trim().slice(0, max));
+    const seoTitle     = seoText(b.seo_title, 255);
+    const seoDesc      = seoText(b.seo_description, 500);
+    const seoKeywords  = seoText(b.seo_keywords, 500);
     if (b.id) {
       const [[anyRow]] = await pool.query('SELECT id, (tenant_id = ?) AS owned FROM bundles WHERE id=? LIMIT 1', [req.tenantId, b.id]);
       if (anyRow && !anyRow.owned) return res.status(404).json({ error: 'Bundle not found' });
     }
+    // The slug is unique per tenant: another track's slug here would make the
+    // upsert below land on that track's row instead of this one.
+    if (b.slug) {
+      const [[taken]] = await pool.query('SELECT id FROM bundles WHERE tenant_id=? AND slug=? AND id<>? LIMIT 1', [req.tenantId, b.slug, id]);
+      if (taken) return res.status(409).json({ error: 'رابط المسار (slug) مستخدم لمسار تاني — اختار رابط مختلف.', code: 'SLUG_TAKEN' });
+    }
     await pool.query(
       `INSERT INTO bundles (id, tenant_id, title, title_en, slug, short_description, description, thumbnail, video_url,
          price_egp, price_sar, price_usd, orig_price_egp, orig_price_sar, orig_price_usd,
-         details_content_json, is_published, sort_order)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         details_content_json, is_published, sort_order, seo_title, seo_description, seo_keywords)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE
-         title=VALUES(title), title_en=VALUES(title_en), short_description=VALUES(short_description),
+         title=VALUES(title), title_en=VALUES(title_en), slug=VALUES(slug), short_description=VALUES(short_description),
+         seo_title=VALUES(seo_title), seo_description=VALUES(seo_description), seo_keywords=VALUES(seo_keywords),
          description=VALUES(description), thumbnail=VALUES(thumbnail), video_url=VALUES(video_url),
          price_egp=VALUES(price_egp), price_sar=VALUES(price_sar), price_usd=VALUES(price_usd),
          orig_price_egp=VALUES(orig_price_egp), orig_price_sar=VALUES(orig_price_sar), orig_price_usd=VALUES(orig_price_usd),
@@ -316,7 +327,7 @@ router.post('/api/admin/bundles', requireAuth, requireAdminOrStaff, requirePermi
       [id, req.tenantId, b.title||'', titleEn, b.slug||null, shortDesc, b.description||'',
        b.thumbnail||'', videoUrl,
        priceEGP, priceSAR, priceUSD, origEGP, origSAR, origUSD,
-       detailsJson, isPublished, sortOrder]
+       detailsJson, isPublished, sortOrder, seoTitle, seoDesc, seoKeywords]
     );
     await syncOnlineTiersFromColumns(pool, { tenantId: req.tenantId, type: 'bundle', itemId: id });
     // Sync courses into bundle_courses join table

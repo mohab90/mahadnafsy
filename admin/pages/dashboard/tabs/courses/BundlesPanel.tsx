@@ -7,11 +7,14 @@
 // The saving flag is its own. CoursesTab's catalogSaving is shared with the
 // courses and lectures sections, so saving a course disabled this form.
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { useStaticData } from '../../../../context/siteDataSlices';
 import type { Bundle } from '../../../../types';
+import { uploadImage } from '../../../../lib/uploadImage';
+import type { SeoInput } from '../../../../lib/seoScore';
 import CatalogPricingPanel from './CatalogPricingPanel';
+import SeoScorePanel from './SeoScorePanel';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -30,6 +33,51 @@ export default function BundlesPanel({ notify }: { notify: NotifyFn }) {
   const [bundlePrice, setBundlePrice] = useState({ EGP: 0, SAR: 0, USD: 0 });
   const [bundleOriginalPrice, setBundleOriginalPrice] = useState({ EGP: 0, SAR: 0, USD: 0 });
   const [bundleDetailsJson, setBundleDetailsJson] = useState('{}');
+  // The form had no cover or publish field, so saving a track sent an empty
+  // cover and is_published=1 — the picture was wiped and a hidden track went live.
+  const [bundleThumbnail, setBundleThumbnail] = useState('');
+  const [bundlePublished, setBundlePublished] = useState(true);
+  const [seo, setSeo] = useState({ title: '', description: '', keywords: '' });
+
+  const resetForm = () => {
+    setEditingBundleId('');
+    setBundleTitle('');
+    setBundleTitleEn('');
+    setBundleSlug('');
+    setBundleVideoUrl('');
+    setBundleShortDesc('');
+    setBundleDescription('');
+    setBundleCourseIds([]);
+    setBundlePrice({ EGP: 0, SAR: 0, USD: 0 });
+    setBundleOriginalPrice({ EGP: 0, SAR: 0, USD: 0 });
+    setBundleDetailsJson('{}');
+    setBundleThumbnail('');
+    setBundlePublished(true);
+    setSeo({ title: '', description: '', keywords: '' });
+  };
+
+  const seoInput = useMemo<SeoInput>(() => ({
+    kind: 'bundle',
+    title: bundleTitle,
+    titleEn: bundleTitleEn,
+    seoTitle: seo.title,
+    seoDescription: seo.description,
+    seoKeywords: seo.keywords,
+    slug: bundleSlug.trim().replace(/\s+/g, '-').toLowerCase(),
+    shortDescription: bundleShortDesc,
+    description: bundleDescription,
+    thumbnail: bundleThumbnail,
+    videoUrl: bundleVideoUrl,
+    outlineCount: bundleCourseIds.length,
+    hasPrice: Object.values(bundlePrice).some(v => Number(v) > 0),
+    published: bundlePublished,
+  }), [bundleTitle, bundleTitleEn, seo, bundleSlug, bundleShortDesc, bundleDescription, bundleThumbnail, bundleVideoUrl, bundleCourseIds, bundlePrice, bundlePublished]);
+
+  const uploadCover = async (file?: File) => {
+    if (!file) return;
+    try { setBundleThumbnail(await uploadImage(file, 'cover')); }
+    catch { notify('error', 'تعذر رفع الصورة — جرّب صورة أصغر.'); }
+  };
 
   const startEditBundle = (row: Bundle) => {
   setEditingBundleId(row.id);
@@ -44,6 +92,9 @@ export default function BundlesPanel({ notify }: { notify: NotifyFn }) {
   setBundlePrice({ ...row.price });
   setBundleOriginalPrice({ ...row.originalPrice });
   setBundleDetailsJson(JSON.stringify(row.detailsContent ?? {}, null, 2));
+  setBundleThumbnail(row.thumbnail || '');
+  setBundlePublished(row.isPublished !== false);
+  setSeo({ title: row.seo_title || '', description: row.seo_description || '', keywords: row.seo_keywords || '' });
 };
 
   const saveBundle = async () => {
@@ -78,23 +129,18 @@ export default function BundlesPanel({ notify }: { notify: NotifyFn }) {
     price: { ...bundlePrice },
     originalPrice: { ...bundleOriginalPrice },
     detailsContent: parsedDetails,
+    thumbnail: bundleThumbnail.trim() || undefined,
+    isPublished: bundlePublished,
+    seo_title: seo.title.trim() || undefined,
+    seo_description: seo.description.trim() || undefined,
+    seo_keywords: seo.keywords.trim() || undefined,
   };
   setSaving(true);
   const saved = editingBundleId ? await updateBundle(payload) : await addBundle(payload);
   setSaving(false);
   if (!saved) { notify('error', 'تعذر حفظ المسار.'); return; }
-  setEditingBundleId('');
+  resetForm();
   setIsBundleFormOpen(false);
-  setBundleTitle('');
-  setBundleTitleEn('');
-  setBundleSlug('');
-  setBundleVideoUrl('');
-  setBundleShortDesc('');
-  setBundleDescription('');
-  setBundleCourseIds([]);
-  setBundlePrice({ EGP: 0, SAR: 0, USD: 0 });
-  setBundleOriginalPrice({ EGP: 0, SAR: 0, USD: 0 });
-  setBundleDetailsJson('{}');
   notify('success', `تم حفظ المسار: ${payload.title}`);
 };
 
@@ -125,17 +171,7 @@ export default function BundlesPanel({ notify }: { notify: NotifyFn }) {
               setIsBundleFormOpen(false);
               return;
             }
-            setEditingBundleId('');
-            setBundleTitle('');
-            setBundleTitleEn('');
-            setBundleSlug('');
-            setBundleVideoUrl('');
-            setBundleShortDesc('');
-            setBundleDescription('');
-            setBundleCourseIds([]);
-            setBundlePrice({ EGP: 0, SAR: 0, USD: 0 });
-            setBundleOriginalPrice({ EGP: 0, SAR: 0, USD: 0 });
-            setBundleDetailsJson('{}');
+            resetForm();
             setIsBundleFormOpen(true);
           }}
           className="bg-primary-600 hover:bg-primary-700 text-white rounded-xl px-4 py-2.5 font-bold text-sm"
@@ -153,6 +189,25 @@ export default function BundlesPanel({ notify }: { notify: NotifyFn }) {
           <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="اسم المسار بالإنجليزية (English Name)" value={bundleTitleEn} onChange={(e) => setBundleTitleEn(e.target.value)} />
           <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="رابط URL المسار (slug) مثال: psychology-track" value={bundleSlug} onChange={(e) => setBundleSlug(e.target.value)} />
           <input className="border border-gray-300 rounded-xl px-4 py-2.5 md:col-span-1" placeholder="رابط فيديو تعريفي (YouTube embed)" value={bundleVideoUrl} onChange={(e) => setBundleVideoUrl(e.target.value)} />
+          <div className="md:col-span-2 flex flex-wrap items-center gap-3 border border-gray-200 rounded-xl bg-white p-3">
+            {bundleThumbnail
+              ? <img src={bundleThumbnail} alt="" className="w-24 h-16 object-cover rounded-lg border border-gray-200" />
+              : <div className="w-24 h-16 rounded-lg bg-gray-100 grid place-items-center text-[11px] text-gray-400">بدون غلاف</div>}
+            <div className="flex-1 min-w-0 space-y-1.5">
+              <p className="text-xs font-bold text-gray-600">صورة غلاف المسار</p>
+              <div className="flex flex-wrap gap-2">
+                <label className="px-3 py-1.5 rounded-lg bg-primary-50 text-primary-700 text-xs font-bold cursor-pointer">
+                  رفع صورة
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => { void uploadCover(e.target.files?.[0]); e.target.value = ''; }} />
+                </label>
+                <input className="flex-1 min-w-[12rem] border border-gray-300 rounded-lg px-3 py-1.5 text-xs" dir="ltr" placeholder="أو رابط صورة https://..." value={bundleThumbnail} onChange={(e) => setBundleThumbnail(e.target.value)} />
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm font-bold text-gray-700">
+              <input type="checkbox" checked={bundlePublished} onChange={(e) => setBundlePublished(e.target.checked)} />
+              منشور في الموقع
+            </label>
+          </div>
           <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر المشطوب في الموقع EGP (جنيه)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundleOriginalPrice.EGP} onChange={(e) => setBundleOriginalPrice({ ...bundleOriginalPrice, EGP: Number(e.target.value) })} /></div>
           <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر المشطوب في الموقع SAR (ريال)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundleOriginalPrice.SAR} onChange={(e) => setBundleOriginalPrice({ ...bundleOriginalPrice, SAR: Number(e.target.value) })} /></div>
           <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر المشطوب في الموقع USD (دولار)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundleOriginalPrice.USD} onChange={(e) => setBundleOriginalPrice({ ...bundleOriginalPrice, USD: Number(e.target.value) })} /></div>
@@ -179,6 +234,13 @@ export default function BundlesPanel({ notify }: { notify: NotifyFn }) {
             value={bundleDetailsJson}
             onChange={(e) => setBundleDetailsJson(e.target.value)}
           />
+          <div className="md:col-span-2 border border-violet-200 rounded-2xl p-4 bg-violet-50 space-y-3">
+            <p className="text-xs font-bold text-violet-700">🔍 الظهور في جوجل (SEO) — التقييم والمقترحات</p>
+            <SeoScorePanel input={seoInput} />
+            <input className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" maxLength={120} placeholder="عنوان SEO — يظهر في نتائج البحث (30-60 حرف)" value={seo.title} onChange={(e) => setSeo({ ...seo, title: e.target.value })} />
+            <textarea className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm resize-none" rows={2} maxLength={300} placeholder="وصف SEO — يظهر تحت العنوان في جوجل (120-160 حرف)" value={seo.description} onChange={(e) => setSeo({ ...seo, description: e.target.value })} />
+            <input className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" placeholder="الكلمات المفتاحية مفصولة بفاصلة — أول كلمة هي الأساسية" value={seo.keywords} onChange={(e) => setSeo({ ...seo, keywords: e.target.value })} />
+          </div>
         </div>
         <button onClick={() => void saveBundle()} disabled={saving} className="bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white font-bold px-5 py-2.5 rounded-xl transition">{editingBundleId ? 'تحديث المسار' : 'إضافة مسار'}</button>
       </div>

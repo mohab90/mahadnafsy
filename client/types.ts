@@ -104,6 +104,8 @@ export interface Bundle {
   detailsContent?: Record<string, string>;
   isPublished?: boolean;
   sortOrder?: number;
+  seo_title?: string;
+  seo_description?: string;
 }
 
 export interface Therapist {

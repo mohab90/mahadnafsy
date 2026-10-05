@@ -21,7 +21,11 @@ const bundlePayload = (bundle: Bundle): Record<string, unknown> => ({
   orig_price_sar: bundle.originalPrice?.SAR || 0,
   orig_price_usd: bundle.originalPrice?.USD || 0,
   details_content_json: bundle.detailsContent ? JSON.stringify(bundle.detailsContent) : null,
-  is_published: 1,
+  // Was always 1, so saving a hidden track published it again.
+  is_published: bundle.isPublished === false ? 0 : 1,
+  seo_title: bundle.seo_title || null,
+  seo_description: bundle.seo_description || null,
+  seo_keywords: bundle.seo_keywords || null,
   sort_order: 0,
   course_ids: bundle.courses.map(course => course.id),
 });

@@ -57,9 +57,9 @@ const BundleDetails: React.FC = () => {
   // USD, with a live checkout button under it.
   const priceAvailable = (bundle?.price?.[currency] ?? 0) > 0;
   useSeo({
-    title: (bundle?.title ? `${bundle.title} — مسار` : 'المسارات والباقات') + ' | معهد الدراسات النفسية',
+    title: (bundle?.seo_title || (bundle?.title ? `${bundle.title} — مسار` : 'المسارات والباقات')) + ' | معهد الدراسات النفسية',
     path: bundle?.id ? `/bundle/${bundle.id}` : '/bundles',
-    description: seoSummary(bundle?.shortDescription || bundle?.description,
+    description: seoSummary(bundle?.seo_description || bundle?.shortDescription || bundle?.description,
       'مسار تعليمي متكامل من معهد الدراسات النفسية.'),
     image: bundle?.thumbnail || bundle?.courses?.[0]?.thumbnail,
     type: bundle ? 'article' : 'website',

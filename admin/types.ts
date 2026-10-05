@@ -116,6 +116,9 @@ export interface Bundle {
   detailsContent?: Record<string, string>;
   titleAr?: string;
   isPublished?: boolean;
+  seo_title?: string;
+  seo_description?: string;
+  seo_keywords?: string;
 }
 
 export interface Therapist {
