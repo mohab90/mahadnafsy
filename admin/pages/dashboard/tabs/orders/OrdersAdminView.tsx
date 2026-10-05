@@ -1,6 +1,8 @@
 // The full orders and payments desk: review, accepted, failed, transfers.
 import { cairoDateOnly, cairoMonthOnly, cairoDay, cairoDaysAgo, cairoWeekStart } from '../../../../../shared/cairoDate';
-import { CheckCircle, Clock, CreditCard, Download, Plus, Search, TrendingUp, Trash2, Wallet, XCircle } from 'lucide-react';
+import { CheckCircle, Clock, CreditCard, Download, Pencil, Plus, Search, TrendingUp, Trash2, Wallet, XCircle } from 'lucide-react';
+import { useState } from 'react';
+import { PaymentCorrectionModal } from '../../../../components/PaymentCorrectionModal';
 import { toEgp } from '../../../../lib/money';
 import { paymentMethodLabel, normalizePaymentMethod } from '../../../../../shared/paymentMethods';
 import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
@@ -9,11 +11,15 @@ import { AddTransferModal, IncomingTransfersTable } from './IncomingTransfers';
 import { transferMatch } from '../../../../../shared/transferSheet';
 import { ORDER_METHOD_FILTERS } from './ordersTypes';
 import type { OrdersTabProps } from './ordersTypes';
+import type { OrderItem } from '../../../../types';
 import type { OrderActions } from './useOrderActions';
 
 export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; actions: OrderActions }) {
   const { isAdmin, canManageFinancial, notify, courses, bundles, effectiveOrders, filteredOrders, ordersStats, orderSearch, setOrderSearch, setOrderStatusFilter, orderTypeFilter, setOrderTypeFilter, orderMethodFilter, setOrderMethodFilter, orderDateFrom, setOrderDateFrom, orderDateTo, setOrderDateTo, orderStaffFilter, setOrderStaffFilter, orderReviewTab, setOrderReviewTab, showAddTransfer, setShowAddTransfer, linkTransferModal, setLinkTransferModal, linkOrderModal, setLinkOrderModal, deleteOrder, reloadOrders, reloadSubscribers, exportFilteredOrdersCsv } = props;
   const { paymentBoxes, navigate, ledger, linkQuery, setLinkQuery, matchesQuery, approveMethod, setApproveMethod, canAcceptDirectly, isDeskPayment, storedMethodOf, handleConfirmOrder, handleRejectOrder, confirmWithTransfer } = actions;
+  // A recorded payment is voided or corrected by a manager through the payments
+  // route, which reverses its books; the orders route only archives an unpaid order.
+  const [correcting, setCorrecting] = useState<{ row: OrderItem; mode: 'edit' | 'void' } | null>(null);
               const todayStr     = cairoDateOnly();
               const thisMonthStr = cairoMonthOnly();
               const toEGP = (r: { amount: number; currency?: string }) =>
@@ -397,9 +403,20 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                                         </button>
                                       </>
                                     )}
-                                    {isAdmin && (
-                                      <button onClick={() => deleteOrder(row.id)}
-                                        className="text-red-400 hover:text-red-600 p-1 rounded-md hover:bg-red-50 transition" title="حذف">
+                                    {canAcceptDirectly && isDeskPayment(row) && row.status !== 'refunded' && (
+                                      <button type="button" onClick={() => setCorrecting({ row, mode: 'edit' })}
+                                        className="text-indigo-400 hover:text-indigo-600 p-1 rounded-md hover:bg-indigo-50 transition" title="تعديل الدفعة" aria-label="تعديل الدفعة">
+                                        <Pencil size={11} />
+                                      </button>
+                                    )}
+                                    {canAcceptDirectly && (isDeskPayment(row) || row.status === 'paid') && row.status !== 'refunded' ? (
+                                      <button type="button" onClick={() => setCorrecting({ row, mode: 'void' })}
+                                        className="text-red-400 hover:text-red-600 p-1 rounded-md hover:bg-red-50 transition" title="مسح الدفعة" aria-label="مسح الدفعة">
+                                        <Trash2 size={11} />
+                                      </button>
+                                    ) : isAdmin && row.status !== 'paid' && row.status !== 'refunded' && (
+                                      <button type="button" onClick={() => deleteOrder(row.id)}
+                                        className="text-red-400 hover:text-red-600 p-1 rounded-md hover:bg-red-50 transition" title="حذف" aria-label="حذف">
                                         <Trash2 size={11} />
                                       </button>
                                     )}
@@ -600,6 +617,20 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                       </div>
                     );
                   })()}
+
+                  {correcting && (
+                    <PaymentCorrectionModal
+                      mode={correcting.mode}
+                      payment={{ id: correcting.row.id, amount: Number(correcting.row.amount) || 0, currency: correcting.row.currency,
+                        courseId: correcting.row.type === 'course' ? (correcting.row.courseId || correcting.row.itemId) : undefined,
+                        bundleId: correcting.row.type === 'bundle' ? (correcting.row.bundleId || correcting.row.itemId) : undefined,
+                        paymentMethod: storedMethodOf(correcting.row), transactionId: correcting.row.transactionId, note: correcting.row.note,
+                        at: correcting.row.createdAt, clientName: correcting.row.customerName }}
+                      courses={courses} bundles={bundles} notify={notify}
+                      onClose={() => setCorrecting(null)}
+                      onDone={async () => { await Promise.all([reloadOrders(), reloadSubscribers()]); }}
+                    />
+                  )}
 
                   {showAddTransfer && (
                     <AddTransferModal boxes={paymentBoxes} notify={notify} onClose={() => setShowAddTransfer(false)}

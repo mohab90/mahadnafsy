@@ -461,6 +461,12 @@ export const mysqlAdmin = {
   adminPatch: <T = AR>(path: string, body: AR) => apiFetch<T>(path, { method: 'PATCH', body: JSON.stringify(body) }, A),
   adminPut: <T = AR>(path: string, body: unknown) => apiFetch<T>(path, { method: 'PUT', body: JSON.stringify(body) }, A),
   adminDelete: <T = AR>(path: string) => apiFetch<T>(path, { method: 'DELETE' }, A),
+  // Managers only (api/routes/payment-corrections.js): void a payment with its
+  // books, commissions and access, or correct it.
+  voidPayment: (id: string, reason: string) =>
+    apiFetch<AR>(`/admin/payments/${encodeURIComponent(id)}`, { method: 'DELETE', body: JSON.stringify({ reason }) }, A),
+  correctPayment: (id: string, body: AR) =>
+    apiFetch<AR & { mode?: string; id?: string }>(`/admin/payments/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }, A),
   revokeCourseCompletion: (id: string, reason: string) =>
     apiFetch<AR>(`/admin/completions/${encodeURIComponent(id)}/revoke`, {
       method: 'POST', body: JSON.stringify({ reason }),

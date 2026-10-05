@@ -1,6 +1,6 @@
 import React, { Suspense, type Dispatch, type SetStateAction } from 'react';
 import { ModalFallback } from '../../../shared/ui/ModalFallback';
-import { CreditCard, Plus, Printer, RefreshCw } from 'lucide-react';
+import { CreditCard, Pencil, Plus, Printer, RefreshCw, Trash2 } from 'lucide-react';
 
 import type { PaymentDraft } from '../../components/PaymentModal';
 import type { Course, PaymentHistoryEntry, PaymentProof, SubscriberItem } from '../../types';
@@ -12,6 +12,7 @@ import { useBranches } from '../../hooks/useBranches';
 import { cairoDay } from '../../../shared/cairoDate';
 
 const PaymentModal = React.lazy(() => import('../../components/PaymentModal'));
+const PaymentCorrectionModal = React.lazy(() => import('../../components/PaymentCorrectionModal').then(module => ({ default: module.PaymentCorrectionModal })));
 
 type PaidTotals = { EGP: number; SAR: number; USD: number };
 type BookingMap = Record<string, { paidEGP: number; expectedEGP?: number; discount?: number }>;
@@ -46,6 +47,11 @@ type UnifiedClientSubscriberPaymentsPanelProps = {
   loadClientProofs: () => void;
   loadProofImage: (proofId: string) => void;
   handleReviewProof: (proofId: string, action: ReviewAction) => void | Promise<void>;
+  bundles?: { id: string; title: string }[];
+  notify?: (type: 'success' | 'error' | 'info', text: string) => void;
+  /** Editing or deleting a recorded payment is the manager's (api/routes/payment-corrections.js). */
+  canCorrectPayments?: boolean;
+  onPaymentsChanged?: () => void | Promise<void>;
 };
 
 export function UnifiedClientSubscriberPaymentsPanel({
@@ -77,7 +83,12 @@ export function UnifiedClientSubscriberPaymentsPanel({
   loadClientProofs,
   loadProofImage,
   handleReviewProof,
+  bundles = [],
+  notify = () => {},
+  canCorrectPayments = false,
+  onPaymentsChanged = () => {},
 }: UnifiedClientSubscriberPaymentsPanelProps) {
+  const [correcting, setCorrecting] = React.useState<{ payment: PaymentHistoryEntry; mode: 'edit' | 'void' } | null>(null);
   // This dialog opened with an empty branch dropdown: it was the one caller that
   // never passed branchOptions at all.
   const branchOptions = useBranches();
@@ -181,6 +192,18 @@ export function UnifiedClientSubscriberPaymentsPanel({
                     className="text-amber-500 hover:text-amber-700 hover:bg-amber-50 p-1 rounded-lg transition">
                     <Printer size={14} />
                   </button>
+                  {canCorrectPayments && (
+                    <>
+                      <button type="button" title="تعديل الدفعة (للمدير)" aria-label="تعديل الدفعة" onClick={() => setCorrecting({ payment: p, mode: 'edit' })}
+                        className="text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 p-1 rounded-lg transition">
+                        <Pencil size={14} />
+                      </button>
+                      <button type="button" title="مسح الدفعة (للمدير)" aria-label="مسح الدفعة" onClick={() => setCorrecting({ payment: p, mode: 'void' })}
+                        className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1 rounded-lg transition">
+                        <Trash2 size={14} />
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             ))}
@@ -259,6 +282,19 @@ export function UnifiedClientSubscriberPaymentsPanel({
             );
           })}
         </div>
+      )}
+      {correcting && (
+        <Suspense fallback={<ModalFallback />}>
+          <PaymentCorrectionModal
+            payment={{ ...correcting.payment, clientName }}
+            mode={correcting.mode}
+            courses={courses}
+            bundles={bundles}
+            notify={notify}
+            onClose={() => setCorrecting(null)}
+            onDone={onPaymentsChanged}
+          />
+        </Suspense>
       )}
     </>
   );

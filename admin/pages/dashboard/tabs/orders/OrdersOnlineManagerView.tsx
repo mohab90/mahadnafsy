@@ -5,10 +5,31 @@ import { Search } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { OrdersTabProps } from './ordersTypes';
 import type { OrderActions } from './useOrderActions';
+import { useState } from 'react';
+import { LinkTransferDialog, type TransferLink } from './LinkTransferDialog';
+
+type LinkTarget = { id: string; name: string; amount: number; currency: string; method: string; reference: string; at: string };
 
 export function OrdersOnlineManagerView({ props, actions }: { props: OrdersTabProps; actions: OrderActions }) {
   const { canManageFinancial, notify, courses, bundles, salesOwnSubscribers, daqqiSubSearch, setDaqqiSubSearch, daqqiAccDateFrom, setDaqqiAccDateFrom, daqqiAccDateTo, setDaqqiAccDateTo, omOrdReviewTab, setOmOrdReviewTab, reloadOrders, reloadSubscribers } = props;
-  const { paymentBoxes, navigate, approveMethod, setApproveMethod } = actions;
+  const { paymentBoxes, navigate, approveMethod, setApproveMethod, canAcceptDirectly } = actions;
+  // Only the manager accepts a payment outright; everybody else ties it to the
+  // transfer that brought the money, or rejects it (lib/paymentApprovalPolicy.js).
+  const [linkTarget, setLinkTarget] = useState<LinkTarget | null>(null);
+  const [linkBusy, setLinkBusy] = useState(false);
+  const linkAndApprove = async (link: TransferLink | null) => {
+    if (!linkTarget) return;
+    setLinkBusy(true);
+    try {
+      const method = linkTarget.method || (link && 'method' in link ? link.method : undefined);
+      await mysqlAdmin.adminPatch(`/admin/payments/${encodeURIComponent(linkTarget.id)}/status`, { status: 'paid', transfer: link, paymentMethod: method });
+      setLinkTarget(null);
+      await Promise.all([reloadSubscribers(), reloadOrders()]);
+      notify('success', `✅ اتربطت دفعة ${linkTarget.name} بالتحويل واتعتمدت`);
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر الربط');
+    } finally { setLinkBusy(false); }
+  };
               const omSubs = salesOwnSubscribers;
               const omAllPay = omSubs.flatMap(s => (s.paymentHistory||[]).map(p => ({
                 ...p, clientName: s.name, clientCode: s.clientCode||s.id, clientId: s.id, subEmail: s.email,
@@ -144,26 +165,30 @@ export function OrdersOnlineManagerView({ props, actions }: { props: OrdersTabPr
                                 {omOrdReviewTab==='review' && canManageFinancial && (
                                   <td className="px-2 py-2 border border-gray-200 text-center">
                                     <div className="flex items-center justify-center gap-1">
-                                       {!storedMethod && (
-                                         <select
-                                           aria-label="طريقة الدفع"
-                                           value={approveMethod[payId] || ''}
-                                           onChange={e=>setApproveMethod(prev=>({ ...prev, [payId]: e.target.value }))}
-                                           className={`text-[10px] rounded-lg px-1 py-1 border-2 font-bold ${approveMethod[payId] ? 'border-gray-200 bg-white' : 'border-amber-400 bg-amber-50 text-amber-800'}`}
-                                         >
-                                           <option value="">طريقة الدفع…</option>
-                                           {paymentBoxes.map((m: string) => <option key={m} value={m}>{m}</option>)}
-                                         </select>
-                                       )}
-                                       <button disabled={!storedMethod && !approveMethod[payId]} onClick={async()=>{
-                                         try {
-                                           await mysqlAdmin.updatePaymentStatus(payId, 'paid', undefined, approveMethod[payId] || undefined);
-                                           await Promise.all([reloadSubscribers(), reloadOrders()]);
-                                           notify('success', 'تم اعتماد الدفعة وإنشاء القيد المحاسبي ✅');
-                                         } catch (error) {
-                                           notify('error', error instanceof Error ? error.message : 'تعذر اعتماد الدفعة');
-                                         }
-                                       }} className="text-xs bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-2 py-1 rounded-lg font-bold">قبول</button>
+                                       {canAcceptDirectly && (<>
+                                         {!storedMethod && (
+                                           <select
+                                             aria-label="طريقة الدفع"
+                                             value={approveMethod[payId] || ''}
+                                             onChange={e=>setApproveMethod(prev=>({ ...prev, [payId]: e.target.value }))}
+                                             className={`text-[10px] rounded-lg px-1 py-1 border-2 font-bold ${approveMethod[payId] ? 'border-gray-200 bg-white' : 'border-amber-400 bg-amber-50 text-amber-800'}`}
+                                           >
+                                             <option value="">طريقة الدفع…</option>
+                                             {paymentBoxes.map((m: string) => <option key={m} value={m}>{m}</option>)}
+                                           </select>
+                                         )}
+                                         <button disabled={!storedMethod && !approveMethod[payId]} onClick={async()=>{
+                                           try {
+                                             await mysqlAdmin.updatePaymentStatus(payId, 'paid', undefined, approveMethod[payId] || undefined);
+                                             await Promise.all([reloadSubscribers(), reloadOrders()]);
+                                             notify('success', 'تم اعتماد الدفعة وإنشاء القيد المحاسبي ✅');
+                                           } catch (error) {
+                                             notify('error', error instanceof Error ? error.message : 'تعذر اعتماد الدفعة');
+                                           }
+                                         }} className="text-xs bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-2 py-1 rounded-lg font-bold">قبول</button>
+                                       </>)}
+                                       <button type="button" onClick={()=>setLinkTarget({ id: payId, name: p.clientName || '', amount: payAmt, currency: payCur, method: storedMethod, reference: (p as {transactionId?:string}).transactionId || '', at: cairoDay((p as {at?:string}).at) })}
+                                         className="text-xs bg-violet-600 hover:bg-violet-700 text-white px-2 py-1 rounded-lg font-bold" title="ربط بالتحويل واعتماد">🔗 ربط</button>
                                        <button onClick={async()=>{
                                          try {
                                            await mysqlAdmin.updatePaymentStatus(payId, 'failed');
@@ -184,6 +209,11 @@ export function OrdersOnlineManagerView({ props, actions }: { props: OrdersTabPr
                       </table>
                     </div>
                   </div>
+                  {linkTarget && (
+                    <LinkTransferDialog title={linkTarget.name} customerName={linkTarget.name} amount={linkTarget.amount} currency={linkTarget.currency}
+                      method={linkTarget.method} reference={linkTarget.reference} date={linkTarget.at} busy={linkBusy}
+                      onConfirm={link => void linkAndApprove(link)} onClose={() => setLinkTarget(null)} />
+                  )}
                 </article>
               );
 }

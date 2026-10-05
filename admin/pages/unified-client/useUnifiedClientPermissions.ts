@@ -35,8 +35,13 @@ export function useUnifiedClientPermissions(params: {
   // courses tab — prices, access, locking — to collection.
   const canSeeCourses = String(currentStaff?.role || '').toLowerCase() !== 'collection';
 
+  // «تغيير او مسح دفعه او تغيير كورس لازم يكون من المدير فقط» — the server
+  // holds the same line (api/lib/paymentCorrections.js canCorrectPayments).
+  const canCorrectPayments = isAdmin || String(currentStaff?.role || '').toLowerCase() === 'manager';
+
   return {
     currentStaff,
+    canCorrectPayments,
     isOnlineManager,
     isCollectionManager,
     canManageCourseAccess,

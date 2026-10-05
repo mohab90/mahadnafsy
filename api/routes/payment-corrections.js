@@ -45,11 +45,29 @@ async function inTransaction(work) {
   } finally { conn.release(); }
 }
 
+// The payments page lists website orders by the order's id; a confirmed order's
+// money is the payments row it produced, found the way PATCH /admin/orders finds it.
+async function paymentIdFor(conn, tenantId, id) {
+  const [[direct]] = await conn.query('SELECT id FROM payments WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1', [id, tenantId]);
+  if (direct) return direct.id;
+  const [[order]] = await conn.query('SELECT transaction_id FROM orders WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1', [id, tenantId]);
+  if (!order?.transaction_id) return id;
+  const [[twin]] = await conn.query(
+    `SELECT id FROM payments WHERE tenant_id=? AND deleted_at IS NULL AND (id=? OR transaction_id=?)
+      ORDER BY created_at DESC LIMIT 1`, [tenantId, order.transaction_id, order.transaction_id]);
+  return twin ? twin.id : id;
+}
+
 router.delete('/api/admin/payments/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), managersOnly, async (req, res) => {
   try {
-    const result = await inTransaction(conn => voidPayment(conn, {
-      tenantId: req.tenantId, paymentId: req.params.id, actor: actorOf(req), reason: req.body?.reason,
-    }));
+    const result = await inTransaction(async conn => {
+      const paymentId = await paymentIdFor(conn, req.tenantId, req.params.id);
+      const voided = await voidPayment(conn, { tenantId: req.tenantId, paymentId, actor: actorOf(req), reason: req.body?.reason });
+      if (paymentId !== req.params.id) {
+        await conn.query('UPDATE orders SET deleted_at=NOW() WHERE id=? AND tenant_id=? AND deleted_at IS NULL', [req.params.id, req.tenantId]);
+      }
+      return voided;
+    });
     res.json({ ok: true, ...result });
   } catch (error) { fail(res, error, '[payments void]'); }
 });

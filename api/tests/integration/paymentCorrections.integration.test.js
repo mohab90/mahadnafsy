@@ -39,7 +39,7 @@ async function call(router, method, route, { params = {}, body = {}, staff = nul
 async function clean() {
   await pool.query('DELETE FROM journal_entry_lines WHERE entry_id IN (SELECT id FROM journal_entries WHERE tenant_id=?)', [TENANT]).catch(() => {});
   for (const table of ['journal_entries', 'payment_audit_log', 'financial_audit_log', 'crm_commissions', 'instructor_fees', 'financial_documents',
-    'entitlement_events', 'enrollments', 'payments', 'subscribers', 'courses', 'staff', 'tenant_settings', 'outbox']) {
+    'entitlement_events', 'enrollments', 'orders', 'payments', 'subscribers', 'courses', 'staff', 'tenant_settings', 'outbox']) {
     await pool.query(`DELETE FROM ${table} WHERE tenant_id=?`, [TENANT]).catch(() => {});
   }
 }
@@ -151,4 +151,19 @@ test('moving a payment to another course moves the access with it', { skip }, as
   const [enrolments] = await pool.query("SELECT course_id, status FROM enrollments WHERE tenant_id=? AND subscriber_id='sub-pc-1' ORDER BY course_id", [TENANT]);
   const active = enrolments.filter(e => e.status === 'active').map(e => e.course_id);
   assert.deepEqual(active, ['co-pc-2']);
+});
+
+// The payments page lists a website order by the order's id; deleting it there
+// voids the payment the order produced and archives the order with it.
+test('deleting from the payments page by an order id voids that order\'s payment', { skip }, async () => {
+  const id = await record({ transactionId: 'TX-PC-ORDER', courseId: 'co-pc-2' });
+  await pool.query(
+    `INSERT INTO orders (id, tenant_id, type, item_id, item_title, amount, currency, customer_name, status, transaction_id)
+     VALUES ('ord-pc-1', ?, 'course', 'co-pc-2', 'كورس تاني', 1000, 'EGP', 'عميل', 'PAID', 'TX-PC-ORDER')`, [TENANT]);
+  const res = await call(corrections, 'delete', '/api/admin/payments/:id', { params: { id: 'ord-pc-1' }, body: { reason: 'اتكررت' }, staff: MANAGER });
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  const [[pay]] = await pool.query('SELECT deleted_at FROM payments WHERE id=?', [id]);
+  const [[order]] = await pool.query("SELECT deleted_at FROM orders WHERE id='ord-pc-1'");
+  assert.ok(pay.deleted_at, 'the payment behind the order is voided');
+  assert.ok(order.deleted_at, 'the order row leaves the list');
 });
