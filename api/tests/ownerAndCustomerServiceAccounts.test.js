@@ -92,6 +92,6 @@ test('the Dokki desk\'s leads are the ones it was handed, from every lead route'
   assert.match(lists, /const branchScope = leadScope\(req, 'leads'\);/,
     'the staff lead list kept its own branch rule');
   const leads = leadsRouteSource();
-  assert.match(leads, /else if \(isNew && !salesId && !csId && DAQQI_TEAM_ROLES\.includes\(staffRole\)\) \{\s*[\s\S]{0,200}salesId = req\.staffRecord\.id;/,
+  assert.match(leads, /else if \(isNew && !salesId && !csId && BRANCH_DESK_ROLES\.includes\(staffRole\)\) \{\s*[\s\S]{0,200}salesId = req\.staffRecord\.id;/,
     'a lead the desk adds went to the next sales rep and left its list');
 });

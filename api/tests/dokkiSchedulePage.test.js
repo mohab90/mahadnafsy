@@ -73,7 +73,8 @@ test('the strip stands where the «سكّن N» list stood', () => {
   assert.doesNotMatch(page, /unplacedByRound/);
   assert.doesNotMatch(page, /عملاء حاجزين ومش مسكّنين في روند/);
   const strip = read('admin/pages/dashboard/tabs/daqqi/DaqqiOverviewStrip.tsx');
-  for (const label of ['عملاء الدقي', 'مسكّنين في روندات', 'حاجزين ومش مسكّنين', 'روندات شغالة', 'محاضرات الأسبوع ده', 'محصّل الروندات المفتوحة']) {
+  assert.ok(strip.includes('`عملاء ${physicalBranch.label}`'), 'the branch\'s clients');
+  for (const label of ['مسكّنين في روندات', 'حاجزين ومش مسكّنين', 'روندات شغالة', 'محاضرات الأسبوع ده', 'محصّل الروندات المفتوحة']) {
     assert.ok(strip.includes(`'${label}'`), label);
   }
 });

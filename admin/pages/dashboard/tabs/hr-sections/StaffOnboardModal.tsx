@@ -22,8 +22,8 @@ export type OnboardResult = {
  * dashboard; the API validates the value against its own STAFF_ROLES set.
  */
 const HIRE_ROLES: RoleKey[] = [
-  'sales', 'collection', 'support', 'reception_daqqi', 'accountant', 'hr',
-  'online_manager', 'daqqi_manager', 'sales_collection_manager', 'manager', 'admin',
+  'sales', 'collection', 'support', 'reception_daqqi', 'reception_tagamoa', 'accountant', 'hr',
+  'online_manager', 'daqqi_manager', 'tagamoa_manager', 'sales_collection_manager', 'manager', 'admin',
   'instructor', 'trainer', 'expert', 'consultant', 'other',
 ];
 const ROLE_OPTIONS = HIRE_ROLES.map(role => ({

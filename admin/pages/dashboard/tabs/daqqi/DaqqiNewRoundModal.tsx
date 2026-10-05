@@ -12,6 +12,7 @@ import type { DaqqiDraftType } from './daqqiScheduleUtils';
 import { isEnrolledInCourse } from './daqqiScheduleUtils';
 import { isCollected } from '../../../../lib/money';
 import { cairoDay } from '../../../../../shared/cairoDate';
+import { usePhysicalBranch } from '../../../../lib/physicalBranch';
 
 
 export function DaqqiNewRoundModal({
@@ -57,6 +58,7 @@ export function DaqqiNewRoundModal({
   daqqiSubs: SubscriberItem[];
   handleSaveNewRound: () => void | Promise<void>;
 }) {
+  const physicalBranch = usePhysicalBranch();
   return (
       // No Modal footer: this is a two-step dialog and each step carries its
       // own buttons.
@@ -159,7 +161,7 @@ export function DaqqiNewRoundModal({
                       </div>
                       {displayList.length === 0 ? (
                         <div className="border border-dashed border-gray-300 rounded-xl p-6 text-center text-gray-400 text-sm mb-2">
-                          {daqqiShowAllClients ? 'لا يوجد عملاء غير مسكّنين في فرع الدقي.' : 'لا يوجد عملاء حاجزين على هذا الكورس وغير مسكّنين.'}
+                          {daqqiShowAllClients ? `لا يوجد عملاء غير مسكّنين في فرع ${physicalBranch.label}.` : 'لا يوجد عملاء حاجزين على هذا الكورس وغير مسكّنين.'}
                         </div>
                       ) : (
                         <div className="space-y-2 max-h-64 overflow-y-auto mb-2">

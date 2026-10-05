@@ -92,7 +92,7 @@ const DEFAULT_APPROVAL_BANDS = Object.freeze([
   { minPercent: 0, maxPercent: 10, level: 'none', roles: [] },
   {
     minPercent: 10.01, maxPercent: 20, level: 'manager',
-    roles: ['admin', 'manager', 'online_manager', 'sales_collection_manager', 'daqqi_manager'],
+    roles: ['admin', 'manager', 'online_manager', 'sales_collection_manager', 'daqqi_manager', 'tagamoa_manager'],
   },
   { minPercent: 20.01, maxPercent: 100, level: 'executive', roles: ['admin', 'manager'] },
 ]);

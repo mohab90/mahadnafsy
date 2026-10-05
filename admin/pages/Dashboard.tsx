@@ -61,6 +61,7 @@ import { useNotificationsBell } from './dashboard/useNotificationsBell';
 import { useStaffOwnData } from './dashboard/useStaffOwnData';
 import { useDashboardDerived } from './dashboard/useDashboardDerived';
 import { useBranches } from '../hooks/useBranches';
+import { PhysicalBranchProvider, branchOfRole, screenForTab, tabForScreen } from '../lib/physicalBranch';
 import { useVisibleInterval } from '../../shared/useVisibleInterval';
 
 import {
@@ -346,10 +347,19 @@ const Dashboard: React.FC = () => {
       setPendingProofsCount(Array.isArray(rows) ? rows.length : 0);
     }).catch(() => {});
   }, [isAdmin]);
-  const setActiveTab = useCallback((tab: TabKey) => {
+  const setRouteTab = useCallback((tab: TabKey) => {
     setActiveTabState(tab);
     navigate(`/dashboard/${urlForTab(tab)}`);
   }, [navigate]);
+  // «فرع التجمع زي بتاع الدقي بالظبط»: a tagamoa_* tab shows the daqqi_* screen
+  // for the Tagamoa branch (lib/physicalBranch.tsx). The screens see the Dokki
+  // name; a link they open stays in the branch being shown.
+  const { screen: activeScreen, branch: physicalBranch } = screenForTab(activeTabState);
+  const ownBranchRole = branchOfRole(currentStaff?.role);
+  const setActiveTab = useCallback(
+    (tab: TabKey) => setRouteTab(tabForScreen(tab, physicalBranch) as TabKey),
+    [setRouteTab, physicalBranch],
+  );
 
   // For the panels that type their navigation callback as `(tab: string)`
   // because they build the name from data. setActiveTab cannot be handed to them
@@ -360,7 +370,7 @@ const Dashboard: React.FC = () => {
     if (isTabKey(tab)) { setActiveTab(tab); return; }
     console.warn(`[dashboard] refused navigation to unknown tab: ${tab}`);
   }, [setActiveTab]);
-  const activeTab = activeTabState;
+  const activeTab = activeScreen as TabKey;
 
 
   const {
@@ -565,8 +575,22 @@ const Dashboard: React.FC = () => {
 
   // Map each tab key to the minimum required permission (defined at module level)
 
+  // The Tagamoa section shows once the branch is on (الإعدادات ← الفروع), and a
+  // branch's own staff see their branch's section only.
+  // A Tagamoa employee's bar lists the Dokki screens' names; they open at Tagamoa.
+  const staffNavTab = useCallback(
+    (tab: TabKey) => setRouteTab((ownBranchRole === 'TAGAMOA' ? tabForScreen(tab, 'TAGAMOA') : tab) as TabKey),
+    [setRouteTab, ownBranchRole],
+  );
+  const tagamoaOn = branchesFromTable.some(branch => String(branch.id).toUpperCase() === 'TAGAMOA');
+  const ownBranch = branchOfRole(currentStaff?.role);
   const visibleMenuGroups = React.useMemo(() => {
-    if (isAdmin) return menuGroups;
+    const groups = menuGroups.filter(group => {
+      if (group.key === 'tagamoa') return tagamoaOn && ownBranch !== 'DAQQI';
+      if (group.key === 'daqqi') return ownBranch !== 'TAGAMOA';
+      return true;
+    });
+    if (isAdmin) return groups;
     // Build effective permissions via master resolvePermissions (admin/constants/permissions.ts)
     const resolvedPerms = currentStaff
       ? masterResolvePermissions({ role: currentStaff.role as RoleKey, permissions: currentStaff.permissions as PermissionKey[] | undefined })
@@ -575,7 +599,7 @@ const Dashboard: React.FC = () => {
       if (resolvedPerms === '*') return true;
       return (resolvedPerms as string[]).includes(p);
     };
-    return menuGroups.map(group => ({
+    return groups.map(group => ({
       ...group,
       items: group.items.filter(item => {
         const required = TAB_PERMISSION_MAP[item.key];
@@ -588,7 +612,7 @@ const Dashboard: React.FC = () => {
         return !!required && hasPerm(required);
       }),
     })).filter(group => group.items.length > 0);
-  }, [menuGroups, isAdmin, currentStaff]);
+  }, [menuGroups, isAdmin, currentStaff, tagamoaOn, ownBranch]);
 
   // ----------------------------------------------------------------------
 
@@ -603,8 +627,12 @@ const Dashboard: React.FC = () => {
     else if (fullLeadTabs.has(activeTab)) void loadFullLeads();
     else if (fullSubscriberTabs.has(activeTab)) void loadFullSubscribers();
     // A branch screen reads that branch only — see branchSubscriberTabs.
-    else if (branchSubscriberTabs[activeTab]) loadBranchSubscribers(branchSubscriberTabs[activeTab]).catch(() => { /* retried on the next visit */ });
-  }, [activeTab, loadFullCrmData, loadFullLeads, loadFullSubscribers, loadBranchSubscribers]);
+    // The Dokki screens read the branch they are showing — Tagamoa's under tagamoa_*.
+    else if (branchSubscriberTabs[activeTab]) {
+      const branch = branchSubscriberTabs[activeTab] === 'DAQQI' ? physicalBranch : branchSubscriberTabs[activeTab];
+      loadBranchSubscribers(branch).catch(() => { /* retried on the next visit */ });
+    }
+  }, [activeTab, physicalBranch, loadFullCrmData, loadFullLeads, loadFullSubscribers, loadBranchSubscribers]);
 
   // The books' own revenue (the browser's sum only sees the newest 500 orders and
   // payments). Refreshed on a slow timer while the tab is in view; a failure
@@ -695,6 +723,8 @@ const Dashboard: React.FC = () => {
         pagination, so «السابق» and the page numbers could not be tapped at all.
         Restored to the original padding from md up, where the button clears the
         content column. */}
+    {/* Keyed by branch: the same screen at the other branch starts clean. */}
+    <PhysicalBranchProvider key={physicalBranch} branch={physicalBranch}>
     <div className="min-h-screen bg-gradient-to-br from-gray-100 via-white to-primary-50/30 pt-2 pb-28 md:pt-3 md:pb-8">
       <div className="container mx-auto px-4">
         <DashboardNavigation
@@ -707,8 +737,8 @@ const Dashboard: React.FC = () => {
           isSalesCollectionManager={isSalesCollectionManager}
           isAdmin={isAdmin}
           visibleMenuGroups={visibleMenuGroups}
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
+          activeTab={ownBranch === 'TAGAMOA' ? activeTab : activeTabState}
+          setActiveTab={staffNavTab}
           activeDropdownGroup={activeDropdownGroup}
           setActiveDropdownGroup={setActiveDropdownGroup}
           dropdownRect={dropdownRect}
@@ -1158,6 +1188,7 @@ const Dashboard: React.FC = () => {
       requireSubscriberApproval={isReceptionDaqqi}
       lockPrice={isCollectionRole}
     />
+    </PhysicalBranchProvider>
     </>
   );
 };

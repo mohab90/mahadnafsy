@@ -295,7 +295,7 @@ router.put('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
     }
     if (updates.email) updates.email = String(updates.email).trim().toLowerCase();
     if (updates.role) {
-      const roles = new Set(['INSTRUCTOR','TRAINER','EXPERT','SALES','MANAGER','ADMIN','SUPPORT','RECEPTION_DAQQI','COLLECTION','ACCOUNTANT','CONSULTANT','OTHER','ONLINE_MANAGER','DAQQI_MANAGER','SALES_COLLECTION_MANAGER','HR']);
+      const roles = new Set(['INSTRUCTOR','TRAINER','EXPERT','SALES','MANAGER','ADMIN','SUPPORT','RECEPTION_DAQQI','COLLECTION','ACCOUNTANT','CONSULTANT','OTHER','ONLINE_MANAGER','DAQQI_MANAGER','SALES_COLLECTION_MANAGER','HR','TAGAMOA_MANAGER','RECEPTION_TAGAMOA']);
       updates.role = String(updates.role).toUpperCase();
       if (!roles.has(updates.role)) {
         await conn.rollback(); transactionStarted = false;

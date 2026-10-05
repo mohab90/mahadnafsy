@@ -1,4 +1,5 @@
 import { CalendarDays, List, Plus, UserPlus } from 'lucide-react';
+import { usePhysicalBranch } from '../../../../lib/physicalBranch';
 
 export type DaqqiScheduleView = 'table' | 'calendar';
 
@@ -18,11 +19,12 @@ export function DaqqiScheduleHeader({
   onCreateRound,
   onAddClient,
 }: DaqqiScheduleHeaderProps) {
+  const physicalBranch = usePhysicalBranch();
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
         <CalendarDays size={18} className="text-primary-500" />
-        جدول كورسات الدقي
+        جدول كورسات {physicalBranch.label}
       </h3>
       <div className="flex items-center gap-2">
         <div className="flex rounded-xl border border-gray-200 overflow-hidden">

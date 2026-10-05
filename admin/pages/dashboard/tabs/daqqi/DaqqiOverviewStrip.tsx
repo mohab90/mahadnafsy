@@ -3,13 +3,15 @@
 // them out.
 
 import type { daqqiOverview } from './daqqiScheduleUtils';
+import { usePhysicalBranch } from '../../../../lib/physicalBranch';
 
 const num = (value: number) => value.toLocaleString('ar-EG-u-nu-latn');
 
 export function DaqqiOverviewStrip({ overview }: { overview: ReturnType<typeof daqqiOverview> }) {
+  const physicalBranch = usePhysicalBranch();
   const share = overview.clients ? Math.round((overview.placed / overview.clients) * 100) : 0;
   const tiles: { label: string; value: string; note: string; tone?: 'attention' }[] = [
-    { label: 'عملاء الدقي', value: num(overview.clients), note: 'كل عملاء الفرع' },
+    { label: `عملاء ${physicalBranch.label}`, value: num(overview.clients), note: 'كل عملاء الفرع' },
     { label: 'مسكّنين في روندات', value: num(overview.placed), note: `${num(share)}% من العملاء` },
     {
       label: 'حاجزين ومش مسكّنين', value: num(overview.waiting), note: 'كورسهم له روند مفتوح',

@@ -28,7 +28,9 @@ async function listBranches(tenantId = DEFAULT_TENANT) {
       return rows;
     });
   } catch {
-    return BRANCHES.map((k) => ({
+    // No branches configured: the built-in list, without Tagamoa — it stays
+    // hidden until it is added and turned on in الإعدادات ← الفروع.
+    return BRANCHES.filter((k) => k !== 'TAGAMOA').map((k) => ({
       branch_key: k, label: BRANCH_LABELS_AR[k],
       branch_type: k.startsWith('ONLINE') ? 'online' : 'physical',
       timezone: 'Africa/Cairo', currency: 'EGP',

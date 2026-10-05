@@ -295,7 +295,7 @@ export interface LeadItem {
   internalQuickNote?: string; // Internal team-only note persisted in CRM JSON
 }
 
-export type StaffRole = 'instructor' | 'trainer' | 'expert' | 'sales' | 'manager' | 'admin' | 'support' | 'reception_daqqi' | 'daqqi_manager' | 'collection' | 'accountant' | 'consultant' | 'sales_collection_manager' | 'hr' | 'online_manager' | 'other';
+export type StaffRole = 'instructor' | 'trainer' | 'expert' | 'sales' | 'manager' | 'admin' | 'support' | 'reception_daqqi' | 'daqqi_manager' | 'reception_tagamoa' | 'tagamoa_manager' | 'collection' | 'accountant' | 'consultant' | 'sales_collection_manager' | 'hr' | 'online_manager' | 'other';
 
 export type StaffPermission =
   // Dashboard overview
@@ -552,6 +552,8 @@ export interface DaqqiRoundAttendee {
 export interface DaqqiRound {
   id: string;
   code: string;
+  /** The physical branch the round runs at — DAQQI, or TAGAMOA (api/lib/physicalBranches.js). */
+  branch?: string;
   courseId: string;
   instructorId: string;
   instructorName: string;

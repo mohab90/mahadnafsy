@@ -510,6 +510,7 @@ const SYS_DEFAULTS = {
     { key: 'COLLECTION',      label: 'تحصيل',             is_active: true },
     { key: 'ACCOUNTANT',      label: 'محاسب',             is_active: true },
     { key: 'RECEPTION_DAQQI', label: 'استقبال دقي',       is_active: true },
+    { key: 'RECEPTION_TAGAMOA', label: 'استقبال التجمع',  is_active: true },
     { key: 'EXPERT',          label: 'خبير',              is_active: false },
     { key: 'OTHER',           label: 'أخرى',              is_active: true },
   ],

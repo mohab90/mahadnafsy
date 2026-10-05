@@ -9,6 +9,7 @@ import { TabErrorBoundary } from '../../../shared/ui/TabErrorBoundary';
 import type { TabKey } from './navigation';
 import type { NotifyFn } from '../../types';
 import { TeamReportPanel } from './tabs/reports/TeamReportPanel';
+import { usePhysicalBranch } from '../../lib/physicalBranch';
 import {
   AnalyticsTab,
   ArchivedClientsTab,
@@ -83,9 +84,10 @@ function CxTeamWithReport({ notify }: { notify: NotifyFn }) {
 }
 
 function DaqqiStatsWithAttendance({ notify }: { notify: NotifyFn }) {
+  const physicalBranch = usePhysicalBranch();
   return (
     <div className="space-y-6">
-      <TeamReportPanel team="daqqi" notify={notify} />
+      <TeamReportPanel team={physicalBranch.filter} notify={notify} />
       <AnalyticsTab notify={notify} />
       <DaqqiAttendanceTab notify={(message, type) => notify(type || 'info', message)} />
     </div>
@@ -145,13 +147,15 @@ function LoadingSpinner({ tone = 'indigo' }: { tone?: NotifyTabEntry['spinner'] 
 
 export function GeneralDashboardTabs({ activeTab, notify }: { activeTab: TabKey; notify: NotifyFn }) {
   const match = notifyTabs.find(tab => tab.key === activeTab);
+  // «محاسبة الدقي» shown in the Tagamoa section filters to Tagamoa.
+  const physicalBranch = usePhysicalBranch();
 
   if (match) {
     const { Component, branchFilter, spinner } = match;
     return (
       <Suspense fallback={<LoadingSpinner tone={spinner} />}>
         <TabErrorBoundary>
-          <Component notify={notify} {...(branchFilter ? { branchFilter } : {})} />
+          <Component notify={notify} {...(branchFilter ? { branchFilter: branchFilter === 'daqqi' ? physicalBranch.filter : branchFilter } : {})} />
         </TabErrorBoundary>
       </Suspense>
     );

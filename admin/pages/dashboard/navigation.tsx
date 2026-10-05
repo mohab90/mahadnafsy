@@ -127,6 +127,14 @@ export type TabKey =
   | 'nps_dashboard'
   | 'consultation_calendar'
   | 'daqqi_team'
+  // «فرع التجمع زي بتاع الدقي بالظبط»: the same screens at Tagamoa (lib/physicalBranch.tsx).
+  | 'tagamoa_schedule'
+  | 'tagamoa_clients'
+  | 'tagamoa_team'
+  | 'tagamoa_accounting'
+  | 'tagamoa_stats'
+  | 'tagamoa_attendance'
+  | 'tagamoa_waitlist'
   | 'recurring_expenses'
   | 'hr'
   | 'hr_analytics'
@@ -253,6 +261,21 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'daqqi_accounting', label: 'محاسبة الدقي', icon: CreditCard },
       { key: 'daqqi_stats', label: 'الإحصائيات والحضور', icon: BarChart3 },
       { key: 'waitlist', label: 'انتظار الدقي', icon: Clock },
+    ],
+  },
+  {
+    // Hidden until the Tagamoa branch is turned on in الإعدادات ← الفروع (Dashboard.tsx).
+    key: 'tagamoa',
+    label: 'التجمع',
+    icon: CalendarDays,
+    color: 'text-cyan-600',
+    items: [
+      { key: 'tagamoa_schedule', label: 'الجدول والعملاء', icon: CalendarDays },
+      { key: 'tagamoa_clients', label: 'عملاء التجمع', icon: Users },
+      { key: 'tagamoa_team', label: 'فريق التجمع', icon: Users },
+      { key: 'tagamoa_accounting', label: 'محاسبة التجمع', icon: CreditCard },
+      { key: 'tagamoa_stats', label: 'الإحصائيات والحضور', icon: BarChart3 },
+      { key: 'tagamoa_waitlist', label: 'انتظار التجمع', icon: Clock },
     ],
   },
   {

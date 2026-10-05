@@ -45,6 +45,7 @@ import { DaqqiNewRoundModal } from './daqqi/DaqqiNewRoundModal';
 import { DaqqiAddClientsModal } from './daqqi/DaqqiAddClientsModal';
 import { DaqqiRoundRow } from './daqqi/DaqqiRoundRow';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
+import { usePhysicalBranch } from '../../../lib/physicalBranch';
 // The same payment screen as everywhere else. A booking taken at the Daqqi
 // desk used to open a separate 623-line copy of it.
 const PaymentModal = React.lazy(() => import('../../../components/PaymentModal'));
@@ -74,16 +75,17 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
 
   // «خلي مسار واحد اللى بيظهر تحت الكورسات … او اقدر اختار»: the one path
   // shown under each course, chosen by the Dokki manager for everyone.
+  const physicalBranch = usePhysicalBranch();
   const [coursePaths, setCoursePaths] = useState<Record<string, string>>({});
   useEffect(() => {
-    mysqlAdmin.adminGet<Record<string, string>>('/admin/dokki/course-paths')
+    mysqlAdmin.adminGet<Record<string, string>>(`/admin/dokki/course-paths?branch=${physicalBranch.key}`)
       .then(paths => setCoursePaths(paths || {}))
       .catch(() => setCoursePaths({}));
-  }, []);
-  const canChoosePath = isAdmin || currentStaff?.role === 'daqqi_manager';
+  }, [physicalBranch.key]);
+  const canChoosePath = isAdmin || currentStaff?.role === 'daqqi_manager' || currentStaff?.role === 'tagamoa_manager';
   const chooseCoursePath = async (courseId: string, bundleId: string) => {
     try {
-      setCoursePaths(await mysqlAdmin.adminPut<Record<string, string>>('/admin/dokki/course-paths', { courseId, bundleId }));
+      setCoursePaths(await mysqlAdmin.adminPut<Record<string, string>>('/admin/dokki/course-paths', { courseId, bundleId, branch: physicalBranch.key }));
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر حفظ المسار');
     }
@@ -103,7 +105,11 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
       .filter(Boolean) as SubscriberItem[];
   }, [subscribersOverride, ctxSubscribers, locallyAddedSubIds]);
 
-  const sourceDaqqiRounds = roundsOverride ?? ctxRounds;
+  // The rounds of the branch this screen shows (lib/physicalBranch.tsx).
+  const sourceDaqqiRounds = React.useMemo(
+    () => (roundsOverride ?? ctxRounds).filter(round => (round.branch || 'DAQQI') === physicalBranch.key),
+    [roundsOverride, ctxRounds, physicalBranch.key],
+  );
   const [attendanceCounts, setAttendanceCounts] = useState<Record<string, number>>({});
   const daqqiRounds = React.useMemo(
     () => sourceDaqqiRounds.map(round => ({
@@ -117,8 +123,11 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
   );
   const doUpdateRound = async (round: DaqqiRound) =>
     onRoundUpdate ? (await onRoundUpdate(round)) !== false : ctxUpdateDaqqiRound(round);
-  const doAddRound = async (round: DaqqiRound) =>
-    onRoundCreate ? (await onRoundCreate(round)) !== false : ctxAddDaqqiRound(round);
+  // A new round belongs to the branch it was made at.
+  const doAddRound = async (round: DaqqiRound) => {
+    const atBranch = { ...round, branch: physicalBranch.key };
+    return onRoundCreate ? (await onRoundCreate(atBranch)) !== false : ctxAddDaqqiRound(atBranch);
+  };
 
   const [daqqiDraft, setDaqqiDraft] = useState<DaqqiDraftType>(blankDaqqiDraft());
   const [daqqiStep, setDaqqiStep] = useState<'form' | 'attendees'>('form');
@@ -172,12 +181,14 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
   // answers at once, before the client list is read again.
   const [localComms, setLocalComms] = useState<Record<string, CommunicationRecord[]>>({});
   const [daqqiAddClientModal, setDaqqiAddClientModal] = useState(false);
-  const [newClientDraft, setNewClientDraft] = useState<PaymentDraft>(blankPaymentDraft({ branch: 'DAQQI' }));
+  const [newClientDraft, setNewClientDraft] = useState<PaymentDraft>(blankPaymentDraft({ branch: physicalBranch.key }));
 
   const daqqiBranchIds = parseDaqqiBranchIds(content);
   const daqqiSubs = subscribers.filter(s => {
     const rawBranch = s.branch || '';
     if (branchFilter) return branchMatchesFilter(rawBranch, branchFilter);
+    // This branch's clients: Dokki's (with its legacy spellings), or Tagamoa's.
+    if (physicalBranch.key !== 'DAQQI') return normalizeDaqqiBranchId(rawBranch) === physicalBranch.key;
     return normalizeDaqqiBranchId(rawBranch) === 'DAQQI' || daqqiBranchIds.has(rawBranch);
   });
 
@@ -206,7 +217,8 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
 
   const instructorOptions = therapists;
   const receptionOptions = staffMembers.filter(s =>
-    s.role === 'reception_daqqi' && s.status === 'active'
+    // The branch's own desk: Dokki's reception, or Tagamoa's.
+    s.role === (physicalBranch.key === 'TAGAMOA' ? 'reception_tagamoa' : 'reception_daqqi') && s.status === 'active'
   );
   const daysOfWeek = DAQQI_DAYS_OF_WEEK;
   const timeSlotsList = DAQQI_TIME_SLOTS;
@@ -339,7 +351,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
     const round = daqqiRounds.find(r => r.id === roundId);
     const attendee = round?.attendees.find(a => a.subscriberId === subscriberId);
     // The last button in the row, one tap from «نقل»: asked before it is done.
-    if (!await confirmDialog(`مسح ${attendee?.name || 'العميل'} من روند ${round?.code || ''}؟ بيفضل في «عملاء الدقي» ودفعاته زي ما هي.`)) return;
+    if (!await confirmDialog(`مسح ${attendee?.name || 'العميل'} من روند ${round?.code || ''}؟ بيفضل في «عملاء ${physicalBranch.label}» ودفعاته زي ما هي.`)) return;
     try {
       await mysqlAdmin.removeDaqqiAttendee(roundId, subscriberId);
       bulkSetDaqqiRounds(daqqiRounds.map(r => (r.id === roundId
@@ -395,7 +407,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
         // Taken at the Dokki desk, so it is the Dokki branch's money — the vault, the branch
         // P&L and the owner's daily report read this column, and a client filed under another
         // branch carried their own onto a payment this desk took.
-        branch: 'DAQQI',
+        branch: physicalBranch.key,
         at: daqqiPayDraft.date,
         status: requirePaymentApproval ? 'pending' : 'paid',
       } as PaymentHistoryEntry,
@@ -408,7 +420,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
         note: [i.label, daqqiPayDraft.note].filter(Boolean).join(' | ') || undefined,
         paymentMethod: daqqiPayDraft.paymentMethod || undefined,
         source: 'daqqi' as const,
-        branch: 'DAQQI',
+        branch: physicalBranch.key,
         at: daqqiPayDraft.date,
         status: requirePaymentApproval ? 'pending' : ('paid' as 'paid'),
       } as PaymentHistoryEntry)),
@@ -570,7 +582,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
   //
   // PaymentModal owns closing and the receipt, so neither happens here.
   const handleDaqqiAddNewClient = async (draft: PaymentDraft) => {
-    const result = await createClientWithPayment(draft, { branch: draft.branch || 'DAQQI', source: 'reception' });
+    const result = await createClientWithPayment(draft, { branch: draft.branch || physicalBranch.key, source: 'reception' });
     await reloadSubscribers();
     // Seated with the booking when a round was picked: read the rosters back.
     const housing = housingOutcome([result]);
@@ -869,7 +881,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
           draft={newClientDraft}
           setDraft={setNewClientDraft}
           onSubmit={handleDaqqiAddNewClient}
-          onClose={() => { setDaqqiAddClientModal(false); setNewClientDraft(blankPaymentDraft({ branch: 'DAQQI' })); }}
+          onClose={() => { setDaqqiAddClientModal(false); setNewClientDraft(blankPaymentDraft({ branch: physicalBranch.key })); }}
           requirePaymentApproval={requirePaymentApproval}
         />
       )}

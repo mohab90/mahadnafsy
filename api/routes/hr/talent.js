@@ -26,6 +26,7 @@ const STAFF_ROLES = new Set([
   'INSTRUCTOR', 'TRAINER', 'EXPERT', 'SALES', 'MANAGER', 'ADMIN', 'SUPPORT',
   'RECEPTION_DAQQI', 'COLLECTION', 'ACCOUNTANT', 'CONSULTANT', 'OTHER',
   'ONLINE_MANAGER', 'DAQQI_MANAGER', 'SALES_COLLECTION_MANAGER', 'HR',
+  'TAGAMOA_MANAGER', 'RECEPTION_TAGAMOA',
 ]);
 const talentPoolJobId = tenantId => `talent-${String(tenantId || 'tenant-default').slice(0, 29)}`;
 

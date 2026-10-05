@@ -16,7 +16,7 @@ const { itemKey, releaseItemMoney, setAgreedPrice } = require('./agreedPrice');
 const { logClientEvent } = require('./clientHistory');
 
 /** «للمديرين»: the owner, the managers, and the two branch managers. */
-const MANAGER_ROLES = new Set(['admin', 'manager', 'online_manager', 'daqqi_manager', 'sales_collection_manager']);
+const MANAGER_ROLES = new Set(['admin', 'manager', 'online_manager', 'daqqi_manager', 'tagamoa_manager', 'sales_collection_manager']);
 const isCourseManager = req => !!req.isSuperAdmin || MANAGER_ROLES.has(String(req.staffRecord?.role || '').toLowerCase());
 
 const fail = (statusCode, message) => Object.assign(new Error(message), { statusCode });

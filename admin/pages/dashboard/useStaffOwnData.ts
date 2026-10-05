@@ -118,7 +118,8 @@ export function useStaffOwnData({
       setSalesOwnOrders(syntheticOrders);
 
       // Daqqi rounds — only for daqqi roles
-      const isDaqqiRole = staffRef.role === 'daqqi_manager' || staffRef.role === 'reception_daqqi' || staffRef.role === 'manager';
+      const isDaqqiRole = staffRef.role === 'daqqi_manager' || staffRef.role === 'reception_daqqi'
+        || staffRef.role === 'tagamoa_manager' || staffRef.role === 'reception_tagamoa' || staffRef.role === 'manager';
       if (isDaqqiRole) {
         try {
           const roundsRaw = (await mysqlAdmin.listAllDaqqiRounds()) as unknown as Record<string, unknown>[];

@@ -16,6 +16,7 @@ import { NotificationsBell } from './NotificationsBell';
 import type { LeadItem, StaffMember, SubscriberItem } from '../../types';
 import type { TabKey } from './navigation';
 import { isProfileTab } from './my-profile/profileTabs';
+import { branchOfRole, PHYSICAL_BRANCHES } from '../../lib/physicalBranch';
 
 type NotifRow = { id: string; type: string; title: string; message: string; read_at: string | null; created_at: string };
 type VisibleMenuGroup = {
@@ -224,6 +225,8 @@ export function DashboardNavigation(props: Props) {
   // bar was hidden for four of them and not for the Dokki manager or the sales
   // and collection manager, who got both — the whole panel's groups on top of
   // their own tabs.
+  // A branch's own staff: their bar names their branch (Dokki, or Tagamoa).
+  const staffBranchLabel = PHYSICAL_BRANCHES[branchOfRole(currentStaff?.role) || 'DAQQI'].label;
   const hasRoleBar = isSalesOnly || isCollectionRole || (isReceptionDaqqi && !isDaqqiManager) || isSupport
     || ((isDaqqiManager || isSalesCollectionManager || isOnlineManager) && !isAdmin);
   // Signing out has to tell the app, not only the server. This cleared the
@@ -461,7 +464,7 @@ export function DashboardNavigation(props: Props) {
             {isReceptionDaqqi && !isDaqqiManager && (
               <CompactRoleNav
                 tabs={[
-                  { key: 'daqqi_schedule', label: 'جدول الدقي', icon: CalendarDays },
+                  { key: 'daqqi_schedule', label: `جدول ${staffBranchLabel}`, icon: CalendarDays },
                   { key: 'daqqi_clients', label: 'عملائي', icon: UserCheck },
                   { key: 'leads', label: 'العملاء المحتملين', icon: UserSearch },
                   { key: 'orders', label: 'مدفوعاتي', icon: CreditCard },
@@ -504,12 +507,12 @@ export function DashboardNavigation(props: Props) {
             {isDaqqiManager && !isAdmin && (
               <CompactRoleNav
                 tabs={[
-                  { key: 'daqqi_schedule', label: 'جدول الدقي', icon: CalendarDays },
-                  { key: 'daqqi_clients', label: 'عملاء الدقي', icon: UserCheck },
+                  { key: 'daqqi_schedule', label: `جدول ${staffBranchLabel}`, icon: CalendarDays },
+                  { key: 'daqqi_clients', label: `عملاء ${staffBranchLabel}`, icon: UserCheck },
                   { key: 'leads', label: 'العملاء المحتملين', icon: UserSearch },
                   { key: 'orders', label: 'الطلبات والمدفوعات', icon: CreditCard },
-                  { key: 'daqqi_accounting', label: 'حسابات الدقي', icon: Wallet },
-                  { key: 'daqqi_stats', label: 'إحصائيات فريق الدقي', icon: BarChart3 },
+                  { key: 'daqqi_accounting', label: `حسابات ${staffBranchLabel}`, icon: Wallet },
+                  { key: 'daqqi_stats', label: `إحصائيات فريق ${staffBranchLabel}`, icon: BarChart3 },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 currentStaff={currentStaff} salesDataLoading={salesDataLoading}

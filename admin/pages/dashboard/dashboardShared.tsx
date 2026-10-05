@@ -182,7 +182,7 @@ const crmStatusColors: Record<LeadStatus | string, string> = {
   closed: 'text-gray-700',
   converted: 'text-emerald-700',
 };
-const crmRoleLabels: Record<string, string> = { instructor: 'محاضر', trainer: 'مدرب', expert: 'خبير', sales: 'مسئول مبيعات', manager: 'مدير', admin: 'أدمن', support: 'مسئول خدمة عملاء', reception_daqqi: 'ريسبشن الدقي', daqqi_manager: 'مدير الدقي', online_manager: 'مدير أونلاين', collection: 'مسئول تحصيل', accountant: 'محاسب', consultant: 'استشاري', sales_collection_manager: 'مدير المبيعات والتحصيل', hr: 'موارد بشرية', other: 'أخرى' };
+const crmRoleLabels: Record<string, string> = { instructor: 'محاضر', trainer: 'مدرب', expert: 'خبير', sales: 'مسئول مبيعات', manager: 'مدير', admin: 'أدمن', support: 'مسئول خدمة عملاء', reception_daqqi: 'ريسبشن الدقي', daqqi_manager: 'مدير الدقي', reception_tagamoa: 'ريسبشن التجمع', tagamoa_manager: 'مدير التجمع', online_manager: 'مدير أونلاين', collection: 'مسئول تحصيل', accountant: 'محاسب', consultant: 'استشاري', sales_collection_manager: 'مدير المبيعات والتحصيل', hr: 'موارد بشرية', other: 'أخرى' };
 
 // Role default permissions — derived from master constants (admin/constants/permissions.ts)
 // getDefaultPermsArray converts '*' (full access) → full list, so this is always StaffPermission[]
@@ -629,7 +629,15 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   daqqi_accounting:   'view_financial',
   daqqi_stats:        'manage_daqqi',
   daqqi_attendance:   'manage_daqqi',
+  // The same screens at Tagamoa, behind the same permissions.
+  tagamoa_schedule:   'manage_daqqi',
+  tagamoa_clients:    'manage_daqqi',
+  tagamoa_team:       ['manage_daqqi', 'view_perf_daqqi'],
+  tagamoa_accounting: 'view_financial',
+  tagamoa_stats:      'manage_daqqi',
+  tagamoa_attendance: 'manage_daqqi',
   waitlist:           'manage_daqqi',
+  tagamoa_waitlist:   'manage_daqqi',
   courses:            'view_courses',
   lectures:           'manage_lectures',
   instructors:        'manage_instructors',

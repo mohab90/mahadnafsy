@@ -1,10 +1,10 @@
 // What each team's report table shows, in the words the owner used — shared by
 // «تقارير الإدارة» and each team's own screen (api/lib/teamReports.js).
-export type TeamKey = 'sales' | 'online' | 'support' | 'daqqi';
+export type TeamKey = 'sales' | 'online' | 'support' | 'daqqi' | 'tagamoa';
 export type TeamColumn = { key: string; label: string; money?: boolean };
 
 export const TEAM_LABELS: Record<TeamKey, string> = {
-  sales: 'المبيعات', online: 'الأونلاين (التحصيل)', support: 'خدمة العملاء', daqqi: 'الدقي',
+  sales: 'المبيعات', online: 'الأونلاين (التحصيل)', support: 'خدمة العملاء', daqqi: 'الدقي', tagamoa: 'التجمع',
 };
 
 export const TEAM_COLUMNS: Record<TeamKey, TeamColumn[]> = {
@@ -30,6 +30,11 @@ export const TEAM_COLUMNS: Record<TeamKey, TeamColumn[]> = {
     { key: 'payments', label: 'دفعات سجلها' }, { key: 'moneyEgp', label: 'فلوس سجلها', money: true },
     { key: 'leadsReceived', label: 'ليدز استلمها' }, { key: 'leadsConverted', label: 'اتحولوا' },
   ],
+  tagamoa: [
+    { key: 'calls', label: 'مكالمات' }, { key: 'whatsapp', label: 'واتساب' }, { key: 'newClients', label: 'عملاء جدد سجلهم' },
+    { key: 'payments', label: 'دفعات سجلها' }, { key: 'moneyEgp', label: 'فلوس سجلها', money: true },
+    { key: 'leadsReceived', label: 'ليدز استلمها' }, { key: 'leadsConverted', label: 'اتحولوا' },
+  ],
 };
 
 // The headline of each team, above its table.
@@ -43,6 +48,7 @@ export const TEAM_TOTAL_LABELS: Record<TeamKey, Record<string, string>> = {
     surveysSent: 'استبيانات رضا اتبعتت', surveysAnswered: 'اتردت',
   },
   daqqi: { newClients: 'عملاء جدد', allClients: 'كل عملاء الدقي', payments: 'دفعات', moneyEgp: 'فلوس (ج.م)', activeRounds: 'روندات شغالة' },
+  tagamoa: { newClients: 'عملاء جدد', allClients: 'كل عملاء التجمع', payments: 'دفعات', moneyEgp: 'فلوس (ج.م)', activeRounds: 'روندات شغالة' },
 };
 
 export const REPORT_RANGES = [

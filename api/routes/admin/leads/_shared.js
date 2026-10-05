@@ -22,7 +22,7 @@ const { createRepRotation, getNextSalesRep, listDistributableReps } = require('.
 const { DEFAULT_ARCHIVE_SOURCE, excludeArchiveSourcesSql } = require('../../../lib/leadArchive');
 const { appendLeadInteraction, queueLeadWhatsAppBatch } = require('../../../lib/leadInteractions');
 const { grantCourseEntitlement } = require('../../../lib/entitlements');
-const { leadScope, branchesFromScope, DAQQI_TEAM_ROLES } = require('../../../lib/leadAccess');
+const { leadScope, branchesFromScope, DAQQI_TEAM_ROLES, BRANCH_DESK_ROLES } = require('../../../lib/leadAccess');
 const { claimWhatsAppIdentity, findAccountByPhone } = require('../../../lib/whatsappOtp');
 const {
   archiveLead,
@@ -141,6 +141,7 @@ module.exports = {
   leadScope,
   branchesFromScope,
   DAQQI_TEAM_ROLES,
+  BRANCH_DESK_ROLES,
   claimWhatsAppIdentity,
   findAccountByPhone,
   archiveLead,

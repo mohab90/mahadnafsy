@@ -19,6 +19,7 @@ const STAFF_ROLES = new Set([
   'instructor', 'trainer', 'expert', 'sales', 'manager', 'admin', 'support',
   'reception_daqqi', 'collection', 'accountant', 'consultant', 'other',
   'online_manager', 'daqqi_manager', 'sales_collection_manager', 'hr',
+  'tagamoa_manager', 'reception_tagamoa',
 ]);
 
 function validateApplicant(body, partial = false) {

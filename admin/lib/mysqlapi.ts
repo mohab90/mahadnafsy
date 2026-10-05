@@ -532,7 +532,8 @@ export const mysqlAdmin = {
   // every number in the browser from the whole rounds array, so showing
   // somebody the team's performance meant handing them every attendee's name
   // and payment. This returns the figures and keeps the rows.
-  getDaqqiPerformance: (): Promise<DaqqiPerformance> => apiFetch('/admin/daqqi-performance', {}, A),
+  getDaqqiPerformance: (branch?: string): Promise<DaqqiPerformance> =>
+    apiFetch(`/admin/daqqi-performance${branch ? `?branch=${encodeURIComponent(branch)}` : ''}`, {}, A),
   // The service team's figures, and the online team's — same reason as Dokki:
   // the screens counted their own numbers out of arrays a performance-only
   // viewer is refused, so they read zeros.

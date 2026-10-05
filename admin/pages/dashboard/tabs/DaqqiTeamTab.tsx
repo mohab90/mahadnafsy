@@ -3,6 +3,7 @@ import { Users, Calendar, BookOpen, ChevronDown, User } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { DaqqiPerformance, DaqqiRound } from '../../../types';
+import { usePhysicalBranch } from '../../../lib/physicalBranch';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -10,6 +11,8 @@ interface Props { notify: NotifyFn; }
 const ROLE_LABELS: Record<string, string> = {
   reception_daqqi: 'استقبال دقي',
   daqqi_manager: 'مدير دقي',
+  reception_tagamoa: 'استقبال التجمع',
+  tagamoa_manager: 'مدير التجمع',
   instructor: 'مدرب',
   trainer: 'مدرب',
 };
@@ -31,7 +34,13 @@ const revenueOf = (rounds: DaqqiRound[]) => {
 };
 
 const DaqqiTeamTab: React.FC<Props> = () => {
-  const { staffMembers, daqqiRounds, courses } = useSiteData();
+  const { staffMembers, daqqiRounds: allRounds, courses } = useSiteData();
+  // This branch's rounds and team — Dokki's, or Tagamoa's (lib/physicalBranch.tsx).
+  const physicalBranch = usePhysicalBranch();
+  const daqqiRounds = useMemo(
+    () => allRounds.filter(round => (round.branch || 'DAQQI') === physicalBranch.key),
+    [allRounds, physicalBranch.key],
+  );
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
   const [subTab, setSubTab] = useState<'team' | 'stats' | 'schedule'>('team');
 
@@ -44,17 +53,19 @@ const DaqqiTeamTab: React.FC<Props> = () => {
   const [perf, setPerf] = useState<DaqqiPerformance | null>(null);
   useEffect(() => {
     let live = true;
-    mysqlAdmin.getDaqqiPerformance()
+    mysqlAdmin.getDaqqiPerformance(physicalBranch.key)
       .then(data => { if (live) setPerf(data); })
       .catch(() => { if (live) setPerf(null); });
     return () => { live = false; };
-  }, []);
+  }, [physicalBranch.key]);
   // The rounds themselves: available to whoever may manage the department.
   const detailAvailable = perf ? perf.canSeeDetail : daqqiRounds.length > 0;
 
   const daqqiTeam = useMemo(() =>
-    staffMembers.filter(s => s.role === 'reception_daqqi' || s.role === 'daqqi_manager'),
-    [staffMembers]
+    staffMembers.filter(s => (physicalBranch.key === 'TAGAMOA'
+      ? s.role === 'reception_tagamoa' || s.role === 'tagamoa_manager'
+      : s.role === 'reception_daqqi' || s.role === 'daqqi_manager')),
+    [staffMembers, physicalBranch.key]
   );
   const instructors = useMemo(() =>
     staffMembers.filter(s => s.role === 'instructor' || s.role === 'trainer'),
@@ -116,8 +127,8 @@ const DaqqiTeamTab: React.FC<Props> = () => {
     <div className="space-y-5" dir="rtl">
       {/* Header */}
       <div className="bg-gradient-to-l from-teal-700 to-cyan-600 rounded-2xl p-5 text-white">
-        <h2 className="text-xl font-bold flex items-center gap-2"><Users size={22} /> فريق دقي</h2>
-        <p className="text-teal-200 text-sm mt-0.5">إدارة فريق وأداء مركز دقي</p>
+        <h2 className="text-xl font-bold flex items-center gap-2"><Users size={22} /> فريق {physicalBranch.label}</h2>
+        <p className="text-teal-200 text-sm mt-0.5">إدارة فريق وأداء فرع {physicalBranch.label}</p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
           {[
             { label: 'فريق الاستقبال', value: daqqiTeam.length },

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { cairoDateOnly } from '../../../../shared/cairoDate';
 import { ChevronDown, ChevronRight, Download } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
+import { usePhysicalBranch } from '../../../lib/physicalBranch';
 
 interface AttendeeRow {
   subscriberId: string;
@@ -56,6 +57,7 @@ function pctBar(pct: number | null) {
 }
 
 export default function DaqqiAttendanceTab({ notify }: { notify: (msg: string, t?: 'success' | 'error') => void }) {
+  const physicalBranch = usePhysicalBranch();
   const [rounds, setRounds] = useState<RoundReport[]>([]);
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'active' | 'finished' | ''>('active');
@@ -70,7 +72,8 @@ export default function DaqqiAttendanceTab({ notify }: { notify: (msg: string, t
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const qs = statusFilter ? `?status=${statusFilter}` : '';
+      // This branch's rounds only — Dokki's, or Tagamoa's (lib/physicalBranch.tsx).
+      const qs = `?branch=${physicalBranch.key}${statusFilter ? `&status=${statusFilter}` : ''}`;
       const r = await fetch(`/api/admin/daqqi/attendance-report${qs}`, { credentials: 'include', headers: adminAuthHeaders() });
       if (!r.ok) throw new Error(await r.text());
       setRounds(await r.json());
@@ -79,7 +82,7 @@ export default function DaqqiAttendanceTab({ notify }: { notify: (msg: string, t
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, physicalBranch.key]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -95,7 +98,8 @@ export default function DaqqiAttendanceTab({ notify }: { notify: (msg: string, t
   const collapseAll = () => setExpanded(new Set());
 
   const handleExport = async () => {
-    const qs = statusFilter ? `?status=${statusFilter}` : '';
+    // This branch's rounds only — Dokki's, or Tagamoa's (lib/physicalBranch.tsx).
+      const qs = `?branch=${physicalBranch.key}${statusFilter ? `&status=${statusFilter}` : ''}`;
     const url = `/api/admin/daqqi/attendance-export${qs}`;
     try {
       const r = await fetch(url, { credentials: 'include', headers: adminAuthHeaders() });
@@ -131,7 +135,7 @@ export default function DaqqiAttendanceTab({ notify }: { notify: (msg: string, t
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3 justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">كشف حضور الدقي</h2>
+          <h2 className="text-xl font-bold text-gray-900">كشف حضور {physicalBranch.label}</h2>
           <p className="text-sm text-gray-500 mt-0.5">
             {filtered.length} دورة · {totalAttendees} متدرب
             {avgPct !== null && <span className="mr-2">· متوسط الحضور: <span className={pctColor(avgPct)}>{avgPct}%</span></span>}

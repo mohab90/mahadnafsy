@@ -43,6 +43,7 @@ import { InstallmentPlansModal } from './online-clients-sections/InstallmentPlan
 import { CollectionSettingsModal } from './online-clients-sections/CollectionSettingsModal';
 import { OnlineImportModal } from './online-clients-sections/OnlineImportModal';
 import { itemKeyOf } from '../../../lib/agreedPrice';
+import { usePhysicalBranch } from '../../../lib/physicalBranch';
 import {
   calcSubscribersPaidEGP,
   formatCompactNumber,
@@ -117,15 +118,17 @@ export default function OnlineClientsTab({
   // opens. The rows arrive in pages behind it (SiteData.loadBranchSubscribers), so
   // the figure above the table is right long before the table is full — it used to
   // be however many of the 500 newest clients of all branches were Dokki's.
+  // Dokki's clients, or Tagamoa's when shown in its section (lib/physicalBranch.tsx).
+  const physicalBranch = usePhysicalBranch();
   const [daqqiServerCount, setDaqqiServerCount] = useState<{ total: number; byStatus: Record<string, number> } | null>(null);
   React.useEffect(() => {
     if (activeTab !== 'daqqi_clients') return undefined;
     let cancelled = false;
-    mysqlAdmin.countSubscribers('DAQQI')
+    mysqlAdmin.countSubscribers(physicalBranch.key)
       .then(result => { if (!cancelled) setDaqqiServerCount(result); })
       .catch(() => { /* the loaded rows are counted instead */ });
     return () => { cancelled = true; };
-  }, [activeTab]);
+  }, [activeTab, physicalBranch.key]);
 
   // Collection role — online clients tab state
   const [collOnlineSearch, setCollOnlineSearch] = useState('');
@@ -177,7 +180,7 @@ export default function OnlineClientsTab({
   // same booking screen, and nothing is added until the transfer is confirmed.
   // Their customers are online ones, so the draft starts there, not at Daqqi.
   const isCollectionStaff = String(currentStaff?.role || '').toLowerCase() === 'collection';
-  const newClientBranch = isCollectionStaff ? 'ONLINE_EGYPT' : 'DAQQI';
+  const newClientBranch = isCollectionStaff ? 'ONLINE_EGYPT' : physicalBranch.key;
   const [newClientDraft, setNewClientDraft] = useState<PaymentDraft>(blankPaymentDraft({ branch: newClientBranch }));
   // Creating the customer and recording the money in one place, through the
   // endpoint that journals it. This screen used to post the payment itself and
@@ -192,7 +195,7 @@ export default function OnlineClientsTab({
       : `✅ تم إضافة ${(draft.name || '').trim()}`) + housing.text);
   };
   const handleNewDaqqiClient = async (draft: PaymentDraft) => {
-    const result = await createClientWithPayment(draft, { branch: draft.branch || 'DAQQI', source: 'reception' });
+    const result = await createClientWithPayment(draft, { branch: draft.branch || physicalBranch.key, source: 'reception' });
     const fresh = await mysqlAdmin.listAllSubscribers();
     setSalesOwnSubscribers(fresh as unknown as SubscriberItem[]);
     const housing = housingOutcome([result]);
@@ -310,7 +313,7 @@ export default function OnlineClientsTab({
               // «إجمالي العملاء» (1491) was more than its own three markets
               // added up to (1477).
               const allCombined = isDaqqiClientsTab
-                ? branchScopedMasterList.filter(s => normBranchId(s.branch) === 'DAQQI')
+                ? branchScopedMasterList.filter(s => normBranchId(s.branch) === physicalBranch.key)
                 : branchScopedMasterList.filter(isOnlineClient);
               const holdsItem = (s: SubscriberItem, item: string) => (item.startsWith('bundle:')
                 ? (s.enrolledBundleIds || []).includes(item.slice(7))
@@ -556,19 +559,21 @@ export default function OnlineClientsTab({
                     <div className="mb-4 bg-gradient-to-l from-indigo-50 to-violet-50 border border-indigo-200 rounded-2xl p-4 space-y-3">
                       <div className="flex items-center gap-2">
                         <span className="text-base">📊</span>
-                        <h4 className="font-extrabold text-indigo-800 text-sm">{isDaqqiClientsTab ? 'توزيع العملاء على فريق الدقي' : 'توزيع العملاء على مسئولي التحصيل'}</h4>
+                        <h4 className="font-extrabold text-indigo-800 text-sm">{isDaqqiClientsTab ? `توزيع العملاء على فريق ${physicalBranch.label}` : 'توزيع العملاء على مسئولي التحصيل'}</h4>
                         <span className="text-xs text-indigo-500">({filtered.filter(s => !s.assignedCsId).length} غير موزع من أصل {filtered.length})</span>
                       </div>
                       <div className="space-y-2">
                         {daqqiOldDistribPlan.map((entry, idx) => {
                           const csMembers = isDaqqiClientsTab
-                              ? staffMembers.filter(s => s.role === 'daqqi_manager' || s.role === 'reception_daqqi')
+                              ? staffMembers.filter(s => (physicalBranch.key === 'TAGAMOA'
+                                ? s.role === 'tagamoa_manager' || s.role === 'reception_tagamoa'
+                                : s.role === 'daqqi_manager' || s.role === 'reception_daqqi'))
                               : staffMembers.filter(s => (s.role||'').toLowerCase() === 'collection');
                           return (
                             <div key={idx} className="flex items-center gap-2 flex-wrap">
                               <select value={entry.staffId} onChange={e => setDaqqiOldDistribPlan(prev => prev.map((p,i) => i===idx ? {...p,staffId:e.target.value} : p))}
                                 className="border border-indigo-200 rounded-xl px-3 py-1.5 text-xs bg-white focus:ring-2 focus:ring-indigo-200 focus:outline-none min-w-[160px]">
-                                <option value="">{isDaqqiClientsTab ? '— اختر من فريق الدقي —' : '— اختر مسئول تحصيل —'}</option>
+                                <option value="">{isDaqqiClientsTab ? `— اختر من فريق ${physicalBranch.label} —` : '— اختر مسئول تحصيل —'}</option>
                                 {csMembers.map(s => <option key={s.id} value={s.id}>{s.name} ({(salesOwnSubscribers.length>0?salesOwnSubscribers:subscribers).filter(sub=>sub.assignedCsId===s.id).length} موزع)</option>)}
                               </select>
                               <input type="number" min="1" max={filtered.filter(s=>!s.assignedCsId).length} placeholder="عدد العملاء"
@@ -613,7 +618,7 @@ export default function OnlineClientsTab({
                                   totalFailed > 0 ? 'error' : 'success',
                                   totalFailed > 0
                                     ? `تم توزيع ${totalDone} عميل وفشل ${totalFailed}. لم تُخفَ العمليات الفاشلة.`
-                                    : `✅ تم توزيع ${totalDone} عميل على ${isDaqqiClientsTab ? 'فريق الدقي' : 'مسئولي التحصيل'}`
+                                    : `✅ تم توزيع ${totalDone} عميل على ${isDaqqiClientsTab ? `فريق ${physicalBranch.label}` : 'مسئولي التحصيل'}`
                                 );
                                 setDaqqiOldDistribPlan([{staffId:'',count:''}]);
                               } finally { setDaqqiOldDistributing(false); }
@@ -1012,12 +1017,12 @@ export default function OnlineClientsTab({
                                         clientStatus: convertType === 'daqqi' ? undefined : convertType,
                                         transferAnswers: answers,
                                         transferDate: cairoDateOnly(),
-                                        ...(convertType === 'daqqi' ? { branch: 'DAQQI' as const } : {}),
+                                        ...(convertType === 'daqqi' ? { branch: physicalBranch.key } : {}),
                                       };
                                       if (!await updateSubscriber(updated)) throw new Error('فشل حفظ حالة العميل');
                                       setSalesOwnSubscribers(prev => prev.map(s => s.id === updated.id ? updated : s));
                                        setConvertRow(null);
-                                       const typeLabel = convertType === 'finished' ? 'منتهي' : convertType === 'paused' ? 'متوقف' : 'فرع الدقي';
+                                       const typeLabel = convertType === 'finished' ? 'منتهي' : convertType === 'paused' ? 'متوقف' : `فرع ${physicalBranch.label}`;
                                       notify('success', `✅ تم تحويل العميل إلى ${typeLabel}`);
                                     } catch (err: unknown) {
                                       notify('error', '❌ فشل التحويل: ' + (err instanceof Error ? err.message : String(err)));

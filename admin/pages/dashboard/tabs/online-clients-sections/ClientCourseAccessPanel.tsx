@@ -40,7 +40,7 @@ type CourseAccess = {
 };
 
 /** «للمديرين» — the same roles api/lib/clientCourseActions.js admits. */
-const MANAGER_ROLES = new Set(['admin', 'manager', 'online_manager', 'daqqi_manager', 'sales_collection_manager']);
+const MANAGER_ROLES = new Set(['admin', 'manager', 'online_manager', 'daqqi_manager', 'tagamoa_manager', 'sales_collection_manager']);
 
 const fmt = (value: string | null) =>
   value ? new Date(value).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE }) : null;

@@ -66,4 +66,7 @@ function leadScope({ tenantId, staffRecord, isSuperAdmin }, alias = 'l') {
   return { scope: 'all', sql: '', params: [], none: false };
 }
 
-module.exports = { leadScope, branchesFromScope, DAQQI_TEAM_ROLES };
+// Every physical branch's desk roles (Dokki's and Tagamoa's).
+const BRANCH_DESK_ROLES = Object.values(BRANCH_TEAM).flatMap(team => team.roles);
+
+module.exports = { leadScope, branchesFromScope, DAQQI_TEAM_ROLES, BRANCH_DESK_ROLES };

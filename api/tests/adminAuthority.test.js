@@ -139,7 +139,8 @@ test('a team-performance key opens one team screen and nothing else', () => {
     .filter(entry => entry[2].includes(`'${permission}'`))
     .map(entry => entry[1]);
 
-  assert.deepEqual(opensFor('view_perf_daqqi'), ['daqqi_team']);
+  // The Dokki team screen, and the same screen for the Tagamoa branch.
+  assert.deepEqual(opensFor('view_perf_daqqi'), ['daqqi_team', 'tagamoa_team']);
   assert.deepEqual(opensFor('view_perf_online'), ['online_team']);
   assert.deepEqual(opensFor('view_perf_sales'), ['sales_team']);
 
@@ -189,7 +190,7 @@ test('the Dokki team screen gets its figures from the server, not from the round
 
   // And the screen uses it, including to decide whether to offer the schedule.
   const tab = fs.readFileSync(path.join(API, '..', 'admin', 'pages', 'dashboard', 'tabs', 'DaqqiTeamTab.tsx'), 'utf8');
-  assert.match(tab, /getDaqqiPerformance\(\)/);
+  assert.match(tab, /getDaqqiPerformance\(physicalBranch\.key\)/);
   assert.match(tab, /const detailAvailable = perf \? perf\.canSeeDetail : daqqiRounds\.length > 0;/);
   assert.match(tab, /perf \? perf\.rounds\.active : activeRounds\.length/);
   assert.match(tab, /perf \? perf\.students : totalAttendees/);

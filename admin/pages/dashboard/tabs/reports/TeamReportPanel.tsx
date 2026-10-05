@@ -13,6 +13,7 @@ const READERS: Record<Exclude<TeamKey, 'sales'>, string[]> = {
   online: ['manage_sales_team', 'view_perf_online'],
   support: ['manage_sales_team', 'view_perf_cx'],
   daqqi: ['manage_sales_team', 'view_perf_daqqi'],
+  tagamoa: ['manage_sales_team', 'view_perf_daqqi'],
 };
 
 type Report = { from: string; to: string; rows: Record<string, string | number | null>[]; totals: Record<string, number | null> };

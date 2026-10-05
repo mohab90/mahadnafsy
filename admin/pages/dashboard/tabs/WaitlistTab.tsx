@@ -5,6 +5,7 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { useSiteData } from '../../../context/SiteDataContext';
 import type { LeadItem } from '../../../types';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
+import { usePhysicalBranch } from '../../../lib/physicalBranch';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -48,7 +49,9 @@ export default function WaitlistTab({ notify }: { notify: NotifyFn }) {
   const [entries, setEntries] = useState<WaitlistEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('waiting');
-  const [branchFilter, setBranchFilter] = useState<string>('');
+  // Shown inside the Tagamoa section, it opens on Tagamoa's list.
+  const physicalBranch = usePhysicalBranch();
+  const [branchFilter, setBranchFilter] = useState<string>(physicalBranch.key === 'TAGAMOA' ? 'TAGAMOA' : '');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [convertingId, setConvertingId] = useState<string | null>(null);
 
@@ -90,7 +93,7 @@ export default function WaitlistTab({ notify }: { notify: NotifyFn }) {
         leadType: 'general',
         interestLevel: 'medium',
         source: 'waitlist',
-        branch: (entry.branch as LeadItem['branch']) || 'DAQQI',
+        branch: (entry.branch as LeadItem['branch']) || physicalBranch.key,
         notes: entry.notes ? `من قائمة الانتظار: ${entry.notes}` : 'من قائمة الانتظار',
         communications: [],
         interestedCourseIds: entry.course_id ? [entry.course_id] : [],

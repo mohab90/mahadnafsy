@@ -245,7 +245,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
       { label: 'ليداتي', icon: UserPlus, tab: 'leads', color: 'bg-amber-50 text-amber-600 border-amber-200', when: can('view_leads') && ['sales', 'sales_collection_manager', 'support', 'consultant'].includes(role) },
       { label: 'عملائي', icon: UserCheck, tab: 'online_clients', color: 'bg-teal-50 text-teal-600 border-teal-200', when: can('view_subscribers') && ['collection', 'online_manager', 'sales_collection_manager', 'support'].includes(role) },
       { label: 'جدول الدقي', icon: Calendar, tab: 'daqqi_schedule', color: 'bg-rose-50 text-rose-600 border-rose-200', when: can('manage_daqqi') },
-      { label: 'الوارد', icon: MessageCircle, tab: 'customer_inbox', color: 'bg-cyan-50 text-cyan-600 border-cyan-200', when: can('manage_inbox') && ['support', 'reception_daqqi'].includes(role) },
+      { label: 'الوارد', icon: MessageCircle, tab: 'customer_inbox', color: 'bg-cyan-50 text-cyan-600 border-cyan-200', when: can('manage_inbox') && ['support', 'reception_daqqi', 'reception_tagamoa'].includes(role) },
       { label: 'الحسابات', icon: BarChart3, tab: 'financial', color: 'bg-emerald-50 text-emerald-600 border-emerald-200', when: can('view_financial') && ['accountant', 'collection'].includes(role) },
       { label: 'الكورسات', icon: Award, tab: 'courses', color: 'bg-blue-50 text-blue-600 border-blue-200', when: ['instructor', 'trainer'].includes(role) },
     ];
@@ -262,7 +262,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
   // موعد متابعة» — someone else's work on her own page. Customer service has
   // no leads at all since «ميشوفش العملاء المحتملين».
   const worksLeads = isSalesRole || isCollectionRole
-    || ['reception_daqqi', 'daqqi_manager'].includes((staff.role || '').toLowerCase());
+    || ['reception_daqqi', 'daqqi_manager', 'reception_tagamoa', 'tagamoa_manager'].includes((staff.role || '').toLowerCase());
 
   const avatarInitials = (staff.name || '?').split(' ').slice(0, 2).map(w => w[0]).join('');
 

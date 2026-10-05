@@ -19,9 +19,10 @@ export function useCurrentStaff({ currentStaff }: { currentStaff: StaffMember | 
     currentStaff,
     isSalesOnly: role === 'sales',
     isCollectionRole: role === 'collection',
-    isReceptionDaqqi: role === 'reception_daqqi',
+    // The Tagamoa desk and manager work exactly as Dokki's do, at their branch.
+    isReceptionDaqqi: role === 'reception_daqqi' || role === 'reception_tagamoa',
     isSupport: role === 'support',
-    isDaqqiManager: role === 'daqqi_manager',
+    isDaqqiManager: role === 'daqqi_manager' || role === 'tagamoa_manager',
     isOnlineManager: role === 'online_manager',
     isSalesCollectionManager: role === 'sales_collection_manager',
   };

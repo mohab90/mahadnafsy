@@ -22,7 +22,7 @@ type Section = 'today' | 'requests' | 'job' | 'performance' | 'messages' | 'sett
 /** The jobs whose day is a list of people to call — «شغل النهاردة» is theirs. */
 const DESK_ROLES: RoleKey[] = [
   'sales', 'collection', 'consultant', 'support', 'sales_collection_manager',
-  'online_manager', 'reception_daqqi', 'daqqi_manager',
+  'online_manager', 'reception_daqqi', 'daqqi_manager', 'reception_tagamoa', 'tagamoa_manager',
 ];
 
 const Spinner = () => (

@@ -368,7 +368,8 @@ test('taking a client off a round asks first, and refuses one who has attendance
 
 test('money taken at the Dokki desk is the Dokki branch\'s', () => {
   const tab = read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx');
-  assert.equal((tab.match(/branch: 'DAQQI',/g) || []).length >= 2, true, 'both the course payment and the extra items');
+  // The branch the desk is at — Dokki's, or Tagamoa's when the screen shows it.
+  assert.equal((tab.match(/branch: physicalBranch\.key,/g) || []).length >= 2, true, 'both the course payment and the extra items');
 });
 
 test('the cockpit\'s Dokki revenue is the branch\'s money, not what one dialog happened to tag', () => {

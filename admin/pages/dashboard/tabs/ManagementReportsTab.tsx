@@ -22,7 +22,7 @@ type Report = {
   topSources: { source: string; leads: number; converted: number; rate: number }[];
   leaders: Record<'salesByMoney' | 'salesByCalls' | 'collectionByMoney' | 'supportByResolved' | 'daqqiByMoney', Leader[]>;
   counts: { newLeads: number; newClients: number; pendingPayments: number };
-  teams: { sales: Team; online: Team; support: Team; daqqi: Team };
+  teams: { sales: Team; online: Team; support: Team; daqqi: Team; tagamoa?: Team };
 };
 
 const n = (value: number | string | null | undefined) => Number(value || 0).toLocaleString('ar-EG-u-nu-latn');
@@ -203,7 +203,9 @@ export default function ManagementReportsTab({ notify }: { notify: (type: 'succe
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h4 className="flex items-center gap-1.5 text-sm font-bold text-gray-800"><Users size={14} className="text-sky-600" /> تقارير الفرق</h4>
               <div className="flex flex-wrap gap-1">
-                {(Object.keys(TEAM_LABELS) as TeamKey[]).map(key => (
+                {/* Tagamoa once it has a team or activity — the branch opens hidden. */}
+                {(Object.keys(TEAM_LABELS) as TeamKey[]).filter(key => key !== 'tagamoa'
+                  || Boolean(report.teams.tagamoa?.rows?.length || Number(report.teams.tagamoa?.totals?.payments))).map(key => (
                   <button key={key} type="button" onClick={() => setTeam(key)}
                     className={`rounded-lg px-3 py-1.5 text-xs font-bold ${team === key ? 'bg-sky-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-sky-50'}`}>
                     {TEAM_LABELS[key]}

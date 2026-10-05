@@ -23,6 +23,10 @@ export function useStaffRoleRedirects({
       setActiveTabState('daqqi_schedule');
       return;
     }
+    if (role === 'reception_tagamoa' || role === 'tagamoa_manager') {
+      setActiveTabState('tagamoa_schedule');
+      return;
+    }
     if (role === 'online_manager') {
       setActiveTabState('online_clients');
       return;

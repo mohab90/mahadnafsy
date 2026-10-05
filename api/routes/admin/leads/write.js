@@ -18,7 +18,7 @@ const {
   appendLeadInteraction,
   leadScope,
   branchesFromScope,
-  DAQQI_TEAM_ROLES,
+  BRANCH_DESK_ROLES,
   archiveLead,
   findLeadById,
   findLeadByIdentity,
@@ -207,8 +207,8 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
       salesName = req.staffRecord.name || salesName;
       crmData.assignedSalesId = salesId;
       crmData.assignedSalesName = salesName;
-    } else if (isNew && !salesId && !csId && DAQQI_TEAM_ROLES.includes(staffRole)) {
-      // The Dokki desk sees the leads handed to its team (lib/leadAccess.js);
+    } else if (isNew && !salesId && !csId && BRANCH_DESK_ROLES.includes(staffRole)) {
+      // A branch desk (Dokki's, Tagamoa's) sees the leads handed to its team (lib/leadAccess.js);
       // one it adds went to the next sales rep and left its screen at once.
       salesId = req.staffRecord.id;
       salesName = req.staffRecord.name || null;

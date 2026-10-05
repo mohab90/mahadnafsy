@@ -222,8 +222,8 @@ export function useLeadActions(params: LeadActionsParams) {
         currentStaff,
         isAdmin,
         isSalesOnly,
-        isDaqqiManager: currentStaff?.role === 'daqqi_manager',
-        isReceptionDaqqi: currentStaff?.role === 'reception_daqqi',
+        isDaqqiManager: currentStaff?.role === 'daqqi_manager' || currentStaff?.role === 'tagamoa_manager',
+        isReceptionDaqqi: currentStaff?.role === 'reception_daqqi' || currentStaff?.role === 'reception_tagamoa',
         fetchSalesData: async () => { await fetchSalesData?.(); },
         setActiveTab: tab => setActiveDashboardTab?.(tab),
       });
