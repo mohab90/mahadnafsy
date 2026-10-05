@@ -32,7 +32,9 @@ const DATA_DIR = process.env.WA_WEB_DATA_DIR
 const DAILY_LIMIT = Math.max(1, Number(process.env.WA_WEB_DAILY_LIMIT || 1000));
 const MIN_GAP_MS = Math.max(0, Number(process.env.WA_WEB_MIN_GAP_MS || 1500));
 const HISTORY_DAYS = Math.max(1, Number(process.env.WA_WEB_HISTORY_DAYS || 30));
-const OWNER_LOCK = 'mahad:wa-web';
+// Per database (lib/lockName.js): staging on the same MariaDB held the server-wide
+// name and production never got its WhatsApp sessions.
+const OWNER_LOCK = require('./lockName').scopedLockName('mahad:wa-web');
 
 const sessions = new Map();
 let baileys = null;

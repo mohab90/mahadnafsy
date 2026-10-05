@@ -19,10 +19,12 @@ const { DEFAULT_TENANT } = require('../middleware/tenantContext');
  */
 async function forEachActiveTenant(task, db = pool) {
   const job = String(task.name || 'job').slice(0, 40);
+  // Per database: named locks are server-wide (lib/lockName.js).
+  const lockKey = require('./lockName').scopedLockName(`scheduled:${job}`);
   let lockConn = null;
   try {
     lockConn = await db.getConnection();
-    const [[lock]] = await lockConn.query('SELECT GET_LOCK(?, 0) AS acquired', [`scheduled:${job}`]);
+    const [[lock]] = await lockConn.query('SELECT GET_LOCK(?, 0) AS acquired', [lockKey]);
     if (Number(lock?.acquired) !== 1) {
       logger.info(`[scheduled] ${job} is running in another process — skipped here`);
       return;
@@ -43,7 +45,7 @@ async function forEachActiveTenant(task, db = pool) {
     logger.error(`[scheduled] ${job} could not start`, { error: error.message });
   } finally {
     if (lockConn) {
-      await lockConn.query('SELECT RELEASE_LOCK(?)', [`scheduled:${job}`]).catch(() => {});
+      await lockConn.query('SELECT RELEASE_LOCK(?)', [lockKey]).catch(() => {});
       lockConn.release();
     }
   }

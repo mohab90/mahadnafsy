@@ -17,7 +17,8 @@ const logger = require('./logger');
  * Same mechanism as lib/scheduledTenants.js forEachActiveTenant.
  */
 async function withJobLock(name, fn, db = pool) {
-  const key = `job:${String(name).slice(0, 56)}`;
+  // Per database: named locks are server-wide (lib/lockName.js).
+  const key = require('./lockName').scopedLockName(`job:${String(name).slice(0, 56)}`);
   let conn = null;
   try {
     conn = await db.getConnection();
