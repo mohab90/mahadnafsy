@@ -71,7 +71,7 @@ test('every screen reads that rule', () => {
   // The filters and the total read the table's own items (onlineSectionReview.test.js).
   assert.match(read('admin/pages/dashboard/tabs/onlineClientsUtils.ts'), /const items = clientItems\(subscriber, courses, bundles, clientCurrency\(subscriber\)\);/);
   assert.match(read('api/lib/paymentReceipt.js'), /await itemBalances\(db, \{ tenantId, subscriberId: payment\.subscriber_id \}\)/);
-  assert.match(read('api/routes/crm-tools.js'), /const prior = priorPaidTotal\(crmJson\);/);
+  assert.match(read('api/lib/outstandingBalances.js'), /const prior = priorPaidTotal\(crmJson\);/);
 });
 
 test('the dialog hands the handler the price it shows; an instalment only a price the desk changed', () => {

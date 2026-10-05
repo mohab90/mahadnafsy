@@ -38,7 +38,7 @@ test('finance cockpit, payment links and budget writes are tenant bounded', () =
 });
 
 test('outstanding balances use immutable EGP snapshots, one expectation per entitlement and role scope', () => {
-  const route = read('routes/crm-tools.js');
+  const route = read('routes/crm-tools.js') + read('lib/outstandingBalances.js');
   assert.match(route, /MAX\(COALESCE\(course_expected,0\) \* COALESCE\(fx_rate_to_egp,0\)\) AS expected/);
   assert.match(route, /SUM\(CASE WHEN status='paid' THEN COALESCE\(amount_egp,0\) ELSE 0 END\) AS paid/);
   assert.match(route, /WHERE tenant_id=\? AND deleted_at IS NULL/);

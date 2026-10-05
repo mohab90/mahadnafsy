@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { cairoDateOnly, cairoMonthOnly, cairoDay, cairoMonthStart } from '../../../../shared/cairoDate';
 import {
   Plus, TrendingUp,
 } from 'lucide-react';
-import { FinancialSubTabs } from './financial/FinancialSubTabs';
+import { FINANCIAL_SCREENS, FinancialSubTabs } from './financial/FinancialSubTabs';
 import { PaymobPaymentsPanel } from './financial/PaymobPaymentsPanel';
 import { PaymentsRegister } from './financial/PaymentsRegister';
 import { useFinancialCommissionsData } from './financial/useFinancialCommissionsData';
@@ -43,6 +44,7 @@ const PaymentReviewPanel = React.lazy(() => import('./financial/PaymentReviewPan
 const PeriodClosingPanel = React.lazy(() => import('./FinancialPanels').then(module => ({ default: module.PeriodClosingPanel })));
 const FinanceAdvancesPanel = React.lazy(() => import('./hr-sections/HrAdvancesPanel'));
 const FinanceOperationsPanel = React.lazy(() => import('./financial/FinanceOperationsPanel'));
+const FinancialStatementPanel = React.lazy(() => import('./financial/FinancialStatementPanel'));
 
 export default function FinancialTab({ notify, branchFilter }: { notify: NotifyFn; branchFilter?: string }) {
   const {
@@ -84,8 +86,27 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   const [expenseDateFrom, setExpenseDateFrom] = useState('');
   const [expenseDateTo, setExpenseDateTo] = useState('');
   const [expenseCategoryFilter, setExpenseCategoryFilter] = useState<string>('all');
-  // A branch's books open on its boxes; the main books on the cockpit.
-  const [financialSubTab, setFinancialSubTab] = useState<FinancialSubTab>(branchFilter ? 'boxes' : 'cockpit');
+  // A branch's books open on its boxes; the main books on the cockpit — unless
+  // the address names a screen: /dashboard/financial/<screen>. The screen is in
+  // the URL so a refresh, the back button and a shared link land on it.
+  const navigate = useNavigate();
+  const { tab: routeTab, param: routeScreen } = useParams<{ tab?: string; param?: string }>();
+  const screenAllowed = useCallback((screen?: string): screen is FinancialSubTab =>
+    !!screen && (FINANCIAL_SCREENS as string[]).includes(screen) && (!branchFilter || BRANCH_SUB_TABS.includes(screen as FinancialSubTab)), [branchFilter]);
+  const defaultScreen: FinancialSubTab = branchFilter ? 'boxes' : 'cockpit';
+  const [financialSubTab, setFinancialSubTabState] = useState<FinancialSubTab>(() => (screenAllowed(routeScreen) ? routeScreen : defaultScreen));
+  useEffect(() => {
+    setFinancialSubTabState(screenAllowed(routeScreen) ? routeScreen : defaultScreen);
+  }, [routeScreen, screenAllowed, defaultScreen]);
+  const subTabRef = useRef(financialSubTab);
+  subTabRef.current = financialSubTab;
+  const setFinancialSubTab = useCallback((next: SetStateAction<FinancialSubTab>) => {
+    const value = typeof next === 'function' ? next(subTabRef.current) : next;
+    if (value === subTabRef.current) return;
+    setFinancialSubTabState(value);
+    if (routeTab) navigate(`/dashboard/${routeTab}/${value}`);
+  }, [navigate, routeTab]);
+  const branchName = branchFilter === 'tagamoa' ? 'التجمع' : 'الدقي';
   const {
     allProofs,
     proofsLoading,
@@ -438,23 +459,19 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
         <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3">
           <span className="text-2xl">🏢</span>
           <div>
-            <p className="font-bold text-amber-800 text-sm">محاسبة فرع الدقي فقط</p>
-            <p className="text-xs text-amber-600">البيانات مفلترة على المشتركين المسجلين في فرع الدقي · المدفوعات اليدوية فقط (الأونلاين يُحسب في النظام المحاسبي الرئيسي)</p>
+            <p className="font-bold text-amber-800 text-sm">محاسبة فرع {branchName} فقط</p>
+            <p className="text-xs text-amber-600">البيانات مفلترة على المشتركين المسجلين في فرع {branchName} · المدفوعات اليدوية فقط (الأونلاين يُحسب في النظام المحاسبي الرئيسي)</p>
           </div>
           <span className="mr-auto text-xs font-bold text-amber-700 bg-amber-100 border border-amber-200 px-3 py-1 rounded-lg">{subscriberStats?.total ?? subscribers.length} مشترك</span>
         </div>
       )}
-      {/* Sub-tabs + quick action buttons */}
+      {/* Title and quick actions, then the section tabs on their own row */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <FinancialSubTabs
-          activeTab={financialSubTab}
-          allowed={branchFilter ? BRANCH_SUB_TABS : undefined}
-          pendingProofsCount={pendingProofsCount}
-          pendingReviewCount={pendingReviewCount}
-          onChange={setFinancialSubTab}
-          onOpenProofs={() => { if (!allProofs) loadAllProofs(); }}
-        />
-        <div className="flex gap-2">
+        <div>
+          <h2 className="text-xl font-extrabold text-gray-900">{branchFilter ? `حسابات فرع ${branchName}` : 'الحسابات'}</h2>
+          <p className="text-xs text-gray-500">الفلوس الداخلة والخارجة، المديونيات، الدفاتر والتقارير.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
           {/* FX Rates widget — the main books' only: a branch takes pounds,
               and «ليه بيظهرله فلوس بالريال» was this. */}
           {!branchFilter && <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-xs">
@@ -482,6 +499,14 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
           </button>
         </div>
       </div>
+      <FinancialSubTabs
+        activeTab={financialSubTab}
+        allowed={branchFilter ? BRANCH_SUB_TABS : undefined}
+        pendingProofsCount={pendingProofsCount}
+        pendingReviewCount={pendingReviewCount}
+        onChange={setFinancialSubTab}
+        onOpenProofs={() => { if (!allProofs) loadAllProofs(); }}
+      />
 
       {/* «تسجيل دخل» is a customer payment like any other. It had its own
           eleven-field form here — the same fields as the shared screen, minus
@@ -501,6 +526,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
       )}
 
       {financialSubTab === 'boxes' && <BoxesReportPanel branch={branchFilter || undefined} />}
+      {financialSubTab === 'statement' && <FinancialStatementPanel branchFilter={branchFilter} onOpen={tab => setFinancialSubTab(branchFilter && !BRANCH_SUB_TABS.includes(tab) ? 'aging' : tab)} />}
 
       {financialSubTab === 'cockpit' && (
         <FinancialCockpitPanel

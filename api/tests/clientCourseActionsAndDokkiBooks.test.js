@@ -199,7 +199,7 @@ test('a branch\'s money is its own clients\' money, box by box', () => {
 
 test('«حسابات الدقي»: its boxes first, its own payments, no riyal, no company screens', () => {
   const tab = read('admin/pages/dashboard/tabs/FinancialTab.tsx');
-  assert.match(tab, /useState<FinancialSubTab>\(branchFilter \? 'boxes' : 'cockpit'\)/);
+  assert.match(tab, /const defaultScreen: FinancialSubTab = branchFilter \? 'boxes' : 'cockpit';/);
   assert.match(tab, /getPayments\(undefined, undefined, undefined, branchFilter\)/);
   assert.match(tab, /\{!branchFilter && <div className="flex items-center gap-2 bg-gray-50/, 'the exchange-rate widget is the main books\' only');
   assert.match(tab, /allowed=\{branchFilter \? BRANCH_SUB_TABS : undefined\}/);
@@ -207,7 +207,8 @@ test('«حسابات الدقي»: its boxes first, its own payments, no riyal, 
   const utils = read('admin/pages/dashboard/tabs/financial/financialTabUtils.ts');
   const list = utils.slice(utils.indexOf('BRANCH_SUB_TABS'), utils.indexOf('];', utils.indexOf('BRANCH_SUB_TABS')));
   const offered = [...list.matchAll(/'([a-z_]+)'/g)].map(match => match[1]);
-  assert.deepEqual(offered, ['boxes', 'orders', 'expenses', 'review', 'proofs', 'refunds', 'installments', 'aging']);
+  // The period statement too: GET /api/admin/finance/statement scopes it to the branch's own money, in pounds.
+  assert.deepEqual(offered, ['statement', 'boxes', 'orders', 'expenses', 'review', 'proofs', 'refunds', 'installments', 'aging']);
 });
 
 test('a branch client\'s file shows what they bought, not an online course', () => {

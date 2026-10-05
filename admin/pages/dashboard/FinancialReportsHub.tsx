@@ -1,4 +1,5 @@
-import { Suspense, lazy, useState } from 'react';
+import { Suspense, lazy } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { BarChart3, BookOpen, FileText, RotateCcw, Target, TrendingUp } from 'lucide-react';
 import type { NotifyFn } from '../../types';
 
@@ -28,21 +29,32 @@ const reports = [
 ] as const;
 
 export default function FinancialReportsHub({ notify, initial }: { notify: NotifyFn; initial?: string }) {
-  const [active, setActive] = useState<string>(reports.some((item) => item.key === initial) ? String(initial) : 'chart_of_accounts');
+  // The report is in the address — /dashboard/financial_reports/<report> — so a
+  // refresh or a shared link opens the same statement.
+  const navigate = useNavigate();
+  const { param } = useParams<{ param?: string }>();
+  const wanted = param || initial;
+  const active = reports.some((item) => item.key === wanted) ? String(wanted) : 'chart_of_accounts';
   const Current = reports.find((item) => item.key === active)?.Component;
 
   return (
     <div className="space-y-4" dir="rtl">
-      <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-3">
+      <div>
+        <h2 className="text-xl font-extrabold text-gray-900">التقارير المحاسبية</h2>
+        <p className="text-xs text-gray-500">الدفاتر والقوائم المقروءة منها. تقرير الفترة (المحصّل والمصروف والنتيجة) في الحسابات ← التقارير ← التقرير المالي.</p>
+      </div>
+      <nav className="-mb-px flex gap-1 overflow-x-auto border-b border-gray-200" aria-label="التقارير المحاسبية">
         {reports.map((item) => {
           const Icon = item.icon;
+          const isActive = active === item.key;
           return (
             <button
               key={item.key}
               type="button"
-              onClick={() => setActive(item.key)}
-              className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-bold transition ${
-                active === item.key ? 'bg-amber-600 text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              onClick={() => navigate(`/dashboard/financial_reports/${item.key}`)}
+              aria-current={isActive ? 'page' : undefined}
+              className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-bold transition ${
+                isActive ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-800'
               }`}
             >
               <Icon size={15} />
@@ -50,8 +62,8 @@ export default function FinancialReportsHub({ notify, initial }: { notify: Notif
             </button>
           );
         })}
-      </div>
-      <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-b-2 border-amber-600" /></div>}>
+      </nav>
+      <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary-600" /></div>}>
         {Current ? <Current notify={notify} /> : null}
       </Suspense>
     </div>

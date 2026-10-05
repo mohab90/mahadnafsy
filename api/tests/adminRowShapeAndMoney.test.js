@@ -78,7 +78,8 @@ test('an instalment records the plan total, not its own amount', () => {
 test('the collections query still reads that column, so the fix reaches it', () => {
   // The two halves only work together; if the query stops reading
   // course_expected this test should fail and be re-thought, not deleted.
-  const collections = codeOnly(read('routes/crm-tools.js'));
+  // The loader moved to lib/outstandingBalances.js; the route still serves it.
+  const collections = codeOnly(read('routes/crm-tools.js') + read('lib/outstandingBalances.js'));
   assert.match(collections, /MAX\(COALESCE\(course_expected,0\)/);
 });
 

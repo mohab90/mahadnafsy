@@ -318,7 +318,7 @@ const Dashboard: React.FC = () => {
     }
     // The financial hub already contained these; the menu was repeating it.
     if (['balance_sheet', 'cash_flow', 'budget_tracker', 'recurring_expenses'].includes(String(urlTab))) {
-      navigate('/dashboard/financial_reports', { replace: true }); return;
+      navigate(`/dashboard/financial_reports/${urlTab}`, { replace: true }); return;
     }
     const resolved = tabForUrl(urlTab);
     // A key that is no screen lands on the overview instead of nothing at all.

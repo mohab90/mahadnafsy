@@ -17,7 +17,28 @@ const {
   validDateRange,
 } = require('./_shared');
 
+const { buildFinanceStatement } = require('../../lib/financeStatement');
+const { getFxToEgp } = require('../../lib/finance');
+
 const router = Router();
+
+// GET /api/admin/finance/statement?from=&to=&branch=
+// The period statement (lib/financeStatement.js): the period and the one
+// before it, where the money came from and went, and who still owes.
+router.get('/api/admin/finance/statement', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
+  try {
+    const today = dateOnlyInTimeZone();
+    const from = String(req.query.from || `${today.slice(0, 7)}-01`);
+    const to = String(req.query.to || today);
+    if (!validDateRange(from, to)) return res.status(400).json({ error: 'Invalid date range' });
+    const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null });
+    const rates = await getFxToEgp(req.tenantId);
+    res.json(await buildFinanceStatement(pool, { tenantId: req.tenantId, from, to, scope, rates }));
+  } catch (e) {
+    logger.error('[finance/statement]', e.message);
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
+  }
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Monthly Financial Comparison ────────────────────────────────

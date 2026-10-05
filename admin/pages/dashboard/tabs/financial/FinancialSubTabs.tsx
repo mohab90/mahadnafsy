@@ -15,33 +15,27 @@ import {
   HandCoins,
   Landmark,
   Vault,
+  FileBarChart,
 } from 'lucide-react';
 import type { FinancialSubTab } from './financialTabUtils';
 
 /**
- * Twenty screens behind ten entries.
+ * Twenty-two screens behind six headings, by the job being done.
  *
- * They were twenty buttons in four labelled rows. Grouping them by what you are
- * doing helped, but it did not change the count: the strip still asked you to
- * pick one of twenty things before you could start, and several of those twenty
- * answer the same question. الأقساط, أرصدة مستحقة and تقرير التقادم are three
- * ways of asking who owes us money. مراجعة الدفعات, إيصالات التحويل and مدفوعات
- * باي موب are three doors onto money arriving and waiting to be checked.
+ * It was eleven buttons on one wrapping row — الخزائن، الإيرادات، المصروفات،
+ * المدفوعات الواردة، الاسترجاعات، الدفاتر، المطابقة والإقفال، لوحة القيادة،
+ * التقارير الدورية، المديونيات، الفريق — so the strip itself was the first
+ * thing to read («التابات فوق مش كويسة»). Six questions now:
  *
- * So the merges are by question, not by convenience:
+ *   الملخص            cockpit · overview                            how are we doing now
+ *   الفلوس الداخلة     orders · review · proofs · paymob             money in, and what waits on a decision
+ *   الفلوس الخارجة     expenses · refunds · commissions · advances    money out, to suppliers, clients and the team
+ *   المديونيات         installments · outstanding · aging            who owes us
+ *   الخزائن والدفاتر    boxes · operations · reconciliation · closing · audit   the books themselves
+ *   التقارير           statement · pl · monthly · budget             a period, read back
  *
- *   المدفوعات الواردة  review · proofs · paymob      — money in, needing a decision
- *   المطابقة والإقفال  reconciliation · period_closing — closing a period
- *   الدفاتر            operations · audit             — the ledger and its trail
- *   لوحة القيادة       cockpit · overview             — two summaries of now
- *   التقارير الدورية   pl · monthly · budget          — a period, read back
- *   المديونيات         installments · outstanding · aging — who owes us
- *   الفريق             commissions · advances         — people, not books
- *
- * Nothing is removed and nothing is renamed: every one of the twenty is still
- * reachable, one level in, under the heading that describes it. The active leaf
- * is still the same FinancialSubTab value it always was, so the twenty render
- * blocks in FinancialTab are untouched by this.
+ * Nothing is removed: every screen is still its own FinancialSubTab, one level
+ * in, and /dashboard/financial/<screen> opens it directly.
  */
 type Leaf = [FinancialSubTab, string, React.ElementType];
 type Primary = {
@@ -53,55 +47,35 @@ type Primary = {
 };
 
 const allPrimaries: Primary[] = [
-  { id: 'boxes', label: 'الخزائن', icon: Vault, leaves: [['boxes', 'الخزائن', Vault]] },
-  { id: 'orders', label: 'الإيرادات', icon: CreditCard, leaves: [['orders', 'الإيرادات', CreditCard]] },
-  { id: 'expenses', label: 'المصروفات', icon: Wallet, leaves: [['expenses', 'المصروفات', Wallet]] },
   {
-    id: 'incoming',
-    label: 'المدفوعات الواردة',
-    icon: Eye,
+    id: 'summary',
+    label: 'الملخص',
+    icon: BarChart3,
     leaves: [
+      ['cockpit', 'لوحة القيادة', BarChart3],
+      ['overview', 'نظرة مالية', PieChart],
+    ],
+  },
+  {
+    id: 'in',
+    label: 'الفلوس الداخلة',
+    icon: CreditCard,
+    leaves: [
+      ['orders', 'الإيرادات', CreditCard],
       ['review', 'مراجعة الدفعات', Eye],
       ['proofs', 'إيصالات التحويل', Receipt],
       ['paymob', 'مدفوعات باي موب', CreditCard],
     ],
   },
-  { id: 'refunds', label: 'الاسترجاعات', icon: XCircle, leaves: [['refunds', 'الاسترجاعات', XCircle]] },
   {
-    id: 'ledger',
-    label: 'الدفاتر',
-    icon: Landmark,
+    id: 'out',
+    label: 'الفلوس الخارجة',
+    icon: Wallet,
     leaves: [
-      ['operations', 'عمليات الحسابات', Landmark],
-      ['audit', 'سجل التدقيق', AlertCircle],
-    ],
-  },
-  {
-    id: 'closing',
-    label: 'المطابقة والإقفال',
-    icon: CheckCircle2,
-    leaves: [
-      ['reconciliation', 'المطابقة', CheckCircle2],
-      ['period_closing', 'إقفال الفترة', CheckCircle2],
-    ],
-  },
-  {
-    id: 'cockpit',
-    label: 'لوحة القيادة',
-    icon: BarChart3,
-    leaves: [
-      ['cockpit', 'لوحة القيادة', BarChart3],
-      ['overview', 'نظرة مالية', BarChart3],
-    ],
-  },
-  {
-    id: 'reports',
-    label: 'التقارير الدورية',
-    icon: PieChart,
-    leaves: [
-      ['pl', 'الأرباح والخسائر', PieChart],
-      ['monthly', 'التقرير الشهري', BarChart3],
-      ['budget', 'الميزانية', TrendingDown],
+      ['expenses', 'المصروفات', Wallet],
+      ['refunds', 'الاسترجاعات', XCircle],
+      ['commissions', 'عمولات ومكافآت الفريق', Percent],
+      ['advances', 'سلف الموظفين', HandCoins],
     ],
   },
   {
@@ -109,21 +83,38 @@ const allPrimaries: Primary[] = [
     label: 'المديونيات',
     icon: CalendarDays,
     leaves: [
-      ['installments', 'الأقساط والمديونيات', CalendarDays],
+      ['installments', 'الأقساط', CalendarDays],
       ['outstanding', 'أرصدة مستحقة', TrendingDown],
       ['aging', 'تقرير التقادم', AlertCircle],
     ],
   },
   {
-    id: 'team',
-    label: 'الفريق',
-    icon: Percent,
+    id: 'books',
+    label: 'الخزائن والدفاتر',
+    icon: Landmark,
     leaves: [
-      ['commissions', 'عمولات الفريق', Percent],
-      ['advances', 'سلف الموظفين', HandCoins],
+      ['boxes', 'الخزائن', Vault],
+      ['operations', 'عمليات الحسابات', Landmark],
+      ['reconciliation', 'المطابقة', CheckCircle2],
+      ['period_closing', 'إقفال الفترة', CheckCircle2],
+      ['audit', 'سجل التدقيق', AlertCircle],
+    ],
+  },
+  {
+    id: 'reports',
+    label: 'التقارير',
+    icon: FileBarChart,
+    leaves: [
+      ['statement', 'التقرير المالي', FileBarChart],
+      ['pl', 'الأرباح والخسائر', PieChart],
+      ['monthly', 'التقرير الشهري', BarChart3],
+      ['budget', 'الميزانية', TrendingDown],
     ],
   },
 ];
+
+/** Every screen, in menu order — for checking a screen named in the URL. */
+export const FINANCIAL_SCREENS: FinancialSubTab[] = allPrimaries.flatMap(primary => primary.leaves.map(([key]) => key));
 
 interface FinancialSubTabsProps {
   activeTab: FinancialSubTab;
@@ -164,8 +155,8 @@ export function FinancialSubTabs({
   ), 0);
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="min-w-0 flex-1 space-y-3">
+      <nav className="-mb-px flex gap-1 overflow-x-auto border-b border-gray-200" aria-label="أقسام الحسابات">
         {primaries.map(primary => {
           const Icon = primary.icon;
           const isActive = primary.id === active.id;
@@ -175,7 +166,7 @@ export function FinancialSubTabs({
               key={primary.id}
               onClick={() => select(primary.leaves[0][0])}
               aria-current={isActive ? 'page' : undefined}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold transition ${isActive ? 'bg-primary-600 text-white shadow-lg shadow-primary-500/30' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-bold transition ${isActive ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-800'}`}
             >
               <Icon size={15} />
               {primary.label}
@@ -185,10 +176,10 @@ export function FinancialSubTabs({
             </button>
           );
         })}
-      </div>
+      </nav>
 
       {active.leaves.length > 1 && (
-        <div className="flex flex-wrap items-center gap-1.5 border-r-2 border-gray-200 pr-3">
+        <div className="flex w-fit max-w-full gap-1 overflow-x-auto rounded-xl bg-gray-100 p-1">
           {active.leaves.map(([key, label, Icon]) => {
             const isActive = key === activeTab;
             const pending = key === 'proofs' ? pendingProofsCount : key === 'review' ? pendingReviewCount : 0;
@@ -197,7 +188,7 @@ export function FinancialSubTabs({
                 key={key}
                 onClick={() => select(key)}
                 aria-current={isActive ? 'page' : undefined}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-bold transition ${isActive ? 'bg-primary-100 text-primary-700' : 'text-gray-500 hover:bg-gray-100'}`}
+                className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px] font-bold transition ${isActive ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
               >
                 <Icon size={13} />
                 {label}

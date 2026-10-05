@@ -1,6 +1,7 @@
 import type { Currency, PaymentItemType } from '../../../../types';
 
 export type FinancialSubTab =
+  | 'statement'
   | 'boxes'
   | 'cockpit'
   | 'overview'
@@ -29,7 +30,7 @@ export type FinancialSubTab =
  * budget, the P&L, the team's commissions and advances — are the main books'.
  */
 export const BRANCH_SUB_TABS: FinancialSubTab[] = [
-  'boxes', 'orders', 'expenses', 'review', 'proofs', 'refunds', 'installments', 'aging',
+  'statement', 'boxes', 'orders', 'expenses', 'review', 'proofs', 'refunds', 'installments', 'aging',
 ];
 
 export const paymentTypeLabels: Record<PaymentItemType, string> = {
