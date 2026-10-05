@@ -45,8 +45,9 @@ test('only the authority writes an enrolment', () => {
 });
 
 test('the Paymob confirmation asks the authority', () => {
-  const src = fs.readFileSync(path.join(ROOT, 'api/routes/public-orders.js'), 'utf8');
-  assert.match(src, /const \{ grantCourseEntitlement \} = require\('\.\.\/lib\/entitlements'\);/);
+  // The confirmation moved with the rest of the finalisation out of the route.
+  const src = fs.readFileSync(path.join(ROOT, 'api/lib/paymobFinalise.js'), 'utf8');
+  assert.match(src, /const \{ grantCourseEntitlement \} = require\('\.\/entitlements'\);/);
   assert.match(src, /await grantCourseEntitlement\(\{/);
   // It says where the grant came from, which is the column that was empty.
   assert.match(src, /source: 'paymob_order'/);

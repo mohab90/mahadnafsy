@@ -3,6 +3,7 @@
 // «الاستشارات فيها مشاكل في الربط ومش قادر احدد اوفر الاستشارة اللى بيظهر في
 // الموقع … وطلبات الاستشارات مش بتظهر ابدا».
 
+const { checkoutSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -98,7 +99,7 @@ test('every way of paying goes through the same consultation', () => {
     'express is decided before the therapist branch');
   assert.match(checkout, /createNotification\('consultation', '🗓️ طلب استشارة جديد'/);
   assert.match(read('api/routes/payment-proofs.js'), /await settleConsultationForOrder\(conn, \{/);
-  const paymob = read('api/routes/public-orders.js');
+  const paymob = checkoutSource();
   assert.match(paymob, /if \(String\(order\.type \|\| ''\)\.toUpperCase\(\) === 'CONSULTATION'\) \{/);
   assert.ok(!paymob.includes('INSERT IGNORE INTO consultations'), 'the card path wrote its own row, from data the checkout never sent');
   // The desk that runs bookings — sales only read them.

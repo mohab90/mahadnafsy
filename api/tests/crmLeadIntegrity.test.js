@@ -45,7 +45,7 @@ test('business routes use the central lead transition service', () => {
     // both delegate to this one engine now instead of each having their own
     // transitionLead() call (MKT-04) — checked once here instead of twice.
     'lib/automationEngine.js', 'routes/payment-proofs.js', 'routes/subscriber-payments.js',
-    'routes/public-orders.js',
+    'lib/paymobFinalise.js',
   ]) {
     const source = read(file);
     assert.doesNotMatch(source, /UPDATE leads SET status|UPDATE leads SET[^;]{0,200}status='converted'/, file);

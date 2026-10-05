@@ -13,6 +13,7 @@
 // The route handlers are run here against a scripted database, so a slip in
 // them — an undefined name, a wrong parameter — fails the test, not a customer.
 
+const { checkoutSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
@@ -221,7 +222,7 @@ test('no identity at all is refused', async () => {
 test('the receipt and the card capture pass the client on', () => {
   const proofs = read('api/routes/payment-proofs.js');
   assert.match(proofs, /tenantId, uid, subscriberId: identity\?\.id \|\| null, email: ownerEmail,/);
-  const capture = read('api/routes/public-orders.js');
+  const capture = checkoutSource();
   assert.match(capture, /sub = await ensureSubscriberForOrder\(conn, \{\s+tenantId,\s+subscriberId: order\.subscriber_id \|\| null,\s+email: order\.customer_email,/);
 });
 

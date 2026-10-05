@@ -19,6 +19,7 @@
 //
 // Run: npm run test:unit
 
+const { checkoutSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -99,7 +100,7 @@ test('the merchant order id survives the per-attempt suffix', () => {
 });
 
 test('a declined transaction credits nothing', () => {
-  const src = read('routes/public-orders.js');
+  const src = checkoutSource();
   // Both entry points gate on success before finalising.
   assert.match(src, /if \(!paymobSuccess\(params\)\) return res\.json\(\{ ok: true, verified: true, paid: false \}\)/);
   assert.match(src, /if \(paymobSuccess\(params\)\) \{[\s\S]{0,200}?finalisePaymobOrder/);
@@ -108,7 +109,7 @@ test('a declined transaction credits nothing', () => {
 });
 
 test('the captured amount and currency have to match the order', () => {
-  const src = read('routes/public-orders.js');
+  const src = checkoutSource();
   assert.match(src, /capture\.amountCents !== expectedCents/,
     'the webhook credits the order without checking what was captured');
   assert.match(src, /return \{ found: true, amountMismatch: true \}/);
@@ -123,7 +124,7 @@ test('the captured amount and currency have to match the order', () => {
 });
 
 test('an order that is already paid does not walk back to pending', () => {
-  const src = read('routes/public-orders.js');
+  const src = checkoutSource();
   assert.match(src, /ORDER_ALREADY_PAID/);
   // Belt and braces: the upsert itself refuses too, so a race cannot slip
   // between the check and the write.
@@ -133,7 +134,7 @@ test('an order that is already paid does not walk back to pending', () => {
 });
 
 test('the catalogue decides the price, not the caller', () => {
-  const src = read('routes/public-orders.js');
+  const src = checkoutSource();
   // reserve: refuses a mismatch rather than silently correcting it.
   assert.match(src, /PRICE_MISMATCH/);
   assert.match(src, /!priceMatches\(amount, catalogPrice\)/);
@@ -164,7 +165,7 @@ test('resolveCatalogPrice never prices a row it cannot find', async () => {
 });
 
 test('course access is granted from the database, never from the order body', () => {
-  const src = read('routes/public-orders.js');
+  const src = checkoutSource();
   // bundleCourseIds arrives in the request and is stored in notes; the grant
   // must read the bundle's courses from the bundle, not from that.
   assert.match(src, /SECURITY: always fetch bundle courses from DB/);
@@ -179,7 +180,7 @@ test('course access is granted from the database, never from the order body', ()
 test('the verify endpoint does not call a refused capture "paid"', () => {
   // finalise returns { found: true, amountMismatch: true } when it refuses to
   // credit. `paid: !!result.found` reported that refusal as a payment.
-  const src = read('routes/public-orders.js');
+  const src = checkoutSource();
   const start = src.indexOf("router.post('/api/paymob/verify'");
   const handler = src.slice(start, src.indexOf("router.post('/api/webhooks/paymob'", start));
   assert.ok(!/paid: !!result\.found,/.test(handler), 'verify reports paid on found alone again');

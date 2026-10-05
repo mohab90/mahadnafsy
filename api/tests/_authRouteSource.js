@@ -16,4 +16,12 @@ function authRouteSource() {
     .join('\n');
 }
 
-module.exports = { authRouteSource };
+// The checkout is routes/public-orders.js and the three modules it was split
+// into; read together, in the order the code used to stand.
+function checkoutSource() {
+  return ['routes/public-orders.js', 'lib/orderFields.js', 'lib/paymobGateway.js', 'lib/paymobFinalise.js']
+    .map(rel => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8'))
+    .join('\n');
+}
+
+module.exports = { authRouteSource, checkoutSource };

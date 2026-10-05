@@ -71,7 +71,7 @@ test('a foreign payment with no usable rate awards nothing rather than a fractio
 
 test('the paymob callback hands loyalty the currency it recorded on the payment', () => {
   const source = fs.readFileSync(
-    path.join(__dirname, '..', 'routes', 'public-orders.js'), 'utf8');
+    path.join(__dirname, '..', 'lib', 'paymobFinalise.js'), 'utf8');
   const call = source.slice(source.indexOf('awardPointsForPayment({'));
   const args = call.slice(0, call.indexOf('})'));
   assert.match(args, /currency: order\.currency/);

@@ -1,5 +1,6 @@
 'use strict';
 
+const { checkoutSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -47,7 +48,7 @@ test('Paymob remains fail-closed while provider review is pending', () => {
 });
 
 test('legacy Paymob order reservation fails before any database mutation while disabled', () => {
-  const route = fs.readFileSync(path.join(__dirname, '..', 'routes', 'public-orders.js'), 'utf8');
+  const route = checkoutSource();
   const reserve = route.slice(route.indexOf("router.post('/api/orders/reserve'"));
   assert.ok(reserve.indexOf('if (!isPaymobActive(config))') < reserve.indexOf('await pool.getConnection()'));
 });

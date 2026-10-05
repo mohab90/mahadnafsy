@@ -196,7 +196,7 @@ test('applyRefundReversal: Paymob refunds stay suspended', async () => {
 // duplicates, the same revenue gets booked twice with no error anywhere.
 test('the paymob payments insert must not swallow duplicate keys', () => {
   const source = require('node:fs').readFileSync(
-    require('node:path').join(__dirname, '..', 'routes', 'public-orders.js'), 'utf8');
+    require('node:path').join(__dirname, '..', 'lib', 'paymobFinalise.js'), 'utf8');
   const start = source.indexOf('INSERT INTO payments');
   assert.ok(start > 0, 'the payments insert must exist');
   const statement = source.slice(start, source.indexOf(';', start));
@@ -212,7 +212,7 @@ test('the paymob in-flight guard must work across processes, not just one', () =
   // workers could then finalise the same order at once. Only a lock the workers
   // share (the database) actually guards this.
   const source = require('node:fs').readFileSync(
-    require('node:path').join(__dirname, '..', 'routes', 'public-orders.js'), 'utf8');
+    require('node:path').join(__dirname, '..', 'lib', 'paymobFinalise.js'), 'utf8');
   const start = source.indexOf('async function finalisePaymobOrder');
   const guard = source.slice(start, source.indexOf('async function _finalisePaymobOrderInner'));
   assert.match(guard, /GET_LOCK/, 'the guard must take a database-level lock');

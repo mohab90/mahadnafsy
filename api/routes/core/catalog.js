@@ -13,7 +13,7 @@ const { COURSE_COLS, mapCourse, mapBundle, mapTherapist, getNextClientCode, mapQ
 const { createNotification } = require('../../lib/notification');
 const { logPaymentAudit, logFinancialAudit, postJournalEntry, _paymentAccountCode, _expenseAccountCode, toEgp } = require('../../lib/finance');
 const { assertWritable } = require('../../lib/periodLock');
-const { syncLeadDealValue } = require('../public-orders');
+const { syncLeadDealValue } = require('../../lib/paymobFinalise');
 const { logLeadEvent } = require('../../lib/crm');
 const { reconvertLeadOfRestoredClient, reopenLeadOfArchivedClient } = require('../../lib/leadState');
 const { MAX_CUSTOMER_DEVICES, clearCustomerDevices, listCustomerDevices } = require('../../lib/customerDevices');

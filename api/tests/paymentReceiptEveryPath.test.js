@@ -1,5 +1,6 @@
 'use strict';
 // «أي دفعة: إيميل للعميل بالمبلغ اللي اتدفع وإن جزء جديد من الكورس اتفتح».
+const { checkoutSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -66,13 +67,13 @@ test('every path that makes a payment paid queues it, and none writes its own', 
     'routes/core/financepay.js': /queuePaymentReceipt\(tenantId, id\);/,
     'routes/payment-proofs.js': /queuePaymentReceipt\(req\.tenantId, `proof-\$\{proof\.id\}`\);/,
     'routes/orders.js': /queuePaymentReceipt\(req\.tenantId, paymentId\);/,
-    'routes/public-orders.js': /queuePaymentReceipt\(tenantId, payId\);/,
+    'lib/paymobFinalise.js': /queuePaymentReceipt\(tenantId, payId\);/,
     'routes/installments.js': /queuePaymentReceipt\(req\.tenantId, payId\);/,
     'routes/auth/staffAccounts.js': /if \(firstPaymentId\) queuePaymentReceipt\(tenantId, firstPaymentId\);/,
   };
   for (const [rel, pattern] of Object.entries(paths)) assert.match(read(rel), pattern, rel);
   assert.doesNotMatch(read('routes/subscriber-payments.js'), /إيصال الدفع — معهد الدراسات النفسية/);
-  assert.doesNotMatch(read('routes/public-orders.js'), /✅ تم استلام دفعتك — /);
+  assert.doesNotMatch(checkoutSource(), /✅ تم استلام دفعتك — /);
 });
 
 test('paying an instalment opens lectures like every other payment', () => {

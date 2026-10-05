@@ -23,7 +23,7 @@
 //
 // Run: npm run test:unit
 
-const { authRouteSource } = require('./_authRouteSource');
+const { authRouteSource, checkoutSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -54,7 +54,7 @@ test('every course column has a placeholder to put a value in', () => {
 test('the consultation insert names only columns consultations has', () => {
   // The Paymob webhook no longer writes its own row: every way of paying
   // settles the consultation lib/consultationRequests.js opened at checkout.
-  assert.ok(!read('routes/public-orders.js').includes('INSERT IGNORE INTO consultations'));
+  assert.ok(!checkoutSource().includes('INSERT IGNORE INTO consultations'));
   const { columns, placeholders } = insertAt(read('lib/consultationRequests.js'), 'INSERT INTO consultations');
   assert.ok(!columns.includes('therapist_name'),
     'therapist_name is back: it does not exist, and it rolls the whole payment back');

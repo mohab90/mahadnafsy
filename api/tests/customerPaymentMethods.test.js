@@ -6,6 +6,7 @@
 // payment_proofs under two different spellings depending on which screen the
 // customer used. These pin the wire down: one source, one vocabulary.
 
+const { checkoutSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -21,7 +22,7 @@ const codeOnly = source => source
   .join('\n');
 
 test('the public availability endpoint reports which manual channels are configured', () => {
-  const route = codeOnly(read('api/routes/public-orders.js'));
+  const route = codeOnly(checkoutSource());
   assert.match(route, /function manualMethodsFor\(config\)/);
   assert.match(route, /manualMethods: manualMethodsFor\(config\)/);
   // Both the success answer and the fall-closed answer carry the list: a
@@ -33,7 +34,7 @@ test('the public availability endpoint reports which manual channels are configu
 test('manualMethodsFor keeps known codes, drops junk, and never answers empty', () => {
   // Re-derived from the route text rather than exported, because the route file
   // opens a DB pool on require. The body is short and pinned by the test above.
-  const route = read('api/routes/public-orders.js');
+  const route = checkoutSource();
   const body = route.slice(route.indexOf('function manualMethodsFor'));
   const end = body.indexOf('\n}\n');
   // eslint-disable-next-line no-new-func

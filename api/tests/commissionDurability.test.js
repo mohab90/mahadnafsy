@@ -4,13 +4,14 @@
 // only logged a warning — so a deadlock, a dropped connection or a restart
 // dropped it with no retry and no record that it was ever owed. These pin the
 // properties that stop that happening again.
+const { checkoutSource } = require('./_authRouteSource');
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
 const read = rel => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8').replace(/\r\n/g, '\n');
-const orders = read('routes/public-orders.js');
+const orders = checkoutSource();
 const scheduler = read('lib/backgroundScheduler.js');
 const calc = read('lib/commissionCalc.js');
 
