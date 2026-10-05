@@ -34,8 +34,8 @@ test('it is chosen when its credentials are the ones present', () => {
 
 test('the credentials come from the settings first, then the environment', () => {
   const sender = SOURCE.slice(SOURCE.indexOf('async function _sendUltraMsg'), SOURCE.indexOf('\n}', SOURCE.indexOf('async function _sendUltraMsg')));
-  assert.match(sender, /cfg\.ultraInstanceId \|\| process\.env\.ULTRAMSG_INSTANCE_ID/);
-  assert.match(sender, /cfg\.ultraToken \|\| envSecret\('ULTRAMSG_TOKEN'\)/);
+  assert.match(sender, /cfg\.ultraInstanceId \|\| platformEnv\(cfg, 'ULTRAMSG_INSTANCE_ID'\)/);
+  assert.match(sender, /cfg\.ultraToken \|\| platformSecret\(cfg, 'ULTRAMSG_TOKEN'\)/);
   assert.match(sender, /not_configured/, 'an unconfigured provider must say so rather than throw');
 });
 

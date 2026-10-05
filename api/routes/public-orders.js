@@ -11,7 +11,7 @@ const { pool } = require('../lib/db');
 const { getPaymentGatewaySettings, isPaymobActive } = require('../lib/saasSettings');
 const { paymobLimiter, publicLimiter } = require('../middleware/rateLimits');
 const { branchIdForBranch } = require('../lib/branches');
-const { DEFAULT_TENANT_ID } = require('../lib/tenantScope');
+const { DEFAULT_TENANT_ID, platformFallback } = require('../lib/tenantScope');
 const {
   PAYMOB_HMAC_FIELDS,
   buildPaymobHmacPayload,
@@ -306,7 +306,7 @@ router.post('/api/paymob/verify', paymobLimiter, async (req, res) => {
   try {
     const config = await getPaymentGatewaySettings(req.tenantId);
     if (!isPaymobActive(config)) return gatewayUnavailable(res, 'paymob_disabled');
-    const hmacSecret = config.paymob?.hmac_secret || process.env.PAYMOB_HMAC_SECRET || '';
+    const hmacSecret = config.paymob?.hmac_secret || platformFallback(req.tenantId, process.env.PAYMOB_HMAC_SECRET) || '';
     const params = req.body || {};
     const verified = verifyPaymobHmac(params, hmacSecret);
     if (!verified) return res.status(400).json({ ok: false, verified: false, paid: false, error: 'Invalid Paymob signature' });
@@ -336,7 +336,7 @@ router.post('/api/webhooks/paymob', paymobLimiter, async (req, res) => {
   try {
     const config = await getPaymentGatewaySettings(req.tenantId);
     if (!isPaymobActive(config)) return res.status(200).json({ ok: false, reason: 'paymob_disabled' });
-    const hmacSecret = config.paymob?.hmac_secret || process.env.PAYMOB_HMAC_SECRET || '';
+    const hmacSecret = config.paymob?.hmac_secret || platformFallback(req.tenantId, process.env.PAYMOB_HMAC_SECRET) || '';
     const params = req.body?.obj ? { ...req.body.obj, hmac: req.query.hmac || req.body.hmac } : (req.body || {});
     if (!verifyPaymobHmac(params, hmacSecret)) return res.status(200).json({ ok: false, reason: 'invalid_signature' });
     if (paymobSuccess(params)) {

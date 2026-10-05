@@ -5,6 +5,7 @@ const { getNextClientCode } = require('./mappers');
 const { branchIdForBranch } = require('./branches');
 const { fetchFbLeadDetails, getFbLeadConfig } = require('./facebookLeadAds');
 const { getNextSalesRep } = require('./leadAssignment');
+const { platformFallback } = require('./tenantScope');
 const { logLeadEventStrict } = require('./crm');
 const { findLeadByContact } = require('./leadMatching');
 
@@ -26,7 +27,7 @@ async function processFacebookLeadEvent({ event, payload }, dependencies = {}) {
   const db = dependencies.pool || pool;
   const tenantId = event.tenant_id;
   const config = await (dependencies.getConfig || getFbLeadConfig)(tenantId);
-  const pageAccessToken = config.pageAccessToken || process.env.FB_PAGE_TOKEN;
+  const pageAccessToken = config.pageAccessToken || platformFallback(tenantId, process.env.FB_PAGE_TOKEN);
   let imported = 0;
   for (const entry of payload?.entry || []) {
     for (const change of entry.changes || []) {

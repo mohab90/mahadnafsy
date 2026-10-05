@@ -99,14 +99,29 @@ function envSecret(name) {
   try { return resolveSecret(name); } catch (_) { return ''; }
 }
 
+// The provider credentials in the environment are the original institute's own
+// number. Another institute without credentials of its own used to fall back
+// to them, so its OTPs and messages went out from somebody else's company
+// number. A config read for any other institute is marked here and gets
+// nothing from the environment.
+const FOREIGN_CFGS = new WeakSet();
+function forTenant(cfg, tenantId) {
+  if (!cfg || String(tenantId || DEFAULT_TENANT) === DEFAULT_TENANT) return cfg;
+  const copy = { ...cfg };
+  FOREIGN_CFGS.add(copy);
+  return copy;
+}
+const platformEnv = (cfg, name) => (FOREIGN_CFGS.has(cfg) ? '' : process.env[name]);
+const platformSecret = (cfg, name) => (FOREIGN_CFGS.has(cfg) ? '' : envSecret(name));
+
 function providerCredentialState(cfg = {}) {
   return {
-    metaReady: Boolean(cfg.metaToken || envSecret('WHATSAPP_TOKEN'))
-      && Boolean(cfg.metaPhoneId || process.env.WHATSAPP_PHONE_ID),
-    greenReady: Boolean(cfg.instanceId || process.env.WA_INSTANCE_ID)
-      && Boolean(cfg.apiToken || envSecret('WA_API_TOKEN')),
-    ultraReady: Boolean(cfg.ultraInstanceId || process.env.ULTRAMSG_INSTANCE_ID)
-      && Boolean(cfg.ultraToken || envSecret('ULTRAMSG_TOKEN')),
+    metaReady: Boolean(cfg.metaToken || platformSecret(cfg, 'WHATSAPP_TOKEN'))
+      && Boolean(cfg.metaPhoneId || platformEnv(cfg, 'WHATSAPP_PHONE_ID')),
+    greenReady: Boolean(cfg.instanceId || platformEnv(cfg, 'WA_INSTANCE_ID'))
+      && Boolean(cfg.apiToken || platformSecret(cfg, 'WA_API_TOKEN')),
+    ultraReady: Boolean(cfg.ultraInstanceId || platformEnv(cfg, 'ULTRAMSG_INSTANCE_ID'))
+      && Boolean(cfg.ultraToken || platformSecret(cfg, 'ULTRAMSG_TOKEN')),
   };
 }
 
@@ -121,6 +136,7 @@ async function getWaCfg(tenantId = DEFAULT_TENANT) {
   try {
     value = await getTenantSetting('whatsapp_config', { tenantId: scopedTenant, fallback: {} }) || {};
   } catch (_) { value = hit?.value || {}; }
+  value = forTenant(value, scopedTenant);
   waCfgCache.set(scopedTenant, { value, at: now });
   return value;
 }
@@ -140,7 +156,7 @@ function resolveProvider(cfg) {
   // «instance5000» rather than the numeric id Green API uses. Nothing here
   // spoke it, so a valid token reached no sender and OTP never left.
   if (cfg.ultraInstanceId || cfg.ultraToken
-      || process.env.ULTRAMSG_INSTANCE_ID || envSecret('ULTRAMSG_TOKEN')) return 'ultramsg';
+      || platformEnv(cfg, 'ULTRAMSG_INSTANCE_ID') || platformSecret(cfg, 'ULTRAMSG_TOKEN')) return 'ultramsg';
   if (providerCredentialState(cfg).metaReady) return 'meta';
   return 'green-api';
 }
@@ -153,8 +169,8 @@ async function _sendMeta(normalized, message, cfg) {
 }
 
 async function _sendMetaPayload(normalized, content, cfg) {
-  const token   = cfg.metaToken   || envSecret('WHATSAPP_TOKEN');
-  const phoneId = cfg.metaPhoneId || process.env.WHATSAPP_PHONE_ID;
+  const token   = cfg.metaToken   || platformSecret(cfg, 'WHATSAPP_TOKEN');
+  const phoneId = cfg.metaPhoneId || platformEnv(cfg, 'WHATSAPP_PHONE_ID');
   if (!token || !phoneId) {
     logger.warn('[WhatsApp] Meta not configured — skipping notification');
     return { ok: false, provider: 'meta', reason: 'not_configured' };
@@ -170,8 +186,8 @@ async function _sendMetaPayload(normalized, content, cfg) {
 }
 
 async function _sendGreenApi(normalized, message, cfg) {
-  const instanceId = cfg.instanceId || process.env.WA_INSTANCE_ID;
-  const apiToken   = cfg.apiToken   || envSecret('WA_API_TOKEN');
+  const instanceId = cfg.instanceId || platformEnv(cfg, 'WA_INSTANCE_ID');
+  const apiToken   = cfg.apiToken   || platformSecret(cfg, 'WA_API_TOKEN');
   if (!instanceId || !apiToken) {
     logger.warn('[WhatsApp] Green-API not configured — skipping notification');
     return { ok: false, provider: 'green-api', reason: 'not_configured' };
@@ -198,8 +214,8 @@ async function _sendGreenApi(normalized, message, cfg) {
  * than flattened into "failed".
  */
 async function _sendUltraMsg(normalized, message, cfg) {
-  const instanceId = cfg.ultraInstanceId || process.env.ULTRAMSG_INSTANCE_ID;
-  const token = cfg.ultraToken || envSecret('ULTRAMSG_TOKEN');
+  const instanceId = cfg.ultraInstanceId || platformEnv(cfg, 'ULTRAMSG_INSTANCE_ID');
+  const token = cfg.ultraToken || platformSecret(cfg, 'ULTRAMSG_TOKEN');
   if (!instanceId || !token) {
     logger.warn('[WhatsApp] UltraMsg not configured — skipping notification');
     return { ok: false, provider: 'ultramsg', reason: 'not_configured' };
@@ -282,12 +298,12 @@ async function sendWhatsApp(phone, message, options = {}) {
         return { ok: false, reason: 'daily_limit_reached', channelId: resolved.row.id };
       }
       const result = resolved.row.provider === 'meta'
-        ? await _sendMeta(normalized, message, resolved.credentials)
+        ? await _sendMeta(normalized, message, forTenant(resolved.credentials, tenantId))
         : resolved.row.provider === 'wapilot'
-          ? await require('./whatsappWapilot').sendViaWapilot(normalized, message, resolved.credentials)
+          ? await require('./whatsappWapilot').sendViaWapilot(normalized, message, forTenant(resolved.credentials, tenantId))
           : resolved.row.provider === 'ultramsg'
-            ? await _sendUltraMsg(normalized, message, resolved.credentials)
-            : await _sendGreenApi(normalized, message, resolved.credentials);
+            ? await _sendUltraMsg(normalized, message, forTenant(resolved.credentials, tenantId))
+            : await _sendGreenApi(normalized, message, forTenant(resolved.credentials, tenantId));
       // A send is the only honest proof the credentials work, so the channel's
       // status follows the result rather than whatever it was set at save time.
       if (result.ok) await channels.markChannelConnected(tenantId, resolved.row.id).catch(() => {});
@@ -370,7 +386,7 @@ async function sendWhatsAppTemplate(phone, template, options = {}) {
       if (resolved.row.provider !== 'meta') return { ok: false, reason: 'templates_need_meta', channelId };
       const withinBudget = await channels.claimSendBudget(tenantId, channelId).catch(() => true);
       if (!withinBudget) return { ok: false, reason: 'daily_limit_reached', channelId };
-      cfg = resolved.credentials;
+      cfg = forTenant(resolved.credentials, tenantId);
     } else {
       if (options.channelId) return { ok: false, reason: 'channel_unavailable', channelId: options.channelId };
       cfg = await getWaCfg(tenantId);
@@ -395,10 +411,10 @@ async function sendWhatsAppTemplate(phone, template, options = {}) {
 async function listMetaTemplates(tenantId) {
   const channels = require('./messagingChannels');
   const resolved = await channels.getSendableChannel({ tenantId, kind: 'whatsapp' }).catch(() => null);
-  const cfg = resolved?.row.provider === 'meta' ? resolved.credentials : (resolved ? null : await getWaCfg(tenantId));
+  const cfg = resolved?.row.provider === 'meta' ? forTenant(resolved.credentials, tenantId) : (resolved ? null : await getWaCfg(tenantId));
   if (!cfg) return { ok: false, reason: 'templates_need_meta' };
-  const token = cfg.metaToken || envSecret('WHATSAPP_TOKEN');
-  const wabaId = cfg.metaWabaId || process.env.WHATSAPP_WABA_ID;
+  const token = cfg.metaToken || platformSecret(cfg, 'WHATSAPP_TOKEN');
+  const wabaId = cfg.metaWabaId || platformEnv(cfg, 'WHATSAPP_WABA_ID');
   if (!token || !wabaId) return { ok: false, reason: 'waba_missing' };
   const res = await fetch(
     `https://graph.facebook.com/v19.0/${encodeURIComponent(wabaId)}/message_templates?fields=name,language,status,category,components&limit=200`,
@@ -463,6 +479,6 @@ function isTransientSendFailure(reason) {
 
 module.exports = {
   describeReason, getWaCfg, invalidateOutbound, invalidateWaCfg, isCategoryOpen, isTransientSendFailure,
-  outboundState, providerCredentialState, resolveProvider, sendWhatsApp,
+  forTenant, outboundState, providerCredentialState, resolveProvider, sendWhatsApp,
   sendWhatsAppTemplate, listMetaTemplates, describeTemplate, buildTemplatePayload,
 };

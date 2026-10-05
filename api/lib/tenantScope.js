@@ -142,8 +142,19 @@ function requireTenantFeature(featureKey) {
   };
 }
 
+/**
+ * A provider credential from the environment, for the original institute only.
+ * The environment holds that institute's own WhatsApp number, Facebook page and
+ * Paymob account; another institute without settings of its own gets nothing
+ * rather than borrowing them.
+ */
+function platformFallback(tenantId, value) {
+  return String(tenantId || DEFAULT_TENANT_ID) === DEFAULT_TENANT_ID ? value : undefined;
+}
+
 module.exports = {
   DEFAULT_FEATURES,
+  platformFallback,
   DEFAULT_TENANT_ID,
   clearTenantContextCache,
   loadTenantContext,

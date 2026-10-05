@@ -10,7 +10,7 @@ const { getWaCfg, invalidateWaCfg, resolveProvider, sendWhatsApp } = require('..
 const { branchIdForBranch, defaultDigitalBranch } = require('../lib/branches');
 const { toIdentity, identitySpellings } = require('../lib/phoneNumber');
 const { getFbLeadConfig } = require('../lib/facebookLeadAds');
-const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
+const { DEFAULT_TENANT_ID, platformFallback, resolveTenantId } = require('../lib/tenantScope');
 const { setTenantSetting } = require('../lib/tenantSettings');
 const { redactSecrets } = require('../lib/configSecrets');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
@@ -27,8 +27,8 @@ function scopedTenantId(req) {
 
 async function greenApiConfig(req) {
   const cfg = await getWaCfg(scopedTenantId(req));
-  const instanceId = cfg.instanceId || process.env.WA_INSTANCE_ID;
-  const apiToken = cfg.apiToken || process.env.WA_API_TOKEN;
+  const instanceId = cfg.instanceId || platformFallback(scopedTenantId(req), process.env.WA_INSTANCE_ID);
+  const apiToken = cfg.apiToken || platformFallback(scopedTenantId(req), process.env.WA_API_TOKEN);
   if (resolveProvider(cfg) !== 'green-api' || !instanceId || !apiToken) return null;
   if (!/^\d{1,20}$/.test(String(instanceId)) || !/^[A-Za-z0-9_-]{10,120}$/.test(String(apiToken))) return null;
   return { instanceId: String(instanceId), apiToken: String(apiToken) };
@@ -40,10 +40,10 @@ router.get('/api/admin/whatsapp-config', requireAuth, requireAdmin, async (req, 
     // Never return the token to frontend
     res.json({
       provider: resolveProvider(cfg),
-      instanceId: cfg.instanceId || process.env.WA_INSTANCE_ID || '',
-      hasToken: !!(cfg.apiToken || process.env.WA_API_TOKEN),
-      metaPhoneId: cfg.metaPhoneId || process.env.WHATSAPP_PHONE_ID || '',
-      hasMetaToken: !!(cfg.metaToken || process.env.WHATSAPP_TOKEN),
+      instanceId: cfg.instanceId || platformFallback(scopedTenantId(req), process.env.WA_INSTANCE_ID) || '',
+      hasToken: !!(cfg.apiToken || platformFallback(scopedTenantId(req), process.env.WA_API_TOKEN)),
+      metaPhoneId: cfg.metaPhoneId || platformFallback(scopedTenantId(req), process.env.WHATSAPP_PHONE_ID) || '',
+      hasMetaToken: !!(cfg.metaToken || platformFallback(scopedTenantId(req), process.env.WHATSAPP_TOKEN)),
     });
   } catch (e) { routeError(res, e); }
 });

@@ -70,7 +70,7 @@ test('every path that shows materials now loads them', () => {
 
 test('the Facebook verify token is stored under the key the webhook compares', () => {
   const webhook = read('api/routes/facebook-leads-webhook.js');
-  assert.match(webhook, /config\.verifyToken \|\| process\.env\.FB_VERIFY_TOKEN/);
+  assert.match(webhook, /config\.verifyToken \|\| platformFallback\(tenantId, process\.env\.FB_VERIFY_TOKEN\)/);
 
   const screen = codeOnly(read('admin/pages/dashboard/tabs/AutomationTab.tsx'));
   assert.ok(screen.includes('verifyToken: fbToken.trim()'));

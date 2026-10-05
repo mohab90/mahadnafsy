@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const express = require('express');
 const logger = require('../lib/logger').child({ module: 'facebook-leads-webhook-route' });
-const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
+const { DEFAULT_TENANT_ID, platformFallback, resolveTenantId } = require('../lib/tenantScope');
 const { getFbLeadConfig } = require('../lib/facebookLeadAds');
 const { enqueueConnectorEvent, drainConnectorEvents } = require('../lib/connectorEvents');
 const { processFacebookLeadEvent } = require('../lib/facebookLeadEvents');
@@ -20,7 +20,7 @@ const safeEqual = (left, right) => {
 router.get('/api/webhooks/facebook-leads', publicLimiter, async (req, res) => {
   const tenantId = tenantIdFor(req);
   const config = await getFbLeadConfig(tenantId).catch(() => ({}));
-  const verifyToken = config.verifyToken || process.env.FB_VERIFY_TOKEN;
+  const verifyToken = config.verifyToken || platformFallback(tenantId, process.env.FB_VERIFY_TOKEN);
   const verified = req.query['hub.mode'] === 'subscribe'
     && verifyToken
     && safeEqual(req.query['hub.verify_token'], verifyToken);
@@ -31,7 +31,7 @@ router.get('/api/webhooks/facebook-leads', publicLimiter, async (req, res) => {
 router.post('/api/webhooks/facebook-leads', publicLimiter, async (req, res) => {
   const tenantId = tenantIdFor(req);
   const config = await getFbLeadConfig(tenantId).catch(() => ({}));
-  const appSecret = config.appSecret || process.env.FB_APP_SECRET;
+  const appSecret = config.appSecret || platformFallback(tenantId, process.env.FB_APP_SECRET);
   if (!appSecret) return res.status(503).json({ error: 'Facebook webhook secret is not configured' });
   const signature = String(req.headers['x-hub-signature-256'] || '');
   const expected = `sha256=${crypto.createHmac('sha256', appSecret)
