@@ -1,15 +1,16 @@
 import { useState } from 'react';
-import { Activity, Bot, Radio, Megaphone, MessageCircle, Inbox } from 'lucide-react';
+import { Activity, Bot, Radio, Megaphone, MessageCircle, Inbox, Users } from 'lucide-react';
 import { MessagingChannelsPanel } from './messaging/MessagingChannelsPanel';
 import { WhatsappCampaignsPanel } from './messaging/WhatsappCampaignsPanel';
 import { MyWhatsappChannelPanel } from './messaging/MyWhatsappChannelPanel';
 import TeamInboxTab from './whatsapp/TeamInboxTab';
 import { MessagesHealthPanel } from './messaging/MessagesHealthPanel';
 import InboxBotPanel from './messaging/InboxBotPanel';
+import PageAudiencePanel from './messaging/PageAudiencePanel';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
-type View = 'inbox' | 'channels' | 'campaigns' | 'mine' | 'health' | 'bot';
+type View = 'inbox' | 'channels' | 'campaigns' | 'mine' | 'health' | 'bot' | 'audience';
 
 const VIEWS: { key: View; label: string; icon: typeof Radio; hint: string }[] = [
   { key: 'inbox', label: 'صندوق الرسائل', icon: Inbox, hint: 'واتساب الشركة والماسنجر والانستجرام' },
@@ -17,6 +18,7 @@ const VIEWS: { key: View; label: string; icon: typeof Radio; hint: string }[] = 
   { key: 'channels', label: 'قنوات المراسلة', icon: Radio, hint: 'أرقام الشركة والموظفين' },
   { key: 'bot', label: 'البوت', icon: Bot, hint: 'رد آلي بالذكاء الاصطناعي من صندوق الرسائل' },
   { key: 'campaigns', label: 'حملات الواتساب', icon: Megaphone, hint: 'رسائل تسويقية مجدولة' },
+  { key: 'audience', label: 'عملاء الصفحة', icon: Users, hint: 'اللي كلموا صفحة الفيسبوك والانستجرام، وإزاي توصلهم تاني' },
   { key: 'health', label: 'صحة الرسايل', icon: Activity, hint: 'اللي اتبعت واللي فشل وليه، وأنواع الرسايل المسموحة' },
 ];
 
@@ -57,6 +59,7 @@ export default function MessagingHubTab({ notify }: { notify: NotifyFn }) {
       {view === 'campaigns' && <WhatsappCampaignsPanel notify={notify} />}
       {view === 'health' && <MessagesHealthPanel notify={notify} />}
       {view === 'bot' && <InboxBotPanel notify={notify} />}
+      {view === 'audience' && <PageAudiencePanel notify={notify} onOpenCampaigns={() => setView('campaigns')} />}
     </div>
   );
 }

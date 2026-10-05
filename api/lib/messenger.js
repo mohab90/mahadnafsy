@@ -195,7 +195,9 @@ async function createLeadFromMessenger({ tenantId, psid, text, platform = 'messe
  * can merge it into an existing customer from the inbox once they know who it
  * is.
  */
-async function recordInboundMessenger({ tenantId, channelId, providerMessageId, psid, body, timestamp, platform = 'messenger' }, db = pool) {
+// `quiet`: a message read back from the page's history (lib/pageAudience.js) —
+// filed the same way, but nobody is notified and the bot does not answer it.
+async function recordInboundMessenger({ tenantId, channelId, providerMessageId, psid, body, timestamp, platform = 'messenger', quiet = false }, db = pool) {
   if (!providerMessageId || !psid) return { recorded: false, reason: 'incomplete' };
   const p = PLATFORM[platform];
   if (!p) return { recorded: false, reason: 'unknown_platform' };
@@ -263,7 +265,13 @@ async function recordInboundMessenger({ tenantId, channelId, providerMessageId, 
     logger.warn('[messenger] team inbox update failed', error.message);
   }
 
-  await createNotification(
+  // A number written in the chat goes on the lead, so WhatsApp can reach them.
+  if (lead?.id && !quiet) {
+    await require('./pageAudience').capturePhone(db, { tenantId, leadId: lead.id, text })
+      .catch(error => logger.warn('[messenger] phone capture failed', error.message));
+  }
+
+  if (!quiet) await createNotification(
     platform,
     isNewLead ? p.newTitle : p.title,
     `${lead?.name || 'زائر'}: ${text.slice(0, 120) || 'رسالة'}`,
@@ -274,7 +282,7 @@ async function recordInboundMessenger({ tenantId, channelId, providerMessageId, 
 
   // The inbox bot answers a few seconds later when it is on (lib/inboxBot.js).
   // Required here, not at the top: inboxBot requires this file to send.
-  if (threadId) require('./inboxBot').scheduleBotReply({ tenantId, threadId, inboundAt: when });
+  if (threadId && !quiet) require('./inboxBot').scheduleBotReply({ tenantId, threadId, inboundAt: when });
 
   return { recorded: true, id, leadId: lead?.id || null, matched: Boolean(lead), createdLead: isNewLead };
 }
