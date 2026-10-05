@@ -145,7 +145,13 @@ const leaves = [...navLeaves, ...extraLeaves].filter(t => {
   return true;
 });
 
-const reachable = (key) => {
+// A Tagamoa tab draws the Dokki screen it stands for (admin/lib/physicalBranch.tsx
+// screenForTab): tagamoa_schedule → daqqi_schedule, tagamoa_waitlist → waitlist.
+const screenOf = (key) => (key === 'tagamoa_waitlist' ? 'waitlist'
+  : key.startsWith('tagamoa_') ? `daqqi_${key.slice('tagamoa_'.length)}` : key);
+
+const reachable = (tabKey) => {
+  const key = screenOf(tabKey);
   const owners = drawnBy.get(key);
   if (!owners) return false;
   return owners.some(c => {
