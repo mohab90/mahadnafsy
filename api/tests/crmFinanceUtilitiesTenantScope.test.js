@@ -1,4 +1,5 @@
 'use strict';
+const { financeRouteSource } = require('./_authRouteSource');
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -9,7 +10,7 @@ const read = (file) => fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
 
 test('printable invoice is permission and tenant scoped and escapes stored data', () => {
   const route = read('routes/misc/billing.js');
-  const finance = read('routes/finance.js');
+  const finance = financeRouteSource();
   assert.match(route, /invoice-html'[\s\S]*requirePermission\('view_financial'\)/);
   assert.match(route, /WHERE p\.id = \? AND p\.tenant_id = \?/);
   assert.match(route, /s\.tenant_id = p\.tenant_id/);
@@ -24,7 +25,7 @@ test('printable invoice is permission and tenant scoped and escapes stored data'
 });
 
 test('finance cockpit, payment links and budget writes are tenant bounded', () => {
-  const finance = read('routes/finance.js');
+  const finance = financeRouteSource();
   const migration = read('migrations/108_v25_finance_operational_branch_scope.sql');
   assert.match(finance, /FROM journal_entries je[\s\S]*WHERE je\.tenant_id=\?/);
   assert.match(finance, /payment_proofs WHERE tenant_id=\?/);

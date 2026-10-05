@@ -13,12 +13,13 @@ const path = require('node:path');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
+const { sourceOf } = require('./_authRouteSource');
 const ROUTES = path.join(__dirname, '..', 'routes');
 const read = rel => fs.readFileSync(path.join(ROUTES, rel), 'utf8');
 
 test('orders and finance take the scope clause from one place', () => {
   for (const rel of ['orders.js', 'finance.js']) {
-    const s = read(rel);
+    const s = sourceOf(`routes/${rel}`);
     assert.match(s, /financialScopeClause/, `${rel} should use the shared clause`);
     // No hand-rolled branch/assignment clause left beside it.
     assert.doesNotMatch(

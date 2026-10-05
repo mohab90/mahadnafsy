@@ -234,6 +234,7 @@ else warn(`DB indexes — only ${indexCount} indexes defined (target >= 15)`);
 console.log('\n11. Financial schema-correctness guard');
 const finText = [
   readText(join(ROOT, 'api/routes/finance.js')),
+  ...(existsSync(join(ROOT, 'api/routes/finance')) ? readdirSync(join(ROOT, 'api/routes/finance')).map(f => readText(join(ROOT, 'api/routes/finance', f)) || '') : []),
   readText(join(ROOT, 'api/routes/analytics.js')),
   readText(join(ROOT, 'api/routes/admin-utils.js')),
 ].join('\n');

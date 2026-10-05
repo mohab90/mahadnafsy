@@ -1,4 +1,5 @@
 'use strict';
+const { financeRouteSource } = require('./_authRouteSource');
 
 // The half of «فعّل الاسترداد الجزئي» that is not the arithmetic.
 //
@@ -65,7 +66,7 @@ test('a partial request can be made in the first place', () => {
 test('the server still holds the same two limits', () => {
   // The screen checking is a courtesy to the person typing. The route is what
   // actually decides, and it is not allowed to soften.
-  const route = read('api/routes/finance.js');
+  const route = financeRouteSource();
   const guard = route.slice(route.indexOf('let refundedAmount = null;'), route.indexOf('let refundedAmount = null;') + 900);
   assert.match(guard, /refundedAmount <= 0/, 'zero or less is not an approval');
   assert.match(guard, /refundedAmount > requested/, 'nor is more than was requested');
@@ -76,7 +77,7 @@ test('why the money came back travels with it', () => {
   // The negative payment row carries a note, and the note is where anyone
   // reading the ledger later finds out what this was. Without the decision
   // note it read «استرداد جزئي من دفعة <id>» and stopped there.
-  const route = read('api/routes/finance.js');
+  const route = financeRouteSource();
   const opens = route.indexOf('await applyRefundReversal({');
   const call = route.slice(opens, route.indexOf('}, conn);', opens));
   assert.match(call, /reason:/, 'the reversal is told why');

@@ -1,4 +1,5 @@
 'use strict';
+const { financeRouteSource } = require('./_authRouteSource');
 
 // «خلي في امكانيه للمديرين بمسح كورس عميل … استرداد جزئي لكورس محدد للعميل او
 // تحويل لكورس محدد … اي مسح لكورس او اي تحويل … لازم تتسجل في هيستوري العميل
@@ -169,7 +170,7 @@ test('a refund names a course, and the payment behind it is optional', () => {
   assert.match(byAdmin, /action: 'refund_requested'/);
   assert.match(byAdmin, /!refund_method \|\| refund_method === 'same_as_payment'/, 'with no payment, a named box');
 
-  const finance = read('api/routes/finance.js');
+  const finance = financeRouteSource();
   assert.match(finance, /!rr\.payment_id && !rr\.course_item/);
   assert.match(finance, /applyUnlinkedRefund\(\{/);
   assert.match(finance, /action: `refund_\$\{normalizedStatus\.toLowerCase\(\)\}`/);
@@ -187,7 +188,7 @@ test('a refund names a course, and the payment behind it is optional', () => {
 });
 
 test('a branch\'s money is its own clients\' money, box by box', () => {
-  const finance = read('api/routes/finance.js');
+  const finance = financeRouteSource();
   const boxes = finance.slice(finance.indexOf("'/api/admin/finance/boxes'"), finance.indexOf("'/api/admin/finance/refunds', requireAuth"));
   assert.match(boxes, /requirePermission\('view_financial'\)/);
   assert.match(boxes, /p\.deleted_at IS NULL/);

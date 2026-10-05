@@ -1,4 +1,5 @@
 'use strict';
+const { financeRouteSource } = require('./_authRouteSource');
 // Four faults found by reading the admin side of two classes already proven on
 // the customer side.
 //
@@ -104,7 +105,7 @@ test('the refunds screen counts only money actually received', () => {
   // awaiting review, failed ones and the soft-deleted duplicates from the
   // de-dupe cleanup — in raw currency. A customer who had paid 3,400 once
   // could read 8,800 against a 3,400 course.
-  const source = codeOnly(read('routes/finance.js'));
+  const source = codeOnly(financeRouteSource());
   const at = source.indexOf('AS paid_total');
   assert.ok(at > 0, 'paid_total not found');
   const subquery = source.slice(source.lastIndexOf('(SELECT', at), at);
@@ -115,7 +116,7 @@ test('the refunds screen counts only money actually received', () => {
 
 test('and its course total is converted rather than mixed', () => {
   // course_expected is in the payment's own currency; price_egp is EGP.
-  const source = codeOnly(read('routes/finance.js'));
+  const source = codeOnly(financeRouteSource());
   assert.match(source, /COALESCE\(p\.course_expected \* COALESCE\(p\.fx_rate_to_egp, 1\), c\.price_egp\) AS course_total/);
 });
 

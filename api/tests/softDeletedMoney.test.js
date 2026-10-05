@@ -39,6 +39,7 @@ const ALLOWED = new Map([
   ['routes/core/payops.js', 'id dedupe, and the payment audit log outlives the payment'],
   ['routes/public-orders.js:471', 'transaction_id dedupe — blind to a deleted row it double-charges'],
   ['routes/finance-documents.js', 'the invoice is its own record'],
+  ['routes/finance/refunds.js:112', "the refund's own payment, joined by id; the money beside it is summed from px, guarded"],
   ['routes/support.js', 'ticket context, looked up by an explicit id'],
   ['routes/monitoring.js:301', 'journal reconciliation wants the raw table'],
   ['routes/monitoring.js:309', 'journal reconciliation wants the raw table'],

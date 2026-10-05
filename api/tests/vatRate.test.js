@@ -1,4 +1,5 @@
 'use strict';
+const { financeRouteSource, sourceOf } = require('./_authRouteSource');
 
 // The VAT rate on a document comes from the setting an admin edits.
 //
@@ -29,7 +30,7 @@ test('one resolver answers the VAT rate, and both documents use it', () => {
 
   // Nobody reads the bare key on their own any more.
   for (const rel of ['api/routes/finance.js', 'api/routes/analytics/financial.js']) {
-    const src = read(rel);
+    const src = sourceOf(rel);
     assert.ok(!/getTenantSetting\(\s*'vat_pct'/.test(src),
       `${rel} still reads vat_pct directly instead of the shared resolver`);
     assert.match(src, /getVatPercent\(/, `${rel} does not call the resolver`);
@@ -81,7 +82,7 @@ test('the settings value wins, and a legacy value still overrides it', () => {
 test('a rate above zero puts the tax line back on the document', () => {
   // The templates gate on it, which is why 0 removed the line rather than
   // printing «ضريبة (0%)».
-  const src = read('api/routes/finance.js');
+  const src = financeRouteSource();
   // Two documents, two gates — the 70mm receipt and the A4 invoice. Counting
   // them, because asserting one match still passes when the other is removed.
   const gates = src.match(/\$\{p\._vatPct > 0 \?/g) || [];

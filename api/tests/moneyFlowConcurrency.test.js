@@ -1,4 +1,5 @@
 'use strict';
+const { financeRouteSource } = require('./_authRouteSource');
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -30,7 +31,7 @@ test('refund resolution locks one tenant request and posts a reversal in the sam
   // Was routes/admin-utils.js (the inline duplicate, since removed — Phase
   // 1.d unified both copies behind lib/refunds.js#applyRefundReversal,
   // called from the route the frontend actually uses).
-  const route = read('routes/finance.js');
+  const route = financeRouteSource();
   const refunds = read('lib/refunds.js');
   assert.match(route, /FROM refund_requests rr[\s\S]*FOR UPDATE/);
   assert.match(route, /applyRefundReversal\(/);

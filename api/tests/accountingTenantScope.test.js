@@ -1,4 +1,5 @@
 'use strict';
+const { financeRouteSource } = require('./_authRouteSource');
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -57,7 +58,7 @@ test('expense writes and ledger postings share one transaction', () => {
 });
 
 test('financial reports and reconciliation scope journal headers by tenant', () => {
-  const financeRoute = read('routes/finance.js');
+  const financeRoute = financeRouteSource();
   const monitoring = read('routes/monitoring.js');
   assert.match(financeRoute, /WHERE je\.tenant_id=\? AND je\.entry_date BETWEEN/);
   assert.match(monitoring, /WHERE je\.tenant_id=\? AND je\.ref_type='payment'/);

@@ -1,4 +1,5 @@
 'use strict';
+const { financeRouteSource } = require('./_authRouteSource');
 
 /**
  * Reported from the Dokki desk on 3 Oct 2026:
@@ -370,7 +371,7 @@ test('money taken at the Dokki desk is the Dokki branch\'s', () => {
 });
 
 test('the cockpit\'s Dokki revenue is the branch\'s money, not what one dialog happened to tag', () => {
-  const finance = read('api/routes/finance.js');
+  const finance = financeRouteSource();
   assert.match(finance, /p\.status='paid' AND p\.deleted_at IS NULL AND p\.branch='DAQQI'\$\{paymentAliasScopeSql\}/);
   assert.doesNotMatch(finance, /p\.source='daqqi'/);
   // A deleted payment is not revenue anywhere on the cockpit.

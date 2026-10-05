@@ -50,6 +50,7 @@ function splitRouteSource(rel) {
 }
 
 const leadsRouteSource = () => splitRouteSource('routes/admin/leads.js');
+const financeRouteSource = () => splitRouteSource('routes/finance.js');
 
 // Any API file as text, whole: the split route files are read with their parts.
 // Takes the path from api/ or from the repository root.
@@ -60,4 +61,6 @@ function sourceOf(rel) {
   return fs.readFileSync(path.join(API, key), 'utf8');
 }
 
-module.exports = { authRouteSource, checkoutSource, leadsRouteSource, ordersScreenSource, sourceOf };
+module.exports = {
+  authRouteSource, checkoutSource, financeRouteSource, leadsRouteSource, ordersScreenSource, sourceOf,
+};

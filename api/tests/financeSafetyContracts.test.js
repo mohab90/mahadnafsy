@@ -1,6 +1,6 @@
 'use strict';
 
-const { authRouteSource } = require('./_authRouteSource');
+const { authRouteSource, financeRouteSource } = require('./_authRouteSource');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -12,7 +12,7 @@ const read = relativePath => fs.readFileSync(path.join(root, relativePath), 'utf
 test('manual money workflows separate recording, approval and refund authority', () => {
   const createPayment = read('api/routes/subscriber-payments.js');
   const approvePayment = read('api/routes/core/financepay.js');
-  const refundRoute = read('api/routes/finance.js');
+  const refundRoute = financeRouteSource();
 
   assert.match(createPayment, /hasPermission\(req\.staffRecord,\s*'manage_financial'\)/);
   assert.match(createPayment, /storedStatus = requestedStatus === 'paid' && !canApprovePayment \? 'pending'/);
@@ -142,7 +142,7 @@ test('recurring expenses preserve branch, category and accounting audit history'
 });
 
 test('payment links fail closed without configuration, redeem once, and installment reads enforce scope', () => {
-  const finance = read('api/routes/finance.js');
+  const finance = financeRouteSource();
   const checkout = read('api/routes/lead-capture-crm.js');
   const installments = read('api/routes/installments.js');
   assert.match(finance, /PAYMENT_LINKS_ENABLED !== 'true'/);
@@ -178,7 +178,7 @@ test('expense UI waits for the server ledger and the API preserves category, bra
   const categories = read('api/lib/expenseCategories.js');
   assert.ok(route.includes("require('../lib/expenseCategories')"));
   assert.match(categories, /EXPENSE_CATEGORY_DB/);
-  assert.ok(read('api/routes/finance.js').includes('EXPENSE_CATEGORY_LABEL[s.category]'));
+  assert.ok(financeRouteSource().includes('EXPENSE_CATEGORY_LABEL[s.category]'));
   assert.match(route, /deleted_at IS NULL/);
   assert.match(route, /financialRecordMatches\(sourceScope, oldExp\)/);
   assert.match(route, /SET description=\?, amount=\?, currency=\?, category=\?, date=\?, receipt_url=\?, note=\?, branch_id=\?/);

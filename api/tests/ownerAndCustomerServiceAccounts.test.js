@@ -5,7 +5,7 @@
 // المشاكل الاستردادات والشهادات»، and hana's «wrong password» after her
 // password was changed from her staff page.
 
-const { authRouteSource, leadsRouteSource } = require('./_authRouteSource');
+const { authRouteSource, financeRouteSource, leadsRouteSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -75,7 +75,7 @@ test('customer service works both branches\' clients and its three desks, and no
 });
 
 test('customer service reads and escalates refunds; deciding them stays with accounts', () => {
-  const finance = read('api/routes/finance.js');
+  const finance = financeRouteSource();
   assert.match(finance, /router\.get\('\/api\/admin\/finance\/refunds', requireAuth, requireAdminOrStaff, requireAnyPermission\('view_financial', 'manage_inbox'\)/);
   assert.match(finance, /refunds\/:id\/escalate', requireAuth, requireAdminOrStaff, requireAnyPermission\('view_financial', 'manage_inbox'\)/);
   assert.match(finance, /router\.put\('\/api\/admin\/finance\/refunds\/:id', requireAuth, requireAdminOrStaff, requirePermission\('approve_refunds'\)/);

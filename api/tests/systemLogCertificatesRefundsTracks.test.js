@@ -1,4 +1,5 @@
 'use strict';
+const { financeRouteSource } = require('./_authRouteSource');
 
 // «سجل النظام … اسم المسئول مش ايميله ومحتاجين يضاف القسم», the certificates
 // desk («اتسلم لشركة الشحن … استلم للعميل او حصل مرتجع», تعديل, الفرع,
@@ -210,7 +211,7 @@ test('staff are not shown settings they cannot save', () => {
 });
 
 test('refunds: the course under the client, contact and its result, organised actions, filters', () => {
-  const finance = read('api/routes/finance.js');
+  const finance = financeRouteSource();
   assert.match(finance, /COALESCE\(NULLIF\(c\.title_ar, ''\), c\.title, b\.title\) AS course_title/);
   assert.match(finance, /LEFT JOIN bundles b ON b\.id = COALESCE\(p\.bundle_id, IF\(rr\.course_item LIKE 'bundle:%'/);
   assert.match(finance, /JSON_OBJECT\('outcome', cm\.outcome/);

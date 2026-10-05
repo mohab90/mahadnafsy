@@ -1,4 +1,5 @@
 'use strict';
+const { financeRouteSource } = require('./_authRouteSource');
 /**
  * Status update (Phase 1.d of the roadmap): the refund reversal logic that
  * used to live duplicated inline in two Express handlers (api/routes/
@@ -23,8 +24,8 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 
 test('[static contract, not behavioral] the live refund route calls the shared applyRefundReversal, not an inline copy', () => {
-  const financeRoute = fs.readFileSync(path.join(root, 'routes', 'finance.js'), 'utf8');
-  assert.match(financeRoute, /require\(['"]\.\.\/lib\/refunds['"]\)/);
+  const financeRoute = financeRouteSource();
+  assert.match(financeRoute, /require\(['"](?:\.\.\/)+lib\/refunds['"]\)/);
   assert.match(financeRoute, /applyRefundReversal\(\{[\s\S]*paymentId:\s*rr\.payment_id/);
 });
 
