@@ -374,6 +374,10 @@ export interface WhatsappCampaign {
   sent_count: number;
   fail_count: number;
   skipped_count: number;
+  /** WhatsApp's receipts and the customer writing back after the send. */
+  delivered_count?: number;
+  read_count?: number;
+  replied_count?: number;
   template_name?: string | null;
   template_language?: string | null;
   variables?: string[];
@@ -413,6 +417,9 @@ export interface WhatsappCampaignRecipient {
   delivery_status: string | null;
   provider_status: string | null;
   last_error: string | null;
+  delivered?: number | boolean | null;
+  was_read?: number | boolean | null;
+  replied?: number | boolean | null;
 }
 
 // ── Shared inbox ──────────────────────────────────────────────────────────────

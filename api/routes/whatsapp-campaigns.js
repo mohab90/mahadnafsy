@@ -29,6 +29,37 @@ function fail(res, error, message) {
   return res.status(500).json({ error: 'Internal server error' });
 }
 
+/**
+ * What happened after «sent»: WhatsApp's delivered and read receipts land on
+ * the outbox row (lib/whatsappDelivery.js), and a reply is the customer
+ * writing to the company number after the message went out — read off the
+ * team inbox, whose contact key is the same dialable number the campaign used.
+ */
+const DELIVERED = "(o.delivered_at IS NOT NULL OR o.read_at IS NOT NULL OR o.delivery_status IN ('delivered','read'))";
+const READ = "(o.read_at IS NOT NULL OR o.delivery_status = 'read')";
+const REPLIED = `EXISTS (SELECT 1 FROM inbox_threads t
+                  WHERE t.tenant_id = r.tenant_id AND t.platform = 'whatsapp' AND t.contact_key = r.phone
+                    AND t.last_inbound_at >= o.sent_at)`;
+
+async function campaignFunnel(tenantId, ids) {
+  const out = new Map();
+  if (!ids.length) return out;
+  const [rows] = await pool.query(
+    `SELECT r.campaign_id,
+            SUM(${DELIVERED}) AS delivered,
+            SUM(${READ}) AS readc,
+            SUM(o.sent_at IS NOT NULL AND ${REPLIED}) AS replied
+       FROM whatsapp_campaign_recipients r
+       JOIN message_outbox o ON o.id = r.outbox_id AND o.tenant_id = r.tenant_id
+      WHERE r.tenant_id = ? AND r.campaign_id IN (?)
+      GROUP BY r.campaign_id`,
+    [tenantId, ids]);
+  for (const row of rows) {
+    out.set(row.campaign_id, { delivered: Number(row.delivered) || 0, read: Number(row.readc) || 0, replied: Number(row.replied) || 0 });
+  }
+  return out;
+}
+
 const COLUMNS = `id, name, message_template, template_name, template_language, template_params_json,
   channel_id, audience, audience_filter,
   throttle_per_minute, status, scheduled_at, sent_at, recipient_count, sent_count,
@@ -40,10 +71,14 @@ router.get('/api/admin/whatsapp-campaigns', ...view, async (req, res) => {
       `SELECT ${COLUMNS} FROM whatsapp_campaigns WHERE tenant_id=?
         ORDER BY created_at DESC LIMIT 200`, [req.tenantId]
     );
+    const funnel = await campaignFunnel(req.tenantId, rows.filter(r => r.recipient_count > 0).map(r => r.id));
     res.json(rows.map(row => ({
       ...row,
       audience_filter: tryJson(row.audience_filter, {}),
       variables: campaigns.templateVariables(row.message_template),
+      delivered_count: funnel.get(row.id)?.delivered || 0,
+      read_count: funnel.get(row.id)?.read || 0,
+      replied_count: funnel.get(row.id)?.replied || 0,
     })));
   } catch (error) { fail(res, error, 'campaign list failed'); }
 });
@@ -323,7 +358,9 @@ router.get('/api/admin/whatsapp-campaigns/:id/recipients', ...view, async (req, 
   try {
     const [rows] = await pool.query(
       `SELECT r.id, r.subject_type, r.subject_id, r.phone, r.name, r.status, r.skip_reason,
-              o.status AS delivery_status, o.delivery_status AS provider_status, o.last_error
+              o.status AS delivery_status, o.delivery_status AS provider_status, o.last_error,
+              ${DELIVERED} AS delivered, ${READ} AS was_read,
+              (o.sent_at IS NOT NULL AND ${REPLIED}) AS replied
          FROM whatsapp_campaign_recipients r
          LEFT JOIN message_outbox o ON o.id = r.outbox_id
         WHERE r.tenant_id=? AND r.campaign_id=?

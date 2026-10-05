@@ -428,14 +428,7 @@ export function WhatsappCampaignsPanel({ notify }: { notify: NotifyFn }) {
                   )}
                 </div>
 
-                {campaign.recipient_count > 0 && (
-                  <div className="flex flex-wrap gap-3 text-[11px] text-gray-500 font-mono">
-                    <span>المستقبلون: {campaign.recipient_count}</span>
-                    {campaign.sent_count > 0 && <span className="text-emerald-600">وصلت: {campaign.sent_count}</span>}
-                    {campaign.fail_count > 0 && <span className="text-red-600">فشلت: {campaign.fail_count}</span>}
-                    {campaign.skipped_count > 0 && <span>مستبعدون: {campaign.skipped_count}</span>}
-                  </div>
-                )}
+                {campaign.recipient_count > 0 && <CampaignFunnel campaign={campaign} />}
 
                 <div className="flex flex-wrap gap-2">
                   {editable && (
@@ -494,6 +487,9 @@ export function WhatsappCampaignsPanel({ notify }: { notify: NotifyFn }) {
                                 {row.last_error}
                               </span>
                             )}
+                            {row.replied ? <span className="px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 font-bold">رد</span>
+                              : row.was_read ? <span className="text-sky-600 font-bold" title="اتقرت">✓✓ اتقرت</span>
+                                : row.delivered ? <span className="text-gray-500" title="وصلت">✓✓ وصلت</span> : null}
                             <span className={`px-2 py-0.5 rounded font-bold ${RECIPIENT_STYLE[row.status]}`}>
                               {RECIPIENT_LABEL[row.status]}
                             </span>
@@ -507,6 +503,48 @@ export function WhatsappCampaignsPanel({ notify }: { notify: NotifyFn }) {
             );
           })}
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * How far the campaign got: queued → sent → delivered → read → replied, each
+ * as a share of who it was sent to. Delivered and read are WhatsApp's own
+ * receipts; replied is the customer writing back to the company number after
+ * the message went out.
+ */
+function CampaignFunnel({ campaign }: { campaign: WhatsappCampaign }) {
+  const sent = campaign.sent_count;
+  const pct = (n: number) => (sent > 0 ? Math.round((n / sent) * 100) : 0);
+  const steps: [string, number, string][] = [
+    ['اتبعتت', sent, 'bg-emerald-500'],
+    ['وصلت', campaign.delivered_count || 0, 'bg-teal-500'],
+    ['اتقرت', campaign.read_count || 0, 'bg-sky-500'],
+    ['ردوا', campaign.replied_count || 0, 'bg-violet-500'],
+  ];
+  return (
+    <div className="space-y-1.5">
+      <div className="grid grid-cols-4 gap-2">
+        {steps.map(([label, value, tone], i) => (
+          <div key={label} className="rounded-lg bg-gray-50 px-2 py-1.5">
+            <div className="flex items-baseline justify-between gap-1">
+              <span className="text-[10px] font-bold text-gray-500">{label}</span>
+              <span className="text-[10px] tabular-nums text-gray-400">{i === 0 ? `من ${campaign.recipient_count}` : `${pct(value)}%`}</span>
+            </div>
+            <p className="text-sm font-black tabular-nums text-gray-900">{value}</p>
+            <div className="mt-1 h-1 rounded-full bg-gray-200 overflow-hidden">
+              <div className={`h-full ${tone}`} style={{ width: `${i === 0 ? (campaign.recipient_count ? Math.round((sent / campaign.recipient_count) * 100) : 0) : pct(value)}%` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+      {(campaign.fail_count > 0 || campaign.skipped_count > 0) && (
+        <p className="text-[11px] text-gray-500">
+          {campaign.fail_count > 0 && <span className="text-red-600">فشلت {campaign.fail_count}</span>}
+          {campaign.fail_count > 0 && campaign.skipped_count > 0 && ' · '}
+          {campaign.skipped_count > 0 && <span>مستبعدين {campaign.skipped_count} (ألغوا الاشتراك أو رقم غلط أو مكرر)</span>}
+        </p>
       )}
     </div>
   );
