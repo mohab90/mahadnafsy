@@ -2350,7 +2350,7 @@ router.get('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermissi
     if (statusFilter && statusFilter !== 'all') {
       // leads.status uses the default utf8mb4 case-insensitive collation (like every
       // other varchar column in this schema), so wrapping the column in LOWER() was
-      // redundant — and it defeated idx_leads_status, forcing a full scan on every
+      // redundant — and it defeated the status index (idx_status_created), forcing a full scan on every
       // status-filtered list request (PERF-08). A plain equality comparison matches
       // the same rows and lets the existing index be used.
       sql += ' AND l.status = ?';

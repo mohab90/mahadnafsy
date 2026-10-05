@@ -113,6 +113,37 @@ function requestLines({ logFile, since }) {
 const fmtMs = ms => (ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`);
 const cell = text => String(text).replace(/\|/g, '\\|');
 
+/**
+ * Every index on the biggest tables that nothing has read since `start`,
+ * from MariaDB's own per-index counters (userstat). An index costs every write
+ * to its table; one that no query reads is cost and nothing else. Primary and
+ * unique keys are left out — they hold the data's rules, not just speed.
+ */
+async function unusedIndexReport(pool, dbName, tableNames, out) {
+  let used;
+  try {
+    [used] = await pool.query(
+      'SELECT TABLE_NAME AS t, INDEX_NAME AS i, ROWS_READ AS read_count FROM information_schema.INDEX_STATISTICS WHERE TABLE_SCHEMA = ?', [dbName]);
+  } catch (error) {
+    out.push(`> ما قدرتش أقرا عدّاد الفهارس (${error.code || error.message}).`);
+    return;
+  }
+  if (!used.length) {
+    out.push('> العدّاد فاضي — يا إما `start` ما اتشغلش، يا إما لسه ما عدّاش وقت كفاية.');
+    return;
+  }
+  const read = new Set(used.filter(row => Number(row.read_count) > 0).map(row => `${row.t}.${row.i}`));
+  const [indexes] = await pool.query(
+    `SELECT TABLE_NAME AS t, INDEX_NAME AS i, GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) AS cols
+       FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = ? AND TABLE_NAME IN (?) AND NON_UNIQUE = 1
+      GROUP BY TABLE_NAME, INDEX_NAME ORDER BY TABLE_NAME, INDEX_NAME`, [dbName, tableNames]);
+  const unused = indexes.filter(row => !read.has(`${row.t}.${row.i}`));
+  if (!unused.length) { out.push('كل الفهارس اتقرت.'); return; }
+  out.push('| الجدول | الفهرس | الأعمدة |', '|---|---|---|');
+  for (const row of unused) out.push(`| ${row.t} | ${row.i} | ${cell(row.cols)} |`);
+}
+
 async function slowLogReport(pool, dbName, out) {
   let rows;
   try {
@@ -177,8 +208,10 @@ async function main(argv) {
     if (action !== 'report') {
       const on = action === 'start';
       const statements = on
-        ? ["SET GLOBAL log_output = 'TABLE'", `SET GLOBAL long_query_time = ${SLOW_SECONDS}`, 'SET GLOBAL slow_query_log = 1']
-        : ['SET GLOBAL slow_query_log = 0'];
+        // userstat counts the reads of every index, which is how the report
+        // can say which of them nothing uses.
+        ? ["SET GLOBAL log_output = 'TABLE'", `SET GLOBAL long_query_time = ${SLOW_SECONDS}`, 'SET GLOBAL slow_query_log = 1', 'SET GLOBAL userstat = 1']
+        : ['SET GLOBAL slow_query_log = 0', 'SET GLOBAL userstat = 0'];
       try {
         for (const sql of statements) await pool.query(sql);
         console.log(on
@@ -219,6 +252,9 @@ async function main(argv) {
          FROM information_schema.tables WHERE table_schema = ? ORDER BY data_length + index_length DESC LIMIT 20`, [dbName]);
     const mb = bytes => `${(Number(bytes) / 1048576).toFixed(1)} MB`;
     for (const t of tables) out.push(`| ${t.name} | ${Number(t.row_count).toLocaleString('en')} | ${mb(t.data_bytes)} | ${mb(t.index_bytes)} |`);
+
+    out.push('', '## فهارس ما اتقرتش ولا مرة (من وقت `start`)', '');
+    await unusedIndexReport(pool, dbName, tables.slice(0, 10).map(t => t.name), out);
 
     const report = out.join('\n') + '\n';
     const file = path.join(__dirname, '..', `perf-report-${new Date().toISOString().slice(0, 10)}.md`);
