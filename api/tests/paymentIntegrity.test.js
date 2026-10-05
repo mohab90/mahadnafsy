@@ -115,11 +115,13 @@ test('the captured amount and currency have to match the order', () => {
   assert.match(src, /return \{ found: true, amountMismatch: true \}/);
   assert.match(src, /return \{ found: true, currencyMismatch: true \}/);
   // Both call sites pass it.
-  const calls = src.match(/finalisePaymobOrder\(merchantOrderId, paymobTransactionId\(params\)[^)]*\)/g) || [];
+  const calls = src.match(/finalisePaymobOrder\(merchantOrderId, paymobTransactionId\(params\)[^\n]*/g) || [];
   assert.equal(calls.length, 2, 'expected exactly two finalise call sites');
   for (const call of calls) {
     assert.ok(call.includes('paymobCapture(params)'),
       'a finalise call site does not pass the captured amount: ' + call);
+    assert.ok(call.includes('req.tenantId'),
+      'a finalise call site does not bind the order to the verifying institute: ' + call);
   }
 });
 

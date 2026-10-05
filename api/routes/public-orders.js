@@ -314,7 +314,7 @@ router.post('/api/paymob/verify', paymobLimiter, async (req, res) => {
 
     const merchantOrderId = paymobMerchantOrderId(params);
     if (!merchantOrderId) return res.status(400).json({ ok: false, verified: true, paid: false, error: 'Missing merchant order id' });
-    const result = await finalisePaymobOrder(merchantOrderId, paymobTransactionId(params), paymobCapture(params));
+    const result = await finalisePaymobOrder(merchantOrderId, paymobTransactionId(params), paymobCapture(params), req.tenantId);
     // `found` only means the order exists. An order whose capture did not match
     // was deliberately NOT credited, and reporting it as paid would tell the
     // caller the opposite of what just happened.
@@ -341,7 +341,7 @@ router.post('/api/webhooks/paymob', paymobLimiter, async (req, res) => {
     if (!verifyPaymobHmac(params, hmacSecret)) return res.status(200).json({ ok: false, reason: 'invalid_signature' });
     if (paymobSuccess(params)) {
       const merchantOrderId = paymobMerchantOrderId(params);
-      if (merchantOrderId) await finalisePaymobOrder(merchantOrderId, paymobTransactionId(params), paymobCapture(params));
+      if (merchantOrderId) await finalisePaymobOrder(merchantOrderId, paymobTransactionId(params), paymobCapture(params), req.tenantId);
     }
     res.status(200).json({ ok: true });
   } catch (e) {

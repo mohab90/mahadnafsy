@@ -40,7 +40,13 @@ const { paymobCharge } = require('./paymobGateway');
 // volume is low; correctness here is worth one connection.
 const _paymobProcessingOrders = new Set();
 
-async function finalisePaymobOrder(merchantOrderId, transactionId, capture = null) {
+/**
+ * @param {string} tenantId  the institute whose Paymob secret verified the
+ *   callback. Only its own orders are credited: the order is looked up by id,
+ *   and an institute with a Paymob account of its own could otherwise sign a
+ *   «paid» callback for another institute's order and have it credited.
+ */
+async function finalisePaymobOrder(merchantOrderId, transactionId, capture = null, tenantId = DEFAULT_TENANT_ID) {
   // Race condition guard: if already being processed by another concurrent webhook, skip
   if (_paymobProcessingOrders.has(merchantOrderId)) {
     logger.warn(`[paymob] Order ${merchantOrderId} already in-flight — skipping duplicate webhook`);
@@ -62,7 +68,7 @@ async function finalisePaymobOrder(merchantOrderId, transactionId, capture = nul
       return { found: true, alreadyProcessed: true };
     }
     try {
-      return await _finalisePaymobOrderInner(merchantOrderId, transactionId, capture);
+      return await _finalisePaymobOrderInner(merchantOrderId, transactionId, capture, tenantId);
     } finally {
       await lockConn.query('SELECT RELEASE_LOCK(?)', [lockName]).catch(() => {});
     }
@@ -72,13 +78,14 @@ async function finalisePaymobOrder(merchantOrderId, transactionId, capture = nul
   }
 }
 
-async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture = null) {
+async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture = null, verifiedTenantId = DEFAULT_TENANT_ID) {
   const [[order]] = await pool.query(
     `SELECT id, type, item_id, item_title, amount, currency, charge_amount, charge_currency, payment_method, customer_name,
      customer_email, customer_phone, status, transaction_id, coupon_code, subscriber_id,
      course_id, bundle_id, notes, staff_id, staff_name, tenant_id, branch_id, created_at, paid_at
-     FROM orders WHERE id = ? LIMIT 1`, [merchantOrderId]);
-  if (!order) { logger.warn(`[paymob] Order not found: ${merchantOrderId}`); return { found: false }; }
+     FROM orders WHERE id = ? AND COALESCE(tenant_id, ?) = ? LIMIT 1`,
+    [merchantOrderId, DEFAULT_TENANT_ID, verifiedTenantId || DEFAULT_TENANT_ID]);
+  if (!order) { logger.warn(`[paymob] Order not found for this tenant: ${merchantOrderId}`); return { found: false }; }
   if (String(order.status || '').toLowerCase() === 'paid') return { found: true, alreadyProcessed: true };
   const tenantId = order.tenant_id || DEFAULT_TENANT_ID;
   const orderType = normalizedOrderType(order.type);
