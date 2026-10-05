@@ -1,15 +1,13 @@
 'use strict';
 
+const { ordersScreenSource } = require('./_authRouteSource');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const ordersRoute = fs.readFileSync(path.join(__dirname, '..', 'routes', 'orders.js'), 'utf8');
-const ordersUi = fs.readFileSync(
-  path.join(__dirname, '..', '..', 'admin', 'pages', 'dashboard', 'tabs', 'OrdersTab.tsx'),
-  'utf8'
-);
+const ordersUi = ordersScreenSource();
 
 test('order reads and operational mutations enforce permissions and financial data scope', () => {
   assert.match(ordersRoute, /router\.get\('\/api\/admin\/orders', requireAuth, requireAdminOrStaff, requirePermission\('view_orders'\)/);

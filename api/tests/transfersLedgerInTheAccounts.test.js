@@ -5,6 +5,7 @@
 // was ever saved and «🔗 ربط» could not succeed. They use the transfers ledger
 // (migration 224, lib/incomingTransfers.js) now.
 
+const { ordersScreenSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -24,7 +25,7 @@ test('confirming a payment against a transfer takes it from the ledger, once', (
 });
 
 test('the accounts screen lists and records transfers on the ledger', () => {
-  const tab = read('admin/pages/dashboard/tabs/OrdersTab.tsx');
+  const tab = ordersScreenSource();
   assert.doesNotMatch(tab, /type: 'transfer'|r\.type === 'transfer'\)\.length/);
   assert.match(tab, /const ledger = useIncomingTransfers\(canManageFinancial\);/);
   assert.match(tab, /const availableTransfers = ledger\.transfers\.filter\(transfer => !transfer\.paymentId\);/);

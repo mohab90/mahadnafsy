@@ -14,7 +14,7 @@
 //   4. A booking taken at the Daqqi desk opened a different payment form from
 //      the same booking taken online.
 
-const { authRouteSource } = require('./_authRouteSource');
+const { authRouteSource, ordersScreenSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -281,7 +281,7 @@ test('every booking and payment button opens that one screen', () => {
   // the choosing list is what made «خزنة الدقي || انستا باي» in the settings
   // show up as eighteen options in the record-payment dialog.
   for (const rel of ['admin/components/PaymentModal.tsx', 'admin/pages/dashboard/tabs/FinancialTab.tsx',
-    'admin/pages/dashboard/tabs/OrdersTab.tsx', 'admin/pages/dashboard/tabs/financial/PaymentReviewPanel.tsx']) {
+    'admin/pages/dashboard/tabs/orders/useOrderActions.ts', 'admin/pages/dashboard/tabs/financial/PaymentReviewPanel.tsx']) {
     const source = codeOnly(read(rel));
     assert.ok(source.includes('usePaymentBoxes(') || source.includes('usePaymentBoxesWithHistory('),
       `${rel} builds its own payment-method list`);

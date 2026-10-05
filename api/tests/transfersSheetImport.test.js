@@ -7,6 +7,7 @@
 // wallets with the zero dropped, InstaPay names, a Saudi tab with no operation
 // number, one operation number typed twice.
 
+const { ordersScreenSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -157,7 +158,7 @@ test('the route and the screen', () => {
   assert.match(handler, /requirePermission\('manage_financial'\)/);
   assert.match(handler, /=== 'collection'\) \{\s+return res\.status\(403\)/, 'recording what arrived is the manager\'s, as for one transfer');
   assert.match(route, /ORDER BY t\.received_on DESC, t\.created_at DESC LIMIT 3000/, 'every free transfer reaches the «ربط» lists');
-  const tab = read('admin/pages/dashboard/tabs/OrdersTab.tsx');
+  const tab = ordersScreenSource();
   // «شيل زر التحميل دا … مش هنحتاج نضيف بالك تاني»: the sheets go in once, on
   // the server (tools/import-transfer-sheet.cjs), and the page has no upload.
   assert.doesNotMatch(tab, /رفع ملف التحويلات|ImportTransfersModal/);

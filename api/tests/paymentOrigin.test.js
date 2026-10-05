@@ -5,6 +5,7 @@
 // The third is the common one — 195 of 308 rows — and asserts a payment
 // happened rather than being evidence that it did. Telling them apart on screen
 // is what «الدفعات اللي بتتسجل من السيستم لازم يظهر ان دا من السيستم» asked for.
+const { ordersScreenSource } = require('./_authRouteSource');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -68,7 +69,7 @@ test('every origin has a label and a colour', () => {
 });
 
 test('the screens that list payments show it', () => {
-  const orders = codeOnly(read('pages/dashboard/tabs/OrdersTab.tsx'));
+  const orders = codeOnly(ordersScreenSource());
   assert.match(orders, /import \{ paymentOrigin, PAYMENT_ORIGIN, PAYMENT_ORIGIN_CLASS \}/);
   assert.equal((orders.match(/PAYMENT_ORIGIN\[/g) || []).length >= 4, true, 'both payment tables should render the badge');
   assert.equal((orders.match(/>المصدر</g) || []).length, 2, 'both payment tables need the column header');

@@ -16,6 +16,7 @@
  *  - The payment dialog offered no «تكملة لمسار» and no instalment list to a client
  *    whose only trace of a course was money or the round.
  */
+const { ordersScreenSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -67,7 +68,7 @@ test('both approval routes hold the same line, and say so before anything is wri
 });
 
 test('a desk payment is approved, rejected and linked through the payments route, with the server\'s reason shown', () => {
-  const tab = read('admin/pages/dashboard/tabs/OrdersTab.tsx');
+  const tab = ordersScreenSource();
   assert.match(tab, /const isDeskPayment = \(row: OrderItem\) => row\.source === 'crm';/);
   assert.match(tab, /await mysqlAdmin\.updatePaymentStatus\(row\.id, 'paid', undefined, method\);/);
   assert.match(tab, /await mysqlAdmin\.updatePaymentStatus\(row\.id, 'failed'\);/);
@@ -84,7 +85,7 @@ test('a desk payment is approved, rejected and linked through the payments route
 });
 
 test('the review list names the course or track and the branch', () => {
-  const tab = read('admin/pages/dashboard/tabs/OrdersTab.tsx');
+  const tab = ordersScreenSource();
   assert.match(tab, /الفرع<\/th>\s*<th[^>]*>الدفعة خاصة بإيه<\/th>/);
   assert.match(tab, /const forTitle = heldBundle \? `📌 \$\{heldBundle\.title\}` : \(heldCourse\?\.titleAr \|\| heldCourse\?\.title \|\| productTitle\);/);
   assert.match(tab, /row\.isInstallment && <span[^>]*>قسط<\/span>/);

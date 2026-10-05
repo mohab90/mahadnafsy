@@ -9,6 +9,7 @@
 // Two routes can settle a payment and both are held to the same rule. Only
 // settling is held to it — a pending row is still being sorted out, which is
 // exactly when the method may not be known yet.
+const { ordersScreenSource } = require('./_authRouteSource');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -76,7 +77,7 @@ test('rejecting or reverting a payment is not held to the rule', () => {
 // way in the screen to supply it.
 const ADMIN = path.join(__dirname, '..', '..', 'admin');
 const readAdmin = rel => fs.readFileSync(path.join(ADMIN, ...rel.split('/')), 'utf8');
-const ordersTab = codeOnly(readAdmin('pages/dashboard/tabs/OrdersTab.tsx'));
+const ordersTab = codeOnly(ordersScreenSource());
 
 test('the review queue asks for a method when the payment has none', () => {
   assert.match(ordersTab, /const storedMethod = \(\(p as \{paymentMethod\?:string\}\)\.paymentMethod\|\|''\)\.trim\(\)/);
