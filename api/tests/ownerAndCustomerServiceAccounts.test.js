@@ -5,7 +5,7 @@
 // المشاكل الاستردادات والشهادات»، and hana's «wrong password» after her
 // password was changed from her staff page.
 
-const { authRouteSource } = require('./_authRouteSource');
+const { authRouteSource, leadsRouteSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -91,7 +91,7 @@ test('the Dokki desk\'s leads are the ones it was handed, from every lead route'
   const lists = read('api/routes/admin/stafflists.js');
   assert.match(lists, /const branchScope = leadScope\(req, 'leads'\);/,
     'the staff lead list kept its own branch rule');
-  const leads = read('api/routes/admin/leads.js');
+  const leads = leadsRouteSource();
   assert.match(leads, /else if \(isNew && !salesId && !csId && DAQQI_TEAM_ROLES\.includes\(staffRole\)\) \{\s*[\s\S]{0,200}salesId = req\.staffRecord\.id;/,
     'a lead the desk adds went to the next sales rep and left its list');
 });

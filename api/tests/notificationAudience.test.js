@@ -1,4 +1,5 @@
 'use strict';
+const { leadsRouteSource } = require('./_authRouteSource');
 
 // «سيسيتم الاشعارات لازم يتصلح بشكل جيد جدا للادارة وللموظفين». On 30 Sep 2026
 // the bell carried other people's work: 1,182 lead-assignment broadcasts in a
@@ -55,7 +56,7 @@ test('a burst of the same notification is one line with a count', async () => {
 });
 
 test('lead notifications go to the rep concerned, or to management while nobody has the lead', () => {
-  const leads = read('api/routes/admin/leads.js');
+  const leads = leadsRouteSource();
   assert.ok(!leads.includes("'👤 تعيين ليد'"), 'the per-lead broadcast to all of sales');
   assert.match(leads, /createNotification\('lead', '👤 ليدز اتعينت ليك',[\s\S]{0,120}tenantId, crmData\.assignedSalesId,/);
   assert.match(leads, /createNotification\('lead', '📋 ليدز جديدة ليك', leadLine,[\s\S]{0,80}tenantId, salesId,/);

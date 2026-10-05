@@ -1,5 +1,5 @@
 'use strict';
-const { authRouteSource } = require('./_authRouteSource');
+const { authRouteSource, sourceOf } = require('./_authRouteSource');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -29,7 +29,7 @@ test('login, password reset and 2FA never resolve an identity outside request te
 
 test('all account creation paths persist tenant ownership', () => {
   for (const relative of ['routes/auth.js', 'routes/admin/leads.js', 'routes/admin/subscribers.js', 'routes/misc/admincfg.js']) {
-    const source = read(relative);
+    const source = sourceOf(relative);
     assert.doesNotMatch(source, /INSERT INTO users \(id, email/);
   }
 });

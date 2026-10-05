@@ -1,6 +1,6 @@
 'use strict';
 
-const { authRouteSource } = require('./_authRouteSource');
+const { authRouteSource, leadsRouteSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -17,7 +17,7 @@ test('CRM timeline migration and writer bind every event to a tenant', () => {
 });
 
 test('lead create/update cannot upsert across tenant boundaries', () => {
-  const route = read('routes/admin/leads.js');
+  const route = leadsRouteSource();
   assert.match(route, /FROM leads WHERE id=\? AND tenant_id=\?/);
   assert.match(route, /INSERT INTO leads \(id, tenant_id/);
   assert.match(route, /UPDATE leads SET name=[\s\S]*WHERE id=\? AND tenant_id=\?/);
@@ -25,7 +25,7 @@ test('lead create/update cannot upsert across tenant boundaries', () => {
 });
 
 test('lead bulk operations, timeline and dedup are tenant and ownership scoped', () => {
-  const route = read('routes/admin/leads.js');
+  const route = leadsRouteSource();
   assert.match(route, /bulk-whatsapp[\s\S]*WHERE tenant_id=\? AND id IN/);
   assert.match(route, /lead_timeline WHERE tenant_id=\? AND lead_id=\?/);
   assert.match(route, /UPDATE leads SET hidden=1[\s\S]*WHERE tenant_id=\?/);
@@ -33,7 +33,7 @@ test('lead bulk operations, timeline and dedup are tenant and ownership scoped',
 });
 
 test('lead conversion is tenant-owned, transactional and releases once', () => {
-  const route = read('routes/admin/leads.js');
+  const route = leadsRouteSource();
   assert.match(route, /FROM leads WHERE id=\? AND tenant_id=\? AND hidden=0/);
   // Tenant-scoped, and it must not match a deleted customer: reusing one
   // points the converted lead at a record the app treats as gone, so the
@@ -78,7 +78,7 @@ test('CRM inbox and retargeting records are tenant owned', () => {
 
 test('CRM operational views share the canonical role and branch scope', () => {
   const access = read('lib/leadAccess.js');
-  const admin = read('routes/admin/leads.js');
+  const admin = leadsRouteSource();
   const advanced = read('routes/crm-advanced.js');
   const ops = read('routes/crm-ops.js');
   // Scope resolution moved behind resolveDataScope() so a per-staff

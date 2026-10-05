@@ -1,4 +1,5 @@
 'use strict';
+const { leadsRouteSource } = require('./_authRouteSource');
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -6,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.join(__dirname, '..', '..');
-const route = fs.readFileSync(path.join(root, 'api/routes/admin/leads.js'), 'utf8');
+const route = leadsRouteSource();
 
 // The CRM screens read these aggregates instead of downloading every lead. The
 // route module opens the pool at import, so this reads it as text — the same

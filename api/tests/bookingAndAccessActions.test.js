@@ -14,7 +14,7 @@
 //   4. A booking taken at the Daqqi desk opened a different payment form from
 //      the same booking taken online.
 
-const { authRouteSource, ordersScreenSource } = require('./_authRouteSource');
+const { authRouteSource, leadsRouteSource, ordersScreenSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -37,7 +37,7 @@ const holders = permission => Object.entries(ROLE_PERMS)
   .map(([role]) => role);
 
 test('a lead with a phone and no email can be converted', () => {
-  const route = codeOnly(read('api/routes/admin/leads.js'));
+  const route = codeOnly(leadsRouteSource());
   const start = route.indexOf("'/api/admin/leads/:id/convert'");
   assert.ok(start > 0, 'the convert route moved');
   const body = route.slice(start, route.indexOf('\n});', start));

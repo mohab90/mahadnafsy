@@ -1,4 +1,5 @@
 'use strict';
+const { leadsRouteSource } = require('./_authRouteSource');
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -6,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.join(__dirname, '..', '..');
-const leadsRoute = fs.readFileSync(path.join(root, 'api/routes/admin/leads.js'), 'utf8');
+const leadsRoute = leadsRouteSource();
 const ordersRoute = fs.readFileSync(path.join(root, 'api/routes/orders.js'), 'utf8');
 const stafflists = fs.readFileSync(path.join(root, 'api/routes/admin/stafflists.js'), 'utf8');
 

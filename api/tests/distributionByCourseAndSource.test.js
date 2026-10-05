@@ -1,4 +1,5 @@
 'use strict';
+const { leadsRouteSource, sourceOf } = require('./_authRouteSource');
 // «في توزيع الداتا علي السيلز لازم كمان اقدر احدد كورس معين او كل الكورسات او
 // اكتر من كورس ينزل للسيلز كمان اقدر احدد المصدر اللى ينزل للسيلز».
 //
@@ -98,12 +99,12 @@ test('the rules are stored, and every path that picks a rep says which lead it i
 
   assert.match(read('lib/sheets.js'), /assigner\.next\(\{ source: /);
   assert.match(read('routes/gsheets.js'), /rotation\.next\(\{ source: /);
-  assert.match(read('routes/admin/leads.js'), /rotation\.next\(lead\)/);
+  assert.match(leadsRouteSource(), /rotation\.next\(lead\)/);
   assert.match(read('routes/crm-advanced.js'), /rotation\.next\(target\)/);
   assert.match(read('routes/lead-capture-crm.js'), /repTakesLead\(rep, targets\[i\]\)/);
   for (const rel of ['routes/admin/leads.js', 'routes/lead-capture-crm.js', 'lib/registrationLead.js',
     'lib/facebookLeadEvents.js', 'lib/messenger.js', 'lib/whatsappInbound.js', 'routes/core/catalog.js']) {
-    const calls = read(rel).match(/getNextSalesRep\)?\([^)]*\{[\s\S]*?\}\)/g) || [];
+    const calls = sourceOf(rel).match(/getNextSalesRep\)?\([^)]*\{[\s\S]*?\}\)/g) || [];
     assert.ok(calls.length > 0, `${rel} calls getNextSalesRep`);
     for (const call of calls) assert.match(call, /lead:/, `${rel}: ${call.slice(0, 80)}`);
   }

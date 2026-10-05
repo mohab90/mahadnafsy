@@ -1,4 +1,5 @@
 'use strict';
+const { leadsRouteSource } = require('./_authRouteSource');
 // The desk records lead outcomes more finely than the code read them.
 //
 // leads.status is a varchar, not an enum, and production holds
@@ -51,7 +52,7 @@ test('the distribution pool is the open set, not two hand-picked names', () => {
   // It used to be ['new','interested'] and their upper-case twins, while its own
   // comment said it excluded the closed ones. A lead marked interested_booking —
   // the closest to buying in the table — was never redistributed.
-  const source = codeOnly(read('routes/admin/leads.js'));
+  const source = codeOnly(leadsRouteSource());
   assert.match(source, /\[\.\.\.LEAD_STATUSES\]\.filter\(isOpenLeadStatus\)/);
   assert.doesNotMatch(source, /\['new', 'interested', 'NEW', 'INTERESTED'\]/);
 

@@ -1,4 +1,5 @@
 'use strict';
+const { leadsRouteSource, sourceOf } = require('./_authRouteSource');
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -47,7 +48,7 @@ test('business routes use the central lead transition service', () => {
     'lib/automationEngine.js', 'routes/payment-proofs.js', 'routes/subscriber-payments.js',
     'lib/paymobFinalise.js',
   ]) {
-    const source = read(file);
+    const source = sourceOf(file);
     assert.doesNotMatch(source, /UPDATE leads SET status|UPDATE leads SET[^;]{0,200}status='converted'/, file);
     assert.match(source, /transitionLead/, file);
   }
@@ -67,7 +68,7 @@ test('lead merge is recoverable, tenant locked and reparents CRM relations', () 
 });
 
 test('admin conversion uses one server transaction and the UI waits for persistence', () => {
-  const route = read('routes/admin/leads.js');
+  const route = leadsRouteSource();
   const ui = fs.readFileSync(path.join(__dirname, '..', '..', 'admin', 'pages', 'dashboard', 'tabs', 'leads', 'useLeadActions.ts'), 'utf8');
   assert.match(route, /requestedCourseId/);
   assert.match(route, /LIMIT 1 FOR UPDATE/);
@@ -80,7 +81,7 @@ test('admin conversion uses one server transaction and the UI waits for persiste
 test('lead assignments validate tenant staff and persist audit in the same transaction', () => {
   const service = read('lib/leadAssignment.js');
   const repository = read('lib/leadRepository.js');
-  const admin = read('routes/admin/leads.js');
+  const admin = leadsRouteSource();
   const advanced = read('routes/crm-advanced.js');
   // The automation "assign_staff" action lives in lib/automationEngine.js —
   // the one engine both the manual "run" button (routes/automation.js) and
@@ -110,7 +111,7 @@ test('overdue CRM SLA alerts are tenant-owned, daily-deduped and use the retryab
 
 test('CRM interactions use one tenant-owned transactional service', () => {
   const service = read('lib/leadInteractions.js');
-  const admin = read('routes/admin/leads.js');
+  const admin = leadsRouteSource();
   const advanced = read('routes/crm-advanced.js');
   const ops = read('routes/crm-ops.js');
   const migration = read('migrations/114_v25_crm_communications_tenant_scope.sql');
@@ -128,7 +129,7 @@ test('CRM interactions use one tenant-owned transactional service', () => {
 
 test('CRM writes, bulk messaging and interaction deletion preserve role data scope', () => {
   const service = read('lib/leadInteractions.js');
-  const admin = read('routes/admin/leads.js');
+  const admin = leadsRouteSource();
   const advanced = read('routes/crm-advanced.js');
   const ops = read('routes/crm-ops.js');
 
@@ -178,7 +179,7 @@ test('CRM writes, bulk messaging and interaction deletion preserve role data sco
 });
 
 test('Daqqi import requires both CRM and financial authority', () => {
-  const admin = read('routes/admin/leads.js');
+  const admin = leadsRouteSource();
   assert.match(
     admin,
     /\/api\/admin\/import\/daqqi'[\s\S]{0,250}requirePermission\('manage_leads'\)[\s\S]{0,120}requirePermission\('manage_payments'\)/,
@@ -253,7 +254,7 @@ test('every caller that converts a lead names the customer it converted into', (
     'lib/orderPaymentConfirmation.js',
   ];
   for (const file of callers) {
-    const source = read(file);
+    const source = sourceOf(file);
     for (const call of source.matchAll(/transitionLead\(\{[\s\S]{0,700}?\}\)/g)) {
       if (!/toStatus:\s*'converted'/.test(call[0])) continue;
       assert.match(call[0], /subscriberId/,

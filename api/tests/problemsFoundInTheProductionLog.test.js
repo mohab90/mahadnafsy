@@ -1,4 +1,5 @@
 'use strict';
+const { leadsRouteSource } = require('./_authRouteSource');
 // «صلح اي مشكله ادامك» — what production's own log showed going wrong on 26 and
 // 27 September, and one dead control found on the way.
 const test = require('node:test');
@@ -42,7 +43,7 @@ test('login history can hold the id of the person who signed in', () => {
 });
 
 test('«نقل للأرشيف» on the local tab takes the local tab\'s leads, and only those', () => {
-  const route = read('api/routes/admin/leads.js');
+  const route = leadsRouteSource();
   const block = route.slice(route.indexOf("router.post('/api/admin/leads/move-to-archive'"));
   assert.match(block, /const openStatuses = \[\.\.\.LEAD_STATUSES\]\.filter\(isOpenLeadStatus\);/);
   assert.match(block, /COALESCE\(branch,''\) NOT IN \('ONLINE_ABROAD','ONLINE_SAUDI'\) AND COALESCE\(source,''\) NOT LIKE 'دولي%'/);

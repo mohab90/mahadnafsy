@@ -1,4 +1,5 @@
 'use strict';
+const { leadsRouteSource, sourceOf } = require('./_authRouteSource');
 
 // The staff accounts, 28 September:
 //   «حساب وفاء ظاهر اسماء الكورسات غلط» — no employee but an admin ever loaded
@@ -59,7 +60,7 @@ test('a lead handed to collection leaves the pool a sales distribution draws fro
   assert.equal(pools.isLocalNewLead(lead), true);
   assert.equal(pools.isLocalNewLead({ ...lead, assignedCsId: 'st-9' }), false);
   for (const rel of ['api/routes/admin/leads.js', 'api/routes/crm-advanced.js', 'api/routes/lead-capture-crm.js']) {
-    assert.match(read(rel), /assigned_cs_id IS NULL OR (l\.)?assigned_cs_id ?= ?''/, rel);
+    assert.match(sourceOf(rel), /assigned_cs_id IS NULL OR (l\.)?assigned_cs_id ?= ?''/, rel);
   }
 });
 
@@ -68,7 +69,7 @@ test('collection works leads like a rep: the sales view, their own leads, a lead
     /const isSalesOnly = \['sales', 'collection'\]\.includes\(/);
   const { ROLE_PERMS } = require('../constants/permissions');
   assert.ok(ROLE_PERMS.collection.includes('manage_leads'));
-  const leads = read('api/routes/admin/leads.js');
+  const leads = leadsRouteSource();
   // Created by collection: theirs, never auto-assigned to sales.
   assert.match(leads, /writeScope\.scope === 'assigned_cs' && staffRole !== 'collection'/);
   assert.match(leads, /if \(isNew\) \{ csId = req\.staffRecord\.id;/);
@@ -79,7 +80,7 @@ test('collection works leads like a rep: the sales view, their own leads, a lead
 });
 
 test('the remaining data goes to a collection officer in one request, into the column their scope reads', () => {
-  const leads = read('api/routes/admin/leads.js');
+  const leads = leadsRouteSource();
   const route = leads.slice(leads.indexOf("router.post('/api/admin/leads/assign-collection'"), leads.indexOf("router.post('/api/admin/leads/bulk-whatsapp'"));
   assert.match(route, /UPPER\(role\)='COLLECTION'/);
   assert.match(route, /AND \(l\.assigned_sales_id IS NULL OR l\.assigned_sales_id=''\)\s*AND \(l\.assigned_cs_id IS NULL OR l\.assigned_cs_id=''\)/);
@@ -103,7 +104,7 @@ test('a collection account\'s new customer is a request until the manager approv
   assert.match(route, /code: 'TRANSFER_REQUIRED'/);
   // Nor can a customer be made another way from a collection account.
   assert.match(read('api/routes/admin/subscribers.js'), /if \(staffRole === 'collection' && !req\.isSuperAdmin\) \{/);
-  assert.match(read('api/routes/admin/leads.js'), /code: 'COLLECTION_BOOKING_REQUIRED'/);
+  assert.match(leadsRouteSource(), /code: 'COLLECTION_BOOKING_REQUIRED'/);
   assert.match(read('api/routes/registrations.js'), /code: 'COLLECTION_BOOKING_REQUIRED'/);
 });
 

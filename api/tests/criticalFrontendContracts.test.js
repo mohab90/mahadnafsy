@@ -1,6 +1,6 @@
 'use strict';
 
-const { authRouteSource } = require('./_authRouteSource');
+const { authRouteSource, leadsRouteSource } = require('./_authRouteSource');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -116,7 +116,7 @@ test('CRM assignment and success feedback are server-authoritative', () => {
     read('admin/pages/dashboard/tabs/leads/useLeadActions.ts'),
   ].join('\n');
   const editing = read('admin/pages/unified-client/useUnifiedClientEditState.ts');
-  const route = read('api/routes/admin/leads.js');
+  const route = leadsRouteSource();
 
   assert.match(state, /const updateLead = useCallback\(async[\s\S]{0,500}await mysqlAdmin\.saveLead/);
   assert.match(state, /catch[\s\S]{0,300}return false[\s\S]{0,300}return true/);

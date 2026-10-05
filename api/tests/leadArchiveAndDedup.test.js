@@ -1,4 +1,5 @@
 'use strict';
+const { leadsRouteSource } = require('./_authRouteSource');
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -22,7 +23,7 @@ test('distributors skip archive rows', () => {
   const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
   assert.match(read('routes/lead-capture-crm.js'), /excludeArchiveSourcesSql\('source'\)/);
   assert.match(read('routes/crm-advanced.js'), /excludeArchiveSourcesSql\('source'\)/);
-  assert.match(read('routes/admin/leads.js'), /excludeArchiveSourcesSql\('l\.source'\)/);
+  assert.match(leadsRouteSource(), /excludeArchiveSourcesSql\('l\.source'\)/);
 });
 
 test('duplicate detection reads past the first page of leads', async () => {

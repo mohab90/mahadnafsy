@@ -1,4 +1,5 @@
 'use strict';
+const { sourceOf } = require('./_authRouteSource');
 
 // «اقدر اضيف لينك الشيت وتنزل الداتا باسمه ولازم تمنع ان يكون في مكرر واي
 // عميل بيترفع لازم يسجل باسم مسئول التحصيل» — and «لازم تحدد اقصي عدد في مدة
@@ -201,7 +202,7 @@ test('an officer\'s cap counts from when each client reached them', () => {
   assert.match(migration, /CREATE OR REPLACE TRIGGER trg_subscribers_cs_at_update BEFORE UPDATE ON subscribers/);
   // Every path that hands a new client to collection keeps to the caps.
   for (const file of ['api/routes/admin/leads.js', 'api/routes/admin/subscribers.js', 'api/routes/subscriber-payments.js']) {
-    assert.match(read(file), /pickCollectionOfficer\(/, file);
+    assert.match(sourceOf(file), /pickCollectionOfficer\(/, file);
   }
   assert.match(read('api/routes/admin/stafflists.js'), /await loadCollectionPicker\(conn, req\.tenantId\)/);
 });

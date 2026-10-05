@@ -570,7 +570,7 @@ console.log('\n23. Client-identity guard (subscriber lookup by email alone)');
       // WhatsApp number and has no email. leads.js is matching the email
       // stored on a lead record, not the caller's, so the WhatsApp case does
       // not arise there.
-      if (byEmail && !byUid && rel !== 'api/routes/admin/leads.js') {
+      if (byEmail && !byUid && rel !== 'api/routes/admin/leads.js' && !rel.startsWith('api/routes/admin/leads/')) {
         emailOnly.push(`${rel}: ${sql.slice(0, 90)}`);
       }
 
