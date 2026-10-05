@@ -80,6 +80,7 @@ export default function TeamInboxTab({ notify }: { notify: NotifyFn }) {
   const [template, setTemplate] = useState<Template | null>(null);
   const [params, setParams] = useState<string[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
+  const [botEnabled, setBotEnabled] = useState(false);
   const [noteMode, setNoteMode] = useState(false);
   const [labelFilter, setLabelFilter] = useState('');
   const [waitingOnly, setWaitingOnly] = useState(false);
@@ -115,8 +116,9 @@ export default function TeamInboxTab({ notify }: { notify: NotifyFn }) {
   const loadThread = useCallback(async () => {
     if (!activeId) return;
     try {
-      const data = await mysqlAdmin.adminGet<{ thread: Thread; messages: Message[]; notes: Note[] }>(`${API}/threads/${activeId}`);
+      const data = await mysqlAdmin.adminGet<{ thread: Thread; messages: Message[]; notes: Note[]; botEnabled?: boolean }>(`${API}/threads/${activeId}`);
       setActive(data.thread);
+      setBotEnabled(!!data.botEnabled);
       setNotes(current => (current.length === (data.notes || []).length ? current : data.notes || []));
       setMessages(current => (current.length === data.messages.length && current.at(-1)?.delivery_status === data.messages.at(-1)?.delivery_status
         ? current : data.messages));
@@ -315,11 +317,11 @@ export default function TeamInboxTab({ notify }: { notify: NotifyFn }) {
                     <span>· {active.assigned_staff_id ? `مع ${active.assigned_name || 'موظف'}` : 'مش مستلمة'}</span>
                   </div>
                 </div>
-                <button type="button" onClick={() => act('bot', { paused: !active.bot_paused }, active.bot_paused ? 'البوت هيرد تاني في المحادثة دي' : 'البوت وقف في المحادثة دي')}
+                {botEnabled && <button type="button" onClick={() => act('bot', { paused: !active.bot_paused }, active.bot_paused ? 'البوت هيرد تاني في المحادثة دي' : 'البوت وقف في المحادثة دي')}
                   title={active.bot_paused ? 'رجّع المحادثة للبوت' : 'وقّف البوت في المحادثة دي'}
                   className={`flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${active.bot_paused ? 'border-gray-200 text-gray-500' : 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700'}`}>
                   <Bot size={13} /> {active.bot_paused ? 'البوت واقف' : 'البوت شغال'}
-                </button>
+                </button>}
                 <button type="button" onClick={() => setShowContact(v => !v)} aria-pressed={showContact} title="بيانات العميل"
                   className={`flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${showContact ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600'}`}><IdCard size={13} /> العميل</button>
                 {!active.assigned_staff_id && (

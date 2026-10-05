@@ -24,6 +24,7 @@ const { sendWhatsApp, sendWhatsAppTemplate, listMetaTemplates } = require('../li
 const { sendMessengerMessage, PLATFORM: SOCIAL } = require('../lib/messenger');
 const { getSendableChannel } = require('../lib/messagingChannels');
 const { isWindowOpen, recordOnThread, PLATFORMS } = require('../lib/inboxThreads');
+const { loadSettings: loadBotSettings } = require('../lib/inboxBot');
 const { createNotification } = require('../lib/notification');
 const { resolveDataScope } = require('../constants/permissions');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
@@ -168,7 +169,8 @@ router.get('/api/admin/team-inbox/threads/:id', ...guard, async (req, res) => {
          FROM inbox_notes n LEFT JOIN staff st ON st.id = n.staff_id AND st.tenant_id = n.tenant_id
         WHERE n.tenant_id = ? AND n.thread_id = ? ORDER BY n.created_at DESC LIMIT 100`,
       [req.tenantId, thread.id]);
-    res.json({ thread: present(thread), messages: messages.reverse(), notes: notes.reverse() });
+    const bot = await loadBotSettings(req.tenantId).catch(() => null);
+    res.json({ thread: present(thread), messages: messages.reverse(), notes: notes.reverse(), botEnabled: !!(bot?.enabled && bot.platforms[thread.platform]) });
   } catch (error) { fail(res, error, '[team-inbox thread]'); }
 });
 

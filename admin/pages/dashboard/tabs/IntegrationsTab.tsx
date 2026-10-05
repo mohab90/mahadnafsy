@@ -23,6 +23,7 @@ const EmailSettingsTab = lazy(() => import('./EmailSettingsTab'));
 const SmsSettingsTab = lazy(() => import('./SmsSettingsTab'));
 const WebhooksTab = lazy(() => import('./WebhooksTab'));
 const MessagingAgentTab = lazy(() => import('./MessagingAgentTab'));
+const InboxBotPanel = lazy(() => import('./messaging/InboxBotPanel'));
 const AdminAiSettingsTab = lazy(() => import('./AdminAiSettingsTab'));
 
 export const INTEGRATION_SECTIONS: TabSection[] = [
@@ -30,7 +31,10 @@ export const INTEGRATION_SECTIONS: TabSection[] = [
   { id: 'otp', label: 'أكواد الدخول وSMS', icon: Shield, permission: 'manage_security', Component: OtpSettingsTab },
   { id: 'email', label: 'البريد الإلكتروني', icon: Mail, permission: 'manage_settings', Component: EmailSettingsTab },
   { id: 'sms', label: 'الرسائل النصية', icon: MessageSquareText, permission: 'manage_channel_settings', Component: SmsSettingsTab },
-  { id: 'agent', label: 'عميل المراسلة AI', icon: Bot, permission: 'manage_channel_settings', Component: MessagingAgentTab },
+  // The bot that answers in صندوق الرسائل (lib/inboxBot.js). «agent» below is
+  // the site's own assistant and the older per-channel switches.
+  { id: 'bot', label: 'بوت الرد على العملاء', icon: Bot, permission: 'manage_channel_settings', Component: InboxBotPanel },
+  { id: 'agent', label: 'مساعد الموقع AI', icon: Bot, permission: 'manage_channel_settings', Component: MessagingAgentTab },
   { id: 'ai', label: 'إعدادات AI', icon: Settings2, permission: 'manage_ai_settings', Component: AdminAiSettingsTab },
   { id: 'webhooks', label: 'Webhooks', icon: Zap, permission: 'manage_settings', Component: WebhooksTab },
 ];

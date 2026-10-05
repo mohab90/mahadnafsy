@@ -57,6 +57,7 @@ const routeModules = [
   ['/', '../routes/messaging-inbox'],
   ['/', '../routes/whatsapp-web'],
   ['/', '../routes/team-inbox'],
+  ['/', '../routes/inbox-bot'],
   ['/', '../routes/profile'],
   ['/', '../routes/staff'],
   ['/', '../routes/core'],

@@ -250,6 +250,7 @@ async function recordInboundMessenger({ tenantId, channelId, providerMessageId, 
   }
 
   let owner = lead?.assigned_sales_id || null;
+  let threadId = null;
   try {
     const thread = await upsertThread(db, {
       tenantId, platform, contactKey: psid, channelId: channelId || null,
@@ -257,6 +258,7 @@ async function recordInboundMessenger({ tenantId, channelId, providerMessageId, 
     });
     await recordOnThread(db, { tenantId, threadId: thread.id, communicationId: id, direction: 'IN', text, at: when });
     owner = thread.assigned_staff_id || owner;
+    threadId = thread.id;
   } catch (error) {
     logger.warn('[messenger] team inbox update failed', error.message);
   }
@@ -269,6 +271,10 @@ async function recordInboundMessenger({ tenantId, channelId, providerMessageId, 
     tenantId,
     owner
   );
+
+  // The inbox bot answers a few seconds later when it is on (lib/inboxBot.js).
+  // Required here, not at the top: inboxBot requires this file to send.
+  if (threadId) require('./inboxBot').scheduleBotReply({ tenantId, threadId, inboundAt: when });
 
   return { recorded: true, id, leadId: lead?.id || null, matched: Boolean(lead), createdLead: isNewLead };
 }

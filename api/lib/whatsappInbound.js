@@ -21,6 +21,7 @@ const { toIdentity, toDialable } = require('./phoneNumber');
 const { createNotification } = require('./notification');
 const { getNextSalesRep } = require('./leadAssignment');
 const { upsertThread, recordOnThread } = require('./inboxThreads');
+const { scheduleBotReply } = require('./inboxBot');
 const { setMarketingConsent } = require('./marketingConsent');
 const logger = require('./logger');
 
@@ -160,6 +161,7 @@ async function recordInboundMessage({ tenantId, channelId = null, providerMessag
   // The team inbox. The message is already on the timeline; a conversation
   // that fails to update is a stale list, not a lost message.
   let owner = sender.staff_id || null;
+  let threadId = null;
   try {
     const thread = await upsertThread(db, {
       tenantId, platform: 'whatsapp', contactKey: toDialable(from), channelId,
@@ -169,6 +171,7 @@ async function recordInboundMessage({ tenantId, channelId = null, providerMessag
     });
     await recordOnThread(db, { tenantId, threadId: thread.id, communicationId: id, direction: 'IN', text, at: when });
     owner = thread.assigned_staff_id || owner;
+    threadId = thread.id;
   } catch (error) {
     logger.warn('[wa-inbound] team inbox update failed', error.message);
   }
@@ -196,6 +199,10 @@ async function recordInboundMessage({ tenantId, channelId = null, providerMessag
     tenantId,
     owner
   );
+
+  // The inbox bot answers a few seconds later, when it is on for this
+  // conversation (lib/inboxBot.js). Not to someone who just opted out.
+  if (threadId && !optedOut) scheduleBotReply({ tenantId, threadId, inboundAt: when });
 
   return { recorded: true, id, senderKind: sender.kind, senderId: sender.id, createdLead: isNewLead, optedOut };
 }

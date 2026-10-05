@@ -153,7 +153,8 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
     blurb: 'مزوّد AI، بوت الرد على العملاء، والربط بأنظمة تانية.',
     tone: 'bg-fuchsia-500',
     entries: [
-      { title: 'بوت الرد على العملاء', desc: 'الرد الآلي على الواتساب والماسنجر: الترحيب، خارج المواعيد، ومتى يسلّم للموظف.', href: '/dashboard/integrations/agent', tab: 'integrations', permission: 'manage_channel_settings', keywords: 'شات بوت chatbot' },
+      { title: 'بوت الرد على العملاء', desc: 'رد آلي بالذكاء الاصطناعي على الواتساب والماسنجر والانستجرام: إمتى يرد، بيعرف إيه من الكورسات والأسعار، وإمتى يحوّل للفريق — وتجربه قبل ما تشغله.', href: '/dashboard/integrations/bot', tab: 'integrations', permission: 'manage_channel_settings', keywords: 'شات بوت chatbot ذكاء اصطناعي' },
+      { title: 'مساعد الموقع AI', desc: 'المساعد اللي بيرد على زوار الموقع وصفحات الطالب.', href: '/dashboard/integrations/agent', tab: 'integrations', permission: 'manage_channel_settings' },
       { title: 'إعدادات AI', desc: 'المزوّد (Claude / OpenAI / Gemini) ومفتاحه.', href: '/dashboard/integrations/ai', tab: 'integrations', permission: 'manage_ai_settings', keywords: 'claude openai gemini' },
       { title: 'النمو والأتمتة', desc: 'المهام الدورية: تذكيرات، متابعة، وتقارير يومية.', href: S('growth'), tab: 'system_settings' },
       { title: 'Webhooks', desc: 'ربط أنظمة خارجية بأحداث النظام.', href: '/dashboard/integrations/webhooks', tab: 'integrations', permission: 'manage_settings' },
