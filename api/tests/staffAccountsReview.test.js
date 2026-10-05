@@ -165,7 +165,9 @@ test('employee requests: hours on a permission, the HR inbox, and payroll excusi
   assert.match(read('api/routes/hr/records.js'), /createNotification\('hr', 'طلب سلفة'/);
   const hrTab = read('admin/pages/dashboard/tabs/HRTab.tsx');
   assert.match(hrTab, /\['requests', 'طلبات الموظفين', Inbox\]/);
-  assert.match(hrTab, /useState<'requests' \| 'directory'/);
+  // Requests open first unless the link names another section (/dashboard/hr/<section>).
+  assert.match(hrTab, /const HR_SECTIONS = \['requests', 'directory'/);
+  assert.match(hrTab, /sectionParam as HrSection : 'requests'\)/);
   assert.match(read('api/migrations/223_v26_permission_times.sql'), /ADD COLUMN IF NOT EXISTS start_time varchar\(5\)/);
 });
 

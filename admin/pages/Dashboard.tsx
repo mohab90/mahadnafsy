@@ -27,6 +27,7 @@ import { useToast } from '../../shared/ui/Toast';
 import type { PaymentDraft } from '../components/PaymentModal';
 import { createClientPaymentDraft } from '../lib/clientActionDrafts';
 import { currencyForBranch } from '../lib/branchCurrency';
+import { CONTENT_HUB_TABS } from './dashboard/contentHubConfig';
 import { branchSubscriberTabs, contentHubRouteTabs, directContentTabs, fullCrmDataTabs, fullLeadTabs, fullSubscriberTabs, growthOpsTabs, saasOpsTabs } from './dashboard/dashboardTabGroups';
 import { useStaffRoleRedirects } from './dashboard/hooks/useStaffRoleRedirects';
 import { useCurrentStaff } from './dashboard/hooks/useCurrentStaff';
@@ -655,10 +656,21 @@ const Dashboard: React.FC = () => {
   const [contentHubSubTab, setContentHubSubTabState] = useState<TabKey>('home_offer');
   // Same shape as navigateToTab: the content-hub panels choose their sub-tab
   // from data, so the name arrives as a string and is checked before it lands.
+  // Checked against the hub's own pages, not the sidebar: isTabKey knows only
+  // menu keys, and none of these is one — so every page but the default was
+  // refused, and «الشروط والسياسات», «عن المعهد», the footer and the ten page
+  // editors did nothing when clicked.
   const setContentHubSubTab = useCallback((tab: string) => {
+    const page = CONTENT_HUB_TABS.find(t => t.key === tab);
+    if (page) { setContentHubSubTabState(page.key); return; }
     if (isTabKey(tab)) { setContentHubSubTabState(tab); return; }
     console.warn(`[dashboard] refused content-hub sub-tab: ${tab}`);
   }, []);
+  // /dashboard/content_hub/<page> opens that page's editor — the settings hub
+  // links each part of the site straight to its editor.
+  useEffect(() => {
+    if (urlTab === 'content_hub' && urlParam && CONTENT_HUB_TABS.some(t => t.key === urlParam)) setContentHubSubTab(urlParam);
+  }, [urlTab, urlParam, setContentHubSubTab]);
 
   // -- Staff Profile Modal ----------------------------------------------------
 
@@ -812,7 +824,10 @@ const Dashboard: React.FC = () => {
               isSalesOnly={isSalesOnly}
               notify={notify}
             />
-            {directContentTabs.has(activeTab) && (
+            {/* The page editors also open inside صفحات الموقع (ContentHubGenericPageEditor
+                reads contentHubSubTab there), but this was mounted only for their
+                standalone keys — so the ten page tabs of the hub drew nothing. */}
+            {(directContentTabs.has(activeTab) || (activeTab === 'content_hub' && contentHubSubTab.startsWith('page_'))) && (
               <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" /></div>}>
                 <DashboardDirectContentRoutes
                   activeTab={activeTab}

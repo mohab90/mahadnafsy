@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   Settings, Save, RotateCcw, Loader2, CheckCircle,
   Shield, Database,
@@ -13,6 +13,7 @@ import {
   COLOR,
   parseContentSections,
   SECTIONS,
+  SECTION_GROUPS,
   type ExchangeRates,
   type Financial,
   type General,
@@ -24,6 +25,7 @@ import { Card, Field, TextInput } from './systemSettingsUi';
 import { CountriesSection, CurrenciesSection, ListSection } from './systemSettingsListSections';
 import { FinancialSection, GeneralSection } from './systemSettingsCoreSections';
 import SaasSetupWizard from './SaasSetupWizard';
+import { SAAS_UI } from '../../../lib/productMode';
 import { GrowthOpsSection } from './GrowthOpsSection';
 import { PAYMENT_METHOD_CODES, paymentMethodLabel } from '../../../../shared/paymentMethods';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
@@ -189,21 +191,25 @@ const SystemSettingsTab: React.FC<Props> = ({ notify }) => {
   );
 
   return (
-    <div className="flex gap-4" dir="rtl">
-      {/* Sidebar */}
-      <aside className="w-52 flex-shrink-0">
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden sticky top-4">
-          <div className="px-4 py-3 bg-gradient-to-l from-indigo-600 to-violet-600 text-white">
+    <div className="flex flex-col gap-4 md:flex-row" dir="rtl">
+      {/* Sidebar — a scrolling strip on a phone, grouped headings beside the page on a wide screen */}
+      <aside className="md:w-56 md:flex-shrink-0">
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden md:sticky md:top-4">
+          <div className="px-4 py-3 bg-gradient-to-l from-indigo-600 to-violet-600 text-white flex items-center justify-between gap-2">
             <h2 className="font-bold text-sm flex items-center gap-2"><Settings size={14}/> إعدادات الإدارة</h2>
+            <Link to="/dashboard/settings_hub" className="text-[11px] font-bold text-indigo-100 hover:text-white">كل الإعدادات ←</Link>
           </div>
-          <nav className="p-2 space-y-0.5">
-            {SECTIONS.map(sec => {
+          <nav className="p-2 flex gap-1 overflow-x-auto md:block md:space-y-0.5 md:overflow-visible">
+            {SECTION_GROUPS.map(group => (
+              <div key={group.title} className="flex gap-1 md:block md:space-y-0.5 md:pb-1.5">
+                <p className="hidden md:block px-3 pt-2 pb-0.5 text-[10px] font-extrabold uppercase tracking-wide text-gray-400">{group.title}</p>
+            {SECTIONS.filter(sec => (group.keys as string[]).includes(sec.key)).map(sec => {
               const Icon = sec.icon;
               const isActive = active === sec.key;
               const isDirty  = dirty.has(sec.key as SectionKey);
               return (
                 <button key={sec.key} onClick={() => openSection(sec.key as SectionKey)}
-                  className={`w-full text-right px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-2 transition-all ${
+                  className={`whitespace-nowrap md:w-full text-right px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-2 transition-all ${
                     isActive ? `${COLOR[sec.color].bg} ${COLOR[sec.color].text} font-bold` : 'text-gray-600 hover:bg-gray-50'
                   }`}>
                   <Icon size={13} className="flex-shrink-0"/>
@@ -213,13 +219,15 @@ const SystemSettingsTab: React.FC<Props> = ({ notify }) => {
                 </button>
               );
             })}
+              </div>
+            ))}
           </nav>
         </div>
       </aside>
 
       {/* Main content */}
       <main className="flex-1 min-w-0">
-        <SaasSetupWizard data={data} setActive={setActive} />
+        {SAAS_UI && <SaasSetupWizard data={data} setActive={setActive} />}
 
         {/* Section header */}
         <div className={`${c.bg} border ${c.border} rounded-2xl p-4 mb-4 flex items-center justify-between`}>
@@ -257,7 +265,7 @@ const SystemSettingsTab: React.FC<Props> = ({ notify }) => {
         {/* Body */}
         {active === 'general'            && <>
           <GeneralSection data={data.general as General} mutateField={(f,v) => mutateField('general', f, v)}/>
-          <TenantDomainSection notify={notify} />
+          {SAAS_UI && <TenantDomainSection notify={notify} />}
         </>}
         {active === 'financial'          && <FinancialSection   data={data.financial as Financial}       mutateField={(f,v) => mutateField('financial', f, v)}/>}
         {active === 'exchange_rates'     && <ExchangeRatesSection data={data.exchange_rates as ExchangeRates} mutateField={(f,v) => mutateField('exchange_rates', f, v)}/>}

@@ -1,199 +1,129 @@
-import React from 'react';
+// مركز الإعدادات — every setting in the system, by area, searchable.
+// What is listed, and where each entry opens, is settingsHubConfig.ts.
+
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  Bot, Building2, CreditCard, Database, Globe, Mail, MessageSquareText,
-  Shield, SlidersHorizontal, UserPlus, Webhook, Zap,
-} from 'lucide-react';
-
-type SettingsCard = {
-  title: string;
-  desc: string;
-  href: string;
-  icon: React.ReactNode;
-  tone: string;
-  area: string;
-};
-
-const SETTINGS_CARDS: SettingsCard[] = [
-  {
-    title: 'الهوية والموقع',
-    desc: 'اسم المعهد، الشعار، الألوان، الفروع العامة، العملات، وطرق الدفع الأساسية.',
-    href: '/dashboard/system_settings',
-    icon: <Globe size={18} />,
-    tone: 'bg-indigo-50 text-indigo-700 border-indigo-100',
-    area: 'مصدر الحقيقة العام',
-  },
-  {
-    title: 'مساحات الفروع',
-    desc: 'ربط كل فرع بالصفحات والوظائف المناسبة له بدون إظهار شريط منفصل في الداشبورد.',
-    href: '/dashboard/branch_workspaces',
-    icon: <Building2 size={18} />,
-    tone: 'bg-amber-50 text-amber-700 border-amber-100',
-    area: 'الفروع والتشغيل',
-  },
-  {
-    title: 'بوابات الدفع',
-    desc: 'إعدادات التحصيل، PayMob، التعليمات اليدوية، وربط الدفع بالفواتير والمراجعة.',
-    href: '/dashboard/payment_settings',
-    icon: <CreditCard size={18} />,
-    tone: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-    area: 'الماليات',
-  },
-  {
-    title: 'مصادر الليد والداتا',
-    desc: 'Facebook Leads، Google Sheets، مصادر API، وقواعد توزيع الليدز على السيلز.',
-    href: '/dashboard/lead_sources_settings',
-    icon: <UserPlus size={18} />,
-    tone: 'bg-blue-50 text-blue-700 border-blue-100',
-    area: 'التسويق والمبيعات',
-  },
-  {
-    title: 'أكواد الدخول وSMS',
-    desc: 'أكواد الدخول بتتبعت منين (واتساب ثم البريد)، وإعدادات الرسائل النصية.',
-    href: '/dashboard/otp_settings',
-    icon: <Shield size={18} />,
-    tone: 'bg-violet-50 text-violet-700 border-violet-100',
-    area: 'الأمان والدخول',
-  },
-  {
-    title: 'حملات البريد',
-    desc: 'إدارة حملات البريد وربطها بالشرائح والنتائج بدل استخدامها كأداة منعزلة.',
-    href: '/dashboard/email_campaigns',
-    icon: <Mail size={18} />,
-    tone: 'bg-rose-50 text-rose-700 border-rose-100',
-    area: 'التسويق',
-  },
-  {
-    title: 'حملات SMS',
-    desc: 'رسائل جماعية، شرائح العملاء، ومتابعة حالة الإرسال.',
-    href: '/dashboard/sms_campaigns',
-    icon: <MessageSquareText size={18} />,
-    tone: 'bg-cyan-50 text-cyan-700 border-cyan-100',
-    area: 'التسويق',
-  },
-  {
-    title: 'Drip Campaigns',
-    desc: 'مسارات تلقائية تربط الليد بالمتابعة والحجز والدفع.',
-    href: '/dashboard/drip_campaigns',
-    icon: <Zap size={18} />,
-    tone: 'bg-orange-50 text-orange-700 border-orange-100',
-    area: 'الأتمتة',
-  },
-  {
-    title: 'الأمان والمراقبة',
-    desc: 'لوحة الأمان، IP whitelist، مراقبة السيرفر، والـ webhooks.',
-    href: '/dashboard/security_dashboard',
-    icon: <Webhook size={18} />,
-    tone: 'bg-slate-50 text-slate-700 border-slate-100',
-    area: 'التشغيل',
-  },
-  {
-    title: 'إعدادات AI',
-    desc: 'مزودات الذكاء الاصطناعي، مفاتيح التشغيل، وربط المساعد بسياق النظام.',
-    href: '/dashboard/admin_ai_settings',
-    icon: <Bot size={18} />,
-    tone: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100',
-    area: 'AI',
-  },
-  {
-    title: 'ترحيل قاعدة البيانات',
-    desc: 'أدوات فحص وترحيل schema عند الحاجة، ويجب استخدامها بحذر.',
-    href: '/dashboard/pg_migrate',
-    icon: <Database size={18} />,
-    tone: 'bg-gray-50 text-gray-700 border-gray-100',
-    area: 'قاعدة البيانات',
-  },
-  // The six below were reachable only from the sidebar, never from here — so this
-  // page called itself "نقطة الدخول الموحدة للإعدادات" while silently omitting a
-  // third of the settings. With them listed the hub is actually complete, and the
-  // sidebar no longer has to carry a second copy of every settings entry.
-  {
-    title: 'إعدادات SMS',
-    desc: 'مزوّد الرسائل القصيرة، اسم المُرسِل، وأرصدة الإرسال.',
-    href: '/dashboard/sms_settings',
-    icon: <MessageSquareText size={18} />,
-    tone: 'bg-sky-50 text-sky-700 border-sky-100',
-    area: 'القنوات',
-  },
-  {
-    title: 'الأتمتة والقواعد',
-    desc: 'القواعد اللي بتشتغل لوحدها: توزيع الليدز، التذكيرات، وتغيير الحالات.',
-    href: '/dashboard/automation',
-    icon: <Zap size={18} />,
-    tone: 'bg-yellow-50 text-yellow-700 border-yellow-100',
-    area: 'التشغيل',
-  },
-  {
-    title: 'عميل المراسلة AI',
-    desc: 'الردود الآلية على الواتساب والماسنجر وحدود تدخّل الموظف.',
-    href: '/dashboard/messaging_agent',
-    icon: <Bot size={18} />,
-    tone: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100',
-    area: 'AI',
-  },
-  {
-    title: 'قائمة IP المسموحة',
-    desc: 'تقييد دخول لوحة الإدارة على عناوين محددة.',
-    href: '/dashboard/ip_whitelist',
-    icon: <Shield size={18} />,
-    tone: 'bg-violet-50 text-violet-700 border-violet-100',
-    area: 'الأمان والدخول',
-  },
-  {
-    title: 'Webhooks',
-    desc: 'ربط الأنظمة الخارجية بأحداث النظام ومتابعة آخر تشغيل لكل ربط.',
-    href: '/dashboard/webhooks',
-    icon: <Webhook size={18} />,
-    tone: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-    area: 'التكاملات',
-  },
-  {
-    title: 'مراقبة السيرفر',
-    desc: 'حالة التشغيل، الذاكرة، وسجل إعادة التشغيل.',
-    href: '/dashboard/server_monitor',
-    icon: <SlidersHorizontal size={18} />,
-    tone: 'bg-gray-50 text-gray-700 border-gray-100',
-    area: 'التشغيل',
-  },
-];
+import { ChevronLeft, Search, SlidersHorizontal } from 'lucide-react';
+import { useSiteData } from '../../../context/SiteDataContext';
+import { hasPermission, type PermissionKey, type RoleKey } from '../../../constants/permissions';
+import { useBranches } from '../../../hooks/useBranches';
+import { TAB_PERMISSION_MAP } from '../dashboardShared';
+import { SETTINGS_GROUPS, searchSettings, type SettingsEntry } from './settingsHubConfig';
 
 export default function SettingsHubTab() {
+  const { isAdmin, currentStaff } = useSiteData();
+  const branches = useBranches();
+  const [query, setQuery] = useState('');
+  const [area, setArea] = useState<string>('all');
+
+  // An entry is listed to whoever can open what it links to, by the same rule
+  // DashboardTabContainer applies when the screen is opened.
+  const canOpen = useMemo(() => {
+    const subject = currentStaff
+      ? { role: currentStaff.role as RoleKey, permissions: currentStaff.permissions as PermissionKey[] | undefined }
+      : null;
+    const has = (permission: string) => hasPermission(subject, permission as PermissionKey);
+    return (entry: SettingsEntry) => {
+      if (isAdmin) return true;
+      if (entry.permission) return has(entry.permission);
+      const required = TAB_PERMISSION_MAP[entry.tab];
+      if (required === null) return true;
+      if (required === undefined) return false;
+      return Array.isArray(required) ? required.some(has) : has(required);
+    };
+  }, [isAdmin, currentStaff]);
+
+  const visible = useMemo(
+    () => SETTINGS_GROUPS.map(g => ({ ...g, entries: g.entries.filter(canOpen) })).filter(g => g.entries.length),
+    [canOpen],
+  );
+  const found = useMemo(() => searchSettings(visible, query), [visible, query]);
+  const shown = query.trim() ? found : area === 'all' ? found : found.filter(g => g.key === area);
+  const total = visible.reduce((n, g) => n + g.entries.length, 0);
+  const tagamoaOn = branches.some(b => b.id === 'TAGAMOA');
+
   return (
     <div className="space-y-5" dir="rtl">
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-        <div className="flex items-start gap-3">
-          <div className="grid h-11 w-11 place-items-center rounded-2xl bg-gray-900 text-white">
-            <SlidersHorizontal size={21} />
-          </div>
-          <div>
-            <h2 className="text-xl font-extrabold text-gray-900">مركز إعدادات النظام</h2>
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-gray-500">
-              هذه الصفحة هي نقطة الدخول الموحدة للإعدادات. الهدف أن يكون لكل إعداد مكان واضح ومصدر حقيقة واحد بدل التنقل بين صفحات متفرقة.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {SETTINGS_CARDS.map(card => (
-          <Link
-            key={card.href}
-            to={card.href}
-            className="group rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md"
-          >
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className={`grid h-10 w-10 place-items-center rounded-xl border ${card.tone}`}>
-                {card.icon}
-              </div>
-              <span className="rounded-full bg-gray-50 px-2.5 py-1 text-[11px] font-bold text-gray-500">
-                {card.area}
-              </span>
+      <header className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gray-900 text-white">
+              <SlidersHorizontal size={21} />
             </div>
-            <h3 className="text-sm font-extrabold text-gray-900 group-hover:text-primary-700">{card.title}</h3>
-            <p className="mt-2 text-xs leading-5 text-gray-500">{card.desc}</p>
-          </Link>
-        ))}
-      </div>
+            <div>
+              <h2 className="text-xl font-extrabold text-gray-900">مركز الإعدادات</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-500">
+                كل إعداد في الموقع والسيستم في مكان واحد، مقسّم حسب الجزء اللي بيأثر عليه. اكتب اللي بتدوّر عليه أو اختار القسم.
+              </p>
+            </div>
+          </div>
+          <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-600 tabular-nums">{total} إعداد</span>
+        </div>
+        <label className="relative mt-4 block">
+          <Search size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="ابحث: لوجو، فرع التجمع، Paymob، بصمة، سعر الشهادة…"
+            className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pr-9 pl-3 text-sm focus:border-primary-400 focus:bg-white focus:outline-none"
+          />
+        </label>
+        {!query.trim() && (
+          <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1">
+            {[{ key: 'all', title: 'الكل' }, ...visible].map(g => (
+              <button
+                key={g.key}
+                type="button"
+                onClick={() => setArea(g.key)}
+                className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold transition ${area === g.key ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                {g.title}
+              </button>
+            ))}
+          </div>
+        )}
+      </header>
+
+      {shown.length === 0 && (
+        <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-500">
+          مفيش إعداد بالكلام ده. جرّب كلمة تانية.
+        </div>
+      )}
+
+      {shown.map(group => (
+        <section key={group.key} className="space-y-2.5" aria-labelledby={`settings-${group.key}`}>
+          <div className="flex items-baseline gap-2 px-1">
+            <span className={`h-2.5 w-2.5 shrink-0 self-center rounded-full ${group.tone}`} />
+            <h3 id={`settings-${group.key}`} className="text-base font-extrabold text-gray-900">{group.title}</h3>
+            <p className="text-xs text-gray-500">{group.blurb}</p>
+          </div>
+          <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3">
+            {group.entries.map(entry => (
+              <div key={entry.title} className="group flex flex-col rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-gray-300 hover:shadow-md">
+                <Link to={entry.href} className="flex items-start justify-between gap-2">
+                  <span className="text-sm font-extrabold text-gray-900 group-hover:text-primary-700">{entry.title}</span>
+                  <ChevronLeft size={16} className="mt-0.5 shrink-0 text-gray-300 group-hover:text-primary-600" />
+                </Link>
+                <p className="mt-1.5 text-xs leading-5 text-gray-500">{entry.desc}</p>
+                {entry.tab === 'branches_settings' && (
+                  <p className={`mt-2 w-fit rounded-full px-2 py-0.5 text-[11px] font-bold ${tagamoaOn ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                    فرع التجمع: {tagamoaOn ? 'شغّال' : 'مقفول'}
+                  </p>
+                )}
+                {entry.links && (
+                  <div className="mt-2.5 flex flex-wrap gap-1.5">
+                    {entry.links.map(link => (
+                      <Link key={link.href} to={link.href} className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] font-bold text-gray-600 hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700">
+                        {link.label}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }

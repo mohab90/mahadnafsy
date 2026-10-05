@@ -41,6 +41,14 @@ export const SECTIONS = [
 
 export type SectionKey = typeof SECTIONS[number]['key'];
 
+/** The sidebar's headings: the same sections, by what they belong to. */
+export const SECTION_GROUPS: { title: string; keys: SectionKey[] }[] = [
+  { title: 'المعهد', keys: ['general', 'branches', 'countries', 'nationalities', 'currencies', 'exchange_rates'] },
+  { title: 'الحسابات', keys: ['financial', 'payment_methods', 'expense_categories'] },
+  { title: 'التشغيل', keys: ['session_types', 'lead_sources', 'staff_roles', 'growth'] },
+  { title: 'الأمان', keys: ['security', 'backups'] },
+];
+
 export interface ListItem {
   key: string; label: string; is_active: boolean;
   icon?: string; symbol?: string; code?: string; flag?: string; is_default?: boolean;

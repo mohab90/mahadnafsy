@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { cairoMonthOnly } from '../../../../shared/cairoDate';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   Users, Briefcase, Search, BarChart3, ChevronRight, UserPlus, Pencil,
   CalendarCheck, CalendarOff, Wallet, UserCheck, UserX, Layers, Inbox, Fingerprint,
@@ -21,6 +21,9 @@ import HrRequestsInbox from './hr-sections/HrRequestsInbox';
 import HrStaffBasicsPanel from './hr-sections/HrStaffBasicsPanel';
 import { ROLE_LABELS, ROLE_COLORS } from './hr-sections/hrLabels';
 import { fmtMoney } from './hr-sections/hrFormat';
+
+const HR_SECTIONS = ['requests', 'directory', 'basics', 'performance', 'attendance', 'leaves', 'payroll', 'recruitment'] as const;
+type HrSection = typeof HR_SECTIONS[number];
 
 const JobPostingsPanel = React.lazy(() => import('./JobPostingsPanel'));
 const RecruitmentPipelinePanel = React.lazy(() => import('./hr-sections/RecruitmentPipelinePanel'));
@@ -86,7 +89,10 @@ const HrTab: React.FC<Props> = ({ notify }) => {
   // this screen at all.
   const [showAddStaff, setShowAddStaff] = useState(false);
   // «طلبات الموظفين» first: what employees asked for is what HR answers first.
-  const [subTab, setSubTab] = useState<'requests' | 'directory' | 'basics' | 'performance' | 'attendance' | 'leaves' | 'payroll' | 'recruitment'>('requests');
+  // /dashboard/hr/<section> opens that section — the settings hub links
+  // «سياسة الحضور والخصومات» straight to attendance.
+  const { param: sectionParam } = useParams<{ param?: string }>();
+  const [subTab, setSubTab] = useState<HrSection>(() => (HR_SECTIONS as readonly string[]).includes(sectionParam || '') ? sectionParam as HrSection : 'requests');
   const [pendingRequests, setPendingRequests] = useState(0);
   // Deciding a request is manage_hr on the server; view_hr alone reads the list.
   const canManageHr = isAdmin || Boolean(currentStaff && hasPermission({
