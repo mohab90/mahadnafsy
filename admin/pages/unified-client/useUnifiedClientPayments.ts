@@ -9,6 +9,7 @@ import type {
   PaymentItemType, StaffMember, SubscriberItem,
 } from '../../types';
 import { mapServerInstallmentPlan } from './installmentPlanMapper';
+import { bookingTierFields } from '../../lib/bookingIdentity';
 
 interface Params {
   lead?: LeadItem;
@@ -255,8 +256,10 @@ export function useUnifiedClientPayments(params: Params) {
       ].filter(Boolean).join(' | ') || undefined,
       at: draft.date,
     };
+    // The branch tier and the client's real name (lib/bookingIdentity.ts); the server prices it.
+    const tierFields = draft.bookingType === 'new_booking' ? bookingTierFields(draft) : {};
     try {
-      await recordSubscriberPayment(subscriber.id, entry as unknown as Record<string, unknown>);
+      await recordSubscriberPayment(subscriber.id, { ...entry, ...tierFields } as unknown as Record<string, unknown>);
       setShowSubPayForm(false);
       setPayModalDraft(createClientPaymentDraft({
         branch: subscriber.branch,

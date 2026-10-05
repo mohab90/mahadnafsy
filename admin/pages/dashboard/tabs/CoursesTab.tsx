@@ -13,6 +13,7 @@ import { DiscountsView } from './courses/DiscountsView';
 import type { TabKey } from '../navigation';
 import TestimonialsPanel from './courses/TestimonialsPanel';
 import BundlesPanel from './courses/BundlesPanel';
+import CatalogPricingPanel from './courses/CatalogPricingPanel';
 import LecturesPanel from './courses/LecturesPanel';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -487,12 +488,19 @@ const saveCourse = async () => {
                 <option value="Recorded">مسجل</option><option value="Live">لايف</option><option value="Mix">مختلط</option>
               </select>
             </div>
-            {priceField('السعر الحالي EGP (جنيه)', 'price', 'EGP')}
-            {priceField('السعر قبل الخصم EGP (جنيه)', 'originalPrice', 'EGP')}
-            {priceField('السعر الحالي SAR (ريال)', 'price', 'SAR')}
-            {priceField('السعر قبل الخصم SAR (ريال)', 'originalPrice', 'SAR')}
-            {priceField('السعر الحالي USD (دولار)', 'price', 'USD')}
-            {priceField('السعر قبل الخصم USD (دولار)', 'originalPrice', 'USD')}
+            {/* Each branch's price, its discount price and the booking bonuses
+                live in CatalogPricingPanel below; the three online prices it
+                saves are the site's prices too. What stays here is the figure
+                the site shows struck through. */}
+            {priceField('السعر المشطوب في الموقع EGP (جنيه)', 'originalPrice', 'EGP')}
+            {priceField('السعر المشطوب في الموقع SAR (ريال)', 'originalPrice', 'SAR')}
+            {priceField('السعر المشطوب في الموقع USD (دولار)', 'originalPrice', 'USD')}
+            <CatalogPricingPanel
+              type="course"
+              itemId={editingCourseId || null}
+              notify={notify}
+              onSaved={online => setCourseDraft(prev => ({ ...prev, price: online }))}
+            />
             <div>
               <label className="block text-xs font-bold text-gray-600 mb-1">عدد الطلاب المتوقع</label>
               <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.students} onChange={(e) => setCourseDraft({ ...courseDraft, students: Number(e.target.value) })} />

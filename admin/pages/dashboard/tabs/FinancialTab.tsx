@@ -20,6 +20,7 @@ import { BRANCH_SUB_TABS, branchMatches, type FinancialSubTab } from './financia
 import { blankPaymentDraft, type PaymentDraft } from '../../../components/PaymentModal';
 import { usePaymentBoxesWithHistory } from '../../../lib/paymentMethods';
 import { isOnlinePaidOrder } from '../../../context/site-data-hooks/normalizeOrders';
+import { bookingTierFields } from '../../../lib/bookingIdentity';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 const AgingReportPanel = React.lazy(() => import('./financial/AgingReportPanel').then(module => ({ default: module.AgingReportPanel })));
@@ -240,11 +241,15 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
       fromAccountNumber: draft.fromAccountNumber || undefined,
       source: 'staff' as const,
       paymentType: draft.paymentType,
-      courseId: draft.courseId || undefined,
+      courseId: draft.courseId?.startsWith('bundle:') ? undefined : (draft.courseId || undefined),
+      bundleId: draft.courseId?.startsWith('bundle:') ? draft.courseId.slice(7) : undefined,
+      courseExpected: Number(draft.customExpected) || undefined,
       isInstallment: draft.bookingType === 'installment',
       at: draft.date,
     };
-    const result = await recordSubscriberPayment(sub.id, entry as unknown as Record<string, unknown>);
+    // The branch tier and the client's real name (lib/bookingIdentity.ts); the server prices it.
+    const tierFields = draft.bookingType === 'new_booking' ? bookingTierFields(draft) : {};
+    const result = await recordSubscriberPayment(sub.id, { ...entry, ...tierFields } as unknown as Record<string, unknown>);
     notify(
       result.approvalRequired ? 'info' : 'success',
       result.approvalRequired

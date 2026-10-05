@@ -174,6 +174,28 @@ async function saveItemPricing(conn, { tenantId, type, itemId, tiers, bonuses, s
 }
 
 /**
+ * The course or track form saved price_egp / price_sar / price_usd: carry them
+ * into the online tiers, keeping each tier's discount, so the two places that
+ * hold an online price cannot disagree.
+ */
+async function syncOnlineTiersFromColumns(db, { tenantId, type, itemId }) {
+  const table = TABLES[type];
+  if (!table) return;
+  const [[item]] = await db.query(
+    `SELECT price_egp, price_sar, price_usd FROM \`${table}\` WHERE id=? AND tenant_id=? LIMIT 1`, [itemId, tenantId]);
+  if (!item) return;
+  for (const tier of PRICE_TIERS.filter(t => t.column)) {
+    const price = money(item[tier.column]);
+    if (price == null) continue;
+    await db.query(
+      `INSERT INTO catalog_prices (tenant_id, item_type, item_id, tier, price) VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE price=VALUES(price),
+         discount_price=IF(discount_price < VALUES(price), discount_price, NULL)`,
+      [tenantId, type, itemId, tier.key, price]);
+  }
+}
+
+/**
  * The price the desk may charge for one item at one tier: the tier price, or
  * its discount price when the rep chose it. Null when the catalogue cannot say
  * (unknown item, unpriced tier, or a discount that does not exist).
@@ -199,5 +221,6 @@ module.exports = {
   getItemPricing,
   listCatalogPricing,
   saveItemPricing,
+  syncOnlineTiersFromColumns,
   resolveTierPrice,
 };

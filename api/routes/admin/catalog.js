@@ -6,6 +6,7 @@ const router   = express.Router();
 const { uuidv4 } = require('../../lib/id');
 
 const { pool, cacheInvalidate } = require('../../lib/db');
+const { syncOnlineTiersFromColumns } = require('../../lib/priceTiers');
 const { mailer } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
 const { tryJson, sanitize, parseLimit, parseOffset, parseCrm, calcLeadScoreServer } = require('../../lib/helpers');
@@ -173,6 +174,7 @@ router.post('/api/admin/courses', requireAuth, requireAdminOrStaff, requirePermi
     // to belong to it — course_materials is scoped through the course FK and
     // carries no tenant column of its own.
     if (c.materials !== undefined) await saveCourseMaterials(pool, id, c.materials);
+    await syncOnlineTiersFromColumns(pool, { tenantId: req.tenantId, type: 'course', itemId: id });
     cacheInvalidate('courses', 'bundles');
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }

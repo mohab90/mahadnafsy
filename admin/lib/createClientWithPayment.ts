@@ -1,5 +1,6 @@
 import type { PaymentDraft } from '../components/PaymentModal';
 import { mysqlAdmin } from './mysqlapi';
+import { bookingTierFields } from './bookingIdentity';
 
 /**
  * Create a customer who does not exist yet, and take their first payment.
@@ -97,6 +98,8 @@ export async function createClientWithPayment(
       at: draft.date,
       note: draft.note || undefined,
       source: options.source,
+      // The branch tier and the client's real name (lib/bookingIdentity.ts); the server prices it.
+      ...(draft.bookingType === 'new_booking' ? bookingTierFields(draft) : {}),
       branch,
     },
   });

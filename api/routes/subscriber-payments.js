@@ -456,8 +456,9 @@ async function recordSubscriberPayment(req, res) {
     // «اسم العميل الحقيقي عربي ثلاثي … بالانجليزي … الرقم القومي»: taken with
     // every booking that names a tier, and the Arabic triple name is required.
     let bookingIdentity = null;
-    if (priceTier || req.body.client) {
-      const checked = validateBookingIdentity(req.body.client, { egyptian: !priceTier || EGYPTIAN_ID_TIERS.has(priceTier) });
+    const bookingClient = req.body.client || payment.client;
+    if (priceTier || bookingClient) {
+      const checked = validateBookingIdentity(bookingClient, { egyptian: !priceTier || EGYPTIAN_ID_TIERS.has(priceTier) });
       if (!checked.ok) return res.status(400).json({ error: checked.error, code: checked.code });
       bookingIdentity = checked.identity;
     }

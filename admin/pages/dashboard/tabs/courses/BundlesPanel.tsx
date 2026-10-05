@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { useStaticData } from '../../../../context/siteDataSlices';
 import type { Bundle } from '../../../../types';
+import CatalogPricingPanel from './CatalogPricingPanel';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -152,12 +153,15 @@ export default function BundlesPanel({ notify }: { notify: NotifyFn }) {
           <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="اسم المسار بالإنجليزية (English Name)" value={bundleTitleEn} onChange={(e) => setBundleTitleEn(e.target.value)} />
           <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="رابط URL المسار (slug) مثال: psychology-track" value={bundleSlug} onChange={(e) => setBundleSlug(e.target.value)} />
           <input className="border border-gray-300 rounded-xl px-4 py-2.5 md:col-span-1" placeholder="رابط فيديو تعريفي (YouTube embed)" value={bundleVideoUrl} onChange={(e) => setBundleVideoUrl(e.target.value)} />
-          <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر الحالي EGP (جنيه مصري)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundlePrice.EGP} onChange={(e) => setBundlePrice({ ...bundlePrice, EGP: Number(e.target.value) })} /></div>
-          <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر قبل الخصم EGP (جنيه)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundleOriginalPrice.EGP} onChange={(e) => setBundleOriginalPrice({ ...bundleOriginalPrice, EGP: Number(e.target.value) })} /></div>
-          <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر الحالي SAR (ريال سعودي)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundlePrice.SAR} onChange={(e) => setBundlePrice({ ...bundlePrice, SAR: Number(e.target.value) })} /></div>
-          <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر قبل الخصم SAR (ريال)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundleOriginalPrice.SAR} onChange={(e) => setBundleOriginalPrice({ ...bundleOriginalPrice, SAR: Number(e.target.value) })} /></div>
-          <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر الحالي USD (دولار أمريكي)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundlePrice.USD} onChange={(e) => setBundlePrice({ ...bundlePrice, USD: Number(e.target.value) })} /></div>
-          <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر قبل الخصم USD (دولار)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundleOriginalPrice.USD} onChange={(e) => setBundleOriginalPrice({ ...bundleOriginalPrice, USD: Number(e.target.value) })} /></div>
+          <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر المشطوب في الموقع EGP (جنيه)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundleOriginalPrice.EGP} onChange={(e) => setBundleOriginalPrice({ ...bundleOriginalPrice, EGP: Number(e.target.value) })} /></div>
+          <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر المشطوب في الموقع SAR (ريال)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundleOriginalPrice.SAR} onChange={(e) => setBundleOriginalPrice({ ...bundleOriginalPrice, SAR: Number(e.target.value) })} /></div>
+          <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر المشطوب في الموقع USD (دولار)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundleOriginalPrice.USD} onChange={(e) => setBundleOriginalPrice({ ...bundleOriginalPrice, USD: Number(e.target.value) })} /></div>
+          <CatalogPricingPanel
+            type="bundle"
+            itemId={editingBundleId || null}
+            notify={notify}
+            onSaved={online => setBundlePrice(online)}
+          />
           <div className="md:col-span-2 text-xs text-gray-500 -mb-1">لاختيار أكثر من كورس: استخدم Ctrl أو Cmd أثناء التحديد.</div>
           <select multiple className="border border-gray-300 rounded-xl px-4 py-2.5 min-h-36" value={bundleCourseIds} onChange={(e) => setBundleCourseIds(Array.from(e.target.selectedOptions).map((o) => (o as HTMLOptionElement).value))}>
             {courses.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}

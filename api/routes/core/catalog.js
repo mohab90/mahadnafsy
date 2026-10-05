@@ -6,6 +6,7 @@ const router   = express.Router();
 const { uuidv4 } = require('../../lib/id');
 
 const { pool, cacheInvalidate } = require('../../lib/db');
+const { syncOnlineTiersFromColumns } = require('../../lib/priceTiers');
 const { mailer, sendEmail, htmlEmail } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
 const { tryJson, sanitize, parseLimit, parseOffset, validate } = require('../../lib/helpers');
@@ -317,6 +318,7 @@ router.post('/api/admin/bundles', requireAuth, requireAdminOrStaff, requirePermi
        priceEGP, priceSAR, priceUSD, origEGP, origSAR, origUSD,
        detailsJson, isPublished, sortOrder]
     );
+    await syncOnlineTiersFromColumns(pool, { tenantId: req.tenantId, type: 'bundle', itemId: id });
     // Sync courses into bundle_courses join table
     if (Array.isArray(courseIds)) {
       await pool.query('DELETE FROM bundle_courses WHERE tenant_id=? AND bundle_id = ?', [req.tenantId, id]);

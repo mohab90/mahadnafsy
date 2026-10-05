@@ -8,6 +8,7 @@ import { createClientPaymentDraft } from '../../../lib/clientActionDrafts';
 import { currencyForBranch } from '../../../lib/branchCurrency';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
+import { bookingTierFields } from '../../../lib/bookingIdentity';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -102,6 +103,10 @@ const RegistrationsTab: React.FC<Props> = ({ notify }) => {
         paymentMethod: paid.paymentMethod,
         note: paid.note || undefined,
         status: 'paid',
+        courseExpected: Number(paid.customExpected) || undefined,
+        branch,
+        // The branch tier and the client's real name (lib/bookingIdentity.ts); the server prices it.
+        ...(paid.bookingType === 'new_booking' ? bookingTierFields(paid) : {}),
       });
       notify('success', branch === 'DAQQI'
         ? 'تم التحويل لعميل دقي وتسجيل الحجز — اختاره دلوقتي من حضور الروند في جدول الدقي'
