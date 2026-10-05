@@ -14,6 +14,7 @@ const { SECTION, composeOwnerReport, ownerReportSettings, sendOwnerDailyReport }
 const { setTenantSetting } = require('../lib/tenantSettings');
 const { toDialable } = require('../lib/phoneNumber');
 const { cairoToday } = require('../lib/dates');
+const { canTouchBranch } = require('../lib/physicalBranches');
 
 const router = express.Router();
 
@@ -23,7 +24,10 @@ const TEAM_READERS = {
   online: ['manage_sales_team', 'view_perf_online'],
   support: ['manage_sales_team', 'view_perf_cx'],
   daqqi: ['manage_sales_team', 'view_perf_daqqi'],
+  tagamoa: ['manage_sales_team', 'view_perf_daqqi'],
 };
+// A branch's own staff read their branch's team report, not the other's.
+const BRANCH_TEAMS = { daqqi: 'DAQQI', tagamoa: 'TAGAMOA' };
 
 const failed = (res, error, label) => {
   logger.error(`[${label}]`, error.message);
@@ -38,6 +42,9 @@ router.get('/api/admin/reports/teams/:team', requireAuth, requireAdminOrStaff,
   const readers = TEAM_READERS[req.params.team];
   if (!req.isSuperAdmin && !readers.some(permission => hasPermission(req.staffRecord, permission))) {
     return res.status(403).json({ error: `Permission denied: one of ${readers.join(', ')}` });
+  }
+  if (BRANCH_TEAMS[req.params.team] && !canTouchBranch(req, BRANCH_TEAMS[req.params.team])) {
+    return res.status(403).json({ error: 'الفرع ده مش من صلاحياتك' });
   }
   try {
     res.json(await build({ tenantId: req.tenantId, ...reportRange(req.query) }));

@@ -18,7 +18,7 @@ const { writeAuditEvent } = require('./auditTrail');
  */
 async function seatSubscriberInRound(conn, { tenantId, roundId, subscriberId, req = null }) {
   const [[round]] = await conn.query(
-    'SELECT id, course_id, code FROM daqqi_rounds WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
+    'SELECT id, course_id, code, branch FROM daqqi_rounds WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
     [roundId, tenantId]
   );
   if (!round) return { status: 'no_round' };
@@ -55,11 +55,13 @@ async function seatSubscriberInRound(conn, { tenantId, roundId, subscriberId, re
       'SELECT deleted_at FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriberId, tenantId]);
     return { status: known?.deleted_at ? 'archived' : 'no_subscriber', ...seat };
   }
-  // A client housed in a Dokki round is a Dokki client — «عملاء الدقي» lists the branch.
+  // A client housed in a round is a client of its branch — «عملاء الدقي» (and the
+  // Tagamoa list) read the branch.
+  const roundBranch = round.branch || 'DAQQI';
   await conn.query(
-    `UPDATE subscribers SET branch='DAQQI', branch_id=?, updated_at=NOW()
-      WHERE id=? AND tenant_id=? AND (branch IS NULL OR branch<>'DAQQI')`,
-    [branchIdForBranch('DAQQI'), subscriberId, tenantId]
+    `UPDATE subscribers SET branch=?, branch_id=?, updated_at=NOW()
+      WHERE id=? AND tenant_id=? AND (branch IS NULL OR branch<>?)`,
+    [roundBranch, branchIdForBranch(roundBranch), subscriberId, tenantId, roundBranch]
   );
   await writeAuditEvent({
     action: 'DAQQI_ATTENDEE_BOOKED',

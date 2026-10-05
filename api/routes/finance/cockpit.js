@@ -177,6 +177,12 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requi
       FROM payments p
       WHERE p.tenant_id=? AND p.date >= ? AND p.status='paid' AND p.deleted_at IS NULL AND p.branch='DAQQI'${paymentAliasScopeSql}
     `, scope.branchId ? [req.tenantId, monthStart, scope.branchId] : [req.tenantId, monthStart]);
+    // And the Tagamoa branch beside it, read the same way.
+    const [[tagamoaRev]] = await pool.query(`
+      SELECT COALESCE(SUM(p.amount_egp),0) AS v
+      FROM payments p
+      WHERE p.tenant_id=? AND p.date >= ? AND p.status='paid' AND p.deleted_at IS NULL AND p.branch='TAGAMOA'${paymentAliasScopeSql}
+    `, scope.branchId ? [req.tenantId, monthStart, scope.branchId] : [req.tenantId, monthStart]);
 
     // ── Alerts ─────────────────────────────────────────────────────────
     const [[pendingProofs]] = await pool.query(
@@ -261,6 +267,7 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requi
         conversionRate: leadsTotal.n > 0 ? Math.round((leadsConverted.n / leadsTotal.n) * 100) : 0,
         payrollCost: parseFloat(payrollCost.v) || 0,
         daqqiRevenue: parseFloat(daqqiRev.v) || 0,
+        tagamoaRevenue: parseFloat(tagamoaRev.v) || 0,
       },
       alerts: {
         pendingProofs: pendingProofs.n,

@@ -207,7 +207,8 @@ test('employee subscriber lists cannot mix CRM ownership or payment history acro
   assert.match(route, /FROM payments\s+WHERE tenant_id=\? AND subscriber_id IN/);
   assert.match(route, /FROM enrollments\s+WHERE tenant_id=\? AND status='active' AND subscriber_id IN/);
   assert.match(route, /LEFT JOIN leads l ON l\.id = s\.lead_id AND l\.tenant_id=s\.tenant_id/);
-  assert.match(route, /WHERE s\.tenant_id=\? AND s\.deleted_at IS NULL AND s\.branch = 'DAQQI'/);
+  // The branch's own list: Dokki, or Tagamoa (lib/physicalBranches.js).
+  assert.match(route, /WHERE s\.tenant_id=\? AND s\.deleted_at IS NULL AND s\.branch = \?/);
   assert.match(route, /assign-collection'[^\n]+requirePermission\('manage_subscribers'\)/);
   assert.match(route, /SELECT crm_json FROM subscribers WHERE id=\? AND tenant_id=\?[^\n]+FOR UPDATE/);
   assert.match(route, /staff WHERE tenant_id=\? AND UPPER\(role\)='COLLECTION'/);

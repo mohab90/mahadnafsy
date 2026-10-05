@@ -43,6 +43,7 @@ const DEPARTMENT_ROLES = Object.freeze({
   instruction: ['instructor', 'trainer'],
   management:  ['manager', 'admin'],
   daqqi:       ['daqqi_manager', 'reception_daqqi'],
+  tagamoa:     ['tagamoa_manager', 'reception_tagamoa'],
   // Falls back to a manager so an HR enquiry is never left with no owner in an
   // institute that has only one HR employee (or none on a given day).
   hr:          ['hr', 'manager'],
@@ -50,7 +51,7 @@ const DEPARTMENT_ROLES = Object.freeze({
 
 const DEPARTMENT_LABEL = Object.freeze({
   support: 'الدعم الفني', collection: 'التحصيل', accounting: 'الحسابات',
-  sales: 'المبيعات', instruction: 'التدريب', management: 'الإدارة', daqqi: 'الدقي',
+  sales: 'المبيعات', instruction: 'التدريب', management: 'الإدارة', daqqi: 'الدقي', tagamoa: 'التجمع',
   hr: 'الموارد البشرية',
 });
 

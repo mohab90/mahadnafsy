@@ -13,7 +13,7 @@
 const { pool } = require('./db');
 const { addDaysToDateOnly, cairoDayStartUtc } = require('./dates');
 const { buildTeamDailyReport } = require('./teamDailyReport');
-const { buildDaqqiTeamReport, buildOnlineTeamReport, buildSupportTeamReport, MONEY_EGP } = require('./teamReports');
+const { buildDaqqiTeamReport, buildTagamoaTeamReport, buildOnlineTeamReport, buildSupportTeamReport, MONEY_EGP } = require('./teamReports');
 
 const num = value => Number(value) || 0;
 
@@ -96,11 +96,12 @@ async function buildManagementReport({ tenantId, from, to, today }, db = pool) {
   );
 
   const range = { tenantId, from, to, today };
-  const [sales, online, support, daqqi] = await Promise.all([
+  const [sales, online, support, daqqi, tagamoa] = await Promise.all([
     buildTeamDailyReport(range, db),
     buildOnlineTeamReport(range, db),
     buildSupportTeamReport(range, db),
     buildDaqqiTeamReport(range, db),
+    buildTagamoaTeamReport(range, db),
   ]);
 
   const totalEgp = Math.round(byBranchType.reduce((total, row) => total + num(row.moneyEgp), 0));
@@ -131,11 +132,12 @@ async function buildManagementReport({ tenantId, from, to, today }, db = pool) {
       collectionByMoney: top(online.rows, 'collectedEgp'),
       supportByResolved: top(support.rows, 'problemsResolved'),
       daqqiByMoney: top(daqqi.rows, 'moneyEgp'),
+      tagamoaByMoney: top(tagamoa.rows, 'moneyEgp'),
     },
     counts: {
       newLeads: num(counts?.newLeads), newClients: num(counts?.newClients), pendingPayments: num(counts?.pendingPayments),
     },
-    teams: { sales, online, support, daqqi },
+    teams: { sales, online, support, daqqi, tagamoa },
   };
 }
 

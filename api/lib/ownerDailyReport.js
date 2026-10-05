@@ -41,6 +41,7 @@ function composeOwnerReport(report) {
   const online = teams.online.totals || {};
   const support = teams.support.totals || {};
   const daqqi = teams.daqqi.totals || {};
+  const tagamoa = teams.tagamoa?.totals || {};
   const branches = income.byBranch.slice(0, 4).map(row => `${row.label} ${n(row.moneyEgp)}`).join(' · ');
   return [
     `📊 *تقرير المعهد — ${day} ${report.to}*`,
@@ -63,6 +64,9 @@ function composeOwnerReport(report) {
     support.consultationsRequested ? `استشارات جديدة: ${n(support.consultationsRequested)}` : null,
     '',
     `*الدقي:* ${n(daqqi.newClients)} عميل جديد · ${n(daqqi.payments)} دفعة · ${n(daqqi.moneyEgp)} ج.م`,
+    // Tagamoa only once it has something to say — it opens hidden.
+    tagamoa.payments || tagamoa.newClients
+      ? `*التجمع:* ${n(tagamoa.newClients)} عميل جديد · ${n(tagamoa.payments)} دفعة · ${n(tagamoa.moneyEgp)} ج.م` : null,
     topCourses.length ? `\n📚 *الأكتر مبيعاً:* ${topCourses.slice(0, 3).map(course => `${course.title} (${n(course.bookings)})`).join(' · ')}` : null,
     '',
     '🔗 التفاصيل: https://admin.mahadnafsy.com/dashboard/management_reports',

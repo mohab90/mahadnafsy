@@ -391,7 +391,7 @@ router.get('/api/admin/hr/instructor-fees', requireAuth, requireAdminOrStaff, re
     if (year)    { sql += ' AND f.period_year = ?'; params.push(Number(year)); }
     if (status)  { sql += ' AND f.status = ?'; params.push(status); }
     // Non-admin staff can only see their own fees
-    const isManager = req.staffRecord && ['MANAGER','ADMIN','ACCOUNTANT','DAQQI_MANAGER'].includes((req.staffRecord.role||'').toUpperCase());
+    const isManager = req.staffRecord && ['MANAGER','ADMIN','ACCOUNTANT','DAQQI_MANAGER','TAGAMOA_MANAGER'].includes((req.staffRecord.role||'').toUpperCase());
     if (req.staffRecord && !req.isSuperAdmin && !isManager) {
       sql += ' AND f.staff_id = ?'; params.push(req.staffRecord.id);
     }

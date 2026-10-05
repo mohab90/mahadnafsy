@@ -14,8 +14,16 @@ function branchesFromScope(scope) {
 // The Dokki desk's leads are the ones handed to the Dokki team: «الليدات
 // المعينه لفريق الدقي فقط». Its branch scope listed every lead tagged DAQQI —
 // 5,887 on 30 Sep 2026, every one of them a sales rep's.
+//
+// The same holds at every physical branch: the Tagamoa desk's leads are its own
+// team's (lib/physicalBranches.js).
 const DAQQI_TEAM_ROLES = ['daqqi_manager', 'reception_daqqi'];
 const DAQQI_TEAM_IDS = `SELECT id FROM staff WHERE tenant_id=? AND LOWER(role) IN ('daqqi_manager','reception_daqqi')`;
+const { PHYSICAL_BRANCHES } = require('./physicalBranches');
+const BRANCH_TEAM = Object.fromEntries(Object.values(PHYSICAL_BRANCHES).map(branch => {
+  const roles = [branch.managerRole.toLowerCase(), branch.receptionRole.toLowerCase()];
+  return [`branch:${branch.key}`, { roles, ids: `SELECT id FROM staff WHERE tenant_id=? AND LOWER(role) IN (${roles.map(r => `'${r}'`).join(',')})` }];
+}));
 
 function leadScope({ tenantId, staffRecord, isSuperAdmin }, alias = 'l') {
   if (!staffRecord || isSuperAdmin) return { scope: 'all', sql: '', params: [], none: false };
@@ -36,10 +44,11 @@ function leadScope({ tenantId, staffRecord, isSuperAdmin }, alias = 'l') {
       none: false,
     };
   }
-  if (scope === 'branch:DAQQI' && DAQQI_TEAM_ROLES.includes(String(staffRecord.role || '').toLowerCase())) {
+  const team = BRANCH_TEAM[scope];
+  if (team && team.roles.includes(String(staffRecord.role || '').toLowerCase())) {
     return {
       scope,
-      sql: ` AND (${alias}.assigned_sales_id IN (${DAQQI_TEAM_IDS}) OR ${alias}.assigned_cs_id IN (${DAQQI_TEAM_IDS}))`,
+      sql: ` AND (${alias}.assigned_sales_id IN (${team.ids}) OR ${alias}.assigned_cs_id IN (${team.ids}))`,
       params: [tenantId, tenantId],
       none: false,
     };

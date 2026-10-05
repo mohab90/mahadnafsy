@@ -1801,6 +1801,7 @@ CREATE TABLE `daqqi_rounds` (
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `room` varchar(60) DEFAULT NULL,
+  `branch` varchar(16) NOT NULL DEFAULT 'DAQQI',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_daqqi_rounds_tenant_code` (`tenant_id`,`code`),
   KEY `fk_daqqi_course` (`course_id`),
@@ -1808,6 +1809,7 @@ CREATE TABLE `daqqi_rounds` (
   KEY `idx_daqqi_rounds_tenant` (`tenant_id`),
   KEY `idx_daqqi_rounds_created` (`created_at`,`id`),
   KEY `idx_daqqi_round_room_slot` (`tenant_id`,`room`,`day_of_week`,`time_slot`,`status`),
+  KEY `idx_daqqi_rounds_branch` (`tenant_id`,`branch`,`status`),
   CONSTRAINT `fk_daqqi_course` FOREIGN KEY (`course_id`) REFERENCES `courses` (`id`),
   CONSTRAINT `fk_daqqi_reception` FOREIGN KEY (`reception_id`) REFERENCES `staff` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -4855,7 +4857,7 @@ CREATE TABLE `staff` (
   `name` varchar(255) NOT NULL,
   `email` varchar(255) NOT NULL,
   `phone` varchar(50) NOT NULL,
-  `role` enum('INSTRUCTOR','TRAINER','EXPERT','SALES','MANAGER','ADMIN','SUPPORT','RECEPTION_DAQQI','COLLECTION','ACCOUNTANT','CONSULTANT','OTHER','ONLINE_MANAGER','DAQQI_MANAGER','SALES_COLLECTION_MANAGER','HR') NOT NULL,
+  `role` enum('INSTRUCTOR','TRAINER','EXPERT','SALES','MANAGER','ADMIN','SUPPORT','RECEPTION_DAQQI','COLLECTION','ACCOUNTANT','CONSULTANT','OTHER','ONLINE_MANAGER','DAQQI_MANAGER','SALES_COLLECTION_MANAGER','HR','TAGAMOA_MANAGER','RECEPTION_TAGAMOA') NOT NULL,
   `image` text DEFAULT NULL,
   `specialization` varchar(255) DEFAULT NULL,
   `joined_at` datetime NOT NULL,

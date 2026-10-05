@@ -11,6 +11,7 @@ const { sanitize } = require('../lib/helpers');
 const { isBranch, normalizeBranch } = require('../constants/branches');
 const { logFinancialAudit } = require('../lib/finance');
 const { resolveFinancialScope } = require('../lib/financialScope');
+const { boundBranch } = require('../lib/physicalBranches');
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -40,7 +41,9 @@ router.post('/api/waitlist', publicLimiter, async (req, res) => {
 // Admin: list waitlist
 router.get('/api/admin/waitlist', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), async (req, res) => {
   try {
-    const branch = req.query.branch || '';
+    // A branch's own staff see their branch's waiting list only.
+    const bound = boundBranch(req);
+    const branch = bound || req.query.branch || '';
     const status = req.query.status || '';
     let sql = 'SELECT * FROM daqqi_waitlist WHERE tenant_id=?';
     const params = [req.tenantId];

@@ -40,10 +40,12 @@ function sendRouteError(res, err) {
 
 function subscriberTimelineScope(req, alias = 's') {
   const role = String(req.staffRecord?.role || '').toLowerCase();
-  if (req.isSuperAdmin || ['admin', 'manager', 'online_manager', 'daqqi_manager'].includes(role)) {
+  if (req.isSuperAdmin || ['admin', 'manager', 'online_manager', 'daqqi_manager', 'tagamoa_manager'].includes(role)) {
     return { sql: '', params: [] };
   }
+  // A branch's reception sees its branch's clients (Dokki, or Tagamoa beside it).
   if (role === 'reception_daqqi') return { sql: ` AND ${alias}.branch='DAQQI'`, params: [] };
+  if (role === 'reception_tagamoa') return { sql: ` AND ${alias}.branch='TAGAMOA'`, params: [] };
   return {
     sql: ` AND (${alias}.assigned_sales_id=? OR ${alias}.assigned_cs_id=? OR EXISTS (
       SELECT 1 FROM leads l WHERE l.id=${alias}.lead_id AND l.tenant_id=${alias}.tenant_id
@@ -200,13 +202,14 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
       if (!isAdminReq) {
         const staffRole = (req.staffRecord?.role || '').toLowerCase();
         // Roles with full subscriber access — can see any client
-        const fullAccessRoles = ['online_manager', 'daqqi_manager', 'manager'];
+        const fullAccessRoles = ['online_manager', 'daqqi_manager', 'tagamoa_manager', 'manager'];
         if (fullAccessRoles.includes(staffRole) || seesEveryClient) {
           // allow full access
-        } else if (staffRole === 'reception_daqqi') {
-          // reception_daqqi can see any daqqi-branch subscriber
-          const isDaqqiBranch = r.branch && r.branch.toUpperCase().replace(/[-\s]/g,'_') === 'DAQQI';
-          if (!isDaqqiBranch) {
+        } else if (staffRole === 'reception_daqqi' || staffRole === 'reception_tagamoa') {
+          // a branch's reception can see any subscriber of its branch
+          const ownBranch = staffRole === 'reception_tagamoa' ? 'TAGAMOA' : 'DAQQI';
+          const isOwnBranch = r.branch && r.branch.toUpperCase().replace(/[-\s]/g,'_') === ownBranch;
+          if (!isOwnBranch) {
             return res.status(403).json({ error: 'ليس لديك صلاحية الوصول لهذا العميل' });
           }
         } else {
@@ -342,7 +345,7 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
       const crm = parseCrm(r.crm_json);
       if (!isAdminReq) {
         const staffRole2 = (req.staffRecord?.role || '').toLowerCase();
-        const fullAccessRoles2 = ['online_manager', 'daqqi_manager', 'manager'];
+        const fullAccessRoles2 = ['online_manager', 'daqqi_manager', 'tagamoa_manager', 'manager'];
         if (!fullAccessRoles2.includes(staffRole2) && !seesEveryClient && r.assigned_sales_id !== staffId && r.assigned_cs_id !== staffId) {
           return res.status(403).json({ error: 'ليس لديك صلاحية الوصول لهذا العميل' });
         }

@@ -10,6 +10,33 @@ const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requi
 const { hasPermission, PERMISSIONS } = require('../constants/permissions');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
 const { requireDaqqiAccess } = require('../lib/daqqiAccess');
+const { BRANCH_ROLES, canTouchBranch, requestedBranch, roundsScopeSql } = require('../lib/physicalBranches');
+
+// A round at a branch this account is not confined to is not there for it.
+async function roundOutOfReach(db, req, roundId) {
+  const [[round]] = await db.query('SELECT branch FROM daqqi_rounds WHERE id=? AND tenant_id=? LIMIT 1', [roundId, req.tenantId]);
+  return Boolean(round) && !canTouchBranch(req, round.branch);
+}
+// Refuses a round outside this account's branch as if it were not there.
+const roundInReach = (...ids) => async (req, res, next) => {
+  try {
+    for (const id of ids.map(pick => pick(req)).filter(Boolean)) {
+      if (await roundOutOfReach(pool, req, id)) return res.status(404).json({ error: 'Round not found' });
+    }
+    next();
+  } catch (e) { sendRouteError(res, e); }
+};
+const fromParam = name => req => req.params[name];
+
+// The rounds a list reads: one branch when asked (?branch=), else every branch
+// this account reaches.
+function roundsFilter(req, alias = '') {
+  if (req.query?.branch) {
+    const branch = requestedBranch(req);
+    return { sql: ` AND ${alias ? `${alias}.` : ''}branch=?`, params: [branch] };
+  }
+  return roundsScopeSql(req, alias);
+}
 const { writeAuditEvent } = require('../lib/auditTrail');
 const { getDaqqiAttendees } = require('../lib/daqqiAttendees');
 const { attachAttendeeMoney } = require('../lib/daqqiAttendeeMoney');
@@ -106,13 +133,15 @@ function isoDt(v) {
 router.get('/api/admin/daqqi-performance', requireAuth, requireAdminOrStaff,
   requireAnyPermission(PERMISSIONS.MANAGE_DAQQI, PERMISSIONS.VIEW_PERF_DAQQI), async (req, res) => {
     try {
-      const tenant = [req.tenantId];
+      // One branch's figures when asked (?branch=), else every branch this account reaches.
+      const scope = roundsFilter(req, 'r');
+      const tenant = [req.tenantId, ...scope.params];
       const [[byStatus], [[totals]], [byInstructor], [byReception], [roundOwners]] = await Promise.all([
-        pool.query('SELECT status, COUNT(*) n FROM daqqi_rounds WHERE tenant_id=? GROUP BY status', tenant),
+        pool.query(`SELECT r.status, COUNT(*) n FROM daqqi_rounds r WHERE r.tenant_id=?${scope.sql} GROUP BY r.status`, tenant),
         // Seats only. The money is read below from the payments themselves: the figure kept
         // on the attendee row is what the client had paid when they were booked, and it was
         // never updated — a client booked before paying, which is most of them, counted 0.
-        pool.query('SELECT COUNT(*) students FROM daqqi_attendees WHERE tenant_id=?', tenant),
+        pool.query(`SELECT COUNT(*) students FROM daqqi_attendees a JOIN daqqi_rounds r ON r.id=a.round_id AND r.tenant_id=a.tenant_id WHERE a.tenant_id=?${scope.sql}`, tenant),
         // COUNT(DISTINCT r.id): the attendee join multiplies a round by its
         // attendees, so counting rows here would report a busy round as several.
         pool.query(
@@ -124,7 +153,7 @@ router.get('/api/admin/daqqi-performance', requireAuth, requireAdminOrStaff,
              FROM daqqi_rounds r
              LEFT JOIN daqqi_attendees a ON a.round_id=r.id AND a.tenant_id=r.tenant_id
              LEFT JOIN staff s ON s.id=r.instructor_id AND s.tenant_id=r.tenant_id
-            WHERE r.tenant_id=?
+            WHERE r.tenant_id=?${scope.sql}
             GROUP BY r.instructor_id, name`, tenant),
         pool.query(
           `SELECT r.reception_id id,
@@ -135,7 +164,7 @@ router.get('/api/admin/daqqi-performance', requireAuth, requireAdminOrStaff,
              FROM daqqi_rounds r
              LEFT JOIN daqqi_attendees a ON a.round_id=r.id AND a.tenant_id=r.tenant_id
              LEFT JOIN staff s ON s.id=r.reception_id AND s.tenant_id=r.tenant_id
-            WHERE r.tenant_id=?
+            WHERE r.tenant_id=?${scope.sql}
             GROUP BY r.reception_id, name
             ORDER BY rounds DESC`, tenant),
         // Which instructor each round is filed under, spelt as the grouping above spells it.
@@ -144,7 +173,7 @@ router.get('/api/admin/daqqi-performance', requireAuth, requireAdminOrStaff,
                   COALESCE(NULLIF(TRIM(r.instructor_name),''), s.name, '—') name
              FROM daqqi_rounds r
              LEFT JOIN staff s ON s.id=r.instructor_id AND s.tenant_id=r.tenant_id
-            WHERE r.tenant_id=?`, tenant),
+            WHERE r.tenant_id=?${scope.sql}`, tenant),
       ]);
 
       // What each round earned — the payments of its clients for its course, a track's
@@ -197,10 +226,10 @@ router.get('/api/admin/daqqi-performance', requireAuth, requireAdminOrStaff,
 router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
   try {
     const [rounds] = await pool.query(
-      `SELECT id, code, course_id, instructor_id, instructor_name, reception_id, reception_name,
+      `SELECT id, code, branch, course_id, instructor_id, instructor_name, reception_id, reception_name,
        day_of_week, start_date, time_slot, status, current_lecture, postponed_weeks_json, held_weeks_json, created_at, room
-       FROM daqqi_rounds WHERE tenant_id=? ORDER BY created_at DESC LIMIT 500`,
-      [req.tenantId]
+       FROM daqqi_rounds WHERE tenant_id=?${roundsFilter(req).sql} ORDER BY created_at DESC LIMIT 500`,
+      [req.tenantId, ...roundsFilter(req).params]
     );
     if (rounds.length === 0) return res.json([]);
 
@@ -218,6 +247,7 @@ router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requireP
     const result = rounds.map(r => ({
       id: r.id,
       code: r.code,
+      branch: r.branch || 'DAQQI',
       courseId: r.course_id,
       instructorId: r.instructor_id || '',
       instructorName: r.instructor_name,
@@ -270,7 +300,7 @@ router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requireP
 
 router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), async (req, res) => {
   const role = (req.staffRecord?.role || '').toUpperCase();
-  const allowedRoles = new Set(['MANAGER', 'ADMIN', 'DAQQI_MANAGER', 'RECEPTION_DAQQI']);
+  const allowedRoles = new Set(['MANAGER', 'ADMIN', ...BRANCH_ROLES]);
   if (req.staffRecord && !req.isSuperAdmin && !allowedRoles.has(role)) {
     return res.status(403).json({ error: 'Access denied' });
   }
@@ -311,6 +341,15 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
     // Only when sent: a screen that does not know the field leaves it as it is.
     const heldWeeks = Array.isArray(d.heldWeeks) ? d.heldWeeks.map(String).slice(0, 200) : null;
     const heldJson = heldWeeks ? JSON.stringify(heldWeeks) : null;
+    // The branch the round runs at: its own when it exists, else the one the
+    // screen it was made on belongs to. Rooms clash only within a branch.
+    const [[known]] = await conn.query('SELECT branch FROM daqqi_rounds WHERE id=? AND tenant_id=? LIMIT 1', [id, req.tenantId]);
+    const roundBranch = known ? known.branch : requestedBranch(req);
+    if (!canTouchBranch(req, roundBranch)) {
+      const error = new Error('Round not found');
+      error.statusCode = 404;
+      throw error;
+    }
     // A hall can hold one round per weekday slot. Checked here, before any
     // write, so a clash is refused rather than half-saved. Finished rounds are
     // excluded — they have released the room — and so is this round itself, so
@@ -320,9 +359,9 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
     if (room) {
       const [[clash]] = await conn.query(
         `SELECT id, code FROM daqqi_rounds
-           WHERE tenant_id=? AND room=? AND day_of_week=? AND time_slot=?
+           WHERE tenant_id=? AND branch=? AND room=? AND day_of_week=? AND time_slot=?
              AND status<>'FINISHED' AND id<>? LIMIT 1`,
-        [req.tenantId, room, dayOfWeek, timeSlot, id]
+        [req.tenantId, roundBranch, room, dayOfWeek, timeSlot, id]
       );
       if (clash) {
         const error = new Error(`القاعة ${room} محجوزة في نفس اليوم والتوقيت للروند ${clash.code || clash.id}`);
@@ -458,11 +497,11 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
       savedCode = String(code);
       await conn.query(
         `INSERT INTO daqqi_rounds
-          (id,code,course_id,instructor_id,instructor_name,reception_id,reception_name,
+          (id,code,branch,course_id,instructor_id,instructor_name,reception_id,reception_name,
            day_of_week,start_date,time_slot,status,current_lecture,postponed_weeks_json,held_weeks_json,created_at,room,tenant_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
-          id, code, courseId,
+          id, code, roundBranch, courseId,
           d.instructorId || d.instructor_id || null, d.instructorName || d.instructor_name || '',
           d.receptionId || d.reception_id || null, d.receptionName || d.reception_name || '',
           dayOfWeek, startDate, timeSlot, status,
@@ -570,16 +609,16 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
           error.statusCode = blockedAsArchived ? 409 : 404;
           throw error;
         }
-        // A client housed in a Dokki round is a Dokki client. «عملاء الدقي» lists the
+        // A client housed in a round is a client of its branch. «عملاء الدقي» lists the
         // branch, so one booked from another branch (a lead converted online, a client
         // filed under «أخرى») was on the round's roster and nowhere on the clients
         // screen — and the desk, whose scope is the branch, could not open them. The
         // booking moves them; their payments keep the branch they were taken in.
         if (!alreadyBooked) {
           await conn.query(
-            `UPDATE subscribers SET branch='DAQQI', branch_id=?, updated_at=NOW()
-              WHERE id=? AND tenant_id=? AND (branch IS NULL OR branch<>'DAQQI')`,
-            [branchIdForBranch('DAQQI'), subId, req.tenantId]
+            `UPDATE subscribers SET branch=?, branch_id=?, updated_at=NOW()
+              WHERE id=? AND tenant_id=? AND (branch IS NULL OR branch<>?)`,
+            [roundBranch, branchIdForBranch(roundBranch), subId, req.tenantId, roundBranch]
           );
         }
       }
@@ -603,7 +642,7 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
   }
 });
 
-router.get('/api/admin/daqqi-rounds/:roundId/attendance', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
+router.get('/api/admin/daqqi-rounds/:roundId/attendance', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, roundInReach(fromParam('roundId')), async (req, res) => {
   try {
     const [events] = await pool.query(
       `SELECT e.id,e.subscriber_id,e.session_number,e.status,e.source,e.marked_by,e.reason,e.marked_at,
@@ -623,7 +662,7 @@ router.get('/api/admin/daqqi-rounds/:roundId/attendance', requireAuth, requireAd
   }
 });
 
-router.post('/api/admin/daqqi-rounds/:roundId/attendance', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
+router.post('/api/admin/daqqi-rounds/:roundId/attendance', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, roundInReach(fromParam('roundId')), async (req, res) => {
   const subscriberId = String(req.body?.subscriberId || '').trim();
   if (!subscriberId) return res.status(400).json({ error: 'subscriberId is required' });
   const conn = await pool.getConnection();
@@ -737,7 +776,7 @@ router.post('/api/admin/daqqi-rounds/:roundId/attendance', requireAuth, requireA
 // corrections were to remove the person from the round or to edit the database,
 // so a wrong tap stayed in the attendance report, the statistics and anything
 // that reads attended_lectures.
-router.delete('/api/admin/daqqi-rounds/:roundId/attendance/:subscriberId/:sessionNumber', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
+router.delete('/api/admin/daqqi-rounds/:roundId/attendance/:subscriberId/:sessionNumber', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, roundInReach(fromParam('roundId')), async (req, res) => {
   const sessionNumber = Number(req.params.sessionNumber);
   if (!Number.isInteger(sessionNumber) || sessionNumber < 1) return res.status(400).json({ error: 'Invalid sessionNumber' });
   const conn = await pool.getConnection();
@@ -779,7 +818,7 @@ router.delete('/api/admin/daqqi-rounds/:roundId/attendance/:subscriberId/:sessio
   }
 });
 
-router.post('/api/admin/daqqi-rounds/transfer-attendee', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
+router.post('/api/admin/daqqi-rounds/transfer-attendee', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, roundInReach(req => req.body?.fromRoundId, req => req.body?.toRoundId), async (req, res) => {
   const { subscriberId, fromRoundId, toRoundId } = req.body || {};
   if (!subscriberId || !fromRoundId || !toRoundId || fromRoundId === toRoundId) {
     return res.status(400).json({ error: 'Valid subscriberId, fromRoundId and toRoundId are required' });
@@ -847,7 +886,7 @@ router.post('/api/admin/daqqi-rounds/transfer-attendee', requireAuth, requireAdm
 // which rebuilds every attendee row from what that screen last loaded — so a
 // client another desk had seated a minute earlier, and not yet on this screen,
 // was deleted by the save. Seating the same client twice is a no-op, not an error.
-router.post('/api/admin/daqqi-rounds/:roundId/attendees', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
+router.post('/api/admin/daqqi-rounds/:roundId/attendees', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, roundInReach(fromParam('roundId')), async (req, res) => {
   const subscriberId = String(req.body?.subscriberId || '').trim();
   if (!subscriberId) return res.status(400).json({ error: 'subscriberId is required' });
   const conn = await pool.getConnection();
@@ -878,7 +917,7 @@ router.post('/api/admin/daqqi-rounds/:roundId/attendees', requireAuth, requireAd
 // and rounds saved before start_date was required could not pass, so removing
 // a client from one of them was refused for a reason that had nothing to do
 // with the client.
-router.delete('/api/admin/daqqi-rounds/:roundId/attendees/:subscriberId', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
+router.delete('/api/admin/daqqi-rounds/:roundId/attendees/:subscriberId', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, roundInReach(fromParam('roundId')), async (req, res) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -919,7 +958,7 @@ router.delete('/api/admin/daqqi-rounds/:roundId/attendees/:subscriberId', requir
   } finally { conn.release(); }
 });
 
-router.delete('/api/admin/daqqi-rounds/:id', requireAuth, requireSuperAdmin, requireDaqqiAccess, async (req, res) => {
+router.delete('/api/admin/daqqi-rounds/:id', requireAuth, requireSuperAdmin, requireDaqqiAccess, roundInReach(fromParam('id')), async (req, res) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -976,9 +1015,9 @@ router.get('/api/admin/daqqi/attendance-report', requireAuth, requireAdminOrStaf
       `SELECT id, code, course_id, instructor_name, reception_name,
               day_of_week, start_date, time_slot, status, current_lecture
        FROM daqqi_rounds
-       WHERE tenant_id=? ${statusFilter ? 'AND status = ?' : ''}
+       WHERE tenant_id=?${roundsFilter(req).sql} ${statusFilter ? 'AND status = ?' : ''}
        ORDER BY start_date DESC LIMIT 300`,
-      statusFilter ? [req.tenantId, statusFilter] : [req.tenantId]
+      statusFilter ? [req.tenantId, ...roundsFilter(req).params, statusFilter] : [req.tenantId, ...roundsFilter(req).params]
     );
 
     if (!rounds.length) return res.json([]);
@@ -1041,9 +1080,9 @@ router.get('/api/admin/daqqi/attendance-export', requireAuth, requireAdminOrStaf
       `SELECT id, code, course_id, instructor_name, reception_name,
               day_of_week, start_date, time_slot, status, current_lecture
        FROM daqqi_rounds
-       WHERE tenant_id=? ${statusFilter ? 'AND status = ?' : ''}
+       WHERE tenant_id=?${roundsFilter(req).sql} ${statusFilter ? 'AND status = ?' : ''}
        ORDER BY start_date DESC LIMIT 300`,
-      statusFilter ? [req.tenantId, statusFilter] : [req.tenantId]
+      statusFilter ? [req.tenantId, ...roundsFilter(req).params, statusFilter] : [req.tenantId, ...roundsFilter(req).params]
     );
 
     if (!rounds.length) {
@@ -1096,9 +1135,9 @@ router.get('/api/admin/daqqi/attendance-monthly', requireAuth, requireAdminOrSta
     const [rounds] = await pool.query(
       `SELECT id, reception_name, instructor_name, start_date, status, current_lecture
        FROM daqqi_rounds
-       WHERE tenant_id=? AND start_date >= DATE_SUB(${sqlCairoToday()}, INTERVAL ? MONTH)
+       WHERE tenant_id=?${roundsFilter(req).sql} AND start_date >= DATE_SUB(${sqlCairoToday()}, INTERVAL ? MONTH)
        ORDER BY start_date DESC LIMIT 1000`,
-      [req.tenantId, months]
+      [req.tenantId, ...roundsFilter(req).params, months]
     );
 
     if (!rounds.length) return res.json({ months: [], totals: null });

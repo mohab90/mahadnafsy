@@ -17,6 +17,9 @@ export const ROLES = {
   SUPPORT:                  'support',
   DAQQI_MANAGER:            'daqqi_manager',
   RECEPTION_DAQQI:          'reception_daqqi',
+  // The same two jobs at the Tagamoa branch (api/lib/physicalBranches.js).
+  TAGAMOA_MANAGER:          'tagamoa_manager',
+  RECEPTION_TAGAMOA:        'reception_tagamoa',
   HR:                       'hr',
   ACCOUNTANT:               'accountant',
   CONSULTANT:               'consultant',
@@ -39,6 +42,8 @@ export const ROLE_LABELS: Record<RoleKey, string> = {
   support:                  'خدمة عملاء',
   daqqi_manager:            'مدير الدقي',
   reception_daqqi:          'ريسبشن الدقي',
+  tagamoa_manager:          'مدير التجمع',
+  reception_tagamoa:        'ريسبشن التجمع',
   hr:                       'موارد بشرية',
   accountant:               'محاسب',
   consultant:               'مستشار',
@@ -399,7 +404,13 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
     'view_dashboard',
     'manage_payments',
   ],
+  // Exactly the Dokki jobs' permissions, filled in just below.
+  tagamoa_manager: [],
+  reception_tagamoa: [],
 };
+ROLE_DEFAULT_PERMISSIONS.tagamoa_manager = [...(ROLE_DEFAULT_PERMISSIONS.daqqi_manager as PermissionKey[])];
+ROLE_DEFAULT_PERMISSIONS.reception_tagamoa = [...(ROLE_DEFAULT_PERMISSIONS.reception_daqqi as PermissionKey[])];
+
 
 // ── 7. DATA SCOPE PER ROLE ────────────────────────────────────────────────────
 // Controls what rows the server returns from the unified /api/staff/subscribers endpoint.
@@ -412,6 +423,8 @@ export const ROLE_DATA_SCOPE: Record<RoleKey, DataScope> = {
   sales_collection_manager: 'all',
   daqqi_manager:            'branch:DAQQI',
   reception_daqqi:          'branch:DAQQI',
+  tagamoa_manager:          'branch:TAGAMOA',
+  reception_tagamoa:        'branch:TAGAMOA',
   sales:                    'assigned_sales',
   collection:               'assigned_cs',
   support:                  'all',

@@ -14,12 +14,32 @@ const { requireDaqqiAccess, requireDaqqiManager } = require('../lib/daqqiAccess'
 const { verifyAttendanceQr } = require('../lib/attendanceQr');
 const { arabicWeekdaysForDate } = require('../lib/daqqiSchedule');
 const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
+const { branchIdForBranch, branchForId } = require('../lib/branches');
+const { requestedBranch, canTouchBranch, isPhysicalBranch } = require('../lib/physicalBranches');
+
+// The branch an operation is for — Dokki, or Tagamoa beside it
+// (lib/physicalBranches.js). An explicit branch_id must be one this account
+// may touch; with none, the requested branch (?branch= / body.branch) or the
+// account's own.
+function operationBranchId(req) {
+  const explicit = req.body?.branch_id || req.body?.branchId || null;
+  if (explicit) {
+    const branch = branchForId(explicit, '');
+    if (!isPhysicalBranch(branch)) throw Object.assign(new Error('الفرع لازم يكون الدقي أو التجمع'), { statusCode: 400 });
+    if (!canTouchBranch(req, branch)) {
+      throw Object.assign(new Error('الفرع ده مش من صلاحياتك'), { statusCode: 403 });
+    }
+    return explicit;
+  }
+  return branchIdForBranch(requestedBranch(req));
+}
 
 function scopedTenantId(req) {
   return req.tenantId || resolveTenantId(req) || DEFAULT_TENANT_ID;
 }
 
 function routeError(res, error, message = 'dokki operation failed') {
+  if (error?.statusCode) return res.status(error.statusCode).json({ error: error.message });
   logger.error(message, error);
   return res.status(500).json({ error: 'Internal server error' });
 }
@@ -27,10 +47,11 @@ function routeError(res, error, message = 'dokki operation failed') {
 // «خلي مسار واحد اللى بيظهر تحت الكورسات … او اقدر اختار ايه المسار اللي
 // يظهر»: a course in three paths showed all three under every round. The path
 // shown for each course is chosen once, here, for everyone.
-const COURSE_PATHS = 'daqqi_course_paths';
+// Each branch keeps its own choice: Dokki's under its original key.
+const coursePathsKey = req => (requestedBranch(req) === 'DAQQI' ? 'daqqi_course_paths' : `${requestedBranch(req).toLowerCase()}_course_paths`);
 router.get('/api/admin/dokki/course-paths', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
   try {
-    res.json(await getTenantSetting(COURSE_PATHS, { tenantId: scopedTenantId(req), fallback: {} }) || {});
+    res.json(await getTenantSetting(coursePathsKey(req), { tenantId: scopedTenantId(req), fallback: {} }) || {});
   } catch (error) { routeError(res, error, 'course paths read failed'); }
 });
 
@@ -47,9 +68,10 @@ router.put('/api/admin/dokki/course-paths', requireAuth, requireAdminOrStaff, re
       );
       if (!member) return res.status(400).json({ error: 'الكورس ده مش جزء من المسار ده' });
     }
-    const paths = { ...(await getTenantSetting(COURSE_PATHS, { tenantId, fallback: {} }) || {}) };
+    const key = coursePathsKey(req);
+    const paths = { ...(await getTenantSetting(key, { tenantId, fallback: {} }) || {}) };
     if (bundleId) paths[courseId] = bundleId; else delete paths[courseId];
-    await setTenantSetting(COURSE_PATHS, paths, { tenantId, actorId: req.user?.uid || req.user?.email });
+    await setTenantSetting(key, paths, { tenantId, actorId: req.user?.uid || req.user?.email });
     res.json(paths);
   } catch (error) { routeError(res, error, 'course paths save failed'); }
 });
@@ -62,9 +84,9 @@ router.get('/api/admin/dokki/classrooms', requireAuth, requireAdminOrStaff, requ
         (SELECT COUNT(*) FROM classroom_bookings b
           WHERE b.classroom_id=c.id AND b.tenant_id=c.tenant_id AND b.end_time>=NOW()) AS upcoming_bookings
        FROM physical_classrooms c
-       WHERE c.tenant_id=? AND c.is_active=1
+       WHERE c.tenant_id=? AND c.is_active=1 AND c.branch_id=?
        ORDER BY c.name ASC`,
-      [scopedTenantId(req)]
+      [scopedTenantId(req), operationBranchId(req)]
     );
     res.json(rows);
   } catch (e) {
@@ -98,14 +120,14 @@ router.post('/api/admin/dokki/classrooms', requireAuth, requireAdminOrStaff, req
         `UPDATE physical_classrooms
          SET name=?, capacity=?, branch_id=?, is_active=?
          WHERE id=? AND tenant_id=?`,
-        [name, capacity, req.body?.branch_id || req.body?.branchId || 'branch-daqqi',
+        [name, capacity, operationBranchId(req),
          req.body?.is_active === false ? 0 : 1, id, tenantId]
       );
     } else {
       await conn.query(
         `INSERT INTO physical_classrooms (id, tenant_id, branch_id, name, capacity, is_active)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        [id, tenantId, req.body?.branch_id || req.body?.branchId || 'branch-daqqi',
+        [id, tenantId, operationBranchId(req),
          name, capacity, req.body?.is_active === false ? 0 : 1]
       );
     }
@@ -251,7 +273,7 @@ router.post('/api/admin/dokki/checkins', requireAuth, requireAdminOrStaff, requi
         WHERE tenant_id=? AND subscriber_id=? AND branch_id=?
           AND checked_in_at>=DATE_SUB(NOW(),INTERVAL 5 MINUTE)
         LIMIT 1 FOR UPDATE`,
-      [tenantId, subscriber.id, req.body?.branch_id || 'branch-daqqi']
+      [tenantId, subscriber.id, operationBranchId(req)]
     );
     if (recent) {
       await conn.rollback();
@@ -260,7 +282,7 @@ router.post('/api/admin/dokki/checkins', requireAuth, requireAdminOrStaff, requi
     await conn.query(
       `INSERT INTO physical_checkins (id, tenant_id, subscriber_id, branch_id, source, checked_in_by, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [id, tenantId, subscriber.id, req.body?.branch_id || 'branch-daqqi',
+      [id, tenantId, subscriber.id, operationBranchId(req),
        sanitize(req.body?.source || 'qr', 60), req.user?.email || req.user?.uid || null,
        sanitize(req.body?.notes || '', 1000) || null]
     );
@@ -286,8 +308,8 @@ router.post('/api/admin/dokki/checkins', requireAuth, requireAdminOrStaff, requi
 router.get('/api/admin/dokki/inventory', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiManager, async (req, res) => {
   try {
     const [rows] = await pool.query(
-      'SELECT * FROM inventory_items WHERE tenant_id=? AND is_active=1 ORDER BY name ASC',
-      [scopedTenantId(req)]
+      'SELECT * FROM inventory_items WHERE tenant_id=? AND is_active=1 AND branch_id=? ORDER BY name ASC',
+      [scopedTenantId(req), operationBranchId(req)]
     );
     res.json(rows);
   } catch (e) {
@@ -322,7 +344,7 @@ router.post('/api/admin/dokki/inventory/items', requireAuth, requireAdminOrStaff
          SET name=?, sku=?, unit=?, branch_id=?, is_active=?
          WHERE id=? AND tenant_id=?`,
         [name, sanitize(req.body?.sku || '', 100) || null, sanitize(req.body?.unit || '', 40) || null,
-         req.body?.branch_id || 'branch-daqqi', req.body?.is_active === false ? 0 : 1, id, tenantId]
+         operationBranchId(req), req.body?.is_active === false ? 0 : 1, id, tenantId]
       );
     } else {
       await conn.query(
@@ -330,7 +352,7 @@ router.post('/api/admin/dokki/inventory/items', requireAuth, requireAdminOrStaff
            (id, tenant_id, name, sku, stock_quantity, unit, branch_id, is_active)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, tenantId, name, sanitize(req.body?.sku || '', 100) || null, stockQuantity,
-         sanitize(req.body?.unit || '', 40) || null, req.body?.branch_id || 'branch-daqqi',
+         sanitize(req.body?.unit || '', 40) || null, operationBranchId(req),
          req.body?.is_active === false ? 0 : 1]
       );
     }

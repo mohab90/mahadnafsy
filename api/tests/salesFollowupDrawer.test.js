@@ -72,7 +72,7 @@ test('it scopes on what the server narrowed, not on a role name', () => {
   const holders = Object.entries(ROLE_PERMS)
     .filter(([, perms]) => perms !== '*' && perms.includes('view_staff'))
     .map(([role]) => role);
-  assert.deepEqual(holders.sort(), ['daqqi_manager', 'hr', 'online_manager', 'sales_collection_manager']);
+  assert.deepEqual(holders.sort(), ['daqqi_manager', 'hr', 'online_manager', 'sales_collection_manager', 'tagamoa_manager']);
   const total = Object.keys(ROLE_PERMS).length;
   assert.ok(holders.length * 3 < total, `expected view_staff to be a minority of ${total} roles`);
 });

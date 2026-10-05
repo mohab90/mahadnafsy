@@ -23,6 +23,7 @@
 
 const { pool } = require('./db');
 const { addDaysToDateOnly, cairoDayStartUtc } = require('./dates');
+const { PHYSICAL_BRANCHES } = require('./physicalBranches');
 
 const num = value => Number(value) || 0;
 const MONEY_EGP = "COALESCE(p.amount_egp, CASE WHEN p.currency='EGP' THEN p.amount ELSE 0 END)";
@@ -240,18 +241,21 @@ async function buildSupportTeamReport({ tenantId, from, to, today }, db = pool) 
   };
 }
 
-// ── فريق الدقي ─────────────────────────────────────────────────────────────
-async function buildDaqqiTeamReport({ tenantId, from, to, today }, db = pool) {
+// ── فريق الدقي (ومثله فريق التجمع) ──────────────────────────────────────────
+// A physical branch's team: its manager and its reception, its clients, the
+// money taken at it and its rounds (lib/physicalBranches.js).
+async function buildBranchTeamReport({ tenantId, from, to, today, branch = 'DAQQI' }, db = pool) {
   const b = bounds(from, to);
-  const members = await staffInRoles(db, tenantId, ['DAQQI_MANAGER', 'RECEPTION_DAQQI']);
+  const def = PHYSICAL_BRANCHES[branch] || PHYSICAL_BRANCHES.DAQQI;
+  const members = await staffInRoles(db, tenantId, [def.managerRole, def.receptionRole]);
   const contacts = await contactsByStaff(db, tenantId, b);
   const [created] = await db.query(
     `SELECT LOWER(a.actor) AS rep, COUNT(DISTINCT a.entity_id) AS n
        FROM activity_logs a
-       JOIN subscribers s ON s.id=a.entity_id AND s.tenant_id=a.tenant_id AND s.branch='DAQQI'
+       JOIN subscribers s ON s.id=a.entity_id AND s.tenant_id=a.tenant_id AND s.branch=?
       WHERE a.tenant_id=? AND a.at >= ? AND a.at < ? AND a.entity='subscribers' AND a.action='create'
       GROUP BY LOWER(a.actor)`,
-    [tenantId, b.startUtc, b.endUtc]
+    [def.key, tenantId, b.startUtc, b.endUtc]
   );
   const [recorded] = await db.query(
     `SELECT p.staff_id AS rep, COUNT(*) AS payments, SUM(${MONEY_EGP}) AS moneyEgp
@@ -270,17 +274,17 @@ async function buildDaqqiTeamReport({ tenantId, from, to, today }, db = pool) {
   const [[money]] = await db.query(
     `SELECT COUNT(*) AS payments, SUM(p.is_installment=0) AS bookings, SUM(${MONEY_EGP}) AS moneyEgp
        FROM payments p
-      WHERE p.tenant_id=? AND p.deleted_at IS NULL AND (p.status IS NULL OR p.status='paid') AND p.date >= ? AND p.date < ? AND p.branch='DAQQI'`,
-    [tenantId, from, b.dayAfter]
+      WHERE p.tenant_id=? AND p.deleted_at IS NULL AND (p.status IS NULL OR p.status='paid') AND p.date >= ? AND p.date < ? AND p.branch=?`,
+    [tenantId, from, b.dayAfter, def.key]
   );
   const [[clients]] = await db.query(
     `SELECT SUM(created_at >= ? AND created_at < ?) AS newClients, COUNT(*) AS allClients
-       FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND branch='DAQQI'`,
-    [b.startUtc, b.endUtc, tenantId]
+       FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND branch=?`,
+    [b.startUtc, b.endUtc, tenantId, def.key]
   );
   const [[rounds]] = await db.query(
-    "SELECT SUM(status='ACTIVE') AS active, COUNT(*) AS total FROM daqqi_rounds WHERE tenant_id=?",
-    [tenantId]
+    "SELECT SUM(status='ACTIVE') AS active, COUNT(*) AS total FROM daqqi_rounds WHERE tenant_id=? AND branch=?",
+    [tenantId, def.key]
   );
   const createdBy = byKey(created);
   const recordedBy = byKey(recorded);
@@ -299,7 +303,7 @@ async function buildDaqqiTeamReport({ tenantId, from, to, today }, db = pool) {
     };
   });
   return {
-    team: 'daqqi', from, to, today, rows,
+    team: def.key === 'DAQQI' ? 'daqqi' : def.key.toLowerCase(), from, to, today, rows,
     totals: {
       calls: sumRows(rows, 'calls'), newClients: num(clients?.newClients), allClients: num(clients?.allClients),
       payments: num(money?.payments), bookings: num(money?.bookings), moneyEgp: Math.round(num(money?.moneyEgp)),
@@ -309,10 +313,14 @@ async function buildDaqqiTeamReport({ tenantId, from, to, today }, db = pool) {
   };
 }
 
+const buildDaqqiTeamReport = (options, db) => buildBranchTeamReport({ ...options, branch: 'DAQQI' }, db);
+const buildTagamoaTeamReport = (options, db) => buildBranchTeamReport({ ...options, branch: 'TAGAMOA' }, db);
+
 const TEAM_REPORTS = {
   online: buildOnlineTeamReport,
   support: buildSupportTeamReport,
   daqqi: buildDaqqiTeamReport,
+  tagamoa: buildTagamoaTeamReport,
 };
 
-module.exports = { TEAM_REPORTS, buildDaqqiTeamReport, buildOnlineTeamReport, buildSupportTeamReport, MONEY_EGP };
+module.exports = { TEAM_REPORTS, buildBranchTeamReport, buildDaqqiTeamReport, buildTagamoaTeamReport, buildOnlineTeamReport, buildSupportTeamReport, MONEY_EGP };

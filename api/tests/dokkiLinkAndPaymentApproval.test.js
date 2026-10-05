@@ -127,8 +127,10 @@ test('a client booked into a Dokki round becomes a Dokki client, in the booking\
   const route = read('api/routes/daqqi-rounds.js');
   assert.match(route, /const \{ branchIdForBranch \} = require\('\.\.\/lib\/branches'\);/);
   const booked = route.slice(route.indexOf('if (!alreadyBooked) {'));
-  assert.match(booked.slice(0, 500), /UPDATE subscribers SET branch='DAQQI', branch_id=\?/);
-  assert.match(booked.slice(0, 500), /AND \(branch IS NULL OR branch<>'DAQQI'\)/);
+  // A client of the round's branch — Dokki's rounds make Dokki clients.
+  assert.match(booked.slice(0, 500), /UPDATE subscribers SET branch=\?, branch_id=\?/);
+  assert.match(booked.slice(0, 500), /AND \(branch IS NULL OR branch<>\?\)/);
+  assert.match(booked.slice(0, 500), /\[roundBranch, branchIdForBranch\(roundBranch\)/);
   // Before the commit.
   assert.ok(route.indexOf('if (!alreadyBooked) {') < route.indexOf("await writeAuditEvent({\n      action: existing ? 'DAQQI_ROUND_UPDATED'"));
 });

@@ -35,6 +35,7 @@ const { seatInOwnTransaction } = require('../lib/daqqiHousing');
 const { resolveTierPrice, PRICE_TIERS } = require('../lib/priceTiers');
 const { priceMatches } = require('../lib/catalogPrice');
 const { validateBookingIdentity, applyBookingIdentity } = require('../lib/bookingIdentity');
+const { canTouchBranch } = require('../lib/physicalBranches');
 
 const PRICE_TIER_KEYS = new Set(PRICE_TIERS.map(tier => tier.key));
 // Tiers whose clients carry an Egyptian national ID; the others may carry a
@@ -129,8 +130,9 @@ async function recordSubscriberPayment(req, res) {
     const daqqiRoundId = String(req.body.daqqiRoundId || payment?.daqqiRoundId || '').trim();
     if (daqqiRoundId) {
       const [[round]] = await pool.query(
-        'SELECT id FROM daqqi_rounds WHERE id=? AND tenant_id=? LIMIT 1', [daqqiRoundId, req.tenantId]);
-      if (!round) return res.status(400).json({ error: 'الروند اللي اخترته مش موجود — حدّث الصفحة واختار روند تاني' });
+        'SELECT id, branch FROM daqqi_rounds WHERE id=? AND tenant_id=? LIMIT 1', [daqqiRoundId, req.tenantId]);
+      // A round at another branch than this account's is not one it may seat into.
+      if (!round || !canTouchBranch(req, round.branch)) return res.status(400).json({ error: 'الروند اللي اخترته مش موجود — حدّث الصفحة واختار روند تاني' });
     }
     // Recording and approving money are separate responsibilities.
     const canApprovePayment = !reviewedByManager(req) && Boolean(

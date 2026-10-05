@@ -24,6 +24,7 @@ const { keyset } = require('../../lib/pagination');
 const { installmentPlansBySubscriber, withInstallmentPlans } = require('../../lib/installmentPlansBySubscriber');
 const { loadCollectionPicker, subscriberMarket } = require('../../lib/collectionDistribution');
 const { requireCollectionLead } = require('../collection-distribution');
+const { BRANCH_ROLES, requestedBranch } = require('../../lib/physicalBranches');
 
 async function loadEnrollmentProjection(tenantId, subscriberIds) {
   if (!subscriberIds.length) return {};
@@ -880,18 +881,20 @@ router.get('/api/staff/my-collection-clients', requireAuth, requireAdminOrStaff,
 router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), async (req, res) => {
   // SECURITY: only RECEPTION_DAQQI staff (or super-admins) may access this endpoint
   if (!req.isSuperAdmin) {
-    const allowedRoles = new Set(['RECEPTION_DAQQI', 'DAQQI_MANAGER', 'ADMIN', 'MANAGER']);
+    const allowedRoles = new Set(['ADMIN', 'MANAGER', ...BRANCH_ROLES]);
     const staffRole = (req.staffRecord?.role || '').toUpperCase();
     if (!allowedRoles.has(staffRole)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
   }
   try {
+    // ?branch=TAGAMOA for the Tagamoa desk; a branch's own staff get their branch.
+    const branch = requestedBranch(req);
     const [rows] = await pool.query(
       `SELECT s.* FROM subscribers s
-       WHERE s.tenant_id=? AND s.deleted_at IS NULL AND s.branch = 'DAQQI'
+       WHERE s.tenant_id=? AND s.deleted_at IS NULL AND s.branch = ?
        ORDER BY s.created_at DESC LIMIT 5000`
-      , [req.tenantId]
+      , [req.tenantId, branch]
     );
     if (rows.length === 0) return res.json([]);
 
@@ -936,7 +939,7 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, requ
         courseAccess: enrollmentProjection[r.id]?.access || {},
         certificates: completionProjection[r.id] || [],
         clientCode, paymentHistory,
-        branch: 'DAQQI',
+        branch,
         assignedSalesId: r.assigned_sales_id || null,
         assignedSalesName: r.assigned_sales_name || null,
         assignedCsId: r.assigned_cs_id || null,
@@ -1001,7 +1004,7 @@ router.post('/api/admin/bulk-assign-collection', requireAuth, requireAdminOrStaf
                 ORDER BY p.date DESC, p.created_at DESC LIMIT 1) AS latestCurrency
          FROM subscribers s
         WHERE s.tenant_id=? AND s.deleted_at IS NULL AND (s.assigned_cs_id IS NULL OR s.assigned_cs_id='')
-          AND (s.branch IS NULL OR s.branch NOT LIKE '%DAQQI%')
+          AND (s.branch IS NULL OR (s.branch NOT LIKE '%DAQQI%' AND s.branch <> 'TAGAMOA'))
         ORDER BY s.created_at ASC FOR UPDATE`, [req.tenantId]
     );
     if (unassigned.length === 0) { await conn.commit(); conn.release(); conn = null; return res.json({ ok: true, assigned: 0, message: 'لا يوجد مشتركون غير معيّنين' }); }

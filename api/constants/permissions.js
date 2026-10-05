@@ -25,6 +25,10 @@ const ROLES = Object.freeze({
   SUPPORT:                  'support',
   DAQQI_MANAGER:            'daqqi_manager',
   RECEPTION_DAQQI:          'reception_daqqi',
+  // «فرع التجمع زي بتاع الدقي بالظبط»: the same two jobs at the Tagamoa branch,
+  // confined to it the way the Dokki ones are confined to Dokki.
+  TAGAMOA_MANAGER:          'tagamoa_manager',
+  RECEPTION_TAGAMOA:        'reception_tagamoa',
   HR:                       'hr',
   ACCOUNTANT:               'accountant',
   CONSULTANT:               'consultant',
@@ -131,7 +135,7 @@ const PERMISSIONS = Object.freeze({
 // Every role holds manage_payments: «زر حجز - دفعة … لازم يكون ظاهر لكل
 // الحسابات». Recording is not approving — a payment from someone without
 // manage_financial is stored PENDING for accounts to review.
-const ROLE_PERMS = Object.freeze({
+const ROLE_PERMS_BASE = {
   [ROLES.ADMIN]:                    '*',
   [ROLES.MANAGER]:                  '*',
   [ROLES.ONLINE_MANAGER]: [
@@ -317,7 +321,13 @@ const ROLE_PERMS = Object.freeze({
     'view_dashboard',
     'manage_payments',
   ],
-});
+  // The Tagamoa branch's jobs carry exactly the Dokki ones' permissions.
+  [ROLES.TAGAMOA_MANAGER]: null,
+  [ROLES.RECEPTION_TAGAMOA]: null,
+};
+ROLE_PERMS_BASE[ROLES.TAGAMOA_MANAGER] = [...ROLE_PERMS_BASE[ROLES.DAQQI_MANAGER]];
+ROLE_PERMS_BASE[ROLES.RECEPTION_TAGAMOA] = [...ROLE_PERMS_BASE[ROLES.RECEPTION_DAQQI]];
+const ROLE_PERMS = Object.freeze(ROLE_PERMS_BASE);
 
 // ── 4. FULL ACCESS ROLES ──────────────────────────────────────────────────────
 // These roles bypass requirePermission checks entirely (wildcard access)
@@ -343,6 +353,8 @@ const DATA_SCOPE = Object.freeze({
   // Branch-specific
   [ROLES.DAQQI_MANAGER]:  'branch:DAQQI',
   [ROLES.RECEPTION_DAQQI]: 'branch:DAQQI',
+  [ROLES.TAGAMOA_MANAGER]:  'branch:TAGAMOA',
+  [ROLES.RECEPTION_TAGAMOA]: 'branch:TAGAMOA',
 
   // Assigned only
   [ROLES.SALES]:      'assigned_sales',   // WHERE assigned_sales_id = me
