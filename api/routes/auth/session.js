@@ -15,8 +15,7 @@ const {
   clearAuthCookie,
   tokenExpiryMs,
   revokeToken,
-  ADMIN_EMAILS,
-  ADMIN_UIDS,
+  isInstituteOwner,
   requireAuth,
   requireAdmin,
   invalidateIdentity,
@@ -190,8 +189,7 @@ router.post('/api/auth/login', loginLimiter, requireDb,
     // The rule exists to stop a paid account being shared for course video, so
     // customers keep it. This grants no permission — only concurrency.
     const isOperator = Boolean(user.is_staff)
-      || ADMIN_EMAILS.some(e => String(e).toLowerCase() === String(user.email || '').toLowerCase())
-      || ADMIN_UIDS.includes(user.id);
+      || isInstituteOwner({ email: user.email, uid: user.id, tenantId: req.tenantId });
     const session = await rotateSingleSession(pool, {
       userId: user.id, tenantId: req.tenantId || 'tenant-default', req,
       allowConcurrent: isOperator,
@@ -268,7 +266,7 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
     const [rows] = await conn.execute('SELECT id, email, name, phone FROM users WHERE id = ? AND tenant_id=?', [req.user.uid, req.tenantId]);
     if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
     const u = rows[0];
-    let isAdmin = ADMIN_EMAILS.includes(String(u.email || '').trim().toLowerCase()) || ADMIN_UIDS.includes(u.id);
+    let isAdmin = isInstituteOwner({ email: u.email, uid: u.id, tenantId: req.tenantId });
     let staffPermissions = null;
     if (!isAdmin) {
       // Staff with a full-access role — the list requireAdmin enforces. This

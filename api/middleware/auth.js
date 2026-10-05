@@ -38,6 +38,17 @@ const { getClientIp, hashClientIp } = require('../lib/clientContext');
 const ADMIN_EMAILS = listEnv('ADMIN_EMAILS', value => value.toLowerCase());
 const isAdminEmail = email => ADMIN_EMAILS.includes(String(email || '').trim().toLowerCase());
 const ADMIN_UIDS = listEnv('ADMIN_UIDS');
+const { DEFAULT_TENANT_ID } = require('../lib/tenantScope');
+
+// ADMIN_EMAILS / ADMIN_UIDS name the original institute's owners. They used to
+// count in every institute, so an account elsewhere that carried one of those
+// emails — set by that institute's own credential editor or HR screen — became
+// a full administrator there. Platform operators have their own list
+// (PLATFORM_ADMIN_EMAILS); this one stops at the original institute.
+function isInstituteOwner({ email, uid, tenantId } = {}) {
+  if (String(tenantId || DEFAULT_TENANT_ID) !== DEFAULT_TENANT_ID) return false;
+  return isAdminEmail(email) || (!!uid && ADMIN_UIDS.includes(String(uid)));
+}
 async function activeIdentity(tenantId, payload) {
   if (!payload.uid && !payload.email) return null;
   // By id first — the primary key. One query that said `id=? OR LOWER(TRIM(email))=?`
@@ -251,7 +262,7 @@ async function requireAuth(req, res, next) {
 
 async function requireAdmin(req, res, next) {
   const { email, uid } = req.user || {};
-  if (isAdminEmail(email) || ADMIN_UIDS.includes(uid)) {
+  if (isInstituteOwner({ email, uid, tenantId: req.user?.tenant_id })) {
     req.isSuperAdmin = true;
     if (await enforceMfa(req, res, null, [], true)) return next();
     return;
@@ -277,7 +288,7 @@ async function requireAdmin(req, res, next) {
 const SUPER_ADMIN_ROLES = ['admin', 'manager'];
 async function requireSuperAdmin(req, res, next) {
   const { email, uid } = req.user || {};
-  if (isAdminEmail(email) || ADMIN_UIDS.includes(uid)) {
+  if (isInstituteOwner({ email, uid, tenantId: req.user?.tenant_id })) {
     req.isSuperAdmin = true;
     if (await enforceMfa(req, res, null, [], true)) return next();
     return;
@@ -296,7 +307,7 @@ async function requireSuperAdmin(req, res, next) {
 
 async function requireAdminOrOnlineManager(req, res, next) {
   const { email, uid } = req.user || {};
-  if (isAdminEmail(email) || ADMIN_UIDS.includes(uid)) {
+  if (isInstituteOwner({ email, uid, tenantId: req.user?.tenant_id })) {
     req.isSuperAdmin = true;
     if (await enforceMfa(req, res, null, [], true)) return next();
     return;
@@ -315,7 +326,7 @@ async function requireAdminOrOnlineManager(req, res, next) {
 
 async function requireAdminOrOnlineManagerOrCollection(req, res, next) {
   const { email, uid } = req.user || {};
-  if (isAdminEmail(email) || ADMIN_UIDS.includes(uid)) {
+  if (isInstituteOwner({ email, uid, tenantId: req.user?.tenant_id })) {
     req.isSuperAdmin = true;
     if (await enforceMfa(req, res, null, [], true)) return next();
     return;
@@ -334,7 +345,7 @@ async function requireAdminOrOnlineManagerOrCollection(req, res, next) {
 
 async function requireAdminOrStaff(req, res, next) {
   const { email, uid } = req.user || {};
-  if (isAdminEmail(email) || ADMIN_UIDS.includes(uid)) {
+  if (isInstituteOwner({ email, uid, tenantId: req.user?.tenant_id })) {
     req.isSuperAdmin = true;
     return next();
   }
@@ -469,7 +480,7 @@ function requireAnyPermission(...permissions) {
 
 module.exports = {
   ADMIN_EMAILS, ADMIN_UIDS, PLATFORM_ADMIN_EMAILS, PLATFORM_ADMIN_UIDS,
-  ROLE_DEFAULT_PERMISSIONS_BE, isPlatformAdminIdentity,
+  ROLE_DEFAULT_PERMISSIONS_BE, isInstituteOwner, isPlatformAdminIdentity,
   optionalAuth, requireAuth, requireAdmin, requireSuperAdmin, requirePlatformAdmin,
   requireAdminOrOnlineManager, requireAdminOrOnlineManagerOrCollection,
   requireAdminOrStaff, requirePermission, requirePermissionOrSelf, requirePermissionOrOwnRows,

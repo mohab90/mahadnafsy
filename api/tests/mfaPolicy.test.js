@@ -23,7 +23,7 @@ test('MFA factors are owned by auth users and successful TOTP produces an MFA-au
   // table only put them under the one-device rule — evicting themselves each
   // time the admin panel and the public site were open together.
   assert.match(authRoute, /const isOperator = Boolean\(user\.is_staff\)/);
-  assert.match(authRoute, /ADMIN_EMAILS\.some[\s\S]{0,120}ADMIN_UIDS\.includes\(user\.id\)/);
+  assert.match(authRoute, /isInstituteOwner\(\{ email: user\.email, uid: user\.id/);
   assert.match(authRoute, /isStaff: isOperator/);
   // Every route that re-issues a token must carry the claim forward, or the
   // rule reappears on the first refresh.

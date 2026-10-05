@@ -25,7 +25,7 @@ const {
   JWT_SECRET, signAccessToken, setAuthCookie, clearAuthCookie, tokenExpiryMs, revokeToken,
 } = require('../../lib/token');
 const {
-  ADMIN_EMAILS, ADMIN_UIDS, requireAuth, requireAdmin, requireSuperAdmin,
+  ADMIN_EMAILS, ADMIN_UIDS, isInstituteOwner, requireAuth, requireAdmin, requireSuperAdmin,
   requireAdminOrOnlineManager, requireAdminOrStaff, requirePermission, invalidateIdentity,
 } = require('../../middleware/auth');
 const { registerLimiter, loginLimiter, otpLimiter, forgotPasswordLimiter, bulkOperationLimiter } = require('../../middleware/rateLimits');
@@ -86,6 +86,7 @@ module.exports = {
   revokeToken,
   ADMIN_EMAILS,
   ADMIN_UIDS,
+  isInstituteOwner,
   requireAuth,
   requireAdmin,
   requireSuperAdmin,

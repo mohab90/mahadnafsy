@@ -5,7 +5,7 @@ const { createHash } = require('crypto');
 const router = express.Router();
 
 const { pool } = require('../lib/db');
-const { ADMIN_EMAILS, ADMIN_UIDS, requireAuth } = require('../middleware/auth');
+const { isInstituteOwner, requireAuth } = require('../middleware/auth');
 const { sanitize } = require('../lib/helpers');
 const logger = require('../lib/logger').child({ route: 'profile' });
 
@@ -14,8 +14,7 @@ router.get('/api/me/is-staff', requireAuth, async (req, res) => {
   try {
     const { uid, email } = req.user;
     const normalizedEmail = String(email || '').trim().toLowerCase();
-    const configuredAdminEmails = ADMIN_EMAILS.map(value => value.trim().toLowerCase());
-    if (ADMIN_UIDS.includes(uid) || configuredAdminEmails.includes(normalizedEmail)) {
+    if (isInstituteOwner({ email, uid, tenantId: req.tenantId })) {
       return res.json({ isStaff: true, isAdmin: true });
     }
     const [[row]] = await pool.query(

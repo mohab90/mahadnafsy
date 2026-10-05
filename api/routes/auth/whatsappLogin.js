@@ -7,8 +7,7 @@ const {
   pool,
   signAccessToken,
   setAuthCookie,
-  ADMIN_EMAILS,
-  ADMIN_UIDS,
+  isInstituteOwner,
   invalidateIdentity,
   otpLimiter,
   logLoginAttempt,
@@ -99,8 +98,7 @@ router.post('/api/auth/whatsapp/verify-otp', otpLimiter, async (req, res) => {
     //
     // isOperator decides concurrency only. It grants no permission.
     const isOperator = Boolean(user.is_staff)
-      || ADMIN_EMAILS.some(e => String(e).toLowerCase() === String(user.email || '').toLowerCase())
-      || ADMIN_UIDS.includes(user.id);
+      || isInstituteOwner({ email: user.email, uid: user.id, tenantId });
     const session = await rotateSingleSession(pool, {
       userId: user.id, tenantId, req, allowConcurrent: isOperator,
     });

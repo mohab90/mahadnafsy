@@ -22,7 +22,7 @@ const { transitionLead } = require('../../lib/leadState');
 const { enqueueEmailSequence } = require('../../lib/emailSequence');
 const { getTenantSetting } = require('../../lib/tenantSettings');
 const {
-  ADMIN_EMAILS, requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, invalidateIdentity,
+  ADMIN_EMAILS, isInstituteOwner, requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, invalidateIdentity,
 } = require('../../middleware/auth');
 const { DATA_SCOPE, VALID_BRANCHES, FULL_ACCESS_ROLES, hasPermission, resolveDataScope } = require('../../constants/permissions');
 const { safeIsoString, safeDateOnly } = require('../../lib/dates');
@@ -661,7 +661,7 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
       req.isSuperAdmin
       || FULL_ACCESS_ROLES.includes(staffRole)
       || staffRole === 'online_manager'
-      || ADMIN_EMAILS.some(adminEmail => adminEmail.toLowerCase() === String(req.user?.email || '').toLowerCase())
+      || isInstituteOwner({ email: req.user?.email, uid: req.user?.uid, tenantId: req.tenantId })
     );
     if (credentialUpdate && !canUpdateCredentials) {
       return res.status(403).json({ error: 'Insufficient permissions to update login credentials' });

@@ -11,8 +11,7 @@ const {
   setAuthCookie,
   tokenExpiryMs,
   revokeToken,
-  ADMIN_EMAILS,
-  ADMIN_UIDS,
+  isInstituteOwner,
   requireAuth,
   invalidateIdentity,
   loginLimiter,
@@ -162,7 +161,7 @@ router.post('/api/auth/2fa/disable', requireAuth, async (req, res) => {
       [req.tenantId, email]
     ).catch(() => [[null]]);
     const policy = await getMfaPolicy(req.tenantId);
-    const forcedAdmin = ADMIN_EMAILS.includes(String(req.user.email || '').trim().toLowerCase()) || ADMIN_UIDS.includes(req.user.uid);
+    const forcedAdmin = isInstituteOwner({ email: req.user.email, uid: req.user.uid, tenantId: req.tenantId });
     if (policy.enabled && (forcedAdmin || policyRequiresStaff(policy, staff))) {
       return res.status(409).json({
         error: 'لا يمكن تعطيل المصادقة الثنائية لأن سياسة أمان المؤسسة تفرضها على هذا الحساب',
@@ -254,8 +253,7 @@ router.post('/api/auth/2fa/verify', otpLimiter, async (req, res) => {
       [tenantId, payload.email || '']
     );
     const isOperator = Boolean(staffRow)
-      || ADMIN_EMAILS.some(e => String(e).toLowerCase() === String(payload.email || '').toLowerCase())
-      || ADMIN_UIDS.includes(payload.uid);
+      || isInstituteOwner({ email: payload.email, uid: payload.uid, tenantId });
     const session = await rotateSingleSession(pool, {
       userId: payload.uid, tenantId, req, allowConcurrent: isOperator,
     });
