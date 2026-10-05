@@ -1130,4 +1130,6 @@ router.post('/api/admin/subscriber-requests/:id/reject', requireAuth, requireAdm
   } catch (e) { logger.error('[subscriber-requests/reject]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// The same recording path, for a correction that is a different payment (lib/paymentCorrections.js).
+router.recordSubscriberPayment = recordSubscriberPayment;
 module.exports = router;

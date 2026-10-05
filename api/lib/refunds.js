@@ -443,4 +443,8 @@ async function applyRefundReversal({ paymentId, subscriberId, refundAmount, refu
   return { journalId, orderUpdated: orderUpdateResult.affectedRows > 0 };
 }
 
-module.exports = { applyRefundReversal, applyUnlinkedRefund };
+module.exports = {
+  applyRefundReversal, applyUnlinkedRefund,
+  // Also undone when a payment entered by mistake is voided (lib/paymentCorrections.js).
+  clawBackPaidCommission, rejectRetentionBonus, revokeAccessWithoutOtherGrant,
+};

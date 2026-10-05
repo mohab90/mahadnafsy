@@ -59,6 +59,7 @@ const routeModules = [
   ['/', '../routes/team-inbox'],
   ['/', '../routes/inbox-bot'],
   ['/', '../routes/page-audience'],
+  ['/', '../routes/payment-corrections'],
   ['/', '../routes/profile'],
   ['/', '../routes/staff'],
   ['/', '../routes/core'],
