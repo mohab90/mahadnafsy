@@ -286,12 +286,17 @@ router.get('/api/courses/:id', publicLimiter, async (req, res) => {
       // publicly *and* shifting published lectures into the free window.
       `SELECT l.id, l.course_id, l.chapter_id, l.title, l.description, l.video_url, l.duration,
               l.is_preview, l.sort_order, l.is_published, l.lecture_type, l.drip_unlock_days,
+              -- The course's own order — chapter, then lecture, then id — the
+              -- one the student site lists and lib/learningAccess.js counts.
+              -- Ranked by lecture order alone, the free lecture here was one
+              -- from a later chapter while the page unlocked the first one.
               ROW_NUMBER() OVER (PARTITION BY l.course_id
-                                 ORDER BY l.sort_order ASC, l.id ASC) - 1 AS position_in_course
+                                 ORDER BY COALESCE(ch.sort_order, 999999), l.sort_order, l.id) - 1 AS position_in_course
          FROM course_lectures l
          JOIN courses c ON c.id = l.course_id AND c.tenant_id = ?
+         LEFT JOIN course_chapters ch ON ch.id = l.chapter_id AND ch.course_id = l.course_id
         WHERE l.course_id = ? AND l.is_published = 1
-        ORDER BY l.sort_order ASC, l.id ASC`, [req.tenantId, row.id]);
+        ORDER BY COALESCE(ch.sort_order, 999999), l.sort_order, l.id`, [req.tenantId, row.id]);
     const [chapters] = await pool.query(
       `SELECT ch.id, ch.course_id, ch.title, ch.sort_order
          FROM course_chapters ch
@@ -710,10 +715,11 @@ router.get('/api/lectures', publicLimiter, async (req, res) => {
         `SELECT cl.id, cl.course_id, cl.chapter_id, cl.title, cl.description, cl.video_url, cl.duration,
                 cl.is_preview, cl.sort_order, cl.is_published, cl.lecture_type, cl.drip_unlock_days,
                 ROW_NUMBER() OVER (PARTITION BY cl.course_id
-                                   ORDER BY cl.sort_order ASC, cl.id ASC) - 1 AS position_in_course
+                                   ORDER BY COALESCE(ch.sort_order, 999999), cl.sort_order, cl.id) - 1 AS position_in_course
          FROM course_lectures cl JOIN courses c ON c.id=cl.course_id
+         LEFT JOIN course_chapters ch ON ch.id = cl.chapter_id AND ch.course_id = cl.course_id
          WHERE cl.is_published=1 AND c.tenant_id=?
-         ORDER BY cl.course_id, cl.sort_order ASC, cl.id ASC LIMIT ? OFFSET ?`,
+         ORDER BY cl.course_id, COALESCE(ch.sort_order, 999999), cl.sort_order, cl.id LIMIT ? OFFSET ?`,
         [req.tenantId, limit, offset]
       );
       const previewLimit = await getPreviewLimit(req.tenantId);
@@ -1186,27 +1192,43 @@ router.post('/api/me/quiz-attempts', requireAuth, async (req, res) => {
     );
     if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
 
-    const [[enrolled]] = await pool.query(
-      "SELECT id FROM enrollments WHERE subscriber_id=? AND course_id=? AND tenant_id=? AND status='active' LIMIT 1",
-      [sub.id, quiz.course_id, req.tenantId]
-    );
-    if (!enrolled) return res.status(403).json({ error: 'Active enrollment is required' });
-
-    const [[attempts]] = await pool.query(
-      `SELECT COUNT(*) AS count FROM quiz_attempts
-        WHERE tenant_id=? AND subscriber_id=? AND quiz_id=?
-          AND taken_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR)`,
-      [req.tenantId, sub.id, quiz.id]
-    );
-    if (Number(attempts?.count) >= 10) {
-      return res.status(429).json({ error: 'Maximum 10 attempts per quiz within 24 hours' });
-    }
-    // Was `emailNorm`, a variable removed when this route stopped resolving the
-    // client by email — a ReferenceError on every quiz submission. The account
-    // is the actor; the subscriber id is the fallback for a WhatsApp-only client
-    // who has no email at all.
-    const actor = req.user?.email || req.user?.uid || sub.id;
-    const result = await recordQuizAttempt({ quiz, subscriberId: sub.id, answers, tenantId: req.tenantId, actor }, pool);
+    // The enrolment row is held while the attempt is counted and recorded, so
+    // ten submissions sent at once are counted one after another. Read without
+    // it, all of them saw fewer than ten and all were graded — and each answer
+    // says how many were right, which is how a quiz is solved by brute force.
+    const conn = await pool.getConnection();
+    let result;
+    try {
+      await conn.beginTransaction();
+      const [[enrolled]] = await conn.query(
+        "SELECT id FROM enrollments WHERE subscriber_id=? AND course_id=? AND tenant_id=? AND status='active' LIMIT 1 FOR UPDATE",
+        [sub.id, quiz.course_id, req.tenantId]
+      );
+      if (!enrolled) {
+        await conn.rollback();
+        return res.status(403).json({ error: 'Active enrollment is required' });
+      }
+      const [[attempts]] = await conn.query(
+        `SELECT COUNT(*) AS count FROM quiz_attempts
+          WHERE tenant_id=? AND subscriber_id=? AND quiz_id=?
+            AND taken_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR)`,
+        [req.tenantId, sub.id, quiz.id]
+      );
+      if (Number(attempts?.count) >= 10) {
+        await conn.rollback();
+        return res.status(429).json({ error: 'Maximum 10 attempts per quiz within 24 hours' });
+      }
+      // Was `emailNorm`, a variable removed when this route stopped resolving the
+      // client by email — a ReferenceError on every quiz submission. The account
+      // is the actor; the subscriber id is the fallback for a WhatsApp-only client
+      // who has no email at all.
+      const actor = req.user?.email || req.user?.uid || sub.id;
+      result = await recordQuizAttempt({ quiz, subscriberId: sub.id, answers, tenantId: req.tenantId, actor }, conn);
+      await conn.commit();
+    } catch (error) {
+      await conn.rollback().catch(() => {});
+      throw error;
+    } finally { conn.release(); }
     res.json({ ok: true, ...result });
   } catch (e) {
     logger.error('[quiz-attempt]', e.message);

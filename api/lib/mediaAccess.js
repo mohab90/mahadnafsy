@@ -49,12 +49,20 @@ function mediaProvider(value) {
   return /youtu\.be|youtube\.com/.test(url) ? 'youtube' : 'other';
 }
 
-function createMediaTicket({ tenantId, subscriberId, lectureId, ttlSeconds = 300 }) {
+// A video file is fetched in ranges for as long as it plays — every seek, and
+// on Safari all the time — and each range presents the ticket again. Five
+// minutes into a lecture the ticket had run out and the next range was
+// refused, so playback stopped. A file's ticket lasts the lecture instead;
+// each range still re-checks the enrolment, so it opens nothing more.
+const MAX_TTL = { default: 900, video: 4 * 60 * 60 };
+
+function createMediaTicket({ tenantId, subscriberId, lectureId, ttlSeconds = 300, kind = 'default' }) {
   const secret = signingSecret();
   if (secret.length < 24) throw new Error('Media signing secret is not configured');
+  const cap = MAX_TTL[kind] || MAX_TTL.default;
   const payload = encode(JSON.stringify({
     tenantId, subscriberId, lectureId,
-    exp: Math.floor(Date.now() / 1000) + Math.min(Math.max(Number(ttlSeconds) || 300, 60), 900),
+    exp: Math.floor(Date.now() / 1000) + Math.min(Math.max(Number(ttlSeconds) || 300, 60), cap),
   }));
   const signature = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
   return `${payload}.${signature}`;

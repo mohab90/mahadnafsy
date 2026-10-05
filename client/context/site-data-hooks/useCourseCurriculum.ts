@@ -44,7 +44,9 @@ export function useCourseCurriculum(
         const chA = courseChapters.find((c) => c.id === a.chapterId)?.order ?? Infinity;
         const chB = courseChapters.find((c) => c.id === b.chapterId)?.order ?? Infinity;
         if (chA !== chB) return chA - chB;
-        return a.order - b.order;
+        // Then the id, as the server ranks them: lectures sharing an order
+        // (new ones all start at 1) must land in the same places on both sides.
+        return a.order - b.order || String(a.id).localeCompare(String(b.id));
       });
   }, [chapters, lectures]);
 

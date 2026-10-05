@@ -29,7 +29,9 @@ test('both public lecture queries rank with ROW_NUMBER, not a tie-prone COUNT', 
 });
 
 test('the window breaks ties on a unique column so positions are distinct', () => {
-  const orderings = publicRoutes.match(/ORDER BY \w+\.sort_order ASC, \w+\.id ASC\) - 1 AS position_in_course/g) || [];
+  // Chapter, then the lecture's order, then its id — the course's own order,
+  // the one the page lists and lib/learningAccess.js counts.
+  const orderings = publicRoutes.match(/ORDER BY COALESCE\(\w+\.sort_order, 999999\), \w+\.sort_order, \w+\.id\) - 1 AS position_in_course/g) || [];
   assert.equal(orderings.length, 2,
     'ordering by sort_order alone is not deterministic when sort_order repeats');
 });

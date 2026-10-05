@@ -498,6 +498,8 @@ export interface CourseLectureItem {
   videoUrl: string;
   duration: string;
   order: number;
+  // Marked free by the admin: open to everyone, wherever it sits in the course.
+  isPreview?: boolean;
   thumbnail?: string;
 }
 

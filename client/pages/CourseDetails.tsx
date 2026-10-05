@@ -154,7 +154,9 @@ const CourseDetails: React.FC = () => {
         const lecturesWithLock = useMemo(
             () => lectures.map((lecture, index) => ({
                 ...lecture,
-                locked: accessMode !== 'full' && index >= unlockedLectureCount,
+                // A lecture marked free is open wherever it sits; the server
+                // hands out its video for the same reason.
+                locked: accessMode !== 'full' && index >= unlockedLectureCount && !lecture.isPreview,
             })),
             [lectures, accessMode, unlockedLectureCount]
         );

@@ -345,15 +345,24 @@ function mapSubscriber(r) {
       invoiceNumber: p.document_number || p.invoiceNumber || null,
     };
   }) : [];
+  // The same rules lib/learningAccess.js opens lectures by. Everything that
+  // was not 'limited' with a number used to read as 'full' here — an
+  // enrolment never activated, a limited one with no number, one whose access
+  // had run out — so the player showed every lecture open and each one
+  // refused to play with a message that did not say why.
   const dbCourseAccess = {};
+  const courseAccessExpiresAt = {};
   for (const e of activeEnrollments) {
     const cid = String(e.course_id || e.c_id || '');
     if (!cid) continue;
-    if (e.access_type === 'limited' && e.lecture_limit) {
-      dbCourseAccess[cid] = { mode: 'limited', lectureLimit: Number(e.lecture_limit) };
-    } else {
-      dbCourseAccess[cid] = 'full';
-    }
+    const expiresAt = e.expiry_date ? new Date(e.expiry_date) : null;
+    const expired = expiresAt && Number.isFinite(expiresAt.getTime()) && expiresAt.getTime() < Date.now();
+    if (expiresAt && Number.isFinite(expiresAt.getTime())) courseAccessExpiresAt[cid] = expiresAt.toISOString();
+    if (expired) dbCourseAccess[cid] = 'preview';
+    else if (e.access_type === 'full') dbCourseAccess[cid] = 'full';
+    else if (e.access_type === 'limited') {
+      dbCourseAccess[cid] = { mode: 'limited', lectureLimit: Math.max(1, Math.floor(Number(e.lecture_limit) || 1)) };
+    } else dbCourseAccess[cid] = 'preview';
   }
   return {
     id: r.id,
@@ -367,6 +376,7 @@ function mapSubscriber(r) {
     createdAt: r.created_at,
     enrolledCourseIds,
     courseAccess: dbCourseAccess,
+    courseAccessExpiresAt,
     lectureProgress: {},
     // The customer types an English name for their certificate and it is saved,
     // but nothing ever handed it back: the settings field reset itself on every

@@ -9,7 +9,7 @@ async function resolveLectureAccess({ tenantId, subscriberId, lectureId }, db = 
             e.enrolled_at,e.access_type,e.lecture_limit,e.expiry_date
        FROM course_lectures cl
        JOIN courses c ON c.id=cl.course_id AND c.tenant_id=? AND c.deleted_at IS NULL
-       LEFT JOIN course_chapters cc ON cc.id=cl.chapter_id
+       LEFT JOIN course_chapters cc ON cc.id=cl.chapter_id AND cc.course_id=cl.course_id
        -- The enrolment must belong to a customer who still exists. Deleting a
        -- customer deactivates their login, so this was already unreachable in
        -- practice — but login was the only thing standing between an archived
@@ -55,13 +55,18 @@ async function resolveLectureAccess({ tenantId, subscriberId, lectureId }, db = 
 
   if (lecture.access_type === 'limited') {
     const limit = Math.max(1, Math.floor(Number(lecture.lecture_limit) || 1));
+    // The lecture's place in the course: chapter, then its order in the
+    // chapter, then its id. Without the id, lectures sharing an order — and
+    // the lecture form starts every one at 1 — all counted as first, so an
+    // instalment student limited to one lecture could open every one of them.
     const [[positionRow]] = await db.query(
       `SELECT COUNT(*) AS pos
          FROM course_lectures cl
          LEFT JOIN course_chapters cc ON cc.id=cl.chapter_id AND cc.course_id=cl.course_id
         WHERE cl.course_id=? AND cl.is_published=1 AND (COALESCE(cc.sort_order,999999) < ?
-          OR (COALESCE(cc.sort_order,999999)=? AND cl.sort_order < ?))`,
-      [lecture.course_id, lecture.chapter_sort, lecture.chapter_sort, lecture.sort_order]
+          OR (COALESCE(cc.sort_order,999999)=? AND (cl.sort_order < ?
+            OR (cl.sort_order = ? AND cl.id < ?))))`,
+      [lecture.course_id, lecture.chapter_sort, lecture.chapter_sort, lecture.sort_order, lecture.sort_order, lecture.id]
     );
     const position = Number(positionRow?.pos || 0);
     if (position >= limit) {

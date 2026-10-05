@@ -3361,6 +3361,7 @@ CREATE TABLE `lecture_completions` (
   `note_text` text DEFAULT NULL,
   `completed_at` datetime DEFAULT NULL,
   `tenant_id` varchar(36) NOT NULL DEFAULT 'tenant-default',
+  `progress_saved_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_completion` (`subscriber_id`,`lecture_id`),
   KEY `idx_comp_sub` (`subscriber_id`),

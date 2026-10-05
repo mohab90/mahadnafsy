@@ -2,7 +2,7 @@
 
 const { pool } = require('./db');
 const { uuidv4 } = require('./id');
-const { certificateCode, writeCertificateEvent } = require('./certificateLifecycle');
+const { certificateCode, writeCertificateEvent, reissueCertificate } = require('./certificateLifecycle');
 const outbox = require('./outbox');
 const { hasPaidForCourse } = require('./coursePaid');
 
@@ -82,6 +82,18 @@ async function completeCourse({
       'SELECT id,certificate_code,completed_at,status,version FROM course_completions WHERE subscriber_id=? AND course_id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
       [subscriberId, courseId, tenantId]
     );
+    // A certificate revoked by a refund comes back when the course is bought
+    // and earned again: everything above has just been checked afresh. Left
+    // revoked, the client who paid twice was told «already completed» and
+    // shown no certificate at all.
+    if (existing && existing.status === 'revoked') {
+      const reissued = await reissueCertificate({
+        tenantId, completionId: existing.id, actor,
+        reason: reason || 'اشترى الكورس من جديد وأتمّه',
+      }, conn);
+      if (ownsConnection) await conn.commit();
+      return { ...existing, ...reissued, status: 'active', alreadyCompleted: false, reissued: true };
+    }
     if (existing) {
       if (ownsConnection) await conn.commit();
       return { ...existing, alreadyCompleted: true };

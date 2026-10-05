@@ -278,14 +278,19 @@ router.get('/api/me/lectures/:lectureId/access', requireAuth, async (req, res) =
     const lecture = access.lecture;
     // Access granted → return the video URL (the public catalog withholds it for paid lectures).
     const kind = mediaKind(lecture.video_url);
+    // A file plays for as long as the lecture runs (see lib/mediaAccess.js);
+    // an embed is fetched once, so five minutes is plenty.
+    const ttlSeconds = kind === 'video'
+      ? Math.max(1800, Math.round((Number(lecture.duration_seconds) || 3600) * 2) + 600)
+      : 300;
     const ticket = createMediaTicket({
-      tenantId: req.tenantId, subscriberId, lectureId: lecture.id,
+      tenantId: req.tenantId, subscriberId, lectureId: lecture.id, ttlSeconds, kind,
     });
     res.json({
       accessible: true,
       video_url: `/api/media/lectures/${encodeURIComponent(lecture.id)}?ticket=${encodeURIComponent(ticket)}&kind=${kind}${kind === 'embed' ? `&provider=${mediaProvider(lecture.video_url)}` : ''}`,
       video_kind: kind,
-      expires_in: 300,
+      expires_in: ttlSeconds,
     });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
