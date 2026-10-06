@@ -144,7 +144,10 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
         : (_singleExpected > 0 ? _singleExpected : undefined),
       currency: subPayDraft.currency,
       paymentType: subPayDraft.paymentType,
-      isInstallment: subPayDraft.bookingType === 'installment',
+      // Only a course is paid in instalments. A carnet or a book picked while
+      // the dialog stood on «قسط» was recorded as one, and counted as a
+      // course instalment: «الفلوس بتتسجل علي انها قسط للكورس».
+      isInstallment: subPayDraft.paymentType === 'course' && subPayDraft.bookingType === 'installment',
       courseId: isBundleSelection ? undefined : (subPayDraft.courseId || undefined),
       bundleId: bundleId || undefined,
       certId: subPayDraft.certReqId || undefined,
@@ -419,7 +422,7 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
       currency: leadPayDraft.currency,
       paymentType: leadPayDraft.paymentType,
       courseId: leadPayDraft.courseId || undefined,
-      isInstallment: leadPayDraft.bookingType === 'installment',
+      isInstallment: false,
       note: noteParts.join(' | ') || undefined,
       paymentMethod: leadPayDraft.paymentMethod || undefined,
       transactionId: leadPayDraft.transactionId || undefined,
@@ -450,22 +453,29 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
       staffName: currentStaff?.name,
     }));
 
-  if (payEntries.length !== 1) {
-    throw new Error('تسجيل أكثر من بند دفع في عملية واحدة متوقف مؤقتًا لحين اعتماد مسار تجزئة الدفع.');
-  }
   const results: Array<{ status: string; approvalRequired?: boolean; housed?: string }> = [];
   try {
+    // The first item makes the client; the rest — a carnet, a book, another
+    // course — are each a payment of their own on that client. A booking with
+    // more than one item was refused outright («تسجيل أكثر من بند دفع في
+    // عملية واحدة متوقف مؤقتًا»), so a carnet could not be booked with its course.
+    const [first, ...rest] = payEntries;
     const result = existingSub
-      ? await recordSubscriberPayment(existingSub.id, payEntries[0])
+      ? await recordSubscriberPayment(existingSub.id, first)
       : await mysqlAdmin.saveLeadPayment(
           freshLead.id,
-          payEntries[0],
+          first,
           {
             email: leadPayDraft.email || freshLead.email,
             nationalId: leadPayDraft.nationalId || undefined,
           },
-        ) as { status: string; approvalRequired?: boolean; housed?: string };
+        ) as { status: string; approvalRequired?: boolean; housed?: string; subscriberId?: string };
     results.push(result);
+    const clientId = existingSub?.id || (result as { subscriberId?: string }).subscriberId;
+    if (rest.length && !clientId) {
+      notify('info', 'الحجز اتبعت للمسئول يراجعه — سجّل باقي البنود على العميل بعد ما يتضاف');
+    }
+    for (const entry of clientId ? rest : []) results.push(await recordSubscriberPayment(clientId as string, entry));
     await Promise.all([reloadSubscribers(), reloadLeads()]);
   } catch (error) {
     await Promise.allSettled([reloadSubscribers(), reloadLeads()]);

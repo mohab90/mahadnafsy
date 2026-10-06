@@ -19,9 +19,13 @@ import { bookingTierFields } from './bookingIdentity';
  *
  * Both go through here now, and here goes through the endpoint.
  *
- * A payment must name exactly one course or bundle — that rule is the API's,
- * enforced in the browser too so the desk is told before the request rather
- * than after. Enrolling with no money is allowed and takes the other branch.
+ * A course payment must name exactly one course or bundle — that rule is the
+ * API's, enforced in the browser too so the desk is told before the request
+ * rather than after. A carnet, a book or anything else names none: it asked
+ * for a course regardless, so a new client could not be booked a carnet at all.
+ * What the dialog added beside the first item is recorded after it, each its
+ * own payment on the client the first one made. Enrolling with no money is
+ * allowed and takes the other branch.
  */
 
 export type NewClientResult = {
@@ -77,9 +81,11 @@ export async function createClientWithPayment(
   }
 
   if (!draft.paymentMethod) throw new Error('اختر وسيلة الدفع قبل تسجيل الدفعة');
-  if (!draft.courseId) throw new Error('اختر كورس أو باقة لربط الدفعة');
+  const paymentType = draft.paymentType || 'course';
+  if (paymentType === 'course' && !draft.courseId) throw new Error('اختر كورس أو باقة لربط الدفعة');
 
-  const isBundle = draft.courseId.startsWith('bundle:');
+  const isBundle = paymentType === 'course' && draft.courseId.startsWith('bundle:');
+  const item = paymentType !== 'course' ? {} : isBundle ? { bundleId: draft.courseId.slice(7) } : { courseId: draft.courseId };
   const result = await mysqlAdmin.adminPost<{
     ok: boolean; subscriberId: string; approvalRequired?: boolean; status?: string; housed?: string;
   }>('/admin/subscriber-payments', {
@@ -88,10 +94,10 @@ export async function createClientWithPayment(
     payment: {
       amount,
       currency: draft.currency,
-      paymentType: draft.paymentType || 'course',
-      isInstallment: draft.bookingType === 'installment',
-      ...(isBundle ? { bundleId: draft.courseId.slice(7) } : { courseId: draft.courseId }),
-      courseExpected: Number(draft.customExpected) || undefined,
+      paymentType,
+      isInstallment: paymentType === 'course' && draft.bookingType === 'installment',
+      ...item,
+      courseExpected: paymentType === 'course' ? (Number(draft.customExpected) || undefined) : undefined,
       paymentMethod: draft.paymentMethod,
       transactionId: draft.transactionId || undefined,
       fromAccountNumber: draft.fromAccountNumber || undefined,
@@ -99,10 +105,34 @@ export async function createClientWithPayment(
       note: draft.note || undefined,
       source: options.source,
       // The branch tier and the client's real name (lib/bookingIdentity.ts); the server prices it.
-      ...(draft.bookingType === 'new_booking' ? bookingTierFields(draft) : {}),
+      ...(paymentType === 'course' && draft.bookingType === 'new_booking' ? bookingTierFields(draft) : {}),
       branch,
     },
   });
+
+  // The carnet, the book, the added course: each on the client just made. A
+  // booking waiting for the manager has no client yet, and says so instead.
+  const extras = (draft.extraItems || []).filter(extra => Number(extra.amount) > 0);
+  if (extras.length && result?.subscriberId) {
+    for (const extra of extras) {
+      const extraBundle = extra.type === 'course' && String(extra.courseId || '').startsWith('bundle:');
+      await mysqlAdmin.saveSubscriberPayment(result.subscriberId, {
+        amount: Number(extra.amount),
+        currency: draft.currency,
+        paymentType: extra.type,
+        isInstallment: false,
+        ...(extra.type === 'course' && extra.courseId
+          ? (extraBundle ? { bundleId: String(extra.courseId).slice(7) } : { courseId: extra.courseId })
+          : {}),
+        ...(extra.type === 'course' && Number(extra.customExpected) > 0 ? { courseExpected: Number(extra.customExpected) } : {}),
+        paymentMethod: draft.paymentMethod,
+        at: draft.date,
+        note: [extra.label, draft.note].filter(Boolean).join(' | ') || undefined,
+        source: options.source,
+        branch,
+      });
+    }
+  }
 
   return {
     subscriberId: result?.subscriberId,

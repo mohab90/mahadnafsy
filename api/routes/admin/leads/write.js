@@ -32,6 +32,7 @@ const {
   branchIdForBranch,
   logger,
   crypto,
+  completeForBranch,
 } = require('./_shared');
 
 const router = Router();
@@ -88,7 +89,8 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
     // Sanitize at system boundary
     const safeName   = sanitize(name,   300);
     const safeEmail  = (email  || '').toLowerCase().trim().substring(0, 255);
-    const safePhone  = ((phone  || '').replace(/[^\d+\-\s()]/g, '').trim().substring(0, 30)) || null;
+    // A Saudi lead's 05… gets its 966 (lib/phoneNumber.js completeForBranch).
+    const safePhone  = ((String(completeForBranch(phone, crmData.branch) || '')).replace(/[^\d+\-\s()]/g, '').trim().substring(0, 30)) || null;
     const safeNotes  = sanitize(notes,  2000);
     // leads.source is NOT NULL: a lead added without one stood as «حقل مطلوب فاضي»
     // with no word on which field.

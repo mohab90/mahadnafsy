@@ -62,7 +62,8 @@ function leadTableFilter(query, { today, salesOnly }) {
   // visibleLeads: the desk table holds distributed, non-online leads; a rep's is theirs.
   if (!salesOnly) {
     add(`COALESCE(l.source, '') NOT IN (${ONLINE_EXCLUDED_SOURCES.map(() => '?').join(',')})`, ...ONLINE_EXCLUDED_SOURCES);
-    add("l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''");
+    // Someone has it: a rep, or a collection officer the remaining data went to.
+    add("(COALESCE(l.assigned_sales_id, '') <> '' OR COALESCE(l.assigned_cs_id, '') <> '')");
   }
   // lead-status-subset: the desk table hides only what moved elsewhere (a sale to the clients, a loss to the archive); a not-interested lead stays to be called again — useLeadFilteringData.ts the same
   add("l.status NOT IN ('converted', 'lost')");
@@ -74,7 +75,9 @@ function leadTableFilter(query, { today, salesOnly }) {
   const assigned = list(query.assigned);
   if (!salesOnly && assigned.length) {
     if (assigned.includes('__none__')) add("(l.assigned_sales_id IS NULL OR l.assigned_sales_id = '')");
-    else add('l.assigned_sales_id IN (?)', assigned);
+    // A collection officer is on assigned_cs_id, or on assigned_sales_id for
+    // leads they took over as a rep's — either column names them.
+    else add('(l.assigned_sales_id IN (?) OR l.assigned_cs_id IN (?))', assigned, assigned);
   }
   if (query.tag) {
     add("JSON_VALID(l.crm_json) AND JSON_CONTAINS(JSON_EXTRACT(l.crm_json, '$.tags'), JSON_QUOTE(?))", String(query.tag));

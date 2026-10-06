@@ -532,7 +532,7 @@ export const mysqlAdmin = {
   // used to add up the 500 newest orders in the browser.
   getOverviewRevenue:      (): Promise<{ totalEgp: number; monthEgp: number; todayEgp: number; payments: number; asOf: string }> =>
     apiFetch(`/admin/overview/revenue`, {}, A),
-  getLeadStats:            (): Promise<{ total: number; byStatus: Record<string, number>; assigned: number; unassigned: number; totalDealValue: number; byOwner: Record<string, { total: number; converted: number; avgScore: number; comms: Record<string, number> }>; bySource: Record<string, number>; byMonth: Record<string, { total: number; converted: number }>; avgScore: number; totalCommunications: number; createdToday: number }> =>
+  getLeadStats:            (): Promise<{ total: number; byStatus: Record<string, number>; assigned: number; unassigned: number; totalDealValue: number; byOwner: Record<string, { total: number; converted: number; avgScore: number; comms: Record<string, number> }>; bySource: Record<string, number>; byMonth: Record<string, { total: number; converted: number }>; avgScore: number; totalCommunications: number; createdToday: number; collectionHolders?: Array<{ id: string; name: string; count: number }> }> =>
     apiFetch(`/admin/leads/stats`, {}, A),
   // The CRM workspace panels — reminders, weekly scorecard, redistribution
   // suggestions — in one request. Each of them used to filter the full leads

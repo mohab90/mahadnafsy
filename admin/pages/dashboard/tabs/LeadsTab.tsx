@@ -581,6 +581,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         setSearchTerm={setSearchTerm}
         isSalesOnly={isSalesOnly}
         assignedReps={assignedReps}
+        collectionHolders={leadStats?.collectionHolders}
         assignFilter={assignFilter}
         setAssignFilter={setAssignFilter}
         singleStatus={singleStatus}

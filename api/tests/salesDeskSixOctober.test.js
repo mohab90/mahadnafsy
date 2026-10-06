@@ -269,3 +269,46 @@ test('the sign-in audit can store a text account id, and lead names follow the r
   assert.match(names, /NEW\.assigned_sales_name = IF\(COALESCE\(NEW\.assigned_sales_id, ''\) = '', NEW\.assigned_sales_name,/);
   assert.match(names, /SET l\.assigned_sales_name = s\.name, l\.updated_at = l\.updated_at/);
 });
+
+// ── carnets, books and Saudi numbers ─────────────────────────────────────────
+
+test('a carnet or a book is never a course instalment, and books beside its course', () => {
+  const route = read('api/routes/subscriber-payments.js');
+  assert.match(route, /if \(safeType !== 'COURSE'\) payment\.isInstallment = false;/);
+  const handlers = read('admin/pages/dashboard/dashboardPaymentHandlers.ts');
+  assert.match(handlers, /isInstallment: subPayDraft\.paymentType === 'course' && subPayDraft\.bookingType === 'installment',/);
+  assert.doesNotMatch(handlers, /تسجيل أكثر من بند دفع في عملية واحدة متوقف مؤقتًا لحين/);
+  const newClient = read('admin/lib/createClientWithPayment.ts');
+  assert.match(newClient, /if \(paymentType === 'course' && !draft\.courseId\) throw new Error/);
+  assert.match(newClient, /await mysqlAdmin\.saveSubscriberPayment\(result\.subscriberId, \{/);
+  assert.match(read('admin/components/PaymentModal.tsx'), /\(d\.paymentType !== 'course' \|\| !!d\.courseId\)/);
+});
+
+test('a Saudi client\'s local number is completed with 966, and only a Saudi client\'s', () => {
+  const { completeForBranch, isRealPhone } = require('../lib/phoneNumber');
+  assert.equal(completeForBranch('0551234567', 'ONLINE_SAUDI'), '966551234567');
+  assert.equal(completeForBranch('551234567', 'online saudi'), '966551234567');
+  assert.equal(completeForBranch('0501234567', 'DAQQI'), '0501234567', 'Mansoura\'s 050 is not touched');
+  assert.equal(completeForBranch('01012345678', 'ONLINE_SAUDI'), '01012345678');
+  assert.equal(isRealPhone('0551234567'), false);
+  assert.equal(isRealPhone(completeForBranch('0551234567', 'ONLINE_SAUDI')), true);
+  assert.match(read('api/routes/admin/subscribers.js'), /toIdentity\(completeForBranch\(phone, crmData\.branch \|\| s\.branch\)\)/);
+  assert.match(read('api/routes/admin/leads/write.js'), /completeForBranch\(phone, crmData\.branch\)/);
+  assert.match(read('api/migrations/253_v26_saudi_local_numbers.sql'), /UPDATE IGNORE leads[\s\S]*WHERE branch = 'ONLINE_SAUDI' AND REGEXP_REPLACE\(phone, '\[\^0-9\]', ''\) REGEXP '\^0\?5\[0-9\]\{8\}\$'/);
+});
+
+// ── the rep filter ───────────────────────────────────────────────────────────
+
+test('«كل السيلز», then the collection officers who hold leads, in the table and the pools', () => {
+  const { leadTableFilter } = require('../lib/leadTableFilter');
+  const desk = leadTableFilter({ assigned: 'coll-1' }, { today: '2026-10-06', salesOnly: false });
+  assert.match(desk.sql, /\(COALESCE\(l\.assigned_sales_id, ''\) <> '' OR COALESCE\(l\.assigned_cs_id, ''\) <> ''\)/);
+  assert.match(desk.sql, /\(l\.assigned_sales_id IN \(\?\) OR l\.assigned_cs_id IN \(\?\)\)/);
+  assert.equal(desk.params.filter(param => Array.isArray(param) && param[0] === 'coll-1').length, 2);
+  assert.match(read('api/routes/admin/leads/stats.js'), /collectionHolders: holderRows\.map/);
+  const bar = read('admin/pages/dashboard/tabs/leads/LeadFilterBar.tsx');
+  assert.match(bar, /<option value="">👤 كل السيلز<\/option>/);
+  assert.match(bar, /<optgroup label="التحصيل">/);
+  assert.doesNotMatch(bar, /كل المندوبين/);
+  assert.match(read('admin/pages/dashboard/tabs/leads/useLeadFilteringData.ts'), /assignFilter\.has\(lead\.assignedCsId \|\| ''\)/);
+});

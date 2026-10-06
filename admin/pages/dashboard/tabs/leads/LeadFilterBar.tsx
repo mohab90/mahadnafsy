@@ -26,6 +26,8 @@ type Props = {
   setSearchTerm: Dispatch<SetStateAction<string>>;
   isSalesOnly: boolean;
   assignedReps: Pick<StaffMember, 'id' | 'name'>[];
+  /** Collection officers holding leads, listed after the sales under a line. */
+  collectionHolders?: Array<{ id: string; name: string; count: number }>;
   assignFilter: Set<string>;
   setAssignFilter: Dispatch<SetStateAction<Set<string>>>;
   singleStatus: LeadStatus | '';
@@ -57,6 +59,7 @@ export function LeadFilterBar({
   setSearchTerm,
   isSalesOnly,
   assignedReps,
+  collectionHolders = [],
   assignFilter,
   setAssignFilter,
   singleStatus,
@@ -108,9 +111,17 @@ export function LeadFilterBar({
           value={assignFilter.size === 1 ? [...assignFilter][0] : ''}
           onChange={e => setAssignFilter(e.target.value ? new Set([e.target.value]) : new Set())}
           className="border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white focus:outline-none flex-shrink-0">
-          <option value="">👤 كل المندوبين</option>
-          <option value="__none__">⬜ بدون مندوب</option>
+          <option value="">👤 كل السيلز</option>
+          <option value="__none__">⬜ بدون سيلز</option>
           {assignedReps.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+          {collectionHolders.length > 0 && <option disabled>──────────</option>}
+          {collectionHolders.length > 0 && (
+            <optgroup label="التحصيل">
+              {collectionHolders.map(holder => (
+                <option key={holder.id} value={holder.id}>{holder.name} ({holder.count.toLocaleString('ar-EG-u-nu-latn')})</option>
+              ))}
+            </optgroup>
+          )}
         </select>
       )}
       <select

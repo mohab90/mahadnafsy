@@ -27,7 +27,7 @@ const { financialRecordMatches, resolveFinancialScope } = require('../lib/financ
 const { grantCourseSelections } = require('../lib/entitlements');
 const { getNextClientCode } = require('../lib/mappers');
 const { leadScope } = require('../lib/leadAccess');
-const { isRealPhone } = require('../lib/phoneNumber');
+const { completeForBranch, isRealPhone } = require('../lib/phoneNumber');
 const { VALID_BRANCHES } = require('../constants/permissions');
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../lib/paymentEntitlementAccess');
 const { isCashMethod, linkTransfer } = require('../lib/incomingTransfers');
@@ -193,6 +193,7 @@ async function recordSubscriberPayment(req, res) {
         const branch = VALID_BRANCHES.has(rawBranch) ? rawBranch : 'ONLINE_EGYPT';
         subRow = {
           ...lead,
+          phone: completeForBranch(lead.phone, branch),
           id: subscriber_id,
           lead_id: lead.id,
           // NULL, not '' — see the note on the lead-conversion insert below.
@@ -210,7 +211,7 @@ async function recordSubscriberPayment(req, res) {
       }
       const safeName = sanitize(subscriberDraft.name || '', 300);
       const safeEmail = sanitize(subscriberDraft.email || '', 255).trim().toLowerCase();
-      const safePhone = sanitize(subscriberDraft.phone || '', 30).trim();
+      const typedPhone = sanitize(subscriberDraft.phone || '', 30).trim();
       if (!safeName || !safePhone) {
         return res.status(400).json({ error: 'Subscriber name and phone are required' });
       }
@@ -232,6 +233,8 @@ async function recordSubscriberPayment(req, res) {
           code: 'BRANCH_REQUIRED',
         });
       }
+      // A Saudi client's 05… gets its 966 before anything is compared or stored.
+      const safePhone = String(completeForBranch(typedPhone, branch) || '').trim();
       const [[existing]] = await pool.query(
         `SELECT id FROM subscribers
           WHERE tenant_id=? AND deleted_at IS NULL
@@ -266,7 +269,7 @@ async function recordSubscriberPayment(req, res) {
     // «متخليش السيستم يقبل عميل دفع بدون رقم تليفون حقيقي»: money is recorded
     // only against a client who can be reached. 29 paying clients had no real
     // number — none at all, or one too short to dial.
-    if (!isRealPhone(subRow.phone)) {
+    if (!isRealPhone(completeForBranch(subRow.phone, subRow.branch))) {
       return res.status(400).json({
         error: 'لازم يكون للعميل رقم تليفون حقيقي قبل تسجيل أي دفعة — عدّل رقم العميل الأول (موبايل مصري أو رقم بكود الدولة).',
         code: 'PHONE_REQUIRED',
@@ -293,6 +296,9 @@ async function recordSubscriberPayment(req, res) {
     const paymentType = (payment.paymentType || payment.payment_type || 'OTHER').toUpperCase();
     const validTypes = ['COURSE','CERTIFICATE','CONSULTATION','BOOK','CARNEH','OTHER'];
     const safeType = validTypes.includes(paymentType) ? paymentType : 'OTHER';
+    // Only a course is paid in instalments: a carnet or a book sent as one was
+    // stored as a course instalment and counted in every «أقساط» figure.
+    if (safeType !== 'COURSE') payment.isInstallment = false;
     const certType = sanitize(payment.certType || payment.cert_type || '', 100) || null;
     const rawCertificateRequestId = String(
       payment.certId || payment.cert_id || payment.certReqId || payment.certificate_request_id || ''

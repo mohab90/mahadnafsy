@@ -94,7 +94,8 @@ test('no payment is recorded for a client without a real phone', () => {
   for (const good of ['01012345678', '+20 101 234 5678', '966501234567', '14155552671']) assert.equal(isRealPhone(good), true, good);
   for (const bad of ['', null, '12345', '0223456789', '01000000000', '01111111111']) assert.equal(isRealPhone(bad), false, String(bad));
   const payments = read('api/routes/subscriber-payments.js');
-  assert.match(payments, /if \(!isRealPhone\(subRow\.phone\)\) \{\s+return res\.status\(400\)\.json\(\{/);
+  // A Saudi client's 05… is completed with 966 first (lib/phoneNumber.js completeForBranch).
+  assert.match(payments, /if \(!isRealPhone\(completeForBranch\(subRow\.phone, subRow\.branch\)\)\) \{\s+return res\.status\(400\)\.json\(\{/);
   assert.match(read('api/routes/installments.js'), /if \(!isRealPhone\(plan\.subscriber_phone\)\) \{/);
   assert.match(authRouteSource(), /if \(firstPayment && Number\(firstPayment\.amount\) > 0\) \{\s+\/\/ No money against a client who cannot be reached[^\n]*\n\s+if \(!isRealPhone\(phone\)\)/);
 });

@@ -93,7 +93,7 @@ export function LeadRemindersHeader({
             onChange={(event) => setReminderStaffFilter(event.target.value)}
             className="border border-gray-200 rounded-xl px-3 py-1.5 text-xs bg-white"
           >
-            <option value="">كل المندوبين</option>
+            <option value="">كل السيلز</option>
             {salesReps.map((rep) => <option key={rep.id} value={rep.id}>{rep.name}</option>)}
           </select>
         )}

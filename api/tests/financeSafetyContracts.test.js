@@ -73,7 +73,11 @@ test('lead payments use the transactional payment API before enrollment or conve
   const unifiedPayments = read('admin/pages/unified-client/useUnifiedClientPayments.ts');
   const unifiedLifecycle = read('admin/pages/unified-client/useUnifiedClientLifecycleActions.ts');
 
-  assert.match(sharedHandler, /payEntries\.length !== 1/);
+  // The first item makes the client through the transactional route; a carnet
+  // or a book booked beside it is its own payment on that client, not a second
+  // client and not a refusal of the whole booking.
+  assert.match(sharedHandler, /const \[first, \.\.\.rest\] = payEntries;/);
+  assert.match(sharedHandler, /for \(const entry of clientId \? rest : \[\]\) results\.push\(await recordSubscriberPayment\(clientId as string, entry\)\);/);
   assert.match(sharedHandler, /mysqlAdmin\.saveLeadPayment\([\s\S]*freshLead\.id/);
   assert.doesNotMatch(sharedHandler, /for \(const entry of payEntries\)/);
   assert.match(paymentRoute, /if \(createFromLead\)[\s\S]*LIMIT 1 FOR UPDATE/);

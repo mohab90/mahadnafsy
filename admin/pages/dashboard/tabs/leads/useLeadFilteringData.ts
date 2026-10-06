@@ -85,7 +85,9 @@ export function useLeadFilteringData({
     (isSalesOnly || sourceFilter.size === 0 || sourceFilter.has(lead.source || '')) &&
     (isSalesOnly || assignFilter.size === 0 || (() => {
       if (assignFilter.has('__none__')) return !lead.assignedSalesId && !lead.assignedSalesName;
-      return assignFilter.has(lead.assignedSalesId || '') || (!lead.assignedSalesId && assignFilter.has(lead.assignedSalesName || ''));
+      // A collection officer chosen in the filter: the leads handed to them too.
+      return assignFilter.has(lead.assignedSalesId || '') || assignFilter.has(lead.assignedCsId || '')
+        || (!lead.assignedSalesId && assignFilter.has(lead.assignedSalesName || ''));
     })()) &&
     (!tagFilter || (lead.tags || []).includes(tagFilter)) &&
     (courseFilter === null || (courseFilter === '__none__'

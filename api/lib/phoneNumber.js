@@ -106,6 +106,20 @@ function identitySpellings(input) {
   return [...out];
 }
 
+// A Saudi mobile as Saudis write it: 05XXXXXXXX, or 5XXXXXXXX without the
+// zero. It carries no country code, so it could not be dialled, and the payment
+// route refused every booking for a Saudi client written that way (9 leads and
+// 2 clients on 6 Oct). It is also the shape of some Egyptian landlines — 050…
+// is Mansoura — so it is completed only for a client in the Saudi branch.
+const SA_MOBILE_NATIONAL = /^5\d{8}$/;
+
+/** The number with 966 put in front when it is a Saudi client's local mobile; otherwise as given. */
+function completeForBranch(input, branch) {
+  const identity = toIdentity(input);
+  const saudi = String(branch || '').trim().toUpperCase().replace(/[-\s]+/g, '_') === 'ONLINE_SAUDI';
+  return saudi && SA_MOBILE_NATIONAL.test(identity) ? `966${identity}` : input;
+}
+
 /** True when this number can actually receive a WhatsApp message. */
 function isDialable(input) {
   return toDialable(input) !== '';
@@ -129,6 +143,7 @@ function isRealPhone(input) {
 }
 
 module.exports = {
+  completeForBranch,
   DEFAULT_COUNTRY_CODE,
   latinDigits,
   isRealPhone,

@@ -37,7 +37,7 @@ router.get('/api/admin/leads/stats', requireAuth, requireAdminOrStaff, requirePe
     // Six independent reads of the same scoped set, issued together: they
     // took 3.3 s one after another at 500k leads and take the slowest one's
     // time side by side.
-    const [[rows], [ownerRows], [commRows], [sourceRows], [trendRows], [[todayRow]]] = await Promise.all([
+    const [[rows], [ownerRows], [commRows], [sourceRows], [trendRows], [[todayRow]], [holderRows]] = await Promise.all([
       pool.query(
         `SELECT l.status AS status, COUNT(*) AS cnt,
                 SUM(CASE WHEN l.assigned_sales_id IS NULL OR l.assigned_sales_id = '' THEN 1 ELSE 0 END) AS unassigned_cnt,
@@ -82,6 +82,18 @@ router.get('/api/admin/leads/stats', requireAuth, requireAdminOrStaff, requirePe
         `SELECT COUNT(*) AS cnt FROM leads l
           WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
             AND l.created_at >= ${sqlCairoDayStartUtc()} AND l.created_at < ${sqlCairoDayStartUtc()} + INTERVAL 1 DAY`,
+        params,
+      ),
+      // The collection officers who hold leads — handed to them from the
+      // remaining data, or left on them as a sales rep's: «بعد السيلز اعمل خط
+      // واظهر اسماء التحصيل اللى عندهم داتا».
+      pool.query(
+        `SELECT st.id, st.name, COUNT(*) AS cnt
+           FROM leads l
+           JOIN staff st ON st.tenant_id = l.tenant_id AND (st.id = l.assigned_cs_id OR st.id = l.assigned_sales_id)
+          WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+            AND UPPER(st.role) = 'COLLECTION' AND st.is_active = 1 AND st.deleted_at IS NULL
+          GROUP BY st.id, st.name ORDER BY st.name`,
         params,
       ),
     ]);
@@ -195,6 +207,7 @@ router.get('/api/admin/leads/stats', requireAuth, requireAdminOrStaff, requirePe
       avgScore: allScored > 0 ? Math.round(allScoreSum / allScored) : 0,
       totalCommunications,
       createdToday: Number(todayRow?.cnt || 0),
+      collectionHolders: holderRows.map(row => ({ id: row.id, name: row.name, count: Number(row.cnt) })),
     });
   } catch (e) { logger.error('[leads-stats]', e.message); sendRouteError(res, e); }
 });

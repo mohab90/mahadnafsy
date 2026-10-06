@@ -43,7 +43,7 @@ const { safeIsoString, safeDateOnly, sqlCairoToday, sqlCairoDayStartUtc, cairoTo
 const { keyset } = require('../../../lib/pagination');
 const { leadTableFilter, leadTableSearch } = require('../../../lib/leadTableFilter');
 const { leadPoolFilter, poolBreakdown, POOL_REASON_COLUMN } = require('../../../lib/leadPoolFilter');
-const { identitySpellings } = require('../../../lib/phoneNumber');
+const { completeForBranch, identitySpellings } = require('../../../lib/phoneNumber');
 const { branchIdForBranch } = require('../../../lib/branches');
 const { postPaymentJournal, logPaymentAudit } = require('../../../lib/finance');
 const { bulkOperationLimiter } = require('../../../middleware/rateLimits');
@@ -177,6 +177,7 @@ module.exports = {
   poolBreakdown,
   POOL_REASON_COLUMN,
   identitySpellings,
+  completeForBranch,
   branchIdForBranch,
   postPaymentJournal,
   logPaymentAudit,

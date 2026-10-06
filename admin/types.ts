@@ -1270,6 +1270,8 @@ export interface LeadStats {
   byMonth: Record<string, { total: number; converted: number }>;
   /** Leads created today, by the database's own date, not a string prefix. */
   createdToday: number;
+  /** Collection officers holding leads, for the rep filter («بعد السيلز … اسماء التحصيل»). */
+  collectionHolders?: Array<{ id: string; name: string; count: number }>;
 }
 /** GET /admin/leads/staff-performance — per-rep lead counts inside a date
  *  range, keyed by staff id. */

@@ -599,7 +599,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       || (d.phoneConfirmed ? '' : 'أكّد رقم التليفون مع العميل'))
     : '';
   const isValid = !subjectChosen ? false : tierProblem || identityProblem ? false : mode === 'new'
-    ? hasIdentity && (_amtPaid === 0 || (!!d.paymentMethod && !!d.courseId))
+    ? hasIdentity && (_amtPaid === 0 || (!!d.paymentMethod && (d.paymentType !== 'course' || !!d.courseId)))
     : _amtPaid > 0 && !!d.paymentMethod && (mode === 'lead' ? !!d.branch : true)
       && (!upgrading || (!!upgradeFrom && d.courseId.startsWith('bundle:')));
 

@@ -1,5 +1,5 @@
 'use strict';
-const { toIdentity } = require('../../lib/phoneNumber');
+const { completeForBranch, toIdentity } = require('../../lib/phoneNumber');
 const { findLeadByContact } = require('../../lib/leadMatching');
 const logger = require('../../lib/logger');
 const { escapeHtml } = require('../../lib/html');
@@ -775,7 +775,8 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
     // strings, so uq_subs_tenant_phone saw two people and the duplicate check
     // below never matched — 40 real duplicates got in that way. toIdentity()
     // collapses every spelling of one number onto a single comparable key.
-    const safePhone = toIdentity(phone) || null; // NULL not '' so UNIQUE allows many blanks
+    // A Saudi client's 05… gets its 966 (lib/phoneNumber.js completeForBranch).
+    const safePhone = toIdentity(completeForBranch(phone, crmData.branch || s.branch)) || null; // NULL not '' so UNIQUE allows many blanks
     const safeNotes = sanitize(notes, 2000);
 
     // ── A new client needs a way to be reached ────────────────────────────────
