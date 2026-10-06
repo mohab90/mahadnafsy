@@ -609,7 +609,9 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   branches_settings: 'manage_settings',
   registrations:      'view_leads',
   leads:              'view_leads',
-  sales_hub:          'manage_sales_team',
+  // «أداء المبيعات» holds what «أداء فريق المبيعات» showed, so whoever could
+  // read that one reads this; the server still decides who may change a target.
+  sales_hub:          ['manage_sales_team', 'view_perf_sales'],
   // Both live under التسويق. marketing_hub on view_leads and messaging_hub on
   // view_dashboard meant every sales rep — and every employee at all — saw a
   // marketing section they have no business in. Campaign tooling and channel

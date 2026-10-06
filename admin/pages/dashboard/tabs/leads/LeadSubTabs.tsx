@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { AlarmClock, Archive, Columns, FileText, GitMerge, Globe, TrendingUp, UserX, Users } from 'lucide-react';
+import { AlarmClock, Archive, Columns, FileText, Globe, UserX, Users } from 'lucide-react';
 
 export type SubTabKey =
   | 'pipeline' | 'table' | 'communications' | 'reminders' | 'quotes'
@@ -9,7 +9,6 @@ export type SubTabKey =
 interface LeadSubTabsProps {
   subTab: SubTabKey;
   isSalesOnly: boolean;
-  canManageDuplicates: boolean;
   /** Follow-ups due today or earlier and not done — each lead once. */
   overdueCount: number;
   unassignedCount?: number;
@@ -19,7 +18,6 @@ interface LeadSubTabsProps {
 export function LeadSubTabs({
   subTab,
   isSalesOnly,
-  canManageDuplicates,
   overdueCount,
   unassignedCount = 0,
   setSubTab,
@@ -36,8 +34,8 @@ export function LeadSubTabs({
     // subTab='reminders'), not a tab of its own — same data, one less tab.
     ['reminders', 'المتابعات', AlarmClock],
     ['quotes', 'العروض', FileText],
-    ...(!isSalesOnly ? [['performance', 'أداء الفريق', TrendingUp] as [SubTabKey, string, ElementType]] : []),
-    ...(canManageDuplicates ? [['duplicates', 'مراجعة التكرار', GitMerge] as [SubTabKey, string, ElementType]] : []),
+    // «أداء الفريق» is a page of its own now, «أداء المبيعات» (SalesPerformancePage),
+    // and «مراجعة التكرار» is in the الإعدادات menu.
     ...(!isSalesOnly ? [['localNew', 'محلي جديد', UserX] as [SubTabKey, string, ElementType]] : []),
     // «داتا سعودي»: what were two tabs, «دولي جديد» (the international leads
     // waiting for a rep) and «دولي قديم» (imported international data), in one
@@ -46,9 +44,8 @@ export function LeadSubTabs({
     // lands here too (useLeadSubTab).
     ['dawliOld', 'داتا سعودي', Globe],
     ['archive', 'محلي قديم', Archive],
-    // 'إعداد المراحل' (pipelineSettings) moved into the الإعدادات menu
-    // (LeadsTabHeader's actions dropdown) — one less top-level tab, same
-    // canManageDuplicates gate, reached via setSubTab('pipelineSettings').
+    // 'إعداد المراحل' (pipelineSettings) and 'مراجعة التكرار' (duplicates) are
+    // reached from the الإعدادات menu (LeadsTabHeader), not from here.
   ];
 
   return (

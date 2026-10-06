@@ -71,11 +71,15 @@ test('a rep asking sees their own row and no one else\'s money', async () => {
   assert.match(read('api/routes/crm-advanced.js'), /onlyRepId: isSales \? req\.staffRecord\.id : null/);
 });
 
-test('«أداء الفريق» opens on the report; the quality review is a button', () => {
+test('«أداء المبيعات» opens on the report; the quality review is a button', () => {
+  // The leads screen's «أداء الفريق» tab is a page of its own now.
+  const page = read('admin/pages/dashboard/tabs/SalesPerformancePage.tsx');
+  assert.match(page, /const section: SectionKey = SECTIONS\.some\(item => item\.key === requested\) \? requested as SectionKey : 'today';/);
+  assert.match(page, /\{section === 'today' && <TeamDailyReport notify=\{notify\} \/>\}/);
+  assert.match(page, /<CrmCoachingButton notify=\{notify\} \/>/);
   const tab = read('admin/pages/dashboard/tabs/LeadsTab.tsx');
-  const performance = tab.slice(tab.indexOf("{subTab === 'performance' && ("));
-  assert.ok(performance.indexOf('<TeamDailyReport') < performance.indexOf('<LeadPerformanceOverview'));
-  assert.match(performance, /<CrmCoachingButton notify=\{notify\} \/>/);
+  assert.ok(tab.indexOf('if (performanceOnly) {') < tab.indexOf('<LeadPerformanceOverview'));
+  assert.doesNotMatch(read('admin/pages/dashboard/tabs/leads/LeadSubTabs.tsx'), /'أداء الفريق'/);
   assert.doesNotMatch(tab, /<CrmCoachingPanel/);
   const report = read('admin/pages/dashboard/tabs/leads/TeamDailyReport.tsx');
   for (const label of ['النهارده', 'أمس', '7 أيام', '15 يوم', '30 يوم']) assert.ok(report.includes(`'${label}'`), label);

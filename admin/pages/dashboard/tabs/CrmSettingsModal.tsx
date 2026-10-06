@@ -9,6 +9,18 @@ import { AlertTriangle, CheckCircle2, Plus, RefreshCw, Settings, Wifi, X } from 
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
 export type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
+/**
+ * The section the window opens on, picked from the leads screen's الإعدادات
+ * menu — «كل تاب بيها تظهر في زر الاعدادات من برة». The pipeline's stages have
+ * their own screen (LeadPipelineSettings); this window kept a second copy of
+ * them, and saving the sources re-saved the stages and the distribution too.
+ */
+export type CrmSettingsSection = 'sources' | 'assign' | 'gsheet';
+const SECTION_TITLES: Record<CrmSettingsSection, string> = {
+  sources: 'مصادر الليدز',
+  assign: 'التوزيع على السيلز',
+  gsheet: 'الشيتات ومزامنتها',
+};
 export type GSheet = { id: string; name: string; sheetId: string; gid: string; autoSync: boolean; defaultCourse?: string };
 export type CrmSettings = {
   leadSources: string[];
@@ -106,7 +118,8 @@ export const DEFAULT_CRM_SETTINGS: CrmSettings = {
   staleDays: [...DEFAULT_STALE_DAYS],
 };
 
-export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [], courses = [], bundles = [], knownSources = [], onSynced }: {
+export function CrmSettingsModal({ section, onClose, notify, salesReps, branchOptions = [], courses = [], bundles = [], knownSources = [], onSynced }: {
+  section: CrmSettingsSection;
   onClose: () => void;
   notify: NotifyFn;
   salesReps: { id: string; name: string }[];
@@ -118,9 +131,8 @@ export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [
   knownSources?: string[];
   onSynced: () => void;
 }) {
-  const [tab, setTab] = useState<'sources' | 'assign' | 'pipeline' | 'gsheet'>('sources');
+  const tab = section;
   const [settings, setSettings] = useState<CrmSettings>(DEFAULT_CRM_SETTINGS);
-  const [pipeline, setPipeline] = useState<CrmPipelineStage[]>([]);
   const [assignmentMembers, setAssignmentMembers] = useState<AssignmentMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -134,9 +146,8 @@ export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [
   useEffect(() => {
     Promise.all([
       mysqlAdmin.getCrmSettings(),
-      mysqlAdmin.getCrmPipeline(),
       mysqlAdmin.getCrmAssignmentMembers(),
-    ]).then(([data, pipelineData, assignmentData]) => {
+    ]).then(([data, assignmentData]) => {
       if (data && Object.keys(data).length > 0) {
         const d = data as Partial<CrmSettings & { gsheetId?: string; gsheetGid?: string }>;
         // A saved list is the truth even when it is empty — that is how the
@@ -154,7 +165,6 @@ export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [
           sheets,
         });
       }
-      setPipeline(pipelineData.stages || []);
       const activeRepIds = new Set(salesReps.map(rep => rep.id));
       // A saved row for someone who is no longer an active rep would make the
       // whole save fail ("Active sales staff not found"), so it is dropped.
@@ -191,10 +201,12 @@ export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [
   const save = async () => {
     setSaving(true);
     try {
+      // What this section edits, and nothing else.
       await Promise.all([
         mysqlAdmin.saveCrmSettings(settings as unknown as Record<string, unknown>),
-        mysqlAdmin.saveCrmPipeline(pipeline as unknown as Array<Record<string, unknown>>),
-        mysqlAdmin.saveCrmAssignmentMembers(assignmentMembers as unknown as Array<Record<string, unknown>>),
+        ...(section === 'assign'
+          ? [mysqlAdmin.saveCrmAssignmentMembers(assignmentMembers as unknown as Array<Record<string, unknown>>)]
+          : []),
       ]);
       notify('success', 'تم حفظ الإعدادات');
       onSynced();
@@ -269,19 +281,9 @@ export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [
     <Modal
       open
       onClose={onClose}
-      title="إعدادات العملاء المحتملين"
+      title={SECTION_TITLES[section]}
       icon={<Settings size={18} className="text-indigo-600" />}
     >
-
-        {/* Tabs */}
-        <div className="flex border-b border-gray-100">
-          {([['sources','المصادر'],['assign','التوزيع'],['pipeline','Pipeline'],['gsheet','Google Sheets']] as const).map(([t,l]) => (
-            <button key={t} onClick={() => setTab(t)}
-              className={`flex-1 py-2.5 text-xs font-bold transition ${
-                tab === t ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-50'
-              }`}>{l}</button>
-          ))}
-        </div>
 
         {/* Body */}
         <div className="p-5 min-h-[320px] max-h-[70vh] overflow-y-auto">
@@ -408,55 +410,6 @@ export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [
                   ))}
                 </div>
               )}
-            </div>
-          ) : tab === 'pipeline' ? (
-            <div className="space-y-3">
-              <p className="text-xs text-gray-500">رتّب مراحل الـPipeline وحدد الظاهر منها والانتقالات المسموحة. التحقق يتم على الخادم لكل تغيير حالة.</p>
-              {pipeline.map((stage, index) => (
-                <div key={stage.status} className="rounded-xl border border-gray-200 p-3 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="w-20 text-[11px] font-mono text-gray-500">{stage.status}</span>
-                    <input
-                      value={stage.label}
-                      onChange={e => setPipeline(rows => rows.map((row, i) => i === index ? { ...row, label: e.target.value } : row))}
-                      className="min-w-0 flex-1 rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
-                    />
-                    <button disabled={index === 0} onClick={() => setPipeline(rows => {
-                      const next = [...rows]; [next[index - 1], next[index]] = [next[index], next[index - 1]];
-                      return next.map((row, i) => ({ ...row, position: (i + 1) * 10 }));
-                    })} className="rounded border px-2 py-1 disabled:opacity-30">↑</button>
-                    <button disabled={index === pipeline.length - 1} onClick={() => setPipeline(rows => {
-                      const next = [...rows]; [next[index], next[index + 1]] = [next[index + 1], next[index]];
-                      return next.map((row, i) => ({ ...row, position: (i + 1) * 10 }));
-                    })} className="rounded border px-2 py-1 disabled:opacity-30">↓</button>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-4">
-                    <label className="flex items-center gap-1.5 text-xs">
-                      <input type="checkbox" checked={stage.showInPipeline} onChange={e => setPipeline(rows => rows.map((row, i) => i === index ? { ...row, showInPipeline: e.target.checked } : row))} />
-                      يظهر في اللوحة
-                    </label>
-                    <label className="flex items-center gap-1.5 text-xs">
-                      <input type="checkbox" checked={stage.isTerminal} onChange={e => setPipeline(rows => rows.map((row, i) => i === index ? { ...row, isTerminal: e.target.checked } : row))} />
-                      مرحلة نهائية
-                    </label>
-                  </div>
-                  <label className="block text-[11px] text-gray-500">
-                    الانتقالات المسموحة
-                    <select
-                      multiple
-                      value={stage.allowedNext}
-                      onChange={e => {
-                        const values = Array.from(e.currentTarget.selectedOptions, option => option.value);
-                        setPipeline(rows => rows.map((row, i) => i === index ? { ...row, allowedNext: values.length ? values : ['*'] } : row));
-                      }}
-                      className="mt-1 h-20 w-full rounded-lg border border-gray-200 px-2 py-1 text-xs"
-                    >
-                      <option value="*">كل المراحل</option>
-                      {pipeline.filter(item => item.status !== stage.status).map(item => <option key={item.status} value={item.status}>{item.label}</option>)}
-                    </select>
-                  </label>
-                </div>
-              ))}
             </div>
           ) : (
             <div className="space-y-4">

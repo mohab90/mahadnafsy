@@ -525,7 +525,7 @@ export function DashboardNavigation(props: Props) {
               <CompactRoleNav
                 tabs={[
                   { key: 'leads', label: 'العملاء المحتملون', icon: UserPlus },
-                  { key: 'sales_hub', label: 'فريق المبيعات', icon: TrendingUp },
+                  { key: 'sales_hub', label: 'أداء المبيعات', icon: TrendingUp },
                   { key: 'online_clients', label: 'عملاء الأونلاين', icon: UserCheck },
                   { key: 'online_hub', label: 'فريق التحصيل', icon: Monitor },
                   { key: 'team_inbox', label: 'صندوق الرسائل', icon: Inbox },

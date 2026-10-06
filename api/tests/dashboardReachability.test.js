@@ -25,9 +25,14 @@ const permissions = codeOnly(read('admin/pages/dashboard/dashboardShared.tsx'));
 const CONNECTED = ['sales_reports', 'sales_team', 'online_team', 'staff_performance'];
 
 test('each newly connected screen has a menu entry', () => {
-  for (const key of CONNECTED) {
+  for (const key of CONNECTED.filter(key => key !== 'sales_team')) {
     assert.match(nav, new RegExp(`key: '${key}', label: '`), `${key} has no way in`);
   }
+  // «أداء فريق المبيعات» is the «الشهر» section of «أداء المبيعات» (sales_hub),
+  // open to the same permissions it had.
+  assert.match(nav, /key: 'sales_hub', label: 'أداء المبيعات'/);
+  assert.match(read('admin/pages/dashboard/tabs/SalesPerformancePage.tsx'), /section === 'month' && <SalesTeamTab/);
+  assert.match(permissions, /sales_hub:\s*\['manage_sales_team', 'view_perf_sales'\]/);
 });
 
 test('and a route gate, or the entry opens nothing', () => {

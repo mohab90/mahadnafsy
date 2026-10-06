@@ -14,9 +14,10 @@ import type {
 } from '../../../types';
 import type { PaymentDraft } from '../../../components/PaymentModal';
 import { createClientPaymentDraft } from '../../../lib/clientActionDrafts';
-import type { NotifyFn } from './CrmSettingsModal';
+import type { CrmSettingsSection, NotifyFn } from './CrmSettingsModal';
 import { DEFAULT_SOURCES, isOnlineSource } from './crmConstants';
 import { useLeadSubTab } from './leads/useLeadSubTab';
+import type { SubTabKey } from './leads/LeadSubTabs';
 import type { ConvertLeadModalState } from './leads/ConvertLeadModal';
 import { useLeadPerformanceData } from './leads/useLeadPerformanceData';
 import { useServerLeadTable } from './leads/useServerLeadTable';
@@ -47,6 +48,12 @@ interface LeadsTabProps {
   fetchSalesData?: () => void;
   setActiveTab?: (tab: TabKey) => void;
   branchFilter?: string;
+  /**
+   * Only the team's performance — the targets, the scorecard, the charts —
+   * for «أداء المبيعات» (SalesPerformancePage), the page it moved to: «تاب
+   * اداء الفريق لازم يتشال من هنا ويكون صفحه لوحدة من برة القسم».
+   */
+  performanceOnly?: boolean;
 }
 
 import { normBranchId } from './leads/leadBranchUtils';
@@ -72,8 +79,6 @@ const LeadPerformanceOverview = React.lazy(() => import('./leads/LeadPerformance
 const LeadPipelineBoard = React.lazy(() => import('./leads/LeadPipelineBoard').then(module => ({ default: module.LeadPipelineBoard })));
 const LeadRemindersPanel = React.lazy(() => import('./leads/LeadRemindersPanel').then(module => ({ default: module.LeadRemindersPanel })));
 const CrmQuotesWorkspace = React.lazy(() => import('./leads/CrmQuotesWorkspace').then(module => ({ default: module.CrmQuotesWorkspace })));
-const CrmCoachingButton = React.lazy(() => import('./leads/CrmCoachingPanel').then(module => ({ default: module.CrmCoachingButton })));
-const TeamDailyReport = React.lazy(() => import('./leads/TeamDailyReport').then(module => ({ default: module.TeamDailyReport })));
 const LeadPipelineSettings = React.lazy(() => import('./leads/LeadPipelineSettings').then(module => ({ default: module.LeadPipelineSettings })));
 const SalesOffersPanel = React.lazy(() => import('./leads/SalesOffersPanel'));
 const LeadTable = React.lazy(() => import('./LeadTable').then(module => ({ default: module.LeadTable })));
@@ -86,7 +91,7 @@ const LeadSectionFallback = () => (
 );
 
 // ── Main Component ────────────────────────────────────────────────────────────
-export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLeads, salesOwnSubscribers, salesDataLoading, fetchSalesData, setActiveTab: setActiveDashboardTab, branchFilter: workspaceBranchFilter }: LeadsTabProps) {
+export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLeads, salesOwnSubscribers, salesDataLoading, fetchSalesData, setActiveTab: setActiveDashboardTab, branchFilter: workspaceBranchFilter, performanceOnly = false }: LeadsTabProps) {
   const {
     leads, leadStats, loadFullCrmData, loadFullLeads, staffMembers, subscribers, courses, bundles, updateLead, addLead,
     reloadLeads, reloadSubscribers, deleteLead, addSubscriber, updateSubscriber,
@@ -112,7 +117,8 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const draggedLeadRef = useRef<LeadItem | null>(null);
   const [dragOverCol, setDragOverCol] = useState<LeadStatus | null>(null);
 
-  const { subTab, setSubTab } = useLeadSubTab();
+  const { subTab: requestedSubTab, setSubTab } = useLeadSubTab();
+  const subTab: SubTabKey = performanceOnly ? 'performance' : requestedSubTab;
   // The whole leads table, fetched only for the sub-tabs that scan it. Opening
   // the CRM used to pull all 26,878 rows before drawing anything; the landing
   // table is paginated and the panels beside it read aggregates, so nothing here
@@ -153,7 +159,8 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const [waRepId, setWaRepId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAddLead, setShowAddLead] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
+  // Which section of the CRM settings is open, from the الإعدادات menu.
+  const [settingsSection, setSettingsSection] = useState<CrmSettingsSection | null>(null);
   // The staff-built tabs dialog, opened from the header's الإعدادات menu.
   const [showSectionTabs, setShowSectionTabs] = useState(false);
   const [showActionsMenu, setShowActionsMenu] = useState(false);
@@ -167,7 +174,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const [archiveBefore, setArchiveBefore] = useState('');
   // Which of «محلي جديد»'s four kinds the list shows; the waiting ones first.
   const [poolReason, setPoolReason] = useState<PoolReason>('waiting');
-  const [syncingSheet, setSyncingSheet] = useState(false);
   const [migratingBranches, setMigratingBranches] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<Set<LeadStatus>>(new Set());
@@ -179,9 +185,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   }, [workspaceBranchFilter]);
   const [targetMonth, setTargetMonth] = useState(cairoMonthOnly());
   // Bulk WhatsApp
-  const [bulkMode, setBulkMode] = useState(false);
-  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
-  const [showBulkWA, setShowBulkWA] = useState(false);
 
   // A collection officer works leads the way a rep does — their own list, no
   // desk tools. They were shown the manager's CRM: every tab, the team's
@@ -195,7 +198,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
       }
     : null;
   const canExportLeads = isAdmin || hasStaffPermission(permissionSubject, 'export_leads');
-  const canBulkWhatsApp = isAdmin || hasStaffPermission(permissionSubject, 'bulk_whatsapp');
   const canManageLeads = isAdmin || hasStaffPermission(permissionSubject, 'manage_leads');
   // Publishing an offer changes what a course may be sold for, so it sits behind
   // the same manager-level gate as sales targets — not `manage_leads`, which
@@ -465,9 +467,9 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const waActiveRep = waRepId ? salesReps.find(r => r.id === waRepId) ?? null : null;
 
   const {
-    handleSave, handleSyncSheet, handleDistribute, handleMigrateBranches,
+    handleSave, handleDistribute, handleMigrateBranches,
     handleAddLead, handleStatusChange, openLeadBook, handleLeadPayment,
-    convertLeadToSubscriber, handleExportVisibleLeadsCsv, handleCleanupJunkLeads,
+    convertLeadToSubscriber, handleExportVisibleLeadsCsv,
   } = useLeadActions({
     notify, updateLead, addLead, reloadLeads, reloadSubscribers,
     bulkRedistributeLeads,
@@ -475,7 +477,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     salesReps, leads, effectiveLeads, effectiveSubs, visibleLeads, bundles,
     courses, branchLabelMap, currentStaff, isAdmin, isSalesOnly: Boolean(isSalesOnly),
     statusDebounceRef, leadPayRow, setLeadPayRow, setLeadPayDraft,
-    convertLeadModal, setConvertLeadModal, setSelectedId, setSyncingSheet,
+    convertLeadModal, setConvertLeadModal, setSelectedId,
     setDistributing, setMigratingBranches,
   });
   // A card dragged to another column changes it on the server; the board is re-read.
@@ -507,6 +509,46 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     }
   };
 
+  if (performanceOnly) {
+    return (
+      <div className="space-y-5" dir="rtl">
+        <Suspense fallback={<LeadSectionFallback />}>
+          <LeadPerformanceOverview
+            targetMonth={targetMonth}
+            setTargetMonth={setTargetMonth}
+            salesReps={salesReps}
+            handleDistribute={handleDistribute}
+            distributing={distributing}
+            leads={leads}
+            salesPerformance={salesPerformance}
+            salesTargets={salesTargets}
+            saveSalesTargets={saveSalesTargets}
+            weeklyScorecard={weeklyScorecard}
+            smartIdleDays={smartIdleDays}
+            setSmartIdleDays={setSmartIdleDays}
+            smartRedistCandidates={smartRedistCandidates}
+            updateLead={updateLead}
+            notify={notify}
+            navigate={navigate}
+            scoredLeads={scoredLeads}
+            totalConverted={totalConverted}
+            overdueLeads={overdueLeads}
+          />
+        </Suspense>
+        <Suspense fallback={<div className="text-center py-10 text-gray-400">جاري تحميل الرسوم...</div>}>
+          <LeadPerformancePanel
+            leads={leads}
+            totalConverted={totalConverted}
+            monthlyTrend={monthlyTrend}
+            funnelData={funnelData}
+            sourcesData={sourcesData}
+            commsByRep={commsByRep}
+          />
+        </Suspense>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4" dir="rtl">
       {/* Row 1: Title + tabs + primary actions — all on one line */}
@@ -515,8 +557,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         canAdministerCrm={isAdmin}
         canManageLeads={canManageLeads}
         canExportLeads={canExportLeads}
-        canBulkWhatsApp={canBulkWhatsApp}
-        canManageDuplicates={isAdmin}
         totalOfflineLeads={offlineLeadTotal}
         overdueCount={overdueLeads.length}
         unassignedCount={unassignedCount}
@@ -527,19 +567,12 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         actionsMenuRef={actionsMenuRef}
         onToggleActionsMenu={() => setShowActionsMenu(v => !v)}
         onCloseActionsMenu={() => setShowActionsMenu(false)}
-        onOpenSettings={() => setShowSettings(true)}
+        onOpenSettings={setSettingsSection}
         onOpenSectionTabs={() => setShowSectionTabs(true)}
         notify={notify}
-        onSyncSheet={handleSyncSheet}
-        syncingSheet={syncingSheet}
         onMigrateBranches={handleMigrateBranches}
         migratingBranches={migratingBranches}
         onExportCsv={handleExportVisibleLeadsCsv}
-        bulkMode={bulkMode}
-        selectedLeadCount={selectedLeadIds.size}
-        onToggleBulkMode={() => { setBulkMode(b => !b); setSelectedLeadIds(new Set()); }}
-        onOpenBulkWhatsApp={() => setShowBulkWA(true)}
-        onCleanupJunk={handleCleanupJunkLeads}
       />
 
       {/* Staff-built tabs. Creating one lives in the header's own الإعدادات
@@ -651,10 +684,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
             dragOverCol={dragOverCol}
             setDragOverCol={setDragOverCol}
             draggedLeadRef={draggedLeadRef}
-            bulkMode={bulkMode}
             canManageLeads={canManageLeads}
-            selectedLeadIds={selectedLeadIds}
-            setSelectedLeadIds={setSelectedLeadIds}
             setSelectedId={setSelectedId}
             handleStatusChange={boardStatusChange}
             onOutcomeRecorded={async () => { await reloadLeads(); refreshServerBoard(); }}
@@ -850,52 +880,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         </Suspense>
       )}
 
-      {subTab === 'performance' && (
-        <Suspense fallback={<LeadSectionFallback />}>
-          <div className="space-y-5">
-            {/* The day first — «تقرير يومي في أول الصفحة» — and the quality
-                review one click away rather than on top of it. */}
-            <TeamDailyReport notify={notify} />
-            <div className="flex justify-end"><CrmCoachingButton notify={notify} /></div>
-            <LeadPerformanceOverview
-              targetMonth={targetMonth}
-              setTargetMonth={setTargetMonth}
-              salesReps={salesReps}
-              handleDistribute={handleDistribute}
-              distributing={distributing}
-              leads={leads}
-              salesPerformance={salesPerformance}
-              salesTargets={salesTargets}
-              saveSalesTargets={saveSalesTargets}
-              weeklyScorecard={weeklyScorecard}
-              smartIdleDays={smartIdleDays}
-              setSmartIdleDays={setSmartIdleDays}
-              smartRedistCandidates={smartRedistCandidates}
-              updateLead={updateLead}
-              notify={notify}
-              navigate={navigate}
-              scoredLeads={scoredLeads}
-              totalConverted={totalConverted}
-              overdueLeads={overdueLeads}
-            />
-          </div>
-        </Suspense>
-      )}
-
-      {/* ═══════════════ ANALYTICS / FEES ═══════════════ */}
-      {subTab === 'performance' && (
-        <Suspense fallback={<div className="text-center py-10 text-gray-400">جاري تحميل الرسوم...</div>}>
-          <LeadPerformancePanel
-            leads={leads}
-            totalConverted={totalConverted}
-            monthlyTrend={monthlyTrend}
-            funnelData={funnelData}
-            sourcesData={sourcesData}
-            commsByRep={commsByRep}
-          />
-        </Suspense>
-      )}
-
       {/* online25 section moved to Dashboard.tsx */}
 
       <Suspense fallback={null}>
@@ -977,8 +961,8 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
           setSalesNotifOpen={setSalesNotifOpen}
           setLeadsFollowupFilter={setLeadsFollowupFilter}
           setActiveDashboardTab={setActiveDashboardTab}
-          showSettings={showSettings}
-          setShowSettings={setShowSettings}
+          settingsSection={settingsSection}
+          setSettingsSection={setSettingsSection}
           notify={notify}
           salesReps={salesReps}
           reloadLeads={reloadLeads}
@@ -988,9 +972,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
           setShowAddLead={setShowAddLead}
           sources={crmSettings.leadSources}
           handleAddLead={handleAddLead}
-          showBulkWA={showBulkWA}
-          selectedLeads={leads.filter(l => selectedLeadIds.has(l.id))}
-          closeBulkWhatsApp={() => { setShowBulkWA(false); setBulkMode(false); setSelectedLeadIds(new Set()); }}
           waActiveRep={waActiveRep}
           setWaRepId={setWaRepId}
         />

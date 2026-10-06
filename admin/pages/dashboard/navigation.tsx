@@ -207,7 +207,9 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'leads', label: 'العملاء المحتملون', icon: UserPlus },
       { key: 'team_inbox', label: 'صندوق الرسائل', icon: Inbox },
       { key: 'whatsapp_web', label: 'واتسابي', icon: MessageCircle },
-      { key: 'sales_hub', label: 'فريق المبيعات والتقارير', icon: Users },
+      // The team's numbers in one page: the leads screen's «أداء الفريق», this
+      // hub and «أداء فريق المبيعات» (tabs/SalesPerformancePage.tsx).
+      { key: 'sales_hub', label: 'أداء المبيعات', icon: TrendingUp },
       // Four entries around one pipeline: two about working it — follow-ups and
       // scoring — and two about where it is heading. The rep checking today and
       // the manager setting next month sat in different corners of the menu
@@ -222,11 +224,6 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       // Reporting rather than team management: lead status, revenue by course
       // and revenue by product. view_reports, not view_staff.
       { key: 'sales_reports', label: 'تقارير المبيعات', icon: BarChart3 },
-      // Overlaps the hub above, which shows the same per-rep leads, conversions,
-      // revenue and monthly target in a fuller form. Listed because it was asked
-      // for; if the team finds it says nothing the hub does not, this is the
-      // entry to drop.
-      { key: 'sales_team', label: 'أداء فريق المبيعات', icon: Users },
     ],
   },
   {

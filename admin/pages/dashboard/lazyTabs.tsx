@@ -67,6 +67,7 @@ export const RetentionTab = lazy(() => import('./tabs/RetentionTab'));
 export const RevenueSourcesTab = lazy(() => import('./tabs/RevenueSourcesTab'));
 export const SalesGoalsTab = lazy(() => import('./tabs/SalesGoalsTab'));
 export const SalesHubTab = lazy(() => import('./tabs/SalesHubTab'));
+export const SalesPerformancePage = lazy(() => import('./tabs/SalesPerformancePage'));
 export const SalesReportsTab = lazy(() => import('./tabs/SalesReportsTab'));
 export const SalesTeamTab = lazy(() => import('./tabs/SalesTeamTab'));
 export const SecurityDashboardTab = lazy(() => import('./tabs/SecurityDashboardTab'));

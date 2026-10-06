@@ -6,7 +6,7 @@ import {
   LeadsTab,
   MarketingHubTab,
   OnlineTeamTab,
-  SalesHubTab,
+  SalesPerformancePage,
 } from './lazyTabs';
 import type { TabKey } from './navigation';
 import { TabErrorBoundary } from '../../../shared/ui/TabErrorBoundary';
@@ -98,14 +98,19 @@ export function DashboardGrowthOpsTabs({
     );
   }
 
+  // «أداء المبيعات»: the leads screen's team performance, «مركز المبيعات» and
+  // «فريق المبيعات والتشغيل» on one page (tabs/SalesPerformancePage.tsx).
   if (activeTab === 'sales_hub') {
     return (
       <Suspense fallback={fallback('border-violet-500')}>
         <TabErrorBoundary>
-          <SalesHubTab
+          <SalesPerformancePage
             notify={notify}
             salesTargets={leadsSalesTargets}
             onOpenStaffProfile={(staffId: string) => navigate(`/staff/${staffId}`)}
+            leadsTabProps={{
+              staffSelf, salesOwnLeads, salesOwnSubscribers, salesDataLoading, fetchSalesData, setActiveTab, branchFilter,
+            }}
           />
         </TabErrorBoundary>
       </Suspense>

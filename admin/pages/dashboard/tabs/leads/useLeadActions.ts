@@ -51,7 +51,6 @@ interface LeadActionsParams {
   convertLeadModal: ConvertLeadModalState;
   setConvertLeadModal: Dispatch<SetStateAction<ConvertLeadModalState>>;
   setSelectedId: Dispatch<SetStateAction<string | null>>;
-  setSyncingSheet: Dispatch<SetStateAction<boolean>>;
   setDistributing: Dispatch<SetStateAction<boolean>>;
   setMigratingBranches: Dispatch<SetStateAction<boolean>>;
 }
@@ -79,7 +78,7 @@ export function useLeadActions(params: LeadActionsParams) {
     salesReps, leads, effectiveLeads, effectiveSubs, visibleLeads, bundles,
     courses, branchLabelMap, currentStaff, isAdmin, isSalesOnly,
     statusDebounceRef, leadPayRow, setLeadPayRow, setLeadPayDraft,
-    convertLeadModal, setConvertLeadModal, setSelectedId, setSyncingSheet,
+    convertLeadModal, setConvertLeadModal, setSelectedId,
     setDistributing, setMigratingBranches,
   } = params;
 
@@ -87,19 +86,6 @@ export function useLeadActions(params: LeadActionsParams) {
     if (!await updateLead(updated)) return notify('error', 'تعذر حفظ بيانات العميل');
     setSelectedId(null);
     notify('success', 'تم حفظ بيانات العميل');
-  };
-
-  const handleSyncSheet = async () => {
-    setSyncingSheet(true);
-    try {
-      const result = await mysqlAdmin.syncAllSheets();
-      await reloadLeads();
-      notify('success', `تمت المزامنة · ${result.imported} جديد، ${result.skipped} مكرر`);
-    } catch (error) {
-      notify('error', error instanceof Error ? error.message : 'فشلت المزامنة');
-    } finally {
-      setSyncingSheet(false);
-    }
   };
 
   const handleDistribute = async () => {
@@ -247,20 +233,8 @@ export function useLeadActions(params: LeadActionsParams) {
     }
   };
 
-  const handleCleanupJunkLeads = async () => {
-    if (!await confirmDialog('سيتم إخفاء العملاء المحتملين بدون اسم ولا هاتف. تأكيد؟')) return;
-    try {
-      const result = await mysqlAdmin.adminPost<Record<string, unknown>>('/admin/cleanup-junk-leads', {});
-      notify('success', `تم إخفاء ${Number(result.hidden) || 0} سجل جنك`);
-      await reloadLeads();
-    } catch {
-      notify('error', 'فشل التنظيف');
-    }
-  };
-
   return {
     handleSave,
-    handleSyncSheet,
     handleDistribute,
     handleMigrateBranches,
     handleAddLead,
@@ -269,6 +243,5 @@ export function useLeadActions(params: LeadActionsParams) {
     handleLeadPayment,
     convertLeadToSubscriber,
     handleExportVisibleLeadsCsv: () => downloadLeadsCsv(visibleLeads),
-    handleCleanupJunkLeads,
   };
 }

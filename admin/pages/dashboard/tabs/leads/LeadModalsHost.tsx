@@ -4,9 +4,9 @@ import type { Bundle, Course, LeadItem, StaffMember } from '../../../../types';
 import type { PaymentDraft } from '../../../../components/PaymentModal';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { CrmSettingsModal } from '../CrmSettingsModal';
-import type { CrmSettings, NotifyFn } from '../CrmSettingsModal';
+import type { CrmSettings, CrmSettingsSection, NotifyFn } from '../CrmSettingsModal';
 import { ConvertLeadModal, type ConvertLeadModalState } from './ConvertLeadModal';
-import { AddLeadModal, BulkWhatsAppModal, WhatsAppRepModal } from './LeadSubcomponents';
+import { AddLeadModal, WhatsAppRepModal } from './LeadSubcomponents';
 import { LeadSalesNotificationsPanel } from './LeadSalesNotificationsPanel';
 import type { TabKey } from '../../navigation';
 
@@ -34,8 +34,8 @@ interface LeadModalsHostProps {
   setSalesNotifOpen: (open: boolean) => void;
   setLeadsFollowupFilter: (filter: 'all' | 'today' | 'overdue') => void;
   setActiveDashboardTab?: (tab: TabKey) => void;
-  showSettings: boolean;
-  setShowSettings: (open: boolean) => void;
+  settingsSection: CrmSettingsSection | null;
+  setSettingsSection: (section: CrmSettingsSection | null) => void;
   notify: NotifyFn;
   salesReps: StaffMember[];
   reloadLeads: () => void | Promise<void>;
@@ -45,9 +45,6 @@ interface LeadModalsHostProps {
   setShowAddLead: (open: boolean) => void;
   sources: string[];
   handleAddLead: (...args: any[]) => Promise<void>;
-  showBulkWA: boolean;
-  selectedLeads: LeadItem[];
-  closeBulkWhatsApp: () => void;
   waActiveRep: StaffMember | null;
   setWaRepId: (id: string | null) => void;
 }
@@ -72,8 +69,8 @@ export function LeadModalsHost({
   setSalesNotifOpen,
   setLeadsFollowupFilter,
   setActiveDashboardTab,
-  showSettings,
-  setShowSettings,
+  settingsSection,
+  setSettingsSection,
   notify,
   salesReps,
   reloadLeads,
@@ -83,9 +80,6 @@ export function LeadModalsHost({
   setShowAddLead,
   sources,
   handleAddLead,
-  showBulkWA,
-  selectedLeads,
-  closeBulkWhatsApp,
   waActiveRep,
   setWaRepId,
 }: LeadModalsHostProps) {
@@ -130,9 +124,10 @@ export function LeadModalsHost({
         onShowToday={() => { setLeadsFollowupFilter('today'); setSalesNotifOpen(false); setActiveDashboardTab?.('leads'); }}
       />
 
-      {showSettings && (
+      {settingsSection && (
         <CrmSettingsModal
-          onClose={() => setShowSettings(false)}
+          section={settingsSection}
+          onClose={() => setSettingsSection(null)}
           notify={notify}
           salesReps={salesReps}
           branchOptions={instituteBranches}
@@ -140,7 +135,7 @@ export function LeadModalsHost({
           bundles={bundles}
           knownSources={[...new Set(leads.map(lead => lead.source).filter((source): source is string => Boolean(source)))]}
           onSynced={async () => {
-            setShowSettings(false);
+            setSettingsSection(null);
             await Promise.all([reloadLeads(), reloadPipeline()]);
             mysqlAdmin.getCrmSettings().then((data) => {
               if (data && (data as Partial<CrmSettings>).leadSources?.length) {
@@ -161,14 +156,6 @@ export function LeadModalsHost({
           branches={instituteBranches}
           onClose={() => setShowAddLead(false)}
           onSave={handleAddLead}
-        />
-      )}
-
-      {showBulkWA && (
-        <BulkWhatsAppModal
-          selectedLeads={selectedLeads}
-          onClose={closeBulkWhatsApp}
-          notify={notify}
         />
       )}
 

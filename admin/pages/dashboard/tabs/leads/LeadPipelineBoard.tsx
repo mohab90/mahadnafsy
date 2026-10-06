@@ -15,10 +15,7 @@ type LeadPipelineBoardProps = {
   dragOverCol: LeadStatus | null;
   setDragOverCol: React.Dispatch<React.SetStateAction<LeadStatus | null>>;
   draggedLeadRef: React.MutableRefObject<LeadItem | null>;
-  bulkMode: boolean;
   canManageLeads: boolean;
-  selectedLeadIds: Set<string>;
-  setSelectedLeadIds: React.Dispatch<React.SetStateAction<Set<string>>>;
   setSelectedId: React.Dispatch<React.SetStateAction<string | null>>;
   handleStatusChange: (lead: LeadItem, status: LeadStatus) => void;
   openLeadBook: (lead: LeadItem) => void;
@@ -39,10 +36,7 @@ export function LeadPipelineBoard({
   dragOverCol,
   setDragOverCol,
   draggedLeadRef,
-  bulkMode,
   canManageLeads,
-  selectedLeadIds,
-  setSelectedLeadIds,
   setSelectedId,
   handleStatusChange,
   openLeadBook,
@@ -112,26 +106,10 @@ export function LeadPipelineBoard({
                       onDragStart={() => { draggedLeadRef.current = lead; }}
                       onDragEnd={() => { draggedLeadRef.current = null; setDragOverCol(null); }}
                     >
-                      {canManageLeads && bulkMode && (
-                        <input
-                          type="checkbox"
-                          checked={selectedLeadIds.has(lead.id)}
-                          onChange={event => {
-                            event.stopPropagation();
-                            setSelectedLeadIds(prev => {
-                              const next = new Set(prev);
-                              event.target.checked ? next.add(lead.id) : next.delete(lead.id);
-                              return next;
-                            });
-                          }}
-                          className="absolute top-2 left-2 z-10 w-4 h-4 accent-emerald-600"
-                          onClick={event => event.stopPropagation()}
-                        />
-                      )}
                       <LeadCard
                         lead={lead}
                         score={lead._score || 0}
-                        onSelect={() => canManageLeads && !bulkMode && setSelectedId(lead.id)}
+                        onSelect={() => canManageLeads && setSelectedId(lead.id)}
                         onStatusChange={nextStatus => handleStatusChange(lead, nextStatus)}
                         onBook={canManageLeads ? openLeadBook : undefined}
                         onContact={canManageLeads ? onLogContact : undefined}

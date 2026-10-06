@@ -1,9 +1,8 @@
 import React from 'react';
 import {
-  Download, FolderKanban, Layers, MapPin, MessageCircle,
-  RefreshCw, Settings, UserPlus,
+  Download, FolderKanban, GitMerge, Layers, MapPin, Settings, Sheet, Shuffle, Tag, UserPlus,
 } from 'lucide-react';
-import type { NotifyFn } from '../CrmSettingsModal';
+import type { CrmSettingsSection, NotifyFn } from '../CrmSettingsModal';
 import { CsvImportButton } from './CsvImportButton';
 import { LeadSubTabs, type SubTabKey } from './LeadSubTabs';
 
@@ -12,8 +11,6 @@ interface LeadsTabHeaderProps {
   canAdministerCrm: boolean;
   canManageLeads: boolean;
   canExportLeads: boolean;
-  canBulkWhatsApp: boolean;
-  canManageDuplicates: boolean;
   totalOfflineLeads: number;
   overdueCount: number;
   unassignedCount?: number;
@@ -24,20 +21,13 @@ interface LeadsTabHeaderProps {
   actionsMenuRef: React.RefObject<HTMLDivElement | null>;
   onToggleActionsMenu: () => void;
   onCloseActionsMenu: () => void;
-  onOpenSettings: () => void;
+  onOpenSettings: (section: CrmSettingsSection) => void;
   /** «تابات القسم» — the staff-built tabs, which used to carry a gear of their own. */
   onOpenSectionTabs?: () => void;
   notify: NotifyFn;
-  onSyncSheet: () => void;
-  syncingSheet: boolean;
   onMigrateBranches: () => void;
   migratingBranches: boolean;
   onExportCsv: () => void;
-  bulkMode: boolean;
-  selectedLeadCount: number;
-  onToggleBulkMode: () => void;
-  onOpenBulkWhatsApp: () => void;
-  onCleanupJunk: () => void;
 }
 
 export function LeadsTabHeader({
@@ -45,8 +35,6 @@ export function LeadsTabHeader({
   canAdministerCrm,
   canManageLeads,
   canExportLeads,
-  canBulkWhatsApp,
-  canManageDuplicates,
   totalOfflineLeads,
   overdueCount,
   unassignedCount = 0,
@@ -60,16 +48,9 @@ export function LeadsTabHeader({
   onOpenSettings,
   onOpenSectionTabs,
   notify,
-  onSyncSheet,
-  syncingSheet,
   onMigrateBranches,
   migratingBranches,
   onExportCsv,
-  bulkMode,
-  selectedLeadCount,
-  onToggleBulkMode,
-  onOpenBulkWhatsApp,
-  onCleanupJunk,
 }: LeadsTabHeaderProps) {
   // The two actions sit on the title's row and the sub-tabs get a row of their
   // own. They shared one wrapping row, and with a dozen tabs ahead of them in it
@@ -83,7 +64,7 @@ export function LeadsTabHeader({
             <FolderKanban size={22} className="text-primary-600" />
             {isSalesOnly ? 'عملائي المحتملون' : 'CRM — إدارة المبيعات'}
           </h2>
-          {(canAdministerCrm || canExportLeads || canBulkWhatsApp) && (
+          {(canAdministerCrm || canExportLeads) && (
             <p className="text-sm text-gray-500 mt-0.5">
               {totalOfflineLeads} عميل محتمل ·{' '}
               <span className={overdueCount > 0 ? 'text-red-600 font-bold' : ''}>{overdueCount} يحتاج متابعة عاجلة</span>
@@ -115,44 +96,53 @@ export function LeadsTabHeader({
                 <Settings size={16} />
               </button>
               {showActionsMenu && (
-                <div className="absolute left-0 top-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-xl z-50 w-52 py-1 overflow-hidden">
+                <div className="absolute left-0 top-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-xl z-50 w-56 py-1 overflow-hidden">
+                  {/* Each of what was one «إعدادات CRM» window is its own entry:
+                      «كل تاب بيها تظهر في زر الاعدادات من برة». */}
                   {canAdministerCrm && (<>
                     <button
-                      onClick={() => { onOpenSettings(); onCloseActionsMenu(); }}
+                      onClick={() => { onOpenSettings('sources'); onCloseActionsMenu(); }}
                       className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition text-right"
                     >
-                      <Settings size={14} className="text-indigo-500 flex-shrink-0" /> إعدادات CRM
+                      <Tag size={14} className="text-indigo-500 flex-shrink-0" /> مصادر الليدز
                     </button>
-                    {/* The staff-built tabs. They had a second gear of their own,
-                        halfway down the page — two «إعدادات» on one screen. */}
+                    <button
+                      onClick={() => { onOpenSettings('assign'); onCloseActionsMenu(); }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition text-right"
+                    >
+                      <Shuffle size={14} className="text-indigo-500 flex-shrink-0" /> التوزيع على السيلز
+                    </button>
+                    <button
+                      onClick={() => { setSubTab('pipelineSettings'); onCloseActionsMenu(); }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition text-right"
+                    >
+                      <Settings size={14} className="text-purple-500 flex-shrink-0" /> مراحل البايبلاين
+                    </button>
+                    {/* The sheets and their sync, together: «خلي مزامنه الشيتات مع الشيتات». */}
+                    <button
+                      onClick={() => { onOpenSettings('gsheet'); onCloseActionsMenu(); }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition text-right"
+                    >
+                      <Sheet size={14} className="text-emerald-600 flex-shrink-0" /> الشيتات ومزامنتها
+                    </button>
+                    <button
+                      onClick={() => { setSubTab('duplicates'); onCloseActionsMenu(); }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition text-right"
+                    >
+                      <GitMerge size={14} className="text-amber-600 flex-shrink-0" /> دمج التكرار
+                    </button>
                     {onOpenSectionTabs && (
-                      <button
-                        onClick={() => { onOpenSectionTabs(); onCloseActionsMenu(); }}
-                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition text-right"
-                      >
-                        <Layers size={14} className="text-emerald-500 flex-shrink-0" /> تابات القسم
-                      </button>
-                    )}
-                    {canManageDuplicates && (
-                      <button
-                        onClick={() => { setSubTab('pipelineSettings'); onCloseActionsMenu(); }}
-                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition text-right"
-                      >
-                        <Settings size={14} className="text-purple-500 flex-shrink-0" /> إعداد المراحل
-                      </button>
+                    <button
+                      onClick={() => { onOpenSectionTabs(); onCloseActionsMenu(); }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition text-right"
+                    >
+                      <Layers size={14} className="text-emerald-500 flex-shrink-0" /> تابات القسم
+                    </button>
                     )}
                     <div className="border-t border-gray-100 my-0.5" />
                     <div className="px-3 py-1.5">
                       <CsvImportButton notify={notify} onImported={() => {}} />
                     </div>
-                    <button
-                      onClick={() => { onSyncSheet(); onCloseActionsMenu(); }}
-                      disabled={syncingSheet}
-                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-blue-700 hover:bg-blue-50 transition disabled:opacity-60 text-right"
-                    >
-                      <RefreshCw size={14} className={`flex-shrink-0 ${syncingSheet ? 'animate-spin' : ''}`} />
-                      {syncingSheet ? 'جاري...' : 'مزامنة الشيت'}
-                    </button>
                     <button
                       onClick={() => { onMigrateBranches(); onCloseActionsMenu(); }}
                       disabled={migratingBranches}
@@ -172,36 +162,6 @@ export function LeadsTabHeader({
                       <Download size={14} className="text-gray-500 flex-shrink-0" /> تصدير CSV
                     </button>
                   )}
-                  {canBulkWhatsApp && (<>
-                    <div className="border-t border-gray-100 my-0.5" />
-                    <button
-                      onClick={() => { onToggleBulkMode(); onCloseActionsMenu(); }}
-                      className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm transition text-right ${
-                        bulkMode ? 'text-emerald-700 bg-emerald-50' : 'text-gray-700 hover:bg-gray-50'
-                      }`}
-                    >
-                      <MessageCircle size={14} className="flex-shrink-0" />
-                      {bulkMode ? `إرسال جماعي (${selectedLeadCount})` : 'إرسال جماعي'}
-                    </button>
-                    {bulkMode && selectedLeadCount > 0 && (
-                      <button
-                        onClick={() => { onOpenBulkWhatsApp(); onCloseActionsMenu(); }}
-                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition text-right font-bold"
-                      >
-                        <MessageCircle size={14} className="flex-shrink-0" />
-                        إرسال واتساب ({selectedLeadCount})
-                      </button>
-                    )}
-                  </>)}
-                  {canAdministerCrm && (<>
-                    <div className="border-t border-gray-100 my-0.5" />
-                    <button
-                      onClick={() => { onCleanupJunk(); onCloseActionsMenu(); }}
-                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition text-right"
-                    >
-                      <span className="flex-shrink-0">🗑</span> تنظيف جنك
-                    </button>
-                  </>)}
                 </div>
               )}
             </div>
@@ -212,7 +172,6 @@ export function LeadsTabHeader({
         <LeadSubTabs
           subTab={subTab}
           isSalesOnly={isSalesOnly}
-          canManageDuplicates={canManageDuplicates}
           overdueCount={overdueCount}
           unassignedCount={unassignedCount}
           setSubTab={setSubTab}
