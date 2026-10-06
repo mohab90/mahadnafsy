@@ -165,7 +165,7 @@ router.post('/api/auth/register', registerLimiter, requireDb, requireTenantQuota
     // Keyed to the account (not a lead, which no longer exists at this
     // point) so a retried registration can't double-fire it.
     if (phone || normalizedEmail) {
-      require('../lib/lifecycle').trigger('lead_created', {
+      require('../../lib/lifecycle').trigger('lead_created', {
         name: (name || '').trim(),
         email: normalizedEmail,
         phone,

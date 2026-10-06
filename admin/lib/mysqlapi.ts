@@ -769,6 +769,10 @@ export const mysqlAdmin = {
       { method: 'POST', body: JSON.stringify(body) }, A
     ),
   deleteLead: (id: string) => del(`/admin/leads/${id}`),
+  /** Hide a lead (it goes back to «محلي جديد» for the desk) or show it again. */
+  setLeadHidden: (id: string, hidden: boolean) =>
+    apiFetch<{ ok: boolean; id: string; hidden: boolean }>(
+      `/admin/leads/${encodeURIComponent(id)}/visibility`, { method: 'POST', body: JSON.stringify({ hidden }) }, A),
   getLeadTimeline: (id: string) => apiFetch<AR[]>(`/admin/leads/${id}/timeline`, {}, A),
   listLeadDuplicates: () => apiFetch<{ groups: AR[]; count: number }>('/admin/leads/duplicates', {}, A),
   listLeadMergeHistory: (limit = 50) => apiFetch<AR[]>(`/admin/leads/merge-history?limit=${limit}`, {}, A),

@@ -1,4 +1,4 @@
-import { TERMINAL_LEAD_STATUSES } from '../../../../../shared/leadStatuses';
+import { CONVERTED_LEAD_STATUSES, TERMINAL_LEAD_STATUSES } from '../../../../../shared/leadStatuses';
 /**
  * Which lead sources belong to an archive tab rather than the live pool.
  *
@@ -44,82 +44,64 @@ export { TERMINAL_LEAD_STATUSES };
 
 type PoolLead = {
   hidden?: boolean; assignedSalesId?: string | null; assignedCsId?: string | null; source?: string | null;
-  status?: string | null; branch?: string | null;
+  status?: string | null; branch?: string | null; phone?: string | null; email?: string | null;
+};
+
+/**
+ * Why a lead is in «محلي جديد» (or, abroad, «داتا سعودي»), or null when it is not:
+ *   waiting   nobody has it and it is still open — what «توزيع تلقائي» hands out
+ *   closed    nobody has it and its status ended it (wrong number, not interested…)
+ *   archived  the cold-lead job archived it, whoever had it
+ *   hidden    someone hid it — a rep, the desk, «حذف» — and it can still be reached
+ *
+ * «مينفعش عميل مش ظاهر ادامي خلي اي عميل مورشف او مش ظاهر يكون موجود في محلي
+ * جديد». On 6 Oct 2026, 1,747 leads were on no tab at all: hidden ones, and
+ * archived ones nobody held. The pool held only the first kind of the four.
+ * A client (converted) and an imported archive row («محلي قديم») have their own
+ * screens. A hidden row with neither a number nor an address is not a person
+ * anyone can call — the junk the clean-up hid — and stays hidden. The server's
+ * copy is api/lib/leadPoolFilter.js POOL_REASON; keep the two in step.
+ */
+export type PoolReason = 'waiting' | 'closed' | 'archived' | 'hidden';
+
+export const poolReasonOf = (lead: PoolLead): PoolReason | null => {
+  const status = String(lead.status || '').trim().toLowerCase();
+  if (CONVERTED_LEAD_STATUSES.has(status)) return null;
+  if (lead.hidden) return String(lead.phone || '').trim() || String(lead.email || '').trim() ? 'hidden' : null;
+  if (isArchiveSource(lead.source)) return null;
+  if (status === 'archived') return 'archived';
+  if (lead.assignedSalesId || lead.assignedCsId) return null;
+  return TERMINAL_LEAD_STATUSES.has(status) ? 'closed' : 'waiting';
+};
+
+export const POOL_REASON_LABELS: Record<PoolReason, string> = {
+  waiting: 'مستني توزيع', closed: 'مقفول من غير مندوب', archived: 'مؤرشف', hidden: 'مخفي',
 };
 
 /**
  * Waiting for a rep: what «توزيع تلقائي» draws from, and where whatever it
  * leaves behind — a day's cap reached, the deliberate no-rep slot — stays.
- *
- * «اي ليد مش بيتوزع اتوماتك بيظهر في الصفحه دي». The screen and the server
- * disagreed about it. The tab excluded only converted and lost, so a lead the
- * auto-archiver had closed as never contacted, or one marked wrong number, sat
- * in «محلي جديد» as if it were waiting — though no distribution would ever hand
- * it out. And the badge, the counter above the table and the two tables each
- * counted their own version: 4, 3 and 2 for the same five leads.
- *
  * A lead handed to a collection officer from the remaining data has an owner
  * too: it leaves the pool, so a sales distribution cannot give the same person
  * to somebody else (api/routes/admin/leads.js reads assigned_cs_id the same way).
  */
-export const isUndistributedLead = (lead: PoolLead): boolean =>
-  !lead.hidden && !lead.assignedSalesId && !lead.assignedCsId
-  && !isArchiveSource(lead.source)
-  && !TERMINAL_LEAD_STATUSES.has(String(lead.status || '').trim().toLowerCase());
+export const isUndistributedLead = (lead: PoolLead): boolean => poolReasonOf(lead) === 'waiting';
 
 /** «محلي جديد». */
-export const isLocalNewLead = (lead: PoolLead): boolean => isUndistributedLead(lead) && !isInternationalLead(lead);
+export const isLocalNewLead = (lead: PoolLead): boolean => poolReasonOf(lead) !== null && !isInternationalLead(lead);
 
-/** «دولي جديد». */
-export const isDawliNewLead = (lead: PoolLead): boolean => isUndistributedLead(lead) && isInternationalLead(lead);
+/** «دولي جديد», the half of «داتا سعودي» waiting for someone. */
+export const isDawliNewLead = (lead: PoolLead): boolean => poolReasonOf(lead) !== null && isInternationalLead(lead);
 
-/** Arabic names for the statuses that take a lead out of the waiting pool. */
-const TERMINAL_STATUS_AR: Record<string, string> = {
-  archived: 'مؤرشف', lost: 'مفقود', converted: 'محوّل', won: 'تم الإغلاق بنجاح', closed: 'مغلق',
-  not_interested: 'غير مهتم', not_interested_hidden: 'غير مهتم (مخفي)', wrong_number: 'رقم خاطئ',
-  unqualified: 'غير مؤهل', disqualified: 'مستبعد',
-};
+/** How many of a pool tab's leads are there for each reason (GET /admin/leads/pool). */
+export type PoolBreakdown = Record<PoolReason, number>;
 
-export interface UnassignedBreakdown {
-  /** Every visible lead with no sales rep and no collection officer. */
-  withoutOwner: number;
-  /** In «محلي جديد». */
-  localNew: number;
-  /** In «دولي جديد». */
-  dawliNew: number;
-  /** Imported archive rows — they wait in «محلي قديم» / «دولي قديم», not here. */
-  archiveSource: number;
-  /** Closed out by status, so never handed out: one entry per status. */
-  terminal: Array<{ status: string; label: string; count: number }>;
-}
-
-export const terminalStatusLabel = (status: string): string => TERMINAL_STATUS_AR[status] || status;
-
-/**
- * Where every lead that nobody owns actually is.
- *
- * «محلي جديد» lists only the live waiting pool, so a lead without a rep can be
- * absent from it for three reasons that look identical from the tab: it is
- * international, it carries an archive source, or its status is final — most
- * often «archived», which the cold-lead job writes without touching the owner.
- * The tab said «غير موزّع: 12» and nothing about the rest, so the desk read the
- * gap as leads that had vanished. This counts each reason.
- */
-export const explainUnassigned = (leads: ReadonlyArray<PoolLead>): UnassignedBreakdown => {
-  let withoutOwner = 0; let localNew = 0; let dawliNew = 0; let archiveSource = 0;
-  const terminal = new Map<string, number>();
+/** The same count, over leads already in hand. */
+export const poolBreakdownOf = (leads: ReadonlyArray<PoolLead>): PoolBreakdown => {
+  const counts: PoolBreakdown = { waiting: 0, closed: 0, archived: 0, hidden: 0 };
   for (const lead of leads) {
-    if (lead.hidden || lead.assignedSalesId || lead.assignedCsId) continue;
-    withoutOwner++;
-    if (isArchiveSource(lead.source)) { archiveSource++; continue; }
-    const status = String(lead.status || '').trim().toLowerCase();
-    if (TERMINAL_LEAD_STATUSES.has(status)) { terminal.set(status, (terminal.get(status) || 0) + 1); continue; }
-    if (isInternationalLead(lead)) dawliNew++; else localNew++;
+    const reason = poolReasonOf(lead);
+    if (reason) counts[reason]++;
   }
-  return {
-    withoutOwner, localNew, dawliNew, archiveSource,
-    terminal: [...terminal.entries()]
-      .map(([status, count]) => ({ status, label: TERMINAL_STATUS_AR[status] || status, count }))
-      .sort((a, b) => b.count - a.count),
-  };
+  return counts;
 };

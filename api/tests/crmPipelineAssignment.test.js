@@ -50,7 +50,7 @@ test('pipeline save rejects unknown statuses and upserts tenant-owned configurat
   assert.equal(upsert.params[1], 'new');
 });
 
-test('assignment picker honors branch policy, availability, capacity and weighted load', async () => {
+test('assignment picker honors branch policy, availability, capacity and weighted load (by load)', async () => {
   const calls = [];
   const db = {
     async query(sql, params) {
@@ -68,9 +68,9 @@ test('assignment picker honors branch policy, availability, capacity and weighte
       return [{ affectedRows: 1 }];
     },
   };
-  const rep = await getNextSalesRep('tenant-a', db, { branch: 'DAQQI' });
+  const rep = await getNextSalesRep('tenant-a', db, { branch: 'DAQQI', mode: 'least' });
   assert.deepEqual(rep, { id: 'rep-b', name: 'B' });
-  assert.ok(calls.some(call => call.sql.includes('last_assigned_at=NOW()') && call.params[0] === 'p-b'));
+  assert.ok(calls.some(call => call.sql.includes('last_assigned_at=NOW(3)') && call.params[0] === 'p-b'));
 });
 
 function assignmentDb(staffRows, loads = []) {
@@ -101,9 +101,8 @@ test('a tenant that never saved the distribution screen distributes to every act
     { id: 'rep-a', name: 'A', policy_id: null },
     { id: 'rep-b', name: 'B', policy_id: null },
   ]);
-  const rotation = createRepRotation(await listDistributableReps('tenant-a', db), { mode: 'rr', start: 1 });
-  assert.deepEqual([rotation.next().id, rotation.next().id, rotation.next().id], ['rep-b', 'rep-a', 'rep-b']);
-  assert.equal(rotation.index, 4);
+  const rotation = createRepRotation(await listDistributableReps('tenant-a', db), { mode: 'rr' });
+  assert.deepEqual([rotation.next().id, rotation.next().id, rotation.next().id], ['rep-a', 'rep-b', 'rep-a']);
 });
 
 test('batch rotation stops giving a rep leads at their cap', async () => {

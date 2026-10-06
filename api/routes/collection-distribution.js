@@ -31,8 +31,12 @@ router.get('/api/admin/collection-distribution', ...guard, async (req, res) => {
     // What each officer holds, and what they received in their own period —
     // the number their cap is checked against.
     const [held] = await pool.query(
+      // The online desk's clients only, as the officer's screen and the online
+      // report count them — Dokki clients an import named an officer on are not
+      // her load here.
       `SELECT assigned_cs_id AS id, COUNT(*) AS n FROM subscribers
-        WHERE tenant_id=? AND deleted_at IS NULL AND assigned_cs_id IS NOT NULL GROUP BY assigned_cs_id`,
+        WHERE tenant_id=? AND deleted_at IS NULL AND assigned_cs_id IS NOT NULL
+          AND COALESCE(branch, '') NOT IN ('DAQQI','TAGAMOA') GROUP BY assigned_cs_id`,
       [req.tenantId]);
     const received = await collectionIntake(pool, req.tenantId, config.members);
     const counts = {};

@@ -18,7 +18,7 @@ const { COURSE_COLS, mapCourse, getNextClientCode } = require('../../../lib/mapp
 const { createNotification } = require('../../../lib/notification');
 const { logLeadEvent, logLeadEventStrict } = require('../../../lib/crm');
 const { normalizeLeadStatus, transitionLead } = require('../../../lib/leadState');
-const { createRepRotation, getNextSalesRep, listDistributableReps } = require('../../../lib/leadAssignment');
+const { createRepRotation, distributionMode, getNextSalesRep, listDistributableReps } = require('../../../lib/leadAssignment');
 const { DEFAULT_ARCHIVE_SOURCE, excludeArchiveSourcesSql } = require('../../../lib/leadArchive');
 const { appendLeadInteraction, queueLeadWhatsAppBatch } = require('../../../lib/leadInteractions');
 const { grantCourseEntitlement } = require('../../../lib/entitlements');
@@ -42,7 +42,7 @@ const { VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES } = require('../../../con
 const { safeIsoString, safeDateOnly, sqlCairoToday, sqlCairoDayStartUtc, cairoToday, addDaysToDateOnly, cairoDayStartUtc } = require('../../../lib/dates');
 const { keyset } = require('../../../lib/pagination');
 const { leadTableFilter, leadTableSearch } = require('../../../lib/leadTableFilter');
-const { leadPoolFilter, unassignedBreakdown } = require('../../../lib/leadPoolFilter');
+const { leadPoolFilter, poolBreakdown, POOL_REASON_COLUMN } = require('../../../lib/leadPoolFilter');
 const { identitySpellings } = require('../../../lib/phoneNumber');
 const { branchIdForBranch } = require('../../../lib/branches');
 const { postPaymentJournal, logPaymentAudit } = require('../../../lib/finance');
@@ -131,6 +131,7 @@ module.exports = {
   normalizeLeadStatus,
   transitionLead,
   createRepRotation,
+  distributionMode,
   getNextSalesRep,
   listDistributableReps,
   DEFAULT_ARCHIVE_SOURCE,
@@ -173,7 +174,8 @@ module.exports = {
   leadTableFilter,
   leadTableSearch,
   leadPoolFilter,
-  unassignedBreakdown,
+  poolBreakdown,
+  POOL_REASON_COLUMN,
   identitySpellings,
   branchIdForBranch,
   postPaymentJournal,

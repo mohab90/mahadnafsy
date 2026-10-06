@@ -126,7 +126,7 @@ router.post('/api/auth/whatsapp/verify-otp', otpLimiter, async (req, res) => {
     // email one did. Without this a customer could sign up, and sales would
     // never see them: the account exists, but nobody has a lead to follow up.
     if (created) {
-      require('../lib/lifecycle').trigger('lead_created', {
+      require('../../lib/lifecycle').trigger('lead_created', {
         name: user.name || '',
         phone,
         tenantId,

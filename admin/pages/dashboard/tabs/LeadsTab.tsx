@@ -58,7 +58,7 @@ import { LeadEmptyDiagnostics } from './leads/LeadEmptyDiagnostics';
 import { useLeadActions } from './leads/useLeadActions';
 import { useLeadCrmBootstrap } from './leads/useLeadCrmBootstrap';
 import { useLeadRemoteReminders } from './leads/useLeadRemoteReminders';
-import { isLocalNewLead, TERMINAL_LEAD_STATUSES } from './leads/leadSourceGroups';
+import { isLocalNewLead, poolReasonOf, POOL_REASON_LABELS, TERMINAL_LEAD_STATUSES, type PoolReason } from './leads/leadSourceGroups';
 import { poolViewOf, useLeadPool, useLocalNewCount } from './leads/useLeadPool';
 import type { TabKey } from '../navigation';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -165,6 +165,8 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const [distributing, setDistributing] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [archiveBefore, setArchiveBefore] = useState('');
+  // Which of «محلي جديد»'s four kinds the list shows; the waiting ones first.
+  const [poolReason, setPoolReason] = useState<PoolReason>('waiting');
   const [syncingSheet, setSyncingSheet] = useState(false);
   const [migratingBranches, setMigratingBranches] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<Set<string>>(new Set());
@@ -297,18 +299,18 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     [staffMembers]
   );
   // "محلي جديد" pool — the same predicate LeadArchiveViews lists, so the badge,
-  // the counter and the table agree.
-  const unassignedLeads = useMemo(() => leads.filter(isLocalNewLead), [leads]);
+  // the counter and the table agree. The count is of the ones waiting for a rep.
+  const unassignedLeads = useMemo(() => leads.filter(lead => isLocalNewLead(lead) && poolReasonOf(lead) === 'waiting'), [leads]);
   // The pool tabs read their own pool from the server (leads/useLeadPool.ts)
   // instead of filtering every lead here.
   const poolView = poolViewOf(subTab);
-  const leadPool = useLeadPool(poolView);
+  const leadPool = useLeadPool(poolView, poolView === 'localNew' ? poolReason : null);
   // The server's count everywhere: on «محلي جديد» from the pool itself, on
   // every other tab from a count-only request. What is loaded is the fallback.
   const serverLocalNewCount = useLocalNewCount(`${leads.length}:${leadPool.total}:${distributing}:${archiving}`);
-  const unassignedCount = poolView === 'localNew' && leadPool.ready ? leadPool.total : (serverLocalNewCount ?? unassignedLeads.length);
-  // Where the leads nobody owns are, including the ones this tab does not list.
-  const unassignedBreakdown = subTab === 'localNew' ? leadPool.breakdown : null;
+  const unassignedCount = poolView === 'localNew' && leadPool.breakdown ? leadPool.breakdown.waiting : (serverLocalNewCount ?? unassignedLeads.length);
+  // How many of each kind «محلي جديد» holds — the chips above its list.
+  const poolBreakdown = subTab === 'localNew' ? leadPool.breakdown : null;
   // A distribution or a move to the archive changes the pool on the server.
   const poolBusy = distributing || archiving;
   const wasPoolBusy = useRef(false);
@@ -734,20 +736,27 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
               )}
             </div>
           </div>
-          {unassignedBreakdown && unassignedBreakdown.withoutOwner > unassignedBreakdown.localNew && (
-            <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 space-y-1" role="status">
-              <p className="font-bold">
-                في {unassignedBreakdown.withoutOwner.toLocaleString('ar-EG-u-nu-latn')} ليد بدون مندوب، المعروض هنا منهم {unassignedBreakdown.localNew.toLocaleString('ar-EG-u-nu-latn')} بس. الباقي موجود في أماكن تانية:
-              </p>
-              <ul className="list-disc pr-5 space-y-0.5">
-                {unassignedBreakdown.dawliNew > 0 && <li>{unassignedBreakdown.dawliNew.toLocaleString('ar-EG-u-nu-latn')} في تبويب «داتا سعودي»</li>}
-                {unassignedBreakdown.archiveSource > 0 && <li>{unassignedBreakdown.archiveSource.toLocaleString('ar-EG-u-nu-latn')} داتا مستوردة قديمة (محلي قديم / دولي قديم)</li>}
-                {unassignedBreakdown.terminal.map(t => (
-                  <li key={t.status}>
-                    {t.count.toLocaleString('ar-EG-u-nu-latn')} حالتهم «{t.label}» — مش بتتوزع{t.status === 'archived' ? ' (الأرشفة التلقائية للليدات اللي محدش كلمها، من إعدادات الـCRM)' : ''}
-                  </li>
-                ))}
-              </ul>
+          {/* Every lead nobody is working is here, by kind: «مينفعش عميل مش ظاهر
+              ادامي خلي اي عميل مورشف او مش ظاهر يكون موجود في محلي جديد».
+              Handing one to a rep brings it back into play — un-hidden, and an
+              archived one as new. */}
+          {poolBreakdown && (
+            <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="نوع العملاء">
+              {(['waiting', 'archived', 'hidden', 'closed'] as const).map(reason => (
+                <button key={reason} type="button" role="tab" aria-selected={poolReason === reason}
+                  onClick={() => setPoolReason(reason)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${poolReason === reason
+                    ? 'border-indigo-600 bg-indigo-600 text-white'
+                    : 'border-gray-200 bg-white text-gray-700 hover:border-indigo-300'}`}>
+                  {POOL_REASON_LABELS[reason]} ({poolBreakdown[reason].toLocaleString('ar-EG-u-nu-latn')})
+                </button>
+              ))}
+              <span className="text-[11px] text-gray-500">
+                {poolReason === 'archived' ? 'الأرشفة التلقائية للليدات اللي محدش كلمها، من إعدادات الـCRM — بيرجع «جديد» لما توزعه'
+                  : poolReason === 'hidden' ? 'اتخفى من سيلز أو من الإدارة — بيظهر تاني لما توزعه'
+                    : poolReason === 'closed' ? 'حالته مقفولة ومحدش ماسكه — مش بيدخل التوزيع التلقائي'
+                      : 'دول اللي التوزيع التلقائي بيوزعهم'}
+              </span>
             </div>
           )}
           {/* The list itself is LeadArchiveViews' below — the one with bulk

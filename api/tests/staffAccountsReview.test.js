@@ -83,7 +83,10 @@ test('the remaining data goes to a collection officer in one request, into the c
   const leads = leadsRouteSource();
   const route = leads.slice(leads.indexOf("router.post('/api/admin/leads/assign-collection'"), leads.indexOf("router.post('/api/admin/leads/bulk-whatsapp'"));
   assert.match(route, /UPPER\(role\)='COLLECTION'/);
-  assert.match(route, /AND \(l\.assigned_sales_id IS NULL OR l\.assigned_sales_id=''\)\s*AND \(l\.assigned_cs_id IS NULL OR l\.assigned_cs_id=''\)/);
+  assert.match(route, /AND \(\(l\.assigned_sales_id IS NULL OR l\.assigned_sales_id=''\)\s*AND \(l\.assigned_cs_id IS NULL OR l\.assigned_cs_id=''\) OR l\.hidden=1 OR l\.status='archived'\)/);
+  // A hidden or archived lead handed out comes back into play.
+  assert.match(route, /hidden=0,\s*status=IF\(status IN \(\?\), 'new', status\)/);
+  assert.match(leadsRouteSource(), /const BACK_IN_PLAY = \['archived', 'not_interested_hidden'\];/);
   assert.match(route, /UPDATE leads SET assigned_cs_id=\?, assigned_cs_name=\?/);
   const archive = read('admin/pages/dashboard/tabs/leads/ArchiveTab.tsx');
   assert.match(archive, /adminPost<\{ assigned: number; skipped: number \}>\('\/admin\/leads\/assign-collection'/);

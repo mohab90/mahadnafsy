@@ -393,6 +393,52 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
   }
 });
 
+// POST /api/admin/leads/:id/visibility { hidden } — hide a lead, or show it again.
+//
+// The eye on the table sent the whole row back through POST /api/admin/leads
+// with one field flipped, and a rep got «فشل حفظ البيانات. تحقق من الاتصال
+// بالإنترنت» whenever any other field of that row no longer passed — 14 times
+// on 6 Oct, all «Lead not found» for a row the rep's screen still held after it
+// had been handed to someone else. This changes the one column and says why
+// when it cannot. A hidden lead leaves the rep's list and waits in «محلي جديد»
+// (lib/leadPoolFilter.js) for the desk to hand out again.
+router.post('/api/admin/leads/:id/visibility', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), async (req, res) => {
+  const hidden = req.body?.hidden === true;
+  if (typeof req.body?.hidden !== 'boolean') return res.status(400).json({ error: 'hidden must be true or false' });
+  const scope = leadScope(req, 'l');
+  if (scope.none) return res.status(403).json({ error: 'Lead is outside your data scope' });
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[lead]] = await conn.query(
+      `SELECT l.id, l.hidden FROM leads l
+        WHERE l.tenant_id=? AND l.id=? AND l.deleted_at IS NULL AND l.merged_into_lead_id IS NULL${scope.sql}
+        LIMIT 1 FOR UPDATE`,
+      [req.tenantId, req.params.id, ...scope.params]);
+    if (!lead) {
+      await conn.rollback();
+      const [[elsewhere]] = await pool.query('SELECT id FROM leads WHERE tenant_id=? AND id=? LIMIT 1', [req.tenantId, req.params.id]);
+      return res.status(404).json({
+        error: elsewhere ? 'العميل ده مبقاش معاك — اتنقل لحد تاني. حدّث الصفحة.' : 'العميل ده مش موجود',
+        code: elsewhere ? 'LEAD_MOVED' : 'LEAD_NOT_FOUND',
+      });
+    }
+    if (Boolean(lead.hidden) !== hidden) {
+      await conn.query('UPDATE leads SET hidden=?, updated_at=NOW() WHERE tenant_id=? AND id=?', [hidden ? 1 : 0, req.tenantId, lead.id]);
+      await logLeadEventStrict(lead.id, hidden ? 'hidden' : 'restored',
+        hidden ? 'اتخفى — رجع لمحلي جديد' : 'ظهر تاني',
+        { actor: req.user?.email || null, staffId: req.staffRecord?.id || null, staffName: req.staffRecord?.name || null },
+        req.tenantId, conn);
+    }
+    await conn.commit();
+    res.json({ ok: true, id: lead.id, hidden });
+  } catch (e) {
+    await conn.rollback().catch(() => {});
+    logger.error('[lead-visibility]', e.message);
+    sendRouteError(res, e);
+  } finally { conn.release(); }
+});
+
 // ── POST /api/admin/import/daqqi — bulk import subscribers + enrollments + payments for DAQQI branch ──
 router.delete('/api/admin/leads/:id', requireAuth, requireAdmin, requirePermission('manage_leads'), async (req, res) => {
   const conn = await pool.getConnection();

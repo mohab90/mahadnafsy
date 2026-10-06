@@ -159,6 +159,9 @@ export interface ArchiveTabProps {
   /** Clears the filter bar and the workspace branch, so the whole pool shows. */
   onShowAll?: () => void;
 }
+// lead-status-subset: what a lead handed out of the pool comes back from — archived by the cold-lead job, or hidden as not interested — as new
+const BACK_IN_PLAY = ['archived', 'not_interested_hidden'];
+
 export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLeads, notify, courses, bundles, navigate, deleteLead, addSubscriber, updateSubscriber, subscribers, salesReps, isSalesOnly, canManageLeads, onBook, branchOptions, sources, title = 'محلي قديم — الاستيراد والتعيين الجماعي', defaultSource = 'محلي قديم', tabLabel, customFilter, hideImport = false, panels, matchesFilters, onShowAll }: ArchiveTabProps) {
   const [archiveSheet, setArchiveSheet] = useState<ImportSheet | null>(null);
   const [archiveParseErr, setArchiveParseErr] = useState('');
@@ -291,8 +294,10 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
     }
   };
 
-  // The view's own source filter, then whatever the filter bar is asking for.
-  const poolLeads = leads.filter(l => !l.hidden && (customFilter ? customFilter(l) : l.source === archiveSource));
+  // The view's own filter, then whatever the filter bar is asking for. A tab
+  // with a filter of its own decides about hidden leads itself: «محلي جديد»
+  // keeps the hidden ones the desk can hand out again.
+  const poolLeads = leads.filter(l => (customFilter ? customFilter(l) : (!l.hidden && l.source === archiveSource)));
   const archiveLeads = poolLeads.filter(l => (matchesFilters ? matchesFilters(l) : true));
   // «غير موزّع: 262» above an empty table: the counter counts the pool and the
   // table counts what the filter bar lets through, and the filter bar — a
@@ -321,9 +326,15 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
   // The collection team is not in the main distribution; they get what is left
   // — «في الداتا المتبقيه اوزعلهم منها» — so for them a lead with anybody on
   // it, rep or officer, is already taken.
-  const assignedAlready = (lead: typeof archiveLeads[number]) => (bulkAssignRole === 'sales'
-    ? Boolean(lead.assignedSalesId)
-    : Boolean(lead.assignedSalesId || lead.assignedCsId));
+  //
+  // A lead the cold-lead job archived, or that someone hid, is back with the
+  // desk whoever held it: it is not "taken", it is what «محلي جديد» keeps.
+  const assignedAlready = (lead: typeof archiveLeads[number]) => {
+    if (lead.hidden || (lead.status as string) === 'archived') return false;
+    return bulkAssignRole === 'sales'
+      ? Boolean(lead.assignedSalesId)
+      : Boolean(lead.assignedSalesId || lead.assignedCsId);
+  };
   const undistributed = includeAssigned ? archiveLeads : archiveLeads.filter(lead => !assignedAlready(lead));
   const alreadyCount = archiveLeads.length - archiveLeads.filter(lead => !assignedAlready(lead)).length;
   const filteredBulkLeads = bulkCourseFilter
@@ -381,9 +392,10 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
       // used to keep that status on the rep's list — terminal, so it never reached
       // their reminders or their work queue — and was taken straight back by the
       // next run. It arrives as new, with the status change on its timeline.
+      // A hidden one is shown again — it is on the rep's list from now on.
       await updateLead({
-        ...lead, source, assignedSalesId: staff.id, assignedSalesName: staff.name,
-        status: (lead.status as string) === 'archived' ? 'new' : lead.status,
+        ...lead, source, assignedSalesId: staff.id, assignedSalesName: staff.name, hidden: false,
+        status: BACK_IN_PLAY.includes(lead.status as string) ? 'new' : lead.status,
       });
       done++;
     }

@@ -6,6 +6,50 @@ const { logLeadEventStrict } = require('./crm');
 const { findLeadById } = require('./leadRepository');
 const { normalizeBranch, parseRuleList, repTakesLead } = require('./leadAssignmentPolicy');
 const { intakeByStaff, hasRoom } = require('./assignmentQuota');
+const { getTenantSetting } = require('./tenantSettings');
+
+// «طريقة التوزيع» on the CRM's «التوزيع» screen: 'rr' — each new lead to the
+// next rep in turn —, 'least' — to whoever holds the fewest open leads —, or
+// 'none' — nobody automatically.
+//
+// Only the manual sheet import read it. Every lead arriving by itself
+// (Facebook, the site, WhatsApp, the hourly backlog) went by open load
+// whatever the screen said, so the rep holding the fewest leads took one after
+// another until their cap: «ليه توزيع الداتا مش بيكون بالترتيب المفروض كل عميل
+// جديد بيروح لسيلز جديد لحد ما يخلص الليمت بتاعه».
+const MODES = new Set(['rr', 'least', 'none']);
+async function distributionMode(tenantId, db = pool) {
+  try {
+    const settings = await getTenantSetting('crm_settings', { tenantId, fallback: {}, db });
+    return MODES.has(settings?.autoAssign) ? settings.autoAssign : 'rr';
+  } catch {
+    return 'rr';
+  }
+}
+
+const byName = (a, b) => String(a.name).localeCompare(String(b.name));
+// Whose turn it is. In turn: whoever was handed a lead longest ago (never
+// first). By load: the fewest open leads for their weight, the longest wait
+// breaking a tie.
+function turnOrder(mode) {
+  return mode === 'least'
+    ? (a, b) => (a.open / a.weight) - (b.open / b.weight) || a.lastAt - b.lastAt || byName(a, b)
+    : (a, b) => a.lastAt - b.lastAt || byName(a, b);
+}
+const timeOf = value => (value ? new Date(value).getTime() || 0 : 0);
+
+// The turn each rep took in a run, written back in that order: a millisecond
+// apart, so the next run carries on from where this one stopped. They were all
+// stamped with the same NOW(), and the next run could not tell who was first.
+async function saveTurns(db, tenantId, reps) {
+  const taken = reps.filter(rep => rep.given > 0 && rep.policyId).sort((a, b) => a.lastAt - b.lastAt);
+  for (const [rank, rep] of taken.entries()) {
+    await db.query(
+      'UPDATE crm_assignment_members SET last_assigned_at=NOW(3) + INTERVAL ? MICROSECOND WHERE id=? AND tenant_id=?',
+      [rank * 1000, rep.policyId, tenantId]
+    );
+  }
+}
 
 // Who may receive leads automatically. The CRM settings "التوزيع" screen is
 // the authority: once any rep has a row there, only reps with a row that is
@@ -97,32 +141,37 @@ async function listDistributableReps(tenantId, db = pool, options = {}) {
 // assignment gave a rep with room for one more as many as the rotation reached
 // them. Returns null once everyone is capped; callers leave the rest unassigned,
 // which is where «محلي جديد» finds them.
-//   mode 'rr'    — strict rotation, resumable from `start`
+//   mode 'rr'    — in turn: whoever was handed a lead longest ago
 //   mode 'least' — lowest weighted open load first
+// In turn, it carries on from the reps' last_assigned_at; it started from the
+// first name every time, so each bulk distribution opened with the same rep.
 //
 // Pass the lead to next() and only reps whose course and source rules take it
 // are considered; null then also means nobody takes this one.
-function createRepRotation(reps, { mode = 'rr', start = 0 } = {}) {
-  let index = Number(start) || 0;
+function createRepRotation(reps, { mode = 'rr' } = {}) {
+  const order = turnOrder(mode);
+  for (const rep of reps) {
+    rep.lastAt = rep.lastAt ?? timeOf(rep.lastAssignedAt);
+    rep.weight = Math.max(Number(rep.weight) || 1, 0.1);
+    rep.given = rep.given || 0;
+  }
+  let clock = Math.max(Date.now(), ...reps.map(rep => rep.lastAt));
   return {
     next(lead = null) {
       const open = reps.filter(rep => (rep.maxOpenLeads == null || rep.activeLeads < rep.maxOpenLeads)
         && hasRoom({ intake_limit: rep.intakeLimit }, rep.taken)
         && repTakesLead(rep, lead));
       if (!open.length) return null;
-      let rep;
-      if (mode === 'least') {
-        rep = [...open].sort((a, b) =>
-          (a.activeLeads / a.weight) - (b.activeLeads / b.weight) || String(a.name).localeCompare(String(b.name)))[0];
-      } else {
-        rep = open[index % open.length];
-        index += 1;
-      }
+      for (const entry of open) entry.open = entry.activeLeads;
+      const rep = [...open].sort(order)[0];
       rep.activeLeads += 1;
       rep.taken = (rep.taken || 0) + 1;
+      rep.given += 1;
+      rep.lastAt = ++clock;
       return rep;
     },
-    get index() { return index; },
+    /** Persist the turns, so the next distribution carries on from here. */
+    flush(db, tenantId) { return saveTurns(db, tenantId, reps); },
   };
 }
 
@@ -132,20 +181,19 @@ function createRepRotation(reps, { mode = 'rr', start = 0 } = {}) {
 // make them look permanently "full". options.lead ({ source, courseIds }, or a
 // leads row) limits the pick to reps whose course and source rules take it.
 async function getNextSalesRep(tenantId, db = pool, options = {}) {
+  const mode = options.mode || await distributionMode(tenantId, db);
+  if (mode === 'none') return null;
   const reps = await listDistributableReps(tenantId, db, {
     branch: options.branch,
     teamKey: options.teamKey,
     lead: options.lead,
   });
-  reps.sort((a, b) =>
-    (a.activeLeads / a.weight) - (b.activeLeads / b.weight) ||
-    new Date(a.lastAssignedAt || 0) - new Date(b.lastAssignedAt || 0) ||
-    String(a.name).localeCompare(String(b.name))
-  );
-  const rep = reps[0] || null;
+  const rep = reps
+    .map(entry => ({ ...entry, open: entry.activeLeads, lastAt: timeOf(entry.lastAssignedAt) }))
+    .sort(turnOrder(mode))[0] || null;
   if (rep?.policyId) {
     await db.query(
-      'UPDATE crm_assignment_members SET last_assigned_at=NOW() WHERE id=? AND tenant_id=?',
+      'UPDATE crm_assignment_members SET last_assigned_at=NOW(3) WHERE id=? AND tenant_id=?',
       [rep.policyId, tenantId]
     );
   }
@@ -227,6 +275,7 @@ async function assignLead({ tenantId, leadId, salesId, actor = null, reason = 'L
  */
 async function createBatchAssigner(tenantId, db = pool, options = {}) {
   const branch = normalizeBranch(options.branch);
+  const order = turnOrder(options.mode || await distributionMode(tenantId, db));
   const teamKey = String(options.teamKey || 'sales').trim().toLowerCase();
 
   const [rows] = await db.query(
@@ -290,7 +339,9 @@ async function createBatchAssigner(tenantId, db = pool, options = {}) {
     sources: row.policy_id == null ? null : parseRuleList(row.sources_json),
   }));
 
-  let clock = Date.now();
+  // Later than any turn already on record, so a rep served in this run is
+  // never mistaken for one still waiting.
+  let clock = Math.max(Date.now(), ...state.map(rep => rep.lastAt));
 
   return {
     /**
@@ -303,11 +354,7 @@ async function createBatchAssigner(tenantId, db = pool, options = {}) {
         .filter(rep => repTakesLead(rep, lead))
         .filter(rep => rep.maxOpen == null || rep.open < Number(rep.maxOpen))
         .filter(rep => hasRoom({ intake_limit: rep.intakeLimit }, rep.taken))
-        .sort((a, b) =>
-          (a.open / a.weight) - (b.open / b.weight) ||
-          a.lastAt - b.lastAt ||
-          String(a.name).localeCompare(String(b.name))
-        );
+        .sort(order);
       const rep = open[0];
       if (!rep) return null;
       rep.open += 1;
@@ -330,17 +377,9 @@ async function createBatchAssigner(tenantId, db = pool, options = {}) {
         && hasRoom({ intake_limit: rep.intakeLimit }, rep.taken));
     },
 
-    /** Persist the rotation so the next run does not restart from the same rep. */
-    async flush() {
-      for (const rep of state) {
-        if (!rep.given || !rep.policyId) continue;
-        await db.query(
-          'UPDATE crm_assignment_members SET last_assigned_at=NOW() WHERE id=? AND tenant_id=?',
-          [rep.policyId, tenantId]
-        );
-      }
-    },
+    /** Persist the turns so the next run carries on from the rep after the last. */
+    flush() { return saveTurns(db, tenantId, state); },
   };
 }
 
-module.exports = { assignLead, createBatchAssigner, createRepRotation, getNextSalesRep, listDistributableReps };
+module.exports = { assignLead, createBatchAssigner, createRepRotation, distributionMode, getNextSalesRep, listDistributableReps };

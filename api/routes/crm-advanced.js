@@ -15,7 +15,7 @@ const { listPipeline, savePipeline } = require('../lib/leadPipeline');
 const { listAssignmentMembers, saveAssignmentMembers } = require('../lib/leadAssignmentPolicy');
 const { createRepRotation, listDistributableReps } = require('../lib/leadAssignment');
 const { excludeArchiveSourcesSql } = require('../lib/leadArchive');
-const { buildTeamDailyReport, reportRange } = require('../lib/teamDailyReport');
+const { buildTeamDailyReport, listReceivedLeads, reportRange } = require('../lib/teamDailyReport');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 
 function routeError(res, error, message = 'crm advanced route failed') {
@@ -49,6 +49,20 @@ router.get('/api/admin/crm/team-report', requireAuth, requireAdminOrStaff, requi
     }));
   } catch (e) {
     routeError(res, e, 'crm team report failed');
+  }
+});
+
+// GET /api/admin/crm/team-report/received?rep=…&from=…&to=… — the leads behind
+// one rep's «ليدز استلمها». A rep may ask for their own only.
+router.get('/api/admin/crm/team-report/received', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
+  try {
+    const range = reportRange(req.query);
+    const isSales = String(req.staffRecord?.role || '').toLowerCase() === 'sales';
+    const repId = isSales ? req.staffRecord.id : String(req.query.rep || '');
+    if (!repId) return res.status(400).json({ error: 'rep is required' });
+    res.json({ ...range, rows: await listReceivedLeads({ tenantId: req.tenantId, repId, ...range }) });
+  } catch (e) {
+    routeError(res, e, 'crm team report received failed');
   }
 });
 

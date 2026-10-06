@@ -73,10 +73,14 @@ after(async () => { if (!skip) { await pool.query('DELETE FROM leads WHERE tenan
 /** Every lead as the browser received them (hidden included), via the list route. */
 async function everyLead() {
   const visible = await call('/api/admin/leads', { limit: '5000' });
-  // The list hides hidden rows; the browser predicates reject them anyway, and
-  // reading them straight lets the test prove that.
-  const [hidden] = await pool.query("SELECT id FROM leads WHERE tenant_id=? AND hidden=1", [T]);
-  return [...visible, ...hidden.map(r => ({ id: r.id, hidden: true }))];
+  // The list leaves hidden rows out; «محلي جديد» keeps the ones with a number,
+  // so they are read whole, as the pool route would send them.
+  const [hidden] = await pool.query(
+    "SELECT id, phone, email, source, status, branch, assigned_sales_id, assigned_cs_id FROM leads WHERE tenant_id=? AND hidden=1", [T]);
+  return [...visible, ...hidden.map(r => ({
+    id: r.id, hidden: true, phone: r.phone, email: r.email, source: r.source, status: r.status, branch: r.branch,
+    assignedSalesId: r.assigned_sales_id || null, assignedCsId: r.assigned_cs_id || null,
+  }))];
 }
 
 test('each pool tab returns exactly the leads the browser\'s own rules pick', { skip }, async () => {
@@ -96,15 +100,17 @@ test('each pool tab returns exactly the leads the browser\'s own rules pick', { 
   }
 });
 
-test('the «بدون مندوب» breakdown matches explainUnassigned', { skip }, async () => {
+test('the per-reason counts match poolBreakdownOf, and each reason lists its own', { skip }, async () => {
   const leads = await everyLead();
-  const expected = B.explainUnassigned(leads);
-  const { breakdown } = await call('/api/admin/leads/pool', { view: 'localNew' });
-  assert.equal(breakdown.withoutOwner, expected.withoutOwner);
-  assert.equal(breakdown.localNew, expected.localNew);
-  assert.equal(breakdown.dawliNew, expected.dawliNew);
-  assert.equal(breakdown.archiveSource, expected.archiveSource);
-  assert.deepEqual(
-    Object.fromEntries(breakdown.terminal.map(t => [t.status, t.count])),
-    Object.fromEntries(expected.terminal.map(t => [t.status, t.count])));
+  for (const view of ['localNew', 'dawli']) {
+    const inView = leads.filter(view === 'localNew' ? B.isLocalNewLead : B.isDawliNewLead);
+    const { breakdown } = await call('/api/admin/leads/pool', { view });
+    assert.deepEqual(breakdown, B.poolBreakdownOf(inView), view);
+  }
+  for (const reason of ['waiting', 'closed', 'archived', 'hidden']) {
+    const expected = leads.filter(lead => B.isLocalNewLead(lead) && B.poolReasonOf(lead) === reason);
+    const body = await call('/api/admin/leads/pool', { view: 'localNew', reason });
+    assert.deepEqual(body.rows.map(r => r.id).sort(), expected.map(r => r.id).sort(), reason);
+    assert.ok(body.rows.every(row => row.poolReason === reason), `${reason}: each row says why`);
+  }
 });

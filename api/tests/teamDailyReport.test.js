@@ -40,7 +40,9 @@ test('each column is compared the way it is stored', async () => {
   const q = pattern => seen.find(entry => pattern.test(entry.sql));
   // UTC instants: Cairo's midnight, 21:00 the evening before in September.
   assert.deepEqual(q(/FROM communications/).params, ['t', '2026-09-26 21:00:00', '2026-09-27 21:00:00']);
-  assert.deepEqual(q(/COUNT\(\*\) AS newLeads/).params, ['t', '2026-09-26 21:00:00', '2026-09-27 21:00:00']);
+  // Handed out in the range, and of those, how many arrived in it.
+  assert.deepEqual(q(/COUNT\(\*\) AS newLeads/).params,
+    ['2026-09-26 21:00:00', '2026-09-27 21:00:00', 't', '2026-09-26 21:00:00', '2026-09-27 21:00:00']);
   // Calendar days: payments.date and next_follow_up_date hold a picked day.
   assert.deepEqual(q(/FROM payments/).params, ['t', '2026-09-27', '2026-09-28']);
   assert.deepEqual(q(/followUpsDue/).params.slice(0, 4), ['2026-09-27', '2026-09-28', '2026-09-27', 't']);

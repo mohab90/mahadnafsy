@@ -6,7 +6,7 @@ const router  = express.Router();
 
 const { pool } = require('../lib/db');
 const { getNextClientCode } = require('../lib/mappers');
-const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
+const { getTenantSetting } = require('../lib/tenantSettings');
 const { requireAuth, requireAdmin, requirePermission } = require('../middleware/auth');
 const { isHtmlResponse, fetchCsvFollowRedirects, syncAllConfiguredSheets } = require('../lib/sheets');
 const { parseCsv } = require('../lib/csv');
@@ -97,10 +97,7 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
 
     // Only reps switched on in the CRM "التوزيع" screen (lib/leadAssignment.js).
     const reps = autoAssign === 'none' ? [] : await listDistributableReps(req.tenantId);
-    const rrStart = autoAssign === 'rr' && reps.length > 0
-      ? parseInt(await getTenantSetting('crm_rr_index', { tenantId: req.tenantId, fallback: 0 }), 10) || 0
-      : 0;
-    const rotation = createRepRotation(reps, { mode: autoAssign, start: rrStart });
+    const rotation = createRepRotation(reps, { mode: autoAssign });
     // Deleted (hidden) and merged leads count as already imported, or every
     // lead an admin deletes comes straight back on the next sync.
     const [existing] = await pool.execute('SELECT phone FROM leads WHERE tenant_id=?', [req.tenantId]);
@@ -176,13 +173,8 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
       if (insertResult.affectedRows) imported++; else skipped++;
     }
 
-    // Persist updated RR index
-    if (autoAssign === 'rr' && reps.length > 0) {
-      await setTenantSetting('crm_rr_index', rotation.index, {
-        tenantId: req.tenantId,
-        actorId: req.user?.uid || req.user?.email || null,
-      });
-    }
+    // The turns, so the next import or arriving lead carries on from here.
+    if (reps.length > 0) await rotation.flush(pool, req.tenantId);
 
     res.json({ ok: true, imported, skipped, total: dataLines.length });
   } catch (e) {

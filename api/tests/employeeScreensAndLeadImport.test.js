@@ -105,30 +105,24 @@ test('the 7-day chart scales both series into one fixed track', () => {
 const lead = (extra = {}) => ({ id: Math.random().toString(36), hidden: false, assignedSalesId: null, assignedCsId: null,
   source: 'facebook', status: 'new', branch: 'DAQQI', ...extra });
 
-test('every lead without an owner is accounted for, with the reason it is not in «محلي جديد»', { skip: !groups }, () => {
+test('every lead nobody is working is counted under its reason', { skip: !groups }, () => {
   const leads = [
-    lead(), lead(), lead(),                                            // محلي جديد
-    lead({ branch: 'ONLINE_ABROAD' }),                                 // دولي جديد
-    lead({ source: 'محلي قديم' }), lead({ source: 'استيراد 2024' }),   // imported archive
-    lead({ status: 'archived' }), lead({ status: 'archived' }), lead({ status: 'lost' }), // final status
-    lead({ assignedSalesId: 'rep' }),                                  // owned: not counted
-    lead({ hidden: true }),                                            // hidden: not counted
+    lead({ phone: '010' }), lead({ phone: '011' }), lead({ phone: '012' }), // waiting
+    lead({ source: 'محلي قديم' }), lead({ source: 'استيراد 2024' }),      // imported archive: their own tab
+    lead({ status: 'archived' }), lead({ status: 'archived', assignedSalesId: 'rep' }), // archived, whoever had it
+    lead({ status: 'lost' }),                                             // closed, nobody on it
+    lead({ assignedSalesId: 'rep' }),                                     // being worked: not in the pool
+    lead({ hidden: true, phone: '013' }),                                 // hidden by someone
+    lead({ hidden: true, phone: '', email: '' }),                         // hidden junk: nobody to call
   ];
-  const result = groups.explainUnassigned(leads);
-  assert.equal(result.withoutOwner, 9);
-  assert.equal(result.localNew, 3);
-  assert.equal(result.dawliNew, 1);
-  assert.equal(result.archiveSource, 2);
-  assert.deepEqual(result.terminal.map(t => [t.status, t.count]), [['archived', 2], ['lost', 1]]);
-  assert.equal(result.localNew + result.dawliNew + result.archiveSource
-    + result.terminal.reduce((sum, t) => sum + t.count, 0), result.withoutOwner, 'nothing falls between the buckets');
-  assert.equal(groups.isLocalNewLead(leads[0]), true, 'and the tab itself still lists the same predicate');
+  assert.deepEqual(groups.poolBreakdownOf(leads), { waiting: 3, closed: 1, archived: 2, hidden: 1 });
 });
 
-test('the «محلي جديد» tab shows the breakdown only when leads are missing from it', () => {
+test('the «محلي جديد» tab shows each kind as a chip, waiting first', () => {
   const tab = read('admin/pages/dashboard/tabs/LeadsTab.tsx');
-  assert.match(tab, /unassignedBreakdown\.withoutOwner > unassignedBreakdown\.localNew/);
+  assert.match(tab, /\(\['waiting', 'archived', 'hidden', 'closed'\] as const\)\.map\(reason =>/);
   assert.match(tab, /الأرشفة التلقائية للليدات اللي محدش كلمها/);
+  assert.match(tab, /useLeadPool\(poolView, poolView === 'localNew' \? poolReason : null\)/);
 });
 
 test('while the full leads table is still arriving the pools say so, against the server total', () => {
@@ -221,7 +215,9 @@ test('the import screen reads through the shared sheet reader and lets the perso
 
 test('handing an archived lead to a rep brings it back as new', () => {
   const tab = read('admin/pages/dashboard/tabs/leads/ArchiveTab.tsx');
-  assert.match(tab, /status: \(lead\.status as string\) === 'archived' \? 'new' : lead\.status,/);
+  assert.match(tab, /status: BACK_IN_PLAY\.includes\(lead\.status as string\) \? 'new' : lead\.status,/);
+  assert.match(tab, /const BACK_IN_PLAY = \['archived', 'not_interested_hidden'\];/);
+  assert.match(tab, /assignedSalesName: staff\.name, hidden: false,/, 'a hidden one is shown again');
 });
 
 test('the status the job writes can be labelled and filtered', () => {

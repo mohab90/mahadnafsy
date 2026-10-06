@@ -293,11 +293,15 @@ export function useCrmCoreState(
     setLeads(nextLeads);
     try {
       await mysqlAdmin.saveLead(item as unknown as Record<string,unknown>);
-    } catch {
+    } catch (error) {
       leadsRef.current = prevLeads;
       setLeads(prevLeads);
+      // The server's reason, when it gave one: without it every refusal read
+      // «تحقق من الاتصال بالإنترنت», and staff checked their wifi over a lead
+      // that had simply moved to someone else.
+      const reason = error instanceof Error && !/^HTTP \d+$/.test(error.message) ? error.message : '';
       window.dispatchEvent(new CustomEvent('site-persist-error', {
-        detail: { field: 'lead', name: item.name },
+        detail: { field: 'lead', name: item.name, reason },
       }));
       return false;
     }

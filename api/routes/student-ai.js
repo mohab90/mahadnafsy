@@ -94,12 +94,15 @@ const priceText = (course, currency) => (price(course, currency) > 0
 // prices this visitor's version of the site shows (Egypt EGP, Saudi SAR,
 // elsewhere USD).
 async function loadContext(req) {
-  const subscriber = await resolveSubscriberRow(req, ['id', 'name', 'email', 'phone', 'enrolled_courses']).catch(() => null);
-  let enrolledIds = [];
-  try {
-    enrolledIds = Array.isArray(subscriber?.enrolled_courses)
-      ? subscriber.enrolled_courses : JSON.parse(subscriber?.enrolled_courses || '[]');
-  } catch { enrolledIds = []; }
+  // What they study is in enrollments: subscribers has no enrolled_courses
+  // column, and asking for one failed the whole lookup («Unknown column»), so
+  // the assistant never knew who it was talking to.
+  const subscriber = await resolveSubscriberRow(req, ['id', 'name', 'email', 'phone']).catch(() => null);
+  const enrolledIds = subscriber?.id
+    ? (await pool.query(
+      'SELECT course_id FROM enrollments WHERE tenant_id=? AND subscriber_id=?',
+      [req.tenantId, subscriber.id]).catch(() => [[]]))[0].map(row => row.course_id)
+    : [];
   const [catalogue] = await pool.query(
     `SELECT id, title, short_description, type, duration, hours, level, price_egp, price_sar, price_usd
        FROM courses WHERE tenant_id=? AND is_published=1 AND deleted_at IS NULL ORDER BY sort_order, title LIMIT 60`,

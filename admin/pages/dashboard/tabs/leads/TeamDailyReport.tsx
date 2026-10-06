@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { CalendarDays, RefreshCw } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
-import { cairoDateOnly, cairoDaysAgo } from '../../../../../shared/cairoDate';
+import { cairoDateOnly, cairoDateTime, cairoDaysAgo } from '../../../../../shared/cairoDate';
 
 /**
  * «أداء الفريق» opens on the day: per rep, what they did and what came of it —
@@ -13,8 +13,13 @@ import { cairoDateOnly, cairoDaysAgo } from '../../../../../shared/cairoDate';
 type RepRow = {
   id: string; name: string;
   calls: number; whatsapp: number; meetings: number; contacts: number; leadsContacted: number;
-  newLeads: number; followUpsDue: number; followUpsOverdue: number;
+  newLeads: number; freshLeads: number; followUpsDue: number; followUpsOverdue: number;
   bookings: number; installments: number; moneyEgp: number;
+};
+/** One lead behind «ليدز استلمها» (GET /admin/crm/team-report/received). */
+type ReceivedLead = {
+  id: string; name: string; phone: string | null; source: string | null; status: string;
+  createdAt: string; assignedAt: string; fresh: boolean; how: string | null;
 };
 type Report = {
   from: string; to: string; today: string;
@@ -37,11 +42,15 @@ const RANGES = [
 type RangeKey = typeof RANGES[number]['key'];
 
 const n = (value: number) => value.toLocaleString('ar-EG-u-nu-latn');
+const when = (value: string) => cairoDateTime(value);
 
 export function TeamDailyReport({ notify }: { notify: (type: 'success' | 'error' | 'info', text: string) => void }) {
   const [range, setRange] = useState<RangeKey>('today');
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
+  // The rep whose received leads are open under their row, and those leads.
+  const [openRep, setOpenRep] = useState<string | null>(null);
+  const [received, setReceived] = useState<ReceivedLead[] | null>(null);
 
   const load = useCallback(async (key: RangeKey) => {
     const preset = RANGES.find(item => item.key === key) || RANGES[0];
@@ -55,6 +64,22 @@ export function TeamDailyReport({ notify }: { notify: (type: 'success' | 'error'
     } finally { setLoading(false); }
   }, [notify]);
   useEffect(() => { void load(range); }, [load, range]);
+  useEffect(() => { setOpenRep(null); setReceived(null); }, [range]);
+
+  const toggleReceived = async (repId: string) => {
+    if (openRep === repId) { setOpenRep(null); return; }
+    setOpenRep(repId);
+    setReceived(null);
+    if (!report) return;
+    try {
+      const result = await mysqlAdmin.adminGet<{ rows: ReceivedLead[] }>(
+        `/admin/crm/team-report/received?rep=${encodeURIComponent(repId)}&from=${report.from}&to=${report.to}`);
+      setReceived(result.rows);
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذّر تحميل الليدز');
+      setOpenRep(null);
+    }
+  };
 
   const team = report?.team;
   const cards: Array<[string, string, string]> = team ? [
@@ -111,18 +136,55 @@ export function TeamDailyReport({ notify }: { notify: (type: 'success' | 'error'
             </thead>
             <tbody>
               {report.reps.map(rep => (
-                <tr key={rep.id} className="border-t border-gray-100">
+                <Fragment key={rep.id}>
+                <tr className="border-t border-gray-100">
                   <td className="px-2 py-1.5 font-bold text-gray-800">{rep.name}</td>
                   <td className="px-2 py-1.5">{n(rep.calls)}</td>
                   <td className="px-2 py-1.5">{n(rep.whatsapp)}</td>
                   <td className="px-2 py-1.5">{n(rep.leadsContacted)}</td>
-                  <td className="px-2 py-1.5">{n(rep.newLeads)}</td>
+                  <td className="px-2 py-1.5">
+                    {/* Who they are, not just how many: a lead handed out today
+                        may have arrived weeks ago and sits far down the rep's list. */}
+                    {rep.newLeads > 0 ? (
+                      <button type="button" onClick={() => { void toggleReceived(rep.id); }}
+                        className="text-right font-bold text-indigo-700 underline decoration-dotted"
+                        aria-expanded={openRep === rep.id}>
+                        {n(rep.newLeads)}
+                        <span className="block text-[10px] font-normal text-gray-500">
+                          {n(rep.freshLeads)} جديدة · {n(rep.newLeads - rep.freshLeads)} من القديم
+                        </span>
+                      </button>
+                    ) : n(0)}
+                  </td>
                   <td className="px-2 py-1.5">{n(rep.followUpsDue)}</td>
                   <td className={`px-2 py-1.5 ${rep.followUpsOverdue ? 'font-bold text-red-600' : ''}`}>{n(rep.followUpsOverdue)}</td>
                   <td className="px-2 py-1.5">{n(rep.bookings)}</td>
                   <td className="px-2 py-1.5">{n(rep.installments)}</td>
                   <td className="px-2 py-1.5 font-bold text-emerald-700">{n(rep.moneyEgp)}</td>
                 </tr>
+                {openRep === rep.id && (
+                  <tr className="bg-indigo-50/40">
+                    <td colSpan={10} className="px-3 py-2">
+                      {!received ? <span className="text-gray-500">جاري التحميل…</span> : received.length === 0 ? (
+                        <span className="text-gray-500">مفيش ليدز مسجلة في الفترة دي.</span>
+                      ) : (
+                        <ul className="divide-y divide-indigo-100">
+                          {received.map(lead => (
+                            <li key={lead.id} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 py-1">
+                              <span className="font-bold text-gray-800">{lead.name || lead.phone || 'بدون اسم'}</span>
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] ${lead.fresh ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                                {lead.fresh ? 'جديدة' : `من القديم — دخلت ${when(lead.createdAt)}`}
+                              </span>
+                              <span className="text-gray-500">اتسلمت {when(lead.assignedAt)}</span>
+                              {lead.how && <span className="text-gray-400">{lead.how}</span>}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
               {report.unattributed && (report.unattributed.bookings > 0 || report.unattributed.installments > 0) && (
                 <tr className="border-t border-gray-100 bg-amber-50/60 text-amber-800">

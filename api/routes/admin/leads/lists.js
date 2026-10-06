@@ -17,7 +17,8 @@ const {
   leadTableFilter,
   leadTableSearch,
   leadPoolFilter,
-  unassignedBreakdown,
+  poolBreakdown,
+  POOL_REASON_COLUMN,
   identitySpellings,
   logger,
   mapLeadRow,
@@ -133,19 +134,27 @@ router.get('/api/admin/leads/board', requireAuth, requireAdminOrStaff, requirePe
   } catch (e) { logger.error('[leads-board]', e.message); sendRouteError(res, e); }
 });
 
-// GET /api/admin/leads/pool?view=localNew|dawli|archive
+// GET /api/admin/leads/pool?view=localNew|dawli|archive[&reason=waiting|closed|archived|hidden]
 // One pool tab's leads (lib/leadPoolFilter.js) instead of every lead for the
-// browser to filter. Capped: an imported archive can run to six figures, and a
+// browser to filter. «محلي جديد» holds every lead nobody is working — waiting,
+// closed without a rep, archived, hidden — and `reason` narrows it to one of
+// those, which `breakdown` counts. Capped: an imported archive can run to six figures, and a
 // tab that holds 20,000 rows has stopped being read row by row — `total` says
 // how many there really are, so the screen can say so.
 const POOL_LIMIT = 20000;
 router.get('/api/admin/leads/pool', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
   try {
     const view = String(req.query.view || '');
-    const filter = leadPoolFilter(view);
+    const filter = leadPoolFilter(view, { reason: req.query.reason });
     if (!filter) return res.status(400).json({ error: 'view must be localNew, dawli or archive' });
     const accessScope = leadScope(req, 'l');
     if (accessScope.none) return res.json({ rows: [], total: 0, truncated: false, breakdown: null });
+    // The pools are the desk's. A rep's own hidden and archived leads would
+    // otherwise come back to them through «محلي جديد».
+    const role = String(req.staffRecord?.role || '').toLowerCase();
+    if (!req.isSuperAdmin && ['sales', 'collection'].includes(role) && view === 'localNew') {
+      return res.json({ rows: [], total: 0, truncated: false, breakdown: null });
+    }
     const where = `${accessScope.sql}${filter.sql}`;
     const whereParams = [...accessScope.params, ...filter.params];
     // countOnly: the «محلي جديد» badge, shown on every CRM tab, needs the number alone.
@@ -158,19 +167,23 @@ router.get('/api/admin/leads/pool', requireAuth, requireAdminOrStaff, requirePer
                 l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
                 l.assigned_cs_id, COALESCE(cs.name, l.assigned_cs_name) AS assigned_cs_name,
                 l.notes, l.last_follow_up, l.next_follow_up_date, l.crm_json, l.hidden, l.score, l.created_at, l.updated_at,
+                ${POOL_REASON_COLUMN.sql},
                 (SELECT COUNT(*) FROM communications lc WHERE lc.tenant_id = l.tenant_id AND lc.lead_id = l.id) AS communication_count
            FROM leads l
            LEFT JOIN staff ss ON ss.id = l.assigned_sales_id AND ss.tenant_id = l.tenant_id
            LEFT JOIN staff cs ON cs.id = l.assigned_cs_id AND cs.tenant_id = l.tenant_id
           WHERE l.tenant_id = ?${where}
-          ORDER BY l.created_at DESC, l.id DESC LIMIT ${POOL_LIMIT}`, [req.tenantId, ...whereParams]),
-      view === 'localNew' && !countOnly ? unassignedBreakdown(pool, req.tenantId, accessScope) : null,
+          ORDER BY l.created_at DESC, l.id DESC LIMIT ${POOL_LIMIT}`, [...POOL_REASON_COLUMN.params, req.tenantId, ...whereParams]),
+      view !== 'archive' && !countOnly ? poolBreakdown(pool, req.tenantId, accessScope, view) : null,
     ]);
     const total = Number(countRow?.total || 0);
     // The rows' own communication_count carries the number the tables show; the
     // full message history is the lead page's to load.
     if (countOnly) return res.json({ total });
-    res.json({ rows: rows.map(r => mapLeadRow(r, new Map())), total, truncated: total > rows.length, breakdown });
+    res.json({
+      rows: rows.map(r => ({ ...mapLeadRow(r, new Map()), ...(r.pool_reason ? { poolReason: r.pool_reason } : {}) })),
+      total, truncated: total > rows.length, breakdown,
+    });
   } catch (e) { logger.error('[leads-pool]', e.message); sendRouteError(res, e); }
 });
 

@@ -1428,7 +1428,7 @@ CREATE TABLE `crm_assignment_members` (
   `weight` decimal(8,2) NOT NULL DEFAULT 1.00,
   `max_open_leads` int(11) DEFAULT NULL,
   `is_available` tinyint(1) NOT NULL DEFAULT 1,
-  `last_assigned_at` datetime DEFAULT NULL,
+  `last_assigned_at` datetime(3) DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   `intake_limit` int(11) DEFAULT NULL COMMENT 'Max leads assigned per intake_period. NULL = no rate cap.',
@@ -3523,7 +3523,7 @@ CREATE TABLE `live_streams` (
 CREATE TABLE `login_history` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
-  `user_id` int(11) DEFAULT NULL,
+  `user_id` varchar(100) DEFAULT NULL,
   `email` varchar(255) DEFAULT NULL,
   `ip` varchar(64) DEFAULT NULL,
   `user_agent` varchar(512) DEFAULT NULL,

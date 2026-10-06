@@ -53,13 +53,17 @@ async function buildTeamDailyReport({ tenantId, from, to, today, onlyRepId = nul
   );
 
   // What each rep was handed in the range — the same assigned_at the daily cap
-  // counts, so this column and «أقصى عدد يستلمه» agree.
+  // counts, so this column and «أقصى عدد يستلمه» agree. Split by when the lead
+  // arrived: a lead handed out today may have come in weeks ago (the pool, the
+  // hourly backlog, a reassignment), and it sits far down the rep's list, which
+  // is newest first — «بيقول انه اتوزعلهم داتا اليوم وبدخل بيكون دا مش حقيقي».
   const [received] = await db.query(
-    `SELECT assigned_sales_id AS rep, COUNT(*) AS newLeads
+    `SELECT assigned_sales_id AS rep, COUNT(*) AS newLeads,
+            SUM(created_at >= ? AND created_at < ?) AS freshLeads
        FROM leads
       WHERE tenant_id=? AND hidden=0 AND assigned_at >= ? AND assigned_at < ?
       GROUP BY assigned_sales_id`,
-    [tenantId, startUtc, endUtc]
+    [startUtc, endUtc, tenantId, startUtc, endUtc]
   );
 
   const [[arrived]] = await db.query(
@@ -118,6 +122,7 @@ async function buildTeamDailyReport({ tenantId, from, to, today, onlyRepId = nul
         calls: num(c.calls), whatsapp: num(c.whatsapp), meetings: num(c.meetings),
         contacts: num(c.contacts), leadsContacted: num(c.leadsContacted),
         newLeads: num(receivedBy.get(id)?.newLeads),
+        freshLeads: num(receivedBy.get(id)?.freshLeads),
         followUpsDue: num(f.followUpsDue), followUpsOverdue: num(f.followUpsOverdue),
         bookings: num(m.bookings), installments: num(m.installments), moneyEgp: Math.round(num(m.moneyEgp)),
       };
@@ -148,4 +153,30 @@ async function buildTeamDailyReport({ tenantId, from, to, today, onlyRepId = nul
   return { from, to, today, team, reps: rows, unattributed: onlyRepId ? null : unattributed };
 }
 
-module.exports = { MAX_DAYS, buildTeamDailyReport, reportRange };
+/**
+ * The leads behind a rep's «ليدز استلمها», one by one: when each arrived, when
+ * it was handed to them and by what — so the figure can be checked against the
+ * rep's own list.
+ */
+async function listReceivedLeads({ tenantId, repId, from, to }, db = pool) {
+  const startUtc = cairoDayStartUtc(from);
+  const endUtc = cairoDayStartUtc(addDaysToDateOnly(to, 1));
+  const [rows] = await db.query(
+    `SELECT l.id, l.name, l.phone, l.source, l.status, l.created_at, l.assigned_at, (l.created_at >= ?) AS fresh,
+            (SELECT t.description FROM lead_timeline t
+              WHERE t.tenant_id=l.tenant_id AND t.lead_id=l.id AND t.event_type='assigned'
+              ORDER BY t.at DESC LIMIT 1) AS how
+       FROM leads l
+      WHERE l.tenant_id=? AND l.hidden=0 AND l.assigned_sales_id=? AND l.assigned_at >= ? AND l.assigned_at < ?
+      ORDER BY l.assigned_at DESC LIMIT 500`,
+    [startUtc, tenantId, repId, startUtc, endUtc]
+  );
+  return rows.map(row => ({
+    id: row.id, name: row.name, phone: row.phone, source: row.source, status: row.status,
+    createdAt: row.created_at, assignedAt: row.assigned_at,
+    fresh: Number(row.fresh) === 1,
+    how: row.how || null,
+  }));
+}
+
+module.exports = { MAX_DAYS, buildTeamDailyReport, listReceivedLeads, reportRange };

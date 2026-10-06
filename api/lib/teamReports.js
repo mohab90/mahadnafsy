@@ -78,16 +78,23 @@ async function changedByActor(db, tenantId, b, entity, action) {
 const sumRows = (rows, key) => rows.reduce((total, row) => total + num(row[key]), 0);
 
 // ── فريق الأونلاين (التحصيل) ────────────────────────────────────────────────
+// The online desk's clients: not studying at a physical branch. The officer's
+// own screen keeps the same ones (onlineClientsUtils isOnlineClient). Counting
+// every client named on the officer put 1,921 Dokki clients — handed to her by
+// the 29 Sep import — on Doaa Awny's line: «عندها عملاء مسئول عنهم 1,948».
+const ONLINE_CLIENT = "COALESCE(sub.branch, '') NOT IN ('DAQQI','TAGAMOA')";
+
 async function buildOnlineTeamReport({ tenantId, from, to, today }, db = pool) {
   const b = bounds(from, to);
   const officers = await staffInRoles(db, tenantId, ['COLLECTION']);
   const contacts = await contactsByStaff(db, tenantId, b);
   const [load] = await db.query(
-    `SELECT assigned_cs_id AS rep, COUNT(*) AS clients,
-            SUM(assigned_cs_at >= ? AND assigned_cs_at < ?) AS received
-       FROM subscribers
-      WHERE tenant_id=? AND deleted_at IS NULL AND assigned_cs_id IS NOT NULL AND assigned_cs_id<>''
-      GROUP BY assigned_cs_id`,
+    `SELECT sub.assigned_cs_id AS rep, COUNT(*) AS clients,
+            SUM(sub.assigned_cs_at >= ? AND sub.assigned_cs_at < ?) AS received
+       FROM subscribers sub
+      WHERE sub.tenant_id=? AND sub.deleted_at IS NULL AND sub.assigned_cs_id IS NOT NULL AND sub.assigned_cs_id<>''
+        AND ${ONLINE_CLIENT}
+      GROUP BY sub.assigned_cs_id`,
     [b.startUtc, b.endUtc, tenantId]
   );
   const [collected] = await db.query(
@@ -96,7 +103,7 @@ async function buildOnlineTeamReport({ tenantId, from, to, today }, db = pool) {
        FROM payments p
        JOIN subscribers sub ON sub.id=p.subscriber_id AND sub.tenant_id=p.tenant_id
       WHERE p.tenant_id=? AND p.deleted_at IS NULL AND (p.status IS NULL OR p.status='paid') AND p.date >= ? AND p.date < ?
-        AND sub.assigned_cs_id IS NOT NULL AND sub.assigned_cs_id<>''
+        AND sub.assigned_cs_id IS NOT NULL AND sub.assigned_cs_id<>'' AND ${ONLINE_CLIENT}
       GROUP BY sub.assigned_cs_id`,
     [tenantId, from, b.dayAfter]
   );

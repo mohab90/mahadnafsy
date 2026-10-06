@@ -37,6 +37,7 @@ const {
   recordPaymentCompensation,
   claimWhatsAppIdentity,
   isRealPhone,
+  identitySpellings,
   cairoToday,
 } = require('./_shared');
 
@@ -314,6 +315,8 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
     let firstPaymentStatus = null;
     let firstPaymentId = null;
     let createdSubscriberId = null;
+    // The client's record the courses and the first payment go on.
+    let targetSubId = null;
     const defaultBranch = 'ONLINE_EGYPT';
 
     // This handler writes across users/subscribers/enrollments/payments — wrap in a
@@ -330,18 +333,36 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
         [hash, displayName, existing.id, tenantId]
       );
       if (phoneVal) await conn.execute('UPDATE subscribers SET phone=? WHERE tenant_id=? AND LOWER(TRIM(email))=? AND (phone IS NULL OR phone=\'\') LIMIT 1', [phoneVal, tenantId, normEmail]);
+      // The client's record: by the address, else by the number, else a new one.
+      // Found by address alone, a login whose record carried another address
+      // (or none) took no courses, and its first payment failed the whole
+      // request with «Payment subscriber not found» — five times on 5 Oct.
+      let [[reSub]] = await conn.execute('SELECT id, branch_id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [tenantId, normEmail]);
+      if (!reSub && phoneVal) {
+        [[reSub]] = await conn.query(
+          'SELECT id, branch_id FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND phone IN (?) LIMIT 1',
+          [tenantId, [...new Set([phoneVal, ...identitySpellings(phoneVal)])]]);
+      }
+      if (!reSub) {
+        reSub = { id: uuidv4(), branch_id: branchIdForBranch(defaultBranch) };
+        await conn.execute(
+          `INSERT INTO subscribers
+             (id, tenant_id, email, name, phone, branch, branch_id, is_active, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,1,NOW(),NOW())`,
+          [reSub.id, tenantId, normEmail, displayName, phoneVal, defaultBranch, reSub.branch_id]
+        );
+        createdSubscriberId = reSub.id;
+      }
+      targetSubId = reSub.id;
       // Also save courses for reactivated user
       if (courses && courses.length > 0) {
-        const [[reSub]] = await conn.execute('SELECT id, branch_id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [tenantId, normEmail]);
-        if (reSub) {
-          const validCourses = courses.filter(c => c.courseId && c.courseId.trim());
-          if (validCourses.length > 0) {
-            await grantCourseSelections({
-              tenantId, subscriberId: reSub.id, selections: validCourses,
-              branchId: reSub.branch_id, source: 'account_reactivation',
-              actor: req.user?.email || 'admin',
-            }, conn);
-          }
+        const validCourses = courses.filter(c => c.courseId && c.courseId.trim());
+        if (validCourses.length > 0) {
+          await grantCourseSelections({
+            tenantId, subscriberId: reSub.id, selections: validCourses,
+            branchId: reSub.branch_id, source: 'account_reactivation',
+            actor: req.user?.email || 'admin',
+          }, conn);
         }
       }
       action = 'reactivated';
@@ -356,7 +377,6 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
       );
       // Create subscriber record if not exists
       const [[subExists]] = await conn.execute('SELECT id, branch_id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [tenantId, normEmail]);
-      let targetSubId;
       if (!subExists) {
         targetSubId = uuidv4();
         await conn.execute(
@@ -389,8 +409,8 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
       if (!Number.isFinite(amount) || amount <= 0) throw new Error('Invalid first payment amount');
       const paymentMethod = String(firstPayment.paymentMethod || '').trim();
       const [[paySub]] = await conn.execute(
-        'SELECT id, tenant_id, branch, branch_id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1',
-        [tenantId, normEmail]
+        'SELECT id, tenant_id, branch, branch_id FROM subscribers WHERE tenant_id=? AND id=? LIMIT 1',
+        [tenantId, targetSubId]
       );
       if (!paySub) throw new Error('Payment subscriber not found in tenant');
       const rawPaymentItemId = firstPayment.courseId ? String(firstPayment.courseId) : '';
@@ -447,8 +467,8 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
     }
 
     const [[responseSubscriber]] = await conn.execute(
-      'SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1',
-      [tenantId, normEmail]
+      'SELECT id FROM subscribers WHERE tenant_id=? AND id=? LIMIT 1',
+      [tenantId, targetSubId]
     );
 
     // Each course's own price, as the desk set it on this screen — a price, or

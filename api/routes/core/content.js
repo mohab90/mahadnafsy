@@ -168,7 +168,12 @@ router.put('/api/admin/subscribers/:id/course-access/:enrollmentId', requireAuth
       await pool.query('UPDATE enrollments SET expiry_date = NULL WHERE id=? AND tenant_id=?', [enrolment.id, tenantId]);
     } else if (expiresAt) {
       const parsed = new Date(expiresAt);
-      if (!Number.isFinite(parsed.getTime())) return res.status(400).json({ error: 'تاريخ غير صالح' });
+      // A date box takes a six-digit year: «20266» parsed, and its ISO form
+      // («+020266-…») reached the database as a 500 three times on 5–6 Oct.
+      const year = parsed.getUTCFullYear();
+      if (!Number.isFinite(parsed.getTime()) || year < 2000 || year > 2100) {
+        return res.status(400).json({ error: 'تاريخ غير صالح — راجع السنة' });
+      }
       await pool.query('UPDATE enrollments SET expiry_date = ? WHERE id=? AND tenant_id=?',
         [parsed.toISOString().slice(0, 19).replace('T', ' '), enrolment.id, tenantId]);
     } else {

@@ -11,6 +11,7 @@ const {
   createNotification,
   logLeadEventStrict,
   createRepRotation,
+  distributionMode,
   listDistributableReps,
   excludeArchiveSourcesSql,
   queueLeadWhatsAppBatch,
@@ -23,6 +24,9 @@ const {
 } = require('./_shared');
 
 const router = Router();
+
+// lead-status-subset: what a lead handed out of «محلي جديد» comes back from — archived by the cold-lead job, or hidden as not interested — as new
+const BACK_IN_PLAY = ['archived', 'not_interested_hidden'];
 
 // POST /api/admin/leads/bulk-assign — assign all unassigned NEW/INTERESTED leads to sales round-robin
 router.post('/api/admin/leads/bulk-assign', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), bulkOperationLimiter, async (req, res) => {
@@ -74,7 +78,10 @@ router.post('/api/admin/leads/bulk-assign', requireAuth, requireAdminOrStaff, re
     }
 
     const updates = [];
-    const rotation = createRepRotation(reps);
+    // In the order the «التوزيع» screen names; pressing the button is itself
+    // the decision to distribute, so «بدون توزيع تلقائي» reads as in turn here.
+    const mode = await distributionMode(req.tenantId, conn);
+    const rotation = createRepRotation(reps, { mode: mode === 'least' ? 'least' : 'rr' });
     for (const lead of unassigned) {
       // null: nobody's course and source rules take this one — it stays in the pool.
       const rep = rotation.next(lead);
@@ -104,6 +111,7 @@ router.post('/api/admin/leads/bulk-assign', requireAuth, requireAdminOrStaff, re
         req.tenantId, conn
       );
     }
+    await rotation.flush(conn, req.tenantId);
     await conn.commit();
     transactionStarted = false;
 
@@ -145,20 +153,24 @@ router.post('/api/admin/leads/assign-collection', requireAuth, requireAdminOrSta
     const accessScope = leadScope(req, 'l');
     if (accessScope.none) return res.status(403).json({ error: 'Lead assignment is outside your data scope' });
     await conn.beginTransaction();
+    // A hidden or archived lead in «محلي جديد» is back with the desk whoever
+    // held it, so it is not "taken" — handing it out brings it back into play.
     const [rows] = await conn.query(
       `SELECT l.id FROM leads l
-        WHERE l.tenant_id=? AND l.hidden=0 AND l.id IN (${leadIds.map(() => '?').join(',')})${accessScope.sql}
-          ${includeAssigned ? '' : `AND (l.assigned_sales_id IS NULL OR l.assigned_sales_id='')
-          AND (l.assigned_cs_id IS NULL OR l.assigned_cs_id='')`}
+        WHERE l.tenant_id=? AND l.deleted_at IS NULL AND l.merged_into_lead_id IS NULL
+          AND l.id IN (${leadIds.map(() => '?').join(',')})${accessScope.sql}
+          ${includeAssigned ? '' : `AND ((l.assigned_sales_id IS NULL OR l.assigned_sales_id='')
+          AND (l.assigned_cs_id IS NULL OR l.assigned_cs_id='') OR l.hidden=1 OR l.status='archived')`}
         FOR UPDATE`,
       [req.tenantId, ...leadIds, ...accessScope.params]
     );
     const ids = rows.map(row => row.id);
     if (ids.length) {
       await conn.query(
-        `UPDATE leads SET assigned_cs_id=?, assigned_cs_name=?, source=COALESCE(?, source)
+        `UPDATE leads SET assigned_cs_id=?, assigned_cs_name=?, source=COALESCE(?, source), hidden=0,
+                status=IF(status IN (?), 'new', status)
           WHERE tenant_id=? AND id IN (${ids.map(() => '?').join(',')})`,
-        [officer.id, officer.name, source, req.tenantId, ...ids]
+        [officer.id, officer.name, source, BACK_IN_PLAY, req.tenantId, ...ids]
       );
       for (const id of ids) {
         await logLeadEventStrict(id, 'assigned', `تعيين لمسئول التحصيل: ${officer.name}`,

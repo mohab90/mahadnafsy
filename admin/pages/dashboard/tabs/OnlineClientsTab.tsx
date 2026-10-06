@@ -180,6 +180,10 @@ export default function OnlineClientsTab({
   // same booking screen, and nothing is added until the transfer is confirmed.
   // Their customers are online ones, so the draft starts there, not at Daqqi.
   const isCollectionStaff = String(currentStaff?.role || '').toLowerCase() === 'collection';
+  // A rep's «عملائي» is every client they sold, whichever branch studies:
+  // «Sama Shosha … عملته حجز ومظهرش عندها في عملاءها» — a Tagamoa booking of
+  // hers was left out with every other Dokki and Tagamoa one.
+  const isSalesStaff = String(currentStaff?.role || '').toLowerCase() === 'sales';
   const newClientBranch = isCollectionStaff ? 'ONLINE_EGYPT' : physicalBranch.key;
   const [newClientDraft, setNewClientDraft] = useState<PaymentDraft>(blankPaymentDraft({ branch: newClientBranch }));
   // Creating the customer and recording the money in one place, through the
@@ -314,7 +318,9 @@ export default function OnlineClientsTab({
               // added up to (1477).
               const allCombined = isDaqqiClientsTab
                 ? branchScopedMasterList.filter(s => normBranchId(s.branch) === physicalBranch.key)
-                : branchScopedMasterList.filter(isOnlineClient);
+                : isSalesStaff ? branchScopedMasterList : branchScopedMasterList.filter(isOnlineClient);
+              const hasBooking = (s: SubscriberItem) => (s.paymentHistory || [])
+                .some(payment => Boolean(payment.courseId || payment.bundleId) && payment.status !== 'refunded' && payment.status !== 'failed');
               const holdsItem = (s: SubscriberItem, item: string) => (item.startsWith('bundle:')
                 ? (s.enrolledBundleIds || []).includes(item.slice(7))
                 : (s.enrolledCourseIds || []).includes(item))
@@ -349,7 +355,9 @@ export default function OnlineClientsTab({
                   // فعلي = active + has at least one enrolled course
                   if (s.isActive === false) return false;
                   if (['finished','paused','refunded','refund_pending'].includes(clientSt)) return false;
-                  if ((s.enrolledCourseIds||[]).length === 0) return false;
+                  // A booking still waiting for the accounts' approval opens no
+                  // course yet, and the client it made vanished from the tab.
+                  if ((s.enrolledCourseIds||[]).length === 0 && !hasBooking(s)) return false;
                 } else if (BOOKING_YEAR_TABS[collOnlineViewTab]) {
                   // A cohort, not a lifecycle state: everyone booked that year,
                   // whatever their status happens to be now.

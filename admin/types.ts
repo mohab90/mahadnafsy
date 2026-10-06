@@ -287,6 +287,8 @@ export interface LeadItem {
   paymentRecords?: PaymentRecord[];
   promoCode?: string;
   hidden?: boolean;
+  /** Why it is in «محلي جديد» / «داتا سعودي», as the pool route sends it (leadSourceGroups poolReasonOf). */
+  poolReason?: 'waiting' | 'closed' | 'archived' | 'hidden';
   fbLeadId?: string;       // Facebook Lead ID for deduplication
   fbFormId?: string;       // Facebook Form ID this lead came from
   fbFormName?: string;     // Facebook Form display name

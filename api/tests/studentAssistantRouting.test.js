@@ -16,7 +16,9 @@ const express = require('express');
 const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8');
 const seen = { prompts: [], leads: [], tickets: [], replies: [] };
 let aiFails = false;
-let subscriber = { id: 'sub-1', name: 'هنا', email: 'hana@x.com', phone: '01012345678', enrolled_courses: '["c-cbt"]' };
+let subscriber = { id: 'sub-1', name: 'هنا', email: 'hana@x.com', phone: '01012345678' };
+// What they study is read from enrollments: subscribers has no enrolled_courses column.
+let enrolledIds = ['c-cbt'];
 let currency = 'SAR';
 
 const pool = {
@@ -28,6 +30,7 @@ const pool = {
       ]];
     }
     if (/inbox_conversations/.test(sql)) return [[]];
+    if (/FROM enrollments/.test(sql)) return [params[1] === subscriber?.id ? enrolledIds.map(course_id => ({ course_id })) : []];
     throw new Error(`unexpected query: ${sql.slice(0, 80)}`);
   },
   async getConnection() {
