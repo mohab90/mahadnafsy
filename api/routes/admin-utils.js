@@ -847,7 +847,7 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
     const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').filter(Boolean);
     if (!adminEmails.length) return;
 
-    const subject = `📊 التقرير الأسبوعي — ${today} | مهاد النفسي`;
+    const subject = `📊 التقرير الأسبوعي — ${today} | معهد الدراسات النفسية`;
     const html = `
       <div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;padding:24px;border-radius:12px">
         <h2 style="color:#1e3a5f;margin-bottom:4px">📊 التقرير الأسبوعي</h2>
@@ -885,7 +885,7 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
         </div>
 
         <p style="color:#94a3b8;font-size:11px;text-align:center;margin-top:20px">
-          هذا التقرير يُرسَل تلقائياً كل أحد الساعة 8 صباحاً — مهاد النفسي
+          هذا التقرير يُرسَل تلقائياً كل أحد الساعة 8 صباحاً — معهد الدراسات النفسية
         </p>
       </div>`;
 

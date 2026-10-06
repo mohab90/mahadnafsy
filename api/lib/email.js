@@ -77,47 +77,64 @@ async function getTransport(tenantId = DEFAULT_TENANT) {
 }
 
 // Wraps body content in the branded template. `cfg` optional (defaults applied).
+//
+// Table layout with inline styles, because Gmail and Outlook drop flexbox,
+// onerror handlers and much of <style>. The <style> block stays only for the
+// classes callers put in bodyHtml (.otp-box, .btn, table.details).
+// The logo is stored as a site-relative path (/uploads/...), which an email
+// client cannot resolve, so it is made absolute against the website URL.
+function absoluteUrl(url, base) {
+  const u = String(url || '').trim();
+  if (!u) return '';
+  if (/^https?:\/\//i.test(u)) return u;
+  return String(base || DEFAULTS.websiteUrl).replace(/\/+$/, '') + '/' + u.replace(/^\/+/, '');
+}
+
 function htmlEmail(title, bodyHtml, cfg) {
   const c = { ...DEFAULTS, ...(cfg || {}) };
+  const color = c.brandColor;
+  const logo = absoluteUrl(c.logoUrl, c.websiteUrl);
+  const site = String(c.websiteUrl || '').replace(/^https?:\/\//, '').replace(/\/+$/, '');
   return `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${title}</title>
 <style>
-  * { box-sizing:border-box; margin:0; padding:0; }
-  body { background:#f5f5f5; font-family:'Segoe UI',Tahoma,Arial,sans-serif; direction:rtl; }
-  .wrap { max-width:600px; margin:30px auto; background:#fff; border-radius:16px; overflow:hidden; box-shadow:0 4px 24px rgba(0,0,0,.10); }
-  .header { background:${c.brandColor}; padding:36px 40px 28px; text-align:center; }
-  .logo-circle { width:80px; height:80px; margin:0 auto 16px; background:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 12px rgba(0,0,0,.15); overflow:hidden; }
-  .logo-circle img { width:68px; height:68px; object-fit:contain; }
-  .header h1 { color:#fff; font-size:20px; font-weight:800; letter-spacing:-.3px; margin-bottom:4px; }
-  .header p { color:rgba(255,255,255,.80); font-size:13px; }
-  .divider { height:4px; background:${c.brandColor}; }
-  .body { padding:36px 40px; color:#333; line-height:1.8; font-size:15px; }
-  .footer { background:#fafafa; padding:20px 40px; text-align:center; color:#aaa; font-size:12px; border-top:1px solid #eee; }
-  .footer a { color:${c.brandColor}; text-decoration:none; }
-  .btn { display:inline-block; background:${c.brandColor}; color:#fff !important; padding:13px 32px; border-radius:10px; text-decoration:none; font-weight:700; margin:18px 0; font-size:15px; }
-  .otp-box { font-size:40px; font-weight:900; letter-spacing:12px; color:${c.brandColor}; text-align:center; padding:24px 20px; background:#fdf2f2; border:2px solid #f5b7b1; border-radius:12px; margin:24px 0; font-family:monospace; }
+  .otp-box { font-size:38px; font-weight:800; letter-spacing:10px; color:${color}; text-align:center; padding:22px 16px; background:#fff5f5; border:2px dashed ${color}; border-radius:14px; margin:26px 0; font-family:'Courier New',monospace; direction:ltr; }
+  .btn { display:inline-block; background:${color}; color:#ffffff !important; padding:14px 34px; border-radius:10px; text-decoration:none; font-weight:700; margin:18px 0; font-size:15px; }
   table.details { width:100%; border-collapse:collapse; margin:16px 0; }
   table.details td { padding:10px 14px; border-bottom:1px solid #f0f0f0; }
-  table.details td:first-child { color:#999; width:40%; font-size:13px; }
+  table.details td:first-child { color:#888; width:40%; font-size:13px; }
   table.details td:last-child { font-weight:600; color:#222; }
+  @media (max-width:620px) { .px { padding-left:22px !important; padding-right:22px !important; } }
 </style></head>
-<body><div class="wrap">
-  <div class="header">
-    <div class="logo-circle">
-      <img src="${c.logoUrl}" alt="${c.headerTitle}" onerror="this.style.display='none';this.parentNode.innerHTML='<span style=&quot;font-size:28px&quot;>🌿</span>'" />
-    </div>
-    <h1>${c.headerTitle}</h1>
-    <p>${c.headerSubtitle}</p>
-  </div>
-  <div class="divider"></div>
-  <div class="body">${bodyHtml}</div>
-  <div class="footer">
-    ${c.footerText}<br>
-    © ${new Date().getFullYear()} <a href="${c.websiteUrl}">${c.headerTitle}</a> — جميع الحقوق محفوظة
-  </div>
-</div></body></html>`;
+<body style="margin:0;padding:0;background:#f3f1ef;direction:rtl;">
+<span style="display:none;max-height:0;overflow:hidden;opacity:0;">${title} — ${c.headerTitle}</span>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f1ef;padding:28px 12px;">
+<tr><td align="center">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 6px 28px rgba(0,0,0,.08);font-family:'Segoe UI',Tahoma,Arial,sans-serif;">
+    <tr><td style="height:6px;background:${color};font-size:0;line-height:0;">&nbsp;</td></tr>
+    <tr><td align="center" style="padding:30px 32px 18px;">
+      ${logo
+        ? `<a href="${c.websiteUrl}" style="text-decoration:none;"><img src="${logo}" alt="${c.headerTitle}" width="220" style="display:block;width:220px;max-width:70%;height:auto;border:0;"></a>`
+        : `<div style="font-size:22px;font-weight:800;color:${color};">${c.headerTitle}</div>`}
+    </td></tr>
+    <tr><td class="px" style="padding:0 40px;"><div style="height:1px;background:#eee;"></div></td></tr>
+    <tr><td class="px" style="padding:26px 40px 8px;text-align:right;">
+      <h1 style="margin:0;font-size:21px;font-weight:800;color:#1f1f1f;">${title}</h1>
+    </td></tr>
+    <tr><td class="px" style="padding:6px 40px 32px;color:#3a3a3a;line-height:1.9;font-size:15px;text-align:right;">${bodyHtml}</td></tr>
+    <tr><td style="background:#faf8f7;padding:22px 32px;text-align:center;border-top:1px solid #f0ecea;">
+      <div style="font-size:14px;font-weight:700;color:${color};margin-bottom:6px;">${c.headerTitle}</div>
+      <div style="font-size:12px;color:#9a9a9a;line-height:1.8;">
+        ${c.footerText}<br>
+        <a href="${c.websiteUrl}" style="color:${color};text-decoration:none;">${site}</a> · © ${new Date().getFullYear()} جميع الحقوق محفوظة
+      </div>
+    </td></tr>
+  </table>
+</td></tr>
+</table>
+</body></html>`;
 }
 
 // Sends a templated email using the configured sender/transport. Throws on failure.

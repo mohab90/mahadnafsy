@@ -20,7 +20,7 @@ export function useLeadRemoteReminders(subTab: string, notify: NotifyFn) {
   const [staleLeads, setStaleLeads] = useState<StaleLeadRow[]>([]);
   const [staleLoading, setStaleLoading] = useState(false);
   const [staleBulkMsg, setStaleBulkMsg] = useState(
-    'أهلاً {name} 💚 نتمنى تواصلك معنا لمعرفة المزيد عن برامجنا. فريق مهاد للدراسات النفسية 🌿',
+    'أهلاً {name} 💚 نتمنى تواصلك معنا لمعرفة المزيد عن برامجنا. فريق معهد الدراسات النفسية 🌿',
   );
   const [staleSending, setStaleSending] = useState(false);
   const [staleSelected, setStaleSelected] = useState<Set<string>>(new Set());

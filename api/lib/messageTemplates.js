@@ -19,9 +19,9 @@ const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 // by renderTemplate. Keep var names identical to the frontend defs.
 const TEMPLATE_DEFAULTS = Object.freeze({
   installment_reminder:
-    '⏰ تذكير: لديك قسط بمبلغ {{amount}} {{currency}} مستحق بعد 3 أيام ({{dueDate}}) - {{courseName}}. يرجى التواصل معنا لتسوية الدفع. — معهد مهاد',
+    '⏰ تذكير: لديك قسط بمبلغ {{amount}} {{currency}} مستحق بعد 3 أيام ({{dueDate}}) - {{courseName}}. يرجى التواصل معنا لتسوية الدفع. — معهد الدراسات النفسية',
   pending_payment_reminder:
-    '⏰ تذكير: لديك دفعة معلّقة بمبلغ {{amount}} {{currency}} منذ {{date}}. يرجى إتمام الدفع أو التواصل معنا. — معهد مهاد 🌿',
+    '⏰ تذكير: لديك دفعة معلّقة بمبلغ {{amount}} {{currency}} منذ {{date}}. يرجى إتمام الدفع أو التواصل معنا. — معهد الدراسات النفسية 🌿',
   daqqi_session_reminder:
     'مرحباً {{name}} 💚\nتذكير بجلسة الدقي القادمة:\n📚 الكورس: {{courseTitle}}\n📅 التاريخ: {{sessionDate}}\n⏰ الوقت: {{timeLabel}}\n\nنتطلع لرؤيتك! 🌿\n— معهد الدراسات النفسية',
   lead_retargeting:

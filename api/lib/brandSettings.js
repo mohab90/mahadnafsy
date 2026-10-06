@@ -11,7 +11,7 @@ const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 const { pool } = require('./db');
 
 const DEFAULT_BRAND = {
-  instituteName: 'معهد مهاد للدراسات النفسية',
+  instituteName: 'معهد الدراسات النفسية',
   websiteUrl: 'https://mahadnafsy.com',
   supportEmail: 'info@mahadnafsy.com',
   supportPhone: '',
@@ -60,6 +60,14 @@ async function getBrandSettings(tenantId = DEFAULT_TENANT, db = undefined) {
     // a tenant onboarded only through the wizard never saw their own logo on
     // any branded output (ARC-07). Prefer it when present.
     if (sysGeneral?.brand_logo_url) value.logoUrl = sysGeneral.brand_logo_url;
+    // The institute name is set in the same wizard ('sys_general'), and was
+    // never read here, so emails went out under the hardcoded default name.
+    if (!content?.['institute.name'] && sysGeneral?.institute_name) {
+      value.instituteName = str(sysGeneral.institute_name, value.instituteName);
+    }
+    if (!content?.['brand.primary'] && sysGeneral?.brand_primary_color) {
+      value.primaryColor = hex(sysGeneral.brand_primary_color, value.primaryColor);
+    }
     if (sysGeneral?.website_url) value.websiteUrl = str(sysGeneral.website_url, value.websiteUrl);
     if (!content?.['site.url'] && !content?.['footer.website'] && !sysGeneral?.website_url) {
       const queryDb = db || pool;
