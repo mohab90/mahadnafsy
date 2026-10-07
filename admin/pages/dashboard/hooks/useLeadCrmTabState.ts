@@ -5,7 +5,10 @@ import type { PaymentDraft } from '../../../components/PaymentModal';
 import { createClientPaymentDraft } from '../../../lib/clientActionDrafts';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
-export function useLeadCrmTabState() {
+// canReadTargets: GET /api/admin/sales-targets needs view_leads, which support,
+// HR, the accountant and the instructors do not hold — the dashboard asked for it
+// on every load anyway (30 refusals on 7 Oct).
+export function useLeadCrmTabState(canReadTargets = true) {
   const [salesNotifOpen, setSalesNotifOpen] = useState(false);
   const [onlineMgrFollowupOpen, setOnlineMgrFollowupOpen] = useState(false);
   const [onlineMgrNewEventsOpen, setOnlineMgrNewEventsOpen] = useState(false);
@@ -16,6 +19,7 @@ export function useLeadCrmTabState() {
   const [leadsSalesTargets, setLeadsSalesTargets] = useState<SalesTarget[]>([]);
 
   useEffect(() => {
+    if (!canReadTargets) return;
     const period = cairoMonthOnly();
     void mysqlAdmin.listSalesTargets(period)
       .then(rows => setLeadsSalesTargets(rows.map(row => ({
@@ -24,7 +28,7 @@ export function useLeadCrmTabState() {
         targetEGP: Number(row.revenueTarget) || 0,
       })).filter(row => row.staffId && row.staffId !== '__collection__')))
       .catch(() => setLeadsSalesTargets([]));
-  }, []);
+  }, [canReadTargets]);
 
   return {
     salesNotifOpen, setSalesNotifOpen,

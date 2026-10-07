@@ -49,6 +49,16 @@ const TIER_NATIONALITY = { ONLINE_EGYPT: 'EGYPTIAN', ONLINE_EGYPT_FOREIGN: 'NON_
  * whatever the officer's grid says. Two collection officers on production hold
  * manage_financial, which settled their own bookings the moment they typed them.
  */
+// A lead a booking could not find, said in the desk's words: it moved to
+// someone else, it is hidden, or it is gone. «Lead not found» was all a rep saw
+// — the errors that showed «on some clients only».
+async function leadMissing(tenantId, leadId) {
+  const [[lead]] = await pool.query('SELECT hidden FROM leads WHERE tenant_id=? AND id=? LIMIT 1', [tenantId, leadId]).catch(() => [[null]]);
+  if (!lead) return { error: 'العميل ده مش موجود — حدّث الصفحة.', code: 'LEAD_NOT_FOUND' };
+  if (Number(lead.hidden) === 1) return { error: 'العميل ده مخفي — رجّعه الأول وبعدين سجّل الدفعة.', code: 'LEAD_HIDDEN' };
+  return { error: 'العميل ده مبقاش معاك — اتنقل لحد تاني. حدّث الصفحة.', code: 'LEAD_MOVED' };
+}
+
 const reviewedByManager = req => !req.isSuperAdmin && String(req.staffRecord?.role || '').toLowerCase() === 'collection';
 
 const TRANSIENT_TX_ERRORS = new Set(['ER_LOCK_DEADLOCK', 'ER_LOCK_WAIT_TIMEOUT']);
@@ -156,10 +166,10 @@ async function recordSubscriberPayment(req, res) {
           WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1`,
         [subscriber_id, req.tenantId]
       );
-      if (!subRow) return res.status(404).json({ error: 'Subscriber not found' });
+      if (!subRow) return res.status(404).json({ error: 'العميل ده مش موجود أو اتشال من قاعدة العملاء — حدّث الصفحة.', code: 'SUBSCRIBER_NOT_FOUND' });
     } else if (leadId) {
       const accessScope = leadScope(req, 'l');
-      if (accessScope.none) return res.status(404).json({ error: 'Lead not found' });
+      if (accessScope.none) return res.status(404).json({ error: 'مش متاح لك تسجّل دفعة على عملاء محتملين.', code: 'LEAD_OUT_OF_SCOPE' });
       const [[lead]] = await pool.query(
         `SELECT l.id,l.client_code,l.name,l.email,l.phone,l.branch,l.branch_id,
                 l.assigned_sales_id,l.assigned_sales_name,l.assigned_cs_id,l.assigned_cs_name,
@@ -169,7 +179,7 @@ async function recordSubscriberPayment(req, res) {
           LIMIT 1`,
         [req.tenantId, leadId, ...accessScope.params]
       );
-      if (!lead) return res.status(404).json({ error: 'Lead not found' });
+      if (!lead) return res.status(404).json(await leadMissing(req.tenantId, leadId));
       const [[existing]] = await pool.query(
         `SELECT id,name,email,phone,lead_id,assigned_sales_id,assigned_sales_name,
                 assigned_cs_id,assigned_cs_name,tenant_id,branch,branch_id,client_code
@@ -243,7 +253,7 @@ async function recordSubscriberPayment(req, res) {
         [req.tenantId, safePhone, safeEmail, safeEmail]
       );
       if (existing) {
-        return res.status(409).json({ error: 'Subscriber already exists', existingId: existing.id });
+        return res.status(409).json({ error: 'الرقم أو الإيميل ده عليه عميل تاني في قاعدة العملاء — سجّل الدفعة على العميل ده.', code: 'SUBSCRIBER_EXISTS', existingId: existing.id });
       }
       createFromDraft = true;
       subscriber_id = uuidv4();
@@ -538,7 +548,7 @@ async function recordSubscriberPayment(req, res) {
           .digest('hex').slice(0, 48)}`;
         const [[lock]] = await conn.query('SELECT GET_LOCK(?, 5) AS acquired', [paymentLockName]);
         if (Number(lock?.acquired) !== 1) {
-          const lockError = new Error('Another payment for this subscriber is still processing');
+          const lockError = new Error('في دفعة تانية للعميل ده بتتسجل دلوقتي — استنى ثواني وجرّب تاني.');
           lockError.statusCode = 409;
           throw lockError;
         }
@@ -602,7 +612,7 @@ async function recordSubscriberPayment(req, res) {
         [paymentTenantId, subRow.phone, String(subRow.email || ''), String(subRow.email || '')]
       );
       if (racedSubscriber) {
-        const error = new Error('Subscriber already exists');
+        const error = new Error('الرقم أو الإيميل ده اتسجل على عميل تاني في نفس اللحظة — حدّث الصفحة وسجّل الدفعة عليه.');
         error.statusCode = 409;
         throw error;
       }
@@ -644,7 +654,8 @@ async function recordSubscriberPayment(req, res) {
         [paymentTenantId, leadId, ...accessScope.params]
       );
       if (!lockedLead) {
-        const error = new Error('Lead not found');
+        const missing = await leadMissing(paymentTenantId, leadId);
+        const error = new Error(missing.error);
         error.statusCode = 404;
         throw error;
       }

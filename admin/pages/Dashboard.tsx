@@ -276,7 +276,9 @@ const Dashboard: React.FC = () => {
     
     
     leadsSalesTargets,
-  } = useLeadCrmTabState();
+  } = useLeadCrmTabState(isAdmin || masterHasPermission(
+    currentStaff ? { role: currentStaff.role as RoleKey, permissions: currentStaff.permissions as PermissionKey[] | undefined } : null,
+    'view_leads'));
 
   const {
     setLeadsFollowupFilter,

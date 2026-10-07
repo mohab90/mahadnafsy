@@ -39,9 +39,16 @@ export function useUnifiedClientPermissions(params: {
   // holds the same line (api/lib/paymentCorrections.js canCorrectPayments).
   const canCorrectPayments = isAdmin || String(currentStaff?.role || '').toLowerCase() === 'manager';
 
+  // The receipts list is GET /api/admin/payment-proofs, view_financial — every
+  // sales rep who opened a client asked for it and was refused (35 on 7 Oct).
+  const canSeeProofs = isAdmin || hasPermission(currentStaff ? {
+    role: currentStaff.role as RoleKey,
+    permissions: currentStaff.permissions as PermissionKey[] | undefined,
+  } : null, 'view_financial');
+
   return {
     currentStaff,
-    canCorrectPayments,
+    canCorrectPayments, canSeeProofs,
     isOnlineManager,
     isCollectionManager,
     canManageCourseAccess,

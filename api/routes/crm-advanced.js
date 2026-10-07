@@ -114,7 +114,7 @@ router.put('/api/admin/crm/assignment-members', requireAuth, requireAdmin, requi
   }
 });
 
-async function loadAccessibleLead(req, leadId, db = pool, forUpdate = false) {
+async function loadAccessibleLead(req, leadId, db = pool, forUpdate = false, followMerge = true) {
   const tenantId = scopedTenantId(req);
   const scope = leadScope(req, 'l');
   const [[lead]] = await db.query(
@@ -124,9 +124,19 @@ async function loadAccessibleLead(req, leadId, db = pool, forUpdate = false) {
      LIMIT 1${forUpdate ? ' FOR UPDATE' : ''}`,
     [leadId, tenantId, ...scope.params]
   );
-  if (!lead) return { status: 404, error: 'Lead not found' };
-
-  return { lead, tenantId };
+  if (lead) return { lead, tenantId };
+  // Said in the rep's words, the way the hide route says it: a contact logged
+  // on a lead that had moved to someone else came back «Lead not found» — the
+  // errors that showed «on some clients only» (9 on 6–7 Oct). A lead merged
+  // into another is that other one now.
+  const [[elsewhere]] = await db.query(
+    'SELECT id, merged_into_lead_id FROM leads WHERE id = ? AND tenant_id = ? LIMIT 1', [leadId, tenantId]);
+  if (elsewhere?.merged_into_lead_id && followMerge) {
+    return loadAccessibleLead(req, elsewhere.merged_into_lead_id, db, forUpdate, false);
+  }
+  return elsewhere
+    ? { status: 404, error: 'العميل ده مبقاش معاك — اتنقل لحد تاني. حدّث الصفحة.', code: 'LEAD_MOVED' }
+    : { status: 404, error: 'العميل ده مش موجود — حدّث الصفحة.', code: 'LEAD_NOT_FOUND' };
 }
 
 // PUT /api/admin/crm/leads/:id/status
@@ -138,7 +148,7 @@ router.put('/api/admin/crm/leads/:id/status', requireAuth, requireAdminOrStaff, 
     const loaded = await loadAccessibleLead(req, req.params.id, conn, true);
     if (!loaded.lead) {
       await conn.rollback();
-      return res.status(loaded.status).json({ error: loaded.error });
+      return res.status(loaded.status).json({ error: loaded.error, code: loaded.code });
     }
     const { lead, tenantId } = loaded;
     const previousStatus = String(lead.status || '').toLowerCase();
@@ -169,7 +179,7 @@ router.put('/api/admin/crm/leads/:id/follow-up', requireAuth, requireAdminOrStaf
     const loaded = await loadAccessibleLead(req, req.params.id, conn, true);
     if (!loaded.lead) {
       await conn.rollback();
-      return res.status(loaded.status).json({ error: loaded.error });
+      return res.status(loaded.status).json({ error: loaded.error, code: loaded.code });
     }
     await conn.query(
       `UPDATE leads SET crm_json=CASE WHEN NOT JSON_VALID(crm_json) THEN crm_json
@@ -206,7 +216,7 @@ router.post('/api/admin/crm/leads/:id/interactions', requireAuth, requireAdminOr
     const loaded = await loadAccessibleLead(req, req.params.id, conn, true);
     if (!loaded.lead) {
       await conn.rollback();
-      return res.status(loaded.status).json({ error: loaded.error });
+      return res.status(loaded.status).json({ error: loaded.error, code: loaded.code });
     }
     const result = await appendLeadInteraction({
       tenantId: loaded.tenantId,
@@ -252,7 +262,7 @@ router.delete('/api/admin/crm/leads/:leadId/interactions/:interactionId', requir
     const loaded = await loadAccessibleLead(req, req.params.leadId, conn, true);
     if (!loaded.lead) {
       await conn.rollback();
-      return res.status(loaded.status).json({ error: loaded.error });
+      return res.status(loaded.status).json({ error: loaded.error, code: loaded.code });
     }
     const result = await deleteLeadInteraction({
       tenantId: loaded.tenantId,
@@ -276,7 +286,7 @@ router.delete('/api/admin/crm/leads/:leadId/interactions/:interactionId', requir
 router.get('/api/admin/crm/leads/:id/interactions', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
   try {
     const loaded = await loadAccessibleLead(req, req.params.id);
-    if (!loaded.lead) return res.status(loaded.status).json({ error: loaded.error });
+    if (!loaded.lead) return res.status(loaded.status).json({ error: loaded.error, code: loaded.code });
 
     const limit = Math.min(Math.max(parseInt(req.query.limit || '100', 10) || 100, 1), 300);
     const [[rows], [communications]] = await Promise.all([

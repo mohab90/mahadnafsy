@@ -81,7 +81,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   // Lectures are not loaded at login any more — the client's progress is «شاهد N من M محاضرة», and M comes from here.
   useEnsureLectures();
 
-  const { isOnlineManager, canManageCourseAccess, canSeeCourses, canCorrectPayments } = useUnifiedClientPermissions({ isAdmin, currentStaff });
+  const { isOnlineManager, canManageCourseAccess, canSeeCourses, canCorrectPayments, canSeeProofs } = useUnifiedClientPermissions({ isAdmin, currentStaff });
 
   const isSub = !!subscriber;
   const clientName   = subscriber?.name   ?? lead?.name   ?? '';
@@ -188,7 +188,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
     loadProofImage,
     handleReviewProof,
   } = useUnifiedClientPaymentProofs({
-    isSubscriber: isSub,
+    isSubscriber: isSub && canSeeProofs,
     subscriber,
     reloadSubscribers,
   });
