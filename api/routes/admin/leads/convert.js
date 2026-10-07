@@ -226,7 +226,7 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
     let csId = lead.assigned_cs_id || null;
     let csName = lead.assigned_cs_name || null;
     if (!csId) {
-      const rep = await pickCollectionOfficer(pool, req.tenantId, { market: subscriberMarket({ branch: lead.branch }) });
+      const rep = await pickCollectionOfficer(pool, req.tenantId, { market: subscriberMarket({ branch: lead.branch }), branch: lead.branch });
       if (rep) { csId = rep.id; csName = rep.name; }
     }
 

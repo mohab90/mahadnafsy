@@ -875,7 +875,7 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
       // leaves them unassigned, for the distribute button to place.
       const rawMarketBranch = String(crmData.branch || '').toUpperCase().replace(/[-\s]/g, '_');
       const rep = await pickCollectionOfficer(conn, req.tenantId, {
-        market: subscriberMarket({ market: crmData.market, branch: rawMarketBranch }),
+        market: subscriberMarket({ market: crmData.market, branch: rawMarketBranch }), branch: rawMarketBranch,
       });
       if (rep) { csId = rep.id; csName = rep.name; }
     }

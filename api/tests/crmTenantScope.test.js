@@ -46,7 +46,9 @@ test('lead conversion is tenant-owned, transactional and releases once', () => {
 
 test('automatic staff assignment measures workload inside the same tenant', () => {
   const lib = read('lib/collectionDistribution.js');
-  assert.match(lib, /FROM staff\s+WHERE tenant_id=\? AND UPPER\(role\)='COLLECTION'/);
+  assert.match(lib, /WHERE st\.tenant_id=\? AND UPPER\(st\.role\)='COLLECTION'/);
+  assert.match(lib, /MAX\(assigned_cs_at\) AS last_at FROM subscribers\s+WHERE tenant_id=\? AND deleted_at IS NULL GROUP BY assigned_cs_id/,
+    'the wait since the last client is counted inside the tenant too');
   assert.match(lib, /FROM subscribers\s+WHERE tenant_id=\? AND deleted_at IS NULL AND assigned_cs_at >= \?/);
   assert.doesNotMatch(read('lib/db.js'), /crm_rr_index|autoAssignStaff/);
 });

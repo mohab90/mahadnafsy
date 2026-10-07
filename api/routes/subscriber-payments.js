@@ -604,7 +604,7 @@ async function recordSubscriberPayment(req, res) {
       const rep = approvingRequest
         ? { id: approvingRequest.requested_by, name: approvingRequest.requested_by_name }
         : await pickCollectionOfficer(conn, paymentTenantId, {
-          market: subscriberMarket({ latestCurrency: paymentCurrency, branch: subRow.branch }),
+          market: subscriberMarket({ latestCurrency: paymentCurrency, branch: subRow.branch }), branch: subRow.branch,
         });
       const clientCode = await getNextClientCode(conn);
       subRow.assigned_cs_id = rep?.id || null;
@@ -677,7 +677,7 @@ async function recordSubscriberPayment(req, res) {
         let csName = approvingRequest ? approvingRequest.requested_by_name : (lockedLead.assigned_cs_name || null);
         if (!csId) {
           const rep = await pickCollectionOfficer(conn, paymentTenantId, {
-            market: subscriberMarket({ latestCurrency: paymentCurrency, branch: lockedLead.branch }),
+            market: subscriberMarket({ latestCurrency: paymentCurrency, branch: lockedLead.branch }), branch: paymentBranch,
           });
           if (rep) { csId = rep.id; csName = rep.name; }
         }

@@ -184,7 +184,9 @@ test('a row lands with the sheet\'s remaining, its date, its numbers cleaned, an
     assert.equal(first.created_at, '2026-01-08 12:00:00');
     assert.equal(second.created_at, null, 'a date ahead of today is not a date');
     assert.equal(first.assigned_cs_id, 'cs-9');
-    assert.deepEqual(picked, [{ market: 'local' }, { market: 'local' }]);
+    // The branch goes with the market: the real picker gives a Dokki client no
+    // online officer (collectionGoesRoundAndLeadsStayWithSales.test.js).
+    assert.deepEqual(picked, [{ market: 'local', branch: 'DAQQI' }, { market: 'local', branch: 'DAQQI' }]);
     const crm = JSON.parse(first.crm_json);
     assert.deepEqual(crm.customPrices, { 'c-life': 4600 });
     assert.deepEqual(crm.priorPaid, { 'c-life': 1700 });

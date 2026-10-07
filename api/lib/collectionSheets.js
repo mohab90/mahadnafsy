@@ -183,7 +183,7 @@ async function importCollectionRows({ tenantId, staff = null, kind = 'old_local'
         // The old-data screens hand a new client to collection by the
         // distribution rules, as a client added by hand is.
         const officer = staff || (autoAssign ? await pickCollectionOfficer(conn, tenantId, {
-          market: subscriberMarket({ branch: branch || (kind === 'old_intl' ? 'ONLINE_ABROAD' : 'ONLINE_EGYPT') }),
+          market: subscriberMarket({ branch: branch || (kind === 'old_intl' ? 'ONLINE_ABROAD' : 'ONLINE_EGYPT') }), branch,
         }) : null);
         const id = await createClient(conn, {
           tenantId, staff: officer, kind, branch, source, row, email, phone: phonesAll[0] || null, otherPhones: phonesAll.slice(1), courseId, actor,

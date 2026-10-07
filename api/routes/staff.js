@@ -306,6 +306,15 @@ router.post('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermiss
        ON DUPLICATE KEY UPDATE name=VALUES(name), phone=VALUES(phone), role=VALUES(role), image=VALUES(image), is_active=VALUES(is_active), notes=VALUES(notes), commission_rate=VALUES(commission_rate), permissions_json=VALUES(permissions_json), data_scope=VALUES(data_scope), monthly_target=VALUES(monthly_target), monthly_target_type=VALUES(monthly_target_type), monthly_leads_target=VALUES(monthly_leads_target), monthly_bonus=VALUES(monthly_bonus)`,
       [id, req.tenantId, s.branch_id || writeBranch?.branchId || 'branch-other', firebaseUid, name, email, s.phone || '', role, s.image || null, s.specialization || null, joinedAt, isActive, s.notes || null, commissionRate, permissionsJson, dataScope, monthlyTarget, monthlyTargetType, monthlyLeadsTarget, monthlyBonus]
     );
+    // A rep moved out of sales leaves their leads behind: Yasmin Farid, sales in
+    // April and collection since, still held 1,433 of them, in no list the desk
+    // distributes from. They go back to «محلي جديد» — «اي ليد غير بتوع السيلز
+    // خليه في محلي جديد».
+    if (String(existingStaff?.role || '').toUpperCase() === 'SALES' && role !== 'SALES') {
+      await pool.query(
+        'UPDATE leads SET assigned_sales_id=NULL, assigned_sales_name=NULL WHERE tenant_id=? AND assigned_sales_id=?',
+        [req.tenantId, id]);
+    }
     res.json({ ok: true, id });
   } catch (e) {
     // The check above catches the ordinary case; this is the race, and it must

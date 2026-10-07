@@ -816,7 +816,7 @@ router.get('/api/staff/my-collection-clients', requireAuth, requireAdminOrStaff,
        WHERE s.tenant_id = ? AND s.deleted_at IS NULL AND (
              s.assigned_cs_id = ?
            OR ((s.assigned_cs_id IS NULL OR s.assigned_cs_id = '') AND s.assigned_cs_name = (SELECT name FROM staff WHERE id=? AND tenant_id=? LIMIT 1))
-          OR (s.crm_json IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedCollectionId')) = ?)
+          OR ((s.assigned_cs_id IS NULL OR s.assigned_cs_id = '') AND s.crm_json IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedCollectionId')) = ?)
            OR ((s.assigned_cs_id IS NULL OR s.assigned_cs_id = '') AND s.crm_json IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedCollectionName')) = (SELECT name FROM staff WHERE id=? AND tenant_id=? LIMIT 1)))
        ORDER BY s.created_at DESC LIMIT 5000`,
       [req.tenantId, staffId, staffId, req.tenantId, staffId, staffId, req.tenantId]

@@ -64,6 +64,9 @@ function sanitizeCollectionConfig(input = {}) {
   return { members, sheets };
 }
 
+// The distribute button's rule: `branch NOT LIKE '%DAQQI%' AND branch <> 'TAGAMOA'`.
+const isBranchClient = branch => /DAQQI|^TAGAMOA$/.test(String(branch || '').trim().toUpperCase());
+
 // The same reading as the screen's (admin onlineClientsUtils.subscriberMarket):
 // where the desk moved the client, else what their latest payment was in, else
 // their branch.
@@ -134,11 +137,19 @@ async function collectionIntake(db, tenantId, members, now = new Date()) {
   return counts;
 }
 
+// Whoever has waited longest since their last client comes first. Ordered by
+// name, a picker loaded for one client started at the same officer every time:
+// every booking from 29 Sep went to «Doaa Awny», first in the alphabet the day
+// her account was made, and so did the 1,972 Dokki clients imported that week.
 async function collectionStaff(db, tenantId) {
   const [rows] = await db.query(
-    `SELECT id, name FROM staff
-      WHERE tenant_id=? AND UPPER(role)='COLLECTION' AND is_active=1 AND deleted_at IS NULL ORDER BY name`,
-    [tenantId]);
+    `SELECT st.id, st.name FROM staff st
+       LEFT JOIN (SELECT assigned_cs_id, MAX(assigned_cs_at) AS last_at FROM subscribers
+                   WHERE tenant_id=? AND deleted_at IS NULL GROUP BY assigned_cs_id) got
+         ON got.assigned_cs_id = st.id
+      WHERE st.tenant_id=? AND UPPER(st.role)='COLLECTION' AND st.is_active=1 AND st.deleted_at IS NULL
+      ORDER BY got.last_at IS NOT NULL, got.last_at, st.name`,
+    [tenantId, tenantId]);
   return rows;
 }
 
@@ -153,8 +164,12 @@ async function loadCollectionPicker(db, tenantId) {
  * or null when nobody takes them — they then wait unassigned, where the
  * distribute button and the settings find them. (It replaced a round-robin
  * that picked the least loaded employee whatever the settings said.)
+ *
+ * A Dokki or Tagamoa client is the branch desk's, as the distribute button
+ * already has it: online collection receives none of them.
  */
-async function pickCollectionOfficer(db, tenantId, { market = 'local' } = {}) {
+async function pickCollectionOfficer(db, tenantId, { market = 'local', branch = null } = {}) {
+  if (isBranchClient(branch)) return null;
   const picker = await loadCollectionPicker(db, tenantId);
   const officer = picker.next(market);
   return officer ? { id: officer.id, name: officer.name } : null;
