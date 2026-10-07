@@ -1,33 +1,8 @@
 import { useState } from 'react';
 
-import type { ExtraCertificateType } from '../../types';
-
-export type ExtraCertificateDraft = {
-  courseId: string;
-  type: ExtraCertificateType | '';
-  certExpected: string;
-};
-
-export const createExtraCertificateDraft = (): ExtraCertificateDraft => ({
-  courseId: '',
-  type: '',
-  certExpected: '',
-});
-
+// A certificate is requested from «حجز ودفع» only — the owner, 7 Oct 2026. The
+// profile's own «طلب شهادة» form is gone, and its draft with it.
 export const useUnifiedClientCertificateState = () => {
   const [viewCertId, setViewCertId] = useState<string | null>(null);
-  const [showExtraCertForm, setShowExtraCertForm] = useState(false);
-  const [extraCertDraft, setExtraCertDraft] = useState<ExtraCertificateDraft>(createExtraCertificateDraft());
-
-  const resetExtraCertDraft = () => setExtraCertDraft(createExtraCertificateDraft());
-
-  return {
-    viewCertId,
-    setViewCertId,
-    showExtraCertForm,
-    setShowExtraCertForm,
-    extraCertDraft,
-    setExtraCertDraft,
-    resetExtraCertDraft,
-  };
+  return { viewCertId, setViewCertId };
 };

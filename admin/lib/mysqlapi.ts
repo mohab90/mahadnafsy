@@ -449,6 +449,24 @@ export interface InboxConversation {
   messengerWindowOpen: boolean;
 }
 
+export interface ExtraRequestRow {
+  id: string;
+  subscriberId: string | null;
+  subscriberName: string;
+  subscriberPhone: string;
+  clientCode: string | null;
+  kind: 'carnet' | 'book' | 'attestation';
+  title: string | null;
+  amount: number;
+  currency: string;
+  status: string;
+  date: string;
+  method: string | null;
+  takenBy: string | null;
+  branch: string | null;
+  note: string | null;
+}
+
 export interface InboxMessage {
   id: string;
   type: 'WHATSAPP' | 'MESSENGER' | string;
@@ -683,9 +701,10 @@ export const mysqlAdmin = {
   listAllJoinUs:           ()             => apiFetch<AR[]>('/admin/join-us', {}, A),
   listAllContactMessages:  ()             => apiFetch<AR[]>('/admin/contact-messages', {}, A),
   listAllCertificateRequests: (limit = 3000) => apiFetch<AR[]>(`/admin/certificate-requests?limit=${limit}`, {}, A),
+  // Carnets, books and extra attestations a client paid for («طلبات إضافية»).
+  listExtraRequests: (limit = 2000) => apiFetch<ExtraRequestRow[]>(`/admin/extra-requests?limit=${limit}`, {}, A),
   /** «زر تعديل للشهادات» — the name, type, course, money, box and notes of one request. */
   updateCertificateDetails: (id: string, body: AR) => put(`/admin/certificate-requests/${encodeURIComponent(id)}/details`, body),
-  createCertificateRequest: (body: AR) => post('/admin/certificate-requests', body),
   updateCertificateRequest: (id: string | number, status: string, notes?: string) =>
     patch(`/admin/certificate-requests/${id}`, { status, notes }),
   deleteCertificateRequest: (id: string | number) => del(`/admin/certificate-requests/${id}`),

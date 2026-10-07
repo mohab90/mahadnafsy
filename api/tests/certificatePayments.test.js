@@ -9,6 +9,8 @@ function fakeDb(initialRequest = null) {
   return {
     state,
     async query(sql, params) {
+      if (sql.includes('FROM tenant_settings')) return [[state.content ? { config_json: JSON.stringify(state.content) } : undefined]];
+      if (sql.includes('FROM site_config')) return [[undefined]];
       if (sql.includes('FROM certificate_requests') && sql.includes('FOR UPDATE')) {
         return [[state.request ? structuredClone(state.request) : undefined]];
       }
@@ -21,11 +23,11 @@ function fakeDb(initialRequest = null) {
         return [{ affectedRows: 1 }];
       }
       if (sql.startsWith('UPDATE certificate_requests')) {
+        // SET paid_amount=?, currency=COALESCE(currency,?), price=?, status=CASE WHEN ? IS NULL OR ?<=? …
         state.request.paid_amount = params[0];
         state.request.currency ||= params[1];
-        state.request.status = state.request.price == null || Number(state.request.price) <= Number(params[2])
-          ? 'PAID'
-          : 'PRICED';
+        state.request.price = params[2];
+        state.request.status = params[3] == null || Number(params[4]) <= Number(params[5]) ? 'PAID' : 'PRICED';
         state.updates += 1;
         return [{ affectedRows: 1 }];
       }
@@ -85,4 +87,26 @@ test('certificate settlement rejects ownership, overpayment and currency drift',
     () => applyCertificatePayment({ ...payment, currency: 'SAR' }, fakeDb(request), 'tenant-1'),
     /currency does not match/,
   );
+});
+
+// «لما بندخل ان العميل دفع 500 من سعر الشهاده بيسجل ان الشهاده كلها ب500» (7 Oct 2026).
+test("part of a certificate paid is part paid: the price is the certificate's, not the payment", async () => {
+  const db = fakeDb();
+  await applyCertificatePayment({
+    id: 'pay-9', subscriber_id: 'sub-1', certificate_request_id: 'certreq-9', amount: 500, currency: 'EGP',
+    cert_type: 'AMERICAN_BOARD', price: 1800,
+  }, db, 'tenant-default');
+  assert.equal(db.state.request.price, 1800);
+  assert.equal(db.state.request.paid_amount, 500);
+  assert.equal(db.state.request.status, 'PRICED', 'still owed 1,300');
+});
+
+test("with no price typed, the certificate takes the price list's", async () => {
+  const db = fakeDb();
+  db.state.content = { extra_cert_pricing: JSON.stringify({ american_board: { egyptianEGP: 1800, residentSAR: 300, foreignUSD: 90 } }) };
+  await applyCertificatePayment({
+    id: 'pay-10', subscriber_id: 'sub-1', certificate_request_id: 'certreq-10', amount: 300, currency: 'SAR', cert_type: 'AMERICAN_BOARD',
+  }, db, 'tenant-default');
+  assert.equal(db.state.request.price, 300, 'the SAR price, as the dialog reads it');
+  assert.equal(db.state.request.status, 'PAID');
 });

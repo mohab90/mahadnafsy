@@ -164,12 +164,11 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   } = useUnifiedClientCourseAccess({ subscriber, content, reloadSubscribers });
 
   const {
-    viewCertId, setViewCertId, showExtraCertForm, setShowExtraCertForm,
-    extraCertDraft, setExtraCertDraft, resetExtraCertDraft,
+    viewCertId, setViewCertId,
     showConvertModal, setShowConvertModal, convertCourseId, setConvertCourseId,
     convertAccessMode, setConvertAccessMode, convertPartialCount, setConvertPartialCount,
     promoCopied, setPromoCopied, subCerts, activeSubCerts, extraReqs,
-    handleAddExtraCertRequest, handleConvert, handleGeneratePromo, handleCertificateLifecycle,
+    handleConvert, handleGeneratePromo, handleCertificateLifecycle,
   } = useUnifiedClientLifecycleActions({
     lead, subscriber, isSaving, setIsSaving, setLeadDraft,
     updateLead, reloadLeads, reloadSubscribers,
@@ -264,7 +263,6 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
         onOpenLinkedSubscriber={() => linkedSub && navigate(`/client/${linkedSub.clientCode || linkedSub.id}`)}
         onAddCommunication={openContact}
         onOpenInstallmentPlan={() => setActiveTab('installments')}
-        onOpenExtraCertificate={() => { setShowExtraCertForm(true); resetExtraCertDraft(); }}
         onOpenAccess={() => setShowAccessModal(true)}
         onEdit={() => { setEditing(true); setActiveTab('edit'); }}
         onToggleSubscriberStatus={() => updateSubscriber({ ...subscriber!, status: subscriber!.status === 'active' ? 'paused' : 'active' })}
@@ -373,7 +371,6 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
             onSubscriberPayment={() => { setActiveTab('payments'); openSubscriberPaymentForm(); }}
             onLeadPayment={openLeadPaymentForm}
             onLegacyPayment={openLegacyPaymentForm}
-            onExtraCertificate={() => { setActiveTab('certificates'); setShowExtraCertForm(true); resetExtraCertDraft(); }}
             onInstallmentPlan={() => setActiveTab('installments')}
             onEdit={() => { setEditing(!editing); setActiveTab('edit'); }}
           />
@@ -544,10 +541,6 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
                   courses={courses}
                   certificates={subCerts}
                   extraRequests={extraReqs}
-                  onRequestExtraCertificate={() => {
-                    setShowExtraCertForm(true);
-                    resetExtraCertDraft();
-                  }}
                   onViewCertificate={setViewCertId}
                   onRevokeCertificate={(certificateId) => void handleCertificateLifecycle(certificateId, 'revoke')}
                   onReissueCertificate={(certificateId) => void handleCertificateLifecycle(certificateId, 'reissue')}
@@ -632,7 +625,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
       </div>
 
       {(showAccessModal || showContactPopup || showConvertModal
-        || showAddComm || showLeadPayForm || showExtraCertForm
+        || showAddComm || showLeadPayForm
         || Boolean(viewCertId) || showPayDetailModal) && (
         <React.Suspense fallback={null}>
           <UnifiedClientModalsHost
@@ -671,12 +664,6 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
               branchLabel: lead.branch,
               onSubmit: handleAddLeadPayment,
               onClose: () => setShowLeadPayForm(false),
-            } : undefined}
-            extraCertificate={showExtraCertForm && isSub ? {
-              open: true, subscriber, clientName, courses, draft: extraCertDraft,
-              settlementLabel,
-              setDraft: setExtraCertDraft, onSubmit: handleAddExtraCertRequest,
-              onClose: () => setShowExtraCertForm(false),
             } : undefined}
             certificateView={viewCertId ? {
               certificateId: viewCertId, certificates: activeSubCerts, subscriber,

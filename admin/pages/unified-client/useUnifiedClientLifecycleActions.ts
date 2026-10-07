@@ -1,6 +1,5 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { mysqlAdmin } from '../../lib/mysqlapi';
-import { currencyForBranch } from '../../lib/branchCurrency';
 import type { LeadItem, SubscriberCertificate, SubscriberItem } from '../../types';
 import { generatePromoCode } from './constants';
 import { useUnifiedClientCertificateState } from './useUnifiedClientCertificateState';
@@ -45,28 +44,6 @@ export function useUnifiedClientLifecycleActions(params: Params) {
   useEffect(() => {
     setConvertCourseId(lead?.enrolledCourseId || '');
   }, [lead?.id, lead?.enrolledCourseId]);
-
-  const handleAddExtraCertRequest = async () => {
-    const { extraCertDraft } = certificateState;
-    if (!extraCertDraft.courseId || !extraCertDraft.type || !subscriber || isSaving) return;
-    setIsSaving(true);
-    try {
-      await mysqlAdmin.createCertificateRequest({
-        subscriberId: subscriber.id,
-        courseId: extraCertDraft.courseId,
-        type: extraCertDraft.type,
-        price: extraCertDraft.certExpected === '' ? undefined : Number(extraCertDraft.certExpected),
-        currency: currencyForBranch(subscriber.branch),
-      });
-      await reloadSubscribers();
-      certificateState.setShowExtraCertForm(false);
-      certificateState.resetExtraCertDraft();
-    } catch (error) {
-      persistenceError('certificateRequest', error);
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   const handleConvert = async () => {
     if (isSaving || !convertCourseId || !lead) return;
@@ -127,6 +104,6 @@ export function useUnifiedClientLifecycleActions(params: Params) {
     subCerts,
     activeSubCerts: subCerts.filter(certificate => certificate.status !== 'revoked'),
     extraReqs: subscriber?.extraCertificateRequests ?? [],
-    handleAddExtraCertRequest, handleConvert, handleGeneratePromo, handleCertificateLifecycle,
+    handleConvert, handleGeneratePromo, handleCertificateLifecycle,
   };
 }

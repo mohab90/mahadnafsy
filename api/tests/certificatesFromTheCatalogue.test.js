@@ -40,7 +40,6 @@ test('every screen that offers a certificate lists the catalogue', () => {
     'admin/components/PaymentModal.tsx',
     'admin/pages/dashboard/tabs/CertRequestsTab.tsx',
     'admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx',
-    'admin/pages/unified-client/UnifiedClientExtraCertificateModal.tsx',
     'admin/pages/unified-client/UnifiedClientCertificatesPanel.tsx',
     'admin/pages/unified-client/UnifiedClientSidebarCards.tsx',
   ];

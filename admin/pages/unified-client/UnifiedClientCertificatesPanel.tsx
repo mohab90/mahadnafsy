@@ -1,4 +1,4 @@
-import { Award, Ban, Eye, Plus, RotateCcw } from 'lucide-react';
+import { Award, Ban, Eye, RotateCcw } from 'lucide-react';
 import type { Course, ExtraCertificateRequest, SubscriberCertificate, SubscriberItem } from '../../types';
 import { useCertificateCatalog } from '../../lib/certificateCatalog';
 
@@ -7,7 +7,6 @@ interface UnifiedClientCertificatesPanelProps {
   courses: Course[];
   certificates: SubscriberCertificate[];
   extraRequests: ExtraCertificateRequest[];
-  onRequestExtraCertificate: () => void;
   onViewCertificate: (certificateId: string) => void;
   onRevokeCertificate: (certificateId: string) => void;
   onReissueCertificate: (certificateId: string) => void;
@@ -47,7 +46,6 @@ export function UnifiedClientCertificatesPanel({
   courses,
   certificates,
   extraRequests,
-  onRequestExtraCertificate,
   onViewCertificate,
   onRevokeCertificate,
   onReissueCertificate,
@@ -67,14 +65,7 @@ export function UnifiedClientCertificatesPanel({
 
       <div className="flex items-center justify-between">
         <p className="font-bold text-gray-700 text-sm">شهادات الكورسات ({certificates.length})</p>
-        {subscriber.enrolledCourseIds.length > 0 && (
-          <button
-            onClick={onRequestExtraCertificate}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-bold hover:bg-emerald-100 border border-emerald-200"
-          >
-            <Plus size={12} /> طلب شهادة إضافية
-          </button>
-        )}
+        {/* A certificate is requested from «حجز ودفع» only (the owner, 7 Oct 2026). */}
       </div>
 
       {certificates.length === 0 ? (

@@ -735,7 +735,9 @@ test('unified client finance computes balances and certificates in the branch se
   // branch — asserted on the line above this block. One rule, one place.
   assert.match(payments, /openLegacyPaymentForm = \(\) => openSubscriberPaymentForm\(/);
   assert.match(payments, /createClientPaymentDraft\(\{\s*\n\s*branch: subscriber\?\.branch,/);
-  assert.match(lifecycle, /currency: currencyForBranch\(subscriber\.branch\)/);
+  // The profile's own «طلب شهادة» form is gone (the owner, 7 Oct 2026): a
+  // certificate is requested from «حجز ودفع», in the payment's currency.
+  assert.doesNotMatch(lifecycle, /createCertificateRequest/);
   // Each item in the currency it is paid in, the settlement currency otherwise
   // (admin/lib/agreedPrice.ts clientItems) — price and payments both.
   assert.match(clientsTable, /clientItems\(row, courses, bundles, branchCurrency\)/);

@@ -302,7 +302,6 @@ type QuickActionsProps = {
   onSubscriberPayment: () => void;
   onLeadPayment: () => void;
   onLegacyPayment: () => void;
-  onExtraCertificate: () => void;
   onInstallmentPlan: () => void;
   onEdit: () => void;
 };
@@ -313,7 +312,6 @@ export function UnifiedClientSidebarQuickActions({
   onSubscriberPayment,
   onLeadPayment,
   onLegacyPayment,
-  onExtraCertificate,
   onInstallmentPlan,
   onEdit,
 }: QuickActionsProps) {
@@ -341,10 +339,6 @@ export function UnifiedClientSidebarQuickActions({
             <button onClick={onLegacyPayment}
               className="flex flex-col items-center gap-1.5 py-3 bg-amber-50 text-amber-700 rounded-2xl hover:bg-amber-100 transition border border-amber-100">
               <Clock size={18} /><span className="text-[11px] font-bold">مدفوع قديم</span>
-            </button>
-            <button onClick={onExtraCertificate}
-              className="flex flex-col items-center gap-1.5 py-3 bg-orange-50 text-orange-700 rounded-2xl hover:bg-orange-100 transition border border-orange-100">
-              <Award size={18} /><span className="text-[11px] font-bold">إصدار شهادة</span>
             </button>
             <button onClick={onInstallmentPlan}
               className="flex flex-col items-center gap-1.5 py-3 bg-purple-50 text-purple-700 rounded-2xl hover:bg-purple-100 transition border border-purple-100">

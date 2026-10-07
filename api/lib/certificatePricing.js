@@ -43,6 +43,20 @@ function resolveCertificatePrice({ type, nationality, countryCode, pricingConfig
   return { price, currency, status: price ? 'PRICED' : 'PENDING' };
 }
 
+// The price list's figure for a type in the payment's currency — the reading
+// the payment dialog uses (admin PaymentModal certBasePrice), so the desk and
+// the server agree on what a certificate costs.
+function basePriceForCurrency(pricingConfig, type, currency) {
+  const typeKey = String(type || '').toLowerCase();
+  const savedKey = Object.keys(pricingConfig || {}).find(key => key.toLowerCase() === typeKey);
+  const tiers = (savedKey && pricingConfig[savedKey]) || null;
+  if (!tiers) return 0;
+  const code = String(currency || 'EGP').toUpperCase();
+  if (code === 'SAR') return Number(tiers.residentSAR) || 0;
+  if (code === 'USD') return Number(tiers.foreignUSD) || 0;
+  return Number(tiers.egyptianEGP) || Number(tiers.residentEGP) || 0;
+}
+
 // The eight the system started with, and every code «تسعير الشهادات» lists.
 const BUILT_IN_CERTIFICATE_TYPES = ['SOCIAL_SOLIDARITY','AIN_SHAMS','EXPERIENCE_EXTERNAL','PRACTICE_EXTERNAL','NATIONAL_COUNCIL','AMERICAN_BOARD','INSTITUTE','OTHER'];
 function certificateTypeCodes(pricingConfig) {
@@ -50,6 +64,6 @@ function certificateTypeCodes(pricingConfig) {
 }
 
 module.exports = {
-  certificateTypeCodes,
+  certificateTypeCodes, basePriceForCurrency,
   resolveCertificatePrice, priceKeyForNationality, priceKeyForCountry, currencyForPriceKey,
 };

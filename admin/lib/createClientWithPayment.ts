@@ -97,7 +97,9 @@ export async function createClientWithPayment(
       paymentType,
       isInstallment: paymentType === 'course' && draft.bookingType === 'installment',
       ...item,
-      courseExpected: paymentType === 'course' ? (Number(draft.customExpected) || undefined) : undefined,
+      // A certificate's price travels too: without it the server could only take
+      // the payment for the whole price (api/lib/certificatePayments.js).
+      courseExpected: paymentType === 'course' || paymentType === 'certificate' ? (Number(draft.customExpected) || undefined) : undefined,
       paymentMethod: draft.paymentMethod,
       transactionId: draft.transactionId || undefined,
       fromAccountNumber: draft.fromAccountNumber || undefined,

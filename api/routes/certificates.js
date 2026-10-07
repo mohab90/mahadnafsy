@@ -118,6 +118,43 @@ router.get('/api/admin/certificate-requests', requireAuth, requireAdminOrStaff, 
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// «طلبات إضافية» beside the certificates: a carnet, a book, or an extra
+// attestation (توثيق) a client paid for. They were payments and nothing else,
+// so the desk that hands them over never saw them: «لما العميل بيطلب كارنيه مش
+// بيظهر … المفروض يظهر عند خدمة العملاء في تاب جوه الشهادات».
+router.get('/api/admin/extra-requests', requireAuth, requireAdminOrStaff, requirePermission('manage_certificates'), async (req, res) => {
+  try {
+    const limit = parseLimit(req.query.limit, 2000, 5000);
+    const [rows] = await pool.query(
+      `SELECT p.id, p.subscriber_id, p.payment_type, p.amount, p.currency, p.status, p.date, p.item_title, p.note,
+              p.payment_method, p.staff_name, p.branch,
+              s.name AS subscriber_name, s.phone AS subscriber_phone, s.client_code
+         FROM payments p
+         LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
+        WHERE p.tenant_id=? AND p.deleted_at IS NULL AND p.status IN ('paid','pending')
+          AND (p.payment_type IN ('CARNEH','BOOK')
+               OR (p.payment_type='OTHER' AND (p.item_title LIKE '%توثيق%' OR p.note LIKE '%توثيق%')))
+        ORDER BY p.date DESC, p.created_at DESC LIMIT ?`, [req.tenantId, limit]);
+    res.json(rows.map(row => ({
+      id: row.id,
+      subscriberId: row.subscriber_id,
+      subscriberName: row.subscriber_name || '',
+      subscriberPhone: row.subscriber_phone || '',
+      clientCode: row.client_code || null,
+      kind: row.payment_type === 'CARNEH' ? 'carnet' : row.payment_type === 'BOOK' ? 'book' : 'attestation',
+      title: row.item_title || null,
+      amount: Number(row.amount) || 0,
+      currency: row.currency || 'EGP',
+      status: row.status,
+      date: row.date,
+      method: row.payment_method || null,
+      takenBy: row.staff_name || null,
+      branch: row.branch || null,
+      note: row.note || null,
+    })));
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // «زر تعديل للشهادات». What a request says — the name on it, its type, course,
 // nationality, price, what was paid before the system, the box it was paid into
 // and the desk's notes. The price stays fixed once a payment row is linked, as

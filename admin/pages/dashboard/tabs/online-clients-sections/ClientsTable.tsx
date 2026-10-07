@@ -392,7 +392,17 @@ export function ClientsTable({
                 // Per-course certificate: check if cert exists for this courseId
                 const crCertId = cr.cid.startsWith('bundle:') ? cr.cid.replace('bundle:','') : cr.cid;
                 const crCert = (row.certificates||[]).find(cert => cert.courseId === crCertId || cert.courseId === cr.cid);
-                const crCertReqs = (row.extraCertificateRequests||[]).filter(req => req.courseId === crCertId || req.courseId === cr.cid);
+                // Each request on the row of its course, a course inside a track on
+                // the track's row, and one that matches no row (no course, or a
+                // course the client no longer holds) on the first. It was shown on
+                // an exact match only, so those were in no row at all: «بعد طلب
+                // الشهاده مش بتظهر في جدول العملاء في عمود الشهادات».
+                const rowOfRequest = (courseId?: string) => courseRows.find(other => {
+                  const otherId = other.cid.startsWith('bundle:') ? other.cid.slice(7) : other.cid;
+                  return courseId === otherId || courseId === other.cid
+                    || (other.cid.startsWith('bundle:') && !!bundles.find(b => `bundle:${b.id}` === other.cid)?.courses.some(co => co.id === courseId));
+                })?.cid ?? courseRows[0]?.cid;
+                const crCertReqs = (row.extraCertificateRequests||[]).filter(req => rowOfRequest(req.courseId) === cr.cid);
                 const crCertStatus = cr.remaining <= 0 ? 'مكتمل' : 'جزئي';
                 return (
                 <tr key={`${row.id}-${cr.cid}`} className={`hover:bg-gray-50/40 ${ci%2===1?'bg-gray-50/30':''} ${collOnlineSelected.has(row.id)?'bg-blue-50':''}`}>

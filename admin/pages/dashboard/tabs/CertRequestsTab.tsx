@@ -8,6 +8,7 @@ import { Modal } from '../../../../shared/ui/Modal';
 import { cairoDay } from '../../../../shared/cairoDate';
 import { useCertificateCatalog } from '../../../lib/certificateCatalog';
 import { branchLabels, normBranchKey } from '../../unified-client/constants';
+import ExtraRequestsPanel from './ExtraRequestsPanel';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -99,7 +100,7 @@ export default function CertRequestsTab({
   certStatusFilter, setCertStatusFilter, pricing, initialTab = 'requests',
 }: Props) {
   const navigate = useNavigate();
-  const [innerTab, setInnerTab] = useState<'requests' | 'pricing'>(pricing ? initialTab : 'requests');
+  const [innerTab, setInnerTab] = useState<'requests' | 'extras' | 'pricing'>(pricing ? initialTab : 'requests');
   const certCatalog = useCertificateCatalog();
   const [rows, setRows] = useState<CertRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -191,18 +192,17 @@ export default function CertRequestsTab({
 
   return (
     <article className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
-      {pricing && (
-        <div className="flex flex-wrap gap-1.5 border-b border-gray-200 pb-2 -mt-1">
-          {([['requests', 'الطلبات'], ['pricing', 'أسعار الشهادات الإضافية']] as const).map(([key, label]) => (
+      <div className="flex flex-wrap gap-1.5 border-b border-gray-200 pb-2 -mt-1">
+          {([['requests', 'الطلبات'], ['extras', 'طلبات إضافية'], ['pricing', 'أسعار الشهادات الإضافية']] as const)
+            .filter(([key]) => key !== 'pricing' || pricing).map(([key, label]) => (
             <button key={key} onClick={() => setInnerTab(key)}
               className={`px-4 py-2 rounded-xl text-sm font-bold transition ${innerTab === key ? 'bg-amber-500 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
               {label}
             </button>
           ))}
-        </div>
-      )}
+      </div>
 
-      {pricing && innerTab === 'pricing' ? pricing : (<>
+      {innerTab === 'extras' ? <ExtraRequestsPanel notify={notify} /> : pricing && innerTab === 'pricing' ? pricing : (<>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="font-bold text-gray-900 flex items-center gap-2">
             <Star size={18} className="text-amber-500" /> طلبات الشهادات

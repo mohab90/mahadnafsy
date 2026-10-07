@@ -750,6 +750,8 @@ async function recordSubscriberPayment(req, res) {
         note: sanitize(payment.note || payment.notes || '', 2000) || null,
         cert_type: certType,
         certificate_request_id: certificateRequestId,
+        // The certificate's full price as the dialog states it, not this payment.
+        price: payment.courseExpected ?? payment.course_expected ?? null,
       }, conn, paymentTenantId, { settle: isPaid });
     }
 

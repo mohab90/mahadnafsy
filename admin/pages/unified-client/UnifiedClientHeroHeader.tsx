@@ -1,6 +1,5 @@
 import {
   ArrowRight,
-  Award,
   CalendarCheck2,
   CalendarDays,
   CheckCircle,
@@ -42,7 +41,6 @@ type Props = {
   onOpenLinkedSubscriber: () => void;
   onAddCommunication: () => void;
   onOpenInstallmentPlan: () => void;
-  onOpenExtraCertificate: () => void;
   onOpenAccess: () => void;
   onEdit: () => void;
   onToggleSubscriberStatus: () => void;
@@ -74,7 +72,6 @@ export function UnifiedClientHeroHeader({
   onOpenLinkedSubscriber,
   onAddCommunication,
   onOpenInstallmentPlan,
-  onOpenExtraCertificate,
   onOpenAccess,
   onEdit,
   onToggleSubscriberStatus,
@@ -178,12 +175,6 @@ export function UnifiedClientHeroHeader({
             <button onClick={onOpenInstallmentPlan}
               className="px-3 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 transition-colors shadow-sm">
               <CalendarDays size={14} /> أقساط
-            </button>
-          )}
-          {isSub && (
-            <button onClick={onOpenExtraCertificate}
-              className="px-3 py-2 bg-amber-500 hover:bg-amber-400 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 transition-colors shadow-sm">
-              <Award size={14} /> شهادة
             </button>
           )}
           {canManageCourseAccess && isSub && (

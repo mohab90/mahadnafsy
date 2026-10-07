@@ -1,5 +1,20 @@
 'use strict';
 
+const { getTenantSetting } = require('./tenantSettings');
+const { basePriceForCurrency } = require('./certificatePricing');
+
+// What a certificate costs: the figure the desk typed (the dialog fills in the
+// price list's), else the price list's own — never the payment. A request
+// opened by a payment took the amount paid as its price: «لما بندخل ان العميل
+// دفع 500 من سعر الشهاده بيسجل ان الشهاده كلها ب500», so it read fully paid.
+async function certificatePrice(db, tenantId, { stated, type, currency }) {
+  if (Number(stated) > 0) return Number(stated);
+  const content = await getTenantSetting('content', { tenantId, fallback: {}, db }).catch(() => ({}));
+  let pricing = {};
+  try { pricing = JSON.parse(content?.extra_cert_pricing || '{}') || {}; } catch { pricing = {}; }
+  return basePriceForCurrency(pricing, type, currency) || null;
+}
+
 const CERTIFICATE_TYPES = new Set([
   'SOCIAL_SOLIDARITY', 'AIN_SHAMS', 'EXPERIENCE_EXTERNAL', 'PRACTICE_EXTERNAL',
   'NATIONAL_COUNCIL', 'AMERICAN_BOARD', 'INSTITUTE', 'OTHER',
@@ -34,28 +49,32 @@ async function applyCertificatePayment(payment, db, tenantId, options = {}) {
     }
     if (!settle) return requestId;
     const previousPaid = Number(request.paid_amount) || 0;
-    const price = Number(request.price) || 0;
+    // A request still without a price takes the certificate's, not "whatever
+    // was paid is the price".
+    const price = Number(request.price) > 0 ? Number(request.price)
+      : await certificatePrice(db, tenantId, { stated: payment.price, type: request.type, currency });
     if (price > 0 && previousPaid >= price) throw conflict('Certificate request is already fully paid');
     const paidAmount = previousPaid + amount;
     await db.query(
       `UPDATE certificate_requests
-       SET paid_amount=?, currency=COALESCE(currency,?),
-           status=CASE WHEN price IS NULL OR price<=? THEN 'PAID' ELSE 'PRICED' END
+       SET paid_amount=?, currency=COALESCE(currency,?), price=?,
+           status=CASE WHEN ? IS NULL OR ?<=? THEN 'PAID' ELSE 'PRICED' END
        WHERE id=? AND tenant_id=?`,
-      [paidAmount, currency, paidAmount, requestId, tenantId]
+      [paidAmount, currency, price || null, price || null, price || 0, paidAmount, requestId, tenantId]
     );
   } else {
     const requestedType = String(payment.cert_type || '').toUpperCase();
     if (!CERTIFICATE_TYPES.has(requestedType)) {
       throw conflict('Certificate type is required for a new certificate request');
     }
+    const price = await certificatePrice(db, tenantId, { stated: payment.price, type: requestedType, currency }) || amount;
     await db.query(
       `INSERT INTO certificate_requests
          (id, subscriber_id, course_id, type, status, price, paid_amount, currency, note, tenant_id, requested_at)
        VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
       [
         requestId, payment.subscriber_id, payment.course_id || null, requestedType,
-        settle ? 'PAID' : 'PRICED', amount, settle ? amount : 0, currency,
+        settle && amount >= price ? 'PAID' : 'PRICED', price, settle ? amount : 0, currency,
         payment.note || null, tenantId,
         String(payment.date || new Date().toISOString()).slice(0, 10),
       ]
