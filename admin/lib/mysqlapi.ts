@@ -1098,10 +1098,19 @@ export const mysqlAdmin = {
     date?: string;
     nextFollowUp?: string;
     newStatus?: string;
+    /** «تم»: the follow-up is done whatever its date. */
+    closeFollowUp?: boolean;
   }) =>
     apiFetch<{ ok: boolean; id: string; leadId: string; status: string }>(
       `/admin/crm/leads/${encodeURIComponent(leadId)}/interactions`,
       { method: 'POST', body: JSON.stringify(interaction) },
+      A,
+    ),
+  /** Move a lead's follow-up to a day, or clear it (null). */
+  setLeadFollowUp: (leadId: string, date: string | null) =>
+    apiFetch<{ ok: boolean; id: string; nextFollowUpDate: string | null }>(
+      `/admin/crm/leads/${encodeURIComponent(leadId)}/follow-up`,
+      { method: 'PUT', body: JSON.stringify({ date }) },
       A,
     ),
   getLeadInteractions: (leadId: string, limit = 300) =>

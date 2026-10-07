@@ -1,7 +1,8 @@
 import { useCallback, useMemo } from 'react';
-import { cairoDateOnly, cairoDay, cairoDaysAhead } from '../../../../../shared/cairoDate';
+import { cairoDateOnly, cairoDaysAhead } from '../../../../../shared/cairoDate';
 import type React from 'react';
-import type { CommunicationRecord, CrmInsights, LeadItem } from '../../../../types';
+import type { CrmInsights, LeadItem } from '../../../../types';
+import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { calcLeadScore } from '../leadUtils';
 import { isOpenLeadStatus } from '../../../../../shared/leadStatuses';
 
@@ -15,7 +16,8 @@ interface UseLeadRemindersDataArgs {
   leads: LeadItem[];
   reminderStaffFilter: string;
   snoozeIds: Set<string>;
-  updateLead: (lead: LeadItem) => void | Promise<boolean>;
+  /** After «بكرة» or «تم»: the lists are asked for again. */
+  onChanged: () => void;
   setSnoozeIds: React.Dispatch<React.SetStateAction<Set<string>>>;
   insights?: CrmInsights | null;
 }
@@ -44,7 +46,7 @@ export function useLeadRemindersData({
   leads,
   reminderStaffFilter,
   snoozeIds,
-  updateLead,
+  onChanged,
   setSnoozeIds,
   insights,
 }: UseLeadRemindersDataArgs) {
@@ -130,56 +132,34 @@ export function useLeadRemindersData({
     const filterByStaff = (items: ReminderLead[]) =>
       reminderStaffFilter ? items.filter(lead => lead.assignedSalesId === reminderStaffFilter) : items;
 
-    // completionRate counts leads whose date has passed whether or not they are
-    // still open, so it cannot come from remindersAll above — the server returns
-    // it directly, and the array fallback recomputes it the old way.
-    let completionRate: number;
-    if (insights) {
-      completionRate = insights.remindersCompletionRate;
-    } else {
-      const totalDue = leads.filter(lead => lead.nextFollowUpDate && lead.nextFollowUpDate <= todayStr && !lead.hidden).length;
-      const completed = leads.filter(lead => {
-        if (!lead.nextFollowUpDate || lead.nextFollowUpDate > todayStr || lead.hidden) return false;
-        return (lead.communications || []).some(comm => cairoDay(comm.date) >= lead.nextFollowUpDate!);
-      }).length;
-      completionRate = totalDue > 0 ? Math.round((completed / totalDue) * 100) : 0;
-    }
-
     return {
-      overdue,
-      today,
-      upcoming,
-      untouched,
-      promised,
       untouchedFiltered: filterByStaff(untouched).filter(lead => !snoozeIds.has(lead.id)),
       promisedFiltered: filterByStaff(promised).filter(lead => !snoozeIds.has(lead.id)),
       overdueFiltered: filterByStaff(overdue).filter(lead => !snoozeIds.has(lead.id)),
       todayFiltered: filterByStaff(today).filter(lead => !snoozeIds.has(lead.id)),
       upcomingFiltered: filterByStaff(upcoming).filter(lead => !snoozeIds.has(lead.id)),
-      completionRate,
     };
   }, [insights, leads, next7, reminderStaffFilter, snoozeIds, todayStr]);
 
+  // Each its own small request. Both re-sent the whole lead, and the date only
+  // ever reached crm_json, so a lead pushed to tomorrow or marked done was back
+  // on the list, as late as before, on the next load.
+  const failed = (error: unknown) => window.dispatchEvent(new CustomEvent('site-persist-error', {
+    detail: { field: 'lead', reason: error instanceof Error ? error.message : '' },
+  }));
   const snooze1Day = useCallback(async (lead: LeadItem) => {
-    const tomorrow = cairoDaysAhead(1);
-    if (await updateLead({ ...lead, nextFollowUpDate: tomorrow }) === false) return;
+    try { await mysqlAdmin.setLeadFollowUp(lead.id, cairoDaysAhead(1)); } catch (error) { failed(error); return; }
     setSnoozeIds(current => new Set([...current, lead.id]));
-  }, [setSnoozeIds, updateLead]);
+    onChanged();
+  }, [onChanged, setSnoozeIds]);
 
   const markDone = useCallback(async (lead: LeadItem) => {
-    const rec: CommunicationRecord = {
-      id: `rem-${Date.now()}`,
-      type: 'note',
-      date: new Date().toISOString().slice(0, 16).replace('T', ' '),
-      notes: '✅ تم إنجاز المتابعة',
-    };
-    if (await updateLead({
-      ...lead,
-      communications: [...(lead.communications || []), rec],
-      nextFollowUpDate: undefined,
-    }) === false) return;
+    try {
+      await mysqlAdmin.addLeadInteraction(lead.id, { type: 'note', notes: '✅ تم إنجاز المتابعة', closeFollowUp: true });
+    } catch (error) { failed(error); return; }
     setSnoozeIds(current => new Set([...current, lead.id]));
-  }, [setSnoozeIds, updateLead]);
+    onChanged();
+  }, [onChanged, setSnoozeIds]);
 
   return {
     ...data,

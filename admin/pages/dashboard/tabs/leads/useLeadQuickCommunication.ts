@@ -21,10 +21,16 @@ const blankQuickCommunicationDraft = {
 interface UseLeadQuickCommunicationArgs {
   effectiveLeads: LeadItem[];
   reloadLeads: () => Promise<void>;
+  /** After a contact is saved — the follow-ups lists are asked for again. */
+  onSaved?: () => void;
 }
 
-export function useLeadQuickCommunication({ effectiveLeads, reloadLeads }: UseLeadQuickCommunicationArgs) {
+export function useLeadQuickCommunication({ effectiveLeads, reloadLeads, onSaved }: UseLeadQuickCommunicationArgs) {
   const [showAddComm, setShowAddComm] = useState(false);
+  // The lead chosen, as it was handed over. One opened from the follow-ups list
+  // comes from the server's queue and is often not among the leads loaded, and
+  // the save looked only there — so it did nothing at all.
+  const [chosenLead, setChosenLead] = useState<LeadItem | null>(null);
   const [addCommDraft, setAddCommDraft] = useState(blankQuickCommunicationDraft);
   const [addCommSearchResults, setAddCommSearchResults] = useState<LeadItem[]>([]);
 
@@ -41,6 +47,7 @@ export function useLeadQuickCommunication({ effectiveLeads, reloadLeads }: UseLe
   };
 
   const selectLeadForCommunication = (lead: LeadItem) => {
+    setChosenLead(lead);
     setAddCommDraft((draft) => ({ ...draft, leadSearch: lead.name, selectedLeadId: lead.id }));
     setAddCommSearchResults([]);
   };
@@ -51,7 +58,8 @@ export function useLeadQuickCommunication({ effectiveLeads, reloadLeads }: UseLe
   };
 
   const saveQuickCommunication = async () => {
-    const lead = effectiveLeads.find((item) => item.id === addCommDraft.selectedLeadId);
+    const lead = effectiveLeads.find((item) => item.id === addCommDraft.selectedLeadId)
+      || (chosenLead?.id === addCommDraft.selectedLeadId ? chosenLead : null);
     if (!lead || !addCommDraft.notes.trim()) return;
     try {
       // Sending goes through the inbox reply path, which delivers from the rep's
@@ -65,6 +73,7 @@ export function useLeadQuickCommunication({ effectiveLeads, reloadLeads }: UseLe
           via: 'whatsapp',
         });
         await reloadLeads();
+        onSaved?.();
         resetQuickCommunication();
         setShowAddComm(false);
         return;
@@ -77,6 +86,7 @@ export function useLeadQuickCommunication({ effectiveLeads, reloadLeads }: UseLe
       nextFollowUp: addCommDraft.nextFollowUp || undefined,
       });
       await reloadLeads();
+      onSaved?.();
       resetQuickCommunication();
       setShowAddComm(false);
     } catch (error) {

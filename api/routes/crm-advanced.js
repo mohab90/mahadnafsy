@@ -156,6 +156,40 @@ router.put('/api/admin/crm/leads/:id/status', requireAuth, requireAdminOrStaff, 
   }
 });
 
+// PUT /api/admin/crm/leads/:id/follow-up { date: 'YYYY-MM-DD' | null } — move or
+// clear one lead's follow-up: «بكرة» on the follow-ups page. The whole lead was
+// re-sent for it, and the date only ever reached crm_json.
+router.put('/api/admin/crm/leads/:id/follow-up', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), async (req, res) => {
+  const raw = req.body?.date;
+  const date = raw == null || raw === '' ? null : String(raw).slice(0, 10);
+  if (date !== null && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD or null' });
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const loaded = await loadAccessibleLead(req, req.params.id, conn, true);
+    if (!loaded.lead) {
+      await conn.rollback();
+      return res.status(loaded.status).json({ error: loaded.error });
+    }
+    await conn.query(
+      `UPDATE leads SET crm_json=CASE WHEN NOT JSON_VALID(crm_json) THEN crm_json
+                                      WHEN ? IS NULL THEN JSON_REMOVE(crm_json, '$.nextFollowUpDate')
+                                      ELSE JSON_SET(crm_json, '$.nextFollowUpDate', ?) END,
+                        next_follow_up_date=?, updated_at=NOW()
+        WHERE tenant_id=? AND id=?`,
+      [date, date, date, loaded.tenantId, loaded.lead.id]);
+    await logLeadEventStrict(loaded.lead.id, 'followup_set', date ? `موعد متابعة: ${date}` : 'اتشال ميعاد المتابعة',
+      { date, actor: actor(req) }, loaded.tenantId, conn);
+    await conn.commit();
+    res.json({ ok: true, id: loaded.lead.id, nextFollowUpDate: date });
+  } catch (e) {
+    await conn.rollback().catch(() => {});
+    routeError(res, e, 'crm follow-up update failed');
+  } finally {
+    conn.release();
+  }
+});
+
 // POST /api/admin/crm/leads/:id/interactions
 router.post('/api/admin/crm/leads/:id/interactions', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), async (req, res) => {
   const conn = await pool.getConnection();
@@ -165,6 +199,7 @@ router.post('/api/admin/crm/leads/:id/interactions', requireAuth, requireAdminOr
     const outcome = sanitize(String(req.body?.outcome || '').trim(), 200);
     const date = req.body?.date || null;
     const nextFollowUp = req.body?.nextFollowUp || null;
+    const closeFollowUp = req.body?.closeFollowUp === true;
     if (!notes) return res.status(400).json({ error: 'notes required' });
 
     await conn.beginTransaction();
@@ -176,7 +211,7 @@ router.post('/api/admin/crm/leads/:id/interactions', requireAuth, requireAdminOr
     const result = await appendLeadInteraction({
       tenantId: loaded.tenantId,
       leadId: loaded.lead.id,
-      interaction: { type, notes, outcome, date, nextFollowUp },
+      interaction: { type, notes, outcome, date, nextFollowUp, closeFollowUp },
       actor: actor(req),
       staffId: req.staffRecord?.id || null,
       db: conn,

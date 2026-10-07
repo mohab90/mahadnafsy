@@ -14,7 +14,7 @@ import type { CrmInsights } from '../../../../types';
  * changes. The in-flight guard stops a fast slider from stacking requests and
  * letting an older response overwrite a newer one.
  */
-export function useCrmInsights(idleDays: number, enabled = true) {
+export function useCrmInsights(idleDays: number, enabled = true, refreshKey: unknown = 0) {
   const [insights, setInsights] = useState<CrmInsights | null>(null);
   const requestSeq = useRef(0);
 
@@ -41,7 +41,9 @@ export function useCrmInsights(idleDays: number, enabled = true) {
     })();
 
     return () => { cancelled = true; };
-  }, [idleDays, enabled]);
+  // refreshKey: asked again after a contact, a «بكرة» or a «تم», so the
+  // follow-ups list does not keep a lead that was just dealt with.
+  }, [idleDays, enabled, refreshKey]);
 
   return insights;
 }

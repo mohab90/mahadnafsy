@@ -17,85 +17,12 @@ import {
   COMM_LABEL,
   IL_LABEL,
   PRESET_TAGS,
-  ROTTEN_CFG,
   STATUS_CFG,
   calcLeadScore,
   getLeadBranchRaw,
-  getRottenLevel,
 } from '../leadUtils';
 import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 
-
-export function BulkWhatsAppModal({ selectedLeads, onClose, notify }: {
-  selectedLeads: LeadItem[];
-  onClose: () => void;
-  notify: NotifyFn;
-}) {
-  const [message, setMessage] = useState('');
-  const [sending, setSending] = useState(false);
-  const [result, setResult] = useState<{ sent: number; failed: number } | null>(null);
-
-  const handleSend = async () => {
-    if (!message.trim()) return;
-    setSending(true);
-    try {
-      const phones = selectedLeads.map(l => l.phone).filter(Boolean);
-      const r = await mysqlAdmin.sendWhatsAppBulk(phones, message.trim());
-      setResult({ sent: r.sent, failed: r.failed });
-      notify('success', `تم إرسال ${r.sent} رسالة بنجاح`);
-    } catch (e) {
-      notify('error', e instanceof Error ? e.message : 'فشل الإرسال');
-    } finally {
-      setSending(false);
-    }
-  };
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={`💬 إرسال واتساب جماعي (${selectedLeads.length} عميل)`}
-      size="sm"
-    >
-        <div className="p-5 space-y-4">
-          {result ? (
-            <div className="text-center py-4">
-              <div className="text-4xl mb-2">✅</div>
-              <p className="font-bold text-gray-900">تم الإرسال!</p>
-              <p className="text-sm text-gray-500 mt-1">مُرسَل: {result.sent} · فشل: {result.failed}</p>
-              <button onClick={onClose} className="mt-4 bg-primary-600 text-white px-6 py-2 rounded-xl font-bold">إغلاق</button>
-            </div>
-          ) : (
-            <>
-              <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm text-gray-600 max-h-24 overflow-y-auto">
-                {selectedLeads.slice(0, 5).map(l => (
-                  <span key={l.id} className="inline-block bg-white border border-gray-200 rounded-full px-2 py-0.5 text-xs mr-1 mb-1">{l.name} ({l.phone})</span>
-                ))}
-                {selectedLeads.length > 5 && <span className="text-xs text-gray-400">+{selectedLeads.length - 5} آخرين</span>}
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-600 mb-1 block">نص الرسالة *</label>
-                <textarea value={message} onChange={e => setMessage(e.target.value)}
-                  rows={5} placeholder="اكتب الرسالة هنا..."
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none" />
-                <p className="text-xs text-gray-400 mt-1">{message.length} حرف</p>
-              </div>
-              <div className="flex gap-3">
-                <button onClick={handleSend} disabled={sending || !message.trim()}
-                  className="flex-1 bg-emerald-600 text-white py-2.5 rounded-xl font-bold hover:bg-emerald-700 disabled:opacity-60 flex items-center justify-center gap-2">
-                  {sending ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : '💬'}
-                  {sending ? 'جاري الإرسال...' : 'إرسال'}
-                </button>
-                <button onClick={onClose} className="px-4 bg-gray-100 text-gray-700 rounded-xl">إلغاء</button>
-              </div>
-            </>
-          )}
-        </div>
-    </Modal>
-  );
-}
-
-// ── WhatsApp Per-Rep Modal ───────────────────────────────────────────────────
 
 export function WhatsAppRepModal({ rep, leads, onClose, notify }: {
   rep: { id: string; name: string };

@@ -15,6 +15,7 @@ import {
   COMM_LABEL,
   interestLevelLabel,
   ROTTEN_CFG,
+  STALE_BADGES_SHOWN,
   STATUS_CFG,
   getLeadBranchRaw,
   getRottenLevel,
@@ -52,7 +53,7 @@ export function LeadCard({ lead, score, onSelect, onStatusChange, onBook, onCont
     ? [...lead.communications].sort((a, b) => b.date.localeCompare(a.date))[0]
     : null;
 
-  const rotLevel = getRottenLevel(lead);
+  const rotLevel = STALE_BADGES_SHOWN ? getRottenLevel(lead) : 0;
   const rotCfg = ROTTEN_CFG[rotLevel];
 
   return (

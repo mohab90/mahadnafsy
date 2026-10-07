@@ -5,7 +5,7 @@ import { ExternalLink, Eye, EyeOff, Phone, Trash2, Wallet } from 'lucide-react';
 import { useResizableCols } from '../../../components/useResizableCols';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { BranchType, Bundle, LeadItem, LeadStatus, SubscriberItem } from '../../../types';
-import { BRANCH_ENUM_LABELS, ROTTEN_CFG, STATUS_CFG, getRottenLevel } from './leadUtils';
+import { BRANCH_ENUM_LABELS, ROTTEN_CFG, STALE_BADGES_SHOWN, STATUS_CFG, getRottenLevel } from './leadUtils';
 import { crmStatusLabels } from '../dashboardShared';
 import { toDialable } from '../../../lib/whatsappLink';
 import { courseBadgeLabel, isRawCourse } from './leads/leadCourseLabel';
@@ -256,12 +256,12 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                 ? Math.floor((Date.now() - new Date(cairoDay(lastCommEntry.date)).getTime()) / 86_400_000)
                 : null;
               const isStale = agingDays > 14 && isOpenLeadStatus(row.status);
-              const rottenLv = getRottenLevel(row);
+              const rottenLv = STALE_BADGES_SHOWN ? getRottenLevel(row) : 0;
               const rottenCfg = ROTTEN_CFG[rottenLv];
               return (
                 <tr
                   key={row.id}
-                  className={`hover:bg-primary-50/30 transition-colors ${row.hidden ? 'opacity-50' : ''} ${selectedIds.includes(row.id) ? 'bg-primary-50/50' : idx % 2 === 1 ? 'bg-gray-50/70' : 'bg-white'} ${rottenLv >= 3 ? 'border-r-[3px] border-r-red-500' : rottenLv === 2 ? 'border-r-[3px] border-r-orange-500' : rottenLv === 1 ? 'border-r-[3px] border-r-yellow-400' : isStale ? 'border-r-2 border-r-orange-300' : ''}`}>
+                  className={`hover:bg-primary-50/30 transition-colors ${row.hidden ? 'opacity-50' : ''} ${selectedIds.includes(row.id) ? 'bg-primary-50/50' : idx % 2 === 1 ? 'bg-gray-50/70' : 'bg-white'} ${rottenLv >= 3 ? 'border-r-[3px] border-r-red-500' : rottenLv === 2 ? 'border-r-[3px] border-r-orange-500' : rottenLv === 1 ? 'border-r-[3px] border-r-yellow-400' : isStale && STALE_BADGES_SHOWN ? 'border-r-2 border-r-orange-300' : ''}`}>
                   <td className="px-3 py-2 border border-gray-200 text-center">
                     {canManageLeads && (
                       <input type="checkbox" checked={selectedIds.includes(row.id)} onChange={() => toggleSelect(row.id)} className="cursor-pointer" />

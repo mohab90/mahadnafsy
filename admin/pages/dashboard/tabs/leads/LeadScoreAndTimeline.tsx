@@ -16,11 +16,9 @@ import {
   IL_LABEL,
   normalizeInterestLevel,
   PRESET_TAGS,
-  ROTTEN_CFG,
   STATUS_CFG,
   calcLeadScore,
   getLeadBranchRaw,
-  getRottenLevel,
   // getScoreBreakdown is deliberately not taken from leadUtils — the version
   // defined below is richer.
 } from '../leadUtils';

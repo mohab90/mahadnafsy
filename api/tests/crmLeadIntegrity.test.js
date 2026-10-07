@@ -123,7 +123,7 @@ test('CRM interactions use one tenant-owned transactional service', () => {
   assert.match(admin, /appendLeadInteraction/);
   assert.match(advanced, /appendLeadInteraction/);
   assert.match(advanced, /requestedStatus[\s\S]*transitionLead\(\{[\s\S]*db: conn/);
-  assert.match(advanced, /interaction: \{ type, notes, outcome, date, nextFollowUp \}/);
+  assert.match(advanced, /interaction: \{ type, notes, outcome, date, nextFollowUp, closeFollowUp \}/);
   assert.match(ops, /queueLeadWhatsAppBatch/);
 });
 

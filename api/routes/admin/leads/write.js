@@ -265,6 +265,13 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
       // crm_json stale-assignment bug). Distinguish the two: an explicitly
       // present null clears, an absent key still leaves the value untouched.
       const clearSales = Object.prototype.hasOwnProperty.call(crmData, 'assignedSalesId') && !crmData.assignedSalesId;
+      // The follow-up date, to its column. It reached crm_json alone, and every
+      // list reads the column first (mapLeadRow), so a date moved from the
+      // lead's panel — or «بكرة» on the follow-ups page — snapped back to the
+      // old one on the next load, and a cleared one stayed due.
+      const followUpGiven = Object.prototype.hasOwnProperty.call(crmData, 'nextFollowUpDate');
+      const followUpDay = followUpGiven && /^\d{4}-\d{2}-\d{2}/.test(String(crmData.nextFollowUpDate || ''))
+        ? String(crmData.nextFollowUpDate).slice(0, 10) : null;
       const [updated] = await conn.query(
         `UPDATE leads SET name=?, email=?, phone=?, source=?, notes=?, client_code=COALESCE(client_code,?),
            assigned_sales_id=IF(?,NULL,COALESCE(?,assigned_sales_id)),
@@ -272,13 +279,15 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
            assigned_cs_id=IF(?,NULL,COALESCE(?,assigned_cs_id)),
            assigned_cs_name=IF(?,NULL,COALESCE(?,assigned_cs_name)),
            crm_json=?, branch=COALESCE(NULLIF(?,''),branch), branch_id=COALESCE(?,branch_id), client_type=COALESCE(?,client_type),
-           interested_course_ids_json=COALESCE(?,interested_course_ids_json), hidden=COALESCE(?,hidden)
+           interested_course_ids_json=COALESCE(?,interested_course_ids_json), hidden=COALESCE(?,hidden),
+           next_follow_up_date=IF(?, ?, next_follow_up_date)
          WHERE id=? AND tenant_id=?`,
         [safeName||'', safeEmail||null, safePhone, safeSource||null, safeNotes||null, code,
          clearSales ? 1 : 0, salesId, clearSales ? 1 : 0, salesName,
          clearCs && staffRole !== 'collection' ? 1 : 0, csId, clearCs && staffRole !== 'collection' ? 1 : 0, csName,
          JSON.stringify(crmToStore), branchVal, branchId, leadClientTypeVal, courseIdsJson,
-         typeof hidden === 'boolean' ? (hidden ? 1 : 0) : null, id, tenantId]
+         typeof hidden === 'boolean' ? (hidden ? 1 : 0) : null,
+         followUpGiven ? 1 : 0, followUpDay, id, tenantId]
       );
       if (!updated.affectedRows) {
         await conn.rollback();

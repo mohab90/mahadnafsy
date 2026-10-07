@@ -27,7 +27,7 @@ import {
 } from '../leadUtils';
 
 export { AddLeadModal } from './AddLeadModal';
-export { BulkWhatsAppModal, WhatsAppRepModal } from './LeadWhatsAppModals';
+export { WhatsAppRepModal } from './LeadWhatsAppModals';
 export { QuickEditPanel } from './QuickEditPanel';
 export { LeadCard } from './LeadCard';
 export { getScoreBreakdown, ScoreBadge, EVENT_CFG, LeadJourneyTimeline } from './LeadScoreAndTimeline';

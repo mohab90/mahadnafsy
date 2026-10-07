@@ -1,5 +1,4 @@
 import { QuickLogContactPanel } from './leads/QuickLogContactPanel';
-import { cairoDateOnly } from '../../../../shared/cairoDate';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { useNavigate } from 'react-router-dom';
@@ -64,7 +63,6 @@ import SectionCustomTabs from './SectionCustomTabs';
 import { LeadEmptyDiagnostics } from './leads/LeadEmptyDiagnostics';
 import { useLeadActions } from './leads/useLeadActions';
 import { useLeadCrmBootstrap } from './leads/useLeadCrmBootstrap';
-import { useLeadRemoteReminders } from './leads/useLeadRemoteReminders';
 import { isLocalNewLead, poolReasonOf, POOL_REASON_LABELS, TERMINAL_LEAD_STATUSES, type PoolReason } from './leads/leadSourceGroups';
 import { poolViewOf, useLeadPool, useLocalNewCount } from './leads/useLeadPool';
 import type { TabKey } from '../navigation';
@@ -77,7 +75,7 @@ const LeadModalsHost = React.lazy(() => import('./leads/LeadModalsHost').then(mo
 const LeadPerformancePanel = React.lazy(() => import('./leads/LeadPerformancePanel').then(module => ({ default: module.LeadPerformancePanel })));
 const LeadPerformanceOverview = React.lazy(() => import('./leads/LeadPerformanceOverview').then(module => ({ default: module.LeadPerformanceOverview })));
 const LeadPipelineBoard = React.lazy(() => import('./leads/LeadPipelineBoard').then(module => ({ default: module.LeadPipelineBoard })));
-const LeadRemindersPanel = React.lazy(() => import('./leads/LeadRemindersPanel').then(module => ({ default: module.LeadRemindersPanel })));
+const LeadFollowUpsPage = React.lazy(() => import('./leads/LeadFollowUpsPage').then(module => ({ default: module.LeadFollowUpsPage })));
 const CrmQuotesWorkspace = React.lazy(() => import('./leads/CrmQuotesWorkspace').then(module => ({ default: module.CrmQuotesWorkspace })));
 const LeadPipelineSettings = React.lazy(() => import('./leads/LeadPipelineSettings').then(module => ({ default: module.LeadPipelineSettings })));
 const SalesOffersPanel = React.lazy(() => import('./leads/SalesOffersPanel'));
@@ -149,11 +147,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   }, [subTab, loadFullLeads, fullLeadsAttempt]);
   const { crmSettings, setCrmSettings, pipelineStages, reloadPipeline, selfStaff } =
     useLeadCrmBootstrap(notify);
-  const {
-    staleLeads, staleLoading, staleBulkMsg, setStaleBulkMsg, staleSending,
-    staleSelected, setStaleSelected, dueToday, dueTodayLoading,
-    refreshStaleLeads, refreshDueToday, sendStaleBulkWhatsapp,
-  } = useLeadRemoteReminders(subTab, notify);
   const [rottenFilter, setRottenFilter] = useState(false);
   const [showHiddenLeads, setShowHiddenLeads] = useState(false);
   const [waRepId, setWaRepId] = useState<string | null>(null);
@@ -250,7 +243,9 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const [smartIdleDays, setSmartIdleDays] = useState(7);
   // One request that answers what the reminders, scorecard and redistribution
   // panels used to answer by scanning every lead in the browser.
-  const crmInsights = useCrmInsights(smartIdleDays);
+  // Bumped after every follow-up action, so the lists show what is left.
+  const [insightsKey, bumpInsights] = React.useReducer((count: number) => count + 1, 0);
+  const crmInsights = useCrmInsights(smartIdleDays, true, insightsKey);
   // ── Communications tab state ─────────────────────────────────────────────
   const {
     showAddComm,
@@ -261,7 +256,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     handleLeadSearchChange,
     selectLeadForCommunication,
     saveQuickCommunication,
-  } = useLeadQuickCommunication({ effectiveLeads, reloadLeads });
+  } = useLeadQuickCommunication({ effectiveLeads, reloadLeads, onSaved: bumpInsights });
   // Contact button on a kanban lead card → open the quick-communication modal
   // already targeting that lead, instead of the dead state it used to set.
   const openContactLog = useCallback((lead: LeadItem) => {
@@ -270,25 +265,20 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   }, [selectLeadForCommunication, setShowAddComm]);
   // ── Reminders tab state ──────────────────────────────────────────────────
   const [reminderStaffFilter, setReminderStaffFilter] = useState('');
-  const [reminderView, setReminderView] = useState<'list' | 'kanban'>('kanban');
   const [snoozeIds, setSnoozeIds] = useState<Set<string>>(new Set());
   const {
-    overdue,
-    today: reminderToday,
-    upcoming,
     untouchedFiltered,
     promisedFiltered,
     overdueFiltered,
     todayFiltered,
     upcomingFiltered,
-    completionRate,
     snooze1Day,
     markDone,
   } = useLeadRemindersData({
     leads,
     reminderStaffFilter,
     snoozeIds,
-    updateLead,
+    onChanged: bumpInsights,
     setSnoozeIds,
     insights: crmInsights,
   });
@@ -812,39 +802,21 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
 
       {subTab === 'reminders' && (
         <Suspense fallback={<LeadSectionFallback />}>
-          <LeadRemindersPanel
-            overdueCount={overdue.length}
-            todayCount={reminderToday.length}
-            upcomingCount={upcoming.length}
-            completionRate={completionRate}
-            reminderView={reminderView}
-            setReminderView={setReminderView}
+          <LeadFollowUpsPage
+            groups={{
+              overdue: overdueFiltered, today: todayFiltered, week: upcomingFiltered,
+              promised: promisedFiltered, untouched: untouchedFiltered,
+            }}
             isSalesOnly={isSalesOnly}
-            reminderStaffFilter={reminderStaffFilter}
-            setReminderStaffFilter={setReminderStaffFilter}
             salesReps={salesReps}
-            snoozeCount={snoozeIds.size}
-            onClearSnoozes={() => setSnoozeIds(new Set())}
-            dueTodayLoading={dueTodayLoading}
-            onRefreshDueToday={refreshDueToday}
-            untouchedFiltered={untouchedFiltered}
-            promisedFiltered={promisedFiltered}
-            overdueFiltered={overdueFiltered}
-            todayFiltered={todayFiltered}
-            upcomingFiltered={upcomingFiltered}
-            todayStr={cairoDateOnly()}
+            staffFilter={reminderStaffFilter}
+            setStaffFilter={setReminderStaffFilter}
+            refreshing={!crmInsights}
+            onRefresh={bumpInsights}
+            onLogContact={openContactLog}
             onSnooze={snooze1Day}
             onDone={markDone}
             onOpenLead={setSelectedId}
-            staleLeads={staleLeads}
-            staleLoading={staleLoading}
-            staleBulkMsg={staleBulkMsg}
-            staleSending={staleSending}
-            staleSelected={staleSelected}
-            setStaleBulkMsg={setStaleBulkMsg}
-            setStaleSelected={setStaleSelected}
-            onRefreshStaleLeads={refreshStaleLeads}
-            onSendStaleBulk={sendStaleBulkWhatsapp}
           />
         </Suspense>
       )}

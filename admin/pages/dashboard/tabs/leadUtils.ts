@@ -60,6 +60,14 @@ const TIER_STYLES = [
   { bar: 'bg-red-700', badge: 'bg-red-200 text-red-900 border-red-400', row: 'border-r-[3px] border-r-red-700' },
 ];
 
+/**
+ * Whether the «7 يوم+ / 15 / 30 / 90» badge and the coloured edge show beside
+ * a lead. Off for now — «امسح جزء 7 ايام و15 يوم و30 و90 يوم اللى بتظهر جمب
+ * الداتا لما بنتاخر في المتابعه موقتا». The «متأخرة» filter still reads the same
+ * tiers; turning this back on is this one line.
+ */
+export const STALE_BADGES_SHOWN = false;
+
 /** Mutated in place, never replaced: the call sites import the array itself. */
 export const ROTTEN_CFG: { label: string; bar: string; badge: string; row: string }[] = [];
 

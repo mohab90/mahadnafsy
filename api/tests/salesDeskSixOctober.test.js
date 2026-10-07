@@ -312,3 +312,65 @@ test('«كل السيلز», then the collection officers who hold leads, in the
   assert.doesNotMatch(bar, /كل المندوبين/);
   assert.match(read('admin/pages/dashboard/tabs/leads/useLeadFilteringData.ts'), /assignFilter\.has\(lead\.assignedCsId \|\| ''\)/);
 });
+
+// ── the follow-ups (7 Oct) ───────────────────────────────────────────────────
+
+test('a contact logged on a follow-up that came due takes it off the follow-ups', async () => {
+  const { appendLeadInteraction } = require('../lib/leadInteractions');
+  db.reset([[/SELECT \* FROM leads/, [[{ id: 'L1', tenant_id: 't', next_follow_up_date: '2026-10-05 00:00:00' }]]]]);
+  await appendLeadInteraction({ tenantId: 't', leadId: 'L1', interaction: { type: 'call', notes: 'كلمتها' } });
+  const update = db.calls.find(call => /^UPDATE leads SET last_follow_up=\?/.test(call.sql));
+  assert.match(update.sql, /WHEN next_follow_up_date < DATE\('\d{4}-\d{2}-\d{2}'\) \+ INTERVAL 1 DAY THEN NULL ELSE next_follow_up_date END/);
+  assert.match(update.sql, /JSON_REMOVE\(crm_json, '\$\.nextFollowUpDate'\)/);
+  // crm_json goes first: an UPDATE assigns left to right.
+  assert.ok(update.sql.indexOf('crm_json=CASE') < update.sql.indexOf('next_follow_up_date=CASE'));
+  assert.deepEqual(update.params.slice(2, 6), [null, null, null, null]);
+
+  // «تم» closes it whatever its date.
+  db.reset([[/SELECT \* FROM leads/, [[{ id: 'L1', tenant_id: 't' }]]]]);
+  await appendLeadInteraction({ tenantId: 't', leadId: 'L1', interaction: { type: 'note', notes: 'تم', closeFollowUp: true } });
+  assert.match(db.calls.find(call => /^UPDATE leads SET last_follow_up=\?/.test(call.sql)).sql, /WHEN TRUE THEN NULL/);
+
+  // A new date is the next follow-up.
+  db.reset([[/SELECT \* FROM leads/, [[{ id: 'L1', tenant_id: 't' }]]]]);
+  await appendLeadInteraction({ tenantId: 't', leadId: 'L1', interaction: { type: 'call', notes: 'هكلمها', nextFollowUp: '2026-10-09' } });
+  assert.deepEqual(db.calls.find(call => /^UPDATE leads SET last_follow_up=\?/.test(call.sql)).params.slice(2, 4), ['2026-10-09', '2026-10-09']);
+});
+
+test('«بكرة» and a date set on the lead reach the column the lists read', async () => {
+  const router = require('../routes/crm-advanced');
+  const move = handlerOf(router, 'put', '/api/admin/crm/leads/:id/follow-up');
+  db.reset([[/FROM leads l\s+WHERE id = \?/, [[{ id: 'L1', tenant_id: 'tenant-default', status: 'new' }]]]]);
+  let res = await call(move, { params: { id: 'L1' }, body: { date: '2026-10-08' }, isSuperAdmin: true });
+  assert.equal(res.statusCode, 200);
+  const update = db.calls.find(call => /^UPDATE leads SET crm_json=CASE/.test(call.sql));
+  assert.deepEqual(update.params.slice(0, 3), ['2026-10-08', '2026-10-08', '2026-10-08']);
+  res = await call(move, { params: { id: 'L1' }, body: { date: 'tomorrow' }, isSuperAdmin: true });
+  assert.equal(res.statusCode, 400);
+  assert.match(read('api/routes/admin/leads/write.js'), /next_follow_up_date=IF\(\?, \?, next_follow_up_date\)/);
+  const hook = read('admin/pages/dashboard/tabs/leads/useLeadRemindersData.ts');
+  assert.match(hook, /mysqlAdmin\.setLeadFollowUp\(lead\.id, cairoDaysAhead\(1\)\)/);
+  assert.match(hook, /closeFollowUp: true/);
+});
+
+test('the follow-ups page is one list by kind, and it refreshes after each action', () => {
+  const page = read('admin/pages/dashboard/tabs/leads/LeadFollowUpsPage.tsx');
+  for (const label of ['متأخرة', 'النهارده', 'الأسبوع ده', 'وعدوا يدفعوا', 'محدش كلمهم']) assert.ok(page.includes(`label: '${label}'`), label);
+  assert.match(page, /سجّل التواصل/);
+  const tab = read('admin/pages/dashboard/tabs/LeadsTab.tsx');
+  assert.match(tab, /useCrmInsights\(smartIdleDays, true, insightsKey\)/);
+  assert.match(tab, /useLeadQuickCommunication\(\{ effectiveLeads, reloadLeads, onSaved: bumpInsights \}\)/);
+  for (const gone of ['LeadRemindersPanel', 'LeadStaleLeadsPanel', 'CrmWorkQueuePanel', 'useLeadRemoteReminders']) {
+    assert.ok(!fs.existsSync(path.join(ROOT, 'admin/pages/dashboard/tabs/leads', `${gone}.tsx`)), gone);
+  }
+  // A lead opened from the list is saved even when it is not among the loaded leads.
+  assert.match(read('admin/pages/dashboard/tabs/leads/useLeadQuickCommunication.ts'), /\|\| \(chosenLead\?\.id === addCommDraft\.selectedLeadId \? chosenLead : null\)/);
+});
+
+test('the 7/15/30/90-day badges are off behind one switch, and the late filter still works', () => {
+  const utils = read('admin/pages/dashboard/tabs/leadUtils.ts');
+  assert.match(utils, /export const STALE_BADGES_SHOWN = false;/);
+  assert.match(read('admin/pages/dashboard/tabs/LeadTable.tsx'), /const rottenLv = STALE_BADGES_SHOWN \? getRottenLevel\(row\) : 0;/);
+  assert.match(read('admin/pages/dashboard/tabs/leads/LeadCard.tsx'), /const rotLevel = STALE_BADGES_SHOWN \? getRottenLevel\(lead\) : 0;/);
+  assert.match(read('admin/pages/dashboard/tabs/leads/useLeadFilteringData.ts'), /getRottenLevel\(lead\) >= 1/);
+});
