@@ -185,7 +185,7 @@ const provisioning = extra => {
 };
 
 test('the client an order names is the customer, email or no email', async () => {
-  const c = provisioning([[/FROM subscribers WHERE id=\? AND tenant_id=\? AND deleted_at IS NULL/, [[{ id: 'sub-7', tenant_id: 't1' }]]]]);
+  const c = provisioning([[/FROM subscribers WHERE id=\? AND tenant_id=\? LIMIT 1/, [[{ id: 'sub-7', tenant_id: 't1' }]]]]);
   const sub = await ensureSubscriberForOrder(c, { tenantId: 't1', subscriberId: 'sub-7', email: null, name: 'x', phone: '' });
   assert.equal(sub.id, 'sub-7');
   assert.equal(db.find(/^INSERT INTO subscribers/), undefined);
@@ -273,4 +273,18 @@ test('an instalment order carries its plan, for the confirmation to book against
   assert.equal(notes.payMode, 'installment');
   assert.equal(notes.planTotal, res.body.planTotal);
   assert.equal(res.body.amount, amountDueNow(3000, 'installment'));
+});
+
+// HIGH-06, the owner's call on 7 Oct 2026 («خليه يرجع اتوماتك»): a client taken
+// off the books who pays again is brought back, not missed or duplicated.
+test('a deleted client who pays again is brought back onto the books', async () => {
+  const deleted = { id: 'sub-old', lead_id: 'lead-1', branch: 'ONLINE_EGYPT', branch_id: 'b', assigned_sales_id: null, tenant_id: 'tenant-default', deleted_at: '2026-09-01 10:00:00' };
+  db.reset([[/FROM subscribers WHERE tenant_id=\? AND phone IN/, [[deleted]]]]);
+  const sub = await ensureSubscriberForOrder(conn, { tenantId: 'tenant-default', email: '', name: 'منى', phone: '01012345678' });
+  assert.equal(sub.id, 'sub-old', 'the same record, not a second one');
+  const restore = db.find(/^UPDATE subscribers SET deleted_at=NULL, is_active=1/);
+  assert.ok(restore, 'and it is back');
+  assert.deepEqual(restore.params, ['sub-old', 'tenant-default']);
+  assert.equal(db.find(/^INSERT INTO subscribers/), undefined);
+  assert.match(db.find(/FROM subscribers WHERE tenant_id=\? AND phone IN/).sql, /ORDER BY deleted_at IS NULL DESC/, 'an active record is preferred when there is one');
 });

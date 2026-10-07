@@ -74,7 +74,12 @@ test('Facebook lead field mapping is deterministic and connector route persists 
   const diagnostics = fs.readFileSync(path.join(__dirname, '..', 'routes', 'connector-diagnostics.js'), 'utf8');
   const postRoute = route.slice(route.indexOf("router.post('/api/webhooks/facebook-leads'"));
   assert.match(route, /enqueueConnectorEvent/);
-  assert.ok(postRoute.indexOf('await enqueueConnectorEvent') < postRoute.indexOf('res.status(accepted'));
+  // The queueing lives in enqueueLeadPayload (shared with the Messenger address,
+  // where a page's Lead Ads may also arrive); the route awaits it before answering.
+  assert.ok(postRoute.indexOf('await enqueueLeadPayload(') > 0
+    && postRoute.indexOf('await enqueueLeadPayload(') < postRoute.indexOf('res.status(accepted'));
+  const enqueue = route.slice(route.indexOf('async function enqueueLeadPayload'));
+  assert.match(enqueue, /await enqueueConnectorEvent\(/);
   assert.match(route, /x-hub-signature-256/);
   assert.match(diagnostics, /connectors\/events\/:id\/replay/);
   assert.match(diagnostics, /status IN \('failed','dead'\)/);

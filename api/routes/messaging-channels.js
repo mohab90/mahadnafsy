@@ -263,8 +263,17 @@ router.post('/api/messaging/channels/:id/test', ...selfChannel, bulkOperationLim
           reason: typeof check.reason === 'string' ? check.reason : undefined,
         });
       }
+      // A page the app is not subscribed to sends the webhook nothing: «متصل»
+      // with no message ever arriving is not a working channel.
+      if (!check.subscribed) {
+        await channels.markChannelError(req.tenantId, channel.id, `الصفحة متربطتش بالتطبيق: ${check.subscribeError || 'رفض من فيسبوك'}`);
+        return res.status(502).json({
+          error: 'التوكن سليم بس الصفحة متربطتش بالتطبيق، فالرسايل مش هتوصل — التوكن محتاج صلاحية pages_manage_metadata',
+          reason: check.subscribeError || undefined,
+        });
+      }
       await channels.markChannelConnected(req.tenantId, channel.id);
-      return res.json({ ok: true, pageName: check.pageName || null });
+      return res.json({ ok: true, pageName: check.pageName || null, subscribedFields: check.subscribedFields });
     }
 
     // Wapilot exposes a real session-status endpoint, so a channel can be proven

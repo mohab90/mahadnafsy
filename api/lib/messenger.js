@@ -104,10 +104,43 @@ async function verifyMessengerCredentials(credentials = {}) {
     if (credentials.pageId && String(credentials.pageId) !== String(data.id)) {
       return { ok: false, reason: 'التوكن ده مش بتاع الصفحة المحددة' };
     }
-    return { ok: true, pageId: data.id, pageName: data.name };
+    const subscription = await subscribePageToApp(data.id, token);
+    return {
+      ok: true, pageId: data.id, pageName: data.name,
+      subscribed: subscription.ok, subscribedFields: subscription.fields || null, subscribeError: subscription.reason || null,
+    };
   } catch (error) {
     return { ok: false, reason: error.message };
   }
+}
+
+/**
+ * Subscribe the page to the app, so Meta sends its messages (and its Lead Ads)
+ * to the webhook. Connecting checked the token and stopped there: the Messenger
+ * channel connected on 7 Oct 2026 read «متصل» and not one message reached the
+ * system — a page sends nothing to an app it is not subscribed to. leadgen
+ * needs a permission a page token may not carry, so messages alone are asked
+ * for when the fuller request is refused.
+ */
+async function subscribePageToApp(pageId, token) {
+  let reason = null;
+  for (const fields of ['messages,messaging_postbacks,leadgen', 'messages,messaging_postbacks']) {
+    try {
+      const response = await fetch(`${GRAPH}/${encodeURIComponent(pageId)}/subscribed_apps`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ subscribed_fields: fields, access_token: token }).toString(),
+        signal: AbortSignal.timeout(Number(process.env.MESSENGER_TIMEOUT_MS || 8000)),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data?.success) return { ok: true, fields };
+      reason = data?.error?.message || `HTTP ${response.status}`;
+    } catch (error) {
+      reason = error.message;
+    }
+  }
+  logger.warn('[Messenger] page subscription failed', { pageId, reason });
+  return { ok: false, reason };
 }
 
 /**
@@ -291,6 +324,7 @@ module.exports = {
   PLATFORM,
   REPLY_WINDOW_MS,
   verifyMessengerCredentials,
+  subscribePageToApp,
   sendMessengerMessage,
   isWithinReplyWindow,
   extractMessengerMessages,

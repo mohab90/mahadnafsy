@@ -583,6 +583,14 @@ const SYS_DEFAULTS = {
     },
     sms: { enabled: false, provider: 'vonage', api_key: '', api_secret: '', sender_id: 'MAHAD' },
   },
+  // «مصادر الليد» (admin LeadSourcesSettingsTab) — the Facebook page's Lead Ads,
+  // the sheets, the API sources. Missing here like the two above: on 7 Oct 2026
+  // the owner connected the page and both saves came back «Unknown section»,
+  // so no connector could ever be stored. The defaults are the ones the server
+  // reads them with (lib/saasSettings.js).
+  lead_source_connectors: require('../../lib/saasSettings').DEFAULT_LEAD_SOURCE_CONNECTORS,
+  // «مساحات الفروع» (admin BranchWorkspacesTab), missing the same way.
+  branch_workspaces: require('../../lib/saasSettings').DEFAULT_BRANCH_WORKSPACES,
 };
 
 // GET /api/admin/sys-config — get all sections or specific section

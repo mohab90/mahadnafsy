@@ -40,23 +40,16 @@ router.post('/api/webhooks/facebook-leads', publicLimiter, async (req, res) => {
   if (req.body?.object !== 'page') return res.status(202).json({ received: true, ignored: true });
 
   try {
-    const raw = req.rawBody?.length ? req.rawBody : Buffer.from(JSON.stringify(req.body || {}));
-    const externalEventId = crypto.createHash('sha256').update(tenantId).update(raw).digest('hex');
-    const accepted = await enqueueConnectorEvent({
-      tenantId,
-      provider: 'facebook_leads',
-      externalEventId,
-      payload: req.body,
-    });
+    const accepted = await enqueueLeadPayload(req.body, req.rawBody, tenantId);
+    // A Meta app has one callback address for its Page events: a page's
+    // Messenger messages come here too when this is the address that was set.
+    const inbound = await require('./messenger-webhook').recordMessengerPayload(req.body, tenantId);
     res.status(accepted.duplicate ? 200 : 202).json({
       received: true,
       duplicate: accepted.duplicate,
       event_id: accepted.id,
       status: accepted.status,
-    });
-    setImmediate(() => {
-      drainConnectorEvents({ facebook_leads: processFacebookLeadEvent }, { limit: 10 })
-        .catch(error => logger.warn('Facebook connector drain failed', error.message));
+      inbound,
     });
   } catch (error) {
     logger.error('Facebook webhook persistence failed', error);
@@ -64,4 +57,22 @@ router.post('/api/webhooks/facebook-leads', publicLimiter, async (req, res) => {
   }
 });
 
+/** A verified Page event, queued for the Lead Ads worker and drained. */
+async function enqueueLeadPayload(body, rawBody, tenantId) {
+  const raw = rawBody?.length ? rawBody : Buffer.from(JSON.stringify(body || {}));
+  const externalEventId = crypto.createHash('sha256').update(tenantId).update(raw).digest('hex');
+  const accepted = await enqueueConnectorEvent({
+    tenantId,
+    provider: 'facebook_leads',
+    externalEventId,
+    payload: body,
+  });
+  setImmediate(() => {
+    drainConnectorEvents({ facebook_leads: processFacebookLeadEvent }, { limit: 10 })
+      .catch(error => logger.warn('Facebook connector drain failed', error.message));
+  });
+  return accepted;
+}
+
 module.exports = router;
+module.exports.enqueueLeadPayload = enqueueLeadPayload;

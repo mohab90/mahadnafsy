@@ -37,23 +37,29 @@ async function ensureSubscriberForOrder(conn, {
     throw new Error('ensureSubscriberForOrder requires an identity: an email, an account, a client or a number');
   }
 
-  const COLUMNS = 'id, lead_id, branch, branch_id, assigned_sales_id, tenant_id';
+  // A client taken off the books (deleted_at) is still this person: their
+  // number and email stay theirs in the unique keys, so looking past them made
+  // a new record collide — the card capture failing after the money was taken —
+  // or the payment land on a record nobody sees. They are found, and brought
+  // back below. Active records first.
+  const COLUMNS = 'id, lead_id, branch, branch_id, assigned_sales_id, tenant_id, deleted_at';
   let sub = null;
   if (subscriberId) {
     [[sub]] = await conn.query(
-      `SELECT ${COLUMNS} FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
+      `SELECT ${COLUMNS} FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE`,
       [subscriberId, tenantId]
     );
   }
   if (!sub && normalizedEmail) {
     [[sub]] = await conn.query(
-      'SELECT id, lead_id, branch, branch_id, assigned_sales_id, tenant_id FROM subscribers WHERE tenant_id=? AND (firebase_uid=? OR LOWER(TRIM(email))=?) LIMIT 1 FOR UPDATE',
+      `SELECT ${COLUMNS} FROM subscribers WHERE tenant_id=? AND (firebase_uid=? OR LOWER(TRIM(email))=?)
+        ORDER BY deleted_at IS NULL DESC LIMIT 1 FOR UPDATE`,
       [tenantId, uid || '', normalizedEmail]
     );
   } else if (!sub && uid) {
     // No email: never matched on a blank one, which every email-less client shares.
     [[sub]] = await conn.query(
-      `SELECT ${COLUMNS} FROM subscribers WHERE tenant_id=? AND firebase_uid=? LIMIT 1 FOR UPDATE`,
+      `SELECT ${COLUMNS} FROM subscribers WHERE tenant_id=? AND firebase_uid=? ORDER BY deleted_at IS NULL DESC LIMIT 1 FOR UPDATE`,
       [tenantId, uid]
     );
   }
@@ -63,10 +69,16 @@ async function ensureSubscriberForOrder(conn, {
   if (!sub && variants.length) {
     [[sub]] = await conn.query(
       `SELECT ${COLUMNS} FROM subscribers
-        WHERE tenant_id=? AND phone IN (${variants.map(() => '?').join(',')}) AND deleted_at IS NULL
-        ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
+        WHERE tenant_id=? AND phone IN (${variants.map(() => '?').join(',')})
+        ORDER BY deleted_at IS NULL DESC, created_at DESC LIMIT 1 FOR UPDATE`,
       [tenantId, ...variants]
     );
+  }
+  if (sub?.deleted_at) {
+    // Paying again brings them back onto the books.
+    await conn.query('UPDATE subscribers SET deleted_at=NULL, is_active=1, updated_at=NOW() WHERE id=? AND tenant_id=?', [sub.id, tenantId]);
+    logger.info('[subscriber-provisioning] a deleted client paid and is back', { tenantId, subscriberId: sub.id });
+    sub = { ...sub, deleted_at: null };
   }
   if (sub) {
     if (uid) await conn.query('UPDATE subscribers SET firebase_uid=COALESCE(firebase_uid,?) WHERE id=? AND tenant_id=?', [uid, sub.id, tenantId]);
