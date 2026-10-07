@@ -162,6 +162,37 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
     } as PaymentHistoryEntry;
     updated = { ...updated, paymentHistory: [...(updated.paymentHistory || []), entry] };
 
+    // One instalment that covers several courses: each added course its own
+    // instalment of what the desk put on it — «لما التحصيل بيحاول يرفع دفع كبيرة
+    // تكون مثلا قسط في 3 كورسات … نحدد المبلغ لكام كورس». The added courses
+    // were dropped here and only the first was recorded.
+    if (subPayDraft.paymentType === 'course' && subPayDraft.bookingType === 'installment') {
+      const added = subPayDraft.courseItems.filter(item => item.courseId !== subPayDraft.courseId);
+      const addedEntries = added.map((item, index) => {
+        const isBundleItem = item.courseId.startsWith('bundle:');
+        const itemBundle = isBundleItem ? bundles.find(row => row.id === item.courseId.replace('bundle:', '')) : null;
+        const custom = Number(item.customExpected) || 0;
+        return {
+          id: `pay-${Date.now()}-inst-${index}`,
+          amount: Number(item.amount),
+          // Its own price only when the desk changed it; otherwise the agreed one (api/lib/agreedPrice.js).
+          courseExpected: custom > 0 ? custom : undefined,
+          currency: subPayDraft.currency,
+          paymentType: 'course',
+          isInstallment: true,
+          courseId: isBundleItem ? undefined : item.courseId,
+          bundleId: isBundleItem ? item.courseId.replace('bundle:', '') : undefined,
+          note: [noteParts.join(' | '), itemBundle ? `مسار تعليمي: ${itemBundle.title}` : undefined].filter(Boolean).join(' | ') || undefined,
+          paymentMethod: subPayDraft.paymentMethod || undefined,
+          at: subPayDraft.date,
+          staffId: currentStaff?.id || undefined,
+          staffName: currentStaff?.name || undefined,
+          status: 'paid',
+        } as PaymentHistoryEntry;
+      });
+      updated = { ...updated, paymentHistory: [...(updated.paymentHistory || []), ...addedEntries] };
+    }
+
     if (subPayDraft.paymentType === 'course') {
       if (isBundleSelection && bundle) {
         const bundleCourseIds = bundle.courses.map((c: { id: string }) => c.id);
@@ -189,7 +220,8 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
         type: subPayDraft.certType as ExtraCertificateType,
         courseId: subPayDraft.courseId || undefined,
         status: 'priced',
-        price: Number(subPayDraft.amount),
+        // The certificate's price, not this payment (api/lib/certificatePayments.js).
+        price: Number(subPayDraft.customExpected) || Number(subPayDraft.amount),
         paidAmount: Number(subPayDraft.amount),
         currency: subPayDraft.currency,
         requestedAt: subPayDraft.date,

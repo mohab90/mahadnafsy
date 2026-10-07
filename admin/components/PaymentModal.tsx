@@ -1190,7 +1190,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
               type="button"
               onClick={() => set({ extraItems: [...(d.extraItems || []), { type: 'course', label: '', amount: '', courseId: '', discountPct: '', customExpected: '' }] })}
               className="text-xs text-blue-700 hover:text-blue-900 font-bold border border-blue-300 hover:border-blue-500 px-3 py-1.5 rounded-lg transition bg-blue-50 hover:bg-blue-100"
-            >+ إضافة كورس آخر</button>
+            >{d.bookingType === 'installment' ? '+ قسط على كورس تاني' : '+ إضافة كورس آخر'}</button>
             <button
               type="button"
               onClick={() => set({ extraItems: [...(d.extraItems || []), { type: 'other', label: '', amount: '' }] })}
@@ -1266,11 +1266,22 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                           className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:border-blue-400"
                         >
                           <option value="">— اختر الكورس —</option>
-                          {bundles.length > 0 && <optgroup label="📌 المسارات">{bundles.map(b => <option key={`bundle:${b.id}`} value={`bundle:${b.id}`}>📌 {b.title}</option>)}</optgroup>}
-                          <optgroup label="🎓 الكورسات">{courses.map(c => <option key={c.id} value={c.id}>{c.titleAr || c.title}</option>)}</optgroup>
+                          {/* A split instalment is paid on the client's own courses, with what each still owes. */}
+                          {d.bookingType === 'installment' && enrolledOptions.length > 0 ? (
+                            <optgroup label="كورسات العميل">
+                              {enrolledOptions.filter(opt => opt.cid !== d.courseId).map(opt => (
+                                <option key={opt.cid} value={opt.cid}>
+                                  {opt.isBnd ? '📌 ' : ''}{opt.label}{opt.remaining != null ? ` — متبقي ${opt.remaining.toLocaleString('ar-EG-u-nu-latn')}` : ''}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ) : (<>
+                            {bundles.length > 0 && <optgroup label="📌 المسارات">{bundles.map(b => <option key={`bundle:${b.id}`} value={`bundle:${b.id}`}>📌 {b.title}</option>)}</optgroup>}
+                            <optgroup label="🎓 الكورسات">{courses.map(c => <option key={c.id} value={c.id}>{c.titleAr || c.title}</option>)}</optgroup>
+                          </>)}
                         </select>
                         <div className="flex flex-wrap items-center gap-2 bg-red-50 border-2 border-red-200 rounded-xl px-3 py-2.5">
-                          <span className="text-xs font-extrabold text-red-700 whitespace-nowrap">💰 المقدم<span className="text-red-500">*</span></span>
+                          <span className="text-xs font-extrabold text-red-700 whitespace-nowrap">{d.bookingType === 'installment' ? '💳 مبلغ القسط' : '💰 المقدم'}<span className="text-red-500">*</span></span>
                           <input
                             type="number" min="0" placeholder="0" value={item.amount}
                             onChange={e => updateItem({ amount: e.target.value })}
