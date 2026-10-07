@@ -135,13 +135,16 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
     `, [m, y, notes || null, actorId, tenantId, branchId]);
 
     const [[run]] = await conn.query(`SELECT id,status FROM payroll_runs WHERE month=? AND year=? AND tenant_id=? AND branch_id=? FOR UPDATE`, [m, y, tenantId, branchId]);
-    if (!run || !['DRAFT', 'CALCULATED'].includes(run.status)) {
+    // A cancelled run is calculated again from scratch: the unique key keeps one
+    // row per month and branch, so refusing it closed that month for good
+    // (MED-14) — nothing on the screen reopens a cancelled run.
+    if (!run || !['DRAFT', 'CALCULATED', 'CANCELLED'].includes(run.status)) {
       await conn.rollback(); transactionStarted = false;
-      return res.status(409).json({ error: 'لا يمكن إعادة احتساب مسير معتمد أو مدفوع أو ملغي' });
+      return res.status(409).json({ error: 'لا يمكن إعادة احتساب مسير معتمد أو مدفوع' });
     }
     const runId = run.id;
     await conn.query(
-      "UPDATE payroll_runs SET status='CALCULATED',notes=?,calculated_by=?,calculated_at=NOW() WHERE id=? AND tenant_id=?",
+      "UPDATE payroll_runs SET status='CALCULATED',notes=?,calculated_by=?,calculated_at=NOW(),approved_by=NULL,approved_at=NULL WHERE id=? AND tenant_id=?",
       [notes || null, actorId, runId, tenantId]
     );
     // A recalculation is a full deterministic rebuild. Release only commissions

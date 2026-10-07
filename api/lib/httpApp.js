@@ -238,7 +238,11 @@ function createHttpApp({ pool, brandAssetRoot }) {
     if (!process.env[key]) logger.error(`[CONFIG] ⚠️  ${key} is not set in .env (${purpose}) — server may fail to start correctly.`);
   }
 
-  app.use('/api/admin', createAdminAuditMiddleware({ pool, uuidv4, publishRealtimeEvent }));
+  // The staff routes write too — a welcome login, a leave, a resignation, a
+  // client's contact — and none of it reached the activity log (MED-13).
+  const auditWrites = createAdminAuditMiddleware({ pool, uuidv4, publishRealtimeEvent });
+  app.use('/api/admin', auditWrites);
+  app.use('/api/staff', auditWrites);
   app.use('/api/admin', adminLimiter);
   app.use('/api/staff', adminLimiter);
   app.use('/api/admin', (req, res, next) => {

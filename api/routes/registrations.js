@@ -76,13 +76,17 @@ function originForPhone(phone) {
 // identifiers once as JS Sets and filtering in memory turns that into three
 // flat, fully-indexed queries — the actual matching cost is now O(1) per
 // user instead of O(leads + subscribers) per user.
+// Every account is read (MED-15): the newest 2,000 were, then the first 500
+// unclaimed shown — a quiet cut once the site passed 2,000 accounts (1,726 on
+// 7 Oct 2026). The rows are four short columns; the leads and clients beside
+// them were always read whole.
 router.get('/api/admin/registrations', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
   try {
     const tenantId = req.tenantId;
     const [usersResult, subsResult, leadsResult, staffResult] = await Promise.all([
       pool.query(
         `SELECT id, email, phone, name, created_at FROM users
-          WHERE tenant_id=? AND is_active=1 ORDER BY created_at DESC LIMIT 2000`,
+          WHERE tenant_id=? AND is_active=1 ORDER BY created_at DESC`,
         [tenantId]
       ),
       pool.query(
@@ -136,7 +140,7 @@ router.get('/api/admin/registrations', requireAuth, requireAdminOrStaff, require
       const phone = normPhone(u.phone);
       if (phone && claimedPhones.has(phone)) return false;
       return true;
-    }).slice(0, 500).map(u => ({ ...u, origin: originForPhone(u.phone) }));
+    }).map(u => ({ ...u, origin: originForPhone(u.phone) }));
 
     res.json(rows);
   } catch (error) {

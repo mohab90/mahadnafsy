@@ -2,8 +2,9 @@
 const logger = require('../lib/logger');
 const { departmentOf, describeRequest, summarizeBody } = require('../lib/activityDescribe');
 
-// Marking a notification read is not an act anyone looks for in the log.
-const NOT_WORTH_A_ROW = /^\/api\/admin\/notifications\/[^/]+\/read$/;
+// Marking a notification read is not an act anyone looks for in the log, and a
+// WhatsApp or team message an employee sends is kept with its conversation.
+const NOT_WORTH_A_ROW = /^\/api\/admin\/notifications\/[^/]+\/read$|^\/api\/staff\/(whatsapp-web\/send|me\/messages)$/;
 
 function createAdminAuditMiddleware({ pool, uuidv4, publishRealtimeEvent }) {
   return function auditAdmin(req, res, next) {
@@ -14,7 +15,7 @@ function createAdminAuditMiddleware({ pool, uuidv4, publishRealtimeEvent }) {
           const actor = req.user?.email || req.user?.uid || 'admin';
           const rawPath = req.originalUrl.split('?')[0];
           if (NOT_WORTH_A_ROW.test(rawPath)) return;
-          const entity = rawPath.replace(/^\/api\/admin\//, '').split('/')[0] || 'admin';
+          const entity = rawPath.replace(/^\/api\/(admin|staff)\//, '').split('/')[0] || 'admin';
           const action = { POST: 'create', PUT: 'update', PATCH: 'update', DELETE: 'delete' }[req.method];
           const entityId = (req.params?.id || req.body?.id || '').toString().substring(0, 36) || null;
           // «واسم المسئول مش ايميله ومحتاجين يضاف القسم»: who, by name, in which

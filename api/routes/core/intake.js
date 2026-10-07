@@ -7,19 +7,24 @@ const { pool } = require('../../lib/db');
 const { redisHealth } = require('../../lib/rateLimitStore');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 
-router.get('/api/health', async (_req, res) => {
+// The parts behind the status are for the server itself — the deploy script
+// asks from 127.0.0.1. Anyone else reads the status (NEW-28: the public answer
+// named the database and Redis).
+const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+
+router.get('/api/health', async (req, res) => {
+  const local = LOOPBACK.has(req.ip);
   try {
     await pool.query('SELECT 1');
     const redis = await redisHealth();
     const ready = !redis.enabled || redis.ok;
     res.status(ready ? 200 : 503).json({
       status: ready ? 'ok' : 'degraded',
-      db: 'connected',
-      redis,
+      ...(local ? { db: 'connected', redis } : {}),
       time: new Date().toISOString(),
     });
   } catch (error) {
-    res.status(503).json({ status: 'error', db: 'disconnected' });
+    res.status(503).json({ status: 'error', ...(local ? { db: 'disconnected' } : {}) });
   }
 });
 
