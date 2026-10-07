@@ -230,6 +230,7 @@ async function connect(tenantId, staffId) {
         for (const row of fresh) {
           const match = await store.matchChat(tenantId, staffId, row.jid);
           await store.logToCrm(tenantId, staffId, row, match);
+          if (!row.fromMe) await store.refreshInterest(tenantId, staffId, row.jid);
         }
         await saveState(tenantId, staffId, { last_seen_at: new Date() });
       }
@@ -245,6 +246,9 @@ async function connect(tenantId, staffId) {
       await store.recordContactNames(tenantId, staffId, contacts);
     } catch (error) { baseLogger.warn('[wa-web] history not stored', { staffId, error: error.message }); }
   });
+
+  // Ticks: sent, delivered, read — «مين رسالته مفتوحة ومين لاء».
+  sock.ev.on('messages.update', updates => { if (current()) store.recordReceipts(tenantId, staffId, updates).catch(() => {}); });
 
   sock.ev.on('contacts.upsert', contacts => { if (current()) store.recordContactNames(tenantId, staffId, contacts).catch(() => {}); });
 

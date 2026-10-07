@@ -5743,6 +5743,8 @@ CREATE TABLE `wa_web_chats` (
   `last_message` varchar(500) DEFAULT NULL,
   `last_at` datetime DEFAULT NULL,
   `unread` int(11) NOT NULL DEFAULT 0,
+  `interest_score` smallint(6) DEFAULT NULL,
+  `interest_level` varchar(8) DEFAULT NULL,
   PRIMARY KEY (`tenant_id`,`staff_id`,`jid`),
   KEY `idx_wa_chats_recent` (`tenant_id`,`staff_id`,`last_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

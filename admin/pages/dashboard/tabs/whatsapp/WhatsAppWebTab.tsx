@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BarChart3, Loader2, LogOut, MessageCircle, Plus, Search, Send, Smartphone, UserRound } from 'lucide-react';
+import { BarChart3, BookmarkPlus, Flame, Loader2, LogOut, MessageCircle, Plus, Search, Send, Smartphone, UserPlus, UserRound, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { NotifyFn } from '../../../../types';
 import { useVisibleInterval } from '../../../../../shared/useVisibleInterval';
 import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
+import { promptDialog } from '../../../../../shared/ui/promptDialog';
+import { useBranches } from '../../../../hooks/useBranches';
 
 /**
  * «واتساب»: the rep's own WhatsApp inside the system (api/lib/whatsappWeb.js).
@@ -18,11 +20,36 @@ type WaState = {
   qr: string | null; phone: string | null; name: string | null;
   sentToday?: number; dailyLimit?: number;
 };
+type Interest = { score: number; level: 'hot' | 'warm' | 'cold' | 'lost'; label: string; reasons: string[] };
 type Chat = {
   jid: string; phone: string | null; name: string | null; lastMessage: string | null; lastAt: string | null; unread: number;
   leadId: string | null; subscriberId: string | null; crmName: string | null; clientCode: string | null;
+  /** Who wrote last, and how far the rep's last message got (api/routes/whatsapp-web.js). */
+  lastFromMe?: boolean | null; lastStatus?: string | null;
+  interestLevel?: Interest['level'] | null; interestScore?: number | null;
 };
-type Message = { id: number; waId: string; fromMe: boolean; sentBySystem: boolean; body: string; kind: string; sentAt: string };
+type Message = { id: number; waId: string; fromMe: boolean; sentBySystem: boolean; body: string; kind: string; status?: string | null; sentAt: string };
+type Template = { id: string; title: string; body: string };
+
+// The list's questions, in the order a rep asks them.
+const FILTERS = [
+  { key: '', label: 'الكل' },
+  { key: 'awaiting', label: 'مستني ردك' },
+  { key: 'unread', label: 'مش مقرية' },
+  { key: 'noreply', label: 'مردوش عليك' },
+  { key: 'hot', label: 'مهتمين' },
+  { key: 'unknown', label: 'مش في الداتا' },
+] as const;
+const INTEREST_STYLE: Record<Interest['level'], string> = {
+  hot: 'bg-red-100 text-red-700', warm: 'bg-amber-100 text-amber-700', cold: 'bg-gray-100 text-gray-600', lost: 'bg-gray-200 text-gray-500',
+};
+const INTEREST_LABEL: Record<Interest['level'], string> = { hot: 'مهتم جداً', warm: 'مهتم', cold: 'بيسأل بس', lost: 'مش مهتم' };
+/** ✓ reached WhatsApp, ✓✓ reached the phone, blue ✓✓ read. */
+function Ticks({ status }: { status?: string | null }) {
+  if (status === 'read') return <span className="text-sky-500" title="اتقرت">✓✓</span>;
+  if (status === 'delivered') return <span className="text-gray-400" title="وصلت">✓✓</span>;
+  return <span className="text-gray-400" title="اتبعتت">✓</span>;
+}
 type StatRow = { staffId: string; staffName: string | null; day: string; sentBySystem: number; sentFromPhone: number; received: number };
 
 const API = '/staff/whatsapp-web';
@@ -156,24 +183,78 @@ function ChatsView({ notify, onSent, disabled }: { notify: NotifyFn; onSent: () 
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [newPhone, setNewPhone] = useState<string | null>(null);
+  const [filter, setFilter] = useState<string>('');
+  const [interest, setInterest] = useState<Interest | null>(null);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [templates, setTemplates] = useState<Template[] | null>(null);
+  const [me, setMe] = useState('');
+  const [registering, setRegistering] = useState<{ name: string; branch: string } | null>(null);
+  const branches = useBranches();
   const bottom = useRef<HTMLDivElement>(null);
   const lastCount = useRef(0);
 
   const loadChats = useCallback(async () => {
     try {
-      const query = search.trim() ? `?q=${encodeURIComponent(search.trim())}` : '';
+      const params = new URLSearchParams();
+      if (search.trim()) params.set('q', search.trim());
+      if (filter) params.set('filter', filter);
+      const query = params.toString() ? `?${params}` : '';
       const { chats: rows } = await mysqlAdmin.adminGet<{ chats: Chat[] }>(`${API}/chats${query}`);
       setChats(rows);
       setActive(current => (current ? rows.find(row => row.jid === current.jid) || current : current));
     } catch (error) { notify('error', errorText(error)); }
-  }, [search, notify]);
+  }, [search, filter, notify]);
 
-  const loadMessages = useCallback(async (jid: string) => {
+  const loadMessages = useCallback(async (jid: string, rematch = false) => {
     try {
-      const result = await mysqlAdmin.adminGet<{ messages: Message[] }>(`${API}/messages?jid=${encodeURIComponent(jid)}`);
+      const result = await mysqlAdmin.adminGet<{ messages: Message[]; interest?: Interest | null; leadId?: string | null; subscriberId?: string | null }>(
+        `${API}/messages?jid=${encodeURIComponent(jid)}${rematch ? '&rematch=1' : ''}`);
       setMessages(result.messages);
+      if (result.interest !== undefined) setInterest(result.interest);
+      // The number matched just now (or since): the header follows at once.
+      if (result.leadId || result.subscriberId) {
+        setActive(current => (current && current.jid === jid && !current.leadId && !current.subscriberId
+          ? { ...current, leadId: result.leadId || null, subscriberId: result.subscriberId || null } : current));
+      }
     } catch (error) { notify('error', errorText(error)); }
   }, [notify]);
+
+  // Ready replies, once: the team's saved answers, or a starting set.
+  useEffect(() => {
+    if (!showTemplates || templates) return;
+    mysqlAdmin.adminGet<{ templates: Template[]; me: string }>(`${API}/templates`)
+      .then(result => { setTemplates(result.templates); setMe(result.me); }, error => notify('error', errorText(error)));
+  }, [showTemplates, templates, notify]);
+  const fill = (body: string) => body
+    .replace(/\{name\}/g, active ? (active.crmName || active.name || '').split(' ')[0] : '')
+    .replace(/\{me\}/g, me);
+  const insertTemplate = (template: Template) => setDraft(current => (current ? `${current}\n` : '') + fill(template.body));
+  const saveAsTemplate = async () => {
+    const body = draft.trim();
+    if (!body) return;
+    const title = await promptDialog({ title: 'احفظ كقالب', message: 'اسم القالب', placeholder: 'مثلاً: تفاصيل الكورس', confirmLabel: 'احفظ' });
+    if (!title?.trim()) return;
+    try {
+      await mysqlAdmin.adminPost(`${API}/templates`, { title: title.trim(), body });
+      setTemplates(null);
+      notify('success', 'اتحفظ القالب');
+    } catch (error) { notify('error', errorText(error)); }
+  };
+
+  // «لو العميل مش موجود في الداتا يقترح انه يسجله كليد».
+  const registerLead = async () => {
+    if (!active || !registering || !registering.name.trim()) return;
+    try {
+      await mysqlAdmin.saveLead({
+        name: registering.name.trim(), phone: active.phone ? `+${active.phone}` : '', source: 'واتساب',
+        status: 'new', hidden: false, ...(registering.branch ? { branch: registering.branch } : {}),
+      });
+      setRegistering(null);
+      notify('success', 'اتسجل عميل محتمل');
+      await loadMessages(active.jid, true);
+      await loadChats();
+    } catch (error) { notify('error', errorText(error)); }
+  };
 
   // Typing in the search box asks once the typing pauses; the list refreshes on its own.
   useEffect(() => {
@@ -183,7 +264,7 @@ function ChatsView({ notify, onSent, disabled }: { notify: NotifyFn; onSent: () 
   useVisibleInterval(loadChats, 5000);
 
   const activeJid = active?.jid || null;
-  useEffect(() => { if (activeJid) void loadMessages(activeJid); }, [activeJid, loadMessages]);
+  useEffect(() => { setInterest(null); setRegistering(null); if (activeJid) void loadMessages(activeJid); }, [activeJid, loadMessages]);
   useVisibleInterval(() => { if (activeJid) void loadMessages(activeJid); }, 4000, Boolean(activeJid));
 
   useEffect(() => {
@@ -227,8 +308,16 @@ function ChatsView({ notify, onSent, disabled }: { notify: NotifyFn; onSent: () 
           <button type="button" title="محادثة جديدة" onClick={() => { setActive(null); setMessages([]); setNewPhone(''); }}
             className="rounded-xl bg-green-600 px-3 text-white hover:bg-green-700"><Plus size={18} /></button>
         </div>
+        <div className="flex gap-1 overflow-x-auto border-b border-gray-100 px-2 py-2" role="tablist" aria-label="فلتر المحادثات">
+          {FILTERS.map(item => (
+            <button key={item.key || 'all'} type="button" role="tab" aria-selected={filter === item.key} onClick={() => setFilter(item.key)}
+              className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-bold transition ${filter === item.key ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+              {item.label}
+            </button>
+          ))}
+        </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {chats.length === 0 && <p className="p-6 text-center text-sm text-gray-400">مفيش محادثات لسه — الرسايل الجديدة هتظهر هنا.</p>}
+          {chats.length === 0 && <p className="p-6 text-center text-sm text-gray-400">{filter ? 'مفيش محادثات بالفلتر ده.' : 'مفيش محادثات لسه — الرسايل الجديدة هتظهر هنا.'}</p>}
           {chats.map(chat => (
             <button key={chat.jid} type="button" onClick={() => { setNewPhone(null); setActive(chat); }}
               className={`flex w-full items-start gap-3 border-b border-gray-50 px-3 py-2.5 text-right hover:bg-gray-50 ${active?.jid === chat.jid ? 'bg-green-50' : ''}`}>
@@ -239,12 +328,18 @@ function ChatsView({ notify, onSent, disabled }: { notify: NotifyFn; onSent: () 
                   <span className="shrink-0 text-[10px] text-gray-400">{timeOf(chat.lastAt)}</span>
                 </div>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-xs text-gray-500">{chat.lastMessage}</span>
+                  <span className="truncate text-xs text-gray-500">
+                    {chat.lastFromMe && <><Ticks status={chat.lastStatus} /> أنت: </>}{chat.lastMessage}
+                  </span>
                   {chat.unread > 0 && <span className="rounded-full bg-green-600 px-1.5 text-[10px] font-bold text-white">{chat.unread}</span>}
                 </div>
-                {(chat.leadId || chat.subscriberId) && (
-                  <span className="text-[10px] text-primary-600">{chat.subscriberId ? 'عميل' : 'عميل محتمل'}{chat.clientCode ? ` · ${chat.clientCode}` : ''}</span>
-                )}
+                <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                  {chat.lastFromMe === false && <span className="rounded-full bg-amber-50 px-1.5 text-[10px] font-bold text-amber-700">مستني ردك</span>}
+                  {chat.interestLevel && <span className={`rounded-full px-1.5 text-[10px] font-bold ${INTEREST_STYLE[chat.interestLevel]}`}>{INTEREST_LABEL[chat.interestLevel]}</span>}
+                  {chat.leadId || chat.subscriberId
+                    ? <span className="text-[10px] text-primary-600">{chat.subscriberId ? 'عميل' : 'عميل محتمل'}{chat.clientCode ? ` · ${chat.clientCode}` : ''}</span>
+                    : <span className="text-[10px] text-gray-400">مش في الداتا</span>}
+                </div>
               </div>
             </button>
           ))}
@@ -256,32 +351,86 @@ function ChatsView({ notify, onSent, disabled }: { notify: NotifyFn; onSent: () 
           <>
             <header className="flex items-center gap-3 border-b border-gray-100 px-4 py-3">
               <button type="button" className="text-sm text-gray-500 md:hidden" onClick={() => { setActive(null); setNewPhone(null); }}>رجوع</button>
-              {active ? (
+              {active ? (<>
                 <div className="min-w-0 flex-1">
                   {active.leadId || active.subscriberId
                     ? <button type="button" onClick={() => openProfile(active)} className="font-bold text-primary-700 hover:underline">{chatTitle(active)}</button>
                     : <span className="font-bold text-gray-800">{chatTitle(active)}</span>}
                   {active.phone && <div dir="ltr" className="text-right text-xs text-gray-400">+{active.phone}</div>}
                 </div>
-              ) : (
+                {interest && (
+                  <span title={interest.reasons.join(' · ')}
+                    className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ${INTEREST_STYLE[interest.level]}`}>
+                    <Flame size={12} /> {interest.label}
+                  </span>
+                )}
+                {!active.leadId && !active.subscriberId && !registering && (
+                  <button type="button" onClick={() => setRegistering({ name: active.crmName || active.name || '', branch: '' })}
+                    className="flex items-center gap-1 rounded-xl border border-primary-200 bg-primary-50 px-3 py-1.5 text-xs font-bold text-primary-700 hover:bg-primary-100">
+                    <UserPlus size={13} /> سجّله عميل محتمل
+                  </button>
+                )}
+              </>) : (
                 <input autoFocus value={newPhone || ''} onChange={e => setNewPhone(e.target.value)} placeholder="رقم الموبايل — مثلاً 01012345678 أو 9665…"
                   dir="ltr" className="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-green-400 focus:outline-none" />
               )}
             </header>
+            {active && !active.leadId && !active.subscriberId && (
+              <div className="flex flex-wrap items-center gap-2 border-b border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+                <span className="font-bold">الرقم ده مش في الداتا.</span>
+                {registering ? (<>
+                  <input value={registering.name} onChange={e => setRegistering({ ...registering, name: e.target.value })} placeholder="الاسم"
+                    className="rounded-lg border border-amber-200 bg-white px-2 py-1 text-xs" />
+                  <select value={registering.branch} onChange={e => setRegistering({ ...registering, branch: e.target.value })}
+                    className="rounded-lg border border-amber-200 bg-white px-2 py-1 text-xs" aria-label="الفرع">
+                    <option value="">الفرع</option>
+                    {branches.map(branch => <option key={branch.id} value={branch.id}>{branch.label}</option>)}
+                  </select>
+                  <button type="button" onClick={() => { void registerLead(); }} disabled={!registering.name.trim()}
+                    className="rounded-lg bg-primary-600 px-3 py-1 font-bold text-white disabled:opacity-40">سجّل</button>
+                  <button type="button" onClick={() => setRegistering(null)} className="text-amber-700"><X size={14} /></button>
+                </>) : <span>{interest && interest.level !== 'lost' ? `بيبان ${interest.label} — سجّله عشان ميضيعش.` : 'سجّله عشان يبقى ليه متابعة.'}</span>}
+              </div>
+            )}
             <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto bg-[#efeae2] px-4 py-3">
               {messages.map(message => (
                 <div key={message.id} className={`flex ${message.fromMe ? 'justify-start' : 'justify-end'}`}>
                   <div className={`max-w-[75%] whitespace-pre-wrap break-words rounded-xl px-3 py-1.5 text-sm shadow-sm ${message.fromMe ? 'bg-[#d9fdd3]' : 'bg-white'}`}>
                     {message.body}
-                    <div className="mt-0.5 text-left text-[10px] text-gray-400">
+                    <div className="mt-0.5 flex items-center justify-end gap-1 text-left text-[10px] text-gray-400">
                       {timeOf(message.sentAt)}{message.fromMe && !message.sentBySystem ? ' · من الموبايل' : ''}
+                      {message.fromMe && <Ticks status={message.status} />}
                     </div>
                   </div>
                 </div>
               ))}
               <div ref={bottom} />
             </div>
+            {showTemplates && (
+              <div className="max-h-48 overflow-y-auto border-t border-gray-100 bg-gray-50 px-3 py-2">
+                {!templates ? <Loader2 className="mx-auto animate-spin text-green-600" size={18} /> : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {templates.map(template => (
+                      <button key={template.id} type="button" onClick={() => insertTemplate(template)} title={fill(template.body)}
+                        className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-700 hover:border-green-400 hover:text-green-700">
+                        {template.title}
+                      </button>
+                    ))}
+                    {draft.trim() && (
+                      <button type="button" onClick={() => { void saveAsTemplate(); }}
+                        className="flex items-center gap-1 rounded-lg border border-dashed border-green-400 px-2.5 py-1 text-xs text-green-700">
+                        <BookmarkPlus size={12} /> احفظ الرسالة كقالب
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             <footer className="flex items-end gap-2 border-t border-gray-100 p-3">
+              <button type="button" onClick={() => setShowTemplates(value => !value)} title="قوالب جاهزة" aria-expanded={showTemplates}
+                className={`flex h-[42px] items-center rounded-xl border px-3 text-xs font-bold ${showTemplates ? 'border-green-600 bg-green-600 text-white' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                قوالب
+              </button>
               <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={1} placeholder={disabled ? 'بيرجع يتصل…' : 'اكتب رسالة'}
                 disabled={disabled}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}

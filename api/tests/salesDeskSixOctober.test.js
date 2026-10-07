@@ -445,3 +445,77 @@ test('the client\'s collection officer is called that, and chosen from the colle
     assert.doesNotMatch(source, /خدمة العملاء/, file);
   }
 });
+
+// ── «واتسابي» (7 Oct) ─────────────────────────────────────────────────────────
+
+test('a customer\'s interest is read from their own messages, and a closing word settles it', () => {
+  const { scoreInterest } = require('../lib/whatsappInterest');
+  const them = body => ({ fromMe: false, body });
+  const us = body => ({ fromMe: true, body });
+  assert.equal(scoreInterest([us('أهلاً، تحب تعرف تفاصيل الكورس؟')]), null, 'nothing from them yet');
+  const hot = scoreInterest([them('السلام عليكم'), us('أهلاً'), them('الكورس بكام؟ وعايز أحجز وأدفع فودافون كاش')]);
+  assert.equal(hot.level, 'hot');
+  assert.ok(hot.reasons.includes('عايز يحجز أو يدفع') && hot.reasons.includes('بيسأل عن السعر'));
+  const warm = scoreInterest([them('ممكن أعرف تفاصيل الدبلومة ومدتها؟'), them('وهل الشهادة معتمدة؟')]);
+  assert.ok(['warm', 'cold'].includes(warm.level) && warm.score > 0);
+  // «أ» and «ا», «ة» and «ه», tashkeel: one spelling.
+  assert.equal(scoreInterest([them('عايز أحْجِز')]).reasons[0], 'عايز يحجز أو يدفع');
+  const lost = scoreInterest([them('بكام؟'), them('غالي، لا شكرا مش مهتم')]);
+  assert.equal(lost.level, 'lost');
+  assert.equal(lost.score, 0);
+});
+
+test('ticks move forward only, and each chat says who wrote last and how interested they are', async () => {
+  const store = require('../lib/whatsappWebStore');
+  db.reset();
+  await store.recordReceipts('t', 'rep', [
+    { key: { id: 'm1', fromMe: true }, update: { status: 4 } },
+    { key: { id: 'm2', fromMe: false }, update: { status: 4 } },
+    { key: { id: 'm3', fromMe: true }, update: {} },
+  ]);
+  const updates = db.all(/^UPDATE wa_web_messages SET status=\?/);
+  assert.equal(updates.length, 1, 'only the rep\'s own message, with a real receipt');
+  assert.deepEqual(updates[0].params, ['read', 't', 'rep', 'm1', 'read']);
+  assert.match(updates[0].sql, /COALESCE\(FIELD\(status,'sent','delivered','read'\), 0\) < FIELD\(\?,'sent','delivered','read'\)/);
+
+  db.reset([[/SELECT from_me AS fromMe, body FROM wa_web_messages/, [[{ fromMe: 0, body: 'عايز احجز' }]]]]);
+  const interest = await store.refreshInterest('t', 'rep', 'j@s.whatsapp.net');
+  assert.equal(interest.level, 'warm');
+  assert.ok(db.all(/^UPDATE wa_web_chats SET interest_score=\?, interest_level=\?/).length === 1);
+
+  const router = read('api/routes/whatsapp-web.js');
+  assert.match(router, /awaiting: ' HAVING lastFromMe = 0'/);
+  assert.match(router, /unknown: ' HAVING lead_id IS NULL AND subscriber_id IS NULL'/);
+  assert.match(router, /AS lastStatus/);
+  assert.match(read('api/lib/whatsappWeb.js'), /sock\.ev\.on\('messages\.update', updates =>/);
+  assert.match(read('api/migrations/254_v26_whatsapp_chat_interest.sql'), /ADD COLUMN IF NOT EXISTS interest_level VARCHAR\(8\)/);
+});
+
+test('an unknown number is looked up again, and a lead can be registered from the chat', async () => {
+  const store = require('../lib/whatsappWebStore');
+  const old = new Date(Date.now() - 60 * 60 * 1000);
+  db.reset([[/SELECT phone, lead_id, subscriber_id, matched_at FROM wa_web_chats/, [[{ phone: '201012345678', lead_id: null, subscriber_id: null, matched_at: old }]]]]);
+  await store.matchChat('t', 'rep', 'j');
+  assert.ok(db.all(/FROM leads WHERE tenant_id=\?/).length === 1, 'an hour-old «not found» is checked again');
+  db.reset([[/SELECT phone, lead_id, subscriber_id, matched_at FROM wa_web_chats/, [[{ phone: '201012345678', lead_id: 'L1', subscriber_id: null, matched_at: old }]]]]);
+  assert.deepEqual(await store.matchChat('t', 'rep', 'j'), { leadId: 'L1', subscriberId: null });
+  assert.equal(db.all(/FROM leads WHERE tenant_id=\?/).length, 0, 'a found number stays found');
+  const tab = read('admin/pages/dashboard/tabs/whatsapp/WhatsAppWebTab.tsx');
+  assert.match(tab, /سجّله عميل محتمل/);
+  assert.match(tab, /await loadMessages\(active\.jid, true\)/);
+  assert.match(tab, /`\$\{API\}\/templates`/);
+  assert.match(tab, /<Ticks status=\{message\.status\} \/>/);
+});
+
+test('ready replies come from the team\'s saved answers, with a starting set', async () => {
+  const router = require('../routes/whatsapp-web');
+  const list = handlerOf(router, 'get', '/api/staff/whatsapp-web/templates');
+  db.reset([[/FROM inbox_quick_replies/, [[]]]]);
+  let res = await call(list, { staffRecord: { id: 'rep', name: 'Sama Shosha', role: 'SALES' } });
+  assert.ok(res.body.templates.length >= 5);
+  assert.equal(res.body.me, 'Sama Shosha');
+  assert.ok(res.body.templates.every(template => !/مهاد/.test(template.body)));
+  db.reset([[/FROM inbox_quick_replies/, [[{ id: 'q1', title: 'السعر', body: 'السعر {name}' }]]]]);
+  res = await call(list, { staffRecord: { id: 'rep', name: 'Sama', role: 'SALES' } });
+  assert.deepEqual(res.body.templates.map(t => t.id), ['q1']);
+});

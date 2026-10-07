@@ -9,6 +9,7 @@ const { pool } = require('./db');
 const { uuidv4 } = require('./id');
 const { toIdentity, toDialable } = require('./phoneNumber');
 const { phoneIdentityClause } = require('./leadMatching');
+const { scoreInterest } = require('./whatsappInterest');
 
 const PERSON_JID = /@s\.whatsapp\.net$/;
 // WhatsApp now addresses some people by a private id (@lid) rather than their
@@ -124,12 +125,18 @@ async function recordContactNames(tenantId, staffId, contacts) {
  * to, or written to live, not across the hundreds of chats a linked phone
  * brings with it.
  */
-async function matchChat(tenantId, staffId, jid) {
+async function matchChat(tenantId, staffId, jid, { fresh = false } = {}) {
   const [[chat]] = await pool.query(
     'SELECT phone, lead_id, subscriber_id, matched_at FROM wa_web_chats WHERE tenant_id=? AND staff_id=? AND jid=?',
     [tenantId, staffId, jid]);
   if (!chat) return { leadId: null, subscriberId: null };
-  if (chat.matched_at) return { leadId: chat.lead_id, subscriberId: chat.subscriber_id };
+  // A number found once stays found. One that was not is looked up again after
+  // a while, or at once when asked (a lead was just registered for it): it was
+  // looked up once and never again, so a customer added to the data afterwards
+  // stayed «مش في الداتا» on this chat for good.
+  const stale = !chat.matched_at || (!chat.lead_id && !chat.subscriber_id
+    && Date.now() - new Date(chat.matched_at).getTime() > 10 * 60 * 1000);
+  if (!fresh && !stale) return { leadId: chat.lead_id, subscriberId: chat.subscriber_id };
   let leadId = null;
   let subscriberId = null;
   const clause = chat.phone ? phoneIdentityClause(toIdentity(chat.phone)) : null;
@@ -149,6 +156,33 @@ async function matchChat(tenantId, staffId, jid) {
   return { leadId, subscriberId };
 }
 
+// WhatsApp's own receipt codes: 2 reached the server, 3 reached the phone,
+// 4 read, 5 a voice note played.
+const RECEIPT = { 2: 'sent', 3: 'delivered', 4: 'read', 5: 'read' };
+
+/** A receipt for a message the rep sent: ticks only move forward. */
+async function recordReceipts(tenantId, staffId, updates) {
+  for (const { key, update } of updates || []) {
+    const status = RECEIPT[Number(update?.status)];
+    if (!status || !key?.fromMe || !key?.id) continue;
+    await pool.query(
+      `UPDATE wa_web_messages SET status=?
+        WHERE tenant_id=? AND staff_id=? AND wa_id=? AND COALESCE(FIELD(status,'sent','delivered','read'), 0) < FIELD(?,'sent','delivered','read')`,
+      [status, tenantId, staffId, String(key.id), status]);
+  }
+}
+
+/** Score the chat from the customer's recent messages and keep it on the chat. */
+async function refreshInterest(tenantId, staffId, jid) {
+  const [rows] = await pool.query(
+    `SELECT from_me AS fromMe, body FROM wa_web_messages
+      WHERE tenant_id=? AND staff_id=? AND jid=? ORDER BY sent_at DESC, id DESC LIMIT 60`, [tenantId, staffId, jid]);
+  const interest = scoreInterest(rows.reverse().map(row => ({ fromMe: Boolean(row.fromMe), body: row.body })));
+  await pool.query('UPDATE wa_web_chats SET interest_score=?, interest_level=? WHERE tenant_id=? AND staff_id=? AND jid=?',
+    [interest ? interest.score : null, interest ? interest.level : null, tenantId, staffId, jid]);
+  return interest;
+}
+
 /**
  * A message to or from a lead or client goes on their timeline, so the CRM's
  * contact counts and «آخر تواصل» see WhatsApp work done from this tab.
@@ -165,4 +199,5 @@ async function logToCrm(tenantId, staffId, row, { leadId, subscriberId }) {
 
 module.exports = {
   chatJid, jidForPhone, parseWaMessage, phoneOfJid, recordMessages, recordContactNames, matchChat, logToCrm,
+  recordReceipts, refreshInterest,
 };

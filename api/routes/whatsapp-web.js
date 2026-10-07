@@ -40,9 +40,21 @@ router.post('/api/staff/whatsapp-web/logout', ...guard, async (req, res) => {
   try { await wa.logout(tenant(req), me(req)); res.json({ ok: true }); } catch (error) { fail(res, error, '[wa-web logout]'); }
 });
 
+// The list's own questions: whose turn it is, what is unread, who never
+// answered, and which numbers are not in the data — «ومش بيظهر فيها مين بعت
+// رساله ومين رسالته مفتوحة ومين لاء».
+const CHAT_FILTERS = {
+  awaiting: ' HAVING lastFromMe = 0',
+  unread: ' HAVING unread > 0',
+  noreply: ' HAVING lastFromMe = 1',
+  unknown: ' HAVING lead_id IS NULL AND subscriber_id IS NULL',
+  hot: " HAVING interestLevel IN ('hot','warm')",
+};
+
 router.get('/api/staff/whatsapp-web/chats', ...guard, async (req, res) => {
   try {
     const q = String(req.query.q || '').trim();
+    const having = CHAT_FILTERS[String(req.query.filter || '')] || '';
     const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 60));
     const params = [tenant(req), me(req)];
     let where = '';
@@ -55,14 +67,21 @@ router.get('/api/staff/whatsapp-web/chats', ...guard, async (req, res) => {
     }
     const [rows] = await pool.query(
       `SELECT c.jid, c.phone, c.name, c.last_message AS lastMessage, c.last_at AS lastAt, c.unread,
-              c.lead_id AS leadId, c.subscriber_id AS subscriberId,
-              COALESCE(s.name, l.name) AS crmName, COALESCE(l.client_code, s.client_code) AS clientCode
+              c.lead_id, c.subscriber_id, c.lead_id AS leadId, c.subscriber_id AS subscriberId,
+              c.interest_level AS interestLevel, c.interest_score AS interestScore,
+              COALESCE(s.name, l.name) AS crmName, COALESCE(l.client_code, s.client_code) AS clientCode,
+              (SELECT m.from_me FROM wa_web_messages m WHERE m.tenant_id = c.tenant_id AND m.staff_id = c.staff_id AND m.jid = c.jid
+                ORDER BY m.sent_at DESC, m.id DESC LIMIT 1) AS lastFromMe,
+              (SELECT m.status FROM wa_web_messages m WHERE m.tenant_id = c.tenant_id AND m.staff_id = c.staff_id AND m.jid = c.jid
+                ORDER BY m.sent_at DESC, m.id DESC LIMIT 1) AS lastStatus
          FROM wa_web_chats c
          LEFT JOIN leads l ON l.tenant_id = c.tenant_id AND l.id = c.lead_id
          LEFT JOIN subscribers s ON s.tenant_id = c.tenant_id AND s.id = c.subscriber_id
-        WHERE c.tenant_id=? AND c.staff_id=?${where}
+        WHERE c.tenant_id=? AND c.staff_id=?${where}${having}
         ORDER BY c.last_at DESC LIMIT ${limit}`, params);
-    res.json({ chats: rows });
+    res.json({ chats: rows.map(({ lead_id: _l, subscriber_id: _s, ...row }) => ({
+      ...row, lastFromMe: row.lastFromMe == null ? null : Boolean(row.lastFromMe),
+    })) });
   } catch (error) { fail(res, error, '[wa-web chats]'); }
 });
 
@@ -75,14 +94,19 @@ router.get('/api/staff/whatsapp-web/messages', ...guard, async (req, res) => {
     let older = '';
     if (before && !Number.isNaN(before.getTime())) { older = ' AND sent_at < ?'; params.push(before); }
     const [rows] = await pool.query(
-      `SELECT id, wa_id AS waId, from_me AS fromMe, sent_by_system AS sentBySystem, body, kind, sent_at AS sentAt
+      `SELECT id, wa_id AS waId, from_me AS fromMe, sent_by_system AS sentBySystem, body, kind, status, sent_at AS sentAt
          FROM wa_web_messages WHERE tenant_id=? AND staff_id=? AND jid=?${older}
         ORDER BY sent_at DESC, id DESC LIMIT 80`, params);
     // Opening a chat reads it, and is when its number is matched to the CRM.
     await pool.query('UPDATE wa_web_chats SET unread=0 WHERE tenant_id=? AND staff_id=? AND jid=?', [tenant(req), me(req), jid]);
-    const { matchChat } = require('../lib/whatsappWebStore');
-    const match = await matchChat(tenant(req), me(req), jid);
-    res.json({ messages: rows.reverse().map(r => ({ ...r, fromMe: Boolean(r.fromMe), sentBySystem: Boolean(r.sentBySystem) })), ...match });
+    const { matchChat, refreshInterest } = require('../lib/whatsappWebStore');
+    const match = await matchChat(tenant(req), me(req), jid, { fresh: req.query.rematch === '1' });
+    const interest = before ? undefined : await refreshInterest(tenant(req), me(req), jid);
+    res.json({
+      messages: rows.reverse().map(r => ({ ...r, fromMe: Boolean(r.fromMe), sentBySystem: Boolean(r.sentBySystem) })),
+      ...match,
+      ...(interest !== undefined ? { interest } : {}),
+    });
   } catch (error) { fail(res, error, '[wa-web messages]'); }
 });
 
@@ -91,6 +115,38 @@ router.post('/api/staff/whatsapp-web/send', ...guard, async (req, res) => {
     const { jid, phone, text } = req.body || {};
     res.json({ ok: true, message: await wa.sendText(tenant(req), me(req), { jid, phone, text }) });
   } catch (error) { fail(res, error, '[wa-web send]'); }
+});
+
+// Ready replies beside the chat: the team's saved answers (the same ones the
+// inbox's /shortcuts use), and a starting set while there are none. {name} is the
+// customer's name and {me} the rep's, filled in on the screen.
+const STARTER_TEMPLATES = [
+  { id: 'starter-hello', title: 'ترحيب', body: 'أهلاً {name} 👋 معاك {me} من معهد الدراسات النفسية. إزاي أقدر أساعدك؟' },
+  { id: 'starter-details', title: 'التفاصيل والسعر', body: 'أهلاً {name}، تحب أبعتلك تفاصيل الكورس ومواعيده وسعره؟' },
+  { id: 'starter-pay', title: 'طرق الدفع', body: 'تقدر تدفع بتحويل بنكي أو فودافون كاش أو انستاباي، وبعد التحويل ابعتلي صورة الإيصال هنا 🙏' },
+  { id: 'starter-follow', title: 'متابعة', body: 'أهلاً {name}، كنت بطمّن عليك — قدرت تقرر بخصوص الكورس؟ لو عندك أي سؤال أنا موجود.' },
+  { id: 'starter-booked', title: 'تأكيد الحجز', body: 'تم تأكيد حجزك يا {name} ✅ هيوصلك تفاصيل الدخول قريب.' },
+  { id: 'starter-thanks', title: 'شكر', body: 'شكراً لتواصلك مع معهد الدراسات النفسية 🌿' },
+];
+
+router.get('/api/staff/whatsapp-web/templates', ...guard, async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      'SELECT id, title, body FROM inbox_quick_replies WHERE tenant_id=? ORDER BY title LIMIT 300', [tenant(req)]).catch(() => [[]]);
+    res.json({ templates: rows.length ? rows : STARTER_TEMPLATES, me: req.staffRecord?.name || '' });
+  } catch (error) { fail(res, error, '[wa-web templates]'); }
+});
+
+router.post('/api/staff/whatsapp-web/templates', ...guard, async (req, res) => {
+  try {
+    const title = String(req.body?.title || '').trim().slice(0, 120);
+    const body = String(req.body?.body || '').trim().slice(0, 4000);
+    if (!title || !body) return res.status(400).json({ error: 'العنوان والنص مطلوبين' });
+    const id = require('../lib/id').uuidv4();
+    await pool.query('INSERT INTO inbox_quick_replies (id, tenant_id, title, body, created_by) VALUES (?,?,?,?,?)',
+      [id, tenant(req), title, body, me(req)]);
+    res.json({ ok: true, id });
+  } catch (error) { fail(res, error, '[wa-web template save]'); }
 });
 
 /**
