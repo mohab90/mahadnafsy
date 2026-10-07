@@ -31,6 +31,7 @@ import { currencyForBranch } from '../lib/branchCurrency';
 import { CONTENT_HUB_TABS } from './dashboard/contentHubConfig';
 import { branchSubscriberTabs, contentHubRouteTabs, directContentTabs, fullCrmDataTabs, fullLeadTabs, fullSubscriberTabs, growthOpsTabs, saasOpsTabs } from './dashboard/dashboardTabGroups';
 import { useStaffRoleRedirects } from './dashboard/hooks/useStaffRoleRedirects';
+import { CRM_CHANGED_EVENT } from '../lib/crmChanged';
 import { useCurrentStaff } from './dashboard/hooks/useCurrentStaff';
 import { useOrdersDerived } from './dashboard/hooks/useOrdersDerived';
 import { useOverviewDerived } from './dashboard/hooks/useOverviewDerived';
@@ -523,6 +524,15 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     void fetchSalesData();
+  }, [fetchSalesData]);
+
+  // A write anywhere refetches the staff's own lists, once for a burst of reloads
+  // (lib/crmChanged.ts) — they were refetched every two minutes otherwise.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onChanged = () => { clearTimeout(timer); timer = setTimeout(() => { void fetchSalesData(); }, 300); };
+    window.addEventListener(CRM_CHANGED_EVENT, onChanged);
+    return () => { clearTimeout(timer); window.removeEventListener(CRM_CHANGED_EVENT, onChanged); };
   }, [fetchSalesData]);
 
   // Background polling for non-admin staff (sales/collection/daqqi/online-manager) —

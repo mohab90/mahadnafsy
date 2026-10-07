@@ -4,6 +4,7 @@ import type { ConsultationItem, JoinUsApplication, LeadItem, LeadStats, LeadStat
 import { mysqlAdmin, mysqlForms } from '../../lib/mysqlapi';
 import { normalizeApplicants } from './normalizeApplicants';
 import { normalizeOrders } from './normalizeOrders';
+import { announceCrmChanged } from '../../lib/crmChanged';
 
 type Track = (action: string, entity: string, label: string) => void;
 
@@ -78,6 +79,8 @@ export function useCrmCoreState(
       leadsRef.current = normalized;
       setLeads(normalized);
     } catch { /* silent */ }
+    // The staff's own lists follow (lib/crmChanged.ts).
+    announceCrmChanged();
   }, [leadsRef]);
 
   const reloadSubscribers = useCallback(async () => {
@@ -90,6 +93,7 @@ export function useCrmCoreState(
       subscribersRef.current = normalized;
       setSubscribers(normalized);
     } catch { /* caller keeps current state on a transient refresh failure */ }
+    announceCrmChanged();
   }, [subscribersRef]);
 
   const recordSubscriberPayment = async (
