@@ -698,6 +698,8 @@ export const mysqlAdmin = {
   awardSubscriberLoyalty:  (id: string, points: number, reason: string) => apiFetch<{ ok: boolean; balance: number }>(`/admin/subscribers/${encodeURIComponent(id)}/loyalty/award`, { method: 'POST', body: JSON.stringify({ points, reason }) }, A),
   redeemSubscriberLoyalty: (id: string, points: number, reason: string) => apiFetch<{ ok: boolean; balance: number }>(`/admin/subscribers/${encodeURIComponent(id)}/loyalty/redeem`, { method: 'POST', body: JSON.stringify({ points, reason }) }, A),
   listAllDaqqiRounds:      ()             => apiFetch<AR[]>('/admin/daqqi-rounds', {}, A),
+  // The open rounds a booking can seat a client in, for whoever records the booking.
+  listDaqqiRoundsForBooking: (branch: string) => apiFetch<AR[]>(`/admin/daqqi-rounds/for-booking?branch=${encodeURIComponent(branch)}`, {}, A),
   listAllJoinUs:           ()             => apiFetch<AR[]>('/admin/join-us', {}, A),
   listAllContactMessages:  ()             => apiFetch<AR[]>('/admin/contact-messages', {}, A),
   listAllCertificateRequests: (limit = 3000) => apiFetch<AR[]>(`/admin/certificate-requests?limit=${limit}`, {}, A),

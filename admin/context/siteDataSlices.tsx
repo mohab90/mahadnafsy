@@ -44,7 +44,7 @@ export type StaticDataSlice = Pick<SiteDataShape,
 export type CrmDataSlice = Pick<SiteDataShape,
   | 'leads' | 'leadStats' | 'subscribers' | 'staffScopedLeads' | 'staffScopedSubscribers'
   | 'staffMembers' | 'consultations' | 'joinUsApplications' | 'contactMessages'
-  | 'inboxConversations' | 'notifications' | 'activityLogs' | 'daqqiRounds'
+  | 'inboxConversations' | 'notifications' | 'activityLogs' | 'daqqiRounds' | 'currentStaff'
 >;
 
 export type FinanceDataSlice = Pick<SiteDataShape, 'orders' | 'expenses' | 'quizAttempts'>;

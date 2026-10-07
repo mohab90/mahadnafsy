@@ -254,7 +254,13 @@ test('a booking can name the round and the client is seated when it is recorded'
 
   const modal = read('admin/components/PaymentModal.tsx');
   assert.match(modal, /daqqiRoundId\?: string;/);
-  assert.match(modal, /const canHouse = bookingBranch === 'DAQQI' && d\.bookingType === 'new_booking' && \(daqqiRounds \|\| \[\]\)\.length > 0;/);
+  // The booking's branch is the branch price chosen (an online client booked at
+  // the Dokki price is housed too), and the rounds come from the booking list
+  // when the dashboard has none — it loads them for manage_daqqi only (7 Oct 2026).
+  assert.match(modal, /const bookingBranch = String\(chosenTier\?\.branch \|\|/);
+  assert.match(modal, /const canHouse = housesClients && d\.bookingType === 'new_booking' && housingRounds\.length > 0;/);
+  assert.match(modal, /mysqlAdmin\.listDaqqiRoundsForBooking\(bookingBranch\)/);
+  assert.match(read('api/routes/daqqi-rounds.js'), /'\/api\/admin\/daqqi-rounds\/for-booking', requireAuth, requireAdminOrStaff, requirePermission\('manage_payments'\)/);
   assert.match(modal, /<Home size=\{13\} \/> تسكين في روند/);
   assert.match(modal, /<DaqqiRoundPicker/);
   assert.match(modal, /layer="over"/);

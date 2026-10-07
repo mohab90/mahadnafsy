@@ -53,7 +53,7 @@ export function nationalIdProblem(raw: string | null | undefined, egyptian = tru
 /** The fields a tier-priced booking sends with its main payment (api routes/subscriber-payments.js). */
 export function bookingTierFields(draft: {
   priceTier?: string; useDiscount?: boolean; tierDiscountPct?: number; nameAr?: string; nameEn?: string;
-  nationalId?: string; phoneConfirmed?: boolean;
+  nationalId?: string; phoneConfirmed?: boolean; customPriceOn?: boolean; customExpected?: string;
 }): Record<string, unknown> {
   if (!draft.priceTier) return {};
   const pct = Number(draft.tierDiscountPct) || 0;
@@ -62,6 +62,9 @@ export function bookingTierFields(draft: {
     useDiscount: Boolean(draft.useDiscount),
     // A percentage off the branch price (5–50%); the server recomputes it.
     ...(pct ? { discountPct: pct } : {}),
+    // «سعر مختلف»: the client's own price, sent as courseExpected; the server
+    // takes it from someone allowed to set it (set_client_price), else refuses it.
+    ...(draft.customPriceOn && Number(draft.customExpected) > 0 ? { customPrice: true } : {}),
     client: {
       nameAr: clean(draft.nameAr),
       nameEn: clean(draft.nameEn) || null,

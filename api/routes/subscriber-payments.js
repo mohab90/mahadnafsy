@@ -436,6 +436,11 @@ async function recordSubscriberPayment(req, res) {
     // catalogue (lib/priceTiers.js), so a booking is never charged a figure
     // somebody typed. A figure the screen computed has to agree with it.
     const priceTier = String(payment.priceTier || '').toUpperCase() || null;
+    // «رجع يظهر للمديرين ولحساب هنا فقط انه يدخل سعر مختلف للعميل»: a price set
+    // for this client at booking, by someone allowed to (set_client_price),
+    // stands instead of the branch price.
+    const clientPrice = payment.customPrice === true && courseExpected != null
+      && (req.isSuperAdmin || hasPermission(req.staffRecord, 'set_client_price'));
     let tierPrice = null;
     if (priceTier && (courseId || bundleId)) {
       if (!PRICE_TIER_KEYS.has(priceTier)) return res.status(400).json({ error: 'Unknown price tier', code: 'PRICE_TIER_UNKNOWN' });
@@ -460,7 +465,7 @@ async function recordSubscriberPayment(req, res) {
       if (tierPrice.currency !== paymentCurrency) {
         return res.status(400).json({ error: `السعر في الفرع ده بالـ${tierPrice.currency} — الدفعة لازم تكون بنفس العملة`, code: 'TIER_CURRENCY_MISMATCH' });
       }
-      if (courseExpected != null && !priceMatches(courseExpected, tierPrice.price)) {
+      if (courseExpected != null && !clientPrice && !priceMatches(courseExpected, tierPrice.price)) {
         return res.status(409).json({ error: 'السعر اتغير — حدّث الصفحة', code: 'PRICE_MISMATCH', price: tierPrice.price });
       }
     }
@@ -473,7 +478,7 @@ async function recordSubscriberPayment(req, res) {
       if (!checked.ok) return res.status(400).json({ error: checked.error, code: checked.code });
       bookingIdentity = checked.identity;
     }
-    let resolvedExpected = tierPrice ? tierPrice.price : courseExpected;
+    let resolvedExpected = clientPrice ? courseExpected : tierPrice ? tierPrice.price : courseExpected;
     if (resolvedExpected == null && (courseId || bundleId)) {
       // Read through the pool: this runs before the transaction opens, and the
       // price is not part of what this write must see consistently.

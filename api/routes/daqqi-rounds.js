@@ -223,6 +223,31 @@ router.get('/api/admin/daqqi-performance', requireAuth, requireAdminOrStaff,
 // attendance-report/export/monthly routes had no role check at all, so e.g. a
 // SALES or HR account could pull every Dokki attendee's name/phone/payments via
 // CSV export.
+// The rounds a booking can seat a client in, for whoever records the booking.
+// «حجز ودفع» read the rounds the dashboard loads for manage_daqqi alone, so a
+// sales rep booking a client at Dokki found «تسكين العملاء» gone — though the
+// payment route seats the client for anyone who may record the payment. What
+// the picker shows and nothing else: no names, no money.
+router.get('/api/admin/daqqi-rounds/for-booking', requireAuth, requireAdminOrStaff, requirePermission('manage_payments'), async (req, res) => {
+  try {
+    const branch = String(req.query.branch || 'DAQQI').toUpperCase() === 'TAGAMOA' ? 'TAGAMOA' : 'DAQQI';
+    const [rounds] = await pool.query(
+      `SELECT r.id, r.code, r.branch, r.course_id, r.instructor_name, r.day_of_week, r.start_date, r.time_slot, r.status, r.room,
+              (SELECT COUNT(*) FROM daqqi_attendees a WHERE a.round_id = r.id AND a.tenant_id = r.tenant_id) AS seated
+         FROM daqqi_rounds r
+        WHERE r.tenant_id=? AND COALESCE(r.branch,'DAQQI')=? AND LOWER(COALESCE(r.status,'new')) NOT IN ('finished','cancelled')
+        ORDER BY r.start_date DESC, r.created_at DESC LIMIT 300`,
+      [req.tenantId, branch]);
+    const slots = { MORNING: 'صباحاً', NOON: 'ظهراً', EVENING: 'مساءً' };
+    res.json(rounds.map(r => ({
+      id: r.id, code: r.code, branch: r.branch || 'DAQQI', courseId: r.course_id,
+      instructorName: r.instructor_name, dayOfWeek: r.day_of_week, room: r.room || '',
+      startDate: ymd(r.start_date), timeSlot: slots[r.time_slot] || 'مساءً', status: (r.status || 'NEW').toLowerCase(),
+      attendees: Array.from({ length: Number(r.seated) || 0 }, () => ({})),
+    })));
+  } catch (e) { logger.error('[daqqi-rounds/for-booking]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
   try {
     const [rounds] = await pool.query(

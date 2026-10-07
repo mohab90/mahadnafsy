@@ -103,7 +103,7 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
         status: 'paid',
         ...(subPayDraft.daqqiRoundId ? { daqqiRoundId: subPayDraft.daqqiRoundId } : {}),
         // The branch tier and the client's real name (lib/bookingIdentity.ts); the server prices it.
-        ...(subPayDraft.bookingType === 'new_booking' ? bookingTierFields({ ...draft, useDiscount: item.useDiscount, tierDiscountPct: item.tierDiscountPct }) : {}),
+        ...(subPayDraft.bookingType === 'new_booking' ? bookingTierFields({ ...draft, useDiscount: item.useDiscount, tierDiscountPct: item.tierDiscountPct, customPriceOn: draft.customPriceOn && item.courseId === draft.courseId, customExpected: item.customExpected }) : {}),
       } as PaymentHistoryEntry;
       newEntries.push(entry);
       if (isBundleItem && bObj) {
@@ -442,7 +442,7 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
         staffId: currentStaff?.id,
         staffName: currentStaff?.name,
         ...(leadPayDraft.daqqiRoundId ? { daqqiRoundId: leadPayDraft.daqqiRoundId } : {}),
-        ...(leadPayDraft.bookingType === 'new_booking' ? bookingTierFields({ ...draft, useDiscount: item.useDiscount, tierDiscountPct: item.tierDiscountPct }) : {}),
+        ...(leadPayDraft.bookingType === 'new_booking' ? bookingTierFields({ ...draft, useDiscount: item.useDiscount, tierDiscountPct: item.tierDiscountPct, customPriceOn: draft.customPriceOn && item.courseId === draft.courseId, customExpected: item.customExpected }) : {}),
       });
     });
   } else {

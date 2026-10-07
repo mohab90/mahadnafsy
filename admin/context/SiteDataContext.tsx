@@ -833,10 +833,10 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const crmSlice = useMemo(() => ({
     leads, leadStats, subscribers, staffScopedLeads, staffScopedSubscribers, staffMembers,
     consultations, joinUsApplications, contactMessages, inboxConversations, notifications,
-    activityLogs, daqqiRounds,
+    activityLogs, daqqiRounds, currentStaff,
   }), [leads, leadStats, subscribers, staffScopedLeads, staffScopedSubscribers, staffMembers,
     consultations, joinUsApplications, contactMessages, inboxConversations, notifications,
-    activityLogs, daqqiRounds]);
+    activityLogs, daqqiRounds, currentStaff]);
 
   const financeSlice = useMemo(
     () => ({ orders, expenses, quizAttempts }),

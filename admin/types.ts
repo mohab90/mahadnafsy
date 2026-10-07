@@ -344,6 +344,7 @@ export type StaffPermission =
   | 'view_orders'
   | 'manage_orders'
   | 'manage_payments'
+  | 'set_client_price'
   | 'approve_refunds'
   | 'view_financial'
   | 'manage_financial'

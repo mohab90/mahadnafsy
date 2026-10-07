@@ -13,7 +13,7 @@ import { mysqlAdmin } from '../lib/mysqlapi';
 import { attributeNextPayment } from '../lib/paymentAttribution';
 import type {
   PaymentItemType, PaymentHistoryEntry,
-  ExtraCertificateRequest,
+  ExtraCertificateRequest, DaqqiRound,
 } from '../types';
 import { usePaymentBoxes } from '../lib/paymentMethods';
 import { isCollected } from '../lib/money';
@@ -21,6 +21,7 @@ import { Modal } from '../../shared/ui/Modal';
 import { confirmDialog } from '../../shared/ui/confirmDialog';
 import { DaqqiRoundPicker } from '../pages/dashboard/tabs/daqqi/DaqqiRoundPicker';
 import { roundLabel } from '../pages/dashboard/tabs/daqqi/daqqiScheduleUtils';
+import { hasPermission, type PermissionKey, type RoleKey } from '../constants/permissions';
 import { DISCOUNT_PERCENTS, getCatalogPricing, tierForBranch, formatMoney, type CatalogPricing, type PriceTierKey, type TierPrice } from '../lib/catalogPricing';
 import { arabicNameProblem, englishNameProblem, nationalIdProblem } from '../lib/bookingIdentity';
 
@@ -68,6 +69,8 @@ export interface PaymentDraft {
    * (DISCOUNT_PERCENTS in api/lib/priceTiers.js); 0 = none.
    */
   tierDiscountPct?: number;
+  /** «سعر مختلف»: the client's own price, in customExpected — set_client_price only. */
+  customPriceOn?: boolean;
   /** «اسم العميل الحقيقي عربي ثلاثي … بالانجليزي … تاكيد علي رقم التليفون». */
   nameAr?: string;
   nameEn?: string;
@@ -302,7 +305,11 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   branchLabel,
 }) => {
   const { courses, bundles, content, authUser, isAdmin } = useStaticData();
-  const { staffMembers, daqqiRounds } = useCrmData();
+  const { staffMembers, daqqiRounds, currentStaff } = useCrmData();
+  // «رجع يظهر للمديرين ولحساب هنا فقط انه يدخل سعر مختلف للعميل».
+  const canSetPrice = isAdmin || hasPermission(currentStaff
+    ? { role: currentStaff.role as RoleKey, permissions: currentStaff.permissions as PermissionKey[] | undefined } : null,
+    'set_client_price');
   // The certificates «تسعير الشهادات» lists — its own, not eight written here.
   const certCatalog = useCertificateCatalog();
   const [printData, setPrintData] = useState<PrintData | null>(null);
@@ -346,13 +353,13 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     return () => { alive = false; };
   }, []);
 
-  // «تسكين»: a Dokki booking can seat the client in a round as it is recorded. The
-  // button shows once the branch is Dokki — the one picked here for a lead or a new
-  // client, the client's own for an existing one — and the desk can see the rounds.
+  // «تسكين»: a Dokki or Tagamoa booking can seat the client in a round as it is
+  // recorded. The button shows once the booking's branch is one of them (see
+  // bookingBranch below) and there are open rounds there.
   const [housingOpen, setHousingOpen] = useState(false);
-  const bookingBranch = String((mode === 'subscriber' ? (subject.branch || d.branch) : d.branch) || '').toUpperCase().replace(/[-\s]/g, '_');
-  const canHouse = bookingBranch === 'DAQQI' && d.bookingType === 'new_booking' && (daqqiRounds || []).length > 0;
-  const housingRound = d.daqqiRoundId ? (daqqiRounds || []).find(round => round.id === d.daqqiRoundId) : undefined;
+  // The dashboard loads the rounds for manage_daqqi alone; anyone else booking a
+  // client there reads the booking list (api/routes/daqqi-rounds.js for-booking).
+  const [bookingRounds, setBookingRounds] = useState<DaqqiRound[]>([]);
 
   // Who this payment is for. In 'new' mode they do not exist yet, so it is
   // whoever is being typed into the form.
@@ -391,10 +398,30 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     ? (tierPct ? Math.round(chosenTier.price * (100 - tierPct) / 100)
       : d.useDiscount && chosenTier.discountPrice != null ? chosenTier.discountPrice : chosenTier.price)
     : null;
+  // The branch the booking is for: the branch price chosen, else the client's.
+  // An online client booked at the Dokki price kept their own branch here, so
+  // «تسكين العملاء» never appeared for them.
+  const bookingBranch = String(chosenTier?.branch || (mode === 'subscriber' ? (subject.branch || d.branch) : d.branch) || '')
+    .toUpperCase().replace(/[-\s]/g, '_');
+  const housesClients = bookingBranch === 'DAQQI' || bookingBranch === 'TAGAMOA';
+  const storeHasRounds = (daqqiRounds || []).length > 0;
+  useEffect(() => {
+    if (!housesClients || storeHasRounds || d.bookingType !== 'new_booking') return;
+    let alive = true;
+    mysqlAdmin.listDaqqiRoundsForBooking(bookingBranch)
+      .then(rows => { if (alive) setBookingRounds(rows as unknown as DaqqiRound[]); })
+      .catch(() => { if (alive) setBookingRounds([]); });
+    return () => { alive = false; };
+  }, [housesClients, storeHasRounds, bookingBranch, d.bookingType]);
+  const housingRounds = (storeHasRounds ? daqqiRounds || [] : bookingRounds)
+    .filter(round => !round.branch || String(round.branch).toUpperCase() === bookingBranch);
+  const canHouse = housesClients && d.bookingType === 'new_booking' && housingRounds.length > 0;
+  const housingRound = d.daqqiRoundId ? housingRounds.find(round => round.id === d.daqqiRoundId) : undefined;
   const chooseTier = (tier: TierPrice) => set({
     priceTier: tier.key,
     useDiscount: false,
     tierDiscountPct: 0,
+    customPriceOn: false,
     currency: tier.currency,
     // A lead or a new client is booked at the branch the price belongs to.
     ...(mode !== 'subscriber' ? { branch: tier.branch } : {}),
@@ -416,7 +443,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     const known = tierForBranch(mode === 'subscriber' ? (subject.branch || d.branch) : d.branch);
     const tier = pricing?.tiers.find(row => row.key === (d.priceTier || known) && row.price != null);
     set({
-      courseId, customExpected: '', discountPct: '', useDiscount: false, tierDiscountPct: 0,
+      courseId, customExpected: '', discountPct: '', useDiscount: false, tierDiscountPct: 0, customPriceOn: false,
       priceTier: tier?.key || '',
       ...(tier ? { currency: tier.currency } : {}),
     });
@@ -430,8 +457,9 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const _basePx = _agreedPx > 0 ? _agreedPx : _sysPx;
   const _customExp = Number(d.customExpected) || 0;
   const _discPct = Number(d.discountPct) || 0;
+  const _clientPx = canSetPrice && d.customPriceOn ? Number(d.customExpected) || 0 : 0;
   const _effPx = tierBooking
-    ? (tierPx ?? 0)
+    ? (_clientPx > 0 ? _clientPx : tierPx ?? 0)
     : (_customExp > 0 ? _customExp : (_discPct > 0 && _basePx > 0 ? Math.round(_basePx * (1 - _discPct / 100)) : _basePx));
   const _hasDiscount = tierBooking ? Boolean(tierPct || (d.useDiscount && chosenTier?.discountPrice != null)) : (_effPx > 0 && _sysPx > 0 && _effPx < _sysPx);
   const _amtPaid = Number(d.amount) || 0;
@@ -1136,17 +1164,30 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
               <div className="flex flex-wrap items-center gap-1" role="group" aria-label="الخصم">
                 <span className="text-[11px] font-bold text-gray-500">خصم:</span>
                 {chosenTier.discountPrice != null && (
-                  <button type="button" onClick={() => set({ useDiscount: !d.useDiscount, tierDiscountPct: 0 })} aria-pressed={Boolean(d.useDiscount)}
+                  <button type="button" onClick={() => set({ useDiscount: !d.useDiscount, tierDiscountPct: 0, customPriceOn: false })} aria-pressed={Boolean(d.useDiscount)}
                     className={`rounded-lg border px-2 py-1 text-[11px] font-extrabold transition ${d.useDiscount ? 'border-emerald-500 bg-emerald-600 text-white' : 'border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-50'}`}>
                     🏷️ خصم الكورس
                   </button>
                 )}
-                {DISCOUNT_PERCENTS.map(pct => (
-                  <button key={pct} type="button" onClick={() => set({ tierDiscountPct: tierPct === pct ? 0 : pct, useDiscount: false })} aria-pressed={tierPct === pct}
-                    className={`rounded-lg border px-1.5 py-1 text-[11px] font-extrabold tabular-nums transition ${tierPct === pct ? 'border-red-500 bg-red-600 text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-red-50'}`}>
-                    {pct}%
+                {/* «خلي خصم النسب يكون في قايمه منسدله» */}
+                <select value={tierPct} aria-label="نسبة الخصم"
+                  onChange={e => set({ tierDiscountPct: Number(e.target.value) || 0, useDiscount: false, customPriceOn: false })}
+                  className={`rounded-lg border px-2 py-1 text-[11px] font-extrabold tabular-nums ${tierPct ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-300 bg-white text-gray-700'}`}>
+                  <option value={0}>نسبة خصم…</option>
+                  {DISCOUNT_PERCENTS.map(pct => <option key={pct} value={pct}>خصم {pct}%</option>)}
+                </select>
+                {canSetPrice && (<>
+                  <button type="button" aria-pressed={Boolean(d.customPriceOn)}
+                    onClick={() => set({ customPriceOn: !d.customPriceOn, customExpected: '', useDiscount: false, tierDiscountPct: 0 })}
+                    className={`rounded-lg border px-2 py-1 text-[11px] font-extrabold transition ${d.customPriceOn ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-indigo-300 bg-white text-indigo-800 hover:bg-indigo-50'}`}>
+                    ✏️ سعر مختلف
                   </button>
-                ))}
+                  {d.customPriceOn && (
+                    <input type="number" min="1" placeholder="سعر العميل" value={d.customExpected} aria-label="سعر العميل"
+                      onChange={e => set({ customExpected: e.target.value })}
+                      className="w-24 rounded-lg border-2 border-indigo-400 bg-white px-2 py-1 text-xs font-extrabold text-indigo-900" />
+                  )}
+                </>)}
               </div>
             )}
             {isCert && d.courseId && lockPrice && _effPx > 0 && (
@@ -1470,7 +1511,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           {housingOpen && (
             <Modal open onClose={() => setHousingOpen(false)} layer="over" size="md" title="تسكين في روند" subtitle={personName || undefined} icon={<Home size={18} className="text-indigo-600" />}>
               <DaqqiRoundPicker
-                rounds={daqqiRounds || []}
+                rounds={housingRounds}
                 courses={courses}
                 selectedId={d.daqqiRoundId || ''}
                 onSelect={roundId => { set({ daqqiRoundId: roundId }); setHousingOpen(false); }}
