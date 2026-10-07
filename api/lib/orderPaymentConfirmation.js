@@ -20,6 +20,7 @@ const { transitionLead } = require('./leadState');
 const { branchIdForBranch } = require('./branches');
 const { grantCourseSelections } = require('./entitlements');
 const { recordPaymentCompensation } = require('./paymentCompensation');
+const { orderPlan, planAccess } = require('./orderPlan');
 
 async function confirmOrderPayment({ order, transfer, linkedTransferId, tenantId, staffId, staffName, actorEmail }, conn) {
   const orderType = String(order.type || '').toLowerCase();
@@ -42,15 +43,17 @@ async function confirmOrderPayment({ order, transfer, linkedTransferId, tenantId
 
   const paymentMethod = transfer?.payment_method || order.payment_method || 'transfer';
   const payId = `manual-${uuidv4()}`;
+  // An instalment pays towards its plan, not its own amount (lib/orderPlan.js).
+  const plan = orderPlan(order.notes, order.amount);
   await conn.query(
     `INSERT INTO payments
        (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method,
         transaction_id, is_installment, course_expected, note, date, status, staff_id, staff_name,
         source, item_title, branch, branch_id, tenant_id, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,0,?,?,NOW(),'paid',?,?,?,?,?,?,?,NOW())`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW(),'paid',?,?,?,?,?,?,?,NOW())`,
     [payId, sub?.id || null, orderType === 'course' ? order.item_id : null, orderType === 'bundle' ? order.item_id : null,
      order.amount, order.currency || 'EGP', orderType.toUpperCase() || 'OTHER', paymentMethod,
-     transfer?.transaction_id || order.transaction_id || payId, order.amount,
+     transfer?.transaction_id || order.transaction_id || payId, plan.installment ? 1 : 0, plan.expected,
      `تأكيد يدوي من لوحة الطلبات${transfer ? ' — مربوط بتحويل ' + transfer.id : ''}`,
      staffId || null, staffName || actor,
      'manual_admin_confirm', order.item_title, sub?.branch || 'ONLINE_EGYPT', sub?.branch_id || branchIdForBranch(sub?.branch || 'ONLINE_EGYPT'),
@@ -75,10 +78,14 @@ async function confirmOrderPayment({ order, transfer, linkedTransferId, tenantId
   }, conn);
 
   if (sub?.id && (orderType === 'course' || orderType === 'bundle') && order.item_id) {
+    const access = await planAccess(conn, {
+      plan, tenantId, subscriberId: sub.id, paymentId: payId, amount: order.amount, currency: order.currency || 'EGP',
+      courseId: orderType === 'course' ? order.item_id : null, bundleId: orderType === 'bundle' ? order.item_id : null,
+    });
     await grantCourseSelections({
       tenantId,
       subscriberId: sub.id,
-      selections: [{ courseId: orderType === 'bundle' ? `bundle:${order.item_id}` : order.item_id, accessType: 'full' }],
+      selections: [{ courseId: orderType === 'bundle' ? `bundle:${order.item_id}` : order.item_id, ...access }],
       branchId: sub.branch_id || branchIdForBranch(sub.branch || 'ONLINE_EGYPT'),
       source: 'manual_order_payment',
       actor,

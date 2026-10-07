@@ -41,6 +41,8 @@ const GUARD = /SELECT id FROM staff WHERE tenant_id=\? AND LOWER\(TRIM\(email\)\
 function handlerFor(needle) {
   const at = auth.indexOf(needle);
   assert.ok(at > 0, `${needle} not found`);
+  // The two sign-up addresses share one handler (routes/auth/registration.js).
+  if (auth.slice(at).startsWith(`${needle}, registerLimiter, requireDb, requireTenantQuota('users'), validateSignup, signup);`)) return handlerFor('async function signup(');
   const rest = auth.slice(at);
   const end = rest.indexOf('\n});');
   return rest.slice(0, end === -1 ? rest.length : end);

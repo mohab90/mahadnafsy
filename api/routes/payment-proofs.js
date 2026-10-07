@@ -34,6 +34,7 @@ const {
 const { getTenantSetting } = require('../lib/tenantSettings');
 const { consultationSettings, settleConsultationForOrder } = require('../lib/consultationRequests');
 const { classifyPaymentProof, paymentProofReviewStep } = require('../lib/paymentProofReview');
+const { orderPlan, planAccess } = require('../lib/orderPlan');
 
 function tenantIdFor(req) {
   return req.tenantId || req.user?.tenant_id || 'tenant-default';
@@ -421,16 +422,18 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
       const normalizedType = String(proof.item_type || 'other').toUpperCase();
       const paymentType = ['COURSE', 'BUNDLE', 'CONSULTATION', 'CERTIFICATE'].includes(normalizedType) ? normalizedType : 'OTHER';
       const payId = `proof-${proof.id}`;
+      // An instalment pays towards its plan, not its own amount (lib/orderPlan.js).
+      const plan = orderPlan(proof.order_notes, proof.amount);
       await assertWritable(dateOnlyInTimeZone(), conn, tenantId);
       await conn.query(
         `INSERT INTO payments
            (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method,
             transaction_id, is_installment, course_expected, note, date, status, staff_id, staff_name,
             source, item_title, branch, branch_id, tenant_id, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,0,?,?,NOW(),'paid',?,?,?,?,?,?,?,NOW())`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW(),'paid',?,?,?,?,?,?,?,NOW())`,
         [payId, proof.subscriber_id, proof.course_id || null, proof.bundle_id || null,
          proof.amount, proof.currency || 'EGP', paymentType, proof.payment_method || 'تحويل', proof.id,
-         proof.amount,
+         plan.installment ? 1 : 0, plan.expected,
          `تم اعتماد الإيصال${reviewer_note ? ' — ' + reviewer_note : ''}${proof.note ? ' | ملاحظة العميل: ' + proof.note : ''}`,
          reviewer?.id || null, reviewerName, 'manual_transfer', proof.item_title,
          proof.branch || branchForId(proof.branch_id), proof.branch_id || 'branch-other', tenantId]
@@ -456,9 +459,13 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
       }, conn);
 
       if ((paymentType === 'COURSE' && proof.course_id) || (paymentType === 'BUNDLE' && proof.bundle_id)) {
+        const access = await planAccess(conn, {
+          plan, tenantId, subscriberId: proof.subscriber_id, paymentId: payId, amount: proof.amount, currency: proof.currency || 'EGP',
+          courseId: paymentType === 'COURSE' ? proof.course_id : null, bundleId: paymentType === 'BUNDLE' ? proof.bundle_id : null,
+        });
         await grantCourseSelections({
           tenantId, subscriberId: proof.subscriber_id,
-          selections: [{ courseId: paymentType === 'BUNDLE' ? `bundle:${proof.bundle_id}` : proof.course_id, accessType: 'full' }],
+          selections: [{ courseId: paymentType === 'BUNDLE' ? `bundle:${proof.bundle_id}` : proof.course_id, ...access }],
           branchId: proof.branch_id || 'branch-other', source: 'payment_proof',
           actor: req.user?.email || 'system',
         }, conn);

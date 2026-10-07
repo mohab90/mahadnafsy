@@ -22,6 +22,7 @@ const { cairoToday } = require('./dates');
 const { getTenantSetting } = require('./tenantSettings');
 const { consultationSettings, settleConsultationForOrder } = require('./consultationRequests');
 const { normalizePaymentBranch, normalizedOrderType, appendTenantScope } = require('./orderFields');
+const { orderPlan, planAccess } = require('./orderPlan');
 const { paymobCharge } = require('./paymobGateway');
 
 // ── Paymob: shared helper — finalises an order after verified payment ─────────
@@ -136,6 +137,8 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
   const payId = `paymob-${merchantOrderId}`;
   const payCourseId = orderType === 'course' ? (order.item_id || null) : null;
   const payBundleId = orderType === 'bundle' ? (order.item_id || null) : null;
+  // An instalment pays towards its plan, not its own amount (lib/orderPlan.js).
+  const plan = orderPlan(extra, order.amount);
 
   // ── Atomic transaction: ensure subscriber + mark order paid + enroll + record payment ──
   const conn = await pool.getConnection();
@@ -205,12 +208,16 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
       //
       // 1,533 enrolments in the table record no reason for existing; this was
       // the last writer that could still add to them.
+      const access = await planAccess(conn, {
+        plan, tenantId, subscriberId: sub.id, paymentId: payId, amount: order.amount, currency: order.currency || 'EGP',
+        courseId: payCourseId, bundleId: payBundleId,
+      });
       for (const cid of courseIds) {
         await grantCourseEntitlement({
           tenantId: sub.tenant_id || tenantId,
           subscriberId: sub.id,
           courseId: cid,
-          accessType: 'full',
+          ...access,
           bundleId: orderType === 'bundle' ? order.item_id : null,
           branchId: sub.branch_id || branchIdForBranch(sub.branch),
           source: 'paymob_order',
@@ -252,7 +259,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
       `INSERT INTO payments
          (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method,
           transaction_id, is_installment, course_expected, branch, branch_id, tenant_id, note, source, date, status, created_at)
-       VALUES (?,?,?,?,?,?,'COURSE','online_paymob',?,0,?,?,?,?,?,'paymob',NOW(),'paid',NOW())`,
+       VALUES (?,?,?,?,?,?,'COURSE','online_paymob',?,?,?,?,?,?,?,'paymob',NOW(),'paid',NOW())`,
       [
         payId,
         sub?.id || null,
@@ -261,7 +268,8 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
         order.amount,
         order.currency || 'EGP',
         transactionId || null,
-        order.amount,   // course_expected = full order amount (what customer agreed to pay)
+        plan.installment ? 1 : 0,
+        plan.expected,  // course_expected: the plan's total for an instalment, else the order's amount
         paymentBranch,
         branchIdForBranch(paymentBranch),
         tenantId,

@@ -232,3 +232,45 @@ test('an account with no client record yet is not answered with an error on ever
   assert.ok(config.includes('if (!subscriber) return `user:${uid}`;'));
   assert.doesNotMatch(config, /new Error\('Subscriber account not found'\)/);
 });
+
+// An outside review, 7 Oct 2026: the checkout found the customer's lead by
+// email alone, so one who signs in with a number never matched — and its
+// INSERT then collided on their number and rewrote that lead's name and its
+// whole crm_json. A lead it did open had no client code and no rep.
+test('a checkout by a known number adds to their lead and rewrites nothing', async () => {
+  db.reset([[/SELECT id, status FROM leads/, [[{ id: 'lead-9', status: 'contacted' }]]], ...freshAccount()]);
+  const res = await call(handlerOf(checkoutRouter, 'post', '/api/public/checkout-intent'), {
+    user: { uid: 'user-1', email: null },
+    body: { itemId: 'c1', itemType: 'course', customerName: 'اسم من الفورم', customerPhone: '' },
+  });
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  assert.equal(db.find(/^INSERT INTO leads/), undefined, 'no second lead, and no write over the first');
+  const update = db.find(/^UPDATE leads SET crm_json=JSON_SET/);
+  assert.ok(update, 'the lead learns what they are buying');
+  assert.equal(update.params.at(-2), 'lead-9');
+  assert.doesNotMatch(update.sql, /\bname=/, 'their name stays as the desk has it');
+});
+
+test('a new person\'s lead opens with a client code', async () => {
+  db.reset(freshAccount());
+  const res = await call(handlerOf(checkoutRouter, 'post', '/api/public/checkout-intent'), {
+    user: { uid: 'user-1', email: null }, body: { itemId: 'c1', itemType: 'course', customerName: 'منى' },
+  });
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  const insert = db.find(/^INSERT INTO leads/);
+  assert.match(insert.sql, /client_code/);
+  assert.ok(insert.params[2], 'a code the desk can use');
+  assert.match(insert.sql, /ON DUPLICATE KEY UPDATE id=id$/, 'a collision writes nothing over anyone');
+});
+
+test('an instalment order carries its plan, for the confirmation to book against', async () => {
+  db.reset(freshAccount());
+  const res = await call(handlerOf(checkoutRouter, 'post', '/api/public/checkout-intent'), {
+    user: { uid: 'user-1', email: null }, body: { itemId: 'c1', itemType: 'course', customerName: 'منى', payMode: 'installment' },
+  });
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  const notes = JSON.parse(db.find(/^INSERT INTO orders/).params[12]);
+  assert.equal(notes.payMode, 'installment');
+  assert.equal(notes.planTotal, res.body.planTotal);
+  assert.equal(res.body.amount, amountDueNow(3000, 'installment'));
+});

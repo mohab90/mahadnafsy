@@ -25,7 +25,10 @@ function normalizeOrderTypeForDb(value) {
   const key = String(value || '').trim().toLowerCase();
   if (key === 'course') return 'COURSE';
   if (key === 'bundle') return 'BUNDLE';
-  if (key === 'consultation' || key === 'standalone_payment' || key === 'standalone') return 'CONSULTATION';
+  // A standalone payment buys nothing: stored as a consultation, the Paymob
+  // webhook opened an empty consultation request for every one.
+  if (key === 'standalone_payment' || key === 'standalone') return 'OTHER';
+  if (key === 'consultation') return 'CONSULTATION';
   return 'CONSULTATION';
 }
 

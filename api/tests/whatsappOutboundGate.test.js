@@ -137,7 +137,12 @@ test('the welcome message the desk switched off is actually gated now', () => {
   const auth = authRouteSource();
   // It was fired on every signup with no check of any kind, which is why turning
   // "رسائل الترحيب" off in the admin panel changed nothing.
-  assert.match(auth, /نرحب بك في معهد الدراسات النفسية[\s\S]{0,200}category: 'welcome'/);
+  // Both sign-up addresses share one handler now, and it welcomes through the
+  // lifecycle journey, whose lead_created messages go out as 'welcome'.
+  assert.match(auth, /require\('\.\.\/\.\.\/lib\/lifecycle'\)\.trigger\('lead_created'/);
+  assert.doesNotMatch(auth, /sendWhatsApp\([^)]*نرحب بك/, 'no direct send that skips the journey');
+  const lifecycle = fs.readFileSync(path.join(root, 'lib/lifecycle.js'), 'utf8');
+  assert.match(lifecycle, /lead_created: 'welcome'/);
 });
 
 test('the WhatsApp key is entered where the codes are sent from', () => {

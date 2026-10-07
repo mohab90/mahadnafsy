@@ -25,7 +25,7 @@ const { excludeArchiveSourcesSql } = require('../lib/leadArchive');
 const { resolveClientContext } = require('../lib/clientContext');
 const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { ensureSubscriberForOrder } = require('../lib/subscriberProvisioning');
-const { phoneIdentityClause } = require('../lib/leadMatching');
+const { phoneIdentityClause, findLeadByContact } = require('../lib/leadMatching');
 const { isRealPhone } = require('../lib/phoneNumber');
 const { capturePublicLead } = require('../lib/publicLead');
 const { bookingRuleError, consultationSettings, expressPrice, findSlot, openConsultationRequest } = require('../lib/consultationRequests');
@@ -569,31 +569,43 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
         throw error;
       }
     }
-    // Guarded: with no email this would match every lead stored with a blank one
-    // and attach this checkout to a stranger's lead.
-    const [[existingLead]] = normalizedEmail
-      ? await conn.query(
-        'SELECT id FROM leads WHERE LOWER(TRIM(email))=? AND tenant_id=? AND hidden=0 ORDER BY created_at DESC LIMIT 1 FOR UPDATE',
-        [normalizedEmail, tenantId]
-      )
-      : [[null]];
-    const leadId = subscriber?.lead_id || existingLead?.id || uuidv4();
-    const crmJson = JSON.stringify({ interestedCourseIds: itemId ? [itemId] : [], itemTitle: canonicalTitle, itemType: normalizedType });
-    await conn.query(
-      `INSERT INTO leads (id, tenant_id, name, email, phone, source, status, branch, branch_id, hidden, crm_json, created_at)
-       VALUES (?, ?, ?, ?, ?, 'checkout_intent', 'new', ?, ?, 0, ?, NOW())
-       ON DUPLICATE KEY UPDATE
-          name=VALUES(name), phone=COALESCE(NULLIF(VALUES(phone),''),phone),
-          branch=COALESCE(NULLIF(branch,''),VALUES(branch)), branch_id=COALESCE(branch_id,VALUES(branch_id)),
-          crm_json=VALUES(crm_json)`,
-      // NULL rather than '' — leads.email is unique per tenant, so a blank string
-      // would make the second email-less checkout collide with the first.
-      // email.split('@') used to throw outright when the account had no email.
-      [leadId, tenantId,
-       String(customerName || normalizedEmail.split('@')[0] || 'عميل').trim().slice(0, 255),
-       normalizedEmail || null,
-       contactPhone.slice(0, 50), branch, branchId, crmJson]
-    );
+    // The person, by the shared matcher — their number or their email. By email
+    // alone a customer who signs in with a number never matched, and the INSERT
+    // that followed collided on their number and rewrote that lead with
+    // ON DUPLICATE KEY UPDATE: its name, and its whole crm_json, the desk's
+    // notes included. And a lead it did create had no client code and no rep.
+    const existingLead = subscriber?.lead_id ? null
+      : await findLeadByContact(conn, { tenantId, phone: contactPhone, email: normalizedEmail });
+    const leadId = subscriber?.lead_id || existingLead?.id || null;
+    if (leadId) {
+      // A checkout says what they are buying; it does not rename them.
+      await conn.query(
+        `UPDATE leads
+            SET crm_json=JSON_SET(IF(JSON_VALID(crm_json), crm_json, '{}'), '$.itemTitle', ?, '$.itemType', ?),
+                branch=COALESCE(NULLIF(branch,''), ?), branch_id=COALESCE(branch_id, ?)
+          WHERE id=? AND tenant_id=?`,
+        [canonicalTitle || null, normalizedType, branch, branchId, leadId, tenantId]
+      );
+    } else {
+      const crmJson = JSON.stringify({ interestedCourseIds: itemId ? [itemId] : [], itemTitle: canonicalTitle, itemType: normalizedType });
+      const rep = await getNextSalesRep(tenantId, conn, {
+        branch, lead: { source: 'checkout_intent', courseIds: itemId ? [itemId] : [] },
+      }).catch(() => null);
+      // A number already on a lead the matcher could not see (a hidden one) is
+      // left as it is: the no-op update writes nothing over it.
+      await conn.query(
+        `INSERT INTO leads (id, tenant_id, client_code, name, email, phone, source, status, branch, branch_id, hidden, crm_json,
+           assigned_sales_id, assigned_sales_name, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'checkout_intent', 'new', ?, ?, 0, ?, ?, ?, NOW())
+         ON DUPLICATE KEY UPDATE id=id`,
+        // NULL rather than '' — leads.email is unique per tenant, so a blank string
+        // would make the second email-less checkout collide with the first.
+        [uuidv4(), tenantId, await getNextClientCode(conn),
+         String(customerName || normalizedEmail.split('@')[0] || 'عميل').trim().slice(0, 255),
+         normalizedEmail || null,
+         contactPhone.slice(0, 50), branch, branchId, crmJson, rep?.id || null, rep?.name || null]
+      );
+    }
     // Reuse of a recent pending order is keyed on the customer. With no email the
     // subscriber link is the only safe key — matching on customer_email='' would
     // hand this checkout somebody else's unclaimed order.
@@ -619,6 +631,10 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       // The hour the customer picked: without it every paid booking landed at 00:00.
       slotId: req.body?.slotId || null,
       paymentLinkId: paymentLink?.id || null,
+      // An instalment's amount is its first payment; the plan is what it pays
+      // towards (lib/orderPlan.js reads it when the order is confirmed).
+      payMode: normalizedPayMode,
+      planTotal: normalizedPayMode === 'installment' && basePrice ? installmentTotal(basePrice) : null,
     });
     await conn.query(
       `INSERT INTO orders

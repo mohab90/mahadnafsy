@@ -112,7 +112,10 @@ test('customers are counted at every sign-in, staff never; the screen shows the 
   const session = read('api/lib/singleSession.js');
   assert.match(session, /if \(!allowConcurrent\) await registerCustomerDevice\(conn, \{ tenantId, userId, req \}\);/);
   const auth = authRouteSource();
-  assert.equal(auth.split('await registerCustomerDevice(conn, { tenantId, userId: id, req });').length - 1, 2, 'both sign-ups');
+  assert.equal(auth.split('await registerCustomerDevice(conn, { tenantId, userId: id, req });').length - 1, 1, 'one sign-up handler');
+  for (const route of ['/api/auth/register', '/api/user/signup']) {
+    assert.ok(auth.includes(`router.post('${route}', registerLimiter, requireDb, requireTenantQuota('users'), validateSignup, signup);`), `${route} goes through it`);
+  }
   assert.match(auth, /err\?\.code === 'DEVICE_LIMIT' && !res\.headersSent/);
   const screen = read('client/pages/Auth.tsx');
   assert.match(screen, /\['DEVICE_LIMIT', 'ACCOUNT_SHARING_LOCKED'\]\.includes/);

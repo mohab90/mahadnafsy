@@ -229,9 +229,18 @@ router.post('/api/orders/reserve', publicLimiter, async (req, res) => {
     const {
       orderId, type, itemId, itemTitle, amount, currency, paymentMethod,
       customerEmail, customerName, customerPhone, bundleCourseIds,
-      consultationData, extraCertRequestId, subscriberEmail, isInstallment, installmentLimit,
+      subscriberEmail, isInstallment, installmentLimit,
     } = req.body || {};
     if (!orderId || !type || !amount) return res.status(400).json({ error: 'Missing orderId, type, or amount' });
+    // What the catalogue prices, and the standalone page, where the customer
+    // names the amount on purpose and buys nothing with it. A consultation is
+    // priced by its booking, which checkout-intent opens; taken here at the
+    // caller's figure, the Paymob webhook confirmed it for whatever was paid.
+    // (Unused on production: no order has ever come through this route.)
+    const kind = String(type).trim().toLowerCase();
+    if (!['course', 'bundle', 'standalone_payment', 'standalone'].includes(kind)) {
+      return res.status(400).json({ error: 'نوع الطلب ده بيتحجز من صفحته', code: 'ORDER_TYPE_NOT_RESERVABLE' });
+    }
 
     // The price comes from the catalogue, not from the caller. This endpoint is
     // public — guests check out — and the amount used to be written straight
@@ -264,14 +273,17 @@ router.post('/api/orders/reserve', publicLimiter, async (req, res) => {
     // they cannot be swapped after the fact, but the status walking backwards
     // is its own problem: the order stops counting as paid in every screen that
     // reads the column.
-    const [[existing]] = await pool.query(
-      'SELECT status FROM orders WHERE id=? AND tenant_id=? LIMIT 1',
-      [orderId, req.tenantId || DEFAULT_TENANT_ID]);
+    // The id comes from the browser, so it may already be somebody else's: the
+    // UPDATE below used to move another tenant's pending order to this one.
+    const [[existing]] = await pool.query('SELECT status, tenant_id FROM orders WHERE id=? LIMIT 1', [orderId]);
+    if (existing && (existing.tenant_id || DEFAULT_TENANT_ID) !== (req.tenantId || DEFAULT_TENANT_ID)) {
+      return res.status(409).json({ error: 'رقم الطلب مستخدم — حدّث الصفحة وجرّب تاني', code: 'ORDER_ID_TAKEN' });
+    }
     if (existing && String(existing.status || '').toLowerCase() === 'paid') {
       return res.status(409).json({ error: 'الطلب مدفوع بالفعل', code: 'ORDER_ALREADY_PAID' });
     }
 
-    const extra = JSON.stringify({ bundleCourseIds, consultationData, extraCertRequestId, subscriberEmail, isInstallment, installmentLimit });
+    const extra = JSON.stringify({ bundleCourseIds, subscriberEmail, isInstallment, installmentLimit });
     const orderBranchId = branchIdForBranch(req.body?.branch || 'ONLINE_EGYPT');
     const orderType = normalizeOrderTypeForDb(type);
     conn = await pool.getConnection();
@@ -283,7 +295,6 @@ router.post('/api/orders/reserve', publicLimiter, async (req, res) => {
        VALUES (?,?,?,?,'pending',?,?,?,?,?,?,?,?,?,NOW())
        ON DUPLICATE KEY UPDATE
          notes      = IF(status='paid', notes,      VALUES(notes)),
-         tenant_id  = IF(status='paid', tenant_id,  VALUES(tenant_id)),
          branch_id  = IF(status='paid', branch_id,  VALUES(branch_id)),
          status     = IF(status='paid', status,     'pending')`,
       [orderId, itemId||'', itemTitle||'', orderType, amount, currency||'EGP',
