@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Eye, Search } from 'lucide-react';
 import { cairoDateOnly, cairoDaysAgo } from '../../../../../shared/cairoDate';
 import type { Bundle, Course, DaqqiRound, StaffMember } from '../../../../types';
+import { SUB_STATUS_CFG } from '../../dashboardShared';
 
 // The date filter's quick ranges, in Cairo days; «مخصص» opens the two dates.
 const DATE_PRESETS: [string, string, number][] = [
@@ -32,6 +33,8 @@ interface Props {
   onlineTeamMembers: StaffMember[];
   staffMembers: StaffMember[];
   collOnlineCertFilter: 'all'|'has_cert'|'no_cert';
+  collOnlineStatusFilter: string;
+  setCollOnlineStatusFilter: (v: string) => void;
   setCollOnlineCertFilter: (v: 'all'|'has_cert'|'no_cert') => void;
   collOnlineCourseFilter: string;
   setCollOnlineCourseFilter: (v: string) => void;
@@ -52,6 +55,7 @@ export function FiltersToolbar({
   collOnlineRemainingFilter, setCollOnlineRemainingFilter,
   collOnlineCollectionFilter, setCollOnlineCollectionFilter, isOnlineManager, isAdmin,
   onlineTeamMembers, staffMembers, collOnlineCertFilter, setCollOnlineCertFilter,
+  collOnlineStatusFilter, setCollOnlineStatusFilter,
   collOnlineCourseFilter, setCollOnlineCourseFilter, courses, bundles,
   collOnlineDateFrom, setCollOnlineDateFrom, collOnlineDateTo, setCollOnlineDateTo,
   vc, toggleCol,
@@ -128,6 +132,12 @@ export function FiltersToolbar({
             ))}
           </select>
         )}
+        {/* «فلتر بحالة العميل» — the table's «الحالة» */}
+        <select value={collOnlineStatusFilter} onChange={e=>{setCollOnlineStatusFilter(e.target.value);setCollOnlinePage(1);}}
+          aria-label="حالة العميل" className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none">
+          <option value="">كل الحالات</option>
+          {Object.entries(SUB_STATUS_CFG).map(([key, cfg]) => <option key={key} value={key}>{cfg.label}</option>)}
+        </select>
         {/* فلتر الشهادات */}
         <select value={collOnlineCertFilter} onChange={e=>{setCollOnlineCertFilter(e.target.value as 'all'|'has_cert'|'no_cert');setCollOnlinePage(1);}}
           className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none">
@@ -153,8 +163,8 @@ export function FiltersToolbar({
           <input type="date" value={collOnlineDateTo} onChange={e=>{setCollOnlineDateTo(e.target.value);setCollOnlinePage(1);}}
             className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none" title="إلى تاريخ" />
         </>)}
-        {(collOnlineSearch||collOnlineRemainingFilter!=='all'||collOnlineCourseFilter||collOnlineDateFrom||collOnlineDateTo||collOnlineCollectionFilter||collOnlineCertFilter!=='all'||daqqiHousingFilter!=='all'||daqqiRoundFilter||daqqiReceptionFilter) && (
-          <button onClick={()=>{setCollOnlineSearch('');setCollOnlineRemainingFilter('all');setCollOnlineCourseFilter('');setCollOnlineDateFrom('');setCollOnlineDateTo('');setDatePreset('');setCollOnlineCollectionFilter('');setCollOnlineCertFilter('all');setDaqqiHousingFilter('all');setDaqqiRoundFilter('');setDaqqiReceptionFilter('');setCollOnlinePage(1);}}
+        {(collOnlineSearch||collOnlineRemainingFilter!=='all'||collOnlineCourseFilter||collOnlineDateFrom||collOnlineDateTo||collOnlineCollectionFilter||collOnlineCertFilter!=='all'||collOnlineStatusFilter||daqqiHousingFilter!=='all'||daqqiRoundFilter||daqqiReceptionFilter) && (
+          <button onClick={()=>{setCollOnlineSearch('');setCollOnlineRemainingFilter('all');setCollOnlineCourseFilter('');setCollOnlineDateFrom('');setCollOnlineDateTo('');setDatePreset('');setCollOnlineCollectionFilter('');setCollOnlineCertFilter('all');setCollOnlineStatusFilter('');setDaqqiHousingFilter('all');setDaqqiRoundFilter('');setDaqqiReceptionFilter('');setCollOnlinePage(1);}}
             className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-gray-50 text-gray-500 hover:bg-gray-100">مسح الفلاتر</button>
         )}
         {/* Export lives in ⚙️ الإعدادات now, on both halves of the screen. */}

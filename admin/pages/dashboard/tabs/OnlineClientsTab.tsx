@@ -44,6 +44,7 @@ import { CollectionSettingsModal } from './online-clients-sections/CollectionSet
 import { OnlineImportModal } from './online-clients-sections/OnlineImportModal';
 import { itemKeyOf } from '../../../lib/agreedPrice';
 import { usePhysicalBranch } from '../../../lib/physicalBranch';
+import { matchesSearch } from '../../../lib/clientSearch';
 import {
   calcSubscribersPaidEGP,
   formatCompactNumber,
@@ -151,6 +152,8 @@ export default function OnlineClientsTab({
   // Collection/online_manager — extra filters
   const [collOnlineCollectionFilter, setCollOnlineCollectionFilter] = useState('');
   const [collOnlineCertFilter, setCollOnlineCertFilter] = useState<'all'|'has_cert'|'no_cert'>('all');
+  // «فلتر بحالة العميل»: the status in the table's «الحالة» column.
+  const [collOnlineStatusFilter, setCollOnlineStatusFilter] = useState('');
   // Collection/online_manager — client sub-view tabs
   // The open tab lives in the URL rather than in component state, so the link
   // in the address bar names the view you are actually looking at: it can be
@@ -371,15 +374,8 @@ export default function OnlineClientsTab({
                     if (clientSt !== collOnlineViewTab) return false;
                   }
                 }
-                if (collOnlineSearch.trim()) {
-                  const q = collOnlineSearch.toLowerCase();
-                  const searchDigits = collOnlineSearch.replace(/\D/g, '');
-                  const phoneMatch = searchDigits.length >= 4
-                    ? (s.phone || '').replace(/\D/g, '').includes(searchDigits)
-                    : (s.phone || '').includes(collOnlineSearch);
-                  if (!(s.name||'').toLowerCase().includes(q) && !phoneMatch &&
-                      !(s.email||'').toLowerCase().includes(q) && !(s.nationalId||'').includes(collOnlineSearch)) return false;
-                }
+                // The same search as every other list (lib/clientSearch.ts) — the code included.
+                if (!matchesSearch(collOnlineSearch, { name: s.name, phone: s.phone, email: s.email, code: s.clientCode, nationalId: s.nationalId })) return false;
                 if (collOnlineDateFrom && cairoDay(s.createdAt) < collOnlineDateFrom) return false;
                 if (collOnlineDateTo   && cairoDay(s.createdAt) > collOnlineDateTo)   return false;
                 // A course or a track the client holds. A track never appears in
@@ -398,6 +394,7 @@ export default function OnlineClientsTab({
                   const _h = housingMap.get(s.id);
                   if (!_h || _h.receptionId !== daqqiReceptionFilter) return false;
                 }
+                if (collOnlineStatusFilter && (s.status || 'active') !== collOnlineStatusFilter) return false;
                 // فلتر الشهادات
                 if (collOnlineCertFilter === 'has_cert' && (s.certificates||[]).length === 0) return false;
                 if (collOnlineCertFilter === 'no_cert' && (s.certificates||[]).length > 0) return false;
@@ -533,6 +530,8 @@ export default function OnlineClientsTab({
                     staffMembers={staffMembers}
                     collOnlineCertFilter={collOnlineCertFilter}
                     setCollOnlineCertFilter={setCollOnlineCertFilter}
+                    collOnlineStatusFilter={collOnlineStatusFilter}
+                    setCollOnlineStatusFilter={setCollOnlineStatusFilter}
                     collOnlineCourseFilter={collOnlineCourseFilter}
                     setCollOnlineCourseFilter={setCollOnlineCourseFilter}
                     courses={courses}

@@ -12,6 +12,7 @@ import {
 } from '../leadUtils';
 import { normBranchId } from './leadBranchUtils';
 import { isOpenLeadStatus } from '../../../../../shared/leadStatuses';
+import { matchesSearch } from '../../../../lib/clientSearch';
 
 type FollowupFilter =
   | 'all'
@@ -131,15 +132,8 @@ export function useLeadFilteringData({
       if (leadsFollowupFilter === 'next7d') return nextFollowupDate > todayDate && nextFollowupDate <= next7;
       return true;
     })()) &&
-    (searchTerm === '' || (() => {
-      const query = searchTerm.trim().toLowerCase();
-      const queryDigits = query.replace(/\D/g, '');
-      const phoneMatch = queryDigits.length >= 4
-        ? (lead.phone || '').replace(/\D/g, '').includes(queryDigits)
-        : (lead.phone || '').includes(searchTerm);
-      return lead.name.toLowerCase().includes(query) || phoneMatch || (lead.email || '').toLowerCase().includes(query)
-        || (lead.notes || '').toLowerCase().includes(query);
-    })())
+    // The same search as every other list (lib/clientSearch.ts).
+    matchesSearch(searchTerm, { name: lead.name, phone: lead.phone, email: lead.email, code: lead.clientCode, extra: [lead.notes] })
   ), [isSalesOnly, assignFilter, searchTerm, tagFilter, sourceFilter, courseFilter, branchFilter, singleStatus, rottenFilter, salesSourceFilter, leadsFollowupFilter, instituteBranches]);
 
   const visibleLeads = useMemo(() => effectiveLeads.filter((lead) =>

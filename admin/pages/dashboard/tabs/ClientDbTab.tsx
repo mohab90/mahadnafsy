@@ -18,6 +18,7 @@ import { isRawCourse, rawCourseText } from './leads/leadCourseLabel';
 import { toEgp } from '../../../lib/money';
 import { downloadCsv } from '../../../../shared/csv';
 import { cairoDay } from '../../../../shared/cairoDate';
+import { matchesSearch } from '../../../lib/clientSearch';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -341,9 +342,6 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
   }, [allClients, courses]);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const qDigits = q.replace(/\D/g, '');
-
     return allClients
       .filter(c => {
         if (typeFilter === 'subscriber' && c.type !== 'subscriber') return false;
@@ -356,13 +354,8 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
         if (typeFilter === 'registration' && c.type !== 'registration') return false;
         if (branchFilter && c.branch?.toUpperCase() !== branchFilter) return false;
         if (courseFilter && !c.courseIds.includes(courseFilter)) return false;
-        if (q) {
-          const nameMatch = c.name.toLowerCase().includes(q);
-          const phoneMatch = qDigits.length >= 4 && normPhone(c.phone).includes(qDigits);
-          const emailMatch = c.email.toLowerCase().includes(q);
-          const codeMatch = c.clientCode.toLowerCase().includes(q);
-          if (!nameMatch && !phoneMatch && !emailMatch && !codeMatch) return false;
-        }
+        // The same search as every other list (lib/clientSearch.ts).
+        if (!matchesSearch(search, { name: c.name, phone: c.phone, email: c.email, code: c.clientCode })) return false;
         return true;
       })
       .sort((a, b) => {

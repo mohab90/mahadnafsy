@@ -15,6 +15,7 @@
 const { ARCHIVE_SOURCE_PREFIXES } = require('./leadArchive');
 const { addDaysToDateOnly, cairoDayStartUtc } = require('./dates');
 const { TERMINAL_LIST } = require('./leadStatuses');
+const { SEARCH_MIN_CHARS, foldText, foldedSql, searchNumber } = require('./searchText');
 
 // admin/pages/dashboard/tabs/crmConstants.ts ONLINE_EXCLUDED_SOURCES
 const ONLINE_EXCLUDED_SOURCES = ['أونلاين 2025', 'تحويل من عملاء الأونلاين'];
@@ -130,21 +131,24 @@ function leadTableFilter(query, { today, salesOnly }) {
 }
 
 /**
- * The free-text box: name, email or notes contain the text, or the phone's
- * digits contain the typed digits (four or more) — matchesFilters' search.
+ * The free-text box, read as every list reads it (lib/searchText.js, the
+ * panel's matchesSearch): name and notes with Arabic letters in one spelling,
+ * email, client code, and a typed number by its digits with or without its 0.
+ * Under two characters it filters nothing.
  */
 function leadTableSearch(q) {
-  const text = String(q || '').trim();
-  if (!text) return null;
-  const like = `%${escapeLike(text.toLowerCase())}%`;
-  const digits = text.replace(/\D/g, '');
-  const phone = digits.length >= 4
-    ? { sql: "REGEXP_REPLACE(COALESCE(l.phone, ''), '[^0-9]', '') LIKE ?", value: `%${digits}%` }
-    : { sql: "COALESCE(l.phone, '') LIKE ?", value: `%${escapeLike(text)}%` };
-  return {
-    sql: `(l.name LIKE ? OR ${phone.sql} OR l.email LIKE ? OR l.notes LIKE ?)`,
-    params: [like, phone.value, like, like],
-  };
+  const text = foldText(q);
+  if (text.length < SEARCH_MIN_CHARS) return null;
+  const like = `%${escapeLike(text)}%`;
+  const parts = [`${foldedSql('l.name')} LIKE ?`, "LOWER(COALESCE(l.email, '')) LIKE ?",
+    "LOWER(COALESCE(l.client_code, '')) LIKE ?", `${foldedSql('l.notes')} LIKE ?`];
+  const params = [like, like, like, like];
+  const number = searchNumber(text);
+  if (number) {
+    parts.push("REGEXP_REPLACE(COALESCE(l.phone, ''), '[^0-9]', '') LIKE ?");
+    params.push(`%${number.core}%`);
+  }
+  return { sql: `(${parts.join(' OR ')})`, params };
 }
 
 module.exports = { leadTableFilter, leadTableSearch, ONLINE_EXCLUDED_SOURCES };

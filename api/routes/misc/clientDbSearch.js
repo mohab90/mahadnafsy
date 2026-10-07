@@ -19,6 +19,7 @@ const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../m
 const { financialScopeClause, resolveFinancialScope } = require('../../lib/financialScope');
 const { leadScope } = require('../../lib/leadAccess');
 const { identitySpellings } = require('../../lib/phoneNumber');
+const { SEARCH_MIN_CHARS, foldText, foldedSql, searchNumber } = require('../../lib/searchText');
 const { isArchiveSource } = require('../../lib/leadArchive');
 
 const router = express.Router();
@@ -47,15 +48,25 @@ function leadPlace(row) {
 
 router.get('/api/admin/client-db/search', requireAuth, requireAdminOrStaff, requirePermission('view_client_db'), async (req, res) => {
   try {
-    const q = String(req.query.q || '').trim();
-    if (q.length < 2) return res.json({ rows: [] });
-    const digits = q.replace(/\D/g, '');
-    // A phone number is matched by every spelling it can be stored as; other text by substring.
+    const q = foldText(req.query.q);
+    if (q.length < SEARCH_MIN_CHARS) return res.json({ rows: [] });
+    const number = searchNumber(q);
+    const digits = number ? number.digits : '';
+    // A phone number is matched by every spelling it can be stored as; other text
+    // by substring, read as every list reads it (lib/searchText.js): «احمد» finds
+    // «أحمد», and a shorter number its digits with or without the 0.
     const byPhone = digits.length >= 8 ? [...new Set([digits, ...identitySpellings(digits)])] : null;
     const like = `%${escapeLike(q)}%`;
+    const shortNumber = number && !byPhone ? `%${number.core}%` : null;
+    const textMatch = (column, withCode) => ({
+      sql: `(${foldedSql(`${column}.name`)} LIKE ? OR LOWER(COALESCE(${column}.email, '')) LIKE ?`
+        + (withCode ? ` OR LOWER(COALESCE(${column}.client_code, '')) LIKE ?` : '')
+        + (shortNumber ? ` OR REGEXP_REPLACE(COALESCE(${column}.phone, ''), '[^0-9]', '') LIKE ?` : '') + ')',
+      params: [like, like, ...(withCode ? [like] : []), ...(shortNumber ? [shortNumber] : [])],
+    });
     const match = column => (byPhone
       ? { sql: `(${column}.phone IN (?) OR ${column}.phone LIKE ?)`, params: [byPhone, `%${escapeLike(digits.slice(-9))}%`] }
-      : { sql: `(${column}.name LIKE ? OR ${column}.email LIKE ? OR ${column}.phone LIKE ? OR ${column}.client_code LIKE ?)`, params: [like, like, like, like] });
+      : textMatch(column, true));
 
     // The caller's own scope, as the global search applies it.
     const subScope = financialScopeClause(
@@ -68,7 +79,7 @@ router.get('/api/admin/client-db/search', requireAuth, requireAdminOrStaff, requ
     const leadMatch = match('l');
     const userMatch = byPhone
       ? { sql: '(u.phone IN (?) OR u.phone LIKE ?)', params: [byPhone, `%${escapeLike(digits.slice(-9))}%`] }
-      : { sql: '(u.name LIKE ? OR u.email LIKE ? OR u.phone LIKE ?)', params: [like, like, like] };
+      : textMatch('u', false);
 
     const [[subscribers], [leads], [users]] = await Promise.all([
       subScope.sql === ' AND 1=0' ? [[]] : pool.query(
