@@ -171,7 +171,10 @@ const Enrollment: React.FC = () => {
             throw new Error('البريد الإلكتروني مسجل بكلمة مرور مختلفة. أدخل نفس كلمة المرور التي استخدمتها من قبل، أو سجّل الدخول من صفحة الدخول.');
           }
         } else {
-          throw new Error(authAr[msg] || 'تعذر إنشاء الحساب، حاول مرة أخرى.');
+          // The server words some refusals for the customer already — a number
+          // that has an account is told to sign in by WhatsApp code — and those
+          // were replaced here by «تعذر إنشاء الحساب».
+          throw new Error(authAr[msg] || (/[ء-ي]/.test(msg) ? msg : 'تعذر إنشاء الحساب، حاول مرة أخرى.'));
         }
       }
 

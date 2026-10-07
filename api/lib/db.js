@@ -84,6 +84,13 @@ function _isSchemaDdl(sql) {
   return /^\s*(CREATE|ALTER|DROP|TRUNCATE|RENAME)\s+/i.test(String(sql || ''));
 }
 
+// Only a read is sent again after a lost connection. A write may have reached
+// the server before the answer was lost, and a second one books it twice — an
+// `uses = uses + 1`, an insert under a fresh id.
+function _isRead(sql) {
+  return /^\s*(SELECT|SHOW|DESCRIBE|EXPLAIN)\b/i.test(String(sql || ''));
+}
+
 function _schemaDdlAllowed() {
   return process.env.MAHAD_SCHEMA_MIGRATION_ACTIVE === '1';
 }
@@ -109,7 +116,7 @@ pool.query = async (...args) => {
     _markDbUp();
     return result;
   } catch (err) {
-    if (RETRYABLE.has(err.code)) { logger.warn('[DB] Stale connection, retrying…', err.code); return await _origQuery(...args); }
+    if (RETRYABLE.has(err.code) && _isRead(sql)) { logger.warn('[DB] Stale connection, retrying…', err.code); return await _origQuery(...args); }
     if (err.code === 'ECONNREFUSED') _markDbDown();
     throw err;
   }
@@ -122,7 +129,7 @@ pool.execute = async (...args) => {
     _markDbUp();
     return result;
   } catch (err) {
-    if (RETRYABLE.has(err.code)) { logger.warn('[DB] Stale connection, retrying…', err.code); return await _origExecute(...args); }
+    if (RETRYABLE.has(err.code) && _isRead(sql)) { logger.warn('[DB] Stale connection, retrying…', err.code); return await _origExecute(...args); }
     if (err.code === 'ECONNREFUSED') _markDbDown();
     throw err;
   }
@@ -184,11 +191,16 @@ const CONN_TIMEOUT_MS = 4000;
 pool.getConnection = async () => {
   if (isDbDown()) throw Object.assign(new Error('Database unavailable'), { code: 'ECONNREFUSED' });
   await acquireDb();
+  let timer;
+  // A connection that arrives after the timeout is handed back, not kept: the
+  // race used to leave it checked out for good, one pool slot per timeout.
+  const pending = _origGetConn();
   try {
     const conn = await Promise.race([
-      _origGetConn(),
-      new Promise((_, reject) => setTimeout(() => reject(Object.assign(new Error('DB getConnection timeout'), { code: 'ETIMEDOUT' })), CONN_TIMEOUT_MS)),
+      pending,
+      new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error('DB getConnection timeout'), { code: 'ETIMEDOUT' })), CONN_TIMEOUT_MS); }),
     ]);
+    clearTimeout(timer);
     _markDbUp();
     const _origRelease = conn.release.bind(conn);
     const _connQuery = conn.query.bind(conn);
@@ -206,6 +218,8 @@ pool.getConnection = async () => {
     conn.release = (...args) => { releaseDb(); return _origRelease(...args); };
     return conn;
   } catch (err) {
+    clearTimeout(timer);
+    pending.then(late => late.release(), () => {});
     releaseDb();
     if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT') _markDbDown();
     throw err;
