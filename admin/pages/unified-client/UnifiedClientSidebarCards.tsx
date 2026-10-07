@@ -74,7 +74,7 @@ export function UnifiedClientSidebarProfileCard({
             <div className="flex items-center justify-between py-1.5"><span className="text-gray-400">🧑‍💼 السيلز</span><span className="font-semibold text-indigo-700">{isSub ? subscriber!.assignedSalesName : lead?.assignedSalesName}</span></div>
           )}
           {(isSub ? subscriber!.assignedCsName : lead?.assignedCsName) && (
-            <div className="flex items-center justify-between py-1.5"><span className="text-gray-400">🎧 خدمة العملاء</span><span className="font-semibold text-purple-700">{isSub ? subscriber!.assignedCsName : lead?.assignedCsName}</span></div>
+            <div className="flex items-center justify-between py-1.5"><span className="text-gray-400">💼 مسئول التحصيل</span><span className="font-semibold text-purple-700">{isSub ? subscriber!.assignedCsName : lead?.assignedCsName}</span></div>
           )}
           {(isSub ? linkedLead?.source : lead?.source) && (
             <div className="flex items-center justify-between py-1.5"><span className="text-gray-400">📢 المصدر</span><span className="font-semibold text-gray-700">{isSub ? linkedLead?.source : lead?.source}</span></div>

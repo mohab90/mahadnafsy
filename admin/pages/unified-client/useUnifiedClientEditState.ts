@@ -147,7 +147,11 @@ export function useUnifiedClientEditState(params: Params) {
     accountDiag, setAccountDiag, accountDiagLoading, setAccountDiagLoading,
     createAccLoading, setCreateAccLoading, createAccMsg, setCreateAccMsg,
     salesStaffList: staffMembers.filter(member => member.role === 'sales' && member.status === 'active'),
-    csStaffList: staffMembers.filter(member => member.role === 'support' && member.status === 'active'),
+    // The client's collection officer (assigned_cs_id) — the field every scope,
+    // report and distribution reads as collection. It offered customer-service
+    // agents, so picking one made them the client's collector, and the officer's
+    // name then showed under «خدمة العملاء».
+    csStaffList: staffMembers.filter(member => member.role === 'collection' && member.status === 'active'),
     handleSaveLeadEdit, handleSaveSubEdit,
   };
 }

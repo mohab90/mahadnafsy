@@ -448,7 +448,7 @@ export function DashboardNavigation(props: Props) {
                 tabs={[
                   { key: 'online_clients', label: 'عملاء الأونلاين', icon: UserCheck },
                   { key: 'leads', label: 'العملاء المحتملين', icon: UserSearch },
-                  { key: 'team_inbox', label: 'صندوق الرسائل', icon: Inbox },
+                  // «واتسابي» only: the shared inbox is not collection's.
                   { key: 'whatsapp_web', label: 'واتسابي', icon: MessageCircle },
                   // الاستردادات live inside مدفوعاتي now, in its design.
                   { key: 'orders', label: 'مدفوعاتي', icon: CreditCard },

@@ -411,3 +411,37 @@ test('a sheet\'s leads know their sheet, and removing the sheet can take the unt
   assert.match(modal, /'\/admin\/leads\/gsheet-check'/);
   assert.match(modal, /الشيت ده متضاف بالفعل باسم/);
 });
+
+// ── the message screens and the collection officer's name (7 Oct) ───────────
+
+test('every rep has the inbox and «واتسابي», collection «واتسابي» only, whatever their grid says', () => {
+  const { canUseChannel } = require('../constants/permissions');
+  const narrowed = ['view_dashboard', 'view_leads', 'manage_leads'];
+  const rep = { role: 'SALES', permissions_json: JSON.stringify(narrowed) };
+  const officer = { role: 'COLLECTION', permissions_json: JSON.stringify([...narrowed, 'manage_inbox']) };
+  const support = { role: 'SUPPORT', permissions_json: JSON.stringify(['manage_inbox']) };
+  const hr = { role: 'HR', permissions_json: JSON.stringify(['view_hr']) };
+  assert.equal(canUseChannel(rep, 'inbox'), true, 'Donia Wael, Rawan Tamer and Shimaa Abid had lost manage_inbox');
+  assert.equal(canUseChannel(rep, 'whatsapp'), true);
+  assert.equal(canUseChannel(officer, 'inbox'), false);
+  assert.equal(canUseChannel(officer, 'whatsapp'), true);
+  assert.equal(canUseChannel(support, 'inbox'), true);
+  assert.equal(canUseChannel(hr, 'inbox'), false);
+  assert.match(read('api/routes/team-inbox.js'), /const guard = \[requireAuth, requireAdminOrStaff, requireChannel\('inbox'\)\];/);
+  assert.match(read('api/routes/whatsapp-web.js'), /const guard = \[requireAuth, requireAdminOrStaff, requireChannel\('whatsapp'\)\];/);
+  assert.match(read('admin/constants/permissions.ts'), /export function canUseChannel\(/);
+  assert.match(read('admin/pages/Dashboard.tsx'), /canOpenTab=\{canOpenChannelTab\}/);
+  const nav = read('admin/pages/dashboard/DashboardNavigation.tsx');
+  const collectionNav = nav.slice(nav.indexOf('Collection horizontal nav'), nav.indexOf('Reception Daqqi horizontal nav'));
+  assert.doesNotMatch(collectionNav, /key: 'team_inbox'/);
+  assert.match(collectionNav, /key: 'whatsapp_web'/);
+});
+
+test('the client\'s collection officer is called that, and chosen from the collection team', () => {
+  assert.match(read('admin/pages/unified-client/useUnifiedClientEditState.ts'), /csStaffList: staffMembers\.filter\(member => member\.role === 'collection'/);
+  for (const file of ['admin/pages/unified-client/UnifiedClientEditTab.tsx', 'admin/pages/unified-client/UnifiedClientSidebarCards.tsx', 'admin/pages/dashboard/tabs/whatsapp/inboxExtras.tsx']) {
+    const source = read(file);
+    assert.match(source, /مسئول التحصيل/, file);
+    assert.doesNotMatch(source, /خدمة العملاء/, file);
+  }
+});

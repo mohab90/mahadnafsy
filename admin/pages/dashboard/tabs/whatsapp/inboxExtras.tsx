@@ -115,7 +115,7 @@ export function ContactPanel({ threadId, onOpenProfile, onClose }: { threadId: s
             {row('الكود', data.client.client_code)}
             {row('الفرع', data.client.branch)}
             {row('السيلز', data.client.assigned_sales_name)}
-            {row('خدمة العملاء', data.client.assigned_cs_name)}
+            {row('مسئول التحصيل', data.client.assigned_cs_name)}
             {row('دفع لحد دلوقتي', egp(data.paidEgp))}
             {row('عميل من', dateOf(data.client.created_at))}
           </section>

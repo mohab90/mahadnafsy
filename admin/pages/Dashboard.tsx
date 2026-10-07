@@ -18,6 +18,7 @@ import { StaffPermission, OrderItem } from '../types';
 import { mysqlAdmin } from '../lib/mysqlapi';
 import { useSiteData } from '../context/SiteDataContext';
 import {
+  canUseChannel,
   hasPermission as masterHasPermission,
   resolvePermissions as masterResolvePermissions,
   type RoleKey,
@@ -574,6 +575,16 @@ const Dashboard: React.FC = () => {
     );
   }, [isAdmin, currentStaff]);
 
+  // The inbox and «واتسابي» go by the job (constants/permissions.ts canUseChannel).
+  const canOpenChannelTab = React.useCallback((tab: TabKey): boolean | undefined => {
+    if (tab !== 'team_inbox' && tab !== 'whatsapp_web') return undefined;
+    if (isAdmin) return true;
+    return canUseChannel(
+      currentStaff ? { role: currentStaff.role as RoleKey, permissions: currentStaff.permissions as PermissionKey[] | undefined } : null,
+      tab === 'team_inbox' ? 'inbox' : 'whatsapp',
+    );
+  }, [isAdmin, currentStaff]);
+
   // Map each tab key to the minimum required permission (defined at module level)
 
   // The Tagamoa section shows once the branch is on (الإعدادات ← الفروع), and a
@@ -785,6 +796,7 @@ const Dashboard: React.FC = () => {
               activeTab={activeTab}
               isAdmin={isAdmin}
               hasPermission={hasPermission}
+              canOpenTab={canOpenChannelTab}
             >
 
             {activeTab === 'overview' && (

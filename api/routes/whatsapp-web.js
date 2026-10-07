@@ -11,11 +11,11 @@ const router = express.Router();
 const logger = require('../lib/logger').child({ module: 'whatsapp-web-route' });
 const { pool } = require('../lib/db');
 const wa = require('../lib/whatsappWeb');
-const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireAdminOrStaff, requireChannel } = require('../middleware/auth');
 const { resolveDataScope } = require('../constants/permissions');
 const { cairoToday, addDaysToDateOnly, cairoDayStartUtc } = require('../lib/dates');
 
-const guard = [requireAuth, requireAdminOrStaff, requirePermission('manage_inbox')];
+const guard = [requireAuth, requireAdminOrStaff, requireChannel('whatsapp')];
 const me = req => req.staffRecord?.id || req.user?.uid;
 const tenant = req => req.tenantId;
 

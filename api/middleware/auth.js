@@ -398,6 +398,25 @@ function requirePermission(permission) {
   };
 }
 
+/** The inbox ('inbox') or «واتسابي» ('whatsapp'), by the rule in constants/permissions.js canUseChannel. */
+function requireChannel(channel) {
+  return async function(req, res, next) {
+    if (req.isSuperAdmin) {
+      if (await enforceMfa(req, res, req.staffRecord, ['manage_inbox'], true)) return next();
+      return;
+    }
+    if (!req.staffRecord) return res.status(403).json({ error: 'Staff record not found' });
+    if (require('../constants/permissions').canUseChannel(req.staffRecord, channel)) {
+      if (await enforceMfa(req, res, req.staffRecord, ['manage_inbox'])) return next();
+      return;
+    }
+    res.status(403).json({
+      error: channel === 'inbox' ? 'صندوق الرسائل مش من شغل التحصيل — استخدم «واتسابي»' : 'Permission denied: manage_inbox',
+      code: 'CHANNEL_NOT_ALLOWED',
+    });
+  };
+}
+
 async function enforceMfa(req, res, staff = req.staffRecord, requestedPermissions = [], force = false) {
   try {
     const policy = await getMfaPolicy(req.tenantId);
@@ -483,6 +502,6 @@ module.exports = {
   ROLE_DEFAULT_PERMISSIONS_BE, isInstituteOwner, isPlatformAdminIdentity,
   optionalAuth, requireAuth, requireAdmin, requireSuperAdmin, requirePlatformAdmin,
   requireAdminOrOnlineManager, requireAdminOrOnlineManagerOrCollection,
-  requireAdminOrStaff, requirePermission, requirePermissionOrSelf, requirePermissionOrOwnRows,
+  requireAdminOrStaff, requirePermission, requirePermissionOrSelf, requirePermissionOrOwnRows, requireChannel,
   requireAnyPermission, enforceMfa, invalidateIdentity,
 };

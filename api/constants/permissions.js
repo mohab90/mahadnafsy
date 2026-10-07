@@ -487,6 +487,18 @@ function hasPermission(staffRecord, permission) {
   return perms.includes(permission);
 }
 
+// The two message screens go by the job, not by the permission grid: «اي سيلز
+// لازم يكون شغاله عنده صندوق البريد والواتس اب عشان في سيلز مش شغال عتدهم … اما
+// مسئول التحصيل يظهرله واتسابي فقط انما صندوق البريد لا». Three reps' own grids
+// (Donia Wael, Rawan Tamer, Shimaa Abid on 7 Oct) had lost manage_inbox, and
+// both screens refused them. Everyone else still needs manage_inbox.
+function canUseChannel(staffRecord, channel) {
+  const role = String(staffRecord?.role || '').toLowerCase();
+  if (role === 'sales') return true;
+  if (role === 'collection') return channel === 'whatsapp';
+  return hasPermission(staffRecord, 'manage_inbox');
+}
+
 // ── Shared domain constants (single source of truth for all routes) ──────────
 const VALID_BRANCHES = new Set(['DAQQI','TAGAMOA','ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_ABROAD','OTHER']);
 const VALID_PAY_TYPES = new Set(['COURSE','CERTIFICATE','CONSULTATION','BOOK','CARNEH','OTHER']);
@@ -502,6 +514,7 @@ module.exports = {
   resolveDataScope,
   resolvePermissions,
   hasPermission,
+  canUseChannel,
   setRoleOverrides,
   getRoleOverrides,
   getEffectiveRoleDefaults,

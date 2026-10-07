@@ -27,10 +27,10 @@ const { isWindowOpen, recordOnThread, PLATFORMS } = require('../lib/inboxThreads
 const { loadSettings: loadBotSettings } = require('../lib/inboxBot');
 const { createNotification } = require('../lib/notification');
 const { resolveDataScope } = require('../constants/permissions');
-const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireAdminOrStaff, requireChannel } = require('../middleware/auth');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
 
-const guard = [requireAuth, requireAdminOrStaff, requirePermission('manage_inbox')];
+const guard = [requireAuth, requireAdminOrStaff, requireChannel('inbox')];
 const me = req => req.staffRecord?.id || null;
 const seesAll = req => resolveDataScope(req.staffRecord, { isSuperAdmin: req.isSuperAdmin }) === 'all';
 

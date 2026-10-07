@@ -16,7 +16,9 @@ function walk(dir) {
   }).filter(file => file.endsWith('.js'));
 }
 
-const GUARD_PATTERN = /requirePermission|requireAnyPermission|requireAdmin\b|requireSuperAdmin|requirePlatformAdmin|requireAdminOrOnlineManager/;
+// requireChannel: the inbox and «واتسابي» by job — manage_inbox, or the sales and
+// collection roles (api/constants/permissions.js canUseChannel).
+const GUARD_PATTERN = /requirePermission|requireAnyPermission|requireChannel|requireAdmin\b|requireSuperAdmin|requirePlatformAdmin|requireAdminOrOnlineManager/;
 
 // Guard lists are frequently hoisted into a shared array and spread into the
 // route (`const view = [requireAuth, requireAdminOrStaff, requirePermission(..)]`
@@ -25,7 +27,7 @@ const GUARD_PATTERN = /requirePermission|requireAnyPermission|requireAdmin\b|req
 function guardArrays(source) {
   const arrays = new Map();
   for (const match of source.matchAll(/const\s+([A-Za-z_$][\w$]*)\s*=\s*\[([^\]]*?)\];/g)) {
-    if (/require(?:Auth|AdminOrStaff|Permission|AnyPermission)/.test(match[2])) arrays.set(match[1], match[2]);
+    if (/require(?:Auth|AdminOrStaff|Permission|AnyPermission|Channel)/.test(match[2])) arrays.set(match[1], match[2]);
   }
   return arrays;
 }

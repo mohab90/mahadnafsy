@@ -11,6 +11,8 @@ type DashboardTabContainerProps = {
   activeTab: TabKey;
   isAdmin: boolean;
   hasPermission: (permission: StaffPermission) => boolean;
+  /** A tab whose access is decided by the job rather than one permission — the inbox and «واتسابي». */
+  canOpenTab?: (tab: TabKey) => boolean | undefined;
   children: React.ReactNode;
   placeholderTabs?: TabKey[];
 };
@@ -19,6 +21,7 @@ export function DashboardTabContainer({
   activeTab,
   isAdmin,
   hasPermission,
+  canOpenTab,
   children,
   placeholderTabs = [],
 }: DashboardTabContainerProps) {
@@ -27,7 +30,8 @@ export function DashboardTabContainer({
   const requiredPermission = TAB_PERMISSION_MAP[activeTab];
   // null names a tab that is the viewer's own page; undefined is a tab nobody
   // mapped, which stays denied.
-  const allowed = requiredPermission === null
+  const byJob = canOpenTab?.(activeTab);
+  const allowed = byJob !== undefined ? byJob : requiredPermission === null
     ? true
     : Array.isArray(requiredPermission)
       ? requiredPermission.some(hasPermission)

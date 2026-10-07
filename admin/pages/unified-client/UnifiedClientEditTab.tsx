@@ -126,7 +126,7 @@ export function UnifiedClientEditTab({
               <option value="">- بدون تحديد -</option>
               {salesStaffList.map(staff => <option key={staff.id} value={staff.id}>{staff.name}</option>)}
             </select></div>
-          <div><label className="text-xs text-gray-600 mb-1 block">خدمة العملاء</label>
+          <div><label className="text-xs text-gray-600 mb-1 block">مسئول التحصيل</label>
             <select value={subDraft.assignedCsId} onChange={e => { const staff = csStaffList.find(x => x.id === e.target.value); setSubDraft({ ...subDraft, assignedCsId: e.target.value, assignedCsName: staff?.name || '' }); }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
               <option value="">- بدون تحديد -</option>
               {csStaffList.map(staff => <option key={staff.id} value={staff.id}>{staff.name}</option>)}
@@ -195,7 +195,7 @@ export function UnifiedClientEditTab({
               <option value="">بدون تحديد</option>
               {salesStaffList.map(staff => <option key={staff.id} value={staff.id}>{staff.name}</option>)}
             </select></div>
-          <div><label className="text-xs text-gray-600 mb-1 block">خدمة العملاء</label>
+          <div><label className="text-xs text-gray-600 mb-1 block">مسئول التحصيل</label>
             <select value={leadDraft.assignedCsId || ''} onChange={e => { const staff = csStaffList.find(x => x.id === e.target.value); setLeadDraft({ ...leadDraft, assignedCsId: e.target.value, assignedCsName: staff?.name || '' }); }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
               <option value="">- بدون تحديد -</option>
               {csStaffList.map(staff => <option key={staff.id} value={staff.id}>{staff.name}</option>)}

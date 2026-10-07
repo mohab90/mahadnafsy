@@ -491,6 +491,21 @@ export function hasPermission(
   return perms.includes(permission);
 }
 
+// The two message screens go by the job, not by the permission grid: «اي سيلز
+// لازم يكون شغاله عنده صندوق البريد والواتس اب عشان في سيلز مش شغال عتدهم … اما
+// مسئول التحصيل يظهرله واتسابي فقط انما صندوق البريد لا». Three reps' own grids
+// (Donia Wael, Rawan Tamer, Shimaa Abid on 7 Oct) had lost manage_inbox, and
+// both screens refused them. Everyone else still needs manage_inbox.
+export function canUseChannel(
+  staff: { role: RoleKey; permissions?: PermissionKey[] } | null | undefined,
+  channel: 'inbox' | 'whatsapp',
+): boolean {
+  const role = String(staff?.role || '').toLowerCase();
+  if (role === 'sales') return true;
+  if (role === 'collection') return channel === 'whatsapp';
+  return hasPermission(staff, 'manage_inbox' as PermissionKey);
+}
+
 /**
  * Returns default permissions as a plain array (never '*').
  * Useful for UI forms that need to pre-fill checkboxes.
