@@ -7,6 +7,7 @@ import type { Bundle, CommunicationRecord, Course, CustomerTimelineEvent, Instal
 import { commTypeMeta } from './constants';
 import type { SettlementCurrency } from '../../lib/branchCurrency';
 import { normalizeInterestLevel } from '../dashboard/tabs/leadUtils';
+import { clientItems } from '../../lib/agreedPrice';
 import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
 
 /** What the desk did to a client's courses and money (api/lib/clientHistory.js). */
@@ -563,26 +564,23 @@ export function UnifiedClientOverviewTab({
     
                           <div className="space-y-3">
     
-                            {subscriber!.enrolledCourseIds.map(courseId => {
-    
-                              const course = courses.find(c => c.id === courseId);
-    
+                            {/* A track is one item here, its money and its progress
+                                together — «المسار كانه كورس», split only where the videos
+                                are. Its courses each showed «لا توجد مدفوعات» beside a
+                                track that was paid: the money is under the track. */}
+                            {clientItems(subscriber!, courses, bundles, settlementCurrency).map(held => {
+                              const courseId = held.item;
+                              const courseIds = held.isTrack
+                                ? (bundles.find(b => `bundle:${b.id}` === held.item)?.courses || []).map(c => c.id)
+                                : [held.item];
                               const bm = bookingMap[courseId];
-    
-                              const hasCert = subCerts.some(c => c.courseId === courseId);
-    
-                              const totalLec = getCourseLectures(courseId).length;
-    
-                              const watched = Number(subscriber!.lectureProgress?.[courseId]) || 0;
-    
+                              const hasCert = subCerts.some(c => courseIds.includes(c.courseId));
+                              const totalLec = courseIds.reduce((sum, id) => sum + getCourseLectures(id).length, 0);
+                              const watched = courseIds.reduce((sum, id) => sum + (Number(subscriber!.lectureProgress?.[id]) || 0), 0);
                               const pct = totalLec > 0 ? Math.round((watched / totalLec) * 100) : 0;
-    
-                              // Use recorded expectedEGP → else fall back to course catalogue price
-    
-                              const expectedForCourse = bm?.expectedEGP ?? (courses.find(c => c.id === courseId)?.price?.[settlementCurrency] ?? 0);
-                              const paidForCourse = bm?.paidEGP ?? 0;
-    
-                              const remaining = expectedForCourse > 0 ? Math.max(0, expectedForCourse - paidForCourse) : null;
+                              const expectedForCourse = held.expected;
+                              const paidForCourse = held.paid;
+                              const remaining = expectedForCourse > 0 ? held.remaining : null;
     
                               return (
     
@@ -596,7 +594,7 @@ export function UnifiedClientOverviewTab({
     
                                       <span className="text-xl">🎓</span>
     
-                                      <p className="font-extrabold text-gray-800 text-sm">{course?.title || courseId}</p>
+                                      <p className="font-extrabold text-gray-800 text-sm">{held.title}</p>
     
                                     </div>
     
@@ -614,7 +612,7 @@ export function UnifiedClientOverviewTab({
     
                                   <div className="px-4 py-3">
     
-                                    {(bm || expectedForCourse > 0) ? (
+                                    {(bm || expectedForCourse > 0 || paidForCourse > 0) ? (
     
                                       <div className="grid grid-cols-3 gap-2 mb-3">
     

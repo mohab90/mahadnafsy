@@ -319,7 +319,8 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
             <UnifiedClientSidebarFinancialCard
               subscriber={subscriber}
               courses={courses}
-              bookingMap={bookingMap}
+              bundles={bundles}
+              settlementCurrency={settlementCurrency}
               subPaidTotals={subPaidTotals}
               subRemainingEGP={subRemainingEGP}
               settlementLabel={settlementLabel}
@@ -670,8 +671,8 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
               clientName, courses, onClose: () => setViewCertId(null),
             } : undefined}
             paymentDetail={showPayDetailModal && isSub ? {
-              open: true, subscriber, clientName, courses, paidTotals: subPaidTotals,
-              remainingEGP: subRemainingEGP, bookingMap, confirmedHistory,
+              open: true, subscriber, clientName, courses, bundles, settlementCurrency, paidTotals: subPaidTotals,
+              remainingEGP: subRemainingEGP, confirmedHistory,
               settlementLabel,
               onClose: () => setShowPayDetailModal(false),
             } : undefined}

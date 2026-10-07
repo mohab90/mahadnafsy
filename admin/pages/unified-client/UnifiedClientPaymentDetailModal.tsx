@@ -2,20 +2,22 @@ import React from 'react';
 import { CreditCard } from 'lucide-react';
 import { Modal } from '../../../shared/ui/Modal';
 
-import type { Course, PaymentHistoryEntry, SubscriberItem } from '../../types';
+import type { Bundle, Course, PaymentHistoryEntry, SubscriberItem } from '../../types';
+import type { SettlementCurrency } from '../../lib/branchCurrency';
+import { clientItems } from '../../lib/agreedPrice';
 
 type PaidTotals = { EGP: number; SAR: number; USD: number };
-type BookingMap = Record<string, { paidEGP: number; expectedEGP?: number; discount?: number }>;
 
 interface UnifiedClientPaymentDetailModalProps {
   open: boolean;
   subscriber: SubscriberItem | null | undefined;
   clientName: string;
   courses: Course[];
+  bundles: Bundle[];
+  settlementCurrency: SettlementCurrency;
   paidTotals: PaidTotals;
   remainingEGP: number;
   settlementLabel: string;
-  bookingMap: BookingMap;
   confirmedHistory: PaymentHistoryEntry[];
   onClose: () => void;
 }
@@ -25,10 +27,11 @@ export const UnifiedClientPaymentDetailModal: React.FC<UnifiedClientPaymentDetai
   subscriber,
   clientName,
   courses,
+  bundles,
+  settlementCurrency,
   paidTotals,
   remainingEGP,
   settlementLabel,
-  bookingMap,
   confirmedHistory,
   onClose,
 }) => {
@@ -69,26 +72,23 @@ export const UnifiedClientPaymentDetailModal: React.FC<UnifiedClientPaymentDetai
           </div>
           <div className="space-y-2">
             <p className="text-xs font-extrabold text-gray-500 uppercase tracking-wider">تفاصيل كل كورس</p>
-            {subscriber.enrolledCourseIds.map(courseId => {
-              const course = courses.find(c => c.id === courseId);
-              const booking = bookingMap[courseId];
-              const remaining = booking?.expectedEGP != null ? Math.max(0, booking.expectedEGP - booking.paidEGP) : null;
+            {/* A track is one item with its own price and money, as everywhere but the videos. */}
+            {clientItems(subscriber, courses, bundles, settlementCurrency).map(held => {
+              const remaining = held.expected > 0 ? held.remaining : null;
               return (
-                <div key={courseId} className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
-                  <p className="font-bold text-gray-800 text-sm mb-2">{course?.title || courseId}</p>
+                <div key={held.item} className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
+                  <p className="font-bold text-gray-800 text-sm mb-2">{held.title}</p>
                   <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                    {booking?.expectedEGP != null && (
+                    {held.expected > 0 && (
                       <div>
                         <p className="text-gray-400">السعر</p>
-                        <p className="font-bold text-gray-700">{booking.expectedEGP.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel}</p>
+                        <p className="font-bold text-gray-700">{held.expected.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel}</p>
                       </div>
                     )}
-                    {booking && (
-                      <div>
-                        <p className="text-gray-400">مدفوع</p>
-                        <p className="font-bold text-emerald-700">{booking.paidEGP.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel}</p>
-                      </div>
-                    )}
+                    <div>
+                      <p className="text-gray-400">مدفوع</p>
+                      <p className="font-bold text-emerald-700">{held.paid.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel}</p>
+                    </div>
                     {remaining !== null && (
                       <div>
                         <p className="text-gray-400">متبقي</p>

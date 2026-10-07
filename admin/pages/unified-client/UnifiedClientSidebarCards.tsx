@@ -1,7 +1,8 @@
 import { Activity, Award, BookOpen, CalendarDays, CheckCircle, Clock, Copy, CreditCard, DollarSign, Edit2, MessageSquare, Phone, Tag } from 'lucide-react';
 
-import type { BranchType, CommunicationRecord, Course, ExtraCertificateRequest, InstallmentPlan, LeadItem, SubscriberCertificate, SubscriberItem, UserSessionData } from '../../types';
+import type { BranchType, Bundle, CommunicationRecord, Course, ExtraCertificateRequest, InstallmentPlan, LeadItem, SubscriberCertificate, SubscriberItem, UserSessionData } from '../../types';
 import type { SettlementCurrency } from '../../lib/branchCurrency';
+import { clientItems } from '../../lib/agreedPrice';
 import { branchLabels, normBranchKey, statusLabels } from './constants';
 import { useCertificateCatalog } from '../../lib/certificateCatalog';
 import { toDialable } from '../../lib/whatsappLink';
@@ -99,7 +100,8 @@ export function UnifiedClientSidebarProfileCard({
 type FinancialCardProps = {
   subscriber: SubscriberItem;
   courses: Course[];
-  bookingMap: Record<string, { expectedEGP?: number | null; paidEGP: number }>;
+  bundles: Bundle[];
+  settlementCurrency: SettlementCurrency;
   subPaidTotals: { EGP: number; SAR: number; USD: number };
   subRemainingEGP: number;
   settlementLabel: string;
@@ -109,7 +111,8 @@ type FinancialCardProps = {
 export function UnifiedClientSidebarFinancialCard({
   subscriber,
   courses,
-  bookingMap,
+  bundles,
+  settlementCurrency,
   subPaidTotals,
   subRemainingEGP,
   settlementLabel,
@@ -144,16 +147,15 @@ export function UnifiedClientSidebarFinancialCard({
         )}
       </div>
       <div className="space-y-1.5">
-        {subscriber.enrolledCourseIds.map(cId => {
-          const c = courses.find(x => x.id === cId);
-          const bm = bookingMap[cId];
-          const remaining = bm?.expectedEGP != null ? Math.max(0, bm.expectedEGP - bm.paidEGP) : null;
+        {/* A track is one line, with the money paid for it — not its courses each «لا مدفوعات». */}
+        {clientItems(subscriber, courses, bundles, settlementCurrency).map(held => {
+          const remaining = held.expected > 0 ? held.remaining : null;
           return (
-            <div key={cId} className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 border border-gray-100">
-              <p className="font-semibold text-gray-800 text-xs truncate flex-1">{c?.title || cId}</p>
-              {bm ? (
+            <div key={held.item} className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 border border-gray-100">
+              <p className="font-semibold text-gray-800 text-xs truncate flex-1">{held.title}</p>
+              {held.paid > 0 || held.expected > 0 ? (
                 <div className="flex-shrink-0 text-left">
-                  <p className="text-[11px] font-bold text-emerald-700">{bm.paidEGP.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel}</p>
+                  <p className="text-[11px] font-bold text-emerald-700">{held.paid.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel}</p>
                   {remaining !== null && remaining > 0 && <p className="text-[10px] text-red-600">باقي {remaining.toLocaleString('ar-EG-u-nu-latn')}</p>}
                   {remaining === 0 && <p className="text-[10px] text-emerald-600 font-bold">✅ مكتمل</p>}
                 </div>
