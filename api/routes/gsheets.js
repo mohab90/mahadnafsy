@@ -8,7 +8,9 @@ const { pool } = require('../lib/db');
 const { getNextClientCode } = require('../lib/mappers');
 const { getTenantSetting } = require('../lib/tenantSettings');
 const { requireAuth, requireAdmin, requirePermission } = require('../middleware/auth');
-const { isHtmlResponse, fetchCsvFollowRedirects, syncAllConfiguredSheets } = require('../lib/sheets');
+const {
+  isHtmlResponse, fetchCsvFollowRedirects, syncAllConfiguredSheets, sheetKeyOf, countSheetLeads, removeConfiguredSheet,
+} = require('../lib/sheets');
 const { parseCsv } = require('../lib/csv');
 const { withJobLock } = require('../lib/jobLock');
 const { matchCourseId } = require('../lib/courseMatch');
@@ -155,6 +157,7 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
         assignedSalesName: salesName,
         interestedCourseIds: courseId ? [courseId] : [],
         ...(courseNameRaw && !courseId ? { courseNameRaw } : {}),
+        sheetKey: sheetKeyOf(sheetId, gid),
       });
       const leadId = `lead-gs-${Date.now()}-${i}`;
       const [insertResult] = await pool.execute(
@@ -181,6 +184,44 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
     logger.error('[gsheet-sync]', e.message);
     logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+const sheetFromBody = source => ({
+  sheetId: String(source?.sheetId || ''), gid: String(source?.gid || ''), name: String(source?.name || '').slice(0, 200),
+});
+
+// GET /api/admin/leads/gsheet-leads?sheetId=&gid=&name= — what removing this sheet would touch.
+router.get('/api/admin/leads/gsheet-leads', requireAuth, requireAdmin, requirePermission('manage_leads'), async (req, res) => {
+  const sheet = sheetFromBody(req.query);
+  if (!validSheetId(sheet.sheetId)) return res.status(400).json({ error: 'Invalid sheetId' });
+  try { res.json(await countSheetLeads(pool, req.tenantId, sheet)); }
+  catch (e) { logger.error('[gsheet-leads]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// POST /api/admin/leads/gsheet-remove { sheetId, gid, name, deleteLeads } — take a sheet
+// off the list, and with deleteLeads the leads it brought in that nobody worked.
+router.post('/api/admin/leads/gsheet-remove', requireAuth, requireAdmin, requirePermission('manage_leads'), async (req, res) => {
+  const sheet = sheetFromBody(req.body);
+  if (!validSheetId(sheet.sheetId)) return res.status(400).json({ error: 'Invalid sheetId' });
+  try {
+    const result = await removeConfiguredSheet(pool, req.tenantId, { ...sheet, deleteLeads: req.body?.deleteLeads === true });
+    logger.info('[gsheet-remove]', { tenantId: req.tenantId, name: sheet.name, ...result, actor: req.user?.email || null });
+    res.json({ ok: true, ...result });
+  } catch (e) { logger.error('[gsheet-remove]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// POST /api/admin/leads/gsheet-check { sheetId, gid, name } — what this sheet holds and
+// where each of its rows is in the CRM, without writing anything: «في شيتات بتجيب
+// داتا ومش بتظهر نهائيا».
+router.post('/api/admin/leads/gsheet-check', requireAuth, requireAdmin, requirePermission('manage_leads'), async (req, res) => {
+  const sheet = sheetFromBody(req.body);
+  if (!validSheetId(sheet.sheetId)) return res.status(400).json({ error: 'Invalid sheetId' });
+  try {
+    const report = await syncAllConfiguredSheets(req.tenantId, { dryRun: true, only: sheet.sheetId });
+    const tabs = report.sheets.filter(tab => tab.name === (sheet.name || sheet.sheetId))
+      .map(({ importedRows: _rows, ...tab }) => tab);
+    res.json({ ok: true, tabs });
+  } catch (e) { logger.error('[gsheet-check]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/leads/gsheet-sync-all  — syncs all sheets from CRM settings

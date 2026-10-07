@@ -7,6 +7,14 @@ import { DEFAULT_STALE_DAYS } from './leadUtils';
 import { Modal } from '../../../../shared/ui/Modal';
 import { AlertTriangle, CheckCircle2, Plus, RefreshCw, Settings, Wifi, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { confirmDialog } from '../../../../shared/ui/confirmDialog';
+
+/** One tab of a sheet, as «فحص» reads it (POST /admin/leads/gsheet-check). */
+type SheetCheck = {
+  gid: string | null; error: string | null; rows: number; inWindow: number; outsideWindow: number; imported: number;
+  existing: { visible: number; unassigned: number; archived: number; hidden: number; merged: number };
+};
+const sheetTabKey = (sheet: { sheetId: string; gid?: string }) => `${sheet.sheetId}:${sheet.gid || ''}`;
 
 export type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 /**
@@ -142,6 +150,7 @@ export function CrmSettingsModal({ section, onClose, notify, salesReps, branchOp
   const [newSheet, setNewSheet] = useState<Omit<GSheet, 'id'>>({ name: '', sheetId: '', gid: '', autoSync: true, defaultCourse: '' });
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { ok: boolean; hint: string; headers?: string[] }>>({});
+  const [checks, setChecks] = useState<Record<string, SheetCheck[] | 'loading'>>({});
 
   useEffect(() => {
     Promise.all([
@@ -233,6 +242,9 @@ export function CrmSettingsModal({ section, onClose, notify, salesReps, branchOp
   const addSheet = () => {
     if (!newSheet.sheetId) return notify('error', 'أدخل رابط الشيت');
     const gs: GSheet = { ...newSheet, sheetId: extractSheetId(newSheet.sheetId), id: `gs-${Date.now()}`, name: newSheet.name || 'شيت جديد' };
+    // The same tab twice imports each row under whichever name ran first.
+    const twin = settings.sheets.find(sheet => sheetTabKey(sheet) === sheetTabKey(gs));
+    if (twin) return notify('error', `الشيت ده متضاف بالفعل باسم «${twin.name}»`);
     setSettings(x => ({ ...x, sheets: [...x.sheets, gs] }));
     setNewSheet({ name: '', sheetId: '', gid: '', autoSync: true });
   };
@@ -251,7 +263,53 @@ export function CrmSettingsModal({ section, onClose, notify, salesReps, branchOp
   const setMember = (index: number, patch: Partial<AssignmentMember>) =>
     setAssignmentMembers(rows => rows.map((row, i) => i === index ? { ...row, ...patch } : row));
 
-  const removeSheet = (id: string) => setSettings(x => ({ ...x, sheets: x.sheets.filter(s => s.id !== id) }));
+  // «لما بمسح شيت مش بتمسح»: taking a sheet off says what it brought in, and can
+  // take the leads nobody worked with it (api/lib/sheets.js removeConfiguredSheet).
+  // Saved at once — the list and the leads change together.
+  const removeSheet = async (sheet: GSheet) => {
+    const query = `sheetId=${encodeURIComponent(sheet.sheetId)}&gid=${encodeURIComponent(sheet.gid || '')}&name=${encodeURIComponent(sheet.name || '')}`;
+    const counts = await mysqlAdmin.adminGet<{ total: number; untouched: number }>(`/admin/leads/gsheet-leads?${query}`)
+      .catch(() => ({ total: 0, untouched: 0 }));
+    const twin = settings.sheets.some(other => other.id !== sheet.id && sheetTabKey(other) === sheetTabKey(sheet));
+    if (!await confirmDialog({
+      title: `شيل «${sheet.name}»`,
+      message: twin
+        ? 'الشيت ده متضاف مرتين — هيتشال الاسم ده بس، والليدز تفضل مع التاني.'
+        : `الشيت ده جاب ${counts.total} ليد موجودين، منهم ${counts.untouched} محدش اشتغل عليهم.`,
+      confirmLabel: 'شيل الشيت',
+    })) return;
+    const deleteLeads = !twin && counts.untouched > 0 && await confirmDialog({
+      title: `تمسح الـ${counts.untouched} ليد كمان؟`,
+      message: 'الليدز اللي محدش كلمها ولا اتحولت لعميل بتتمسح. اللي حد اشتغل عليها بتفضل زي ما هي.',
+      confirmLabel: 'امسحهم',
+      cancelLabel: 'سيبهم',
+    });
+    try {
+      const result = await mysqlAdmin.adminPost<{ deletedLeads: number; keptLeads: number }>('/admin/leads/gsheet-remove', {
+        sheetId: sheet.sheetId, gid: sheet.gid || '', name: sheet.name || '', deleteLeads,
+      });
+      setSettings(x => ({ ...x, sheets: x.sheets.filter(s => s.id !== sheet.id) }));
+      notify('success', deleteLeads
+        ? `اتشال الشيت واتمسح ${result.deletedLeads} ليد — فضل ${result.keptLeads} اتشغل عليهم`
+        : 'اتشال الشيت — الليدز بتاعته فضلت');
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذّر شيل الشيت');
+    }
+  };
+
+  // «فحص»: what the sheet holds and where each row is in the CRM, nothing written.
+  const checkSheet = async (sheet: GSheet) => {
+    setChecks(current => ({ ...current, [sheet.id]: 'loading' }));
+    try {
+      const result = await mysqlAdmin.adminPost<{ tabs: SheetCheck[] }>('/admin/leads/gsheet-check', {
+        sheetId: sheet.sheetId, gid: sheet.gid || '', name: sheet.name || '',
+      });
+      setChecks(current => ({ ...current, [sheet.id]: result.tabs }));
+    } catch (error) {
+      setChecks(current => { const next = { ...current }; delete next[sheet.id]; return next; });
+      notify('error', error instanceof Error ? error.message : 'تعذّر فحص الشيت');
+    }
+  };
   const toggleAutoSync = (id: string) => setSettings(x => ({ ...x, sheets: x.sheets.map(s => s.id === id ? { ...s, autoSync: !s.autoSync } : s) }));
 
   const testSheet = async (sheet: GSheet) => {
@@ -444,6 +502,10 @@ export function CrmSettingsModal({ section, onClose, notify, salesReps, branchOp
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-sm text-gray-800">{sheet.name}</span>
+                        {settings.sheets.some(other => other.id !== sheet.id && sheetTabKey(other) === sheetTabKey(sheet)) && (
+                          <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">متضاف مرتين</span>
+                        )}
+                        {!sheet.autoSync && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-500">المزامنة التلقائية مقفولة</span>}
                         {tr && (
                           tr.ok
                             ? <span className="flex items-center gap-1 text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5"><CheckCircle2 size={11} /> متاح ({tr.hint})</span>
@@ -460,7 +522,11 @@ export function CrmSettingsModal({ section, onClose, notify, salesReps, branchOp
                           <input type="checkbox" checked={sheet.autoSync} onChange={() => toggleAutoSync(sheet.id)} className="rounded" />
                           تلقائي
                         </label>
-                        <button onClick={() => removeSheet(sheet.id)} className="text-red-400 hover:text-red-600 p-1"><X size={14} /></button>
+                        <button onClick={() => void checkSheet(sheet)} disabled={checks[sheet.id] === 'loading'}
+                          className="text-[11px] px-2 py-1 border border-emerald-300 text-emerald-700 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition disabled:opacity-50">
+                          {checks[sheet.id] === 'loading' ? 'بيفحص…' : 'فحص'}
+                        </button>
+                        <button onClick={() => void removeSheet(sheet)} title="شيل الشيت" className="text-red-400 hover:text-red-600 p-1"><X size={14} /></button>
                       </div>
                     </div>
                     <div className="flex gap-2 text-[11px] text-gray-500 font-mono">
@@ -469,6 +535,17 @@ export function CrmSettingsModal({ section, onClose, notify, salesReps, branchOp
                       {sheet.defaultCourse && <span className="bg-amber-50 border border-amber-200 rounded px-2 py-0.5 text-amber-700 font-sans">كورس افتراضي: {sheet.defaultCourse}</span>}
                     </div>
                     {tr?.ok && tr.headers && <div className="text-[10px] text-gray-500">كولمنز: {tr.headers.slice(0,6).join(' | ')}</div>}
+                    {Array.isArray(checks[sheet.id]) && (checks[sheet.id] as SheetCheck[]).map(tab => (
+                      <div key={tab.gid || 'first'} className="rounded-lg border border-emerald-100 bg-white px-2 py-1.5 text-[11px] text-gray-700">
+                        {tab.error ? <span className="text-red-600">الشيت مش متاح أو الأعمدة مش متعرفة</span> : (<>
+                          <strong>{tab.rows}</strong> صف في الشيت ·{' '}
+                          <span className="text-emerald-700">{tab.imported} جديد هيدخل في المزامنة الجاية</span> ·{' '}
+                          {tab.existing.visible} موجودين مع سيلز · {tab.existing.unassigned} مستنيين توزيع ·{' '}
+                          {tab.existing.archived} مؤرشفين · {tab.existing.hidden} مخفيين أو ممسوحين · {tab.existing.merged} مدموجين
+                          {tab.outsideWindow > 0 && <> · {tab.outsideWindow} أقدم من 14 يوم ومش بيدخلوا تلقائي</>}
+                        </>)}
+                      </div>
+                    ))}
                     {tr && !tr.ok && tr.hint.includes('private') && (
                       <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
                         ❌ الشيت غير منشور — افتح Google Sheets واضغط <strong>مشاركة</strong> ثم <strong>"أي شخص لديه الرابط"</strong> → قارئ

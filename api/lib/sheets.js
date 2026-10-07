@@ -7,7 +7,7 @@ const { matchCourseId } = require('./courseMatch');
 const { toIdentity } = require('./phoneNumber');
 const { createBatchAssigner } = require('./leadAssignment');
 const { getNextClientCode } = require('./mappers');
-const { getTenantSetting } = require('./tenantSettings');
+const { getTenantSetting, setTenantSetting } = require('./tenantSettings');
 const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 const { parseCsv } = require('./csv');
 
@@ -149,6 +149,81 @@ async function readSheetTab(sheet, gid, fetchCsv = fetchCsvFollowRedirects) {
 // Normalize branch string → DB ENUM value
 const normBranch = (v) => { if(!v)return null; const s=v.trim().toLowerCase().replace(/[\s_\-]/g,''); if(s.includes('دقي')||s.includes('daqqi')||s.includes('dokki'))return'DAQQI'; if(s.includes('تجمع')||s.includes('tagamoa')||s.includes('tagamo')||s.includes('قاهرةالجديدة')||s.includes('cairo')||s.includes('قاطميه')||s.includes('قاطميةs')||s.includes('qatat'))return'TAGAMOA'; if(s.includes('online')||s.includes('اونلاين')||s.includes('أونلاين')||s.includes('اونلاين')||s.includes('اون')){if(s.includes('سعودي')||s.includes('saudi'))return'ONLINE_SAUDI';if(s.includes('خارج')||s.includes('abroad'))return'ONLINE_ABROAD';return'ONLINE_EGYPT';} return s.length>=2?'OTHER':null; };
 
+/**
+ * Which tab of which sheet a lead came from, kept on the lead (crm_json.sheetKey).
+ * Nothing recorded it, so a sheet taken off the list left every lead it had
+ * brought in, with no way to tell them from anyone else's: «لما بمسح شيت مش
+ * بتمسح».
+ */
+const sheetKeyOf = (sheetId, gid) => `${String(sheetId || '').trim()}:${String(gid || '').trim()}`;
+
+/** Every tab key a configured sheet reads — one per gid, or the first tab. */
+function sheetKeysOf(sheet) {
+  const gids = Array.isArray(sheet?.gids) ? sheet.gids : String(sheet?.gid || '').split(',').map(g => g.trim()).filter(Boolean);
+  return (gids.length ? gids : ['']).map(gid => sheetKeyOf(sheet?.sheetId, gid));
+}
+
+/**
+ * The leads a configured sheet brought in: tagged with one of its keys, or —
+ * imported before the tag existed — a sheet import ('lead-gs-…') filed under
+ * the sheet's name, the source a sheet with no source column gives its rows.
+ */
+function sheetLeadsWhere(sheet) {
+  const keys = sheetKeysOf(sheet);
+  return {
+    sql: `(JSON_VALID(l.crm_json) AND JSON_UNQUOTE(JSON_EXTRACT(l.crm_json, '$.sheetKey')) IN (?)
+        OR (l.id LIKE 'lead-gs-%' AND l.source = ? AND (NOT JSON_VALID(l.crm_json) OR JSON_EXTRACT(l.crm_json, '$.sheetKey') IS NULL)))`,
+    params: [keys, String(sheet?.name || '').trim() || '\u0000'],
+  };
+}
+
+// Nobody has worked it: still new (or archived as never contacted), no contact
+// a person logged — the sheet's own note on arrival is not one — and no client
+// made from it.
+const UNTOUCHED = `l.status IN ('new','archived') AND l.merged_into_lead_id IS NULL
+  AND NOT EXISTS (SELECT 1 FROM communications c WHERE c.tenant_id = l.tenant_id AND c.lead_id = l.id AND c.staff_id IS NOT NULL)
+  AND NOT EXISTS (SELECT 1 FROM subscribers s WHERE s.tenant_id = l.tenant_id AND s.lead_id = l.id)`;
+
+/** How many leads a sheet brought in that are still there, and how many nobody has worked. */
+async function countSheetLeads(db, tenantId, sheet) {
+  const where = sheetLeadsWhere(sheet);
+  const [[row]] = await db.query(
+    `SELECT COUNT(*) AS total, SUM(${UNTOUCHED}) AS untouched
+       FROM leads l WHERE l.tenant_id = ? AND l.deleted_at IS NULL AND ${where.sql}`,
+    [tenantId, ...where.params]);
+  return { total: Number(row?.total || 0), untouched: Number(row?.untouched || 0) };
+}
+
+/**
+ * Take a sheet off the list, and — asked to — the leads it brought in that
+ * nobody has worked, soft-deleted (deleted_at, hidden), so a later sync of the
+ * same rows does not bring them back. A lead somebody called, moved on or sold
+ * stays. When another entry on the list reads the same tab, its leads stay
+ * too: they are that entry's as much as this one's.
+ */
+async function removeConfiguredSheet(db, tenantId, { sheetId, gid, name, deleteLeads = false }) {
+  const settings = await getTenantSetting('crm_settings', { tenantId, fallback: {}, db });
+  const sheets = Array.isArray(settings?.sheets) ? settings.sheets : [];
+  const target = { sheetId, gid, name };
+  const targetKeys = new Set(sheetKeysOf(target));
+  const matches = sheet => String(sheet.sheetId) === String(sheetId)
+    && String(sheet.gid || '') === String(gid || '') && String(sheet.name || '') === String(name || '');
+  const kept = sheets.filter(sheet => !matches(sheet));
+  const shared = kept.some(sheet => sheetKeysOf(sheet).some(key => targetKeys.has(key)));
+  await setTenantSetting('crm_settings', { ...settings, sheets: kept }, { tenantId, db });
+  let deleted = 0;
+  if (deleteLeads && !shared) {
+    const where = sheetLeadsWhere(target);
+    const [result] = await db.query(
+      `UPDATE leads l SET l.deleted_at = NOW(), l.hidden = 1, l.updated_at = NOW()
+        WHERE l.tenant_id = ? AND l.deleted_at IS NULL AND ${where.sql} AND ${UNTOUCHED}`,
+      [tenantId, ...where.params]);
+    deleted = Number(result.affectedRows || 0);
+  }
+  const left = await countSheetLeads(db, tenantId, target);
+  return { removed: sheets.length - kept.length, deletedLeads: deleted, keptLeads: left.total, sharedTab: shared };
+}
+
 /** Where an existing lead stands — why a sheet row that is "already in" may not be on the table. */
 function leadPlacement(lead) {
   if (!lead) return 'missing';
@@ -283,7 +358,10 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT, options = {}) 
             }
             let code = null;
             try { const conn2 = await pool.getConnection(); try { code = await getNextClientCode(conn2); } finally { conn2.release(); } } catch(_){}
-            const crmJson = JSON.stringify({ assignedSalesId: salesId, assignedSalesName: salesName, interestedCourseIds: courseId ? [courseId] : [], rawBranch: rawBranch || null });
+            const crmJson = JSON.stringify({
+              assignedSalesId: salesId, assignedSalesName: salesName, interestedCourseIds: courseId ? [courseId] : [], rawBranch: rawBranch || null,
+              sheetKey: sheetKeyOf(sheet.sheetId, gid), sheetName: sheet.name || null,
+            });
             const leadId = `lead-gs-${Date.now()}-${row.index}`;
             const [insertResult] = await pool.execute(
               `INSERT IGNORE INTO leads (id, tenant_id, client_code, name, email, phone, source, status, notes, branch, interested_course_ids_json, assigned_sales_id, assigned_sales_name, assigned_at, crm_json, hidden, created_at) VALUES (?,?,?,?,?,?,?,'new',?,?,?,?,?,CASE WHEN ? IS NULL THEN NULL ELSE NOW() END,?,0,NOW())`,
@@ -329,5 +407,5 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT, options = {}) 
 
 module.exports = {
   DEFAULT_GSHEETS, DEFAULT_IMPORT_WINDOW_DAYS, isHtmlResponse, fetchCsvFollowRedirects, leadPlacement, readSheetTab, rowDate,
-  syncAllConfiguredSheets,
+  syncAllConfiguredSheets, sheetKeyOf, sheetKeysOf, sheetLeadsWhere, countSheetLeads, removeConfiguredSheet,
 };

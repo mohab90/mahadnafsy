@@ -374,3 +374,40 @@ test('the 7/15/30/90-day badges are off behind one switch, and the late filter s
   assert.match(read('admin/pages/dashboard/tabs/leads/LeadCard.tsx'), /const rotLevel = STALE_BADGES_SHOWN \? getRottenLevel\(lead\) : 0;/);
   assert.match(read('admin/pages/dashboard/tabs/leads/useLeadFilteringData.ts'), /getRottenLevel\(lead\) >= 1/);
 });
+
+// ── the sheets (7 Oct) ───────────────────────────────────────────────────────
+
+test('a sheet\'s leads know their sheet, and removing the sheet can take the untouched ones', async () => {
+  const sheets = require('../lib/sheets');
+  assert.equal(sheets.sheetKeyOf('abc', '12'), 'abc:12');
+  assert.deepEqual(sheets.sheetKeysOf({ sheetId: 'abc', gid: '1, 2' }), ['abc:1', 'abc:2']);
+  assert.deepEqual(sheets.sheetKeysOf({ sheetId: 'abc' }), ['abc:']);
+  const where = sheets.sheetLeadsWhere({ sheetId: 'abc', gid: '', name: 'صحة نفسية' });
+  assert.match(where.sql, /l\.id LIKE 'lead-gs-%' AND l\.source = \?/);
+  assert.deepEqual(where.params, [['abc:'], 'صحة نفسية']);
+
+  const settingsRow = sheetsList => [[{ config_json: JSON.stringify({ autoAssign: 'rr', sheets: sheetsList }) }]];
+  const one = { id: 'gs-1', name: 'صحة نفسية', sheetId: 'abc', gid: '' };
+  const twin = { id: 'gs-2', name: 'كورسات', sheetId: 'abc', gid: '' };
+  db.reset([[/FROM tenant_settings/, settingsRow([one])], [/COUNT\(\*\) AS total/, [[{ total: 3, untouched: 0 }]]]]);
+  let result = await sheets.removeConfiguredSheet(conn, 't', { ...one, deleteLeads: true });
+  const update = db.calls.find(call => /^UPDATE leads l SET l\.deleted_at = NOW\(\), l\.hidden = 1/.test(call.sql));
+  assert.ok(update, 'its untouched leads are soft-deleted');
+  assert.match(update.sql, /c\.staff_id IS NOT NULL/, 'the sheet\'s own note on arrival is not somebody\'s work');
+  const saved = db.calls.find(call => /INSERT INTO tenant_settings/.test(call.sql));
+  assert.deepEqual(JSON.parse(saved.params[3]).sheets, []);
+  assert.equal(result.sharedTab, false);
+
+  // The same tab listed twice: the leads stay with the other entry.
+  db.reset([[/FROM tenant_settings/, settingsRow([one, twin])], [/COUNT\(\*\) AS total/, [[{ total: 3, untouched: 2 }]]]]);
+  result = await sheets.removeConfiguredSheet(conn, 't', { ...twin, deleteLeads: true });
+  assert.equal(result.sharedTab, true);
+  assert.equal(db.all(/^UPDATE leads l SET l\.deleted_at/).length, 0);
+
+  const sync = read('api/lib/sheets.js');
+  assert.match(sync, /sheetKey: sheetKeyOf\(sheet\.sheetId, gid\), sheetName: sheet\.name \|\| null,/);
+  const modal = read('admin/pages/dashboard/tabs/CrmSettingsModal.tsx');
+  assert.match(modal, /'\/admin\/leads\/gsheet-remove'/);
+  assert.match(modal, /'\/admin\/leads\/gsheet-check'/);
+  assert.match(modal, /الشيت ده متضاف بالفعل باسم/);
+});
