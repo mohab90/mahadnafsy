@@ -21,6 +21,7 @@ function getToken(): string | null {
 const REQUEST_TIMEOUT_MS = 15_000; // admin payloads are larger than client's, allow more
 const MAX_RETRIES = 1;
 const RETRY_BACKOFF_MS = 1_000;
+const MAX_RATE_LIMIT_WAITS = 3;
 
 // Identical GETs that are in flight at the same moment share one request.
 //
@@ -198,6 +199,17 @@ async function apiFetchInner<T>(path: string, options: RequestInit = {}, auth = 
     // Auto-retry on 502/503/504 (server restarting) — 1 extra attempt only.
     if ((res.status === 502 || res.status === 503 || res.status === 504) && _retry < MAX_RETRIES && canRetry(options)) {
       await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS));
+      return apiFetch<T>(path, options, auth, _retry + 1);
+    }
+    // The rate limiter turns a request away before any route runs, so sending
+    // it again records nothing twice — safe for a POST, unlike the retries
+    // above. Imports and «دمج الكل» send one row per request and pass the 400 a
+    // minute: an import on 3 Oct lost 531 of its 1,731 rows to «طلبات كثيرة
+    // جدًا», each counted as a failed row. A wait of up to a minute is waited
+    // out; a longer one (the 15-minute login lock) is the person's to read.
+    const retryAfter = res.status === 429 ? res.headers.get('Retry-After') : null;
+    if (retryAfter !== null && Number(retryAfter) <= 60 && _retry < MAX_RATE_LIMIT_WAITS) {
+      await new Promise(r => setTimeout(r, Math.max(1, Number(retryAfter)) * 1000));
       return apiFetch<T>(path, options, auth, _retry + 1);
     }
     if (res.status === 401) sessionIsOver(path);
