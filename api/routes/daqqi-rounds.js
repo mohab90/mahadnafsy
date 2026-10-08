@@ -317,7 +317,10 @@ router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requireP
       room: r.room || '',
       startDate: ymd(r.start_date),
       timeSlot: tsMap[r.time_slot] || 'مساءً',
-      status: (r.status || 'NEW').toLowerCase(),
+      // A round past its start date is running, whatever the row says: nothing moved
+      // NEW on until a first attendance mark (round 3016 read «جديدة» four weeks in,
+      // 9 Oct 2026), and the schedule shows a NEW round's lectures as not begun.
+      status: (r.status === 'NEW' && ymd(r.start_date) <= cairoToday() ? 'ACTIVE' : (r.status || 'NEW')).toLowerCase(),
       currentLecture: Number(r.current_lecture || 0),
       postponedWeeks: r.postponed_weeks_json ? (() => {
         try { return JSON.parse(r.postponed_weeks_json); } catch { return []; }

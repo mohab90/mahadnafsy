@@ -71,3 +71,8 @@ test('marking the same lecture twice is still refused', async () => {
   marked = [4];
   assert.equal((await mark()).statusCode, 409);
 });
+
+test('a round past its start date reads as running, not «جديدة»', () => {
+  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '../routes/daqqi-rounds.js'), 'utf8');
+  assert.match(source, /status: \(r\.status === 'NEW' && ymd\(r\.start_date\) <= cairoToday\(\) \? 'ACTIVE' : \(r\.status \|\| 'NEW'\)\)\.toLowerCase\(\),/);
+});
