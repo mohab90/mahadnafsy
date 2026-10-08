@@ -1,6 +1,6 @@
 'use strict';
 
-// «يبعتي تقرير يومي علي الواتس اب بتاعي 00201277207720 باداء الفريق كله».
+// «يبعتي تقرير يومي علي الواتس اب بتاعي باداء الفريق كله».
 
 const test = require('node:test');
 const assert = require('node:assert');
@@ -54,4 +54,17 @@ test('it is sent once a day, to the saved numbers only, through its own category
   assert.deepEqual(users, ['lib/ownerDailyReport.js'], 'the always-open category carries the owner\'s report and nothing else');
   assert.match(read('api/lib/backgroundScheduler.js'), /owner_daily_report: async \(\{ tenantId, date \}\) =>/);
   assert.match(read('api/routes/management-reports.js'), /router\.post\('\/api\/admin\/reports\/whatsapp\/send-now', requireAuth, requireAdmin,/);
+});
+
+// «محتاج اقدر اغير فيه يبعتلي ايه واحدد عناصر معينه» (8 Oct 2026).
+test('the owner picks what the message carries', () => {
+  const { REPORT_PARTS } = require('../lib/ownerDailyReport');
+  const text = composeOwnerReport(report, ['income', 'sales']);
+  assert.match(text, /الدخل:\* 12,500/);
+  assert.match(text, /المبيعات:\* 50 مكالمة/);
+  for (const gone of [/أونلاين مصر 9,000/, /أكتر سيلز فلوس/, /خدمة العملاء/, /التحصيل/, /التفاصيل/, /الأكتر مبيعاً/]) assert.doesNotMatch(text, gone);
+  assert.ok(!/\n{3,}/.test(text));
+  assert.equal(composeOwnerReport(report), composeOwnerReport(report, REPORT_PARTS.map(([key]) => key)), 'all of it until a choice is saved');
+  assert.match(read('api/routes/management-reports.js'), /parts: Array\.isArray\(req\.body\?\.parts\)/);
+  assert.match(read('admin/pages/dashboard/tabs/reports/OwnerWhatsappReportCard.tsx'), /يبعتلك إيه في الرسالة/);
 });

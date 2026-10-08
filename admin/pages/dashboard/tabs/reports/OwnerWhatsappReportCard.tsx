@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { MessageCircle, Save, Send } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 
-type Settings = { enabled: boolean; phones: string[]; hour: number; preview?: string };
+type Settings = { enabled: boolean; phones: string[]; hour: number; parts: string[]; preview?: string; allParts?: Array<{ key: string; label: string }> };
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 
 /**
@@ -29,8 +29,8 @@ export function OwnerWhatsappReportCard({ notify }: { notify: Notify }) {
   const save = async () => {
     setBusy(true);
     try {
-      const saved = await mysqlAdmin.adminPut<Settings & { ok: boolean }>('/admin/reports/whatsapp', { enabled: settings.enabled, hour: settings.hour, phones });
-      setSettings(prev => ({ ...saved, preview: prev?.preview }));
+      const saved = await mysqlAdmin.adminPut<Settings & { ok: boolean }>('/admin/reports/whatsapp', { enabled: settings.enabled, hour: settings.hour, phones, parts: settings.parts });
+      setSettings(prev => ({ ...saved, allParts: prev?.allParts }));
       notify('success', saved.enabled ? `اتحفظ — التقرير هيوصل كل يوم الساعة ${saved.hour}:00` : 'اتحفظ — التقرير اليومي مقفول');
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر الحفظ');
@@ -71,6 +71,25 @@ export function OwnerWhatsappReportCard({ notify }: { notify: Notify }) {
           يتبعت كل يوم
         </label>
       </div>
+      {/* «اقدر اغير فيه يبعتلي ايه واحدد عناصر معينه». */}
+      {settings.allParts && (
+        <div>
+          <span className="mb-1 block text-xs font-bold text-gray-600">يبعتلك إيه في الرسالة</span>
+          <div className="flex flex-wrap gap-1.5">
+            {settings.allParts.map(part => {
+              const on = settings.parts.includes(part.key);
+              return (
+                <label key={part.key} className={`flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-bold ${on ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-gray-200 bg-white text-gray-400'}`}>
+                  <input type="checkbox" checked={on} className="h-3 w-3"
+                    onChange={() => setSettings({ ...settings, parts: on ? settings.parts.filter(key => key !== part.key) : [...settings.parts, part.key] })} />
+                  {part.label}
+                </label>
+              );
+            })}
+          </div>
+          <p className="mt-1 text-[10px] text-gray-400">احفظ وشوف شكل الرسالة بعد التغيير.</p>
+        </div>
+      )}
       <div className="flex flex-wrap gap-2">
         <button type="button" disabled={busy} onClick={() => void save()}
           className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-60"><Save size={14} /> حفظ</button>
