@@ -68,15 +68,17 @@ async function applyCertificatePayment(payment, db, tenantId, options = {}) {
       throw conflict('اختار نوع الشهادة قبل تسجيل دفعها');
     }
     const price = await certificatePrice(db, tenantId, { stated: payment.price, type: requestedType, currency }) || amount;
+    const [[client]] = await db.query('SELECT name FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [payment.subscriber_id, tenantId]).catch(() => [[]]);
     await db.query(
       `INSERT INTO certificate_requests
-         (id, subscriber_id, course_id, type, status, price, paid_amount, currency, note, tenant_id, requested_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+         (id, subscriber_id, course_id, type, status, price, paid_amount, currency, note, tenant_id, requested_at, name_ar)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         requestId, payment.subscriber_id, payment.course_id || null, requestedType,
         settle && amount >= price ? 'PAID' : 'PRICED', price, settle ? amount : 0, currency,
         payment.note || null, tenantId,
         String(payment.date || new Date().toISOString()).slice(0, 10),
+        certificateNameOf(client?.name),
       ]
     );
   }
@@ -84,4 +86,10 @@ async function applyCertificatePayment(payment, db, tenantId, options = {}) {
   return requestId;
 }
 
-module.exports = { applyCertificatePayment };
+/** «خلي اسم العميل مدام ثلاثي او اكثر يكون هو الاسم علي الشهاده» (8 Oct 2026). */
+function certificateNameOf(clientName) {
+  const name = String(clientName || '').trim().replace(/\s+/g, ' ');
+  return name.split(' ').filter(Boolean).length >= 3 ? name : null;
+}
+
+module.exports = { applyCertificatePayment, certificateNameOf, certificatePrice };

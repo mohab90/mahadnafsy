@@ -281,13 +281,14 @@ export function useUnifiedClientPayments(params: Params) {
   };
 
 
-  const openSubscriberPaymentForm = (opts?: { note?: string }) => {
+  const openSubscriberPaymentForm = (opts?: { note?: string; draft?: Partial<PaymentDraft> }) => {
     setPayModalDraft({
       ...createClientPaymentDraft({
         branch: subscriber?.branch,
         email: subscriber?.email,
       }),
       ...(opts?.note ? { note: opts.note } : {}),
+      ...(opts?.draft || {}),
     });
     setShowSubPayForm(true);
   };

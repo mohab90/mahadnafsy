@@ -136,6 +136,9 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
     if ((location.state as { addCommunication?: boolean } | null)?.addCommunication) openContact();
   }, [location.state, openContact]);
 
+  // «دفع» on a certificate not yet paid in full (the certificates desk) lands
+  // here with ?pay=cert:<request>: the payment screen, on that certificate.
+  const payCertificate = new URLSearchParams(location.search).get('pay')?.match(/^cert:(.+)$/)?.[1] || null;
   const paymentState = useUnifiedClientPayments({
     lead, subscriber, subscribers, staffMembers, currentStaff, authUser, courses, bundles,
     isSaving, setIsSaving, addSubscriber, recordSubscriberPayment,
@@ -155,6 +158,13 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
     openSubscriberPaymentForm,
     openLeadPaymentForm,
   } = paymentState;
+  const openedCertificatePayment = React.useRef(false);
+  useEffect(() => {
+    if (!payCertificate || !subscriber || openedCertificatePayment.current) return;
+    openedCertificatePayment.current = true;
+    setActiveTab('payments');
+    openSubscriberPaymentForm({ draft: { paymentType: 'certificate', certReqId: payCertificate, bookingType: 'installment' } });
+  }, [payCertificate, subscriber, setActiveTab, openSubscriberPaymentForm]);
 
   const {
     showAccessModal, setShowAccessModal, showGrantFromCourses, setShowGrantFromCourses,

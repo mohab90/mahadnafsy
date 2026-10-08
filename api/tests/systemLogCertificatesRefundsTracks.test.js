@@ -188,18 +188,19 @@ test('«تكملة»: the course joins the track, its money with it, access unto
 
 test('certificates: paid before the system is paid, and the courier has a way back', () => {
   const routes = read('api/routes/certificates.js');
-  assert.match(routes, /\['SHIPPED', new Set\(\['AT_BRANCH', 'DELIVERED', 'RETURNED'\]\)\]/);
-  assert.match(routes, /\['RETURNED', new Set\(\['SHIPPED', 'AT_BRANCH', 'DELIVERED'\]\)\]/);
-  assert.ok(routes.includes("(Number(request.price) > 0 && Number(request.paid_amount) >= Number(request.price))"));
+  // Since 8 Oct 2026 the desk moves a paid certificate freely between the seven
+  // stages, the courier's way back included (aCertificateMovesOnlyPaidInFull).
+  assert.ok(routes.includes("const PAID_STAGES = ['PAID', 'IN_PROGRESS', 'ISSUED', 'AT_BRANCH', 'SHIPPED', 'DELIVERED', 'RETURNED'];"));
+  assert.ok(routes.includes('return due > 0 && Number(request.paid_amount) >= due;'));
   assert.match(routes, /router\.put\('\/api\/admin\/certificate-requests\/:id\/details'/);
   assert.match(routes, /collectionParty: collectionPartyOf\(row\)/);
   assert.match(routes, /action: 'certificate_status'/);
   assert.match(read('api/migrations/229_v26_activity_names_and_certificate_shipping.sql'), /'DELIVERED','RETURNED'\)/);
 
   const tab = read('admin/pages/dashboard/tabs/CertRequestsTab.tsx');
-  assert.match(tab, /label: 'اتسلمت لشركة الشحن'/);
-  assert.match(tab, /label: 'حصل مرتجع'/);
-  for (const header of ['الفرع', 'المدفوع', 'المتبقي', 'جهة التحصيل', 'المسئول', 'ملاحظات']) {
+  assert.match(tab, /shipped: +\{ label: 'اتشحنت'/);
+  assert.match(tab, /returned: +\{ label: 'مرتجع'/);
+  for (const header of ['التليفون', 'الفرع', 'المدفوع', 'المتبقي', 'جهة التحصيل', 'المسئول', 'ملاحظات']) {
     assert.ok(tab.includes(`<th className={th}>${header}</th>`), header);
   }
   assert.match(tab, /mysqlAdmin\.updateCertificateDetails/);

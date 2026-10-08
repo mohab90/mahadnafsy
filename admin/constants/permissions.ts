@@ -252,6 +252,8 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
   manager:                  '*',
   online_manager: [
     'view_dashboard',
+    // «محتاجين الاونلاين والدقي يقدر اي عميل يعمله» — certificates (8 Oct 2026).
+    'manage_certificates',
     'view_leads', 'manage_leads', 'export_leads',
     'view_subscribers', 'manage_subscribers', 'export_subscribers',
     'view_orders', 'manage_orders', 'manage_payments', 'set_client_price', 'approve_refunds',
@@ -342,6 +344,8 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
 
   reception_daqqi: [
     'view_dashboard',
+    // Certificates for any client, from the branch desk too (8 Oct 2026).
+    'manage_certificates',
     'manage_payments',
     'view_leads', 'manage_leads',
     'view_subscribers', 'manage_subscribers',

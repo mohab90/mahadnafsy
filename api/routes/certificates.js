@@ -9,7 +9,8 @@ const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { parseLimit } = require('../lib/helpers');
 const { publishRealtimeEvent } = require('../lib/realtime');
 const { getTenantSetting } = require('../lib/tenantSettings');
-const { certificateTypeCodes, resolveCertificatePrice } = require('../lib/certificatePricing');
+const { basePriceForCurrency, certificateTypeCodes, resolveCertificatePrice } = require('../lib/certificatePricing');
+const { certificateNameOf, certificatePrice } = require('../lib/certificatePayments');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { isString, isOneOf, validateBody } = require('../middleware/validate');
 const { resolveClientContext } = require('../lib/clientContext');
@@ -17,10 +18,11 @@ const { actorName, logClientEvent } = require('../lib/clientHistory');
 const { sanitize } = require('../lib/helpers');
 
 const CERT_STATUSES = ['PENDING','PRICED','PAID','IN_PROGRESS','NOT_SENT','ISSUED','SHIPPED','AT_BRANCH','DELIVERED','RETURNED'];
+// The names the screen shows (8 Oct 2026), used in the client's history too.
 const STATUS_AR = {
-  PENDING: 'تحت المراجعة', PRICED: 'مسعّرة', PAID: 'مدفوعة', IN_PROGRESS: 'في الجهة المسئولة',
-  NOT_SENT: 'لسه متبعتتش للجهة', ISSUED: 'جاهزة للشحن', SHIPPED: 'اتسلمت لشركة الشحن',
-  AT_BRANCH: 'في الفرع', DELIVERED: 'العميل استلمها', RETURNED: 'مرتجع',
+  PENDING: 'في انتظار تأكيد الدفعة', PRICED: 'في انتظار تأكيد الدفعة', PAID: 'تحت المراجعة', IN_PROGRESS: 'في الجهة المسئولة',
+  NOT_SENT: 'تحت المراجعة', ISSUED: 'موجودة في الشركة', SHIPPED: 'اتشحنت',
+  AT_BRANCH: 'في الفرع', DELIVERED: 'العميل استلم', RETURNED: 'مرتجع',
 };
 // A request's type is any code «تسعير الشهادات» lists (certificateTypeCodes).
 const loadPricing = async tenantId => {
@@ -29,19 +31,25 @@ const loadPricing = async tenantId => {
 };
 const CERT_NATS  = ['EGYPTIAN','NON_EGYPTIAN_EGYPT','SAUDI_RESIDENT','INTERNATIONAL'];
 const POST_PAYMENT_STATUSES = new Set(['PAID','IN_PROGRESS','NOT_SENT','ISSUED','SHIPPED','AT_BRANCH','DELIVERED','RETURNED']);
+// «الحالات هتكون كالاتي فقط: في انتظار تأكيد الدفعه، تحت المراجعه، في الجهه
+// المسئوله، موجودة في الشركة، في الفرع، اتشحنت، العميل استلم، مرتجع … ويبقي للكل
+// يقدر يعمل تغير حالة الشهاده» (8 Oct 2026). Unpaid (PENDING / PRICED) is «في
+// انتظار تأكيد الدفعة» and leaves it only paid in full; once paid, the desk moves
+// it freely between the seven. NOT_SENT is offered no more.
+const PAID_STAGES = ['PAID', 'IN_PROGRESS', 'ISSUED', 'AT_BRANCH', 'SHIPPED', 'DELIVERED', 'RETURNED'];
 const CERT_TRANSITIONS = new Map([
-  ['PENDING', new Set(['PRICED', 'PAID'])],
-  ['PRICED', new Set(['PAID'])],
-  ['PAID', new Set(['IN_PROGRESS'])],
-  ['IN_PROGRESS', new Set(['NOT_SENT', 'ISSUED'])],
-  ['NOT_SENT', new Set(['IN_PROGRESS', 'ISSUED'])],
-  ['ISSUED', new Set(['SHIPPED', 'AT_BRANCH', 'DELIVERED'])],
-  // «زر اتسلم لشركة الشحن … ومنها زر تاني استلم للعميل او حصل مرتجع».
-  ['SHIPPED', new Set(['AT_BRANCH', 'DELIVERED', 'RETURNED'])],
-  ['RETURNED', new Set(['SHIPPED', 'AT_BRANCH', 'DELIVERED'])],
-  ['AT_BRANCH', new Set(['DELIVERED'])],
-  ['DELIVERED', new Set()],
+  ['PENDING', new Set(['PRICED', ...PAID_STAGES])],
+  ['PRICED', new Set(PAID_STAGES)],
+  ['NOT_SENT', new Set(PAID_STAGES)],
+  ...PAID_STAGES.map(stage => [stage, new Set(PAID_STAGES.filter(other => other !== stage))]),
 ]);
+
+// Deleting and editing a certificate are the managers' («عند المديرين اقدر امسح
+// شهاده واقدر اعدل شهاده»); changing its status is the desk's.
+const CERT_MANAGERS = new Set(['admin', 'manager', 'online_manager', 'daqqi_manager', 'tagamoa_manager', 'sales_collection_manager']);
+// The price list's figure for a request's type in its currency (as the payment dialog reads it).
+const systemPriceOfRow = (pricing, row) => basePriceForCurrency(pricing, row.type, row.currency || 'EGP') || 0;
+const isCertManager = req => Boolean(req.isSuperAdmin || CERT_MANAGERS.has(String(req.staffRecord?.role || '').toLowerCase()));
 
 // «عمود اسمه جهه التحصيل»: the box the money went into. Set on the request, or
 // the linked payment's box, or — for the 646 requests imported from the Dokki
@@ -56,11 +64,15 @@ function collectionPartyOf(row) {
 }
 
 // Paid is paid whether the payment row is here or the money was taken before
-// the system: 254 requests imported «مدفوعة» from the sheet have no payment row,
-// and every status change on them answered «A paid payment linked to this
-// certificate request is required».
-const fullyPaid = (request, linkedPayment) =>
-  !!linkedPayment || (Number(request.price) > 0 && Number(request.paid_amount) >= Number(request.price));
+// the system: 254 requests imported «مدفوعة» from the sheet have no payment row.
+// And paid means the whole price the system asks for this certificate — «مينفعش
+// تقول السعر اكتمل غير لما يطابق السعر عندك في السيستم» (8 Oct 2026). Any linked
+// payment, a part of it included, used to count as paid in full.
+const priceDue = (request, systemPrice) => (Number(systemPrice) > 0 ? Number(systemPrice) : Number(request.price) || 0);
+const fullyPaid = (request, systemPrice) => {
+  const due = priceDue(request, systemPrice);
+  return due > 0 && Number(request.paid_amount) >= due;
+};
 
 // ── Certificate Requests admin routes ─────────────────────────────────────────
 // The certificates screen reads this, not the clients it happens to have
@@ -84,9 +96,12 @@ router.get('/api/admin/certificate-requests', requireAuth, requireAdminOrStaff, 
          LEFT JOIN courses c ON c.id = cr.course_id AND c.tenant_id=cr.tenant_id AND c.deleted_at IS NULL
         WHERE cr.tenant_id=?
         ORDER BY cr.requested_at DESC LIMIT ?`, [req.tenantId, limit]);
+    const pricing = await loadPricing(req.tenantId);
     res.json(rows.map(row => {
       const price = row.price != null ? Number(row.price) : null;
       const paid = Number(row.paid_amount) || 0;
+      const systemPrice = systemPriceOfRow(pricing, row);
+      const due = priceDue(row, systemPrice);
       return {
         id: row.id,
         subscriberId: row.subscriber_id,
@@ -105,8 +120,12 @@ router.get('/api/admin/certificate-requests', requireAuth, requireAdminOrStaff, 
         idNumber: row.id_number || null,
         status: String(row.status || 'PENDING').toLowerCase(),
         price,
+        systemPrice: systemPrice || null,
         paid,
-        remaining: price != null ? Math.max(0, price - paid) : null,
+        remaining: due > 0 ? Math.max(0, due - paid) : null,
+        complete: due > 0 && paid >= due,
+        // The name the certificate will carry when none was typed: the client's, if it is three names or more.
+        nameSuggested: row.name_ar ? null : certificateNameOf(row.subscriber_name),
         currency: row.currency || 'EGP',
         collectionParty: collectionPartyOf(row),
         note: row.note || null,
@@ -160,6 +179,7 @@ router.get('/api/admin/extra-requests', requireAuth, requireAdminOrStaff, requir
 // and the desk's notes. The price stays fixed once a payment row is linked, as
 // it always did; without one (the imported requests) it is the desk's to correct.
 router.put('/api/admin/certificate-requests/:id/details', requireAuth, requireAdminOrStaff, requirePermission('manage_certificates'), async (req, res) => {
+  if (!isCertManager(req)) return res.status(403).json({ error: 'تعديل الشهادة للمديرين بس', code: 'MANAGERS_ONLY' });
   const conn = await pool.getConnection();
   try {
     const b = req.body || {};
@@ -295,7 +315,9 @@ router.post('/api/admin/certificate-requests', requireAuth, requireAdminOrStaff,
          (id, subscriber_id, course_id, type, custom_name, name_ar, name_en, nationality,
           id_number, status, price, paid_amount, currency, note, tenant_id, requested_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, NOW())`,
-      [requestId, subscriberId, courseId, type, b.customName || null, b.nameAr || null, b.nameEn || null,
+      [requestId, subscriberId, courseId, type, b.customName || null,
+        b.nameAr || certificateNameOf((await conn.query('SELECT name FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriberId, req.tenantId]))[0][0]?.name),
+        b.nameEn || null,
        nationality, b.idNumber || null, initialStatus, finalPrice, finalCurrency, b.note || null, req.tenantId]
     );
     await conn.commit();
@@ -368,11 +390,18 @@ router.patch('/api/admin/certificate-requests/:id',
         LIMIT 1`,
       [request.id, request.subscriber_id, req.tenantId]
     );
-    if (POST_PAYMENT_STATUSES.has(normalizedStatus) && !fullyPaid(request, linkedPayment)) {
+    const systemPrice = await certificatePrice(conn, req.tenantId, { type: String(request.type || '').toUpperCase(), currency: String(request.currency || 'EGP').toUpperCase() });
+    if (POST_PAYMENT_STATUSES.has(normalizedStatus) && !fullyPaid(request, systemPrice)) {
         await conn.rollback();
         conn.release();
         conn = null;
-        return res.status(409).json({ error: 'الشهادة لازم تكون مدفوعة الأول — سجّل الدفعة أو المدفوع قبل السيستم' });
+        const due = priceDue(request, systemPrice);
+        return res.status(409).json({
+          error: due > 0
+            ? `الشهادة لسه مش مدفوعة كاملة — اتدفع ${Number(request.paid_amount || 0).toLocaleString('en-US')} من ${due.toLocaleString('en-US')}. سجّل الباقي الأول («دفع»).`
+            : 'الشهادة ملهاش سعر في السيستم — حدد سعرها الأول',
+          code: 'CERTIFICATE_NOT_PAID',
+        });
     }
     if ((linkedPayment || POST_PAYMENT_STATUSES.has(currentStatus))
       && ((normalizedPrice !== undefined && Number(normalizedPrice) !== Number(request.price))
@@ -462,6 +491,7 @@ router.patch('/api/admin/certificate-requests/:id',
 });
 
 router.delete('/api/admin/certificate-requests/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_certificates'), async (req, res) => {
+  if (!isCertManager(req)) return res.status(403).json({ error: 'مسح الشهادة للمديرين بس', code: 'MANAGERS_ONLY' });
   let conn;
   try {
     conn = await pool.getConnection();
@@ -521,7 +551,7 @@ async function certificateEligible(db, { tenantId, subscriberId, courseId }) {
 router.post('/api/me/certificate-request', requireAuth, async (req, res) => {
   try {
     const tenantId = req.tenantId || req.user?.tenant_id || 'tenant-default';
-    const sub = await resolveSubscriberRow(req, ['id']);
+    const sub = await resolveSubscriberRow(req, ['id', 'name']);
     if (!sub) return res.status(403).json({ error: 'not_subscribed' });
     const b = req.body || {};
     const pricingConfig = await loadPricing(tenantId);
@@ -552,7 +582,7 @@ router.post('/api/me/certificate-request', requireAuth, async (req, res) => {
       `INSERT INTO certificate_requests
          (id, subscriber_id, course_id, type, custom_name, name_ar, name_en, nationality, id_number, status, price, currency, note, tenant_id, requested_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-      [requestId, sub.id, b.courseId, type, b.customName || null, b.nameAr || null, b.nameEn || null,
+      [requestId, sub.id, b.courseId, type, b.customName || null, b.nameAr || certificateNameOf(sub.name), b.nameEn || null,
        nationality, b.idNumber || null, status, price, currency,
        // Say so on the row when the country could not be resolved, so the admin
        // pricing a PENDING request knows this one was priced by nationality

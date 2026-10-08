@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ExternalLink, Loader2, Pencil, RefreshCw, Search, Star, Trash2, Truck, X } from 'lucide-react';
+import { CreditCard, ExternalLink, Loader2, Pencil, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { Course } from '../../../types';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
@@ -9,6 +9,7 @@ import { cairoDay } from '../../../../shared/cairoDate';
 import { useCertificateCatalog } from '../../../lib/certificateCatalog';
 import { branchLabels, normBranchKey } from '../../unified-client/constants';
 import ExtraRequestsPanel from './ExtraRequestsPanel';
+import { useSiteData } from '../../../context/SiteDataContext';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -34,40 +35,39 @@ type CertRow = {
   branch: string | null; ownerName: string | null; courseId: string | null; courseTitle: string | null;
   type: string; customName: string | null; nameAr: string | null; nameEn: string | null; nationality: string | null;
   idNumber: string | null; status: CertStatus; price: number | null; paid: number; remaining: number | null;
+  /** The price list's figure for this type and currency; «مكتمل» is against it. */
+  systemPrice: number | null; complete: boolean;
+  /** The client's own name when it is three names or more and none was typed. */
+  nameSuggested: string | null;
   currency: string; collectionParty: string | null; note: string | null; adminNote: string | null;
   requestedAt: string | null; issuedAt: string | null;
 };
 
 type CertStatus = 'pending' | 'priced' | 'paid' | 'in_progress' | 'not_sent' | 'issued' | 'shipped' | 'at_branch' | 'delivered' | 'returned';
 
+// «الحالات هتكون كالاتي فقط» (8 Oct 2026). Unpaid — PENDING or PRICED — reads
+// «في انتظار تأكيد الدفعة» and moves on only paid in full (the server checks it
+// against the price list); after that the desk moves it freely between the seven.
 const STATUS_META: Record<CertStatus, { label: string; badge: string }> = {
-  pending:     { label: 'تحت المراجعة',          badge: 'bg-gray-100 text-gray-600' },
-  priced:      { label: 'مسعّرة',                badge: 'bg-amber-100 text-amber-700' },
-  paid:        { label: 'مدفوعة',                badge: 'bg-blue-100 text-blue-700' },
+  pending:     { label: 'في انتظار تأكيد الدفعة', badge: 'bg-amber-100 text-amber-800' },
+  priced:      { label: 'في انتظار تأكيد الدفعة', badge: 'bg-amber-100 text-amber-800' },
+  paid:        { label: 'تحت المراجعة',          badge: 'bg-blue-100 text-blue-700' },
+  not_sent:    { label: 'تحت المراجعة',          badge: 'bg-blue-100 text-blue-700' },
   in_progress: { label: 'في الجهة المسئولة',     badge: 'bg-purple-100 text-purple-700' },
-  not_sent:    { label: 'لسه متبعتتش للجهة',     badge: 'bg-orange-100 text-orange-700' },
-  issued:      { label: 'جاهزة للشحن',           badge: 'bg-green-100 text-green-700' },
-  shipped:     { label: 'مع شركة الشحن',         badge: 'bg-cyan-100 text-cyan-700' },
-  returned:    { label: 'مرتجع',                 badge: 'bg-rose-100 text-rose-700' },
+  issued:      { label: 'موجودة في الشركة',      badge: 'bg-green-100 text-green-700' },
   at_branch:   { label: 'في الفرع',              badge: 'bg-teal-100 text-teal-700' },
-  delivered:   { label: 'العميل استلمها',        badge: 'bg-emerald-100 text-emerald-800' },
+  shipped:     { label: 'اتشحنت',                badge: 'bg-cyan-100 text-cyan-700' },
+  delivered:   { label: 'العميل استلم',          badge: 'bg-emerald-100 text-emerald-800' },
+  returned:    { label: 'مرتجع',                 badge: 'bg-rose-100 text-rose-700' },
 };
-
-// «قسم شهادات في الشحن»: ready to go, with the courier, or back from it.
-const SHIPPING: CertStatus[] = ['issued', 'shipped', 'returned'];
-
-// The next step from each status, as buttons — the server's own transitions
-// (routes/certificates.js). The old status dropdown offered every status and
-// the server refused most of them.
-const NEXT: Partial<Record<CertStatus, Array<{ to: CertStatus; label: string; tone: string }>>> = {
-  paid:        [{ to: 'in_progress', label: 'اتبعتت للجهة', tone: 'bg-purple-600' }],
-  in_progress: [{ to: 'issued', label: 'جاهزة للشحن', tone: 'bg-green-600' }, { to: 'not_sent', label: 'لسه متبعتتش', tone: 'bg-orange-500' }],
-  not_sent:    [{ to: 'in_progress', label: 'اتبعتت للجهة', tone: 'bg-purple-600' }, { to: 'issued', label: 'جاهزة للشحن', tone: 'bg-green-600' }],
-  issued:      [{ to: 'shipped', label: 'اتسلمت لشركة الشحن', tone: 'bg-cyan-600' }, { to: 'at_branch', label: 'في الفرع', tone: 'bg-teal-600' }, { to: 'delivered', label: 'العميل استلمها', tone: 'bg-emerald-600' }],
-  shipped:     [{ to: 'delivered', label: 'العميل استلمها', tone: 'bg-emerald-600' }, { to: 'returned', label: 'حصل مرتجع', tone: 'bg-rose-600' }],
-  returned:    [{ to: 'shipped', label: 'اتشحنت تاني', tone: 'bg-cyan-600' }, { to: 'at_branch', label: 'في الفرع', tone: 'bg-teal-600' }, { to: 'delivered', label: 'العميل استلمها', tone: 'bg-emerald-600' }],
-  at_branch:   [{ to: 'delivered', label: 'العميل استلمها', tone: 'bg-emerald-600' }],
-};
+const UNPAID: CertStatus[] = ['pending', 'priced'];
+const PAID_STAGES: CertStatus[] = ['paid', 'in_progress', 'issued', 'at_branch', 'shipped', 'delivered', 'returned'];
+// The filter: the eight, «في انتظار تأكيد الدفعة» standing for both unpaid ones.
+const STATUS_FILTERS: Array<{ key: string; label: string; match: CertStatus[] }> = [
+  { key: 'unpaid', label: 'في انتظار تأكيد الدفعة', match: UNPAID },
+  ...PAID_STAGES.map(stage => ({ key: stage, label: STATUS_META[stage].label, match: stage === 'paid' ? ['paid', 'not_sent'] as CertStatus[] : [stage] })),
+];
+const CERT_MANAGERS = new Set(['admin', 'manager', 'online_manager', 'daqqi_manager', 'tagamoa_manager', 'sales_collection_manager']);
 
 const NATIONALITIES: Record<string, string> = {
   egyptian: '🇪🇬 مصري',
@@ -84,7 +84,7 @@ type EditDraft = {
   idNumber: string; price: string; paidAmount: string; collectionParty: string; adminNote: string;
 };
 const draftOf = (row: CertRow): EditDraft => ({
-  nameAr: row.nameAr || '', nameEn: row.nameEn || '', type: row.type.toUpperCase(), customName: row.customName || '',
+  nameAr: row.nameAr || row.nameSuggested || '', nameEn: row.nameEn || '', type: row.type.toUpperCase(), customName: row.customName || '',
   courseId: row.courseId || '', nationality: row.nationality ? row.nationality.toUpperCase() : '',
   idNumber: row.idNumber || '', price: row.price != null ? String(row.price) : '', paidAmount: String(row.paid || 0),
   collectionParty: row.collectionParty || '', adminNote: row.adminNote || '',
@@ -100,6 +100,9 @@ export default function CertRequestsTab({
   certStatusFilter, setCertStatusFilter, pricing, initialTab = 'requests',
 }: Props) {
   const navigate = useNavigate();
+  const { isAdmin, currentStaff } = useSiteData();
+  // «عند المديرين اقدر امسح شهاده واقدر اعدل شهاده» — the server holds the same line.
+  const canManage = isAdmin || CERT_MANAGERS.has(String(currentStaff?.role || '').toLowerCase());
   const [innerTab, setInnerTab] = useState<'requests' | 'extras' | 'pricing'>(pricing ? initialTab : 'requests');
   const certCatalog = useCertificateCatalog();
   const [rows, setRows] = useState<CertRow[]>([]);
@@ -171,21 +174,17 @@ export default function CertRequestsTab({
       if (!haystack.includes(q)) return false;
     }
     if (certTypeFilter !== 'all' && row.type !== certTypeFilter.toLowerCase()) return false;
-    if (certStatusFilter === 'shipping' ? !SHIPPING.includes(row.status) : certStatusFilter !== 'all' && row.status !== certStatusFilter) return false;
+    if (certStatusFilter !== 'all' && !(STATUS_FILTERS.find(item => item.key === certStatusFilter)?.match || [certStatusFilter as CertStatus]).includes(row.status)) return false;
     if (branchFilter && normBranchKey(row.branch) !== branchFilter) return false;
     if (ownerFilter && (row.ownerName || '') !== ownerFilter) return false;
     if (partyFilter && !String(row.collectionParty || '').split('، ').includes(partyFilter)) return false;
     return true;
   });
 
-  const chips: Array<{ key: string; label: string; color: string; val: number }> = [
-    { key: 'shipping', label: '🚚 في الشحن', color: 'bg-cyan-50 text-cyan-800 border-cyan-200', val: rows.filter(row => SHIPPING.includes(row.status)).length },
-    ...(Object.keys(STATUS_META) as CertStatus[]).map(status => ({
-      key: status, label: STATUS_META[status].label, color: STATUS_META[status].badge, val: rows.filter(row => row.status === status).length,
-    })),
-  ];
+  const countOf = (match: CertStatus[]) => rows.filter(row => match.includes(row.status)).length;
   const hasFilters = certSearch || certTypeFilter !== 'all' || certStatusFilter !== 'all' || branchFilter || ownerFilter || partyFilter;
-  const select = 'border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400';
+  // «صغر كل الفلاتر تكون علي صف واحد».
+  const select = 'border border-gray-300 rounded-lg px-2 py-1.5 text-xs max-w-[150px] focus:outline-none focus:ring-2 focus:ring-primary-400';
   const th = 'text-right px-3 py-2.5 border border-gray-200 font-semibold text-xs whitespace-nowrap';
   const td = 'px-3 py-2 border border-gray-100 text-xs align-top';
   const input = 'mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm';
@@ -216,29 +215,19 @@ export default function CertRequestsTab({
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {chips.map(chip => (
-            <button key={chip.key} onClick={() => setCertStatusFilter(certStatusFilter === chip.key ? 'all' : chip.key)}
-              className={`text-xs font-bold px-3 py-1.5 rounded-full border transition ${certStatusFilter === chip.key ? 'ring-2 ring-offset-1 ring-primary-400' : ''} ${chip.color}`}>
-              {chip.label}: {chip.val}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-            <input value={certSearch} onChange={e => setCertSearch(e.target.value)} placeholder="ابحث بالاسم أو الهاتف أو الكود أو الكورس..."
-              className="w-full border border-gray-300 rounded-xl pr-8 pl-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400" />
+        <div className="flex flex-wrap items-center gap-1.5 lg:flex-nowrap">
+          <div className="relative min-w-[170px] flex-1">
+            <Search size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input value={certSearch} onChange={e => setCertSearch(e.target.value)} placeholder="اسم، تليفون، كود، كورس…"
+              className="w-full border border-gray-300 rounded-lg pr-7 pl-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary-400" />
           </div>
           <select value={certTypeFilter} onChange={e => setCertTypeFilter(e.target.value)} className={select} aria-label="نوع الشهادة">
             <option value="all">كل أنواع الشهادات</option>
             {certCatalog.types.map(({ key, label }) => <option key={key} value={key}>{label}</option>)}
           </select>
           <select value={certStatusFilter} onChange={e => setCertStatusFilter(e.target.value)} className={select} aria-label="الحالة">
-            <option value="all">كل الحالات</option>
-            <option value="shipping">🚚 في الشحن</option>
-            {(Object.entries(STATUS_META) as [CertStatus, { label: string }][]).map(([key, meta]) => <option key={key} value={key}>{meta.label}</option>)}
+            <option value="all">كل الحالات ({rows.length})</option>
+            {STATUS_FILTERS.map(item => <option key={item.key} value={item.key}>{item.label} ({countOf(item.match)})</option>)}
           </select>
           <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)} className={select} aria-label="الفرع">
             <option value="">كل الفروع</option>
@@ -254,8 +243,8 @@ export default function CertRequestsTab({
           </select>
           {hasFilters && (
             <button onClick={() => { setCertSearch(''); setCertTypeFilter('all'); setCertStatusFilter('all'); setBranchFilter(''); setOwnerFilter(''); setPartyFilter(''); }}
-              className="text-xs font-bold px-3 py-2 rounded-xl bg-gray-100 text-gray-600 flex items-center gap-1">
-              <X size={12} /> مسح الفلاتر
+              className="text-[11px] font-bold px-2 py-1.5 rounded-lg bg-gray-100 text-gray-600 flex items-center gap-1 whitespace-nowrap">
+              <X size={11} /> مسح
             </button>
           )}
         </div>
@@ -273,6 +262,7 @@ export default function CertRequestsTab({
               <thead>
                 <tr className="bg-gray-50 border border-gray-200">
                   <th className={th}>العميل</th>
+                  <th className={th}>التليفون</th>
                   <th className={th}>الفرع</th>
                   <th className={th}>نوع الشهادة</th>
                   <th className={th}>الكورس</th>
@@ -296,7 +286,10 @@ export default function CertRequestsTab({
                     <tr key={row.id} className={`${index % 2 ? 'bg-gray-50/60' : 'bg-white'} hover:bg-amber-50/40 border border-gray-100`}>
                       <td className={td}>
                         <div className="font-bold text-gray-900">{row.subscriberName || '—'}</div>
-                        <div className="text-[11px] text-gray-400" dir="ltr">{row.clientCode || row.subscriberPhone}</div>
+                        {row.clientCode && <div className="text-[11px] text-gray-400" dir="ltr">{row.clientCode}</div>}
+                      </td>
+                      <td className={`${td} whitespace-nowrap`} dir="ltr">
+                        {row.subscriberPhone ? <a href={`tel:${row.subscriberPhone}`} className="text-blue-600 hover:underline">{row.subscriberPhone}</a> : <span className="text-gray-300">—</span>}
                       </td>
                       <td className={`${td} whitespace-nowrap text-gray-600`}>{branchName(row.branch)}</td>
                       <td className={`${td} font-medium`}>
@@ -305,8 +298,13 @@ export default function CertRequestsTab({
                       </td>
                       <td className={`${td} text-gray-600`}>{row.courseTitle || <span className="text-gray-300">—</span>}</td>
                       <td className={td}>
-                        {!row.nameAr && !row.nameEn ? (
-                          <span className="text-[11px] bg-red-100 text-red-600 font-bold px-2 py-0.5 rounded-full">⚠️ اسم فارغ</span>
+                        {!row.nameAr && !row.nameEn && row.nameSuggested ? (
+                          <>
+                            <div>{row.nameSuggested}</div>
+                            <div className="text-[10px] text-gray-400">من اسم العميل</div>
+                          </>
+                        ) : !row.nameAr && !row.nameEn ? (
+                          <span className="text-[11px] bg-red-100 text-red-600 font-bold px-2 py-0.5 rounded-full">⚠️ اسم فارغ — محتاج الاسم ثلاثي</span>
                         ) : (
                           <>
                             <div>{row.nameAr || '—'}</div>
@@ -314,25 +312,39 @@ export default function CertRequestsTab({
                           </>
                         )}
                       </td>
-                      <td className={`${td} whitespace-nowrap font-bold text-primary-700`}>{num(row.price)} {row.price != null ? row.currency : ''}</td>
+                      <td className={`${td} whitespace-nowrap font-bold text-primary-700`}>
+                        {num(row.systemPrice ?? row.price)} {(row.systemPrice ?? row.price) != null ? row.currency : ''}
+                        {row.systemPrice != null && row.price != null && Number(row.price) !== Number(row.systemPrice) && (
+                          <div className="text-[10px] font-normal text-amber-700">مكتوب على الطلب {num(row.price)}</div>
+                        )}
+                      </td>
                       <td className={`${td} whitespace-nowrap font-bold text-emerald-700`}>{num(row.paid)}</td>
                       <td className={`${td} whitespace-nowrap`}>
-                        {row.remaining == null ? '—' : row.remaining > 0
+                        {row.remaining == null ? <span className="text-[11px] text-amber-700">مفيش سعر في السيستم</span> : !row.complete
                           ? <span className="font-bold text-red-600">{num(row.remaining)}</span>
                           : <span className="text-[11px] font-bold text-green-600">مكتمل ✓</span>}
                       </td>
                       <td className={`${td} max-w-[160px] text-gray-600`}>{row.collectionParty || <span className="text-gray-300">—</span>}</td>
                       <td className={`${td} whitespace-nowrap text-gray-600`}>{row.ownerName || '—'}</td>
                       <td className={`${td} min-w-[150px]`}>
-                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${meta.badge}`}>{meta.label}</span>
-                        <div className="mt-1.5 flex flex-wrap gap-1">
-                          {(NEXT[row.status] || []).map(step => (
-                            <button key={step.to} disabled={busy} onClick={() => void changeStatus(row, step.to)}
-                              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-bold text-white ${step.tone} hover:opacity-90 disabled:opacity-40`}>
-                              {step.to === 'shipped' && <Truck size={10} />}{step.label}
-                            </button>
-                          ))}
-                        </div>
+                        {UNPAID.includes(row.status) ? (
+                          <div className="flex flex-col items-start gap-1">
+                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${meta.badge}`}>{meta.label}</span>
+                            {/* A certificate is not taken forward on money not paid. */}
+                            {row.subscriberId && (
+                              <button disabled={busy} onClick={() => navigate(`/client/${row.clientCode || row.subscriberId}?pay=cert:${row.id}`)}
+                                className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-700 disabled:opacity-40">
+                                <CreditCard size={10} /> دفع{row.remaining ? ` ${num(row.remaining)}` : ''}
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <select value={row.status === 'not_sent' ? 'paid' : row.status} disabled={busy}
+                            onChange={event => void changeStatus(row, event.target.value as CertStatus)}
+                            className={`rounded-lg border-0 px-2 py-1 text-[11px] font-bold ${meta.badge} disabled:opacity-50`} aria-label="حالة الشهادة">
+                            {PAID_STAGES.map(stage => <option key={stage} value={stage}>{STATUS_META[stage].label}</option>)}
+                          </select>
+                        )}
                       </td>
                       <td className={`${td} max-w-[200px] text-gray-600`}>
                         <span className="line-clamp-3" title={row.adminNote || ''}>{row.adminNote || <span className="text-gray-300">—</span>}</span>
@@ -340,14 +352,18 @@ export default function CertRequestsTab({
                       <td className={`${td} whitespace-nowrap text-gray-400`}>{row.requestedAt ? cairoDay(row.requestedAt) : '—'}</td>
                       <td className={td}>
                         <div className="flex items-center gap-1">
-                          <button onClick={() => setEditing({ row, draft: draftOf(row) })} disabled={busy} title="تعديل الشهادة"
-                            className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition"><Pencil size={14} /></button>
+                          {canManage && (
+                            <button onClick={() => setEditing({ row, draft: draftOf(row) })} disabled={busy} title="تعديل الشهادة (للمديرين)"
+                              className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition"><Pencil size={14} /></button>
+                          )}
                           {row.subscriberId && (
                             <button onClick={() => navigate(`/client/${row.clientCode || row.subscriberId}`)} title="ملف العميل"
                               className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg transition"><ExternalLink size={14} /></button>
                           )}
-                          <button onClick={() => void remove(row)} disabled={busy} title="حذف الطلب"
-                            className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"><Trash2 size={14} /></button>
+                          {canManage && (
+                            <button onClick={() => void remove(row)} disabled={busy} title="حذف الشهادة (للمديرين)"
+                              className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"><Trash2 size={14} /></button>
+                          )}
                         </div>
                       </td>
                     </tr>

@@ -143,6 +143,8 @@ const ROLE_PERMS_BASE = {
   [ROLES.MANAGER]:                  '*',
   [ROLES.ONLINE_MANAGER]: [
     'view_dashboard',
+    // «محتاجين الاونلاين والدقي يقدر اي عميل يعمله» — certificates (8 Oct 2026).
+    'manage_certificates',
     'view_leads', 'manage_leads', 'export_leads',
     'view_subscribers', 'manage_subscribers', 'export_subscribers',
     'view_orders', 'manage_orders', 'manage_payments', 'set_client_price', 'approve_refunds',
@@ -259,6 +261,8 @@ const ROLE_PERMS_BASE = {
 
   [ROLES.RECEPTION_DAQQI]: [
     'view_dashboard',
+    // Certificates for any client, from the branch desk too (8 Oct 2026).
+    'manage_certificates',
     'manage_payments',
     'view_leads', 'manage_leads',
     'view_subscribers', 'manage_subscribers',
