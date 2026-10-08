@@ -9,6 +9,7 @@ import { cairoDay } from '../../../../shared/cairoDate';
 import { useCertificateCatalog } from '../../../lib/certificateCatalog';
 import { branchLabels, normBranchKey } from '../../unified-client/constants';
 import ExtraRequestsPanel from './ExtraRequestsPanel';
+import InstituteCertificatesPanel from './InstituteCertificatesPanel';
 import { CertDataModal, missingCertData } from './CertDataModal';
 import { useSiteData } from '../../../context/SiteDataContext';
 
@@ -106,7 +107,7 @@ export default function CertRequestsTab({
   const { isAdmin, currentStaff } = useSiteData();
   // «عند المديرين اقدر امسح شهاده واقدر اعدل شهاده» — the server holds the same line.
   const canManage = isAdmin || CERT_MANAGERS.has(String(currentStaff?.role || '').toLowerCase());
-  const [innerTab, setInnerTab] = useState<'requests' | 'extras' | 'pricing'>(pricing ? initialTab : 'requests');
+  const [innerTab, setInnerTab] = useState<'requests' | 'institute' | 'extras' | 'pricing'>(pricing ? initialTab : 'requests');
   const certCatalog = useCertificateCatalog();
   const [rows, setRows] = useState<CertRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -196,7 +197,7 @@ export default function CertRequestsTab({
   return (
     <article className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
       <div className="flex flex-wrap gap-1.5 border-b border-gray-200 pb-2 -mt-1">
-          {([['requests', 'الطلبات'], ['extras', 'طلبات إضافية'], ['pricing', 'أسعار الشهادات الإضافية']] as const)
+          {([['requests', 'الطلبات'], ['institute', 'شهادات المعهد'], ['extras', 'طلبات إضافية'], ['pricing', 'أسعار الشهادات الإضافية']] as const)
             .filter(([key]) => key !== 'pricing' || pricing).map(([key, label]) => (
             <button key={key} onClick={() => setInnerTab(key)}
               className={`px-4 py-2 rounded-xl text-sm font-bold transition ${innerTab === key ? 'bg-amber-500 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
@@ -205,7 +206,7 @@ export default function CertRequestsTab({
           ))}
       </div>
 
-      {innerTab === 'extras' ? <ExtraRequestsPanel notify={notify} /> : pricing && innerTab === 'pricing' ? pricing : (<>
+      {innerTab === 'institute' ? <InstituteCertificatesPanel notify={notify} /> : innerTab === 'extras' ? <ExtraRequestsPanel notify={notify} /> : pricing && innerTab === 'pricing' ? pricing : (<>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="font-bold text-gray-900 flex items-center gap-2">
             <Star size={18} className="text-amber-500" /> طلبات الشهادات

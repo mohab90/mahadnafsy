@@ -7,7 +7,8 @@ const { agreedPrice } = require('./agreedPrice');
 // recorded by staff and a client's own certificate request. Those two took any
 // payment at all (CRIT-04 of the 7 Oct 2026 audit): a 25% instalment earned
 // the certificate the automatic sweep would have held back.
-const PAID_SHARE = 0.95;
+// «لاي عميل خلص فلوسه او 90 % من فلوسه» (8 Oct 2026) — was 95%.
+const PAID_SHARE = 0.9;
 
 function parseCrm(value) {
   if (value && typeof value === 'object') return value;

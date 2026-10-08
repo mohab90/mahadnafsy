@@ -1,12 +1,12 @@
 'use strict';
 /**
  * Issue a course certificate once the customer has genuinely earned it:
- * they have watched at least half the lectures and paid at least 95% of what
+ * they have watched at least half the lectures and paid at least 90% of what
  * the course costs.
  *
  * Both halves are deliberate. Watching alone would certify someone who never
  * finished paying; paying alone would certify someone who never opened a
- * lecture. The 95% rather than 100% is what the owner asked for — it absorbs
+ * lecture. The 90% (95% until 8 Oct 2026) rather than 100% is what the owner asked for — it absorbs
  * rounding on instalment plans without letting a real unpaid balance through.
  *
  * Required quizzes must be passed too, and the certificate is the same one an
@@ -82,7 +82,7 @@ function evaluate(row) {
   const paid = Number(row.paid_egp) || 0;
 
   // A course with no published lectures cannot be half-watched, and a free
-  // course cannot be 95% paid — neither is a failure, there is just nothing to
+  // course cannot be 90% paid — neither is a failure, there is just nothing to
   // measure, so neither is ever certified automatically.
   if (totalLectures === 0) return { ok: false, reason: 'no_lectures' };
   if (price <= 0) return { ok: false, reason: 'no_price' };

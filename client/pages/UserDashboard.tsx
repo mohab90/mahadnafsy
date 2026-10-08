@@ -938,6 +938,7 @@ const UserDashboard: React.FC = () => {
                 certNumber={certModal.certCode}
                 issuedAt={issuedDate}
                 onClose={() => setCertModal(null)}
+                onPrinted={() => { mysqlClient.markCertificateDownloaded(certModal.certCode).catch(() => {}); }}
               />
             );
           })()}

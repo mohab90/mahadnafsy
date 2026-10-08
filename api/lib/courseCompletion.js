@@ -17,6 +17,10 @@ const COURSE_COMPLETION_THRESHOLD = Number(process.env.COURSE_COMPLETION_THRESHO
 
 async function completeCourse({
   tenantId, subscriberId, courseId, actor = 'system', requireFullProgress = true, reason = null,
+  // «شهادات المعهد» (lib/instituteCertificates.js): earned by paying, so a Dokki
+  // client with no online enrolment qualifies, and the desk shares it on WhatsApp
+  // rather than an email going to every client the day it starts.
+  requireEnrollment = true, sendEmail = true,
 }, db = null) {
   if (!tenantId || !subscriberId || !courseId) {
     const error = new Error('tenantId, subscriberId and courseId are required'); error.statusCode = 400; throw error;
@@ -28,11 +32,11 @@ async function completeCourse({
     const [[eligibility]] = await conn.query(
       `SELECT s.id AS subscriber_id,s.name,s.email,c.id AS course_id,c.title,c.price_egp,e.id AS enrollment_id
          FROM subscribers s
-         JOIN enrollments e ON e.subscriber_id=s.id AND e.tenant_id=s.tenant_id AND e.course_id=?
+         ${requireEnrollment ? 'JOIN' : 'LEFT JOIN'} enrollments e ON e.subscriber_id=s.id AND e.tenant_id=s.tenant_id AND e.course_id=?
           AND e.status='active' AND e.access_type='full'
-         JOIN courses c ON c.id=e.course_id AND c.tenant_id=e.tenant_id AND c.deleted_at IS NULL
+         JOIN courses c ON c.id=? AND c.tenant_id=s.tenant_id AND c.deleted_at IS NULL
         WHERE s.id=? AND s.tenant_id=? AND s.deleted_at IS NULL LIMIT 1 FOR UPDATE`,
-      [courseId, subscriberId, tenantId]
+      [courseId, courseId, subscriberId, tenantId]
     );
     // A free course needs no payment; any other one is paid for by a payment
     // row or by «مدفوع قبل السيستم» (lib/coursePaid.js).
@@ -119,7 +123,7 @@ async function completeCourse({
       reason: reason ? String(reason).trim().slice(0, 500) : null,
       meta: { completionMode: requireFullProgress ? 'automatic' : 'manual_override' },
     });
-    if (eligibility.email) {
+    if (sendEmail && eligibility.email) {
       const base = String(process.env.CLIENT_URL || 'https://mahadnafsy.com').replace(/\/$/, '');
       await outbox.enqueue({
         channel: 'email', recipient: eligibility.email, subject: `شهادة إتمام ${eligibility.title || 'الكورس'}`,

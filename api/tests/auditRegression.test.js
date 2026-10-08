@@ -132,7 +132,7 @@ describe('the 7 Oct 2026 audit stays fixed', () => {
   });
 
   test('CRIT-04: a course is paid at one share everywhere (aCourseIsPaidAtTheSameShareEverywhere)', () => {
-    assert.match(read('api', 'lib', 'coursePaid.js'), /const PAID_SHARE = 0\.95;/);
+    assert.match(read('api', 'lib', 'coursePaid.js'), /const PAID_SHARE = 0\.9;/);
     assert.match(read('api', 'lib', 'autoCertificate.js'), /const PAID_THRESHOLD = PAID_SHARE;/);
   });
 

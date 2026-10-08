@@ -259,14 +259,17 @@ function scheduleSlaBreachSweep() {
 }
 scheduleSlaBreachSweep();
 
-// Certificates earn themselves: half the course watched and 95% of it paid.
+// Certificates earn themselves: half the course watched and 90% of it paid;
+// and «شهادات المعهد», 90% paid whatever was watched (lib/instituteCertificates.js).
 // Hourly, on the same footing as the SLA sweep — either watching or paying
 // can be the event that completes the pair, and neither knows about the other.
 function scheduleAutoCertificateSweep() {
   const { runAutoCertificateSweep } = require('../../lib/autoCertificate');
+  const { sweepInstituteCertificates } = require('../../lib/instituteCertificates');
+  const sweep = tenantId => runAutoCertificateSweep(tenantId).then(() => sweepInstituteCertificates(tenantId));
   setTimeout(() => {
-    forEachActiveTenant(runAutoCertificateSweep);
-    setInterval(() => forEachActiveTenant(runAutoCertificateSweep), 60 * 60 * 1000);
+    forEachActiveTenant(sweep);
+    setInterval(() => forEachActiveTenant(sweep), 60 * 60 * 1000);
   }, 7 * 60 * 1000);
   logger.info('[auto-certificate] scheduled — hourly, first run in 7m');
 }

@@ -37,7 +37,7 @@ function clientDb({ payments = {}, prior = {}, catalogue = {}, tracks = [] }) {
 const paid = (db) => hasPaidForCourse(db, { tenantId: 't', subscriberId: 's', courseId: 'c-1' });
 
 test('one share, the automatic certificate\'s', () => {
-  assert.equal(PAID_SHARE, 0.95);
+  assert.equal(PAID_SHARE, 0.9); // «90 % من فلوسه» (8 Oct 2026)
   assert.equal(PAID_THRESHOLD, PAID_SHARE);
 });
 

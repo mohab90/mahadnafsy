@@ -12,7 +12,7 @@ const row = (watched, total, paid, price) => ({
 
 test('the thresholds are the ones the owner asked for', () => {
   assert.equal(WATCHED_THRESHOLD, 50);
-  assert.equal(PAID_THRESHOLD, 0.95);
+  assert.equal(PAID_THRESHOLD, 0.9);
 });
 
 test('half watched and fully paid earns it', () => {

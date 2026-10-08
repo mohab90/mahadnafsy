@@ -39,6 +39,7 @@ const routeModules = [
   ['/', '../routes/imageProxy'],
   ['/', '../routes/media'],
   ['/', '../routes/certificates'],
+  ['/', '../routes/instituteCertificates'],
   ['/', '../routes/client-maintenance'],
   ['/', '../routes/accounting'],
   ['/', '../routes/server-monitor'],

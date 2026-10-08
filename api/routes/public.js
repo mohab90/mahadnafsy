@@ -399,6 +399,18 @@ router.get('/api/me/completions', requireAuth, async (req, res) => {
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// The client printed or saved their certificate from their own page on the site.
+router.post('/api/me/completions/:code/downloaded', requireAuth, async (req, res) => {
+  try {
+    const sub = await resolveSubscriberRow(req, ['id']);
+    if (!sub) return res.status(404).json({ error: 'Not found' });
+    await pool.query(
+      'UPDATE course_completions SET downloaded_at=COALESCE(downloaded_at, NOW()), download_count=download_count+1 WHERE certificate_code=? AND subscriber_id=? AND tenant_id=?',
+      [req.params.code, sub.id, req.tenantId]);
+    res.json({ ok: true });
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // GET /api/completions/verify/:code — public certificate verification (JSON)
 // RATE-02: rate-limited (certificate codes are guessable-ish strings, so this
 // is a realistic enumeration target). NOT tenant-scoped deliberately —
@@ -444,7 +456,7 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
   try {
     const [[row]] = await pool.query(
       `SELECT cc.certificate_code,cc.completed_at,cc.tenant_id,
-              s.name AS subscriber_name, s.client_code,
+              COALESCE(NULLIF(s.name_en, ''), s.name) AS subscriber_name, s.client_code,
               c.title AS course_title, c.hours AS hours_count,
               u.name AS instructor_name
        FROM course_completions cc
@@ -455,6 +467,13 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
       [req.params.code]
     );
     if (!row) return res.status(404).send('<h3>الشهادة غير موجودة</h3>');
+    // «لو العميل عمل تحميل للشهاده pdf من الموقع يظهر انه العميل عملها تحميل»:
+    // the desk's own print and preview carry ?staff=1.
+    if (String(req.query.staff || '') !== '1') {
+      pool.query(
+        'UPDATE course_completions SET downloaded_at=COALESCE(downloaded_at, NOW()), download_count=download_count+1 WHERE certificate_code=? AND tenant_id=?',
+        [row.certificate_code, row.tenant_id]).catch(() => {});
+    }
 
     const certCode    = row.certificate_code || req.params.code;
     const studentName = (row.subscriber_name || 'Student').toUpperCase();

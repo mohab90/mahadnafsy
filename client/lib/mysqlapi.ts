@@ -312,6 +312,8 @@ export const mysqlClient = {
   getMyCompletions: () => apiFetch<AR[]>('/me/completions', {}, true),
   getMyTimeline: () => apiFetch<AR[]>('/me/timeline', {}, true),
   verifyCertificate: (code: string) => apiFetch<AR>(`/completions/verify/${encodeURIComponent(code)}`),
+  // «يظهر انه العميل عملها تحميل»: the desk's «شهادات المعهد» sees it.
+  markCertificateDownloaded: (code: string) => apiFetch<AR>(`/me/completions/${encodeURIComponent(code)}/downloaded`, { method: 'POST' }, true),
   // Referral
   getMyReferralCode: () => apiFetch<{ code: string; uses: number; earnings: number }>('/referral/my-code', {}, true),
   getMyLoyalty: () => apiFetch<{ ok: boolean; balance: number; ledger: AR[] }>('/me/loyalty', {}, true),

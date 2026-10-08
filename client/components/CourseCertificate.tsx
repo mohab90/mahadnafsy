@@ -15,13 +15,15 @@ interface CourseCertificateProps {
   certNumber: string;       // = clientCode (serial number)
   issuedAt: string;
   onClose: () => void;
+  /** Told when the client prints or saves it (the desk sees it as downloaded). */
+  onPrinted?: () => void;
 }
 
 const FALLBACK_LOGO = 'https://h.top4top.io/p_3734xfq501.png';
 
 const CourseCertificate: React.FC<CourseCertificateProps> = ({
   studentName, studentNameEn, courseName, courseNameEn,
-  certNumber, issuedAt, onClose,
+  certNumber, issuedAt, onClose, onPrinted,
 }) => {
   // The certificate itself, full-bleed on a dark ground. A viewer, not a
   // dialog — but Escape closes it now, which it did not.
@@ -45,6 +47,7 @@ const CourseCertificate: React.FC<CourseCertificateProps> = ({
   const handlePrint = () => {
     const el = document.getElementById('psy-cert-printable');
     if (!el) return;
+    onPrinted?.();
     const win = window.open('', '_blank', 'width=700,height=1050');
     if (!win) { window.print(); return; }
     win.document.write(`<!DOCTYPE html>
