@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowUpRight, Link2, Search } from 'lucide-react';
+import { ArrowUpRight, Link2, Pencil, Search, Trash2 } from 'lucide-react';
 import { Modal } from '../../../../../shared/ui/Modal';
 import { cairoDateOnly, cairoDay } from '../../../../../shared/cairoDate';
 import { isCashBox } from '../../../../../shared/paymentMethods';
@@ -36,9 +36,13 @@ export function useIncomingTransfers(enabled: boolean) {
   return { transfers, loading, reload };
 }
 
-export function IncomingTransfersTable({ transfers, loading, canLink, onLink, onAdd }: {
+export function IncomingTransfersTable({ transfers, loading, canLink, onLink, onAdd, canManage = false, onEdit, onDelete }: {
   transfers: IncomingTransfer[]; loading: boolean; canLink: boolean;
   onLink: (transfer: IncomingTransfer) => void; onAdd: () => void;
+  /** «عند المديرين صلاحيه تعديل او حذف لتحويل معين موظف رفعه غلط». */
+  canManage?: boolean;
+  onEdit?: (transfer: IncomingTransfer) => void;
+  onDelete?: (transfer: IncomingTransfer) => void;
 }) {
   const linked = transfers.filter(transfer => transfer.paymentId);
   const totalEgp = transfers.reduce((sum, transfer) => sum + toEgp(transfer.amount, transfer.currency), 0);
@@ -125,10 +129,20 @@ export function IncomingTransfersTable({ transfers, loading, canLink, onLink, on
                       : <span className="rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">متاح للربط</span>}
                   </td>
                   <td className="px-3 py-2.5 text-center">
-                    {canLink && !transfer.paymentId && (
-                      <button type="button" onClick={() => onLink(transfer)} title="ربط بدفعة عميل"
-                        className="rounded-lg bg-violet-600 px-2 py-1 text-[10px] font-bold text-white transition hover:bg-violet-700">🔗 ربط</button>
-                    )}
+                    <div className="flex flex-nowrap items-center justify-center gap-1">
+                      {canLink && !transfer.paymentId && (
+                        <button type="button" onClick={() => onLink(transfer)} title="ربط بدفعة عميل"
+                          className="rounded-lg bg-violet-600 px-2 py-1 text-[10px] font-bold text-white transition hover:bg-violet-700">🔗 ربط</button>
+                      )}
+                      {canManage && onEdit && (
+                        <button type="button" onClick={() => onEdit(transfer)} title={transfer.paymentId ? 'تعديل المحوِّل والملاحظة — المبلغ ورقم العملية اتأكدت بيهم دفعة' : 'تعديل التحويل'}
+                          className="inline-flex items-center gap-0.5 rounded-lg border border-gray-200 bg-white px-1.5 py-1 text-[10px] font-bold text-gray-600 hover:bg-gray-100"><Pencil size={10} /> تعديل</button>
+                      )}
+                      {canManage && onDelete && !transfer.paymentId && (
+                        <button type="button" onClick={() => onDelete(transfer)} title="حذف التحويل"
+                          className="inline-flex items-center gap-0.5 rounded-lg border border-red-200 bg-red-50 px-1.5 py-1 text-[10px] font-bold text-red-700 hover:bg-red-100"><Trash2 size={10} /> حذف</button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -161,12 +175,19 @@ export function IncomingTransfersTable({ transfers, loading, canLink, onLink, on
  * confirms. The operation number is required: it is what stops the same
  * transfer being counted twice on one box.
  */
-export function AddTransferModal({ boxes: allBoxes, notify, onClose, onSaved }: {
+export function AddTransferModal({ boxes: allBoxes, notify, onClose, onSaved, transfer }: {
   boxes: string[]; notify: Notify; onClose: () => void; onSaved: () => void | Promise<void>;
+  /** A transfer to correct (the managers'); without it, a new one. */
+  transfer?: IncomingTransfer | null;
 }) {
   // Cash is counted in a box, not transferred: it has no operation number.
-  const boxes = allBoxes.filter(box => !isCashBox(box));
-  const [form, setForm] = useState({
+  const boxes = [...new Set([...allBoxes.filter(box => !isCashBox(box)), ...(transfer?.method ? [transfer.method] : [])])];
+  // One that already confirmed a payment keeps the amount, box, number and date it was approved on.
+  const locked = Boolean(transfer?.paymentId);
+  const [form, setForm] = useState(transfer ? {
+    amount: String(transfer.amount), currency: transfer.currency || 'EGP', method: transfer.method, reference: transfer.reference || '',
+    senderName: transfer.senderName || '', senderPhone: transfer.senderPhone || '', note: transfer.note || '', receivedOn: cairoDay(transfer.receivedOn),
+  } : {
     amount: '', currency: 'EGP', method: boxes[0] || '', reference: '', senderName: '', senderPhone: '', note: '', receivedOn: cairoDateOnly(),
   });
   const [saving, setSaving] = useState(false);
@@ -179,8 +200,13 @@ export function AddTransferModal({ boxes: allBoxes, notify, onClose, onSaved }: 
     if (!ready) return;
     setSaving(true);
     try {
-      await mysqlAdmin.adminPost('/admin/incoming-transfers', { ...form, amount: Number(form.amount) });
-      notify('success', `تم تسجيل التحويل (${Number(form.amount).toLocaleString('ar-EG-u-nu-latn')} ${form.currency}) ✓`);
+      if (transfer) {
+        await mysqlAdmin.adminPut(`/admin/incoming-transfers/${encodeURIComponent(transfer.id)}`, { ...form, amount: Number(form.amount) });
+        notify('success', 'اتعدّل التحويل ✓');
+      } else {
+        await mysqlAdmin.adminPost('/admin/incoming-transfers', { ...form, amount: Number(form.amount) });
+        notify('success', `تم تسجيل التحويل (${Number(form.amount).toLocaleString('ar-EG-u-nu-latn')} ${form.currency}) ✓`);
+      }
       await onSaved();
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر حفظ التحويل');
@@ -188,36 +214,41 @@ export function AddTransferModal({ boxes: allBoxes, notify, onClose, onSaved }: 
   };
 
   return (
-    <Modal open onClose={onClose} size="sm" title="إضافة تحويل وارد" icon={<ArrowUpRight size={16} />}
-      subtitle="اللي وصل على حساب من حسابات المعهد — تربطه بدفعة العميل بعدين">
+    <Modal open onClose={onClose} size="sm" title={transfer ? 'تعديل تحويل' : 'إضافة تحويل وارد'} icon={<ArrowUpRight size={16} />}
+      subtitle={transfer ? 'التعديل بيتسجل في سجل المراجعة بالقيم القديمة' : 'اللي وصل على حساب من حسابات المعهد — تربطه بدفعة العميل بعدين'}>
       <div className="space-y-3 text-sm" dir="rtl">
+        {locked && (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            التحويل ده أكّد دفعة{transfer?.customerName ? ` لـ${transfer.customerName}` : ''} — المبلغ والحساب ورقم العملية والتاريخ ثابتين. لو غلط، صحّح الدفعة نفسها.
+          </p>
+        )}
         <div className="flex gap-2">
           <div className="flex-1"><label className={label}>المبلغ *</label>
-            <input type="number" min="0" step="0.01" value={form.amount} onChange={e => set({ amount: e.target.value })} placeholder="0.00" className={field} /></div>
+            <input type="number" min="0" step="0.01" value={form.amount} disabled={locked} onChange={e => set({ amount: e.target.value })} placeholder="0.00" className={field} /></div>
           <div className="w-24"><label className={label}>العملة</label>
-            <select value={form.currency} onChange={e => set({ currency: e.target.value })} className={field}>
+            <select value={form.currency} disabled={locked} onChange={e => set({ currency: e.target.value })} className={field}>
               <option value="EGP">ج.م</option><option value="SAR">ر.س</option><option value="USD">$</option>
             </select></div>
         </div>
         <div><label className={label}>وصل على * <span className="text-[10px] font-normal text-blue-500">(من إعدادات الحسابات)</span></label>
-          <select value={form.method} onChange={e => set({ method: e.target.value })} className={field}>
+          <select value={form.method} disabled={locked} onChange={e => set({ method: e.target.value })} className={field}>
             {boxes.map(box => <option key={box} value={box}>{box}</option>)}
           </select></div>
         <div><label className={label}>رقم العملية *</label>
-          <input value={form.reference} onChange={e => set({ reference: e.target.value })} dir="ltr" placeholder="مثال: 123456789" className={`${field} font-mono`} /></div>
+          <input value={form.reference} disabled={locked} onChange={e => set({ reference: e.target.value })} dir="ltr" placeholder="مثال: 123456789" className={`${field} font-mono`} /></div>
         <div className="grid grid-cols-2 gap-2">
           <div><label className={label}>اسم المُحوِّل</label><input value={form.senderName} onChange={e => set({ senderName: e.target.value })} className={field} /></div>
           <div><label className={label}>رقم المُحوِّل</label><input type="tel" value={form.senderPhone} onChange={e => set({ senderPhone: e.target.value })} dir="ltr" className={`${field} font-mono`} /></div>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <div><label className={label}>تاريخ الوصول</label><input type="date" value={form.receivedOn} onChange={e => set({ receivedOn: e.target.value })} className={field} /></div>
+          <div><label className={label}>تاريخ الوصول</label><input type="date" value={form.receivedOn} disabled={locked} onChange={e => set({ receivedOn: e.target.value })} className={field} /></div>
           <div><label className={label}>ملاحظة</label><input value={form.note} onChange={e => set({ note: e.target.value })} className={field} /></div>
         </div>
         <div className="flex gap-2 pt-1">
           <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-semibold text-gray-600 transition hover:bg-gray-50">إلغاء</button>
           <button type="button" disabled={!ready || saving} onClick={() => { void save(); }}
             className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-blue-600 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400">
-            <Link2 size={14} /> {saving ? 'جارٍ الحفظ…' : 'حفظ التحويل'}
+            <Link2 size={14} /> {saving ? 'جارٍ الحفظ…' : transfer ? 'حفظ التعديل' : 'حفظ التحويل'}
           </button>
         </div>
       </div>

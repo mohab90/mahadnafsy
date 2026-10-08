@@ -108,4 +108,37 @@ async function importTransfers(db, { tenantId, transfers, actor = {} }) {
   return result;
 }
 
-module.exports = { cleanTransfer, recordTransfer, linkTransfer, importTransfers, isCashMethod, IMPORT_LIMIT };
+/**
+ * «يكون عند المديرين صلاحيه تعديل او حذف لتحويل معين موظف رفعه غلط» (8 Oct 2026).
+ * A free transfer is corrected whole; one that already confirmed a payment keeps
+ * its amount, box and number — the payment was approved on them — and only its
+ * sender and note change. Only a free transfer is deleted. Returns the row before.
+ */
+async function updateTransfer(conn, { tenantId, transferId, transfer }) {
+  const [[before]] = await conn.query('SELECT * FROM incoming_transfers WHERE tenant_id=? AND id=? LIMIT 1 FOR UPDATE', [tenantId, transferId]);
+  if (!before) throw refused('التحويل مش موجود', 404);
+  const t = before.payment_id
+    ? { ...cleanTransfer({ ...transfer, amount: before.amount, currency: before.currency, method: before.method, reference: before.reference }), receivedOn: before.received_on }
+    : cleanTransfer(transfer);
+  try {
+    await conn.query(
+      `UPDATE incoming_transfers
+          SET amount=?, currency=?, method=?, reference=?, sender_name=?, sender_phone=?, received_on=?, note=?
+        WHERE tenant_id=? AND id=?`,
+      [t.amount, t.currency, t.method, t.reference, t.senderName, t.senderPhone, t.receivedOn, t.note, tenantId, transferId]);
+  } catch (error) {
+    if (error?.code === 'ER_DUP_ENTRY') throw refused(`رقم العملية ${t.reference} على ${t.method} متسجل قبل كده`, 409, 'TRANSFER_DUPLICATE');
+    throw error;
+  }
+  return before;
+}
+
+async function deleteTransfer(conn, { tenantId, transferId }) {
+  const [[before]] = await conn.query('SELECT * FROM incoming_transfers WHERE tenant_id=? AND id=? LIMIT 1 FOR UPDATE', [tenantId, transferId]);
+  if (!before) throw refused('التحويل مش موجود', 404);
+  if (before.payment_id) throw refused('التحويل ده أكّد دفعة — صحّح الدفعة الأول (إلغاء أو تعديل) وبعدين امسحه', 409, 'TRANSFER_LINKED');
+  await conn.query('DELETE FROM incoming_transfers WHERE tenant_id=? AND id=? AND payment_id IS NULL', [tenantId, transferId]);
+  return before;
+}
+
+module.exports = { cleanTransfer, recordTransfer, linkTransfer, importTransfers, updateTransfer, deleteTransfer, isCashMethod, IMPORT_LIMIT };

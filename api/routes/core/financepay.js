@@ -18,7 +18,8 @@ const { grantCourseEntitlement } = require('../../lib/entitlements');
 const { financialRecordMatches, resolveFinancialScope } = require('../../lib/financialScope');
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../../lib/paymentEntitlementAccess');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
-const { importTransfers, isCashMethod, linkTransfer, recordTransfer } = require('../../lib/incomingTransfers');
+const { deleteTransfer, importTransfers, isCashMethod, linkTransfer, recordTransfer, updateTransfer } = require('../../lib/incomingTransfers');
+const { writeAuditEvent } = require('../../lib/auditTrail');
 const { mustLinkTransfer, TRANSFER_REQUIRED } = require('../../lib/paymentApprovalPolicy');
 
 // This is the only manual status transition endpoint for an existing payment.
@@ -320,6 +321,42 @@ router.post('/api/admin/incoming-transfers', requireAuth, requireAdminOrStaff, r
     if (statusCode >= 500) logger.error('[incoming-transfers/create]', error.message);
     res.status(statusCode).json({ error: statusCode < 500 ? error.message : 'Internal server error' });
   }
+});
+
+// The managers' correction of a transfer somebody entered wrong: the old values
+// go to the audit trail (lib/incomingTransfers.js updateTransfer / deleteTransfer).
+const managesTransfers = req => req.isSuperAdmin || ['admin', 'manager'].includes(String(req.staffRecord?.role || '').toLowerCase());
+router.put('/api/admin/incoming-transfers/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+  if (!managesTransfers(req)) return res.status(403).json({ error: 'تعديل التحويلات للمديرين', code: 'MANAGERS_ONLY' });
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const before = await updateTransfer(conn, { tenantId: req.tenantId, transferId: req.params.id, transfer: req.body || {} });
+    await writeAuditEvent({ action: 'incoming_transfer.updated', entityType: 'incoming_transfer', entityId: req.params.id, metadata: { before, by: signerName(req) }, req, db: conn });
+    await conn.commit();
+    res.json({ ok: true, linked: Boolean(before.payment_id) });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    const statusCode = error.statusCode || 500;
+    if (statusCode >= 500) logger.error('[incoming-transfers/update]', error.message);
+    res.status(statusCode).json({ error: statusCode < 500 ? error.message : 'Internal server error', code: error.code });
+  } finally { conn.release(); }
+});
+router.delete('/api/admin/incoming-transfers/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+  if (!managesTransfers(req)) return res.status(403).json({ error: 'حذف التحويلات للمديرين', code: 'MANAGERS_ONLY' });
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const before = await deleteTransfer(conn, { tenantId: req.tenantId, transferId: req.params.id });
+    await writeAuditEvent({ action: 'incoming_transfer.deleted', entityType: 'incoming_transfer', entityId: req.params.id, severity: 'warning', metadata: { before, by: signerName(req) }, req, db: conn });
+    await conn.commit();
+    res.json({ ok: true });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    const statusCode = error.statusCode || 500;
+    if (statusCode >= 500) logger.error('[incoming-transfers/delete]', error.message);
+    res.status(statusCode).json({ error: statusCode < 500 ? error.message : 'Internal server error', code: error.code });
+  } finally { conn.release(); }
 });
 
 // «رفع ملف التحويلات»: the accounts team's sheet, read on the screen (shared/transferSheet.ts).

@@ -7,7 +7,9 @@ import { toEgp } from '../../../../lib/money';
 import { paymentMethodLabel, normalizePaymentMethod } from '../../../../../shared/paymentMethods';
 import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 import { BRANCH_LABELS_AR, normalizeBranch } from '../../../../constants/branches';
-import { AddTransferModal, IncomingTransfersTable } from './IncomingTransfers';
+import { AddTransferModal, IncomingTransfersTable, type IncomingTransfer } from './IncomingTransfers';
+import { mysqlAdmin } from '../../../../lib/mysqlapi';
+import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 import { transferMatch } from '../../../../../shared/transferSheet';
 import { ORDER_METHOD_FILTERS } from './ordersTypes';
 import type { OrdersTabProps } from './ordersTypes';
@@ -20,6 +22,16 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
   // A recorded payment is voided or corrected by a manager through the payments
   // route, which reverses its books; the orders route only archives an unpaid order.
   const [correcting, setCorrecting] = useState<{ row: OrderItem; mode: 'edit' | 'void' } | null>(null);
+  // A transfer a manager corrects (canAcceptDirectly is the manager's line).
+  const [editingTransfer, setEditingTransfer] = useState<IncomingTransfer | null>(null);
+  const deleteTransfer = async (transfer: IncomingTransfer) => {
+    if (!await confirmDialog(`حذف تحويل ${Number(transfer.amount).toLocaleString('ar-EG-u-nu-latn')} ${transfer.currency} رقم ${transfer.reference || '—'}؟ بيتسجل في سجل المراجعة.`)) return;
+    try {
+      await mysqlAdmin.adminDelete(`/admin/incoming-transfers/${encodeURIComponent(transfer.id)}`);
+      notify('success', 'اتحذف التحويل');
+      await ledger.reload();
+    } catch (error) { notify('error', error instanceof Error ? error.message : 'تعذر حذف التحويل'); }
+  };
               const todayStr     = cairoDateOnly();
               const thisMonthStr = cairoMonthOnly();
               const toEGP = (r: { amount: number; currency?: string }) =>
@@ -280,7 +292,8 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                   {/* ── Transfers Table (separate view) ── */}
                   {orderReviewTab === 'transfers' ? (
                     <IncomingTransfersTable transfers={ledger.transfers} loading={ledger.loading} canLink={canManageFinancial}
-                      onLink={row => { setLinkQuery(''); setLinkTransferModal({ row }); }} onAdd={() => setShowAddTransfer(true)} />
+                      onLink={row => { setLinkQuery(''); setLinkTransferModal({ row }); }} onAdd={() => setShowAddTransfer(true)}
+                      canManage={canManageFinancial && canAcceptDirectly} onEdit={setEditingTransfer} onDelete={transfer => { void deleteTransfer(transfer); }} />
                   ) : (
                   /* ── Normal Orders Table ── */
                   <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
@@ -635,6 +648,10 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                   {showAddTransfer && (
                     <AddTransferModal boxes={paymentBoxes} notify={notify} onClose={() => setShowAddTransfer(false)}
                       onSaved={async () => { setShowAddTransfer(false); setOrderReviewTab('transfers'); await ledger.reload(); }} />
+                  )}
+                  {editingTransfer && (
+                    <AddTransferModal boxes={paymentBoxes} notify={notify} transfer={editingTransfer} onClose={() => setEditingTransfer(null)}
+                      onSaved={async () => { setEditingTransfer(null); await ledger.reload(); }} />
                   )}
                 </div>
               );
