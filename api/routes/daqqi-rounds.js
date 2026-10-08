@@ -734,7 +734,7 @@ router.post('/api/admin/daqqi-rounds/:roundId/attendance', requireAuth, requireA
   try {
     await conn.beginTransaction();
     const [[round]] = await conn.query(
-      `SELECT id,status,current_lecture FROM daqqi_rounds
+      `SELECT id,status,current_lecture,start_date,postponed_weeks_json FROM daqqi_rounds
         WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE`,
       [req.params.roundId, req.tenantId]
     );
@@ -765,8 +765,20 @@ router.post('/api/admin/daqqi-rounds/:roundId/attendance', requireAuth, requireA
       round.status = 'ACTIVE';
       round.current_lecture = Math.max(Number(round.current_lecture) || 0, 1);
     }
+    // The lecture the round is on is its dates' (lib/daqqiLecture.js, the
+    // schedule's own count). current_lecture never moved past 1, so the button —
+    // which names no session — marked lecture 1 forever: from the second week on
+    // every tap answered «already recorded», and on 9 Oct 2026 eleven rounds
+    // running since August held four marks between them.
+    let postponed = [];
+    try { postponed = JSON.parse(round.postponed_weeks_json || '[]'); } catch { postponed = []; }
+    const onDates = Math.max(1, lectureToday(ymd(round.start_date), postponed));
+    if (onDates > Number(round.current_lecture)) {
+      await conn.query('UPDATE daqqi_rounds SET current_lecture=? WHERE id=? AND tenant_id=?', [onDates, round.id, req.tenantId]);
+      round.current_lecture = onDates;
+    }
     const sessionNumber = req.body?.sessionNumber === undefined
-      ? Number(round.current_lecture)
+      ? onDates
       : Number(req.body.sessionNumber);
     if (!Number.isInteger(sessionNumber) || sessionNumber < 1 || sessionNumber > Number(round.current_lecture)) {
       await conn.rollback();

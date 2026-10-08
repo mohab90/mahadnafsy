@@ -539,7 +539,8 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
   const handleDaqqiUnmarkAttendance = async (roundId: string, subscriberId: string) => {
     const round = daqqiRounds.find(r => r.id === roundId);
     if (!round) return;
-    const session = Math.max(1, Number(round.currentLecture) || 1);
+    // The lecture the button marked: the round's dates', as the server counts it.
+    const session = Math.max(1, calcCurrentLecture(round.startDate, round.postponedWeeks) || 1);
     if (!await confirmDialog(`إلغاء تسجيل حضور المحاضرة ${session} لهذا العميل؟`)) return;
     try {
       const response = await fetch(`/api/admin/daqqi-rounds/${encodeURIComponent(roundId)}/attendance/${encodeURIComponent(subscriberId)}/${session}`, {

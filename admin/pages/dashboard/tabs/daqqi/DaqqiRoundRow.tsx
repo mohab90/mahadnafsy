@@ -231,10 +231,13 @@ export function DaqqiRoundRow({
                                 const held = (round.heldWeeks || []).includes(thisWeek);
                                 return (
                                   <>
+                                    {/* The Dokki review (9 Oct 2026): eleven running rounds had no week
+                                        answered — the lecturer's fee follows these — so they say what they are. */}
+                                    {!held && !postponed && <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 animate-pulse" title="محاضرة الأسبوع ده لسه متسجلتش — أجر المحاضر بيتحسب منها">الأسبوع ده؟</span>}
                                     <button onClick={() => handleDaqqiMarkWeek(round.id, true)} title="المحاضرة اشتغلت في ميعادها الأسبوع ده"
-                                      className={`h-6 w-6 shrink-0 rounded text-[11px] font-bold transition ${held ? 'bg-green-600 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>✓</button>
+                                      className={`h-6 shrink-0 rounded px-1.5 text-[10px] font-bold transition whitespace-nowrap ${held ? 'bg-green-600 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>✓ اشتغلت</button>
                                     <button onClick={() => handleDaqqiMarkWeek(round.id, false)} title="ماشتغلتش — تتأجل للأسبوع الجاي"
-                                      className={`h-6 w-6 shrink-0 rounded text-[11px] font-bold transition ${postponed ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-600 hover:bg-orange-100'}`}>✗</button>
+                                      className={`h-6 shrink-0 rounded px-1.5 text-[10px] font-bold transition whitespace-nowrap ${postponed ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-600 hover:bg-orange-100'}`}>✗ اتأجلت</button>
                                   </>
                                 );
                               })()}
@@ -298,7 +301,7 @@ export function DaqqiRoundRow({
                                                 {(() => {
                                                   const risk = riskOf({
                                                     latestRating: ratings[a.subscriberId]?.average ?? null,
-                                                    lecture: status === 'active' ? calcCurrentLecture(round.startDate, round.postponedWeeks) : 0,
+                                                    sessions: Math.max(0, ...round.attendees.map(other => other.attendedLectures || 0)),
                                                     attended: a.attendedLectures || 0,
                                                     owed: aPrice > 0 ? aRem : 0,
                                                   });

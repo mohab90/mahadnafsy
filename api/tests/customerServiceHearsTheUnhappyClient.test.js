@@ -58,10 +58,12 @@ test('ready replies for the ten commonest problems, added once', () => {
 
 test('«في خطر» is two of: a rating under 5, two lectures missed, money owed', () => {
   const { riskOf } = require('../lib/clientsAtRisk');
-  assert.equal(riskOf({ latestRating: 4, lecture: 5, attended: 5, owed: 0 }).atRisk, false, 'one alone is not');
-  assert.deepEqual(riskOf({ latestRating: 4, lecture: 5, attended: 3, owed: 0 }).reasons, ['تقييمه 4/10', 'غاب 2 محاضرات']);
-  assert.equal(riskOf({ latestRating: null, lecture: 6, attended: 2, owed: 1500 }).atRisk, true);
-  assert.equal(riskOf({ latestRating: 9, lecture: 3, attended: 2, owed: 1500 }).atRisk, false);
+  assert.equal(riskOf({ latestRating: 4, sessions: 5, attended: 5, owed: 0 }).atRisk, false, 'one alone is not');
+  assert.deepEqual(riskOf({ latestRating: 4, sessions: 5, attended: 3, owed: 0 }).reasons, ['تقييمه 4/10', 'غاب 2 محاضرات']);
+  assert.equal(riskOf({ latestRating: null, sessions: 6, attended: 2, owed: 1500 }).atRisk, true);
+  assert.equal(riskOf({ latestRating: 9, sessions: 3, attended: 2, owed: 1500 }).atRisk, false);
+  // A round whose attendance is not taken calls nobody absent.
+  assert.equal(riskOf({ latestRating: null, sessions: 0, attended: 0, owed: 1500 }).atRisk, false);
   assert.match(read('admin/lib/clientsAtRisk.ts'), /return \{ atRisk: reasons\.length >= 2, reasons \};/, 'the round row uses the same rule');
   assert.match(read('admin/pages/dashboard/tabs/RatingsTab.tsx'), /<ClientsAtRiskPanel \/>/);
 });
