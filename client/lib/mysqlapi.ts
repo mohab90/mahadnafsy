@@ -313,6 +313,8 @@ export const mysqlClient = {
   getMyTimeline: () => apiFetch<AR[]>('/me/timeline', {}, true),
   verifyCertificate: (code: string) => apiFetch<AR>(`/completions/verify/${encodeURIComponent(code)}`),
   // «يظهر انه العميل عملها تحميل»: the desk's «شهادات المعهد» sees it.
+  // Joining from the site counts as attending («محضروش اللايف قبل كدا»).
+  joinLiveStream: (id: string) => apiFetch<AR>(`/me/live-streams/${encodeURIComponent(id)}/join`, { method: 'POST' }, true),
   markCertificateDownloaded: (code: string) => apiFetch<AR>(`/me/completions/${encodeURIComponent(code)}/downloaded`, { method: 'POST' }, true),
   // Referral
   getMyReferralCode: () => apiFetch<{ code: string; uses: number; earnings: number }>('/referral/my-code', {}, true),

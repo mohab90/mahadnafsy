@@ -1,4 +1,5 @@
 import React from 'react';
+import { mysqlClient } from '../../lib/mysqlapi';
 import { cairoDateTime } from '../../../shared/cairoDate';
 import { Calendar, Radio, User, Video } from 'lucide-react';
 import type { LiveStream } from '../../types';
@@ -54,6 +55,7 @@ export const StudentLiveStreamsTab: React.FC<StudentLiveStreamsTabProps> = ({ up
                 href={nextLive.streamUrl}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={() => { mysqlClient.joinLiveStream(nextLive.id).catch(() => {}); }}
                 className="inline-flex items-center gap-2 bg-white text-primary-800 font-extrabold px-6 py-3 rounded-xl hover:bg-white/90 transition text-sm"
               >
                 <Video size={16} /> {nextLive.status === 'live' ? 'انضم الآن للبث المباشر' : 'رابط البث'}
@@ -78,6 +80,7 @@ export const StudentLiveStreamsTab: React.FC<StudentLiveStreamsTabProps> = ({ up
                   href={live.streamUrl}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={() => { mysqlClient.joinLiveStream(live.id).catch(() => {}); }}
                   className="flex-shrink-0 text-xs bg-primary-50 text-primary-700 font-bold px-3 py-1.5 rounded-lg hover:bg-primary-100 transition"
                 >
                   رابط

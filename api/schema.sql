@@ -3514,6 +3514,9 @@ CREATE TABLE `live_streams` (
   `recording_url` text DEFAULT NULL,
   `description` text DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `announced_at` datetime DEFAULT NULL,
+  `started_at` datetime DEFAULT NULL,
+  `ended_at` datetime DEFAULT NULL,
   `tenant_id` varchar(36) NOT NULL DEFAULT 'tenant-default',
   PRIMARY KEY (`id`),
   KEY `idx_streams_scheduled` (`scheduled_at`),
@@ -6012,4 +6015,17 @@ CREATE TABLE `client_ratings` (
   KEY `idx_client_ratings_subscriber` (`tenant_id`,`subscriber_id`,`created_at`),
   KEY `idx_client_ratings_round` (`tenant_id`,`round_id`),
   KEY `idx_client_ratings_created` (`tenant_id`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- live_stream_attendance: migration 261 — a client who joined a live.
+CREATE TABLE `live_stream_attendance` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `stream_id` varchar(64) NOT NULL,
+  `subscriber_id` varchar(36) NOT NULL,
+  `joined_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `via` varchar(20) NOT NULL DEFAULT 'link',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_live_attendance` (`tenant_id`,`stream_id`,`subscriber_id`),
+  KEY `idx_live_attendance_subscriber` (`tenant_id`,`subscriber_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

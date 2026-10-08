@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Calendar, Plus, Save, Users, Video } from 'lucide-react';
-import { useStaticData } from '../../../context/siteDataSlices';
+import { useCrmData, useStaticData } from '../../../context/siteDataSlices';
+import { LiveAudienceModal } from './LiveAudienceModal';
 import type { LiveStream } from '../../../types';
 import { cairoDateTime, cairoDateTimeInput, cairoInputToUtc } from '../../../../shared/cairoDate';
 
@@ -27,6 +28,10 @@ const blankLiveStreamDraft = (): LiveStreamDraft => ({
 
 const LiveStreamsTab: React.FC<Props> = ({ notify }) => {
   const { liveStreams, addLiveStream, updateLiveStream, deleteLiveStream, courses } = useStaticData();
+  // «افتح حساب لمحاضر … ويقدر يفتح اللايف»: the live is the lecturer's account's.
+  const { staffMembers } = useCrmData();
+  const lecturers = staffMembers.filter(member => member.status === 'active' && ['instructor', 'trainer', 'expert', 'consultant'].includes(String(member.role)));
+  const [audienceOf, setAudienceOf] = useState<LiveStream | null>(null);
 
   const [lsEdit, setLsEdit] = useState<LiveStream | null>(null);
   const [lsDraft, setLsDraft] = useState<LiveStreamDraft>(blankLiveStreamDraft());
@@ -72,13 +77,22 @@ const LiveStreamsTab: React.FC<Props> = ({ notify }) => {
           <h4 className="font-bold text-gray-800">{lsEdit ? 'تعديل البث المباشر' : 'بث مباشر جديد'}</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div><label className="text-xs font-bold text-gray-600 mb-1 block">عنوان البث *</label><input value={lsDraft.title} onChange={e => setLsDraft(d => ({ ...d, title: e.target.value }))} placeholder="مثال: محاضرة علم النفس الإيجابي" className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:border-primary-400 focus:outline-none" /></div>
-            <div><label className="text-xs font-bold text-gray-600 mb-1 block">اسم المحاضر *</label><input value={lsDraft.instructorName} onChange={e => setLsDraft(d => ({ ...d, instructorName: e.target.value }))} placeholder="اسم المحاضر" className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:border-primary-400 focus:outline-none" /></div>
+            <div>
+              <label className="text-xs font-bold text-gray-600 mb-1 block">المحاضر *</label>
+              <select value={lsDraft.instructorId || ''} onChange={e => { const picked = lecturers.find(member => member.id === e.target.value); setLsDraft(d => ({ ...d, instructorId: e.target.value || undefined, instructorName: picked ? picked.name : d.instructorName })); }}
+                className="mb-1 w-full border border-gray-300 bg-white rounded-xl px-3 py-2.5 text-sm focus:border-primary-400 focus:outline-none">
+                <option value="">— حساب المحاضر (بيتبلّغ ويفتح اللايف) —</option>
+                {lecturers.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}
+              </select>
+              <input value={lsDraft.instructorName} onChange={e => setLsDraft(d => ({ ...d, instructorName: e.target.value }))} placeholder="الاسم اللي يظهر للعملاء" className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:border-primary-400 focus:outline-none" />
+              {lecturers.length === 0 && <p className="mt-1 text-[10px] text-amber-700">مفيش موظف بدور «محاضر» — اعمله حساب من الموظفين عشان يتبلّغ ويفتح اللايف بنفسه.</p>}
+            </div>
             <div><label className="text-xs font-bold text-gray-600 mb-1 block">موعد البث *</label><input type="datetime-local" value={lsDraft.scheduledAt} onChange={e => setLsDraft(d => ({ ...d, scheduledAt: e.target.value }))} className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:border-primary-400 focus:outline-none" /></div>
             <div><label className="text-xs font-bold text-gray-600 mb-1 block">المدة (دقيقة)</label><input type="number" value={lsDraft.durationMinutes || ''} onChange={e => setLsDraft(d => ({ ...d, durationMinutes: Number(e.target.value) }))} placeholder="60" className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:border-primary-400 focus:outline-none" /></div>
             <div className="md:col-span-2"><label className="text-xs font-bold text-gray-600 mb-1 block">رابط البث *</label><input type="url" value={lsDraft.streamUrl} onChange={e => setLsDraft(d => ({ ...d, streamUrl: e.target.value }))} placeholder="https://zoom.us/j/... أو https://youtube.com/live/..." className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:border-primary-400 focus:outline-none" dir="ltr" /></div>
             <div><label className="text-xs font-bold text-gray-600 mb-1 block">المنصة</label><select value={lsDraft.platform} onChange={e => setLsDraft(d => ({ ...d, platform: e.target.value as LiveStream['platform'] }))} className="w-full border border-gray-300 bg-white rounded-xl px-3 py-2.5 text-sm focus:border-primary-400 focus:outline-none"><option value="zoom">Zoom</option><option value="youtube">YouTube Live</option><option value="meet">Google Meet</option><option value="other">أخرى</option></select></div>
             <div><label className="text-xs font-bold text-gray-600 mb-1 block">الحالة</label><select value={lsDraft.status} onChange={e => setLsDraft(d => ({ ...d, status: e.target.value as LiveStream['status'] }))} className="w-full border border-gray-300 bg-white rounded-xl px-3 py-2.5 text-sm focus:border-primary-400 focus:outline-none"><option value="upcoming">📅 قادم</option><option value="live">🔴 مباشر الآن</option><option value="ended">✔ انتهى</option></select></div>
-            <div className="md:col-span-2"><label className="text-xs font-bold text-gray-600 mb-1 block">الظهور للمشتركين</label><select value={lsDraft.visibility} onChange={e => setLsDraft(d => ({ ...d, visibility: e.target.value as LiveStream['visibility'], targetCourseIds: [] }))} className="w-full border border-gray-300 bg-white rounded-xl px-3 py-2.5 text-sm focus:border-primary-400 focus:outline-none"><option value="all_subscribers">كل المشتركين</option><option value="course_subscribers">مشتركين كورسات محددة</option><option value="community_all">كل أعضاء المجتمع</option><option value="community_and_subscribers">المجتمع + المشتركين</option></select></div>
+            <div className="md:col-span-2"><label className="text-xs font-bold text-gray-600 mb-1 block">الظهور للمشتركين <span className="font-normal text-gray-400">— إشعار الواتساب بيروح لعملاء الكورسات المحددة اللي دفعوا 90% ومحضروش لايف قبل كده</span></label><select value={lsDraft.visibility} onChange={e => setLsDraft(d => ({ ...d, visibility: e.target.value as LiveStream['visibility'], targetCourseIds: [] }))} className="w-full border border-gray-300 bg-white rounded-xl px-3 py-2.5 text-sm focus:border-primary-400 focus:outline-none"><option value="all_subscribers">كل المشتركين</option><option value="course_subscribers">مشتركين كورسات محددة</option><option value="community_all">كل أعضاء المجتمع</option><option value="community_and_subscribers">المجتمع + المشتركين</option></select></div>
             {lsDraft.visibility === 'course_subscribers' && (
               <div className="md:col-span-2">
                 <label className="text-xs font-bold text-gray-600 mb-1 block">الكورسات المستهدفة</label>
@@ -129,6 +143,7 @@ const LiveStreamsTab: React.FC<Props> = ({ notify }) => {
                   </div>
                 </div>
                 <div className="flex flex-col gap-2 flex-shrink-0">
+                  <button onClick={() => setAudienceOf(ls)} className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold px-3 py-1.5 rounded-lg border border-emerald-200 transition">📣 الإشعار والحضور</button>
                   <button onClick={() => { setLsEdit(ls); setLsDraft({ ...ls, scheduledAt: cairoDateTimeInput(ls.scheduledAt) }); setLsFormOpen(true); }} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold px-3 py-1.5 rounded-lg transition">✏ تعديل</button>
                   <button onClick={() => { if (confirm('حذف هذا البث؟')) void deleteLiveStream(ls.id).then(ok => notify(ok ? 'success' : 'error', ok ? 'تم حذف البث.' : 'تعذر حذف البث.')); }} className="text-xs bg-red-50 hover:bg-red-100 text-red-600 font-bold px-3 py-1.5 rounded-lg border border-red-200 transition">🗑 حذف</button>
                 </div>
@@ -137,6 +152,7 @@ const LiveStreamsTab: React.FC<Props> = ({ notify }) => {
           })}
         </div>
       )}
+      {audienceOf && <LiveAudienceModal streamId={audienceOf.id} title={audienceOf.title} notify={notify} onClose={() => setAudienceOf(null)} />}
     </div>
   );
 };

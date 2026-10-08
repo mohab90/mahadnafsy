@@ -1,5 +1,6 @@
 'use strict';
 const logger = require('../../lib/logger');
+const { announceLiveStream } = require('../../lib/liveStreams');
 const crypto   = require('crypto');
 const express  = require('express');
 const router   = express.Router();
@@ -430,33 +431,50 @@ router.post('/api/admin/live-streams', requireAuth, requireAdminOrStaff, require
     const streamUrl      = s.stream_url         ?? s.streamUrl         ?? '';
     const scheduledAt    = s.scheduled_at       ?? s.scheduledAt       ?? new Date().toISOString();
     const durationMins   = s.duration_minutes   ?? s.durationMinutes   ?? 60;
-    const instructorName = s.instructor_name    ?? s.instructorName    ?? s.instructor ?? null;
+    let instructorName = s.instructor_name    ?? s.instructorName    ?? s.instructor ?? null;
+    // The lecturer's own account (8 Oct 2026): they open it from «لايفاتي» and are told it is coming.
+    const instructorId = String(s.instructor_id ?? s.instructorId ?? '').trim() || null;
+    if (instructorId) {
+      const [[lecturer]] = await pool.query('SELECT id, name FROM staff WHERE id=? AND tenant_id=? LIMIT 1', [instructorId, req.tenantId]);
+      if (!lecturer) return res.status(400).json({ error: 'المحاضر ده مش موجود في الموظفين' });
+      if (!String(instructorName || '').trim()) instructorName = lecturer.name;
+    }
     const targetIds      = s.target_course_ids_json ??
                            (Array.isArray(s.targetCourseIds) ? JSON.stringify(s.targetCourseIds) : null);
     const platform  = (s.platform  || 'ZOOM').toUpperCase().replace('-','_');
     const visibility= (s.visibility|| 'ALL_SUBSCRIBERS').toUpperCase().replace(/-/g,'_');
     const status    = (s.status    || 'UPCOMING').toUpperCase();
+    let before = null;
     if (s.id) {
-      const [[anyRow]] = await pool.query('SELECT id, (tenant_id = ?) AS owned FROM live_streams WHERE id=? LIMIT 1', [req.tenantId, s.id]);
+      const [[anyRow]] = await pool.query('SELECT id, (tenant_id = ?) AS owned, scheduled_at, announced_at FROM live_streams WHERE id=? LIMIT 1', [req.tenantId, s.id]);
       if (anyRow && !anyRow.owned) return res.status(404).json({ error: 'Live stream not found' });
+      before = anyRow || null;
     }
     await pool.query(
-      `INSERT INTO live_streams (id, tenant_id, title, instructor_name, scheduled_at, duration_minutes,
+      `INSERT INTO live_streams (id, tenant_id, title, instructor_id, instructor_name, scheduled_at, duration_minutes,
          stream_url, platform, visibility, target_course_ids_json, status, description, recording_url, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE
-         title=VALUES(title), instructor_name=VALUES(instructor_name),
+         title=VALUES(title), instructor_id=VALUES(instructor_id), instructor_name=VALUES(instructor_name),
          scheduled_at=VALUES(scheduled_at), stream_url=VALUES(stream_url),
          platform=VALUES(platform), visibility=VALUES(visibility),
          target_course_ids_json=VALUES(target_course_ids_json),
          status=VALUES(status), description=VALUES(description),
          recording_url=VALUES(recording_url)`,
-      [id, req.tenantId, s.title||'', instructorName||'', scheduledAt, durationMins,
+      [id, req.tenantId, s.title||'', instructorId, instructorName||'', scheduledAt, durationMins,
        streamUrl, platform, visibility, targetIds, status,
        s.description||null, s.recording_url||s.recordingUrl||null,
        s.created_at||new Date().toISOString()]
     );
-    res.json({ ok: true, id });
+    // A new live — or one moved to another time — is announced to the lecturer
+    // and the course's clients (lib/liveStreams.js); each message once.
+    const moved = before && new Date(before.scheduled_at).getTime() !== new Date(scheduledAt).getTime();
+    let announced = null;
+    if (status === 'UPCOMING' && (!before || !before.announced_at || moved)) {
+      announced = await announceLiveStream(pool, { tenantId: req.tenantId, streamId: id })
+        .catch(error => { logger.warn('[live-streams] announce failed', { id, error: error.message }); return null; });
+    }
+    res.json({ ok: true, id, announced });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/live-streams/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_courses'), async (req, res) => {

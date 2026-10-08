@@ -3,6 +3,7 @@ import { CalendarDays, CheckCircle2, Clock3, ExternalLink, UserRound, Pencil, Sa
 import { mysqlClient } from '../lib/mysqlapi';
 import { sortConsultationsByDate, meetingProviderLabels } from '../lib/consultations';
 import type { ConsultationItem, Therapist } from '../types';
+import { InstructorLivePanel } from './InstructorLivePanel';
 
 const TherapistPortal: React.FC = () => {
   const [therapist, setTherapist] = useState<Therapist | null>(null);
@@ -53,14 +54,15 @@ const TherapistPortal: React.FC = () => {
   if (!therapist) {
     return (
       <div className="min-h-screen bg-gray-50 py-14">
-        <div className="container mx-auto px-4 max-w-lg">
+        <div className="container mx-auto px-4 max-w-lg space-y-4">
+          <InstructorLivePanel />
           <div className="bg-white border border-gray-200 rounded-3xl shadow-sm p-8 space-y-6">
             <div className="text-center space-y-3">
               <div className="w-16 h-16 rounded-2xl bg-primary-600 text-white grid place-items-center mx-auto mb-4">
                 <UserRound size={26} />
               </div>
               <h1 className="text-3xl font-extrabold text-gray-900">بوابة المحاضر</h1>
-              <p className="text-gray-500">لا يوجد ملف معالج نشط مرتبط بحساب الموظف الحالي.</p>
+              <p className="text-gray-500">لا يوجد ملف معالج للاستشارات مرتبط بحسابك — لايفاتك فوق.</p>
               {errorText && <div className="border border-red-200 bg-red-50 text-red-700 rounded-xl px-4 py-3 text-sm">{errorText}</div>}
             </div>
           </div>
@@ -90,6 +92,8 @@ const TherapistPortal: React.FC = () => {
           </div>
           {errorText && <div className="border border-red-200 bg-red-50 text-red-700 rounded-xl px-4 py-3 text-sm">{errorText}</div>}
         </div>
+
+        <InstructorLivePanel />
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white border border-gray-200 rounded-2xl p-4">
