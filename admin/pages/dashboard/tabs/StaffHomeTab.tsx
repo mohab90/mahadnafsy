@@ -16,6 +16,9 @@ import SalesMotivationCard from './staff-home/SalesMotivationCard';
 import { SalesOffersStrip, type SalesOffer } from './leads/SalesOffersPanel';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 import { isOpenLeadStatus } from '../../../../shared/leadStatuses';
+import { useNavigate } from 'react-router-dom';
+import LeadOutcomeButtons from './leads/LeadOutcomeButtons';
+import { announceCrmChanged } from '../../../lib/crmChanged';
 
 type TabKey = string;
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -642,18 +645,32 @@ function KpiCard({ title, value, icon: Icon, bg, text, border }: {
   );
 }
 
+// As in «متابعات السيلز»: the name and its icon open the client, and تواصل
+// records the call with its outcome and next follow-up in one tap.
 function FollowupRow({ lead, onNavigate }: { lead: LeadItem; onNavigate: () => void }) {
   const phone = toDialable(lead.phone);
+  const navigate = useNavigate();
+  const [contacting, setContacting] = useState(false);
+  const [recorded, setRecorded] = useState(false);
+  const openClient = () => navigate(`/client/${lead.clientCode || lead.id}`);
   return (
-    <div className="flex items-center gap-3 py-2 border-b border-rose-100 last:border-0">
-      <div className="w-8 h-8 rounded-lg bg-rose-100 flex items-center justify-center flex-shrink-0 text-rose-700 font-bold text-xs">
+    <div className="py-2 border-b border-rose-100 last:border-0 space-y-2">
+    <div className="flex items-center gap-3">
+      <button type="button" onClick={openClient} title="فتح صفحة العميل"
+        className="w-8 h-8 rounded-lg bg-rose-100 hover:bg-rose-200 flex items-center justify-center flex-shrink-0 text-rose-700 font-bold text-xs transition-colors">
         {(lead.name || '?').charAt(0)}
-      </div>
+      </button>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-gray-800 truncate">{lead.name}</p>
+        <button type="button" onClick={openClient} title="فتح صفحة العميل"
+          className="block max-w-full text-sm font-semibold text-gray-800 truncate hover:text-rose-700 hover:underline text-right">{lead.name}</button>
         <p className="text-xs text-gray-400">{lead.phone}</p>
       </div>
       <div className="flex items-center gap-1.5 flex-shrink-0">
+        {recorded && <span className="text-[10px] font-bold text-emerald-600">✓ اتسجل</span>}
+        <button type="button" onClick={() => setContacting(open => !open)}
+          className={`h-7 px-2 rounded-lg text-[11px] font-bold transition-colors ${contacting ? 'bg-rose-600 text-white' : 'bg-white border border-rose-200 text-rose-700 hover:bg-rose-50'}`}>
+          تواصل
+        </button>
         {phone && (
           <a
             href={`https://wa.me/${phone}`}
@@ -673,6 +690,10 @@ function FollowupRow({ lead, onNavigate }: { lead: LeadItem; onNavigate: () => v
           <ArrowLeft size={13} />
         </button>
       </div>
+    </div>
+      {contacting && (
+        <LeadOutcomeButtons lead={lead} onRecorded={() => { setRecorded(true); setContacting(false); announceCrmChanged(); }} />
+      )}
     </div>
   );
 }

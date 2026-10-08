@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { Modal } from '../../../../../shared/ui/Modal';
 
@@ -7,6 +8,8 @@ import { LEAD_STATUS_CFG } from './LeadSubcomponents';
 import { toDialable } from '../../../../lib/whatsappLink';
 import { useSiteData } from '../../../../context/SiteDataContext';
 import { isOpenLeadStatus } from '../../../../../shared/leadStatuses';
+import LeadOutcomeButtons from './LeadOutcomeButtons';
+import { announceCrmChanged } from '../../../../lib/crmChanged';
 
 /**
  * «متابعات السيلز» — the one follow-up drawer.
@@ -42,27 +45,37 @@ type Props = {
 // Delegates to the shared rule — this used to build country code "2".
 const formatWaPhone = (phone: string) => toDialable(phone);
 
+// «زر تواصل جمب زر واتس اب … لما اضغط علي اسم العميل او الايقونه اللى جمب اسمه
+// يفتح صفحه العميل» (8 Oct 2026). تواصل opens the pipeline card's one-tap
+// outcomes — the call, the status and the next follow-up in one request.
 function LeadNotificationRow({
   lead,
   badge,
   isSalesOnly,
+  onOpenClient,
 }: {
   lead: LeadItem;
   badge: ReactNode;
   isSalesOnly: boolean;
+  onOpenClient: (lead: LeadItem) => void;
 }) {
+  const [contacting, setContacting] = useState(false);
+  const [recorded, setRecorded] = useState(false);
   const daysSince = lead.nextFollowUpDate
     ? Math.floor((Date.now() - new Date(lead.nextFollowUpDate).getTime()) / 86_400_000)
     : null;
 
   return (
-    <div className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 transition">
-      <div className="w-9 h-9 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-sm flex-shrink-0">
+    <div className="p-3 rounded-xl border border-gray-100 hover:bg-gray-50 transition space-y-2">
+    <div className="flex items-center gap-3">
+      <button type="button" onClick={() => onOpenClient(lead)} title="فتح صفحة العميل"
+        className="w-9 h-9 rounded-full bg-primary-100 text-primary-700 hover:bg-primary-200 flex items-center justify-center font-bold text-sm flex-shrink-0 transition">
         {lead.name.charAt(0)}
-      </div>
+      </button>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-          <span className="font-bold text-gray-800 text-sm">{lead.name}</span>
+          <button type="button" onClick={() => onOpenClient(lead)} title="فتح صفحة العميل"
+            className="font-bold text-gray-800 text-sm hover:text-primary-700 hover:underline text-right">{lead.name}</button>
           {badge}
           {lead.assignedSalesName && !isSalesOnly && (
             <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">👤 {lead.assignedSalesName}</span>
@@ -77,11 +90,20 @@ function LeadNotificationRow({
         </div>
       </div>
       <div className="flex items-center gap-1 flex-shrink-0">
+        {recorded && <span className="text-[10px] font-bold text-emerald-600">✓ اتسجل</span>}
+        <button type="button" onClick={() => setContacting(open => !open)}
+          className={`h-7 px-2.5 rounded-full text-[11px] font-bold border transition ${contacting ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-primary-700 border-primary-200 hover:bg-primary-50'}`}>
+          تواصل
+        </button>
         {lead.phone && (
           <a href={`https://wa.me/${formatWaPhone(lead.phone)}`} target="_blank" rel="noopener noreferrer"
             className="w-7 h-7 rounded-full bg-green-500 hover:bg-green-600 text-white text-xs font-bold flex items-center justify-center">W</a>
         )}
       </div>
+    </div>
+      {contacting && (
+        <LeadOutcomeButtons lead={lead} onRecorded={() => { setRecorded(true); setContacting(false); announceCrmChanged(); }} />
+      )}
     </div>
   );
 }
@@ -97,7 +119,12 @@ export function LeadSalesNotificationsPanel({
   onShowToday,
 }: Props) {
   const { isAdmin } = useSiteData();
+  const navigate = useNavigate();
   if (!open) return null;
+  const openClient = (lead: LeadItem) => {
+    onClose();
+    navigate(`/client/${lead.clientCode || lead.id}`);
+  };
 
   const todayStr = cairoDateOnly();
   // Read from the context rather than taken as a prop: neither caller had it to
@@ -146,7 +173,7 @@ export function LeadSalesNotificationsPanel({
               </div>
               <div className="space-y-2">
                 {overdue.map(lead => (
-                  <LeadNotificationRow key={lead.id} lead={lead} isSalesOnly={isSalesOnly} badge={
+                  <LeadNotificationRow key={lead.id} lead={lead} isSalesOnly={isSalesOnly} onOpenClient={openClient} badge={
                     <span className="text-[10px] font-bold bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">
                       📅 {lead.nextFollowUpDate}
                     </span>
@@ -163,7 +190,7 @@ export function LeadSalesNotificationsPanel({
               </div>
               <div className="space-y-2">
                 {todayLeads.map(lead => (
-                  <LeadNotificationRow key={lead.id} lead={lead} isSalesOnly={isSalesOnly} badge={
+                  <LeadNotificationRow key={lead.id} lead={lead} isSalesOnly={isSalesOnly} onOpenClient={openClient} badge={
                     <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">اليوم</span>
                   } />
                 ))}
@@ -178,7 +205,7 @@ export function LeadSalesNotificationsPanel({
               </div>
               <div className="space-y-2">
                 {noFollowup.slice(0, 20).map(lead => (
-                  <LeadNotificationRow key={lead.id} lead={lead} isSalesOnly={isSalesOnly} badge={
+                  <LeadNotificationRow key={lead.id} lead={lead} isSalesOnly={isSalesOnly} onOpenClient={openClient} badge={
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
                       lead.status === 'interested' ? 'bg-emerald-100 text-emerald-700'
                         : lead.status === 'contacted' ? 'bg-amber-100 text-amber-700'
