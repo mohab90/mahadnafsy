@@ -775,7 +775,10 @@ router.get('/api/staff/me/messages/targets', requireAuth, async (req, res) => {
     if (!me) return res.status(404).json({ error: 'Staff record not found' });
     const [staff] = await pool.query(`SELECT id, name, UPPER(role) role, branch_id FROM staff WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL`, [req.tenantId]);
     const others = staff.filter(person => person.id !== me.id);
+    // My own team is «فريقي»; «فريق تاني» lists the rest.
+    const myRole = staff.find(person => person.id === me.id)?.role || '';
     const teams = Object.entries(MESSAGE_TEAMS)
+      .filter(([, team]) => !team.roles.includes(myRole))
       .map(([key, team]) => ({
         scope: `team:${key}`, label: team.label,
         count: others.filter(person => team.roles.includes(person.role) || (team.branchId && person.branch_id === team.branchId)).length,

@@ -92,8 +92,9 @@ test('a reply goes to whoever wrote, and only from one\'s own thread', async () 
 test('the composer is offered the teams that have someone, and the managers', async () => {
   const res = { statusCode: 200, body: null, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
   await handlerOf('get', '/api/staff/me/messages/targets')({ tenantId: 'tenant-default', user: { uid: 'u' } }, res);
+  // A rep's own team is «فريقي», not one of «فريق تاني».
   assert.deepEqual(res.body.teams.map(team => [team.scope, team.count]), [
-    ['team:sales', 1], ['team:online', 1], ['team:support', 1], ['team:daqqi', 2],
+    ['team:online', 1], ['team:support', 1], ['team:daqqi', 2],
   ]);
   assert.deepEqual(res.body.managers.map(manager => manager.scope).sort(), ['manager:st-dm', 'manager:st-mgr']);
   assert.equal(res.body.everyone, 6);
