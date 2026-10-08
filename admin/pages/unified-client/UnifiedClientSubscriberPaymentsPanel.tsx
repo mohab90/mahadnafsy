@@ -194,13 +194,15 @@ export function UnifiedClientSubscriberPaymentsPanel({
                   </button>
                   {canCorrectPayments && (
                     <>
-                      <button type="button" title="تعديل الدفعة (للمدير)" aria-label="تعديل الدفعة" onClick={() => setCorrecting({ payment: p, mode: 'edit' })}
-                        className="text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 p-1 rounded-lg transition">
-                        <Pencil size={14} />
+                      {/* Words, not bare icons: «اقدر امسح دفعه او اعدل مبلغ دفعه» (8 Oct
+                          2026) — they were there, and not seen. Managers only. */}
+                      <button type="button" title="تعديل مبلغ أو بيانات الدفعة (للإدارة)" aria-label="تعديل الدفعة" onClick={() => setCorrecting({ payment: p, mode: 'edit' })}
+                        className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100 transition">
+                        <Pencil size={12} /> تعديل
                       </button>
-                      <button type="button" title="مسح الدفعة (للمدير)" aria-label="مسح الدفعة" onClick={() => setCorrecting({ payment: p, mode: 'void' })}
-                        className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1 rounded-lg transition">
-                        <Trash2 size={14} />
+                      <button type="button" title="مسح الدفعة (للإدارة)" aria-label="مسح الدفعة" onClick={() => setCorrecting({ payment: p, mode: 'void' })}
+                        className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-bold text-red-700 hover:bg-red-100 transition">
+                        <Trash2 size={12} /> مسح
                       </button>
                     </>
                   )}
