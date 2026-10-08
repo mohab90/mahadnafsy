@@ -16,7 +16,7 @@
 const { uuidv4 } = require('./id');
 const { logPaymentAudit, postPaymentJournal } = require('./finance');
 const { ensureSubscriberForOrder } = require('./subscriberProvisioning');
-const { transitionLead } = require('./leadState');
+const { convertLeadOfPayment } = require('./leadState');
 const { branchIdForBranch } = require('./branches');
 const { grantCourseSelections } = require('./entitlements');
 const { recordPaymentCompensation } = require('./paymentCompensation');
@@ -102,8 +102,8 @@ async function confirmOrderPayment({ order, transfer, linkedTransferId, tenantId
   );
 
   if (sub?.lead_id) {
-    await transitionLead({
-      tenantId, leadId: sub.lead_id, toStatus: 'converted', db: conn,
+    await convertLeadOfPayment({
+      tenantId, leadId: sub.lead_id, db: conn,
       actor: actorEmail || staffName || 'admin',
       reason: 'Lead converted after manual order confirmation', metadata: { orderId: order.id, subscriberId: sub.id },
     });

@@ -22,6 +22,13 @@ async function transitionLead({
   // Everything else (locking, the UPDATE, the timeline row) still goes through
   // this one service, so history stays consistent.
   force = false,
+  // A payment converts the lead it came from whatever the sales list made of it:
+  // 463 clients' leads were hidden (8 Oct 2026), and approving or recording a
+  // paid payment for any of them answered «Lead not found» and saved nothing.
+  // includeHidden finds a hidden lead; missingOk lets the money through when the
+  // lead is gone altogether.
+  includeHidden = false,
+  missingOk = false,
 }) {
   if (!tenantId || !leadId) {
     const error = new Error('tenantId and leadId are required');
@@ -33,7 +40,11 @@ async function transitionLead({
   const conn = db || await pool.getConnection();
   try {
     if (ownsConnection) await conn.beginTransaction();
-    const lead = await findLeadById({ tenantId, leadId, db: conn, forUpdate: true });
+    const lead = await findLeadById({ tenantId, leadId, db: conn, forUpdate: true, includeHidden });
+    if (!lead && missingOk) {
+      if (ownsConnection) await conn.commit();
+      return { changed: false, missing: true };
+    }
     if (!lead) {
       const error = new Error('Lead not found');
       error.statusCode = 404;
@@ -143,4 +154,7 @@ async function reconvertLeadOfRestoredClient({ tenantId, subscriberId, actor = n
   });
 }
 
-module.exports = { LEAD_STATUSES, normalizeLeadStatus, reconvertLeadOfRestoredClient, reopenLeadOfArchivedClient, transitionLead };
+/** The lead a payment came from becomes «converted» — hidden or gone, the money is never refused for it. */
+const convertLeadOfPayment = args => transitionLead({ ...args, toStatus: 'converted', includeHidden: true, missingOk: true });
+
+module.exports = { LEAD_STATUSES, convertLeadOfPayment, normalizeLeadStatus, reconvertLeadOfRestoredClient, reopenLeadOfArchivedClient, transitionLead };

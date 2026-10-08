@@ -13,7 +13,7 @@ const { assertWritable } = require('../lib/periodLock');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { enqueueFinanceEvent } = require('../lib/financeOutbox');
 const { createNotification } = require('../lib/notification');
-const { transitionLead } = require('../lib/leadState');
+const { convertLeadOfPayment } = require('../lib/leadState');
 const { publishRealtimeEvent } = require('../lib/realtime');
 const { completeCourse } = require('../lib/courseCompletion');
 const { recordLectureProgress } = require('../lib/learningProgress');
@@ -504,8 +504,8 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
 
       await conn.query('UPDATE subscribers SET is_active=1 WHERE id=? AND tenant_id=?', [proof.subscriber_id, tenantId]);
       if (proof.lead_id) {
-        await transitionLead({
-          tenantId, leadId: proof.lead_id, toStatus: 'converted', db: conn,
+        await convertLeadOfPayment({
+          tenantId, leadId: proof.lead_id, db: conn,
           actor: req.user?.email || req.staffRecord?.name || 'payment-proof',
           reason: 'Lead converted after payment proof approval',
           metadata: { paymentProofId: proof.id, subscriberId: proof.subscriber_id },

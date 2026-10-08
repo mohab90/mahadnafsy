@@ -13,7 +13,7 @@ const { createNotification } = require('../lib/notification');
 const { recordPaymentCompensation } = require('../lib/paymentCompensation');
 const { logPaymentAudit, postPaymentJournal } = require('../lib/finance');
 const { logLeadEvent } = require('../lib/crm');
-const { transitionLead } = require('../lib/leadState');
+const { convertLeadOfPayment } = require('../lib/leadState');
 const { enqueueFinanceEvent } = require('../lib/financeOutbox');
 const { enqueueEmailSequence } = require('../lib/emailSequence');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
@@ -898,8 +898,8 @@ async function recordSubscriberPayment(req, res) {
       }
     }
     if (isPaid && linkedLeadId) {
-      await transitionLead({
-        tenantId: paymentTenantId, leadId: linkedLeadId, toStatus: 'converted', db: conn,
+      await convertLeadOfPayment({
+        tenantId: paymentTenantId, leadId: linkedLeadId, db: conn,
         actor: req.user?.email || req.staffRecord?.name || 'payment',
         reason: 'Lead converted after paid subscriber payment', metadata: { subscriberId: subscriber_id, paymentId: id },
       });

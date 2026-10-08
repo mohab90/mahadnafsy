@@ -21,7 +21,7 @@ stub('../lib/subscriberProvisioning', { ensureSubscriberForOrder: async () => ({
 stub('../lib/finance', { postPaymentJournal: async () => 'j-1', logPaymentAudit: async () => {} });
 stub('../lib/paymentCompensation', { recordPaymentCompensation: async () => {} });
 stub('../lib/entitlements', { grantCourseSelections: async input => { grants.push(input); } });
-stub('../lib/leadState', { transitionLead: async () => {} });
+stub('../lib/leadState', { transitionLead: async () => {}, convertLeadOfPayment: async () => {} });
 const { confirmOrderPayment } = require('../lib/orderPaymentConfirmation');
 
 const conn = {

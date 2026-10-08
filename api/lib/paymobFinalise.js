@@ -13,7 +13,7 @@ const { awardPointsForPayment } = require('./loyalty');
 const { DEFAULT_TENANT_ID } = require('./tenantScope');
 const { postPaymentJournal, logPaymentAudit, toEgp } = require('./finance');
 const { assertWritable } = require('./periodLock');
-const { transitionLead } = require('./leadState');
+const { convertLeadOfPayment } = require('./leadState');
 const { findLeadByContact } = require('./leadMatching');
 const { enqueueFinanceEvent } = require('./financeOutbox');
 const { ensureSubscriberForOrder } = require('./subscriberProvisioning');
@@ -301,10 +301,9 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
     // sales kept chasing them, conversion rate read low, and staff KPIs
     // undercounted their own wins.
     if (sub?.lead_id) {
-      await transitionLead({
+      await convertLeadOfPayment({
         tenantId,
         leadId: sub.lead_id,
-        toStatus: 'converted',
         actor: 'paymob-callback',
         reason: 'تحوّل لمشترك بعد دفعة إلكترونية مؤكدة',
         metadata: { paymentId: payId, subscriberId: sub.id, orderId: merchantOrderId },
@@ -402,8 +401,8 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
           leadId = found?.id || null;
         }
         if (leadId) {
-          await transitionLead({
-            tenantId: subTenantId, leadId, toStatus: 'converted', actor: 'paymob-callback',
+          await convertLeadOfPayment({
+            tenantId: subTenantId, leadId, actor: 'paymob-callback',
             reason: 'Lead converted after confirmed provider payment', metadata: { subscriberId: sub.id },
           });
           logger.info(`[paymob] Lead ${leadId} auto-converted after payment`);

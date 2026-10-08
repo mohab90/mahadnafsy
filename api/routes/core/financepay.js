@@ -10,7 +10,7 @@ const { sendWhatsApp } = require('../../lib/whatsapp');
 const { logPaymentAudit, postPaymentJournal } = require('../../lib/finance');
 const { recordPaymentCompensation } = require('../../lib/paymentCompensation');
 const { assertWritable } = require('../../lib/periodLock');
-const { transitionLead } = require('../../lib/leadState');
+const { convertLeadOfPayment } = require('../../lib/leadState');
 const { enqueueFinanceEvent } = require('../../lib/financeOutbox');
 const { applyCertificatePayment } = require('../../lib/certificatePayments');
 const { grantCourseEntitlement } = require('../../lib/entitlements');
@@ -218,10 +218,9 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
         actor,
       }, conn);
       if (subscriber?.lead_id) {
-        await transitionLead({
+        await convertLeadOfPayment({
           tenantId,
           leadId: subscriber.lead_id,
-          toStatus: 'converted',
           db: conn,
           actor,
           reason: 'Lead converted after manual payment approval',

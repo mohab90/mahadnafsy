@@ -50,7 +50,8 @@ test('business routes use the central lead transition service', () => {
   ]) {
     const source = sourceOf(file);
     assert.doesNotMatch(source, /UPDATE leads SET status|UPDATE leads SET[^;]{0,200}status='converted'/, file);
-    assert.match(source, /transitionLead/, file);
+    // convertLeadOfPayment is transitionLead to «converted» for a payment (8 Oct 2026).
+    assert.match(source, /transitionLead|convertLeadOfPayment/, file);
   }
 });
 
@@ -255,8 +256,8 @@ test('every caller that converts a lead names the customer it converted into', (
   ];
   for (const file of callers) {
     const source = sourceOf(file);
-    for (const call of source.matchAll(/transitionLead\(\{[\s\S]{0,700}?\}\)/g)) {
-      if (!/toStatus:\s*'converted'/.test(call[0])) continue;
+    for (const call of source.matchAll(/(?:transitionLead|convertLeadOfPayment)\(\{[\s\S]{0,700}?\}\)/g)) {
+      if (!/toStatus:\s*'converted'|^convertLeadOfPayment/.test(call[0])) continue;
       assert.match(call[0], /subscriberId/,
         `${file}: a conversion that does not name its subscriber cannot be checked`);
     }
