@@ -3,6 +3,7 @@ import { Award, BarChart3, BookOpen, Megaphone, RefreshCw, TrendingUp, Users } f
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { cairoDateOnly, cairoDaysAgo } from '../../../../shared/cairoDate';
 import { REPORT_RANGES, TEAM_LABELS, type RangeKey, type TeamKey } from './reports/teamReportColumns';
+import { AllTeamsReport } from './reports/AllTeamsReport';
 import { TeamReportTable } from './reports/TeamReportTable';
 import { OwnerWhatsappReportCard } from './reports/OwnerWhatsappReportCard';
 
@@ -66,7 +67,8 @@ function Leaders({ title, rows, money }: { title: string; rows: Leader[]; money?
 
 export default function ManagementReportsTab({ notify }: { notify: (type: 'success' | 'error' | 'info', text: string) => void }) {
   const [range, setRange] = useState<RangeKey>('today');
-  const [team, setTeam] = useState<TeamKey>('sales');
+  // «الكل وجمبه السيلز وغيرهم» (8 Oct 2026): every team first, then each.
+  const [team, setTeam] = useState<TeamKey | 'all'>('all');
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -84,7 +86,7 @@ export default function ManagementReportsTab({ notify }: { notify: (type: 'succe
   useEffect(() => { void load(range); }, [load, range]);
 
   const period = report ? (report.from === report.to ? report.from : `${report.from} → ${report.to}`) : '';
-  const teamData = report?.teams[team];
+  const teamData = team === 'all' ? undefined : report?.teams[team];
   const teamRows = (team === 'sales' ? teamData?.reps : teamData?.rows) || [];
   const teamTotals = team === 'sales' ? teamData?.team : teamData?.totals;
   const maxDay = Math.max(1, ...(report?.income.byDay || []).map(day => day.moneyEgp));
@@ -203,6 +205,10 @@ export default function ManagementReportsTab({ notify }: { notify: (type: 'succe
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h4 className="flex items-center gap-1.5 text-sm font-bold text-gray-800"><Users size={14} className="text-sky-600" /> تقارير الفرق</h4>
               <div className="flex flex-wrap gap-1">
+                <button type="button" onClick={() => setTeam('all')}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-bold ${team === 'all' ? 'bg-sky-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-sky-50'}`}>
+                  الكل
+                </button>
                 {/* Tagamoa once it has a team or activity — the branch opens hidden. */}
                 {(Object.keys(TEAM_LABELS) as TeamKey[]).filter(key => key !== 'tagamoa'
                   || Boolean(report.teams.tagamoa?.rows?.length || Number(report.teams.tagamoa?.totals?.payments))).map(key => (
@@ -213,7 +219,9 @@ export default function ManagementReportsTab({ notify }: { notify: (type: 'succe
                 ))}
               </div>
             </div>
-            <TeamReportTable team={team} rows={teamRows} totals={teamTotals} />
+            {team === 'all'
+              ? <AllTeamsReport teams={report.teams} />
+              : <TeamReportTable team={team} rows={teamRows} totals={teamTotals} />}
           </section>
         </>
       )}
