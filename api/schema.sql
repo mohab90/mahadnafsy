@@ -721,6 +721,8 @@ CREATE TABLE `certificate_requests` (
   `collection_party` varchar(160) DEFAULT NULL,
   `requested_at` datetime NOT NULL DEFAULT current_timestamp(),
   `issued_at` datetime DEFAULT NULL,
+  `course_start_date` date DEFAULT NULL,
+  `course_end_date` date DEFAULT NULL,
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `active_request_marker` tinyint(4) GENERATED ALWAYS AS (case when `status` <> 'DELIVERED' then 1 else NULL end) STORED,
   PRIMARY KEY (`id`),

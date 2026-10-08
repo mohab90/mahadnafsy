@@ -16,6 +16,10 @@ const { isString, isOneOf, validateBody } = require('../middleware/validate');
 const { resolveClientContext } = require('../lib/clientContext');
 const { actorName, logClientEvent } = require('../lib/clientHistory');
 const { sanitize } = require('../lib/helpers');
+const { checkEnglishName, checkNationalId } = require('../lib/bookingIdentity');
+const { dateOnlyInTimeZone } = require('../lib/dates');
+// A date the certificate states, as YYYY-MM-DD in Cairo, or null.
+const dayOf = value => (value ? dateOnlyInTimeZone(new Date(value)) : null);
 
 const CERT_STATUSES = ['PENDING','PRICED','PAID','IN_PROGRESS','NOT_SENT','ISSUED','SHIPPED','AT_BRANCH','DELIVERED','RETURNED'];
 // The names the screen shows (8 Oct 2026), used in the client's history too.
@@ -84,8 +88,20 @@ router.get('/api/admin/certificate-requests', requireAuth, requireAdminOrStaff, 
     const [rows] = await pool.query(
       `SELECT cr.id, cr.subscriber_id, cr.course_id, cr.type, cr.custom_name, cr.name_ar, cr.name_en, cr.nationality,
               cr.id_number, cr.status, cr.price, cr.paid_amount, cr.currency, cr.note, cr.admin_note,
-              cr.collection_party, cr.requested_at, cr.issued_at,
+              cr.collection_party, cr.requested_at, cr.issued_at, cr.course_start_date, cr.course_end_date,
               s.name AS subscriber_name, s.phone AS subscriber_phone, s.client_code, s.branch,
+              s.name_en AS client_name_en, s.national_id AS client_national_id,
+              -- The dates the certificate states, until the desk types them: the
+              -- client's Dokki round, else their enrolment; the end, when it is recorded.
+              COALESCE((SELECT MIN(dr.start_date) FROM daqqi_attendees da
+                          JOIN daqqi_rounds dr ON dr.id=da.round_id AND dr.tenant_id=da.tenant_id
+                         WHERE da.tenant_id=cr.tenant_id AND da.subscriber_id=cr.subscriber_id AND dr.course_id=cr.course_id),
+                       (SELECT MIN(e.enrolled_at) FROM enrollments e
+                         WHERE e.tenant_id=cr.tenant_id AND e.subscriber_id=cr.subscriber_id AND e.course_id=cr.course_id)) AS suggested_start,
+              COALESCE((SELECT MAX(cc.completed_at) FROM course_completions cc
+                         WHERE cc.tenant_id=cr.tenant_id AND cc.subscriber_id=cr.subscriber_id AND cc.course_id=cr.course_id),
+                       (SELECT MAX(e.completed_at) FROM enrollments e
+                         WHERE e.tenant_id=cr.tenant_id AND e.subscriber_id=cr.subscriber_id AND e.course_id=cr.course_id)) AS suggested_end,
               COALESCE(s.assigned_cs_name, s.assigned_sales_name) AS owner_name,
               COALESCE(NULLIF(c.title_ar, ''), c.title) AS course_title,
               (SELECT MAX(p.payment_method) FROM payments p
@@ -115,9 +131,13 @@ router.get('/api/admin/certificate-requests', requireAuth, requireAdminOrStaff, 
         type: String(row.type || 'OTHER').toLowerCase(),
         customName: row.custom_name || null,
         nameAr: row.name_ar || null,
-        nameEn: row.name_en || null,
+        nameEn: row.name_en || row.client_name_en || null,
         nationality: row.nationality ? String(row.nationality).toLowerCase() : null,
-        idNumber: row.id_number || null,
+        idNumber: row.id_number || row.client_national_id || null,
+        courseStartDate: dayOf(row.course_start_date),
+        courseEndDate: dayOf(row.course_end_date),
+        suggestedStart: dayOf(row.suggested_start),
+        suggestedEnd: dayOf(row.suggested_end),
         status: String(row.status || 'PENDING').toLowerCase(),
         price,
         systemPrice: systemPrice || null,
@@ -135,6 +155,53 @@ router.get('/api/admin/certificate-requests', requireAuth, requireAdminOrStaff, 
       };
     }));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// «تكملة البيانات» (8 Oct 2026): what the certificate states and the desk had no
+// place to write — the English name, the national ID, the course's dates. Anyone
+// on the certificates desk completes them (editing the request stays the
+// managers'); the name and ID go back to the client's own record when it has none.
+router.put('/api/admin/certificate-requests/:id/client-data', requireAuth, requireAdminOrStaff, requirePermission('manage_certificates'), async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const b = req.body || {};
+    await conn.beginTransaction();
+    const [[request]] = await conn.query(
+      'SELECT * FROM certificate_requests WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE', [req.params.id, req.tenantId]);
+    if (!request) { await conn.rollback(); return res.status(404).json({ error: 'Not found' }); }
+    const english = checkEnglishName(b.nameEn);
+    if (!english.ok) { await conn.rollback(); return res.status(400).json({ error: english.error }); }
+    const egyptian = !request.nationality || String(request.nationality).toUpperCase() === 'EGYPTIAN';
+    const id = checkNationalId(b.idNumber, { egyptian });
+    if (!id.ok) { await conn.rollback(); return res.status(400).json({ error: id.error }); }
+    const date = value => (/^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) ? String(value) : null);
+    const start = date(b.courseStartDate);
+    const end = date(b.courseEndDate);
+    if (start && end && end < start) { await conn.rollback(); return res.status(400).json({ error: 'تاريخ النهاية قبل تاريخ البداية' }); }
+    await conn.query(
+      `UPDATE certificate_requests
+          SET name_en=COALESCE(?, name_en), id_number=COALESCE(?, id_number),
+              course_start_date=COALESCE(?, course_start_date), course_end_date=COALESCE(?, course_end_date)
+        WHERE id=? AND tenant_id=?`,
+      [english.value, id.value, start, end, request.id, req.tenantId]);
+    if (request.subscriber_id && (english.value || id.value)) {
+      await conn.query(
+        `UPDATE subscribers SET name_en=COALESCE(NULLIF(name_en, ''), ?), national_id=COALESCE(NULLIF(national_id, ''), ?)
+          WHERE id=? AND tenant_id=?`,
+        [english.value, id.value, request.subscriber_id, req.tenantId]);
+      await logClientEvent(conn, {
+        tenantId: req.tenantId, subscriberId: request.subscriber_id, action: 'certificate_data', actor: actorName(req),
+        label: `تكملة بيانات الشهادة${english.value ? ` · ${english.value}` : ''}${id.value ? ' · الرقم القومي' : ''}${start ? ` · من ${start}` : ''}${end ? ` لـ ${end}` : ''}`,
+      });
+    }
+    await conn.commit();
+    res.json({ ok: true });
+  } catch (e) {
+    await conn.rollback().catch(() => {});
+    if (e?.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'الرقم القومي ده متسجل لعميل تاني' });
+    logger.error('[certificate-requests/client-data]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally { conn.release(); }
 });
 
 // «طلبات إضافية» beside the certificates: a carnet, a book, or an extra

@@ -9,6 +9,7 @@ import { cairoDay } from '../../../../shared/cairoDate';
 import { useCertificateCatalog } from '../../../lib/certificateCatalog';
 import { branchLabels, normBranchKey } from '../../unified-client/constants';
 import ExtraRequestsPanel from './ExtraRequestsPanel';
+import { CertDataModal, missingCertData } from './CertDataModal';
 import { useSiteData } from '../../../context/SiteDataContext';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -35,6 +36,8 @@ type CertRow = {
   branch: string | null; ownerName: string | null; courseId: string | null; courseTitle: string | null;
   type: string; customName: string | null; nameAr: string | null; nameEn: string | null; nationality: string | null;
   idNumber: string | null; status: CertStatus; price: number | null; paid: number; remaining: number | null;
+  /** The dates the certificate states; until typed, the round's or the enrolment's (suggested*). */
+  courseStartDate: string | null; courseEndDate: string | null; suggestedStart: string | null; suggestedEnd: string | null;
   /** The price list's figure for this type and currency; «مكتمل» is against it. */
   systemPrice: number | null; complete: boolean;
   /** The client's own name when it is three names or more and none was typed. */
@@ -112,6 +115,7 @@ export default function CertRequestsTab({
   const [ownerFilter, setOwnerFilter] = useState('');
   const [partyFilter, setPartyFilter] = useState('');
   const [editing, setEditing] = useState<{ row: CertRow; draft: EditDraft } | null>(null);
+  const [completing, setCompleting] = useState<CertRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -267,6 +271,7 @@ export default function CertRequestsTab({
                   <th className={th}>نوع الشهادة</th>
                   <th className={th}>الكورس</th>
                   <th className={th}>الاسم على الشهادة</th>
+                  <th className={th}>بيانات الشهادة</th>
                   <th className={th}>السعر</th>
                   <th className={th}>المدفوع</th>
                   <th className={th}>المتبقي</th>
@@ -311,6 +316,28 @@ export default function CertRequestsTab({
                             <div className="text-gray-400" dir="ltr">{row.nameEn || ''}</div>
                           </>
                         )}
+                      </td>
+                      <td className={`${td} min-w-[150px]`}>
+                        {(() => {
+                          const missing = missingCertData(row);
+                          const start = row.courseStartDate || row.suggestedStart;
+                          const end = row.courseEndDate || row.suggestedEnd;
+                          return (
+                            <div className="space-y-0.5 text-[11px]">
+                              {row.idNumber && <div className="font-mono text-gray-600" dir="ltr">{row.idNumber}</div>}
+                              {(start || end) && (
+                                <div className={row.courseStartDate || row.courseEndDate ? 'text-gray-600' : 'text-gray-400'} title={row.courseStartDate ? '' : 'من السيستم — اتأكد منه'}>
+                                  {start || '؟'} ← {end || '؟'}
+                                </div>
+                              )}
+                              {missing.length > 0 && <div className="font-bold text-red-600">ناقص: {missing.join('، ')}</div>}
+                              <button disabled={busy} onClick={() => setCompleting(row)}
+                                className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-40">
+                                {missing.length ? 'تكملة البيانات' : 'تعديل البيانات'}
+                              </button>
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className={`${td} whitespace-nowrap font-bold text-primary-700`}>
                         {num(row.systemPrice ?? row.price)} {(row.systemPrice ?? row.price) != null ? row.currency : ''}
@@ -375,6 +402,10 @@ export default function CertRequestsTab({
         )}
       </>)}
 
+      {completing && (
+        <CertDataModal row={completing} notify={notify} onClose={() => setCompleting(null)}
+          onSaved={() => { setCompleting(null); void load(); }} />
+      )}
       {editing && (
         <Modal open onClose={() => setEditing(null)} size="lg" title={`تعديل شهادة — ${editing.row.subscriberName}`}
           icon={<Pencil size={16} className="text-indigo-600" />}
