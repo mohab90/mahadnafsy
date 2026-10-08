@@ -81,6 +81,5 @@ export const SalesDaqqiScheduleTab = lazy(() => import('./tabs/SalesDaqqiSchedul
 export const SubscriptionsTab = lazy(() => import('./tabs/SubscriptionsTab'));
 export const SystemSettingsTab = lazy(() => import('./tabs/SystemSettingsTab'));
 export const TasksBoardTab = lazy(() => import('./tabs/TasksBoardTab'));
-export const TicketsTab = lazy(() => import('./tabs/TicketsTab'));
 export const WaitlistTab = lazy(() => import('./tabs/WaitlistTab'));
 export const WebhooksTab = lazy(() => import('./tabs/WebhooksTab'));

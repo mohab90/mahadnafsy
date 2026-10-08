@@ -25,17 +25,12 @@ test('deleting a ticket is offered only to whoever can delete one', () => {
   const support = read('api/routes/support.js');
   assert.match(support, /router\.delete\('\/api\/admin\/tickets\/:id', requireAuth, requireAdmin/);
 
-  const tickets = codeOnly(read('admin/pages/dashboard/tabs/TicketsTab.tsx'));
-  assert.match(tickets, /\{isAdmin && \(\s*<button onClick=\{\(\) => deleteTicketApi/,
-    'the delete must be behind the same check the route makes');
-  // Through the narrow slice: this screen is already off the wide context, and
-  // reaching for useSiteData here would put it back on.
-  assert.match(tickets, /const \{ isAdmin \} = useStaticData\(\)/);
-
-  // The sibling inbox already had it right, which is what made this an omission.
+  // The tickets screen and the inbox are one page since 8 Oct 2026; both of
+  // its deletes — the row's and the drawer's — sit behind the route's check.
+  assert.ok(!fs.existsSync(path.join(__dirname, '..', '..', 'admin/pages/dashboard/tabs/TicketsTab.tsx')), 'the duplicate screen is gone');
   const inbox = codeOnly(read('admin/pages/dashboard/tabs/CustomerInboxTab.tsx'));
   // [^>] would stop at the > inside `onClick={() =>`.
-  assert.match(inbox, /\{isAdmin && <button[\s\S]{0,200}?deleteTicketApi/);
+  assert.equal((inbox.match(/\{isAdmin && <button[\s\S]{0,200}?deleteTicketApi/g) || []).length, 2);
 });
 
 test('refreshing the exchange rates is offered only to whoever can', () => {

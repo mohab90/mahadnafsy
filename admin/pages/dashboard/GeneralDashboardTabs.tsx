@@ -47,7 +47,6 @@ import {
   SubscriptionsTab,
   SystemSettingsTab,
   TasksBoardTab,
-  TicketsTab,
   WaitlistTab,
 } from './lazyTabs';
 
@@ -104,7 +103,8 @@ const notifyTabs: NotifyTabEntry[] = [
   { key: 'installment_plans', Component: InstallmentPlansTab, spinner: 'primary' },
   { key: 'interviews', Component: InterviewsTab, spinner: 'primary' },
   { key: 'registrations', Component: RegistrationsTab, spinner: 'primary' },
-  { key: 'tickets', Component: TicketsTab, spinner: 'primary' },
+  // The old «تذاكر الدعم» screen is the problems page now (8 Oct 2026); its links land there.
+  { key: 'tickets', Component: CustomerInboxTab, spinner: 'primary' },
   { key: 'faq_manager', Component: FaqManagerTab, spinner: 'primary' },
   { key: 'nps_dashboard', Component: NpsDashboardTab, spinner: 'primary' },
   { key: 'daqqi_team', Component: DaqqiTeamTab, spinner: 'primary' },

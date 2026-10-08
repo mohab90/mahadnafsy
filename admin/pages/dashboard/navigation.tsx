@@ -288,7 +288,7 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     icon: Headphones,
     color: 'text-rose-500',
     items: [
-      { key: 'customer_inbox', label: 'Inbox خدمة العملاء', icon: Headphones },
+      { key: 'customer_inbox', label: 'مشاكل العملاء والتذاكر', icon: Headphones },
       // The section's team screen: figures only, so it can be granted on its own.
       { key: 'cx_team', label: 'أداء فريق خدمة العملاء', icon: Headphones },
       // Was 8 items (tickets/faq_manager/refund_requests/cert_requests/

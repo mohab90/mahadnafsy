@@ -78,7 +78,7 @@ test('staff and client replies persist timeline and outbox atomically', () => {
 
 test('support queues are department scoped and customer ownership follows canonical subscriber identity', () => {
   const route = fs.readFileSync(path.join(__dirname, '..', 'routes', 'support.js'), 'utf8');
-  const ui = fs.readFileSync(path.join(__dirname, '..', '..', 'admin', 'pages', 'dashboard', 'tabs', 'TicketsTab.tsx'), 'utf8');
+  const ui = fs.readFileSync(path.join(__dirname, '..', '..', 'admin', 'pages', 'dashboard', 'tabs', 'CustomerInboxTab.tsx'), 'utf8');
   assert.match(route, /const ticketScope =/);
   assert.match(route, /canAccessTicket\(req,/);
   assert.match(route, /findSubscriberForIdentity\(req\.tenantId, req\.user/);
@@ -90,6 +90,8 @@ test('support queues are department scoped and customer ownership follows canoni
     assert.ok(ROLE_PERMS[role].includes('manage_inbox'),
       `${role} can no longer open the support queue`);
   }
-  assert.match(ui, /urgent: 2, high: 4, medium: 24, low: 72/);
-  assert.match(ui, /closed_reason: closedReason/);
+  // The SLA is the server's (SLA_HOURS); the page reads the flag it sends.
+  assert.match(fs.readFileSync(path.join(__dirname, '..', 'lib', 'ticketRouting.js'), 'utf8'), /urgent: 2, high: 4, medium: 24, low: 72/);
+  assert.match(ui, /item\.sla \? item\.sla === 'overdue'/);
+  assert.match(ui, /closed_reason: reason/);
 });

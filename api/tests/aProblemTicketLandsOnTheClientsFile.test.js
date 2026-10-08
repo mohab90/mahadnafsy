@@ -17,6 +17,7 @@ const query = async (sql, params = []) => {
   const flat = String(sql).replace(/\s+/g, ' ').trim();
   if (/^SELECT id,email,name FROM subscribers/.test(flat)) return [[{ id: 's-1', email: 'c@example.com', name: 'ياسمين محمد' }]];
   if (/FROM staff/.test(flat)) return [[{ id: 'st-cs', name: 'منى' }]];
+  if (/^SELECT id FROM subscribers WHERE tenant_id=\? AND deleted_at IS NULL AND REGEXP_REPLACE/.test(flat)) return [[{ id: 's-1' }]];
   if (/^SELECT status,department,assigned_to,subject,subscriber_id/.test(flat)) return [[ticket]];
   if (/FROM ticket_replies WHERE ticket_id=\? AND tenant_id=\? AND author_type='STAFF'/.test(flat)) return [[{ body: 'اتكلمنا معاها واتنقلت لمحاضر تاني' }]];
   if (/^(INSERT|UPDATE)/.test(flat)) { writes.push({ sql: flat, params }); return [{ affectedRows: 1 }]; }
@@ -74,4 +75,24 @@ test('the transfer menu offers it, Dokki and online alike', () => {
   assert.match(modal, /<ProblemTicketForm subscriberId=\{row\.id\}/);
   const form = fs.readFileSync(path.join(__dirname, '../../admin/pages/dashboard/tabs/ProblemTicketForm.tsx'), 'utf8');
   assert.match(form, /category: 'client_problem'/);
+});
+
+test('a call taken by phone finds the client by the number', async () => {
+  const res = await call('post', '/api/admin/cs/tickets', { body: { phone: '0100 123 4567', name: 'ياسمين', subject: 'الفيديو مش بيفتح', body: 'من امبارح' } });
+  assert.equal(res.statusCode, 200);
+  const [entry] = historyOf();
+  assert.equal(entry.subscriber, 's-1', 'the ticket and its fix land on her file');
+});
+
+test('one page: the inbox carries what the old tickets screen showed', async () => {
+  const seen = [];
+  const original = require('../lib/db').pool.query;
+  require('../lib/db').pool.query = async (sql, params) => { seen.push(String(sql).replace(/\s+/g, ' ')); return original(sql, params); };
+  try {
+    await call('get', '/api/admin/cs/inbox', { query: {}, isSuperAdmin: true });
+  } finally { require('../lib/db').pool.query = original; }
+  const list = seen.find(sql => /FROM support_tickets t/.test(sql));
+  assert.match(list, /LEFT\(t\.body, 400\) AS body, t\.resolution_note, t\.subscriber_id/);
+  assert.match(list, /sb\.phone AS subscriber_phone, sb\.client_code/);
+  assert.match(list, /\(t\.department = 'support' OR t\.escalated_at IS NOT NULL\)/, 'what was escalated stays in view');
 });

@@ -238,8 +238,11 @@ router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermi
     // department — the administration — gets the support queue here, not sales'
     // questions or the accounts' refunds (each has its page). Department staff
     // keep their own queue: collection reads its billing tickets here.
+    // Since tickets and the inbox became one page (8 Oct 2026), «كل الأقسام»
+    // is a choice, and what was escalated to the administration stays in view.
     const unscoped = scope.sql === '1=1';
-    if (department || unscoped) { where.push('t.department = ?'); params.push(department || 'support'); }
+    if (department && department !== 'all') { where.push('t.department = ?'); params.push(department); }
+    else if (!department && unscoped) where.push("(t.department = 'support' OR t.escalated_at IS NOT NULL)");
     if (category) { where.push('t.category = ?'); params.push(category); }
     if (status === 'open') where.push(`t.status IN ('open','in_progress')`);
     else if (status) { where.push('t.status = ?'); params.push(status); }
@@ -259,11 +262,14 @@ router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermi
     const [rows] = await pool.query(
       `SELECT t.id, t.subject, t.subscriber_name, t.subscriber_email, t.status, t.priority,
               t.category, t.department, t.channel, t.assigned_to, t.sla_due_at,
-              t.first_response_at, t.escalated_at, t.created_at,
+              t.first_response_at, t.escalated_at, t.created_at, t.resolved_at,
+              LEFT(t.body, 400) AS body, t.resolution_note, t.subscriber_id,
+              sb.phone AS subscriber_phone, sb.client_code,
               s.name AS assignee_name,
               (SELECT COUNT(*) FROM ticket_replies tr WHERE tr.ticket_id = t.id AND tr.tenant_id=t.tenant_id) AS reply_count
          FROM support_tickets t
          LEFT JOIN staff s ON s.id = t.assigned_to AND s.tenant_id=t.tenant_id
+         LEFT JOIN subscribers sb ON sb.id = t.subscriber_id AND sb.tenant_id=t.tenant_id
         WHERE ${where.join(' AND ')}
         ORDER BY FIELD(t.status,'open','in_progress','resolved','closed'), t.created_at DESC
         LIMIT 300`, params);
@@ -274,7 +280,7 @@ router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermi
     // report a problem; the rest are in «رسائل التواصل», and a course or price
     // question is a lead as well (routes/public.js).
     let contacts = [];
-    if (!department && !category && !assignee && (!status || status === 'open')) {
+    if ((!department || department === 'all') && !category && !assignee && (!status || status === 'open')) {
       const [crows] = await pool.query(
         `SELECT id, name, email, phone, subject, message, status, priority, created_at
            FROM contact_messages
@@ -367,13 +373,23 @@ router.get('/api/admin/tickets/:id', requireAuth, requireAdminOrStaff, requirePe
 router.post('/api/admin/cs/tickets', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
   let conn;
   try {
-    const { category, priority, channel, subscriber_id } = req.body;
+    const { category, priority, channel } = req.body;
+    let subscriber_id = req.body.subscriber_id || null;
     let email = cleanText(req.body.email, 320) || null;
     let name = cleanText(req.body.name, 255) || null;
     const subject = cleanText(req.body.subject, TEXT_LIMITS.subject);
     const body = cleanText(req.body.body, TEXT_LIMITS.body);
     if (!subject || !body) return res.status(400).json({ error: 'subject and body required' });
     conn = await pool.getConnection(); await conn.beginTransaction();
+    // A call taken by phone: the number finds the client, so the ticket and
+    // its resolution land on their file like one opened from their row.
+    const phoneClause = !subscriber_id && phoneIdentityClause(req.body.phone);
+    if (phoneClause) {
+      const [[byPhone]] = await conn.query(
+        `SELECT id FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND ${phoneClause.sql} LIMIT 1`,
+        [req.tenantId, ...phoneClause.params]);
+      subscriber_id = byPhone?.id || null;
+    }
     if (subscriber_id) {
       const [[subscriber]] = await conn.query(
         'SELECT id,email,name FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',

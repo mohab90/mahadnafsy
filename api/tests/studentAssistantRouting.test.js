@@ -165,7 +165,9 @@ test('the widget asks first, and the inbox holds only the site\'s problems', () 
 
   const support = read('api/routes/support.js');
   const inbox = support.slice(support.indexOf("router.get('/api/admin/cs/inbox'"), support.indexOf('// ── STATS + AGENT WORKLOAD'));
-  assert.match(inbox, /if \(department \|\| unscoped\) \{ where\.push\('t\.department = \?'\); params\.push\(department \|\| 'support'\); \}/);
+  // The administration's default is the support queue, plus what was escalated
+  // to it (8 Oct 2026); «كل الأقسام» is a choice on the page.
+  assert.match(inbox, /else if \(!department && unscoped\) where\.push\("\(t\.department = 'support' OR t\.escalated_at IS NOT NULL\)"\);/);
   assert.match(inbox, /converted_ticket_id IS NULL AND subject = 'technical'/);
   const screen = read('admin/pages/dashboard/tabs/CustomerInboxTab.tsx');
   assert.match(screen, /type InboxSource = 'ticket' \| 'contact';/);
