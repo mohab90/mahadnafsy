@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
-import { Activity, BookOpen, CreditCard, FileBadge, Headphones, MessageCircle, PhoneCall, ShieldCheck, ShoppingBag, UserPlus } from 'lucide-react';
+import { Activity, BookOpen, CreditCard, FileBadge, Headphones, MessageCircle, PhoneCall, ShieldCheck, ShoppingBag, Star, UserPlus } from 'lucide-react';
 import type { CustomerTimelineEvent } from '../../types';
+import { RATING_QUESTIONS, ratingAverage, satisfactionOf, type RatingScores } from '../../lib/clientRatings';
 import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
 
 /**
@@ -27,12 +28,13 @@ const EVENT_LABEL: Record<string, string> = {
   contact_call: 'مكالمة', contact_whatsapp: 'واتساب', contact_note: 'ملاحظة', contact_meeting: 'مقابلة',
   contact_email: 'إيميل', contact_sms: 'رسالة SMS', contact_visit: 'زيارة',
   lead_created: 'وصل كعميل محتمل',
+  rating: 'تقييم',
   course_removed: 'مسح كورس', course_transferred: 'تحويل كورس', refund_requested: 'طلب استرداد',
   refund_approved: 'استرداد', refund_rejected: 'رفض استرداد', refund_handling: 'معالجة استرداد',
   create: 'إضافة', update: 'تعديل', delete: 'حذف',
 };
 
-type Filter = 'all' | 'money' | 'courses' | 'certificates' | 'contact' | 'support' | 'desk';
+type Filter = 'all' | 'money' | 'courses' | 'certificates' | 'contact' | 'support' | 'ratings' | 'desk';
 const FILTERS: Array<{ key: Filter; label: string; categories: CustomerTimelineEvent['category'][] }> = [
   { key: 'all', label: 'الكل', categories: [] },
   { key: 'money', label: 'الفلوس', categories: ['payment', 'order'] },
@@ -40,6 +42,7 @@ const FILTERS: Array<{ key: Filter; label: string; categories: CustomerTimelineE
   { key: 'certificates', label: 'الشهادات', categories: ['certificate'] },
   { key: 'contact', label: 'التواصل', categories: ['contact', 'lead'] },
   { key: 'support', label: 'الدعم', categories: ['support'] },
+  { key: 'ratings', label: 'التقييمات', categories: ['rating'] },
   { key: 'desk', label: 'تعديلات', categories: ['client'] },
 ];
 
@@ -52,6 +55,7 @@ const STYLE: Record<CustomerTimelineEvent['category'], { icon: typeof Activity; 
   contact: { icon: PhoneCall, dot: 'bg-sky-500' },
   lead: { icon: UserPlus, dot: 'bg-violet-500' },
   client: { icon: ShieldCheck, dot: 'bg-slate-500' },
+  rating: { icon: Star, dot: 'bg-yellow-500' },
 };
 
 const money = (value: unknown) => Number(value || 0).toLocaleString('ar-EG-u-nu-latn');
@@ -110,6 +114,16 @@ function describe(event: CustomerTimelineEvent): { head: string; sub: string[] }
     if (detail.code) sub.push(`كود ${detail.code}`);
     if (detail.reason) sub.push(String(detail.reason));
     return { head: `${label} · ${event.title}`, sub };
+  }
+  if (event.category === 'rating') {
+    const scores = detail as Partial<RatingScores>;
+    const average = ratingAverage(scores);
+    const mood = satisfactionOf(average);
+    sub.push(RATING_QUESTIONS.map(({ key, label: question }) => `${question} ${Number(scores[key] || 0)}/10`).join(' · '));
+    sub.push(`المتوسط ${average} — ${mood.emoji} ${mood.label}`);
+    if (detail.lecturer) sub.push(`المحاضر: ${detail.lecturer}`);
+    if (detail.note) sub.push(`ملاحظة: ${detail.note}`);
+    return { head: `${label}${detail.round ? ` روند ${detail.round}` : ''}${event.title ? ` · ${event.title}` : ''}`, sub };
   }
   if (event.category === 'order') return { head: `${label} · ${event.title}`, sub: detail.method ? [`طريقة الدفع: ${detail.method}`] : [] };
   return { head: event.title || label, sub: [] };

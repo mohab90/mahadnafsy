@@ -58,7 +58,7 @@ const SCREENS = [
   'online_clients', 'client', 'archived_clients', 'online_hub', 'online_team', 'installment_plans', 'subscriptions',
   'daqqi_schedule', 'daqqi_clients', 'daqqi_team', 'daqqi_accounting', 'daqqi_stats', 'waitlist',
   'tagamoa_schedule', 'tagamoa_clients', 'tagamoa_team', 'tagamoa_accounting', 'tagamoa_stats', 'tagamoa_waitlist',
-  'customer_inbox', 'whatsapp_web', 'team_inbox', 'cx_team', 'service_hub', 'refund_requests', 'consultations', 'cert_requests',
+  'customer_inbox', 'whatsapp_web', 'team_inbox', 'cx_team', 'ratings', 'service_hub', 'refund_requests', 'consultations', 'cert_requests',
   'financial', 'orders', 'financial_reports', 'recurring_expenses',
   'hr', 'staff_performance', 'hr_analytics', 'enps_dashboard', 'offboarding', 'instructors', 'join_us', 'interviews',
   'marketing_hub', 'campaigns', 'notif_inbox',

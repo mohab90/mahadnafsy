@@ -469,6 +469,7 @@ export function DashboardNavigation(props: Props) {
                   { key: 'daqqi_clients', label: 'عملائي', icon: UserCheck },
                   { key: 'leads', label: 'العملاء المحتملين', icon: UserSearch },
                   { key: 'orders', label: 'مدفوعاتي', icon: CreditCard },
+                  { key: 'ratings', label: 'التقييمات', icon: Star },
                   { key: 'staff_performance', label: 'إحصائياتي', icon: BarChart3 },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
@@ -496,6 +497,7 @@ export function DashboardNavigation(props: Props) {
                   { key: 'refund_requests', label: 'الاستردادات', icon: RotateCcw },
                   { key: 'cert_requests', label: 'الشهادات', icon: FileText },
                   { key: 'consultations', label: 'الاستشارات', icon: CalendarCheck },
+                  { key: 'ratings', label: 'التقييمات', icon: Star },
                   { key: 'service_hub', label: 'الدعم والجودة', icon: Star },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
@@ -514,6 +516,7 @@ export function DashboardNavigation(props: Props) {
                   { key: 'orders', label: 'الطلبات والمدفوعات', icon: CreditCard },
                   { key: 'daqqi_accounting', label: `حسابات ${staffBranchLabel}`, icon: Wallet },
                   { key: 'daqqi_stats', label: `إحصائيات فريق ${staffBranchLabel}`, icon: BarChart3 },
+                  { key: 'ratings', label: 'التقييمات', icon: Star },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 currentStaff={currentStaff} salesDataLoading={salesDataLoading}

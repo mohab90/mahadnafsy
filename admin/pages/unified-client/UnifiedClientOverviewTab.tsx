@@ -9,6 +9,7 @@ import type { SettlementCurrency } from '../../lib/branchCurrency';
 import { normalizeInterestLevel } from '../dashboard/tabs/leadUtils';
 import { clientItems } from '../../lib/agreedPrice';
 import { ClientJourneyTimeline } from './ClientJourneyTimeline';
+import { ClientSatisfactionCard } from './ClientSatisfactionCard';
 import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
 
 
@@ -243,6 +244,7 @@ export function UnifiedClientOverviewTab({
     
     
     
+                      {isSub && <ClientSatisfactionCard events={timeline} />}
                       {isSub && timeline.length > 0 && <ClientJourneyTimeline events={timeline} />}
 
                       {/* ─── Lead Status + Follow-up Banner (leads only) ─── */}

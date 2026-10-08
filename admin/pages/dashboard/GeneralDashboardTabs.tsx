@@ -17,6 +17,7 @@ import {
   BranchWorkspacesTab,
   ConsultationCalendarTab,
   CustomerInboxTab,
+  RatingsTab,
   WhatsAppWebTab,
   TeamInboxTab,
   ServiceHubTab,
@@ -96,6 +97,7 @@ function DaqqiStatsWithAttendance({ notify }: { notify: NotifyFn }) {
 
 const notifyTabs: NotifyTabEntry[] = [
   { key: 'customer_inbox', Component: CustomerInboxTab, spinner: 'primary' },
+  { key: 'ratings', Component: RatingsTab, spinner: 'primary' },
   { key: 'whatsapp_web', Component: WhatsAppWebTab, spinner: 'emerald' },
   { key: 'team_inbox', Component: TeamInboxTab, spinner: 'emerald' },
   { key: 'service_hub', Component: ServiceHubTab, spinner: 'primary' },

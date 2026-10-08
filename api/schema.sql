@@ -5982,3 +5982,27 @@ CREATE TABLE `subscriber_requests` (
   KEY `idx_subscriber_requests_status` (`tenant_id`,`status`,`created_at`),
   KEY `idx_subscriber_requests_by` (`tenant_id`,`requested_by`,`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- client_ratings: migration 258 — a housed client's rating of their round.
+CREATE TABLE `client_ratings` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `subscriber_id` varchar(36) NOT NULL,
+  `round_id` varchar(36) DEFAULT NULL,
+  `branch` varchar(32) DEFAULT NULL,
+  `course_id` varchar(36) DEFAULT NULL,
+  `instructor_name` varchar(255) DEFAULT NULL,
+  `instructor_score` tinyint(3) unsigned NOT NULL,
+  `material_score` tinyint(3) unsigned NOT NULL,
+  `delivery_score` tinyint(3) unsigned NOT NULL,
+  `branch_staff_score` tinyint(3) unsigned NOT NULL,
+  `note` text DEFAULT NULL,
+  `created_by_id` varchar(36) DEFAULT NULL,
+  `created_by_name` varchar(255) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `deleted_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_client_ratings_subscriber` (`tenant_id`,`subscriber_id`,`created_at`),
+  KEY `idx_client_ratings_round` (`tenant_id`,`round_id`),
+  KEY `idx_client_ratings_created` (`tenant_id`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

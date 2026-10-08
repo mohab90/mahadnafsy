@@ -62,8 +62,8 @@ test('customer service works both branches\' clients and its three desks, and no
   assert.match(nav, /const hasRoleBar = [^;]*\|\| isSupport\n/, 'without its own bar it gets the management one');
   const bar = nav.slice(nav.indexOf('{isSupport && ('), nav.indexOf('{/* ── Daqqi Manager horizontal nav'));
   const tabs = [...bar.matchAll(/\{ key: '([a-z_]+)'/g)].map(m => m[1]);
-  // «خليهم يشوفو الاستشارات … جزء الدعم والجودة كله».
-  assert.deepEqual(tabs, ['daqqi_schedule', 'daqqi_clients', 'online_clients', 'client', 'orders', 'customer_inbox', 'refund_requests', 'cert_requests', 'consultations', 'service_hub']);
+  // «خليهم يشوفو الاستشارات … جزء الدعم والجودة كله»; «التقييمات» since 8 Oct 2026.
+  assert.deepEqual(tabs, ['daqqi_schedule', 'daqqi_clients', 'online_clients', 'client', 'orders', 'customer_inbox', 'refund_requests', 'cert_requests', 'consultations', 'ratings', 'service_hub']);
   for (const p of ['view_consultations', 'manage_consultations', 'view_contacts', 'manage_contacts']) {
     assert.ok(perms.has(p), `support cannot open ${p}`);
   }

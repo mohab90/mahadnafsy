@@ -73,7 +73,8 @@ async function listCustomerTimeline(tenantId, subscriberId, db = pool, { staff =
       .map(({ actor: _actor, detail: _detail, ...row }) => row);
   }
 
-  // The desk's own record: what was said to the client, and the lead they were.
+  // The desk's own record: what was said to the client, the lead they were, and
+  // how they rated their round (routes/clientRatings.js).
   // A WhatsApp message the system logged on its own is the conversation, not a
   // contact somebody recorded, and stays out.
   const [desk = []] = await db.query(
@@ -90,9 +91,18 @@ async function listCustomerTimeline(tenantId, subscriberId, db = pool, { staff =
               l.assigned_sales_name,JSON_OBJECT('rep',l.assigned_sales_name,'branch',l.branch)
        FROM leads l
        WHERE l.tenant_id=? AND l.id=(SELECT lead_id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1)
+       UNION ALL
+       SELECT 'rating','rating',cr.id,cr.created_at,COALESCE(NULLIF(c.title_ar,''),c.title,''),NULL,NULL,NULL,
+              cr.created_by_name,
+              JSON_OBJECT('instructor',cr.instructor_score,'material',cr.material_score,'delivery',cr.delivery_score,
+                          'branchStaff',cr.branch_staff_score,'note',cr.note,'round',r.code,'lecturer',cr.instructor_name)
+       FROM client_ratings cr
+       LEFT JOIN courses c ON c.id=cr.course_id AND c.tenant_id=cr.tenant_id
+       LEFT JOIN daqqi_rounds r ON r.id=cr.round_id AND r.tenant_id=cr.tenant_id
+       WHERE cr.tenant_id=? AND cr.subscriber_id=? AND cr.deleted_at IS NULL
      ) desk
      ORDER BY occurred_at DESC LIMIT 100`,
-    [tenantId, subscriberId, subscriberId, tenantId, tenantId, subscriberId, tenantId]
+    [tenantId, subscriberId, subscriberId, tenantId, tenantId, subscriberId, tenantId, tenantId, subscriberId]
   ).catch(() => [[]]);
 
   const all = [...rows, ...(Array.isArray(desk) ? desk : [])]

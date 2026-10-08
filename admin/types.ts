@@ -515,7 +515,7 @@ export interface SubscriberItem {
 
 export interface CustomerTimelineEvent {
   /** 'client': a course deleted or transferred, a refund asked for or made (api/lib/clientHistory.js). */
-  category: 'order' | 'payment' | 'learning' | 'certificate' | 'support' | 'client' | 'contact' | 'lead';
+  category: 'order' | 'payment' | 'learning' | 'certificate' | 'support' | 'client' | 'contact' | 'lead' | 'rating';
   event_type: string;
   entity_id: string;
   occurred_at: string;

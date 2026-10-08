@@ -623,6 +623,7 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   consultations:      'view_consultations',
   community:          'view_community',
   daqqi_schedule:     'manage_daqqi',
+  ratings:            'manage_daqqi',
   daqqi_clients:      'manage_daqqi',
   // The team screens take either key: whoever runs the department still opens
   // them, and view_perf_* opens that one screen and nothing else in the

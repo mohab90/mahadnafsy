@@ -117,6 +117,7 @@ export type TabKey =
   | 'online_hub'
   | 'staff_performance'
   | 'cx_team'
+  | 'ratings'
   | 'tasks_board'
   | 'sales_team'
   | 'sales_reports'
@@ -258,6 +259,7 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'daqqi_schedule', label: 'الجدول والعملاء', icon: CalendarDays },
       { key: 'daqqi_clients', label: 'عملاء الدقي', icon: Users },
       { key: 'daqqi_team', label: 'فريق الدقي', icon: Users },
+      { key: 'ratings', label: 'تقييمات العملاء', icon: Star },
       { key: 'daqqi_accounting', label: 'محاسبة الدقي', icon: CreditCard },
       { key: 'daqqi_stats', label: 'الإحصائيات والحضور', icon: BarChart3 },
       { key: 'waitlist', label: 'انتظار الدقي', icon: Clock },
@@ -291,6 +293,8 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'customer_inbox', label: 'مشاكل العملاء والتذاكر', icon: Headphones },
       // The section's team screen: figures only, so it can be granted on its own.
       { key: 'cx_team', label: 'أداء فريق خدمة العملاء', icon: Headphones },
+      // «صفحه اسمها التقييمات لخدمه العملاء وللادارة ولفرع الدقي» (8 Oct 2026).
+      { key: 'ratings', label: 'التقييمات', icon: Star },
       // Was 8 items (tickets/faq_manager/refund_requests/cert_requests/
       // contacts/consultations/nps_dashboard each a separate page) — all
       // moved into ServiceHubTab as subtabs, unchanged, so nothing lost.

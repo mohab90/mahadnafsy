@@ -5,8 +5,8 @@
 // owns the rounds and the modals these buttons open, so the state stays there
 // and this row receives it.
 
-import React from 'react';
-import { X, UserPlus, Pencil, CalendarDays, UserCheck, ExternalLink, Wallet, Phone, ArrowLeftRight, Undo2 } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { X, UserPlus, Pencil, CalendarDays, UserCheck, ExternalLink, Wallet, Phone, ArrowLeftRight, Undo2, Star } from 'lucide-react';
 import type { Course, Bundle, CommunicationRecord, SubscriberItem, DaqqiRound } from '../../../../types';
 import type { DaqqiDraftType } from './daqqiScheduleUtils';
 import { waLink } from '../../../../lib/whatsappLink';
@@ -16,6 +16,25 @@ import type { DaqqiPayModalState } from './useDaqqiPaymentState';
 import type { PaymentDraft } from '../../../../components/PaymentModal';
 import { attendeeMoney, lastContactOf, roundMoney, calcCurrentLecture, getCurrentWeekKey, courseBundles } from './daqqiScheduleUtils';
 import { DAQQI_TIME_SLOT_COLORS as timeSlotColors, DAQQI_STATUS_COLORS as statusColorsMap } from './daqqiScheduleConfig';
+import { ClientRatingModal } from './ClientRatingModal';
+import { mysqlAdmin } from '../../../../lib/mysqlapi';
+import { satisfactionOf } from '../../../../lib/clientRatings';
+
+type RoundRatings = Record<string, { average: number; count: number; at: string; note: string | null }>;
+
+// Each housed client's latest rating, read when the round is opened: the
+// satisfaction mark on their row («موشر … عن مدي رضى العميل عن الخدمه»).
+function useRoundRatings(roundId: string | null) {
+  const [ratings, setRatings] = useState<RoundRatings>({});
+  const load = useCallback(() => {
+    if (!roundId) return;
+    mysqlAdmin.adminGet<RoundRatings>(`/admin/daqqi-rounds/${encodeURIComponent(roundId)}/ratings`)
+      .then(rows => setRatings(rows && typeof rows === 'object' ? rows : {}))
+      .catch(() => setRatings({}));
+  }, [roundId]);
+  useEffect(() => { load(); }, [load]);
+  return { ratings, reload: load };
+}
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -90,6 +109,8 @@ export function DaqqiRoundRow({
 }) {
                     const course = courses.find(c => c.id === round.courseId);
                     const isExpanded = daqqiExpandedId === round.id;
+                    const { ratings, reload: reloadRatings } = useRoundRatings(isExpanded ? round.id : null);
+                    const [rating, setRating] = useState<{ subscriberId: string; name: string } | null>(null);
                     const coursePrice = course?.price?.EGP ?? 0;
                     // «في الكورس نفسه قاري 0»: the round's figure left out what clients paid before
                     // the system, which is most of what Dokki's clients have paid. It is the sum of
@@ -273,6 +294,16 @@ export function DaqqiRoundRow({
                                                 {attSub?.clientCode && (
                                                   <button onClick={e => { e.stopPropagation(); navigate(`/client/${attSub.clientCode}`); }} className="text-[10px] font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded hover:bg-indigo-100 inline-block">#{attSub.clientCode}</button>
                                                 )}
+                                                {ratings[a.subscriberId] && (() => {
+                                                  const rated = ratings[a.subscriberId];
+                                                  const mood = satisfactionOf(rated.average);
+                                                  return (
+                                                    <span title={`آخر تقييم ${cairoDay(rated.at)}${rated.count > 1 ? ` · ${rated.count} تقييمات` : ''}${rated.note ? ` — ${rated.note}` : ''}`}
+                                                      className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${mood.cls}`}>
+                                                      {mood.emoji} {rated.average} · {mood.label}
+                                                    </span>
+                                                  );
+                                                })()}
                                               </div>
                                             </td>
                                             <td className="py-1.5 pr-3 text-gray-500 whitespace-nowrap">{a.bookedAt}</td>
@@ -341,6 +372,8 @@ export function DaqqiRoundRow({
                                                 ) : (
                                                   <span title="العميل من غير رقم" className="h-7 w-7 shrink-0 rounded bg-gray-50 text-gray-300 flex items-center justify-center"><WhatsAppIcon size={13} /></span>
                                                 )}
+                                                {/* «زر يظهر قبل زر نقل لروند اخري اسمه تقييم». */}
+                                                <button title="تقييم" onClick={e => { e.stopPropagation(); setRating({ subscriberId: a.subscriberId, name: a.name }); }} className={`${iconButton} hover:bg-yellow-50 hover:text-yellow-600`}><Star size={12} /></button>
                                                 <button title="نقل لروند أخرى" onClick={e => { e.stopPropagation(); setDaqqiTransferModal({ subscriberId: a.subscriberId, fromRoundId: round.id }); }} className={`${iconButton} hover:bg-amber-50 hover:text-amber-600`}><ArrowLeftRight size={12} /></button>
                                                 <button title="مسح من الروند" onClick={e => { e.stopPropagation(); handleRemoveAttendeeFromRound(round.id, a.subscriberId); }} className={`${iconButton} text-red-400 hover:bg-red-50 hover:text-red-600`}><X size={12} /></button>
                                               </div>
@@ -354,6 +387,12 @@ export function DaqqiRoundRow({
                               )}
                             </td>
                           </tr>
+                        )}
+                        {rating && (
+                          <tr><td className="p-0">
+                            <ClientRatingModal roundId={round.id} roundCode={round.code || ''} subscriberId={rating.subscriberId} subscriberName={rating.name}
+                              notify={notify} onClose={() => setRating(null)} onSaved={() => { setRating(null); reloadRatings(); }} />
+                          </td></tr>
                         )}
                       </React.Fragment>
                     );
