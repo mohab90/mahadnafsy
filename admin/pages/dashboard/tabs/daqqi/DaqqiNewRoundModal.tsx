@@ -10,7 +10,7 @@ import { Modal } from '../../../../../shared/ui/Modal';
 import { DAQQI_DAYS_OF_WEEK as daysOfWeek, DAQQI_TIME_SLOTS as timeSlotsList } from './daqqiScheduleConfig';
 import type { DaqqiDraftType } from './daqqiScheduleUtils';
 import { isEnrolledInCourse } from './daqqiScheduleUtils';
-import { isCollected } from '../../../../lib/money';
+import { courseMoneyFor } from '../../../../lib/agreedPrice';
 import { cairoDay } from '../../../../../shared/cairoDate';
 import { usePhysicalBranch } from '../../../../lib/physicalBranch';
 
@@ -170,8 +170,10 @@ export function DaqqiNewRoundModal({
                             تحديد الكل
                           </label>
                           {displayList.map(s => {
-                            const paid = (s.paymentHistory || []).reduce((sum, p) => isCollected(p) && p.currency === 'EGP' ? sum + Number(p.amount) : sum, 0);
-                            const cp = roundCourse?.price?.EGP ?? 0;
+                            // This course's line (or its track's), as everywhere else.
+                            const money = courseMoneyFor(s, roundCourse?.id || '', courses, bundles, 'EGP');
+                            const paid = money?.paid ?? 0;
+                            const cp = money?.expected || (roundCourse?.price?.EGP ?? 0);
                             const enrolledNames = enrolledLabels(courses, bundles, s.enrolledCourseIds || []);
                             const bookingDate = cairoDay(s.createdAt);
                             return (

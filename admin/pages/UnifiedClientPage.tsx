@@ -148,7 +148,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
     subInstallmentPlans,
     todayStr: _todayStr, soon3Str: _soon3Str, instOverdueCount, instSoonCount,
     leadPayments, leadPaidEGP, enrolledCourse, leadRemaining,
-    subHistory, confirmedHistory, subPaidTotals, bookingMap, bookedCourseIds,
+    subHistory, confirmedHistory, subPaidTotals, otherPaidTotals, bookingMap, bookedCourseIds,
     subRemainingEGP, discountBase,
     settlementCurrency, settlementLabel,
     handleAddLeadPayment, handlePayModalSubmit, openLegacyPaymentForm,
@@ -323,6 +323,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
               settlementCurrency={settlementCurrency}
               subPaidTotals={subPaidTotals}
               subRemainingEGP={subRemainingEGP}
+              otherPaid={otherPaidTotals[settlementCurrency]}
               settlementLabel={settlementLabel}
               onOpenDetails={() => setShowPayDetailModal(true)}
             />
@@ -672,7 +673,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
             } : undefined}
             paymentDetail={showPayDetailModal && isSub ? {
               open: true, subscriber, clientName, courses, bundles, settlementCurrency, paidTotals: subPaidTotals,
-              remainingEGP: subRemainingEGP, confirmedHistory,
+              remainingEGP: subRemainingEGP, otherPaid: otherPaidTotals[settlementCurrency], confirmedHistory,
               settlementLabel,
               onClose: () => setShowPayDetailModal(false),
             } : undefined}

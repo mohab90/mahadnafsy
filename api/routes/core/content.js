@@ -202,6 +202,33 @@ router.put('/api/admin/subscribers/:id/item-money', requireAuth, requireAdminOrS
     if (!scoped.subscriber) return res.status(scoped.status).json({ error: scoped.error });
     const bundleId = item.startsWith('bundle:') ? item.slice(7) : null;
     const courseId = bundleId ? null : item;
+    // «مدفوع قبل السيستم» is money that was never recorded here. On 7 Oct a 700
+    // was recorded as a payment and, 25 seconds later, typed in again as paid
+    // before the system: the course read 1,400 paid of 2,800 where 700 was. An
+    // amount added here that matches what was recorded on the course in the
+    // last two days is asked about first.
+    if (req.body?.priorPaid !== undefined && req.body?.confirmNotRecorded !== true) {
+      const [[client]] = await pool.query('SELECT crm_json FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [req.params.id, tenantId]);
+      let crm = {};
+      try { crm = typeof client?.crm_json === 'object' && client.crm_json ? client.crm_json : JSON.parse(client?.crm_json || '{}'); } catch { crm = {}; }
+      const added = Math.round((Number(req.body.priorPaid) || 0) - (Number(crm?.priorPaid?.[item]) || 0));
+      if (added > 0) {
+        const [recent] = await pool.query(
+          `SELECT amount FROM payments
+            WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND status='paid' AND amount > 0
+              AND ${bundleId ? 'bundle_id=?' : 'course_id=? AND bundle_id IS NULL'}
+              AND created_at >= NOW() - INTERVAL 2 DAY`,
+          [tenantId, req.params.id, bundleId || courseId]);
+        const amounts = recent.map(row => Math.round(Number(row.amount) || 0));
+        const sum = amounts.reduce((total, amount) => total + amount, 0);
+        if (amounts.includes(added) || (amounts.length > 1 && sum === added)) {
+          return res.status(409).json({
+            error: `الـ${added.toLocaleString('en-US')} دي متسجلة دفعة على السيستم من قريب. «مدفوع قبل السيستم» للفلوس اللي اتدفعت قبل ما نسجّل دفعاتها هنا بس — لو اتكتبت تاني هتتحسب مرتين.`,
+            code: 'PRIOR_PAID_LOOKS_RECORDED',
+          });
+        }
+      }
+    }
     await conn.beginTransaction();
     if (req.body?.expected !== undefined) {
       await setAgreedPrice(conn, { tenantId, subscriberId: req.params.id, courseId, bundleId, price: req.body.expected });

@@ -10,6 +10,7 @@ import type {
 } from '../../types';
 import { mapServerInstallmentPlan } from './installmentPlanMapper';
 import { bookingTierFields } from '../../lib/bookingIdentity';
+import { clientItems, isCoursePayment } from '../../lib/agreedPrice';
 
 interface Params {
   lead?: LeadItem;
@@ -117,8 +118,22 @@ export function useUnifiedClientPayments(params: Params) {
   );
   const subHistory = subscriber?.paymentHistory ?? [];
   const confirmedHistory = subHistory.filter(payment => !payment.status || payment.status === 'paid');
+  // One figure for the client's money everywhere on this page (8 Oct 2026:
+  // «شوية ظاهر ان المدفوع 700 وشوية 1400 … مينفعش نغلط ابدا في الفلوس»): what
+  // each course or track was paid — its payments and «مدفوع قبل السيستم» — and
+  // what it still owes, exactly as the online table reads it (clientItems). The
+  // top line used to add up the payment rows alone, certificates and books
+  // among them, against the courses' prices; the course lines below counted
+  // «مدفوع قبل السيستم» too. Money for anything else is its own line.
+  const items = subscriber ? clientItems(subscriber, courses, bundles, settlementCurrency) : [];
   const subPaidTotals = { EGP: 0, SAR: 0, USD: 0 };
-  confirmedHistory.forEach(payment => { subPaidTotals[payment.currency] += payment.amount; });
+  items.forEach(item => {
+    if (item.currency in subPaidTotals) subPaidTotals[item.currency as keyof typeof subPaidTotals] += item.paid;
+  });
+  const otherPaidTotals = { EGP: 0, SAR: 0, USD: 0 };
+  confirmedHistory.filter(payment => !isCoursePayment(payment)).forEach(payment => {
+    if (payment.currency in otherPaidTotals) otherPaidTotals[payment.currency] += payment.amount;
+  });
 
   const bookingMap: Record<string, UnifiedClientBooking> = {};
   confirmedHistory.forEach(payment => {
@@ -136,14 +151,9 @@ export function useUnifiedClientPayments(params: Params) {
         ...subscriber.enrolledCourseIds,
       ])]
     : [];
-  const subExpectedEGP = subscriber?.expectedTotals?.[settlementCurrency]
-    || Object.values(bookingMap).reduce(
-      (sum, booking) => booking.expectedEGP ? sum + booking.expectedEGP : sum,
-      0,
-    );
-  const subRemainingEGP = subExpectedEGP > 0
-    ? Math.max(0, subExpectedEGP - subPaidTotals[settlementCurrency] - (subscriber?.discount || 0))
-    : 0;
+  const settled = items.filter(item => item.currency === settlementCurrency);
+  const subExpectedEGP = settled.reduce((sum, item) => sum + item.expected, 0);
+  const subRemainingEGP = settled.reduce((sum, item) => sum + item.remaining, 0);
   const todayStr = today();
   const soon3Str = cairoDaysAhead(3);
   const instOverdueCount = serverInstallmentPlans
@@ -306,7 +316,7 @@ export function useUnifiedClientPayments(params: Params) {
     subInstallmentPlans: serverInstallmentPlans,
     todayStr, soon3Str, instOverdueCount, instSoonCount,
     leadPayments, leadPaidEGP, enrolledCourse, leadRemaining,
-    subHistory, confirmedHistory, subPaidTotals, bookingMap, bookedCourseIds,
+    subHistory, confirmedHistory, subPaidTotals, otherPaidTotals, bookingMap, bookedCourseIds,
     subExpectedEGP, subRemainingEGP,
     discountBase: subExpectedEGP || subPaidTotals[settlementCurrency],
     settlementCurrency, settlementLabel,

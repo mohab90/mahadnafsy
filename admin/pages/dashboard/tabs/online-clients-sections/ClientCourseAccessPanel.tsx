@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ArrowLeftRight, CalendarClock, Check, Infinity as InfinityIcon, Loader2, Lock, Plus, RotateCcw, Trash2, Unlock } from 'lucide-react';
 
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
+import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 import { promptDialog } from '../../../../../shared/ui/promptDialog';
 import { Modal } from '../../../../../shared/ui/Modal';
 import { CAIRO_TIME_ZONE, cairoDateOnly } from '../../../../../shared/cairoDate';
@@ -59,7 +60,7 @@ const api = async (url: string, method: string, body?: unknown) => {
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  if (!res.ok) throw Object.assign(new Error(data.error || `HTTP ${res.status}`), { code: data.code as string | undefined });
   return data;
 };
 
@@ -296,9 +297,23 @@ export const ClientCourseAccessPanel: React.FC<{ subscriber: SubscriberItem; not
               </div>
               <button
                 disabled={moneyBusy || !(Number(price) > 0)}
-                onClick={() => run(head.item, () => api(`${base}/item-money`, 'PUT', {
-                  item: head.item, expected: Number(price), priorPaid: Number(prior) || 0,
-                }), 'اتحفظ السعر والمدفوع')}
+                onClick={() => run(head.item, async () => {
+                  const body = { item: head.item, expected: Number(price), priorPaid: Number(prior) || 0 };
+                  try {
+                    return await api(`${base}/item-money`, 'PUT', body);
+                  } catch (error) {
+                    // The same money typed in twice — recorded as a payment, then
+                    // as paid before the system — is asked about, not saved.
+                    if ((error as { code?: string }).code !== 'PRIOR_PAID_LOOKS_RECORDED') throw error;
+                    const sure = await confirmDialog({
+                      title: 'الفلوس دي متسجلة قبل كده؟',
+                      message: `${(error as Error).message}\n\nمتأكد إن دي فلوس تانية اتدفعت قبل السيستم؟`,
+                      confirmLabel: 'أيوه فلوس تانية',
+                    });
+                    if (!sure) throw new Error('محفظتش — «مدفوع قبل السيستم» زي ما هو');
+                    return api(`${base}/item-money`, 'PUT', { ...body, confirmNotRecorded: true });
+                  }
+                }, 'اتحفظ السعر والمدفوع')}
                 className={`${btn} justify-center bg-indigo-600 text-white hover:bg-indigo-700 py-1.5`}
               >
                 {moneyBusy ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />} حفظ السعر والمدفوع

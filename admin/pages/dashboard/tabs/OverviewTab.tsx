@@ -10,7 +10,8 @@ import { AnalyticsTab } from '../lazyTabs';
 import { formatWaPhone } from '../dashboardShared';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { useSubscriberStats } from '../hooks/useSubscriberStats';
-import { useCrmData } from '../../../context/siteDataSlices';
+import { useCrmData, useStaticData } from '../../../context/siteDataSlices';
+import { clientItems } from '../../../lib/agreedPrice';
 import type { TabKey } from '../navigation';
 import { isCollected, toEgp } from '../../../lib/money';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
@@ -72,6 +73,7 @@ export default function OverviewTab({
   onlineTeamMembers, onlineUsers, kpiModal, setKpiModal,
   notify, setActiveTab, navigate,
 }: Props) {
+  const { bundles } = useStaticData();
               // The headline lead figure and the percentages under it describe
               // the whole table, so they come from the database aggregate rather
               // than from however much of the array is loaded. Falls back to the
@@ -323,18 +325,17 @@ export default function OverviewTab({
 
                     {/* ── Pending installments widget ─────────────────────── */}
                     {(() => {
-                      const pendingSubs = mySubs.filter(s => {
-                        const expEGP = s.expectedTotals?.EGP ||
-                          (s.paymentHistory || []).filter(p => isCollected(p) && !p.isInstallment && p.currency === 'EGP').reduce((a, p) => a + (p.courseExpected || 0), 0);
-                        if (!expEGP) return false;
-                        const paidEGP = (s.paymentHistory || []).filter(p => isCollected(p) && !p.isInstallment && p.currency === 'EGP').reduce((a, p) => a + (Number(p.amount) || 0), 0);
-                        return paidEGP < expEGP;
-                      }).map(s => {
-                        const expEGP = s.expectedTotals?.EGP ||
-                          (s.paymentHistory || []).filter(p => isCollected(p) && !p.isInstallment && p.currency === 'EGP').reduce((a, p) => a + (p.courseExpected || 0), 0);
-                        const paidEGP = (s.paymentHistory || []).filter(p => isCollected(p) && !p.isInstallment && p.currency === 'EGP').reduce((a, p) => a + (Number(p.amount) || 0), 0);
-                        return { ...s, _remaining: expEGP - paidEGP };
-                      }).sort((a, b) => b._remaining - a._remaining);
+                      // What each client still owes, as their page and the online
+                      // table read it (clientItems). It counted only the first
+                      // payment of a booking — every instalment left out — and
+                      // none of «مدفوع قبل السيستم», so a client paying in
+                      // instalments read as owing all of it (8 Oct 2026).
+                      const pendingSubs = mySubs.map(s => ({
+                        ...s,
+                        _remaining: clientItems(s, courses, bundles, 'EGP')
+                          .filter(item => item.currency === 'EGP')
+                          .reduce((sum, item) => sum + item.remaining, 0),
+                      })).filter(s => s._remaining > 0).sort((a, b) => b._remaining - a._remaining);
                       if (pendingSubs.length === 0) return null;
                       return (
                         <article className="bg-white border border-amber-200 rounded-2xl p-6 shadow-sm">

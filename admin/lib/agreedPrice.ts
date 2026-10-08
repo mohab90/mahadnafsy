@@ -18,7 +18,7 @@ export const itemKeyOf = (payment: Pick<PaymentHistoryEntry, 'courseId' | 'bundl
 // A row that names a course or track and is typed «other» is that course's money:
 // 'other' is what the API says for a row whose payment_type was never set, and
 // leaving it out turned an old booking into «المدفوع 0».
-const isCoursePayment = (payment: PaymentHistoryEntry) => !payment.paymentType || payment.paymentType === 'course'
+export const isCoursePayment = (payment: PaymentHistoryEntry) => !payment.paymentType || payment.paymentType === 'course'
   || (payment.paymentType === 'other' && Boolean(payment.courseId || payment.bundleId));
 
 /** What has come in for an item, optionally in one currency. */
@@ -111,4 +111,22 @@ export function agreedPriceFor(
     .reduce((max, payment) => Math.max(max, Number(payment.courseExpected) || 0), 0);
   if (booked > 0) return Math.max(booked, paidFor(subscriber, item, currency));
   return catalogue;
+}
+
+/**
+ * What one client paid for one course and still owes on it: the course's own
+ * line, or the line of the track that holds it — as the table and the client's
+ * page read it. The Dokki pickers summed every EGP payment the client ever made,
+ * of any course or kind, ignored «مدفوع قبل السيستم» and set it against the
+ * catalogue price (8 Oct 2026).
+ */
+export function courseMoneyFor(
+  subscriber: Parameters<typeof clientItems>[0],
+  courseId: string,
+  courses: Parameters<typeof clientItems>[1], bundles: Parameters<typeof clientItems>[2], currency = 'EGP',
+): ClientItem | null {
+  const items = clientItems(subscriber, courses, bundles, currency);
+  return items.find(item => item.item === courseId)
+    || items.find(item => item.isTrack && (bundles.find(bundle => `bundle:${bundle.id}` === item.item)?.courses || []).some(course => course.id === courseId))
+    || null;
 }

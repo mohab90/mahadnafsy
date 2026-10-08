@@ -17,6 +17,8 @@ interface UnifiedClientPaymentDetailModalProps {
   settlementCurrency: SettlementCurrency;
   paidTotals: PaidTotals;
   remainingEGP: number;
+  /** Paid for certificates, books, carnets — not part of the courses' balance. */
+  otherPaid: number;
   settlementLabel: string;
   confirmedHistory: PaymentHistoryEntry[];
   onClose: () => void;
@@ -31,6 +33,7 @@ export const UnifiedClientPaymentDetailModal: React.FC<UnifiedClientPaymentDetai
   settlementCurrency,
   paidTotals,
   remainingEGP,
+  otherPaid,
   settlementLabel,
   confirmedHistory,
   onClose,
@@ -70,6 +73,13 @@ export const UnifiedClientPaymentDetailModal: React.FC<UnifiedClientPaymentDetai
               </div>
             )}
           </div>
+
+      {otherPaid > 0 && (
+        <div className="mb-3 flex items-center justify-between rounded-xl border border-violet-100 bg-violet-50 px-3 py-1.5">
+          <span className="text-xs text-violet-700">مدفوعات تانية (شهادات، كتب، كارنيهات) — مش من حساب الكورسات</span>
+          <span className="font-extrabold text-violet-800 text-xs">{otherPaid.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel}</span>
+        </div>
+      )}
           <div className="space-y-2">
             <p className="text-xs font-extrabold text-gray-500 uppercase tracking-wider">تفاصيل كل كورس</p>
             {/* A track is one item with its own price and money, as everywhere but the videos. */}

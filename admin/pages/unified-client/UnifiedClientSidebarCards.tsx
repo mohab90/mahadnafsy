@@ -104,6 +104,8 @@ type FinancialCardProps = {
   settlementCurrency: SettlementCurrency;
   subPaidTotals: { EGP: number; SAR: number; USD: number };
   subRemainingEGP: number;
+  /** Paid for certificates, books, carnets — not part of the courses' balance. */
+  otherPaid: number;
   settlementLabel: string;
   onOpenDetails: () => void;
 };
@@ -115,6 +117,7 @@ export function UnifiedClientSidebarFinancialCard({
   settlementCurrency,
   subPaidTotals,
   subRemainingEGP,
+  otherPaid,
   settlementLabel,
   onOpenDetails,
 }: FinancialCardProps) {
@@ -146,6 +149,13 @@ export function UnifiedClientSidebarFinancialCard({
           </div>
         )}
       </div>
+
+      {otherPaid > 0 && (
+        <div className="mb-3 flex items-center justify-between rounded-xl border border-violet-100 bg-violet-50 px-3 py-1.5">
+          <span className="text-xs text-violet-700">مدفوعات تانية (شهادات، كتب، كارنيهات)</span>
+          <span className="font-extrabold text-violet-800 text-xs">{otherPaid.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel}</span>
+        </div>
+      )}
       <div className="space-y-1.5">
         {/* A track is one line, with the money paid for it — not its courses each «لا مدفوعات». */}
         {clientItems(subscriber, courses, bundles, settlementCurrency).map(held => {

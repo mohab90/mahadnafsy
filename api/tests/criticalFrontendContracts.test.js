@@ -727,7 +727,10 @@ test('unified client finance computes balances and certificates in the branch se
 
   assert.match(drafts, /options\.currency \|\| currencyForBranch\(options\.branch\)/);
   assert.match(payments, /payment\.currency === settlementCurrency/);
-  assert.match(payments, /expectedTotals\?\.\[settlementCurrency\]/);
+  // The page's paid and remaining are its items' (clientItems), in the branch's
+  // currency — the same lines the course list shows (8 Oct 2026).
+  assert.match(payments, /clientItems\(subscriber, courses, bundles, settlementCurrency\)/);
+  assert.match(payments, /items\.filter\(item => item\.currency === settlementCurrency\)/);
   assert.match(payments, /subPaidTotals\[settlementCurrency\]/);
   // The «مدفوع قديم» dialog used to write `currency: settlementCurrency`
   // itself. It is the shared payment screen now, opened through

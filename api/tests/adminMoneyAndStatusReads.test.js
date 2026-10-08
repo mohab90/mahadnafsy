@@ -68,7 +68,9 @@ test('a refunded payment is never counted as money collected', () => {
 
   // Denominator, so a scan that stopped matching is visible rather than
   // reported as a clean bill.
-  assert.ok(paymentSums >= 18, `expected the admin's payment sums, found ${paymentSums}`);
+  // 15 since 8 Oct 2026: the Dokki pickers and «أقساط معلقة» read a client's
+  // money through clientItems (lib/agreedPrice.ts) instead of summing rows.
+  assert.ok(paymentSums >= 15, `expected the admin's payment sums, found ${paymentSums}`);
   assert.deepEqual(unguarded, [],
     'these sum payments without asking whether the money was collected: ' + unguarded.join(', '));
 
