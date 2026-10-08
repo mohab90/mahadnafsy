@@ -21,7 +21,7 @@
 // the client's own price, else what their booking recorded (never below what was
 // paid for it), else the catalogue.
 
-const { resolveAgreed } = require('./agreedPrice');
+const { isItemPaymentType, resolveAgreed } = require('./agreedPrice');
 
 const CHUNK = 500;
 
@@ -41,7 +41,7 @@ const inList = ids => ids.map(() => '?').join(',');
 // A payment row that is money for a course or a track: what the clients screen
 // calls a course payment. A certificate or a book that happens to carry a course
 // id is not part of what the client owes for the course.
-const isItemPayment = payment => !payment.paymentType || ['COURSE', 'BUNDLE', 'OTHER'].includes(String(payment.paymentType).toUpperCase());
+const isItemPayment = payment => isItemPaymentType(payment.paymentType);
 const itemOf = payment => (payment.bundleId ? `bundle:${payment.bundleId}` : String(payment.courseId || ''));
 
 /**

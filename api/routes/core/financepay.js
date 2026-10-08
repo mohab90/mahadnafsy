@@ -5,6 +5,7 @@ const express = require('express');
 const router = express.Router();
 const logger = require('../../lib/logger');
 const { pool } = require('../../lib/db');
+const { isItemPaymentType } = require('../../lib/agreedPrice');
 const { queuePaymentReceipt } = require('../../lib/paymentReceipt');
 const { sendWhatsApp } = require('../../lib/whatsapp');
 const { logPaymentAudit, postPaymentJournal } = require('../../lib/finance');
@@ -145,8 +146,10 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
 
     if (becomingPaid && payment.subscriber_id) {
       const courseIds = [];
-      if (payment.course_id) courseIds.push(payment.course_id);
-      if (payment.bundle_id) {
+      // Only course money opens a course: a carnet names one and is not it.
+      const opensItem = isItemPaymentType(payment.payment_type);
+      if (opensItem && payment.course_id) courseIds.push(payment.course_id);
+      if (opensItem && payment.bundle_id) {
         const [bundleCourses] = await conn.query(
           `SELECT bc.course_id FROM bundle_courses bc
            JOIN bundles b ON b.id=bc.bundle_id AND b.tenant_id=bc.tenant_id

@@ -678,7 +678,9 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     // A digit too many would record millions against a course with thousands left.
     // Asked, not refused: a client paying ahead is real.
     const chosen = enrolledOptions.find(option => option.cid === d.courseId);
-    const left = chosen && _effPx > 0 ? Math.max(0, _effPx - chosen.paid) : null;
+    // A carnet or a book names «الكورس المرتبط» without paying for it, so it is
+    // never «over the remaining» on that course (8 Oct 2026).
+    const left = d.paymentType === 'course' && chosen && _effPx > 0 ? Math.max(0, _effPx - chosen.paid) : null;
     if (!upgrading && left !== null && _amtPaid > left && !await confirmDialog({
       title: 'المبلغ أكبر من المتبقي',
       message: `${_amtPaid.toLocaleString('ar-EG-u-nu-latn')} ${d.currency} أكبر من المتبقي على «${chosen?.label}» (${left.toLocaleString('ar-EG-u-nu-latn')}). تسجّلها كده؟`,

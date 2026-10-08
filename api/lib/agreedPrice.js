@@ -174,4 +174,13 @@ function priorPaidTotal(crmJson) {
   return Object.values(parseCrm(crmJson).priorPaid || {}).reduce((sum, value) => sum + (Number(value) || 0), 0);
 }
 
-module.exports = { agreedPrice, itemBalances, itemKey, priorPaidTotal, releaseItemMoney, resolveAgreed, setAgreedPrice, setPriorPaid };
+// What counts as paying for the course or track a payment names. A carnet, a
+// book, a certificate or a consultation names the client's course too — «الكورس
+// المرتبط» — and is not the course's money (8 Oct 2026: «اشتراك كارنيه … كأنه
+// لسه بيزود الفلوس علي فلوس الكورس»): it opened the course in full, joined its
+// instalments and read as over the remaining balance. OTHER with an item is old
+// course money (admin/lib/agreedPrice.ts isCoursePayment).
+const ITEM_PAYMENT_TYPES = Object.freeze(['COURSE', 'BUNDLE', 'OTHER']);
+const isItemPaymentType = type => !type || ITEM_PAYMENT_TYPES.includes(String(type).toUpperCase());
+
+module.exports = { ITEM_PAYMENT_TYPES, isItemPaymentType, agreedPrice, itemBalances, itemKey, priorPaidTotal, releaseItemMoney, resolveAgreed, setAgreedPrice, setPriorPaid };

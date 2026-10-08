@@ -20,7 +20,7 @@ const { requireAuth, requireAdminOrStaff, requirePermission } = require('../midd
 const { safeDateOnly } = require('../lib/dates');
 const { branchIdForBranch, branchForId } = require('../lib/branches');
 const { assertWritable } = require('../lib/periodLock');
-const { agreedPrice, setAgreedPrice } = require('../lib/agreedPrice');
+const { agreedPrice, isItemPaymentType, setAgreedPrice } = require('../lib/agreedPrice');
 const { pickCollectionOfficer, subscriberMarket } = require('../lib/collectionDistribution');
 const { hasPermission } = require('../constants/permissions');
 const { applyCertificatePayment } = require('../lib/certificatePayments');
@@ -310,6 +310,8 @@ async function recordSubscriberPayment(req, res) {
     // Only a course is paid in instalments: a carnet or a book sent as one was
     // stored as a course instalment and counted in every «أقساط» figure.
     if (safeType !== 'COURSE') payment.isInstallment = false;
+    // A carnet or a book still names «الكورس المرتبط»; it is not that course's money.
+    const paysForItem = isItemPaymentType(safeType);
     const certType = sanitize(payment.certType || payment.cert_type || '', 100) || null;
     const rawCertificateRequestId = String(
       payment.certId || payment.cert_id || payment.certReqId || payment.certificate_request_id || ''
@@ -453,7 +455,7 @@ async function recordSubscriberPayment(req, res) {
     const clientPrice = payment.customPrice === true && courseExpected != null
       && (req.isSuperAdmin || hasPermission(req.staffRecord, 'set_client_price'));
     let tierPrice = null;
-    if (priceTier && (courseId || bundleId)) {
+    if (priceTier && paysForItem && (courseId || bundleId)) {
       if (!PRICE_TIER_KEYS.has(priceTier)) return res.status(400).json({ error: 'Unknown price tier', code: 'PRICE_TIER_UNKNOWN' });
       tierPrice = await resolveTierPrice(pool, {
         tenantId: paymentTenantId,
@@ -490,7 +492,7 @@ async function recordSubscriberPayment(req, res) {
       bookingIdentity = checked.identity;
     }
     let resolvedExpected = clientPrice ? courseExpected : tierPrice ? tierPrice.price : courseExpected;
-    if (resolvedExpected == null && (courseId || bundleId)) {
+    if (resolvedExpected == null && paysForItem && (courseId || bundleId)) {
       // Read through the pool: this runs before the transaction opens, and the
       // price is not part of what this write must see consistently.
       resolvedExpected = await agreedPrice(pool, {
@@ -820,7 +822,7 @@ async function recordSubscriberPayment(req, res) {
     // Auto-create enrollment when payment is paid and a course/bundle is specified
     // access_type = 'full' only if NOT an installment payment AND amount covers the full expected price
     // access_type = 'limited' (preview-only) for partial/installment payments until fully paid
-    if (isPaid && (courseId || bundleId)) {
+    if (isPaid && paysForItem && (courseId || bundleId)) {
       let enrollAccessType = 'full';
       let enrollPaidRatio = null;
       if (payment.isInstallment) {

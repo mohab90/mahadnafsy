@@ -30,6 +30,7 @@ async function resolvePaymentAccess({
       WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL
         AND status='paid' AND id<>?
         AND course_id <=> ? AND bundle_id <=> ?
+        AND payment_type IN ('COURSE','BUNDLE','OTHER')
       GROUP BY currency`,
     [tenantId, subscriberId, currentPaymentId, courseId, bundleId],
   );
