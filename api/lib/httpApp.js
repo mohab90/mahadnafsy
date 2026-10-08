@@ -59,15 +59,15 @@ function csrfOriginGuard() {
       const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
       if (host && new URL(origin).host.toLowerCase() === host) return next();
     } catch (_) { /* a malformed Origin is refused below */ }
-    // Report-only unless CSRF_ORIGIN_ENFORCE=true. Behind the reference nginx the
-    // Host the API sees is the upstream's, not the site's, so «same origin as the
-    // host asked» cannot be told from here, and a deployment whose ALLOWED_ORIGINS
-    // does not list its own admin and site origins would have every write refused
-    // the moment this shipped. Turn enforcement on after the log shows no
-    // legitimate origin being reported (set ALLOWED_ORIGINS to the site's and the
-    // admin's https origins first).
-    if (String(process.env.CSRF_ORIGIN_ENFORCE || '').toLowerCase() !== 'true') {
-      require('./logger').warn('[csrf] write from an unlisted origin (not blocked: CSRF_ORIGIN_ENFORCE is off)', {
+    // Refused unless CSRF_ORIGIN_ENFORCE=false (MED-12 of the 7 Oct 2026 audit).
+    // It shipped report-only: behind the reference nginx the Host the API sees
+    // is the upstream's, so a deployment whose ALLOWED_ORIGINS did not list its
+    // own admin and site origins would have had every write refused. Neither
+    // production nor staging logged one such write from August to October, and
+    // production turned enforcement on. A new deployment that needs the old
+    // behaviour while it lists its origins sets the variable to false.
+    if (String(process.env.CSRF_ORIGIN_ENFORCE || '').toLowerCase() === 'false') {
+      require('./logger').warn('[csrf] write from an unlisted origin (not blocked: CSRF_ORIGIN_ENFORCE=false)', {
         origin, method: req.method, path: req.path,
       });
       return next();

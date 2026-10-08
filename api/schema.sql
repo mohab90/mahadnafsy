@@ -4327,6 +4327,7 @@ CREATE TABLE `privacy_requests` (
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `promo_codes` (
   `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `code` varchar(50) NOT NULL,
   `description` varchar(255) DEFAULT NULL,
   `discount_type` enum('percent','fixed') NOT NULL DEFAULT 'percent',
@@ -4339,7 +4340,7 @@ CREATE TABLE `promo_codes` (
   `created_by` varchar(255) DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
-  UNIQUE KEY `code` (`code`),
+  UNIQUE KEY `uq_promo_tenant_code` (`tenant_id`,`code`),
   KEY `idx_promo_active` (`active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;

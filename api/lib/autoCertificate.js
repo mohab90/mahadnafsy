@@ -20,9 +20,10 @@ const logger = require('./logger');
 const { pool } = require('./db');
 const { createNotification } = require('./notification');
 const { completeCourse } = require('./courseCompletion');
+const { PAID_SHARE } = require('./coursePaid');
 
 const WATCHED_THRESHOLD = 50;   // percent of the course's published lectures
-const PAID_THRESHOLD = 0.95;    // share of the course price
+const PAID_THRESHOLD = PAID_SHARE; // share of the course price — one rule with staff completion and requests
 const BATCH = 500;
 
 /**

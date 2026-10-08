@@ -136,26 +136,17 @@ test('admin leave UI consumes the actual API field name `type`', () => {
   assert.match(hrLeavesPanel, /leave.type/);
 });
 
-test('attendance self service is idempotent and checkout cannot precede check-in', () => {
-  // This used to pin the clock to DATE_FORMAT(NOW(),'%H:%i') — which is the UTC
-  // hour, because the server runs in UTC. It recorded a 09:00 arrival as 06:00
-  // and, compared against a 09:00 shift, marked everyone who came before noon as
-  // on time. The assertion was pinning the bug. The clock is Cairo's now, and the
-  // database's hour must not come back.
-  assert.match(attendance, /const cairo = cairoClock\(\);/);
-  assert.match(attendance, /work_time: cairo\.time/);
+test('there is no self check-in: attendance is the device import and the HR screen (LOW-19)', () => {
+  // The self check-in and check-out let an employee mark themselves present and
+  // on time from anywhere; no screen called them. Removed 8 Oct 2026. The
+  // database's (UTC) hour must still never be the clock.
+  assert.doesNotMatch(attendance, /router\.(get|post)\('\/api\/me\/hr\/attendance/);
   assert.doesNotMatch(attendance, /HOUR\(NOW\(\)\)/);
   assert.doesNotMatch(attendance, /DATE_FORMAT\(NOW\(\)/);
-  assert.match(attendance, /SELECT check_in,status,late_minutes FROM attendance_logs/);
-  assert.match(attendance, /ON DUPLICATE KEY UPDATE[\s\S]*check_in=COALESCE\(check_in,VALUES\(check_in\)\)/);
-  assert.match(attendance, /check_out IS NULL/);
-  assert.match(attendance, /SELECT check_in,check_out,total_hours FROM attendance_logs[\s\S]{0,180}FOR UPDATE/);
-  assert.match(attendance, /if \(!row\?\.check_in\) \{[\s\S]{0,180}conn\.rollback\(\)/);
 });
 
-test('approved leave attendance cannot be overwritten by manual entry, import or self check-in', () => {
+test('approved leave attendance cannot be overwritten by manual entry or import', () => {
   assert.match(attendance, /LEAVE_ATTENDANCE_LOCKED/);
-  assert.match(attendance, /ATTENDANCE_DAY_LOCKED/);
   assert.doesNotMatch(attendance, /VALID_STATUSES = \[[^\]]*'LEAVE'/);
   assert.match(attendance, /leave\.type === 'PERMISSION' \? 'HALF_DAY' : 'LEAVE'/);
   assert.match(payroll, /req\.body\.csv \?\? req\.body\.csvText/);

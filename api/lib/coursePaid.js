@@ -1,41 +1,53 @@
 'use strict';
 
-/**
- * Has this client paid for this course — by a payment row on it or on a track
- * that holds it, or by «مدفوع قبل السيستم» (crm_json.priorPaid, the money of an
- * old sheet's «المحصل», counted on every balance by lib/agreedPrice.js) for the
- * course or for such a track.
- *
- * The certificate request and the course completion each asked for a payment
- * row and nothing else. Most Dokki clients' money is priorPaid with no payment
- * row (1,609 of 1,919 on 3 October): they had paid and finished, and were told
- * to pay first — by the portal, and by the completion staff record by hand.
- * A refund row (negative, status 'paid', same course) is not a payment.
- */
-async function hasPaidForCourse(db, { tenantId, subscriberId, courseId }) {
-  const [[paid]] = await db.query(
-    `SELECT 1 AS ok FROM payments p
-      WHERE p.subscriber_id=? AND p.tenant_id=? AND p.status='paid' AND p.deleted_at IS NULL AND p.amount > 0
-        AND (p.course_id=? OR EXISTS (
-          SELECT 1 FROM bundle_courses bc WHERE bc.bundle_id=p.bundle_id AND bc.course_id=? AND bc.tenant_id=p.tenant_id
-        )) LIMIT 1`,
-    [subscriberId, tenantId, courseId, courseId]
-  );
-  if (paid) return true;
-  const [[client]] = await db.query('SELECT crm_json FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriberId, tenantId]);
-  let prior = {};
-  try {
-    const crm = client?.crm_json && typeof client.crm_json === 'object' ? client.crm_json : JSON.parse(client?.crm_json || '{}');
-    prior = (crm && crm.priorPaid) || {};
-  } catch { prior = {}; }
-  if (Number(prior[String(courseId)]) > 0) return true;
-  const tracks = Object.keys(prior).filter(key => key.startsWith('bundle:') && Number(prior[key]) > 0).map(key => key.slice(7));
-  if (!tracks.length) return false;
-  const [[inTrack]] = await db.query(
-    'SELECT 1 AS ok FROM bundle_courses WHERE tenant_id=? AND course_id=? AND bundle_id IN (?) LIMIT 1',
-    [tenantId, courseId, tracks]
-  );
-  return Boolean(inTrack);
+const { agreedPrice } = require('./agreedPrice');
+
+// Share of the agreed price that must be in before a course counts as paid for —
+// the same for the automatic certificate (lib/autoCertificate.js), a completion
+// recorded by staff and a client's own certificate request. Those two took any
+// payment at all (CRIT-04 of the 7 Oct 2026 audit): a 25% instalment earned
+// the certificate the automatic sweep would have held back.
+const PAID_SHARE = 0.95;
+
+function parseCrm(value) {
+  if (value && typeof value === 'object') return value;
+  try { return JSON.parse(value || '{}') || {}; } catch { return {}; }
 }
 
-module.exports = { hasPaidForCourse };
+/**
+ * Has this client paid for this course — on the course itself or on a track
+ * that holds it, by its payment rows (a refund takes its amount back; the
+ * certificate, carnet or book paid for beside it is not the course) and by
+ * «مدفوع قبل السيستم» (crm_json.priorPaid, the money of an old sheet's
+ * «المحصل»): at least PAID_SHARE of the price agreed for it (lib/agreedPrice.js).
+ * When no price is known anywhere, any money in counts, as it always did.
+ *
+ * Most Dokki clients' money is priorPaid with no payment row (1,609 of 1,919
+ * on 3 October): it counts the same as a payment.
+ */
+async function hasPaidForCourse(db, { tenantId, subscriberId, courseId }) {
+  const [[client]] = await db.query('SELECT crm_json FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriberId, tenantId]);
+  const prior = parseCrm(client?.crm_json).priorPaid || {};
+  const [tracks] = await db.query('SELECT bundle_id FROM bundle_courses WHERE tenant_id=? AND course_id=?', [tenantId, courseId]);
+  const items = [{ courseId, bundleId: null, key: String(courseId) },
+    ...tracks.map(track => ({ courseId: null, bundleId: track.bundle_id, key: `bundle:${track.bundle_id}` }))];
+
+  for (const item of items) {
+    const [byCurrency] = await db.query(
+      `SELECT currency, SUM(amount) AS paid FROM payments
+        WHERE tenant_id=? AND subscriber_id=? AND status='paid' AND deleted_at IS NULL
+          AND COALESCE(payment_type, '') IN ('', 'COURSE', 'BUNDLE', 'OTHER')
+          AND ${item.bundleId ? 'bundle_id=?' : 'course_id=? AND bundle_id IS NULL'}
+        GROUP BY currency ORDER BY paid DESC`,
+      [tenantId, subscriberId, item.bundleId || item.courseId]
+    );
+    const currency = byCurrency[0]?.currency || 'EGP';
+    const paid = (Number(byCurrency[0]?.paid) || 0) + (Number(prior[item.key]) || 0);
+    if (paid <= 0) continue;
+    const price = await agreedPrice(db, { tenantId, subscriberId, courseId: item.courseId, bundleId: item.bundleId, currency });
+    if (!price || paid >= price * PAID_SHARE) return true;
+  }
+  return false;
+}
+
+module.exports = { PAID_SHARE, hasPaidForCourse };

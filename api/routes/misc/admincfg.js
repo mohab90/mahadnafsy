@@ -62,7 +62,7 @@ async function publishConfigEvent(req, section) {
       section,
       actor: req.user?.email || req.user?.uid || 'admin',
       at: new Date().toISOString(),
-    });
+    }, { room: `staff:${req.tenantId}` });
   } catch (_) {}
 }
 

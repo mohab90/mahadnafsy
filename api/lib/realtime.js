@@ -8,6 +8,12 @@ async function publishRealtimeEvent(event, payload = {}, options = {}) {
   if (!baseUrl || !secret) {
     return { ok: false, skipped: true, reason: 'WS_SERVER_URL or WS_INTERNAL_SECRET not configured' };
   }
+  // An event without a room went to every connected account of every tenant
+  // (HIGH-08); the ws-server refuses one now, and it is not sent.
+  if (!options.room) {
+    logger.warn('realtime emit without a room — not sent', { event });
+    return { ok: false, skipped: true, reason: 'room is required' };
+  }
 
   try {
     const response = await fetch(`${baseUrl.replace(/\/$/, '')}/emit`, {

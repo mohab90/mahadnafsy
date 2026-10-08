@@ -345,9 +345,13 @@ async function requireAdminOrOnlineManagerOrCollection(req, res, next) {
 
 async function requireAdminOrStaff(req, res, next) {
   const { email, uid } = req.user || {};
+  // The owner and a full-access role answer the tenant's MFA policy here as in
+  // every other guard (MED-18): a route behind this guard alone let them through
+  // unverified.
   if (isInstituteOwner({ email, uid, tenantId: req.user?.tenant_id })) {
     req.isSuperAdmin = true;
-    return next();
+    if (await enforceMfa(req, res, null, [], true)) return next();
+    return;
   }
   try {
     const staff = await findActiveStaff(req, email, true);
@@ -373,7 +377,8 @@ async function requireAdminOrStaff(req, res, next) {
       } else {
         req.staffRecord.permissionsArr = [];
       }
-      return next();
+      if (await enforceMfa(req, res, staff, [], Boolean(req.isSuperAdmin))) return next();
+      return;
     }
   } catch (e) { logger.error('[requireAdminOrStaff]', e.message); }
   res.status(403).json({ error: 'Admin only' });

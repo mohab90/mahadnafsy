@@ -42,7 +42,7 @@ function createAdminAuditMiddleware({ pool, uuidv4, publishRealtimeEvent }) {
           if (publishRealtimeEvent) {
             publishRealtimeEvent('admin:mutation', {
               action, entity, entityId, label, actor, path: rawPath, at: new Date().toISOString(),
-            }).catch(() => {});
+            }, { room: `staff:${req.tenantId}` }).catch(() => {});
           }
         } catch (_) {}
       }

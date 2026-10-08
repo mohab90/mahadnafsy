@@ -109,19 +109,25 @@ test('a write from another site that carries the session cookie is refused', asy
   }
 });
 
-test('with enforcement off (the default) an unlisted origin is reported, not blocked', async () => {
+// MED-12 of the 7 Oct 2026 audit: enforcement is the default; only an explicit
+// false leaves it report-only.
+test('unset, an unlisted origin is refused; set to false, it is reported, not blocked', async () => {
   const priorEnforce = process.env.CSRF_ORIGIN_ENFORCE;
-  delete process.env.CSRF_ORIGIN_ENFORCE;
   try {
     const { csrfOriginGuard } = require('../lib/httpApp');
     const app = express();
     app.use(csrfOriginGuard());
     app.all('/w', (_req, res) => res.json({ ok: true }));
     await withServer(app, async base => {
-      const res = await fetch(`${base}/w`, { method: 'POST', headers: { cookie: 'authToken=abc', origin: 'https://evil.example' } });
-      assert.equal(res.status, 200);
+      const write = () => fetch(`${base}/w`, { method: 'POST', headers: { cookie: 'authToken=abc', origin: 'https://evil.example' } });
+      delete process.env.CSRF_ORIGIN_ENFORCE;
+      assert.equal((await write()).status, 403);
+      process.env.CSRF_ORIGIN_ENFORCE = 'false';
+      assert.equal((await write()).status, 200);
     });
-  } finally { if (priorEnforce !== undefined) process.env.CSRF_ORIGIN_ENFORCE = priorEnforce; }
+  } finally {
+    if (priorEnforce === undefined) delete process.env.CSRF_ORIGIN_ENFORCE; else process.env.CSRF_ORIGIN_ENFORCE = priorEnforce;
+  }
 });
 
 // ── staff addresses ──────────────────────────────────────────────────────────

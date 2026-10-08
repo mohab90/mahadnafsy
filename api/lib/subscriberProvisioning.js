@@ -92,10 +92,17 @@ async function ensureSubscriberForOrder(conn, {
       'SELECT id, branch, branch_id, assigned_sales_id, assigned_sales_name, assigned_cs_id, assigned_cs_name FROM leads WHERE tenant_id=? AND LOWER(TRIM(email))=? AND hidden=0 ORDER BY created_at DESC LIMIT 1 FOR UPDATE',
       [tenantId, normalizedEmail]
     );
-  } else {
+  }
+  // A lead known by its number alone — most Facebook and sheet leads carry no
+  // email — is the payer's too (HIGH-06 of the 7 Oct 2026 audit): matched by
+  // email only, it stayed unconverted and its rep earned nothing. A lead under
+  // another address is somebody else on the same (family) number: left alone.
+  if (!lead) {
     const byNumber = await findLeadByContact(conn, { tenantId, phone });
     if (byNumber) {
-      [[lead]] = await conn.query(`SELECT ${LEAD_COLUMNS} FROM leads WHERE id=? LIMIT 1 FOR UPDATE`, [byNumber.id]);
+      const [[candidate]] = await conn.query(`SELECT ${LEAD_COLUMNS}, email FROM leads WHERE id=? LIMIT 1 FOR UPDATE`, [byNumber.id]);
+      const theirs = String(candidate?.email || '').toLowerCase().trim();
+      if (candidate && (!normalizedEmail || !theirs || theirs === normalizedEmail)) lead = candidate;
     }
   }
   // subscribers has UNIQUE (tenant_id, phone). This used to insert `phone || ''`

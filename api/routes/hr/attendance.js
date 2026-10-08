@@ -2,11 +2,11 @@
 const { CONVERTED_SQL } = require('../../lib/leadStatuses');
 const { Router } = require('express');
 const router = Router();
-const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
+const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit } = require('./_shared');
 const { createLeaveRequest, getEffectiveHrPolicy, leaveAllowance, HOUR_PERMITS, LEAVE_LABELS_AR, ATTENDANCE_POLICY_COLUMNS, DEFAULT_POLICY } = require('../../lib/hrPolicy');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { toNumbers } = require('../../lib/mappers');
-const { cairoClock, sqlCairoToday, cairoToday, cairoYearMonth } = require('../../lib/dates');
+const { sqlCairoToday, cairoToday, cairoYearMonth } = require('../../lib/dates');
 const dateOnly = value => value instanceof Date
   ? value.toISOString().slice(0, 10)
   : String(value || '').slice(0, 10);
@@ -591,115 +591,11 @@ router.post('/api/admin/hr/attendance', requireAuth, requireAdminOrStaff, requir
   }
 });
 
-// ── Staff self-service attendance (check-in / check-out) ─────────────────────
-// Lets a staff member clock in/out from their own dashboard → feeds attendance_logs
-// (source APP) which payroll + attendance reports already consume. This is the
-// integration that was missing (attendance was admin-manual/import only).
-router.get('/api/me/hr/attendance/today', requireAuth, async (req, res) => {
-  try {
-    const st = await _resolveStaffByUser(req);
-    if (!st) return res.json({ isStaff: false });
-    const [[row]] = await pool.query(
-      `SELECT check_in, check_out, status, total_hours, late_minutes FROM attendance_logs WHERE staff_id=? AND tenant_id=? AND date=${sqlCairoToday()} LIMIT 1`, [st.id, req.tenantId]);
-    res.json({ isStaff: true, staffName: st.name, today: row || null });
-  } catch (e) { logger.error('[route]', e.message); hrError(res, e); }
-});
-router.post('/api/me/hr/attendance/check-in', requireAuth, async (req, res) => {
-  const conn = await pool.getConnection();
-  let transactionStarted = false;
-  try {
-    const st = await _resolveStaffByUser(req);
-    if (!st) return res.status(403).json({ error: 'not_staff' });
-    // Cairo's clock, not the database's. The server runs in UTC, so asking MySQL
-    // for the hour recorded a 09:00 arrival as 06:00 — and against a 09:00 shift
-    // that made everyone who arrived before noon on time. See lib/dates.js.
-    const cairo = cairoClock();
-    const clock = { work_date: cairo.date, work_time: cairo.time, minutes_in: cairo.minutes };
-    const expected = await attendanceStart(conn, req.tenantId, st.id, clock.work_date);
-    if (expected.isOffDay) return res.status(409).json({ error: 'اليوم مسجل كراحة في جدولك' });
-    const lateMin = Number(clock.minutes_in) > expected.start ? Number(clock.minutes_in) - expected.start : 0;
-    const status = lateMin > 0 ? 'LATE' : 'PRESENT';
-    await conn.beginTransaction();
-    transactionStarted = true;
-    const [[existing]] = await conn.query(
-      'SELECT check_in,status,leave_id FROM attendance_logs WHERE staff_id=? AND tenant_id=? AND date=? LIMIT 1 FOR UPDATE',
-      [st.id, req.tenantId, clock.work_date]
-    );
-    if (existing?.leave_id || ['LEAVE', 'HOLIDAY'].includes(existing?.status)) {
-      await conn.rollback();
-      transactionStarted = false;
-      return res.status(409).json({
-        error: 'اليوم مرتبط بإجازة معتمدة أو عطلة ولا يقبل تسجيل حضور',
-        code: 'ATTENDANCE_DAY_LOCKED',
-      });
-    }
-    await conn.query(
-      `INSERT INTO attendance_logs (id, tenant_id, staff_id, date, check_in, late_minutes, status, source)
-       VALUES (UUID(), ?, ?, ?, ?, ?, ?, 'APP')
-       ON DUPLICATE KEY UPDATE
-         late_minutes=IF(check_in IS NULL,VALUES(late_minutes),late_minutes),
-         status=IF(check_in IS NULL OR status='ABSENT',VALUES(status),status),
-         check_in=COALESCE(check_in,VALUES(check_in)),source='APP'`,
-      [req.tenantId, st.id, clock.work_date, clock.work_time, lateMin, status]);
-    const [[saved]] = await conn.query(
-      'SELECT check_in,status,late_minutes FROM attendance_logs WHERE staff_id=? AND tenant_id=? AND date=? LIMIT 1',
-      [st.id, req.tenantId, clock.work_date]
-    );
-    await conn.commit();
-    transactionStarted = false;
-    res.json({ ok: true, check_in: saved.check_in, status: saved.status, late_minutes: saved.late_minutes });
-  } catch (e) {
-    if (transactionStarted) await conn.rollback().catch(() => {});
-    logger.error('[route]', e.message);
-    hrError(res, e);
-  } finally {
-    conn.release();
-  }
-});
-router.post('/api/me/hr/attendance/check-out', requireAuth, async (req, res) => {
-  const conn = await pool.getConnection();
-  let transactionStarted = false;
-  try {
-    const st = await _resolveStaffByUser(req);
-    if (!st) return res.status(403).json({ error: 'not_staff' });
-    await conn.beginTransaction();
-    transactionStarted = true;
-    // The same clock as check-in, so total_hours subtracts two Cairo times.
-    const cairo = cairoClock();
-    const clock = { work_date: cairo.date, work_time: cairo.time, minutes_now: cairo.minutes };
-    const [[row]] = await conn.query(
-      'SELECT check_in,check_out,total_hours FROM attendance_logs WHERE staff_id=? AND tenant_id=? AND date=? LIMIT 1 FOR UPDATE',
-      [st.id, req.tenantId, clock.work_date]
-    );
-    if (!row?.check_in) {
-      await conn.rollback();
-      transactionStarted = false;
-      return res.status(409).json({ error: 'يجب تسجيل الحضور قبل الانصراف' });
-    }
-    const [hours, minutes] = String(row.check_in).split(':').map(Number);
-    const totalHours = Math.max(0, Math.round((Number(clock.minutes_now) - (hours * 60 + minutes)) / 60 * 100) / 100);
-    await conn.query(
-      `UPDATE attendance_logs
-          SET total_hours=IF(check_out IS NULL,?,total_hours),
-              check_out=COALESCE(check_out,?),source='APP'
-        WHERE staff_id=? AND tenant_id=? AND date=?`,
-      [totalHours, clock.work_time, st.id, req.tenantId, clock.work_date]
-    );
-    const [[saved]] = await conn.query(
-      'SELECT check_out,total_hours FROM attendance_logs WHERE staff_id=? AND tenant_id=? AND date=? LIMIT 1',
-      [st.id, req.tenantId, clock.work_date]
-    );
-    await conn.commit();
-    transactionStarted = false;
-    res.json({ ok: true, check_out: saved.check_out, total_hours: saved.total_hours });
-  } catch (e) {
-    if (transactionStarted) await conn.rollback().catch(() => {});
-    logger.error('[route]', e.message);
-    hrError(res, e);
-  } finally {
-    conn.release();
-  }
-});
+// Staff self check-in and check-out (/api/me/hr/attendance/*) were removed on
+// 8 Oct 2026 (LOW-19 of the 7 Oct audit): no screen called them, production
+// never received a call, and they let an employee mark themselves present —
+// and on time, for payroll — from anywhere. Attendance comes from the
+// fingerprint device import and the HR screen.
 
 // GET /api/admin/hr/kpi/:staffId — KPI summary for a staff member
 router.get('/api/admin/hr/kpi/:staffId', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {

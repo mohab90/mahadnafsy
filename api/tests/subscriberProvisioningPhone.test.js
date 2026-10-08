@@ -36,6 +36,7 @@ function mockConn({ existingByEmail = null, phoneHolder = null, insertErrors = [
         return [[existingByEmail]];
       }
       if (/FROM leads WHERE tenant_id=\? AND LOWER\(TRIM\(email\)\)=\?/.test(sql)) return [[undefined]];
+      if (/^SELECT id, status FROM leads/.test(sql.trim())) return [[undefined]];
       if (/UPDATE client_code_counter/.test(sql)) return [{ affectedRows: 1 }];
       if (/SELECT next_value FROM client_code_counter/.test(sql)) return [[{ next_value: ++counter }]];
       if (/SELECT id, client_code FROM subscribers WHERE tenant_id=\? AND phone=\?/.test(sql)) {
