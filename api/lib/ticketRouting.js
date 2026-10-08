@@ -32,6 +32,9 @@ const CATEGORY_META = Object.freeze({
   consultation:   { label: 'استشارة',          department: 'support',     priority: 'medium' },
   certificate:    { label: 'شهادات',           department: 'support',     priority: 'medium' },
   general:        { label: 'عام',              department: 'support',     priority: 'medium' },
+  // «فتح تيكت مشكلة» from the transfer menu, Dokki or online: the account's
+  // owner could not handle it, so customer service hears the client out.
+  client_problem: { label: 'مشكلة عميل',       department: 'support',     priority: 'high'   },
 });
 
 // Which staff roles staff each department queue (first match wins for labelling).

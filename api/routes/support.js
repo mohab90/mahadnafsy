@@ -21,6 +21,7 @@ const { publicLimiter } = require('../middleware/rateLimits');
 const { findSubscriberForIdentity } = require('../lib/privacyService');
 const { writeAuditEvent } = require('../lib/auditTrail');
 const { phoneIdentityClause } = require('../lib/leadMatching');
+const { logClientEvent } = require('../lib/clientHistory');
 const {
   CATEGORY_META, DEPARTMENT_LABEL, DEPARTMENT_ROLES, resolveDepartment, defaultPriority,
   computeSlaDue, pickAssignee, logTicketEvent,
@@ -387,6 +388,13 @@ router.post('/api/admin/cs/tickets', requireAuth, requireAdminOrStaff, requirePe
       tenantId: req.tenantId, subscriberId: subscriber_id, email, name, subject, body,
       category, priority, channel: channel || 'phone', actor,
     });
+    // On the client's file: the problem, who raised it, and where it went.
+    if (subscriber_id) {
+      await logClientEvent(conn, {
+        tenantId: req.tenantId, subscriberId: subscriber_id, action: 'problem_ticket_opened', actor: actor.name,
+        label: `فتح تيكت مشكلة لـ${DEPARTMENT_LABEL[r.department] || 'خدمة العملاء'}${r.assignee ? ` (${r.assignee.name})` : ''}: «${subject}» — ${body.slice(0, 500)}`,
+      });
+    }
     await conn.commit(); conn.release(); conn = null;
     res.json({ ok: true, ...r });
   } catch (e) { if (conn) { await conn.rollback().catch(() => {}); conn.release(); } logger.error('[cs/create]', e.message); res.status(500).json({ error: 'Internal server error' }); }
@@ -607,7 +615,7 @@ router.put('/api/admin/tickets/:id/status', requireAuth, requireAdminOrStaff, re
     if (status === 'closed' && !closedReason) return res.status(400).json({ error: 'closed_reason required when closing a ticket' });
     conn = await pool.getConnection(); await conn.beginTransaction();
     const [[prev]] = await conn.query(
-      'SELECT status,department,assigned_to,subject,subscriber_email,subscriber_name,csat_requested_at FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
+      'SELECT status,department,assigned_to,subject,subscriber_id,subscriber_email,subscriber_name,csat_requested_at FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
       [req.params.id, req.tenantId]);
     if (!prev) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Not found' }); }
     if (!canAccessTicket(req, prev)) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Not found' }); }
@@ -631,6 +639,26 @@ router.put('/api/admin/tickets/:id/status', requireAuth, requireAdminOrStaff, re
     // On the first resolution, ask the customer to rate it (CSAT).
     const nowResolved = status === 'resolved' || status === 'closed';
     const wasResolved = prev && CLOSED_STATUSES.includes(String(prev.status || '').toLowerCase());
+    // The resolution, on the ticket and on the client's file: the reason typed
+    // when closing, else the last answer the team gave.
+    if (nowResolved && !wasResolved) {
+      let resolution = closedReason;
+      if (!resolution) {
+        const [[lastReply]] = await conn.query(
+          "SELECT body FROM ticket_replies WHERE ticket_id=? AND tenant_id=? AND author_type='STAFF' ORDER BY created_at DESC LIMIT 1",
+          [req.params.id, req.tenantId]);
+        resolution = cleanText(lastReply?.body, TEXT_LIMITS.reason);
+      }
+      if (resolution) {
+        await conn.query('UPDATE support_tickets SET resolution_note=? WHERE id=? AND tenant_id=?', [resolution, req.params.id, req.tenantId]);
+      }
+      if (prev.subscriber_id) {
+        await logClientEvent(conn, {
+          tenantId: req.tenantId, subscriberId: prev.subscriber_id, action: 'problem_ticket_resolved', actor: actor.name,
+          label: `اتحلت المشكلة «${prev.subject || 'تيكت'}»${resolution ? ` — الحل: ${resolution}` : ''}`,
+        });
+      }
+    }
     if (prev && nowResolved && !wasResolved && !prev.csat_requested_at && prev.subscriber_email) {
       const csatToken = randomBytes(32).toString('hex');
       await conn.query(

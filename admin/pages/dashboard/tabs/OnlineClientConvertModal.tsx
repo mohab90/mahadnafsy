@@ -3,8 +3,9 @@ import type { SubscriberItem } from '../../../types';
 import { REFUND_METHOD_CODES, paymentMethodLabel } from '../../../../shared/paymentMethods';
 import { isCollected } from '../../../lib/money';
 import { cairoDay } from '../../../../shared/cairoDate';
+import { ProblemTicketForm } from './ProblemTicketForm';
 
-export type OnlineClientConvertType = 'finished' | 'paused' | 'refunded' | 'daqqi' | 'leads' | 'online' | 'local' | 'saudi' | 'intl' | '';
+export type OnlineClientConvertType = 'finished' | 'paused' | 'refunded' | 'daqqi' | 'leads' | 'online' | 'local' | 'saudi' | 'intl' | 'ticket' | '';
 const MARKET_OPTIONS = [
   { key: 'local' as const, label: '🇪🇬 محلي (جنيه)', cls: 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100' },
   { key: 'saudi' as const, label: '🇸🇦 سعودي (ريال)', cls: 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100' },
@@ -36,6 +37,7 @@ type OnlineClientConvertModalProps = {
   currentMarket: 'local' | 'saudi' | 'intl' | null;
   onClose: () => void;
   onConfirm: () => void | Promise<void>;
+  notify: (type: 'success' | 'error', text: string) => void;
 };
 
 export function OnlineClientConvertModal({
@@ -61,6 +63,7 @@ export function OnlineClientConvertModal({
   currentMarket,
   onClose,
   onConfirm,
+  notify,
 }: OnlineClientConvertModalProps) {
   const disabled = saving
     || (convertType === 'paused' && !pauseReason.trim())
@@ -85,6 +88,7 @@ export function OnlineClientConvertModal({
                 isDaqqiClientsTab
                   ? { key: 'online' as const, label: '🌐 تحويل لأونلاين', cls: 'bg-teal-50 border-teal-200 text-teal-700 hover:bg-teal-100' }
                   : { key: 'daqqi' as const, label: '🏢 فرع الدقي', cls: 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100' },
+                { key: 'ticket' as const, label: '🎫 فتح تيكت مشكلة (العميل يفضل مكانه)', cls: 'bg-sky-50 border-sky-200 text-sky-700 hover:bg-sky-100' },
               ] as { key: Exclude<OnlineClientConvertType, ''>; label: string; cls: string }[]).map(option => (
                 <button key={option.key} onClick={() => setConvertType(option.key)}
                   className={`w-full border rounded-xl px-4 py-2.5 text-sm font-bold transition ${option.cls}`}>
@@ -92,6 +96,9 @@ export function OnlineClientConvertModal({
                 </button>
               ))}
             </div>
+          ) : convertType === 'ticket' ? (
+            <ProblemTicketForm subscriberId={row.id} onBack={() => setConvertType('')}
+              onDone={(type, text) => { notify(type, text); if (type === 'success') onClose(); }} />
           ) : (
             <div className="space-y-3">
               {convertType === 'finished' && (

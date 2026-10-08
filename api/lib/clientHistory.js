@@ -9,6 +9,7 @@
 // sheet has no lead — 1,920 Dokki clients among them — so it could not be it.
 
 const { uuidv4 } = require('./id');
+const { signerName } = require('./staffNames');
 
 const ENTITY = 'subscriber';
 
@@ -21,7 +22,7 @@ async function logClientEvent(db, { tenantId, subscriberId, action, label, actor
   );
 }
 
-/** The name to write: the staff member's, else the account's email. */
-const actorName = req => req.staffRecord?.name || req.user?.name || req.user?.email || 'admin';
+/** The name to write: the staff member's, never the account's email (8 Oct 2026). */
+const actorName = req => signerName(req);
 
 module.exports = { ENTITY, actorName, logClientEvent };

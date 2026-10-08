@@ -15,7 +15,7 @@ interface Props { notify: NotifyFn; }
 
 type TicketStatus = 'open' | 'inprogress' | 'resolved' | 'closed';
 type TicketPriority = 'low' | 'medium' | 'high' | 'urgent';
-type TicketCategory = 'billing' | 'refund' | 'complaint' | 'technical' | 'course_access' | 'sales_inquiry' | 'consultation' | 'certificate' | 'general';
+type TicketCategory = 'billing' | 'refund' | 'complaint' | 'technical' | 'course_access' | 'sales_inquiry' | 'consultation' | 'certificate' | 'general' | 'client_problem';
 
 interface SupportTicket {
   id: string;
@@ -86,7 +86,7 @@ const PRIORITY_CFG: Record<TicketPriority, { label: string; color: string; icon:
 const CAT_LABELS: Record<TicketCategory, string> = {
   billing: '💳 مدفوعات وفواتير', refund: '💰 طلب استرداد', complaint: '⚠️ شكوى',
   technical: '💻 مشكلة تقنية', course_access: '📚 وصول للدورة', sales_inquiry: '🛒 استفسار مبيعات',
-  consultation: '🩺 استشارة', certificate: '🎓 شهادات', general: '📌 عام',
+  consultation: '🩺 استشارة', certificate: '🎓 شهادات', general: '📌 عام', client_problem: '🎫 مشكلة عميل',
 };
 
 // Pure functions of their arguments, hoisted out of the component body: as
@@ -100,7 +100,7 @@ const statusFromApi = (status?: string): TicketStatus => {
 
 const statusToApi = (status: TicketStatus) => status === 'inprogress' ? 'in_progress' : status;
 
-const CATEGORY_KEYS: TicketCategory[] = ['billing', 'refund', 'complaint', 'technical', 'course_access', 'sales_inquiry', 'consultation', 'certificate', 'general'];
+const CATEGORY_KEYS: TicketCategory[] = ['billing', 'refund', 'complaint', 'technical', 'course_access', 'sales_inquiry', 'consultation', 'certificate', 'general', 'client_problem'];
 const categoryFromApi = (category?: string): TicketCategory =>
   (CATEGORY_KEYS as string[]).includes(category || '') ? (category as TicketCategory) : 'general';
 
@@ -168,7 +168,7 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
 
   const statusToApi = (status: TicketStatus) => status === 'inprogress' ? 'in_progress' : status;
 
-  const CATEGORY_KEYS: TicketCategory[] = ['billing', 'refund', 'complaint', 'technical', 'course_access', 'sales_inquiry', 'consultation', 'certificate', 'general'];
+  const CATEGORY_KEYS: TicketCategory[] = ['billing', 'refund', 'complaint', 'technical', 'course_access', 'sales_inquiry', 'consultation', 'certificate', 'general', 'client_problem'];
   const categoryFromApi = (category?: string): TicketCategory =>
     (CATEGORY_KEYS as string[]).includes(category || '') ? (category as TicketCategory) : 'general';
 

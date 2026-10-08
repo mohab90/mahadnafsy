@@ -959,6 +959,7 @@ export default function OnlineClientsTab({
                       isDaqqiClientsTab={isDaqqiClientsTab}
                       currentMarket={isOnlineClient(convertRow) ? subscriberMarket(convertRow) : null}
                       onClose={() => setConvertRow(null)}
+                      notify={notify}
                       onConfirm={async () => {
                                     if (!convertRow) return;
                                     setConvertSaving(true);
