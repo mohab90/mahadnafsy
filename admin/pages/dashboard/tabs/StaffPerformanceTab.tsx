@@ -6,6 +6,7 @@ import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { StaffLeadPerformance } from '../../../types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import MySalesPulse from './staff-performance/MySalesPulse';
 
 type TimeRange = 'week' | 'month' | '3months' | 'all';
 
@@ -49,6 +50,9 @@ export default function StaffPerformanceTab() {
     return currentStaff?.id || '';
   }, [currentStaff]);
   const selfOnly = !isAdmin && Boolean(myStaffId);
+  // A sales rep's «إحصائياتي» is their own live page (8 Oct 2026): it cheers
+  // every booking and new client and frets when the target is far.
+  const repPulse = selfOnly && String(currentStaff?.role || '').toLowerCase() === 'sales';
 
   // Per-rep lead counts from the database. The range boundary is computed here,
   // where the range labels are defined, and sent as a plain date — the server
@@ -56,6 +60,7 @@ export default function StaffPerformanceTab() {
   const [perf, setPerf] = useState<StaffLeadPerformance | null>(null);
   const rangeStart = range === 'all' ? null : rangeStartDate(range);
   useEffect(() => {
+    if (repPulse) return undefined;
     let cancelled = false;
     setPerf(null);
     void (async () => {
@@ -67,7 +72,7 @@ export default function StaffPerformanceTab() {
       }
     })();
     return () => { cancelled = true; };
-  }, [rangeStart]);
+  }, [rangeStart, repPulse]);
 
   const frontlineRoles = ['sales', 'collection', 'support', 'consultant', 'online_manager', 'sales_collection_manager'];
   const staff = useMemo(() =>
@@ -117,6 +122,8 @@ export default function StaffPerformanceTab() {
   const roles = [...new Set(staffMembers.map(s => s.role))].filter(r => frontlineRoles.includes(r));
 
   const fmtMoney = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}ك` : String(n);
+
+  if (repPulse) return <MySalesPulse staffId={myStaffId} staffName={currentStaff?.name || ''} />;
 
   return (
     <div className="space-y-5" dir="rtl">

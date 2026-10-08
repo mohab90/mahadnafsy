@@ -16,6 +16,7 @@ const { listAssignmentMembers, saveAssignmentMembers } = require('../lib/leadAss
 const { createRepRotation, listDistributableReps } = require('../lib/leadAssignment');
 const { excludeArchiveSourcesSql } = require('../lib/leadArchive');
 const { buildTeamDailyReport, listReceivedLeads, reportRange } = require('../lib/teamDailyReport');
+const { buildSalesPulse } = require('../lib/salesPulse');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 
 function routeError(res, error, message = 'crm advanced route failed') {
@@ -49,6 +50,19 @@ router.get('/api/admin/crm/team-report', requireAuth, requireAdminOrStaff, requi
     }));
   } catch (e) {
     routeError(res, e, 'crm team report failed');
+  }
+});
+
+// GET /api/admin/crm/my-pulse — «إحصائياتي» for the signed-in rep: their month
+// and today as the team report counts them, their target, their run of days
+// with a booking, and their latest bookings and clients (lib/salesPulse.js).
+router.get('/api/admin/crm/my-pulse', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
+  try {
+    const staffId = req.staffRecord?.id;
+    if (!staffId) return res.status(404).json({ error: 'الصفحة دي لأرقام موظف — مفيش موظف مربوط بالحساب ده' });
+    res.json(await buildSalesPulse({ tenantId: req.tenantId, staffId }));
+  } catch (e) {
+    routeError(res, e, 'crm my pulse failed');
   }
 });
 

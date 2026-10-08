@@ -484,6 +484,20 @@ const patch = (path: string, body: unknown) => apiFetch<{ ok: boolean }>(path, {
 const del = (path: string) => apiFetch<{ ok: boolean }>(path, { method: 'DELETE' }, A);
 const put = (path: string, body: unknown) => apiFetch<{ ok: boolean }>(path, { method: 'PUT', body: JSON.stringify(body) }, A);
 
+type PulseFigures = {
+  bookings: number; installments: number; moneyEgp: number; newLeads: number; contacts: number;
+  calls: number; whatsapp: number; followUpsDue: number; followUpsOverdue: number;
+};
+/** A rep's own month, today, target and latest events — «إحصائياتي». */
+export type SalesPulse = {
+  today: string; monthStart: string; dayOfMonth: number; daysInMonth: number;
+  month: PulseFigures; todayFigures: PulseFigures;
+  target: { revenue: number; leads: number };
+  streak: number;
+  bestDay: { day: string; bookings: number; moneyEgp: number } | null;
+  recent: Array<{ kind: 'booking' | 'installment' | 'lead'; id: string; at: string; day?: string; name: string; item?: string; amountEgp?: number }>;
+};
+
 /** One round of «جدول الدقي» — the schedule a rep can sell, never who sits in it. */
 export type SalesScheduleRound = {
   id: string; code: string; branch: string; courseId: string; courseTitle: string; instructorName: string;
@@ -578,6 +592,8 @@ export const mysqlAdmin = {
   // array in the browser, which is what forced all 26k rows down the wire.
   // Per-rep lead counts for a date range, so the staff scoreboard does not need
   // the table to count rows per person.
+  // «إحصائياتي» for the signed-in rep (api/lib/salesPulse.js).
+  getMyPulse: () => apiFetch<SalesPulse>('/admin/crm/my-pulse', {}, A),
   getStaffLeadPerformance: (from?: string | null): Promise<StaffLeadPerformance> =>
     apiFetch(`/admin/leads/staff-performance${from ? `?from=${encodeURIComponent(from)}` : ''}`, {}, A),
   // The Dokki team's figures, computed on the server. «فريق دقي» used to derive

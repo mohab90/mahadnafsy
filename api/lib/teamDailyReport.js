@@ -27,6 +27,16 @@ function reportRange(query = {}) {
 
 const num = value => Number(value) || 0;
 
+// Whose client paid. The rep is on the subscriber — the column, or, for most
+// of them, only in crm_json — or on the lead they came from. Payments are
+// almost all recorded by the desk, so the recorder is not the rep. Read with
+// `payments p LEFT JOIN subscribers sub … LEFT JOIN leads l ON l.id=sub.lead_id`.
+const PAYMENT_REP_SQL = `COALESCE(
+              NULLIF(sub.assigned_sales_id, ''),
+              NULLIF(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(sub.crm_json, '$.assignedSalesId')), 'null'), ''),
+              NULLIF(l.assigned_sales_id, ''))`;
+const PAYMENT_EGP_SQL = "COALESCE(p.amount_egp, CASE WHEN p.currency='EGP' THEN p.amount ELSE 0 END)";
+
 async function buildTeamDailyReport({ tenantId, from, to, today, onlyRepId = null }, db = pool) {
   const startUtc = cairoDayStartUtc(from);
   const endUtc = cairoDayStartUtc(addDaysToDateOnly(to, 1));
@@ -85,16 +95,10 @@ async function buildTeamDailyReport({ tenantId, from, to, today, onlyRepId = nul
     [from, dayAfter, today, tenantId, ...openStatuses]
   );
 
-  // Whose client paid. The rep is on the subscriber — the column, or, for most
-  // of them, only in crm_json — or on the lead they came from. Payments are
-  // almost all recorded by the desk, so the recorder is not the rep.
   const [money] = await db.query(
-    `SELECT COALESCE(
-              NULLIF(sub.assigned_sales_id, ''),
-              NULLIF(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(sub.crm_json, '$.assignedSalesId')), 'null'), ''),
-              NULLIF(l.assigned_sales_id, '')) AS rep,
+    `SELECT ${PAYMENT_REP_SQL} AS rep,
             SUM(p.is_installment=0) AS bookings, SUM(p.is_installment=1) AS installments,
-            SUM(COALESCE(p.amount_egp, CASE WHEN p.currency='EGP' THEN p.amount ELSE 0 END)) AS moneyEgp
+            SUM(${PAYMENT_EGP_SQL}) AS moneyEgp
        FROM payments p
        LEFT JOIN subscribers sub ON sub.id=p.subscriber_id AND sub.tenant_id=p.tenant_id
        LEFT JOIN leads l ON l.id=sub.lead_id AND l.tenant_id=sub.tenant_id
@@ -179,4 +183,4 @@ async function listReceivedLeads({ tenantId, repId, from, to }, db = pool) {
   }));
 }
 
-module.exports = { MAX_DAYS, buildTeamDailyReport, listReceivedLeads, reportRange };
+module.exports = { MAX_DAYS, PAYMENT_EGP_SQL, PAYMENT_REP_SQL, buildTeamDailyReport, listReceivedLeads, reportRange };
