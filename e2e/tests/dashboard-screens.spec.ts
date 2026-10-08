@@ -54,7 +54,7 @@ const contentLength = async (page: Page) =>
 // section, and the rest are one click away rather than one URL away.
 const SCREENS = [
   'overview', 'management_reports', 'kpi_dashboard', 'activity', 'tasks_board', 'analytics_hub', 'ask_ai',
-  'leads', 'sales_hub', 'sales_planning', 'sales_reports', 'sales_team',
+  'leads', 'sales_hub', 'sales_daqqi_schedule', 'sales_planning', 'sales_reports', 'sales_team',
   'online_clients', 'client', 'archived_clients', 'online_hub', 'online_team', 'installment_plans', 'subscriptions',
   'daqqi_schedule', 'daqqi_clients', 'daqqi_team', 'daqqi_accounting', 'daqqi_stats', 'waitlist',
   'tagamoa_schedule', 'tagamoa_clients', 'tagamoa_team', 'tagamoa_accounting', 'tagamoa_stats', 'tagamoa_waitlist',

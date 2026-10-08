@@ -529,6 +529,61 @@ async function resolveAudience(req, body) {
   return { error: 'نوع الإرسال غير مدعوم' };
 }
 
+// «في نظام المراسله محتاج كل فريق يقدر يبعت للفريق التاني … للدقي فقط او خدمه
+// العملاء فقط او فريق الاونلاين فقط او الادارة فقط او لمدير محدد او للفريق كله»
+// (8 Oct 2026). The teams an employee can write to, by the roles that make them
+// up — and, for a branch, everyone placed at it.
+const MESSAGE_TEAMS = {
+  sales: { label: 'فريق المبيعات', roles: ['SALES', 'SALES_MANAGER', 'SALES_COLLECTION_MANAGER'] },
+  online: { label: 'فريق الأونلاين والتحصيل', roles: ['COLLECTION', 'ONLINE_MANAGER'] },
+  support: { label: 'خدمة العملاء', roles: ['SUPPORT'] },
+  daqqi: { label: 'فريق الدقي', roles: ['DAQQI_MANAGER', 'RECEPTION_DAQQI'], branchId: 'branch-daqqi' },
+  tagamoa: { label: 'فريق التجمع', roles: ['TAGAMOA_MANAGER', 'RECEPTION_TAGAMOA'], branchId: 'branch-tagamoa' },
+};
+const MANAGER_ROLES = ['ADMIN', 'MANAGER', 'HR', 'ONLINE_MANAGER', 'DAQQI_MANAGER', 'TAGAMOA_MANAGER', 'SALES_MANAGER', 'SALES_COLLECTION_MANAGER'];
+
+/** Who an employee's message goes to, other than management's own inbox. */
+async function resolvePeerAudience(req, me, scope) {
+  if (scope === 'team') {
+    const [[myRole]] = await pool.query('SELECT UPPER(role) role FROM staff WHERE id=? AND tenant_id=? LIMIT 1', [me.id, req.tenantId]);
+    const role = myRole?.role || '';
+    const [rows] = await pool.query(`SELECT id, name FROM staff WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL AND UPPER(role)=? AND id<>?`, [req.tenantId, role, me.id]);
+    return { rows, label: `فريق ${ROLE_LABEL_AR[role] || role}` };
+  }
+  if (scope === 'all') {
+    const [rows] = await pool.query(`SELECT id, name FROM staff WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL AND id<>?`, [req.tenantId, me.id]);
+    return { rows, label: 'الفريق كله' };
+  }
+  if (scope.startsWith('team:')) {
+    const team = MESSAGE_TEAMS[scope.slice(5)];
+    if (!team) return { error: 'الفريق ده مش موجود' };
+    const [rows] = await pool.query(
+      `SELECT id, name FROM staff WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL AND id<>?
+          AND (UPPER(role) IN (?)${team.branchId ? ' OR branch_id=?' : ''})`,
+      [req.tenantId, me.id, team.roles, ...(team.branchId ? [team.branchId] : [])]);
+    return { rows, label: team.label };
+  }
+  if (scope.startsWith('manager:')) {
+    const [rows] = await pool.query(
+      `SELECT id, name FROM staff WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL AND id=? AND id<>? AND UPPER(role) IN (?) LIMIT 1`,
+      [req.tenantId, scope.slice(8), me.id, MANAGER_ROLES]);
+    if (!rows.length) return { error: 'المدير ده مش موجود' };
+    return { rows, label: `رسالة خاصة لـ ${rows[0].name}`, privateTo: rows[0].name };
+  }
+  if (scope.startsWith('reply:')) {
+    // Only to someone who wrote to me: the message must be in my own thread.
+    const [[message]] = await pool.query(
+      `SELECT author_staff_id FROM staff_messages
+        WHERE id=? AND tenant_id=? AND staff_id=? AND author_staff_id IS NOT NULL AND author_staff_id<>? LIMIT 1`,
+      [scope.slice(6), req.tenantId, me.id, me.id]);
+    if (!message) return { error: 'الرسالة دي مش عندك' };
+    const [rows] = await pool.query(`SELECT id, name FROM staff WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL AND id=? LIMIT 1`, [req.tenantId, message.author_staff_id]);
+    if (!rows.length) return { error: 'صاحب الرسالة مبقاش في الفريق' };
+    return { rows, label: `رد لـ ${rows[0].name}`, privateTo: rows[0].name };
+  }
+  return { error: 'نوع الإرسال غير مدعوم' };
+}
+
 /** Fan a body out to an audience as one thread row + one notification each. */
 async function fanOut({ req, audience, label, body, direction, authorId, authorName, notifTitle }) {
   const broadcastId = uuidv4();
@@ -653,43 +708,39 @@ router.post('/api/staff/me/messages', requireAuth, async (req, res) => {
     const body = String(req.body?.body || '').trim();
     if (!body) return res.status(400).json({ error: 'نص الرسالة مطلوب' });
     if (body.length > MAX_BODY) return res.status(400).json({ error: 'الرسالة طويلة جدًا' });
-    // 'team' = broadcast to everyone sharing my role; anything else replies to
-    // management on my own thread (the default, and the original behaviour).
+    // 'management' (the default, and the original behaviour) writes on my own
+    // thread, which management reads in its inbox. Any other scope — my team,
+    // another team, everyone, one manager, a reply — reaches those people's
+    // threads (resolvePeerAudience).
     const scope = String(req.body?.scope || 'management');
 
-    if (scope === 'team') {
-      const [[myRole]] = await pool.query(
-        'SELECT UPPER(role) role FROM staff WHERE id=? AND tenant_id=? LIMIT 1',
-        [me.id, req.tenantId]
-      );
-      const role = myRole?.role || '';
-      const [teammates] = await pool.query(
-        `SELECT id, name FROM staff
-          WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL AND UPPER(role)=? AND id<>?`,
-        [req.tenantId, role, me.id]
-      );
-      const label = `فريق ${ROLE_LABEL_AR[role] || role}`;
+    if (scope !== 'management') {
+      const audience = await resolvePeerAudience(req, me, scope);
+      if (audience.error) return res.status(400).json({ error: audience.error });
+      const { rows: teammates, label, privateTo } = audience;
+      if (!teammates.length) return res.status(400).json({ error: 'مفيش حد في الفريق ده دلوقتي' });
       // The sender's own copy is 'from_staff' (they authored it, and it shows on
-      // their thread as outgoing); teammates get 'peer_broadcast' so their view
+      // their thread as outgoing); the others get 'peer_broadcast' so their view
       // attributes it to a colleague rather than to management.
-      const broadcastId = teammates.length
-        ? await fanOut({
-          req, audience: teammates, label, body,
-          direction: 'peer_broadcast', authorId: me.id, authorName: me.name || '',
-          notifTitle: `رسالة جماعية من ${me.name || 'زميل'}`,
-        })
-        : uuidv4();
+      const broadcastId = await fanOut({
+        req, audience: teammates, label, body,
+        direction: 'peer_broadcast', authorId: me.id, authorName: me.name || '',
+        notifTitle: privateTo ? `رسالة من ${me.name || 'زميل'}` : `رسالة جماعية من ${me.name || 'زميل'} · ${label}`,
+      });
       await pool.query(
         `INSERT INTO staff_messages
            (id, tenant_id, staff_id, author_staff_id, author_name, direction, broadcast_id, broadcast_label, body)
          VALUES (?,?,?,?,?, 'from_staff', ?,?,?)`,
         [uuidv4(), req.tenantId, me.id, me.id, me.name || '', broadcastId, label, body]
       );
-      // Management still gets visibility on team chatter.
-      await createNotification(
-        'hr', 'رسالة جماعية من موظف', `${me.name || ''} → ${label}: ${body.slice(0, 140)}`,
-        { broadcastId, staffId: me.id }, req.tenantId
-      ).catch(() => {});
+      // Management still gets visibility on team chatter; a private message or
+      // a reply is between the two of them (it stays in management's inbox).
+      if (!privateTo) {
+        await createNotification(
+          'hr', 'رسالة جماعية من موظف', `${me.name || ''} → ${label}: ${body.slice(0, 140)}`,
+          { broadcastId, staffId: me.id }, req.tenantId
+        ).catch(() => {});
+      }
       return res.json({ ok: true, broadcastId, label, recipients: teammates.length });
     }
 
@@ -716,16 +767,49 @@ router.post('/api/staff/me/messages', requireAuth, async (req, res) => {
 // in the header, which has to answer "is there anything new" without loading a
 // thread first.
 
+// GET /api/staff/me/messages/targets — the composer's choices: management, my
+// team, each other team that has someone in it, everyone, and each manager.
+router.get('/api/staff/me/messages/targets', requireAuth, async (req, res) => {
+  try {
+    const me = await _resolveStaffByUser(req);
+    if (!me) return res.status(404).json({ error: 'Staff record not found' });
+    const [staff] = await pool.query(`SELECT id, name, UPPER(role) role, branch_id FROM staff WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL`, [req.tenantId]);
+    const others = staff.filter(person => person.id !== me.id);
+    const teams = Object.entries(MESSAGE_TEAMS)
+      .map(([key, team]) => ({
+        scope: `team:${key}`, label: team.label,
+        count: others.filter(person => team.roles.includes(person.role) || (team.branchId && person.branch_id === team.branchId)).length,
+      }))
+      .filter(team => team.count > 0);
+    const managers = others
+      .filter(person => MANAGER_ROLES.includes(person.role))
+      .map(person => ({ scope: `manager:${person.id}`, label: person.name, role: ROLE_LABEL_AR[person.role] || person.role }));
+    res.json({ teams, managers, everyone: others.length });
+  } catch (e) {
+    logger.error('[staff/me/messages/targets]', e.message);
+    hrError(res, e);
+  }
+});
+
 router.get('/api/staff/me/messages/unread-count', requireAuth, async (req, res) => {
   try {
     const me = await _resolveStaffByUser(req);
     if (!me) return res.json({ unread: 0 });
-    const [[row]] = await pool.query(
-      `SELECT COUNT(*) n FROM staff_messages
-        WHERE tenant_id=? AND staff_id=? AND direction<>'from_staff' AND read_at IS NULL`,
-      [req.tenantId, me.id]
-    );
-    res.json({ unread: Number(row?.n || 0) });
+    const [[[row]], [[latest]]] = await Promise.all([
+      pool.query(
+        `SELECT COUNT(*) n FROM staff_messages
+          WHERE tenant_id=? AND staff_id=? AND direction<>'from_staff' AND read_at IS NULL`,
+        [req.tenantId, me.id]
+      ),
+      // The newest one, so the bell can say who wrote the moment it arrives.
+      pool.query(
+        `SELECT id, author_name, broadcast_label, LEFT(body, 120) body FROM staff_messages
+          WHERE tenant_id=? AND staff_id=? AND direction<>'from_staff' AND read_at IS NULL
+          ORDER BY created_at DESC LIMIT 1`,
+        [req.tenantId, me.id]
+      ),
+    ]);
+    res.json({ unread: Number(row?.n || 0), latest: latest || null });
   } catch (e) {
     logger.error('[staff/me/messages/unread]', e.message);
     res.json({ unread: 0 });
@@ -735,7 +819,7 @@ router.get('/api/staff/me/messages/unread-count', requireAuth, async (req, res) 
 router.get('/api/admin/hr/staff-messages/inbox', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT m.id, m.staff_id, m.author_name, m.body, m.read_at, m.created_at,
+      `SELECT m.id, m.staff_id, m.author_name, m.body, m.read_at, m.created_at, m.broadcast_label,
               s.name staff_name, s.role
          FROM staff_messages m
          LEFT JOIN staff s ON s.id = m.staff_id AND s.tenant_id = m.tenant_id

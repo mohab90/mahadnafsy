@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { Award, MessageSquare, Send, Target, TrendingUp, Users } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
+import { StaffMessageScopeSelect, sentLabel, useStaffMessageTargets } from '../../../components/StaffMessageScopeSelect';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 
 type Notify = (kind: 'success' | 'error' | 'warning' | 'info', message: string) => void;
@@ -67,7 +68,8 @@ export default function MyWorkRecordPanel({ notify, part }: { notify: Notify; pa
   const [messages, setMessages] = useState<Message[]>([]);
   const [resignations, setResignations] = useState<Resignation[]>([]);
   const [draft, setDraft] = useState('');
-  const [scope, setScope] = useState<'management' | 'team'>('management');
+  const [scope, setScope] = useState('management');
+  const messageTargets = useStaffMessageTargets();
   const [sending, setSending] = useState(false);
   const [showResign, setShowResign] = useState(false);
   const [resignDraft, setResignDraft] = useState({ lastWorkingDay: '', reasonNote: '' });
@@ -122,7 +124,7 @@ export default function MyWorkRecordPanel({ notify, part }: { notify: Notify; pa
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'تعذر الإرسال');
       setDraft('');
       loadThread();
-      notify('success', scope === 'team' ? 'وصلت لفريقك' : 'وصلت للإدارة');
+      notify('success', sentLabel(scope, messageTargets));
     } catch (e) {
       notify('error', (e as Error).message);
     } finally { setSending(false); }
@@ -256,18 +258,15 @@ export default function MyWorkRecordPanel({ notify, part }: { notify: Notify; pa
         <div className="flex flex-wrap items-end gap-2">
           <div>
             <label className="text-[11px] font-bold text-gray-600 mb-1 block">إلى</label>
-            <select value={scope} onChange={e => setScope(e.target.value as 'management' | 'team')}
-              className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
-              <option value="management">الإدارة</option>
-              <option value="team">فريقي كله</option>
-            </select>
+            <StaffMessageScopeSelect value={scope} onChange={setScope} targets={messageTargets}
+              className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
           </div>
           <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={2}
-            placeholder={scope === 'team' ? 'رسالة لكل زملائك في نفس القسم…' : 'اكتب رسالتك للإدارة…'}
+            placeholder={scope === 'management' ? 'اكتب رسالتك للإدارة…' : 'اكتب رسالتك…'}
             className="flex-1 min-w-[220px] border border-gray-200 rounded-xl px-3 py-2 text-sm resize-y" />
           <button type="button" disabled={sending || !draft.trim()} onClick={send}
             className="flex items-center gap-2 px-4 py-2.5 bg-sky-600 text-white rounded-xl font-bold text-sm hover:bg-sky-700 disabled:opacity-60 transition">
-            {scope === 'team' ? <Users size={15} /> : <Send size={15} />} إرسال
+            {scope !== 'management' && !scope.startsWith('manager:') ? <Users size={15} /> : <Send size={15} />} إرسال
           </button>
         </div>
       </div>

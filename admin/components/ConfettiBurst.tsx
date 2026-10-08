@@ -63,5 +63,5 @@ export function ConfettiBurst({ fire, pieces = 160 }: { fire: number; pieces?: n
     };
   }, [fire, pieces]);
 
-  return <canvas ref={canvasRef} aria-hidden="true" className="fixed inset-0 w-screen h-screen pointer-events-none z-[120]" />;
+  return <canvas ref={canvasRef} aria-hidden="true" className="fixed inset-0 w-screen h-screen pointer-events-none z-[80]" />;
 }

@@ -3,6 +3,7 @@ import { MessageSquare, Send, Users, X } from 'lucide-react';
 import { adminAuthHeaders } from '../../lib/adminAuthHeaders';
 import { useVisibleInterval } from '../../../shared/useVisibleInterval';
 import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
+import { StaffMessageScopeSelect, sentLabel, useStaffMessageTargets } from '../../components/StaffMessageScopeSelect';
 
 type Notify = (kind: 'success' | 'error' | 'warning' | 'info', message: string) => void;
 
@@ -12,6 +13,7 @@ type StaffMessage = {
   broadcast_label?: string | null; body: string; created_at: string;
   staff_name?: string | null; staff_id?: string;
 };
+type Latest = { id: string; author_name: string | null; broadcast_label: string | null; body: string } | null;
 
 const json = <T,>(url: string): Promise<T | null> =>
   fetch(url, { credentials: 'include', headers: adminAuthHeaders() })
@@ -34,23 +36,32 @@ export default function MessagesBell({
   const [unread, setUnread] = useState(0);
   const [messages, setMessages] = useState<StaffMessage[]>([]);
   const [draft, setDraft] = useState('');
-  const [scope, setScope] = useState<'management' | 'team'>('management');
+  const [scope, setScope] = useState('management');
+  const [replyTo, setReplyTo] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
+  const targets = useStaffMessageTargets();
+  const lastUnread = useRef<number | null>(null);
 
+  // «عاوز الرسايل تظهر اسرع بدون ريفريش» (8 Oct 2026): the count every 15
+  // seconds instead of every two minutes, and a new message announced the
+  // moment it lands — who wrote, and the start of it.
   const refreshCount = useCallback(async () => {
     if (mode === 'staff') {
-      const r = await json<{ unread: number }>('/api/staff/me/messages/unread-count');
-      setUnread(r?.unread || 0);
+      const r = await json<{ unread: number; latest?: Latest }>('/api/staff/me/messages/unread-count');
+      const count = r?.unread || 0;
+      if (lastUnread.current !== null && count > lastUnread.current && r?.latest && !open) {
+        notify('info', `📩 ${r.latest.author_name || 'رسالة جديدة'}${r.latest.broadcast_label ? ` · ${r.latest.broadcast_label}` : ''}: ${r.latest.body}`);
+      }
+      lastUnread.current = count;
+      setUnread(count);
     } else {
       const r = await json<{ unread: number }>('/api/admin/hr/staff-messages/inbox');
       setUnread(r?.unread || 0);
     }
-  }, [mode]);
+  }, [mode, notify, open]);
 
-  // A background tab counted unread messages every two minutes for nobody,
-  // and came back to a fresh count anyway.
-  useVisibleInterval(() => { void refreshCount(); }, 120000);
+  useVisibleInterval(() => { void refreshCount(); }, 15_000);
 
   // Click-away, same behaviour as the notifications dropdown beside it.
   useEffect(() => {
@@ -62,19 +73,26 @@ export default function MessagesBell({
     return () => document.removeEventListener('mousedown', onDown);
   }, [open]);
 
-  const load = async () => {
+  // Marking read is a write (it lands in the activity log), so it is done when
+  // the box opens, not on each refresh while it stays open.
+  const load = useCallback(async (markRead = true) => {
     if (mode === 'staff') {
       const rows = await json<StaffMessage[]>('/api/staff/me/messages');
       setMessages(rows || []);
     } else {
       const r = await json<{ messages: StaffMessage[] }>('/api/admin/hr/staff-messages/inbox');
       setMessages(r?.messages || []);
-      await fetch('/api/admin/hr/staff-messages/mark-read', {
-        method: 'POST', credentials: 'include', headers: adminAuthHeaders(true),
-      }).catch(() => {});
+      if (markRead) {
+        await fetch('/api/admin/hr/staff-messages/mark-read', {
+          method: 'POST', credentials: 'include', headers: adminAuthHeaders(true),
+        }).catch(() => {});
+      }
     }
     setUnread(0);
-  };
+    lastUnread.current = 0;
+  }, [mode]);
+  // While it is open the conversation keeps up by itself.
+  useVisibleInterval(() => { void load(false); }, 5_000, open);
 
   const toggle = async () => {
     const opening = !open;
@@ -89,12 +107,13 @@ export default function MessagesBell({
     try {
       const r = await fetch('/api/staff/me/messages', {
         method: 'POST', credentials: 'include', headers: adminAuthHeaders(true),
-        body: JSON.stringify({ body, scope }),
+        body: JSON.stringify({ body, scope: replyTo ? `reply:${replyTo}` : scope }),
       });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'تعذر الإرسال');
       setDraft('');
       await load();
-      notify('success', scope === 'team' ? 'وصلت لفريقك' : 'وصلت للإدارة');
+      notify('success', replyTo ? 'وصل ردك' : sentLabel(scope, targets));
+      setReplyTo(null);
     } catch (e) {
       notify('error', (e as Error).message);
     } finally { setSending(false); }
@@ -133,6 +152,7 @@ export default function MessagesBell({
                     <span className="text-xs font-bold text-gray-800">{m.staff_name || m.author_name || 'موظف'}</span>
                     <span className="text-[10px] text-gray-400">{new Date(m.created_at).toLocaleString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}</span>
                   </div>
+                  {m.broadcast_label && <p className="text-[10px] font-bold text-violet-600 mb-0.5">← {m.broadcast_label}</p>}
                   <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{m.body}</p>
                   {m.staff_id && (
                     <a href={`/staff/${m.staff_id}`} className="text-[11px] font-bold text-indigo-600 hover:underline">
@@ -157,6 +177,10 @@ export default function MessagesBell({
                         {' · '}{new Date(m.created_at).toLocaleString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}
                       </div>
                       <p className="whitespace-pre-wrap leading-relaxed">{m.body}</p>
+                      {!mine && (
+                        <button type="button" onClick={() => { if (peer) setReplyTo(m.id); else { setReplyTo(null); setScope('management'); } }}
+                          className="mt-1 text-[10px] font-bold text-sky-700 hover:underline">↩ رد</button>
+                      )}
                     </div>
                   </div>
                 );
@@ -166,17 +190,21 @@ export default function MessagesBell({
 
           {mode === 'staff' && (
             <div className="border-t border-gray-100 p-3 space-y-2">
-              <select value={scope} onChange={e => setScope(e.target.value as 'management' | 'team')}
-                className="w-full border border-gray-200 rounded-xl px-2.5 py-1.5 text-xs bg-white font-bold">
-                <option value="management">إلى الإدارة</option>
-                <option value="team">إلى فريقي كله</option>
-              </select>
+              {replyTo ? (
+                <div className="flex items-center justify-between rounded-xl bg-sky-50 border border-sky-200 px-2.5 py-1.5 text-xs font-bold text-sky-800">
+                  <span>↩ رد على {messages.find(item => item.id === replyTo)?.author_name || 'الرسالة'}</span>
+                  <button type="button" onClick={() => setReplyTo(null)} className="text-sky-500 hover:text-sky-700"><X size={12} /></button>
+                </div>
+              ) : (
+                <StaffMessageScopeSelect value={scope} onChange={setScope} targets={targets}
+                  className="w-full border border-gray-200 rounded-xl px-2.5 py-1.5 text-xs bg-white font-bold" />
+              )}
               <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={2}
                 placeholder="اكتب رسالتك…"
                 className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm resize-y" />
               <button type="button" disabled={sending || !draft.trim()} onClick={send}
                 className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-sky-600 text-white rounded-xl font-bold text-sm hover:bg-sky-700 disabled:opacity-60 transition">
-                {scope === 'team' ? <Users size={14} /> : <Send size={14} />} إرسال
+                {!replyTo && scope !== 'management' && !scope.startsWith('manager:') ? <Users size={14} /> : <Send size={14} />} إرسال
               </button>
             </div>
           )}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 import { mysqlAdmin, type SalesPulse } from '../../../../lib/mysqlapi';
 import { useVisibleInterval } from '../../../../../shared/useVisibleInterval';
+import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 import { CRM_CHANGED_EVENT } from '../../../../lib/crmChanged';
 import { ConfettiBurst } from '../../../../components/ConfettiBurst';
 import { playChime } from '../../../../lib/chime';
@@ -27,7 +28,7 @@ const MOOD_STYLE: Record<Mood, { card: string; bubble: string; motion: string }>
 };
 
 const money = (value: number) => Math.round(value).toLocaleString('ar-EG-u-nu-latn');
-const cairoHour = () => Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hour12: false, timeZone: 'Africa/Cairo' }).format(new Date())) % 24;
+const cairoHour = () => Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hour12: false, timeZone: CAIRO_TIME_ZONE }).format(new Date())) % 24;
 const ago = (at: string) => {
   const minutes = Math.max(0, Math.round((Date.now() - new Date(at).getTime()) / 60000));
   if (minutes < 1) return 'دلوقتي';
@@ -189,7 +190,7 @@ export default function MySalesPulse({ staffId, staffName }: { staffId: string; 
 
       {current && (
         <button type="button" onClick={() => setQueue(list => list.slice(1))}
-          className="fixed inset-x-0 top-24 mx-auto z-[121] w-[min(92vw,420px)] pulse-pop bg-white rounded-3xl shadow-2xl border-4 border-amber-300 p-6 text-center">
+          className="fixed inset-x-0 top-24 mx-auto z-[80] w-[min(92vw,420px)] pulse-pop bg-white rounded-3xl shadow-2xl border-4 border-amber-300 p-6 text-center">
           <div className="text-6xl mb-2">{current.emoji}</div>
           <p className="text-xl font-extrabold text-gray-900">{current.title}</p>
           <p className="text-sm text-gray-600 mt-1">{current.subtitle}</p>
