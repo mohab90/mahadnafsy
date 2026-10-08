@@ -225,6 +225,12 @@ test('refunds: the course under the client, contact and its result, organised ac
   assert.match(panel, /\['ESCALATED', 'مرفوع للإدارة'\]/);
   for (const label of ['الكورس', 'الفرع', 'المسئول', 'السيلز']) assert.ok(panel.includes(`aria-label="${label}"`), label);
   assert.match(panel, /const notifyRef = useRef\(notify\);/, 'an inline notify no longer reloads the list');
+  // 8 Oct 2026: the course its own column, the phone under the name, the
+  // actions one small row, and delete the admin's own button.
+  assert.match(panel, /<th className=\{th\}>الكورس<\/th>/);
+  assert.match(panel, /\{row\.subscriber_phone && <div/);
+  assert.match(panel, /flex flex-nowrap items-center gap-1/);
+  assert.match(panel, /\{isAdmin && \(\s*<button disabled=\{working\} onClick=\{\(\) => void remove\(row\)\}/);
 });
 
 test('contact: a result is enough, and it is the one column', () => {

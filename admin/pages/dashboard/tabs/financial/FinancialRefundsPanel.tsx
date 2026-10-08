@@ -325,7 +325,8 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
           <table className="w-full text-xs">
             <thead className="bg-gray-50 text-gray-500">
               <tr>
-                <th className={th}>العميل والكورس</th>
+                <th className={th}>العميل</th>
+                <th className={th}>الكورس</th>
                 <th className={th}>الفرع</th>
                 <th className={th}>دفع / الإجمالي</th>
                 <th className={th}>طلب استرداد</th>
@@ -349,11 +350,12 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
                 return (
                   <tr key={row.id} className="border-t border-gray-100 hover:bg-gray-50/60">
                     <td className={td}>
-                      <div className="font-bold text-gray-800">{row.subscriber_name || '—'}</div>
-                      {/* «ليه اسم الكورس مش بيظهر تحت اسم العميل بيكون رقم تليفون». */}
-                      <div className="text-[11px] font-bold text-indigo-700">{row.course_title || 'كورس غير محدد'}</div>
-                      <div className="text-[10px] text-gray-400" dir="ltr">{row.client_code || row.subscriber_phone || ''}</div>
+                      {/* «لازم يكون في عمود اسم الكورس ويكون رقم الهاتف تحت اسم العميل». */}
+                      <div className="font-bold text-gray-800 whitespace-nowrap">{row.subscriber_name || '—'}</div>
+                      {row.subscriber_phone && <div className="text-[11px] text-gray-500 text-right" dir="ltr">{row.subscriber_phone}</div>}
+                      {row.client_code && <div className="text-[10px] text-gray-400">{row.client_code}</div>}
                     </td>
+                    <td className={`${td} font-bold text-indigo-700 min-w-[120px]`}>{row.course_title || 'كورس غير محدد'}</td>
                     <td className={`${td} text-gray-600 whitespace-nowrap`}>{branchName(row.subscriber_branch)}</td>
                     <td className={td}>
                       <span className="font-bold text-gray-800">{num(row.paid_total).toLocaleString('ar-EG-u-nu-latn')}</span>
@@ -402,20 +404,20 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
                     <td className={td}>
                       {/* «تواصل» and the client's file first; every decision
                           under «النتيجة»; raising to management on its own. */}
-                      <div className="flex flex-wrap items-start gap-1">
+                      <div className="flex flex-nowrap items-center gap-1">
                         <button disabled={working} onClick={() => setContactRow(row)} title="تواصل وسجّل اللي حصل"
-                          className="rounded-lg bg-blue-600 px-2 py-1 font-bold text-white hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1">
-                          <Phone size={11} /> تواصل
+                          className="rounded-md px-1.5 py-0.5 text-[10px] font-bold disabled:opacity-50 inline-flex items-center gap-0.5 whitespace-nowrap bg-blue-600 text-white hover:bg-blue-700">
+                          <Phone size={10} /> تواصل
                         </button>
                         <button onClick={() => navigate(`/client/${row.client_code || row.subscriber_id}`)} title="ملف العميل"
-                          className="rounded-lg border border-gray-200 bg-white px-2 py-1 font-bold text-gray-600 hover:bg-gray-100 inline-flex items-center gap-1">
-                          <ExternalLink size={11} /> البروفايل
+                          className="rounded-md px-1.5 py-0.5 text-[10px] font-bold disabled:opacity-50 inline-flex items-center gap-0.5 whitespace-nowrap border border-gray-200 bg-white text-gray-600 hover:bg-gray-100">
+                          <ExternalLink size={10} /> الملف
                         </button>
                         {(canDecide || isAdmin) && (
                           <div className="relative">
                             <button disabled={working} onClick={() => setMenuFor(menuFor === row.id ? '' : row.id)}
-                              className="rounded-lg bg-slate-800 px-2 py-1 font-bold text-white hover:bg-slate-900 disabled:opacity-50 inline-flex items-center gap-1">
-                              النتيجة <ChevronDown size={11} />
+                              className="rounded-md px-1.5 py-0.5 text-[10px] font-bold disabled:opacity-50 inline-flex items-center gap-0.5 whitespace-nowrap bg-slate-800 text-white hover:bg-slate-900">
+                              النتيجة <ChevronDown size={10} />
                             </button>
                             {menuFor === row.id && (
                               <>
@@ -434,9 +436,6 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
                                   {isAdmin && (
                                     <button onClick={() => { setMenuFor(''); void blame(row); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-right font-bold text-rose-700 hover:bg-rose-50"><UserX size={12} /> خطأ موظف</button>
                                   )}
-                                  {isAdmin && (
-                                    <button onClick={() => { setMenuFor(''); void remove(row); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-right font-bold text-gray-600 hover:bg-gray-50"><Trash2 size={12} /> حذف الطلب</button>
-                                  )}
                                   {!isPending && status !== 'APPROVED' && !isAdmin && (
                                     <p className="px-3 py-1.5 text-gray-400">اتاخد فيه قرار</p>
                                   )}
@@ -447,8 +446,14 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
                         )}
                         {!row.escalated_at && status !== 'REFUNDED' && (
                           <button disabled={working} onClick={() => escalate(row)}
-                            className="rounded-lg border border-purple-200 bg-purple-50 px-2 py-1 font-bold text-purple-700 hover:bg-purple-100 disabled:opacity-50 inline-flex items-center gap-1">
-                            <ArrowUpCircle size={11} /> رفع للإدارة
+                            title="رفع للإدارة" className="rounded-md px-1.5 py-0.5 text-[10px] font-bold disabled:opacity-50 inline-flex items-center gap-0.5 whitespace-nowrap border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100">
+                            <ArrowUpCircle size={10} /> رفع للإدارة
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button disabled={working} onClick={() => void remove(row)} title="حذف الطلب"
+                            className="rounded-md px-1.5 py-0.5 text-[10px] font-bold disabled:opacity-50 inline-flex items-center gap-0.5 whitespace-nowrap border border-red-200 bg-red-50 text-red-700 hover:bg-red-100">
+                            <Trash2 size={10} /> حذف
                           </button>
                         )}
                       </div>
