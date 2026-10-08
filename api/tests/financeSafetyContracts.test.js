@@ -209,7 +209,8 @@ test('payment review and certificate settlement preserve tenant and workflow ide
   assert.match(payments, /SELECT id FROM subscribers[\s\S]{0,120}tenant_id=\?/);
   assert.match(payments, /pp\.tenant_id=orders\.tenant_id/);
   assert.match(paymentProofs, /const scope = resolveFinancialScope\(req/);
-  assert.match(paymentProofs, /sql \+= ' AND pp\.branch_id=\?'/);
+  // The branch, or the officer's own clients (anOfficerSeesTheirClientsReceipts).
+  assert.match(paymentProofs, /financialScopeClause\(scope, \{ branchColumn: 'pp\.branch_id', subscriberAlias: 's' \}\)/);
   assert.match(paymentProofs, /financialRecordMatches\(scope, proof\)/);
   assert.match(paymentProofs, /SELECT proof_image, branch_id[\s\S]{0,300}financialRecordMatches\(scope, row\)/);
   assert.match(createPayment, /certificate_request_id/);

@@ -318,7 +318,7 @@ async function recordSubscriberPayment(req, res) {
     }
     const suppliedCertificateRequestId = sanitize(rawCertificateRequestId, 36) || null;
     if (safeType === 'CERTIFICATE' && !suppliedCertificateRequestId && !certType) {
-      return res.status(400).json({ error: 'Certificate type or certificate request ID is required' });
+      return res.status(400).json({ error: 'اختار نوع الشهادة (أو طلب شهادة موجود) قبل تسجيل دفعها', code: 'CERTIFICATE_TYPE_REQUIRED' });
     }
     const certificateRequestId = safeType === 'CERTIFICATE'
       ? (suppliedCertificateRequestId || uuidv4())

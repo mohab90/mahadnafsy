@@ -626,7 +626,12 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     ? (arabicNameProblem(d.nameAr) || englishNameProblem(d.nameEn) || nationalIdProblem(d.nationalId, egyptianId)
       || (d.phoneConfirmed ? '' : 'أكّد رقم التليفون مع العميل'))
     : '';
-  const isValid = !subjectChosen ? false : tierProblem || identityProblem ? false : mode === 'new'
+  // A certificate is paid as one of the catalogue's types or on a request
+  // already open — the main item and any extra one. Sent without either, the
+  // server refused it in English: 17 times on 5–7 Oct.
+  const certificatesTyped = (d.paymentType !== 'certificate' || !!d.certReqId || !!d.certType)
+    && (d.extraItems || []).every(item => item.type !== 'certificate' || !(Number(item.amount) > 0) || !!item.certType);
+  const isValid = !subjectChosen || !certificatesTyped ? false : tierProblem || identityProblem ? false : mode === 'new'
     ? hasIdentity && (_amtPaid === 0 || (!!d.paymentMethod && (d.paymentType !== 'course' || !!d.courseId)))
     : _amtPaid > 0 && !!d.paymentMethod && (mode === 'lead' ? !!d.branch : true)
       && (!upgrading || (!!upgradeFrom && d.courseId.startsWith('bundle:')));
@@ -1299,6 +1304,16 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                         className="text-red-400 hover:text-red-600 font-bold text-xl leading-none px-1 flex-shrink-0 mr-auto"
                       >×</button>
                     </div>
+                    {item.type === 'certificate' && (
+                      <select
+                        value={item.certType || ''}
+                        onChange={e => updateItem({ certType: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:border-blue-400"
+                      >
+                        <option value="">— نوع الشهادة —</option>
+                        {certCatalog.types.map(({ key, label }) => <option key={key} value={key}>{label}</option>)}
+                      </select>
+                    )}
                     {isExtraCourse && (
                       <>
                         <select
@@ -1617,6 +1632,11 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           })()}
 
           {/* ── 10: Submit buttons ── */}
+          {!certificatesTyped && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+              اختار نوع الشهادة قبل تسجيل دفعها
+            </div>
+          )}
           {submitError && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
               {submitError}

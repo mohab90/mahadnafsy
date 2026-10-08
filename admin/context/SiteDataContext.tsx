@@ -38,6 +38,7 @@ import {
   defaultSubscribers,
   seedData,
 } from './siteDataSeed';
+import { hasPermission, type PermissionKey, type RoleKey } from '../constants/permissions';
 
 export interface SiteDataShape {
   courses: Course[];
@@ -368,10 +369,15 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // One aggregate request per signed-in staff session. Deliberately not tied to
   // the full leads load: the whole point is that a screen showing totals should
   // not have to wait for — or force — 26,878 rows to arrive first.
+  // Only for someone who may see leads: everyone else was refused (403), on
+  // every sign-in — 39 times on 5–7 Oct.
+  const canSeeLeadStats = isAdmin || hasPermission(
+    currentStaff ? { role: currentStaff.role as RoleKey, permissions: currentStaff.permissions as PermissionKey[] | undefined } : null,
+    'view_leads');
   useEffect(() => {
-    if (!authUser?.email) return;
+    if (!authUser?.email || !canSeeLeadStats) return;
     void refreshLeadStats();
-  }, [authUser?.email, refreshLeadStats]);
+  }, [authUser?.email, canSeeLeadStats, refreshLeadStats]);
 
   const _applySubscriberData = React.useCallback((mySub: unknown) => {
     const raw = mySub as unknown as SubscriberItem & { enrolledCoursesData?: Course[] };

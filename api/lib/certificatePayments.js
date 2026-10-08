@@ -1,24 +1,21 @@
 'use strict';
 
 const { getTenantSetting } = require('./tenantSettings');
-const { basePriceForCurrency } = require('./certificatePricing');
+const { basePriceForCurrency, certificateTypeCodes } = require('./certificatePricing');
 
 // What a certificate costs: the figure the desk typed (the dialog fills in the
 // price list's), else the price list's own — never the payment. A request
 // opened by a payment took the amount paid as its price: «لما بندخل ان العميل
 // دفع 500 من سعر الشهاده بيسجل ان الشهاده كلها ب500», so it read fully paid.
-async function certificatePrice(db, tenantId, { stated, type, currency }) {
-  if (Number(stated) > 0) return Number(stated);
+async function certificatePricing(db, tenantId) {
   const content = await getTenantSetting('content', { tenantId, fallback: {}, db }).catch(() => ({}));
-  let pricing = {};
-  try { pricing = JSON.parse(content?.extra_cert_pricing || '{}') || {}; } catch { pricing = {}; }
-  return basePriceForCurrency(pricing, type, currency) || null;
+  try { return JSON.parse(content?.extra_cert_pricing || '{}') || {}; } catch { return {}; }
 }
 
-const CERTIFICATE_TYPES = new Set([
-  'SOCIAL_SOLIDARITY', 'AIN_SHAMS', 'EXPERIENCE_EXTERNAL', 'PRACTICE_EXTERNAL',
-  'NATIONAL_COUNCIL', 'AMERICAN_BOARD', 'INSTITUTE', 'OTHER',
-]);
+async function certificatePrice(db, tenantId, { stated, type, currency }) {
+  if (Number(stated) > 0) return Number(stated);
+  return basePriceForCurrency(await certificatePricing(db, tenantId), type, currency) || null;
+}
 
 function conflict(message) {
   const error = new Error(message);
@@ -63,9 +60,12 @@ async function applyCertificatePayment(payment, db, tenantId, options = {}) {
       [paidAmount, currency, price || null, price || null, price || 0, paidAmount, requestId, tenantId]
     );
   } else {
+    // The eight built-in types and every one «تسعير الشهادات» lists (014, 015…):
+    // only the eight were accepted, so a certificate of any newer type the desk
+    // picked was refused — 17 times on 5–7 Oct.
     const requestedType = String(payment.cert_type || '').toUpperCase();
-    if (!CERTIFICATE_TYPES.has(requestedType)) {
-      throw conflict('Certificate type is required for a new certificate request');
+    if (!certificateTypeCodes(await certificatePricing(db, tenantId)).has(requestedType)) {
+      throw conflict('اختار نوع الشهادة قبل تسجيل دفعها');
     }
     const price = await certificatePrice(db, tenantId, { stated: payment.price, type: requestedType, currency }) || amount;
     await db.query(

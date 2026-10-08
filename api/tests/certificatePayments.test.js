@@ -110,3 +110,23 @@ test("with no price typed, the certificate takes the price list's", async () => 
   assert.equal(db.state.request.price, 300, 'the SAR price, as the dialog reads it');
   assert.equal(db.state.request.status, 'PAID');
 });
+
+// The catalogue's own types (014, 015 … in «تسعير الشهادات») were refused: the
+// payment knew only the eight built in, so 17 certificate payments on 5–7 Oct
+// failed with «Certificate type is required» although the desk had picked one.
+test('a certificate of a type the price list adds is accepted; one it does not list is not', async () => {
+  const db = fakeDb();
+  db.state.content = { extra_cert_pricing: JSON.stringify({ '014': { label: 'شهادة الجمعية', egyptianEGP: 2200 } }) };
+  await applyCertificatePayment({
+    id: 'pay-11', subscriber_id: 'sub-1', certificate_request_id: 'certreq-11', amount: 1000, currency: 'EGP', cert_type: '014',
+  }, db, 'tenant-default');
+  assert.equal(db.state.request.type, '014');
+  assert.equal(db.state.request.price, 2200);
+  assert.equal(db.state.request.status, 'PRICED');
+  await assert.rejects(
+    () => applyCertificatePayment({
+      id: 'pay-12', subscriber_id: 'sub-1', certificate_request_id: 'certreq-12', amount: 100, currency: 'EGP', cert_type: '099',
+    }, fakeDb(), 'tenant-default'),
+    /اختار نوع الشهادة/,
+  );
+});

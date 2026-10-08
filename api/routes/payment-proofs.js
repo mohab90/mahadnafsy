@@ -19,7 +19,7 @@ const { completeCourse } = require('../lib/courseCompletion');
 const { recordLectureProgress } = require('../lib/learningProgress');
 const { resolveLectureAccess } = require('../lib/learningAccess');
 const { grantCourseSelections } = require('../lib/entitlements');
-const { financialRecordMatches, resolveFinancialScope } = require('../lib/financialScope');
+const { financialRecordMatches, financialScopeClause, resolveFinancialScope } = require('../lib/financialScope');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { inspectProofImageDataUrl } = require('../lib/uploadSafety');
 const { isJourneyState } = require('../lib/journeyStates');
@@ -265,7 +265,10 @@ router.get('/api/me/payment-proofs', requireAuth, async (req, res) => {
 router.get('/api/admin/payment-proofs', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const tenantId = tenantIdFor(req);
-    const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null });
+    // A collection officer holds view_financial over their own clients: they
+    // see those clients' receipts. The list refused them — 86 times on 7 Oct,
+    // from the client profile and the dashboard badge (FINANCIAL_SCOPE_UNSUPPORTED).
+    const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null, allowAssigned: true });
     const statusFilter = req.query.status; // 'PENDING' | 'APPROVED' | 'REJECTED' | undefined (all)
     const normalizedStatus = statusFilter ? String(statusFilter).toUpperCase() : null;
     if (normalizedStatus && !['PENDING', 'APPROVED', 'REJECTED'].includes(normalizedStatus)) {
@@ -284,7 +287,8 @@ router.get('/api/admin/payment-proofs', requireAuth, requireAdminOrStaff, requir
                LEFT JOIN courses c ON c.id = pp.course_id AND c.tenant_id=pp.tenant_id
                WHERE pp.tenant_id=?`;
     const params = [tenantId];
-    if (scope.branchId) { sql += ' AND pp.branch_id=?'; params.push(scope.branchId); }
+    const within = financialScopeClause(scope, { branchColumn: 'pp.branch_id', subscriberAlias: 's' });
+    sql += within.sql; params.push(...within.params);
     if (normalizedStatus) { sql += ' AND pp.status = ?'; params.push(normalizedStatus); }
     sql += ' ORDER BY pp.submitted_at DESC LIMIT 500';
     const [rows] = await pool.query(sql, params);

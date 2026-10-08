@@ -23,7 +23,7 @@
 const express = require('express');
 const router = express.Router();
 
-const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requireAnyPermission } = require('../middleware/auth');
 const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
 const { sendRouteError } = require('../lib/helpers');
 // Pure, and kept in lib/ so it can be tested without booting a connection pool.
@@ -31,8 +31,11 @@ const { sendRouteError } = require('../lib/helpers');
 // paths, and a guard nothing can exercise is not a guard.
 const { sanitizeTabs } = require('../lib/sectionTabs');
 
+// Read by the two screens that show the tabs — the leads (view_leads) and the
+// online clients (view_subscribers). Asking view_leads alone refused every
+// online and collection account opening its own screen: 88 times on 5–7 Oct.
 router.get('/api/admin/section-tabs',
-  requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
+  requireAuth, requireAdminOrStaff, requireAnyPermission('view_leads', 'view_subscribers'), async (req, res) => {
     try {
       const stored = await getTenantSetting('section_tabs', { tenantId: req.tenantId, fallback: {} });
       res.json(sanitizeTabs(stored));

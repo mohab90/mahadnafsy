@@ -111,14 +111,17 @@ test('the collection target is only fetched by the roles whose screen shows it',
   assert.ok(!overview.includes("notify('error', 'تعذر تحميل هدف التحصيل الشهري')"),
     'a permission the reader does not hold is reported to them as an error they cannot act on');
 
-  // The premise: the endpoint really is behind view_leads, and the roles that
-  // were seeing the error really do lack it.
+  // The premise: the endpoint is behind view_leads or the online team's own
+  // keys (8 Oct 2026: «فريق الأونلاين والتحصيل» reads it too), and the roles
+  // that were seeing the error really do lack all three.
   const sales = codeOnly(read('api/routes/analytics/sales.js'));
-  assert.match(sales, /router\.get\('\/api\/admin\/sales-targets'[\s\S]{0,140}requirePermission\('view_leads'\)/);
-  const canRead = new Set(holders('view_leads'));
+  assert.match(sales, /router\.get\('\/api\/admin\/sales-targets'[\s\S]{0,140}requireAnyPermission\('view_leads', 'manage_subscribers', 'view_perf_online'\)/);
+  const canRead = new Set([...holders('view_leads'), ...holders('manage_subscribers'), ...holders('view_perf_online')]);
   const affected = holders('view_dashboard').filter(role => !canRead.has(role));
   // support since «ميشوفش العملاء المحتملين»; its bar has no overview.
-  assert.deepEqual(affected.sort(), ['accountant', 'expert', 'hr', 'instructor', 'other', 'support', 'trainer']);
+  // support reads the targets now, through the online team's keys; its
+  // overview still does not ask for the collection one.
+  assert.deepEqual(affected.sort(), ['accountant', 'expert', 'hr', 'instructor', 'other', 'trainer']);
 });
 
 test('there is one payment screen, and every booking button opens it', () => {
@@ -237,7 +240,7 @@ test('no second screen records a customer payment', () => {
   // Nothing is valid until the screen knows whose payment it is.
   const modal = codeOnly(read('admin/components/PaymentModal.tsx'));
   assert.ok(modal.includes('const subjectChosen = !subjectOptions || !!subject.id;'));
-  assert.ok(modal.includes('const isValid = !subjectChosen ? false'));
+  assert.ok(modal.includes('const isValid = !subjectChosen || !certificatesTyped ? false'));
 });
 
 test('every booking and payment button opens that one screen', () => {

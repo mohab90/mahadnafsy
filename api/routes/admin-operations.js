@@ -57,7 +57,11 @@ function expenseDate(value) {
 
 router.get('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
-    const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null });
+    const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null, allowAssigned: true });
+    // Staff who see their own clients' money see no expenses — none is a
+    // client's. The dashboard asked on every load and was refused: 127 times
+    // on 5–7 Oct, for collection officers.
+    if (scope.kind === 'assigned_cs' || scope.kind === 'assigned_sales') return res.json([]);
     const branchSql = scope.branchId ? ' AND branch_id=?' : '';
     const params = scope.branchId ? [scopedTenantId(req), scope.branchId] : [scopedTenantId(req)];
     // 500 was a fixed cut, and the screens total what they are handed: the

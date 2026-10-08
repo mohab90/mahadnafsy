@@ -130,7 +130,12 @@ router.put('/api/admin/sales-goals/:period', requireAuth, requireAdmin, async (r
 //    staff_id '__collection__' holds the org-wide collection monthly target. ──
 
 // GET /api/admin/sales-targets?period=YYYY-MM (omit period → recent across staff)
-router.get('/api/admin/sales-targets', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
+// Read by the sales screens (view_leads) and by «فريق الأونلاين والتحصيل»
+// (manage_subscribers) and the online performance view (view_perf_online),
+// which asked view_leads alone: an online manager was refused and shown
+// «تعذر تحميل أهداف فريق الأونلاين والتحصيل» — 113 refusals on 5–7 Oct.
+router.get('/api/admin/sales-targets', requireAuth, requireAdminOrStaff,
+  requireAnyPermission('view_leads', 'manage_subscribers', 'view_perf_online'), async (req, res) => {
   try {
     const { period } = req.query;
     let sql = 'SELECT staff_id AS staffId, period, revenue_target AS revenueTarget, leads_target AS leadsTarget, updated_at AS updatedAt FROM sales_targets WHERE tenant_id=?';

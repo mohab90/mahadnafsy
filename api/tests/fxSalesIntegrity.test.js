@@ -67,7 +67,7 @@ test('sales goals, targets, actuals and performance are tenant scoped', () => {
   // but writing a target must not be: manage_leads is a default sales-rep
   // permission, so gating the write on it let a rep set the very target their
   // own scorecard is measured against. Pin the manager-level gate instead.
-  assert.match(route, /router\.get\('\/api\/admin\/sales-targets'[\s\S]{0,160}requirePermission\('view_leads'\)/);
+  assert.match(route, /router\.get\('\/api\/admin\/sales-targets'[\s\S]{0,160}requireAnyPermission\('view_leads', 'manage_subscribers', 'view_perf_online'\)/);
   // Writing a target is a sales-management action, not a reporting one:
   // view_reports also opens the company KPI/retention/expense dashboards, so a
   // sales manager gated on it was being handed the whole admin analytics group.

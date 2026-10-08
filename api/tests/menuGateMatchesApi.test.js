@@ -62,8 +62,9 @@ test('no screen an HR account can open answers 403', () => {
   };
   assert.match(routes.kpi_dashboard, /router\.get\('\/api\/admin\/kpi\/summary', requireAuth, requireAdmin/,
     'the KPI summary is admin-only, so its tab cannot be gated on view_reports');
-  assert.match(routes.sales_planning, /router\.get\('\/api\/admin\/sales-targets', requireAuth, requireAdminOrStaff, requirePermission\('view_leads'\)/,
-    'the collection target needs view_leads');
+  assert.match(routes.sales_planning, /router\.get\('\/api\/admin\/sales-targets', requireAuth, requireAdminOrStaff,\s+requireAnyPermission\('view_leads', 'manage_subscribers', 'view_perf_online'\)/,
+    'the targets need view_leads or the online team\'s keys — none of which HR holds');
+  for (const permission of ['view_leads', 'manage_subscribers', 'view_perf_online']) assert.ok(!hr.has(permission), permission);
   // «أداء الموظفين» is the HR section's own screen, so its API takes view_hr as
   // well — the two gates agree, which is the rule this file is about. Keeping
   // the screen on view_leads alone was the other way to make them agree, and it
