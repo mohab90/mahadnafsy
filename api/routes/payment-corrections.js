@@ -10,6 +10,7 @@
  * through the ordinary path, then the old one is voided; a changed currency
  * needs the amount entered again in it.
  */
+const { signerName } = require('../lib/staffNames');
 const express = require('express');
 const router = express.Router();
 
@@ -18,7 +19,7 @@ const { pool } = require('../lib/db');
 const { canCorrectPayments, voidPayment, editPaymentDetails } = require('../lib/paymentCorrections');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 
-const actorOf = req => req.staffRecord?.name || req.user?.email || 'admin';
+const actorOf = req => signerName(req);
 
 function managersOnly(req, res, next) {
   if (canCorrectPayments(req)) return next();

@@ -1,5 +1,6 @@
 'use strict';
 
+const { signerName } = require('../../lib/staffNames');
 const express = require('express');
 const router = express.Router();
 const logger = require('../../lib/logger');
@@ -117,7 +118,7 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
       if (transfer) {
         await linkTransfer(conn, {
           tenantId, paymentId: id, link: transfer,
-          actor: { id: req.staffRecord?.id, name: req.staffRecord?.name || req.user?.email },
+          actor: { id: req.staffRecord?.id, name: signerName(req) },
         });
       }
       const rawAmount = Number(payment.amount) || 0;
@@ -309,7 +310,7 @@ router.post('/api/admin/incoming-transfers', requireAuth, requireAdminOrStaff, r
     }
     const id = await recordTransfer(pool, {
       tenantId: req.tenantId, transfer: req.body || {},
-      actor: { id: req.staffRecord?.id, name: req.staffRecord?.name || req.user?.email },
+      actor: { id: req.staffRecord?.id, name: signerName(req) },
     });
     res.json({ ok: true, id });
   } catch (error) {
@@ -327,7 +328,7 @@ router.post('/api/admin/incoming-transfers/import', requireAuth, requireAdminOrS
     }
     const result = await importTransfers(pool, {
       tenantId: req.tenantId, transfers: req.body?.transfers,
-      actor: { id: req.staffRecord?.id, name: req.staffRecord?.name || req.user?.email },
+      actor: { id: req.staffRecord?.id, name: signerName(req) },
     });
     res.json({ ok: true, ...result });
   } catch (error) {

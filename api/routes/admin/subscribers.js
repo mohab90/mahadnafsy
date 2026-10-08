@@ -1,4 +1,5 @@
 'use strict';
+const { signerName } = require('../../lib/staffNames');
 const { completeForBranch, toIdentity } = require('../../lib/phoneNumber');
 const { findLeadByContact } = require('../../lib/leadMatching');
 const logger = require('../../lib/logger');
@@ -137,7 +138,7 @@ router.post('/api/staff/subscribers/:id/communications',
       const record = {
         id, type: type.toLowerCase(), date: at.toISOString(), notes, outcome: outcome || undefined,
         nextFollowUp: next ? next.toISOString().slice(0, 10) : undefined,
-        staffId: req.staffRecord?.id || null, staffName: req.staffRecord?.name || req.user?.email || null,
+        staffId: req.staffRecord?.id || null, staffName: signerName(req),
       };
       const crm = parseCrm(subscriber.crm_json);
       crm.communications = [...(Array.isArray(crm.communications) ? crm.communications : []), record].slice(-200);

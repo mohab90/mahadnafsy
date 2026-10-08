@@ -134,18 +134,23 @@ test('the history names who did it for the desk, and keeps it from the client', 
   const rows = [
     { category: 'client', event_type: 'course_removed', entity_id: 'a1', title: 'اتمسح', actor: 'st-1' },
     { category: 'payment', event_type: 'payment_paid', entity_id: 'p1', title: 'كورس', actor: 'walid' },
+    // «فتح كورس · بواسطة hana@mahadnafsy.com» (8 Oct 2026): an address reads as the name.
+    { category: 'learning', event_type: 'entitlement_granted', entity_id: 'e1', title: 'كورس', actor: 'Hana@Example.test' },
+    { category: 'learning', event_type: 'entitlement_granted', entity_id: 'e2', title: 'كورس', actor: 'gone@example.test' },
   ];
   const db = fakeDb([
     [/FROM activity_logs a/, [rows]],
-    [/SELECT id, name FROM staff/, [[{ id: 'st-1', name: 'هناء' }]]],
+    [/SELECT id, name, email FROM staff WHERE tenant_id=\?/, [[{ id: 'st-1', name: 'هناء', email: null }, { id: 'st-2', name: 'هنا', email: 'Hana@Example.test' }]]],
   ]);
   const staff = await listCustomerTimeline('t', 's1', db, { staff: true });
   assert.equal(staff[0].actor, 'هناء', 'a staff id reads as a name');
   assert.equal(staff[1].actor, 'walid');
+  assert.equal(staff[2].actor, 'هنا', 'an address reads as the name');
+  assert.equal(staff[3].actor, 'موظف سابق', 'an address no one has is never shown');
   assert.match(find(db, /FROM activity_logs a/).sql, /a\.entity='subscriber' AND a\.entity_id=\?/);
 
   const own = await listCustomerTimeline('t', 's1', fakeDb([[/FROM activity_logs a/, [rows]]]));
-  assert.deepEqual(own.map(row => row.category), ['payment'], 'the desk\'s record is not the client\'s');
+  assert.deepEqual(own.map(row => row.category), ['payment', 'learning', 'learning'], 'the desk\'s record is not the client\'s');
   assert.ok(own.every(row => !('actor' in row)));
   assert.match(read('api/routes/admin/subscribers.js'), /listCustomerTimeline\(req\.tenantId, subscriber\.id, pool, \{ staff: true \}\)/);
 });

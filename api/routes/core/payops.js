@@ -3,6 +3,7 @@
 const express = require('express');
 const router = express.Router();
 const logger = require('../../lib/logger');
+const { withStaffNames } = require('../../lib/staffNames');
 const { pool } = require('../../lib/db');
 const { tryJson } = require('../../lib/helpers');
 const { isValidDateOnly } = require('../../lib/dates');
@@ -454,7 +455,7 @@ router.get('/api/admin/payment-audit', requireAuth, requireAdmin, async (req, re
       total: Number(count.total) || 0,
       page,
       limit,
-      rows: rows.map(row => toNumbers(row, ['amount'])),
+      rows: (await withStaffNames(req.tenantId, rows, 'actor')).map(row => toNumbers(row, ['amount'])),
     });
   } catch (error) {
     logger.error('[payment-audit]', error.message);

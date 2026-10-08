@@ -2,6 +2,7 @@
 // Duplicates: finding, merging, unmerging, cleaning up and archiving.
 // One part of routes/admin/leads.js, which puts the parts back together in order.
 const { Router } = require('express');
+const { withStaffNames, signerName } = require('../../../lib/staffNames');
 const {
   pool,
   LEAD_STATUSES,
@@ -37,7 +38,7 @@ router.post('/api/admin/leads/merge', requireAuth, requireAdmin, requirePermissi
       tenantId: req.tenantId,
       targetId: req.body?.targetId,
       sourceIds: req.body?.sourceIds,
-      actor: req.user?.email || req.staffRecord?.name || 'admin',
+      actor: req.staffRecord?.name || req.user?.email || 'admin',
     });
     res.json({ ok: true, ...result });
   } catch (e) {
@@ -49,7 +50,7 @@ router.post('/api/admin/leads/merge', requireAuth, requireAdmin, requirePermissi
 
 router.get('/api/admin/leads/merge-history', requireAuth, requireAdmin, requirePermission('manage_leads'), async (req, res) => {
   try {
-    res.json(await listLeadMergeHistory(req.tenantId, req.query?.limit));
+    res.json(await withStaffNames(req.tenantId, await listLeadMergeHistory(req.tenantId, req.query?.limit), 'actor'));
   } catch (e) { logger.error('[lead-merge-history]', e.message); sendRouteError(res, e); }
 });
 
@@ -78,7 +79,7 @@ router.post('/api/admin/leads/dedup-cleanup', requireAuth, requireAdmin, async (
       // left; the caller simply calls again until `remaining` is 0.
       const deadline = Date.now() + 35000;
       const groups = await findLeadDuplicateGroups(req.tenantId);
-      const actorName = req.user?.email || req.staffRecord?.name || 'admin';
+      const actorName = signerName(req);
       let merged = 0, done = 0, failed = 0;
       for (const group of groups) {
         if (Date.now() > deadline) break;

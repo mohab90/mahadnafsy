@@ -6,6 +6,7 @@
 // CONVERSION. This is the single home for how a customer problem enters the
 // system (website / dashboard / phone / whatsapp) and moves between departments.
 // ═══════════════════════════════════════════════════════════════════════════
+const { signerName } = require('../lib/staffNames');
 const logger = require('../lib/logger');
 const { createHash, randomBytes } = require('crypto');
 const { Router } = require('express');
@@ -73,7 +74,7 @@ const canAccessTicket = (req, ticket) => {
 };
 
 async function actorOf(req) {
-  const name = req.user?.name || req.user?.email || 'إدارة';
+  const name = signerName(req);
   let id = req.staffRecord?.id || null;
   if (!id && req.user?.email) { try { id = await getStaffIdByEmail(req.user.email, req.tenantId); } catch { /* ignore */ } }
   return { id, name };

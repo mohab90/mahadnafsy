@@ -47,7 +47,7 @@ const ALLOWED = new Map([
   // here and covered by the initialiser test further down instead — a source
   // scan cannot see into the fragment. Line numbers are deliberately NOT used
   // for these: pinning a line means every edit above it breaks this test.
-  ['routes/hr/staffprofile.js:168', 'guarded inside the derived table'],
+  ['routes/hr/staffprofile.js:169', 'guarded inside the derived table'],
 ]);
 
 function jsFiles(dir) {

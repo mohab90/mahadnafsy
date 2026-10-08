@@ -10,6 +10,7 @@
  * series at all. These endpoints answer with just the aggregates the page
  * draws, so the page stays fast regardless of CRM size.
  */
+const { signerName } = require('../../lib/staffNames');
 const { CONVERTED_SQL } = require('../../lib/leadStatuses');
 const { Router } = require('express');
 const router = Router();
@@ -618,7 +619,7 @@ router.post('/api/admin/hr/staff/broadcast', requireAuth, requireAdminOrStaff, r
       req, audience: audience.rows, label: audience.label, body,
       direction: 'to_staff',
       authorId: req.staffRecord?.id || null,
-      authorName: req.staffRecord?.name || req.user?.email || 'الإدارة',
+      authorName: signerName(req),
       notifTitle: 'رسالة من الإدارة',
     });
     await writeAuditEvent({

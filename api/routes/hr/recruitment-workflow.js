@@ -11,6 +11,7 @@
  * Every write here lands a row in recruitment_notes as well, so the reason
  * behind a status — and the person behind the reason — survives the next edit.
  */
+const { signerName } = require('../../lib/staffNames');
 const express = require('express');
 const { hrError } = require('./_shared');
 const router = express.Router();
@@ -26,7 +27,7 @@ const GRADES = new Set(['A+', 'A', 'B+', 'B', 'C+', 'C', 'R', 'W']);
 
 const actor = req => ({
   id: req.staffRecord?.id || null,
-  name: req.staffRecord?.name || req.user?.email || 'admin',
+  name: signerName(req),
 });
 
 /** Append-only, so a later note never overwrites the one before it. */

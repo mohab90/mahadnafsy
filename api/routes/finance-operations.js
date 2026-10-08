@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const express = require('express');
 const { pool } = require('../lib/db');
 const logger = require('../lib/logger').child({ route: 'finance-operations' });
+const { withStaffNames } = require('../lib/staffNames');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { resolveFinancialScope } = require('../lib/financialScope');
 const { branchIdForBranch } = require('../lib/branches');
@@ -533,7 +534,8 @@ router.get('/api/admin/accounting-periods/:id/close-requests', ...view, async (r
         WHERE tenant_id=? AND period_id=? ORDER BY created_at DESC LIMIT 100`,
       [req.tenantId, req.params.id]
     );
-    res.json(rows);
+    const named = await withStaffNames(req.tenantId, await withStaffNames(req.tenantId, rows, 'requested_by'), 'reviewed_by');
+    res.json(named);
   } catch (error) { fail(res, error, 'period close request list failed'); }
 });
 

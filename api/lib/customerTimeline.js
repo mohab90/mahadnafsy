@@ -1,6 +1,7 @@
 'use strict';
 
 const { pool } = require('./db');
+const { withStaffNames } = require('./staffNames');
 
 // `actor` on every arm: «مين اللى نفذ المهمه» is part of the history, not a
 // detail behind it. The client arm is lib/clientHistory.js — deleted and
@@ -47,13 +48,9 @@ async function listCustomerTimeline(tenantId, subscriberId, db = pool, { staff =
       tenantId, subscriberId, tenantId, subscriberId, tenantId, subscriberId]
   );
   if (!staff) return rows.filter(row => row.category !== 'client').map(({ actor: _actor, ...row }) => row);
-  // Entitlement events carry a staff id where the desk signed them; a name reads.
-  const ids = [...new Set(rows.map(row => row.actor).filter(Boolean))];
-  if (!ids.length) return rows;
-  const [people] = await db.query(
-    `SELECT id, name FROM staff WHERE tenant_id=? AND id IN (${ids.map(() => '?').join(',')})`, [tenantId, ...ids]);
-  const names = new Map(people.map(person => [person.id, person.name]));
-  return rows.map(row => (names.has(row.actor) ? { ...row, actor: names.get(row.actor) } : row));
+  // A staff id where the desk signed, the signed-in address where it did not
+  // («فتح كورس · بواسطة hana@…»): both read as the employee's name.
+  return withStaffNames(tenantId, rows, 'actor', db);
 }
 
 module.exports = { listCustomerTimeline };

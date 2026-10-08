@@ -4,6 +4,7 @@ const express = require('express');
 const router = express.Router();
 
 const logger = require('../lib/logger').child({ module: 'admin-operations-route' });
+const { looksLikeAddress } = require('../lib/staffNames');
 const { pool } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
 const { parseLimit, parseOffset } = require('../lib/helpers');
@@ -293,7 +294,7 @@ router.get('/api/admin/activity-logs', requireAuth, requireAdminOrStaff, require
         // A row whose label was not a sentence keeps it as its details.
         details: row.details || (described.text !== row.label && !/^(create|update|delete) \//.test(row.label || '') ? row.label : null),
         actor: row.actor,
-        actorName: row.actor_name || (isOwner ? 'المالك' : SYSTEM_ACTORS[row.actor] || row.actor),
+        actorName: row.actor_name || (isOwner ? 'المالك' : SYSTEM_ACTORS[row.actor] || (looksLikeAddress(row.actor) ? 'موظف سابق' : row.actor)),
         department: row.department || departmentOf({ role: row.actor_role, isOwner }) || '—',
         section: described.area,
         at: row.at,

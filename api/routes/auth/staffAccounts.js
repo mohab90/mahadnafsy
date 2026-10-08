@@ -1,6 +1,7 @@
 'use strict';
 // Accounts made by staff: staff logins, client accounts, bulk creation.
 // One part of routes/auth.js, which puts the parts back together in order.
+const { signerName } = require('../../lib/staffNames');
 const { Router } = require('express');
 const {
   logger,
@@ -444,7 +445,7 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
         [paymentId, paySub.id, paymentCourseId, paymentBundleId, amount, currency,
          paymentMethod, firstPayment.transactionId ? String(firstPayment.transactionId).slice(0, 191) : null, paymentDate,
          firstPayment.note ? String(firstPayment.note).slice(0, 2000) : null, firstPaymentStatus, req.staffRecord?.id || null,
-         req.staffRecord?.name || req.user?.email || null, tenantId, paymentBranch, paymentBranchId, courseExpected]
+         signerName(req), tenantId, paymentBranch, paymentBranchId, courseExpected]
       );
       if (firstPaymentStatus === 'paid') {
         const journalId = await postPaymentJournal({

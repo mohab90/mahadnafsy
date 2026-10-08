@@ -67,7 +67,8 @@ test('the audit row carries the name, the department and the details', () => {
   assert.match(audit, /NOT_WORTH_A_ROW/);
   const route = read('api/routes/admin-operations.js');
   assert.match(route, /LEFT JOIN staff st ON st\.tenant_id=a\.tenant_id AND \(st\.email=a\.actor OR st\.id=a\.actor\)/);
-  assert.ok(route.includes("actorName: row.actor_name || (isOwner ? 'المالك' : SYSTEM_ACTORS[row.actor] || row.actor)"));
+  // A departed employee's address is «موظف سابق», never the address (8 Oct 2026).
+  assert.ok(route.includes("actorName: row.actor_name || (isOwner ? 'المالك' : SYSTEM_ACTORS[row.actor] || (looksLikeAddress(row.actor) ? 'موظف سابق' : row.actor))"));
   assert.match(read('api/migrations/229_v26_activity_names_and_certificate_shipping.sql'), /actor_name varchar\(255\)/);
   const tab = read('admin/pages/dashboard/tabs/ActivityTab.tsx');
   assert.match(tab, /\/admin\/activity-logs\?\$\{params\}/, 'filtered on the server');

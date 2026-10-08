@@ -46,7 +46,8 @@ test('the payroll and expense routes convert their money before answering', () =
   // correctly from /calculate.
   assert.ok(payroll.includes('runs.map(run => toNumbers(run, PAYROLL_RUN_MONEY))'));
   const payops = codeOnly(read('api/routes/core/payops.js'));
-  assert.ok(payops.includes("rows.map(row => toNumbers(row, ['amount']))"));
+  // Each step shown by who did it, by name (lib/staffNames.js), then converted.
+  assert.ok(payops.includes("(await withStaffNames(req.tenantId, rows, 'actor')).map(row => toNumbers(row, ['amount']))"));
 
   const expenses = codeOnly(read('api/routes/admin-operations.js'));
   assert.ok(expenses.includes('toNumbers(row, EXPENSE_MONEY)'));

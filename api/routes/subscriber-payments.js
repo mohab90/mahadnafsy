@@ -1,4 +1,5 @@
 'use strict';
+const { signerName } = require('../lib/staffNames');
 const logger = require('../lib/logger');
 const { createHash } = require('node:crypto');
 const express = require('express');
@@ -919,7 +920,7 @@ async function recordSubscriberPayment(req, res) {
       // the same transaction — two managers approving at once get one customer.
       if (req.linkTransfer) await linkTransfer(conn, {
         tenantId: paymentTenantId, paymentId: id, link: req.linkTransfer,
-        actor: { id: req.staffRecord?.id, name: req.staffRecord?.name || req.user?.email },
+        actor: { id: req.staffRecord?.id, name: signerName(req) },
       });
       const [closed] = await conn.query(
         `UPDATE subscriber_requests SET status='approved', subscriber_id=?, payment_id=?, reviewed_by=?,
