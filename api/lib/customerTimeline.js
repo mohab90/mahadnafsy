@@ -78,7 +78,7 @@ async function listCustomerTimeline(tenantId, subscriberId, db = pool, { staff =
   // contact somebody recorded, and stays out.
   const [desk = []] = await db.query(
     `SELECT * FROM (
-       SELECT 'contact' AS category,CONCAT('contact_',LOWER(m.type)) AS event_type,m.id AS entity_id,
+       SELECT 'contact' AS category,CONCAT('contact_',m.type) AS event_type,m.id AS entity_id,
               m.date AS occurred_at,COALESCE(NULLIF(m.notes,''),'') AS title,m.outcome AS status,
               NULL AS amount,NULL AS currency,m.staff_id AS actor,
               JSON_OBJECT('direction',m.direction,'next',m.next_follow_up) AS detail
@@ -96,7 +96,7 @@ async function listCustomerTimeline(tenantId, subscriberId, db = pool, { staff =
   ).catch(() => [[]]);
 
   const all = [...rows, ...(Array.isArray(desk) ? desk : [])]
-    .map(row => ({ ...row, detail: parseDetail(row.detail) }))
+    .map(row => ({ ...row, event_type: row.category === 'contact' ? String(row.event_type).toLowerCase() : row.event_type, detail: parseDetail(row.detail) }))
     .sort((a, b) => new Date(b.occurred_at) - new Date(a.occurred_at))
     .slice(0, 200);
   // A staff id where the desk signed, the signed-in address where it did not
