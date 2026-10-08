@@ -314,6 +314,11 @@ export const mysqlClient = {
   verifyCertificate: (code: string) => apiFetch<AR>(`/completions/verify/${encodeURIComponent(code)}`),
   // «يظهر انه العميل عملها تحميل»: the desk's «شهادات المعهد» sees it.
   // Joining from the site counts as attending («محضروش اللايف قبل كدا»).
+  // The client's own rating link (api/lib/selfRating.js) — no account needed.
+  getSelfRating: (roundId: string, s: string, t: string) =>
+    apiFetch<AR>(`/public/rate/${encodeURIComponent(roundId)}?s=${encodeURIComponent(s)}&t=${encodeURIComponent(t)}`),
+  sendSelfRating: (roundId: string, body: AR) =>
+    apiFetch<AR>(`/public/rate/${encodeURIComponent(roundId)}`, { method: 'POST', body: JSON.stringify(body) }),
   joinLiveStream: (id: string) => apiFetch<AR>(`/me/live-streams/${encodeURIComponent(id)}/join`, { method: 'POST' }, true),
   markCertificateDownloaded: (code: string) => apiFetch<AR>(`/me/completions/${encodeURIComponent(code)}/downloaded`, { method: 'POST' }, true),
   // Referral

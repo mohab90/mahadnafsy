@@ -31,6 +31,7 @@ const JoinStaff = React.lazy(() => import('./pages/JoinStaff'));
 const Enrollment = React.lazy(() => import('./pages/Enrollment'));
 const Courses = React.lazy(() => import('./pages/Courses'));
 const CertificateVerify = React.lazy(() => import('./pages/CertificateVerify'));
+const RateRound = React.lazy(() => import('./pages/RateRound'));
 const AiTutorWidget = React.lazy(() => import('./components/AiTutorWidget'));
 
 /** Minimal spinner shown while lazy pages load */
@@ -525,6 +526,7 @@ const AppShell: React.FC = () => {
               <Route path="/join-us" element={lazyPage(<JoinStaff />)} />
               <Route path="/enroll" element={lazyPage(<Enrollment />)} />
               <Route path="/certificate/:code" element={lazyPage(<CertificateVerify />)} />
+              <Route path="/rate/:roundId" element={lazyPage(<RateRound />)} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </main>

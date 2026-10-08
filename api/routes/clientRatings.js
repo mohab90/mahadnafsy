@@ -12,12 +12,14 @@ const express = require('express');
 const router = express.Router();
 const logger = require('../lib/logger');
 const { pool } = require('../lib/db');
-const { uuidv4 } = require('../lib/id');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { requireDaqqiAccess } = require('../lib/daqqiAccess');
 const { canTouchBranch, roundsScopeSql } = require('../lib/physicalBranches');
 const { signerName } = require('../lib/staffNames');
-const { SCORES, scoreOf, averageOf } = require('../lib/clientRatings');
+const { SCORES, averageOf, saveRating, scoreOf } = require('../lib/clientRatings');
+const { validRating } = require('../lib/selfRating');
+const { clientsAtRisk } = require('../lib/clientsAtRisk');
+const { publicLimiter } = require('../middleware/rateLimits');
 
 const readers = [requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess];
 
@@ -45,16 +47,18 @@ router.post('/api/admin/daqqi-rounds/:roundId/ratings', ...readers, async (req, 
     const scores = SCORES.map(({ key }) => scoreOf(req.body?.[key]));
     if (scores.some(score => score === null)) return res.status(400).json({ error: 'كل تقييم من 1 لـ 10' });
     const note = String(req.body?.note || '').trim().slice(0, 2000) || null;
-    const id = uuidv4();
-    await pool.query(
-      `INSERT INTO client_ratings
-         (id, tenant_id, subscriber_id, round_id, branch, course_id, instructor_name,
-          instructor_score, material_score, delivery_score, branch_staff_score, note, created_by_id, created_by_name)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [id, req.tenantId, subscriberId, round.id, round.branch, round.course_id, round.instructor_name || null,
-        ...scores, note, req.staffRecord?.id || null, signerName(req)]);
-    const row = Object.fromEntries(SCORES.map(({ column }, i) => [column, scores[i]]));
-    res.json({ ok: true, id, average: averageOf(row) });
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const saved = await saveRating(conn, {
+        tenantId: req.tenantId, round, subscriberId, scores, note, by: { id: req.staffRecord?.id || null, name: signerName(req) },
+      });
+      await conn.commit();
+      res.json({ ok: true, ...saved });
+    } catch (error) {
+      await conn.rollback().catch(() => {});
+      throw error;
+    } finally { conn.release(); }
   } catch (e) { logger.error('[client-ratings/create]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -121,6 +125,72 @@ router.get('/api/admin/client-ratings', ...readers, async (req, res) => {
       at: row.created_at,
     })));
   } catch (e) { logger.error('[client-ratings/list]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// The client's own rating, from the link in their WhatsApp (lib/selfRating.js):
+// the page reads the round, then sends the four scores. Kept as «العميل».
+async function selfRatingRound(req) {
+  const [[round]] = await pool.query(
+    `SELECT r.id, r.code, r.branch, r.course_id, r.tenant_id,
+            COALESCE(NULLIF(TRIM(r.instructor_name), ''), st.name) AS instructor_name,
+            COALESCE(NULLIF(c.title_ar, ''), c.title) AS course_title
+       FROM daqqi_rounds r
+       LEFT JOIN staff st ON st.id = r.instructor_id AND st.tenant_id = r.tenant_id
+       LEFT JOIN courses c ON c.id = r.course_id AND c.tenant_id = r.tenant_id
+      WHERE r.id = ? LIMIT 1`, [req.params.roundId]);
+  const subscriberId = String(req.query?.s || req.body?.s || '');
+  if (!round || !validRating(round.id, subscriberId, req.query?.t || req.body?.t)) return null;
+  const [[client]] = await pool.query(
+    `SELECT s.id, s.name FROM daqqi_attendees da JOIN subscribers s ON s.id = da.subscriber_id AND s.tenant_id = da.tenant_id
+      WHERE da.tenant_id = ? AND da.round_id = ? AND da.subscriber_id = ? LIMIT 1`, [round.tenant_id, round.id, subscriberId]);
+  return client ? { round, client } : null;
+}
+const ratedLately = async (round, clientId) => {
+  const [[row]] = await pool.query(
+    `SELECT id FROM client_ratings WHERE tenant_id = ? AND round_id = ? AND subscriber_id = ? AND created_by_id IS NULL
+        AND created_by_name = 'العميل' AND deleted_at IS NULL AND created_at > DATE_SUB(NOW(), INTERVAL 3 DAY) LIMIT 1`,
+    [round.tenant_id, round.id, clientId]);
+  return Boolean(row);
+};
+
+router.get('/api/public/rate/:roundId', publicLimiter, async (req, res) => {
+  try {
+    const found = await selfRatingRound(req);
+    if (!found) return res.status(404).json({ error: 'اللينك ده مش شغال' });
+    res.json({
+      name: String(found.client.name || '').split(' ')[0], course: found.round.course_title || '', lecturer: found.round.instructor_name || '',
+      round: found.round.code, questions: SCORES.map(({ key, label }) => ({ key, label })), alreadyRated: await ratedLately(found.round, found.client.id),
+    });
+  } catch (e) { logger.error('[self-rating/read]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+router.post('/api/public/rate/:roundId', publicLimiter, async (req, res) => {
+  const found = await selfRatingRound(req).catch(() => null);
+  if (!found) return res.status(404).json({ error: 'اللينك ده مش شغال' });
+  const scores = SCORES.map(({ key }) => scoreOf(req.body?.[key]));
+  if (scores.some(score => score === null)) return res.status(400).json({ error: 'اختار رقم من 1 لـ 10 في كل سؤال' });
+  if (await ratedLately(found.round, found.client.id).catch(() => false)) return res.status(409).json({ error: 'تقييمك اتسجل — شكراً ليك' });
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const saved = await saveRating(conn, {
+      tenantId: found.round.tenant_id, round: found.round, subscriberId: found.client.id, scores,
+      note: String(req.body?.note || '').trim().slice(0, 2000) || null, by: { id: null, name: 'العميل' },
+    });
+    await conn.commit();
+    res.json({ ok: true, average: saved.average });
+  } catch (e) {
+    await conn.rollback().catch(() => {});
+    logger.error('[self-rating/save]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally { conn.release(); }
+});
+
+// «عملاء في خطر»: housed clients with two of a low rating, two lectures missed, money owed.
+router.get('/api/admin/clients-at-risk', ...readers, async (req, res) => {
+  try {
+    res.json(await clientsAtRisk(pool, req));
+  } catch (e) { logger.error('[clients-at-risk]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // DELETE /api/admin/client-ratings/:id — the administration's: kept, out of every view.

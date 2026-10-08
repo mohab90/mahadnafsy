@@ -19,6 +19,7 @@ import { DAQQI_TIME_SLOT_COLORS as timeSlotColors, DAQQI_STATUS_COLORS as status
 import { ClientRatingModal } from './ClientRatingModal';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { satisfactionOf } from '../../../../lib/clientRatings';
+import { riskOf } from '../../../../lib/clientsAtRisk';
 
 type RoundRatings = Record<string, { average: number; count: number; at: string; note: string | null }>;
 
@@ -294,6 +295,19 @@ export function DaqqiRoundRow({
                                                 {attSub?.clientCode && (
                                                   <button onClick={e => { e.stopPropagation(); navigate(`/client/${attSub.clientCode}`); }} className="text-[10px] font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded hover:bg-indigo-100 inline-block">#{attSub.clientCode}</button>
                                                 )}
+                                                {(() => {
+                                                  const risk = riskOf({
+                                                    latestRating: ratings[a.subscriberId]?.average ?? null,
+                                                    lecture: status === 'active' ? calcCurrentLecture(round.startDate, round.postponedWeeks) : 0,
+                                                    attended: a.attendedLectures || 0,
+                                                    owed: aPrice > 0 ? aRem : 0,
+                                                  });
+                                                  return risk.atRisk ? (
+                                                    <span title={risk.reasons.join(' · ')} className="inline-flex items-center rounded-full border border-rose-300 bg-rose-100 px-1.5 py-0.5 text-[10px] font-extrabold text-rose-700 whitespace-nowrap">
+                                                      ⚠ في خطر
+                                                    </span>
+                                                  ) : null;
+                                                })()}
                                                 {ratings[a.subscriberId] && (() => {
                                                   const rated = ratings[a.subscriberId];
                                                   const mood = satisfactionOf(rated.average);

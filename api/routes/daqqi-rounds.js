@@ -44,6 +44,7 @@ const { seatSubscriberInRound } = require('../lib/daqqiHousing');
 const { ymd } = require('../lib/helpers');
 const { lectureToday, nextSessionDate } = require('../lib/daqqiLecture');
 const { branchIdForBranch } = require('../lib/branches');
+const { inviteToRate } = require('../lib/selfRating');
 
 const { mysqlWeekdayFromArabic } = require('../lib/daqqiSchedule');
 const { sqlCairoToday, cairoToday } = require('../lib/dates');
@@ -690,6 +691,11 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
       req,
       db: conn,
     });
+    // The round marked finished: every client rates it themselves (lib/selfRating.js).
+    if (existing && existing.status !== 'FINISHED' && status === 'FINISHED') {
+      const [housed] = await conn.query('SELECT subscriber_id FROM daqqi_attendees WHERE tenant_id=? AND round_id=?', [req.tenantId, id]);
+      await inviteToRate(conn, { tenantId: req.tenantId, roundId: id, subscriberIds: housed.map(row => row.subscriber_id), stage: 'final' });
+    }
     await conn.commit();
     res.json({ ok: true, id, code: savedCode });
   } catch (e) {
@@ -817,6 +823,10 @@ router.post('/api/admin/daqqi-rounds/:roundId/attendance', requireAuth, requireA
       db: conn,
     });
     const attendedLectures = Number(attendee.attended_lectures || 0) + 1;
+    // Present at their third lecture: their own link to rate it.
+    if (attendedLectures === 3) {
+      await inviteToRate(conn, { tenantId: req.tenantId, roundId: req.params.roundId, subscriberIds: [subscriberId], stage: 'third' });
+    }
     await conn.commit();
     res.status(201).json({ ok: true, id: eventId, sessionNumber, attendedLectures });
   } catch (error) {

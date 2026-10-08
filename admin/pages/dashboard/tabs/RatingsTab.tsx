@@ -6,6 +6,7 @@ import { useSiteData } from '../../../context/SiteDataContext';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 import { cairoDay } from '../../../../shared/cairoDate';
 import { RATING_QUESTIONS, satisfactionOf, type RatingScores } from '../../../lib/clientRatings';
+import { ClientsAtRiskPanel } from './ClientsAtRiskPanel';
 
 // «صفحه اسمها التقييمات لخدمه العملاء وللادارة ولفرع الدقي ايضا» (8 Oct 2026):
 // every rating a housed client gave their round — the four scores, the note,
@@ -86,6 +87,7 @@ export default function RatingsTab({ notify }: { notify: NotifyFn }) {
   const overall = satisfactionOf(summary.average);
   return (
     <div className="space-y-4" dir="rtl">
+      <ClientsAtRiskPanel />
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>

@@ -23,4 +23,51 @@ function averageOf(row) {
   return Math.round((total / SCORES.length) * 10) / 10;
 }
 
-module.exports = { SCORES, scoreOf, averageOf };
+// «اي تقييم اقل من 5 يفتح تيكت لخدمة العملاء لوحده» (8 Oct 2026, from the
+// suggestions the owner chose): an upset client is heard before they leave.
+const LOW_RATING = 5;
+
+/**
+ * Keep one rating — the desk's or the client's own from their link — and, when
+ * its mean is under 5, open a ticket for customer service on the client's file.
+ * `round` is { id, code, branch, course_id, instructor_name }. Returns
+ * { id, average, ticketId }.
+ */
+async function saveRating(db, { tenantId, round, subscriberId, scores, note = null, by = {} }) {
+  const { uuidv4 } = require('./id');
+  const id = uuidv4();
+  await db.query(
+    `INSERT INTO client_ratings
+       (id, tenant_id, subscriber_id, round_id, branch, course_id, instructor_name,
+        instructor_score, material_score, delivery_score, branch_staff_score, note, created_by_id, created_by_name)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [id, tenantId, subscriberId, round.id, round.branch || null, round.course_id || null, round.instructor_name || null,
+      ...scores, note, by.id || null, by.name || null]);
+  const average = averageOf(Object.fromEntries(SCORES.map(({ column }, i) => [column, scores[i]])));
+  let ticketId = null;
+  if (average < LOW_RATING) {
+    const [[client]] = await db.query('SELECT name, email FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriberId, tenantId]);
+    const { createRoutedTicket } = require('../routes/support');
+    const { logClientEvent } = require('./clientHistory');
+    const subject = `تقييم واطي ${average}/10 — روند ${round.code || ''}`.trim();
+    const body = [
+      SCORES.map(({ label }, i) => `${label}: ${scores[i]}/10`).join(' · '),
+      round.instructor_name ? `المحاضر: ${round.instructor_name}` : null,
+      note ? `ملاحظة العميل: ${note}` : null,
+      `سجّله: ${by.name || 'العميل'}`,
+    ].filter(Boolean).join('\n');
+    const ticket = await createRoutedTicket(db, {
+      tenantId, subscriberId, email: client?.email || null, name: client?.name || null, subject, body,
+      category: 'client_problem', priority: 'high', channel: 'rating', sourceType: 'client_rating', sourceId: id,
+      actor: { id: by.id || null, name: by.name || 'التقييمات' },
+    });
+    ticketId = ticket.id;
+    await logClientEvent(db, {
+      tenantId, subscriberId, action: 'problem_ticket_opened', actor: by.name || 'التقييمات',
+      label: `اتفتح تيكت لخدمة العملاء من تقييم واطي (${average}/10)${note ? ` — ${note}` : ''}`,
+    });
+  }
+  return { id, average, ticketId };
+}
+
+module.exports = { LOW_RATING, SCORES, averageOf, saveRating, scoreOf };

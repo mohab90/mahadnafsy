@@ -29,7 +29,7 @@ const stub = (rel, exports) => {
   require.cache[file] = { id: file, filename: file, loaded: true, exports };
 };
 stub('../lib/db', {
-  pool: { query, execute: query }, cached: async (_k, _t, fn) => fn(), cacheInvalidate() {},
+  pool: { query, execute: query, getConnection: async () => ({ query, async beginTransaction() {}, async commit() {}, async rollback() {}, release() {} }) }, cached: async (_k, _t, fn) => fn(), cacheInvalidate() {},
   requireDb: (_q, _s, n) => n(), isDbDown: () => false, getStaffIdByEmail: async () => null,
 });
 
