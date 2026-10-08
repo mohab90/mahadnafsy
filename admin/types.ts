@@ -515,7 +515,7 @@ export interface SubscriberItem {
 
 export interface CustomerTimelineEvent {
   /** 'client': a course deleted or transferred, a refund asked for or made (api/lib/clientHistory.js). */
-  category: 'order' | 'payment' | 'learning' | 'certificate' | 'support' | 'client';
+  category: 'order' | 'payment' | 'learning' | 'certificate' | 'support' | 'client' | 'contact' | 'lead';
   event_type: string;
   entity_id: string;
   occurred_at: string;
@@ -525,6 +525,8 @@ export interface CustomerTimelineEvent {
   currency?: string;
   /** Who did it. */
   actor?: string | null;
+  /** How: a payment's method and instalment, a course's access level, a ticket's priority. */
+  detail?: Record<string, unknown> | null;
 }
 
 export type DaqqiDayOfWeek = 'الأحد' | 'الاثنين' | 'الثلاثاء' | 'الأربعاء' | 'الخميس' | 'الجمعة' | 'السبت';

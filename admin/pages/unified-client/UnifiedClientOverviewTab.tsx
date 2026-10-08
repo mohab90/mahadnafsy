@@ -8,19 +8,9 @@ import { commTypeMeta } from './constants';
 import type { SettlementCurrency } from '../../lib/branchCurrency';
 import { normalizeInterestLevel } from '../dashboard/tabs/leadUtils';
 import { clientItems } from '../../lib/agreedPrice';
+import { ClientJourneyTimeline } from './ClientJourneyTimeline';
 import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
 
-/** What the desk did to a client's courses and money (api/lib/clientHistory.js). */
-const CLIENT_EVENT_LABELS: Record<string, string> = {
-  course_removed: 'مسح كورس',
-  course_transferred: 'تحويل كورس',
-  refund_requested: 'طلب استرداد',
-  refund_approved: 'استرداد',
-  refund_rejected: 'رفض استرداد',
-  refund_handling: 'معالجة استرداد',
-  entitlement_granted: 'فتح كورس',
-  entitlement_revoked: 'قفل كورس',
-};
 
 type BookingMapEntry = {
   expectedEGP?: number;
@@ -253,32 +243,7 @@ export function UnifiedClientOverviewTab({
     
     
     
-                      {isSub && timeline.length > 0 && (
-                        <section className="rounded-2xl border border-slate-200 bg-white p-4">
-                          <h3 className="mb-3 flex items-center gap-2 text-sm font-extrabold text-slate-800">
-                            <Activity size={16} className="text-indigo-500" />
-                            رحلة العميل الموحّدة
-                          </h3>
-                          <div className="space-y-2">
-                            {timeline.slice(0, 20).map(event => (
-                              <div key={`${event.category}:${event.entity_id}:${event.occurred_at}`} className={`flex items-start justify-between gap-3 rounded-xl px-3 py-2 ${event.category === 'client' ? 'bg-amber-50 border border-amber-100' : 'bg-slate-50'}`}>
-                                <div className="min-w-0">
-                                  {/* A deletion, transfer or refund is read in full: it is the record of it. */}
-                                  <p className={`text-xs font-bold text-slate-700 ${event.category === 'client' ? 'whitespace-normal leading-5' : 'truncate'}`}>{event.title}</p>
-                                  <p className="text-[10px] text-slate-400">
-                                    {CLIENT_EVENT_LABELS[event.event_type] || event.event_type.replace(/_/g, ' ')}
-                                    {event.actor && <span className="font-semibold text-slate-500"> · بواسطة {event.actor}</span>}
-                                  </p>
-                                </div>
-                                <div className="shrink-0 text-left">
-                                  {event.amount != null && <p className="text-xs font-bold text-emerald-700">{Number(event.amount).toLocaleString('ar-EG-u-nu-latn')} {event.currency}</p>}
-                                  <p className="text-[10px] text-slate-400">{new Date(event.occurred_at).toLocaleString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}</p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </section>
-                      )}
+                      {isSub && timeline.length > 0 && <ClientJourneyTimeline events={timeline} />}
 
                       {/* ─── Lead Status + Follow-up Banner (leads only) ─── */}
                       {!isSub && lead && (
