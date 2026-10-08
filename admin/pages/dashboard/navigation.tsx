@@ -112,6 +112,7 @@ export type TabKey =
   | 'daqqi_stats'
   | 'daqqi_attendance'
   | 'sales_hub'
+  | 'sales_daqqi_schedule'
   | 'marketing_hub'
   | 'online_hub'
   | 'staff_performance'
@@ -207,6 +208,8 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'leads', label: 'العملاء المحتملون', icon: UserPlus },
       { key: 'team_inbox', label: 'صندوق الرسائل', icon: Inbox },
       { key: 'whatsapp_web', label: 'واتسابي', icon: MessageCircle },
+      // The Dokki courses a rep can still sell: not started, or on lecture 1–2.
+      { key: 'sales_daqqi_schedule', label: 'جدول الدقي', icon: CalendarDays },
       // The team's numbers in one page: the leads screen's «أداء الفريق», this
       // hub and «أداء فريق المبيعات» (tabs/SalesPerformancePage.tsx).
       { key: 'sales_hub', label: 'أداء المبيعات', icon: TrendingUp },

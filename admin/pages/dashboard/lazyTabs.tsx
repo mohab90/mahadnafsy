@@ -77,6 +77,7 @@ export const SmsCampaignsTab = lazy(() => import('./tabs/SmsCampaignsTab'));
 export const SmsSettingsTab = lazy(() => import('./tabs/SmsSettingsTab'));
 export const StaffHomeTab = lazy(() => import('./tabs/StaffHomeTab'));
 export const StaffPerformanceTab = lazy(() => import('./tabs/StaffPerformanceTab'));
+export const SalesDaqqiScheduleTab = lazy(() => import('./tabs/SalesDaqqiScheduleTab'));
 export const SubscriptionsTab = lazy(() => import('./tabs/SubscriptionsTab'));
 export const SystemSettingsTab = lazy(() => import('./tabs/SystemSettingsTab'));
 export const TasksBoardTab = lazy(() => import('./tabs/TasksBoardTab'));

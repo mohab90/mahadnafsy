@@ -42,6 +42,7 @@ const { getDaqqiAttendees } = require('../lib/daqqiAttendees');
 const { attachAttendeeMoney } = require('../lib/daqqiAttendeeMoney');
 const { seatSubscriberInRound } = require('../lib/daqqiHousing');
 const { ymd } = require('../lib/helpers');
+const { lectureToday, nextSessionDate } = require('../lib/daqqiLecture');
 const { branchIdForBranch } = require('../lib/branches');
 
 const { mysqlWeekdayFromArabic } = require('../lib/daqqiSchedule');
@@ -246,6 +247,39 @@ router.get('/api/admin/daqqi-rounds/for-booking', requireAuth, requireAdminOrSta
       attendees: Array.from({ length: Number(r.seated) || 0 }, () => ({})),
     })));
   } catch (e) { logger.error('[daqqi-rounds/for-booking]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// GET /api/admin/daqqi-rounds/sales-schedule — «جدول الدقي» for the whole sales
+// team: the rounds a new client can still join — not started yet, or on their
+// first or second lecture. From the third lecture a round leaves the list (8
+// Oct 2026: «اول ما يوصل الكورس للمحاضرة التالته تختفي من عند السيلز»). The
+// schedule alone: no attendee, no money.
+router.get('/api/admin/daqqi-rounds/sales-schedule', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
+  try {
+    const [rounds] = await pool.query(
+      `SELECT r.id, r.code, r.branch, r.course_id, c.title AS course_title, r.instructor_name, r.day_of_week,
+              r.start_date, r.time_slot, r.room, r.postponed_weeks_json
+         FROM daqqi_rounds r
+         LEFT JOIN courses c ON c.id = r.course_id AND c.tenant_id = r.tenant_id
+        WHERE r.tenant_id=? AND LOWER(COALESCE(r.status,'new')) NOT IN ('finished','cancelled')
+        ORDER BY r.start_date, r.code LIMIT 300`,
+      [req.tenantId]);
+    const slots = { MORNING: 'صباحاً', NOON: 'ظهراً', EVENING: 'مساءً' };
+    const today = cairoToday();
+    res.json(rounds
+      .map(r => {
+        const startDate = ymd(r.start_date);
+        let postponed = [];
+        try { postponed = JSON.parse(r.postponed_weeks_json || '[]') || []; } catch { postponed = []; }
+        return {
+          id: r.id, code: r.code, branch: r.branch || 'DAQQI', courseId: r.course_id,
+          courseTitle: r.course_title || '', instructorName: r.instructor_name || '',
+          dayOfWeek: r.day_of_week, timeSlot: slots[r.time_slot] || 'مساءً', room: r.room || '',
+          startDate, lecture: lectureToday(startDate, postponed, today), nextSession: nextSessionDate(startDate, today),
+        };
+      })
+      .filter(round => round.lecture <= 2));
+  } catch (e) { logger.error('[daqqi-rounds/sales-schedule]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {

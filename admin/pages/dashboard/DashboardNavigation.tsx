@@ -433,6 +433,7 @@ export function DashboardNavigation(props: Props) {
                   { key: 'online_clients', label: 'عملائي', icon: UserCheck },
                   { key: 'team_inbox', label: 'صندوق الرسائل', icon: Inbox },
                   { key: 'whatsapp_web', label: 'واتسابي', icon: MessageCircle },
+                  { key: 'sales_daqqi_schedule', label: 'جدول الدقي', icon: CalendarDays },
                   { key: 'orders', label: 'مدفوعاتي', icon: CreditCard },
                   { key: 'staff_performance', label: 'إحصائياتي', icon: BarChart3 },
                 ]}
@@ -526,6 +527,7 @@ export function DashboardNavigation(props: Props) {
                 tabs={[
                   { key: 'leads', label: 'العملاء المحتملون', icon: UserPlus },
                   { key: 'sales_hub', label: 'أداء المبيعات', icon: TrendingUp },
+                  { key: 'sales_daqqi_schedule', label: 'جدول الدقي', icon: CalendarDays },
                   { key: 'online_clients', label: 'عملاء الأونلاين', icon: UserCheck },
                   { key: 'online_hub', label: 'فريق التحصيل', icon: Monitor },
                   { key: 'team_inbox', label: 'صندوق الرسائل', icon: Inbox },

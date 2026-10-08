@@ -484,6 +484,15 @@ const patch = (path: string, body: unknown) => apiFetch<{ ok: boolean }>(path, {
 const del = (path: string) => apiFetch<{ ok: boolean }>(path, { method: 'DELETE' }, A);
 const put = (path: string, body: unknown) => apiFetch<{ ok: boolean }>(path, { method: 'PUT', body: JSON.stringify(body) }, A);
 
+/** One round of «جدول الدقي» — the schedule a rep can sell, never who sits in it. */
+export type SalesScheduleRound = {
+  id: string; code: string; branch: string; courseId: string; courseTitle: string; instructorName: string;
+  dayOfWeek: string; timeSlot: string; room: string; startDate: string;
+  /** 0 = not started yet; 1 or 2 = the lecture it is on. */
+  lecture: number;
+  nextSession: string | null;
+};
+
 export const mysqlAdmin = {
   // ── Generic helpers (for ad-hoc admin endpoints) ──
   adminGet: <T = AR>(path: string) => apiFetch<T>(path, {}, A),
@@ -700,6 +709,8 @@ export const mysqlAdmin = {
   listAllDaqqiRounds:      ()             => apiFetch<AR[]>('/admin/daqqi-rounds', {}, A),
   // The open rounds a booking can seat a client in, for whoever records the booking.
   listDaqqiRoundsForBooking: (branch: string) => apiFetch<AR[]>(`/admin/daqqi-rounds/for-booking?branch=${encodeURIComponent(branch)}`, {}, A),
+  // «جدول الدقي» for the sales team: rounds not started or on lecture 1–2, no attendees.
+  listDaqqiSalesSchedule: () => apiFetch<SalesScheduleRound[]>('/admin/daqqi-rounds/sales-schedule', {}, A),
   listAllJoinUs:           ()             => apiFetch<AR[]>('/admin/join-us', {}, A),
   listAllContactMessages:  ()             => apiFetch<AR[]>('/admin/contact-messages', {}, A),
   listAllCertificateRequests: (limit = 3000) => apiFetch<AR[]>(`/admin/certificate-requests?limit=${limit}`, {}, A),

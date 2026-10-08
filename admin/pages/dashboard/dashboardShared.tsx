@@ -611,6 +611,8 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   registrations:      'view_leads',
   leads:              'view_leads',
   sales_hub:          'manage_sales_team',
+  // The schedule only — no client of any round — so the pipeline's key opens it.
+  sales_daqqi_schedule: 'view_leads',
   // Both live under التسويق. marketing_hub on view_leads and messaging_hub on
   // view_dashboard meant every sales rep — and every employee at all — saw a
   // marketing section they have no business in. Campaign tooling and channel

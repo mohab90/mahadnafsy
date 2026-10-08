@@ -52,6 +52,7 @@ export const contentHubRouteTabs = new Set<string>([
   'recurring_expenses',
   'hr',
   'staff_performance',
+  'sales_daqqi_schedule',
   'sales_team',
   'sales_reports',
   'online_team',
