@@ -34,6 +34,7 @@ const routeModules = [
   ['/', '../routes/daqqi-rounds'],
   ['/', '../routes/clientRatings'],
   ['/', '../routes/liveStreams'],
+  ['/', '../routes/dokkiReports'],
   ['/', '../routes/dokki-operations'],
   ['/', '../routes/public-orders'],
   ['/', '../routes/catalog-pricing'],

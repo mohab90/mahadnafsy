@@ -10,6 +10,8 @@ import type { TabKey } from './navigation';
 import type { NotifyFn } from '../../types';
 import { TeamReportPanel } from './tabs/reports/TeamReportPanel';
 import { usePhysicalBranch } from '../../lib/physicalBranch';
+import { DokkiWeeklyPanel } from './tabs/daqqi/DokkiWeeklyPanel';
+import { useSiteData } from '../../context/SiteDataContext';
 import {
   AnalyticsTab,
   ArchivedClientsTab,
@@ -86,8 +88,10 @@ function CxTeamWithReport({ notify }: { notify: NotifyFn }) {
 
 function DaqqiStatsWithAttendance({ notify }: { notify: NotifyFn }) {
   const physicalBranch = usePhysicalBranch();
+  const { isAdmin, currentStaff } = useSiteData();
   return (
     <div className="space-y-6">
+      <DokkiWeeklyPanel branch={physicalBranch.key} canSwitch={isAdmin || ['daqqi_manager', 'tagamoa_manager', 'manager'].includes(String(currentStaff?.role || '').toLowerCase())} notify={notify} />
       <TeamReportPanel team={physicalBranch.filter} notify={notify} />
       <AnalyticsTab notify={notify} />
       <DaqqiAttendanceTab notify={(message, type) => notify(type || 'info', message)} />

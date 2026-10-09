@@ -275,6 +275,20 @@ function scheduleAutoCertificateSweep() {
 }
 scheduleAutoCertificateSweep();
 
+// The Dokki manager's Saturday report and, once switched on, the absence follow-up
+// (lib/dokkiWeeklyReport.js, lib/dokkiAbsenceFollowUp.js). Hourly; each message once.
+function scheduleDokkiAutomation() {
+  const { sendDueDokkiWeeklyReports } = require('../../lib/dokkiWeeklyReport');
+  const { runAbsenceFollowUp } = require('../../lib/dokkiAbsenceFollowUp');
+  const tick = tenantId => sendDueDokkiWeeklyReports(pool, { tenantId }).then(() => runAbsenceFollowUp(pool, { tenantId }))
+    .catch(error => logger.warn('[dokki-automation]', error.message));
+  setTimeout(() => {
+    forEachActiveTenant(tick);
+    setInterval(() => forEachActiveTenant(tick), 60 * 60 * 1000);
+  }, 11 * 60 * 1000);
+}
+scheduleDokkiAutomation();
+
 // A payment waiting on the accountant is money the institute has not decided
 // about yet. One waiting more than a day is a payment nobody is looking at.
 // Announced once per payment — the flag is what keeps this a nudge rather
