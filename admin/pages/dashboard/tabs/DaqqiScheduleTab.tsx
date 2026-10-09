@@ -77,6 +77,10 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
   // shown under each course, chosen by the Dokki manager for everyone.
   const physicalBranch = usePhysicalBranch();
   const [coursePaths, setCoursePaths] = useState<Record<string, string>>({});
+  // «زر ادوس عليه يظهر الكورسات المنتهي … عشان الكورس المنتهيه استخدامها قليل جدا»
+  // (9 Oct 2026): finished rounds are hidden until asked for, unless the status
+  // filter names them.
+  const [showFinished, setShowFinished] = useState(false);
   useEffect(() => {
     mysqlAdmin.adminGet<Record<string, string>>(`/admin/dokki/course-paths?branch=${physicalBranch.key}`)
       .then(paths => setCoursePaths(paths || {}))
@@ -659,6 +663,10 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
               <option value="">كل الريسبشن</option>
               {receptionOptions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
+            <button type="button" onClick={() => setShowFinished(value => !value)} aria-pressed={showFinished}
+              className={`px-2 py-1.5 rounded-lg border text-xs font-bold ${showFinished ? 'border-gray-400 bg-gray-700 text-white' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>
+              {showFinished ? 'إخفاء المنتهية' : `إظهار المنتهية (${daqqiRounds.filter(round => round.status === 'finished').length})`}
+            </button>
             {hasDaqqiFilters && (
               <button onClick={clearDaqqiFilters} className="px-2 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 text-xs font-bold flex items-center gap-1">
                 <X size={11} />مسح الفلاتر
@@ -700,6 +708,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
                     (!daqqiFilterDay || r.dayOfWeek === daqqiFilterDay) &&
                     (!daqqiFilterTimeSlot || r.timeSlot === daqqiFilterTimeSlot) &&
                     (!daqqiFilterStatus || (r.status || 'new') === daqqiFilterStatus) &&
+                    (showFinished || daqqiFilterStatus === 'finished' || r.status !== 'finished') &&
                     (!daqqiFilterReception || r.receptionId === daqqiFilterReception)
                   )
                   .map((round, index) => {
