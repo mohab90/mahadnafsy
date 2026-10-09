@@ -255,6 +255,7 @@ export function useUnifiedClientPayments(params: Params) {
       discount: discount || undefined,
       certId: draft.certReqId || undefined,
       certType: draft.certType || undefined,
+      itemTitle: draft.itemTitle || undefined,
       paymentMethod: draft.paymentMethod || undefined,
       fromAccountNumber: draft.fromAccountNumber || undefined,
       source: 'staff',

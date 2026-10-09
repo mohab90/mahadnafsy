@@ -197,7 +197,7 @@ export default function CertRequestsTab({
   return (
     <article className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
       <div className="flex flex-wrap gap-1.5 border-b border-gray-200 pb-2 -mt-1">
-          {([['requests', 'الطلبات'], ['institute', 'شهادات المعهد'], ['extras', 'طلبات إضافية'], ['pricing', 'أسعار الشهادات الإضافية']] as const)
+          {([['requests', 'الطلبات'], ['institute', 'شهادات المعهد'], ['extras', 'طلبات إضافية'], ['pricing', 'الأسعار: شهادات وكارنيهات وكتب']] as const)
             .filter(([key]) => key !== 'pricing' || pricing).map(([key, label]) => (
             <button key={key} onClick={() => setInnerTab(key)}
               className={`px-4 py-2 rounded-xl text-sm font-bold transition ${innerTab === key ? 'bg-amber-500 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>

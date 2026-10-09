@@ -88,3 +88,27 @@ test('a payment, or money paid before the system for the course or its track, ho
   assert.match(rounds, /roundId: toRoundId, subscriberIds: \[subscriberId\]/, 'moved to another round, the client follows its reception');
   assert.match(read('api/migrations/263_v26_dokki_clients_to_round_reception.sql'), /WHERE s\.deleted_at IS NULL AND \(s\.assigned_cs_id IS NULL OR s\.assigned_cs_id = ''\);/, 'the backfill touches only clients with no owner');
 });
+
+// «في صفحه اعدادات الشهادات واسعارها هنخلي كمان فيها سعر الكارنيه وسعر الكتب …
+// لما ينطلبوا يسمعوا في … طلبات اضافيه».
+test('carnets and books are priced beside the certificates, picked by name, and land in «طلبات إضافية»', () => {
+  const ADMIN_MODULES = path.join(__dirname, '../../admin/node_modules');
+  let esbuild;
+  try { esbuild = require(path.join(ADMIN_MODULES, 'esbuild')); } catch { return; }
+  const out = esbuild.buildSync({
+    stdin: { contents: "export { parseExtraItems, priceIn } from './lib/extraItemsCatalog';", resolveDir: path.join(__dirname, '../../admin'), loader: 'ts' },
+    bundle: true, write: false, format: 'cjs', platform: 'node', logLevel: 'silent', nodePaths: [ADMIN_MODULES], define: { 'import.meta.env': '{}' },
+  });
+  const module = { exports: {} };
+  new Function('module', 'exports', 'require', out.outputFiles[0].text)(module, module.exports, require);
+  const items = module.exports.parseExtraItems(JSON.stringify({ carnets: [{ id: 'k1', label: 'كارنيه النقابة', priceEGP: 600, priceSAR: 60 }, { label: ' ' }], books: [{ id: 'b1', label: 'كتاب العلاج المعرفي', priceEGP: 350 }] }));
+  assert.equal(items.carnets.length, 1, 'an unnamed row is dropped');
+  assert.equal(module.exports.priceIn(items.carnets[0], 'SAR'), 60);
+  assert.equal(module.exports.priceIn(items.books[0], 'USD'), 0);
+  assert.match(read('admin/components/PaymentModal.tsx'), /set\(\{ itemTitle: item\.label, \.\.\.\(price > 0 \? \{ amount: String\(price\) \} : \{\}\) \}\)/);
+  for (const file of ['admin/pages/dashboard/dashboardPaymentHandlers.ts', 'admin/pages/unified-client/useUnifiedClientPayments.ts']) {
+    assert.match(read(file), /itemTitle: (subPayDraft|draft|leadPayDraft)\.itemTitle \|\| undefined/, file);
+  }
+  assert.match(read('api/routes/subscriber-payments.js'), /sanitize\(payment\.itemTitle \|\| payment\.item_title \|\| '', 255\)/, 'the server keeps the name');
+  assert.match(read('api/routes/certificates.js'), /p\.payment_type IN \('CARNEH','BOOK'\)/, 'and «طلبات إضافية» lists it');
+});

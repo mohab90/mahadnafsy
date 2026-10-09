@@ -24,6 +24,7 @@ import { roundLabel } from '../pages/dashboard/tabs/daqqi/daqqiScheduleUtils';
 import { hasPermission, type PermissionKey, type RoleKey } from '../constants/permissions';
 import { DISCOUNT_PERCENTS, getCatalogPricing, tierForBranch, formatMoney, type CatalogPricing, type PriceTierKey, type TierPrice } from '../lib/catalogPricing';
 import { arabicNameProblem, englishNameProblem, nationalIdProblem } from '../lib/bookingIdentity';
+import { priceIn, useExtraItemsCatalog } from '../lib/extraItemsCatalog';
 
 // ── Shared draft type ──────────────────────────────────────────────────────
 export interface PaymentDraft {
@@ -75,6 +76,8 @@ export interface PaymentDraft {
   nameAr?: string;
   nameEn?: string;
   phoneConfirmed?: boolean;
+  /** The carnet or book picked from the catalogue (lib/extraItemsCatalog.ts) — the payment's name. */
+  itemTitle?: string;
 }
 
 export interface ExtraPayItem {
@@ -120,6 +123,7 @@ export const blankPaymentDraft = (opts?: {
   nameAr: '',
   nameEn: '',
   phoneConfirmed: false,
+  itemTitle: '',
 });
 
 // ── PrintReceipt sub-component ─────────────────────────────────────────────
@@ -312,6 +316,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     'set_client_price');
   // The certificates «تسعير الشهادات» lists — its own, not eight written here.
   const certCatalog = useCertificateCatalog();
+  const extraItems = useExtraItemsCatalog();
   const [printData, setPrintData] = useState<PrintData | null>(null);
   // Escape closes the dialog and focus starts inside it. The Daqqi desk had
   // this on its own copy of this modal and every other payment screen did not;
@@ -756,6 +761,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const isCert = d.paymentType === 'certificate';
   const isConsultation = d.paymentType === 'consultation';
   const isBookOrCarneh = d.paymentType === 'book' || d.paymentType === 'carneh';
+  const extraOptions = d.paymentType === 'carneh' ? extraItems.carnets : d.paymentType === 'book' ? extraItems.books : [];
 
   return (
     // The header keeps the currency selector — it changes what every figure
@@ -867,7 +873,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
               <button
                 key={opt.v}
                 type="button"
-                onClick={() => { setUpgradeFrom(null); set({ paymentType: opt.v as PaymentItemType, courseId: '', certReqId: '', certType: '' }); }}
+                onClick={() => { setUpgradeFrom(null); set({ paymentType: opt.v as PaymentItemType, courseId: '', certReqId: '', certType: '', itemTitle: '' }); }}
                 className={`flex items-center gap-0.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition ${d.paymentType === opt.v ? 'bg-red-600 border-red-600 text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-red-300 hover:text-red-600'}`}
               >
                 {opt.ic} {opt.lb}
@@ -908,6 +914,23 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
             </div>
           ) : isBookOrCarneh ? (
             <div>
+              {/* «اقدر اضيف اكتر من كارنيه واكتر من كتاب واضيف الاسعار» — from الإعدادات ← أسعار الشهادات. */}
+              {extraOptions.length > 0 && (
+                <div className="mb-3">
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">{d.paymentType === 'carneh' ? 'الكارنيه' : 'الكتاب'}</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {extraOptions.map(item => {
+                      const price = priceIn(item, d.currency);
+                      return (
+                        <button key={item.id} type="button" onClick={() => set({ itemTitle: item.label, ...(price > 0 ? { amount: String(price) } : {}) })}
+                          className={`rounded-xl border-2 px-3 py-1.5 text-xs font-bold transition ${d.itemTitle === item.label ? 'border-red-500 bg-red-50 text-red-800' : 'border-gray-200 bg-white text-gray-700 hover:border-red-300'}`}>
+                          {item.label}{price > 0 ? ` · ${price.toLocaleString('ar-EG-u-nu-latn')} ${d.currency}` : ''}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
                 الكورس المرتبط <span className="text-red-500">*</span>
               </label>

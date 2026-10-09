@@ -22,6 +22,7 @@ import {
   policySections,
 } from './contentFields';
 import { BranchAddForm, CertPricingTab, type CertPricingMap, type InstituteBranch } from './dashboardShared';
+import { ExtraItemsPricingPanel } from './tabs/ExtraItemsPricingPanel';
 import type { TabKey } from './navigation';
 
 const CertRequestsTab = React.lazy(() => import('./tabs/CertRequestsTab'));
@@ -227,7 +228,7 @@ export function DashboardDirectContentRoutes({
             initialTab={activeTab === 'cert_pricing' ? 'pricing' : 'requests'}
             // «ازاي يظهر للموظفين اعدادات … الشهادات»: an employee who
             // cannot save prices is not shown the prices screen.
-            pricing={canEditSettings ? <CertPricingTab certPricingMap={certPricingMap} saveCertPricingMap={saveCertPricingMap} notify={notify} /> : undefined}
+            pricing={canEditSettings ? <div className="space-y-4"><CertPricingTab certPricingMap={certPricingMap} saveCertPricingMap={saveCertPricingMap} notify={notify} /><ExtraItemsPricingPanel notify={notify} /></div> : undefined}
           />
         </Suspense>
       )}
