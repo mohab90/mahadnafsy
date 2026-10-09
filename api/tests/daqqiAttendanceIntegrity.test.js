@@ -36,7 +36,7 @@ test('Dokki attendance is an immutable session event, not a client-side counter 
   assert.match(route, /DAQQI_ATTENDANCE_MARKED/);
   // The round's dates too: the session is counted from them (9 Oct 2026, attendanceIsTakenEveryWeek).
   assert.match(route, /SELECT id,status,current_lecture,start_date,postponed_weeks_json FROM daqqi_rounds[\s\S]{0,180}FOR UPDATE/);
-  assert.match(route, /Attendance is already recorded for this session/);
+  assert.match(route, /code: 'ATTENDANCE_ALREADY_MARKED'/);
   assert.match(scheduleTab, /\/api\/admin\/daqqi-rounds\/\$\{encodeURIComponent\(roundId\)\}\/attendance/);
 });
 

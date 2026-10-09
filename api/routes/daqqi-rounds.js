@@ -814,7 +814,7 @@ router.post('/api/admin/daqqi-rounds/:roundId/attendance', requireAuth, requireA
       || (Number(marked?.total) === 0 && Number(attendee.attended_lectures || 0) >= sessionNumber);
     if (alreadyMarked) {
       await conn.rollback();
-      return res.status(409).json({ error: 'Attendance is already recorded for this session' });
+      return res.status(409).json({ error: `حضور العميل ده في المحاضرة ${sessionNumber} متسجل قبل كده`, code: 'ATTENDANCE_ALREADY_MARKED' });
     }
     const eventId = uuidv4();
     await conn.query(
@@ -847,7 +847,7 @@ router.post('/api/admin/daqqi-rounds/:roundId/attendance', requireAuth, requireA
   } catch (error) {
     await conn.rollback().catch(() => {});
     if (error?.code === 'ER_DUP_ENTRY') {
-      return res.status(409).json({ error: 'Attendance is already recorded for this session' });
+      return res.status(409).json({ error: 'حضور العميل ده في المحاضرة دي متسجل قبل كده', code: 'ATTENDANCE_ALREADY_MARKED' });
     }
     logger.error('[daqqi-attendance-mark]', error.message);
     sendRouteError(res, error);
