@@ -8,6 +8,10 @@ import { createClientPaymentDraft } from '../../lib/clientActionDrafts';
 import { currencyForBranch } from '../../lib/branchCurrency';
 import { realCourseIds } from './tabs/leads/leadCourseLabel';
 import { isOpenLeadStatus } from '../../../shared/leadStatuses';
+import { matchesSearch, SEARCH_MIN_CHARS } from '../../lib/clientSearch';
+import { useSiteData } from '../../context/SiteDataContext';
+import { hasPermission } from '../../constants/permissions';
+import { WholeDatabaseSearch } from './tabs/client-db/WholeDatabaseSearch';
 
 type DashboardQuickBookingProps = {
   open: boolean;
@@ -84,21 +88,23 @@ function QuickBookingModal({
   setSubPayDraft,
   navigate,
 }: Omit<DashboardQuickBookingProps, 'open' | 'setOpen'> & { onClose: () => void }) {
-  const q = search.trim().toLowerCase();
-  const qDigits = q.replace(/\D/g, '');
-  const matchedLeads: LeadItem[] = q.length < 2 ? [] : leads
+  // «لما اكتب اول حرفين يظهر البحث صح» (9 Oct 2026). The phone test ran with the
+  // digits of the query even when it had none — and every number contains the
+  // empty string, so two letters matched the first eight clients whoever they
+  // were, and pushed the leads off the list. The search every list uses
+  // (lib/clientSearch.ts) reads «احمد» as «أحمد» and a number only as a number.
+  const q = search.trim();
+  const searching = q.length >= SEARCH_MIN_CHARS;
+  const matchedLeads: LeadItem[] = !searching ? [] : leads
     .filter((lead) => isOpenLeadStatus(lead.status))
-    .filter((lead) =>
-      lead.name.toLowerCase().includes(q) ||
-      (lead.phone || '').includes(q) ||
-      (lead.email || '').toLowerCase().includes(q))
-    .slice(0, 8);
-  const matchedSubs: SubscriberItem[] = q.length < 2 ? [] : subscribers
-    .filter((subscriber) =>
-      subscriber.name.toLowerCase().includes(q) ||
-      (subscriber.phone || '').replace(/\D/g, '').includes(qDigits) ||
-      (subscriber.email || '').toLowerCase().includes(q))
-    .slice(0, 8);
+    .filter((lead) => matchesSearch(q, { name: lead.name, phone: lead.phone, email: lead.email, code: lead.clientCode }))
+    .slice(0, 10);
+  const matchedSubs: SubscriberItem[] = !searching ? [] : subscribers
+    .filter((subscriber) => matchesSearch(q, { name: subscriber.name, phone: subscriber.phone, email: subscriber.email, code: subscriber.clientCode }))
+    .slice(0, 10);
+  // Whoever may read the whole database finds anyone in it under their own results.
+  const { isAdmin, currentStaff } = useSiteData();
+  const searchesEverything = isAdmin || hasPermission(currentStaff, 'view_client_db');
   const hasResults = matchedLeads.length > 0 || matchedSubs.length > 0;
 
   return (
@@ -127,11 +133,11 @@ function QuickBookingModal({
         </div>
 
         <div className="px-4 pb-5 space-y-1 max-h-96 overflow-y-auto">
-          {q.length < 2 && (
+          {!searching && (
             <p className="text-center text-xs text-gray-400 py-6">اكتب 2 حرف أو أكثر للبحث</p>
           )}
-          {q.length >= 2 && !hasResults && (
-            <p className="text-center text-xs text-gray-400 py-6">لا توجد نتائج</p>
+          {searching && !hasResults && (
+            <p className="text-center text-xs text-gray-400 py-6">مفيش حد من عملائك بالاسم أو الرقم ده{searchesEverything ? ' — شوف البحث في قاعدة البيانات تحت' : ''}</p>
           )}
           {matchedLeads.length > 0 && (
             <LeadResults
@@ -151,6 +157,7 @@ function QuickBookingModal({
               navigate={navigate}
             />
           )}
+          {searching && searchesEverything && <WholeDatabaseSearch query={q} />}
         </div>
     </Modal>
   );
