@@ -47,6 +47,7 @@ export const contentHubRouteTabs = new Set<string>([
   'nps_dashboard',
   'daqqi_team',
   'ratings',
+  'branch_hr',
   'daqqi_accounting',
   'daqqi_stats',
   'financial_reports',

@@ -116,6 +116,7 @@ export const PERMISSIONS = {
   VIEW_PERF_ONLINE:         'view_perf_online',
   VIEW_PERF_DAQQI:          'view_perf_daqqi',
   VIEW_PERF_CX:             'view_perf_cx',
+  BRANCH_HR:                'branch_hr',
 } as const;
 
 export type PermissionKey = typeof PERMISSIONS[keyof typeof PERMISSIONS];
@@ -150,6 +151,7 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   view_perf_online:        'أداء فريق الأونلاين فقط (بدون تفاصيل القسم)',
   view_perf_daqqi:         'أداء فريق الدقي فقط (بدون تفاصيل القسم)',
   view_perf_cx:            'أداء فريق خدمة العملاء فقط (بدون تفاصيل القسم)',
+  branch_hr:               'الموارد البشرية لموظفين فرعه بس (مدير الفرع)',
   view_orders:             'عرض الطلبات',
   manage_orders:           'إدارة الطلبات',
   manage_payments:         'تسجيل وتعديل المدفوعات',
@@ -224,6 +226,10 @@ export const PERMISSION_CATEGORIES: { label: string; perms: PermissionKey[] }[] 
     perms: ['manage_certificates'],
   },
   {
+    label: 'موارد بشرية الفرع',
+    perms: ['branch_hr'],
+  },
+  {
     label: 'فريق العمل والموارد البشرية',
     perms: ['view_staff', 'manage_staff', 'view_hr', 'manage_hr', 'view_join_us', 'manage_join_us', 'view_contacts', 'manage_contacts'],
   },
@@ -265,6 +271,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
     'manage_inbox', 'manage_notifications', 'bulk_whatsapp', 'ask_ai',
   ],
   daqqi_manager: [
+    'branch_hr',
     'view_dashboard',
     'view_leads', 'manage_leads', 'export_leads',
     'view_subscribers', 'manage_subscribers', 'export_subscribers',

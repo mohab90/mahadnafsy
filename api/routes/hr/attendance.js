@@ -2,9 +2,10 @@
 const { CONVERTED_SQL } = require('../../lib/leadStatuses');
 const { Router } = require('express');
 const router = Router();
-const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit } = require('./_shared');
+const { hrError, requirePermission, requireAnyPermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit } = require('./_shared');
 const { createLeaveRequest, getEffectiveHrPolicy, leaveAllowance, HOUR_PERMITS, LEAVE_LABELS_AR, ATTENDANCE_POLICY_COLUMNS, DEFAULT_POLICY } = require('../../lib/hrPolicy');
 const { writeAuditEvent } = require('../../lib/auditTrail');
+const { outOfReach, requireHr, staffInReach, staffReachSql } = require('../../lib/branchHr');
 const { toNumbers } = require('../../lib/mappers');
 const { sqlCairoToday, cairoToday, cairoYearMonth } = require('../../lib/dates');
 const dateOnly = value => value instanceof Date
@@ -187,7 +188,7 @@ router.post('/api/admin/hr/policies', requireAuth, requireAdminOrStaff, requireP
   }
 });
 
-router.get('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
+router.get('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, requireAnyPermission('view_hr', 'branch_hr'), requireHr('view'), async (req, res) => {
   try {
     const { status, staff_id, month, year } = req.query;
     let sql = `
@@ -199,6 +200,8 @@ router.get('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, requirePerm
       WHERE l.tenant_id=?
     `;
     const params = [req.tenantId];
+    const reach = staffReachSql(req.hrReach, 's');
+    sql += reach.sql; params.push(...reach.params);
     if (status)   { sql += ' AND l.status = ?';  params.push(status); }
     if (staff_id) { sql += ' AND l.staff_id = ?'; params.push(staff_id); }
     if (month || year) {
@@ -219,12 +222,13 @@ router.get('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, requirePerm
 });
 
 // POST /api/admin/hr/leaves — submit leave or permission request
-router.post('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
+router.post('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, requireAnyPermission('manage_hr', 'branch_hr'), requireHr('manage'), async (req, res) => {
   try {
     const { staff_id, type, start_date, end_date, start_time, end_time, reason } = req.body;
     if (!staff_id || !type || !start_date || !end_date) {
       return res.status(400).json({ error: 'staff_id, type, start_date, end_date are required' });
     }
+    if (!(await staffInReach(pool, req, staff_id))) return outOfReach(res);
     const { policy, totalDays, startTime, endTime } = await createLeaveRequest(pool, {
       tenantId: req.tenantId, staffId: staff_id, type,
       startDate: start_date, endDate: end_date, startTime: start_time, endTime: end_time,
@@ -250,7 +254,7 @@ router.post('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, requirePer
 });
 
 // PUT /api/admin/hr/leaves/:id/status — approve or reject leave
-router.put('/api/admin/hr/leaves/:id/status', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
+router.put('/api/admin/hr/leaves/:id/status', requireAuth, requireAdminOrStaff, requireAnyPermission('manage_hr', 'branch_hr'), requireHr('manage'), async (req, res) => {
   const conn = await pool.getConnection();
   let transactionStarted = false;
   try {
@@ -267,7 +271,7 @@ router.put('/api/admin/hr/leaves/:id/status', requireAuth, requireAdminOrStaff, 
          FROM leaves WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE`,
       [id, req.tenantId]
     );
-    if (!leave) {
+    if (!leave || !(await staffInReach(conn, req, leave.staff_id))) {
       await conn.rollback(); transactionStarted = false;
       return res.status(404).json({ error: 'Leave not found' });
     }
@@ -500,8 +504,9 @@ router.put('/api/admin/hr/salary/:id/status', requireAuth, requireAdminOrStaff, 
 // /api/admin/hr/attendance/summary (routes/hr/payroll.js) is registered after
 // this file, so without the guard below «summary» was read as an employee id
 // and the monthly attendance table always came back empty.
-router.get('/api/admin/hr/attendance/:staffId', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res, next) => {
+router.get('/api/admin/hr/attendance/:staffId', requireAuth, requireAdminOrStaff, requireAnyPermission('view_hr', 'branch_hr'), requireHr('view'), async (req, res, next) => {
   if (req.params.staffId === 'summary') return next();
+  if (!(await staffInReach(pool, req, req.params.staffId).catch(() => false))) return outOfReach(res);
   try {
     const { staffId } = req.params;
     const { month, year } = req.query;
@@ -518,12 +523,13 @@ router.get('/api/admin/hr/attendance/:staffId', requireAuth, requireAdminOrStaff
 });
 
 // POST /api/admin/hr/attendance — manual attendance entry
-router.post('/api/admin/hr/attendance', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
+router.post('/api/admin/hr/attendance', requireAuth, requireAdminOrStaff, requireAnyPermission('manage_hr', 'branch_hr'), requireHr('manage'), async (req, res) => {
   const conn = await pool.getConnection();
   let transactionStarted = false;
   try {
     const { staff_id, date, check_in, check_out, status, notes } = req.body;
     if (!staff_id || !validDateOnly(date)) return res.status(400).json({ error: 'staff_id and valid date are required' });
+    if (!(await staffInReach(conn, req, staff_id))) return outOfReach(res);
     const VALID_STATUSES = ['PRESENT','ABSENT','LATE','HALF_DAY','HOLIDAY','REMOTE'];
     if (status && !VALID_STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid attendance status' });
     if ((check_in && !validClockTime(check_in)) || (check_out && !validClockTime(check_out))) {

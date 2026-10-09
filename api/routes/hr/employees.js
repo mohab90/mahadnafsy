@@ -2,16 +2,19 @@
 const { CONVERTED_SQL } = require('../../lib/leadStatuses');
 const { Router } = require('express');
 const router = Router();
-const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
+const { hrError, requirePermission, requireAnyPermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 const { getEffectiveHrPolicy } = require('../../lib/hrPolicy');
 const { PERMISSIONS, normalizeDataScope } = require('../../constants/permissions');
 const { writeAuditEvent } = require('../../lib/auditTrail');
+const { requireHr, staffReachSql } = require('../../lib/branchHr');
 const { sqlCairoToday } = require('../../lib/dates');
 
 
 // GET /api/admin/hr/employees — list all employees with HR info
-router.get('/api/admin/hr/employees', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
+// A branch manager sees their branch's staff (lib/branchHr.js).
+router.get('/api/admin/hr/employees', requireAuth, requireAdminOrStaff, requireAnyPermission('view_hr', 'branch_hr'), requireHr('view'), async (req, res) => {
   try {
+    const reach = staffReachSql(req.hrReach, 's');
     const [employees] = await pool.query(`
       SELECT s.id, s.name, s.email, s.phone, s.role, s.image, s.is_active,
              s.department_id, s.manager_id, s.employment_type, s.hire_date,
@@ -21,9 +24,9 @@ router.get('/api/admin/hr/employees', requireAuth, requireAdminOrStaff, requireP
       FROM staff s
       LEFT JOIN hr_departments d ON d.id = s.department_id AND d.tenant_id=s.tenant_id
       LEFT JOIN staff m ON m.id = s.manager_id AND m.tenant_id=s.tenant_id
-      WHERE s.tenant_id=? AND s.deleted_at IS NULL
+      WHERE s.tenant_id=? AND s.deleted_at IS NULL${reach.sql}
       ORDER BY s.name ASC
-    `, [req.tenantId]);
+    `, [req.tenantId, ...reach.params]);
     res.json(employees);
   } catch (e) { hrError(res, e); }
 });

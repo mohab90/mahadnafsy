@@ -83,7 +83,8 @@ test('onboarding an employee with a login is an HR action, not an owner-only one
   // was refused, and nothing could finish it — and hiding the password field
   // made it worse, because the form still demanded one it no longer offered.
   const auth = authRouteSource();
-  assert.match(auth, /router\.post\('\/api\/admin\/staff-account', requireAuth, requireAdminOrStaff, requirePermission\('manage_staff'\)/);
+  // manage_staff, or a branch manager opening a reception account for their branch (9 Oct 2026, lib/branchHr.js).
+  assert.match(auth, /router\.post\('\/api\/admin\/staff-account', requireAuth, requireAdminOrStaff, requireAnyPermission\('manage_staff', 'branch_hr'\), staffAccountCreator,/);
   assert.match(route, /router\.post\('\/api\/admin\/staff', requireAuth, requireAdminOrStaff, requirePermission\('manage_staff'\)/);
 
   // Under the same escalation guard the staff row already carries: manage_staff

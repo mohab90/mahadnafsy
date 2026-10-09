@@ -83,6 +83,8 @@ const PERMISSIONS = Object.freeze({
   VIEW_PERF_ONLINE:         'view_perf_online',
   VIEW_PERF_DAQQI:          'view_perf_daqqi',
   VIEW_PERF_CX:             'view_perf_cx',
+  // HR of a branch's own staff (lib/branchHr.js) — the branch managers'.
+  BRANCH_HR:                'branch_hr',
   // Orders & Financial
   VIEW_ORDERS:              'view_orders',
   MANAGE_ORDERS:            'manage_orders',
@@ -156,6 +158,7 @@ const ROLE_PERMS_BASE = {
     'manage_inbox', 'manage_notifications', 'bulk_whatsapp', 'ask_ai',
   ],
   [ROLES.DAQQI_MANAGER]: [
+    'branch_hr',
     'view_dashboard',
     'view_leads', 'manage_leads', 'export_leads',
     'view_subscribers', 'manage_subscribers', 'export_subscribers',

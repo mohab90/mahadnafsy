@@ -2,6 +2,7 @@
 const { Router } = require('express');
 const router = Router();
 const { hrError, requirePermission, requireAnyPermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
+const { requireHr, staffReachSql } = require('../../lib/branchHr');
 const { hasPermission } = require('../../constants/permissions');
 const { getEffectiveHrPolicy } = require('../../lib/hrPolicy');
 const { getFxToEgp, getFxSnapshot, isFxSnapshotUsable } = require('../../lib/finance');
@@ -996,9 +997,10 @@ router.post('/api/admin/hr/attendance/import', requireAuth, requireAdminOrStaff,
 });
 
 // GET /api/admin/hr/attendance/summary — monthly attendance summary for all staff
-router.get('/api/admin/hr/attendance/summary', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
+router.get('/api/admin/hr/attendance/summary', requireAuth, requireAdminOrStaff, requireAnyPermission('view_hr', 'branch_hr'), requireHr('view'), async (req, res) => {
   try {
     const { month, year } = req.query;
+    const reach = staffReachSql(req.hrReach, 's');
     const m = parseInt(month) || cairoYearMonth().month;
     const y = parseInt(year)  || cairoYearMonth().year;
     const [rows] = await pool.query(`
@@ -1017,9 +1019,9 @@ router.get('/api/admin/hr/attendance/summary', requireAuth, requireAdminOrStaff,
       LEFT JOIN hr_departments d ON d.id=s.department_id AND d.tenant_id=s.tenant_id
       LEFT JOIN attendance_logs a ON a.staff_id=s.id AND a.tenant_id=s.tenant_id
         AND a.date >= ? AND a.date < ? + INTERVAL 1 MONTH
-      WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL
+      WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL${reach.sql}
       GROUP BY s.id ORDER BY s.name
-    `, [`${y}-${String(m).padStart(2, '0')}-01`, `${y}-${String(m).padStart(2, '0')}-01`, req.tenantId]);
+    `, [`${y}-${String(m).padStart(2, '0')}-01`, `${y}-${String(m).padStart(2, '0')}-01`, req.tenantId, ...reach.params]);
     res.json(rows);
   } catch (e) { logger.error('[hr/payroll]', e.message); hrError(res, e); }
 });

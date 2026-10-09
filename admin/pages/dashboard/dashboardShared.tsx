@@ -51,6 +51,7 @@ const PERMISSION_LABELS: Record<StaffPermission, string> = {
   view_perf_online: 'أداء فريق الأونلاين فقط (بدون تفاصيل القسم)',
   view_perf_daqqi: 'أداء فريق الدقي فقط (بدون تفاصيل القسم)',
   view_perf_cx: 'أداء فريق خدمة العملاء فقط (بدون تفاصيل القسم)',
+  branch_hr: 'الموارد البشرية لموظفين فرعه بس (مدير الفرع)',
   // Orders & payments
   view_orders: 'عرض الطلبات والمدفوعات',
   manage_orders: 'إدارة الطلبات والمدفوعات',
@@ -624,6 +625,7 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   community:          'view_community',
   daqqi_schedule:     'manage_daqqi',
   ratings:            'manage_daqqi',
+  branch_hr:          'branch_hr',
   daqqi_clients:      'manage_daqqi',
   // The team screens take either key: whoever runs the department still opens
   // them, and view_perf_* opens that one screen and nothing else in the

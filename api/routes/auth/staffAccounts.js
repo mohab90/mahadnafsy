@@ -41,12 +41,23 @@ const {
   identitySpellings,
   cairoToday,
 } = require('./_shared');
+const { hrReach } = require('../../lib/branchHr');
+const { requireAnyPermission } = require('../../middleware/auth');
 
 const router = Router();
 
 // POST /api/admin/staff-account — create login account for a staff member (admin only)
 // Creates the user in `users` table + inserts/updates `staff` table
-router.post('/api/admin/staff-account', requireAuth, requireAdminOrStaff, requirePermission('manage_staff'), requireTenantQuota('staff'),
+// manage_staff, or a branch manager opening an account for a job of their branch
+// (lib/branchHr.js, 9 Oct 2026).
+const staffAccountCreator = (req, res, next) => {
+  if (req.isSuperAdmin || hasPermission(req.staffRecord, 'manage_staff')) return next();
+  const reach = hrReach(req, 'manage');
+  const asked = String(req.body?.role || '').toUpperCase();
+  if (reach && !reach.all && reach.newRoles.includes(asked) && !req.body?.staffId) return next();
+  return res.status(403).json({ error: 'Insufficient permissions', required: 'manage_staff' });
+};
+router.post('/api/admin/staff-account', requireAuth, requireAdminOrStaff, requireAnyPermission('manage_staff', 'branch_hr'), staffAccountCreator, requireTenantQuota('staff'),
   validateBody({
     email:    v => isEmail(v)            || 'Email address is invalid',
     password: v => isString(v, 200) && (v || '').length >= 8 || 'Password must be at least 8 characters',

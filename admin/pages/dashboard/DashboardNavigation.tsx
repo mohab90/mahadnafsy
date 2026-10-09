@@ -517,6 +517,8 @@ export function DashboardNavigation(props: Props) {
                   { key: 'daqqi_accounting', label: `حسابات ${staffBranchLabel}`, icon: Wallet },
                   { key: 'daqqi_stats', label: `إحصائيات فريق ${staffBranchLabel}`, icon: BarChart3 },
                   { key: 'ratings', label: 'التقييمات', icon: Star },
+                  // «نظام الموارد البشريه … فقط علي موظفين الدقي» (9 Oct 2026).
+                  { key: 'branch_hr', label: `موارد بشرية ${staffBranchLabel}`, icon: Users },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 currentStaff={currentStaff} salesDataLoading={salesDataLoading}

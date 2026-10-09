@@ -118,6 +118,7 @@ export type TabKey =
   | 'staff_performance'
   | 'cx_team'
   | 'ratings'
+  | 'branch_hr'
   | 'tasks_board'
   | 'sales_team'
   | 'sales_reports'

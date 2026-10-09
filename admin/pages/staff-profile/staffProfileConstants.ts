@@ -49,6 +49,7 @@ export const PERMISSION_LABELS: Record<StaffPermission, string> = {
   view_perf_online: 'أداء فريق الأونلاين فقط (بدون تفاصيل القسم)',
   view_perf_daqqi: 'أداء فريق الدقي فقط (بدون تفاصيل القسم)',
   view_perf_cx: 'أداء فريق خدمة العملاء فقط (بدون تفاصيل القسم)',
+  branch_hr: 'الموارد البشرية لموظفين فرعه بس (مدير الفرع)',
   view_orders: 'عرض الطلبات والمدفوعات',
   manage_orders: 'إدارة الطلبات والمدفوعات',
   manage_payments: 'تسجيل وتعديل المدفوعات',

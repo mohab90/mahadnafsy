@@ -340,6 +340,7 @@ export type StaffPermission =
   | 'view_perf_online'
   | 'view_perf_daqqi'
   | 'view_perf_cx'
+  | 'branch_hr'
   // Orders & payments
   | 'view_orders'
   | 'manage_orders'
