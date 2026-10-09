@@ -473,7 +473,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
         </select>
         {isAdmin && (
           <select value={department} onChange={event => setDepartment(event.target.value as typeof department)} className={selectCls} aria-label="القسم">
-            <option value="">خدمة العملاء والمصعّد</option>
+            <option value="">خدمة العملاء والإدارة</option>
             <option value="all">كل الأقسام</option>
           </select>
         )}

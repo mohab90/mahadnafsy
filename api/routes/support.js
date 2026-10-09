@@ -242,7 +242,8 @@ router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermi
     // is a choice, and what was escalated to the administration stays in view.
     const unscoped = scope.sql === '1=1';
     if (department && department !== 'all') { where.push('t.department = ?'); params.push(department); }
-    else if (!department && unscoped) where.push("(t.department = 'support' OR t.escalated_at IS NOT NULL)");
+    // A client's complaint goes to the administration (9 Oct 2026), so it is here too.
+    else if (!department && unscoped) where.push("(t.department IN ('support','management') OR t.escalated_at IS NOT NULL)");
     if (category) { where.push('t.category = ?'); params.push(category); }
     if (status === 'open') where.push(`t.status IN ('open','in_progress')`);
     else if (status) { where.push('t.status = ?'); params.push(status); }
@@ -408,7 +409,7 @@ router.post('/api/admin/cs/tickets', requireAuth, requireAdminOrStaff, requirePe
     if (subscriber_id) {
       await logClientEvent(conn, {
         tenantId: req.tenantId, subscriberId: subscriber_id, action: 'problem_ticket_opened', actor: actor.name,
-        label: `فتح تيكت مشكلة لـ${DEPARTMENT_LABEL[r.department] || 'خدمة العملاء'}${r.assignee ? ` (${r.assignee.name})` : ''}: «${subject}» — ${body.slice(0, 500)}`,
+        label: `${category === 'complaint' ? 'شكوى' : 'فتح تيكت مشكلة'} لـ${DEPARTMENT_LABEL[r.department] || 'خدمة العملاء'}${r.assignee ? ` (${r.assignee.name})` : ''}: «${subject}» — ${body.slice(0, 500)}`,
       });
     }
     await conn.commit(); conn.release(); conn = null;

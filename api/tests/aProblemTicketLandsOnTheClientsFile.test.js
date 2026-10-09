@@ -71,10 +71,13 @@ test('resolving it writes the resolution on the ticket and on the client\'s file
 
 test('the transfer menu offers it, Dokki and online alike', () => {
   const modal = fs.readFileSync(path.join(__dirname, '../../admin/pages/dashboard/tabs/OnlineClientConvertModal.tsx'), 'utf8');
-  assert.match(modal, /key: 'ticket' as const, label: '🎫 فتح تيكت مشكلة/);
+  assert.match(modal, /key: 'ticket' as const, label: '🎫 مشكلة أو شكوى/);
   assert.match(modal, /<ProblemTicketForm subscriberId=\{row\.id\}/);
   const form = fs.readFileSync(path.join(__dirname, '../../admin/pages/dashboard/tabs/ProblemTicketForm.tsx'), 'utf8');
-  assert.match(form, /category: 'client_problem'/);
+  // A complaint goes to the administration (9 Oct 2026).
+  assert.match(form, /category: to === 'management' \? 'complaint' : 'client_problem'/);
+  const { CATEGORY_META } = require('../lib/ticketRouting');
+  assert.equal(CATEGORY_META.complaint.department, 'management');
 });
 
 test('a call taken by phone finds the client by the number', async () => {
@@ -94,5 +97,5 @@ test('one page: the inbox carries what the old tickets screen showed', async () 
   const list = seen.find(sql => /FROM support_tickets t/.test(sql));
   assert.match(list, /LEFT\(t\.body, 400\) AS body, t\.resolution_note, t\.subscriber_id/);
   assert.match(list, /sb\.phone AS subscriber_phone, sb\.client_code/);
-  assert.match(list, /\(t\.department = 'support' OR t\.escalated_at IS NOT NULL\)/, 'what was escalated stays in view');
+  assert.match(list, /\(t\.department IN \('support','management'\) OR t\.escalated_at IS NOT NULL\)/, 'complaints and what was escalated stay in view');
 });

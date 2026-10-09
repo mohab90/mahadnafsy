@@ -88,7 +88,7 @@ export function OnlineClientConvertModal({
                 isDaqqiClientsTab
                   ? { key: 'online' as const, label: '🌐 تحويل لأونلاين', cls: 'bg-teal-50 border-teal-200 text-teal-700 hover:bg-teal-100' }
                   : { key: 'daqqi' as const, label: '🏢 فرع الدقي', cls: 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100' },
-                { key: 'ticket' as const, label: '🎫 فتح تيكت مشكلة (العميل يفضل مكانه)', cls: 'bg-sky-50 border-sky-200 text-sky-700 hover:bg-sky-100' },
+                { key: 'ticket' as const, label: '🎫 مشكلة أو شكوى — لخدمة العملاء أو الإدارة (العميل يفضل مكانه)', cls: 'bg-sky-50 border-sky-200 text-sky-700 hover:bg-sky-100' },
               ] as { key: Exclude<OnlineClientConvertType, ''>; label: string; cls: string }[]).map(option => (
                 <button key={option.key} onClick={() => setConvertType(option.key)}
                   className={`w-full border rounded-xl px-4 py-2.5 text-sm font-bold transition ${option.cls}`}>
