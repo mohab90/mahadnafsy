@@ -6029,3 +6029,12 @@ CREATE TABLE `live_stream_attendance` (
   UNIQUE KEY `uq_live_attendance` (`tenant_id`,`stream_id`,`subscriber_id`),
   KEY `idx_live_attendance_subscriber` (`tenant_id`,`subscriber_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- backfill_263_dokki_owners: migration 263 — the Dokki clients given their round's reception, for the rollback.
+CREATE TABLE `backfill_263_dokki_owners` (
+  `tenant_id` varchar(64) NOT NULL,
+  `subscriber_id` varchar(36) NOT NULL,
+  `reception_id` varchar(36) NOT NULL,
+  `reception_name` varchar(255) DEFAULT NULL,
+  PRIMARY KEY (`tenant_id`,`subscriber_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

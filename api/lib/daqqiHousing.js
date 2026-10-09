@@ -11,10 +11,55 @@ const { branchIdForBranch } = require('./branches');
 const { writeAuditEvent } = require('./auditTrail');
 
 /**
+ * «ممنوع تسكين عميل في روند من غير دفعة متسجلة» (9 Oct 2026): a payment for the
+ * round's course — or a track that holds it — recorded paid or waiting for
+ * approval, or money the client paid for it before the system.
+ */
+async function hasRecordedPayment(conn, { tenantId, subscriberId, courseId }) {
+  const [[payment]] = await conn.query(
+    `SELECT 1 AS ok FROM payments p
+      WHERE p.tenant_id=? AND p.subscriber_id=? AND p.status IN ('paid','pending') AND p.deleted_at IS NULL AND p.amount > 0
+        AND (p.course_id=? OR EXISTS (SELECT 1 FROM bundle_courses bc
+              WHERE bc.tenant_id=p.tenant_id AND bc.bundle_id=p.bundle_id AND bc.course_id=?))
+      LIMIT 1`, [tenantId, subscriberId, courseId, courseId]);
+  if (payment) return true;
+  const [[client]] = await conn.query('SELECT crm_json FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriberId, tenantId]);
+  let prior = {};
+  try { prior = (typeof client?.crm_json === 'object' ? client.crm_json : JSON.parse(client?.crm_json || '{}'))?.priorPaid || {}; } catch { prior = {}; }
+  if (Number(prior[String(courseId)]) > 0) return true;
+  const tracks = Object.keys(prior).filter(key => key.startsWith('bundle:') && Number(prior[key]) > 0).map(key => key.slice(7));
+  if (!tracks.length) return false;
+  const [[inTrack]] = await conn.query(
+    `SELECT 1 AS ok FROM bundle_courses WHERE tenant_id=? AND course_id=? AND bundle_id IN (${tracks.map(() => '?').join(',')}) LIMIT 1`,
+    [tenantId, courseId, ...tracks]);
+  return Boolean(inTrack);
+}
+
+/**
+ * «كل روند مسئول موظف رسيبشن … كل عملاء روند هيبقوا تبع نفس الرسيبشن» (9 Oct
+ * 2026): the clients housed in a round are its reception's. `subscriberIds`
+ * narrows it to some of them; without it, every client of the round.
+ */
+async function assignToRoundReception(conn, { tenantId, roundId, subscriberIds = null }) {
+  const [[round]] = await conn.query(
+    'SELECT reception_id, reception_name FROM daqqi_rounds WHERE id=? AND tenant_id=? LIMIT 1', [roundId, tenantId]);
+  if (!round?.reception_id) return 0;
+  const only = Array.isArray(subscriberIds) && subscriberIds.length
+    ? ` AND s.id IN (${subscriberIds.map(() => '?').join(',')})` : '';
+  const [result] = await conn.query(
+    `UPDATE subscribers s
+       JOIN daqqi_attendees da ON da.subscriber_id=s.id AND da.tenant_id=s.tenant_id AND da.round_id=?
+        SET s.assigned_cs_id=?, s.assigned_cs_name=?, s.updated_at=NOW()
+      WHERE s.tenant_id=? AND s.deleted_at IS NULL AND (s.assigned_cs_id IS NULL OR s.assigned_cs_id<>?)${only}`,
+    [roundId, round.reception_id, round.reception_name || null, tenantId, round.reception_id, ...(only ? subscriberIds : [])]);
+  return result.affectedRows || 0;
+}
+
+/**
  * Seats the client. `conn` is a connection already inside a transaction — the
  * round row is locked for the duration.
  *
- * @returns {Promise<{status: 'seated'|'already'|'no_round'|'archived'|'no_subscriber', roundId?: string, code?: string, courseId?: string}>}
+ * @returns {Promise<{status: 'seated'|'already'|'unpaid'|'no_round'|'archived'|'no_subscriber', roundId?: string, code?: string, courseId?: string}>}
  */
 async function seatSubscriberInRound(conn, { tenantId, roundId, subscriberId, req = null }) {
   const [[round]] = await conn.query(
@@ -29,6 +74,7 @@ async function seatSubscriberInRound(conn, { tenantId, roundId, subscriberId, re
     [tenantId, round.id, subscriberId]
   );
   if (already) return { status: 'already', ...seat };
+  if (!(await hasRecordedPayment(conn, { tenantId, subscriberId, courseId: round.course_id }))) return { status: 'unpaid', ...seat };
 
   // The roster's phone is NOT NULL: a client with no number of their own is seated
   // all the same, with their other number or none. What they have already paid for
@@ -63,6 +109,7 @@ async function seatSubscriberInRound(conn, { tenantId, roundId, subscriberId, re
       WHERE id=? AND tenant_id=? AND (branch IS NULL OR branch<>?)`,
     [roundBranch, branchIdForBranch(roundBranch), subscriberId, tenantId, roundBranch]
   );
+  await assignToRoundReception(conn, { tenantId, roundId: round.id, subscriberIds: [subscriberId] });
   await writeAuditEvent({
     action: 'DAQQI_ATTENDEE_BOOKED',
     entityType: 'DAQQI_ROUND',
@@ -90,4 +137,4 @@ async function seatInOwnTransaction(pool, args) {
   }
 }
 
-module.exports = { seatSubscriberInRound, seatInOwnTransaction };
+module.exports = { assignToRoundReception, hasRecordedPayment, seatSubscriberInRound, seatInOwnTransaction };
