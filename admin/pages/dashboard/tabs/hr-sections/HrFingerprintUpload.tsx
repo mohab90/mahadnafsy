@@ -77,8 +77,8 @@ export default function HrFingerprintUpload({ month: initialMonth, notify, onClo
           <label className="text-xs text-gray-600">الشهر
             <input type="month" value={month} onChange={e => { setMonth(e.target.value); setReport(null); }} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" />
           </label>
-          <label className="text-xs text-gray-600">ملف جهاز البصمة (Excel أو CSV أو ملف attlog)
-            <input type="file" accept=".xlsx,.csv,.txt,.dat" onChange={e => { setFile(e.target.files?.[0] || null); setReport(null); }}
+          <label className="text-xs text-gray-600">ملف جهاز البصمة (Excel ‎.xls أو ‎.xlsx أو CSV أو ملف attlog)
+            <input type="file" accept=".xls,.xlsx,.csv,.txt,.dat,.htm,.html" onChange={e => { setFile(e.target.files?.[0] || null); setReport(null); }}
               className="mt-1 block w-full rounded-xl border border-gray-200 px-3 py-2 text-sm file:ml-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-1 file:text-indigo-700" />
           </label>
         </div>

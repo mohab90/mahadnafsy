@@ -2,7 +2,7 @@ import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  Users, Briefcase, Search, BarChart3, ChevronRight, UserPlus, Pencil,
+  Users, Briefcase, Search, BarChart3, UserPlus,
   CalendarCheck, CalendarOff, Wallet, UserCheck, UserX, Layers, Inbox, Fingerprint,
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
@@ -19,11 +19,19 @@ import HrAttendancePanel from './hr-sections/HrAttendancePanel';
 import HrLeavesPanel from './hr-sections/HrLeavesPanel';
 import HrRequestsInbox from './hr-sections/HrRequestsInbox';
 import HrStaffBasicsPanel from './hr-sections/HrStaffBasicsPanel';
+import HrMonthSheet from './hr-sections/HrMonthSheet';
+import HrStaffCard, { type StaffBasics, type StaffMonth } from './hr-sections/HrStaffCard';
 import { ROLE_LABELS, ROLE_COLORS } from './hr-sections/hrLabels';
 import { fmtMoney } from './hr-sections/hrFormat';
 
-const HR_SECTIONS = ['requests', 'directory', 'basics', 'performance', 'attendance', 'leaves', 'payroll', 'recruitment'] as const;
+// «خلي الاساسي لما افتح هو دليل الموظفين … الحضور مع كشف المرتبات في تاب واحدة
+// … الاجازات مع طلبات الموظفين». Six tabs; the old addresses still open the tab
+// that holds them now (/dashboard/hr/leaves → the requests, /payroll → attendance).
+const HR_SECTIONS = ['directory', 'requests', 'attendance', 'basics', 'performance', 'recruitment'] as const;
 type HrSection = typeof HR_SECTIONS[number];
+const SECTION_ALIASES: Record<string, HrSection> = { leaves: 'requests', payroll: 'attendance' };
+const sectionFor = (param?: string): HrSection =>
+  (HR_SECTIONS as readonly string[]).includes(param || '') ? param as HrSection : SECTION_ALIASES[param || ''] || 'directory';
 
 const JobPostingsPanel = React.lazy(() => import('./JobPostingsPanel'));
 const RecruitmentPipelinePanel = React.lazy(() => import('./hr-sections/RecruitmentPipelinePanel'));
@@ -44,16 +52,6 @@ type PerformanceRow = {
   bonus: number;
 };
 
-
-
-function getMonthsOfService(joinedAt: string) {
-  const ms = Date.now() - new Date(joinedAt).getTime();
-  const months = ms / (30.4 * 86400000);
-  if (months < 1) return `${Math.round(ms / 86400000)} يوم`;
-  if (months < 12) return `${Math.round(months)} شهر`;
-  const y = Math.floor(months / 12); const m = Math.round(months % 12);
-  return m > 0 ? `${y} سنة ${m} شهر` : `${y} سنة`;
-}
 
 const HrTab: React.FC<Props> = ({ notify }) => {
   const navigate = useNavigate();
@@ -88,11 +86,10 @@ const HrTab: React.FC<Props> = ({ notify }) => {
   // report claimed one was visible to anyone holding view_hr; there is none in
   // this screen at all.
   const [showAddStaff, setShowAddStaff] = useState(false);
-  // «طلبات الموظفين» first: what employees asked for is what HR answers first.
-  // /dashboard/hr/<section> opens that section — the settings hub links
-  // «سياسة الحضور والخصومات» straight to attendance.
+  // The directory first; /dashboard/hr/<section> opens that section — the
+  // settings hub links «سياسة الحضور والخصومات» straight to attendance.
   const { param: sectionParam } = useParams<{ param?: string }>();
-  const [subTab, setSubTab] = useState<HrSection>(() => (HR_SECTIONS as readonly string[]).includes(sectionParam || '') ? sectionParam as HrSection : 'requests');
+  const [subTab, setSubTab] = useState<HrSection>(() => sectionFor(sectionParam));
   const [pendingRequests, setPendingRequests] = useState(0);
   // Deciding a request is manage_hr on the server; view_hr alone reads the list.
   const canManageHr = isAdmin || Boolean(currentStaff && hasPermission({
@@ -107,11 +104,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
   const [loadingPerformance, setLoadingPerformance] = useState(false);
 
 
-
-
   // ── Fetch functions ─────────────────────────────────────────
-
-
 
 
   const fetchPerformance = useCallback(async () => {
@@ -132,16 +125,31 @@ const HrTab: React.FC<Props> = ({ notify }) => {
     }
   }, [notify, perfMonth]);
 
+  // The card's details: the fingerprint number, branch and pay (staff-basics)
+  // and this month's attendance — read once when the directory opens.
+  const [basicsById, setBasicsById] = useState<Map<string, StaffBasics>>(new Map());
+  const [monthById, setMonthById] = useState<Map<string, StaffMonth>>(new Map());
+  useEffect(() => {
+    if (subTab !== 'directory') return;
+    let cancelled = false;
+    const [y, m] = cairoMonthOnly().split('-');
+    void Promise.allSettled([
+      mysqlAdmin.adminGet<StaffBasics[]>('/admin/hr/staff-basics'),
+      mysqlAdmin.adminGet<StaffMonth[]>(`/admin/hr/attendance/summary?month=${parseInt(m, 10)}&year=${y}`),
+    ]).then(([basics, month]) => {
+      if (cancelled) return;
+      if (basics.status === 'fulfilled' && Array.isArray(basics.value)) setBasicsById(new Map(basics.value.map(row => [row.id, row])));
+      if (month.status === 'fulfilled' && Array.isArray(month.value)) setMonthById(new Map(month.value.map(row => [row.id, row])));
+    });
+    return () => { cancelled = true; };
+  }, [subTab]);
+
   // ── Side effects ─────────────────────────────────────────────
   useEffect(() => {
     if (subTab === 'directory' || subTab === 'performance') fetchPerformance();
   }, [subTab, fetchPerformance]);
 
   // ── Actions ──────────────────────────────────────────────────
-
-
-
-
 
 
   // Memoized because `|| []` mints a fresh array on every render whenever
@@ -235,13 +243,11 @@ const HrTab: React.FC<Props> = ({ notify }) => {
 
       <div className="flex flex-wrap gap-1.5 rounded-2xl border border-gray-200 bg-white p-1.5">
         {([
-          ['requests', 'طلبات الموظفين', Inbox],
           ['directory', 'دليل الموظفين', Users],
+          ['requests', 'الطلبات والإجازات', Inbox],
+          ['attendance', 'الحضور والمرتبات', CalendarCheck],
           ['basics', 'الرواتب والبصمة والتارجت', Fingerprint],
           ['performance', 'الأداء والتارجت', BarChart3],
-          ['attendance', 'الحضور والغياب', CalendarCheck],
-          ['leaves', 'الإجازات', CalendarOff],
-          ['payroll', 'كشف الرواتب', Wallet],
           ['recruitment', 'التوظيف', Briefcase],
         ] as const).map(([key, label, Icon]) => (
           <button key={key} type="button" onClick={() => setSubTab(key)}
@@ -259,7 +265,12 @@ const HrTab: React.FC<Props> = ({ notify }) => {
         ))}
       </div>
 
-      {subTab === 'requests' && <HrRequestsInbox notify={notify} canManage={canManageHr} onCount={setPendingRequests} />}
+      {/* Mounted whatever the tab, so the pending count shows on «الطلبات والإجازات» from the start. */}
+      <div className={subTab === 'requests' ? 'space-y-5' : 'hidden'}>
+        <HrRequestsInbox notify={notify} canManage={canManageHr} onCount={setPendingRequests} />
+        <div className="flex items-center gap-2 pt-1 text-sm font-extrabold text-gray-700"><CalendarOff size={16} /> الإجازات</div>
+        {subTab === 'requests' && <HrLeavesPanel notify={notify} staff={safeStaff} />}
+      </div>
 
       {subTab === 'directory' && (
         <div className="space-y-4">
@@ -292,86 +303,13 @@ const HrTab: React.FC<Props> = ({ notify }) => {
                   {safeStaff.length === 0 ? 'ابدأ بإضافة أول موظف من الزر أعلى الصفحة' : 'جرّب تغيير البحث أو الفلاتر'}
                 </p>
               </div>
-            ) : filtered.map(member => {
-              const performance = perfByStaff.get(member.id);
-              const myRev = performance?.revenue || 0;
-              const myLeads = performance?.leads_count || 0;
-              const tType = member.monthlyTargetType || 'egp';
-              const tPct = performance?.target_pct || 0;
-              return (
-                <div key={member.id}
-                  className="group flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg hover:shadow-slate-200/60">
-                  <div className="flex items-start gap-3 p-4 pb-3">
-                    {member.image ? (
-                      <img src={member.image} alt=""
-                        className={`h-11 w-11 shrink-0 rounded-full object-cover ring-2 ${member.status === 'active' ? 'ring-emerald-200' : 'ring-gray-200 grayscale'}`} />
-                    ) : (
-                      <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-base font-black text-white ring-2 ${
-                        member.status === 'active' ? 'bg-slate-600 ring-emerald-200' : 'bg-gray-400 ring-gray-200'
-                      }`}>{member.name.charAt(0)}</span>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <button type="button" onClick={() => navigate(`/staff/${member.id}`)}
-                        className="flex w-full items-center gap-1 text-right">
-                        <span className="truncate font-bold text-gray-800 transition-colors group-hover:text-slate-900">{member.name}</span>
-                        <ChevronRight size={14} className="shrink-0 text-gray-300 transition-colors group-hover:text-slate-500" />
-                      </button>
-                      <div className="mt-1 flex flex-wrap items-center gap-1">
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${ROLE_COLORS[member.role] || 'bg-gray-100 text-gray-600'}`}>
-                          {ROLE_LABELS[member.role] || member.role}
-                        </span>
-                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                          member.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-                        }`}>
-                          <span className={`h-1.5 w-1.5 rounded-full ${member.status === 'active' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                          {member.status === 'active' ? 'نشط' : 'غير نشط'}
-                        </span>
-                      </div>
-                    </div>
-                    <button type="button" onClick={() => navigate(`/staff/${member.id}?tab=settings`)}
-                      title="تعديل بيانات الموظف" aria-label={`تعديل بيانات ${member.name}`}
-                      className="shrink-0 rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-slate-100 hover:text-slate-700">
-                      <Pencil size={13} />
-                    </button>
-                  </div>
-
-                  {(member.monthlyTarget || 0) > 0 && (
-                    <div className="px-4 pb-3">
-                      <div className="mb-1 flex items-baseline justify-between text-[10px]">
-                        <span className="text-gray-400">التارجت</span>
-                        <span className="font-bold tabular-nums text-gray-600">
-                          {tType === 'clients' ? `${member.monthlyTarget} عميل` : tType === 'bookings' ? `${member.monthlyTarget} حجز` : fmtMoney(member.monthlyTarget!)}
-                          <span className={`mr-1 ${tPct >= 100 ? 'text-emerald-600' : 'text-gray-400'}`}>· {Math.round(tPct)}%</span>
-                        </span>
-                      </div>
-                      <div className="h-1.5 overflow-hidden rounded-full bg-gray-100">
-                        <div className={`h-full rounded-full transition-all ${tPct >= 100 ? 'bg-emerald-500' : 'bg-slate-500'}`}
-                          style={{ width: `${Math.min(tPct, 100)}%` }} />
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="mt-auto grid grid-cols-3 divide-x divide-x-reverse divide-gray-100 border-t border-gray-100 bg-gray-50/70 text-center">
-                    <div className="px-2 py-2.5">
-                      <div className="text-xs font-bold text-gray-700">
-                        {member.joinedAt ? getMonthsOfService(member.joinedAt) : <span className="text-amber-600">بدون تاريخ</span>}
-                      </div>
-                      <div className="mt-0.5 text-[10px] text-gray-400">مدة الخدمة</div>
-                    </div>
-                    <div className="px-2 py-2.5">
-                      <div className="text-xs font-bold tabular-nums text-gray-700">{myLeads}</div>
-                      <div className="mt-0.5 text-[10px] text-gray-400">ليدات</div>
-                    </div>
-                    <div className="px-2 py-2.5">
-                      <div className={`text-xs font-bold tabular-nums ${myRev > 0 ? 'text-emerald-700' : 'text-gray-400'}`}>
-                        {myRev > 0 ? `${Math.round(myRev / 1000)}k` : '—'}
-                      </div>
-                      <div className="mt-0.5 text-[10px] text-gray-400">مبيعات</div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            ) : filtered.map(member => (
+              <HrStaffCard key={member.id} member={member}
+                basics={basicsById.get(member.id)} month={monthById.get(member.id)}
+                performance={perfByStaff.get(member.id)} showPay={canManageFinance}
+                onOpen={() => navigate(`/staff/${member.id}`)}
+                onEdit={() => navigate(`/staff/${member.id}?tab=settings`)} />
+            ))}
           </div>
         </div>
       )}
@@ -449,12 +387,13 @@ const HrTab: React.FC<Props> = ({ notify }) => {
       )}
 
       {subTab === 'basics' && <HrStaffBasicsPanel notify={notify} canEditSalary={canManageFinance} />}
-      {subTab === 'attendance' && <HrAttendancePanel notify={notify} staff={safeStaff} />}
-
-      {subTab === 'leaves' && <HrLeavesPanel notify={notify} staff={safeStaff} />}
-
-      {subTab === 'payroll' && (
-        <HrPayrollPanel notify={notify} canManageFinance={canManageFinance} canManagePayroll={canManagePayroll} />
+      {subTab === 'attendance' && (
+        <div className="space-y-5">
+          <HrMonthSheet notify={notify} />
+          <HrAttendancePanel notify={notify} staff={safeStaff} />
+          <div className="flex items-center gap-2 pt-1 text-sm font-extrabold text-gray-700"><Wallet size={16} /> مسيرات الرواتب</div>
+          <HrPayrollPanel notify={notify} canManageFinance={canManageFinance} canManagePayroll={canManagePayroll} />
+        </div>
       )}
 
       <StaffOnboardModal

@@ -131,7 +131,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
       { title: 'الموظفين وصلاحياتهم', desc: 'إضافة موظف، دوره، فرعه، وصلاحياته.', href: '/dashboard/hr/directory', tab: 'hr', keywords: 'صلاحية موظف جديد' },
       { title: 'أدوار الموظفين', desc: 'الأدوار اللي بتظهر في اختيار دور الموظف.', href: S('staff_roles'), tab: 'system_settings' },
       { title: 'سياسة الحضور والخصومات', desc: 'مواعيد العمل، التأخير، الغياب، وخصم كل حالة — وشيت البصمة الشهري.', href: '/dashboard/hr/attendance', tab: 'hr', keywords: 'بصمة تأخير غياب خصم' },
-      { title: 'المرتبات', desc: 'الراتب الأساسي والتارجت والعمولات لكل موظف.', href: '/dashboard/hr/payroll', tab: 'hr', keywords: 'راتب تارجت عمولة' },
+      { title: 'المرتبات', desc: 'الراتب الأساسي والتارجت والعمولات لكل موظف.', href: '/dashboard/hr/attendance', tab: 'hr', keywords: 'راتب تارجت عمولة' },
     ],
   },
   {

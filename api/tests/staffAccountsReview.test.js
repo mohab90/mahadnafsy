@@ -167,10 +167,12 @@ test('employee requests: hours on a permission, the HR inbox, and payroll excusi
   assert.match(read('api/routes/hr/payroll.js'), /lp\.type='LATE_PERMIT' AND lp\.status='APPROVED'/);
   assert.match(read('api/routes/hr/records.js'), /createNotification\('hr', 'طلب سلفة'/);
   const hrTab = read('admin/pages/dashboard/tabs/HRTab.tsx');
-  assert.match(hrTab, /\['requests', 'طلبات الموظفين', Inbox\]/);
-  // Requests open first unless the link names another section (/dashboard/hr/<section>).
-  assert.match(hrTab, /const HR_SECTIONS = \['requests', 'directory'/);
-  assert.match(hrTab, /sectionParam as HrSection : 'requests'\)/);
+  // «خلي الاساسي لما افتح هو دليل الموظفين … الاجازات مع طلبات الموظفين» (5 Oct
+  // 2026): the directory opens first, and the requests share a tab with the leaves.
+  assert.match(hrTab, /\['requests', 'الطلبات والإجازات', Inbox\]/);
+  assert.match(hrTab, /const HR_SECTIONS = \['directory', 'requests'/);
+  assert.match(hrTab, /SECTION_ALIASES\[param \|\| ''\] \|\| 'directory'/);
+  assert.match(hrTab, /<HrRequestsInbox[\s\S]{0,500}<HrLeavesPanel/);
   assert.match(read('api/migrations/223_v26_permission_times.sql'), /ADD COLUMN IF NOT EXISTS start_time varchar\(5\)/);
 });
 
