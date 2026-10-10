@@ -48,3 +48,20 @@ test('the routes it opens narrow to the branch; pay and the rest of HR stay clos
   assert.match(accounts, /if \(reach && !reach\.all && reach\.newRoles\.includes\(asked\) && !req\.body\?\.staffId\) return next\(\);/, 'a new reception account, nothing else');
   assert.match(read('admin/pages/dashboard/DashboardNavigation.tsx'), /\{ key: 'branch_hr', label: `موارد بشرية \$\{staffBranchLabel\}`/);
 });
+
+// «لسه نظام الموارد البشرية للدقي مش بيظهر في حساب المدير … برغم اني فتحت
+// الصلاحيات» (10 Oct 2026): a grid saved before branch_hr existed, and HR boxes
+// ticked to «open» it.
+test('a branch manager\'s old grid still opens the branch HR, and HR boxes do not widen it past the branch', () => {
+  const { hasPermission } = require('../constants/permissions');
+  const oldGrid = { role: 'DAQQI_MANAGER', permissions_json: JSON.stringify(['manage_daqqi', 'view_leads']) };
+  assert.ok(hasPermission(oldGrid, 'branch_hr'), 'the role runs its branch\'s HR whatever the grid says');
+  assert.ok(!hasPermission(oldGrid, 'view_hr'));
+  const withHr = { role: 'daqqi_manager', permissions_json: JSON.stringify(['manage_daqqi', 'view_hr', 'manage_hr']) };
+  const reach = hrReach({ staffRecord: withHr }, 'manage');
+  assert.equal(reach.all, false, 'still the branch\'s staff only');
+  assert.equal(reach.branch, 'DAQQI');
+  assert.ok(!hasPermission({ role: 'SALES', permissions_json: '[]' }, 'branch_hr'));
+  const admin = read('admin/constants/permissions.ts');
+  assert.match(admin, /permission === 'branch_hr' && \['daqqi_manager', 'tagamoa_manager'\]\.includes/);
+});

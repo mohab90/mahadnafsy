@@ -499,6 +499,9 @@ export function hasPermission(
 ): boolean {
   if (!staff) return false;
   if (FULL_ACCESS_ROLES.includes(staff.role)) return true;
+  // A branch manager runs their branch's HR whatever their grid says — the API's
+  // hasPermission holds the same line (a grid saved before branch_hr existed has no box for it).
+  if (permission === 'branch_hr' && ['daqqi_manager', 'tagamoa_manager'].includes(String(staff.role || '').toLowerCase())) return true;
   const perms = resolvePermissions(staff);
   if (perms === '*') return true;
   return perms.includes(permission);

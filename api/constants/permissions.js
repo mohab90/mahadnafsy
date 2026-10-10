@@ -489,9 +489,17 @@ function resolvePermissions(staffRecord) {
 /**
  * Returns true if the staff record has the given permission.
  */
+// A branch manager runs their branch's HR whatever their grid says: «لسه نظام
+// الموارد البشرية للدقي مش بيظهر في حساب المدير … برغم اني فتحت الصلاحيات»
+// (10 Oct 2026). A grid saved before branch_hr existed (9 Oct) has no such box,
+// and the tab refused the Dokki manager it was built for. The reach stays the
+// branch's (lib/branchHr.js), so this opens nothing beyond it.
+const BRANCH_HR_ROLES = new Set(['daqqi_manager', 'tagamoa_manager']);
+
 function hasPermission(staffRecord, permission) {
   if (!staffRecord) return false;
   if (FULL_ACCESS_ROLES.includes((staffRecord.role || '').toLowerCase())) return true;
+  if (permission === 'branch_hr' && BRANCH_HR_ROLES.has(String(staffRecord.role || '').toLowerCase())) return true;
   const perms = resolvePermissions(staffRecord);
   if (perms === '*') return true;
   return perms.includes(permission);
