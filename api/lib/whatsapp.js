@@ -179,11 +179,17 @@ async function _sendMetaPayload(normalized, content, cfg) {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ messaging_product: 'whatsapp', to: normalized, ...content }),
+    signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
   });
   const data = await res.json();
   if (!res.ok) { logger.warn('[WhatsApp] Meta API error:', data); return { ok: false, provider: 'meta', reason: data }; }
   return { ok: true, provider: 'meta', idMessage: data.messages?.[0]?.id };
 }
+
+// A provider that never answers held the outbox worker — and the money jobs that
+// share its tick — until the row was reclaimed and sent again 15 minutes later.
+// A send that times out is a transient failure (isTransientFailure) and retried.
+const SEND_TIMEOUT_MS = 20000;
 
 async function _sendGreenApi(normalized, message, cfg) {
   const instanceId = cfg.instanceId || platformEnv(cfg, 'WA_INSTANCE_ID');
@@ -198,6 +204,7 @@ async function _sendGreenApi(normalized, message, cfg) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chatId, message }),
+    signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
   });
   const data = await res.json();
   if (!res.ok) { logger.warn('[WhatsApp] Green-API error:', data); return { ok: false, provider: 'green-api', reason: data }; }
@@ -225,6 +232,7 @@ async function _sendUltraMsg(normalized, message, cfg) {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ token, to: `+${String(normalized).replace(/\D/g, '')}`, body: message }).toString(),
+    signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data?.error) {

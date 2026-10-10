@@ -20,7 +20,7 @@ const BRANCH_LABEL = { DAQQI: 'الدقي', TAGAMOA: 'التجمع' };
 
 async function dokkiAutomationSettings(tenantId) {
   const saved = await getTenantSetting(SECTION, { tenantId, fallback: {} }).catch(() => ({})) || {};
-  return { absenceFollowUp: saved.absenceFollowUp === true, weeklyReport: saved.weeklyReport !== false };
+  return { absenceFollowUp: saved.absenceFollowUp === true, weeklyReport: saved.weeklyReport !== false, dailyBrief: saved.dailyBrief !== false };
 }
 
 async function runAbsenceFollowUp(db, { tenantId, force = false }) {

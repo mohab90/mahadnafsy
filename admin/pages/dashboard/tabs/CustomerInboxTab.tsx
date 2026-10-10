@@ -38,6 +38,9 @@ type InboxItem = {
   department?: string;
   assignedTo?: string;
   assigneeName?: string;
+  branch?: string;
+  raisedBy?: string;
+  fromWebsite?: boolean;
   sla?: string;
   escalated: boolean;
   replies: number;
@@ -55,6 +58,12 @@ const CATEGORY_LABEL: Record<string, string> = {
   client_problem: 'مشكلة عميل', complaint: 'شكوى', technical: 'مشكلة تقنية', course_access: 'وصول للكورس',
   billing: 'مدفوعات', refund: 'استرداد', certificate: 'شهادات', consultation: 'استشارة',
   sales_inquiry: 'استفسار مبيعات', hr_inquiry: 'موارد بشرية', general: 'عام',
+};
+const BRANCH_LABEL: Record<string, string> = {
+  DAQQI: 'فرع الدقي', TAGAMOA: 'فرع التجمع', ONLINE_EGYPT: 'أونلاين مصر', ONLINE_SAUDI: 'أونلاين السعودية', ONLINE_ABROAD: 'أونلاين دولي', ONLINE: 'أونلاين',
+};
+const CONTACT_SUBJECT: Record<string, string> = {
+  general: 'استفسار عام', courses: 'الكورسات', course: 'الكورسات', prices: 'الأسعار', payment: 'الدفع', complaint: 'شكوى', consultation: 'استشارة', partnership: 'تعاون',
 };
 const PRIORITY_META: Record<string, { label: string; cls: string }> = {
   urgent: { label: 'عاجلة', cls: 'text-red-700' },
@@ -163,9 +172,13 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
       source: 'ticket',
       title: row.subject || 'تذكرة',
       person: row.subscriber_name || row.subscriber_email || 'عميل',
-      phone: row.subscriber_phone || '',
+      // A visitor with no client file wrote their number in the enquiry itself.
+      phone: row.subscriber_phone || (String(row.body || '').match(/رقم الهاتف:\s*([+\d][\d\s-]{6,})/)?.[1] || '').trim(),
       email: row.subscriber_email || '',
       clientCode: row.client_code || '',
+      branch: row.branch || '',
+      raisedBy: row.raised_by_name || '',
+      fromWebsite: ['web', 'web_contact', 'user_dashboard', 'ai_assistant'].includes(String(row.channel || '')),
       detail: row.body || '',
       status: mapStatus(row.status),
       category: row.category,
@@ -182,7 +195,8 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
     ...contacts.map((row): InboxItem => ({
       id: String(row.id),
       source: 'contact',
-      title: 'رسالة «مشكلة تقنية» من الموقع',
+      title: row.subject && row.subject !== 'technical' ? `رسالة من الموقع — ${CONTACT_SUBJECT[row.subject] || row.subject}` : 'رسالة «مشكلة تقنية» من الموقع',
+      fromWebsite: true,
       person: row.subscriber_name || 'زائر',
       phone: row.phone || '',
       email: row.subscriber_email || '',
@@ -517,8 +531,14 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                   </td>
                   <td className="px-3 py-2">
                     <div className="whitespace-nowrap font-bold text-slate-800">{item.person}</div>
-                    {item.phone && <div className="text-right text-[11px] text-slate-500" dir="ltr">{item.phone}</div>}
+                    {item.phone && <div className="text-right text-[11px] font-bold text-slate-600" dir="ltr">{item.phone}</div>}
                     {item.clientCode && <div className="text-[10px] text-slate-400">{item.clientCode}</div>}
+                    {/* «تبع فرع ايه، وكمان مين المسئول في الفرع اللى رفعتها» (10 Oct 2026). */}
+                    <div className="mt-0.5 flex flex-wrap gap-1">
+                      {item.branch && <span className="whitespace-nowrap rounded bg-teal-50 px-1.5 text-[10px] font-bold text-teal-700">{BRANCH_LABEL[item.branch.toUpperCase()] || item.branch}</span>}
+                      {item.fromWebsite && <span className="whitespace-nowrap rounded bg-indigo-50 px-1.5 text-[10px] font-bold text-indigo-700">من الموقع</span>}
+                    </div>
+                    {item.raisedBy && <div className="whitespace-nowrap text-[10px] text-slate-500">رفعها: <b>{item.raisedBy}</b></div>}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-slate-600">{item.assigneeName || <span className="text-slate-300">—</span>}</td>
                   <td className="px-3 py-2">

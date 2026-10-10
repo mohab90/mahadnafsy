@@ -13,6 +13,7 @@ const { requestedBranch } = require('../lib/physicalBranches');
 const { setTenantSetting } = require('../lib/tenantSettings');
 const { buildDokkiWeeklyReport, composeDokkiWeeklyReport } = require('../lib/dokkiWeeklyReport');
 const { SECTION, dokkiAutomationSettings } = require('../lib/dokkiAbsenceFollowUp');
+const { buildDokkiDailyBrief, composeDokkiDailyBrief } = require('../lib/dokkiDailyBrief');
 
 const fail = (res, error, where) => {
   const statusCode = error.statusCode || 500;
@@ -27,6 +28,14 @@ router.get('/api/admin/daqqi/weekly-report', requireAuth, requireAdminOrStaff, r
   } catch (error) { fail(res, error, 'weekly'); }
 });
 
+// Today's rounds as the morning WhatsApp has them (lib/dokkiDailyBrief.js).
+router.get('/api/admin/daqqi/daily-brief', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
+  try {
+    const brief = await buildDokkiDailyBrief(pool, { tenantId: req.tenantId, branch: requestedBranch(req) });
+    res.json({ ...brief, message: brief.rounds.length ? composeDokkiDailyBrief(brief) : '' });
+  } catch (error) { fail(res, error, 'daily'); }
+});
+
 router.get('/api/admin/daqqi/automation', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
   try { res.json(await dokkiAutomationSettings(req.tenantId)); } catch (error) { fail(res, error, 'automation-read'); }
 });
@@ -38,6 +47,7 @@ router.put('/api/admin/daqqi/automation', requireAuth, requireAdminOrStaff, requ
     const next = {
       absenceFollowUp: typeof req.body?.absenceFollowUp === 'boolean' ? req.body.absenceFollowUp : current.absenceFollowUp,
       weeklyReport: typeof req.body?.weeklyReport === 'boolean' ? req.body.weeklyReport : current.weeklyReport,
+      dailyBrief: typeof req.body?.dailyBrief === 'boolean' ? req.body.dailyBrief : current.dailyBrief,
     };
     await setTenantSetting(SECTION, next, { tenantId: req.tenantId, actorId: req.user?.uid || req.user?.email });
     res.json({ ok: true, ...next });

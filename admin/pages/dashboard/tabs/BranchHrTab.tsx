@@ -19,6 +19,7 @@ const LEAVE_TYPE: Record<string, string> = {
 };
 const ROLE_LABEL: Record<string, string> = {
   RECEPTION_DAQQI: 'استقبال الدقي', DAQQI_MANAGER: 'مدير الدقي', RECEPTION_TAGAMOA: 'استقبال التجمع', TAGAMOA_MANAGER: 'مدير التجمع',
+  SALES: 'سيلز', COLLECTION: 'تحصيل', SUPPORT: 'خدمة العملاء', ACCOUNTANT: 'محاسب', INSTRUCTOR: 'محاضر', TRAINER: 'مدرب', HR: 'موارد بشرية', OTHER: 'موظف',
 };
 
 export default function BranchHrTab({ notify }: { notify: NotifyFn }) {
@@ -53,6 +54,44 @@ export default function BranchHrTab({ notify }: { notify: NotifyFn }) {
         <h2 className="flex items-center gap-2 text-lg font-extrabold text-gray-900"><Users size={20} className="text-teal-600" /> موارد بشرية {branch.label}</h2>
         <button onClick={() => setAdding(true)} className="inline-flex items-center gap-1 rounded-xl bg-teal-600 px-3 py-2 text-xs font-bold text-white hover:bg-teal-700"><UserPlus size={14} /> حساب موظف جديد</button>
       </div>
+
+      {/* «خلي صفحه دليل الموظفين هيا الاساسيه» (10 Oct 2026): the directory first —
+          each employee with their number, WhatsApp, and this month at a glance. */}
+      <section className={card}>
+        <h3 className="mb-2 text-sm font-bold text-gray-800">دليل موظفين {branch.label} ({employees.length})</h3>
+        {employees.length === 0 ? <p className="text-xs text-gray-400">مفيش موظفين متسجلين على الفرع لسه.</p> : (
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {employees.map(employee => {
+              const month = summary.find(row => row.id === employee.id);
+              const waiting = pending.filter(leave => leave.staff_name === employee.name).length;
+              const digits = String(employee.phone || '').replace(/\D/g, '');
+              const wa = digits ? (digits.startsWith('0') ? `2${digits}` : digits) : '';
+              return (
+                <div key={employee.id} className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-gray-800">{employee.name} {!Number(employee.is_active) && <span className="text-[10px] text-gray-400">(موقوف)</span>}</span>
+                    {waiting > 0 && <span className="rounded-full bg-amber-100 px-1.5 text-[10px] font-bold text-amber-800">{waiting} طلب مستني</span>}
+                  </div>
+                  <div className="text-gray-500">{ROLE_LABEL[String(employee.role).toUpperCase()] || employee.role}</div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-2 text-gray-500" dir="ltr">
+                    {employee.phone && <span>{employee.phone}</span>}
+                    {wa && <a href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer" className="font-bold text-emerald-700 hover:underline">WhatsApp</a>}
+                    {employee.email && <span className="truncate">{employee.email}</span>}
+                  </div>
+                  {month && (
+                    <div className="mt-1 flex flex-wrap gap-1.5 text-[10px]">
+                      <span className="rounded bg-emerald-50 px-1.5 text-emerald-700">حضر {Number(month.present_days)}</span>
+                      <span className={`rounded px-1.5 ${Number(month.absent_days) ? 'bg-rose-50 font-bold text-rose-700' : 'bg-gray-100 text-gray-500'}`}>غاب {Number(month.absent_days)}</span>
+                      <span className="rounded bg-amber-50 px-1.5 text-amber-700">تأخير {Number(month.late_days)}</span>
+                      <span className="rounded bg-sky-50 px-1.5 text-sky-700">إجازات {Number(month.leave_days)}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       <section className={card}>
         <h3 className="mb-2 text-sm font-bold text-gray-800">طلبات الإجازات والأذونات {pending.length ? <span className="rounded-full bg-amber-100 px-2 text-amber-800">{pending.length} مستني</span> : null}</h3>
@@ -109,18 +148,6 @@ export default function BranchHrTab({ notify }: { notify: NotifyFn }) {
         )}
       </section>
 
-      <section className={card}>
-        <h3 className="mb-2 text-sm font-bold text-gray-800">موظفين {branch.label} ({employees.length})</h3>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {employees.map(employee => (
-            <div key={employee.id} className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 text-xs">
-              <div className="font-bold text-gray-800">{employee.name} {!Number(employee.is_active) && <span className="text-[10px] text-gray-400">(موقوف)</span>}</div>
-              <div className="text-gray-500">{ROLE_LABEL[String(employee.role).toUpperCase()] || employee.role}</div>
-              <div className="text-gray-400" dir="ltr">{employee.phone || employee.email}</div>
-            </div>
-          ))}
-        </div>
-      </section>
 
       {adding && <NewBranchAccount role={branch.key === 'TAGAMOA' ? 'RECEPTION_TAGAMOA' : 'RECEPTION_DAQQI'} notify={notify} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); load(); }} />}
     </div>

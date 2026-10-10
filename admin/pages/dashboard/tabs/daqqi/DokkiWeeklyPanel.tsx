@@ -7,7 +7,8 @@ import { mysqlAdmin } from '../../../../lib/mysqlapi';
 // this week's report (api/lib/dokkiWeeklyReport.js) and the branch's two switches.
 type Row = { id: string; code: string; course: string; reception: string; clients: number; came: number; lecture: number; unconfirmedWeeks: number; thisWeekAnswered: boolean; owed: number; owing: number };
 type Report = { branchLabel: string; week: string; rounds: Row[]; totals: { rounds: number; clients: number; came: number; unconfirmedWeeks: number; owed: number; owing: number }; message: string };
-type Switches = { absenceFollowUp: boolean; weeklyReport: boolean };
+type Switches = { absenceFollowUp: boolean; weeklyReport: boolean; dailyBrief: boolean };
+type Daily = { rounds: Array<{ id: string; owing: unknown[] }>; message: string };
 const n = (value: number) => Number(value || 0).toLocaleString('ar-EG-u-nu-latn');
 
 export function DokkiWeeklyPanel({ branch, canSwitch, notify }: {
@@ -16,11 +17,14 @@ export function DokkiWeeklyPanel({ branch, canSwitch, notify }: {
   const [report, setReport] = useState<Report | null>(null);
   const [switches, setSwitches] = useState<Switches | null>(null);
   const [showMessage, setShowMessage] = useState(false);
+  const [daily, setDaily] = useState<Daily | null>(null);
+  const [showDaily, setShowDaily] = useState(false);
 
   const load = useCallback(() => {
     const query = branch ? `?branch=${encodeURIComponent(branch)}` : '';
     mysqlAdmin.adminGet<Report>(`/admin/daqqi/weekly-report${query}`).then(setReport).catch(() => setReport(null));
     mysqlAdmin.adminGet<Switches>('/admin/daqqi/automation').then(setSwitches).catch(() => setSwitches(null));
+    mysqlAdmin.adminGet<Daily>(`/admin/daqqi/daily-brief${query}`).then(setDaily).catch(() => setDaily(null));
   }, [branch]);
   useEffect(() => { load(); }, [load]);
 
@@ -28,7 +32,7 @@ export function DokkiWeeklyPanel({ branch, canSwitch, notify }: {
     if (!switches) return;
     try {
       const saved = await mysqlAdmin.adminPut<Switches>('/admin/daqqi/automation', { [key]: !switches[key] });
-      setSwitches({ absenceFollowUp: saved.absenceFollowUp, weeklyReport: saved.weeklyReport });
+      setSwitches({ absenceFollowUp: saved.absenceFollowUp, weeklyReport: saved.weeklyReport, dailyBrief: saved.dailyBrief });
       notify('success', 'اتحفظ');
     } catch (error) { notify('error', error instanceof Error ? error.message : 'تعذر الحفظ'); }
   };
@@ -51,6 +55,16 @@ export function DokkiWeeklyPanel({ branch, canSwitch, notify }: {
         ))}
       </div>
       {showMessage && <pre className="whitespace-pre-wrap rounded-xl bg-teal-50 p-3 text-xs leading-6 text-gray-800">{report.message}</pre>}
+      {/* «بيبعت اشعار كل يوم لمدير الفرع ومسئول الروند» (10 Oct 2026): today's rounds, as the 9 a.m. WhatsApp has them. */}
+      {daily && (
+        <div className="rounded-xl border border-sky-200 bg-sky-50/60 px-3 py-2 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-bold text-sky-900">☀️ محاضرات النهارده: {n(daily.rounds.length)} روند{daily.rounds.length ? ` · ${n(daily.rounds.reduce((sum, round) => sum + round.owing.length, 0))} عميل عليهم فلوس` : ''}</span>
+            {daily.message && <button onClick={() => setShowDaily(value => !value)} className="font-bold text-sky-700 hover:underline">{showDaily ? 'اخفي رسالة الصبح' : 'شوف رسالة الصبح'}</button>}
+          </div>
+          {showDaily && <pre className="mt-2 whitespace-pre-wrap rounded-lg bg-white p-3 leading-6 text-gray-800">{daily.message}</pre>}
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[640px] text-xs">
           <thead className="bg-gray-50 text-gray-500">
@@ -72,6 +86,10 @@ export function DokkiWeeklyPanel({ branch, canSwitch, notify }: {
       </div>
       {switches && (
         <div className="flex flex-wrap gap-2 border-t border-gray-100 pt-3 text-xs">
+          <label className={`flex items-center gap-2 rounded-xl border px-3 py-2 font-bold ${canSwitch ? 'cursor-pointer' : 'opacity-60'}`}>
+            <input type="checkbox" disabled={!canSwitch} checked={switches.dailyBrief} onChange={() => void flip('dailyBrief')} />
+            كل يوم الساعة 9: محاضرات النهارده واللي عليهم فلوس — للمدير ولريسبشن كل روند
+          </label>
           <label className={`flex items-center gap-2 rounded-xl border px-3 py-2 font-bold ${canSwitch ? 'cursor-pointer' : 'opacity-60'}`}>
             <input type="checkbox" disabled={!canSwitch} checked={switches.weeklyReport} onChange={() => void flip('weeklyReport')} />
             التقرير ده يوصل للمدير على الواتساب كل سبت الساعة 10

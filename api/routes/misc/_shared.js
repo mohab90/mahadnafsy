@@ -275,15 +275,18 @@ function scheduleAutoCertificateSweep() {
 }
 scheduleAutoCertificateSweep();
 
-// The Dokki manager's Saturday report and, once switched on, the absence follow-up
-// (lib/dokkiWeeklyReport.js, lib/dokkiAbsenceFollowUp.js). Hourly; each message once.
+// The Dokki manager's Saturday report, the morning brief of the day's rounds and,
+// once switched on, the absence follow-up (lib/dokkiWeeklyReport.js,
+// lib/dokkiDailyBrief.js, lib/dokkiAbsenceFollowUp.js). Hourly; each message once.
 function scheduleDokkiAutomation() {
   const { sendDueDokkiWeeklyReports } = require('../../lib/dokkiWeeklyReport');
   const { runAbsenceFollowUp } = require('../../lib/dokkiAbsenceFollowUp');
+  const { sendDueDokkiDailyBriefs } = require('../../lib/dokkiDailyBrief');
   // Independent: a failed report must not hold the follow-up back, or the reverse.
   const tick = tenantId => Promise.all([
     sendDueDokkiWeeklyReports(pool, { tenantId }).catch(error => logger.warn('[dokki-weekly-report]', error.message)),
     runAbsenceFollowUp(pool, { tenantId }).catch(error => logger.warn('[dokki-absence-follow-up]', error.message)),
+    sendDueDokkiDailyBriefs(pool, { tenantId }).catch(error => logger.warn('[dokki-daily-brief]', error.message)),
   ]);
   setTimeout(() => {
     forEachActiveTenant(tick);

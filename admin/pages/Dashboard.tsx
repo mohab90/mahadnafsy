@@ -375,7 +375,10 @@ const Dashboard: React.FC = () => {
     if (isTabKey(tab)) { setActiveTab(tab); return; }
     console.warn(`[dashboard] refused navigation to unknown tab: ${tab}`);
   }, [setActiveTab]);
-  const activeTab = activeScreen as TabKey;
+  // A branch manager's HR is their branch's: «الموارد البشرية» from any link or
+  // address opens it, not the institute's HR they are refused.
+  const branchHrOnly = ['daqqi_manager', 'tagamoa_manager'].includes(String(currentStaff?.role || '').toLowerCase());
+  const activeTab = (branchHrOnly && ['hr', 'hr_analytics'].includes(activeScreen) ? 'branch_hr' : activeScreen) as TabKey;
 
 
   const {
