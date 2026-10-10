@@ -1,4 +1,6 @@
-import { Award, Ban, Eye, RotateCcw } from 'lucide-react';
+import { useState } from 'react';
+import { Award, Ban, Eye, PencilLine, RotateCcw } from 'lucide-react';
+import { CertDataModal, type CertDataRow } from '../dashboard/tabs/CertDataModal';
 import type { Course, ExtraCertificateRequest, SubscriberCertificate, SubscriberItem } from '../../types';
 import { useCertificateCatalog } from '../../lib/certificateCatalog';
 
@@ -10,6 +12,8 @@ interface UnifiedClientCertificatesPanelProps {
   onViewCertificate: (certificateId: string) => void;
   onRevokeCertificate: (certificateId: string) => void;
   onReissueCertificate: (certificateId: string) => void;
+  notify?: (type: 'success' | 'error' | 'info', text: string) => void;
+  onCertificateDataSaved?: () => void | Promise<void>;
 }
 
 function extraStatusClass(status?: string) {
@@ -49,8 +53,13 @@ export function UnifiedClientCertificatesPanel({
   onViewCertificate,
   onRevokeCertificate,
   onReissueCertificate,
+  notify = () => {},
+  onCertificateDataSaved = () => {},
 }: UnifiedClientCertificatesPanelProps) {
   const certCatalog = useCertificateCatalog();
+  // «زر تعديل لبيانات شهاده العميل» for customer service and collection: the
+  // name printed on it, the English name and the national ID (PUT …/client-data).
+  const [editing, setEditing] = useState<CertDataRow | null>(null);
   return (
     <div id="section-certificates" className="space-y-3">
       <div className="flex items-center gap-3 mb-4">
@@ -117,12 +126,23 @@ export function UnifiedClientCertificatesPanel({
             const remaining = (request.price || 0) - (request.paidAmount || 0);
             return (
               <div key={request.id} className={`border rounded-xl p-4 ${extraStatusClass(request.status)}`}>
-                <div className="flex justify-between items-start">
+                <div className="flex justify-between items-start gap-2">
                   <p className="font-bold text-sm text-gray-900">{certCatalog.label(request.type, request.customName)}</p>
-                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${extraStatusBadge(request.status)}`}>
-                    {extraStatusLabel(request.status)}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button type="button" onClick={() => setEditing({
+                      id: request.id, subscriberName: subscriber.name, nameAr: request.nameAr || null, nameEn: request.nameEn || null,
+                      idNumber: request.idNumber || null, nationality: request.nationality || null,
+                      courseStartDate: null, courseEndDate: null, suggestedStart: null, suggestedEnd: null,
+                    })}
+                      className="flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-bold text-amber-700 hover:bg-amber-50">
+                      <PencilLine size={11} /> تعديل بيانات الشهادة
+                    </button>
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${extraStatusBadge(request.status)}`}>
+                      {extraStatusLabel(request.status)}
+                    </span>
+                  </div>
                 </div>
+                <p className="mt-1 text-xs text-gray-700">الاسم على الشهادة: <b>{request.nameAr || '—'}</b>{request.nameEn ? <span dir="ltr" className="mr-2 text-gray-500">{request.nameEn}</span> : <span className="mr-2 text-amber-600">بدون اسم إنجليزي</span>}</p>
                 <p className="text-xs text-gray-400 mt-1">طُلبت في {request.requestedAt}</p>
                 {request.price && request.price > 0 && (
                   <div className="flex items-center gap-3 mt-1 flex-wrap text-xs">
@@ -138,6 +158,10 @@ export function UnifiedClientCertificatesPanel({
             );
           })}
         </>
+      )}
+      {editing && (
+        <CertDataModal row={editing} notify={notify} onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); void onCertificateDataSaved(); }} />
       )}
     </div>
   );

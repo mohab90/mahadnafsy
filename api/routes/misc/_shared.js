@@ -275,13 +275,19 @@ function scheduleAutoCertificateSweep() {
 }
 scheduleAutoCertificateSweep();
 
-// The Dokki manager's Saturday report and, once switched on, the absence follow-up
-// (lib/dokkiWeeklyReport.js, lib/dokkiAbsenceFollowUp.js). Hourly; each message once.
+// The Dokki manager's Saturday report, the morning brief of the day's rounds and,
+// once switched on, the absence follow-up (lib/dokkiWeeklyReport.js,
+// lib/dokkiDailyBrief.js, lib/dokkiAbsenceFollowUp.js). Hourly; each message once.
 function scheduleDokkiAutomation() {
   const { sendDueDokkiWeeklyReports } = require('../../lib/dokkiWeeklyReport');
   const { runAbsenceFollowUp } = require('../../lib/dokkiAbsenceFollowUp');
-  const tick = tenantId => sendDueDokkiWeeklyReports(pool, { tenantId }).then(() => runAbsenceFollowUp(pool, { tenantId }))
-    .catch(error => logger.warn('[dokki-automation]', error.message));
+  const { sendDueDokkiDailyBriefs } = require('../../lib/dokkiDailyBrief');
+  // Independent: a failed report must not hold the follow-up back, or the reverse.
+  const tick = tenantId => Promise.all([
+    sendDueDokkiWeeklyReports(pool, { tenantId }).catch(error => logger.warn('[dokki-weekly-report]', error.message)),
+    runAbsenceFollowUp(pool, { tenantId }).catch(error => logger.warn('[dokki-absence-follow-up]', error.message)),
+    sendDueDokkiDailyBriefs(pool, { tenantId }).catch(error => logger.warn('[dokki-daily-brief]', error.message)),
+  ]);
   setTimeout(() => {
     forEachActiveTenant(tick);
     setInterval(() => forEachActiveTenant(tick), 60 * 60 * 1000);
@@ -486,17 +492,8 @@ const SYS_DEFAULTS = {
     { key: 'call',        label: 'اتصال مباشر',  is_active: true },
     { key: 'other',       label: 'أخرى',         is_active: true },
   ],
-  expense_categories: [
-    { key: 'rent',        label: 'إيجار',        is_active: true },
-    { key: 'salaries',    label: 'رواتب',         is_active: true },
-    { key: 'marketing',   label: 'تسويق',        is_active: true },
-    { key: 'utilities',   label: 'فواتير',       is_active: true },
-    { key: 'supplies',    label: 'مستلزمات',     is_active: true },
-    { key: 'maintenance', label: 'صيانة',        is_active: true },
-    { key: 'software',    label: 'برامج / تقنية', is_active: true },
-    { key: 'travel',      label: 'مواصلات',      is_active: true },
-    { key: 'other',       label: 'أخرى',         is_active: true },
-  ],
+  // The one list, shared with lib/expenseCategories.js which every expense route reads.
+  expense_categories: require('../../lib/expenseCategories').DEFAULT_EXPENSE_CATEGORIES.map(item => ({ ...item })),
   general: {
     institute_name:    'معهد الدراسات النفسية',
     institute_name_en: 'Institute of Psychological Studies',

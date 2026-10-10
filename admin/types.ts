@@ -815,7 +815,8 @@ export interface NotificationBroadcast {
   sentAt?: string;
 }
 
-export type ExpenseCategory = 'رواتب' | 'تسويق' | 'إيجار' | 'برمجيات' | 'معدات' | 'أخرى';
+// The institute's own list (الإعدادات › فئات المصاريف, GET /admin/expense-categories).
+export type ExpenseCategory = string;
 
 export interface ExpenseItem {
   id: string;
@@ -827,6 +828,7 @@ export interface ExpenseItem {
   receiptUrl?: string;
   branchType?: BranchType;   // which branch this expense belongs to
   paymentMethod?: string;    // cash, bank transfer, etc.
+  staffName?: string | null; // «القائم بالعملية» — who entered it
   createdAt: string;
   title?: string;
 }

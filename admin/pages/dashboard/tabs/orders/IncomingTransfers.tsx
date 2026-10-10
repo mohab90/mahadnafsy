@@ -14,7 +14,22 @@ export type IncomingTransfer = {
   id: string; amount: number; currency: string; method: string; reference: string | null;
   senderName: string | null; senderPhone: string | null; receivedOn: string; note: string | null;
   recordedByName: string | null; paymentId: string | null; customerName: string | null; createdAt: string;
+  /** Set on what is left of a bigger transfer after part of it confirmed a payment (migration 266). */
+  parentTransferId?: string | null;
+  /** The whole transfer this row is part of, when it was split. */
+  originalAmount?: number | null;
 };
+
+const money = (n: number) => Number(n).toLocaleString('ar-EG-u-nu-latn');
+
+/** «باقي ربط من تحويل 3,000» on a remainder; «جزء من تحويل 3,000» on the part that was linked. */
+export function TransferSplitBadge({ transfer }: { transfer: IncomingTransfer }) {
+  const whole = Number(transfer.originalAmount) || 0;
+  if (!whole || whole <= Number(transfer.amount)) return null;
+  return transfer.parentTransferId && !transfer.paymentId
+    ? <span className="mt-0.5 block rounded-full bg-orange-100 px-1.5 py-0.5 text-[9px] font-bold text-orange-700">باقي ربط من تحويل {money(whole)}</span>
+    : <span className="mt-0.5 block text-[9px] text-gray-500">جزء من تحويل {money(whole)}</span>;
+}
 
 /**
  * «التحويلات» in الحسابات reads the ledger of money that arrived. It used to
@@ -118,6 +133,7 @@ export function IncomingTransfersTable({ transfers, loading, canLink, onLink, on
                   <td className={`${cell} text-center`}>
                     <span className="text-[12px] font-extrabold text-blue-700">{Number(transfer.amount).toLocaleString('ar-EG-u-nu-latn')}</span>
                     <span className="mr-0.5 text-[9px] text-gray-400">{transfer.currency}</span>
+                    <TransferSplitBadge transfer={transfer} />
                   </td>
                   <td className={`${cell} text-[11px] text-gray-700`}>{transfer.method}</td>
                   <td className={`${cell} max-w-[180px]`}><span className="line-clamp-2 text-[10px] text-gray-600">{transfer.note || '—'}</span></td>

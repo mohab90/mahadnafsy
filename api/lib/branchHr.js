@@ -20,11 +20,18 @@ const BRANCH_HR = Object.freeze({
   TAGAMOA_MANAGER: { branch: 'TAGAMOA', branchId: 'branch-tagamoa', roles: ['RECEPTION_TAGAMOA', 'TAGAMOA_MANAGER'], newRoles: ['RECEPTION_TAGAMOA'] },
 });
 
-/** Whose HR this caller reaches: all of it, one branch's, or none (null). */
+/**
+ * Whose HR this caller reaches: all of it, one branch's, or none (null). A
+ * branch manager reaches their branch's, even when their grid also holds view_hr
+ * — ticking the HR boxes «to open the permissions» used to hand the Dokki
+ * manager every employee of the institute.
+ */
 function hrReach(req, level = 'view') {
-  if (req.isSuperAdmin || hasPermission(req.staffRecord, level === 'manage' ? 'manage_hr' : 'view_hr')) return { all: true };
+  if (req.isSuperAdmin) return { all: true };
   const branch = BRANCH_HR[String(req.staffRecord?.role || '').toUpperCase()];
-  return branch ? { all: false, ...branch } : null;
+  if (branch) return { all: false, ...branch };
+  if (hasPermission(req.staffRecord, level === 'manage' ? 'manage_hr' : 'view_hr')) return { all: true };
+  return null;
 }
 
 /** Guard for a route a branch manager may use too; sets req.hrReach. */

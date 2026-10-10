@@ -145,6 +145,16 @@ router.patch('/api/admin/payments/:id', requireAuth, requireAdminOrStaff, requir
     try {
       await inTransaction(async conn => {
         await voidPayment(conn, { tenantId: req.tenantId, paymentId: pay.id, actor: actorOf(req), reason: `اتعدّلت: ${reason}` });
+        // The corrected payment is confirmed by the same transfer the old one was.
+        if (newId) {
+          const [[linked]] = await conn.query(
+            'SELECT linked_transfer_id FROM payments WHERE id=? AND tenant_id=?', [pay.id, req.tenantId]);
+          // Linked as any payment is — a smaller corrected amount leaves the rest free.
+          if (linked?.linked_transfer_id) {
+            await require('../lib/incomingTransfers').linkTransfer(conn, {
+              tenantId: req.tenantId, paymentId: newId, link: { transferId: linked.linked_transfer_id }, actor: { id: req.staffRecord?.id, name: actorOf(req) } });
+          }
+        }
         if (keepsTxn && newId) {
           await conn.query('UPDATE payments SET transaction_id=NULL WHERE id=? AND tenant_id=?', [pay.id, req.tenantId]);
           await conn.query('UPDATE payments SET transaction_id=? WHERE id=? AND tenant_id=?', [pay.transaction_id, newId, req.tenantId]);

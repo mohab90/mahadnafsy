@@ -26,7 +26,7 @@ function weekKey(today = cairoToday()) {
   return addDaysToDateOnly(today, -((weekday + 6) % 7));
 }
 
-async function buildDokkiWeeklyReport(db, { tenantId, branch = 'DAQQI', today = cairoToday() }) {
+async function buildDokkiWeeklyReport(db, { tenantId, branch = 'DAQQI', today = cairoToday(), now = new Date() }) {
   const [rounds] = await db.query(
     `SELECT r.id, r.code, r.start_date, r.status, r.reception_name, r.instructor_name, r.postponed_weeks_json, r.held_weeks_json,
             c.price_egp, COALESCE(NULLIF(c.title_ar, ''), c.title) AS course_title
@@ -37,10 +37,14 @@ async function buildDokkiWeeklyReport(db, { tenantId, branch = 'DAQQI', today = 
   const attendees = rounds.length
     ? await attachAttendeeMoney(db, tenantId, await getDaqqiAttendees(db, tenantId, rounds.map(round => round.id)))
     : [];
+  // «حضر الأسبوع ده»: the last seven days. The table has marked_at (UTC), not
+  // created_at — the query failed and the report never opened — and a Monday
+  // window sent on Saturday morning lost every Saturday-afternoon and Sunday class.
+  const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
   const [marks] = rounds.length ? await db.query(
     `SELECT round_id, COUNT(DISTINCT subscriber_id) AS came FROM daqqi_attendance_events
-      WHERE tenant_id = ? AND round_id IN (${rounds.map(() => '?').join(',')}) AND created_at >= ?
-      GROUP BY round_id`, [tenantId, ...rounds.map(round => round.id), `${thisWeek} 00:00:00`]) : [[]];
+      WHERE tenant_id = ? AND round_id IN (${rounds.map(() => '?').join(',')}) AND marked_at >= ? AND status = 'PRESENT'
+      GROUP BY round_id`, [tenantId, ...rounds.map(round => round.id), since]) : [[]];
   const cameThisWeek = new Map(marks.map(row => [row.round_id, Number(row.came) || 0]));
   const rows = rounds.map(round => {
     const people = attendees.filter(row => row.round_id === round.id && !Number(row.archived || 0));
@@ -98,7 +102,7 @@ async function sendDueDokkiWeeklyReports(db, { tenantId, now = new Date() }) {
       `SELECT id, name, phone FROM staff WHERE tenant_id = ? AND role = ? AND is_active = 1 AND deleted_at IS NULL`,
       [tenantId, MANAGER_ROLE[branch]]);
     if (!managers.length) continue;
-    const report = await buildDokkiWeeklyReport(db, { tenantId, branch, today: clock.date });
+    const report = await buildDokkiWeeklyReport(db, { tenantId, branch, today: clock.date, now });
     if (!report.rounds.length) continue;
     const text = composeDokkiWeeklyReport(report);
     for (const manager of managers) {

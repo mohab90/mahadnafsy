@@ -1,5 +1,6 @@
 'use strict';
 const logger = require('../lib/logger');
+const { fetchProviderRates, storeTenantRates, stampManualRates } = require('../lib/fxRefresh');
 const express = require('express');
 const router = express.Router();
 
@@ -312,7 +313,7 @@ router.put('/api/admin/content', requireAuth, requireAdmin, async (req, res) => 
       });
     }
 
-    await saveContentAndBranchCatalog(req, incoming);
+    await saveContentAndBranchCatalog(req, stampManualRates(existing, incoming));
     invalidateFxCache(req.tenantId);
     cacheInvalidate('site_content');
     loadRoleOverrides(req.tenantId).catch(() => {}); // re-sync backend RBAC enforcement immediately
@@ -327,7 +328,7 @@ router.put('/api/admin/content', requireAuth, requireAdmin, async (req, res) => 
 router.patch('/api/admin/content', requireAuth, requireAdmin, async (req, res) => {
   try {
     const existing = await getTenantSetting('content', { tenantId: req.tenantId, fallback: {} });
-    const merged = { ...existing, ...req.body };
+    const merged = stampManualRates(existing, { ...existing, ...req.body });
     await saveContentAndBranchCatalog(req, merged);
     invalidateFxCache(req.tenantId);
     cacheInvalidate('site_content');
@@ -343,25 +344,14 @@ router.patch('/api/admin/content', requireAuth, requireAdmin, async (req, res) =
 // FX Rates refresh
 router.post('/api/admin/fx-rates/refresh', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   try {
-    const response = await fetch('https://open.er-api.com/v6/latest/EGP', { signal: AbortSignal.timeout(8000) });
-    if (!response.ok) return res.status(502).json({ error: 'Failed to fetch FX rates' });
-    const data = await response.json();
-    if (!data.rates || !data.rates.SAR || !data.rates.USD) {
-      return res.status(502).json({ error: 'Invalid FX response' });
+    let rates;
+    try { rates = await fetchProviderRates(); } catch (error) {
+      logger.warn('[fx-rates] provider:', error.message);
+      return res.status(502).json({ error: 'موقع أسعار الصرف مش بيرد — اكتب السعر بإيدك في الإعدادات ← أسعار الصرف', code: 'FX_PROVIDER_DOWN' });
     }
-    const sar_to_egp = parseFloat((1 / data.rates.SAR).toFixed(4));
-    const usd_to_egp = parseFloat((1 / data.rates.USD).toFixed(4));
-    const existing = await getTenantSetting('content', { tenantId: req.tenantId, fallback: {} });
-    const updatedAt = new Date().toISOString();
-    const merged = {
-      ...existing,
-      'exchange.sar_to_egp': String(sar_to_egp),
-      'exchange.usd_to_egp': String(usd_to_egp),
-      'exchange.source': 'open.er-api.com',
-      'exchange.updated_at': updatedAt,
-    };
-    await setTenantSetting('content', merged, { tenantId: req.tenantId, actorId: req.user?.uid || req.user?.email });
-    invalidateFxCache(req.tenantId);
+    const sar_to_egp = rates.sarToEgp;
+    const usd_to_egp = rates.usdToEgp;
+    const updatedAt = await storeTenantRates(req.tenantId, rates, { actorId: req.user?.uid || req.user?.email });
     cacheInvalidate('site_content');
     res.json({ ok: true, sar_to_egp, usd_to_egp, updatedAt });
   } catch (e) {

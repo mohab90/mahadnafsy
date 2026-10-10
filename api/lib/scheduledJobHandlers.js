@@ -102,26 +102,11 @@ function createScheduledJobHandlers({ pool, logger }) {
 
   async function refreshFxRates() {
     try {
-      const response = await fetch('https://open.er-api.com/v6/latest/EGP', {
-        signal: AbortSignal.timeout(8000),
-      });
-      if (!response.ok) throw new Error(`provider returned ${response.status}`);
-      const data = await response.json();
-      if (!data.rates?.SAR || !data.rates?.USD) throw new Error('provider response has no SAR/USD rates');
-      const sarToEgp = Number((1 / data.rates.SAR).toFixed(4));
-      const usdToEgp = Number((1 / data.rates.USD).toFixed(4));
+      // One provider read for every institute (lib/fxRefresh.js — payments refresh on demand too).
+      const { fetchProviderRates, storeTenantRates } = require('./fxRefresh');
+      const { sarToEgp, usdToEgp } = await fetchProviderRates();
       const [tenants] = await pool.query("SELECT id FROM tenants WHERE status='active'");
-      for (const tenant of tenants) {
-        const content = await getTenantSetting('content', { tenantId: tenant.id, fallback: {} });
-        await setTenantSetting('content', {
-          ...content,
-          'exchange.sar_to_egp': String(sarToEgp),
-          'exchange.usd_to_egp': String(usdToEgp),
-          'exchange.source': 'open.er-api.com',
-          'exchange.updated_at': new Date().toISOString(),
-        }, { tenantId: tenant.id, actorId: 'fx-refresh' });
-        invalidateFxCache(tenant.id);
-      }
+      for (const tenant of tenants) await storeTenantRates(tenant.id, { sarToEgp, usdToEgp });
       cacheInvalidate('site_content');
       logger.info(`[jobs] FX refreshed SAR=${sarToEgp} USD=${usdToEgp}`);
     } catch (error) {

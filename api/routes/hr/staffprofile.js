@@ -690,9 +690,11 @@ router.get('/api/staff/me/messages', requireAuth, async (req, res) => {
         ORDER BY created_at ASC LIMIT 300`,
       [req.tenantId, me.id]
     );
+    // Whatever the bell counts is read once opened — a message from another team
+    // (peer_broadcast) stayed unread and was announced again every 15 seconds.
     pool.query(
       `UPDATE staff_messages SET read_at=NOW()
-        WHERE tenant_id=? AND staff_id=? AND direction='to_staff' AND read_at IS NULL`,
+        WHERE tenant_id=? AND staff_id=? AND direction<>'from_staff' AND read_at IS NULL`,
       [req.tenantId, me.id]
     ).catch(() => {});
     res.json(rows);

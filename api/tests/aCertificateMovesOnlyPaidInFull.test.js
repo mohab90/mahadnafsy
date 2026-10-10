@@ -66,6 +66,13 @@ test('paid in full, anyone on the desk moves it, and freely between the paid sta
   assert.equal((await call('patch', '/api/admin/certificate-requests/:id', { ...support, body: { status: 'PAID' } })).statusCode, 200, 'back to review');
 });
 
+test('a certificate paid in full at its price moves on after the price list rises; one paid nothing does not', async () => {
+  request = { id: 'cr-1', subscriber_id: 's-1', course_id: null, type: 'AMERICAN_BOARD', status: 'IN_PROGRESS', price: 1500, paid_amount: 1500, currency: 'EGP' };
+  assert.equal((await call('patch', '/api/admin/certificate-requests/:id', { ...support, body: { status: 'AT_BRANCH' } })).statusCode, 200);
+  request = { ...request, status: 'PAID', price: 1800, paid_amount: 0 };
+  assert.equal((await call('patch', '/api/admin/certificate-requests/:id', { ...support, body: { status: 'IN_PROGRESS' } })).statusCode, 409);
+});
+
 test('editing and deleting a certificate are the managers\'', async () => {
   request = { id: 'cr-1', subscriber_id: 's-1', type: 'AMERICAN_BOARD', status: 'PAID', price: 1800, paid_amount: 1800, currency: 'EGP' };
   assert.equal((await call('put', '/api/admin/certificate-requests/:id/details', { ...support, body: { nameAr: 'x' } })).statusCode, 403);

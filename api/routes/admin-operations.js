@@ -18,7 +18,7 @@ const { toNumbers } = require('../lib/mappers');
 const { addDaysToDateOnly, cairoDayStartUtc, safeDateOnly, cairoToday } = require('../lib/dates');
 const { SYSTEM_ACTORS, departmentOf, describeLabel } = require('../lib/activityDescribe');
 const { listEnv } = require('../lib/platformAccess');
-const { EXPENSE_CATEGORY_LABEL, expenseCategory } = require('../lib/expenseCategories');
+const { loadExpenseCategories, expenseCategory, expenseCategoryLabel } = require('../lib/expenseCategories');
 const { convertJoinUs } = require('./hr/talent');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 
@@ -71,26 +71,40 @@ router.get('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePermi
     // answer says when it was reached (X-Truncated) so a total is not mistaken
     // for the whole.
     const limit = parseLimit(req.query.limit, 5000, 5000);
-    const [rows] = await pool.query(
-      `SELECT id, description, amount, currency, fx_rate_to_egp, amount_egp, fx_source,
-       category, date, receipt_url, note, staff_id, branch_id,
-       vat_rate, vat_amount, amount_before_vat, created_at
-       FROM expenses WHERE tenant_id=? AND deleted_at IS NULL${branchSql}
-       ORDER BY date DESC LIMIT ?`,
-      [...params, limit]);
+    const [[rows], categories] = await Promise.all([pool.query(
+      `SELECT e.id, e.description, e.amount, e.currency, e.fx_rate_to_egp, e.amount_egp, e.fx_source,
+       e.category, e.date, e.receipt_url, e.note, e.staff_id, e.branch_id,
+       e.vat_rate, e.vat_amount, e.amount_before_vat, e.created_at,
+       COALESCE(e.created_by_name, st.name) AS staff_name
+       FROM expenses e LEFT JOIN staff st ON st.id=e.staff_id AND st.tenant_id=e.tenant_id
+       WHERE e.tenant_id=? AND e.deleted_at IS NULL${branchSql.replace('branch_id', 'e.branch_id')}
+       ORDER BY e.date DESC, e.created_at DESC LIMIT ?`,
+      [...params, limit]), loadExpenseCategories(scopedTenantId(req))]);
     if (rows.length >= limit) res.setHeader('X-Truncated', 'true');
-    res.json(rows.map(row => ({
+    res.json(rows.map(({ staff_name: staffName, ...row }) => ({
       ...toNumbers(row, EXPENSE_MONEY),
-      category: EXPENSE_CATEGORY_LABEL[row.category] || 'أخرى',
+      category: expenseCategoryLabel(row.category, categories),
+      categoryCode: row.category,
       date: safeDateOnly(row.date),
       receiptUrl: row.receipt_url || '',
       branchType: branchForId(row.branch_id),
+      // «القائم بالعملية»: the name as it was when the expense was entered.
+      staffName: staffName && !looksLikeAddress(staffName) ? staffName : null,
       createdAt: row.created_at,
     })));
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message, code: e.code });
     routeError(res, e);
   }
+});
+
+// الإعدادات › فئات المصاريف, for whoever records an expense — the settings
+// route itself needs manage_settings, which the accountant does not hold.
+router.get('/api/admin/expense-categories', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
+  try {
+    const categories = await loadExpenseCategories(scopedTenantId(req));
+    res.json(categories.filter(item => item.active).map(({ code, label }) => ({ code, label })));
+  } catch (e) { routeError(res, e); }
 });
 
 router.post('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
@@ -109,6 +123,8 @@ router.post('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePerm
     if (!expDate) return res.status(400).json({ error: 'Invalid expense date' });
     if (!Number.isFinite(amount) || amount <= 0 || amount > 100000000) return res.status(400).json({ error: 'Expense amount must be positive' });
     if (!VALID_EXPENSE_CURRENCIES.has(currency)) return res.status(400).json({ error: 'Invalid expense currency' });
+    const category = expenseCategory(e2.category, await loadExpenseCategories(tenantId));
+    const actorName = req.staffRecord?.name || req.user?.name || 'المدير';
     await conn.beginTransaction();
     transactionStarted = true;
     await assertWritable(expDate, conn, tenantId);
@@ -117,20 +133,20 @@ router.post('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePerm
     // (confirmed: expenses table was empty in prod). Accept either field name.
     await conn.query(
       `INSERT INTO expenses
-         (id, tenant_id, branch_id, date, description, amount, currency, category, receipt_url, note, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+         (id, tenant_id, branch_id, date, description, amount, currency, category, receipt_url, note, staff_id, created_by_name, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW())`,
       [id, tenantId, branchId, expDate, String(e2.description || '').trim().slice(0, 2000),
-       amount, currency, expenseCategory(e2.category), String(e2.receiptUrl || e2.receipt_url || '').slice(0, 2000) || null, e2.note ?? e2.notes ?? null,
-       e2.created_at || new Date().toISOString()]
+       amount, currency, category, String(e2.receiptUrl || e2.receipt_url || '').slice(0, 2000) || null, e2.note ?? e2.notes ?? null,
+       req.staffRecord?.id || null, looksLikeAddress(actorName) ? 'المدير' : String(actorName).slice(0, 150)]
     );
     const journalId = await postExpenseJournal(
-      { id, tenant_id: tenantId, branch_id: branchId, date: expDate, description: e2.description, amount, currency, category: expenseCategory(e2.category) },
+      { id, tenant_id: tenantId, branch_id: branchId, date: expDate, description: e2.description, amount, currency, category },
       +1, req.user?.email, conn, tenantId
     );
     if (!journalId) throw new Error('Expense journal posting failed');
     await conn.commit();
     transactionStarted = false;
-    res.json({ ok: true, id });
+    res.json({ ok: true, id, category: expenseCategoryLabel(category, await loadExpenseCategories(tenantId)), branchType: branchForId(branchId), staffName: looksLikeAddress(actorName) ? 'المدير' : actorName });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     if (e.status) return res.status(e.status).json({ error: e.message, code: e.code });
@@ -146,6 +162,7 @@ router.patch('/api/admin/expenses/:id', requireAuth, requireAdminOrStaff, requir
     const tenantId = scopedTenantId(req);
     const amount = Number(e2.amount);
     if (!Number.isFinite(amount) || amount <= 0 || amount > 100000000) return res.status(400).json({ error: 'Expense amount must be positive' });
+    const category = expenseCategory(e2.category, await loadExpenseCategories(tenantId));
     await conn.beginTransaction();
     transactionStarted = true;
     // Fetch the old row (in tenant scope) so its ledger entry can be reversed.
@@ -178,13 +195,13 @@ router.patch('/api/admin/expenses/:id', requireAuth, requireAdminOrStaff, requir
       `UPDATE expenses
           SET description=?, amount=?, currency=?, category=?, date=?, receipt_url=?, note=?, branch_id=?
         WHERE id=? AND tenant_id=?`,
-      [String(e2.description || '').trim().slice(0, 2000), amount, currency, expenseCategory(e2.category),
+      [String(e2.description || '').trim().slice(0, 2000), amount, currency, category,
        newDate, String(e2.receiptUrl || e2.receipt_url || '').slice(0, 2000) || null,
        e2.note ?? e2.notes ?? oldExp.note ?? null, targetBranchId, req.params.id, tenantId]
     );
     const reversalId = await postExpenseJournal(oldExp, -1, req.user?.email, conn, tenantId);
     const journalId = await postExpenseJournal(
-      { ...oldExp, ...e2, amount, currency, date: newDate, category: expenseCategory(e2.category), branch_id: targetBranchId, id: req.params.id, tenant_id: tenantId },
+      { ...oldExp, ...e2, amount, currency, date: newDate, category, branch_id: targetBranchId, id: req.params.id, tenant_id: tenantId },
       +1, req.user?.email, conn, tenantId
     );
     if (!reversalId || !journalId) throw new Error('Expense ledger update failed');

@@ -556,7 +556,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
                   onViewCertificate={setViewCertId}
                   onRevokeCertificate={(certificateId) => void handleCertificateLifecycle(certificateId, 'revoke')}
                   onReissueCertificate={(certificateId) => void handleCertificateLifecycle(certificateId, 'reissue')}
-                />
+                  notify={notify} onCertificateDataSaved={reloadSubscribers} />
               )}
 
               {isSub && activeTab === 'loyalty' && subscriber && (

@@ -11,12 +11,12 @@ const { publishRealtimeEvent } = require('../lib/realtime');
 const { getTenantSetting } = require('../lib/tenantSettings');
 const { basePriceForCurrency, certificateTypeCodes, resolveCertificatePrice } = require('../lib/certificatePricing');
 const { certificateNameOf, certificatePrice } = require('../lib/certificatePayments');
-const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../middleware/auth');
 const { isString, isOneOf, validateBody } = require('../middleware/validate');
 const { resolveClientContext } = require('../lib/clientContext');
 const { actorName, logClientEvent } = require('../lib/clientHistory');
 const { sanitize } = require('../lib/helpers');
-const { checkEnglishName, checkNationalId } = require('../lib/bookingIdentity');
+const { checkArabicName, checkEnglishName, checkNationalId } = require('../lib/bookingIdentity');
 const { dateOnlyInTimeZone } = require('../lib/dates');
 // A date the certificate states, as YYYY-MM-DD in Cairo, or null.
 const dayOf = value => (value ? dateOnlyInTimeZone(new Date(value)) : null);
@@ -161,7 +161,12 @@ router.get('/api/admin/certificate-requests', requireAuth, requireAdminOrStaff, 
 // place to write — the English name, the national ID, the course's dates. Anyone
 // on the certificates desk completes them (editing the request stays the
 // managers'); the name and ID go back to the client's own record when it has none.
-router.put('/api/admin/certificate-requests/:id/client-data', requireAuth, requireAdminOrStaff, requirePermission('manage_certificates'), async (req, res) => {
+//
+// «زر تعديل لبيانات شهادة العميل تظهر لكل مسئولين التحصيل او خدمه العملاء … يعدل
+// اسم العميل علي الشهاده ويضيف الاسم بالانجليزي … والرقم القومي» (10 Oct 2026):
+// the Arabic name printed on the certificate too, and the collection desk
+// (manage_financial) as well as customer service (manage_certificates).
+router.put('/api/admin/certificate-requests/:id/client-data', requireAuth, requireAdminOrStaff, requireAnyPermission('manage_certificates', 'manage_financial'), async (req, res) => {
   const conn = await pool.getConnection();
   try {
     const b = req.body || {};
@@ -169,6 +174,9 @@ router.put('/api/admin/certificate-requests/:id/client-data', requireAuth, requi
     const [[request]] = await conn.query(
       'SELECT * FROM certificate_requests WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE', [req.params.id, req.tenantId]);
     if (!request) { await conn.rollback(); return res.status(404).json({ error: 'Not found' }); }
+    const typedArabic = String(b.nameAr ?? '').trim();
+    const arabic = typedArabic ? checkArabicName(typedArabic) : { ok: true, value: null };
+    if (!arabic.ok) { await conn.rollback(); return res.status(400).json({ error: arabic.error.replace('اسم العميل بالعربي', 'الاسم على الشهادة') }); }
     const english = checkEnglishName(b.nameEn);
     if (!english.ok) { await conn.rollback(); return res.status(400).json({ error: english.error }); }
     const egyptian = !request.nationality || String(request.nationality).toUpperCase() === 'EGYPTIAN';
@@ -180,18 +188,18 @@ router.put('/api/admin/certificate-requests/:id/client-data', requireAuth, requi
     if (start && end && end < start) { await conn.rollback(); return res.status(400).json({ error: 'تاريخ النهاية قبل تاريخ البداية' }); }
     await conn.query(
       `UPDATE certificate_requests
-          SET name_en=COALESCE(?, name_en), id_number=COALESCE(?, id_number),
+          SET name_ar=COALESCE(?, name_ar), name_en=COALESCE(?, name_en), id_number=COALESCE(?, id_number),
               course_start_date=COALESCE(?, course_start_date), course_end_date=COALESCE(?, course_end_date)
         WHERE id=? AND tenant_id=?`,
-      [english.value, id.value, start, end, request.id, req.tenantId]);
-    if (request.subscriber_id && (english.value || id.value)) {
+      [arabic.value, english.value, id.value, start, end, request.id, req.tenantId]);
+    if (request.subscriber_id && (arabic.value || english.value || id.value)) {
       await conn.query(
         `UPDATE subscribers SET name_en=COALESCE(NULLIF(name_en, ''), ?), national_id=COALESCE(NULLIF(national_id, ''), ?)
           WHERE id=? AND tenant_id=?`,
         [english.value, id.value, request.subscriber_id, req.tenantId]);
       await logClientEvent(conn, {
         tenantId: req.tenantId, subscriberId: request.subscriber_id, action: 'certificate_data', actor: actorName(req),
-        label: `تكملة بيانات الشهادة${english.value ? ` · ${english.value}` : ''}${id.value ? ' · الرقم القومي' : ''}${start ? ` · من ${start}` : ''}${end ? ` لـ ${end}` : ''}`,
+        label: `تعديل بيانات الشهادة${arabic.value && arabic.value !== request.name_ar ? ` · الاسم: ${arabic.value}` : ''}${english.value ? ` · ${english.value}` : ''}${id.value ? ' · الرقم القومي' : ''}${start ? ` · من ${start}` : ''}${end ? ` لـ ${end}` : ''}`,
       });
     }
     await conn.commit();
@@ -458,7 +466,12 @@ router.patch('/api/admin/certificate-requests/:id',
       [request.id, request.subscriber_id, req.tenantId]
     );
     const systemPrice = await certificatePrice(conn, req.tenantId, { type: String(request.type || '').toUpperCase(), currency: String(request.currency || 'EGP').toUpperCase() });
-    if (POST_PAYMENT_STATUSES.has(normalizedStatus) && !fullyPaid(request, systemPrice)) {
+    // A certificate already past payment that holds the whole of its own price
+    // was paid in full when it got there: a later rise in the price list must
+    // not lock its delivery steps — or a note saved on it.
+    const paidAtItsPrice = POST_PAYMENT_STATUSES.has(currentStatus)
+      && Number(request.price) > 0 && Number(request.paid_amount) >= Number(request.price);
+    if (POST_PAYMENT_STATUSES.has(normalizedStatus) && !paidAtItsPrice && !fullyPaid(request, systemPrice)) {
         await conn.rollback();
         conn.release();
         conn = null;

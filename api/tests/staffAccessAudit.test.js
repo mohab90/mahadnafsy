@@ -72,7 +72,8 @@ test('creating a login does not move the employee to another branch', () => {
   // Dokki manager a login would have moved her out of Dokki — and out of every
   // branch-wide broadcast (hr/staffprofile.js selects staff by branch_id).
   const src = authRouteSource();
-  assert.match(src, /const branchId = req\.body\.branch_id \?\? req\.body\.branchId \?\? staffByEmail\?\.branch_id \?\? 'branch-other';/);
+  // A branch manager's new account is their branch's; otherwise what was posted, else the row's own.
+  assert.match(src, /const branchId = req\.branchAccountReach\?\.branchId\s*\?\? req\.body\.branch_id \?\? req\.body\.branchId \?\? staffByEmail\?\.branch_id \?\? 'branch-other';/);
   assert.match(src, /SELECT id, role, branch_id FROM staff WHERE tenant_id=\?/);
   assert.ok(!/req\.body\.branch_id \|\| 'branch-other'/.test(src),
     'the branch is decided from the request alone again');

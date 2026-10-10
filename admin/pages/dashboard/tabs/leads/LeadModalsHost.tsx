@@ -105,7 +105,7 @@ export function LeadModalsHost({
             }}
             draft={leadPayDraft}
             setDraft={setLeadPayDraft}
-            onSubmit={(draft) => { void handleLeadPayment(draft); }}
+            onSubmit={(draft) => handleLeadPayment(draft)}
             onClose={() => setLeadPayRow(null)}
             branchOptions={instituteBranches.map((branch) => ({ id: branch.id, label: branch.label }))}
             instituteName="معهد الدراسات النفسية"

@@ -9,7 +9,7 @@
  *   website / dashboard / whatsapp  ─▶  ticket (category)
  *                                        │ resolveDepartment(category)
  *                                        ▼
- *                                     department  ─▶ pickAssignee() = least-loaded
+ *                                     department  ─▶ pickAssignee() = in turn
  *                                        │                             active staff
  *                                        ▼                             of that dept
  *                                     assigned agent + sla_due_at (by priority)
@@ -97,14 +97,20 @@ async function pickAssignee(pool, tenantId, department) {
   if (!roles || !roles.length) return null;
   const placeholders = roles.map(() => '?').join(',');
   const [rows] = await pool.query(
+    // In turn: whoever was handed a ticket longest ago (never first), the open
+    // load breaking a tie. By load alone, one agent holding old open tickets
+    // received nothing: «متوزعش المشاكل علي حازم ووليد فقط — فريق خدمه العملاء
+    // ال3» (10 Oct 2026).
     `SELECT s.id, s.name,
+            (SELECT MAX(t.created_at) FROM support_tickets t
+               WHERE t.tenant_id=s.tenant_id AND t.assigned_to=s.id AND t.deleted_at IS NULL) AS last_at,
             (SELECT COUNT(*) FROM support_tickets t
                WHERE t.tenant_id=s.tenant_id AND t.assigned_to=s.id
                  AND t.deleted_at IS NULL AND t.status IN ('open','in_progress')) AS load_count
        FROM staff s
       WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL
         AND LOWER(TRIM(s.role)) IN (${placeholders})
-      ORDER BY load_count ASC,s.name ASC
+      ORDER BY last_at IS NOT NULL, last_at ASC, load_count ASC, s.name ASC
       LIMIT 1
       FOR UPDATE`,
     [tenantId, ...roles.map(role => role.toLowerCase())]

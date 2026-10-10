@@ -9,6 +9,7 @@ const { isItemPaymentType } = require('../../lib/agreedPrice');
 const { queuePaymentReceipt } = require('../../lib/paymentReceipt');
 const { sendWhatsApp } = require('../../lib/whatsapp');
 const { logPaymentAudit, postPaymentJournal } = require('../../lib/finance');
+const { ensureFreshFx, fxStaleError } = require('../../lib/fxRefresh');
 const { recordPaymentCompensation } = require('../../lib/paymentCompensation');
 const { assertWritable } = require('../../lib/periodLock');
 const { convertLeadOfPayment } = require('../../lib/leadState');
@@ -125,6 +126,12 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
       }
       const rawAmount = Number(payment.amount) || 0;
       if (rawAmount <= 0) throw new Error('Paid payment must have a positive amount');
+      const fx = await ensureFreshFx(tenantId, payment.currency);
+      if (!fx.usable) {
+        await conn.rollback(); transactionStarted = false;
+        const stale = fxStaleError(payment.currency, fx.snapshot);
+        return res.status(stale.statusCode).json({ error: stale.message, code: stale.code });
+      }
       const journalId = await postPaymentJournal({
         paymentId: id, amount: rawAmount, currency: payment.currency, payType: payment.payment_type,
         // Passed as it came out of the row. payments.date is DATETIME, so this
@@ -287,7 +294,8 @@ router.get('/api/admin/incoming-transfers', requireAuth, requireAdminOrStaff, re
     const unlinked = String(req.query.unlinked || '') === '1';
     const [rows] = await pool.query(
       `SELECT t.id, t.amount, t.currency, t.method, t.reference, t.sender_name, t.sender_phone, t.received_on,
-              t.note, t.recorded_by_name, t.payment_id, t.linked_at, t.created_at, s.name AS customer_name
+              t.note, t.recorded_by_name, t.payment_id, t.linked_at, t.created_at, s.name AS customer_name,
+              t.parent_transfer_id, t.original_amount, p.amount AS payment_amount
          FROM incoming_transfers t
          LEFT JOIN payments p ON p.id=t.payment_id AND p.tenant_id=t.tenant_id
          LEFT JOIN subscribers s ON s.id=p.subscriber_id AND s.tenant_id=t.tenant_id
@@ -298,6 +306,10 @@ router.get('/api/admin/incoming-transfers', requireAuth, requireAdminOrStaff, re
       senderName: row.sender_name, senderPhone: row.sender_phone, receivedOn: row.received_on, note: row.note,
       recordedByName: row.recorded_by_name, paymentId: row.payment_id, linkedAt: row.linked_at,
       customerName: row.customer_name || null, createdAt: row.created_at,
+      // «باقي ربط من تحويل 3,000»: a remainder, and what the whole transfer was.
+      parentTransferId: row.parent_transfer_id || null,
+      originalAmount: row.original_amount != null ? Number(row.original_amount) : null,
+      paymentAmount: row.payment_amount != null ? Number(row.payment_amount) : null,
     })));
   } catch (error) {
     logger.error('[incoming-transfers/list]', error.message);

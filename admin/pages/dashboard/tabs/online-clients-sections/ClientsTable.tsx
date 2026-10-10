@@ -32,6 +32,7 @@ import { waLink } from '../../../../lib/whatsappLink';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 import { WhatsAppIcon } from '../../../../components/WhatsAppIcon';
 import { useCertificateCatalog } from '../../../../lib/certificateCatalog';
+import { IssuedCertificateBadge } from './IssuedCertificateBadge';
 import { ClientContactDialog } from '../../../unified-client/ClientContactLog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -359,9 +360,7 @@ export function ClientsTable({
                     if (issuedCerts.length === 0 && certReqs.length === 0) return <span className="text-gray-300">—</span>;
                     return (
                       <div className="flex flex-col items-center gap-0.5">
-                        {issuedCerts.slice(0,3).map((cert,ci2) => (
-                          <span key={ci2} className="inline-flex items-center gap-0.5 font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-1.5 py-0.5 text-[9px]">🎓 {(cert as {certificateNumber?:string}).certificateNumber||'شهادة'}</span>
-                        ))}
+                        {issuedCerts.slice(0,3).map((cert,ci2) => <IssuedCertificateBadge key={ci2} cert={cert} />)}
                         {certReqs.map((req, rqi) => {
                           const reqPaid = req.paidAmount||0;
                           const reqTotal = req.price||0;
@@ -403,7 +402,6 @@ export function ClientsTable({
                     || (other.cid.startsWith('bundle:') && !!bundles.find(b => `bundle:${b.id}` === other.cid)?.courses.some(co => co.id === courseId));
                 })?.cid ?? courseRows[0]?.cid;
                 const crCertReqs = (row.extraCertificateRequests||[]).filter(req => rowOfRequest(req.courseId) === cr.cid);
-                const crCertStatus = cr.remaining <= 0 ? 'مكتمل' : 'جزئي';
                 return (
                 <tr key={`${row.id}-${cr.cid}`} className={`hover:bg-gray-50/40 ${ci%2===1?'bg-gray-50/30':''} ${collOnlineSelected.has(row.id)?'bg-blue-50':''}`}>
                   {ci === 0 && (
@@ -451,12 +449,7 @@ export function ClientsTable({
                   {vc.certificates && <td className="px-2 py-2 border border-gray-200 text-center text-[10px]">
                     {(crCert || crCertReqs.length > 0) ? (
                       <div className="flex flex-col items-center gap-0.5">
-                        {crCert && (
-                          <>
-                            <span className="inline-flex items-center gap-0.5 font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-1.5 py-0.5">🎓 {crCert.certificateNumber||'شهادة'}</span>
-                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${crCertStatus==='مكتمل'?'bg-emerald-100 text-emerald-700':'bg-orange-100 text-orange-700'}`}>{crCertStatus}</span>
-                          </>
-                        )}
+                        {crCert && <IssuedCertificateBadge cert={crCert} owes={cr.remaining > 0} />}
                         {crCertReqs.map((req, rqi) => {
                           const reqPaid = req.paidAmount||0;
                           const reqTotal = req.price||0;

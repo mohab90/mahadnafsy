@@ -2,7 +2,7 @@
 // booking bonuses — the browser side of api/lib/priceTiers.js.
 import { mysqlAdmin } from './mysqlapi';
 
-export type PriceTierKey = 'DAQQI' | 'TAGAMOA' | 'ONLINE_EGYPT' | 'ONLINE_EGYPT_FOREIGN' | 'ONLINE_SAUDI' | 'ONLINE_ABROAD';
+export type PriceTierKey = 'DAQQI' | 'DAQQI_FOREIGN' | 'TAGAMOA' | 'ONLINE_EGYPT' | 'ONLINE_EGYPT_FOREIGN' | 'ONLINE_SAUDI' | 'ONLINE_ABROAD';
 export type TierCurrency = 'EGP' | 'SAR' | 'USD';
 
 export interface PriceTierDef {
@@ -12,6 +12,8 @@ export interface PriceTierDef {
   branch: string;
   physical?: boolean;
   nationality?: string;
+  /** Reads this tier's price and discount until given its own (عميل الدقي غير المصري ← أونلاين غير مصري). */
+  inheritsFrom?: PriceTierKey;
 }
 
 export interface TierPrice {
@@ -21,8 +23,11 @@ export interface TierPrice {
   branch: string;
   price: number | null;
   discountPrice: number | null;
-  /** No price of its own: it reads the online Egyptian price until someone sets one. */
+  /** No price of its own: it reads another tier's until someone sets one. */
   inherited: boolean;
+  inheritedFrom?: PriceTierKey | null;
+  /** The discount price is the inherited tier's too. */
+  discountInherited?: boolean;
 }
 
 export type BonusRole = 'sales' | 'service' | 'instructor';
@@ -58,7 +63,9 @@ export const saveItemPricing = (
 /** The tier a branch is priced at — online Egypt splits by nationality. Mirrors tierForBranch on the server. */
 export function tierForBranch(branch: string | null | undefined, nationality?: string | null): PriceTierKey | null {
   const b = String(branch || '').toUpperCase();
-  if (b === 'ONLINE_EGYPT' && String(nationality || '').toUpperCase() === 'NON_EGYPTIAN_EGYPT') return 'ONLINE_EGYPT_FOREIGN';
+  const foreign = String(nationality || '').toUpperCase() === 'NON_EGYPTIAN_EGYPT';
+  if (b === 'ONLINE_EGYPT' && foreign) return 'ONLINE_EGYPT_FOREIGN';
+  if (b === 'DAQQI' && foreign) return 'DAQQI_FOREIGN';
   return (['DAQQI', 'TAGAMOA', 'ONLINE_EGYPT', 'ONLINE_SAUDI', 'ONLINE_ABROAD'] as string[]).includes(b) ? b as PriceTierKey : null;
 }
 

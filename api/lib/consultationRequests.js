@@ -161,7 +161,44 @@ async function openConsultationRequest(db, request) {
       `طلب من الموقع — الطلب ${orderId}`, values.amount, values.currency,
       values.session_duration_minutes, values.subscriber_id, orderId, values.source]
   );
+  if (values.source === 'site_express') await tellManagementOfExpress(db, { tenantId, id, values });
   return { id, created: true };
+}
+
+/**
+ * «خلي لما حد يحجز استشارة سريعة يبعتلي انا مسدج علي الواتس اب علي رقمي الادارة
+ * اللى بتعتلهم تقرير» (10 Oct 2026): an express session is booked within the hour,
+ * so the numbers the daily report goes to (lib/ownerDailyReport.js) hear of it at
+ * once. Queued with the booking; a failure here never fails the booking.
+ */
+async function tellManagementOfExpress(db, { tenantId, id, values }) {
+  try {
+    const { ownerReportSettings } = require('./ownerDailyReport');
+    const { phones } = await ownerReportSettings(tenantId, db);
+    if (!phones.length) return 0;
+    const money = values.amount ? `${Number(values.amount).toLocaleString('en-US')} ${values.currency || 'EGP'}` : '';
+    const message = [
+      '⚡ *حجز استشارة سريعة جديد*',
+      `العميل: ${values.client_name}`,
+      values.client_phone ? `الموبايل: ${values.client_phone}` : '',
+      values.client_email ? `الإيميل: ${values.client_email}` : '',
+      money ? `المبلغ: ${money}` : '',
+      'الحالة: لسه مستني الدفع — المفروض يتكلم خلال ساعة',
+    ].filter(Boolean).join('\n');
+    const outbox = require('./outbox');
+    let queued = 0;
+    for (const phone of phones) {
+      if (await outbox.enqueue({
+        channel: 'whatsapp', recipient: phone, tenantId, refType: 'consultation', refId: id,
+        dedupeKey: `express-consultation:${tenantId}:${id}:${phone}`,
+        payload: { message, category: 'staff_alert' },
+      }, db)) queued += 1;
+    }
+    return queued;
+  } catch (error) {
+    require('./logger').warn('[consultation] express alert not queued:', error.message);
+    return 0;
+  }
 }
 
 /**
@@ -204,6 +241,7 @@ async function settleConsultationForOrder(db, { tenantId, order, subscriberId = 
 }
 
 module.exports = {
+  tellManagementOfExpress,
   bookingRuleError,
   consultationSettings,
   expressPrice,

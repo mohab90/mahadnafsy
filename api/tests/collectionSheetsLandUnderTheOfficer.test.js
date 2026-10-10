@@ -158,14 +158,16 @@ test('a row lands with the sheet\'s remaining, its date, its numbers cleaned, an
   const { lib, granted, restore } = loadImport({
     '../lib/collectionDistribution': {
       loadCollectionConfig: async () => ({ sheets: [] }),
-      pickCollectionOfficer: async (conn, tenantId, options) => { picked.push(options); return { id: 'cs-9', name: 'دعاء' }; },
+      isBranchClient: branch => /DAQQI|^TAGAMOA$/.test(String(branch || '')),
+      // One picker for the sheet, loaded once and turned per row.
+      loadCollectionPicker: async () => { picked.push('loaded'); return { next: market => { picked.push(market); return { id: 'cs-9', name: 'دعاء' }; } }; },
       subscriberMarket: ({ branch }) => (branch === 'ONLINE_ABROAD' ? 'intl' : 'local'),
     },
   });
   try {
     const { db, inserted } = fakeDb([{ id: 's-old', phone: '1050954780', email: null, assigned_cs_id: null }]);
     const result = await lib.importCollectionRows({
-      tenantId: 't1', staff: null, autoAssign: true, kind: 'active', branch: 'DAQQI', source: 'داتا قديمة دقي',
+      tenantId: 't1', staff: null, autoAssign: true, kind: 'active', branch: 'ONLINE_EGYPT', source: 'داتا قديمة أونلاين',
       rows: [
         // Price 4600, 1000 collected, 2900 still owed: 1700 was paid before the system.
         { _name: 'جديدة', _phone: '1009441632', _date: '2026-01-08', _course: 'دبلومة اللايف كوتش',
@@ -180,13 +182,13 @@ test('a row lands with the sheet\'s remaining, its date, its numbers cleaned, an
       'assigned_cs_id', 'assigned_cs_name', 'crm_json', 'source', 'created_at'];
     const [first, second] = inserted.map(row => Object.fromEntries(columns.map((column, index) => [column, row[index]])));
     assert.equal(first.phone, '01009441632', 'the zero Excel dropped is back');
-    assert.equal(first.branch, 'DAQQI');
+    assert.equal(first.branch, 'ONLINE_EGYPT');
     assert.equal(first.created_at, '2026-01-08 12:00:00');
     assert.equal(second.created_at, null, 'a date ahead of today is not a date');
     assert.equal(first.assigned_cs_id, 'cs-9');
-    // The branch goes with the market: the real picker gives a Dokki client no
-    // online officer (collectionGoesRoundAndLeadsStayWithSales.test.js).
-    assert.deepEqual(picked, [{ market: 'local', branch: 'DAQQI' }, { market: 'local', branch: 'DAQQI' }]);
+    // The picker is loaded once for the sheet and turned for each new client
+    // (a Dokki sheet gets no online officer — collectionGoesRoundAndLeadsStayWithSales.test.js).
+    assert.deepEqual(picked, ['loaded', 'local', 'local']);
     const crm = JSON.parse(first.crm_json);
     assert.deepEqual(crm.customPrices, { 'c-life': 4600 });
     assert.deepEqual(crm.priorPaid, { 'c-life': 1700 });

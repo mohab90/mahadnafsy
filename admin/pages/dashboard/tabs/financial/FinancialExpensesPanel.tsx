@@ -29,6 +29,8 @@ interface Props {
   updateExpense: (expense: ExpenseItem) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
   notify: (type: 'success' | 'error' | 'info', text: string) => void;
+  /** الدقي / التجمع: every expense on this screen is the branch's. */
+  fixedBranch?: string | null;
 }
 
 export function FinancialExpensesPanel({
@@ -52,7 +54,10 @@ export function FinancialExpensesPanel({
   updateExpense,
   deleteExpense,
   notify,
+  fixedBranch = null,
 }: Props) {
+  const freshDraft = (): ExpenseDraft => ({ category: expenseCategories[0] || 'أخرى', description: '', amount: 0, currency: 'EGP', date: cairoDateOnly(), receiptUrl: '', branchType: fixedBranch || 'ONLINE_EGYPT' });
+  const closeForm = () => { setIsExpenseFormOpen(false); setEditingExpenseId(''); };
   const [saving, setSaving] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState('');
   const submitExpense = async () => {
@@ -61,10 +66,10 @@ export function FinancialExpensesPanel({
     try {
       const now = new Date().toISOString();
       if (editingExpenseId) {
-        await updateExpense({ ...expenseDraft, id: editingExpenseId, createdAt: now });
+        await updateExpense({ ...expenseDraft, branchType: fixedBranch || expenseDraft.branchType, id: editingExpenseId, createdAt: now });
         setEditingExpenseId('');
       } else {
-        await addExpense({ ...expenseDraft, id: `exp-${Date.now()}`, createdAt: now });
+        await addExpense({ ...expenseDraft, branchType: fixedBranch || expenseDraft.branchType, id: `exp-${Date.now()}`, createdAt: now });
       }
       setIsExpenseFormOpen(false);
       notify('success', 'تم حفظ المصروف وقيده المحاسبي');
@@ -90,7 +95,7 @@ export function FinancialExpensesPanel({
   <article className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
             <div className="flex items-center justify-between gap-2">
               <h4 className="font-bold text-gray-800 flex items-center gap-2"><Wallet size={16} className="text-red-500" />سجل المصروفات</h4>
-              <button onClick={() => { setIsExpenseFormOpen(v => !v); setEditingExpenseId(''); setExpenseDraft({ category: 'أخرى', description: '', amount: 0, currency: 'EGP', date: cairoDateOnly(), receiptUrl: '' }); }} className="flex items-center gap-1.5 bg-primary-600 text-white px-3 py-2 rounded-xl text-sm font-bold"><Plus size={14}/>{isExpenseFormOpen ? 'إغلاق' : 'إضافة مصروف'}</button>
+              <button type="button" onClick={() => { setEditingExpenseId(''); setExpenseDraft(freshDraft()); setIsExpenseFormOpen(true); }} className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-xl text-sm font-bold"><Plus size={14}/>إضافة مصروف</button>
             </div>
             {isExpenseFormOpen && (
               <ExpenseForm
@@ -99,13 +104,15 @@ export function FinancialExpensesPanel({
                 expenseCategories={expenseCategories}
                 editingExpenseId={editingExpenseId}
                 onSubmit={() => void submitExpense()}
+                onClose={closeForm}
                 saving={saving}
+                fixedBranch={fixedBranch}
               />
             )}
             {/* Filters */}
             <div className="flex gap-3 flex-wrap">
               <select className="border border-gray-300 rounded-xl px-3 py-2 text-sm" value={expenseCategoryFilter} onChange={e => setExpenseCategoryFilter(e.target.value)}>
-                <option value="all">كل الفئات</option>
+                <option value="all">كل البنود</option>
                 {expenseCategories.map(c => <option key={c}>{c}</option>)}
               </select>
               <input type="date" className="border border-gray-300 rounded-xl px-3 py-2 text-sm" value={expenseDateFrom} onChange={e => setExpenseDateFrom(e.target.value)} />
@@ -115,7 +122,7 @@ export function FinancialExpensesPanel({
               filteredExpenses={filteredExpenses}
               totalEGP={filteredExpenses.reduce((sum, expense) => sum + toEGP(expense.amount, expense.currency), 0)}
               exportCSV={exportCSV}
-              onEdit={(expense) => { setExpenseDraft({ category: expense.category, description: expense.description, amount: expense.amount, currency: expense.currency, date: expense.date, receiptUrl: expense.receiptUrl || '' }); setEditingExpenseId(expense.id); setIsExpenseFormOpen(true); }}
+              onEdit={(expense) => { setExpenseDraft({ category: expense.category, description: expense.description, amount: expense.amount, currency: expense.currency, date: expense.date, receiptUrl: expense.receiptUrl || '', branchType: expense.branchType }); setEditingExpenseId(expense.id); setIsExpenseFormOpen(true); }}
               onDelete={removeExpense}
               deletingId={deletingId}
             />

@@ -278,6 +278,8 @@ export function useUnifiedClientPayments(params: Params) {
       }));
     } catch (error) {
       persistenceError('payment', error);
+      // The payment dialog waits on this: swallowed, it printed a receipt for a refused payment.
+      throw error;
     }
   };
 

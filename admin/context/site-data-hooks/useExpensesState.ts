@@ -12,16 +12,25 @@ export function useExpensesState(
   const [expenses, setExpenses] = useState<ExpenseItem[]>(initialExpenses);
 
   const addExpense = async (item: ExpenseItem) => {
-    await mysqlAdmin.saveExpense(item as unknown as Record<string,unknown>);
+    // The server names the row, its branch and who entered it: keeping the
+    // screen's own id made editing or deleting a just-added expense «not found».
+    const saved = await mysqlAdmin.saveExpense(item as unknown as Record<string,unknown>) as unknown as Partial<ExpenseItem> & { id?: string };
     lastCRMWriteRef.current = Date.now();
-    setExpenses((prev) => [item, ...prev]);
+    const row: ExpenseItem = {
+      ...item,
+      id: saved?.id || item.id,
+      ...(saved?.category ? { category: saved.category } : {}),
+      ...(saved?.branchType ? { branchType: saved.branchType } : {}),
+      staffName: saved?.staffName ?? item.staffName ?? null,
+    };
+    setExpenses((prev) => [row, ...prev]);
     track('create', 'expense', item.description);
   };
 
   const updateExpense = async (item: ExpenseItem) => {
     await mysqlAdmin.updateExpense(item as unknown as Record<string,unknown>);
     lastCRMWriteRef.current = Date.now();
-    setExpenses((prev) => prev.map((e) => (e.id === item.id ? item : e)));
+    setExpenses((prev) => prev.map((e) => (e.id === item.id ? { ...e, ...item, staffName: e.staffName, createdAt: e.createdAt } : e)));
     track('update', 'expense', item.description);
   };
 

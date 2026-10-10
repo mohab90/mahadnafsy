@@ -15,6 +15,7 @@
 // being uploaded wins.
 
 const { readXlsx } = require('./xlsxRead');
+const { readXls, looksLikeXls, looksLikeMarkupTable } = require('./xlsRead');
 const { parseCsv } = require('./csv');
 const { latinDigits } = require('./phoneNumber');
 
@@ -23,7 +24,7 @@ const fold = value => latinDigits(String(value ?? '')).trim().toLowerCase().repl
 const HEADS = {
   bio: /^(ac ?-?no|no|id|user ?id|userid|emp(loyee)? ?(no|id|code)|enroll(ment)? ?(no|id|number)|person ?id|badge ?(no|number)|pin|رقم البصمه|رقم البصمة|رقم الموظف|رقم الجهاز|الرقم|رقم|كود|كود الموظف|الكود)$/,
   name: /^(name|employee ?name|full ?name|الاسم|اسم|اسم الموظف)$/,
-  dateTime: /^(date ?time|datetime|time ?stamp|check ?time|punch ?time|att ?time|التاريخ و ?الوقت|التاريخ والوقت|وقت البصمه|وقت البصمة)$/,
+  dateTime: /^(date ?[\/&-]? ?time|datetime|التاريخ ?\/ ?الوقت|time ?stamp|check ?time|punch ?time|att ?time|التاريخ و ?الوقت|التاريخ والوقت|وقت البصمه|وقت البصمة)$/,
   date: /^(date|day|التاريخ|اليوم)$/,
   time: /^(time|الوقت|الساعه|الساعة)$/,
   in: /^((clock|check|time|sign) ?-?in|on ?duty|in|حضور|الحضور|دخول|وقت الحضور)$/,
@@ -101,8 +102,12 @@ function fileRows(buffer, filename = '') {
     if (!tabs.length) throw Object.assign(new Error('الملف فاضي'), { statusCode: 400 });
     return tabs.sort((x, y) => y.rows.length - x.rows.length)[0].rows;
   }
-  if (buffer[0] === 0xd0 && buffer[1] === 0xcf) {
-    throw Object.assign(new Error('ده ملف Excel قديم (.xls). افتحه في Excel واحفظه «Excel Workbook (.xlsx)» أو CSV وارفعه تاني'), { statusCode: 400, code: 'XLS_UNSUPPORTED' });
+  // The device's own .xls (Excel 97–2003), or the HTML/XML table its software
+  // saves under that name — refused until 5 Oct 2026 («مش بيقبل»).
+  if (looksLikeXls(buffer) || looksLikeMarkupTable(buffer)) {
+    const tabs = readXls(buffer).filter(tab => tab.rows.length);
+    if (!tabs.length) throw Object.assign(new Error('الملف فاضي'), { statusCode: 400 });
+    return tabs.sort((x, y) => y.rows.length - x.rows.length)[0].rows;
   }
   const text = decodeText(buffer);
   // The device's attlog: whitespace-separated, no quotes, no headings.
