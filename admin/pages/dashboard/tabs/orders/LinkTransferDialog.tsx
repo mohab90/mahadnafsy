@@ -14,6 +14,7 @@ export type TransferLink =
   | { amount: number; currency: string; method: string; reference: string; receivedOn: string; senderName?: string; senderPhone?: string; note?: string };
 
 type LedgerTransfer = {
+  parentTransferId?: string | null; originalAmount?: number | null;
   id: string; amount: number; currency: string; method: string; reference: string | null;
   senderName: string | null; senderPhone: string | null; note: string | null; receivedOn: string; createdAt: string;
 };
@@ -92,7 +93,11 @@ export function LinkTransferDialog({ title, customerName, amount, currency, meth
                   className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 transition ${picked === transfer.id ? 'border-violet-500 bg-violet-50' : 'border-gray-200 hover:border-violet-300'}`}>
                   <input type="radio" name="transfer" checked={picked === transfer.id} onChange={() => setPicked(transfer.id)} className="accent-violet-600" />
                   <div className="min-w-0 flex-1">
-                    <div className="font-bold text-gray-800">{Number(transfer.amount).toLocaleString('ar-EG-u-nu-latn')} {transfer.currency} · {transfer.method}</div>
+                    <div className="font-bold text-gray-800">{Number(transfer.amount).toLocaleString('ar-EG-u-nu-latn')} {transfer.currency} · {transfer.method}
+                      {transfer.parentTransferId && Number(transfer.originalAmount) > Number(transfer.amount) && (
+                        <span className="mr-1 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-bold text-orange-700">باقي من تحويل {Number(transfer.originalAmount).toLocaleString('ar-EG-u-nu-latn')}</span>
+                      )}
+                    </div>
                     <div className="truncate text-[11px] text-gray-500" dir="ltr">#{transfer.reference || '—'} · {cairoDay(transfer.receivedOn)}{transfer.senderName || transfer.senderPhone ? ` · ${transfer.senderName || transfer.senderPhone}` : ''}</div>
                     {transfer.note && <div className="truncate text-[10px] text-gray-400">{transfer.note}</div>}
                   </div>
@@ -104,6 +109,16 @@ export function LinkTransferDialog({ title, customerName, amount, currency, meth
                 </label>
               ))}
             </div>
+            {(() => {
+              const chosen = ledger.find(transfer => transfer.id === picked);
+              if (!chosen || chosen.currency !== currency) return null;
+              const rest = Math.round((Number(chosen.amount) - amount) * 100) / 100;
+              return rest > 0
+                ? <p className="rounded-lg bg-orange-50 px-3 py-2 text-[11px] font-bold text-orange-800">التحويل أكبر من الدفعة — هيتربط منه {amount.toLocaleString('ar-EG-u-nu-latn')} ويتبقى {rest.toLocaleString('ar-EG-u-nu-latn')} {currency} متاح لدفعة تانية، عليه علامة «باقي من تحويل {Number(chosen.originalAmount || chosen.amount).toLocaleString('ar-EG-u-nu-latn')}».</p>
+                : rest < 0
+                ? <p className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">التحويل أقل من الدفعة بـ{Math.abs(rest).toLocaleString('ar-EG-u-nu-latn')} {currency} — اتأكد قبل الاعتماد.</p>
+                : null;
+            })()}
             </div>
           )
         ) : (

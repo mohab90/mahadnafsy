@@ -145,6 +145,16 @@ router.patch('/api/admin/payments/:id', requireAuth, requireAdminOrStaff, requir
     try {
       await inTransaction(async conn => {
         await voidPayment(conn, { tenantId: req.tenantId, paymentId: pay.id, actor: actorOf(req), reason: `اتعدّلت: ${reason}` });
+        // The corrected payment is confirmed by the same transfer the old one was.
+        if (newId) {
+          const [[linked]] = await conn.query(
+            'SELECT linked_transfer_id FROM payments WHERE id=? AND tenant_id=?', [pay.id, req.tenantId]);
+          if (linked?.linked_transfer_id) {
+            await conn.query('UPDATE incoming_transfers SET payment_id=?, linked_at=NOW() WHERE id=? AND tenant_id=? AND payment_id IS NULL',
+              [newId, linked.linked_transfer_id, req.tenantId]);
+            await conn.query('UPDATE payments SET linked_transfer_id=? WHERE id=? AND tenant_id=?', [linked.linked_transfer_id, newId, req.tenantId]);
+          }
+        }
         if (keepsTxn && newId) {
           await conn.query('UPDATE payments SET transaction_id=NULL WHERE id=? AND tenant_id=?', [pay.id, req.tenantId]);
           await conn.query('UPDATE payments SET transaction_id=? WHERE id=? AND tenant_id=?', [pay.transaction_id, newId, req.tenantId]);

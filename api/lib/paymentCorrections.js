@@ -87,6 +87,9 @@ async function voidPayment(conn, { tenantId, paymentId, actor, reason }) {
         note=CONCAT(COALESCE(note,''), IF(note IS NULL OR note='', '', ' | '), ?)
       WHERE id=? AND tenant_id=?`, [`اتمسحت بواسطة ${actor}: ${why}`.slice(0, 400), paymentId, tenantId]);
   await conn.query('UPDATE orders SET deleted_at=NOW() WHERE id=? AND tenant_id=? AND deleted_at IS NULL', [paymentId, tenantId]);
+  // The transfer it was confirmed against is free again — it stayed «linked» to
+  // a payment that no longer exists, and nothing else could use the money.
+  await require('./incomingTransfers').releaseTransfer(conn, { tenantId, paymentId });
 
   if (wasPaid) {
     // After the row is archived, so it no longer counts as the course's grant.
