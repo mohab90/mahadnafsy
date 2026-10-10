@@ -5,8 +5,11 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 // «تكمله لداتا العميل الاسم بالانجليزي ,, الرقم القومي ,,, تاريخ بداية الكورس
 // وتاريخ النهايه» (8 Oct 2026). Anyone on the certificates desk completes them;
 // the dates start from the client's round or enrolment when the system knows them.
+// «يقدر يعدل اسم العميل علي الشهاده» (10 Oct 2026): the Arabic name printed on it
+// too — from the certificates desk and from the client's file, for customer
+// service and collection alike.
 export type CertDataRow = {
-  id: string; subscriberName: string; nameEn: string | null; idNumber: string | null; nationality: string | null;
+  id: string; subscriberName: string; nameAr?: string | null; nameEn: string | null; idNumber: string | null; nationality: string | null;
   courseStartDate: string | null; courseEndDate: string | null; suggestedStart: string | null; suggestedEnd: string | null;
 };
 
@@ -27,6 +30,7 @@ export function CertDataModal({ row, onClose, onSaved, notify }: {
   notify: (type: 'success' | 'error' | 'info', text: string) => void;
 }) {
   const [form, setForm] = useState({
+    nameAr: row.nameAr || '',
     nameEn: row.nameEn || '',
     idNumber: row.idNumber || '',
     courseStartDate: row.courseStartDate || row.suggestedStart || '',
@@ -41,7 +45,7 @@ export function CertDataModal({ row, onClose, onSaved, notify }: {
     setSaving(true);
     try {
       await mysqlAdmin.adminPut(`/admin/certificate-requests/${encodeURIComponent(row.id)}/client-data`, form);
-      notify('success', 'اتكمّلت بيانات الشهادة');
+      notify('success', 'اتحفظت بيانات الشهادة');
       onSaved();
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر الحفظ');
@@ -49,8 +53,11 @@ export function CertDataModal({ row, onClose, onSaved, notify }: {
   };
 
   return (
-    <Modal open onClose={onClose} title="تكملة بيانات الشهادة" subtitle={row.subscriberName} size="sm">
+    <Modal open onClose={onClose} title="بيانات الشهادة" subtitle={row.subscriberName} size="sm">
       <div className="space-y-3 text-sm" dir="rtl">
+        <label className="block text-xs font-bold text-gray-700">الاسم على الشهادة بالعربي (ثلاثي على الأقل)
+          <input value={form.nameAr} onChange={set('nameAr')} placeholder={row.subscriberName} className={`${field} mt-1`} />
+        </label>
         <label className="block text-xs font-bold text-gray-700">الاسم بالإنجليزي (زي البطاقة)
           <input value={form.nameEn} onChange={set('nameEn')} dir="ltr" placeholder="Mohamed Ahmed Ali" className={`${field} mt-1`} />
         </label>
