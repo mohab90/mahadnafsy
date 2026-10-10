@@ -499,7 +499,12 @@ const BRANCH_HR_ROLES = new Set(['daqqi_manager', 'tagamoa_manager']);
 function hasPermission(staffRecord, permission) {
   if (!staffRecord) return false;
   if (FULL_ACCESS_ROLES.includes((staffRecord.role || '').toLowerCase())) return true;
-  if (permission === 'branch_hr' && BRANCH_HR_ROLES.has(String(staffRecord.role || '').toLowerCase())) return true;
+  if (BRANCH_HR_ROLES.has(String(staffRecord.role || '').toLowerCase())) {
+    if (permission === 'branch_hr') return true;
+    // The institute-wide HR boxes do not apply to a branch manager: ticked, they
+    // opened every employee's file, salary and payroll past the branch's routes.
+    if (permission === 'view_hr' || permission === 'manage_hr') return false;
+  }
   const perms = resolvePermissions(staffRecord);
   if (perms === '*') return true;
   return perms.includes(permission);

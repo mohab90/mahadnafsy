@@ -224,7 +224,7 @@ async function recordSubscriberPayment(req, res) {
       const safeName = sanitize(subscriberDraft.name || '', 300);
       const safeEmail = sanitize(subscriberDraft.email || '', 255).trim().toLowerCase();
       const typedPhone = sanitize(subscriberDraft.phone || '', 30).trim();
-      if (!safeName || !safePhone) {
+      if (!safeName || !typedPhone) {
         return res.status(400).json({ error: 'Subscriber name and phone are required' });
       }
       // The branch, or the branch of whoever is recording it.

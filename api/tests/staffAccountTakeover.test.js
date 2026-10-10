@@ -61,6 +61,20 @@ test('staff-account refuses to reset an owner, a manager, or a customer for a no
   assert.match(h, /assertGrantable\(req, req\.body, \{\s*alreadyHeld: heldByTarget\(/);
 });
 
+test('a branch manager opens new accounts only, filed under their branch', () => {
+  // «مدير الدقي … يقدر ينشأ حساب» — a new account. Posting a sales rep's or an
+  // accountant's address used to reset that employee's password and rewrite
+  // their role to reception (the staff upsert's ON DUPLICATE clause).
+  const h = handler(authRouteSource(), "'/api/admin/staff-account'", '/api/admin/check-account');
+  const firstPasswordWrite = h.indexOf('UPDATE users SET password_hash');
+  const guard = h.indexOf('if (req.branchAccountReach && (existing.length > 0 || staffByEmail))');
+  assert.ok(guard > 0, 'a branch manager can take over an existing login again');
+  assert.ok(guard < firstPasswordWrite);
+  assert.match(h.slice(guard, guard + 300), /return refuse\(409,[\s\S]*BRANCH_ACCOUNT_EXISTS/);
+  assert.match(h, /const branchId = req\.branchAccountReach\?\.branchId\s*\?\?/);
+  assert.match(authRouteSource(), /req\.branchAccountReach = reach; return next\(\);/);
+});
+
 test('staff-account releases its connection exactly once', () => {
   // An early return that also called conn.release() ran the finally's release
   // too — handing one connection back to the pool twice.

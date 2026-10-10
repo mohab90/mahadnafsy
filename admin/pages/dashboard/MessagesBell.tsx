@@ -40,7 +40,7 @@ export default function MessagesBell({
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
-  const targets = useStaffMessageTargets();
+  const targets = useStaffMessageTargets(mode === 'staff');
   const lastUnread = useRef<number | null>(null);
 
   // «عاوز الرسايل تظهر اسرع بدون ريفريش» (8 Oct 2026): the count every 15

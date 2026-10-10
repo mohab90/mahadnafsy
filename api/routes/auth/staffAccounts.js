@@ -54,7 +54,7 @@ const staffAccountCreator = (req, res, next) => {
   if (req.isSuperAdmin || hasPermission(req.staffRecord, 'manage_staff')) return next();
   const reach = hrReach(req, 'manage');
   const asked = String(req.body?.role || '').toUpperCase();
-  if (reach && !reach.all && reach.newRoles.includes(asked) && !req.body?.staffId) return next();
+  if (reach && !reach.all && reach.newRoles.includes(asked) && !req.body?.staffId) { req.branchAccountReach = reach; return next(); }
   return res.status(403).json({ error: 'Insufficient permissions', required: 'manage_staff' });
 };
 router.post('/api/admin/staff-account', requireAuth, requireAdminOrStaff, requireAnyPermission('manage_staff', 'branch_hr'), staffAccountCreator, requireTenantQuota('staff'),
@@ -120,6 +120,16 @@ router.post('/api/admin/staff-account', requireAuth, requireAdminOrStaff, requir
           code: 'CUSTOMER_ACCOUNT_REQUIRES_OWNER',
         });
       }
+    }
+
+    // A branch manager opens new accounts only. An address that already opens a
+    // login or names an employee is somebody's account: this route would reset
+    // its password and rewrite its role and branch.
+    if (req.branchAccountReach && (existing.length > 0 || staffByEmail)) {
+      return refuse(409, {
+        error: 'البريد ده متسجل لحساب موجود — مدير الفرع بيفتح حسابات جديدة بس، كلم الإدارة لو محتاج تعديل الحساب ده',
+        code: 'BRANCH_ACCOUNT_EXISTS',
+      });
     }
 
     // The staff row being upserted, when the caller names one. It has to be
@@ -190,7 +200,9 @@ router.post('/api/admin/staff-account', requireAuth, requireAdminOrStaff, requir
     // branch-wide message. Both spellings are accepted; the row's own branch is
     // the fallback, and branch-other only names a row that never had one.
     const id = staffId || uuidv4();
-    const branchId = req.body.branch_id ?? req.body.branchId ?? staffByEmail?.branch_id ?? 'branch-other';
+    // A branch manager's new account is their branch's, whatever was posted.
+    const branchId = req.branchAccountReach?.branchId
+      ?? req.body.branch_id ?? req.body.branchId ?? staffByEmail?.branch_id ?? 'branch-other';
     const dbRole = ((role || 'OTHER').toUpperCase());
     const joinedAt = String(req.body.joinedAt || req.body.joined_at || new Date().toISOString()).slice(0, 19).replace('T', ' ');
     const numberOrNull = value => value === undefined || value === null || value === '' ? null : Number(value);

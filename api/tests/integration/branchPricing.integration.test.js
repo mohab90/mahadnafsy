@@ -168,3 +168,18 @@ test('«عميل الدقي غير المصري» reads the online foreign price
   byKey = await read();
   assert.deepEqual([byKey.DAQQI_FOREIGN.price, byKey.DAQQI_FOREIGN.inherited, byKey.DAQQI_FOREIGN.discountPrice], [3400, false, null], 'its own price, and no discount it was not given');
 });
+
+// A new client recorded together with their first payment (createClientWithPayment):
+// the name/phone check read safePhone before it was declared — every such save
+// was «Internal server error».
+test('a new client is created together with their payment', { skip }, async () => {
+  const res = await book({
+    subscriber: { name: 'عميل جديد خالص', phone: '01015000099', branch: 'DAQQI' },
+    payment: payment({ amount: 900 }),
+  });
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  const [[row]] = await pool.query("SELECT id FROM subscribers WHERE tenant_id=? AND phone LIKE '%1015000099'", [TENANT]);
+  assert.ok(row, 'the client exists');
+  const missing = await book({ subscriber: { name: 'بدون رقم', branch: 'DAQQI' }, payment: payment({ amount: 950 }) });
+  assert.equal(missing.statusCode, 400);
+});

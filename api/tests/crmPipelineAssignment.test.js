@@ -73,11 +73,12 @@ test('assignment picker honors branch policy, availability, capacity and weighte
   assert.ok(calls.some(call => call.sql.includes('last_assigned_at=NOW(3)') && call.params[0] === 'p-b'));
 });
 
-function assignmentDb(staffRows, loads = []) {
+function assignmentDb(staffRows, loads = [], lastLeads = []) {
   return {
     async query(sql) {
       if (sql.includes('FROM staff s')) return [staffRows];
       if (sql.includes('COUNT(*) active_leads')) return [loads];
+      if (sql.includes('MAX(assigned_at)')) return [lastLeads];
       return [{ affectedRows: 1 }];
     },
   };
@@ -103,6 +104,14 @@ test('a tenant that never saved the distribution screen distributes to every act
   ]);
   const rotation = createRepRotation(await listDistributableReps('tenant-a', db), { mode: 'rr' });
   assert.deepEqual([rotation.next().id, rotation.next().id, rotation.next().id], ['rep-a', 'rep-b', 'rep-a']);
+});
+
+test('with no screen saved, the turn is whoever was handed a lead longest ago — not the first name every time', async () => {
+  const db = assignmentDb([
+    { id: 'rep-a', name: 'A', policy_id: null },
+    { id: 'rep-b', name: 'B', policy_id: null },
+  ], [], [{ assigned_sales_id: 'rep-a', last_at: new Date('2026-10-10T10:00:00Z') }, { assigned_sales_id: 'rep-b', last_at: new Date('2026-10-10T09:00:00Z') }]);
+  assert.deepEqual(await getNextSalesRep('tenant-a', db, { mode: 'rr' }), { id: 'rep-b', name: 'B' });
 });
 
 test('batch rotation stops giving a rep leads at their cap', async () => {

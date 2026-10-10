@@ -466,7 +466,12 @@ router.patch('/api/admin/certificate-requests/:id',
       [request.id, request.subscriber_id, req.tenantId]
     );
     const systemPrice = await certificatePrice(conn, req.tenantId, { type: String(request.type || '').toUpperCase(), currency: String(request.currency || 'EGP').toUpperCase() });
-    if (POST_PAYMENT_STATUSES.has(normalizedStatus) && !fullyPaid(request, systemPrice)) {
+    // A certificate already past payment that holds the whole of its own price
+    // was paid in full when it got there: a later rise in the price list must
+    // not lock its delivery steps — or a note saved on it.
+    const paidAtItsPrice = POST_PAYMENT_STATUSES.has(currentStatus)
+      && Number(request.price) > 0 && Number(request.paid_amount) >= Number(request.price);
+    if (POST_PAYMENT_STATUSES.has(normalizedStatus) && !paidAtItsPrice && !fullyPaid(request, systemPrice)) {
         await conn.rollback();
         conn.release();
         conn = null;

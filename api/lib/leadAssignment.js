@@ -103,11 +103,25 @@ async function listDistributableReps(tenantId, db = pool, options = {}) {
     db
   );
 
+  // A tenant that never saved the screen has no turn stored anywhere: each
+  // rep's turn is when they were last handed a lead. Without it every rep read
+  // «never», and in turn every lead went to the first name.
+  const lastLeadAt = new Map();
+  if (!configured && staffById.size) {
+    const [last] = await db.query(
+      `SELECT assigned_sales_id, MAX(assigned_at) AS last_at FROM leads
+        WHERE tenant_id=? AND assigned_sales_id IN (${[...staffById.keys()].map(() => '?').join(',')})
+        GROUP BY assigned_sales_id`,
+      [tenantId, ...staffById.keys()]
+    );
+    for (const row of last) lastLeadAt.set(String(row.assigned_sales_id), row.last_at);
+  }
+
   const reps = [];
   for (const { id, name, policies } of staffById.values()) {
     const activeLeads = loadByStaff.get(String(id)) || 0;
     if (!configured) {
-      reps.push({ id, name, policyId: null, weight: 1, maxOpenLeads: null, activeLeads, lastAssignedAt: null, intakeLimit: null, taken: 0, courseIds: null, sources: null });
+      reps.push({ id, name, policyId: null, weight: 1, maxOpenLeads: null, activeLeads, lastAssignedAt: lastLeadAt.get(String(id)) || null, intakeLimit: null, taken: 0, courseIds: null, sources: null });
       continue;
     }
     const policy = branch

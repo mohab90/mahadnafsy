@@ -280,8 +280,11 @@ scheduleAutoCertificateSweep();
 function scheduleDokkiAutomation() {
   const { sendDueDokkiWeeklyReports } = require('../../lib/dokkiWeeklyReport');
   const { runAbsenceFollowUp } = require('../../lib/dokkiAbsenceFollowUp');
-  const tick = tenantId => sendDueDokkiWeeklyReports(pool, { tenantId }).then(() => runAbsenceFollowUp(pool, { tenantId }))
-    .catch(error => logger.warn('[dokki-automation]', error.message));
+  // Independent: a failed report must not hold the follow-up back, or the reverse.
+  const tick = tenantId => Promise.all([
+    sendDueDokkiWeeklyReports(pool, { tenantId }).catch(error => logger.warn('[dokki-weekly-report]', error.message)),
+    runAbsenceFollowUp(pool, { tenantId }).catch(error => logger.warn('[dokki-absence-follow-up]', error.message)),
+  ]);
   setTimeout(() => {
     forEachActiveTenant(tick);
     setInterval(() => forEachActiveTenant(tick), 60 * 60 * 1000);

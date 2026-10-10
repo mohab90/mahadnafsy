@@ -177,6 +177,6 @@ async function pickCollectionOfficer(db, tenantId, { market = 'local', branch = 
 
 module.exports = {
   CLIENT_STATUSES, MARKETS, PERIODS,
-  collectionIntake, createCollectionPicker, loadCollectionConfig, loadCollectionPicker,
+  collectionIntake, createCollectionPicker, isBranchClient, loadCollectionConfig, loadCollectionPicker,
   pickCollectionOfficer, sanitizeCollectionConfig, subscriberMarket,
 };
