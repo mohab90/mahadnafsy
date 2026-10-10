@@ -486,17 +486,8 @@ const SYS_DEFAULTS = {
     { key: 'call',        label: 'اتصال مباشر',  is_active: true },
     { key: 'other',       label: 'أخرى',         is_active: true },
   ],
-  expense_categories: [
-    { key: 'rent',        label: 'إيجار',        is_active: true },
-    { key: 'salaries',    label: 'رواتب',         is_active: true },
-    { key: 'marketing',   label: 'تسويق',        is_active: true },
-    { key: 'utilities',   label: 'فواتير',       is_active: true },
-    { key: 'supplies',    label: 'مستلزمات',     is_active: true },
-    { key: 'maintenance', label: 'صيانة',        is_active: true },
-    { key: 'software',    label: 'برامج / تقنية', is_active: true },
-    { key: 'travel',      label: 'مواصلات',      is_active: true },
-    { key: 'other',       label: 'أخرى',         is_active: true },
-  ],
+  // The one list, shared with lib/expenseCategories.js which every expense route reads.
+  expense_categories: require('../../lib/expenseCategories').DEFAULT_EXPENSE_CATEGORIES.map(item => ({ ...item })),
   general: {
     institute_name:    'معهد الدراسات النفسية',
     institute_name_en: 'Institute of Psychological Studies',

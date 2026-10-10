@@ -182,7 +182,9 @@ test('expense UI waits for the server ledger and the API preserves category, bra
   const categories = read('api/lib/expenseCategories.js');
   assert.ok(route.includes("require('../lib/expenseCategories')"));
   assert.match(categories, /EXPENSE_CATEGORY_DB/);
-  assert.ok(financeRouteSource().includes('EXPENSE_CATEGORY_LABEL[s.category]'));
+  // The labels are the settings' list (الإعدادات › فئات المصاريف), read per tenant.
+  assert.ok(financeRouteSource().includes('expenseCategoryLabel(s.category, categories)'));
+  assert.match(route, /expenseCategory\(e2\.category, await loadExpenseCategories\(tenantId\)\)/);
   assert.match(route, /deleted_at IS NULL/);
   assert.match(route, /financialRecordMatches\(sourceScope, oldExp\)/);
   assert.match(route, /SET description=\?, amount=\?, currency=\?, category=\?, date=\?, receipt_url=\?, note=\?, branch_id=\?/);

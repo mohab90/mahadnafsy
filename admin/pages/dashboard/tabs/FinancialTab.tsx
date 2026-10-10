@@ -77,6 +77,14 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   const orders = branchFilter ? [] : _allOrders;
 
   // Expense management state
+  const [expenseCategories, setExpenseCategories] = useState<string[]>(['أخرى']);
+  useEffect(() => {
+    let cancelled = false;
+    mysqlAdmin.adminGet<{ code: string; label: string }[]>('/admin/expense-categories')
+      .then(rows => { if (!cancelled && Array.isArray(rows) && rows.length) setExpenseCategories(rows.map(row => row.label)); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const [expenseDraft, setExpenseDraft] = useState<Omit<ExpenseItem, 'id' | 'createdAt'>>({
     category: 'أخرى', description: '', amount: 0, currency: 'EGP',
     date: cairoDateOnly(), receiptUrl: '',
@@ -409,7 +417,9 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
     const matchTo = !expenseDateTo || e.date <= expenseDateTo;
     return matchCat && matchFrom && matchTo;
   });
-  const EXPENSE_CATS: string[] = ['رواتب', 'تسويق', 'إيجار', 'برمجيات', 'معدات', 'أخرى'];
+  // الإعدادات › فئات المصاريف — the list was saved there and never read here.
+  const EXPENSE_CATS = expenseCategories;
+  const expenseBranch = branchFilter === 'tagamoa' ? 'TAGAMOA' : branchFilter ? 'DAQQI' : null;
 
   const monthlyRevenue = useMemo(() => {
     const data: Record<string, { online: number; manual: number }> = {};
@@ -493,7 +503,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
             <Plus size={14} /> إضافة دخل
           </button>
           <button
-            onClick={() => { setFinancialSubTab('expenses'); setIsExpenseFormOpen(true); setEditingExpenseId(''); setExpenseDraft({ category: 'أخرى', description: '', amount: 0, currency: 'EGP', date: cairoDateOnly(), receiptUrl: '' }); }}
+            onClick={() => { setFinancialSubTab('expenses'); setIsExpenseFormOpen(true); setEditingExpenseId(''); setExpenseDraft({ category: EXPENSE_CATS[0] || 'أخرى', description: '', amount: 0, currency: 'EGP', date: cairoDateOnly(), receiptUrl: '', branchType: expenseBranch || 'ONLINE_EGYPT' }); }}
             className="flex items-center gap-1.5 bg-red-600 text-white px-3 py-2 rounded-xl text-sm font-bold hover:bg-red-700 transition">
             <Plus size={14} /> إضافة مصروف
           </button>
@@ -602,6 +612,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
           expenseDraft={expenseDraft}
           setExpenseDraft={setExpenseDraft}
           expenseCategories={EXPENSE_CATS}
+          fixedBranch={expenseBranch}
           editingExpenseId={editingExpenseId}
           setEditingExpenseId={setEditingExpenseId}
           isExpenseFormOpen={isExpenseFormOpen}

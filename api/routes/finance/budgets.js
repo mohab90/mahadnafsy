@@ -12,10 +12,10 @@ const {
   addDaysToDateOnly,
   dateOnlyInTimeZone,
   monthRange,
-  EXPENSE_CATEGORY_LABEL,
   logFinancialAudit,
   logger,
 } = require('./_shared');
+const { loadExpenseCategories, expenseCategoryLabel } = require('../../lib/expenseCategories');
 
 const router = Router();
 
@@ -54,12 +54,13 @@ router.get('/api/admin/finance/budgets', requireAuth, requireAdminOrStaff, requi
     // expenses.category holds the English code; budgets.category holds whatever
     // the screen that created the budget wrote, and every one of them writes the
     // Arabic label. Keyed by the code alone, no budget row ever found its spend.
+    const categories = await loadExpenseCategories(req.tenantId);
     const spendMap = {};
     for (const s of spending) {
       const spent = parseFloat(s.spent) || 0;
       spendMap[s.category] = spent;
-      const label = EXPENSE_CATEGORY_LABEL[s.category];
-      if (label) spendMap[label] = spent;
+      const label = expenseCategoryLabel(s.category, categories);
+      if (label) spendMap[label] = (spendMap[label] || 0) + spent;
     }
 
     res.json(rows.map(r => ({
