@@ -213,10 +213,13 @@ export function useLeadActions(params: LeadActionsParams) {
         fetchSalesData: async () => { await fetchSalesData?.(); },
         setActiveTab: tab => setActiveDashboardTab?.(tab),
       });
-      setLeadPayRow(null);
-    } catch {
-      // The payment handler already reports a precise persistence error.
-      // Keep the modal open so the operator can correct/retry the same draft.
+    } catch (error) {
+      // The handler has already said what went wrong; the dialog has to hear it
+      // too. Swallowed here, the dialog took the refused booking for a saved one
+      // and printed «وصل دفعة» for money that was never recorded — what a
+      // Saudi or international booking showed while the riyal's rate was stale
+      // (10 Oct 2026). The dialog closes itself, or shows the receipt, on success.
+      throw error;
     }
   };
 

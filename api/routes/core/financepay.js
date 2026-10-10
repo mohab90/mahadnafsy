@@ -9,6 +9,7 @@ const { isItemPaymentType } = require('../../lib/agreedPrice');
 const { queuePaymentReceipt } = require('../../lib/paymentReceipt');
 const { sendWhatsApp } = require('../../lib/whatsapp');
 const { logPaymentAudit, postPaymentJournal } = require('../../lib/finance');
+const { ensureFreshFx, fxStaleError } = require('../../lib/fxRefresh');
 const { recordPaymentCompensation } = require('../../lib/paymentCompensation');
 const { assertWritable } = require('../../lib/periodLock');
 const { convertLeadOfPayment } = require('../../lib/leadState');
@@ -125,6 +126,12 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
       }
       const rawAmount = Number(payment.amount) || 0;
       if (rawAmount <= 0) throw new Error('Paid payment must have a positive amount');
+      const fx = await ensureFreshFx(tenantId, payment.currency);
+      if (!fx.usable) {
+        await conn.rollback(); transactionStarted = false;
+        const stale = fxStaleError(payment.currency, fx.snapshot);
+        return res.status(stale.statusCode).json({ error: stale.message, code: stale.code });
+      }
       const journalId = await postPaymentJournal({
         paymentId: id, amount: rawAmount, currency: payment.currency, payType: payment.payment_type,
         // Passed as it came out of the row. payments.date is DATETIME, so this

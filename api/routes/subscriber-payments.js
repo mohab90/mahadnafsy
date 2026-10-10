@@ -12,6 +12,7 @@ const { sanitize } = require('../lib/helpers');
 const { createNotification } = require('../lib/notification');
 const { recordPaymentCompensation } = require('../lib/paymentCompensation');
 const { logPaymentAudit, postPaymentJournal } = require('../lib/finance');
+const { ensureFreshFx, fxStaleError } = require('../lib/fxRefresh');
 const { logLeadEvent } = require('../lib/crm');
 const { convertLeadOfPayment } = require('../lib/leadState');
 const { enqueueFinanceEvent } = require('../lib/financeOutbox');
@@ -382,6 +383,16 @@ async function recordSubscriberPayment(req, res) {
       return res.status(400).json({ error: 'Invalid payment date' });
     }
     const isPaid = storedStatus === 'paid';
+    // A riyal or dollar payment is posted in pounds at today's rate. A stale
+    // rate is fetched now; one that still cannot be had is said, not «500»
+    // (lib/fxRefresh.js — Saudi and international bookings, 10 Oct 2026).
+    if (isPaid && paymentCurrency !== 'EGP') {
+      const fx = await ensureFreshFx(paymentTenantId, paymentCurrency);
+      if (!fx.usable) {
+        const stale = fxStaleError(paymentCurrency, fx.snapshot);
+        return res.status(stale.statusCode).json({ error: stale.message, code: stale.code });
+      }
+    }
     // A settled payment has to say how the money arrived.
     //
     // 192 paid rows on production carry no method, and one of them is why a

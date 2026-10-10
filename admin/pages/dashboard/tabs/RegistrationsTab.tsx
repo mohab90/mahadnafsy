@@ -115,6 +115,8 @@ const RegistrationsTab: React.FC<Props> = ({ notify }) => {
       setBookingRow(null);
     } catch (err) {
       notify('error', err instanceof Error ? err.message : 'تعذّر إتمام الحجز');
+      // The booking dialog waits on this: swallowed, it printed a receipt for a refused booking.
+      throw err;
     } finally {
       setSubmitting(false);
     }
