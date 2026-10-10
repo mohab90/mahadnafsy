@@ -108,5 +108,7 @@ test('rates typed by hand in the settings are dated when saved', () => {
   const after = stampManualRates(before, { ...before, 'exchange.sar_to_egp': '13.1' });
   assert.equal(after['exchange.source'], 'manual');
   assert.ok(Date.now() - new Date(after['exchange.updated_at']).getTime() < 60000);
+  const undated = stampManualRates(before, { 'exchange.sar_to_egp': '13.2' });
+  assert.notEqual(undated['exchange.updated_at'], undefined, 'a save that left the date out is dated too');
   assert.equal(stampManualRates(before, { ...before, other: 'x' })['exchange.updated_at'], before['exchange.updated_at'], 'other edits leave the date');
 });

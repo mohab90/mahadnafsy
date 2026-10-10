@@ -149,10 +149,10 @@ router.patch('/api/admin/payments/:id', requireAuth, requireAdminOrStaff, requir
         if (newId) {
           const [[linked]] = await conn.query(
             'SELECT linked_transfer_id FROM payments WHERE id=? AND tenant_id=?', [pay.id, req.tenantId]);
+          // Linked as any payment is — a smaller corrected amount leaves the rest free.
           if (linked?.linked_transfer_id) {
-            await conn.query('UPDATE incoming_transfers SET payment_id=?, linked_at=NOW() WHERE id=? AND tenant_id=? AND payment_id IS NULL',
-              [newId, linked.linked_transfer_id, req.tenantId]);
-            await conn.query('UPDATE payments SET linked_transfer_id=? WHERE id=? AND tenant_id=?', [linked.linked_transfer_id, newId, req.tenantId]);
+            await require('../lib/incomingTransfers').linkTransfer(conn, {
+              tenantId: req.tenantId, paymentId: newId, link: { transferId: linked.linked_transfer_id }, actor: { id: req.staffRecord?.id, name: actorOf(req) } });
           }
         }
         if (keepsTxn && newId) {

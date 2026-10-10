@@ -96,7 +96,10 @@ function fxStaleError(currency, snapshot) {
 function stampManualRates(previous = {}, next = {}) {
   const changed = ['exchange.sar_to_egp', 'exchange.usd_to_egp']
     .some(key => next[key] !== undefined && String(next[key]) !== String(previous[key] ?? ''));
-  if (!changed || next['exchange.updated_at'] !== previous['exchange.updated_at']) return next;
+  // A caller that dated the rates itself keeps its date; one that left the date
+  // out, or sent the old one back, gets now.
+  const dated = next['exchange.updated_at'] !== undefined && next['exchange.updated_at'] !== previous['exchange.updated_at'];
+  if (!changed || dated) return next;
   return { ...next, 'exchange.source': 'manual', 'exchange.updated_at': new Date().toISOString() };
 }
 

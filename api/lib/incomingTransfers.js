@@ -96,8 +96,11 @@ async function splitOffRemainder(conn, { tenantId, transfer, paymentId, actor = 
   const original = Number(transfer.original_amount) || whole;
   const [[root]] = rootId === transfer.id ? [[transfer]] : await conn.query(
     'SELECT reference FROM incoming_transfers WHERE tenant_id=? AND id=? LIMIT 1', [tenantId, rootId]);
-  const [[{ n }]] = await conn.query(
-    'SELECT COUNT(*) AS n FROM incoming_transfers WHERE tenant_id=? AND parent_transfer_id=?', [tenantId, rootId]);
+  // The highest «/باقي n» so far, not the count: a deleted remainder would
+  // otherwise hand its number to one that still exists.
+  const [siblings] = await conn.query(
+    'SELECT reference FROM incoming_transfers WHERE tenant_id=? AND parent_transfer_id=?', [tenantId, rootId]);
+  const n = siblings.reduce((max, sibling) => Math.max(max, Number(/\/باقي (\d+)$/.exec(String(sibling.reference || ''))?.[1]) || 0), 0);
   const baseRef = String(root?.reference || transfer.reference || '').replace(/\/باقي \d+$/, '');
   const id = uuidv4();
   await conn.query(
@@ -105,7 +108,7 @@ async function splitOffRemainder(conn, { tenantId, transfer, paymentId, actor = 
        (id, tenant_id, amount, currency, method, reference, sender_name, sender_phone, received_on, note,
         recorded_by, recorded_by_name, parent_transfer_id, original_amount)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    [id, tenantId, rest, transfer.currency, transfer.method, `${baseRef}/باقي ${Number(n) + 1}`.slice(0, 191),
+    [id, tenantId, rest, transfer.currency, transfer.method, `${baseRef}/باقي ${n + 1}`.slice(0, 191),
       transfer.sender_name, transfer.sender_phone, transfer.received_on,
       `باقي ربط من تحويل ${original.toLocaleString('en-US')} ${transfer.currency}${baseRef ? ` — رقم العملية ${baseRef}` : ''}`,
       actor.id || transfer.recorded_by || null, actor.name || transfer.recorded_by_name || null, rootId, original]);

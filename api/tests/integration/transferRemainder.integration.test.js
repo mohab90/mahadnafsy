@@ -90,3 +90,16 @@ test('a voided payment gives its transfer back', { skip }, async () => {
   const freed = (await transfers()).find(row => row.reference === '7781/باقي 1');
   assert.equal(freed.payment_id, null);
 });
+
+test('a deleted remainder does not hand its number to the next one', { skip }, async () => {
+  const { deleteTransfer } = require('../../lib/incomingTransfers');
+  const first = (await transfers()).find(row => row.reference === '7781/باقي 1');
+  await deleteTransfer(pool, { tenantId: TENANT, transferId: first.id });
+  await pool.query(
+    "INSERT INTO payments (id, tenant_id, subscriber_id, amount, currency, payment_type, payment_method, status, date) VALUES ('pay-tr-3', ?, 'sub-tr-2', 100, 'EGP', 'OTHER', 'فودافون كاش', 'pending', CURDATE())", [TENANT]);
+  const second = (await transfers()).find(row => row.reference === '7781/باقي 2');
+  const res = await approve('pay-tr-3', second.id);
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  const free = (await transfers()).filter(row => !row.payment_id);
+  assert.deepEqual(free.map(row => [Number(row.amount), row.reference]), [[50, '7781/باقي 3']]);
+});
