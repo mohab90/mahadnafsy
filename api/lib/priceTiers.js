@@ -17,10 +17,15 @@
  * physical branches and the foreign-resident tier fall back to the online
  * Egyptian price until somebody prices them — «inherited» says so, so the
  * course editor can show which figures nobody has set yet.
+ *
+ * «سعر كورس جديد اسمه عميل الدقي غير المصري … بنفس اسعار الاونلاين غير مصري»
+ * (10 Oct 2026): DAQQI_FOREIGN is booked at Dokki and reads the online
+ * foreign-resident price and discount (inheritsFrom) until it is given its own.
  */
 
 const PRICE_TIERS = Object.freeze([
   { key: 'DAQQI', label: 'فرع الدقي', currency: 'EGP', branch: 'DAQQI', physical: true },
+  { key: 'DAQQI_FOREIGN', label: 'عميل الدقي غير المصري', currency: 'EGP', branch: 'DAQQI', physical: true, nationality: 'NON_EGYPTIAN_EGYPT', inheritsFrom: 'ONLINE_EGYPT_FOREIGN' },
   { key: 'TAGAMOA', label: 'فرع التجمع', currency: 'EGP', branch: 'TAGAMOA', physical: true },
   { key: 'ONLINE_EGYPT', label: 'أونلاين — مصريين', currency: 'EGP', branch: 'ONLINE_EGYPT', column: 'price_egp', nationality: 'EGYPTIAN' },
   { key: 'ONLINE_EGYPT_FOREIGN', label: 'أونلاين — غير مصريين مقيمين في مصر', currency: 'EGP', branch: 'ONLINE_EGYPT', nationality: 'NON_EGYPTIAN_EGYPT' },
@@ -41,7 +46,9 @@ const money = value => {
 /** The tier a branch (and, for online Egypt, a nationality) is priced at. */
 function tierForBranch(branch, nationality) {
   const b = String(branch || '').toUpperCase();
-  if (b === 'ONLINE_EGYPT' && String(nationality || '').toUpperCase() === 'NON_EGYPTIAN_EGYPT') return 'ONLINE_EGYPT_FOREIGN';
+  const foreign = String(nationality || '').toUpperCase() === 'NON_EGYPTIAN_EGYPT';
+  if (b === 'ONLINE_EGYPT' && foreign) return 'ONLINE_EGYPT_FOREIGN';
+  if (b === 'DAQQI' && foreign) return 'DAQQI_FOREIGN';
   return TIER_BY_KEY.has(b) ? b : null;
 }
 
@@ -65,16 +72,31 @@ function shapeTiers(item, rows) {
   const byTier = new Map(rows.map(row => [row.tier, row]));
   const columnPrice = tier => (tier.column ? money(item[tier.column]) : null);
   const onlineEgypt = money(byTier.get('ONLINE_EGYPT')?.price) ?? columnPrice(TIER_BY_KEY.get('ONLINE_EGYPT'));
-  return PRICE_TIERS.map(tier => {
+  const shaped = new Map();
+  const shape = tier => {
+    if (shaped.has(tier.key)) return shaped.get(tier.key);
     const row = byTier.get(tier.key);
     let price = money(row?.price) ?? columnPrice(tier);
+    let discount = money(row?.discount_price);
     let inherited = false;
+    let inheritedFrom = null;
+    let discountInherited = false;
+    const source = tier.inheritsFrom ? TIER_BY_KEY.get(tier.inheritsFrom) : null;
+    if (price == null && source) {
+      const from = shape(source);
+      if (from.price != null) {
+        price = from.price;
+        inherited = true;
+        inheritedFrom = source.key;
+        if (discount == null && from.discountPrice != null) { discount = from.discountPrice; discountInherited = true; }
+      }
+    }
     if (price == null && tier.currency === 'EGP' && tier.key !== 'ONLINE_EGYPT' && onlineEgypt != null) {
       price = onlineEgypt;
       inherited = true;
+      inheritedFrom = 'ONLINE_EGYPT';
     }
-    const discount = money(row?.discount_price);
-    return {
+    const out = {
       key: tier.key,
       label: tier.label,
       currency: tier.currency,
@@ -83,8 +105,13 @@ function shapeTiers(item, rows) {
       // A discount at or above the price is no discount; it is a typo.
       discountPrice: discount != null && price != null && discount < price ? discount : null,
       inherited,
+      inheritedFrom,
+      discountInherited,
     };
-  });
+    shaped.set(tier.key, out);
+    return out;
+  };
+  return PRICE_TIERS.map(shape);
 }
 
 async function loadItems(db, tenantId, type, itemId) {

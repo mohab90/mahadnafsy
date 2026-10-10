@@ -43,7 +43,7 @@ const PRICE_TIER_KEYS = new Set(PRICE_TIERS.map(tier => tier.key));
 // Tiers whose clients carry an Egyptian national ID; the others may carry a
 // passport or a residence number instead.
 const EGYPTIAN_ID_TIERS = new Set(['DAQQI', 'TAGAMOA', 'ONLINE_EGYPT']);
-const TIER_NATIONALITY = { ONLINE_EGYPT: 'EGYPTIAN', ONLINE_EGYPT_FOREIGN: 'NON_EGYPTIAN_EGYPT' };
+const TIER_NATIONALITY = { ONLINE_EGYPT: 'EGYPTIAN', ONLINE_EGYPT_FOREIGN: 'NON_EGYPTIAN_EGYPT', DAQQI_FOREIGN: 'NON_EGYPTIAN_EGYPT' };
 
 /**
  * Money recorded from a collection account is the manager's to confirm —

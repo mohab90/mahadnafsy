@@ -20,7 +20,8 @@ type BonusDraft = Record<BonusRole, { type: 'fixed' | 'percent'; value: string }
 
 const toDraft = (tiers: TierPrice[]): Draft => Object.fromEntries(tiers.map(t => [t.key, {
   price: t.inherited || t.price == null ? '' : String(t.price),
-  discountPrice: t.discountPrice == null ? '' : String(t.discountPrice),
+  // An inherited discount is the other tier's; saved here it would stop following it.
+  discountPrice: t.discountPrice == null || t.discountInherited ? '' : String(t.discountPrice),
 }])) as Draft;
 
 const toBonusDraft = (bonuses: BookingBonuses): BonusDraft => ({
@@ -120,7 +121,10 @@ export default function CatalogPricingPanel({ type, itemId, notify, onSaved }: P
           </thead>
           <tbody>
             {tiers.map(tier => {
-              const placeholder = tier.currency === 'EGP' && tier.key !== 'ONLINE_EGYPT' && onlineEgypt != null
+              const source = tier.inheritedFrom && tier.inheritedFrom !== 'ONLINE_EGYPT' ? tiers.find(t => t.key === tier.inheritedFrom) : null;
+              const placeholder = source && tier.price != null
+                ? `زي «${source.label}»: ${tier.price}`
+                : tier.currency === 'EGP' && tier.key !== 'ONLINE_EGYPT' && onlineEgypt != null
                 ? `زي الأونلاين: ${onlineEgypt}` : 'مش متسعّر';
               return (
                 <tr key={tier.key} className="border-t border-gray-100">
@@ -133,7 +137,7 @@ export default function CatalogPricingPanel({ type, itemId, notify, onSaved }: P
                       value={draft[tier.key].price} onChange={e => setTier(tier.key, 'price', e.target.value)} />
                   </td>
                   <td className="px-3 py-2 min-w-[8rem]">
-                    <input type="number" min={0} className={INP} placeholder="بدون خصم"
+                    <input type="number" min={0} className={INP} placeholder={tier.discountInherited && tier.discountPrice != null ? `زي «${source?.label || ''}»: ${tier.discountPrice}` : 'بدون خصم'}
                       value={draft[tier.key].discountPrice} onChange={e => setTier(tier.key, 'discountPrice', e.target.value)} />
                   </td>
                 </tr>

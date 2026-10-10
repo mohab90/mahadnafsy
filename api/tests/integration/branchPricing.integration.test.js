@@ -139,3 +139,32 @@ test('a percentage button takes that much off the branch list price; any other f
   const [[row]] = await pool.query("SELECT course_expected FROM payments WHERE tenant_id=? AND subscriber_id='sub-bp-2' ORDER BY created_at DESC LIMIT 1", [TENANT]);
   assert.equal(Number(row.course_expected), 2000, '20% off 2,500');
 });
+
+// «سعر كورس جديد اسمه عميل الدقي غير المصري … بنفس اسعار الاونلاين غير مصري» (10 Oct 2026).
+test('«عميل الدقي غير المصري» reads the online foreign price and discount until given its own, and books at Dokki', { skip }, async () => {
+  const conn = await pool.getConnection();
+  try {
+    await tiers.saveItemPricing(conn, {
+      tenantId: TENANT, type: 'course', itemId: 'co-bp-1',
+      tiers: { ONLINE_EGYPT_FOREIGN: { price: 3600, discountPrice: 3300 } },
+    });
+  } finally { conn.release(); }
+  const read = async () => Object.fromEntries((await tiers.getItemPricing(pool, { tenantId: TENANT, type: 'course', itemId: 'co-bp-1' })).tiers.map(t => [t.key, t]));
+  let byKey = await read();
+  assert.deepEqual(
+    [byKey.DAQQI_FOREIGN.price, byKey.DAQQI_FOREIGN.discountPrice, byKey.DAQQI_FOREIGN.inheritedFrom, byKey.DAQQI_FOREIGN.branch],
+    [3600, 3300, 'ONLINE_EGYPT_FOREIGN', 'DAQQI']);
+
+  const client = { ...CLIENT, nameAr: 'جون مايكل سميث', nameEn: 'John Michael Smith', nationalId: 'P1234567' };
+  const res = await book({ subscriber_id: 'sub-bp-2', client, payment: payment({ priceTier: 'DAQQI_FOREIGN', useDiscount: true, courseExpected: 3300, amount: 1300 }) });
+  assert.equal(res.statusCode, 200, JSON.stringify([res.statusCode, res.body]));
+  const [[row]] = await pool.query("SELECT course_expected, branch FROM payments WHERE tenant_id=? AND subscriber_id='sub-bp-2' ORDER BY created_at DESC LIMIT 1", [TENANT]);
+  assert.deepEqual([Number(row.course_expected), row.branch], [3300, 'DAQQI']);
+
+  const conn2 = await pool.getConnection();
+  try {
+    await tiers.saveItemPricing(conn2, { tenantId: TENANT, type: 'course', itemId: 'co-bp-1', tiers: { DAQQI_FOREIGN: { price: 3400, discountPrice: null } } });
+  } finally { conn2.release(); }
+  byKey = await read();
+  assert.deepEqual([byKey.DAQQI_FOREIGN.price, byKey.DAQQI_FOREIGN.inherited, byKey.DAQQI_FOREIGN.discountPrice], [3400, false, null], 'its own price, and no discount it was not given');
+});
