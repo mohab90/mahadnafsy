@@ -7,6 +7,7 @@ import React, { useEffect, useState } from 'react';
 import { cairoDateOnly } from '../../shared/cairoDate';
 import { CreditCard, Home, X } from 'lucide-react';
 import { useCrmData, useStaticData } from '../context/siteDataSlices';
+import { useEnsureSiteLists } from '../context/SiteDataContext';
 import { useCertificateCatalog } from '../lib/certificateCatalog';
 import { agreedPriceFor } from '../lib/agreedPrice';
 import { mysqlAdmin } from '../lib/mysqlapi';
@@ -310,6 +311,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 }) => {
   const { courses, bundles, content, authUser, isAdmin } = useStaticData();
   const { staffMembers, daqqiRounds, currentStaff } = useCrmData();
+  // The rounds a booking can join — opened from any screen, so it asks for them.
+  useEnsureSiteLists(['daqqiRounds']);
   // «رجع يظهر للمديرين ولحساب هنا فقط انه يدخل سعر مختلف للعميل».
   const canSetPrice = isAdmin || hasPermission(currentStaff
     ? { role: currentStaff.role as RoleKey, permissions: currentStaff.permissions as PermissionKey[] | undefined } : null,

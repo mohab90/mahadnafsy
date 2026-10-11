@@ -199,8 +199,10 @@ test('expense UI waits for the server ledger and the API preserves category, bra
   assert.match(panel, /await updateExpense/);
   assert.match(panel, /await addExpense/);
   assert.match(panel, /await deleteExpense/);
-  assert.match(runtime, /if \(expensesRes\.status === 'fulfilled'\) setExpenses/);
-  assert.equal((runtime.match(/if \(expensesRes\.status === 'fulfilled'\) setExpenses/g) || []).length, 2);
+  // An emptied ledger has to read as empty: neither the load nor the poll may
+  // skip an empty answer. The load is on demand since 11 Oct 2026 (siteLists.ts).
+  assert.match(runtime, /if \(expensesRes\.status === 'fulfilled' && expensesRes\.value\) setExpenses/);
+  assert.match(runtime, /const rows = await \(permitted\('view_financial'\) \? mysqlAdmin\.listAllExpenses\(\) : refused\('view_financial'\)\);\n\s+setExpenses\(rows/);
 });
 
 test('payment review and certificate settlement preserve tenant and workflow identity', () => {

@@ -622,8 +622,9 @@ export const mysqlAdmin = {
     return apiFetch(`/admin/leads/scored${qs ? `?${qs}` : ''}`, {}, A);
   },
   // The subscriber count, so an audience picker does not have to hold the table.
-  getSubscriberStats:      (): Promise<SubscriberStats> =>
-    apiFetch(`/admin/subscribers/stats`, {}, A),
+  // overview: also today's new clients and each course's clients, for الرئيسية.
+  getSubscriberStats:      (overview = false): Promise<SubscriberStats> =>
+    apiFetch(`/admin/subscribers/stats${overview ? '?overview=1' : ''}`, {}, A),
   getCrmInsights:          (idleDays = 14): Promise<CrmInsights> =>
     apiFetch(`/admin/leads/crm-insights?idleDays=${idleDays}`, {}, A),
   // Unified endpoint — server auto-scopes by role (replaces my-subscribers / my-collection-clients / my-daqqi-clients)

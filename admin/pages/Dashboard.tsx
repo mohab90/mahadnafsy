@@ -30,6 +30,8 @@ import { createClientPaymentDraft } from '../lib/clientActionDrafts';
 import { currencyForBranch } from '../lib/branchCurrency';
 import { CONTENT_HUB_TABS } from './dashboard/contentHubConfig';
 import { branchSubscriberTabs, contentHubRouteTabs, directContentTabs, fullCrmDataTabs, fullLeadTabs, fullSubscriberTabs, growthOpsTabs, saasOpsTabs } from './dashboard/dashboardTabGroups';
+import { listsForTab } from './dashboard/tabSiteLists';
+import type { SiteList } from '../context/site-data-hooks/siteLists';
 import { useStaffRoleRedirects } from './dashboard/hooks/useStaffRoleRedirects';
 import { CRM_CHANGED_EVENT } from '../lib/crmChanged';
 import { useCurrentStaff } from './dashboard/hooks/useCurrentStaff';
@@ -106,6 +108,7 @@ const Dashboard: React.FC = () => {
     loadFullLeads,
     loadFullSubscribers,
     loadBranchSubscribers,
+    ensureSiteLists,
     daqqiRounds: siteDaqqiRounds,
     bulkSetDaqqiRounds,
     staffMembers,
@@ -659,12 +662,29 @@ const Dashboard: React.FC = () => {
       const branch = branchSubscriberTabs[activeTab] === 'DAQQI' ? physicalBranch : branchSubscriberTabs[activeTab];
       loadBranchSubscribers(branch).catch(() => { /* retried on the next visit */ });
     }
-  }, [activeTab, physicalBranch, loadFullCrmData, loadFullLeads, loadFullSubscribers, loadBranchSubscribers]);
+    // Then the lists the screen reads that no longer come with the panel —
+    // every one of them for a screen nobody has listed yet (tabSiteLists.ts).
+    // After the full loads above, so a list a full load is bringing waits for it.
+    void ensureSiteLists(listsForTab(activeTab));
+  }, [activeTab, physicalBranch, loadFullCrmData, loadFullLeads, loadFullSubscribers, loadBranchSubscribers, ensureSiteLists]);
+
+  // Drawn over every screen, so they ask for their own lists: the follow-up bell
+  // counts the loaded leads' follow-ups, «حجز / دفعة» matches the loaded people
+  // before the database search, the online manager's panels read the clients.
+  const overlayLists = useMemo<SiteList[]>(() => [
+    ...(currentStaff && !usesStaffScopedData ? ['leads' as const] : []),
+    ...(salesNotifOpen ? ['leads' as const] : []),
+    ...(quickBookOpen ? ['leads' as const, 'subscribers' as const] : []),
+    ...(onlineMgrFollowupOpen || onlineMgrNewEventsOpen ? ['subscribers' as const] : []),
+  ], [currentStaff, usesStaffScopedData, salesNotifOpen, quickBookOpen, onlineMgrFollowupOpen, onlineMgrNewEventsOpen]);
+  useEffect(() => {
+    if (overlayLists.length) void ensureSiteLists(overlayLists);
+  }, [overlayLists, ensureSiteLists]);
 
   // The books' own revenue (the browser's sum only sees the newest 500 orders and
   // payments). Refreshed on a slow timer while the tab is in view; a failure
   // leaves the browser's figure on screen, as before.
-  const [booksRevenue, setBooksRevenue] = useState<{ totalEgp: number; monthEgp: number; todayEgp: number } | null>(null);
+  const [booksRevenue, setBooksRevenue] = useState<{ totalEgp: number; monthEgp: number; todayEgp: number; payments?: number } | null>(null);
   const refreshBooksRevenue = useCallback(() => {
     if (!authUser) return;
     mysqlAdmin.getOverviewRevenue().then(setBooksRevenue).catch(() => { /* keep the local figure */ });

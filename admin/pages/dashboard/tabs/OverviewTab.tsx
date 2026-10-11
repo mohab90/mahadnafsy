@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { cairoDateOnly, cairoMonthOnly, cairoDateTime, cairoDay, cairoDaysAgo, cairoWeekStart, cairoDaysAhead } from '../../../../shared/cairoDate';
 import {
   Activity, AlertCircle, BarChart3, BookOpen, Briefcase,
@@ -16,6 +16,7 @@ import type { TabKey } from '../navigation';
 import { isCollected, toEgp } from '../../../lib/money';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 import { isOpenLeadStatus } from '../../../../shared/leadStatuses';
+import { cardRows, enrollmentsFromStats, salesFromStats, sourcesFromStats, statusCounts, useNewestLeads, type ModalRow } from './overview/overviewFigures';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -31,6 +32,8 @@ type OverviewStats = {
   todayNewSubscribers: number;
   todayNewLeads: number;
   monthRevenue: number;
+  /** Paid payments in the books; null until they answer. */
+  paidCount: number | null;
 };
 
 type KpiModal = { title: string; rows: { label: string; sub?: string }[] } | null;
@@ -92,7 +95,7 @@ export default function OverviewTab({
               // refreshes a table the session actually loaded, which is what
               // stopped the CRM re-downloading 26,878 leads on a timer — and it
               // left this tile permanently on 500.
-              const subscriberStats = useSubscriberStats();
+              const subscriberStats = useSubscriberStats(true);
               const subscriberTotal = subscriberStats?.total ?? subscribers.length;
               const targetPeriod = cairoMonthOnly();
               // The collection target is read for the «تقدمك نحو هدف التحصيل
@@ -118,6 +121,22 @@ export default function OverviewTab({
               }, [needsCollectionTarget, targetPeriod]);
 
               const { totalRevenue, leadsBySource, courseEnrollments, consultsByStatus, salesStats, recentLeads, paidOrders, todayRevenue, todayNewSubscribers, todayNewLeads, monthRevenue } = overviewStats;
+
+              // The 500 newest leads, clients and orders are not loaded for this
+              // screen any more (admin siteLists.ts, 11 Oct 2026). Its figures come
+              // from the aggregates — whole-table, where the arrays were the first
+              // page — and each card's list is fetched when the card is opened.
+              const generalView = !isSalesOnly && !isCollectionRole;
+              const newestLeads = useNewestLeads(leads, generalView);
+              const [showDetailedReports, setShowDetailedReports] = useState(false);
+              const openModalTitle = useRef<string | null>(null);
+              useEffect(() => { openModalTitle.current = kpiModal?.title ?? null; }, [kpiModal]);
+              const openFetched = (title: string, load: () => Promise<ModalRow[]>) => {
+                setKpiModal({ title, rows: [{ label: 'جاري التحميل…' }] });
+                load()
+                  .then(rows => { if (openModalTitle.current === title) setKpiModal({ title, rows: rows.length ? rows : [{ label: 'مفيش بيانات' }] }); })
+                  .catch(() => { if (openModalTitle.current === title) setKpiModal({ title, rows: [{ label: 'تعذر التحميل — جرّب تاني' }] }); });
+              };
 
               // ── Sales-only personal overview ───────────────────────────
               if (isSalesOnly && currentStaff) {
@@ -913,11 +932,15 @@ export default function OverviewTab({
               }
               // ── End reception_daqqi overview ────────────────────────────
 
-              const newLeads = leads.filter(l => l.status === 'new').length;
-              const contactedLeads = leads.filter(l => l.status === 'contacted').length;
-              const convertedLeads = leads.filter(l => l.status === 'converted').length;
-              const maxSource = Math.max(...leadsBySource.map(([,n]) => n), 1);
-              const maxEnroll = Math.max(...courseEnrollments.map(c => c.count), 1);
+              const { newLeads, contactedLeads, convertedLeads } = statusCounts(leadStats, leads);
+              const sourceRows = leadStats?.bySource ? sourcesFromStats(leadStats.bySource) : leadsBySource;
+              const salesRows = leadStats?.byOwner ? salesFromStats(staffMembers, leadStats.byOwner) : salesStats;
+              const enrollmentRows = subscriberStats?.byCourse ? enrollmentsFromStats(courses, subscriberStats.byCourse) : courseEnrollments;
+              const newestRows = newestLeads ?? recentLeads;
+              const todayClients = subscriberStats?.createdToday ?? todayNewSubscribers;
+              const paidCount = overviewStats.paidCount ?? paidOrders.length;
+              const maxSource = Math.max(...sourceRows.map(([,n]) => n), 1);
+              const maxEnroll = Math.max(...enrollmentRows.map(c => c.count), 1);
               // branch is stored upper case — 'DAQQI' — so this comparison
               // never matched and the tile has always read 0. There are 11.
               // The count comes from the aggregate for the same reason as the
@@ -928,23 +951,23 @@ export default function OverviewTab({
               const kpiCards: { title: string; value: string | number; icon: React.ElementType; bg: string; text: string; border: string; onDetail: () => void }[] = [
                 {
                   title: 'العملاء', value: subscriberTotal, icon: UserCheck, bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-200',
-                  onDetail: () => setKpiModal({ title: 'العملاء (آخر 50)', rows: subscribers.slice(0, 50).map(s => ({ label: s.name || s.email || '', sub: `${s.branch || '—'} · ${(s.enrolledCourseIds || []).length} كورس` })) }),
+                  onDetail: () => openFetched('العملاء (آخر 50)', () => cardRows.subscribers()),
                 },
                 {
                   title: 'عملاء الدقي', value: daqqiTotal, icon: UserCheck, bg: 'bg-indigo-50', text: 'text-indigo-600', border: 'border-indigo-200',
-                  onDetail: () => setKpiModal({ title: 'عملاء فرع الدقي', rows: daqqiClients.map(s => ({ label: s.name || s.email || '', sub: s.phone || s.email || '' })) }),
+                  onDetail: () => openFetched('عملاء فرع الدقي (آخر 50)', () => cardRows.subscribers('DAQQI')),
                 },
                 {
                   title: 'العملاء المحتملون', value: leadTotal, icon: UserPlus, bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200',
-                  onDetail: () => setKpiModal({ title: 'العملاء المحتملون', rows: leads.slice(0, 50).map(l => ({ label: l.name || l.email || '', sub: `${l.source || ''} · ${l.status || ''}` })) }),
+                  onDetail: () => openFetched('العملاء المحتملون (آخر 50)', () => cardRows.leads()),
                 },
                 {
                   title: 'الاستشارات', value: consultations.length, icon: CalendarCheck2, bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-200',
                   onDetail: () => setKpiModal({ title: 'الاستشارات', rows: consultations.slice(0, 50).map(c => ({ label: c.clientName || '', sub: `${c.sessionDate || ''} · ${c.status || ''}` })) }),
                 },
                 {
-                  title: 'الطلبات المكتملة', value: paidOrders.length, icon: CreditCard, bg: 'bg-violet-50', text: 'text-violet-600', border: 'border-violet-200',
-                  onDetail: () => setKpiModal({ title: 'الطلبات المكتملة', rows: (paidOrders as OverviewOrder[]).slice(0, 50).map(o => ({ label: o.subscriberName || o.subscriber_name || o.name || o.customerName || '', sub: `${Number(o.amount || 0).toLocaleString('ar-EG-u-nu-latn')} ج.م · ${cairoDay(o.date || o.paidAt || o.createdAt)}` })) }),
+                  title: 'الطلبات المكتملة', value: paidCount, icon: CreditCard, bg: 'bg-violet-50', text: 'text-violet-600', border: 'border-violet-200',
+                  onDetail: () => openFetched('الطلبات المكتملة (آخر 50)', () => cardRows.paidOrders()),
                 },
                 {
                   title: 'الكورسات', value: courses.length, icon: BookOpen, bg: 'bg-cyan-50', text: 'text-cyan-600', border: 'border-cyan-200',
@@ -962,8 +985,8 @@ export default function OverviewTab({
                   title: 'الإيراد التقريبي (ج.م)', value: totalRevenue.toLocaleString('ar-EG-u-nu-latn'), icon: BarChart3, bg: 'bg-green-50', text: 'text-green-600', border: 'border-green-200',
                   onDetail: () => setKpiModal({ title: 'تفاصيل الإيراد', rows: [
                     { label: 'إجمالي المدفوعات', sub: `${totalRevenue.toLocaleString('ar-EG-u-nu-latn')} ج.م` },
-                    { label: 'عدد الطلبات المكتملة', sub: String(paidOrders.length) },
-                    { label: 'متوسط قيمة الطلب', sub: paidOrders.length ? `${Math.round(totalRevenue / paidOrders.length).toLocaleString('ar-EG-u-nu-latn')} ج.م` : '0' },
+                    { label: 'عدد الطلبات المكتملة', sub: String(paidCount) },
+                    { label: 'متوسط قيمة الطلب', sub: paidCount ? `${Math.round(totalRevenue / paidCount).toLocaleString('ar-EG-u-nu-latn')} ج.م` : '0' },
                   ] }),
                 },
                 ...(isAdmin ? [{
@@ -979,7 +1002,7 @@ export default function OverviewTab({
                       {[
                         { label: 'إيراد اليوم', value: `${Math.round(todayRevenue).toLocaleString('ar-EG-u-nu-latn')} ج`, color: 'from-emerald-500 to-teal-600' },
                         { label: 'إيراد الشهر', value: `${Math.round(monthRevenue / 1000)}K ج`, color: 'from-blue-500 to-indigo-600' },
-                        { label: 'عملاء أونلاين اليوم', value: String(todayNewSubscribers), color: 'from-violet-500 to-purple-600' },
+                        { label: 'عملاء أونلاين اليوم', value: String(todayClients), color: 'from-violet-500 to-purple-600' },
                         { label: 'عملاء محتملون اليوم', value: String(todayNewLeads), color: 'from-amber-500 to-orange-600' },
                       ].map(w => (
                         <div key={w.label} className={`bg-gradient-to-br ${w.color} rounded-2xl p-4 text-white shadow-md`}>
@@ -1036,9 +1059,9 @@ export default function OverviewTab({
                     {/* Leads by Source */}
                     <article className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
                       <h3 className="font-bold text-gray-900 mb-5 flex items-center gap-2"><UserPlus size={17} className="text-amber-500" />توزيع العملاء حسب المصدر</h3>
-                      {leadsBySource.length === 0 ? <p className="text-gray-400 text-sm">لا توجد بيانات بعد.</p> : (
+                      {sourceRows.length === 0 ? <p className="text-gray-400 text-sm">لا توجد بيانات بعد.</p> : (
                         <div className="space-y-3">
-                          {leadsBySource.map(([source, count]) => (
+                          {sourceRows.map(([source, count]) => (
                             <div key={source}>
                               <div className="flex justify-between text-xs mb-1">
                                 <span className="text-gray-700 font-medium truncate">{source}</span>
@@ -1085,9 +1108,9 @@ export default function OverviewTab({
                     {/* Top Courses by Enrollment */}
                     <article className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
                       <h3 className="font-bold text-gray-900 mb-5 flex items-center gap-2"><BookOpen size={17} className="text-cyan-500" />أكثر الكورسات تسجيلاً</h3>
-                      {courseEnrollments.every(c => c.count === 0) ? <p className="text-gray-400 text-sm">لا توجد تسجيلات بعد.</p> : (
+                      {enrollmentRows.every(c => c.count === 0) ? <p className="text-gray-400 text-sm">لا توجد تسجيلات بعد.</p> : (
                         <div className="space-y-3">
-                          {courseEnrollments.map(course => (
+                          {enrollmentRows.map(course => (
                             <div key={course.id}>
                               <div className="flex justify-between text-xs mb-1">
                                 <span className="text-gray-700 font-medium truncate">{course.title}</span>
@@ -1122,7 +1145,7 @@ export default function OverviewTab({
                       </article>
                       <article className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
                         <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2 text-sm"><Briefcase size={15} className="text-violet-500" />أداء فريق المبيعات</h3>
-                        {salesStats.length === 0 ? <p className="text-xs text-gray-400">لا يوجد موظفو مبيعات بعد.</p> : (
+                        {salesRows.length === 0 ? <p className="text-xs text-gray-400">لا يوجد موظفو مبيعات بعد.</p> : (
                           <div className="overflow-x-auto">
                             <table className="w-full text-xs">
                               <thead>
@@ -1134,7 +1157,7 @@ export default function OverviewTab({
                                 </tr>
                               </thead>
                               <tbody>
-                                {salesStats.map(s => (
+                                {salesRows.map(s => (
                                   <tr key={s.name} className="border-b border-gray-50">
                                     <td className="py-2 font-medium text-gray-700 truncate max-w-[100px]">{s.name}</td>
                                     <td className="py-2 text-center">{s.total}</td>
@@ -1158,7 +1181,7 @@ export default function OverviewTab({
                       <h3 className="font-bold text-gray-900 flex items-center gap-2"><UserPlus size={17} className="text-amber-500" />آخر العملاء المحتملين</h3>
                       <button onClick={() => setActiveTab('leads')} className="text-primary-600 text-sm font-bold hover:underline">عرض الكل</button>
                     </div>
-                    {recentLeads.length === 0 ? <p className="text-gray-400 text-sm text-center py-4">لا توجد بيانات بعد.</p> : (
+                    {newestRows.length === 0 ? <p className="text-gray-400 text-sm text-center py-4">لا توجد بيانات بعد.</p> : (
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead>
@@ -1171,7 +1194,7 @@ export default function OverviewTab({
                             </tr>
                           </thead>
                           <tbody>
-                            {recentLeads.map(lead => (
+                            {newestRows.map(lead => (
                               <tr key={lead.id} className="border-b border-gray-50 hover:bg-gray-50 transition">
                                 <td className="py-2.5 pr-2 font-medium text-gray-800">{lead.name}</td>
                                 <td className="py-2.5 text-gray-500 text-xs">{lead.phone}</td>
@@ -1196,9 +1219,18 @@ export default function OverviewTab({
                       <div className="w-1 h-8 bg-gradient-to-b from-primary-500 to-violet-500 rounded-full" />
                       <h2 className="text-xl font-extrabold text-gray-900">التقارير والإحصاءات التفصيلية</h2>
                     </div>
-                    <Suspense fallback={<div className="flex justify-center py-16"><div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" /></div>}>
-                      <AnalyticsTab notify={notify} />
-                    </Suspense>
+                    {/* They count the newest clients, leads and orders in the browser,
+                        so they load them — on request, not with الرئيسية. */}
+                    {showDetailedReports ? (
+                      <Suspense fallback={<div className="flex justify-center py-16"><div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" /></div>}>
+                        <AnalyticsTab notify={notify} />
+                      </Suspense>
+                    ) : (
+                      <button type="button" onClick={() => setShowDetailedReports(true)}
+                        className="w-full rounded-2xl border border-dashed border-primary-300 bg-primary-50/40 py-6 text-sm font-bold text-primary-700 hover:bg-primary-50">
+                        اعرض التقارير التفصيلية
+                      </button>
+                    )}
                   </div>
                 </div>
               );

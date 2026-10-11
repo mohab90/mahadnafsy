@@ -215,7 +215,35 @@ router.get('/api/admin/subscribers/stats', requireAuth, requireAdminOrStaff, req
       paidBySubscriber = Object.fromEntries(paidRows.map(r => [r.id, Math.round(Number(r.egp) || 0)]));
     }
 
-    res.json({ total, byBranch, ...(paidBySubscriber ? { paidBySubscriber } : {}) });
+    // overview=1: what الرئيسية shows beside the total — the clients who joined
+    // today and each course's clients. It counted both out of the 500 newest
+    // clients it loaded at sign-in; it loads none now (admin siteLists.ts, 11 Oct
+    // 2026), so the database counts them, over the same clients as the total.
+    let overview;
+    if (req.query.overview === '1') {
+      const [[[todayRow]], [courseRows]] = await Promise.all([
+        pool.query(
+          `SELECT COUNT(*) AS cnt FROM subscribers s
+            WHERE s.tenant_id = ? AND s.deleted_at IS NULL ${adminExclusions} AND ${scopeClause}
+              AND s.created_at >= ${sqlCairoDayStartUtc()} AND s.created_at < ${sqlCairoDayStartUtc()} + INTERVAL 1 DAY`,
+          params,
+        ),
+        pool.query(
+          `SELECT e.course_id AS id, COUNT(DISTINCT e.subscriber_id) AS cnt
+             FROM enrollments e
+             JOIN subscribers s ON s.id = e.subscriber_id AND s.tenant_id = e.tenant_id
+            WHERE s.tenant_id = ? AND e.status = 'active' AND s.deleted_at IS NULL ${adminExclusions} AND ${scopeClause}
+            GROUP BY e.course_id`,
+          params,
+        ),
+      ]);
+      overview = {
+        createdToday: Number(todayRow?.cnt) || 0,
+        byCourse: Object.fromEntries(courseRows.map(row => [row.id, Number(row.cnt) || 0])),
+      };
+    }
+
+    res.json({ total, byBranch, ...(paidBySubscriber ? { paidBySubscriber } : {}), ...(overview || {}) });
   } catch (e) { logger.error('[route]', e.message); sendRouteError(res, e); }
 });
 

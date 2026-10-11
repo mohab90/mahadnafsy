@@ -3,6 +3,7 @@ import { cairoDateTime, cairoDay, cairoDateOnly, cairoDaysAgo, cairoWeekStart, c
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowRight, Phone, Mail, BarChart3, Activity, CreditCard, Settings, ChevronRight, Clock, Trash2, LayoutDashboard, MessageSquare, ListChecks, Trophy } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
+import { useEnsureSiteLists } from '../context/SiteDataContext';
 import { toDialable } from '../lib/whatsappLink';
 import { isCollected } from '../lib/money';
 import { mysqlAdmin } from '../lib/mysqlapi';
@@ -63,6 +64,8 @@ const StaffProfile: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { staffMembers, leads, subscribers, reloadStaffMembers, deleteStaffMember, authUser, isAdmin, currentStaff } = useSiteData();
+  // Outside the dashboard's tabs, so it asks for the two lists it counts from.
+  useEnsureSiteLists(['leads', 'subscribers']);
 
   const [searchParams, setSearchParams] = useSearchParams();
   // ?tab= decides which tab opens, so a link can point at one. Anything

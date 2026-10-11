@@ -11,6 +11,7 @@ import type {
 } from '../../types';
 import { normalizeApplicants } from './normalizeApplicants';
 import { normalizeOrders } from './normalizeOrders';
+import type { SiteList } from './siteLists';
 
 type Setter<T> = Dispatch<SetStateAction<T>>;
 type Ref<T> = MutableRefObject<T>;
@@ -134,11 +135,37 @@ function mergeSubscribers(current: SubscriberItem[], incoming: SubscriberItem[])
   return newestFirst([...byId.values()]);
 }
 
+type RuntimeUserValue = NonNullable<RuntimeUser>;
+
+/**
+ * What the signed-in account may read, as the server decides it.
+ *
+ * Lists the server gives to admins alone (requireAdmin, which isAdmin mirrors)
+ * are skipped for anyone else: each was a certain 403 — seventeen refusals a
+ * load for the Dokki manager — and a refused list set nothing, which is exactly
+ * what skipping it does. The rest are opened by a permission, which
+ * /api/auth/me answers before the first request.
+ */
+function accessOf(authUser: RuntimeUserValue) {
+  const isAdmin = authUser.isAdmin === true;
+  const adminOnly = <T>(load: () => Promise<T>): Promise<T> =>
+    isAdmin ? load() : Promise.reject(new Error('admin only'));
+  const held = authUser.permissions;
+  const permitted = (permission: string): boolean =>
+    isAdmin || held === '*' || (Array.isArray(held) && held.includes(permission));
+  // Promise<never>, so the ternary beside each call keeps the type of the call
+  // itself rather than widening to unknown.
+  const refused = (permission: string): Promise<never> =>
+    Promise.reject(new Error(`no ${permission}`));
+  return { isAdmin, adminOnly, permitted, refused };
+}
+
 export function useAdminDataRuntime(state: RuntimeState): {
   loadFullCrmData: () => Promise<void>;
   loadFullLeads: () => Promise<void>;
   loadFullSubscribers: () => Promise<void>;
   loadBranchSubscribers: (branch: string) => Promise<void>;
+  ensureSiteLists: (lists: readonly SiteList[]) => Promise<void>;
 } {
   const {
     authUser, isHydratingRef, dbContentLoadedRef, lastCRMWriteRef,
@@ -157,57 +184,36 @@ export function useAdminDataRuntime(state: RuntimeState): {
   // nobody asked for is exactly what this change stops.
   const fullLeadsRef = useRef<Promise<void> | null>(null);
   const fullSubsRef = useRef<Promise<void> | null>(null);
+  // Each on-demand list, once asked for: the request in flight or answered.
+  // The poll reads it the same way — a list no screen asked for is not polled.
+  const listLoadsRef = useRef(new Map<SiteList, Promise<void>>());
 
   useEffect(() => {
     if (!authUser?.email || (!authUser.isAdmin && !authUser.uid)) return;
     let disposed = false;
+    // A new identity starts with nothing asked for.
+    listLoadsRef.current = new Map();
     const safetyTimer = setTimeout(() => {
       if (disposed) return;
       isHydratingRef.current = false;
       setRemoteReady(true);
     }, 8000);
 
-    // Lists the server gives to admins alone (requireAdmin, which isAdmin
-    // mirrors). For anyone else each was a certain 403 on every page load —
-    // seventeen refusals a load for the Dokki manager — and a refused list set
-    // nothing, which is exactly what skipping it does.
-    const isAdmin = authUser.isAdmin === true;
-    const adminOnly = <T>(load: () => Promise<T>): Promise<T> =>
-      isAdmin ? load() : Promise.reject(new Error('admin only'));
-
-    // The rest are opened by a permission, so the question is whether this
-    // account holds it — /api/auth/me answers that before the first request.
-    // An account that does holds real data here; one that does not would have
-    // been refused, which is the 403-per-list this avoids.
-    const held = authUser.permissions;
-    const permitted = (permission: string): boolean =>
-      isAdmin || held === '*' || (Array.isArray(held) && held.includes(permission));
-    // Promise<never>, so the ternary beside each call keeps the type of the
-    // call itself rather than widening to unknown.
-    const refused = (permission: string): Promise<never> =>
-      Promise.reject(new Error(`no ${permission}`));
+    const { isAdmin, permitted, refused } = accessOf(authUser);
 
     void (async () => {
       try {
-        const [subsRes, leadsRes, staffRes, consultsRes, contentRes] = await Promise.allSettled([
-          withTimeout(permitted('view_subscribers') ? mysqlAdmin.listSubscribersPage(500, 0) : refused('view_subscribers')),
-          withTimeout(permitted('view_leads') ? mysqlAdmin.listLeadsPage(500, 0) : refused('view_leads')),
+        // What every screen leans on, and nothing more. The 500 newest clients,
+        // leads and orders came here too — 1.47 MB of the 1.56 MB a sign-in
+        // pulled — for a landing screen that counts them from the database.
+        // They are on-demand lists now (siteLists.ts, ensureSiteLists below).
+        const [staffRes, consultsRes, contentRes] = await Promise.allSettled([
           withTimeout(permitted('view_staff') ? mysqlAdmin.listAllStaff() : refused('view_staff')),
           withTimeout(permitted('view_consultations') ? mysqlAdmin.listAllConsultations() : refused('view_consultations')),
           withTimeout(mysqlAdmin.getContent(isAdmin)),
         ]);
         if (disposed) return;
 
-        if (subsRes.status === 'fulfilled') {
-          const subscribers = normalizeSubscribers(subsRes.value);
-          subscribersRef.current = subscribers;
-          setSubscribers(subscribers);
-        }
-        if (leadsRes.status === 'fulfilled') {
-          const leads = normalizeLeads(leadsRes.value);
-          leadsRef.current = leads;
-          setLeads(leads);
-        }
         if (staffRes.status === 'fulfilled') {
           const staff = (staffRes.value as unknown as StaffWire[]).map(member => ({
             ...member,
@@ -229,39 +235,24 @@ export function useAdminDataRuntime(state: RuntimeState): {
         isHydratingRef.current = false;
         setRemoteReady(true);
 
-        // The full leads+subscribers pull used to fire here, one second after
-        // boot, for every account on every page load — 26,878 leads and 1,353
-        // subscribers whether or not the session ever opened a screen that
-        // needed them. Reception, HR, the accountant and the instructors never
-        // do, and even an admin checking today's revenue does not.
-        //
-        // It is requested now instead, by loadFullCrmData() below, from the
-        // screens that actually read the whole array. The first page of each is
-        // already in hand from the bootstrap above, so a screen that only needs
-        // recent rows still renders immediately.
-
-        // The next wave starts here, and it starts now.
+        // The second wave starts now; the dashboard paints from the first.
         //
         // There were four `await new Promise(resolve => setTimeout(resolve,
-        // 300))` between these five waves — 1.2 seconds of deliberate waiting on
-        // every admin page load, for every member of staff, on top of the
-        // requests. Nothing said why, and the reasons one would guess do not
-        // hold: the privileged rate limit is 400 a minute against the 21 calls
-        // made here, and HTTP/2 carries them down one connection. The server
-        // they appeared to be pacing answers in 3–15ms and idles at 0.1 load.
-        //
-        // The waves stay. Awaiting each one lets the dashboard paint from the
-        // first rather than waiting on all twenty-one — that part was right.
+        // 300))` between the waves once — 1.2 seconds of deliberate waiting on
+        // every admin page load. Nothing said why, and the server they appeared
+        // to be pacing answers in 3–15ms.
         if (disposed) return;
         // Lectures and chapters were pulled here too — listLectures() with no
         // argument, which is the 5000 default: every lecture of every course,
         // half a megabyte, for every account on every page load. Five screens
         // read them. Those five call ensureLectures() now; see
         // useLecturesChaptersState.
-        const [coursesRes, bundlesRes, therapistsRes] = await Promise.allSettled([
+        const [coursesRes, bundlesRes, therapistsRes, notificationsRes] = await Promise.allSettled([
           permitted('view_courses') ? mysqlAdmin.listAllCourses() : refused('view_courses'),
           permitted('view_courses') ? mysqlAdmin.listAllBundles(500) : refused('view_courses'),
           permitted('view_consultations') ? mysqlAdmin.listAllTherapists() : refused('view_consultations'),
+          // The menu's «صندوق الإشعارات» badge counts these, on every screen.
+          permitted('manage_notifications') ? mysqlAdmin.getNotificationSettings() : refused('manage_notifications'),
         ]);
         if (disposed) return;
         if (coursesRes.status === 'fulfilled' && coursesRes.value.length > 0) {
@@ -270,56 +261,10 @@ export function useAdminDataRuntime(state: RuntimeState): {
         }
         if (bundlesRes.status === 'fulfilled' && bundlesRes.value.length > 0) setBundles(bundlesRes.value as unknown as Bundle[]);
         if (therapistsRes.status === 'fulfilled' && therapistsRes.value.length > 0) setTherapists(therapistsRes.value as unknown as Therapist[]);
-
-        if (disposed) return;
-        const [testimonialsRes, quizzesRes, streamsRes, expensesRes, activityRes] = await Promise.allSettled([
-          mysqlCatalog.listTestimonials(),
-          permitted('view_courses') ? mysqlCatalog.listQuizzes() : refused('view_courses'),
-          permitted('view_courses') ? mysqlCatalog.listLiveStreams() : refused('view_courses'),
-          permitted('view_financial') ? mysqlAdmin.listAllExpenses() : refused('view_financial'),
-          permitted('view_activity') ? mysqlAdmin.listActivityLogs() : refused('view_activity'),
-        ]);
-        if (disposed) return;
-        if (testimonialsRes.status === 'fulfilled' && testimonialsRes.value.length > 0) setTestimonials(testimonialsRes.value as unknown as TestimonialItem[]);
-        if (quizzesRes.status === 'fulfilled' && quizzesRes.value.length > 0) setCourseQuizzes(quizzesRes.value as unknown as CourseQuiz[]);
-        if (streamsRes.status === 'fulfilled' && streamsRes.value.length > 0) setLiveStreams(streamsRes.value as unknown as LiveStream[]);
-        if (expensesRes.status === 'fulfilled') setExpenses(expensesRes.value as unknown as ExpenseItem[]);
-        if (activityRes.status === 'fulfilled' && activityRes.value.length > 0) setActivityLogs(activityRes.value as unknown as ActivityLogItem[]);
-
-        if (disposed) return;
-        const [ordersRes, applicantsRes, contactsRes, roundsRes, automationsRes] = await Promise.allSettled([
-          permitted('view_orders') ? mysqlAdmin.listAllOrders() : refused('view_orders'),
-          permitted('view_join_us') ? mysqlAdmin.listAllJoinUs() : refused('view_join_us'),
-          permitted('view_contacts') ? mysqlAdmin.listAllContactMessages() : refused('view_contacts'),
-          permitted('manage_daqqi') ? mysqlAdmin.listAllDaqqiRounds() : refused('manage_daqqi'),
-          adminOnly(() => mysqlAdmin.listAllAutomationWorkflows()),
-        ]);
-        if (disposed) return;
-        if (ordersRes.status === 'fulfilled' && ordersRes.value.length > 0) setOrders(normalizeOrders(ordersRes.value));
-        if (applicantsRes.status === 'fulfilled') setJoinUsApplications(normalizeApplicants(applicantsRes.value));
-        if (contactsRes.status === 'fulfilled' && contactsRes.value.length > 0) setContactMessages(contactsRes.value as unknown as ContactMessage[]);
-        if (roundsRes.status === 'fulfilled' && roundsRes.value.length > 0) setDaqqiRounds(roundsRes.value as unknown as DaqqiRound[]);
-        if (automationsRes.status === 'fulfilled' && automationsRes.value.length > 0) setAutomationWorkflows(automationsRes.value as unknown as AutomationWorkflow[]);
-
-        if (disposed) return;
-        const [discountsRes, notificationsRes, settingsRes] = await Promise.allSettled([
-          permitted('manage_discounts') ? mysqlAdmin.getDiscounts() : refused('manage_discounts'),
-          permitted('manage_notifications') ? mysqlAdmin.getNotificationSettings() : refused('manage_notifications'),
-          adminOnly(() => mysqlAdmin.getSettings()),
-        ]);
-        if (disposed) return;
-        if (discountsRes.status === 'fulfilled' && discountsRes.value.length > 0) setDiscounts(discountsRes.value as unknown as DiscountRule[]);
         if (notificationsRes.status === 'fulfilled') {
           const data = notificationsRes.value as unknown as { rows?: NotificationBroadcast[] } | NotificationBroadcast[];
           const notifications = Array.isArray(data) ? data : (data.rows || []);
           if (notifications.length > 0) setNotifications(notifications);
-        }
-        if (settingsRes.status === 'fulfilled' && settingsRes.value) {
-          const settings = settingsRes.value as Record<string, unknown>;
-          if (settings.adminAiConfig) setAdminAiConfigLocal(settings.adminAiConfig as AdminAiConfig);
-          if (settings.aiAgentConfig) setAiAgentConfigState(settings.aiAgentConfig as AiAgentConfig);
-          if (settings.messagingChannels) setMessagingChannelsState(settings.messagingChannels as MessagingChannelsConfig);
-          if (settings.fbLeadAdsConfig) setFbLeadAdsConfigState(settings.fbLeadAdsConfig as FacebookLeadAdsConfig);
         }
       } catch (error) {
         if (disposed) return;
@@ -337,6 +282,121 @@ export function useAdminDataRuntime(state: RuntimeState): {
   // State setters and refs are stable; auth identity is the lifecycle boundary.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.uid]);
+
+  // One on-demand list, fetched and put in place. Keyed on authUser so the
+  // permissions it asks with are the signed-in account's own; the screens call
+  // it through ensureSiteLists, which holds each list to one request.
+  const fetchList = useCallback(async (list: SiteList): Promise<void> => {
+    if (!authUser?.email) throw new Error('signed out');
+    const { permitted, adminOnly, refused } = accessOf(authUser);
+    switch (list) {
+      case 'subscribers': {
+        // The whole table, once a screen pulled it, is newer than any page of it.
+        if (fullSubsRef.current) return fullSubsRef.current;
+        const rows = await (permitted('view_subscribers') ? mysqlAdmin.listSubscribersPage(500, 0) : refused('view_subscribers'));
+        if (fullSubsRef.current) return;
+        // Laid over what is held: a branch screen may have loaded its own clients first.
+        const subscribers = mergeSubscribers(subscribersRef.current, normalizeSubscribers(rows));
+        subscribersRef.current = subscribers;
+        setSubscribers(subscribers);
+        return;
+      }
+      case 'leads': {
+        if (fullLeadsRef.current) return fullLeadsRef.current;
+        const rows = await (permitted('view_leads') ? mysqlAdmin.listLeadsPage(500, 0) : refused('view_leads'));
+        if (fullLeadsRef.current) return;
+        const leads = normalizeLeads(rows);
+        leadsRef.current = leads;
+        setLeads(leads);
+        return;
+      }
+      case 'orders': {
+        const rows = await (permitted('view_orders') ? mysqlAdmin.listAllOrders() : refused('view_orders'));
+        if (rows.length > 0) setOrders(normalizeOrders(rows));
+        return;
+      }
+      case 'expenses': {
+        // Set even when empty: an emptied ledger has to read as empty.
+        const rows = await (permitted('view_financial') ? mysqlAdmin.listAllExpenses() : refused('view_financial'));
+        setExpenses(rows as unknown as ExpenseItem[]);
+        return;
+      }
+      case 'activityLogs': {
+        const rows = await (permitted('view_activity') ? mysqlAdmin.listActivityLogs() : refused('view_activity'));
+        if (rows.length > 0) setActivityLogs(rows as unknown as ActivityLogItem[]);
+        return;
+      }
+      case 'testimonials': {
+        const rows = await mysqlCatalog.listTestimonials();
+        if (rows.length > 0) setTestimonials(rows as unknown as TestimonialItem[]);
+        return;
+      }
+      case 'courseQuizzes': {
+        const rows = await (permitted('view_courses') ? mysqlCatalog.listQuizzes() : refused('view_courses'));
+        if (rows.length > 0) setCourseQuizzes(rows as unknown as CourseQuiz[]);
+        return;
+      }
+      case 'liveStreams': {
+        const rows = await (permitted('view_courses') ? mysqlCatalog.listLiveStreams() : refused('view_courses'));
+        if (rows.length > 0) setLiveStreams(rows as unknown as LiveStream[]);
+        return;
+      }
+      case 'joinUsApplications': {
+        const rows = await (permitted('view_join_us') ? mysqlAdmin.listAllJoinUs() : refused('view_join_us'));
+        setJoinUsApplications(normalizeApplicants(rows));
+        return;
+      }
+      case 'contactMessages': {
+        const rows = await (permitted('view_contacts') ? mysqlAdmin.listAllContactMessages() : refused('view_contacts'));
+        if (rows.length > 0) setContactMessages(rows as unknown as ContactMessage[]);
+        return;
+      }
+      case 'daqqiRounds': {
+        const rows = await (permitted('manage_daqqi') ? mysqlAdmin.listAllDaqqiRounds() : refused('manage_daqqi'));
+        if (rows.length > 0) setDaqqiRounds(rows as unknown as DaqqiRound[]);
+        return;
+      }
+      case 'automationWorkflows': {
+        const rows = await adminOnly(() => mysqlAdmin.listAllAutomationWorkflows());
+        if (rows.length > 0) setAutomationWorkflows(rows as unknown as AutomationWorkflow[]);
+        return;
+      }
+      case 'discounts': {
+        const rows = await (permitted('manage_discounts') ? mysqlAdmin.getDiscounts() : refused('manage_discounts'));
+        if (rows.length > 0) setDiscounts(rows as unknown as DiscountRule[]);
+        return;
+      }
+      case 'settings': {
+        const settings = await adminOnly(() => mysqlAdmin.getSettings()) as Record<string, unknown> | null;
+        if (!settings) return;
+        if (settings.adminAiConfig) setAdminAiConfigLocal(settings.adminAiConfig as AdminAiConfig);
+        if (settings.aiAgentConfig) setAiAgentConfigState(settings.aiAgentConfig as AiAgentConfig);
+        if (settings.messagingChannels) setMessagingChannelsState(settings.messagingChannels as MessagingChannelsConfig);
+        if (settings.fbLeadAdsConfig) setFbLeadAdsConfigState(settings.fbLeadAdsConfig as FacebookLeadAdsConfig);
+        return;
+      }
+    }
+  // The setters and refs are stable; the account is what changes the answer.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUser]);
+
+  // The lists a screen reads, each loaded once per sign-in however many screens
+  // ask in the same tick. Settled, not all-or-nothing: one list failing still
+  // delivers the rest. A failure (or a refusal) is forgotten, so the next screen
+  // that asks tries again instead of the session keeping an empty list.
+  const ensureSiteLists = useCallback((lists: readonly SiteList[]): Promise<void> => {
+    const runs = lists.map(list => {
+      const existing = listLoadsRef.current.get(list);
+      if (existing) return existing;
+      const run = fetchList(list).catch((error: unknown) => {
+        if (listLoadsRef.current.get(list) === run) listLoadsRef.current.delete(list);
+        throw error;
+      });
+      listLoadsRef.current.set(list, run);
+      return run;
+    });
+    return Promise.allSettled(runs).then(() => undefined);
+  }, [fetchList]);
 
   useEffect(() => {
     if (!authUser?.email || authUser.isAdmin !== true) return;
@@ -359,28 +419,31 @@ export function useAdminDataRuntime(state: RuntimeState): {
         // on any screen re-downloaded all 26,878 leads every two minutes — which
         // put back, on a timer, precisely the load the screens had just stopped
         // asking for. If the full table was never pulled, the first page is what
-        // is on screen and the first page is what gets refreshed.
+        // is on screen and the first page is what gets refreshed — and a list no
+        // screen has asked for (siteLists.ts) is not refreshed at all.
+        const asked = (list: SiteList) => listLoadsRef.current.has(list);
+        const nothing = Promise.resolve(null);
         const leadsFetch = fullLeadsRef.current
           ? mysqlAdmin.listAllLeads()
-          : mysqlAdmin.listLeadsPage(500, 0);
+          : asked('leads') ? mysqlAdmin.listLeadsPage(500, 0) : nothing;
         const subsFetch = fullSubsRef.current
           ? mysqlAdmin.listAllSubscribers()
-          : mysqlAdmin.listSubscribersPage(500, 0);
+          : asked('subscribers') ? mysqlAdmin.listSubscribersPage(500, 0) : nothing;
         const [leadsRes, subscribersRes, roundsRes, expensesRes] = await Promise.allSettled([
           leadsFetch,
           subsFetch,
           // This poll runs for admins only (see the guard at the top of the
           // effect), so there is nothing to ask about here.
-          mysqlAdmin.listAllDaqqiRounds(),
-          mysqlAdmin.listAllExpenses(),
+          asked('daqqiRounds') ? mysqlAdmin.listAllDaqqiRounds() : nothing,
+          asked('expenses') ? mysqlAdmin.listAllExpenses() : nothing,
         ]);
         if (cancelled || Date.now() - lastCRMWriteRef.current < 180_000) return;
-        if (leadsRes.status === 'fulfilled' && (leadsRes.value as unknown[]).length > 0) {
+        if (leadsRes.status === 'fulfilled' && leadsRes.value && (leadsRes.value as unknown[]).length > 0) {
           const leads = normalizeLeads(leadsRes.value);
           leadsRef.current = leads;
           setLeads(leads);
         }
-        if (subscribersRes.status === 'fulfilled' && (subscribersRes.value as unknown[]).length > 0) {
+        if (subscribersRes.status === 'fulfilled' && subscribersRes.value && (subscribersRes.value as unknown[]).length > 0) {
           const fresh = normalizeSubscribers(subscribersRes.value);
           // The whole table, when it was pulled, is replaced by the whole table.
           // A page is laid over what is held — see mergeSubscribers.
@@ -388,10 +451,10 @@ export function useAdminDataRuntime(state: RuntimeState): {
           subscribersRef.current = subscribers;
           setSubscribers(subscribers);
         }
-        if (roundsRes.status === 'fulfilled' && (roundsRes.value as unknown[]).length > 0) setDaqqiRounds(roundsRes.value as unknown as DaqqiRound[]);
-        if (expensesRes.status === 'fulfilled') setExpenses(expensesRes.value as unknown as ExpenseItem[]);
-        void reloadOrders();
-        void reloadJoinUsApplications();
+        if (roundsRes.status === 'fulfilled' && roundsRes.value && (roundsRes.value as unknown[]).length > 0) setDaqqiRounds(roundsRes.value as unknown as DaqqiRound[]);
+        if (expensesRes.status === 'fulfilled' && expensesRes.value) setExpenses(expensesRes.value as unknown as ExpenseItem[]);
+        if (asked('orders')) void reloadOrders();
+        if (asked('joinUsApplications')) void reloadJoinUsApplications();
       } catch {
         // Polling is best-effort; the last confirmed server state remains visible.
       }
@@ -507,5 +570,5 @@ export function useAdminDataRuntime(state: RuntimeState): {
     await Promise.allSettled([loadFullLeads(), loadFullSubscribers()]);
   }, [loadFullLeads, loadFullSubscribers]);
 
-  return { loadFullCrmData, loadFullLeads, loadFullSubscribers, loadBranchSubscribers };
+  return { loadFullCrmData, loadFullLeads, loadFullSubscribers, loadBranchSubscribers, ensureSiteLists };
 }

@@ -13,7 +13,7 @@ import {
   
   CreditCard, 
 } from 'lucide-react';
-import { useSiteData, useEnsureLectures } from '../context/SiteDataContext';
+import { useSiteData, useEnsureLectures, useEnsureSiteLists } from '../context/SiteDataContext';
 import { confirmDialog } from '../../shared/ui/confirmDialog';
 import { useUnifiedClientActiveTab, type UnifiedClientTab } from './unified-client/useUnifiedClientActiveTab';
 import { buildUnifiedClientTabs, UnifiedClientTabs } from './unified-client/UnifiedClientTabs';
@@ -80,6 +80,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
 
   // Lectures are not loaded at login any more — the client's progress is «شاهد N من M محاضرة», and M comes from here.
   useEnsureLectures();
+  useEnsureSiteLists(['subscribers', 'leads', 'daqqiRounds']); // nor these, since 11 Oct 2026 (siteLists.ts)
 
   const { isOnlineManager, canManageCourseAccess, canSeeCourses, canCorrectPayments, canSeeProofs } = useUnifiedClientPermissions({ isAdmin, currentStaff });
 

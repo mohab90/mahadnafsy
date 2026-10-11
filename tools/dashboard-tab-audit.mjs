@@ -189,6 +189,19 @@ for (const name of LOAD_SETS) {
   }
 }
 
+// tabSiteLists.ts names the screens that load only the on-demand lists they
+// declare (admin siteLists.ts). A key there that names no screen is a screen
+// that silently gets every list — the same failure, the other way round.
+{
+  const src = read(path.join(DASH_DIR, 'tabSiteLists.ts'));
+  const from = src.indexOf('export const tabSiteLists');
+  const body = from === -1 ? '' : src.slice(from, src.indexOf('};', from));
+  for (const m of body.matchAll(/^\s+([a-z_0-9]+):\s*\[/gm)) {
+    if (groupKeys.has(m[1])) deadKeys.push({ set: 'tabSiteLists', key: m[1], why: 'nav group header, not a screen' });
+    else if (!drawnBy.has(m[1])) deadKeys.push({ set: 'tabSiteLists', key: m[1], why: 'no container draws it' });
+  }
+}
+
 /** The quality gate imports this; running the file prints the same findings. */
 export function scanDashboardTabs() {
   return [

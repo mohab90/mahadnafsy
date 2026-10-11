@@ -23,7 +23,7 @@ export function useOverviewDerived(
   leadStats?: LeadStats | null,
   /** Revenue from the books. When present it replaces the browser's own sum,
    *  which only ever saw the newest 500 orders and payments. */
-  serverRevenue?: { totalEgp: number; monthEgp: number; todayEgp: number } | null,
+  serverRevenue?: { totalEgp: number; monthEgp: number; todayEgp: number; payments?: number } | null,
 ) {
   const overviewStats = useMemo(() => {
     // Rates and fallbacks from lib/money, which mirrors the API's. This read
@@ -84,7 +84,10 @@ export function useOverviewDerived(
         .reduce((ps, p) => ps + toEGP(p), 0), 0);
     const books = serverRevenue || null;
     const todayRevenue = books ? books.todayEgp : todayRevenueLocal;
-    return { totalRevenue: books ? books.totalEgp : totalRevenue, leadsBySource, courseEnrollments, consultsByStatus, salesStats: salesStatsCalc, recentLeads, paidOrders, todayRevenue, todayNewSubscribers, todayNewLeads, monthRevenue: books ? books.monthEgp : monthRevenue };
+    // The books' count of paid payments: the orders array, when a screen loaded
+    // it at all, is capped at 500.
+    const paidCount = books?.payments ?? null;
+    return { paidCount, totalRevenue: books ? books.totalEgp : totalRevenue, leadsBySource, courseEnrollments, consultsByStatus, salesStats: salesStatsCalc, recentLeads, paidOrders, todayRevenue, todayNewSubscribers, todayNewLeads, monthRevenue: books ? books.monthEgp : monthRevenue };
   }, [orders, subscribers, leads, courses, staffMembers, consultations, content, leadStats, serverRevenue]);
 
   return { overviewStats };

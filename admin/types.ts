@@ -1381,6 +1381,10 @@ export interface SubscriberStats {
   total: number;
   /** Count per branch. '' is the bucket for subscribers with no branch set. */
   byBranch: Record<string, number>;
+  /** With ?overview=1: the clients who joined today (Cairo day)… */
+  createdToday?: number;
+  /** …and each course's clients, keyed by course id (active enrolments). */
+  byCourse?: Record<string, number>;
 }
 
 /** One rep's week, as counted by the database rather than by filtering the
