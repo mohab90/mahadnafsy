@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Navigate } from 'react-router-dom';
 import { Info, ArrowRight, Loader } from 'lucide-react';
 import { useCrmData } from '../context/siteDataSlices';
+import { useEnsureSiteLists } from '../context/SiteDataContext';
 import { mysqlAdmin } from '../lib/mysqlapi';
 import { LeadItem, SubscriberItem } from '../types';
 
@@ -32,6 +33,8 @@ const ClientProfile: React.FC = () => {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
   const { subscribers, leads, daqqiRounds, consultations, staffScopedSubscribers, staffScopedLeads } = useCrmData();
+  // A page of its own, outside the dashboard's tabs: it asks for what it looks the client up in.
+  useEnsureSiteLists(['subscribers', 'leads', 'daqqiRounds']);
 
   // Merge context + scoped data so non-admin staff can navigate to clients
   const allSubs = subscribers.length > 0 ? subscribers : staffScopedSubscribers;

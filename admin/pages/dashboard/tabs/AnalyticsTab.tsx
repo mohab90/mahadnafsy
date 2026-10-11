@@ -4,7 +4,7 @@ import {
   Wallet, Clock, Layers, UserPlus, CalendarCheck2, MessageSquareText,
   GraduationCap, Mail, FolderKanban,
 } from 'lucide-react';
-import { useSiteData } from '../../../context/SiteDataContext';
+import { useSiteData, useEnsureSiteLists } from '../../../context/SiteDataContext';
 import { fxRates } from '../../../lib/money';
 import { toCsv, downloadCsvText, type CsvValue } from '../../../../shared/csv';
 import { CAIRO_TIME_ZONE, cairoDateOnly, cairoDaysAgo, cairoDay, cairoMonthStart } from '../../../../shared/cairoDate';
@@ -23,6 +23,8 @@ const AnalyticsTab: React.FC<Props> = () => {
     communityPosts, communityVideos, communityLibraryItems, communityEvents,
     discounts, joinUsApplications, contactMessages, content,
   } = useSiteData();
+  // Drawn under الرئيسية too, which loads none of these (siteLists.ts): it asks.
+  useEnsureSiteLists(['orders', 'leads', 'subscribers', 'discounts', 'joinUsApplications', 'contactMessages']);
 
   // ── Exchange rates ────────────────────────────────────────────
   // This screen carried its own fallbacks and its USD one was 50, where the

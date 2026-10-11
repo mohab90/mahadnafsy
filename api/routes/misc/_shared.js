@@ -308,6 +308,19 @@ function scheduleDokkiAutomation() {
 }
 scheduleDokkiAutomation();
 
+// «التقرير الأسبوعي للفروع» on WhatsApp, Saturday morning, once switched on
+// (lib/weeklyBranchReport.js). Hourly; each number once a week.
+function scheduleWeeklyBranchReport() {
+  const { sendDueWeeklyBranchReports } = require('../../lib/weeklyBranchReport');
+  const tick = tenantId => sendDueWeeklyBranchReports(pool, { tenantId })
+    .catch(error => logger.warn('[weekly-branch-report]', error.message));
+  setTimeout(() => {
+    forEachActiveTenant(tick);
+    setInterval(() => forEachActiveTenant(tick), 60 * 60 * 1000);
+  }, 13 * 60 * 1000);
+}
+scheduleWeeklyBranchReport();
+
 // A payment waiting on the accountant is money the institute has not decided
 // about yet. One waiting more than a day is a payment nobody is looking at.
 // Announced once per payment — the flag is what keeps this a nudge rather

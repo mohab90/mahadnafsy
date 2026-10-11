@@ -6,6 +6,7 @@ import { REPORT_RANGES, TEAM_LABELS, type RangeKey, type TeamKey } from './repor
 import { AllTeamsReport } from './reports/AllTeamsReport';
 import { TeamReportTable } from './reports/TeamReportTable';
 import { OwnerWhatsappReportCard } from './reports/OwnerWhatsappReportCard';
+import { WeeklyBranchReport } from './reports/WeeklyBranchReport';
 
 /**
  * «تقارير الإدارة»: the institute's money, per branch, department and type,
@@ -110,6 +111,8 @@ export default function ManagementReportsTab({ notify }: { notify: (type: 'succe
           </button>
         </div>
       </header>
+
+      <WeeklyBranchReport notify={notify} />
 
       <OwnerWhatsappReportCard notify={notify} />
 

@@ -17,13 +17,14 @@ const { COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLe
 const { recordQuizAttempt } = require('../lib/quizAttempts');
 const { sendEmail, htmlEmail } = require('../lib/email');
 const { sendWhatsApp } = require('../lib/whatsapp');
-const { optionalAuth, requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { optionalAuth, requireAuth, requireAdmin, requireAdminOrStaff, requireAnyPermission, requirePermission } = require('../middleware/auth');
 const { setOnlineUser } = require('../lib/onlineUsers');
 const { publicLimiter, contactLimiter } = require('../middleware/rateLimits');
 const { resolveClientContext, getClientIp, hashClientIp } = require('../lib/clientContext');
 const { itemBalances } = require('../lib/agreedPrice');
 const { capturePublicLead } = require('../lib/publicLead');
 const metaCapi = require('../lib/metaCapi');
+const { SYSTEM_SEARCH_PERMISSIONS, searchSystem } = require('../lib/systemSearch');
 
 // The contact form's subjects that are sales' to answer (client/pages/Contact.tsx).
 const SALES_SUBJECTS = new Map([['courses', 'استفسار عن الدبلومات والبرامج'], ['payment', 'استفسار عن الدفع والأسعار']]);
@@ -55,7 +56,25 @@ router.get('/api/public/client-context', publicLimiter, optionalAuth, async (req
   res.json(clientContext);
 });
 
+// GET /api/search?scope=system&q=… — the same box for the institute's own staff:
+// clients, leads, payments by transaction number, certificates and tickets, each
+// for an account that may open it and inside its scope (lib/systemSearch.js).
+// Signed in, staff, and holding one of the kinds' permissions — or refused, as
+// any admin route refuses; without scope=system the public catalogue answers.
+const SYSTEM_SEARCH_GUARD = [requireAuth, requireAdminOrStaff, requireAnyPermission(...SYSTEM_SEARCH_PERMISSIONS)];
+const runGuards = (guards, req, res, done) => guards.reduceRight((next, guard) => () => guard(req, res, next), done)();
+async function answerSystemSearch(req, res) {
+  try {
+    res.set('Cache-Control', 'private, no-store');
+    res.json(await searchSystem(req, req.query.q));
+  } catch (e) {
+    logger.error('[system-search]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
 router.get('/api/search', publicLimiter, async (req, res) => {
+  if (req.query.scope === 'system') return runGuards(SYSTEM_SEARCH_GUARD, req, res, () => answerSystemSearch(req, res));
   try {
     const query = sanitize(String(req.query.q || '').trim(), 80);
     if (query.length < 2) return res.json({ courses: [], bundles: [], articles: [] });
