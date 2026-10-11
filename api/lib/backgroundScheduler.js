@@ -149,6 +149,15 @@ function startBackgroundScheduler({ pool, logger, port }) {
     repeat(tick, 10 * 60 * 1000);
   }, 4 * 60 * 1000);
 
+  // A disk at DISK_ALERT_PERCENT (80%) or more WhatsApps the owner-report
+  // numbers, once a week per disk by its dedupe key (lib/diskUsage.js).
+  later(() => {
+    const check = lockedJob('disk_alert', () => require('./diskUsage').alertOnFullDisks({ pool, logger })
+      .catch(error => logger.warn('[jobs] disk check failed:', error.message)));
+    check();
+    repeat(check, 6 * 60 * 60 * 1000);
+  }, 12 * 60 * 1000);
+
   later(() => {
     const tick = () => require('./aiAutopilot').queueDueAutopilot({ queue, logger })
       .catch(error => logger.warn('[jobs] ai autopilot tick failed:', error.message));

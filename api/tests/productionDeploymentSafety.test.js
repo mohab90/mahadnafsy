@@ -133,3 +133,24 @@ test('the deploy script uses the release it was given', () => {
   assert.ok(script.indexOf('for part in api admin client; do') < script.indexOf('deploy() {'),
     'the archives are checked before anything is backed up, stamped or restarted');
 });
+
+// 11 Oct 2026: the schema before the code. Migrations ran after production was
+// restarted on the new code, piped through tail so a failure still said DONE.
+test('the deploy migrates before it switches the code, and checks what the API reports', () => {
+  const script = readRepo('deploy-release.sh');
+  const body = script.slice(script.indexOf('deploy() {'), script.indexOf('rollback_api() {'));
+  const migrate = body.indexOf('npm run -s migrate');
+  assert.ok(migrate > 0, 'deploy() runs the migrations');
+  assert.ok(migrate < body.indexOf('systemctl restart "$svc"'), 'before the service restarts on the new code');
+  assert.ok(migrate < body.indexOf('tar -xzf "/staging/$R-admin.tgz"'), 'before the admin is switched');
+  assert.match(body, /MIGRATION FAILED[\s\S]*return 1/);
+  assert.match(body, /applied_migration "\$port"/);
+  assert.doesNotMatch(script, /npm run migrate 2>&1 \| grep/);
+  assert.match(script, /tail -n \+4/, 'old archives are pruned to the last 3');
+
+  const release = readRepo('deploy/release-all.sh');
+  assert.match(release, /git branch -r --contains HEAD/);
+  assert.match(release, /npm run release:gate -- --skip-live/);
+  assert.match(release, /MAHAD_DEPLOY_EMERGENCY/);
+  assert.ok(release.indexOf('release:gate') < release.indexOf('npm run release:prepare'));
+});

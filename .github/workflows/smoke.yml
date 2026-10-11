@@ -27,3 +27,37 @@ jobs:
         env:
           SMOKE_BASE_URL: ${{ github.event.inputs.staging_api_url }}
         run: node tools/mahad-api-smoke.mjs
+
+  e2e:
+    name: Staging E2E (public smoke + payment flow)
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 20
+    # The same two specs deploy/release-all.sh runs after a deploy, for when it
+    # could not (no Playwright on the deploying laptop) or to re-check staging.
+    # Repository secrets on the staging environment, all optional:
+    #   E2E_BASIC_AUTH (user:pass for the staging gate), TEST_STUDENT_EMAIL,
+    #   TEST_STUDENT_PASSWORD (the staging student the payment flow signs in as).
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - name: Install Playwright
+        run: |
+          npm --prefix e2e ci
+          npm --prefix e2e exec -- playwright install --with-deps chromium
+      - name: Run public smoke and payment flow against the given staging origin
+        working-directory: e2e
+        env:
+          CI: 'true'
+          BASE_URL: ${{ github.event.inputs.staging_api_url }}
+          API_BASE_URL: ${{ github.event.inputs.staging_api_url }}
+          E2E_BASIC_AUTH: ${{ secrets.E2E_BASIC_AUTH }}
+          TEST_STUDENT_EMAIL: ${{ secrets.TEST_STUDENT_EMAIL }}
+          TEST_STUDENT_PASSWORD: ${{ secrets.TEST_STUDENT_PASSWORD }}
+        run: |
+          case "$BASE_URL" in https://*) ;; *) echo "staging_api_url must be an https:// origin"; exit 1 ;; esac
+          npx playwright test tests/public-smoke.spec.ts tests/payment-flow.spec.ts
