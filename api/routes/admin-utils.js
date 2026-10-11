@@ -106,6 +106,14 @@ router.get('/api/admin/backup-status', requireAuth, requireAdmin, async (req, re
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// How close the server's signing secrets are to the 370-day boot refusal
+// (lib/productionConfig.js). The admin's system card shows it from day 330 —
+// the dates only, never a secret — so a restart after day 370 is not the first
+// anyone hears of it.
+router.get('/api/admin/system/secret-rotation', requireAuth, requireAdmin, (_req, res) => {
+  res.json(require('../lib/productionConfig').secretRotationStatus());
+});
+
 router.post('/api/admin/backup-now', requireAuth, requireAdmin, async (req, res) => {
   try {
     // Count rows to give a meaningful snapshot summary

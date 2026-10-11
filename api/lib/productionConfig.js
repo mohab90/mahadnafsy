@@ -36,6 +36,18 @@ function resolvedSecret(name, env, errors) {
 const MANAGED_SOURCES = ['secret-manager', 'vault', 'platform-secret'];
 const ALL_SOURCES = [...MANAGED_SOURCES, 'env-file'];
 
+// A signing secret older than this refuses the boot (the two deployment
+// policies below). The refusal stays: a year-old JWT secret is the one rule
+// here that guards against a key nobody remembers leaking.
+const SECRET_ROTATION_REFUSE_DAYS = 370;
+// …but it used to be the first anyone heard of it. Both dates in the systemd
+// unit are 2026-08-03, so around 2027-08-08 the next restart — a deploy, a
+// reboot, a crash — would have taken the site down with no warning at all.
+// From day 330 the health output, the admin's system card and a weekly
+// WhatsApp to the owner say so, which leaves forty days to rotate.
+const SECRET_ROTATION_WARN_DAYS = 330;
+const DAY_MS = 86400000;
+
 /**
  * `env-file` is a claim about a file, so it is checked against the file.
  * Readable by anyone but its owner is not a secret store, and saying so has to
@@ -94,7 +106,7 @@ function auditSecretDeploymentPolicy(env = process.env, now = Date.now()) {
   // Rotation discipline is about the secret, not about where it is kept.
   const rotatedAt = Date.parse(env.AUDIT_SECRET_ROTATED_AT || '');
   if (!Number.isFinite(rotatedAt)) errors.push('AUDIT_SECRET_ROTATED_AT is invalid');
-  else if ((now - rotatedAt) / 86400000 > 370) errors.push('AUDIT secret rotation is older than 370 days');
+  else if ((now - rotatedAt) / DAY_MS > SECRET_ROTATION_REFUSE_DAYS) errors.push('AUDIT secret rotation is older than 370 days');
   return { ok: errors.length === 0, errors };
 }
 
@@ -125,8 +137,57 @@ function authSecretDeploymentPolicy(env = process.env, now = Date.now()) {
   }
   const rotatedAt = Date.parse(env.AUTH_SECRET_ROTATED_AT || '');
   if (!Number.isFinite(rotatedAt)) errors.push('AUTH_SECRET_ROTATED_AT is invalid');
-  else if ((now - rotatedAt) / 86400000 > 370) errors.push('Auth secret rotation is older than 370 days');
+  else if ((now - rotatedAt) / DAY_MS > SECRET_ROTATION_REFUSE_DAYS) errors.push('Auth secret rotation is older than 370 days');
   return { ok: errors.length === 0, errors };
+}
+
+/**
+ * How close each signing-secret family is to the boot refusal above. Only the
+ * dates are read — never a secret — so this is safe to show an admin.
+ *
+ * state: 'ok' · 'due' (from day 330, rotate now) · 'expired' (past 370: this
+ * process is running, but the next start will be refused) · 'unset' (no date
+ * configured, as on a development machine, where the policy does not apply).
+ */
+function secretRotationStatus(env = process.env, now = Date.now()) {
+  const families = [
+    { key: 'auth', label: 'JWT / الجلسة / OTP', variable: 'AUTH_SECRET_ROTATED_AT' },
+    { key: 'audit', label: 'سجل التدقيق', variable: 'AUDIT_SECRET_ROTATED_AT' },
+  ];
+  const secrets = families.map(({ key, label, variable }) => {
+    const raw = String(env[variable] || '').trim();
+    const rotatedAt = Date.parse(raw);
+    if (!raw || !Number.isFinite(rotatedAt)) {
+      return { key, label, variable, state: 'unset', rotatedAt: null, ageDays: null, daysLeft: null, refusesBootAfter: null };
+    }
+    const ageDays = Math.floor((now - rotatedAt) / DAY_MS);
+    const refusesBootAfter = new Date(rotatedAt + SECRET_ROTATION_REFUSE_DAYS * DAY_MS).toISOString().slice(0, 10);
+    const state = (now - rotatedAt) / DAY_MS > SECRET_ROTATION_REFUSE_DAYS ? 'expired'
+      : ageDays >= SECRET_ROTATION_WARN_DAYS ? 'due' : 'ok';
+    return {
+      key, label, variable, state,
+      rotatedAt: new Date(rotatedAt).toISOString().slice(0, 10),
+      ageDays,
+      daysLeft: Math.max(SECRET_ROTATION_REFUSE_DAYS - ageDays, 0),
+      refusesBootAfter,
+    };
+  });
+  // lib/secretBox.js seals the stored credentials and 2FA secrets with
+  // CHANNEL_SECRET_KEY, falling back to JWT_SECRET. On the fallback, rotating
+  // JWT_SECRET makes every sealed value unreadable — every enrolled 2FA would
+  // stop working at once — so the card says which key it is before anyone
+  // rotates. Only whether it is configured is read, never its value.
+  const ownKey = Boolean(String(env.CHANNEL_SECRET_KEY || env.CHANNEL_SECRET_KEY_FILE || '').trim());
+  const rank = { unset: 0, ok: 1, due: 2, expired: 3 };
+  const worst = secrets.reduce((acc, item) => (rank[item.state] > rank[acc] ? item.state : acc), 'unset');
+  return {
+    state: worst,
+    warning: worst === 'due' || worst === 'expired',
+    warnFromDays: SECRET_ROTATION_WARN_DAYS,
+    refuseAfterDays: SECRET_ROTATION_REFUSE_DAYS,
+    sealedDataKey: ownKey ? 'own' : 'jwt-fallback',
+    secrets,
+  };
 }
 
 function criticalProductionPolicy(env = process.env) {
@@ -361,5 +422,8 @@ module.exports = {
   managedDatabasePolicy,
   productClaimPolicy,
   redisDeploymentPolicy,
+  secretRotationStatus,
   sentryDsnIsValid,
+  SECRET_ROTATION_REFUSE_DAYS,
+  SECRET_ROTATION_WARN_DAYS,
 };

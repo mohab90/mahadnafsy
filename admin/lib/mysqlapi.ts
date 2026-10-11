@@ -1303,12 +1303,21 @@ export const mysqlAuth = {
   // which type-checks and is undefined at runtime.
   verify2fa: (pendingToken: string, token: string) =>
     apiFetch<{ ok: boolean }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, token }) }),
+  // The phone is gone: one of the ten one-time codes stands in, and is burned.
+  verify2faRecovery: (pendingToken: string, recoveryCode: string) =>
+    apiFetch<{ ok: boolean; recoveryCodesLeft?: number | null }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, recoveryCode }) }),
   get2faStatus: () =>
-    apiFetch<{ enabled: boolean }>('/auth/2fa/status'),
+    apiFetch<{ enabled: boolean; recoveryCodesLeft?: number | null }>('/auth/2fa/status'),
   setup2fa: () =>
     apiFetch<{ secret: string; qrDataUrl: string; otpAuthUrl: string }>('/auth/2fa/setup', { method: 'POST' }),
+  // recoveryCodes come back once, here, and are never shown again.
   enable2fa: (token: string) =>
-    apiFetch<{ ok: boolean }>('/auth/2fa/enable', { method: 'POST', body: JSON.stringify({ token }) }),
+    apiFetch<{ ok: boolean; recoveryCodes?: string[] }>('/auth/2fa/enable', { method: 'POST', body: JSON.stringify({ token }) }),
+  regenerateRecoveryCodes: (token: string) =>
+    apiFetch<{ ok: boolean; recoveryCodes: string[] }>('/auth/2fa/recovery-codes', { method: 'POST', body: JSON.stringify({ token }) }),
+  // Owner only: clears an employee's 2FA and recovery codes, ends their sessions.
+  resetStaff2fa: (staffId: string) =>
+    apiFetch<{ ok: boolean; message?: string }>(`/admin/staff/${encodeURIComponent(staffId)}/reset-2fa`, { method: 'POST', body: JSON.stringify({}) }, true),
   disable2fa: (token?: string) =>
     apiFetch<{ ok: boolean }>('/auth/2fa/disable', { method: 'POST', body: JSON.stringify({ token }) }),
   logout: () => { localStorage.removeItem('mahad-token'); apiFetch<{ ok: boolean }>('/auth/logout', { method: 'POST' }).catch(() => {}); },

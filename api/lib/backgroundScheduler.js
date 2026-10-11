@@ -149,6 +149,19 @@ function startBackgroundScheduler({ pool, logger, port }) {
     repeat(tick, 10 * 60 * 1000);
   }, 4 * 60 * 1000);
 
+  // The signing secrets refuse the boot at 370 days and nobody was told
+  // beforehand (lib/secretRotationAlert.js). From day 330 the owner hears it on
+  // WhatsApp; asked every six hours, sent once a week per number by the
+  // outbox's dedupe key.
+  later(() => {
+    const tick = lockedJob('secret_rotation_alert', () => require('./secretRotationAlert')
+      .queueSecretRotationAlerts({ logger })
+      .then(queued => { if (queued) logger.warn(`[jobs] signing secrets due for rotation — owner warned on ${queued} number(s)`); })
+      .catch(error => logger.warn('[jobs] secret rotation alert failed:', error.message)));
+    tick();
+    repeat(tick, 6 * 60 * 60 * 1000);
+  }, 12 * 60 * 1000);
+
   later(() => {
     const tick = () => require('./aiAutopilot').queueDueAutopilot({ queue, logger })
       .catch(error => logger.warn('[jobs] ai autopilot tick failed:', error.message));

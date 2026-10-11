@@ -144,6 +144,10 @@ function registerHealthRoutes(app, pool) {
         limit: rawPool.config?.connectionLimit || null,
       },
       errorMonitor: errorMonitor.isActive() ? 'active' : 'logs-only',
+      // From day 330 of the signing secrets. It does not turn the status to
+      // degraded — the service is fine today — but the next restart after day
+      // 370 is refused, and this is where whoever runs the box looks first.
+      secretRotation: require('./productionConfig').secretRotationStatus(),
       time: new Date().toISOString(),
     });
   });

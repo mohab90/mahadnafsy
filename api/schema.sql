@@ -4921,7 +4921,7 @@ CREATE TABLE `staff` (
   `base_salary` decimal(12,2) DEFAULT NULL,
   `commission_type` enum('NONE','PERCENT','TARGET') NOT NULL DEFAULT 'NONE',
   `permissions_json` text DEFAULT NULL,
-  `totp_secret` varchar(64) DEFAULT NULL,
+  `totp_secret` varchar(255) DEFAULT NULL,
   `totp_enabled` tinyint(1) NOT NULL DEFAULT 0,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
@@ -5691,6 +5691,25 @@ CREATE TABLE `token_blacklist` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `user_mfa_recovery_codes`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `user_mfa_recovery_codes` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
+  `user_id` varchar(100) NOT NULL,
+  `code_hash` char(64) NOT NULL,
+  `used_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_mfa_recovery_code` (`tenant_id`,`user_id`,`code_hash`),
+  KEY `idx_mfa_recovery_unused` (`tenant_id`,`user_id`,`used_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `users`
 --
 
@@ -5713,7 +5732,7 @@ CREATE TABLE `users` (
   `last_country_code` char(2) DEFAULT NULL,
   `preferred_currency` char(3) DEFAULT NULL,
   `last_geo_at` datetime DEFAULT NULL,
-  `totp_secret` varchar(64) DEFAULT NULL,
+  `totp_secret` varchar(255) DEFAULT NULL,
   `totp_enabled` tinyint(1) NOT NULL DEFAULT 0,
   `created_at` datetime DEFAULT current_timestamp(),
   `login_count` int(11) DEFAULT 0,

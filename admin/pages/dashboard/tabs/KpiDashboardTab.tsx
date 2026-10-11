@@ -9,6 +9,7 @@ import {
 } from 'recharts';
 import { numericTooltip } from '../../../lib/chartFormat';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
+import SecretRotationCard from '../../../components/SecretRotationCard';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -259,6 +260,8 @@ export default function KpiDashboardTab({ notify }: { notify: NotifyFn }) {
           );
         })}
       </div>
+      {/* The server's signing secrets: amber from day 330, before day 370 stops a restart. */}
+      <SecretRotationCard />
 
     </div>
   );
