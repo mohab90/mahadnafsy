@@ -15,6 +15,12 @@ const PROJECTS = [
 // This advisory affects React Server Components request handling; Mahad's admin
 // and client are static Vite SPAs. The exception is exact-version and expiring,
 // so any different/new advisory or dependency drift still fails CI.
+//
+// 11 Oct 2026: left expired on purpose. npm audit no longer reports
+// GHSA-QWWW-VCR4-C8H2 against react-router 7.18.2 in either app, so the entry
+// accepts nothing today; re-dating it would only pre-approve the advisory if it
+// came back. If it does come back, it fails until someone writes down why it is
+// still safe and dates it again.
 export const ACCEPTED_RISKS = {
   'GHSA-QWWW-VCR4-C8H2': {
     package: 'react-router',
@@ -74,10 +80,25 @@ export function classifyAudit(project, report, now = new Date()) {
   };
 }
 
-function audit(project) {
+// What ships, and what only builds.
+//
+// «npm audit» over the whole tree failed every run from September: braces,
+// brace-expansion and source-map-js, high, all reached through tailwindcss and
+// its PostCSS toolchain. Those run on the laptop and in CI while Vite builds;
+// none of them is in the bundle a visitor downloads or in the API's
+// node_modules on the server (it installs with --omit=dev). A gate that is red
+// for a reason that cannot reach production is a gate people learn to ignore,
+// and an ignored gate also lets the next real one through.
+//
+// So the production tree (--omit=dev) is what fails the gate, at each
+// project's threshold; anything found only in the full tree is printed as a
+// build-tool warning with its advisory, so it is still seen and still fixed
+// when the toolchain is next upgraded. Lockfiles are not touched here.
+function audit(project, { productionOnly }) {
   const npmCli = process.env.npm_execpath;
   const command = npmCli ? process.execPath : (process.platform === 'win32' ? 'npm.cmd' : 'npm');
-  const args = npmCli ? [npmCli, 'audit', '--json'] : ['audit', '--json'];
+  const auditArgs = ['audit', '--json', ...(productionOnly ? ['--omit=dev'] : [])];
+  const args = npmCli ? [npmCli, ...auditArgs] : auditArgs;
   const result = spawnSync(command, args, {
     cwd: path.join(ROOT, project.name),
     encoding: 'utf8',
@@ -95,18 +116,28 @@ function audit(project) {
   return classifyAudit(project, report);
 }
 
+/** Advisories found in the full tree but not in the production one: build tools only. */
+export function buildOnly(full, production) {
+  const shipped = new Set(production.failures.map(item => JSON.stringify(item)));
+  return full.failures.filter(item => !shipped.has(JSON.stringify(item)));
+}
+
 export function run() {
   let failed = false;
   for (const project of PROJECTS) {
-    const result = audit(project);
+    const result = audit(project, { productionOnly: true });
+    const devOnly = buildOnly(audit(project, { productionOnly: false }), result);
     for (const item of result.accepted) {
       console.warn(`⚠ ${project.name}: accepted ${item.advisory} for ${item.package} until ${item.expires}`);
+    }
+    for (const item of devOnly) {
+      console.warn(`⚠ ${project.name} (build-only, not shipped): ${JSON.stringify(item)}`);
     }
     if (result.failures.length) {
       failed = true;
       for (const item of result.failures) console.error(`✗ ${project.name}: ${JSON.stringify(item)}`);
     } else {
-      console.log(`✓ ${project.name}: dependency gate passed`);
+      console.log(`✓ ${project.name}: dependency gate passed (production dependencies${devOnly.length ? `; ${devOnly.length} build-only warning(s)` : ''})`);
     }
   }
   if (failed) process.exitCode = 1;

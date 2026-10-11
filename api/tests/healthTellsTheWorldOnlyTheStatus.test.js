@@ -15,7 +15,12 @@ const stub = (rel, exports) => {
   require.cache[file] = { id: file, filename: file, loaded: true, exports };
 };
 stub('../lib/db', {
-  pool: { query: async () => { if (!dbUp) throw new Error('down'); return [[{ 1: 1 }]]; } },
+  pool: {
+    query: async (sql) => {
+      if (!dbUp) throw new Error('down');
+      return /schema_migrations/.test(sql) ? [[{ version: '267_v26_ticket_raiser_and_branch.sql' }]] : [[{ 1: 1 }]];
+    },
+  },
   cached: async (_k, _t, fn) => fn(), cacheInvalidate() {}, requireDb: (_q, _s, n) => n(), isDbDown: () => false,
   getStaffIdByEmail: async () => null,
 });
@@ -36,6 +41,8 @@ test('a visitor reads the status and nothing behind it', async () => {
   assert.equal(res.body.status, 'ok', 'the deploy check greps "status":"ok"');
   assert.equal(res.body.db, undefined);
   assert.equal(res.body.redis, undefined);
+  assert.equal(res.body.migration, undefined);
+  assert.equal(res.body.disk, undefined);
   dbUp = false;
   const down = await ask('197.0.0.9');
   assert.equal(down.statusCode, 503);
@@ -47,4 +54,16 @@ test('the server itself reads the parts', async () => {
   const res = await ask('127.0.0.1');
   assert.equal(res.body.db, 'connected');
   assert.deepEqual(res.body.redis, { enabled: false, ok: false });
+});
+
+// 11 Oct 2026: the deploy compares the newest applied migration with the newest
+// file it shipped, and reads the disk figure — both from 127.0.0.1 only.
+test('the server itself reads the newest migration and how full the disk is', async () => {
+  dbUp = true;
+  const res = await ask('127.0.0.1');
+  assert.equal(res.body.status, 'ok');
+  assert.equal(res.body.migration, '267_v26_ticket_raiser_and_branch.sql');
+  assert.equal(typeof res.body.disk.thresholdPercent, 'number');
+  assert.equal(typeof res.body.disk.warning, 'boolean');
+  assert.ok(Array.isArray(res.body.disk.disks));
 });

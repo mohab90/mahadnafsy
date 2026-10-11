@@ -43,3 +43,23 @@ test('video upload and playback are permissioned, audited and ticket-streamed', 
   assert.match(lms, /verifyMediaTicket[\s\S]*streamTenantMedia/);
   assert.doesNotMatch(server, /express\.static\([^)]*uploads[\\/]videos/);
 });
+
+// 11 Oct 2026: videos can live outside the release directory, so a deploy's
+// rollback copy and a rollback itself leave them alone.
+test('VIDEO_UPLOAD_DIR moves videos outside the release directory', () => {
+  const file = require.resolve('../lib/uploadSafety');
+  const previous = process.env.VIDEO_UPLOAD_DIR;
+  try {
+    delete require.cache[file];
+    process.env.VIDEO_UPLOAD_DIR = path.join(require('node:os').tmpdir(), 'mahad-videos');
+    const outside = require('../lib/uploadSafety');
+    assert.equal(outside.VIDEO_ROOT, path.resolve(process.env.VIDEO_UPLOAD_DIR));
+    assert.equal(outside.VIDEO_ROOT_IN_RELEASE, false);
+    delete require.cache[file];
+    delete process.env.VIDEO_UPLOAD_DIR;
+    assert.equal(require('../lib/uploadSafety').VIDEO_ROOT_IN_RELEASE, true);
+  } finally {
+    if (previous == null) delete process.env.VIDEO_UPLOAD_DIR; else process.env.VIDEO_UPLOAD_DIR = previous;
+    delete require.cache[file];
+  }
+});

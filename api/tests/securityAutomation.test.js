@@ -33,3 +33,18 @@ test('CI dependency gate only accepts the exact, expiring RSC-only advisory', as
   assert.match(risk.reason, /RSC-only/);
   assert.ok(new Date(`${risk.expires}T23:59:59Z`) > new Date('2026-07-25T00:00:00Z'));
 });
+
+// 11 Oct 2026: the production tree fails the gate; an advisory reached only
+// through build tools (tailwind → braces, brace-expansion, source-map-js) is a
+// warning, because none of it is in what ships.
+test('dependency gate fails on shipped advisories and only warns on build-only ones', async () => {
+  const auditTool = await import(pathToFileURL(path.join(root, 'tools', 'dependency-audit.mjs')));
+  const shipped = { package: 'express', advisory: 'GHSA-AAAA', severity: 'high' };
+  const buildTool = { package: 'braces', advisory: 'GHSA-VFJ7-8CJW-P6XM', severity: 'high' };
+  const production = { failures: [shipped], accepted: [] };
+  const full = { failures: [shipped, buildTool], accepted: [] };
+  assert.deepEqual(auditTool.buildOnly(full, production), [buildTool]);
+  const source = read('tools/dependency-audit.mjs');
+  assert.match(source, /--omit=dev/);
+  assert.match(source, /audit\(project, \{ productionOnly: true \}\)/);
+});

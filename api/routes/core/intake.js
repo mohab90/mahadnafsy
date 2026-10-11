@@ -12,15 +12,31 @@ const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../m
 // named the database and Redis).
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
+// The newest migration the database has. deploy-release.sh compares it with the
+// newest file the release ships, so "the code is live but its schema is not"
+// fails the deploy instead of the first request that needs the new column.
+async function latestMigration() {
+  try {
+    const [[row]] = await pool.query('SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1');
+    return row?.version || null;
+  } catch { return null; }
+}
+
+function diskReport() {
+  try { return require('../../lib/diskUsage').diskHealth(); } catch { return null; }
+}
+
 router.get('/api/health', async (req, res) => {
   const local = LOOPBACK.has(req.ip);
   try {
     await pool.query('SELECT 1');
     const redis = await redisHealth();
     const ready = !redis.enabled || redis.ok;
+    // A full disk is reported, not failed on: a deploy that rolled back over it
+    // would leave the same full disk and the old code.
     res.status(ready ? 200 : 503).json({
       status: ready ? 'ok' : 'degraded',
-      ...(local ? { db: 'connected', redis } : {}),
+      ...(local ? { db: 'connected', redis, migration: await latestMigration(), disk: diskReport() } : {}),
       time: new Date().toISOString(),
     });
   } catch (error) {
