@@ -472,6 +472,7 @@ router.post('/api/staff/enrollment-welcome', requireAuth, requireAdminOrStaff, r
       const waMsg = isOnline
         ? `مرحباً ${personName} 🎉\nتم تسجيلك بنجاح في: ${courseLabel}\nللدخول افتح ${siteUrl} واختر "الدخول برقم الواتساب" — هيوصلك كود على نفس الرقم.${isNew ? '\nوبيانات الدخول بالإيميل اتبعتت على بريدك.' : ''}`
         : `مرحباً ${personName} 🎉\nتم تسجيلك بنجاح في: ${courseLabel}\n📅 سيتم إضافة المحتوى خلال الموعد المحدد مع فريقنا.\n🌐 ${siteUrl}${isNew ? '\nبيانات الدخول بالإيميل اتبعتت على بريدك.' : ''}`;
+      // Direct: sent from the staff member's own «ابعت ترحيب» action.
       try { await sendWhatsApp(phone, waMsg, { tenantId: req.tenantId, category: 'welcome' }); logger.info(`[enrollment-welcome] WA sent to ${phone}`); }
       catch (waErr) { logger.warn('[enrollment-welcome] WA failed:', waErr.message); }
     }
@@ -1042,7 +1043,14 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
           const settings = await getTenantSetting('settings', { tenantId, fallback: {} });
           const welcomeMsg = settings.subscriberWelcomeMsg
             || `أهلاً ${safeName || ''} 🎉\nيسعدنا انضمامك لأسرة مهد نفسي. سيتواصل معك فريقنا قريباً لتجهيز اشتراكك.`;
-          await sendWhatsApp(safePhone.replace(/\D/g, ''), welcomeMsg, { tenantId: req.tenantId, category: 'welcome' });
+          // Queued, once per new subscriber.
+          const recipient = require('../../lib/phoneNumber').toDialable(safePhone);
+          if (recipient) {
+            await require('../../lib/outbox').enqueue({
+              channel: 'whatsapp', recipient, tenantId: req.tenantId, refType: 'subscriber', refId: id,
+              dedupeKey: `subscriber-welcome:${id}`, payload: { message: welcomeMsg, category: 'welcome' },
+            });
+          }
         } catch (_) { /* welcome msg is best-effort */ }
       });
     }

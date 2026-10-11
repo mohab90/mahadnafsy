@@ -88,7 +88,8 @@ router.put('/api/admin/reports/whatsapp', requireAuth, requireAdmin, async (req,
   } catch (error) { failed(res, error, 'owner-report-save'); }
 });
 
-// «ابعت دلوقتي»: today's report, now, to the saved numbers.
+// «ابعت دلوقتي»: today's report, now, to the saved numbers. Sent directly, not
+// queued: the owner is waiting on this screen to see whether it arrived.
 router.post('/api/admin/reports/whatsapp/send-now', requireAuth, requireAdmin, async (req, res) => {
   try {
     const result = await sendOwnerDailyReport({ tenantId: req.tenantId, force: true });

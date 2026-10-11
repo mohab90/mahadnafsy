@@ -7,7 +7,6 @@ const logger = require('../../lib/logger');
 const { pool } = require('../../lib/db');
 const { isItemPaymentType } = require('../../lib/agreedPrice');
 const { queuePaymentReceipt } = require('../../lib/paymentReceipt');
-const { sendWhatsApp } = require('../../lib/whatsapp');
 const { logPaymentAudit, postPaymentJournal } = require('../../lib/finance');
 const { ensureFreshFx, fxStaleError } = require('../../lib/fxRefresh');
 const { recordPaymentCompensation } = require('../../lib/paymentCompensation');
@@ -266,9 +265,14 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
             'SELECT phone FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1',
             [payment.subscriber_id, tenantId]
           );
-          if (subscriber?.phone) {
-            await sendWhatsApp(subscriber.phone.replace(/\D/g, ''),
-              `✅ تم تأكيد دفعتك: ${payment.amount} ${payment.currency || 'EGP'} — معهد الدراسات النفسية`, { tenantId, category: 'payment' });
+          // Queued, one per payment: retried by the outbox, not lost here.
+          const recipient = require('../../lib/phoneNumber').toDialable(subscriber?.phone);
+          if (recipient) {
+            await require('../../lib/outbox').enqueue({
+              channel: 'whatsapp', recipient, tenantId, refType: 'payment', refId: id,
+              dedupeKey: `payment-confirmed-wa:${id}`,
+              payload: { message: `✅ تم تأكيد دفعتك: ${payment.amount} ${payment.currency || 'EGP'} — معهد الدراسات النفسية`, category: 'payment' },
+            });
           }
         } catch (error) {
           logger.warn('[patch-payment] confirmation notification failed:', error.message);

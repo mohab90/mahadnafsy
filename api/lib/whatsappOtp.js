@@ -244,6 +244,8 @@ async function requestLoginCode({ tenantId, phone }) {
     const opening = isNewAccount
       ? 'أهلاً بك في معهد الدراسات النفسية 🌿\nرمز إنشاء حسابك'
       : 'رمز الدخول';
+    // Direct, never through the outbox: a code is worth something for
+    // minutes, and the person is on the screen waiting for it now.
     const send = () => sendWhatsApp(
       normalized,
       `${opening}: ${code}\nصالح لمدة ${CODE_TTL_MINUTES} دقائق. لا تشاركه مع أحد.`,

@@ -22,7 +22,7 @@ const { createNotification } = require('./notification');
 const { getNextSalesRep } = require('./leadAssignment');
 const { upsertThread, recordOnThread } = require('./inboxThreads');
 const { scheduleBotReply } = require('./inboxBot');
-const { setMarketingConsent } = require('./marketingConsent');
+const { setMarketingConsent, isSuppressed } = require('./marketingConsent');
 const logger = require('./logger');
 
 const MAX_BODY = 4000;
@@ -32,8 +32,86 @@ const INBOUND_LEAD_SOURCE = 'whatsapp_inbound';
 // answers with its own text): the person is taken off promotional messages.
 // Matched against the whole message only — «عايز ألغي الحجز» is a question
 // for a rep, not an unsubscribe.
-const OPT_OUT = /^\s*(stop|unsubscribe|الغاء|إلغاء|الغاء الاشتراك|إلغاء الاشتراك|ايقاف|إيقاف|ايقاف الرسائل|إيقاف الرسائل|stop promotions)\s*[.!]?\s*$/i;
-const isOptOut = text => OPT_OUT.test(String(text || ''));
+//
+// «ابعت STOP أو ستوب أو الغاء أو وقف يوقف الرسايل، وابدأ يرجعها» (11 Oct 2026).
+// The spellings people actually type: with or without the hamza, a trailing
+// dot or «؟», a stray diacritic or tatweel, any capitalisation — all read the
+// same once normalised.
+const OPT_OUT_WORDS = new Set([
+  'stop', 'stop promotions', 'stop all', 'unsubscribe', 'ستوب', 'استوب',
+  'الغاء', 'الغاء الاشتراك', 'ايقاف', 'ايقاف الرسائل', 'ايقاف الرسايل',
+  'وقف', 'اوقف', 'وقف الرسائل', 'وقف الرسايل', 'اوقف الرسائل', 'اوقف الرسايل',
+]);
+const OPT_IN_WORDS = new Set(['start', 'ستارت', 'ابدا', 'ابدء', 'ابدا من جديد', 'unstop', 'subscribe']);
+function normalizeCommand(text) {
+  return String(text || '')
+    .normalize('NFKC')
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/[.!؟?،,\s]+$/u, '')
+    .replace(/^\s+/u, '')
+    .replace(/\s+/gu, ' ')
+    .toLowerCase();
+}
+const isOptOut = text => OPT_OUT_WORDS.has(normalizeCommand(text));
+const isOptIn = text => OPT_IN_WORDS.has(normalizeCommand(text));
+
+// The one answer to «ستوب» or «ابدأ». Short, and says how to undo it.
+const OPT_OUT_REPLY = 'تمام ✅ مش هنبعتلك رسايل عروض تاني.\nلو حبيت ترجع تستقبلها ابعت «ابدأ» أو START.';
+const OPT_IN_REPLY = 'أهلاً بيك تاني 💚 هتوصلك عروضنا وأخبارنا من جديد.\nولو حبيت توقفها ابعت «ستوب» أو STOP.';
+
+/**
+ * «ستوب» or «ابدأ» from a customer: record it in the store every promotion is
+ * checked against (marketing_suppressions, lib/marketingConsent.js), and answer
+ * once — only when something changed, so a second «ستوب» (or a provider
+ * retrying the webhook) is not answered again, and «ابدأ» from someone who
+ * never stopped is just a message for the rep.
+ *
+ * The answer is sent directly, not queued: it is a reply inside the
+ * conversation the customer just opened, and a queued one could arrive after
+ * the promotion it was meant to stop. It goes as 'inbox_reply' — a reply to
+ * someone who wrote first — from the number they wrote to. Codes, receipts
+ * and staff alerts are untouched; only promotional kinds read the list.
+ *
+ * @returns {Promise<{optedOut: boolean, optedIn: boolean, replied: boolean}>}
+ */
+async function applyConsentCommand({ tenantId, channelId, from, sender, threadId, command }, db = pool) {
+  const none = { optedOut: false, optedIn: false, replied: false };
+  const already = await isSuppressed(tenantId, 'whatsapp', from, db).catch(() => null);
+  if (command === 'start' && already !== true) return none;
+  if (command === 'stop' && already === true) return { ...none, optedOut: true };
+  const recorded = await setMarketingConsent({
+    tenantId, subjectType: sender.kind, subjectId: sender.id, channel: 'whatsapp',
+    subscribed: command === 'start', source: 'whatsapp_reply',
+  }).then(() => true).catch(error => {
+    logger.warn('[wa-inbound] consent change not recorded', error.message);
+    return false;
+  });
+  if (!recorded) return none;
+  const outcome = { optedOut: command === 'stop', optedIn: command === 'start', replied: false };
+  const text = command === 'stop' ? OPT_OUT_REPLY : OPT_IN_REPLY;
+  const { sendWhatsApp } = require('./whatsapp');
+  const result = await sendWhatsApp(from, text, { tenantId, channelId, category: 'inbox_reply' })
+    .catch(error => ({ ok: false, reason: error.message }));
+  outcome.replied = result?.ok === true;
+  if (!outcome.replied) {
+    logger.info('[wa-inbound] consent confirmation not sent', { reason: String(result?.reason || '').slice(0, 80) });
+    return outcome;
+  }
+  // On the customer's timeline, so the rep sees what they were told. Not on
+  // the conversation's counters: their «ستوب» stays unread until a rep reads it.
+  await db.query(
+    `INSERT INTO communications
+       (id, tenant_id, lead_id, subscriber_id, type, direction, provider_message_id, channel_id,
+        thread_id, delivery_status, date, notes, created_at)
+     VALUES (?,?,?,?, 'WHATSAPP', 'OUT', ?, ?, ?, ?, NOW(), ?, NOW())`,
+    [uuidv4(), tenantId, sender.kind === 'lead' ? sender.id : null, sender.kind === 'subscriber' ? sender.id : null,
+      result.idMessage || null, result.channelId || channelId || null, threadId || null,
+      result.idMessage ? 'sent' : null, text]
+  ).catch(error => logger.warn('[wa-inbound] consent confirmation not logged', error.message));
+  return outcome;
+}
 
 /**
  * Find who this number belongs to. Subscribers win over leads: a paying client
@@ -176,16 +254,11 @@ async function recordInboundMessage({ tenantId, channelId = null, providerMessag
     logger.warn('[wa-inbound] team inbox update failed', error.message);
   }
 
-  let optedOut = false;
-  if (isOptOut(text)) {
-    optedOut = await setMarketingConsent({
-      tenantId, subjectType: sender.kind, subjectId: sender.id, channel: 'whatsapp',
-      subscribed: false, source: 'whatsapp_reply',
-    }).then(() => true).catch(error => {
-      logger.warn('[wa-inbound] opt-out not recorded', error.message);
-      return false;
-    });
-  }
+  const command = isOptOut(text) ? 'stop' : isOptIn(text) ? 'start' : null;
+  const consent = command
+    ? await applyConsentCommand({ tenantId, channelId, from, sender, threadId, command }, db)
+    : { optedOut: false, optedIn: false, replied: false };
+  const { optedOut, optedIn } = consent;
 
   // Notify the owner. Without a recipient this goes to everyone, which is the
   // right fallback for an unassigned lead — better seen by all than by nobody.
@@ -201,10 +274,14 @@ async function recordInboundMessage({ tenantId, channelId = null, providerMessag
   );
 
   // The inbox bot answers a few seconds later, when it is on for this
-  // conversation (lib/inboxBot.js). Not to someone who just opted out.
-  if (threadId && !optedOut) scheduleBotReply({ tenantId, threadId, inboundAt: when });
+  // conversation (lib/inboxBot.js). Not to someone who just opted out, nor on
+  // top of the «ابدأ» confirmation they were just sent.
+  if (threadId && !optedOut && !optedIn) scheduleBotReply({ tenantId, threadId, inboundAt: when });
 
-  return { recorded: true, id, senderKind: sender.kind, senderId: sender.id, createdLead: isNewLead, optedOut };
+  return {
+    recorded: true, id, senderKind: sender.kind, senderId: sender.id, createdLead: isNewLead,
+    optedOut, optedIn, consentReplied: consent.replied,
+  };
 }
 
 // A picture or a voice note has no text; the rep still needs to see one came.
@@ -252,4 +329,9 @@ module.exports = {
   extractMetaMessages,
   extractGreenApiMessage,
   isOptOut,
+  isOptIn,
+  normalizeCommand,
+  applyConsentCommand,
+  OPT_OUT_REPLY,
+  OPT_IN_REPLY,
 };

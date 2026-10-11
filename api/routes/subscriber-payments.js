@@ -7,7 +7,6 @@ const router  = express.Router();
 const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
 const { queuePaymentReceipt } = require('../lib/paymentReceipt');
-const { sendWhatsApp } = require('../lib/whatsapp');
 const { sanitize } = require('../lib/helpers');
 const { createNotification } = require('../lib/notification');
 const { recordPaymentCompensation } = require('../lib/paymentCompensation');
@@ -1009,7 +1008,15 @@ async function recordSubscriberPayment(req, res) {
           .then(([[r]]) => r?.phone || null).catch(() => null);
         if (subPhone) {
           const waMsg = `✅ تم استلام دفعتك بنجاح!\nالمبلغ: ${payment.amount} ${payment.currency || 'EGP'}${courseLabel ? '\nالبرنامج: ' + courseLabel : ''}\nالتاريخ: ${paymentDate}\nشكراً لثقتك بمعهد الدراسات النفسية 💚`;
-          sendWhatsApp(subPhone.replace(/\D/g, ''), waMsg, { tenantId: paymentTenantId, category: 'payment' }).catch(() => {});
+          // Queued, one per payment: retried if the provider is down instead
+          // of lost in a fire-and-forget call.
+          const recipient = require('../lib/phoneNumber').toDialable(subPhone);
+          if (recipient) {
+            require('../lib/outbox').enqueue({
+              channel: 'whatsapp', recipient, tenantId: paymentTenantId, refType: 'payment', refId: id,
+              dedupeKey: `payment-received-wa:${id}`, payload: { message: waMsg, category: 'payment' },
+            }).catch(error => logger.warn('[payment] WhatsApp confirmation not queued', error.message));
+          }
         }
       }
     }

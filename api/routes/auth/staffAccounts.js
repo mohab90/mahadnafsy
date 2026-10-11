@@ -662,6 +662,7 @@ router.post(
         // WhatsApp first — it is how they will actually sign in. The temporary
         // password is a fallback for the recovery hatch, not the main route in.
         if (phoneForUser) {
+          // Direct: the count of who was told comes back to the screen.
           const waResult = await sendWhatsApp(
             phoneForUser,
             `مرحباً ${displayName} 👋\nتم إنشاء حسابك على منصة معهد الدراسات النفسية.\n\nللدخول: افتح mahadnafsy.com واختر "الدخول برقم الواتساب" — هيوصلك كود على نفس الرقم ده.`,

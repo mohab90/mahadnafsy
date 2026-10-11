@@ -502,6 +502,7 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
         `${lines}\n\n` +
         `يُرجى التواصل مع الفريق لترتيب السداد.\nشكراً لتعاونكم 🙏`;
 
+      // Direct: the run reports how many went, number by number.
       const result = await sendWhatsApp(item.subPhone, msg, { tenantId: item.tenantId, category: 'crm' });
       if (result.ok) waSent++;
     }

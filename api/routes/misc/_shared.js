@@ -5,7 +5,7 @@ const { escapeHtml } = require('../../lib/html');
 const { uuidv4 } = require('../../lib/id');
 const { pool } = require('../../lib/db');
 const { mailer, sendEmail } = require('../../lib/email');
-const { sendWhatsApp } = require('../../lib/whatsapp');
+const { toDialable } = require('../../lib/phoneNumber');
 const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff } = require('../../middleware/auth');
 const { DEFAULT_TENANT } = require('../../middleware/tenantContext');
 const { logLoginAttempt } = require('../../lib/loginAudit');
@@ -119,6 +119,17 @@ scheduleDailyReport();
 // writes the one real `notifications` table the header bell actually polls;
 // callers below now use that instead.
 
+// The scheduled reminders below queue their WhatsApp messages rather than
+// sending them in the loop: retried, paced and visible in «رسايل العملاء»
+// like every other message the system sends on its own.
+function queueReminderWhatsApp({ tenantId, phone, message, category, dedupeKey }) {
+  const recipient = toDialable(phone);
+  if (!recipient) return;
+  require('../../lib/outbox').enqueue({
+    channel: 'whatsapp', recipient, tenantId, dedupeKey, payload: { message, category },
+  }).catch(error => logger.warn('[reminders] WhatsApp not queued', error.message));
+}
+
 async function runFollowUpReminders(tenantId = DEFAULT_TENANT) {
   try {
     const today = cairoToday();
@@ -147,7 +158,9 @@ async function runFollowUpReminders(tenantId = DEFAULT_TENANT) {
       // WhatsApp to assigned staff
       if (lead.staff_phone) {
         const msg = `🔔 تذكير متابعة\nالعميل المحتمل: ${lead.name}\nالهاتف: ${lead.phone || '—'}\nالمصدر: ${lead.source || '—'}\nالحالة: ${lead.status || '—'}\n\nيرجى التواصل اليوم 📞`;
-        sendWhatsApp(lead.staff_phone.replace(/\D/g, ''), msg, { tenantId, category: 'staff_alert' }).catch(() => {});
+        // Through the outbox, keyed like the reminder log: a second run on the
+        // same day (a restart, a second process) queues nothing new.
+        queueReminderWhatsApp({ tenantId, phone: lead.staff_phone, message: msg, category: 'staff_alert', dedupeKey: `${logKey}:staff` });
       }
 
       // Email to assigned staff
@@ -374,7 +387,7 @@ async function runPaymentDueReminders(tenantId = DEFAULT_TENANT) {
       // WhatsApp to client
       if (p.phone) {
         const msg = `مرحباً ${p.name} 👋\nهذا تذكير بموعد دفعتك القادمة:\n💰 المبلغ: ${amountFmt}\n📅 الموعد: ${p.due_date} (خلال ${daysLeft} يوم${daysLeft === 1 ? '' : 'أ'})\n\nشكراً لثقتك في معهد الدراسات النفسية 💚`;
-        sendWhatsApp(p.phone.replace(/\D/g, ''), msg, { tenantId, category: 'crm' }).catch(() => {});
+        queueReminderWhatsApp({ tenantId, phone: p.phone, message: msg, category: 'crm', dedupeKey: logKey });
       }
 
       // Email to client

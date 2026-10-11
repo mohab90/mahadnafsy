@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Activity, Loader2, Mail, MessageCircle, RefreshCw, RotateCw, ShieldCheck } from 'lucide-react';
+import { Activity, FileText, Loader2, Mail, MessageCircle, RefreshCw, RotateCw, ShieldCheck } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { useSiteData } from '../../../../context/SiteDataContext';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
@@ -11,7 +11,11 @@ type Summary = {
   topErrors: Array<{ error: string; channel: string; count: number }>;
   last24h: Array<{ channel: string; died: number; sent: number }>;
 };
-type Outbound = { env: string[]; always: string[]; panel: string[]; switchable: string[] };
+type TemplateChoice = { name: string; language: string };
+type Outbound = {
+  env: string[]; always: string[]; panel: string[]; switchable: string[];
+  templates?: Record<string, TemplateChoice>; templateKinds?: string[];
+};
 
 // What each kind of WhatsApp message is, and how much it risks the number.
 const KINDS: Record<string, { label: string; hint: string; risk?: boolean }> = {
@@ -25,11 +29,15 @@ const KINDS: Record<string, { label: string; hint: string; risk?: boolean }> = {
   welcome: { label: 'الترحيب', hint: 'لما حد يسجل أو يشترك' },
   automation: { label: 'الرسايل التلقائية', hint: 'الحملات المتسلسلة', risk: true },
   broadcast: { label: 'الحملات الجماعية', hint: 'رسايل لعدد كبير — أعلى خطر حظر للرقم', risk: true },
+  // «ابعت STOP أو ستوب يوقف الرسايل» (11 Oct 2026): its own switch, never 'reminder'.
+  marketing: { label: 'رسايل إعادة التواصل', hint: 'رسالة كل 30 يوم لليد اللي سكت — مش بتروح لحد بعت «ستوب»', risk: true },
 };
 
 // Why a message died, in words a person can act on.
 function explain(error: string): string {
   if (/category_disabled|موقوف/.test(error)) return 'النوع ده مقفول — يتفتح من «أنواع الرسايل» تحت.';
+  if (/opted_out|ستوب/.test(error)) return 'العميل بعت «ستوب» — رسايل العروض مش بتروحله، ولو بعت «ابدأ» بترجع.';
+  if (/templates_need_meta/.test(error)) return 'القالب محتاج رقم على واتساب الرسمي (Meta) — والرسالة ملهاش نص يتبعت بداله.';
   if (/daily_limit_reached/.test(error)) return 'الرقم وصل لحده اليومي — الباقي بيتبعت تاني يوم.';
   if (/535|authentication failed|Invalid login/i.test(error)) return 'سيرفر الإيميل رافض كلمة السر — «الإعدادات ← البريد»: حط كلمة السر الصح واعمل إرسال تجربة.';
   if (/ETIMEDOUT|ENETUNREACH|timeout/i.test(error)) return 'سيرفر الإيميل مش بيرد — راجع العنوان والبورت في «الإعدادات ← البريد».';
@@ -51,6 +59,7 @@ export function MessagesHealthPanel({ notify }: { notify: NotifyFn }) {
   const [outbound, setOutbound] = useState<Outbound | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
+  const [templates, setTemplates] = useState<Record<string, TemplateChoice>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -61,6 +70,7 @@ export function MessagesHealthPanel({ notify }: { notify: NotifyFn }) {
       ]);
       setSummary(nextSummary);
       setOutbound(nextOutbound);
+      setTemplates(nextOutbound.templates || {});
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر تحميل حالة الرسايل');
     } finally { setLoading(false); }
@@ -82,6 +92,23 @@ export function MessagesHealthPanel({ notify }: { notify: NotifyFn }) {
       notify('success', next.includes(kind) ? `اتفتح: ${KINDS[kind]?.label || kind}` : `اتقفل: ${KINDS[kind]?.label || kind}`);
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر الحفظ');
+    } finally { setBusy(''); }
+  };
+
+  // «قوالب ميتا»: the approved template each kind goes out as from a Meta
+  // number. Empty = the text, as always.
+  const saveTemplates = async () => {
+    setBusy('templates');
+    try {
+      const categories = Object.fromEntries(Object.entries(templates)
+        .filter(([, choice]) => choice.name.trim())
+        .map(([kind, choice]) => [kind, { name: choice.name.trim(), language: choice.language.trim() || 'ar' }]));
+      const next = await mysqlAdmin.adminPut<Outbound>('/admin/messaging/outbound/templates', { categories });
+      setOutbound(next);
+      setTemplates(next.templates || {});
+      notify('success', 'اتحفظت القوالب');
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر حفظ القوالب');
     } finally { setBusy(''); }
   };
 
@@ -197,6 +224,35 @@ export function MessagesHealthPanel({ notify }: { notify: NotifyFn }) {
           })}
         </div>
       </div>
+
+      {canSwitch && (
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
+          <h3 className="flex items-center gap-2 font-extrabold text-gray-800"><FileText size={16} /> قوالب ميتا لكل نوع</h3>
+          <p className="text-xs leading-5 text-gray-500">
+            ميتا مش بتوصّل رسالة عادية لحد ما كلمناش من أكتر من 24 ساعة — بتوصّل قالب متوافق عليه بس.
+            اكتب اسم القالب المعتمد لكل نوع، والرسالة بتتبعت جواه كمتغير واحد {'{{1}}'}. الفاضي بيتبعت نص زي ما هو، وأي رقم مش على ميتا بيبعت النص.
+          </p>
+          <div className="grid gap-2 md:grid-cols-2">
+            {(outbound?.templateKinds || []).filter(kind => KINDS[kind]).map(kind => {
+              const choice = templates[kind] || { name: '', language: 'ar' };
+              const set = (patch: Partial<TemplateChoice>) => setTemplates(current => ({ ...current, [kind]: { ...choice, ...patch } }));
+              return (
+                <label key={kind} className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2">
+                  <span className="w-32 shrink-0 text-xs font-bold text-gray-700">{KINDS[kind].label}</span>
+                  <input value={choice.name} onChange={event => set({ name: event.target.value })} dir="ltr" placeholder="template_name"
+                    className="min-w-0 flex-1 rounded-lg border border-gray-200 px-2 py-1 text-xs" />
+                  <input value={choice.language} onChange={event => set({ language: event.target.value })} dir="ltr" aria-label="اللغة"
+                    className="w-12 rounded-lg border border-gray-200 px-2 py-1 text-xs" />
+                </label>
+              );
+            })}
+          </div>
+          <button disabled={!!busy} onClick={() => void saveTemplates()}
+            className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50">
+            {busy === 'templates' ? <Loader2 size={12} className="animate-spin" /> : null} احفظ القوالب
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -7,23 +7,24 @@ const path = require('node:path');
 
 const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
 
-// Loads scheduledJobHandlers with lib/whatsapp stubbed, so the reminder job can
-// be driven end to end without a network or a database.
+// Loads scheduledJobHandlers with lib/outbox stubbed, so the reminder job can
+// be driven end to end without a network or a database. The job queues its
+// messages (one per session by key) rather than sending them itself.
 function loadHandlersWithWhatsAppStub() {
   const sent = [];
-  const whatsappPath = require.resolve('../lib/whatsapp');
+  const outboxPath = require.resolve('../lib/outbox');
   const handlersPath = require.resolve('../lib/scheduledJobHandlers');
-  const previous = require.cache[whatsappPath];
-  require.cache[whatsappPath] = {
-    id: whatsappPath,
-    filename: whatsappPath,
+  const previous = require.cache[outboxPath];
+  require.cache[outboxPath] = {
+    id: outboxPath,
+    filename: outboxPath,
     loaded: true,
-    exports: { sendWhatsApp: async (phone, message, opts) => { sent.push({ phone, message, opts }); return { ok: true }; } },
+    exports: { enqueue: async message => { sent.push({ phone: message.recipient, message, opts: message }); return 'id'; } },
   };
   delete require.cache[handlersPath];
   const { createScheduledJobHandlers } = require('../lib/scheduledJobHandlers');
   const restore = () => {
-    if (previous) require.cache[whatsappPath] = previous; else delete require.cache[whatsappPath];
+    if (previous) require.cache[outboxPath] = previous; else delete require.cache[outboxPath];
     delete require.cache[handlersPath];
   };
   return { createScheduledJobHandlers, sent, restore };
@@ -73,8 +74,11 @@ test('Dokki round reminders reach only clients who are still contactable', async
     const pool = poolFor(FIXTURES, new Date(Date.now() + 24 * 3600000).toISOString());
     const jobs = createScheduledJobHandlers({ pool, logger: { info() {}, warn() {} } });
     await jobs.daqqiSessionReminder();
-    assert.deepEqual(sent.map(item => item.phone), ['+201000000001']);
+    assert.deepEqual(sent.map(item => item.phone), ['201000000001']);
     assert.equal(sent[0].opts.tenantId, 'tenant-a');
+    assert.equal(sent[0].opts.payload.category, 'reminder');
+    assert.match(sent[0].opts.dedupeKey, /^daqqi-reminder:round-1:\d{4}-\d{2}-\d{2}:24 ساعة:201000000001$/,
+      'one reminder per session and window, however many hourly runs see it');
   } finally {
     restore();
   }

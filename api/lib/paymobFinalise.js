@@ -8,7 +8,7 @@ const { pool } = require('./db');
 const { queuePaymentReceipt } = require('./paymentReceipt');
 const { branchIdForBranch } = require('./branches');
 const { grantCourseEntitlement } = require('./entitlements');
-const { sendWhatsApp } = require('./whatsapp');
+const { toDialable } = require('./phoneNumber');
 const { awardPointsForPayment } = require('./loyalty');
 const { DEFAULT_TENANT_ID } = require('./tenantScope');
 const { postPaymentJournal, logPaymentAudit, toEgp } = require('./finance');
@@ -377,7 +377,15 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
   const adminPhone = process.env.ADMIN_WHATSAPP_PHONE;
   if (adminPhone) {
     const msg = `💳 دفعة أونلاين جديدة!\nالعميل: ${order.customer_name || order.customer_email || '—'}\nالمبلغ: ${order.amount} ${order.currency || 'EGP'}\nالطلب: ${merchantOrderId}`;
-    sendWhatsApp(adminPhone.replace(/\D/g, ''), msg, { tenantId, category: 'staff_alert' }).catch(() => {});
+    // Queued under the order's key: Paymob calls back more than once for one
+    // payment, and the alert is not something the callback should wait on.
+    const recipient = toDialable(adminPhone);
+    if (recipient) {
+      require('./outbox').enqueue({
+        channel: 'whatsapp', recipient, tenantId, refType: 'paymob_order', refId: String(merchantOrderId),
+        dedupeKey: `paymob-admin-alert:${merchantOrderId}`, payload: { message: msg, category: 'staff_alert' },
+      }).catch(error => logger.warn('admin WhatsApp alert not queued', error.message));
+    }
   }
   // Auto-update lead deal_value and convert lead on successful payment
   if (sub?.id && order.amount > 0) {
