@@ -15,6 +15,7 @@ const { setTenantSetting } = require('../lib/tenantSettings');
 const { toDialable } = require('../lib/phoneNumber');
 const { cairoToday } = require('../lib/dates');
 const { canTouchBranch } = require('../lib/physicalBranches');
+const weekly = require('../lib/weeklyBranchReport');
 
 const router = express.Router();
 
@@ -95,6 +96,34 @@ router.post('/api/admin/reports/whatsapp/send-now', requireAuth, requireAdmin, a
     if (result.reason === 'no_numbers') return res.status(400).json({ error: 'احفظ رقم واتساب الأول' });
     res.json(result);
   } catch (error) { failed(res, error, 'owner-report-send'); }
+});
+
+// «التقرير الأسبوعي للفروع»: a week's money, debts by age and each rep's
+// conversion, per branch (lib/weeklyBranchReport.js). ?week= any day of it;
+// the last week that has ended when none.
+router.get('/api/admin/reports/weekly-branches', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    res.json(await weekly.buildWeeklyBranchReport({ tenantId: req.tenantId, week: req.query.week || null }));
+  } catch (error) { failed(res, error, 'weekly-branch-report'); }
+});
+
+// Its Saturday-morning WhatsApp: the switch, the numbers it goes to (the daily
+// report's), and the message the last week would send.
+router.get('/api/admin/reports/weekly-branches/whatsapp', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [settings, owner] = await Promise.all([weekly.weeklyReportSettings(req.tenantId), ownerReportSettings(req.tenantId)]);
+    const report = await weekly.buildWeeklyBranchReport({ tenantId: req.tenantId });
+    res.json({ ...settings, phones: owner.phones, preview: weekly.composeWeeklyBranchReport(report) });
+  } catch (error) { failed(res, error, 'weekly-branch-whatsapp'); }
+});
+
+router.put('/api/admin/reports/weekly-branches/whatsapp', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    await setTenantSetting(weekly.SECTION, { enabled: req.body?.enabled === true },
+      { tenantId: req.tenantId, actorId: req.user?.uid || req.user?.email });
+    const [settings, owner] = await Promise.all([weekly.weeklyReportSettings(req.tenantId), ownerReportSettings(req.tenantId)]);
+    res.json({ ok: true, ...settings, phones: owner.phones });
+  } catch (error) { failed(res, error, 'weekly-branch-whatsapp-save'); }
 });
 
 module.exports = router;
