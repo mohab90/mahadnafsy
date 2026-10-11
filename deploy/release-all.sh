@@ -64,6 +64,19 @@ say() { printf '\n== %s\n' "$*"; }
 
 # ── 1. the commit ────────────────────────────────────────────────────────────
 say "1/9 the commit"
+# The logo and share image live on the institute's own domain (/brand/). The
+# server this was written on could not download them; this machine can. Fetched
+# once here, before the clean-tree check, and then they must be committed — the
+# release packages only committed source.
+if [ ! -f client/public/brand/logo.png ] || [ ! -f client/public/brand/og.jpg ]; then
+  if node tools/fetch-brand-assets.mjs; then
+    echo "The logo and share image were fetched into client/public/brand/." >&2
+    echo "Commit and push them once, then run this again:" >&2
+    echo "  git add client/public/brand && git commit -m 'brand files' && git push origin HEAD:claude/compassionate-cannon-1vztov" >&2
+    exit 1
+  fi
+  echo "WARNING: could not fetch the brand files; nginx serves the old hosted logo for /brand/ until they exist" >&2
+fi
 if [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then
   echo "the worktree is not clean — release from a clean checkout of the commit:" >&2
   git status --short >&2
