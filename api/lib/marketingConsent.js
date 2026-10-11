@@ -7,6 +7,10 @@ const { resolveSecret } = require('./secretResolver');
 const { toDialable } = require('./phoneNumber');
 
 const SUBJECT_TABLES = Object.freeze({ lead: 'leads', subscriber: 'subscribers' });
+
+// The last line of a WhatsApp promotion: how to stop them, in the words the
+// inbound handler understands (lib/whatsappInbound.js).
+const WHATSAPP_OPT_OUT_HINT = 'لو مش حابب توصلك رسايلنا ابعت «ستوب» أو STOP.';
 const CHANNEL_COLUMNS = Object.freeze({ email: 'email', sms: 'phone', whatsapp: 'phone' });
 
 function tokenSecret() {
@@ -128,4 +132,23 @@ async function filterSuppressed(tenantId, channel, recipients, key, db = pool) {
   return recipients.filter(item => !hashesOf(channel, item[key]).some(hash => blocked.has(hash)));
 }
 
-module.exports = { createUnsubscribeToken, verifyUnsubscribeToken, setMarketingConsent, filterSuppressed, destinationHash, normalizeDestination };
+/**
+ * Has this one number (or address) asked to stop? The send-time check every
+ * marketing message passes (lib/whatsapp.js), and what an inbound «ابدأ» reads
+ * to know whether there is anything to undo. Same hashes as filterSuppressed,
+ * so an opt-out saved under any spelling of the number is found.
+ */
+async function isSuppressed(tenantId, channel, destination, db = pool) {
+  if (!normalizeDestination(channel, destination)) return false;
+  const hashes = hashesOf(channel, destination);
+  const [rows] = await db.query(
+    `SELECT destination_hash FROM marketing_suppressions WHERE tenant_id=? AND channel=? AND destination_hash IN (${hashes.map(() => '?').join(',')}) LIMIT 1`,
+    [tenantId, channel, ...hashes]
+  );
+  return rows.length > 0;
+}
+
+module.exports = {
+  createUnsubscribeToken, verifyUnsubscribeToken, setMarketingConsent, filterSuppressed, isSuppressed,
+  destinationHash, normalizeDestination, WHATSAPP_OPT_OUT_HINT,
+};

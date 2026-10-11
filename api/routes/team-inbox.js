@@ -260,6 +260,8 @@ router.post('/api/admin/team-inbox/threads/:id/reply', ...guard, bulkOperationLi
 
     let result;
     let channelId = thread.channel_id || null;
+    // Direct, not queued: a reply typed in the conversation, and the person
+    // who typed it is told here whether WhatsApp took it.
     if (thread.platform === 'whatsapp') {
       result = template
         ? await sendWhatsAppTemplate(thread.contact_key, template, { tenantId: req.tenantId, channelId, category: 'inbox_reply' })

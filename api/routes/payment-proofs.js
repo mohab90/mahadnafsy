@@ -10,7 +10,6 @@ const { tryJson } = require('../lib/helpers');
 const { ensureSubscriberForOrder } = require('../lib/subscriberProvisioning');
 const { postPaymentJournal } = require('../lib/finance');
 const { assertWritable } = require('../lib/periodLock');
-const { sendWhatsApp } = require('../lib/whatsapp');
 const { enqueueFinanceEvent } = require('../lib/financeOutbox');
 const { createNotification } = require('../lib/notification');
 const { convertLeadOfPayment } = require('../lib/leadState');
@@ -560,7 +559,15 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
         const msg = action === 'approve'
           ? `✅ مرحباً ${sub.name || ''}، ${statusAr} إيصال دفعتك بمبلغ ${proof.amount} ${proof.currency || 'EGP'}. شكراً لك! 🎓`
           : `❌ مرحباً ${sub.name || ''}، ${statusAr} إيصال دفعتك بمبلغ ${proof.amount} ${proof.currency || 'EGP'}.${reviewer_note ? '\nالسبب: ' + reviewer_note : ''} يرجى التواصل معنا للمساعدة.`;
-        await sendWhatsApp(sub.phone, msg, { tenantId: req.tenantId, category: 'payment' });
+        // Queued, one per decision on this proof: the reviewer is not kept
+        // waiting on the provider, and a failed send is retried.
+        const recipient = require('../lib/phoneNumber').toDialable(sub.phone);
+        if (recipient) {
+          await require('../lib/outbox').enqueue({
+            channel: 'whatsapp', recipient, tenantId: req.tenantId, refType: 'payment_proof', refId: proof.id,
+            dedupeKey: `payment-proof-${action}:${proof.id}`, payload: { message: msg, category: 'payment' },
+          });
+        }
       }
       if (sub?.email) {
         publishRealtimeEvent('client:payment-updated', {

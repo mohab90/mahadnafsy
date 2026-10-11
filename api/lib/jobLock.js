@@ -44,4 +44,33 @@ async function withJobLock(name, fn, db = pool) {
 const lockedJob = (name, fn) => () => withJobLock(name, fn)
   .catch(error => logger.warn(`[jobs] ${name} failed:`, error.message));
 
-module.exports = { withJobLock, lockedJob };
+/**
+ * A worker tick that never overlaps itself — not in this process, not in
+ * another one on the same database.
+ *
+ * The message worker ran every 60 seconds from a bare setInterval. A tick still
+ * sending when the next one fired meant two drains at once, and the money jobs
+ * sharing that tick waited behind whatever WhatsApp was doing. The flag answers
+ * for this process without a round trip; the named lock for every other.
+ * Returns { skipped: true } when it did not run.
+ */
+function exclusiveTick(name, fn, { lock = withJobLock, log = logger } = {}) {
+  let running = false;
+  return async () => {
+    if (running) {
+      log.info(`[jobs] ${name} is still running from the last tick — skipped`);
+      return { skipped: true };
+    }
+    running = true;
+    try {
+      return await lock(name, fn);
+    } catch (error) {
+      log.warn(`[jobs] ${name} tick failed:`, error.message);
+      return { failed: true };
+    } finally {
+      running = false;
+    }
+  };
+}
+
+module.exports = { withJobLock, lockedJob, exclusiveTick };

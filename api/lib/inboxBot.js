@@ -243,6 +243,8 @@ async function composeReply({ tenantId, settings, messages, platform = 'whatsapp
 async function deliver(thread, message, tenantId) {
   if (thread.platform === 'whatsapp') {
     const { sendWhatsApp } = require('./whatsapp');
+    // Direct: an answer inside the conversation the customer just opened —
+    // queued, it could arrive after the rep's own reply.
     const result = await sendWhatsApp(thread.contact_key, message, { tenantId, channelId: thread.channel_id || null, category: 'inbox_reply' });
     return { ok: !!result?.ok, id: result?.idMessage || null, channelId: result?.channelId || thread.channel_id || null, reason: result?.reason };
   }

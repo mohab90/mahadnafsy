@@ -16,8 +16,9 @@
 // "busy" until the lock frees and it takes over.
 //
 // The link keys are files under WA_WEB_DATA_DIR, outside the release directory
-// so a deploy does not unlink everyone. What the screens show is in the
-// database (lib/whatsappWebStore.js, migration 242).
+// so a deploy does not unlink everyone — sealed, 0600 in 0700 folders
+// (lib/whatsappWebAuthState.js). What the screens show is in the database
+// (lib/whatsappWebStore.js, migration 242).
 
 const fs = require('fs');
 const path = require('path');
@@ -26,10 +27,15 @@ const baseLogger = require('./logger').child({ module: 'whatsapp-web' });
 const { pool } = require('./db');
 const store = require('./whatsappWebStore');
 const { cairoDayStartUtc } = require('./dates');
+const { useSealedAuthState } = require('./whatsappWebAuthState');
 
 const DATA_DIR = process.env.WA_WEB_DATA_DIR
   || (process.env.NODE_ENV === 'production' ? '/var/lib/mahad-api/wa-web' : path.join(__dirname, '..', '.data', 'wa-web'));
-const DAILY_LIMIT = Math.max(1, Number(process.env.WA_WEB_DAILY_LIMIT || 1000));
+// 250 a day per rep unless WA_WEB_DAILY_LIMIT says otherwise. It was 1000 — a
+// personal number sending a thousand messages a day from a linked device is
+// exactly the pattern WhatsApp restricts, and a restricted number is the rep's
+// own phone, not a company line that can be swapped.
+const DAILY_LIMIT = Math.max(1, Number(process.env.WA_WEB_DAILY_LIMIT || 250));
 const MIN_GAP_MS = Math.max(0, Number(process.env.WA_WEB_MIN_GAP_MS || 1500));
 const HISTORY_DAYS = Math.max(1, Number(process.env.WA_WEB_HISTORY_DAYS || 30));
 // Per database (lib/lockName.js): staging on the same MariaDB held the server-wide
@@ -146,10 +152,10 @@ async function connect(tenantId, staffId) {
   const existing = sessions.get(key);
   if (existing && ['connecting', 'linking', 'connected'].includes(existing.status)) return publicState(existing);
 
-  const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers } = await lib();
+  const { default: makeWASocket, BufferJSON, initAuthCreds, proto, DisconnectReason, Browsers } = await lib();
   const dir = authDir(tenantId, staffId);
-  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const { state, saveCreds } = await useMultiFileAuthState(dir);
+  // Not Baileys' useMultiFileAuthState, which writes the keys as plain JSON.
+  const { state, saveCreds } = await useSealedAuthState(dir, { BufferJSON, initAuthCreds, proto }, { root: DATA_DIR });
 
   const session = existing || { tenantId, staffId, retries: 0 };
   Object.assign(session, { status: 'connecting', qr: null, qrAt: null, lastError: null, lastSendAt: 0 });
@@ -231,6 +237,7 @@ async function connect(tenantId, staffId) {
           const match = await store.matchChat(tenantId, staffId, row.jid);
           await store.logToCrm(tenantId, staffId, row, match);
           if (!row.fromMe) await store.refreshInterest(tenantId, staffId, row.jid);
+          if (!row.fromMe) await recordConsentFromRepChat(tenantId, row, match);
         }
         await saveState(tenantId, staffId, { last_seen_at: new Date() });
       }
@@ -253,6 +260,29 @@ async function connect(tenantId, staffId) {
   sock.ev.on('contacts.upsert', contacts => { if (current()) store.recordContactNames(tenantId, staffId, contacts).catch(() => {}); });
 
   return publicState(session);
+}
+
+/**
+ * «ستوب» / «ابدأ» typed to a rep's own WhatsApp counts as it does on the
+ * company number (lib/whatsappInbound.js): same list, so promotions from any
+ * number stop. No automatic answer from here — this is the rep's own phone and
+ * their own conversation, and they see the message.
+ */
+async function recordConsentFromRepChat(tenantId, row, match) {
+  const subjectType = match?.subscriberId ? 'subscriber' : match?.leadId ? 'lead' : null;
+  if (!subjectType) return;
+  const { isOptOut, isOptIn } = require('./whatsappInbound');
+  const command = isOptOut(row.body) ? 'stop' : isOptIn(row.body) ? 'start' : null;
+  if (!command) return;
+  const consent = require('./marketingConsent');
+  try {
+    // «ابدأ» undoes a «ستوب»; from someone who never stopped it is just a word.
+    if (command === 'start' && !(await consent.isSuppressed(tenantId, 'whatsapp', row.phone))) return;
+    await consent.setMarketingConsent({
+      tenantId, subjectType, subjectId: match.subscriberId || match.leadId, channel: 'whatsapp',
+      subscribed: command === 'start', source: 'whatsapp_rep_chat',
+    });
+  } catch (error) { baseLogger.warn('[wa-web] consent change not recorded', error.message); }
 }
 
 function publicState(session) {

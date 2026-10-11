@@ -169,7 +169,10 @@ async function announceDeadLetter(row, error) {
   );
 }
 
-async function finalizeCampaign(row, sent, dead) {
+// `skipReason`: the message was held back on purpose (the number wrote «ستوب»
+// after the campaign was queued) — the recipient reads 'skipped', and it is
+// not counted as a failure, nor does it mark the campaign failed.
+async function finalizeCampaign(row, sent, dead, { skipReason = null } = {}) {
   if (row.ref_type === 'crm_sequence_step' && row.ref_id) {
     await pool.query(
       `UPDATE crm_sequence_step_executions
@@ -189,16 +192,25 @@ async function finalizeCampaign(row, sent, dead) {
   // has an answer. Without this it would sit at 'queued' forever, even after
   // the message was delivered or gave up.
   if (row.ref_type === 'whatsapp_campaign') {
-    await pool.query(
-      `UPDATE whatsapp_campaign_recipients SET status=?
-        WHERE tenant_id=? AND campaign_id=? AND outbox_id=?`,
-      [sent ? 'sent' : dead ? 'failed' : 'queued', row.tenant_id, row.ref_id, row.id]
-    ).catch(() => {});
+    if (skipReason) {
+      await pool.query(
+        `UPDATE whatsapp_campaign_recipients SET status='skipped',skip_reason=?
+          WHERE tenant_id=? AND campaign_id=? AND outbox_id=?`,
+        [skipReason, row.tenant_id, row.ref_id, row.id]
+      ).catch(() => {});
+    } else {
+      await pool.query(
+        `UPDATE whatsapp_campaign_recipients SET status=?
+          WHERE tenant_id=? AND campaign_id=? AND outbox_id=?`,
+        [sent ? 'sent' : dead ? 'failed' : 'queued', row.tenant_id, row.ref_id, row.id]
+      ).catch(() => {});
+    }
   }
   if (sent) await pool.query(`UPDATE ${table} SET sent_count=sent_count+1 WHERE id=? AND tenant_id=?`, [row.ref_id, row.tenant_id]);
-  if (dead) await pool.query(`UPDATE ${table} SET fail_count=fail_count+1 WHERE id=? AND tenant_id=?`, [row.ref_id, row.tenant_id]);
+  if (dead && !skipReason) await pool.query(`UPDATE ${table} SET fail_count=fail_count+1 WHERE id=? AND tenant_id=?`, [row.ref_id, row.tenant_id]);
   const [[remaining]] = await pool.query(
-    `SELECT SUM(status IN ('pending','processing','failed')) AS remaining,SUM(status='dead') AS dead_count
+    `SELECT SUM(status IN ('pending','processing','failed')) AS remaining,
+            SUM(status='dead' AND COALESCE(last_error,'') NOT LIKE '%opted_out%') AS dead_count
        FROM message_outbox WHERE tenant_id=? AND ref_type=? AND ref_id=?`,
     [row.tenant_id, row.ref_type, row.ref_id]
   );
@@ -210,20 +222,33 @@ async function finalizeCampaign(row, sent, dead) {
   }
 }
 
-// Drain due pending rows. `senders` = { email: fn, whatsapp: fn }.
-async function drain(senders, limit = 20) {
-  const workerId = `message-${process.pid}-${uuidv4()}`;
-  const batchSize = Math.min(Math.max(Number(limit) || 20, 1), 100);
+// ── Claiming ──────────────────────────────────────────────────────────────────
+// A row left in 'processing' for STALE_CLAIM_MINUTES is taken to belong to a
+// worker that died, and is claimed again. That used to be a hundred rows at a
+// time, sent one by one: a batch slow enough — a provider timing out at 20 s a
+// message — still had its tail waiting when the 15 minutes ran out, another
+// tick claimed those rows again, and both sent them.
+//
+// So a few rows are claimed at a time, each claim is refreshed (and checked
+// still ours) just before its message goes, and a drain that runs past its time
+// hands back what it has not reached. A row is only ever sent by the worker
+// whose name is on it at that moment. (The tick itself is guarded too, in
+// lib/backgroundScheduler.js — this is what still holds after a crash, or with
+// two processes on one database.)
+const STALE_CLAIM_MINUTES = 15;
+const CLAIM_BATCH = 5;
+const DRAIN_BUDGET_MS = 4 * 60 * 1000;
+
+async function claimBatch(workerId, size) {
   const conn = await pool.getConnection();
-  let rows = [];
   try {
     await conn.beginTransaction();
-    [rows] = await conn.query(
+    const [rows] = await conn.query(
       `SELECT * FROM message_outbox
         WHERE ((status IN ('pending','failed') AND next_attempt_at<=NOW())
-           OR (status='processing' AND locked_at<DATE_SUB(NOW(),INTERVAL 15 MINUTE)))
+           OR (status='processing' AND locked_at<DATE_SUB(NOW(),INTERVAL ${STALE_CLAIM_MINUTES} MINUTE)))
         ORDER BY next_attempt_at LIMIT ? FOR UPDATE`,
-      [batchSize]
+      [size]
     );
     if (rows.length) {
       await conn.query(
@@ -233,69 +258,129 @@ async function drain(senders, limit = 20) {
       );
     }
     await conn.commit();
+    return rows;
   } catch (error) {
     await conn.rollback().catch(() => {});
     throw error;
   } finally { conn.release(); }
-  let sent = 0;
-  for (const m of rows) {
-    try {
-      const payload = typeof m.payload_json === 'string' ? JSON.parse(m.payload_json) : (m.payload_json || {});
-      const send = senders[m.channel];
-      if (typeof send !== 'function') throw new Error('no sender for channel ' + m.channel);
-      // channel_id travels with the row so a queued message is delivered from
-      // the identity it was composed for, even if the tenant default changed
-      // between queueing and sending. The payload may still override it.
-      const delivery = await send({
-        recipient: m.recipient, subject: m.subject, tenantId: m.tenant_id,
-        channelId: m.channel_id || null, ...payload,
-      });
-      if (delivery?.ok === false) {
-        const reason = typeof delivery.reason === 'string' ? delivery.reason : JSON.stringify(delivery.reason);
-        throw new Error(reason || `${m.channel} provider rejected the message`);
-      }
-      await pool.query(
-        `UPDATE message_outbox
-            SET status='sent',sent_at=NOW(),locked_at=NULL,locked_by=NULL,last_error=NULL,
-                provider=?,provider_message_id=?,delivery_status=?,
-                provider_status_at=IF(? IS NULL,provider_status_at,NOW()),provider_error=NULL
-          WHERE id=? AND tenant_id=? AND locked_by=?`,
-        [
-          delivery?.provider || null,
-          delivery?.idMessage || null,
-          delivery?.idMessage ? 'accepted' : null,
-          delivery?.idMessage || null,
-          m.id,
-          m.tenant_id,
-          workerId,
-        ]
-      );
-      await finalizeCampaign(m, true, false);
-      sent++;
-    } catch (e) {
-      const attempts = (m.attempts || 0) + 1;
-      // A category the system is not allowed to send is a standing decision, not
-      // a delivery fault: retrying it MAX_ATTEMPTS times over an hour changes
-      // nothing, and leaves rows sitting in `failed` as though the provider were
-      // at fault. Dead-letter it on the first attempt instead.
-      const permanentlyRefused = /category_disabled|إرسال هذا النوع من الرسائل موقوف/
-        .test(String(e.message || e));
-      const dead = permanentlyRefused || attempts >= MAX_ATTEMPTS;
-      const backoff = Math.min(60, 2 ** attempts);
-      await pool.query(
-        `UPDATE message_outbox SET status=?,attempts=?,last_error=?,locked_at=NULL,locked_by=NULL,
-           next_attempt_at=DATE_ADD(NOW(),INTERVAL ? MINUTE) WHERE id=? AND tenant_id=? AND locked_by=?`,
-        [dead ? 'dead' : 'failed', attempts, String(e.message || e).slice(0, 2000), backoff, m.id, m.tenant_id, workerId]
-      );
-      if (dead) {
-        await finalizeCampaign(m, false, true);
+}
+
+/** Still ours? Restart the stale clock, right before the send. */
+async function refreshClaim(row, workerId) {
+  const [result] = await pool.query(
+    `UPDATE message_outbox SET locked_at=NOW()
+      WHERE id=? AND tenant_id=? AND locked_by=? AND status='processing'`,
+    [row.id, row.tenant_id, workerId]
+  );
+  return result?.affectedRows !== 0;
+}
+
+/** Rows claimed but not reached: back in the queue now, not 15 minutes from now. */
+async function releaseClaims(rows, workerId) {
+  if (!rows.length) return;
+  await pool.query(
+    `UPDATE message_outbox SET status=IF(attempts>0,'failed','pending'),locked_at=NULL,locked_by=NULL
+      WHERE locked_by=? AND status='processing' AND id IN (${rows.map(() => '?').join(',')})`,
+    [workerId, ...rows.map(row => row.id)]
+  ).catch(error => logger.warn('[outbox] unreached rows not released', error.message));
+}
+
+// Not a delivery fault: a decision that stands until a person changes it.
+// Retrying MAX_ATTEMPTS times over an hour changes nothing, and leaves rows
+// sitting in `failed` as though the provider were at fault, so these die on the
+// first attempt. A number that wrote «ستوب» is not a failure to tell anyone
+// about either: the message was not supposed to go.
+const PERMANENT_REFUSAL = /category_disabled|إرسال هذا النوع من الرسائل موقوف|opted_out/;
+const isOptOutRefusal = message => /\bopted_out\b/.test(String(message || ''));
+
+async function deliver(m, senders, workerId) {
+  try {
+    const payload = typeof m.payload_json === 'string' ? JSON.parse(m.payload_json) : (m.payload_json || {});
+    const send = senders[m.channel];
+    if (typeof send !== 'function') throw new Error('no sender for channel ' + m.channel);
+    // channel_id travels with the row so a queued message is delivered from
+    // the identity it was composed for, even if the tenant default changed
+    // between queueing and sending. The payload may still override it.
+    const delivery = await send({
+      recipient: m.recipient, subject: m.subject, tenantId: m.tenant_id,
+      channelId: m.channel_id || null, ...payload,
+    });
+    if (delivery?.ok === false) {
+      const reason = typeof delivery.reason === 'string' ? delivery.reason : JSON.stringify(delivery.reason);
+      throw new Error(reason || `${m.channel} provider rejected the message`);
+    }
+    await pool.query(
+      `UPDATE message_outbox
+          SET status='sent',sent_at=NOW(),locked_at=NULL,locked_by=NULL,last_error=NULL,
+              provider=?,provider_message_id=?,delivery_status=?,
+              provider_status_at=IF(? IS NULL,provider_status_at,NOW()),provider_error=NULL
+        WHERE id=? AND tenant_id=? AND locked_by=?`,
+      [
+        delivery?.provider || null,
+        delivery?.idMessage || null,
+        delivery?.idMessage ? 'accepted' : null,
+        delivery?.idMessage || null,
+        m.id,
+        m.tenant_id,
+        workerId,
+      ]
+    );
+    await finalizeCampaign(m, true, false);
+    return true;
+  } catch (e) {
+    const attempts = (m.attempts || 0) + 1;
+    const permanentlyRefused = PERMANENT_REFUSAL.test(String(e.message || e));
+    const dead = permanentlyRefused || attempts >= MAX_ATTEMPTS;
+    const backoff = Math.min(60, 2 ** attempts);
+    await pool.query(
+      `UPDATE message_outbox SET status=?,attempts=?,last_error=?,locked_at=NULL,locked_by=NULL,
+         next_attempt_at=DATE_ADD(NOW(),INTERVAL ? MINUTE) WHERE id=? AND tenant_id=? AND locked_by=?`,
+      [dead ? 'dead' : 'failed', attempts, String(e.message || e).slice(0, 2000), backoff, m.id, m.tenant_id, workerId]
+    );
+    if (dead) {
+      const optedOut = isOptOutRefusal(e.message || e);
+      await finalizeCampaign(m, false, true, optedOut ? { skipReason: 'ألغى الاشتراك' } : {});
+      if (!optedOut) {
         await announceDeadLetter(m, e).catch(error =>
           logger.warn('[outbox] dead-letter notice failed', error.message));
       }
-      logger.warn('[outbox] delivery failed', { id: m.id, channel: m.channel, attempts, err: e.message });
+    }
+    logger.warn('[outbox] delivery failed', { id: m.id, channel: m.channel, attempts, err: e.message });
+    return false;
+  }
+}
+
+/**
+ * Drain due rows. `senders` = { email: fn, whatsapp: fn, … }.
+ * `limit` is how many messages one drain sends at most — the pace the queue
+ * has always kept — claimed CLAIM_BATCH at a time.
+ */
+async function drain(senders, limit = 20, { budgetMs = DRAIN_BUDGET_MS } = {}) {
+  const workerId = `message-${process.pid}-${uuidv4()}`;
+  const total = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  const deadline = Date.now() + budgetMs;
+  let handled = 0;
+  let sent = 0;
+  while (handled < total && Date.now() < deadline) {
+    const rows = await claimBatch(workerId, Math.min(CLAIM_BATCH, total - handled));
+    if (!rows.length) break;
+    for (const [index, m] of rows.entries()) {
+      if (Date.now() >= deadline) {
+        await releaseClaims(rows.slice(index), workerId);
+        return sent;
+      }
+      handled += 1;
+      // Reclaimed by another worker while this one was busy: theirs now.
+      if (!await refreshClaim(m, workerId)) {
+        logger.warn('[outbox] claim lost before sending — left to its new owner', { id: m.id });
+        continue;
+      }
+      if (await deliver(m, senders, workerId)) sent += 1;
     }
   }
   return sent;
 }
 
-module.exports = { enqueue, drain, MAX_ATTEMPTS, finalizeCampaign, announceDeadLetter, isSystemicFailure };
+module.exports = {
+  enqueue, drain, MAX_ATTEMPTS, CLAIM_BATCH, STALE_CLAIM_MINUTES, finalizeCampaign, announceDeadLetter, isSystemicFailure,
+};

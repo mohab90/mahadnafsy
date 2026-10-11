@@ -102,7 +102,7 @@ test('every journey message names a kind the owner can switch', async () => {
 
 test('the drain passes each message\'s own kind, and every enqueuer gives one', () => {
   assert.match(read('api/lib/backgroundScheduler.js'),
-    /sendWhatsApp\(recipient, message \|\| '', \{ tenantId, channelId, staffId, category: category \|\| 'broadcast' \}\)/);
+    /sendQueuedWhatsApp\(recipient, \{\s*message, template, tenantId, channelId, staffId, category: category \|\| 'broadcast',\s*\}\)/);
   const kinds = {
     'api/lib/crmSla.js': 'staff_alert',
     'api/lib/leadInteractions.js': 'crm',

@@ -17,7 +17,9 @@ const router = express.Router();
 const logger = require('../lib/logger').child({ module: 'messaging-channels' });
 const { pool } = require('../lib/db');
 const channels = require('../lib/messagingChannels');
-const { invalidateOutbound, isCategoryOpen, outboundState, sendWhatsApp } = require('../lib/whatsapp');
+const {
+  cleanTemplateMap, invalidateOutbound, isCategoryOpen, outboundState, sendWhatsApp, TEMPLATE_SETTING,
+} = require('../lib/whatsapp');
 const { setTenantSetting } = require('../lib/tenantSettings');
 const { verifyMessengerCredentials } = require('../lib/messenger');
 const { verifyWapilot, listWapilotInstances } = require('../lib/whatsappWapilot');
@@ -301,6 +303,7 @@ router.post('/api/messaging/channels/:id/test', ...selfChannel, bulkOperationLim
     const to = toDialable(req.body?.to || channel.display_number);
     if (!to) return res.status(400).json({ error: 'أدخل رقماً صالحاً للاختبار' });
 
+    // Direct: the test is the answer the button shows.
     const result = await sendWhatsApp(
       to,
       req.body?.message || 'رسالة اختبار من منصة معهد الدراسات النفسية ✅',
@@ -453,6 +456,21 @@ router.put('/api/admin/messaging/outbound', requireAuth, requireAdmin, async (re
     logger.info('[outbound-categories]', { actor: req.user?.email || null, categories });
     res.json(await outboundState(req.tenantId));
   } catch (error) { fail(res, error, 'outbound save failed'); }
+});
+
+// «قوالب ميتا»: per kind of message, the approved template a queued message of
+// that kind goes out as from a Meta number — outside the 24 hours after a
+// customer last wrote, the only thing Meta delivers. Empty by default; a kind
+// left empty goes as text, as before (lib/whatsapp.js sendQueuedWhatsApp).
+router.put('/api/admin/messaging/outbound/templates', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const categories = cleanTemplateMap({ categories: req.body?.categories || {} });
+    await setTenantSetting(TEMPLATE_SETTING, { categories },
+      { tenantId: req.tenantId, actorId: req.user?.uid || req.user?.email });
+    invalidateOutbound(req.tenantId);
+    logger.info('[outbound-templates]', { actor: req.user?.email || null, kinds: Object.keys(categories) });
+    res.json(await outboundState(req.tenantId));
+  } catch (error) { fail(res, error, 'outbound templates save failed'); }
 });
 
 

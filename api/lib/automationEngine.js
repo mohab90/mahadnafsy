@@ -14,7 +14,9 @@
 const { TERMINAL_SQL } = require('./leadStatuses');
 const { pool } = require('./db');
 const { tryJson } = require('./helpers');
-const { sendWhatsApp } = require('./whatsapp');
+const outbox = require('./outbox');
+const { toDialable } = require('./phoneNumber');
+const { cairoToday } = require('./dates');
 const { logLeadEvent } = require('./crm');
 const { transitionLead } = require('./leadState');
 const { assignLead } = require('./leadAssignment');
@@ -403,10 +405,19 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
           }
 
           else if (step.action === 'send_whatsapp' && msg && lead.phone) {
+            // Queued, not sent from here: the outbox paces and retries it, and
+            // the key holds one message per workflow step, person and day —
+            // the daily run and the «شغّل دلوقتي» button on the same day used
+            // to send it twice. 'automation' is a promotional kind, so a
+            // number that wrote «ستوب» is skipped when it is sent.
             try {
-              const cleanPhone = String(lead.phone).replace(/\D/g, '');
-              if (cleanPhone.length >= 10) {
-                await sendWhatsApp(cleanPhone, msg, { tenantId: tid, category: 'automation' });
+              const recipient = toDialable(lead.phone);
+              if (recipient) {
+                await outbox.enqueue({
+                  channel: 'whatsapp', recipient, tenantId: tid, refType: 'automation_workflow', refId: wf.id,
+                  dedupeKey: `automation:${wf.id}:${actionSteps.indexOf(step)}:${lead.id || recipient}:${cairoToday()}`,
+                  payload: { message: msg, category: 'automation' },
+                });
                 actionsRun++;
               }
             } catch (_) { /* best-effort */ }

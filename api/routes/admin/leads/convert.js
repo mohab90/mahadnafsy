@@ -9,7 +9,6 @@ const {
   pickCollectionOfficer,
   subscriberMarket,
   mailer,
-  sendWhatsApp,
   tryJson,
   sanitize,
   sendRouteError,
@@ -312,11 +311,14 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
     transactionStarted = false;
 
     // 12. Post-commit: send WhatsApp welcome + enqueue registration sequence
-    const sendTenantWhatsApp = (phone, message) => sendWhatsApp(phone, message, { tenantId, category: 'crm' });
-    if (lead.phone) {
-      sendTenantWhatsApp(lead.phone.replace(/\D/g, ''),
-        `أهلاً ${lead.name} 🎉\nتم تفعيل اشتراكك في معهد الدراسات النفسية.\nيسعدنا انضمامك لأسرتنا. 💚`
-      ).catch(() => {});
+    // Queued, once per converted lead: retried by the outbox, not lost here.
+    const welcomeTo = require('../../../lib/phoneNumber').toDialable(lead.phone);
+    if (welcomeTo) {
+      require('../../../lib/outbox').enqueue({
+        channel: 'whatsapp', recipient: welcomeTo, tenantId, refType: 'lead', refId: lead.id,
+        dedupeKey: `lead-converted-wa:${lead.id}`,
+        payload: { message: `أهلاً ${lead.name} 🎉\nتم تفعيل اشتراكك في معهد الدراسات النفسية.\nيسعدنا انضمامك لأسرتنا. 💚`, category: 'crm' },
+      }).catch(error => logger.warn('[lead-convert] WhatsApp welcome not queued', { error: error.message }));
     }
     if (lead.email) {
       enqueueEmailSequence({ tenantId, triggerEvent: 'enrollment', recipientEmail: lead.email, recipientName: lead.name }).catch(error => logger.warn('[lead-convert] sequence enqueue failed', { error: error.message }));

@@ -54,7 +54,23 @@ const ALWAYS_ALLOWED = new Set(['owner_report', 'staff_alert']);
 // on top of the env allowlist: tenant setting 'whatsapp_outbound', read through
 // a one-minute cache. The decision to resume customer messages after the bans is
 // the owner's, so it is a switch in the panel and not an edit on the server.
-const PANEL_CATEGORIES = new Set(['welcome', 'reminder', 'payment', 'crm', 'inbox_reply', 'automation', 'broadcast']);
+// 'marketing' is the re-engagement message to a lead gone quiet (lib/
+// scheduledJobHandlers.js leadRetargeting) — a promotion, so it has its own
+// switch instead of riding 'reminder', which a customer's own session uses.
+const PANEL_CATEGORIES = new Set(['welcome', 'reminder', 'payment', 'crm', 'inbox_reply', 'automation', 'broadcast', 'marketing']);
+
+// «ستوب» / STOP (lib/whatsappInbound.js) is kept in marketing_suppressions.
+// Every promotional kind is checked against it here, at the moment it is sent,
+// not only when an audience is built: a campaign queued on Monday otherwise
+// still reaches the man who wrote «ستوب» on Tuesday, and the 30-day
+// re-engagement message never looked at the list at all. Codes, receipts, a
+// reminder of a session someone booked and alerts to staff are not promotions
+// and are never held by it.
+const MARKETING_CATEGORIES = new Set(['marketing', 'broadcast', 'automation']);
+async function isOptedOut(category, tenantId, phone) {
+  if (!MARKETING_CATEGORIES.has(String(category || '').trim().toLowerCase())) return false;
+  return require('./marketingConsent').isSuppressed(tenantId || DEFAULT_TENANT, 'whatsapp', phone);
+}
 const panelCache = new Map();
 async function panelAllowed(tenantId) {
   const key = String(tenantId || DEFAULT_TENANT);
@@ -70,8 +86,53 @@ async function panelAllowed(tenantId) {
   return value;
 }
 function invalidateOutbound(tenantId) {
-  if (tenantId) panelCache.delete(String(tenantId));
-  else panelCache.clear();
+  if (tenantId) { panelCache.delete(String(tenantId)); templateCache.delete(String(tenantId)); }
+  else { panelCache.clear(); templateCache.clear(); }
+}
+
+// ── Approved templates per kind of message ───────────────────────────────────
+// Outside the 24 hours after a customer last wrote, Meta delivers a template or
+// nothing: a queued reminder sent as text to someone who has not written in a
+// week is refused. Tenant setting 'whatsapp_templates' names, per kind, the
+// approved template a queued message of that kind goes out as from a Meta
+// number — { categories: { reminder: { name, language } } }. Empty until the
+// owner fills it in, so nothing changes until then; any other provider sends
+// the text as it always did. The template must take the message as its one
+// body variable {{1}}.
+const TEMPLATE_SETTING = 'whatsapp_templates';
+const TEMPLATE_CATEGORIES = new Set([...PANEL_CATEGORIES, ...ALWAYS_ALLOWED]);
+const templateCache = new Map();
+function cleanTemplateMap(saved) {
+  const out = {};
+  const source = saved && typeof saved.categories === 'object' && !Array.isArray(saved.categories) ? saved.categories : {};
+  for (const [kind, entry] of Object.entries(source)) {
+    const category = String(kind).toLowerCase();
+    if (!TEMPLATE_CATEGORIES.has(category)) continue;
+    const name = String((typeof entry === 'string' ? entry : entry?.name) || '').trim();
+    if (!/^[a-z0-9_]{1,512}$/.test(name)) continue;
+    const language = String((typeof entry === 'object' && entry?.language) || 'ar').trim().slice(0, 15) || 'ar';
+    out[category] = { name, language };
+  }
+  return out;
+}
+async function categoryTemplates(tenantId) {
+  const key = String(tenantId || DEFAULT_TENANT);
+  const hit = templateCache.get(key);
+  if (hit && Date.now() - hit.at < 60_000) return hit.value;
+  let value = {};
+  try {
+    value = cleanTemplateMap(await getTenantSetting(TEMPLATE_SETTING, { tenantId: key, fallback: {} }));
+  } catch (_) { value = hit?.value || {}; }
+  templateCache.set(key, { value, at: Date.now() });
+  return value;
+}
+/** The approved template a queued message of this kind goes as, its text as {{1}} — or null. */
+async function templateForCategory(tenantId, category, message) {
+  const entry = (await categoryTemplates(tenantId))[String(category || '').toLowerCase()];
+  if (!entry) return null;
+  // Meta refuses a parameter with a new line, a tab or a run of spaces in it.
+  const text = String(message || '').replace(/\s*\n\s*/g, ' · ').replace(/\t/g, ' ').replace(/ {4,}/g, '   ').trim();
+  return { name: entry.name, language: entry.language, params: text ? [text] : [] };
 }
 async function isCategoryOpen(category, tenantId) {
   if (isCategoryAllowed(category)) return true;
@@ -85,6 +146,8 @@ async function outboundState(tenantId) {
     always: [...ALWAYS_ALLOWED],
     panel: [...(await panelAllowed(tenantId))],
     switchable: [...PANEL_CATEGORIES],
+    templates: await categoryTemplates(tenantId),
+    templateKinds: [...TEMPLATE_CATEGORIES],
   };
 }
 
@@ -284,6 +347,14 @@ async function sendWhatsApp(phone, message, options = {}) {
       return { ok: false, reason: 'invalid_number' };
     }
 
+    // A promotion to a number that wrote «ستوب». Inside the try: a lookup that
+    // fails lands in the catch below as a failed send, which the outbox retries,
+    // so a promotion never goes out on a list nobody could read.
+    if (await isOptedOut(opts.category, tenantId, normalized)) {
+      logger.info('[WhatsApp] number opted out of promotions — not sending', { category: String(opts.category) });
+      return { ok: false, reason: 'opted_out', category: opts.category };
+    }
+
     // A registered channel wins. Loaded lazily so this module stays usable in
     // tests and scripts that never touch the channel registry.
     const channels = require('./messagingChannels');
@@ -352,14 +423,22 @@ async function sendWhatsApp(phone, message, options = {}) {
   }
 }
 
-/** {name, language, params} → the template object Meta's send API takes. */
-function buildTemplatePayload({ name, language, params = [] }) {
+/**
+ * {name, language, params} → the template object Meta's send API takes.
+ * A queued message may instead carry its `components` already in Meta's shape
+ * (a header picture, a button's link) — they are passed through untouched.
+ */
+function buildTemplatePayload({ name, language, params = [], components }) {
+  const code = String((typeof language === 'object' ? language?.code : language) || 'ar').trim() || 'ar';
+  if (Array.isArray(components)) {
+    return { name: String(name || '').trim(), language: { code }, ...(components.length ? { components } : {}) };
+  }
   // Meta refuses an empty parameter; a dash reads better than a failed send.
   const parameters = (Array.isArray(params) ? params : [])
     .map(value => ({ type: 'text', text: String(value ?? '').trim().slice(0, 1000) || '-' }));
   return {
     name: String(name || '').trim(),
-    language: { code: String(language || 'ar').trim() || 'ar' },
+    language: { code },
     ...(parameters.length ? { components: [{ type: 'body', parameters }] } : {}),
   };
 }
@@ -382,10 +461,13 @@ async function sendWhatsAppTemplate(phone, template, options = {}) {
     const normalized = toDialable(phone);
     if (!normalized) return { ok: false, reason: 'invalid_number' };
     if (!String(template?.name || '').trim()) return { ok: false, reason: 'template_required' };
+    if (await isOptedOut(options.category, tenantId, normalized)) {
+      return { ok: false, reason: 'opted_out', category: options.category };
+    }
 
     const channels = require('./messagingChannels');
     const resolved = await channels.getSendableChannel({
-      tenantId, channelId: options.channelId || null, kind: 'whatsapp',
+      tenantId, channelId: options.channelId || null, staffId: options.staffId || null, kind: 'whatsapp',
     }).catch(() => null);
     let cfg;
     let channelId = null;
@@ -407,6 +489,24 @@ async function sendWhatsAppTemplate(phone, template, options = {}) {
     logger.warn('[WhatsApp] sendWhatsAppTemplate error:', e.message);
     return { ok: false, reason: e.message };
   }
+}
+
+/**
+ * A message the outbox is delivering (lib/backgroundScheduler.js).
+ *
+ * A template — the one the message was queued with, or the approved one the
+ * owner set for its kind — goes through Meta. On any other provider a template
+ * cannot be sent at all, so the text queued beside it goes instead, as it
+ * always did; a template with no text has nothing to fall back to and fails.
+ */
+async function sendQueuedWhatsApp(phone, { message, template, tenantId, channelId, staffId, category } = {}) {
+  const kind = category || 'broadcast';
+  const approved = template || await templateForCategory(tenantId, kind, message).catch(() => null);
+  if (approved) {
+    const result = await sendWhatsAppTemplate(phone, approved, { tenantId, channelId, staffId, category: kind });
+    if (result.reason !== 'templates_need_meta' || !String(message || '').trim()) return result;
+  }
+  return sendWhatsApp(phone, message || '', { tenantId, channelId, staffId, category: kind });
 }
 
 /**
@@ -458,6 +558,7 @@ function describeReason(reason) {
   if (reason === 'category_disabled') {
     return 'إرسال هذا النوع من الرسائل موقوف — المسموح حالياً رسائل التحقق (OTP) فقط.';
   }
+  if (reason === 'opted_out') return 'العميل طلب يوقف رسايل العروض (ستوب) — مش هتتبعتله.';
   if (typeof reason === 'string') return reason;
   return reason?.error?.message || reason?.message || JSON.stringify(reason).slice(0, 400);
 }
@@ -488,5 +589,6 @@ function isTransientSendFailure(reason) {
 module.exports = {
   describeReason, getWaCfg, invalidateOutbound, invalidateWaCfg, isCategoryOpen, isTransientSendFailure,
   forTenant, outboundState, providerCredentialState, resolveProvider, sendWhatsApp,
-  sendWhatsAppTemplate, listMetaTemplates, describeTemplate, buildTemplatePayload,
+  sendWhatsAppTemplate, sendQueuedWhatsApp, listMetaTemplates, describeTemplate, buildTemplatePayload,
+  categoryTemplates, cleanTemplateMap, templateForCategory, MARKETING_CATEGORIES, TEMPLATE_SETTING,
 };
