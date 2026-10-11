@@ -13,6 +13,7 @@ import { useSiteData } from '../../context/SiteDataContext';
 import MessagesBell from './MessagesBell';
 import { hasPermission } from '../../constants/permissions';
 import { NotificationsBell } from './NotificationsBell';
+import { GlobalSearch, canUseGlobalSearch } from './GlobalSearch';
 import type { LeadItem, StaffMember, SubscriberItem } from '../../types';
 import type { TabKey } from './navigation';
 import { isProfileTab } from './my-profile/profileTabs';
@@ -177,6 +178,7 @@ function CompactRoleNav({
         {currentStaff && (
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {salesDataLoading && <span className="w-4 h-4 border-2 border-t-transparent border-primary-400 rounded-full animate-spin" />}
+            {canUseGlobalSearch(false, currentStaff) && <GlobalSearch className={iconButtonClass} />}
             <ProfileIconButton activeTab={activeTab} setActiveTab={setActiveTab} />
             <button onClick={() => setSalesNotifOpen(true)} className={iconButtonClass} title="الإشعارات والمتابعات">
               <Bell size={15} />
@@ -353,6 +355,9 @@ export function DashboardNavigation(props: Props) {
                   >
                     <UserCheck size={15} />
                   </button>
+                )}
+                {canUseGlobalSearch(isAdmin, currentStaff) && (
+                  <GlobalSearch className="w-8 h-8 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-600 grid place-items-center transition" />
                 )}
                 <ProfileIconButton activeTab={activeTab} setActiveTab={setActiveTab} />
                 {/* Staff messages used to be visible one employee at a time,

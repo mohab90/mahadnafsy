@@ -280,15 +280,18 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   }, [notify]);
   const closeDetail = () => { setDetailItem(null); setTicketReplies([]); setTimeline([]); setReplyText(''); };
 
-  // A link from a notification or the old tickets page (?focus=<ticket>) opens
-  // that one, once, then drops the parameter.
-  const focusHandled = useRef(false);
+  // A link from a notification, the old tickets page or the header's search
+  // (?focus=<ticket>) opens that one, once, then drops the parameter. Keyed on
+  // the ticket rather than a flag: the search can send a second one while this
+  // screen is still open.
+  const focusHandled = useRef<string | null>(null);
   useEffect(() => {
     const focusId = searchParams.get('focus');
-    if (!focusId || focusHandled.current || !items.length) return;
+    if (!focusId) { focusHandled.current = null; return; }
+    if (focusHandled.current === focusId || !items.length) return;
     const target = items.find(item => item.id === focusId);
     if (!target) return;
-    focusHandled.current = true;
+    focusHandled.current = focusId;
     void openDetail(target);
     const next = new URLSearchParams(searchParams);
     next.delete('focus');
