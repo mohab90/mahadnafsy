@@ -3,6 +3,7 @@
 // ══════════════════════════════════════════════════════════════
 
 import { AuthUser, type CommunityEventItem } from '../types';
+import { leadHeaders } from './tracking';
 
 // Relative by default — always targets whatever origin actually served the page
 // (Nginx-proxied in every real deploy). A hardcoded absolute production URL here
@@ -213,6 +214,15 @@ export const mysqlCatalog = {
   getSiteContent: () => apiFetch<Record<string, string>>('/content'),
 };
 
+export interface MyNextStep {
+  session: {
+    roundId: string; code: string; branch: string; branchLabel: string; courseId: string; courseTitle: string;
+    lecture: number; date: string; dayOfWeek: string; timeSlot: string; room: string; instructorName: string;
+  } | null;
+  rounds: { roundId: string; courseId: string; item: string; title: string; remaining: number; currency: string }[];
+  certificates: { courseId: string; courseTitle: string; code: string; completedAt: string }[];
+}
+
 // ── Non-admin (client) ────────────────────────────────────────────────────────
 export const mysqlClient = {
   heartbeat: (name?: string) => apiFetch<{ ok: boolean }>('/me/heartbeat', { method: 'POST', body: JSON.stringify({ name: name || '' }) }, true),
@@ -310,6 +320,8 @@ export const mysqlClient = {
     apiFetch<{ ok: boolean }>(`/lectures/${encodeURIComponent(lectureId)}/view`, { method: 'POST' }, true),
   // Course completions / digital certificates
   getMyCompletions: () => apiFetch<AR[]>('/me/completions', {}, true),
+  // «خطوتك الجاية»: the round's next session, what is owed for it, the certificates earned.
+  getMyNextStep: () => apiFetch<MyNextStep>('/me/next-step', {}, true),
   getMyTimeline: () => apiFetch<AR[]>('/me/timeline', {}, true),
   verifyCertificate: (code: string) => apiFetch<AR>(`/completions/verify/${encodeURIComponent(code)}`),
   // «يظهر انه العميل عملها تحميل»: the desk's «شهادات المعهد» sees it.
@@ -335,11 +347,13 @@ export const mysqlClient = {
 // admin has its own in admin/lib/mysqlapi.ts.
 
 // ── Public forms ──────────────────────────────────────────────────────────────
+// The lead forms carry the id the page's Lead will fire with, so the server's
+// copy of it is counted once (lib/tracking.ts, api/lib/metaCapi.js).
 export const mysqlForms = {
-  submitContact: (data: AR) => apiFetch<{ ok: boolean; id: string }>('/contact', { method: 'POST', body: JSON.stringify(data) }),
+  submitContact: (data: AR) => apiFetch<{ ok: boolean; id: string }>('/contact', { method: 'POST', body: JSON.stringify(data), headers: leadHeaders() }),
   submitJoinUs: (data: AR) => apiFetch<{ ok: boolean; id: string }>('/join-us', { method: 'POST', body: JSON.stringify(data) }),
-  submitRegistration: (data: AR) => apiFetch<{ ok: boolean; id: string; clientCode: string }>('/registrations', { method: 'POST', body: JSON.stringify(data) }),
-  submitLead: (data: AR) => apiFetch<{ ok: boolean; id?: string }>('/leads-public', { method: 'POST', body: JSON.stringify(data) }),
+  submitRegistration: (data: AR) => apiFetch<{ ok: boolean; id: string; clientCode: string }>('/registrations', { method: 'POST', body: JSON.stringify(data), headers: leadHeaders() }),
+  submitLead: (data: AR) => apiFetch<{ ok: boolean; id?: string }>('/leads-public', { method: 'POST', body: JSON.stringify(data), headers: leadHeaders() }),
 };
 
 // ── Paymob payment helpers (gateway suspended — manual payment flow) ─────────

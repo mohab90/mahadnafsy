@@ -3,6 +3,7 @@ import { useEscapeKey } from '../../shared/ui/useEscapeKey';
 import { X, Printer } from 'lucide-react';
 import QRCode from 'qrcode';
 import { useSiteData } from '../context/SiteDataContext';
+import { BRAND_LOGO, logoFallback } from '../lib/brand';
 
 interface CourseCertificateProps {
   studentName: string;
@@ -19,7 +20,11 @@ interface CourseCertificateProps {
   onPrinted?: () => void;
 }
 
-const FALLBACK_LOGO = 'https://h.top4top.io/p_3734xfq501.png';
+// The old hosted logo first if the domain's own is missing, then nothing.
+const certificateLogoError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+  if (e.currentTarget.dataset.logoFallback) e.currentTarget.style.display = 'none';
+  else logoFallback(e);
+};
 
 const CourseCertificate: React.FC<CourseCertificateProps> = ({
   studentName, studentNameEn, courseName, courseNameEn,
@@ -29,7 +34,7 @@ const CourseCertificate: React.FC<CourseCertificateProps> = ({
   // dialog — but Escape closes it now, which it did not.
   useEscapeKey(onClose);
   const { content } = useSiteData();
-  const LOGO_URL = content['institute.logo'] || FALLBACK_LOGO;
+  const LOGO_URL = content['institute.logo'] || BRAND_LOGO;
   const certName  = (studentNameEn || studentName).toUpperCase();
   const certCourse = courseNameEn || courseName;
 
@@ -129,7 +134,7 @@ const CourseCertificate: React.FC<CourseCertificateProps> = ({
               src={LOGO_URL}
               alt=""
               style={{ width: 52, height: 52, borderRadius: '50%', objectFit: 'contain' }}
-              onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              onError={certificateLogoError}
             />
           </div>
 
@@ -214,7 +219,7 @@ const CourseCertificate: React.FC<CourseCertificateProps> = ({
                   src={LOGO_URL}
                   alt=""
                   style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'contain', flexShrink: 0 }}
-                  onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  onError={certificateLogoError}
                 />
                 معهد الدراسات النفسية
               </div>

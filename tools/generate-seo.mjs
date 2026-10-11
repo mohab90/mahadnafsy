@@ -25,7 +25,13 @@
  *   node tools/generate-seo.mjs [--api https://…] [--dist client/dist]
  */
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
+import { createRequire } from 'node:module';
+
+// The rendering is shared with the API, which serves the same pages fresh
+// between releases (api/routes/seo-pages.js) — one copy of the rules.
+const require = createRequire(import.meta.url);
+const { STATIC_PAGES, render, summarise, coursePage, bundlePage, absoluteImage, sitemapXml } = require('../api/lib/seoPages.js');
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -36,73 +42,10 @@ const API = (arg('api', process.env.SEO_API_BASE || 'https://www.mahadnafsy.com'
 const DIST = arg('dist', 'client/dist');
 const SITE = (arg('site', 'https://mahadnafsy.com')).replace(/\/$/, '');
 
-const STATIC_PAGES = [
-  ['/', '1.0', 'weekly'], ['/courses', '0.9', 'weekly'], ['/bundles', '0.9', 'weekly'],
-  ['/consultations', '0.8', 'weekly'], ['/instructors', '0.7', 'monthly'],
-  ['/community', '0.6', 'weekly'], ['/community/events', '0.6', 'weekly'],
-  ['/community/discussions', '0.5', 'daily'], ['/community/videos', '0.5', 'weekly'],
-  ['/community/library', '0.4', 'weekly'], ['/about', '0.5', 'monthly'],
-  ['/institute-gallery', '0.4', 'monthly'], ['/faq', '0.4', 'monthly'],
-  ['/contact', '0.4', 'monthly'], ['/join', '0.4', 'monthly'],
-  ['/join-us', '0.4', 'monthly'], ['/policies', '0.2', 'yearly'],
-];
-
-const esc = s => String(s ?? '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-
-/** Strip markup and collapse to a sentence a preview card can hold. */
-const summarise = (html, fallback, limit = 180) => {
-  const text = String(html || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ')
-    .replace(/\s+/g, ' ').trim();
-  if (!text) return fallback;
-  if (text.length <= limit) return text;
-  const cut = text.slice(0, limit);
-  const lastSpace = cut.lastIndexOf(' ');
-  return `${(lastSpace > limit * 0.6 ? cut.slice(0, lastSpace) : cut).trim()}…`;
-};
-
 async function getJson(path) {
   const res = await fetch(`${API}${path}`, { headers: { Accept: 'application/json' } });
   if (!res.ok) throw new Error(`${path} → HTTP ${res.status}`);
   return res.json();
-}
-
-// What a search engine reads as «this page is a course, taught by the
-// institute» — the rich result a plain title and description cannot earn. No
-// price: the site's price follows the visitor's country.
-function courseJsonLd({ name, description, url, image }) {
-  const data = {
-    '@context': 'https://schema.org',
-    '@type': 'Course',
-    name,
-    description,
-    url,
-    inLanguage: 'ar',
-    ...(image ? { image } : {}),
-    provider: { '@type': 'EducationalOrganization', name: 'معهد الدراسات النفسية', url: `${SITE}/` },
-  };
-  // A description can hold «</script>»; escaped, it cannot close the tag.
-  return `<script type="application/ld+json">${JSON.stringify(data).replace(/<\//g, '<\\/')}</script>`;
-}
-
-/** Swap the shell's meta block for this page's. */
-function render(shell, { url, title, description, image, jsonLd = '' }) {
-  const t = esc(title);
-  const d = esc(description);
-  const u = esc(url);
-  return shell
-    .replace('</head>', `${jsonLd}</head>`)
-    .replace(/<title>[\s\S]*?<\/title>/, `<title>${t}</title>`)
-    .replace(/<meta name="description" content="[^"]*"/, `<meta name="description" content="${d}"`)
-    .replace(/<meta property="og:url" content="[^"]*"/, `<meta property="og:url" content="${u}"`)
-    .replace(/<meta property="og:title" content="[^"]*"/, `<meta property="og:title" content="${t}"`)
-    .replace(/<meta property="og:description" content="[^"]*"/, `<meta property="og:description" content="${d}"`)
-    .replace(/<meta property="og:type" content="[^"]*"/, `<meta property="og:type" content="article"`)
-    .replace(/<meta name="twitter:description" content="[^"]*"/, `<meta name="twitter:description" content="${d}"`)
-    .replace(/<link rel="canonical" href="[^"]*"/, `<link rel="canonical" href="${u}"`)
-    .replace(image ? /<meta property="og:image" content="[^"]*"/ : /$^/,
-      `<meta property="og:image" content="${esc(image)}"`);
 }
 
 function writePage(relUrl, html) {
@@ -129,35 +72,19 @@ function writePage(relUrl, html) {
   for (const c of courses) {
     const slug = c.slug || c.id;
     if (!slug) continue;
-    // The course's own search title and description first, when set.
-    const description = c.seo_description || summarise(c.shortDescription || c.description,
-      `${c.title} — دبلومة معتمدة من معهد الدراسات النفسية.`);
-    const html = render(shell, {
-      url: `${SITE}/c/${slug}`,
-      title: `${c.seo_title || c.title} | معهد الدراسات النفسية`,
-      description,
-      image: c.thumbnail,
-      jsonLd: courseJsonLd({ name: c.title, description, url: `${SITE}/c/${slug}`, image: c.thumbnail }),
-    });
-    writePage(`/c/${slug}`, html);
+    const page = coursePage({ ...c, slug }, SITE);
+    const html = render(shell, page);
+    writePage(page.path, html);
     if (c.id && c.id !== slug) writePage(`/course/${c.id}`, html);
-    urls.push({ loc: `/c/${slug}`, priority: '0.8', changefreq: 'weekly' });
+    urls.push({ loc: page.path, priority: '0.8', changefreq: 'weekly' });
     pages++;
   }
 
   for (const b of bundles) {
     if (!b.id) continue;
-    const description = summarise(b.shortDescription || b.description,
-      `${b.title} — مسار تعليمي متكامل من معهد الدراسات النفسية.`);
-    const html = render(shell, {
-      url: `${SITE}/bundle/${b.id}`,
-      title: `${b.title} — مسار | معهد الدراسات النفسية`,
-      description,
-      image: b.thumbnail || b.courses?.[0]?.thumbnail,
-      jsonLd: courseJsonLd({ name: b.title, description, url: `${SITE}/bundle/${b.id}`, image: b.thumbnail || b.courses?.[0]?.thumbnail }),
-    });
-    writePage(`/bundle/${b.id}`, html);
-    urls.push({ loc: `/bundle/${b.id}`, priority: '0.8', changefreq: 'weekly' });
+    const page = bundlePage(b, SITE, b.courses?.[0]?.thumbnail);
+    writePage(page.path, render(shell, page));
+    urls.push({ loc: page.path, priority: '0.8', changefreq: 'weekly' });
     pages++;
   }
 
@@ -180,23 +107,13 @@ function writePage(relUrl, html) {
       url: `${SITE}/community/events/${encodeURIComponent(slug)}`,
       title: `${ev.title} | فعاليات معهد الدراسات النفسية`,
       description: summarise(ev.description || ev.content, `${ev.title} — فعالية من معهد الدراسات النفسية.`),
-      image: ev.imageUrl && ev.imageUrl.startsWith('/') ? `${SITE}${ev.imageUrl}` : ev.imageUrl,
+      image: absoluteImage(ev.imageUrl, SITE),
     }));
-    urls.push({ loc: `/community/events/${encodeURIComponent(slug)}`, priority: '0.6', changefreq: 'weekly' });
+    urls.push({ loc: `/community/events/${slug}`, priority: '0.6', changefreq: 'weekly' });
     pages++;
   }
 
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
-  const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${urls.map(u => `  <url>
-    <loc>${SITE}${u.loc === '/' ? '/' : u.loc}</loc>
-    <lastmod>${today}</lastmod>
-    <changefreq>${u.changefreq}</changefreq>
-    <priority>${u.priority}</priority>
-  </url>`).join('\n')}
-</urlset>
-`;
+  const sitemap = sitemapXml(urls, SITE);
   writeFileSync(join(DIST, 'sitemap.xml'), sitemap);
 
   console.log(`seo: ${pages} product page(s) prerendered, sitemap has ${urls.length} url(s)`);

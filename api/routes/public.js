@@ -23,6 +23,7 @@ const { publicLimiter, contactLimiter } = require('../middleware/rateLimits');
 const { resolveClientContext, getClientIp, hashClientIp } = require('../lib/clientContext');
 const { itemBalances } = require('../lib/agreedPrice');
 const { capturePublicLead } = require('../lib/publicLead');
+const metaCapi = require('../lib/metaCapi');
 
 // The contact form's subjects that are sales' to answer (client/pages/Contact.tsx).
 const SALES_SUBJECTS = new Map([['courses', 'استفسار عن الدبلومات والبرامج'], ['payment', 'استفسار عن الدفع والأسعار']]);
@@ -917,6 +918,8 @@ router.post('/api/contact', contactLimiter, async (req, res) => {
         notes: `صفحة التواصل — ${SALES_SUBJECTS.get(subject)}: ${String(message).slice(0, 400)}`,
       }).catch(error => logger.warn('[contact] lead not filed', { error: error.message }));
     }
+    // A message on the contact page is a Lead to the ads, whatever its subject.
+    void metaCapi.trackLead(req, { name, email, phone, leadId: id, contentName: subject || 'contact' });
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

@@ -31,4 +31,29 @@ function nextSessionDate(startDate, today = cairoToday()) {
   return new Date(start + weeksAhead * 7 * DAY_MS).toISOString().slice(0, 10);
 }
 
-module.exports = { lectureToday, nextSessionDate };
+/** Monday of the week a date falls in — the key a postponed week is stored under. */
+function weekMonday(dateOnly) {
+  const at = Date.parse(dateOnly);
+  if (!Number.isFinite(at)) return '';
+  const weekday = new Date(at).getUTCDay();
+  return new Date(at - ((weekday + 6) % 7) * DAY_MS).toISOString().slice(0, 10);
+}
+
+/**
+ * The client's next session in a round: its date, stepping over a week the
+ * desk postponed, and the lecture it will be — counted as lectureToday counts,
+ * by the weeks postponed up to then. «كارت خطوتك الجاية» (11 Oct 2026).
+ */
+function nextHeldSession(startDate, postponedWeeks = [], today = cairoToday()) {
+  let date = nextSessionDate(startDate, today);
+  if (!date) return null;
+  const postponed = new Set((Array.isArray(postponedWeeks) ? postponedWeeks : []).map(String));
+  // A run of postponed weeks is a handful at most; the cap is only a guard.
+  for (let step = 0; step < 52 && postponed.has(weekMonday(date)); step++) {
+    date = new Date(Date.parse(date) + 7 * DAY_MS).toISOString().slice(0, 10);
+  }
+  const upToThen = [...postponed].filter(week => week <= date);
+  return { date, lecture: Math.max(1, lectureToday(startDate, upToThen, date)) };
+}
+
+module.exports = { lectureToday, nextHeldSession, nextSessionDate, weekMonday };

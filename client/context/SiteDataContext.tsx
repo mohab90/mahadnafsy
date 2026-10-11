@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import { BUNDLES, COURSES, TESTIMONIALS, THERAPISTS } from '../constants';
 import { AuthUser, Bundle, ConsultationItem, ContactMessage, Course, Currency, DiscountRule, JoinUsApplication, NotificationBroadcast, Therapist, LeadItem, SubscriberItem, CourseLectureItem, CourseChapterItem, TestimonialItem, CommunityComment, CommunityPostItem, CommunityLibraryItem, CommunityVideoItem, CommunityEventItem, CourseQuiz, QuizAttempt, LiveStream } from '../types';
 import { mysqlForms } from '../lib/mysqlapi';
+import { trackLead } from '../lib/tracking';
 import { useAuth } from './AuthContext';
 import { useActivityLog } from './site-data-hooks/useActivityLog';
 import { useCurrency } from './site-data-hooks/useCurrency';
@@ -444,6 +445,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try {
       await mysqlForms.submitRegistration(item as unknown as Record<string,unknown>);
       track('create', 'lead', item.name);
+      trackLead({ source: (item as { source?: string }).source || 'registration' });
     } catch (error) {
       // Public forms must never report success for a lead that only exists in
       // browser memory. Surface the server failure to the page instead.
@@ -480,6 +482,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       message: item.message,
     } as unknown as Record<string, unknown>);
     track('create', 'contactMessage', item.name);
+    trackLead({ source: 'contact', contentName: item.subject });
   };
 
   // ── Public catalog cache only. Customer/CRM/HR/finance data is server-owned

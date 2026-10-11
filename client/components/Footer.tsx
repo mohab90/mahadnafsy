@@ -3,6 +3,7 @@ import { Facebook, Youtube, Instagram, Mail, Phone, MapPin, MessageCircle } from
 import { Link } from 'react-router-dom';
 import { useSiteData } from '../context/SiteDataContext';
 import { instituteWhatsApp } from '../lib/whatsappLink';
+import { BRAND_LOGO, logoFallback } from '../lib/brand';
 
 const Footer: React.FC<{ mini?: boolean }> = ({ mini }) => {
   const { content, bundles } = useSiteData();
@@ -51,7 +52,7 @@ const Footer: React.FC<{ mini?: boolean }> = ({ mini }) => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
           <div>
             <Link to="/">
-              <img src={content['institute.logo'] || 'https://h.top4top.io/p_3734xfq501.png'} alt="معهد الدراسات النفسية" className="h-16 w-auto object-contain mb-4" />
+              <img src={content['institute.logo'] || BRAND_LOGO} onError={logoFallback} alt="معهد الدراسات النفسية" className="h-16 w-auto object-contain mb-4" />
             </Link>
             <p className="text-sm leading-relaxed mb-4 text-gray-400">{description}</p>
             <div className="flex gap-3">

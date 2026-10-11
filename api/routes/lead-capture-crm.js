@@ -30,6 +30,7 @@ const { isRealPhone } = require('../lib/phoneNumber');
 const { capturePublicLead } = require('../lib/publicLead');
 const { bookingRuleError, consultationSettings, expressPrice, findSlot, openConsultationRequest } = require('../lib/consultationRequests');
 const { createNotification } = require('../lib/notification');
+const metaCapi = require('../lib/metaCapi');
 
 function routeError(res, error, message = 'lead capture crm route failed') {
   logger.error(message, error);
@@ -141,6 +142,8 @@ router.post('/api/registrations', publicLimiter, async (req, res) => {
     await conn.commit();
     transactionStarted = false;
     if (!existing) await require('../lib/lifecycle').trigger('lead_created', { name, email, phone, tenantId });
+    // The ad's Lead, under the id the page fires its own with (lib/metaCapi.js).
+    void metaCapi.trackLead(req, { name, email, phone, leadId: id, contentName: source || 'تسجيل اهتمام' });
     res.json({ ok: true, id, clientCode: code });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
@@ -160,6 +163,7 @@ router.post('/api/leads-public', publicLimiter, async (req, res) => {
     // (owner requirement: no duplicate data)
     const lead = await capturePublicLead({ tenantId: scopedTenantId(req), name, phone, notes, source, branch });
     if (lead.busy) return res.status(409).json({ error: 'Lead submission is already being processed' });
+    void metaCapi.trackLead(req, { name, phone, leadId: lead.id, contentName: source || 'lead' });
     res.json(lead.existing ? { ok: true, id: lead.id, existing: true } : { ok: true, id: lead.id });
   } catch (e) {
     routeError(res, e);
@@ -635,6 +639,9 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       // towards (lib/orderPlan.js reads it when the order is confirmed).
       payMode: normalizedPayMode,
       planTotal: normalizedPayMode === 'installment' && basePrice ? installmentTotal(basePrice) : null,
+      // The visitor's ad click, for the Purchase sent when Paymob's callback
+      // marks the order paid — that request comes from Paymob, not from them.
+      adContext: metaCapi.adContextFromRequest(req),
     });
     await conn.query(
       `INSERT INTO orders

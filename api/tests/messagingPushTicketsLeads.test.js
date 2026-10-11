@@ -371,9 +371,10 @@ test('schema.sql has what production has', () => {
 });
 
 test('a course page tells a search engine it is a course, with no price and nothing that closes the script', () => {
-  const seo = read('tools/generate-seo.mjs');
+  // Shared by the release's generator and the API's fresh pages.
+  const seo = read('api/lib/seoPages.js');
   assert.match(seo, /'@type': 'Course'/);
-  assert.match(seo, /provider: \{ '@type': 'EducationalOrganization'/);
+  assert.match(seo, /provider: \{\s*'@type': 'EducationalOrganization'/);
   assert.ok(seo.includes(".replace(/<\\//g, '<\\\\/')"));
   assert.doesNotMatch(seo.slice(seo.indexOf('function courseJsonLd'), seo.indexOf('function render')), /offers|price:/);
   assert.equal(seo.split('jsonLd: courseJsonLd(').length - 1, 2);

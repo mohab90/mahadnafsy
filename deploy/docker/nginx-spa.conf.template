@@ -18,6 +18,45 @@ server {
         add_header Cache-Control "public, max-age=31536000, immutable" always;
     }
 
+    # Course and bundle pages and the sitemap, fresh from the API between
+    # releases (api/routes/seo-pages.js), falling back to the build's own files
+    # on anything but a 200. Resolved per request through Docker's DNS, so this
+    # container starts whether or not the api one is up; «api» is the service
+    # name in docker-compose.yml.
+    location ~ ^/(c|course|bundle)/[^/]+/?$ {
+        resolver 127.0.0.11 valid=30s ipv6=off;
+        set $mahad_api http://api:3001;
+        proxy_pass $mahad_api/api/seo/page$request_uri;
+        proxy_connect_timeout 2s;
+        proxy_read_timeout 5s;
+        proxy_intercept_errors on;
+        error_page 404 429 500 502 503 504 = @build_files;
+    }
+
+    location = /sitemap.xml {
+        resolver 127.0.0.11 valid=30s ipv6=off;
+        set $mahad_api http://api:3001;
+        proxy_pass $mahad_api/api/seo/sitemap.xml;
+        proxy_connect_timeout 2s;
+        proxy_read_timeout 5s;
+        proxy_intercept_errors on;
+        error_page 404 429 500 502 503 504 = @build_files;
+    }
+
+    location @build_files {
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-store" always;
+    }
+
+    # The brand files, or the old hosted logo until they are in the build.
+    location /brand/ {
+        try_files $uri @brand_fallback;
+    }
+
+    location @brand_fallback {
+        return 302 https://h.top4top.io/p_3734xfq501.png;
+    }
+
     # index.html must never be cached, or a browser keeps loading the old
     # bundle after a release and the hashed asset it references is gone.
     location / {
