@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Check, AlertCircle, LogIn, MessageCircle, Banknote, Loader2, CreditCard } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
@@ -10,6 +10,7 @@ import { cdnImg } from '../lib/img';
 import { instituteWhatsApp } from '../lib/whatsappLink';
 import { amountDueNow, installmentTotal, type PayMode } from '../../shared/enrollmentPricing';
 import { useSeo } from '../lib/useSeo';
+import { rememberCheckoutOrder, trackInitiateCheckout } from '../lib/tracking';
 
 const Checkout: React.FC = () => {
   useSeo({ title: 'إتمام الاشتراك | معهد الدراسات النفسية', path: '/checkout' });
@@ -157,6 +158,17 @@ const Checkout: React.FC = () => {
   const planTotal = serverPlanTotal ?? (discountable && payMode === 'installment' ? installmentTotal(itemPrice) : null);
   const whatsapp = instituteWhatsApp(content);
 
+  // InitiateCheckout once the page shows something payable to someone who can
+  // pay for it — once per item, not on every re-render (lib/tracking.ts).
+  const checkoutTracked = useRef('');
+  const checkoutReady = itemFound && itemPrice > 0 && !(requiresLogin && authUser === null) && !paymentLinkLoading;
+  useEffect(() => {
+    const key = `${type}:${id || subtype || ''}`;
+    if (!checkoutReady || checkoutTracked.current === key) return;
+    checkoutTracked.current = key;
+    trackInitiateCheckout({ id: String(id || subtype || type || ''), type: String(type || ''), title: itemTitle, value: displayAmount, currency: settlementCurrency });
+  }, [checkoutReady, type, id, subtype, itemTitle, displayAmount, settlementCurrency]);
+
   // An email when one is typed must be one; a customer who signed up by
   // WhatsApp has none, and the server takes the account as the identity — the
   // page still demanded an «@», so they could not buy at all. The phone is the
@@ -251,6 +263,12 @@ const Checkout: React.FC = () => {
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.orderId) throw new Error(data.error || 'تعذّر إنشاء الطلب');
       setOrderId(String(data.orderId));
+      // For the Purchase /success fires if this ends in a card payment.
+      rememberCheckoutOrder({
+        orderId: String(data.orderId), value: Number(data.amount) || 0,
+        currency: data.currency === 'SAR' || data.currency === 'USD' ? data.currency : 'EGP',
+        itemId: String(id || ''), title: itemTitle,
+      });
       setServerAmount(Number(data.amount));
       setServerCurrency(data.currency === 'SAR' || data.currency === 'USD' ? data.currency : 'EGP');
       setServerPayMode(data.payMode === 'installment' ? 'installment' : 'cash');

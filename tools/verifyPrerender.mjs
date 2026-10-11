@@ -48,7 +48,9 @@ export function findMissingPages(entries, sitemapXml = '', site = 'https://mahad
   for (const match of String(sitemapXml).matchAll(/<loc>([^<]+)<\/loc>/g)) {
     const loc = match[1].trim();
     if (!loc.startsWith(origin)) continue;
-    const pathPart = loc.slice(origin.length).replace(/^\//, '').replace(/\/$/, '');
+    // The sitemap escapes a path (an Arabic slug is %D8%…); tar lists it as written.
+    const pathPart = loc.slice(origin.length).replace(/^\//, '').replace(/\/$/, '')
+      .split('/').map(segment => { try { return decodeURIComponent(segment); } catch { return segment; } }).join('/');
     const parts = pathPart.split('/');
     if (parts.length !== 2 || !PAGE_ROOTS.includes(parts[0])) continue;
     if (!names.has(`${pathPart}/index.html`)) missingFromSitemap.push(pathPart);

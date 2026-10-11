@@ -29,8 +29,12 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..', '..');
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
+// The release's generator renders through api/lib/seoPages.js, which the API's
+// fresh pages share — so the rules are read from both.
+const generator = () => `${read('tools/generate-seo.mjs')}\n${read('api/lib/seoPages.js')}`;
+
 test('the generator rewrites every tag that identifies a page', () => {
-  const gen = read('tools/generate-seo.mjs');
+  const gen = generator();
   // The rewrite itself, not the word — «canonical» also appears in the comment
   // above it, so checking for the word passes on a generator that stopped
   // writing the one tag that matters most.
@@ -48,15 +52,16 @@ test('the generator rewrites every tag that identifies a page', () => {
   // A product is an article, not the site's front page.
   assert.match(gen, /content="article"/);
   // And each product gets its own directory, which is what makes nginx serve it.
-  assert.match(gen, /writePage\(`\/c\/\$\{slug\}`/);
-  assert.match(gen, /writePage\(`\/bundle\/\$\{b\.id\}`/);
+  assert.match(gen, /path: `\/c\/\$\{slug\}`/);
+  assert.match(gen, /path: `\/bundle\/\$\{bundle\.id\}`/);
+  assert.match(gen, /writePage\(page\.path, /);
   assert.match(gen, /mkdirSync\(dir, \{ recursive: true \}\)/);
 });
 
 test('the sitemap is built from the catalogue, not from a fixed list', () => {
-  const gen = read('tools/generate-seo.mjs');
-  assert.match(gen, /urls\.push\(\{ loc: `\/c\/\$\{slug\}`/, 'courses have to be in it');
-  assert.match(gen, /urls\.push\(\{ loc: `\/bundle\/\$\{b\.id\}`/, 'and bundles');
+  const gen = generator();
+  assert.match(gen, /for \(const c of courses\) \{[\s\S]*?urls\.push\(\{ loc: page\.path/, 'courses have to be in it');
+  assert.match(gen, /for \(const b of bundles\) \{[\s\S]*?urls\.push\(\{ loc: page\.path/, 'and bundles');
   assert.match(gen, /writeFileSync\(join\(DIST, 'sitemap\.xml'\), sitemap\)/);
   assert.match(gen, /<lastmod>/, 'a sitemap entry without a date tells a crawler nothing');
 });

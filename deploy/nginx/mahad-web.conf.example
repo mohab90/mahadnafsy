@@ -38,6 +38,53 @@ server {
         proxy_send_timeout 65s;
     }
 
+    # Course and bundle pages and the sitemap come from the API, so a course
+    # published or edited since the release has its own title, preview and
+    # place in the sitemap (api/routes/seo-pages.js). Anything but a 200 from
+    # there — the API down, a page it does not know, a rate limit — falls back
+    # to the release's own prerendered file, then to the app, exactly as
+    # before. $request_uri keeps an Arabic slug escaped on its way through.
+    location ~ ^/(c|course|bundle)/[^/]+/?$ {
+        proxy_pass http://mahad_api/api/seo/page$request_uri;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_connect_timeout 2s;
+        proxy_read_timeout 5s;
+        proxy_intercept_errors on;
+        error_page 404 429 500 502 503 504 = @release_files;
+    }
+
+    location = /sitemap.xml {
+        proxy_pass http://mahad_api/api/seo/sitemap.xml;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_connect_timeout 2s;
+        proxy_read_timeout 5s;
+        proxy_intercept_errors on;
+        error_page 404 429 500 502 503 504 = @release_files;
+    }
+
+    location @release_files {
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-store" always;
+    }
+
+    # The logo and the share image on the institute's own domain. Until
+    # tools/fetch-brand-assets.mjs has put them in client/public/brand/, the
+    # old hosted logo answers instead of the app's HTML.
+    location /brand/ {
+        try_files $uri @brand_fallback;
+        add_header Cache-Control "public, max-age=86400" always;
+    }
+
+    location @brand_fallback {
+        return 302 https://h.top4top.io/p_3734xfq501.png;
+    }
+
     location /assets/ {
         try_files $uri =404;
         add_header Cache-Control "public, max-age=31536000, immutable" always;

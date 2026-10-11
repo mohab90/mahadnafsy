@@ -16,6 +16,7 @@ import { useSiteData } from '../context/SiteDataContext';
 import { usePaymentAvailability } from '../lib/usePaymentAvailability';
 import { StudentJourneyTimeline } from '../components/student-dashboard/StudentJourneyTimeline';
 import StudentEngagementHero from '../components/student-dashboard/StudentEngagementHero';
+import { StudentNextStepCard } from '../components/student-dashboard/StudentNextStepCard';
 import { StudentDashboardSectionNav } from '../components/student-dashboard/StudentDashboardSectionNav';
 import { instituteWhatsApp } from '../lib/whatsappLink';
 import { isCertificateEarned } from '../lib/certificateStatus';
@@ -725,6 +726,19 @@ const UserDashboard: React.FC = () => {
               + completions.length;
             return (
               <div className="space-y-6">
+
+                {/* «خطوتك الجاية» first: the next session, what is owed, the certificate, the next lecture */}
+                <StudentNextStepCard
+                  subscriberId={subscriber?.id}
+                  balances={balances}
+                  certificateRequests={subscriber?.extraCertificateRequests || []}
+                  enrolledCourses={enrolledCourses}
+                  lectureProgress={subscriber?.lectureProgress || {}}
+                  getCourseLectures={(id) => getCourseLectures(String(id))}
+                  onPay={setInstallModal}
+                  onResume={(cid) => { setActiveTab('learning'); setLearningSection('courses'); setPlayerCourseId(cid); }}
+                  onCertificates={() => { setActiveTab('learning'); setLearningSection('certificates'); }}
+                />
 
                 {/* Welcome + summary cards */}
                 <div className="bg-white rounded-2xl border border-gray-100 p-5 glass-card-premium shadow-xl shadow-gray-200/50 hover:shadow-2xl hover:shadow-primary-500/20 transition-all duration-300 hover:-translate-y-2 border-white/50 backdrop-blur-xl bg-white/70">

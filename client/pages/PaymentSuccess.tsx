@@ -4,6 +4,7 @@ import { CheckCircle, Home, MessageCircle, Upload, Clock, LayoutDashboard, Recei
 import { instituteWhatsApp } from '../lib/whatsappLink';
 import { useSiteData } from '../context/SiteDataContext';
 import { setCanonical } from '../lib/useSeo';
+import { purchaseFromReturn, trackPurchase } from '../lib/tracking';
 
 /**
  * Where a customer lands after paying — by card or by transfer.
@@ -48,6 +49,15 @@ const PaymentSuccess: React.FC = () => {
       ? 'لم تتم عملية الدفع | معهد الدراسات النفسية'
       : 'تم استلام طلبك | معهد الدراسات النفسية';
   }, [outcome]);
+
+  // The ad's Purchase, for a card the bank accepted. Its id is the order's, the
+  // one the server's copy carries when the verified callback lands, so Meta
+  // counts the two once (lib/tracking.ts, api/lib/metaCapi.js).
+  useEffect(() => {
+    if (outcome !== 'card') return;
+    const purchase = purchaseFromReturn(searchParams);
+    if (purchase) trackPurchase(purchase);
+  }, [outcome, searchParams]);
 
   const whatsapp = instituteWhatsApp(content);
 

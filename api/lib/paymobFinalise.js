@@ -24,6 +24,7 @@ const { consultationSettings, settleConsultationForOrder } = require('./consulta
 const { normalizePaymentBranch, normalizedOrderType, appendTenantScope } = require('./orderFields');
 const { orderPlan, planAccess } = require('./orderPlan');
 const { paymobCharge } = require('./paymobGateway');
+const { trackPurchase } = require('./metaCapi');
 
 // ── Paymob: shared helper — finalises an order after verified payment ─────────
 // In-flight guard, so two concurrent webhooks for one order cannot both enter
@@ -351,6 +352,11 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
   }
 
   // Post-commit side effects (non-critical, do not block the response).
+  //
+  // The ad's Purchase, under «purchase-<order>» — the id /success fires the
+  // browser's copy with — and with the click the visitor came from, kept on the
+  // order at checkout (lib/metaCapi.js). Not awaited: Paymob is answered either way.
+  void trackPurchase({ tenantId, order, adContext: extra?.adContext });
   // Commission is NOT here any more: it is queued inside the transaction above
   // and run by the finance outbox worker, so a failure retries instead of being
   // lost to a warning line. See lib/commissionCalc.js.

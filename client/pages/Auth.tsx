@@ -5,6 +5,7 @@ import { mysqlAuth, mysqlClient } from '../lib/mysqlapi';
 import { useSiteData } from '../context/SiteDataContext';
 import { adminDashboardUrl } from '../lib/adminDashboard';
 import { useSeo } from '../lib/useSeo';
+import { trackCompleteRegistration } from '../lib/tracking';
 
 const Auth: React.FC = () => {
   useSeo({ title: 'تسجيل الدخول | معهد الدراسات النفسية', path: '/auth' });
@@ -267,6 +268,7 @@ const Auth: React.FC = () => {
                     // having come from nowhere.
                     ...(referralCode ? { ref: referralCode } : {}),
                 });
+                trackCompleteRegistration();
                 setNotice({ type: 'success', text: 'تم إنشاء الحساب وتسجيل الدخول.' });
             }
             // Refresh auth state so isAdmin and authUser update immediately

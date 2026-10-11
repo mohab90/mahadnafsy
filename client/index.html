@@ -11,7 +11,9 @@
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
-      gtag('config', 'G-EB4YE5YB9C');
+      // Page views are sent by lib/tracking.ts on every route, the first one
+      // included; sent here as well, the landing page would count twice.
+      gtag('config', 'G-EB4YE5YB9C', { send_page_view: false });
     </script>
     <!-- Meta Pixel Code -->
     <script>
@@ -24,7 +26,8 @@
       s.parentNode.insertBefore(t,s)}(window, document,'script',
       'https://connect.facebook.net/en_US/fbevents.js');
       fbq('init', '1879086466096343');
-      fbq('track', 'PageView');
+      // PageView, Lead, InitiateCheckout and Purchase: lib/tracking.ts.
+      // api/lib/metaCapi.js sends the server's copies to this same pixel id.
     </script>
     <!-- End Meta Pixel Code -->
     <meta charset="utf-8" />
@@ -37,12 +40,14 @@
     <meta name="author" content="معهد الدراسات النفسية" />
     <meta name="theme-color" content="#7c3aed" />
 
-    <!-- Open Graph / Facebook -->
+    <!-- Open Graph / Facebook. The share image and the logo below live on the
+         institute's own domain (/brand/, see tools/fetch-brand-assets.mjs);
+         nginx answers a missing one with the old hosted logo. -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://mahadnafsy.com/" />
     <meta property="og:title" content="معهد الدراسات النفسية | دبلومات معتمدة في الصحة النفسية" />
     <meta property="og:description" content="رواد التعليم النفسي منذ 2010. دبلومات معتمدة، استشارات متخصصة، ومجتمع نفسي نشط. أكثر من 12,000 خريج في 15 دولة." />
-    <meta property="og:image" content="https://h.top4top.io/p_3734xfq501.png" />
+    <meta property="og:image" content="https://mahadnafsy.com/brand/og.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:locale" content="ar_AR" />
@@ -53,7 +58,7 @@
     <meta name="twitter:url" content="https://mahadnafsy.com/" />
     <meta name="twitter:title" content="معهد الدراسات النفسية | دبلومات معتمدة في الصحة النفسية" />
     <meta name="twitter:description" content="رواد التعليم النفسي منذ 2010. دبلومات معتمدة، استشارات متخصصة، ومجتمع نفسي نشط." />
-    <meta name="twitter:image" content="https://h.top4top.io/p_3734xfq501.png" />
+    <meta name="twitter:image" content="https://mahadnafsy.com/brand/og.jpg" />
 
     <!-- Canonical -->
     <link rel="canonical" href="https://mahadnafsy.com/" />
@@ -79,7 +84,7 @@
       "@type": "EducationalOrganization",
       "name": "معهد الدراسات النفسية",
       "url": "https://mahadnafsy.com/",
-      "logo": "https://h.top4top.io/p_3734xfq501.png",
+      "logo": "https://mahadnafsy.com/brand/logo.png",
       "description": "معهد متخصص في التعليم النفسي منذ 2010، يقدم دبلومات معتمدة في الصحة النفسية والعلاج النفسي.",
       "foundingDate": "2010",
       "areaServed": ["EG", "SA", "AE", "KW", "QA", "BH", "JO", "LB"],

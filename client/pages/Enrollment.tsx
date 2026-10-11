@@ -11,6 +11,7 @@ import { instituteWhatsApp } from '../lib/whatsappLink';
 // how a customer could be shown a discount the server had never heard of.
 import { CASH_DISCOUNT, INSTALL_DISCOUNT, INSTALL_FIRST_PCT, amountDueNow, installmentTotal } from '../../shared/enrollmentPricing';
 import { useSeo } from '../lib/useSeo';
+import { trackLead } from '../lib/tracking';
 
 // ── Payment type ──────────────────────────────────────────────────────────────
 type PayType = 'cash' | 'installment';
@@ -196,6 +197,7 @@ const Enrollment: React.FC = () => {
         preferredPaymentType: payType,
         notes: `طلب تسجيل: ${chosenCourses.map(item => item.title).join('، ')}. طريقة السداد المفضلة: ${payType === 'cash' ? 'كامل' : 'تقسيط'}.`,
       });
+      trackLead({ source: 'صفحة التسجيل في البرامج', contentName: chosenCourses.map(item => item.title).join('، ') });
 
       // Build WhatsApp message with order details
       const firstItem = chosenCourses[0];
