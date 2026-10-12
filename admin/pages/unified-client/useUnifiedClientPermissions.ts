@@ -1,5 +1,6 @@
 import type { StaffMember } from '../../types';
 import { hasPermission, type PermissionKey, type RoleKey } from '../../constants/permissions';
+import { useCanDelete } from '../../hooks/useCanDelete';
 
 /**
  * What this screen's viewer may do to a client's record.
@@ -46,9 +47,13 @@ export function useUnifiedClientPermissions(params: {
     permissions: currentStaff.permissions as PermissionKey[] | undefined,
   } : null, 'view_financial');
 
+  // Deleting the client, or a note on them, is the owner's list's alone:
+  // «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
+  const canDelete = useCanDelete();
+
   return {
     currentStaff,
-    canCorrectPayments, canSeeProofs,
+    canCorrectPayments, canSeeProofs, canDelete,
     isOnlineManager,
     isCollectionManager,
     canManageCourseAccess,

@@ -25,6 +25,7 @@ const { getTenantSetting } = require('../../lib/tenantSettings');
 const {
   ADMIN_EMAILS, isInstituteOwner, requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, invalidateIdentity,
 } = require('../../middleware/auth');
+const { requireDeleteRight } = require('../../lib/deleteRights');
 const { DATA_SCOPE, VALID_BRANCHES, FULL_ACCESS_ROLES, hasPermission, resolveDataScope } = require('../../constants/permissions');
 const { safeIsoString, safeDateOnly } = require('../../lib/dates');
 const { keyset } = require('../../lib/pagination');
@@ -493,6 +494,9 @@ router.post(
   requireAdminOrStaff,
   requirePermission('manage_subscribers'),
   requirePermission('manage_leads'),
+  // Takes the client out of the client base (deleted_at), so it is a deletion
+  // under the owner's rule: «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
+  requireDeleteRight,
   async (req, res) => {
     const conn = await pool.getConnection();
     let transactionStarted = false;

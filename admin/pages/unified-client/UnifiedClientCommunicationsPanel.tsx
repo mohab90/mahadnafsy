@@ -12,7 +12,8 @@ interface UnifiedClientCommunicationsPanelProps {
   clientPhone: string;
   isSubscriber: boolean;
   onAdd: () => void;
-  onDelete: (id: string, source: 'lead' | 'subscriber') => void;
+  /** Absent for someone off the owner's delete list (hooks/useCanDelete.ts). */
+  onDelete?: (id: string, source: 'lead' | 'subscriber') => void;
 }
 
 export function UnifiedClientCommunicationsPanel({
@@ -75,12 +76,14 @@ export function UnifiedClientCommunicationsPanel({
                           </a>
                         )}
                       </div>
-                      <button
-                        onClick={() => onDelete(comm.id, source)}
-                        className="text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      {onDelete && (
+                        <button
+                          onClick={() => onDelete(comm.id, source)}
+                          className="text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                     {comm.notes && <p className="text-sm text-gray-700 mt-2 leading-relaxed">{comm.notes}</p>}
                     {comm.outcome && <div className="mt-2 flex items-center gap-2 text-xs text-green-700 bg-green-50 px-3 py-1.5 rounded-lg"><CheckCircle size={12} />{comm.outcome}</div>}

@@ -11,6 +11,11 @@ export interface AuthUser {
    *  first data request, which is what lets the boot ask only for what it
    *  holds instead of collecting a 403 for each list it may not read. */
   permissions?: string[] | '*' | null;
+  /** Whether this account may delete anything (lib/deleteRights.js on the
+   *  server): the owner and the people on «صلاحية الحذف», nobody else. */
+  canDelete?: boolean;
+  /** The owner, who alone sets that list. */
+  canManageDeleteRights?: boolean;
 }
 
 export type MeetingProvider = 'zoom' | 'google_meet' | 'custom';
@@ -382,6 +387,8 @@ export type StaffPermission =
 
 export interface StaffMember {
   id: string;
+  /** Set on the signed-in employee only, from /api/auth/me — see AuthUser.canDelete. */
+  canDelete?: boolean;
   name: string;
   email: string;
   phone: string;

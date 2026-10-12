@@ -66,6 +66,7 @@ import { useNotificationsBell } from './dashboard/useNotificationsBell';
 import { useStaffOwnData } from './dashboard/useStaffOwnData';
 import { useDashboardDerived } from './dashboard/useDashboardDerived';
 import { useBranches } from '../hooks/useBranches';
+import { useCanDelete } from '../hooks/useCanDelete';
 import { PhysicalBranchProvider, branchOfRole, screenForTab, tabForScreen } from '../lib/physicalBranch';
 import { useVisibleInterval } from '../../shared/useVisibleInterval';
 
@@ -605,14 +606,18 @@ const Dashboard: React.FC = () => {
 
   // -- Permission helpers -------------------------------------------------
   // Uses master resolvePermissions — single source of truth from admin/constants/permissions.ts
+  const canDeleteAnything = useCanDelete();
   const hasPermission = React.useCallback((perm: StaffPermission): boolean => {
+    // Before isAdmin: a manager off the owner's list holds everything but
+    // deleting — «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
+    if (String(perm).startsWith('delete_') && !canDeleteAnything) return false;
     if (isAdmin) return true;
     if (!currentStaff) return false;
     return masterHasPermission(
-      { role: currentStaff.role as RoleKey, permissions: currentStaff.permissions as PermissionKey[] | undefined },
+      { role: currentStaff.role as RoleKey, permissions: currentStaff.permissions as PermissionKey[] | undefined, canDelete: currentStaff.canDelete },
       perm as PermissionKey,
     );
-  }, [isAdmin, currentStaff]);
+  }, [isAdmin, currentStaff, canDeleteAnything]);
 
   // The inbox and «واتسابي» go by the job (constants/permissions.ts canUseChannel).
   const canOpenChannelTab = React.useCallback((tab: TabKey): boolean | undefined => {

@@ -15,6 +15,7 @@ import {
 import type { BranchType, LeadItem, SubscriberItem } from '../../types';
 import { branchLabels, normBranchKey, statusLabels } from './constants';
 import { toDialable } from '../../lib/whatsappLink';
+import { useCanDelete } from '../../hooks/useCanDelete';
 
 type Props = {
   lead?: LeadItem;
@@ -77,6 +78,8 @@ export function UnifiedClientHeroHeader({
   onToggleSubscriberStatus,
   onDeleteClient,
 }: Props) {
+  // The owner's list, not the role — hooks/useCanDelete.ts (12 Oct 2026).
+  const canDelete = useCanDelete();
   return (
     <div className="bg-gradient-to-br from-slate-800 via-slate-750 to-slate-900 text-white shadow-xl">
       <div className="max-w-7xl mx-auto px-4 pt-4 pb-5">
@@ -194,7 +197,7 @@ export function UnifiedClientHeroHeader({
               {subscriber!.status === 'active' ? 'إيقاف' : 'تفعيل'}
             </button>
           )}
-          {isAdmin && (
+          {isAdmin && canDelete && (
             <button
               onClick={onDeleteClient}
               className="px-3 py-2 bg-red-600/80 hover:bg-red-500 text-white rounded-xl text-sm font-medium flex items-center gap-1.5 transition-colors border border-red-500/30">

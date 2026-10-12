@@ -19,6 +19,7 @@ const {
   invalidateIdentity,
 } = require('../middleware/auth');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
+const { requireDeleteRightWhen } = require('../lib/deleteRights');
 const logger = require('../lib/logger').child({ route: 'privacy' });
 const { cairoToday } = require('../lib/dates');
 
@@ -176,6 +177,10 @@ router.post(
   requireAuth,
   requireAdminOrStaff,
   requirePermission('delete_subscribers'),
+  // Approving erases the client's personal data — the most final deletion
+  // there is. Rejecting or blocking a request erases nothing and stays open to
+  // whoever handles them: «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
+  requireDeleteRightWhen(req => String(req.body?.decision || '').toLowerCase() === 'approve'),
   bulkOperationLimiter,
   async (req, res) => {
     let conn;

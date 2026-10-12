@@ -34,6 +34,7 @@ import { WhatsAppIcon } from '../../../../components/WhatsAppIcon';
 import { useCertificateCatalog } from '../../../../lib/certificateCatalog';
 import { IssuedCertificateBadge } from './IssuedCertificateBadge';
 import { ClientContactDialog } from '../../../unified-client/ClientContactLog';
+import { useCanDelete } from '../../../../hooks/useCanDelete';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type HousingInfo = { roundId: string; roundCode: string; receptionId: string; receptionName: string };
@@ -86,12 +87,15 @@ interface Props {
 export function ClientsTable({
   pageRows, vc, cw, startColResize, isDaqqiClientsTab, collOnlineSelected, setCollOnlineSelected,
   housingMap, courses, bundles, staffMembers, onlineTeamMembers, isAdmin, isOnlineManager, isCollection = false,
-  canDeleteSubscriber, shouldUseScopedSubscribers,
+  canDeleteSubscriber: canDeleteByPermission, shouldUseScopedSubscribers,
   updateSubscriber, reloadSubscribers, setSalesOwnSubscribers, deleteSubscriber, setSubPayRow, setSubPayDraft,
   setDaqqiHousingModal, setDaqqiHousingRoundId,
   setConvertRow, setConvertType, setConvertAttendedLive, setConvertGotCert, setConvertPauseReason,
   setConvertRefundReason, setConvertRefundAmount, setConvertRefundMethod, setConvertRefundPaymentId, setInstallmentsRow, filteredLength, notify,
 }: Props) {
+  // The permission and the owner's list both: «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
+  const canDeleteAnything = useCanDelete();
+  const canDeleteSubscriber = canDeleteAnything && canDeleteByPermission;
   // Which customer we are adjusting course access for. The default length is
   // set per course in the catalogue; this is where one person is changed.
   const [accessRow, setAccessRow] = React.useState<SubscriberItem | null>(null);

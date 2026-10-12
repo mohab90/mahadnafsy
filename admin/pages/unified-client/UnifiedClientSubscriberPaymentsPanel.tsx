@@ -9,6 +9,7 @@ import { ptLabels } from './constants';
 import { UnifiedClientPaymentSummaryPanel } from './UnifiedClientPaymentSummaryPanel';
 import type { SettlementCurrency } from '../../lib/branchCurrency';
 import { useBranches } from '../../hooks/useBranches';
+import { useCanDelete } from '../../hooks/useCanDelete';
 import { cairoDay } from '../../../shared/cairoDate';
 
 const PaymentModal = React.lazy(() => import('../../components/PaymentModal'));
@@ -92,6 +93,9 @@ export function UnifiedClientSubscriberPaymentsPanel({
   // This dialog opened with an empty branch dropdown: it was the one caller that
   // never passed branchOptions at all.
   const branchOptions = useBranches();
+  // Correcting a payment stays the managers'; wiping one is the owner's list's:
+  // «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
+  const canDelete = useCanDelete();
   return (
     <>
       <button onClick={onShowPaymentForm}
@@ -200,10 +204,12 @@ export function UnifiedClientSubscriberPaymentsPanel({
                         className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100 transition">
                         <Pencil size={12} /> تعديل
                       </button>
-                      <button type="button" title="مسح الدفعة (للإدارة)" aria-label="مسح الدفعة" onClick={() => setCorrecting({ payment: p, mode: 'void' })}
-                        className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-bold text-red-700 hover:bg-red-100 transition">
-                        <Trash2 size={12} /> مسح
-                      </button>
+                      {canDelete && (
+                        <button type="button" title="مسح الدفعة (للإدارة)" aria-label="مسح الدفعة" onClick={() => setCorrecting({ payment: p, mode: 'void' })}
+                          className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-bold text-red-700 hover:bg-red-100 transition">
+                          <Trash2 size={12} /> مسح
+                        </button>
+                      )}
                     </>
                   )}
                 </div>

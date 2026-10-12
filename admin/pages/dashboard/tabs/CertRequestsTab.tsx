@@ -12,6 +12,7 @@ import ExtraRequestsPanel from './ExtraRequestsPanel';
 import InstituteCertificatesPanel from './InstituteCertificatesPanel';
 import { CertDataModal, missingCertData } from './CertDataModal';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { useCanDelete } from '../../../hooks/useCanDelete';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -107,6 +108,9 @@ export default function CertRequestsTab({
   const { isAdmin, currentStaff } = useSiteData();
   // «عند المديرين اقدر امسح شهاده واقدر اعدل شهاده» — the server holds the same line.
   const canManage = isAdmin || CERT_MANAGERS.has(String(currentStaff?.role || '').toLowerCase());
+  // Editing a certificate stays the managers'; deleting one is the owner's
+  // list's: «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
+  const canDelete = useCanDelete();
   const [innerTab, setInnerTab] = useState<'requests' | 'institute' | 'extras' | 'pricing'>(pricing ? initialTab : 'requests');
   const certCatalog = useCertificateCatalog();
   const [rows, setRows] = useState<CertRow[]>([]);
@@ -388,7 +392,7 @@ export default function CertRequestsTab({
                             <button onClick={() => navigate(`/client/${row.clientCode || row.subscriberId}`)} title="ملف العميل"
                               className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg transition"><ExternalLink size={14} /></button>
                           )}
-                          {canManage && (
+                          {canManage && canDelete && (
                             <button onClick={() => void remove(row)} disabled={busy} title="حذف الشهادة (للمديرين)"
                               className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"><Trash2 size={14} /></button>
                           )}

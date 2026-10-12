@@ -21,6 +21,7 @@ const {
   bulkOperationLimiter,
   logger,
 } = require('./_shared');
+const { requireDeleteRight } = require('../../../lib/deleteRights');
 
 const router = Router();
 
@@ -69,7 +70,9 @@ router.post('/api/admin/leads/unmerge', requireAuth, requireAdmin, requirePermis
   }
 });
 
-router.post('/api/admin/leads/dedup-cleanup', requireAuth, requireAdmin, async (req, res) => {
+// Hides every lead it calls a duplicate, so it is a deletion under the owner's
+// rule even though it travels as a POST: «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
+router.post('/api/admin/leads/dedup-cleanup', requireAuth, requireAdmin, requireDeleteRight, async (req, res) => {
   try {
     if (req.body?.legacyArchiveOnly !== true) {
       // Merges (never deletes) every duplicate group — same phone identity or

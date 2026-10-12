@@ -25,6 +25,7 @@ import StaffAttendancePanel from './staff-profile/StaffAttendancePanel';
 import StaffSettingsPanel from './staff-profile/StaffSettingsPanel';
 import { toEgp } from '../lib/money';
 import { confirmDialog } from '../../shared/ui/confirmDialog';
+import { useCanDelete } from '../hooks/useCanDelete';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const toEGP = (amt: number, cur: string) =>
@@ -64,6 +65,8 @@ const StaffProfile: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { staffMembers, leads, subscribers, reloadStaffMembers, deleteStaffMember, authUser, isAdmin, currentStaff } = useSiteData();
+  // Removing an employee is the owner's list's, not every manager's: «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
+  const canDelete = useCanDelete();
   // Outside the dashboard's tabs, so it asks for the two lists it counts from.
   useEnsureSiteLists(['leads', 'subscribers']);
 
@@ -307,7 +310,7 @@ const StaffProfile: React.FC = () => {
                   title="مراسلة الموظف">
                   <MessageSquare size={14} /> رسالة
                 </button>
-                {isAdmin && currentStaff?.id !== staff.id && (
+                {isAdmin && canDelete && currentStaff?.id !== staff.id && (
                   <button onClick={() => void handleDelete()} disabled={deleting}
                     className="flex h-9 items-center gap-1.5 rounded-full bg-red-500/20 px-3 text-xs font-bold text-red-200 transition hover:bg-red-500/30 disabled:opacity-50"
                     title="حذف الموظف">

@@ -11,6 +11,7 @@ const { getNextClientCode } = require('../lib/mappers');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { ADMIN_EMAILS, requireAuth, requireAdmin } = require('../middleware/auth');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
+const { requireDeleteRight } = require('../lib/deleteRights');
 const logger = require('../lib/logger').child({ route: 'client-maintenance' });
 
 function scopedTenantId(req) {
@@ -57,7 +58,10 @@ router.post('/api/admin/leads/migrate-branches', requireAuth, requireAdmin, asyn
 });
 
 // POST /api/admin/cleanup-junk-leads — hides leads with no phone AND no real name (e.g. 'lead-123')
-router.post('/api/admin/cleanup-junk-leads', requireAuth, requireAdmin, async (req, res) => {
+// A deletion that travels as a POST: the delete guard in lib/httpApp.js only
+// sees HTTP DELETE, so the owner's rule is asked here — «شيل من صلاحيات اي
+// شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
+router.post('/api/admin/cleanup-junk-leads', requireAuth, requireAdmin, requireDeleteRight, async (req, res) => {
   try {
     const tenantId = scopedTenantId(req);
     // Hide leads where name looks like auto-generated 'lead-N' and phone is empty
@@ -75,7 +79,7 @@ router.post('/api/admin/cleanup-junk-leads', requireAuth, requireAdmin, async (r
 });
 
 // POST /api/admin/cleanup-staff-subscribers — deletes subscribers + hides leads whose email matches staff/admin
-router.post('/api/admin/cleanup-staff-subscribers', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/cleanup-staff-subscribers', requireAuth, requireAdmin, requireDeleteRight, async (req, res) => {
   try {
     const tenantId = scopedTenantId(req);
     const [staffRows] = await pool.query(
@@ -108,7 +112,7 @@ router.post('/api/admin/cleanup-staff-subscribers', requireAuth, requireAdmin, a
 //  2. Merges duplicate subscribers with same email (keeps the one with a code)
 //  3. Assigns client codes to subscribers that still have none
 //  4. Fixes branch: subscribers with branch=NULL/'أخرى' and crm_json.source='auto' → set branch='online'
-router.post('/api/admin/fix-auto-subscribers', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/fix-auto-subscribers', requireAuth, requireAdmin, requireDeleteRight, async (req, res) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -286,7 +290,9 @@ router.post('/api/admin/bulk-assign-client-codes', requireAuth, requireAdmin, bu
 });
 
 // ── Fix all codes: assign missing + merge duplicates ─────────────────────────
-router.post('/api/admin/fix-all-codes', requireAuth, requireAdmin, async (req, res) => {
+// Hides the older of every pair of leads sharing a phone (step 4) — a deletion
+// by another name, so it carries the same check as the clean-ups above.
+router.post('/api/admin/fix-all-codes', requireAuth, requireAdmin, requireDeleteRight, async (req, res) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();

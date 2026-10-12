@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { cairoDay } from '../../../../shared/cairoDate';
 import { Briefcase, BriefcaseBusiness, Building2, CalendarCheck, Filter, GraduationCap, Mail, Phone, RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { useCanDelete } from '../../../hooks/useCanDelete';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
 // The job postings live here, not only under نظام HR: this is the page staff
@@ -62,6 +63,8 @@ function jobLabel(app: JoinUsApplication): string {
 
 export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: Kind | 'all' }) {
   const { joinUsApplications, updateJoinUsApplication, deleteJoinUsApplication, reloadJoinUsApplications } = useSiteData();
+  // «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان سواء نشوى او خلود حذف عميل او حذف موظف او حذف حتي شخص منضم» (12 Oct 2026).
+  const canDelete = useCanDelete();
   // Staff-first by default: the owner asked for الموظفون to be the first and
   // default group, so only an explicit instructor/consultant entry point
   // (initialType) opens on the teaching side.
@@ -577,11 +580,13 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
                         </button>
                       );
                     })()}
-                    <button disabled={busyId === app.id} onClick={() => remove(app)}
-                      title={app.convertedApplicantId ? 'الطلب داخل مسار التوظيف — الحذف هيتم رفضه من السيرفر مع توضيح السبب' : 'حذف الطلب نهائيًا'}
-                      className="flex items-center justify-center gap-1 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100 disabled:opacity-40">
-                      <Trash2 size={13} /> {busyId === app.id ? '...' : 'حذف'}
-                    </button>
+                    {canDelete && (
+                      <button disabled={busyId === app.id} onClick={() => remove(app)}
+                        title={app.convertedApplicantId ? 'الطلب داخل مسار التوظيف — الحذف هيتم رفضه من السيرفر مع توضيح السبب' : 'حذف الطلب نهائيًا'}
+                        className="flex items-center justify-center gap-1 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100 disabled:opacity-40">
+                        <Trash2 size={13} /> {busyId === app.id ? '...' : 'حذف'}
+                      </button>
+                    )}
                   </div>
                 </div>
               </article>

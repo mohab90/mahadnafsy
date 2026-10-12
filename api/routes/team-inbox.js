@@ -29,6 +29,7 @@ const { createNotification } = require('../lib/notification');
 const { resolveDataScope } = require('../constants/permissions');
 const { requireAuth, requireAdminOrStaff, requireChannel } = require('../middleware/auth');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
+const { canDelete, refusalMessage, resolveDeleteRights, REFUSAL_CODE } = require('../lib/deleteRights');
 
 const guard = [requireAuth, requireAdminOrStaff, requireChannel('inbox')];
 const me = req => req.staffRecord?.id || null;
@@ -485,6 +486,13 @@ router.delete('/api/admin/team-inbox/quick-replies/:id', ...guard, async (req, r
     const [[row]] = await pool.query('SELECT created_by FROM inbox_quick_replies WHERE tenant_id=? AND id=? LIMIT 1', [req.tenantId, req.params.id]);
     if (!row) throw refuse(404, 'الرد مش موجود');
     if (!seesAll(req) && row.created_by && row.created_by !== me(req)) throw refuse(403, 'الرد ده بتاع زميل — المدير بس يمسحه');
+    // Exempt from the delete guard as your own saved reply, and only that: a
+    // colleague's or a shared one is the owner's rule again — «شيل من صلاحيات
+    // اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
+    if ((!row.created_by || row.created_by !== me(req)) && !await canDelete(req)) {
+      const rights = await resolveDeleteRights(req.tenantId);
+      throw refuse(403, refusalMessage(rights.names), REFUSAL_CODE);
+    }
     await pool.query('DELETE FROM inbox_quick_replies WHERE tenant_id=? AND id=?', [req.tenantId, req.params.id]);
     res.json({ ok: true });
   } catch (error) { fail(res, error, '[team-inbox quick reply delete]'); }
