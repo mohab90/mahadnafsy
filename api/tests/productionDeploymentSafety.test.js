@@ -120,6 +120,16 @@ test('the deploy script uses the release it was given', () => {
   );
   assert.match(script, /PRODUCTION FAILED - rolled back/);
 
+  // 12 Oct 2026: the two halves run separately so the staging E2E can sit
+  // between them, and the production half only ships what staging runs.
+  assert.match(script, /^TARGET=\$\{MAHAD_DEPLOY_TARGET:-both\}$/m);
+  assert.match(script, /if \[ "\$TARGET" = staging \]; then[\s\S]*?exit 0/);
+  assert.match(script, /grep -qx "APP_RELEASE=\$R" "\$STAGING_API\/\.env"/,
+    'production refuses unless staging already runs this release');
+  // tools/release-gate.mjs cuts the script at this line for a staging-only run.
+  assert.match(script, /^echo "staging is healthy; continuing to production"$/m);
+  assert.ok(script.indexOf('if [ "$TARGET" = staging ]; then') < script.indexOf('\necho "staging is healthy; continuing to production"'));
+
   // The release id is stamped into the environment it deploys, so a report
   // from production can name its own build. Without it "is the fix live?" can
   // only be answered by reading files on the box, which is how the rollback
@@ -153,4 +163,16 @@ test('the deploy migrates before it switches the code, and checks what the API r
   assert.match(release, /npm run release:gate -- --skip-live/);
   assert.match(release, /MAHAD_DEPLOY_EMERGENCY/);
   assert.ok(release.indexOf('release:gate') < release.indexOf('npm run release:prepare'));
+
+  // The staging E2E is a gate, not a report: staging, then the specs, then
+  // production — each half its own server call, the e2e run in between.
+  const staging = release.indexOf('MAHAD_DEPLOY_TARGET=staging bash');
+  const e2e = release.indexOf('npx playwright test "$spec"');
+  const production = release.indexOf('MAHAD_DEPLOY_TARGET=production bash');
+  assert.ok(staging > 0 && e2e > staging && production > e2e, 'production is deployed only after the staging E2E');
+  assert.match(release, /tests\/public-smoke\.spec\.ts tests\/payment-flow\.spec\.ts/);
+  assert.match(release, /MAHAD_SKIP_E2E/);
+  assert.match(release, /npm run test:e2e:install/);
+  assert.match(release, /PRODUCTION IS UNTOUCHED/);
+  assert.equal((release.match(/npm run release:prepare/g) || []).length, 1, 'built once, for both halves');
 });

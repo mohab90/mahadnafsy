@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
-# Deploy mahad-ddffccd69669: staging first, verify, then production.
+# Deploys one uploaded release (/staging/<release>-{api,admin,client}.tgz) on
+# the /var/www + systemd server. deploy/release-all.sh uploads it and runs this.
 #
-# This release is built FROM the branch production already runs, with the
-# improvements re-applied on top - it is not a different lineage. That is the
-# difference from the earlier deploy, which came from main and dropped 78
-# commits nobody had merged.
+#   MAHAD_DEPLOY_TARGET=staging    bash deploy-release.sh <release>
+#   MAHAD_DEPLOY_TARGET=production bash deploy-release.sh <release>
+#   bash deploy-release.sh <release>          (both, staging first)
 #
-# Rolls back automatically if health does not come back.
+# The two halves are separate so the laptop can run the browser checks against
+# staging between them (12 Oct 2026): until then the public smoke and payment
+# flow specs only ran after production was already live, so a failure could
+# only be reported, never prevented. Production mode refuses unless staging is
+# healthy and already runs this same release, so it can only ever ship what
+# staging was tested with — the same archive, never a rebuild.
+#
+# Each half migrates its own database before switching its code, checks the
+# API reports the newest migration the release ships, and rolls back by itself.
 set -uo pipefail
 # The release to deploy. Passing one as $1 wins; the value here is only the
 # fallback. It used to be this line alone, which meant the script accepted an
@@ -15,6 +23,17 @@ set -uo pipefail
 # button and a finance fix until it was noticed and redeployed.
 R=${1:-mahad-2fe36419b325}
 TS=$(date +%Y%m%d-%H%M%S)
+
+# "both" stays the default so an operator running it by hand keeps the old
+# one-shot behaviour; release-all.sh always names the half it wants.
+TARGET=${MAHAD_DEPLOY_TARGET:-both}
+case "$TARGET" in
+  staging|production|both) ;;
+  *) echo "MAHAD_DEPLOY_TARGET must be staging, production or both (got '$TARGET'). Nothing was changed."; exit 1 ;;
+esac
+
+STAGING_API=/var/www/mahad-staging/api
+STAGING_PORT=3002
 
 # All three archives, or nothing. On 2026-10-01 the upload failed (scp run from
 # a folder that did not hold the release) and this script ran anyway: every tar
@@ -25,6 +44,14 @@ for part in api admin client; do
     echo "MISSING /staging/$R-$part.tgz - upload the release first. Nothing was changed."
     exit 1
   }
+  # The bytes staging is tested with are the bytes production gets: the laptop
+  # uploads a .sha256 beside each archive, and an archive that no longer
+  # matches it was replaced or damaged between the two halves.
+  if [ -s "/staging/$R-$part.tgz.sha256" ] \
+     && ! ( cd /staging && sha256sum --check --status "$R-$part.tgz.sha256" ); then
+    echo "CHECKSUM MISMATCH for /staging/$R-$part.tgz - not the archive that was uploaded. Nothing was changed."
+    exit 1
+  fi
 done
 
 h()  { curl -s --max-time 15 "http://127.0.0.1:$1/api/health" 2>/dev/null; }
@@ -135,12 +162,62 @@ rollback_api() { # <apidir> <service> <port>
   echo "  restored - $(h "$port")"
 }
 
-deploy staging \
-  /var/www/mahad-staging/api \
-  /var/www/admin-staging.mahadnafsy.com \
-  /var/www/staging.mahadnafsy.com \
-  mahad-api-staging 3002 || { echo; echo "STAGING FAILED - production untouched."; exit 1; }
+prune_archives() {
+  echo
+  echo "=== prune old releases and rollback archives (keeping the last 3) ==="
+  # Every deploy left six rollback archives and three release archives in
+  # /staging and nothing ever removed one, so the folder grew by the size of the
+  # whole site per release until the disk the database lives on filled up.
+  # Three is the current release plus two to roll back to. The release being
+  # deployed is never removed: production still needs it after staging.
+  keep_newest() { # <glob> — deletes all but the 3 newest matches
+    ls -1t $1 2>/dev/null | tail -n +4 | while read -r old; do rm -f -- "$old" "$old.sha256"; done
+  }
+  for label in staging production; do
+    for part in api admin client; do keep_newest "/staging/rb-$label-$part-*.tgz"; done
+  done
+  ls -1t /staging/mahad-*-api.tgz 2>/dev/null | tail -n +4 | while read -r old; do
+    rel=$(basename "$old" -api.tgz)
+    [ "$rel" = "$R" ] && continue
+    rm -f -- "/staging/$rel-api.tgz" "/staging/$rel-admin.tgz" "/staging/$rel-client.tgz" \
+             "/staging/$rel-api.tgz.sha256" "/staging/$rel-admin.tgz.sha256" "/staging/$rel-client.tgz.sha256"
+  done
+  echo "  /staging now holds $(du -sh /staging 2>/dev/null | cut -f1)"
+}
 
+if [ "$TARGET" != production ]; then
+  deploy staging \
+    "$STAGING_API" \
+    /var/www/admin-staging.mahadnafsy.com \
+    /var/www/staging.mahadnafsy.com \
+    mahad-api-staging "$STAGING_PORT" || { echo; echo "STAGING FAILED - production untouched."; exit 1; }
+fi
+
+if [ "$TARGET" = staging ]; then
+  # Pruned here too: a release the browser checks stop never reaches the
+  # production half, and its archives would otherwise pile up in /staging.
+  prune_archives
+  echo
+  echo "DONE - release $R live on STAGING only. Production untouched; it follows with MAHAD_DEPLOY_TARGET=production."
+  exit 0
+fi
+
+if [ "$TARGET" = production ]; then
+  # Production only ever gets what staging already runs and answers for.
+  # APP_RELEASE is written into staging's .env by its own deploy above.
+  if ! grep -qx "APP_RELEASE=$R" "$STAGING_API/.env" 2>/dev/null; then
+    echo "REFUSED - staging does not run $R ($(grep '^APP_RELEASE=' "$STAGING_API/.env" 2>/dev/null || echo 'no APP_RELEASE')). Deploy it to staging and test it there first. Production untouched."
+    exit 1
+  fi
+  if ! ok "$STAGING_PORT"; then
+    echo "REFUSED - staging runs $R but is not healthy right now. Production untouched."
+    exit 1
+  fi
+fi
+
+# tools/release-gate.mjs cuts this script at the next line to get a staging-only
+# run out of an older server copy, so it stays at column 0 and after the
+# staging half.
 echo
 echo "staging is healthy; continuing to production"
 
@@ -169,25 +246,7 @@ for web in /var/www/mahadnafsy.com/assets /var/www/admin.mahadnafsy.com/assets; 
   echo "  $(basename "$(dirname "$web")"): $before -> $after files"
 done
 
-echo
-echo "=== prune old releases and rollback archives (keeping the last 3) ==="
-# Every deploy left six rollback archives and three release archives in
-# /staging and nothing ever removed one, so the folder grew by the size of the
-# whole site per release until the disk the database lives on filled up.
-# Three is the current release plus two to roll back to.
-keep_newest() { # <glob> — deletes all but the 3 newest matches
-  ls -1t $1 2>/dev/null | tail -n +4 | while read -r old; do rm -f -- "$old" "$old.sha256"; done
-}
-for label in staging production; do
-  for part in api admin client; do keep_newest "/staging/rb-$label-$part-*.tgz"; done
-done
-ls -1t /staging/mahad-*-api.tgz 2>/dev/null | tail -n +4 | while read -r old; do
-  rel=$(basename "$old" -api.tgz)
-  [ "$rel" = "$R" ] && continue
-  rm -f -- "/staging/$rel-api.tgz" "/staging/$rel-admin.tgz" "/staging/$rel-client.tgz" \
-           "/staging/$rel-api.tgz.sha256" "/staging/$rel-admin.tgz.sha256" "/staging/$rel-client.tgz.sha256"
-done
-echo "  /staging now holds $(du -sh /staging 2>/dev/null | cut -f1)"
+prune_archives
 
 echo
 echo "=== ops scripts ==="
