@@ -82,7 +82,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   useEnsureLectures();
   useEnsureSiteLists(['subscribers', 'leads', 'daqqiRounds']); // nor these, since 11 Oct 2026 (siteLists.ts)
 
-  const { isOnlineManager, canManageCourseAccess, canSeeCourses, canCorrectPayments, canSeeProofs } = useUnifiedClientPermissions({ isAdmin, currentStaff });
+  const { isOnlineManager, canManageCourseAccess, canSeeCourses, canCorrectPayments, canSeeProofs, canDelete } = useUnifiedClientPermissions({ isAdmin, currentStaff });
 
   const isSub = !!subscriber;
   const clientName   = subscriber?.name   ?? lead?.name   ?? '';
@@ -465,7 +465,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
                   clientPhone={clientPhone}
                   isSubscriber={isSub}
                   onAdd={() => setShowAddComm(true)}
-                  onDelete={handleDeleteComm}
+                  onDelete={canDelete ? handleDeleteComm : undefined}
                 />
               )}
 

@@ -19,6 +19,7 @@ const { enforceAdminIpWhitelist } = require('../middleware/ipWhitelist');
 const { adminLimiter } = require('../middleware/rateLimits');
 const { adminFeatureGate, isPublicAdminPath } = require('./adminFeatureGate');
 const { requireAuth } = require('../middleware/auth');
+const { deleteRightsGuard } = require('./deleteRights');
 const { cleanupMemoryPresence } = require('./onlineUsers');
 
 const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
@@ -254,6 +255,13 @@ function createHttpApp({ pool, brandAssetRoot }) {
     return isPublicAdminPath(pathname) ? next() : requireAuth(req, res, next);
   });
   app.use('/api/admin', adminFeatureGate);
+  // «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (the
+  // owner, 12 Oct 2026). Every HTTP DELETE a member of staff can send goes
+  // through this one door, ahead of every router, so a route added tomorrow is
+  // covered without anyone remembering to. The exemptions and the list live in
+  // lib/deleteRights.js.
+  app.use('/api/admin', deleteRightsGuard);
+  app.use('/api/staff', deleteRightsGuard);
   setInterval(() => cleanupMemoryPresence(), 60 * 1000);
   app.use(enforceAdminIpWhitelist);
   app.use('/uploads/branding', express.static(brandAssetRoot, {

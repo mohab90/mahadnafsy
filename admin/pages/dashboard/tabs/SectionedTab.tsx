@@ -31,6 +31,12 @@ export type TabSection = {
    * السيرفر was admin-only where the permission map said view_security.
    */
   adminOnly?: boolean;
+  /**
+   * The owner alone (/api/auth/me canManageDeleteRights) — narrower than
+   * adminOnly, which the admin and manager roles also pass. «صلاحية الحذف» is
+   * the one: a manager who could tick their own box would make it pointless.
+   */
+  ownerOnly?: boolean;
   Component: React.ComponentType<{ notify: NotifyFn }>;
 };
 
@@ -48,7 +54,8 @@ export function SectionedTab({
 }) {
   const navigate = useNavigate();
   const { param } = useParams<{ param?: string }>();
-  const { isAdmin, currentStaff } = useSiteData();
+  const { isAdmin, currentStaff, authUser } = useSiteData();
+  const isOwner = Boolean(authUser?.canManageDeleteRights);
 
   const allowed = useMemo(() => {
     // From the context. staffMembers is empty for the ten roles that cannot
@@ -59,11 +66,12 @@ export function SectionedTab({
       ? { role: self.role as RoleKey, permissions: self.permissions as PermissionKey[] | undefined }
       : null;
     return sections.filter(s => {
+      if (s.ownerOnly) return isOwner;
       if (isAdmin) return true;
       if (s.adminOnly) return false;
       return hasPermission(subject, s.permission as PermissionKey);
     });
-  }, [sections, isAdmin, currentStaff]);
+  }, [sections, isAdmin, currentStaff, isOwner]);
 
   const active = useMemo(
     () => allowed.find(s => s.id === param) ?? allowed[0],

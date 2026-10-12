@@ -18,6 +18,8 @@ const { isPlainJsonObject, preserveStoredSecrets, redactSecrets } = require('../
 const { getTenantSetting, setTenantSetting } = require('../../lib/tenantSettings');
 const { getMfaPolicy, saveMfaPolicy } = require('../../lib/mfaPolicy');
 const { invalidateIpWhitelist } = require('../../middleware/ipWhitelist');
+const { writeAuditEvent } = require('../../lib/auditTrail');
+const { DEFAULT_NAME_PATTERN, isDeleteOwner, resolveDeleteRights, saveDeleteRights } = require('../../lib/deleteRights');
 
 function validateConfigSection(section, value) {
   if (!Object.prototype.hasOwnProperty.call(SYS_DEFAULTS, section)) return `Unknown section: ${section}`;
@@ -288,6 +290,85 @@ router.put(
     }
   }
 );
+
+// ── صلاحية الحذف ───────────────────────────────────────────────────────────
+// «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان سواء
+// نشوى او خلود حذف عميل او حذف موظف او حذف حتي شخص منضم» — the owner, 12 Oct
+// 2026. The list of who may delete is the owner's alone to read and change:
+// requireAdmin admits the admin and manager roles as well, and a manager who
+// could tick their own box would make the list pointless.
+async function requireDeleteRightsOwner(req, res, next) {
+  try {
+    if (await isDeleteOwner(req)) return next();
+    return res.status(403).json({ error: 'صلاحية الحذف يحددها صاحب المعهد بس', code: 'OWNER_ONLY' });
+  } catch (error) {
+    logger.error('[delete-rights owner]', error.message);
+    return res.status(503).json({ error: 'Owner check unavailable' });
+  }
+}
+
+async function deleteRightsView(tenantId, rights) {
+  const [staff] = await pool.query(
+    `SELECT id, name, role FROM staff
+      WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL
+      ORDER BY name`,
+    [tenantId]
+  );
+  const allowed = new Set(rights.staffIds);
+  return {
+    saved: rights.saved,
+    staffIds: [...rights.staffIds],
+    defaultPattern: DEFAULT_NAME_PATTERN.source,
+    staff: staff.map(row => ({
+      id: row.id, name: row.name, role: String(row.role || '').toLowerCase(), allowed: allowed.has(String(row.id)),
+    })),
+  };
+}
+
+router.get('/api/admin/delete-rights', requireAuth, requireAdmin, requireDeleteRightsOwner, async (req, res) => {
+  try {
+    res.json(await deleteRightsView(req.tenantId, await resolveDeleteRights(req.tenantId, { fresh: true })));
+  } catch (error) {
+    logger.error('[delete-rights get]', error.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.put('/api/admin/delete-rights', requireAuth, requireAdmin, requireDeleteRightsOwner, async (req, res) => {
+  try {
+    const wanted = Array.isArray(req.body?.staffIds) ? req.body.staffIds.map(id => String(id || '').trim()).filter(Boolean) : null;
+    if (!wanted || wanted.length > 200) return res.status(400).json({ error: 'staffIds لازم تكون قائمة' });
+    // Only active staff of this institute: an id from elsewhere, or a typo,
+    // would sit in the list doing nothing and read as a grant later.
+    const [rows] = wanted.length
+      ? await pool.query(
+        `SELECT id FROM staff WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL AND id IN (${wanted.map(() => '?').join(',')})`,
+        [req.tenantId, ...wanted]
+      )
+      : [[]];
+    const known = new Set(rows.map(row => String(row.id)));
+    const unknown = wanted.filter(id => !known.has(id));
+    if (unknown.length) return res.status(400).json({ error: 'في موظفين مش موجودين أو مش نشطين', code: 'UNKNOWN_STAFF', unknown });
+    const before = await resolveDeleteRights(req.tenantId, { fresh: true });
+    const after = await saveDeleteRights(req.tenantId, [...known], { actorId: req.user?.uid || req.user?.email || null });
+    await writeAuditEvent({
+      action: 'delete_rights_changed',
+      entityType: 'tenant_setting',
+      entityId: 'delete_rights',
+      severity: 'critical',
+      metadata: {
+        before: { saved: before.saved, staffIds: before.staffIds, names: before.names },
+        after: { staffIds: after.staffIds, names: after.names },
+      },
+      req,
+    });
+    await publishConfigEvent(req, 'delete_rights');
+    res.json({ ok: true, ...await deleteRightsView(req.tenantId, after) });
+  } catch (error) {
+    logger.error('[delete-rights put]', error.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Generic Key-Value Store (for frontend tabs persistence) ───────

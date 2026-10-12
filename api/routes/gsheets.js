@@ -8,6 +8,7 @@ const { pool } = require('../lib/db');
 const { getNextClientCode } = require('../lib/mappers');
 const { getTenantSetting } = require('../lib/tenantSettings');
 const { requireAuth, requireAdmin, requirePermission } = require('../middleware/auth');
+const { requireDeleteRightWhen } = require('../lib/deleteRights');
 const {
   isHtmlResponse, fetchCsvFollowRedirects, syncAllConfiguredSheets, sheetKeyOf, countSheetLeads, removeConfiguredSheet,
 } = require('../lib/sheets');
@@ -200,7 +201,10 @@ router.get('/api/admin/leads/gsheet-leads', requireAuth, requireAdmin, requirePe
 
 // POST /api/admin/leads/gsheet-remove { sheetId, gid, name, deleteLeads } — take a sheet
 // off the list, and with deleteLeads the leads it brought in that nobody worked.
-router.post('/api/admin/leads/gsheet-remove', requireAuth, requireAdmin, requirePermission('manage_leads'), async (req, res) => {
+// Taking the sheet off the list is not a deletion; taking its leads with it
+// (deleteLeads) is, and that half follows the owner's rule: «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
+router.post('/api/admin/leads/gsheet-remove', requireAuth, requireAdmin, requirePermission('manage_leads'),
+  requireDeleteRightWhen(req => req.body?.deleteLeads === true), async (req, res) => {
   const sheet = sheetFromBody(req.body);
   if (!validSheetId(sheet.sheetId)) return res.status(400).json({ error: 'Invalid sheetId' });
   try {

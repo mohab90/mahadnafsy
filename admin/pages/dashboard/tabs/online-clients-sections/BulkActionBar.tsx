@@ -2,6 +2,7 @@ import React from 'react';
 import { Modal } from '../../../../../shared/ui/Modal';
 import type { StaffMember, SubscriberItem } from '../../../../types';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
+import { useCanDelete } from '../../../../hooks/useCanDelete';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type BulkAction = null|'pause'|'finish'|'delete'|'assign';
@@ -28,6 +29,8 @@ export function BulkActionBar({
   collOnlineBulkAssignTo, setCollOnlineBulkAssignTo, isAdmin, staffMembers,
   actionSubscribers, shouldUseScopedSubscribers, setSalesOwnSubscribers, deleteSubscriber, updateSubscriber, notify,
 }: Props) {
+  // «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
+  const canDelete = useCanDelete();
   const [saving, setSaving] = React.useState(false);
   if (collOnlineSelected.size === 0 && !collOnlineBulkConfirm) return null;
 
@@ -40,7 +43,7 @@ export function BulkActionBar({
           <button onClick={() => setCollOnlineBulkConfirm('pause')} className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-bold hover:bg-amber-600 transition">⏸ وقف</button>
           <button onClick={() => setCollOnlineBulkConfirm('finish')} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700 transition">✅ إنهاء</button>
           {isAdmin && <button onClick={() => setCollOnlineBulkConfirm('assign')} className="px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-bold hover:bg-purple-700 transition">👤 تعيين مسئول</button>}
-          {isAdmin && <button onClick={() => setCollOnlineBulkConfirm('delete')} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 transition">🗑 حذف</button>}
+          {isAdmin && canDelete && <button onClick={() => setCollOnlineBulkConfirm('delete')} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 transition">🗑 حذف</button>}
           {/* Export: ⚙️ الإعدادات ← «تصدير المحدد», one export for the screen.
               This one summed refunded and pending payments as paid. */}
           <button onClick={() => setCollOnlineSelected(new Set())} className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-xs font-bold hover:bg-gray-300 transition">✕ إلغاء</button>

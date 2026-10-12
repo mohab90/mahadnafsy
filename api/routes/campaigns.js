@@ -14,6 +14,7 @@ const { createUnsubscribeToken, verifyUnsubscribeToken, setMarketingConsent, fil
 const { requireAuth, requireAdmin, requireAdminOrStaff, requireAnyPermission, requirePermission, requirePermissionOrOwnRows } = require('../middleware/auth');
 const { publicLimiter } = require('../middleware/rateLimits');
 const { assertSafeWebhookUrl } = require('../lib/webhookSecurity');
+const { canDelete } = require('../lib/deleteRights');
 const WEBHOOK_EVENTS = new Set([
   'new_lead', 'lead_converted', 'new_subscriber', 'new_payment', 'new_order',
   'refund_requested', 'new_consultation', 'new_contact', 'new_join_us',
@@ -299,11 +300,16 @@ router.put('/api/admin/tasks/:id', requireAuth, requireAdminOrStaff, requirePerm
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// Exempt from the delete guard (lib/deleteRights.js) because it is your own
+// to-do list — but only your own: «شيل من صلاحيات اي شخص غير المدير وليد وحازم
+// ومهاب الحذف اي ما كان» (12 Oct 2026), so without the right a manager no
+// longer clears a colleague's task, nor anyone a task somebody assigned them.
 router.delete('/api/admin/tasks/:id', requireAuth, requireAdminOrStaff, requirePermissionOrOwnRows('view_dashboard'), async (req, res) => {
   try {
+    const ownOnly = !await canDelete(req);
     const [result] = await pool.query(
-      `DELETE FROM tasks WHERE id=? AND tenant_id=?${taskManager(req) ? '' : ' AND (assigned_to=? OR created_by=?)'}`,
-      [req.params.id, req.tenantId, ...(taskManager(req) ? [] : [taskActorId(req), taskActorId(req)])]
+      `DELETE FROM tasks WHERE id=? AND tenant_id=?${taskManager(req) ? '' : ' AND (assigned_to=? OR created_by=?)'}${ownOnly ? ' AND created_by=?' : ''}`,
+      [req.params.id, req.tenantId, ...(taskManager(req) ? [] : [taskActorId(req), taskActorId(req)]), ...(ownOnly ? [taskActorId(req)] : [])]
     );
     if (!result.affectedRows) return res.status(404).json({ error: 'Task not found' });
     res.json({ ok: true });

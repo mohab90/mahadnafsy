@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { StaffMember } from '../../types';
 import { mysqlClient } from '../../lib/mysqlapi';
+import { useAuth } from '../AuthContext';
 
 /**
  * Who is signed in, as a staff record.
@@ -28,6 +29,10 @@ export function useSignedInStaff(
   email: string | null | undefined,
   staffMembers: StaffMember[],
 ) {
+  // From /api/auth/me, carried on the record so every
+  // hasPermission(currentStaff, 'delete_…') asks it without knowing to —
+  // «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
+  const canDelete = useAuth().authUser?.canDelete;
   const [staffSelf, setStaffSelf] = useState<StaffMember | null>(null);
   const [staffSelfLoading, setStaffSelfLoading] = useState(true);
 
@@ -54,9 +59,10 @@ export function useSignedInStaff(
   const currentStaff = useMemo(() => {
     if (!email) return null;
     const key = String(email).toLowerCase().trim();
-    return staffMembers.find(m => String(m.email || '').toLowerCase().trim() === key)
+    const found = staffMembers.find(m => String(m.email || '').toLowerCase().trim() === key)
       ?? staffSelf ?? null;
-  }, [staffMembers, staffSelf, email]);
+    return found ? { ...found, canDelete } : null;
+  }, [staffMembers, staffSelf, email, canDelete]);
 
   return { currentStaff, staffSelf, staffSelfLoading };
 }
