@@ -144,3 +144,15 @@ test('the login screen offers a recovery code, and the staff screen the reset be
   assert.match(settings, /أكواد الاسترجاع — هتظهر المرة دي بس/);
   assert.match(settings, /mysqlAuth\.regenerateRecoveryCodes\(token\)/);
 });
+
+// The site's own login has the same 2FA step (an account with a staff role can
+// sign in there too), and had no way past it without the phone.
+test('the site login offers the recovery code too', () => {
+  const login = read('..', 'client', 'pages', 'Auth.tsx');
+  assert.match(login, /استخدم كود استرجاع/);
+  assert.match(login, /if \(twoFaRecovery\) await mysqlAuth\.verify2faRecovery\(twoFaTempToken, twoFaCode\);/);
+  assert.match(login, /placeholder="XXXX-XXXX-XXXX"/);
+  const api = read('..', 'client', 'lib', 'mysqlapi.ts');
+  assert.match(api, /verify2faRecovery: \(pendingToken: string, recoveryCode: string\) =>/);
+  assert.match(api, /JSON\.stringify\(\{ pendingToken, recoveryCode \}\)/);
+});

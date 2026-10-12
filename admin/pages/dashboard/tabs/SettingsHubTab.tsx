@@ -25,6 +25,7 @@ export default function SettingsHubTab() {
     const has = (permission: string) => hasPermission(subject, permission as PermissionKey);
     return (entry: SettingsEntry) => {
       if (isAdmin) return true;
+      if (entry.adminOnly) return false;
       if (entry.permission) return has(entry.permission);
       const required = TAB_PERMISSION_MAP[entry.tab];
       if (required === null) return true;

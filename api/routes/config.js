@@ -17,6 +17,7 @@ const { loadTenantContext } = require('../lib/tenantScope');
 const { publicLimiter, aiLimiter } = require('../middleware/rateLimits');
 const { generateAdminAi } = require('../lib/adminAi');
 const { writeAuditEvent } = require('../lib/auditTrail');
+const { invalidateConfig: invalidateMetaCapiConfig } = require('../lib/metaCapi');
 
 function contentBranches(content) {
   if (!Object.prototype.hasOwnProperty.call(content, 'institute.branches')) return null;
@@ -129,6 +130,9 @@ router.put('/api/admin/settings', requireAuth, requireAdmin, async (req, res) =>
       db: conn,
     });
     await conn.commit();
+    // The Conversions API keeps its config a minute; a pixel or token just
+    // saved should be the one the next lead goes to.
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'metaCapi')) invalidateMetaCapiConfig(req.tenantId);
     res.json({ ok: true });
   } catch (e) {
     await conn.rollback().catch(() => {});

@@ -1,7 +1,7 @@
 'use strict';
 
 const express = require('express');
-const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { connectorDiagnosticLimiter } = require('../middleware/rateLimits');
 const {
   PROVIDERS,
@@ -18,6 +18,7 @@ const {
 const { getTenantSetting } = require('../lib/tenantSettings');
 const { writeAuditEvent } = require('../lib/auditTrail');
 const { pool } = require('../lib/db');
+const metaCapi = require('../lib/metaCapi');
 const logger = require('../lib/logger').child({ route: 'connector-diagnostics' });
 
 const router = express.Router();
@@ -91,6 +92,34 @@ router.post('/api/admin/otp-provider/test', requireAuth, requireAdminOrStaff, re
     }
     logger.error('OTP diagnostic failed', { channel, err: error.message, tenantId: req.tenantId });
     res.status(500).json({ ok: false, message: 'تعذر تنفيذ اختبار OTP.' });
+  }
+});
+
+// Meta's Conversions API (lib/metaCapi.js). Admin-only, like the settings
+// blob it reads: the token is in there, and a test sent without a test event
+// code is counted by Meta as a real Lead. What it answers names where each
+// part came from and whether a token exists — never the token.
+router.get('/api/admin/meta-capi', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    res.json(await metaCapi.describeConfig(req.tenantId));
+  } catch (error) {
+    logger.error('meta capi status failed', { err: error.message, tenantId: req.tenantId });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/api/admin/meta-capi/test', requireAuth, requireAdmin, connectorDiagnosticLimiter, async (req, res) => {
+  try {
+    await audit(req, 'connector.diagnostic.requested', 'meta_capi');
+    const outcome = await metaCapi.sendTestEvent(req.tenantId, { userAgent: req.headers['user-agent'] });
+    await audit(req, 'connector.diagnostic.completed', 'meta_capi', outcome);
+    if (outcome.reason === 'not_configured') {
+      return res.json({ ...outcome, message: 'الربط مش مكتمل: لازم Pixel ID صحيح وتوكن، والإرسال يكون شغّال.' });
+    }
+    res.json(outcome);
+  } catch (error) {
+    logger.error('meta capi test failed', { err: error.message, tenantId: req.tenantId });
+    res.status(500).json({ ok: false, message: 'تعذر إرسال الحدث التجريبي.' });
   }
 });
 
