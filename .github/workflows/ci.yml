@@ -72,10 +72,21 @@ jobs:
       # the release gate (deploy/release-all.sh) now requires.
       - name: Unit tests (finance / RBAC / templates / helpers / tenant / pagination)
         timeout-minutes: 20
-        run: env -u DB_HOST -u DB_USER -u DB_PASSWORD -u DB_NAME -u DB_PORT npm --prefix api run test:unit
+        shell: bash
+        run: set -o pipefail; env -u DB_HOST -u DB_USER -u DB_PASSWORD -u DB_NAME -u DB_PORT npm --prefix api run test:unit 2>&1 | tee "$RUNNER_TEMP/unit.tap"
       - name: Integration tests (real MySQL — schema/ledger invariants)
         timeout-minutes: 30
-        run: npm --prefix api run test:integration
+        shell: bash
+        run: set -o pipefail; npm --prefix api run test:integration 2>&1 | tee "$RUNNER_TEMP/integration.tap"
+      # Thousands of TAP lines bury the one that failed; this prints just the
+      # failing tests and their errors at the end of a red run.
+      - name: Failing tests
+        if: failure()
+        shell: bash
+        run: |
+          for f in "$RUNNER_TEMP"/unit.tap "$RUNNER_TEMP"/integration.tap; do
+            [ -f "$f" ] && grep -n -A40 -E '^\s*not ok' "$f" | head -400 || true
+          done
       - name: Quality gate
         run: node tools/mahad-quality-check.mjs
       - name: Dependency audit (new advisories fail; expiring risks are explicit)
