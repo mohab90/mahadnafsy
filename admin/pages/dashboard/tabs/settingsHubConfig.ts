@@ -24,6 +24,8 @@ export interface SettingsEntry {
   href: string;
   tab: TabKey;
   permission?: StaffPermission;
+  /** The section it opens is admin-only (TabSection.adminOnly), whatever the permission. */
+  adminOnly?: boolean;
   /** Extra words the search should find this by. */
   keywords?: string;
   /** Sub-pages listed under the entry, each its own link. */
@@ -108,6 +110,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
       { title: 'قائمة مصادر الليدات', desc: 'المصادر اللي بيختار منها الموظف وهو بيضيف ليد.', href: S('lead_sources'), tab: 'system_settings' },
       { title: 'مهلة المتابعة والأرشفة', desc: 'كام ساعة قبل ما الليد يتأخر، وبعد كام يوم يتأرشف لوحده.', href: S('financial'), tab: 'system_settings', keywords: 'SLA أرشفة' },
       { title: 'الأتمتة والقواعد', desc: 'التوزيع التلقائي، التذكيرات، وتغيير الحالات لوحدها.', href: '/dashboard/automation', tab: 'automation' },
+      { title: 'تتبّع إعلانات ميتا', desc: 'Conversions API: الـ Pixel ID والتوكن وكود الحدث التجريبي، وإرسال حدث تجريبي يتأكد إن ميتا مستلمة الليد والدفع من السيرفر.', href: '/dashboard/integrations/meta_capi', tab: 'integrations', permission: 'manage_settings', adminOnly: true, keywords: 'فيسبوك بكسل pixel capi conversions اعلانات' },
     ],
   },
   {

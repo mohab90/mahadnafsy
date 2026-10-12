@@ -144,6 +144,43 @@ function envToken(tenantId) {
   return platformFallback(tenantId, token) || '';
 }
 
+async function readOwnSettings(tenantId) {
+  try {
+    const settings = await getTenantSetting('settings', { tenantId, fallback: {} });
+    return settings && typeof settings.metaCapi === 'object' && settings.metaCapi ? settings.metaCapi : {};
+  } catch (error) {
+    logger.warn('[meta-capi] settings unavailable', { error: error.message });
+    return {};
+  }
+}
+
+/**
+ * Each value with where it came from: the institute's own setting, else for
+ * the default institute the environment (and, for the pixel, the one the site
+ * already loads). The settings screen shows the sources; nothing else needs them.
+ */
+function resolveParts(tenantId, own) {
+  const ownPixel = String(own.pixelId || '').trim();
+  const envPixel = String(platformFallback(tenantId, process.env.META_PIXEL_ID) || '').trim();
+  const sitePixel = String(platformFallback(tenantId, SITE_PIXEL_ID) || '');
+  const ownToken = String(own.accessToken || '').trim();
+  const ownCode = String(own.testEventCode || '').trim();
+  const envCode = String(platformFallback(tenantId, process.env.META_CAPI_TEST_EVENT_CODE) || '').trim();
+  const source = (mine, env, site = '') => (mine ? 'settings' : env ? 'env' : site ? 'site' : 'none');
+  // The environment's token is read only when the institute has none of its
+  // own: resolving it can touch a file (META_CAPI_TOKEN_FILE).
+  const envTok = ownToken ? '' : envToken(tenantId);
+  return {
+    enabled: own.enabled !== false,
+    pixelId: ownPixel || envPixel || sitePixel,
+    pixelSource: source(ownPixel, envPixel, sitePixel),
+    token: ownToken || envTok,
+    tokenSource: source(ownToken, envTok),
+    testEventCode: ownCode || envCode,
+    testEventCodeSource: source(ownCode, envCode),
+  };
+}
+
 /**
  * Which pixel, and the token to send to it: the institute's own setting first
  * (settings.metaCapi — { pixelId, accessToken, testEventCode, enabled }), else
@@ -153,22 +190,60 @@ function envToken(tenantId) {
 async function loadConfig(tenantId = DEFAULT_TENANT_ID) {
   const hit = configCache.get(tenantId);
   if (hit && Date.now() - hit.at < CONFIG_TTL_MS) return hit.value;
-  let own = {};
-  try {
-    const settings = await getTenantSetting('settings', { tenantId, fallback: {} });
-    own = settings && typeof settings.metaCapi === 'object' && settings.metaCapi ? settings.metaCapi : {};
-  } catch (error) {
-    logger.warn('[meta-capi] settings unavailable', { error: error.message });
-  }
+  const parts = resolveParts(tenantId, await readOwnSettings(tenantId));
   let value = null;
-  if (own.enabled !== false) {
-    const pixelId = String(own.pixelId || platformFallback(tenantId, process.env.META_PIXEL_ID || SITE_PIXEL_ID) || '').trim();
-    const token = String(own.accessToken || envToken(tenantId)).trim();
-    const testEventCode = String(own.testEventCode || platformFallback(tenantId, process.env.META_CAPI_TEST_EVENT_CODE) || '').trim();
-    if (/^\d{5,20}$/.test(pixelId) && token) value = { pixelId, token, testEventCode };
+  if (parts.enabled && /^\d{5,20}$/.test(parts.pixelId) && parts.token) {
+    value = { pixelId: parts.pixelId, token: parts.token, testEventCode: parts.testEventCode };
   }
   configCache.set(tenantId, { value, at: Date.now() });
   return value;
+}
+
+/** A saved change takes effect now rather than after the cache's minute. */
+function invalidateConfig(tenantId = DEFAULT_TENANT_ID) {
+  configCache.delete(tenantId);
+}
+
+/**
+ * The settings screen's view: what is saved, what is in effect and where each
+ * part came from. Whether there is a token and where — never the token.
+ */
+async function describeConfig(tenantId = DEFAULT_TENANT_ID) {
+  const own = await readOwnSettings(tenantId);
+  const parts = resolveParts(tenantId, own);
+  const pixelValid = /^\d{5,20}$/.test(parts.pixelId);
+  return {
+    saved: {
+      enabled: own.enabled !== false,
+      pixelId: String(own.pixelId || '').trim(),
+      hasToken: Boolean(String(own.accessToken || '').trim()),
+      testEventCode: String(own.testEventCode || '').trim(),
+    },
+    effective: {
+      configured: parts.enabled && pixelValid && Boolean(parts.token),
+      enabled: parts.enabled,
+      pixelId: parts.pixelId,
+      pixelValid,
+      pixelSource: parts.pixelSource,
+      hasToken: Boolean(parts.token),
+      tokenSource: parts.tokenSource,
+      testEventCode: parts.testEventCode,
+      testEventCodeSource: parts.testEventCodeSource,
+    },
+  };
+}
+
+/** The request itself. Its URL carries the token, so it is never logged or returned. */
+function postToMeta(config, event) {
+  const body = { data: [event] };
+  if (config.testEventCode) body.test_event_code = config.testEventCode;
+  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${config.pixelId}/events?access_token=${encodeURIComponent(config.token)}`;
+  return globalThis.fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
 }
 
 /** Sends one event. Resolves to { sent, status? , reason? }; never rejects. */
@@ -176,15 +251,7 @@ async function sendEvent(tenantId, event) {
   try {
     const config = await loadConfig(tenantId || DEFAULT_TENANT_ID);
     if (!config) return { sent: false, reason: 'not_configured' };
-    const body = { data: [event] };
-    if (config.testEventCode) body.test_event_code = config.testEventCode;
-    const url = `https://graph.facebook.com/${GRAPH_VERSION}/${config.pixelId}/events?access_token=${encodeURIComponent(config.token)}`;
-    const response = await globalThis.fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
+    const response = await postToMeta(config, event);
     if (!response.ok) {
       // The status and Meta's own message, never the URL: it carries the token.
       const detail = await response.json().catch(() => null);
@@ -197,6 +264,42 @@ async function sendEvent(tenantId, event) {
   } catch (error) {
     logger.warn('[meta-capi] event not sent', { event: event?.event_name, error: error.name === 'TimeoutError' ? 'timeout' : error.message });
     return { sent: false, reason: 'error' };
+  }
+}
+
+/**
+ * «إرسال حدث تجريبي» on the settings screen: one Lead, under the test event
+ * code when there is one so it lands in Events Manager's «Test events» and not
+ * in the ads' numbers. Answers with Meta's status or its message, with the
+ * token cut out of anything that might echo it.
+ */
+async function sendTestEvent(tenantId = DEFAULT_TENANT_ID, { userAgent = '' } = {}) {
+  invalidateConfig(tenantId);
+  const config = await loadConfig(tenantId);
+  if (!config) return { ok: false, reason: 'not_configured' };
+  const scrub = text => String(text || '').split(config.token).join('••••').slice(0, 300);
+  const event = buildEvent({
+    eventName: 'Lead',
+    eventId: `admin-test-${crypto.randomUUID()}`,
+    // No visitor here, so the admin's browser stands in; Meta wants at least
+    // one identifier, and the institute's id hashed is one that names nobody.
+    context: { ua: String(userAgent).slice(0, 500), url: String(process.env.PUBLIC_SITE_URL || 'https://mahadnafsy.com') },
+    user: { externalId: `meta-capi-test:${tenantId}` },
+    custom: { content_name: 'Conversions API test' },
+  });
+  const usedTestCode = Boolean(config.testEventCode);
+  try {
+    const response = await postToMeta(config, event);
+    const detail = await response.json().catch(() => null);
+    if (!response.ok) {
+      return {
+        ok: false, status: response.status, usedTestCode,
+        message: scrub(detail?.error?.error_user_msg || detail?.error?.message || ''),
+      };
+    }
+    return { ok: true, status: response.status, usedTestCode, eventsReceived: Number(detail?.events_received) || 0 };
+  } catch (error) {
+    return { ok: false, usedTestCode, message: error.name === 'TimeoutError' ? 'timeout' : scrub(error.message) };
   }
 }
 
@@ -244,7 +347,10 @@ module.exports = {
   adContextFromRequest,
   buildEvent,
   consentDenied,
+  describeConfig,
+  invalidateConfig,
   purchaseEventId,
+  sendTestEvent,
   trackLead,
   trackPurchase,
   _test: { loadConfig, sendEvent, normalizeEmail, normalizePhone, normalizeName, configCache },

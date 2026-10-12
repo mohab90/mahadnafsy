@@ -1,5 +1,5 @@
 import { lazy } from 'react';
-import { Bot, CreditCard, Mail, MessageSquareText, Settings2, Shield, Zap } from 'lucide-react';
+import { Bot, CreditCard, Mail, MessageSquareText, Settings2, Shield, Target, Zap } from 'lucide-react';
 import type { NotifyFn } from '../../../types';
 import { SectionedTab, type TabSection } from './SectionedTab';
 
@@ -25,6 +25,7 @@ const WebhooksTab = lazy(() => import('./WebhooksTab'));
 const MessagingAgentTab = lazy(() => import('./MessagingAgentTab'));
 const InboxBotPanel = lazy(() => import('./messaging/InboxBotPanel'));
 const AdminAiSettingsTab = lazy(() => import('./AdminAiSettingsTab'));
+const MetaCapiSettingsTab = lazy(() => import('./MetaCapiSettingsTab'));
 
 export const INTEGRATION_SECTIONS: TabSection[] = [
   { id: 'payment', label: 'بوابات الدفع', icon: CreditCard, permission: 'manage_settings', Component: PaymentSettingsTab },
@@ -37,6 +38,8 @@ export const INTEGRATION_SECTIONS: TabSection[] = [
   { id: 'agent', label: 'مساعد الموقع AI', icon: Bot, permission: 'manage_channel_settings', Component: MessagingAgentTab },
   { id: 'ai', label: 'إعدادات AI', icon: Settings2, permission: 'manage_ai_settings', Component: AdminAiSettingsTab },
   { id: 'webhooks', label: 'Webhooks', icon: Zap, permission: 'manage_settings', Component: WebhooksTab },
+  // Admin-only like GET/PUT /api/admin/settings, where its token lives.
+  { id: 'meta_capi', label: 'تتبّع إعلانات ميتا', icon: Target, permission: 'manage_settings', adminOnly: true, Component: MetaCapiSettingsTab },
 ];
 
 /** The retired menu keys, and the section each one now opens. */

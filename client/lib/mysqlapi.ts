@@ -408,6 +408,9 @@ export const mysqlAuth = {
     }>('/auth/whatsapp/verify-otp', { method: 'POST', body: JSON.stringify({ phone, code, name }) }),
   verify2fa: (pendingToken: string, token: string) =>
     apiFetch<{ ok: boolean }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, token }) }),
+  // The phone is gone: one of the ten one-time codes stands in, and is burned.
+  verify2faRecovery: (pendingToken: string, recoveryCode: string) =>
+    apiFetch<{ ok: boolean; recoveryCodesLeft?: number | null }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, recoveryCode }) }),
   logout: () => { localStorage.removeItem('mahad-token'); apiFetch<{ ok: boolean }>('/auth/logout', { method: 'POST' }).catch(() => {}); },
   refreshToken: () => apiFetch<{ ok: boolean }>('/auth/refresh', { method: 'POST', body: '{}' }, true),
 };
