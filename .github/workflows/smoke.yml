@@ -33,8 +33,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 20
-    # The same two specs deploy/release-all.sh runs after a deploy, for when it
-    # could not (no Playwright on the deploying laptop) or to re-check staging.
+    # The same two specs deploy/release-all.sh runs against staging before it
+    # lets production go live, for when it could not (a release sent with
+    # MAHAD_SKIP_E2E) or to re-check staging.
     # Repository secrets on the staging environment, all optional:
     #   E2E_BASIC_AUTH (user:pass for the staging gate), TEST_STUDENT_EMAIL,
     #   TEST_STUDENT_PASSWORD (the staging student the payment flow signs in as).
