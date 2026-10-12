@@ -14,7 +14,7 @@ import MessagesBell from './MessagesBell';
 import { hasPermission } from '../../constants/permissions';
 import { NotificationsBell } from './NotificationsBell';
 import { GlobalSearch, canUseGlobalSearch } from './GlobalSearch';
-import type { LeadItem, StaffMember, SubscriberItem } from '../../types';
+import type { StaffMember } from '../../types';
 import type { TabKey } from './navigation';
 import { isProfileTab } from './my-profile/profileTabs';
 import { branchOfRole, PHYSICAL_BRANCHES } from '../../lib/physicalBranch';
@@ -46,8 +46,6 @@ type Props = {
   setActiveDropdownGroup: React.Dispatch<React.SetStateAction<string | null>>;
   dropdownRect: DOMRect | null;
   setDropdownRect: React.Dispatch<React.SetStateAction<DOMRect | null>>;
-  leads: LeadItem[];
-  subscribers: SubscriberItem[];
   notifRef: React.RefObject<HTMLDivElement | null>;
   notifOpen: boolean;
   setNotifOpen: React.Dispatch<React.SetStateAction<boolean>>;

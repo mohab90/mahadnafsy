@@ -587,6 +587,10 @@ export const mysqlAdmin = {
     apiFetch(`/admin/overview/revenue`, {}, A),
   getLeadStats:            (): Promise<{ total: number; byStatus: Record<string, number>; assigned: number; unassigned: number; totalDealValue: number; byOwner: Record<string, { total: number; converted: number; avgScore: number; comms: Record<string, number> }>; bySource: Record<string, number>; byMonth: Record<string, { total: number; converted: number }>; avgScore: number; totalCommunications: number; createdToday: number; collectionHolders?: Array<{ id: string; name: string; count: number }> }> =>
     apiFetch(`/admin/leads/stats`, {}, A),
+  // The header bell's count: open leads followed up today or overdue, in the
+  // caller's own scope — instead of the 500 newest leads to count them from.
+  getDueFollowups:         (): Promise<{ due: number; overdue: number; today: number }> =>
+    apiFetch(`/admin/leads/followups-due`, {}, A),
   // The CRM workspace panels — reminders, weekly scorecard, redistribution
   // suggestions — in one request. Each of them used to filter the full leads
   // array in the browser, which is what forced all 26k rows down the wire.

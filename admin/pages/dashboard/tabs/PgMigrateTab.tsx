@@ -6,7 +6,7 @@ import {
   Loader,
   RefreshCw,
 } from 'lucide-react';
-import { useSiteData, useEnsureLectures } from '../../../context/SiteDataContext';
+import { useSiteData, useEnsureLectures, useEnsureSiteLists } from '../../../context/SiteDataContext';
 
 type ApiHealth = { status: 'ok' | 'error'; message?: string; db?: string };
 
@@ -21,6 +21,10 @@ export default function MysqlStatusTab() {
 
   // Lectures are not loaded at login any more — it reports how many rows of each table there are.
   useEnsureLectures();
+  // The same for the on-demand lists: a section of الأمان والصيانة, which loads
+  // only the security log, so this section asks for the rest when it is opened.
+  useEnsureSiteLists(['testimonials', 'leads', 'subscribers', 'orders', 'expenses', 'discounts', 'courseQuizzes',
+    'liveStreams', 'automationWorkflows', 'daqqiRounds', 'joinUsApplications', 'contactMessages', 'activityLogs']);
 
   const [health, setHealth] = useState<ApiHealth | null>(null);
   const [checking, setChecking] = useState(false);

@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Layers, Settings } from 'lucide-react';
 
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import { useSiteData } from '../../../context/SiteDataContext';
+import { useSiteData, useEnsureSiteLists } from '../../../context/SiteDataContext';
 import { useBranches } from '../../../hooks/useBranches';
 import type { LeadItem } from '../../../types';
 import { DEFAULT_SOURCES } from './crmConstants';
@@ -93,6 +93,10 @@ export default function SectionCustomTabs({
 
   const mine = tabs[section];
   const active = useMemo(() => mine.find(tab => tab.id === openTabId) || null, [mine, openTabId]);
+  // An open tab lists the loaded leads and matches them to clients. The pages
+  // this row sits on (العملاء, العملاء المحتملين) do not load the leads for it,
+  // so the tab asks when it is opened.
+  useEnsureSiteLists(['leads', 'subscribers'], Boolean(active));
 
   const salesReps = useMemo(
     () => staffMembers.filter(member => String(member.role || '').toLowerCase() === 'sales'),

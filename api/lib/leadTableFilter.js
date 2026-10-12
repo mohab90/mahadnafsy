@@ -151,4 +151,4 @@ function leadTableSearch(q) {
   return { sql: `(${parts.join(' OR ')})`, params };
 }
 
-module.exports = { leadTableFilter, leadTableSearch, ONLINE_EXCLUDED_SOURCES };
+module.exports = { leadTableFilter, leadTableSearch, ONLINE_EXCLUDED_SOURCES, NEXT_FOLLOWUP };

@@ -7,7 +7,8 @@ interface DashboardBadgesArgs {
   currentStaff: StaffMember | null | undefined;
   isNonAdminStaff: boolean;
   isOnlineManager: boolean;
-  leads: LeadItem[];
+  /** The server's count of the session's due follow-ups (GET /admin/leads/followups-due), or null until it answers. */
+  dueFollowups: number | null;
   salesOwnLeads: LeadItem[];
   subscribers: SubscriberItem[];
   salesOwnSubscribers: SubscriberItem[];
@@ -20,13 +21,19 @@ interface DashboardBadgesArgs {
  * point in the render as before (the hook is called where the inline code was).
  */
 export function useDashboardBadges({
-  currentStaff, isNonAdminStaff, isOnlineManager, leads, salesOwnLeads, subscribers, salesOwnSubscribers,
+  currentStaff, isNonAdminStaff, isOnlineManager, dueFollowups, salesOwnLeads, subscribers, salesOwnSubscribers,
 }: DashboardBadgesArgs) {
-  // Badge count for staff notification bell (overdue + today followup leads)
+  // Badge count for staff notification bell (overdue + today followup leads).
+  // A non-admin employee counts the scoped list their screens already hold. An
+  // admin with a staff record asks the server (dueFollowups): counting the
+  // context's leads meant loading the 500 newest of them on every screen for
+  // this one number, and missed every follow-up on an older lead.
   const _staffNotifTodayStr = cairoDateOnly();
-  const staffNotifBadge = currentStaff ? (isNonAdminStaff ? salesOwnLeads : leads).filter(l =>
-    isOpenLeadStatus(l.status) && l.nextFollowUpDate && l.nextFollowUpDate <= _staffNotifTodayStr
-  ).length : 0;
+  const staffNotifBadge = !currentStaff ? 0 : isNonAdminStaff
+    ? salesOwnLeads.filter(l =>
+      isOpenLeadStatus(l.status) && l.nextFollowUpDate && l.nextFollowUpDate <= _staffNotifTodayStr
+    ).length
+    : (dueFollowups ?? 0);
 
   // Online manager: collection/installment follow-up badge
   const onlineMgrFollowupBadge = React.useMemo(() => {
