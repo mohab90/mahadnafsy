@@ -90,6 +90,18 @@ export function cairoWeekStart(firstDay: 0 | 1 = 0, from?: Date | string | numbe
 }
 
 /**
+ * How far into the institute's month today is: «يوم 12 من 31». For pace and
+ * projection tiles, which took both from the browser's clock — a laptop set to
+ * another zone, or the hours after Cairo's midnight, gave the wrong day.
+ */
+export function cairoMonthProgress(from?: Date | string | number): { dayOfMonth: number; daysInMonth: number } {
+  const today = cairoDateOnly(from);
+  if (!today) return { dayOfMonth: 1, daysInMonth: 30 };
+  const [year, month, day] = today.split('-').map(Number);
+  return { dayOfMonth: day, daysInMonth: new Date(Date.UTC(year, month, 0)).getUTCDate() };
+}
+
+/**
  * The first day of the Cairo month N months before this one, `YYYY-MM-01`;
  * negative looks ahead. For «آخر 3 شهور» pickers that start on a month boundary,
  * and for a salary change that takes effect next month.

@@ -17,7 +17,7 @@ const { convertLeadOfPayment } = require('../lib/leadState');
 const { enqueueFinanceEvent } = require('../lib/financeOutbox');
 const { enqueueEmailSequence } = require('../lib/emailSequence');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
-const { safeDateOnly } = require('../lib/dates');
+const { safeDateOnly, cairoDayOf, cairoToday } = require('../lib/dates');
 const { branchIdForBranch, branchForId } = require('../lib/branches');
 const { assertWritable } = require('../lib/periodLock');
 const { agreedPrice, isItemPaymentType, setAgreedPrice } = require('../lib/agreedPrice');
@@ -377,7 +377,11 @@ async function recordSubscriberPayment(req, res) {
     const resolvedSource = staffOwnedSource && !canApprovePayment
       ? staffOwnedSource
       : (VALID_SOURCES_SP.has(payment.source) ? payment.source : (staffOwnedSource || null));
-    const resolvedDate = safeDateOnly(payment.date || payment.at || new Date());
+    // The day the payment was taken, on Cairo's calendar. With nothing sent it
+    // defaulted to the UTC day, which until 02:00/03:00 Cairo is still
+    // yesterday; an instant ('…T22:30:00Z') was cut at its UTC date the same way.
+    const submittedDate = payment.date || payment.at;
+    const resolvedDate = submittedDate ? cairoDayOf(submittedDate) : cairoToday();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(resolvedDate)) {
       return res.status(400).json({ error: 'Invalid payment date' });
     }

@@ -20,7 +20,7 @@ const {
   hrError,
 } = require('./_shared');
 const { writeAuditEvent } = require('../../lib/auditTrail');
-const { dateOnlyInTimeZone, addDaysToDateOnly, sqlCairoToday, cairoToday } = require('../../lib/dates');
+const { dateOnlyInTimeZone, addDaysToDateOnly, sqlCairoToday, cairoToday, sqlCairoWall } = require('../../lib/dates');
 
 const MAX_BODY = 4000;
 
@@ -121,7 +121,7 @@ router.get('/api/admin/hr/staff/:id/profile', requireAuth, requireAdminOrStaff, 
         [req.tenantId, id, since]
       ),
       pool.query(
-        `SELECT DATE_FORMAT(created_at,'%Y-%m') ym, COUNT(*) leads,
+        `SELECT DATE_FORMAT(${sqlCairoWall('created_at')}, '%Y-%m') ym, COUNT(*) leads,
                 SUM(status IN ${CONVERTED_SQL}) converted
            FROM leads
           WHERE tenant_id=? AND assigned_sales_id=? AND deleted_at IS NULL AND created_at>=?

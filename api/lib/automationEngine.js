@@ -16,7 +16,7 @@ const { pool } = require('./db');
 const { tryJson } = require('./helpers');
 const outbox = require('./outbox');
 const { toDialable } = require('./phoneNumber');
-const { cairoToday } = require('./dates');
+const { cairoToday, addDaysToDateOnly } = require('./dates');
 const { logLeadEvent } = require('./crm');
 const { transitionLead } = require('./leadState');
 const { assignLead } = require('./leadAssignment');
@@ -351,13 +351,14 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
           const msg = sub(cfg.message || '');
 
           if (step.action === 'add_followup_reminder' && lead.id) {
-            const newDate = new Date();
-            newDate.setDate(newDate.getDate() + parseInt(cfg.days || actionCfg.days || '3'));
+            // N days from Cairo's today: the UTC day plus N was a day short when
+            // the workflow ran between midnight and 02:00/03:00 Cairo.
+            const followUpDay = addDaysToDateOnly(cairoToday(), Number.parseInt(cfg.days || actionCfg.days || '3', 10) || 0);
             await pool.query(
               'UPDATE leads SET next_follow_up_date = ? WHERE id = ? AND tenant_id=? AND (next_follow_up_date IS NULL OR next_follow_up_date < NOW())',
-              [newDate.toISOString().slice(0, 10), lead.id, tid]
+              [followUpDay, lead.id, tid]
             );
-            await logLeadEvent(lead.id, 'followup_set', `Automation scheduled follow-up for ${newDate.toISOString().slice(0, 10)}`, { workflowId: wf.id, automation: true }, tid);
+            await logLeadEvent(lead.id, 'followup_set', `Automation scheduled follow-up for ${followUpDay}`, { workflowId: wf.id, automation: true }, tid);
             actionsRun++;
           }
 
@@ -388,7 +389,7 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
               [tid, sub(cfg.task_title || actionCfg.task_title || `متابعة: ${lead.name}`),
                msg || null, lead.id,
                cfg.priority || actionCfg.priority || 'medium', 'todo',
-               (() => { const d = new Date(); d.setDate(d.getDate() + parseInt(cfg.due_days || actionCfg.due_days || '2')); return d.toISOString().slice(0, 10); })(),
+               addDaysToDateOnly(cairoToday(), Number.parseInt(cfg.due_days || actionCfg.due_days || '2', 10) || 0),
                'automation']
             );
             actionsRun++;

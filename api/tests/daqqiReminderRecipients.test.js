@@ -71,13 +71,15 @@ const FIXTURES = [
 test('Dokki round reminders reach only clients who are still contactable', async () => {
   const { createScheduledJobHandlers, sent, restore } = loadHandlersWithWhatsAppStub();
   try {
-    const pool = poolFor(FIXTURES, new Date(Date.now() + 24 * 3600000).toISOString());
+    // The round starts tomorrow; it is 15:00 in Cairo, past the noon from
+    // which the day-before reminder goes. A DATETIME arrives as a Date.
+    const pool = poolFor(FIXTURES, new Date('2026-10-13T00:00:00Z'));
     const jobs = createScheduledJobHandlers({ pool, logger: { info() {}, warn() {} } });
-    await jobs.daqqiSessionReminder();
+    await jobs.daqqiSessionReminder(new Date('2026-10-12T12:00:00Z'));
     assert.deepEqual(sent.map(item => item.phone), ['201000000001']);
     assert.equal(sent[0].opts.tenantId, 'tenant-a');
     assert.equal(sent[0].opts.payload.category, 'reminder');
-    assert.match(sent[0].opts.dedupeKey, /^daqqi-reminder:round-1:\d{4}-\d{2}-\d{2}:24 ساعة:201000000001$/,
+    assert.match(sent[0].opts.dedupeKey, /^daqqi-reminder:round-1:2026-10-13:24 ساعة:201000000001$/,
       'one reminder per session and window, however many hourly runs see it');
   } finally {
     restore();

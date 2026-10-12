@@ -24,6 +24,12 @@ const pool = mysql.createPool({
   // MySQL DATE has no time zone. Returning it as a JavaScript Date shifts Cairo
   // midnight to the previous UTC day and corrupts due dates/period boundaries.
   dateStrings:        ['DATE'],
+  // Every DATETIME the API writes with NOW() is a UTC wall clock, and every
+  // reader (lib/dates.js, shared/cairoDate.ts) takes a zoneless value as UTC.
+  // 'local' — the default — meant "whatever zone the host is set to": on a VPS
+  // set to Africa/Cairo a Date bound as a parameter was written three hours
+  // ahead of the rows NOW() wrote beside it.
+  timezone:           'Z',
   enableKeepAlive:    true,
   keepAliveInitialDelay: 10000,
 });
@@ -33,7 +39,47 @@ pool.on('connection', (conn) => {
   conn.query("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci", (err) => {
     if (err) logger.warn('[pool] SET NAMES error:', err.message);
   });
+  // The session's clock, for the same reason as `timezone: 'Z'` above: NOW(),
+  // CURRENT_TIMESTAMP defaults and TIMESTAMP columns follow the session zone,
+  // which is the server's own unless set. A numeric offset needs no time-zone
+  // tables, which this database does not have.
+  conn.query("SET time_zone = '+00:00'", (err) => {
+    if (err) logger.warn('[pool] SET time_zone error:', err.message);
+  });
 });
+
+/**
+ * What the three clocks say, for the boot log and «مراقبة السيرفر».
+ *
+ * The pool pins its own sessions to UTC, so this asks about what it cannot pin:
+ * the process zone (Date's local getters) and the database server's own zone,
+ * which is what any other client — a cron, a manual import, a session opened
+ * before this release — wrote NOW() in. A non-UTC global zone does not break
+ * the API, but rows written that way hold Cairo wall time and read three (or
+ * two) hours late; that is worth a look, not a migration.
+ */
+async function clockContract(db = pool) {
+  const processOffsetMinutes = -new Date().getTimezoneOffset();
+  const out = {
+    processTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || process.env.TZ || '',
+    processOffsetMinutes,
+    dbSessionTimeZone: null, dbGlobalTimeZone: null, dbSystemTimeZone: null, dbSkewSeconds: null,
+  };
+  try {
+    const [[row]] = await db.query(
+      `SELECT @@session.time_zone AS s, @@global.time_zone AS g, @@system_time_zone AS sys,
+              TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW()) AS skew`);
+    out.dbSessionTimeZone = row.s;
+    out.dbGlobalTimeZone = row.g;
+    out.dbSystemTimeZone = row.sys;
+    out.dbSkewSeconds = Number(row.skew);
+  } catch (_) { /* reported as unknown */ }
+  const utcName = zone => /^(UTC|Etc\/UTC|Etc\/GMT|GMT|Z|\+00:00|Coordinated Universal Time)$/i.test(String(zone || ''));
+  out.dbServerIsUtc = out.dbGlobalTimeZone === null ? null
+    : utcName(out.dbGlobalTimeZone) || (String(out.dbGlobalTimeZone).toUpperCase() === 'SYSTEM' && utcName(out.dbSystemTimeZone));
+  out.ok = processOffsetMinutes === 0 && out.dbSkewSeconds === 0;
+  return out;
+}
 
 // ── DB state tracker — fast-fail while the database endpoint is down ──────────
 // ECONNREFUSED = endpoint unavailable — no point retrying immediately.
@@ -236,4 +282,5 @@ async function getStaffIdByEmail(email, tenantId) {
   return row?.id || null;
 }
 
-module.exports = { pool, cached, cacheInvalidate, dbQuery, dbExecute, getStaffIdByEmail, requireDb, isDbDown };
+module.exports = {
+  clockContract, pool, cached, cacheInvalidate, dbQuery, dbExecute, getStaffIdByEmail, requireDb, isDbDown };

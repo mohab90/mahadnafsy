@@ -10,7 +10,7 @@ const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff } = re
 const { DEFAULT_TENANT } = require('../../middleware/tenantContext');
 const { logLoginAttempt } = require('../../lib/loginAudit');
 const { createNotification } = require('../../lib/notification');
-const { cairoToday, addDaysToDateOnly } = require('../../lib/dates');
+const { cairoToday, addDaysToDateOnly, cairoDayBoundsUtc, cairoDayStartUtc, msUntilCairoTime } = require('../../lib/dates');
 
 const { forEachActiveTenant } = require('../../lib/scheduledTenants');
 
@@ -20,23 +20,47 @@ async function logLogin(userId, email, req, status, failureReason = null) {
 
 // GET /api/admin/security/login-history?limit=50&email=&status=
 
+/**
+ * Run a job for every tenant at HH:00 on Cairo's clock, every day.
+ *
+ * Re-armed after each run rather than repeated every 24 hours, which drifts an
+ * hour each time Egypt changes its clocks. The re-arm looks a minute ahead, so
+ * a timer that fires a hair early cannot find "today's 07:00" still to come
+ * and run the job twice.
+ */
+function dailyAtCairo(hour, label, run) {
+  const arm = lookAheadMs => {
+    const ms = msUntilCairoTime(hour, 0, new Date(Date.now() + lookAheadMs)) + lookAheadMs;
+    setTimeout(() => {
+      forEachActiveTenant(run);
+      arm(60 * 1000);
+    }, ms).unref?.();
+    logger.info(`[${label}] scheduled — next run at ${String(hour).padStart(2, '0')}:00 Cairo, in ${Math.round(ms / 3600000)}h`);
+  };
+  arm(0);
+}
+
 async function sendDailyReport(tenantId = DEFAULT_TENANT) {
   try {
     const today = cairoToday();
     const yesterday = addDaysToDateOnly(cairoToday(), -1);
+    // created_at is a UTC instant; today is a Cairo day. Comparing the two
+    // directly counted from 02:00/03:00 Cairo to the same hour the next day.
+    const [dayStart, dayEnd] = cairoDayBoundsUtc(today);
+    const monthStart = cairoDayStartUtc(`${today.slice(0, 7)}-01`);
 
     const [[{ revenue }]] = await pool.query(
-      `SELECT COALESCE(SUM(amount_egp),0) AS revenue FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) AND deleted_at IS NULL`, [tenantId, today, today]);
+      `SELECT COALESCE(SUM(amount_egp),0) AS revenue FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < ? AND deleted_at IS NULL`, [tenantId, dayStart, dayEnd]);
     const [[{ new_leads }]] = await pool.query(
-      `SELECT COUNT(*) AS new_leads FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [tenantId, today, today]);
+      `SELECT COUNT(*) AS new_leads FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < ?`, [tenantId, dayStart, dayEnd]);
     const [[{ new_clients }]] = await pool.query(
-      `SELECT COUNT(*) AS new_clients FROM subscribers WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [tenantId, today, today]);
+      `SELECT COUNT(*) AS new_clients FROM subscribers WHERE tenant_id=? AND created_at >= ? AND created_at < ?`, [tenantId, dayStart, dayEnd]);
     const [[{ pending_payments }]] = await pool.query(
       `SELECT COUNT(*) AS pending_payments FROM payments WHERE tenant_id=? AND status='pending' AND deleted_at IS NULL`, [tenantId]);
     const [[{ failed_logins }]] = await pool.query(
-      `SELECT COUNT(*) AS failed_logins FROM login_history WHERE tenant_id=? AND status='failed' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [tenantId, today, today]).catch(() => [[{ failed_logins: 0 }]]);
+      `SELECT COUNT(*) AS failed_logins FROM login_history WHERE tenant_id=? AND status='failed' AND created_at >= ? AND created_at < ?`, [tenantId, dayStart, dayEnd]).catch(() => [[{ failed_logins: 0 }]]);
     const [[{ month_revenue }]] = await pool.query(
-      `SELECT COALESCE(SUM(amount_egp),0) AS month_revenue FROM payments WHERE tenant_id=? AND status='paid' AND DATE_FORMAT(created_at,'%Y-%m')=DATE_FORMAT(NOW(),'%Y-%m') AND deleted_at IS NULL`, [tenantId]);
+      `SELECT COALESCE(SUM(amount_egp),0) AS month_revenue FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND deleted_at IS NULL`, [tenantId, monthStart]);
 
     // Get admin emails from DB settings
     const [adminStaff] = await pool.query(`SELECT email FROM staff WHERE tenant_id=? AND UPPER(role)='ADMIN' AND email IS NOT NULL LIMIT 5`, [tenantId]).catch(() => [[]]);
@@ -95,18 +119,10 @@ async function sendDailyReport(tenantId = DEFAULT_TENANT) {
   } catch (e) { logger.warn('[daily-report] error:', e.message); }
 }
 
-// Schedule: every day at 7:00 AM server time
+// Schedule: every day at 07:00 Cairo. It said «server time», and the server
+// runs in UTC, so the report went out at 10:00 in summer and 09:00 in winter.
 function scheduleDailyReport() {
-  const now = new Date();
-  const next7am = new Date(now);
-  next7am.setHours(7, 0, 0, 0);
-  if (next7am <= now) next7am.setDate(next7am.getDate() + 1);
-  const msUntil = next7am - now;
-  setTimeout(() => {
-    forEachActiveTenant(sendDailyReport);
-    setInterval(() => forEachActiveTenant(sendDailyReport), 24 * 60 * 60 * 1000);
-  }, msUntil);
-  logger.info(`[daily-report] scheduled — next run in ${Math.round(msUntil / 3600000)}h`);
+  dailyAtCairo(7, 'daily-report', sendDailyReport);
 }
 scheduleDailyReport();
 
@@ -148,7 +164,7 @@ async function runFollowUpReminders(tenantId = DEFAULT_TENANT) {
     // Batch-check which leads were already reminded today (1 query instead of N)
     const _fuKeys = leads.map(l => `followup_${l.id}_${today}`);
     const [_fuSentRows] = leads.length ? await pool.query(
-      `SELECT ref_id FROM reminder_log WHERE tenant_id=? AND type='followup' AND ref_id IN (${_fuKeys.map(() => '?').join(',')}) AND sent_at >= ? AND sent_at < DATE_ADD(?, INTERVAL 1 DAY)`, [tenantId, ..._fuKeys, today, today]
+      `SELECT ref_id FROM reminder_log WHERE tenant_id=? AND type='followup' AND ref_id IN (${_fuKeys.map(() => '?').join(',')}) AND sent_at >= ? AND sent_at < ?`, [tenantId, ..._fuKeys, ...cairoDayBoundsUtc(today)]
     ).catch(() => [[]]) : [[]];
     const _fuDone = new Set(_fuSentRows.map(r => r.ref_id));
     for (const lead of leads) {
@@ -198,18 +214,9 @@ async function runFollowUpReminders(tenantId = DEFAULT_TENANT) {
   } catch (e) { logger.warn('[followup-reminders] error:', e.message); }
 }
 
-// Run daily at 8:00 AM
+// Run daily at 08:00 Cairo (was 08:00 UTC — 11:00 in a Cairo summer).
 function scheduleFollowUpReminders() {
-  const now = new Date();
-  const next8am = new Date(now);
-  next8am.setHours(8, 0, 0, 0);
-  if (next8am <= now) next8am.setDate(next8am.getDate() + 1);
-  const ms = next8am - now;
-  setTimeout(() => {
-    forEachActiveTenant(runFollowUpReminders);
-    setInterval(() => forEachActiveTenant(runFollowUpReminders), 24 * 60 * 60 * 1000);
-  }, ms);
-  logger.info(`[followup-reminders] scheduled — next run in ${Math.round(ms / 3600000)}h`);
+  dailyAtCairo(8, 'followup-reminders', runFollowUpReminders);
 }
 scheduleFollowUpReminders();
 
@@ -387,7 +394,7 @@ async function runPaymentDueReminders(tenantId = DEFAULT_TENANT) {
     // Batch-check which payments were already reminded today (1 query instead of N)
     const _pdKeys = pending.map(p => `payment_due_${p.id}_${today}`);
     const [_pdSentRows] = pending.length ? await pool.query(
-      `SELECT ref_id FROM reminder_log WHERE tenant_id=? AND type='payment_due' AND ref_id IN (${_pdKeys.map(() => '?').join(',')}) AND sent_at >= ? AND sent_at < DATE_ADD(?, INTERVAL 1 DAY)`, [tenantId, ..._pdKeys, today, today]
+      `SELECT ref_id FROM reminder_log WHERE tenant_id=? AND type='payment_due' AND ref_id IN (${_pdKeys.map(() => '?').join(',')}) AND sent_at >= ? AND sent_at < ?`, [tenantId, ..._pdKeys, ...cairoDayBoundsUtc(today)]
     ).catch(() => [[]]) : [[]];
     const _pdDone = new Set(_pdSentRows.map(r => r.ref_id));
     for (const p of pending) {
@@ -432,18 +439,9 @@ async function runPaymentDueReminders(tenantId = DEFAULT_TENANT) {
   } catch (e) { logger.warn('[payment-reminders] error:', e.message); }
 }
 
-// Run daily at 9:00 AM
+// Run daily at 09:00 Cairo (was 09:00 UTC — 12:00 in a Cairo summer).
 function schedulePaymentReminders() {
-  const now = new Date();
-  const next9am = new Date(now);
-  next9am.setHours(9, 0, 0, 0);
-  if (next9am <= now) next9am.setDate(next9am.getDate() + 1);
-  const ms = next9am - now;
-  setTimeout(() => {
-    forEachActiveTenant(runPaymentDueReminders);
-    setInterval(() => forEachActiveTenant(runPaymentDueReminders), 24 * 60 * 60 * 1000);
-  }, ms);
-  logger.info(`[payment-reminders] scheduled — next run in ${Math.round(ms / 3600000)}h`);
+  dailyAtCairo(9, 'payment-reminders', runPaymentDueReminders);
 }
 schedulePaymentReminders();
 

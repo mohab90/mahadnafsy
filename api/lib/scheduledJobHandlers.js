@@ -1,6 +1,6 @@
 'use strict';
 
-const { tryJson } = require('./helpers');
+const { tryJson, ymd } = require('./helpers');
 const outbox = require('./outbox');
 const { filterSuppressed, WHATSAPP_OPT_OUT_HINT } = require('./marketingConsent');
 const { toDialable } = require('./phoneNumber');
@@ -10,7 +10,7 @@ const { getTenantSetting, setTenantSetting } = require('./tenantSettings');
 const { invalidateFxCache } = require('./finance');
 const { cacheInvalidate } = require('./db');
 const { notifyWaitlistForFreedSeats } = require('./courseWaitlist');
-const { cairoToday, addDaysToDateOnly } = require('./dates');
+const { cairoToday, cairoClock, addDaysToDateOnly } = require('./dates');
 const { installmentPlansBySubscriber } = require('./installmentPlansBySubscriber');
 
 // Every message these jobs send goes through the outbox (lib/outbox.js), each
@@ -137,13 +137,20 @@ function createScheduledJobHandlers({ pool, logger }) {
     }
   }
 
-  async function daqqiSessionReminder() {
+  async function daqqiSessionReminder(now = new Date()) {
     try {
-      const now = Date.now();
-      const windows = [
-        [now + 23 * 3600000, now + 25 * 3600000, '24 ساعة'],
-        [now + 110 * 60000, now + 130 * 60000, 'ساعتين'],
-      ];
+      // On Cairo's calendar. The session was taken as starting at its date's
+      // UTC midnight — 02:00/03:00 Cairo — so «24 ساعة» went out between 02:00
+      // and 04:00 on the day itself and «ساعتين» at about 01:00, both at night
+      // and the second before the first. A round has a coarse slot, not an
+      // hour, so the day before is reminded from noon and the day itself from
+      // 08:00. The labels stay as they were: they are in the outbox's dedupe
+      // key, and a reminder already queued must not go a second time.
+      const clock = cairoClock(now);
+      const hour = Math.floor(clock.minutes / 60);
+      const windows = [];
+      if (hour >= 12) windows.push([addDaysToDateOnly(clock.date, 1), '24 ساعة']);
+      if (hour >= 8) windows.push([clock.date, 'ساعتين']);
       const [rounds] = await pool.query(
         `SELECT dr.id,dr.tenant_id,dr.code,dr.time_slot,dr.start_date,dr.current_lecture,
                 dr.postponed_weeks_json,c.title course_title
@@ -151,21 +158,23 @@ function createScheduledJobHandlers({ pool, logger }) {
            JOIN courses c ON c.id=dr.course_id AND c.tenant_id=dr.tenant_id
           WHERE dr.status='ACTIVE'`
       );
-      const mondayOf = value => {
-        const date = new Date(value);
-        const day = date.getDay();
-        date.setDate(date.getDate() - (day === 0 ? 6 : day - 1));
-        return date.toISOString().slice(0, 10);
+      // Date-only arithmetic in UTC: a calendar day has no zone to drift in.
+      const mondayOf = dateOnly => {
+        const day = new Date(`${dateOnly}T00:00:00Z`).getUTCDay();
+        return addDaysToDateOnly(dateOnly, -(day === 0 ? 6 : day - 1));
       };
-      for (const [from, to, label] of windows) {
+      for (const [sessionDay, label] of windows) {
         const due = rounds.filter(round => {
-          if (!round.start_date) return false;
+          const start = ymd(round.start_date);
+          if (!start) return false;
           const postponed = tryJson(round.postponed_weeks_json, []);
-          const next = new Date(new Date(round.start_date).getTime()
-            + (Number(round.current_lecture || 0) + postponed.length) * 7 * 86400000);
-          if (postponed.includes(mondayOf(next))) return false;
-          round.nextSession = next;
-          return next.getTime() >= from && next.getTime() <= to;
+          const next = addDaysToDateOnly(start,
+            (Number(round.current_lecture || 0) + postponed.length) * 7);
+          if (!next || postponed.includes(mondayOf(next))) return false;
+          // Its UTC midnight is still that day in Cairo, which is how the
+          // message prints it and how the dedupe key has always named it.
+          round.nextSession = new Date(`${next}T00:00:00Z`);
+          return next === sessionDay;
         });
         if (!due.length) continue;
         // Recipient filter, deliberately scoped to this messaging path only.

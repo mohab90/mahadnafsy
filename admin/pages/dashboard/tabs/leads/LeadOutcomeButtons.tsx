@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { LeadItem } from '../../../../types';
+import { cairoDaysAhead } from '../../../../../shared/cairoDate';
 
 /**
  * The four things a rep actually does after speaking to someone.
@@ -66,12 +67,13 @@ const OUTCOMES: Outcome[] = [
   },
 ];
 
-/** Local calendar date, so "tomorrow" is the desk's tomorrow rather than UTC's. */
+/**
+ * "Tomorrow" on the institute's calendar. It was the browser's, which is
+ * Cairo's only when the laptop is set to Cairo: a rep working from Riyadh in
+ * winter, after 23:00, set every follow-up a day late.
+ */
 function inDays(days: number): string {
-  const when = new Date();
-  when.setDate(when.getDate() + days);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())}`;
+  return cairoDaysAhead(days);
 }
 
 export default function LeadOutcomeButtons({

@@ -29,9 +29,11 @@ const fmt = (n: number) =>
   : n >= 1000    ? `${(n / 1000).toFixed(1)}ك`
   : String(Math.round(n));
 
+// d is a 'YYYY-MM-DD' Cairo day from the server. Through new Date() it was UTC
+// midnight, read back in the browser's zone — the day before, west of UTC.
 const dayLabel = (d: string) => {
-  const date = new Date(d);
-  return `${date.getDate()}/${date.getMonth() + 1}`;
+  const [, month, day] = String(d).slice(0, 10).split('-').map(Number);
+  return month && day ? `${day}/${month}` : String(d);
 };
 
 export default function KpiDashboardTab({ notify }: { notify: NotifyFn }) {

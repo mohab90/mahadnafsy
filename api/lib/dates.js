@@ -88,6 +88,17 @@ function cairoYearMonth(now = new Date()) {
   return { year, month };
 }
 
+/**
+ * 'YYYY-MM-01' for the Cairo month N months before this one (negative looks
+ * ahead) — the default start of a «هذا الشهر» or «آخر 3 شهور» report.
+ * `new Date(now.getFullYear(), now.getMonth(), 1)` is the server's month, which
+ * is UTC: on the 1st before 02:00/03:00 Cairo it named the month just ended.
+ */
+function cairoMonthStart(monthsBack = 0, now = new Date()) {
+  const { year, month } = cairoYearMonth(now);
+  return new Date(Date.UTC(year, month - 1 - monthsBack, 1)).toISOString().slice(0, 10);
+}
+
 /** Cairo's wall clock: the date, 'HH:MM', and minutes since midnight. */
 function cairoClock(now = new Date()) {
   const p = zonedDateTimeParts(now, CAIRO);
@@ -110,15 +121,100 @@ function cairoOffsetMinutes(instant) {
  * string. This is what to compare a UTC-instant column against: `created_at >=
  * CURDATE()` meant "since UTC midnight", which is 02:00 or 03:00 in Cairo.
  *
- * The offset is read at noon, well clear of Egypt's midnight daylight-saving
- * change, so the one day a year the clock jumps still gets the right start.
+ * Egypt changes its clocks at local midnight, so on those two days a year the
+ * offset in force at 00:00 is not the one in force at noon. Reading it at noon
+ * alone put the start of Friday 24 April 2026 at 21:00 UTC — an hour that was
+ * still Thursday 23:00 in Cairo, because the clocks jumped from 00:00 straight
+ * to 01:00 and the day began at 22:00 UTC. So both offsets that could apply
+ * (yesterday's and today's) are tried, and the earliest instant that Cairo
+ * actually calls this day wins.
  */
 function cairoDayStartUtc(dateOnly = cairoToday()) {
   if (!DATE_ONLY.test(String(dateOnly))) throw new Error(`not a date: ${dateOnly}`);
   const [y, m, d] = dateOnly.split('-').map(Number);
-  const offset = cairoOffsetMinutes(new Date(Date.UTC(y, m - 1, d, 12)));
-  const start = new Date(Date.UTC(y, m - 1, d) - offset * 60000);
-  return start.toISOString().slice(0, 19).replace('T', ' ');
+  const midnight = Date.UTC(y, m - 1, d);
+  const offsets = new Set([
+    cairoOffsetMinutes(new Date(midnight - 12 * 3600000)),
+    cairoOffsetMinutes(new Date(midnight + 12 * 3600000)),
+  ]);
+  let start = null;
+  for (const offset of offsets) {
+    const candidate = midnight - offset * 60000;
+    if (cairoToday(new Date(candidate)) === dateOnly && (start === null || candidate < start)) start = candidate;
+  }
+  if (start === null) start = midnight - cairoOffsetMinutes(new Date(midnight + 12 * 3600000)) * 60000;
+  return new Date(start).toISOString().slice(0, 19).replace('T', ' ');
+}
+
+/**
+ * [start, end) in UTC for the Cairo days `from` … `to`, both included — the
+ * bounds to hold a column written with NOW() against.
+ *
+ * Routes compared `created_at >= '2026-10-12' AND created_at < DATE_ADD('2026-10-12',
+ * INTERVAL 1 DAY)`, i.e. UTC midnight to UTC midnight: Cairo's 03:00 to 03:00 in
+ * summer. A payment taken at 01:00 counted in yesterday's report and today's
+ * dropped it. Each bound is a Cairo midnight found on its own, so a range that
+ * crosses a daylight-saving change is right at both ends.
+ *
+ * Accepts a value whose first ten characters are a date ('2026-10-12' or
+ * '2026-10-12T…'), which is what the report screens send; anything else is a 400.
+ */
+function cairoDayBoundsUtc(from, to = from) {
+  const day = value => (String(value || '').trim().match(/^(\d{4}-\d{2}-\d{2})(?:$|[T ])/) || [])[1] || '';
+  const first = day(from);
+  const last = day(to);
+  if (!isValidDateOnly(first) || !isValidDateOnly(last)) {
+    const error = new Error('تاريخ غير صحيح — الشكل المطلوب YYYY-MM-DD');
+    error.statusCode = 400;
+    throw error;
+  }
+  return [cairoDayStartUtc(first), cairoDayStartUtc(addDaysToDateOnly(last, 1))];
+}
+
+/**
+ * The Cairo day a stored or submitted value falls on, 'YYYY-MM-DD', or ''.
+ *
+ * A bare date is taken as written. Anything with a time is an instant — a
+ * DATETIME from the pool, an ISO string from a browser — and is placed on
+ * Cairo's calendar, not sliced: '2026-10-11T22:30:00Z' is the 12th in Cairo.
+ * A picked day stored at midnight (payments.date) stays on its day, because
+ * Cairo is ahead of UTC.
+ */
+function cairoDayOf(value) {
+  if (value === null || value === undefined || value === '') return '';
+  if (typeof value === 'string') {
+    const raw = value.trim();
+    if (DATE_ONLY.test(raw)) return isValidDateOnly(raw) ? raw : '';
+    if (raw.startsWith('0000-00-00')) return '';
+    // Zoneless 'YYYY-MM-DD HH:MM[:SS]' is a stored UTC wall clock.
+    const naive = raw.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)$/);
+    const instant = new Date(naive ? `${naive[1]}T${naive[2]}Z` : raw);
+    return Number.isNaN(instant.getTime()) ? '' : cairoToday(instant);
+  }
+  const instant = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(instant.getTime()) ? '' : cairoToday(instant);
+}
+
+/**
+ * Milliseconds from `now` until the next HH:MM on Cairo's wall clock.
+ *
+ * The daily jobs were armed with `setHours(7, 0, 0, 0)` on the server's clock,
+ * which is UTC — so «7 الصبح» was 10:00 in Cairo in summer and 09:00 in winter —
+ * and then repeated every 24 hours, which cannot follow a clock change. Callers
+ * re-arm from this after every run instead.
+ */
+function msUntilCairoTime(hour, minute = 0, now = new Date()) {
+  const target = hour * 60 + minute;
+  const clock = cairoClock(now);
+  let day = clock.date;
+  if (clock.minutes >= target) day = addDaysToDateOnly(day, 1);
+  // The day's start plus the wall-clock minutes, corrected for an offset that
+  // changes between midnight and the target (only ever on a DST night).
+  const start = Date.parse(`${cairoDayStartUtc(day).replace(' ', 'T')}Z`);
+  let at = start + target * 60000;
+  const drift = cairoClock(new Date(at)).minutes - target;
+  if (drift) at -= drift * 60000;
+  return Math.max(1000, at - now.getTime());
 }
 
 /**
@@ -143,6 +239,85 @@ function sqlCairoDayStartUtc(now = new Date()) {
   const start = cairoDayStartUtc(cairoToday(now));
   if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(start)) throw new Error(`refusing to inline ${start}`);
   return `'${start}'`;
+}
+
+/**
+ * Where today ends in Cairo: tomorrow's start, inlined like the one above.
+ * `${sqlCairoDayStartUtc()} + INTERVAL 1 DAY` is 24 hours, and the two days a
+ * year Egypt changes its clocks are 23 and 25 hours long.
+ */
+function sqlCairoDayEndUtc(now = new Date()) {
+  const end = cairoDayStartUtc(addDaysToDateOnly(cairoToday(now), 1));
+  if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(end)) throw new Error(`refusing to inline ${end}`);
+  return `'${end}'`;
+}
+
+/*
+ * Cairo's wall clock inside SQL, for grouping rows by the institute's day or
+ * month.
+ *
+ * DATE(created_at) and DATE_FORMAT(created_at, '%Y-%m') bucket a UTC instant by
+ * the UTC calendar, so everything from Cairo's midnight to 02:00/03:00 lands on
+ * the day — and on the 1st, the month — before. CONVERT_TZ cannot help: this
+ * database has no time-zone tables. So the summers are listed here, from Intl,
+ * and the expression adds 180 minutes inside one and 120 outside. Each bound is
+ * the exact instant the clocks change (Egypt changes at local midnight), so the
+ * hour the autumn change repeats is placed on the Thursday it belongs to.
+ */
+let summersUtc = null;
+let summersUntilYear = 0;
+
+function egyptSummersUtc(untilYear) {
+  if (summersUtc && summersUntilYear >= untilYear) return summersUtc;
+  const format = new Intl.DateTimeFormat('en-US', {
+    timeZone: CAIRO, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23',
+  });
+  const offsetAtNoon = utcMidnight => {
+    const at = utcMidnight + 12 * 3600000;
+    const p = {};
+    for (const part of format.formatToParts(new Date(at))) p[part.type] = Number(part.value);
+    return Math.round((Date.UTC(p.year, p.month - 1, p.day, p.hour) - at) / 60000);
+  };
+  const ranges = [];
+  // Egypt has kept two kinds of year since 2011: none, and summers that start
+  // and end at a local midnight (2014's Ramadan break included).
+  let day = Date.UTC(2014, 0, 1);
+  const last = Date.UTC(untilYear, 11, 31);
+  let previous = offsetAtNoon(day);
+  let openedAt = null;
+  for (day += 86400000; day <= last; day += 86400000) {
+    const offset = offsetAtNoon(day);
+    if (offset !== previous) {
+      const switchAt = day - previous * 60000;
+      if (offset > previous) openedAt = switchAt;
+      else if (openedAt !== null) { ranges.push([openedAt, switchAt]); openedAt = null; }
+      previous = offset;
+    }
+  }
+  if (openedAt !== null) ranges.push([openedAt, last + 86400000]);
+  summersUtc = ranges.map(([a, b]) => [a, b].map(t => new Date(t).toISOString().slice(0, 19).replace('T', ' ')));
+  summersUntilYear = untilYear;
+  return summersUtc;
+}
+
+/**
+ * SQL for the Cairo wall clock of a UTC DATETIME column, e.g.
+ *   `DATE_FORMAT(${sqlCairoWall('l.created_at')}, '%Y-%m')`
+ * The column is inlined, so only a plain (optionally qualified) column name is
+ * accepted; the instants come from egyptSummersUtc() and are re-checked.
+ */
+function sqlCairoWall(column, now = new Date()) {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/.test(String(column))) {
+    throw new Error(`refusing to inline column ${column}`);
+  }
+  const untilYear = Number(cairoToday(now).slice(0, 4)) + 1;
+  const stamp = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+  const whens = egyptSummersUtc(untilYear).map(([from, to]) => {
+    if (!stamp.test(from) || !stamp.test(to)) throw new Error('refusing to inline a summer bound');
+    return `WHEN ${column} >= '${from}' AND ${column} < '${to}' THEN 180`;
+  });
+  if (!whens.length) return `(${column} + INTERVAL 120 MINUTE)`;
+  return `(${column} + INTERVAL (CASE ${whens.join(' ')} ELSE 120 END) MINUTE)`;
 }
 
 function addDaysToDateOnly(dateOnly, days) {
@@ -173,9 +348,15 @@ module.exports = {
   isValidDateOnly,
   cairoToday,
   cairoYearMonth,
+  cairoMonthStart,
   cairoClock,
   cairoOffsetMinutes,
   cairoDayStartUtc,
+  cairoDayBoundsUtc,
+  cairoDayOf,
+  msUntilCairoTime,
   sqlCairoToday,
   sqlCairoDayStartUtc,
+  sqlCairoDayEndUtc,
+  sqlCairoWall,
 };

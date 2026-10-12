@@ -10,18 +10,19 @@ const router = express.Router();
 const ROUTE_LOCAL_CRONS_ENABLED = false;
 const { sendDailyReport, scheduleDailyReport, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
 const { createNotification } = require('../../lib/notification');
-const { cairoToday } = require('../../lib/dates');
+const { cairoToday, cairoDayBoundsUtc, cairoDayStartUtc, cairoMonthStart, sqlCairoWall } = require('../../lib/dates');
 
 router.get('/api/admin/analytics/conversion-funnel', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
-    const now = new Date();
-    const from = req.query.from || new Date(now.getFullYear(), now.getMonth() - 2, 1).toISOString().slice(0, 10);
-    const to   = req.query.to   || now.toISOString().slice(0, 10);
+    const from = req.query.from || cairoMonthStart(2);
+    const to   = req.query.to   || cairoToday();
+    // from/to are Cairo days; the columns below are UTC instants.
+    const [fromUtc, toUtc] = cairoDayBoundsUtc(from, to);
 
     const [byStatus] = await pool.query(`
       SELECT status, COUNT(*) AS cnt FROM leads
-      WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)
-      GROUP BY status`, [req.tenantId, from, to]);
+      WHERE tenant_id=? AND created_at >= ? AND created_at < ?
+      GROUP BY status`, [req.tenantId, fromUtc, toUtc]);
 
     const statusMap = Object.fromEntries(byStatus.map(r => [r.status, parseInt(r.cnt)]));
 
@@ -35,8 +36,8 @@ router.get('/api/admin/analytics/conversion-funnel', requireAuth, requireAdminOr
     const [bySource] = await pool.query(`
       SELECT source, COUNT(*) AS cnt,
              SUM(CASE WHEN status='converted' THEN 1 ELSE 0 END) AS conversions
-      FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)
-      GROUP BY source ORDER BY cnt DESC`, [req.tenantId, from, to]);
+      FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < ?
+      GROUP BY source ORDER BY cnt DESC`, [req.tenantId, fromUtc, toUtc]);
 
     // Staff performance
     const [byStaff] = await pool.query(`
@@ -46,8 +47,8 @@ router.get('/api/admin/analytics/conversion-funnel', requireAuth, requireAdminOr
              ROUND(SUM(CASE WHEN l.status='converted' THEN 1 ELSE 0 END) / COUNT(l.id) * 100, 1) AS conv_rate
       FROM leads l
       JOIN staff st ON st.id = l.assigned_sales_id AND st.tenant_id=l.tenant_id
-      WHERE l.tenant_id=? AND l.created_at >= ? AND l.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-      GROUP BY l.assigned_sales_id ORDER BY conversions DESC`, [req.tenantId, from, to]);
+      WHERE l.tenant_id=? AND l.created_at >= ? AND l.created_at < ?
+      GROUP BY l.assigned_sales_id ORDER BY conversions DESC`, [req.tenantId, fromUtc, toUtc]);
 
     res.json({
       period: { from, to },
@@ -67,7 +68,7 @@ router.get('/api/admin/analytics/conversion-funnel', requireAuth, requireAdminOr
       })),
       byStaff,
     });
-  } catch (e) { logger.error(e); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error(e); res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
 });
 
 // GET /api/admin/analytics/revenue-forecast?months=3
@@ -77,7 +78,7 @@ router.get('/api/admin/analytics/revenue-forecast', requireAuth, requireAdminOrS
 
     // Get last 6 months of revenue for trend
     const [history] = await pool.query(`
-      SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, SUM(amount_egp) AS revenue
+      SELECT DATE_FORMAT(${sqlCairoWall('created_at')}, '%Y-%m') AS month, SUM(amount_egp) AS revenue
       FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH) AND deleted_at IS NULL
       GROUP BY month ORDER BY month`, [req.tenantId]);
 
@@ -228,7 +229,7 @@ router.get('/api/admin/security/stats', requireAuth, requireAdmin, async (req, r
       SELECT email, ip, status, created_at FROM login_history WHERE tenant_id=?
       ORDER BY created_at DESC LIMIT 20`, [req.tenantId]);
     const [dailyActivity] = await pool.query(`
-      SELECT DATE(created_at) AS day,
+      SELECT DATE(${sqlCairoWall('created_at')}) AS day,
              SUM(CASE WHEN status='success' THEN 1 ELSE 0 END) AS successes,
              SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failures
       FROM login_history WHERE tenant_id=? AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
@@ -245,14 +246,17 @@ router.get('/api/admin/security/stats', requireAuth, requireAdmin, async (req, r
 router.get('/api/admin/reports/daily-preview', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
     const today = req.query.date || cairoToday();
-    const [[{ revenue }]] = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS revenue FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) AND deleted_at IS NULL`, [req.tenantId, today, today]);
-    const [[{ new_leads }]] = await pool.query(`SELECT COUNT(*) AS new_leads FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [req.tenantId, today, today]);
-    const [[{ new_clients }]] = await pool.query(`SELECT COUNT(*) AS new_clients FROM subscribers WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [req.tenantId, today, today]);
+    // today is a Cairo day; the columns below are UTC instants.
+    const [dayStart, dayEnd] = cairoDayBoundsUtc(today);
+    const monthStart = cairoDayStartUtc(`${String(today).slice(0, 7)}-01`);
+    const [[{ revenue }]] = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS revenue FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < ? AND deleted_at IS NULL`, [req.tenantId, dayStart, dayEnd]);
+    const [[{ new_leads }]] = await pool.query(`SELECT COUNT(*) AS new_leads FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < ?`, [req.tenantId, dayStart, dayEnd]);
+    const [[{ new_clients }]] = await pool.query(`SELECT COUNT(*) AS new_clients FROM subscribers WHERE tenant_id=? AND created_at >= ? AND created_at < ?`, [req.tenantId, dayStart, dayEnd]);
     const [[{ pending_payments }]] = await pool.query(`SELECT COUNT(*) AS pending_payments FROM payments WHERE tenant_id=? AND status='pending' AND deleted_at IS NULL`, [req.tenantId]);
-    const [[{ failed_logins }]] = await pool.query(`SELECT COUNT(*) AS failed_logins FROM login_history WHERE tenant_id=? AND status='failed' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [req.tenantId, today, today]).catch(() => [[{ failed_logins: 0 }]]);
-    const [[{ month_revenue }]] = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS month_revenue FROM payments WHERE tenant_id=? AND status='paid' AND DATE_FORMAT(created_at,'%Y-%m')=DATE_FORMAT(NOW(),'%Y-%m') AND deleted_at IS NULL`, [req.tenantId]);
+    const [[{ failed_logins }]] = await pool.query(`SELECT COUNT(*) AS failed_logins FROM login_history WHERE tenant_id=? AND status='failed' AND created_at >= ? AND created_at < ?`, [req.tenantId, dayStart, dayEnd]).catch(() => [[{ failed_logins: 0 }]]);
+    const [[{ month_revenue }]] = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS month_revenue FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < ? AND deleted_at IS NULL`, [req.tenantId, monthStart, dayEnd]);
     res.json({ date: today, revenue: parseFloat(revenue), new_leads: parseInt(new_leads), new_clients: parseInt(new_clients), pending_payments: parseInt(pending_payments), failed_logins: parseInt(failed_logins), month_revenue: parseFloat(month_revenue) });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
 });
 
 // POST /api/admin/reports/send-now — manually trigger the daily report
@@ -304,7 +308,7 @@ router.get('/api/admin/analytics/retention', requireAuth, requireAdminOrStaff, r
 
     // Monthly cohort retention (new clients per month who are still active)
     const [cohorts] = await pool.query(`
-      SELECT DATE_FORMAT(created_at, '%Y-%m') AS cohort,
+      SELECT DATE_FORMAT(${sqlCairoWall('created_at')}, '%Y-%m') AS cohort,
              COUNT(*) AS total,
              SUM(CASE WHEN is_active=1 AND deleted_at IS NULL THEN 1 ELSE 0 END) AS still_active
       FROM subscribers
@@ -370,9 +374,10 @@ router.get('/api/admin/analytics/churn-risk', requireAuth, requireAdminOrStaff, 
 // GET /api/admin/analytics/staff-performance?from=&to=
 router.get('/api/admin/analytics/staff-performance', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
-    const now = new Date();
-    const from = req.query.from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-    const to   = req.query.to   || now.toISOString().slice(0, 10);
+    const from = req.query.from || cairoMonthStart(0);
+    const to   = req.query.to   || cairoToday();
+    // from/to are Cairo days; the columns below are UTC instants.
+    const [fromUtc, toUtc] = cairoDayBoundsUtc(from, to);
 
     const [staff] = await pool.query(`
       SELECT st.id, st.name, st.email, st.role,
@@ -385,19 +390,19 @@ router.get('/api/admin/analytics/staff-performance', requireAuth, requireAdminOr
         COALESCE((
           SELECT SUM(p.amount_egp) FROM payments p
           JOIN subscribers sub ON sub.id = p.subscriber_id AND sub.tenant_id=p.tenant_id
-          WHERE p.tenant_id=st.tenant_id AND sub.assigned_sales_id = st.id AND p.status='paid' AND p.created_at >= ? AND p.created_at < DATE_ADD(?, INTERVAL 1 DAY) AND p.deleted_at IS NULL
+          WHERE p.tenant_id=st.tenant_id AND sub.assigned_sales_id = st.id AND p.status='paid' AND p.created_at >= ? AND p.created_at < ? AND p.deleted_at IS NULL
         ), 0) AS revenue_generated,
         -- Tasks completed
         COUNT(DISTINCT CASE WHEN t.status='done' THEN t.id END) AS tasks_done,
         COUNT(DISTINCT t.id) AS tasks_total
       FROM staff st
-      LEFT JOIN leads l ON l.tenant_id=st.tenant_id AND l.assigned_sales_id = st.id AND l.created_at >= ? AND l.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-      LEFT JOIN subscribers s ON s.tenant_id=st.tenant_id AND s.assigned_sales_id = st.id AND s.created_at >= ? AND s.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-      LEFT JOIN tasks t ON t.tenant_id=st.tenant_id AND t.assigned_to = st.id AND t.created_at >= ? AND t.created_at < DATE_ADD(?, INTERVAL 1 DAY)
+      LEFT JOIN leads l ON l.tenant_id=st.tenant_id AND l.assigned_sales_id = st.id AND l.created_at >= ? AND l.created_at < ?
+      LEFT JOIN subscribers s ON s.tenant_id=st.tenant_id AND s.assigned_sales_id = st.id AND s.created_at >= ? AND s.created_at < ?
+      LEFT JOIN tasks t ON t.tenant_id=st.tenant_id AND t.assigned_to = st.id AND t.created_at >= ? AND t.created_at < ?
       WHERE st.tenant_id=? AND st.is_active = 1
       GROUP BY st.id
       ORDER BY revenue_generated DESC`,
-      [from, to, from, to, from, to, from, to, req.tenantId]
+      [fromUtc, toUtc, fromUtc, toUtc, fromUtc, toUtc, fromUtc, toUtc, req.tenantId]
     );
 
     const result = staff.map(s => ({
@@ -419,7 +424,7 @@ router.get('/api/admin/analytics/staff-performance', requireAuth, requireAdminOr
     result.forEach((s, i) => { s.rank = i + 1; });
 
     res.json({ period: { from, to }, staff: result });
-  } catch (e) { logger.error(e); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error(e); res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -429,9 +434,8 @@ router.get('/api/admin/analytics/staff-performance', requireAuth, requireAdminOr
 // GET /api/admin/analytics/expenses?from=&to=
 router.get('/api/admin/analytics/expenses', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
-    const now = new Date();
-    const from = req.query.from || new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10);
-    const to   = req.query.to   || now.toISOString().slice(0, 10);
+    const from = req.query.from || `${cairoToday().slice(0, 4)}-01-01`;
+    const to   = req.query.to   || cairoToday();
 
     const [byCategory] = await pool.query(`
       SELECT category, COUNT(*) AS count, SUM(amount_egp) AS total

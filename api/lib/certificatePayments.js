@@ -1,6 +1,7 @@
 'use strict';
 
 const { getTenantSetting } = require('./tenantSettings');
+const { cairoDayOf, cairoToday } = require('./dates');
 const { basePriceForCurrency, certificateTypeCodes } = require('./certificatePricing');
 
 // What a certificate costs: the figure the desk typed (the dialog fills in the
@@ -77,7 +78,9 @@ async function applyCertificatePayment(payment, db, tenantId, options = {}) {
         requestId, payment.subscriber_id, payment.course_id || null, requestedType,
         settle && amount >= price ? 'PAID' : 'PRICED', price, settle ? amount : 0, currency,
         payment.note || null, tenantId,
-        String(payment.date || new Date().toISOString()).slice(0, 10),
+        // payment.date is a DATETIME — a Date — when the payment comes from its
+        // row, and String(Date).slice(0, 10) is «Mon Oct 12», not a date.
+        cairoDayOf(payment.date) || cairoToday(),
         certificateNameOf(client?.name),
       ]
     );

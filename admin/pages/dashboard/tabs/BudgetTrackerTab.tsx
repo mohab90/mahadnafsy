@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Target, Edit2, Save, X, AlertTriangle, CheckCircle } from 'lucide-react';
 import { useFinanceData } from '../../../context/siteDataSlices';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { cairoMonthOnly, cairoMonthStart } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -31,8 +32,7 @@ const CAT_COLORS: Record<string, string> = {
 // backend instead of building a second one.
 const BudgetTrackerTab: React.FC<Props> = ({ notify }) => {
   const { orders } = useFinanceData();
-  const now = new Date();
-  const [selectedMonth, setSelectedMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+  const [selectedMonth, setSelectedMonth] = useState(cairoMonthOnly());
   const [rows, setRows] = useState<BudgetRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
@@ -90,9 +90,9 @@ const BudgetTrackerTab: React.FC<Props> = ({ notify }) => {
   const format = (n: number) => n.toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 0 });
 
   const monthOptions = Array.from({ length: 12 }, (_, i) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    return { key, label: `${MONTHS_AR[d.getMonth()]} ${d.getFullYear()}` };
+    const key = cairoMonthStart(i).slice(0, 7);
+    const [year, month] = key.split('-').map(Number);
+    return { key, label: `${MONTHS_AR[month - 1]} ${year}` };
   });
 
   return (

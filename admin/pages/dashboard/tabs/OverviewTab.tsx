@@ -1,5 +1,5 @@
 import React, { Suspense, useEffect, useRef, useState } from 'react';
-import { cairoDateOnly, cairoMonthOnly, cairoDateTime, cairoDay, cairoDaysAgo, cairoWeekStart, cairoDaysAhead } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoMonthOnly, cairoDateTime, cairoDay, cairoDaysAgo, cairoWeekStart, cairoDaysAhead, cairoMonthProgress } from '../../../../shared/cairoDate';
 import {
   Activity, AlertCircle, BarChart3, BookOpen, Briefcase,
   CalendarCheck2, Clock, CreditCard, MessageSquareText, Percent,
@@ -457,8 +457,7 @@ export default function OverviewTab({
                 // Organization collection target loaded from the tenant sales-target record.
                 const collMonthlyTarget = collectionMonthlyTarget;
                 const collPct = Math.min(100, Math.round((collMonthRevOv / collMonthlyTarget) * 100));
-                const daysInMonthOv = new Date(now2.getFullYear(), now2.getMonth()+1, 0).getDate();
-                const dayOfMonthOv = now2.getDate();
+                const { daysInMonth: daysInMonthOv, dayOfMonth: dayOfMonthOv } = cairoMonthProgress(now2);
                 const daysLeftOv = daysInMonthOv - dayOfMonthOv;
                 const dailyPaceOv = collMonthRevOv / Math.max(1, dayOfMonthOv);
                 const projectedOv = Math.round(dailyPaceOv * daysInMonthOv);

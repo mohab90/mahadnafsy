@@ -9,6 +9,9 @@ User=mahad
 Group=mahad
 WorkingDirectory=/opt/mahad/current
 EnvironmentFile=/etc/mahad/api.env
+# Storage is UTC and the Cairo day is computed in lib/dates.js; the API also
+# pins this itself, so the line is for tools started under this unit.
+Environment=TZ=UTC
 Environment=NODE_ENV=production
 Environment=UV_THREADPOOL_SIZE=8
 Environment=PROCESS_MANAGER=systemd

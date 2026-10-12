@@ -7,7 +7,7 @@ const router  = express.Router();
 const { pool, cached } = require('../../lib/db');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { resolveDataScope } = require('../../constants/permissions');
-const { dateOnlyInTimeZone, addDaysToDateOnly, sqlCairoDayStartUtc, cairoDayStartUtc, cairoToday } = require('../../lib/dates'); const { resolveFinancialScope, financialScopeClause } = require('../../lib/financialScope');
+const { dateOnlyInTimeZone, addDaysToDateOnly, sqlCairoDayStartUtc, sqlCairoDayEndUtc, cairoDayStartUtc, cairoDayBoundsUtc, cairoMonthStart, cairoToday, sqlCairoWall } = require('../../lib/dates'); const { resolveFinancialScope, financialScopeClause } = require('../../lib/financialScope');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Admin Dashboard KPI Snapshot ────────────────────────────────
@@ -39,10 +39,10 @@ router.get('/api/admin/dashboard/kpi', requireAuth, requireAdminOrStaff, require
         code: 'INSTITUTE_WIDE_SCOPE_REQUIRED',
       });
     }
-    const now    = new Date();
-    const ym     = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-    const curM   = ym(now);
-    const prevM  = ym(new Date(now.getFullYear(), now.getMonth()-1, 1));
+    // The Cairo month, not the server's (UTC) one, which on the 1st before
+    // 02:00/03:00 Cairo still named the month that had ended.
+    const curM   = cairoToday().slice(0, 7);
+    const prevM  = cairoMonthStart(1).slice(0, 7);
 
     const [
       [revenue],
@@ -66,25 +66,25 @@ router.get('/api/admin/dashboard/kpi', requireAuth, requireAdminOrStaff, require
         FROM payments WHERE tenant_id=? AND status IN ('paid','confirmed') AND deleted_at IS NULL`, [curM, prevM, req.tenantId]),
       pool.query(`
         SELECT COUNT(*) AS total,
-          SUM(CASE WHEN DATE_FORMAT(created_at,'%Y-%m')=? THEN 1 ELSE 0 END) AS this_month,
-          SUM(CASE WHEN DATE_FORMAT(created_at,'%Y-%m')=? THEN 1 ELSE 0 END) AS last_month,
+          SUM(CASE WHEN DATE_FORMAT(${sqlCairoWall('created_at')}, '%Y-%m')=? THEN 1 ELSE 0 END) AS this_month,
+          SUM(CASE WHEN DATE_FORMAT(${sqlCairoWall('created_at')}, '%Y-%m')=? THEN 1 ELSE 0 END) AS last_month,
           SUM(CASE WHEN status NOT IN ${TERMINAL_SQL} THEN 1 ELSE 0 END) AS active
         FROM leads WHERE tenant_id=? AND hidden=0`, [curM, prevM, req.tenantId]),
       pool.query(`
         SELECT COUNT(*) AS total,
-          SUM(CASE WHEN DATE_FORMAT(created_at,'%Y-%m')=? THEN 1 ELSE 0 END) AS this_month
+          SUM(CASE WHEN DATE_FORMAT(${sqlCairoWall('created_at')}, '%Y-%m')=? THEN 1 ELSE 0 END) AS this_month
         FROM subscribers WHERE tenant_id=?`, [curM, req.tenantId]),
       pool.query(`
         SELECT COUNT(*) AS total,
-          SUM(CASE WHEN DATE_FORMAT(enrolled_at,'%Y-%m')=? THEN 1 ELSE 0 END) AS this_month
+          SUM(CASE WHEN DATE_FORMAT(${sqlCairoWall('enrolled_at')}, '%Y-%m')=? THEN 1 ELSE 0 END) AS this_month
         FROM enrollments WHERE tenant_id=? AND status='active'`, [curM, req.tenantId]),
       pool.query(`
         SELECT COUNT(*) AS total,
           SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending
         FROM consultations WHERE tenant_id=?`, [req.tenantId]),
       pool.query('SELECT COUNT(*) AS total FROM course_completions WHERE tenant_id=?', [req.tenantId]),
-      pool.query(`SELECT COUNT(*) AS n FROM leads WHERE tenant_id=? AND created_at >= ${sqlCairoDayStartUtc()} AND created_at < ${sqlCairoDayStartUtc()} + INTERVAL 1 DAY AND hidden=0`, [req.tenantId]),
-      pool.query(`SELECT COUNT(*) AS n FROM subscribers WHERE tenant_id=? AND created_at >= ${sqlCairoDayStartUtc()} AND created_at < ${sqlCairoDayStartUtc()} + INTERVAL 1 DAY`, [req.tenantId]),
+      pool.query(`SELECT COUNT(*) AS n FROM leads WHERE tenant_id=? AND created_at >= ${sqlCairoDayStartUtc()} AND created_at < ${sqlCairoDayEndUtc()} AND hidden=0`, [req.tenantId]),
+      pool.query(`SELECT COUNT(*) AS n FROM subscribers WHERE tenant_id=? AND created_at >= ${sqlCairoDayStartUtc()} AND created_at < ${sqlCairoDayEndUtc()}`, [req.tenantId]),
       pool.query("SELECT COUNT(*) AS n FROM payments WHERE tenant_id=? AND status='pending' AND deleted_at IS NULL", [req.tenantId]),
       pool.query("SELECT COUNT(*) AS n FROM leaves WHERE tenant_id=? AND status='PENDING'", [req.tenantId]).catch(() => [[{n:0}]]),
       pool.query("SELECT COUNT(*) AS n FROM forum_posts WHERE tenant_id=? AND is_hidden=0", [req.tenantId]).catch(() => [[{n:0}]]),
@@ -95,7 +95,7 @@ router.get('/api/admin/dashboard/kpi', requireAuth, requireAdminOrStaff, require
     const pct = (a, b) => b > 0 ? parseFloat(((a-b)/b*100).toFixed(1)) : (a > 0 ? 100 : 0);
 
     res.json({
-      generated_at: now.toISOString(),
+      generated_at: new Date().toISOString(),
       revenue: {
         this_month: parseFloat(rev.this_month) || 0,
         last_month: parseFloat(rev.last_month) || 0,
@@ -151,13 +151,13 @@ router.get('/api/admin/dashboard/kpi', requireAuth, requireAdminOrStaff, require
 // ═══════════════════════════════════════════════════════════════════════════
 router.get('/api/admin/analytics/cohorts', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
-    const year   = parseInt(req.query.year  || new Date().getFullYear());
+    const year   = parseInt(req.query.year  || cairoToday().slice(0, 4));
     const months = Math.min(12, Math.max(1, parseInt(req.query.months || 6)));
 
     // Step 1: All subscribers + their first payment month
     const [subs] = await pool.query(`
       SELECT s.id,
-             DATE_FORMAT(s.created_at, '%Y-%m')  AS cohort_month,
+             DATE_FORMAT(${sqlCairoWall('s.created_at')}, '%Y-%m')  AS cohort_month,
              MIN(DATE_FORMAT(p.date,   '%Y-%m'))  AS first_pay_month
       FROM subscribers s
       LEFT JOIN payments p
@@ -249,10 +249,11 @@ router.get('/api/admin/kpi/summary', requireAuth, requireAdminOrStaff, requirePe
     const [[weekRev]]   = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND date>=? AND status='paid' AND deleted_at IS NULL`, [req.tenantId, weekAgo]);
     const [[monthRev]]  = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND date>=? AND status='paid' AND deleted_at IS NULL`, [req.tenantId, monthStart]);
     const [[prevMonRev]]= await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND date>=? AND date<? AND status='paid' AND deleted_at IS NULL`, [req.tenantId, prevMonthStart, monthStart]);
-    const [[todayLeads]]= await pool.query(`SELECT COUNT(*) AS v FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [req.tenantId, today, today]);
-    const [[weekLeads]] = await pool.query(`SELECT COUNT(*) AS v FROM leads WHERE tenant_id=? AND created_at>=?`, [req.tenantId, weekAgo]);
+    // created_at is a UTC instant: «ليدز النهارده» counted from 03:00 Cairo.
+    const [[todayLeads]]= await pool.query(`SELECT COUNT(*) AS v FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < ?`, [req.tenantId, ...cairoDayBoundsUtc(today)]);
+    const [[weekLeads]] = await pool.query(`SELECT COUNT(*) AS v FROM leads WHERE tenant_id=? AND created_at>=?`, [req.tenantId, cairoDayStartUtc(weekAgo)]);
     const [[totalSubs]] = await pool.query(`SELECT COUNT(*) AS v FROM subscribers WHERE tenant_id=?`, [req.tenantId]);
-    const [[newSubs7]]  = await pool.query(`SELECT COUNT(*) AS v FROM subscribers WHERE tenant_id=? AND created_at>=?`, [req.tenantId, weekAgo]);
+    const [[newSubs7]]  = await pool.query(`SELECT COUNT(*) AS v FROM subscribers WHERE tenant_id=? AND created_at>=?`, [req.tenantId, cairoDayStartUtc(weekAgo)]);
     const [[activeSubs]]= await pool.query(`SELECT COUNT(*) AS v FROM subscribers WHERE tenant_id=? AND is_active=1`, [req.tenantId]);
     const [[openTickets]]= await pool.query(`SELECT COUNT(*) AS v FROM support_tickets WHERE tenant_id=? AND status IN ('open','in_progress')`, [req.tenantId]).catch(() => [[{ v: 0 }]]);
     const [[pendingRefunds]]= await pool.query(`SELECT COUNT(*) AS v FROM refund_requests WHERE tenant_id=? AND status='PENDING'`, [req.tenantId]).catch(() => [[{ v: 0 }]]);
@@ -272,9 +273,9 @@ router.get('/api/admin/kpi/summary', requireAuth, requireAdminOrStaff, requirePe
     ).catch(() => [[]]);
 
     const [leadsByDay] = await pool.query(
-      `SELECT DATE(created_at) AS day, COUNT(*) AS count
+      `SELECT DATE(${sqlCairoWall('created_at')}) AS day, COUNT(*) AS count
        FROM leads WHERE tenant_id=? AND created_at>=?
-       GROUP BY day ORDER BY day ASC`, [req.tenantId, weekAgo]
+       GROUP BY day ORDER BY day ASC`, [req.tenantId, cairoDayStartUtc(weekAgo)]
     ).catch(() => [[]]);
 
     const monthChange = prevMonRev.v > 0

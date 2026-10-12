@@ -15,6 +15,7 @@ const {
   logger,
 } = require('./_shared');
 const { NEXT_FOLLOWUP } = require('../../../lib/leadTableFilter');
+const { sqlCairoWall, sqlCairoDayEndUtc } = require('../../../lib/dates');
 
 const router = Router();
 
@@ -73,18 +74,18 @@ router.get('/api/admin/leads/stats', requireAuth, requireAdminOrStaff, requirePe
         params,
       ),
       pool.query(
-        `SELECT DATE_FORMAT(l.created_at, '%Y-%m') AS ym,
+        `SELECT DATE_FORMAT(${sqlCairoWall('l.created_at')}, '%Y-%m') AS ym,
                 COUNT(*) AS cnt,
                 SUM(l.status = 'converted') AS converted
          FROM leads l WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
            AND l.created_at >= DATE_FORMAT(${sqlCairoDayStartUtc()} - INTERVAL 5 MONTH, '%Y-%m-01')
-         GROUP BY DATE_FORMAT(l.created_at, '%Y-%m')`,
+         GROUP BY DATE_FORMAT(${sqlCairoWall('l.created_at')}, '%Y-%m')`,
         params,
       ),
       pool.query(
         `SELECT COUNT(*) AS cnt FROM leads l
           WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
-            AND l.created_at >= ${sqlCairoDayStartUtc()} AND l.created_at < ${sqlCairoDayStartUtc()} + INTERVAL 1 DAY`,
+            AND l.created_at >= ${sqlCairoDayStartUtc()} AND l.created_at < ${sqlCairoDayEndUtc()}`,
         params,
       ),
       // The collection officers who hold leads — handed to them from the

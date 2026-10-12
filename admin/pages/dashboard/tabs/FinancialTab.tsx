@@ -423,11 +423,8 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
 
   const monthlyRevenue = useMemo(() => {
     const data: Record<string, { online: number; manual: number }> = {};
-    const now = new Date();
     for (let i = 0; i < 12; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      data[key] = { online: 0, manual: 0 };
+      data[cairoMonthStart(i).slice(0, 7)] = { online: 0, manual: 0 };
     }
     paidOrders.forEach(o => {
       const m = cairoDay(o.createdAt).slice(0, 7);

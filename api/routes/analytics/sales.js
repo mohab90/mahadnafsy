@@ -7,7 +7,7 @@ const router  = express.Router();
 const { pool } = require('../../lib/db');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../../middleware/auth');
 const { hasPermission, PERMISSIONS } = require('../../constants/permissions');
-const { cairoToday } = require('../../lib/dates');
+const { cairoToday, cairoDayBoundsUtc, cairoDayStartUtc, cairoMonthStart, monthRange } = require('../../lib/dates');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Sales Team Performance + Lead Conversion Funnel ──────────────
@@ -22,8 +22,10 @@ const { cairoToday } = require('../../lib/dates');
 router.get('/api/admin/reports/sales-performance', requireAuth, requireAdminOrStaff,
   requireAnyPermission(PERMISSIONS.MANAGE_SALES_TEAM, PERMISSIONS.VIEW_PERF_SALES), async (req, res) => {
   try {
-    const from = req.query.from || `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-01`;
+    const from = req.query.from || cairoMonthStart(0);
     const to   = req.query.to   || cairoToday();
+    // from/to are Cairo days; leads.created_at is a UTC instant.
+    const [fromUtc, toUtc] = cairoDayBoundsUtc(from, to);
 
     const [staff] = await pool.query(`
       SELECT st.id, st.name, st.email, st.role, st.commission_rate,
@@ -33,7 +35,7 @@ router.get('/api/admin/reports/sales-performance', requireAuth, requireAdminOrSt
       LEFT JOIN (
         SELECT assigned_sales_id, COUNT(*) AS total_leads,
           SUM(CASE WHEN status IN ${CONVERTED_SQL} THEN 1 ELSE 0 END) AS converted
-        FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) AND assigned_sales_id IS NOT NULL GROUP BY assigned_sales_id
+        FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < ? AND assigned_sales_id IS NOT NULL GROUP BY assigned_sales_id
       ) ld ON ld.assigned_sales_id = st.id
       LEFT JOIN (
         SELECT staff_id,
@@ -42,7 +44,7 @@ router.get('/api/admin/reports/sales-performance', requireAuth, requireAdminOrSt
         FROM payments WHERE tenant_id=? AND status IN ('paid','confirmed') AND DATE(\`date\`) BETWEEN ? AND ? AND staff_id IS NOT NULL AND deleted_at IS NULL GROUP BY staff_id
       ) rd ON rd.staff_id = st.id
       WHERE st.tenant_id=? AND UPPER(st.role) IN ('SALES','SALES_MANAGER','MANAGER') AND st.is_active=1
-      ORDER BY revenue_egp DESC`, [req.tenantId, from, to, req.tenantId, from, to, req.tenantId]);
+      ORDER BY revenue_egp DESC`, [req.tenantId, fromUtc, toUtc, req.tenantId, from, to, req.tenantId]);
 
     // Pay is a different question from performance. A caller who holds the
     // performance key and nothing else gets the work, not the commission or the
@@ -64,18 +66,20 @@ router.get('/api/admin/reports/sales-performance', requireAuth, requireAdminOrSt
         };
       }),
     });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
 });
 
 // GET /api/admin/reports/lead-funnel?from=&to=
 router.get('/api/admin/reports/lead-funnel', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
-    const from = req.query.from || `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-01`;
+    const from = req.query.from || cairoMonthStart(0);
     const to   = req.query.to   || cairoToday();
-    const args = [req.tenantId, from, to];
-    const [byStatus] = await pool.query(`SELECT status, COUNT(*) AS count FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) GROUP BY status ORDER BY count DESC`, args);
-    const [bySource] = await pool.query(`SELECT source, COUNT(*) AS total, SUM(CASE WHEN status IN ${CONVERTED_SQL} THEN 1 ELSE 0 END) AS converted FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) GROUP BY source ORDER BY total DESC`, args);
-    const [byBranch] = await pool.query(`SELECT branch, COUNT(*) AS total, SUM(CASE WHEN status IN ${CONVERTED_SQL} THEN 1 ELSE 0 END) AS converted FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) GROUP BY branch ORDER BY total DESC`, args);
+    // from/to are Cairo days; leads.created_at is a UTC instant.
+    const [fromUtc, toUtc] = cairoDayBoundsUtc(from, to);
+    const args = [req.tenantId, fromUtc, toUtc];
+    const [byStatus] = await pool.query(`SELECT status, COUNT(*) AS count FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < ? GROUP BY status ORDER BY count DESC`, args);
+    const [bySource] = await pool.query(`SELECT source, COUNT(*) AS total, SUM(CASE WHEN status IN ${CONVERTED_SQL} THEN 1 ELSE 0 END) AS converted FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < ? GROUP BY source ORDER BY total DESC`, args);
+    const [byBranch] = await pool.query(`SELECT branch, COUNT(*) AS total, SUM(CASE WHEN status IN ${CONVERTED_SQL} THEN 1 ELSE 0 END) AS converted FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < ? GROUP BY branch ORDER BY total DESC`, args);
     const total     = byStatus.reduce((s, r) => s + Number(r.count), 0);
     const converted = byStatus.filter(r => isConvertedLeadStatus(r.status)).reduce((s, r) => s + Number(r.count), 0);
     const lost      = byStatus.filter(r => r.status === 'lost').reduce((s, r) => s + Number(r.count), 0);
@@ -86,7 +90,7 @@ router.get('/api/admin/reports/lead-funnel', requireAuth, requireAdminOrStaff, r
       bySource: bySource.map(s => ({ ...s, conversion_rate: s.total > 0 ? parseFloat((Number(s.converted) / s.total * 100).toFixed(1)) : 0 })),
       byBranch: byBranch.map(b => ({ ...b, conversion_rate: b.total > 0 ? parseFloat((Number(b.converted) / b.total * 100).toFixed(1)) : 0 })),
     });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -183,8 +187,13 @@ router.post('/api/admin/sales-targets', requireAuth, requireAdminOrStaff, requir
 router.get('/api/admin/sales-goals/vs-actual', requireAuth, requireAdmin, async (req, res) => {
   try {
     const period = req.query.period || cairoToday().slice(0, 7);
-    const from = period + '-01';
-    const to   = period + '-31';
+    // The month as a half-open range of UTC instants. `to` was period + '-31',
+    // which is no date in a 30-day month or February: MariaDB answers NULL for
+    // DATE_ADD('2026-09-31', …), so every «الفعلي» of September read 0.
+    const range = monthRange(period);
+    if (!range) return res.status(400).json({ error: 'الشهر لازم يكون بالشكل YYYY-MM' });
+    const from = cairoDayStartUtc(range.startDate);
+    const to   = cairoDayStartUtc(range.endDate);
 
     const [goalRows] = await pool.query(
       'SELECT id, period, revenue_target, leads_target, conversions_target, new_clients_target, created_at, updated_at FROM sales_goals WHERE tenant_id=? AND period = ?',
@@ -193,13 +202,13 @@ router.get('/api/admin/sales-goals/vs-actual', requireAuth, requireAdmin, async 
     const goal = goalRows[0] || {};
 
     const [[{ actual_revenue }]] = await pool.query(
-      `SELECT COALESCE(SUM(amount_egp), 0) AS actual_revenue FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) AND deleted_at IS NULL`, [req.tenantId, from, to]);
+      `SELECT COALESCE(SUM(amount_egp), 0) AS actual_revenue FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < ? AND deleted_at IS NULL`, [req.tenantId, from, to]);
     const [[{ actual_leads }]] = await pool.query(
-      `SELECT COUNT(*) AS actual_leads FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [req.tenantId, from, to]);
+      `SELECT COUNT(*) AS actual_leads FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < ?`, [req.tenantId, from, to]);
     const [[{ actual_conversions }]] = await pool.query(
-      `SELECT COUNT(*) AS actual_conversions FROM leads WHERE tenant_id=? AND status='converted' AND updated_at >= ? AND updated_at < DATE_ADD(?, INTERVAL 1 DAY)`, [req.tenantId, from, to]);
+      `SELECT COUNT(*) AS actual_conversions FROM leads WHERE tenant_id=? AND status='converted' AND updated_at >= ? AND updated_at < ?`, [req.tenantId, from, to]);
     const [[{ actual_new_clients }]] = await pool.query(
-      `SELECT COUNT(*) AS actual_new_clients FROM subscribers WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [req.tenantId, from, to]);
+      `SELECT COUNT(*) AS actual_new_clients FROM subscribers WHERE tenant_id=? AND created_at >= ? AND created_at < ?`, [req.tenantId, from, to]);
 
     res.json({
       period,

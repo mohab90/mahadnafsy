@@ -29,7 +29,7 @@ const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = re
 const { bulkOperationLimiter, publicLimiter } = require('../middleware/rateLimits');
 
 const { escapeHtml } = require('../lib/html');
-const { cairoToday, dateOnlyInTimeZone } = require('../lib/dates');
+const { cairoToday, cairoMonthStart, dateOnlyInTimeZone } = require('../lib/dates');
 
 function validHttpUrl(value) {
   try { return ['http:', 'https:'].includes(new URL(String(value)).protocol); } catch { return false; }
@@ -636,7 +636,7 @@ router.get('/api/admin/schedules', requireAuth, requireAdminOrStaff, requirePerm
 router.get('/api/admin/attendance', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const { staff_id, from, to, status } = req.query;
-    const fromDate = from || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
+    const fromDate = from || cairoMonthStart(0);
     const toDate   = to   || cairoToday();
     let sql = `
       SELECT al.*, u.name AS staff_name, u.email AS staff_email
@@ -781,7 +781,7 @@ router.delete('/api/admin/appraisals/:id', requireAuth, requireAdminOrStaff, req
 // GET /api/admin/appraisals/summary?year= — team performance overview
 router.get('/api/admin/appraisals/summary', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
-    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const year = parseInt(req.query.year) || Number(cairoToday().slice(0, 4));
     const [rows] = await pool.query(`
       SELECT
         u.name AS staff_name, u.role AS staff_role,

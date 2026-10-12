@@ -19,8 +19,10 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends curl \
   && rm -rf /var/lib/apt/lists/*
 
+# TZ: storage is UTC and the Cairo day is computed in lib/dates.js (see server.js).
 ENV NODE_ENV=production \
-    PORT=3001
+    PORT=3001 \
+    TZ=UTC
 
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules

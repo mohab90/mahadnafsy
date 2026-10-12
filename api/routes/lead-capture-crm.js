@@ -9,7 +9,7 @@ const logger = require('../lib/logger').child({ module: 'lead-capture-crm-route'
 const { pool } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
 const { getNextClientCode } = require('../lib/mappers');
-const { sqlCairoDayStartUtc } = require('../lib/dates');
+const { sqlCairoDayStartUtc, sqlCairoDayEndUtc } = require('../lib/dates');
 const { normalizePhone } = require('../lib/helpers');
 const { LEAD_STATUSES, isOpenLeadStatus } = require('../lib/leadStatuses');
 const { branchIdForBranch, normalizeBranch } = require('../lib/branches');
@@ -251,7 +251,7 @@ router.post('/api/admin/leads/distribute', requireAuth, requireAdmin, async (req
            FROM leads
           WHERE tenant_id=? AND assigned_sales_id IS NOT NULL
             AND assigned_at >= ${sqlCairoDayStartUtc()}
-            AND assigned_at <  ${sqlCairoDayStartUtc()} + INTERVAL 1 DAY
+            AND assigned_at <  ${sqlCairoDayEndUtc()}
           GROUP BY assigned_sales_id`,
         [tenantId]
       );

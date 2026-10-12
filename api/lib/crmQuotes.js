@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { cairoToday } = require('./dates');
 
 const CURRENCIES = new Set(['EGP', 'SAR', 'USD']);
 const ITEM_TYPES = new Set(['course', 'bundle']);
@@ -10,7 +11,9 @@ function money(value) {
 }
 
 function quoteNumber(now = new Date()) {
-  const day = now.toISOString().slice(0, 10).replaceAll('-', '');
+  // The Cairo day, as on the quote itself: the UTC one dated quotes made
+  // between midnight and 02:00/03:00 Cairo the day before.
+  const day = cairoToday(now).replaceAll('-', '');
   return `Q-${day}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
 }
 
