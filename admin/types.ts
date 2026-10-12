@@ -621,6 +621,28 @@ export interface JoinUsApplication {
   experiencePlaces?: string;
   jobId?: string;
   jobTitle?: string;
+  /**
+   * Which public page it came through — 'teaching' (/join, محاضر/استشاري) or
+   * 'staff' (/join-us, موظف). The list it belongs on: «لازم تفرق بيينهم بشكل كبير»
+   * (12 Oct 2026).
+   */
+  sourceForm?: 'teaching' | 'staff';
+  /** «هل اشتغلت محاضر قبل كده؟» — null when the form did not ask. */
+  lecturedBefore?: boolean | null;
+  /** «هل اشتغلت في جلسات نفسية مع عملاء قبل كده؟» */
+  sessionsBefore?: boolean | null;
+  /** The institute's programmes the lecturer ticked. */
+  programs?: { id: string | null; title: string }[];
+  /** «برامج تانية بتقدّمها» — free text. */
+  programsOther?: string;
+  /** «تقييم أول مكالمة». */
+  firstCallRating?: number | null;
+  firstCallTags?: string[];
+  firstCallNotes?: string;
+  firstCallAt?: string;
+  firstCallByName?: string;
+  /** The applicant's phone screen on the interviews screen. */
+  phoneInterviewResult?: 'passed' | 'failed' | 'no_answer' | null;
 }
 
 export interface ContactMessage {

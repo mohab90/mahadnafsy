@@ -19,8 +19,10 @@ const { addDaysToDateOnly, cairoDayStartUtc, safeDateOnly, cairoToday } = requir
 const { SYSTEM_ACTORS, departmentOf, describeLabel } = require('../lib/activityDescribe');
 const { listEnv } = require('../lib/platformAccess');
 const { loadExpenseCategories, expenseCategory, expenseCategoryLabel } = require('../lib/expenseCategories');
-const { convertJoinUs } = require('./hr/talent');
-const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { advanceToInterview, convertJoinUs } = require('./hr/talent');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requireAnyPermission, requirePermission } = require('../middleware/auth');
+const { requireRecruiting, joinUsReachSql, joinUsInReach, outOfRecruitReach } = require('../lib/branchHr');
+const { readPrograms } = require('../lib/joinApplication');
 
 // expenses.amount and friends are DECIMAL, which mysql2 hands back as strings,
 // and expenses.date is a DATETIME, which it hands back as a Date. The finance
@@ -346,7 +348,9 @@ router.post('/api/admin/activity-logs', requireAuth, requireAdmin, async (req, r
   } catch (e) { routeError(res, e); }
 });
 
-router.get('/api/admin/join-us', requireAuth, requireAdminOrStaff, requirePermission('view_join_us'), async (req, res) => {
+// The Dokki manager reaches the applications for Dokki — «اتاكد ان طلبات الانضمام
+// للدقي والانترفيو للدقي بيظهر لنشوي مدير الدقي» (12 Oct 2026); lib/branchHr.js.
+router.get('/api/admin/join-us', requireAuth, requireAdminOrStaff, requireAnyPermission('view_join_us', 'branch_hr'), requireRecruiting('view_join_us'), async (req, res) => {
   try {
     const params = [];
     let where = appendTenantScope('WHERE 1=1', 'j', scopedTenantId(req), params);
@@ -354,6 +358,14 @@ router.get('/api/admin/join-us', requireAuth, requireAdminOrStaff, requirePermis
       where += ' AND j.type = ?';
       params.push(String(req.query.type).toUpperCase());
     }
+    // ?form=teaching|staff — the two lists the owner asked to be kept apart.
+    if (['teaching', 'staff'].includes(String(req.query.form || ''))) {
+      where += " AND COALESCE(j.source_form, IF(j.type='EMPLOYEE','staff','teaching')) = ?";
+      params.push(String(req.query.form));
+    }
+    const reach = joinUsReachSql(req.recruitReach, 'j', 'a', 'jp');
+    where += reach.sql;
+    params.push(...reach.params);
     // contacted_at, contacted_by and interview_at are selected because the
     // screen needs them and this query never returned them. POST
     // /api/admin/join-us/:id/contact writes all three of the things being looked
@@ -370,38 +382,53 @@ router.get('/api/admin/join-us', requireAuth, requireAdminOrStaff, requirePermis
       `SELECT j.id, j.name, j.email, j.phone, j.specialty, j.experience, j.type,
               j.linkedin, j.message, j.status, j.admin_note, j.created_at,
               j.converted_applicant_id, j.reviewed_at, j.assigned_to,
-              j.contacted_at, j.contacted_by, j.interview_at,
+              j.contacted_at, j.contacted_by,
+              DATE_FORMAT(j.interview_at,'%Y-%m-%d %H:%i:%s') interview_at,
               cn.body contact_note, cn.author_name contacted_by_name,
               cn.created_at contact_note_at,
-              a.stage applicant_stage, a.hired_staff_id, a.interview_at applicant_interview_at,
-              a.branch applicant_branch, a.education, a.experience_years, a.experience_places
-,
-              a.job_id, jp.title job_title
+              a.stage applicant_stage, a.hired_staff_id,
+              DATE_FORMAT(a.interview_at,'%Y-%m-%d %H:%i:%s') applicant_interview_at,
+              -- The branch the applicant chose, else their posting's — the same
+              -- rule lib/branchHr.js narrows the Dokki manager's list by.
+              LOWER(COALESCE(NULLIF(j.branch,''), NULLIF(a.branch,''), NULLIF(jp.branch,''))) applicant_branch,
+              a.education, a.experience_years, a.experience_places, a.phone_interview_result,
+              a.job_id, jp.title job_title,
+              COALESCE(j.source_form, IF(j.type='EMPLOYEE','staff','teaching')) source_form,
+              j.lectured_before, j.sessions_before, j.programs_json, j.programs_other,
+              j.first_call_rating, j.first_call_tags, j.first_call_notes, j.first_call_at, j.first_call_by_name
          FROM join_us_applications j
          LEFT JOIN job_applicants a
            ON a.id=j.converted_applicant_id AND a.tenant_id=j.tenant_id
          LEFT JOIN job_postings jp ON jp.id=a.job_id AND jp.tenant_id=a.tenant_id
+         -- The latest call from either screen: the interviews screen logs its
+         -- calls against the applicant, this list against the application.
          LEFT JOIN recruitment_notes cn ON cn.id = (
            SELECT n.id FROM recruitment_notes n
-            WHERE n.tenant_id=j.tenant_id AND n.ref_type='join_us'
-              AND n.ref_id=j.id AND n.kind='contact'
+            WHERE n.tenant_id=j.tenant_id AND n.kind='contact'
+              AND ((n.ref_type='join_us' AND n.ref_id=j.id)
+                OR (n.ref_type='applicant' AND n.ref_id=j.converted_applicant_id))
             ORDER BY n.created_at DESC LIMIT 1)
          ${where}
         ORDER BY j.created_at DESC LIMIT 500`,
       params);
     res.json(rows.map(r => ({
       ...r,
-      application_category: String(r.type || '').toUpperCase() === 'EMPLOYEE' ? 'HR' : 'ACADEMIC',
+      application_category: r.source_form === 'staff' ? 'HR' : 'ACADEMIC',
+      programs: readPrograms(r.programs_json),
+      first_call_tags: (() => { try { return JSON.parse(r.first_call_tags || '[]'); } catch { return []; } })(),
+      programs_json: undefined,
     })));
   } catch (e) { routeError(res, e); }
 });
 
-router.patch('/api/admin/join-us/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_join_us'), async (req, res) => {
+router.patch('/api/admin/join-us/:id', requireAuth, requireAdminOrStaff, requireAnyPermission('manage_join_us', 'branch_hr'), requireRecruiting('manage_join_us'), async (req, res) => {
   const conn = await pool.getConnection();
   try {
     const { status, notes } = req.body;
     const nextStatus = String(status || '').toUpperCase();
-    if (!['NEW', 'REVIEWED', 'ACCEPTED', 'REJECTED'].includes(nextStatus)) {
+    // CONTACTED is the status the contact button sets; refusing it here meant an
+    // application already rung could not be put back to «تم التواصل» by hand.
+    if (!['NEW', 'REVIEWED', 'CONTACTED', 'ACCEPTED', 'REJECTED'].includes(nextStatus)) {
       return res.status(400).json({ error: 'Invalid application status' });
     }
     await conn.beginTransaction();
@@ -413,11 +440,19 @@ router.patch('/api/admin/join-us/:id', requireAuth, requireAdminOrStaff, require
       await conn.rollback();
       return res.status(404).json({ error: 'Application not found' });
     }
+    if (!await joinUsInReach(conn, req, req.params.id)) {
+      await conn.rollback();
+      return outOfRecruitReach(res);
+    }
+    // A status change that sends no note keeps the note: `notes` absent used to
+    // be written as NULL, so changing the status from the card wiped what HR had
+    // written on it.
     await conn.query(
       `UPDATE join_us_applications
-          SET status=?,admin_note=?,reviewed_at=COALESCE(reviewed_at,NOW())
+          SET status=?,admin_note=${notes === undefined ? 'admin_note' : '?'},
+              reviewed_at=${nextStatus === 'NEW' ? 'reviewed_at' : 'COALESCE(reviewed_at,NOW())'}
         WHERE id=? AND tenant_id=?`,
-      [nextStatus, notes === undefined ? null : notes || null, req.params.id, scopedTenantId(req)]
+      [nextStatus, ...(notes === undefined ? [] : [notes || null]), req.params.id, scopedTenantId(req)]
     );
 
     // Accepting is what puts someone into the hiring pipeline. Until now it only
@@ -439,13 +474,18 @@ router.patch('/api/admin/join-us/:id', requireAuth, requireAdminOrStaff, require
         'UPDATE join_us_applications SET status=? WHERE id=? AND tenant_id=?',
         [nextStatus, req.params.id, scopedTenantId(req)]
       );
-      // The applicant lands at the interview stage, which is the screen the
-      // reviewer expects to find them on next. Hiring still requires the offer
-      // stage, so the approval trail stays intact.
-      await conn.query(
-        "UPDATE job_applicants SET stage='interview' WHERE id=? AND tenant_id=? AND stage='applied'",
-        [convertedApplicantId, scopedTenantId(req)]
-      );
+    }
+    // The applicant lands at the interview stage, which is the screen the
+    // reviewer expects to find them on next — through the legal hops, and for an
+    // application already in the pipeline too (every website application is,
+    // from the moment it arrives, so this used to move nobody).
+    if (nextStatus === 'ACCEPTED' && application.status !== 'ACCEPTED') {
+      const applicantId = convertedApplicantId || application.converted_applicant_id;
+      if (applicantId) {
+        await advanceToInterview(conn, {
+          tenantId: scopedTenantId(req), applicantId, actorId: req.staffRecord?.id, interviewAt: null,
+        });
+      }
     }
 
     await writeAuditEvent({

@@ -24,6 +24,7 @@ const { resolveClientContext, getClientIp, hashClientIp } = require('../lib/clie
 const { itemBalances } = require('../lib/agreedPrice');
 const { capturePublicLead } = require('../lib/publicLead');
 const metaCapi = require('../lib/metaCapi');
+const joinApplication = require('../lib/joinApplication');
 const { SYSTEM_SEARCH_PERMISSIONS, searchSystem } = require('../lib/systemSearch');
 
 // The contact form's subjects that are sales' to answer (client/pages/Contact.tsx).
@@ -947,12 +948,36 @@ router.post('/api/contact', contactLimiter, async (req, res) => {
 router.post('/api/join-us', contactLimiter, async (req, res) => {
   try {
     const { name, email, phone, specialty, experience, type, linkedin, message, jobId,
-      branch, education, experiencePlaces, experienceYears } = req.body;
-    const verr = validate(req.body, { name: 'required|120', email: 'email|160', phone: 'required|40', specialty: 'required|160', type: 'required|40', experience: 'optional|2000', linkedin: 'optional|300', message: 'optional|2000' });
+      branch, education, experiencePlaces, experienceYears, form } = req.body;
+    const verr = validate(req.body, { name: 'required|120', email: 'email|160', phone: 'required|40', specialty: 'required|160', type: 'optional|40', experience: 'optional|2000', linkedin: 'optional|300', message: 'optional|2000', programsOther: 'optional|1000', branch: 'optional|60' });
     if (verr) return res.status(400).json({ error: verr });
     const id = uuidv4();
-    const safeType = ['INSTRUCTOR', 'CONSULTANT', 'EMPLOYEE'].includes(String(type || '').toUpperCase())
-      ? String(type).toUpperCase() : 'INSTRUCTOR';
+    // Which list the application belongs on comes from the page it was sent from,
+    // not from a type that silently fell back to INSTRUCTOR — «لازم تفرق بيينهم
+    // بشكل كبير» (12 Oct 2026). See lib/joinApplication.js.
+    const kind = joinApplication.resolveApplicationKind({ form, type, jobId });
+    const safeType = kind.type;
+    // The lecturer form's two required questions — «هل اشتغلت محاضر قبل كده؟» and
+    // «هل اشتغلت في جلسات نفسية مع عملاء قبل كده؟» (12 Oct 2026). Required from the
+    // teaching page; a page cached from before them sends no `form` and is let
+    // through without, rather than losing the applicant.
+    const lecturedBefore = joinApplication.parseYesNo(req.body.lecturedBefore);
+    const sessionsBefore = joinApplication.parseYesNo(req.body.sessionsBefore);
+    if (String(form || '').toLowerCase() === 'teaching' && (lecturedBefore === null || sessionsBefore === null)) {
+      return res.status(400).json({ error: 'جاوب على سؤالي الخبرة: اشتغلت محاضر قبل كده؟ واشتغلت في جلسات نفسية مع عملاء؟' });
+    }
+    // The programmes ticked, read back from the tenant's own published courses —
+    // a title from the browser is not stored as something the institute offers.
+    let programs = [];
+    const programIds = kind.sourceForm === 'teaching' ? joinApplication.programIdsFrom(req.body.programs) : [];
+    if (programIds.length) {
+      const [rows] = await pool.query(
+        `SELECT id, title FROM courses WHERE tenant_id=? AND is_published=1 AND id IN (${programIds.map(() => '?').join(',')})`,
+        [req.tenantId, ...programIds]);
+      const byId = new Map(rows.map(row => [String(row.id), row.title]));
+      programs = programIds.filter(pid => byId.has(pid)).map(pid => ({ id: pid, title: byId.get(pid) }));
+    }
+    const programsOther = kind.sourceForm === 'teaching' ? String(req.body.programsOther || '').trim() || null : null;
     // Applying from a specific job listing's "قدّم الآن" list must land the
     // applicant on THAT posting, not the generic talent pool it silently fell
     // into before (jobId was collected on the form but never sent). Re-checked
@@ -976,6 +1001,10 @@ router.post('/api/join-us', contactLimiter, async (req, res) => {
       name, email, phone, specialty, experience, type: safeType, linkedin, message,
       branch, education, experiencePlaces, experienceYears,
       job_id: targetJobId,
+      source_form: kind.sourceForm,
+      lectured_before: kind.sourceForm === 'teaching' ? lecturedBefore : null,
+      sessions_before: kind.sourceForm === 'teaching' ? sessionsBefore : null,
+      programs, programs_other: programsOther,
     });
     const roleLabel = { INSTRUCTOR: 'محاضر', CONSULTANT: 'مستشار', EMPLOYEE: 'وظيفة إدارية' }[safeType] || '';
     await Promise.all([

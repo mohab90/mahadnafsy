@@ -522,6 +522,10 @@ export function DashboardNavigation(props: Props) {
                   { key: 'ratings', label: 'التقييمات', icon: Star },
                   // «نظام الموارد البشريه … فقط علي موظفين الدقي» (9 Oct 2026).
                   { key: 'branch_hr', label: `موارد بشرية ${staffBranchLabel}`, icon: Users },
+                  // «اتاكد ان طلبات الانضمام للدقي والانترفيو للدقي بيظهر لنشوي مدير
+                  // الدقي» (12 Oct 2026) — the branch's applications and interviews.
+                  { key: 'join_us', label: 'طلبات الانضمام', icon: UserPlus },
+                  { key: 'interviews', label: 'الانترفيوهات', icon: CalendarCheck },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 currentStaff={currentStaff} salesDataLoading={salesDataLoading}

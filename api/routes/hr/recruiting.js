@@ -1,8 +1,10 @@
 'use strict';
 const { Router } = require('express');
 const router = Router();
-const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
+const { hrError, requirePermission, requireAnyPermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 const { writeAuditEvent } = require('../../lib/auditTrail');
+const { requireRecruiting, applicantReachSql, applicantInReach, outOfRecruitReach } = require('../../lib/branchHr');
+const { parseInterviewAt } = require('../../lib/joinApplication');
 
 const EMPLOYMENT_TYPES = new Set(['full_time', 'part_time', 'contract', 'intern']);
 const JOB_STATUSES = new Set(['draft', 'open', 'closed', 'filled']);
@@ -269,7 +271,9 @@ router.delete('/api/admin/hr/jobs/:jobId', requireAuth, requireAdminOrStaff, req
 });
 
 // List applicants for a job
-router.get('/api/admin/hr/applicants', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
+// A branch manager sees their branch's applicants (lib/branchHr.js) — «اتاكد ان
+// طلبات الانضمام للدقي والانترفيو للدقي بيظهر لنشوي مدير الدقي» (12 Oct 2026).
+router.get('/api/admin/hr/applicants', requireAuth, requireAdminOrStaff, requireAnyPermission('view_hr', 'branch_hr'), requireRecruiting('view_hr'), async (req, res) => {
   try {
     const params = [req.tenantId];
     let filter = '';
@@ -277,6 +281,9 @@ router.get('/api/admin/hr/applicants', requireAuth, requireAdminOrStaff, require
       filter = ' AND a.stage=?';
       params.push(String(req.query.stage));
     }
+    const reach = applicantReachSql(req.recruitReach, 'a', 'j');
+    filter += reach.sql;
+    params.push(...reach.params);
     const [rows] = await pool.query(
       // interview_grade / second_interview_grade (migration 199_v25) were missing
       // from this SELECT, so POST .../grade wrote the letter and returned 200
@@ -292,8 +299,23 @@ router.get('/api/admin/hr/applicants', requireAuth, requireAdminOrStaff, require
               a.source,a.source_id,a.specialty,a.applicant_type,a.linkedin,a.hired_staff_id,
               a.created_at,a.updated_at,j.title job_title,j.branch job_branch,
               a.branch applicant_branch,a.education,a.experience_years,a.experience_places,
-              a.phone_interview_at,a.phone_interview_result,a.interview_at,a.decided_at
+              a.phone_interview_at,a.phone_interview_result,
+              -- The interview time is the Cairo wall clock the desk typed. As a
+              -- DATETIME it came back through the driver as a UTC instant ("11:30"
+              -- became 11:30Z, shown as 14:30), so the time printed beside a
+              -- candidate was off by Cairo's offset. Sent as the text it was typed.
+              DATE_FORMAT(a.interview_at,'%Y-%m-%d %H:%i:%s') interview_at,a.decided_at,
+              js.id join_us_id, js.source_form, js.lectured_before, js.sessions_before,
+              js.programs_json, js.programs_other, js.first_call_rating,
+              cn.body last_contact_note, cn.author_name last_contact_by, cn.created_at last_contact_at
          FROM job_applicants a
+         LEFT JOIN join_us_applications js
+           ON a.source='website' AND js.id=a.source_id AND js.tenant_id=a.tenant_id
+         LEFT JOIN recruitment_notes cn ON cn.id = (
+           SELECT n.id FROM recruitment_notes n
+            WHERE n.tenant_id=a.tenant_id AND n.kind='contact'
+              AND ((n.ref_type='applicant' AND n.ref_id=a.id) OR (n.ref_type='join_us' AND n.ref_id=a.source_id))
+            ORDER BY n.created_at DESC LIMIT 1)
          JOIN job_postings j ON j.id=a.job_id AND j.tenant_id=a.tenant_id
          LEFT JOIN staff g1 ON g1.id=a.interviewed_by AND g1.tenant_id=a.tenant_id
          LEFT JOIN staff g2 ON g2.id=a.second_interviewed_by AND g2.tenant_id=a.tenant_id
@@ -390,7 +412,7 @@ router.post('/api/admin/hr/jobs/:jobId/applicants', requireAuth, requireAdminOrS
 });
 
 // Update applicant (stage, notes, etc.)
-router.put('/api/admin/hr/applicants/:appId', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
+router.put('/api/admin/hr/applicants/:appId', requireAuth, requireAdminOrStaff, requireAnyPermission('manage_hr', 'branch_hr'), requireRecruiting('manage_hr'), async (req, res) => {
   const conn = await pool.getConnection();
   let transactionStarted = false;
   try {
@@ -409,6 +431,10 @@ router.put('/api/admin/hr/applicants/:appId', requireAuth, requireAdminOrStaff, 
       await conn.rollback(); transactionStarted = false;
       return res.status(404).json({ error: 'Applicant not found' });
     }
+    if (!await applicantInReach(conn, req, appId)) {
+      await conn.rollback(); transactionStarted = false;
+      return outOfRecruitReach(res);
+    }
     if (current.stage === 'hired') {
       await conn.rollback(); transactionStarted = false;
       return res.status(409).json({ error: 'Hired applicant history is immutable', code: 'HIRED_APPLICANT_IMMUTABLE' });
@@ -424,8 +450,25 @@ router.put('/api/admin/hr/applicants/:appId', requireAuth, requireAdminOrStaff, 
     // screen, so the date and the stage move together — a scheduled date
     // with the stage left behind is how people went missing from both.
     if (req.body.interview_at && !req.body.stage) req.body.stage = 'interview';
+    // A date is checked before it is stored — and one already gone is refused:
+    // «ليه لما بننقل عميل للانترفيو بيظهر في السابق» (12 Oct 2026).
+    if (req.body.interview_at) {
+      const parsed = parseInterviewAt(req.body.interview_at);
+      if (parsed.error) {
+        await conn.rollback(); transactionStarted = false;
+        return res.status(400).json({ error: parsed.error, code: parsed.code });
+      }
+      req.body.interview_at = parsed.value;
+    }
+    // Scheduling an interview from the job's applicant list is allowed as one
+    // move from any stage before it — the same place «نقل للانترفيو» reaches
+    // through applied→screening→interview. The list sent stage 'interview' from
+    // 'applied', which the single-step check refused with 409, so «حدد مقابلة»
+    // could never work on a fresh applicant.
+    const walksToInterview = req.body.stage === 'interview' && Boolean(req.body.interview_at)
+      && ['applied', 'screening', 'rejected'].includes(current.stage);
     if (req.body.stage !== undefined) {
-      if (req.body.stage !== current.stage && !APPLICANT_TRANSITIONS[current.stage]?.has(req.body.stage)) {
+      if (req.body.stage !== current.stage && !walksToInterview && !APPLICANT_TRANSITIONS[current.stage]?.has(req.body.stage)) {
         await conn.rollback(); transactionStarted = false;
         return res.status(409).json({ error: `Illegal applicant transition ${current.stage} -> ${req.body.stage}`, code: 'INVALID_APPLICANT_TRANSITION' });
       }
@@ -434,8 +477,12 @@ router.put('/api/admin/hr/applicants/:appId', requireAuth, requireAdminOrStaff, 
         return res.status(409).json({ error: 'Use the hire action to create and link the staff record', code: 'HIRE_ACTION_REQUIRED' });
       }
     }
+    // The phone screen's time is the server's, not the browser's: the panel sent
+    // toISOString() — UTC — into a column read as Cairo time.
+    if (req.body.phone_interview_result !== undefined) delete req.body.phone_interview_at;
     const sets = []; const vals = [];
     for (const f of fields) { if (req.body[f] !== undefined) { sets.push(`${f}=?`); vals.push(req.body[f]); } }
+    if (req.body.phone_interview_result !== undefined) sets.push('phone_interview_at=NOW()');
     if (!sets.length) {
       await conn.rollback(); transactionStarted = false;
       return res.status(400).json({ error: 'nothing to update' });

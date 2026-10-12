@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { cairoDay } from '../../../../shared/cairoDate';
-import { Briefcase, BriefcaseBusiness, Building2, CalendarCheck, Filter, GraduationCap, Mail, Phone, RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
+import { BriefcaseBusiness, Filter, GraduationCap, RefreshCw, RotateCcw, Search } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { hasPermission, type PermissionKey, type RoleKey } from '../../../constants/permissions';
 
 // The job postings live here, not only under نظام HR: this is the page staff
 // open to run recruitment, and "أضف وظيفة" was two menus away from the list of
@@ -11,413 +11,188 @@ const JobPostingsPanel = React.lazy(() => import('./JobPostingsPanel'));
 import type { JoinUsApplication } from '../../../types';
 import PromptModal from '../../../../shared/ui/PromptModal';
 import {
-  EXPERIENCE_ORDER, EXPERIENCE_YEARS, branchLabel, fmtDateTime, matchesMinExperience, yearsLabel,
+  EXPERIENCE_ORDER, EXPERIENCE_YEARS, branchLabel, matchesMinExperience,
 } from './hr-sections/applicantLabels';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
+import ApplicationCard, { type CardActions, jobLabel } from './join-us/ApplicationCard';
+import FirstCallModal from './join-us/FirstCallModal';
+import InterviewTimeModal from './join-us/InterviewTimeModal';
+import { type Group, type Kind, STATUS, type Status, groupOf, kindOf, statusOf } from './join-us/joinUsUi';
 
-type Status = 'new' | 'reviewed' | 'accepted' | 'rejected';
-type Kind = 'instructor' | 'consultant' | 'staff';
-type Group = 'teaching' | 'staff';
+type Toast = { type: 'success' | 'error' | 'info'; text: string };
 
-const STATUS: Record<Status, { label: string; className: string }> = {
-  new: { label: 'جديد', className: 'bg-blue-100 text-blue-700' },
-  reviewed: { label: 'قيد المراجعة', className: 'bg-amber-100 text-amber-700' },
-  accepted: { label: 'مقبول', className: 'bg-emerald-100 text-emerald-700' },
-  rejected: { label: 'مرفوض', className: 'bg-red-100 text-red-700' },
-};
-const KIND_LABEL: Record<Kind, string> = { instructor: 'محاضر', consultant: 'استشاري', staff: 'موظف' };
-const STAGE_LABEL: Record<string, string> = {
-  applied: 'تم الاستلام', screening: 'فرز أولي', interview: 'مقابلة',
-  offer: 'عرض وظيفي', hired: 'تم التعيين', rejected: 'مرفوض',
-};
-
-function statusOf(value?: string): Status {
-  const status = String(value || '').toLowerCase();
-  if (status === 'accepted' || status === 'rejected' || status === 'reviewed') return status;
-  if (['pending', 'in_progress', 'read'].includes(status)) return 'reviewed';
-  if (['approved', 'done'].includes(status)) return 'accepted';
-  return 'new';
-}
-
-function kindOf(value?: string): Kind {
-  const kind = String(value || '').toLowerCase();
-  if (['consultant', 'consultation', 'therapist', 'advisor'].includes(kind)) return 'consultant';
-  if (['staff', 'employee', 'hr', 'admin', 'ops', 'support'].includes(kind)) return 'staff';
-  return 'instructor';
-}
-
-/**
- * What to call the posting an application is attached to.
+/*
+ * «في طلبات الانضمام في الموارد البشرية لازم تبقي عارف ان في طلبات انضمام موظف وفي
+ * محاضر لازم تفرق بيينهم بشكل كبير ,,,في الفلتر والبحث خلي صفحه طلبات الانضمام
+ * للمحاضر غير الموظفين» (12 Oct 2026).
  *
- * Applications that did not come from a specific listing are parked on a
- * per-tenant placeholder job titled "Website applicants (Talent Pool)" — an
- * internal record, in English, that the postings list deliberately hides. It
- * must not surface here as though it were a real vacancy someone applied for.
+ * Two lists, each its own page with its own filters and search: a lecturer search
+ * never reaches an employee, and a filter set on one list is still there when you
+ * come back to it. The list an application belongs on is the form it came
+ * through (sourceForm), not a type that used to fall back to «محاضر».
  */
-function jobLabel(app: JoinUsApplication): string {
-  if (!app.jobId) return '';
-  if (app.jobId.startsWith('talent-')) return 'طلب عام — مش على وظيفة محددة';
-  return app.jobTitle || 'وظيفة محذوفة';
-}
+const GROUPS: Record<Group, { title: string; short: string; Icon: typeof GraduationCap; tab: string; ring: string }> = {
+  teaching: { title: 'طلبات انضمام المحاضرين', short: 'المحاضرين والاستشاريين', Icon: GraduationCap, tab: 'bg-violet-600 text-white shadow-violet-200', ring: 'text-violet-700 hover:bg-violet-50' },
+  staff: { title: 'طلبات انضمام الموظفين', short: 'الموظفين', Icon: BriefcaseBusiness, tab: 'bg-emerald-600 text-white shadow-emerald-200', ring: 'text-emerald-700 hover:bg-emerald-50' },
+};
 
-export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: Kind | 'all' }) {
-  const { joinUsApplications, updateJoinUsApplication, deleteJoinUsApplication, reloadJoinUsApplications } = useSiteData();
-  // Staff-first by default: the owner asked for الموظفون to be the first and
-  // default group, so only an explicit instructor/consultant entry point
-  // (initialType) opens on the teaching side.
-  const [group, setGroup] = useState<Group>(
-    initialType === 'instructor' || initialType === 'consultant' ? 'teaching' : 'staff',
-  );
+type BoardProps = {
+  group: Group;
+  apps: JoinUsApplication[];
+  busyId: string | null;
+  justMoved: Set<string>;
+  actions: CardActions;
+};
+
+/** One list — the lecturers' or the employees' — with filters of its own. */
+function ApplicationsBoard({ group, apps, busyId, justMoved, actions }: BoardProps) {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<Status | 'all'>('all');
   const [minExperience, setMinExperience] = useState('');
   const [branch, setBranch] = useState('');
-  const [kind, setKind] = useState<Kind | 'all'>(initialType);
+  const [kind, setKind] = useState<Kind | 'all'>('all');
   const [jobFilter, setJobFilter] = useState('');
-  const [toast, setToast] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
-  const [movingId, setMovingId] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [prompt, setPrompt] = useState<{
-    title: string; label: string; hint?: string; placeholder?: string;
-    initialValue?: string; confirmLabel?: string; multiline?: boolean;
-    required?: boolean; validate?: (v: string) => string | null;
-    run: (value: string) => Promise<void> | void;
-  } | null>(null);
+  const [program, setProgram] = useState('');
+  const [lectured, setLectured] = useState<'' | 'yes' | 'no'>('');
+  const [sessions, setSessions] = useState<'' | 'yes' | 'no'>('');
 
-  // The tab's own data can be minutes stale — the shared bootstrap loads it
-  // once at login and only otherwise refreshes on a 2-minute background timer
-  // — so a submission made just now (from another browser, e.g. an applicant
-  // on the public site) wouldn't show without this. Refresh whenever staff
-  // actually open the tab, not just on the wider app's schedule.
-  useEffect(() => { void reloadJoinUsApplications(); }, [reloadJoinUsApplications]);
-  const refresh = async () => {
-    setRefreshing(true);
-    try { await reloadJoinUsApplications(); } finally { setRefreshing(false); }
-  };
-
-  const groupOf = (app: JoinUsApplication): Group => kindOf(app.type) === 'staff' ? 'staff' : 'teaching';
   const rows = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return joinUsApplications
-      .filter(app => groupOf(app) === group)
-      .filter(app => kind === 'all' || kindOf(app.type) === kind)
+    const matchesYesNo = (value: boolean | null | undefined, wanted: '' | 'yes' | 'no') =>
+      !wanted || (wanted === 'yes' ? value === true : value === false);
+    return apps
+      .filter(app => kind === 'all' || kindOf(app) === kind)
       .filter(app => status === 'all' || statusOf(app.status) === status)
       .filter(app => matchesMinExperience(app.experienceYears, minExperience))
       .filter(app => !branch || app.applicantBranch === branch)
       .filter(app => !jobFilter || app.jobId === jobFilter)
-      .filter(app => !query || [app.name, app.email, app.phone, app.specialty].some(value => String(value || '').toLowerCase().includes(query)))
+      .filter(app => !program || (app.programs || []).some(p => p.title === program))
+      .filter(app => matchesYesNo(app.lecturedBefore, lectured) && matchesYesNo(app.sessionsBefore, sessions))
+      .filter(app => !query || [app.name, app.email, app.phone, app.specialty, app.programsOther,
+        ...(app.programs || []).map(p => p.title)].some(value => String(value || '').toLowerCase().includes(query)))
       .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
-    // Every value the filters above read has to be listed. Leaving the new ones
-    // out kept the memo from recomputing, so picking a branch or an experience
-    // band changed the dropdown and nothing else — a filter that looks broken
-    // rather than one that is missing.
-  }, [group, joinUsApplications, kind, search, status, minExperience, branch, jobFilter]);
-
-  // The postings panel reports through a notify callback. Routing that to a
-  // custom event would lose it: only 'site-persist-error' has a listener
-  // anywhere in the app, so publishing a job would say nothing at all.
-  const notify = useMemo(() => (type: 'success' | 'error' | 'info', text: string) => {
-    setToast({ type, text });
-    window.setTimeout(() => setToast(current => (current?.text === text ? null : current)), 4000);
-  }, []);
+    // Every value the filters read is listed: one left out kept the memo from
+    // recomputing, so the dropdown changed and the list did not.
+  }, [apps, kind, status, minExperience, branch, jobFilter, program, lectured, sessions, search]);
 
   const jobOptions = useMemo(() => {
     const map = new Map<string, { id: string; title: string; count: number }>();
-    joinUsApplications.forEach(app => {
+    apps.forEach(app => {
       if (!app.jobId) return;
       const entry = map.get(app.jobId);
       if (entry) entry.count += 1;
       else map.set(app.jobId, { id: app.jobId, title: jobLabel(app), count: 1 });
     });
     return [...map.values()].sort((a, b) => b.count - a.count);
-  }, [joinUsApplications]);
-
+  }, [apps]);
   const branchOptions = useMemo(
-    () => [...new Set(joinUsApplications.map(app => app.applicantBranch).filter(Boolean))] as string[],
-    [joinUsApplications]);
+    () => [...new Set(apps.map(app => app.applicantBranch).filter(Boolean))] as string[], [apps]);
+  const programOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    apps.forEach(app => (app.programs || []).forEach(p => counts.set(p.title, (counts.get(p.title) || 0) + 1)));
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [apps]);
+  const statusCounts = useMemo(() => {
+    const counts = {} as Record<Status, number>;
+    (Object.keys(STATUS) as Status[]).forEach(key => { counts[key] = 0; });
+    apps.forEach(app => { counts[statusOf(app.status)] += 1; });
+    return counts;
+  }, [apps]);
 
-  const filtersActive = Boolean(search.trim() || jobFilter || branch || minExperience)
+  const filtersActive = Boolean(search.trim() || jobFilter || branch || minExperience || program || lectured || sessions)
     || status !== 'all' || kind !== 'all';
-
-  const changeStatus = async (app: JoinUsApplication, next: Status) =>
-    updateJoinUsApplication({ ...app, status: next });
-
-  const editNote = (app: JoinUsApplication) => setPrompt({
-    title: `ملاحظة HR — ${app.name}`,
-    label: 'ملاحظة فريق الموارد البشرية',
-    initialValue: app.adminNote || '',
-    confirmLabel: 'حفظ الملاحظة',
-    multiline: true,
-    run: async note => {
-      setBusyId(app.id);
-      await updateJoinUsApplication({ ...app, adminNote: note.trim() || undefined });
-      setBusyId(null);
-      setPrompt(null);
-    },
-  });
-
-  const openContact = (app: JoinUsApplication) => setPrompt({
-    title: `تسجيل تواصل — ${app.name}`,
-    label: 'ملاحظة عن المكالمة (اختياري)',
-    hint: 'هيتسجّل تاريخ التواصل واسمك، وبعدها تقدر تسجّل قرار القبول أو الرفض.',
-    placeholder: 'مثال: اتصلت وطلب معاودة الاتصال بكرة',
-    confirmLabel: 'تسجيل التواصل',
-    multiline: true,
-    run: note => markContacted(app, note),
-  });
-
-  const openEvaluate = (app: JoinUsApplication, decision: 'ACCEPTED' | 'REJECTED', withDate: boolean) => {
-    if (withDate) {
-      setPrompt({
-        title: `قبول ${app.name} وتحديد موعد`,
-        label: 'موعد المقابلة',
-        hint: 'الصيغة: YYYY-MM-DD HH:MM — مثال 2026-09-01 11:30',
-        placeholder: '2026-09-01 11:30',
-        confirmLabel: 'قبول وتحديد الموعد',
-        required: true,
-        // Checked here so a bad date never leaves the dialog — the field stays
-        // open with the reason instead of the row silently not changing.
-        validate: value => (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}$/.test(value)
-          ? null : 'الصيغة لازم تكون YYYY-MM-DD HH:MM'),
-        run: interviewAt => evaluate(app, 'ACCEPTED', interviewAt, ''),
-      });
-      return;
-    }
-    setPrompt({
-      title: decision === 'REJECTED' ? `رفض ${app.name}` : `قبول ${app.name} بدون موعد`,
-      label: 'سبب القرار (اختياري)',
-      confirmLabel: decision === 'REJECTED' ? 'تأكيد الرفض' : 'تأكيد القبول',
-      multiline: true,
-      run: note => evaluate(app, decision, undefined, note),
-    });
+  const reset = () => {
+    setSearch(''); setStatus('all'); setMinExperience(''); setBranch(''); setJobFilter('');
+    setKind('all'); setProgram(''); setLectured(''); setSessions('');
   };
-
-  const markContacted = async (app: JoinUsApplication, note: string) => {
-    setBusyId(app.id);
-    try {
-      const result = await mysqlAdmin.contactJoinUs(app.id, note || undefined);
-      setToast({ type: 'success', text: `تم تسجيل التواصل مع ${app.name} — بواسطة ${result.contactedBy}` });
-      setPrompt(null);
-      await reloadJoinUsApplications();
-    } catch (error) {
-      setToast({ type: 'error', text: error instanceof Error ? error.message : 'تعذّر تسجيل التواصل' });
-    } finally { setBusyId(null); }
-  };
-
-  // One call for all three outcomes — رفض، قبول بموعد، قبول بدون موعد — because
-  // they are one decision made after the same phone call.
-  const evaluate = async (
-    app: JoinUsApplication,
-    decision: 'ACCEPTED' | 'REJECTED',
-    interviewAt: string | undefined,
-    note: string,
-  ) => {
-    setBusyId(app.id);
-    try {
-      await mysqlAdmin.evaluateJoinUs(app.id, { decision, interviewAt, body: note || undefined });
-      setToast({
-        type: 'success',
-        text: decision === 'REJECTED' ? `تم رفض ${app.name}`
-          : interviewAt ? `تم قبول ${app.name} — موعد المقابلة ${interviewAt}`
-            : `تم قبول ${app.name} — لم يتحدد موعد بعد`,
-      });
-      setPrompt(null);
-      await reloadJoinUsApplications();
-    } catch (error) {
-      setToast({ type: 'error', text: error instanceof Error ? error.message : 'تعذّر حفظ القرار' });
-    } finally { setBusyId(null); }
-  };
-
-  const remove = async (app: JoinUsApplication) => {
-    const linked = Boolean(app.convertedApplicantId);
-    if (!await confirmDialog(linked
-      ? 'الطلب ده مرتبط بمسار التوظيف. هنحاول نحذفه والسيرفر هو اللي هيقرر — تكمل؟'
-      : 'حذف الطلب نهائيًا؟')) return;
-    setBusyId(app.id);
-    try {
-      await deleteJoinUsApplication(app.id);
-      setToast({ type: 'success', text: `تم حذف طلب ${app.name}` });
-    } catch (error) {
-      // The server's own words. It distinguishes "already in the pipeline —
-      // reject it instead" from a permission problem, and each needs a
-      // different action; the old text blamed the internet for both.
-      const reason = error instanceof Error ? error.message : '';
-      setToast({
-        type: 'error',
-        text: /PIPELINE|pipeline/i.test(reason)
-          ? `${app.name} داخل مسار التوظيف — استخدم زر «مرفوض» بدل الحذف`
-          : `تعذّر حذف طلب ${app.name}${reason ? ` — ${reason}` : ''}`,
-      });
-    } finally { setBusyId(null); }
-  };
-
-  const [justMoved, setJustMoved] = useState<Set<string>>(new Set());
-
-  // Ask for the time before moving anybody.
-  //
-  // The button used to convert the candidate and stop. The interviews screen
-  // sorts by interview_at and parks a row without one at the end under
-  // "بدون موعد", so pressing it appeared to do nothing — the candidate did
-  // move, into a list where nothing distinguished them. The date is what makes
-  // the move visible, which is why it is asked for here rather than left to be
-  // filled in on the other screen afterwards.
-  const openMoveToInterview = (app: JoinUsApplication) => setPrompt({
-    title: `تحديد موعد المقابلة — ${app.name}`,
-    label: 'موعد المقابلة',
-    hint: 'الصيغة: YYYY-MM-DD HH:MM — مثال 2026-09-01 11:30. هينتقل لصفحة الانترفيوهات تحت «القادم».',
-    placeholder: '2026-09-01 11:30',
-    initialValue: app.interviewAt ? String(app.interviewAt).replace('T', ' ').slice(0, 16) : '',
-    confirmLabel: 'تحديد ونقل للانترفيو',
-    required: true,
-    // Validated here so a bad date never leaves the dialog. The route checks the
-    // same shape — a string it cannot parse would store NULL and put the
-    // candidate right back in the undated pile this exists to avoid.
-    validate: value => (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}$/.test(value.trim())
-      ? null : 'الصيغة لازم تكون YYYY-MM-DD HH:MM'),
-    run: value => moveToInterview(app, value.trim()),
-  });
-
-  const moveToInterview = async (app: JoinUsApplication, interviewAt?: string) => {
-    setMovingId(app.id);
-    try {
-      await mysqlAdmin.moveJoinUsToInterview(app.id, interviewAt);
-      setJustMoved(prev => new Set(prev).add(app.id));
-      setPrompt(null);
-      setToast({
-        type: 'success',
-        text: interviewAt
-          ? `${app.name} اتنقل للانترفيوهات — الموعد ${interviewAt}`
-          : `${app.name} اتنقل للانترفيوهات بدون موعد`,
-      });
-      await reloadJoinUsApplications();
-      // The conversion happens through a dedicated pipeline endpoint, not the
-      // generic join-us update this tab otherwise uses — updateJoinUsApplication
-      // would try to PUT server-controlled fields (convertedApplicantId) back
-      // through a route that doesn't accept them. justMoved is enough to
-      // confirm success inline; the full "داخل HR: مقابلة" badge picks up
-      // the real state next time this page's data source refreshes.
-    } catch (error) {
-      // Said out loud as well as dispatched. A rejected date comes back from the
-      // route with the reason, and the custom event alone left the dialog open
-      // over a page that gave no indication anything had gone wrong.
-      const reason = error instanceof Error ? error.message : '';
-      setToast({ type: 'error', text: `تعذّر نقل ${app.name} للانترفيو${reason ? ` — ${reason}` : ''}` });
-      window.dispatchEvent(new CustomEvent('site-persist-error', {
-        detail: { field: 'join-us-to-interview', name: reason || app.id },
-      }));
-    } finally {
-      setMovingId(null);
-    }
-  };
+  const field = 'w-full rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-xs';
+  const teaching = group === 'teaching';
 
   return (
-    <div className="space-y-5" dir="rtl">
-      {prompt && (
-        <PromptModal
-          title={prompt.title}
-          label={prompt.label}
-          hint={prompt.hint}
-          placeholder={prompt.placeholder}
-          initialValue={prompt.initialValue}
-          confirmLabel={prompt.confirmLabel}
-          multiline={prompt.multiline}
-          required={prompt.required}
-          validate={prompt.validate}
-          busy={busyId !== null}
-          onSubmit={value => { void prompt.run(value); }}
-          onCancel={() => setPrompt(null)}
-        />
-      )}
-      {toast && (
-        <div className={`rounded-xl px-4 py-2.5 text-sm font-bold ${
-          toast.type === 'error' ? 'border border-red-200 bg-red-50 text-red-700'
-            : toast.type === 'success' ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
-              : 'border border-sky-200 bg-sky-50 text-sky-700'}`}
-        >
-          {toast.text}
-        </div>
-      )}
-      <section className="rounded-2xl bg-gradient-to-l from-indigo-700 to-violet-600 p-6 text-white">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="flex items-center gap-2 text-2xl font-black"><GraduationCap /> طلبات الانضمام</h2>
-            <p className="mt-1 text-sm text-indigo-100">كل طلب موقع يدخل تلقائيًا لمسار التوظيف ويظل مرتبطًا حتى التعيين.</p>
-          </div>
-          <button
-            onClick={refresh}
-            disabled={refreshing}
-            className="flex shrink-0 items-center gap-1.5 rounded-xl bg-white/15 px-3 py-2 text-xs font-bold hover:bg-white/25 transition disabled:opacity-60"
-          >
-            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
-            تحديث
-          </button>
-        </div>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {(Object.keys(STATUS) as Status[]).map(key => (
-            <span key={key} className="rounded-lg bg-white/15 px-3 py-1.5 text-xs font-bold">
-              {STATUS[key].label}: {joinUsApplications.filter(app => statusOf(app.status) === key).length}
-            </span>
-          ))}
-        </div>
-      </section>
-
-      <div className="flex gap-2 border-b border-gray-200">
-        {([
-          ['staff', 'الموظفون', BriefcaseBusiness],
-          ['teaching', 'المحاضرون والاستشاريون', GraduationCap],
-        ] as const).map(([key, label, Icon]) => (
-          <button key={key} onClick={() => { setGroup(key); setKind('all'); }}
-            className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-bold ${group === key ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-500'}`}>
-            <Icon size={16} /> {label}
+    <div className="space-y-3">
+      {/* Status at a glance — each chip is also the status filter. */}
+      <div className="flex flex-wrap gap-1.5">
+        <button onClick={() => setStatus('all')}
+          className={`rounded-full px-3 py-1 text-xs font-bold ${status === 'all' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 ring-1 ring-gray-200'}`}>
+          الكل {apps.length}
+        </button>
+        {(Object.keys(STATUS) as Status[]).map(key => (
+          <button key={key} onClick={() => setStatus(status === key ? 'all' : key)}
+            className={`rounded-full px-3 py-1 text-xs font-bold ${status === key ? `${STATUS[key].className} ring-2 ring-gray-300 ring-offset-1` : 'bg-white text-gray-600 ring-1 ring-gray-200'}`}>
+            {STATUS[key].label} {statusCounts[key]}
           </button>
         ))}
       </div>
 
-      {/* The postings themselves — publish one, see who applied, close it. */}
-      <React.Suspense fallback={<div className="rounded-2xl border border-gray-100 bg-white py-8 text-center text-sm text-gray-400">جاري تحميل الوظائف...</div>}>
-        <JobPostingsPanel notify={notify} />
-      </React.Suspense>
-
-      <div className="rounded-2xl border border-gray-200 bg-white p-3 space-y-2">
+      <div className="space-y-2 rounded-2xl border border-gray-200 bg-white p-3">
         <div className="flex items-center gap-1.5 text-xs font-bold text-gray-600">
-          <Filter size={14} className="text-indigo-600" /> فلترة الطلبات
+          <Filter size={14} className={teaching ? 'text-violet-600' : 'text-emerald-600'} /> فلترة {GROUPS[group].title}
           {filtersActive && (
-            <button
-              onClick={() => { setSearch(''); setStatus('all'); setMinExperience(''); setBranch(''); setJobFilter(''); setKind('all'); }}
-              className="mr-auto flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold text-gray-500 hover:bg-gray-100"
-            >
+            <button onClick={reset}
+              className="mr-auto flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold text-gray-500 hover:bg-gray-100">
               <RotateCcw size={11} /> إلغاء الفلاتر
             </button>
           )}
         </div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-bold text-gray-500">بحث</span>
-            <input value={search} onChange={event => setSearch(event.target.value)}
-              placeholder="اسم، بريد، هاتف، تخصص"
-              className="w-full rounded-xl border border-gray-200 px-2.5 py-1.5 text-xs" />
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <label className="block sm:col-span-2">
+            <span className="mb-1 block text-[11px] font-bold text-gray-500">بحث في {GROUPS[group].short}</span>
+            <span className="relative block">
+              <Search size={13} className="absolute right-2.5 top-2 text-gray-400" />
+              <input value={search} onChange={event => setSearch(event.target.value)}
+                placeholder={teaching ? 'اسم، تليفون، تخصص، برنامج' : 'اسم، تليفون، إيميل، تخصص'}
+                className={`${field} pr-8`} />
+            </span>
           </label>
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-bold text-gray-500">الوظيفة</span>
-            <select value={jobFilter} onChange={event => setJobFilter(event.target.value)}
-              className="w-full rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-xs">
-              <option value="">كل الوظائف</option>
-              {jobOptions.map(j => <option key={j.id} value={j.id}>{j.title} ({j.count})</option>)}
-            </select>
-          </label>
+          {teaching ? (
+            <>
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-bold text-gray-500">النوع</span>
+                <select value={kind} onChange={event => setKind(event.target.value as Kind | 'all')} className={field}>
+                  <option value="all">محاضرين واستشاريين</option>
+                  <option value="instructor">محاضر</option>
+                  <option value="consultant">استشاري</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-bold text-gray-500">البرنامج</span>
+                <select value={program} onChange={event => setProgram(event.target.value)} className={field}>
+                  <option value="">كل البرامج</option>
+                  {programOptions.map(([title, count]) => <option key={title} value={title}>{title} ({count})</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-bold text-gray-500">اشتغل محاضر قبل كده؟</span>
+                <select value={lectured} onChange={event => setLectured(event.target.value as '' | 'yes' | 'no')} className={field}>
+                  <option value="">الكل</option><option value="yes">آه</option><option value="no">لأ</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-bold text-gray-500">جلسات نفسية مع عملاء؟</span>
+                <select value={sessions} onChange={event => setSessions(event.target.value as '' | 'yes' | 'no')} className={field}>
+                  <option value="">الكل</option><option value="yes">آه</option><option value="no">لأ</option>
+                </select>
+              </label>
+            </>
+          ) : (
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-bold text-gray-500">الوظيفة</span>
+              <select value={jobFilter} onChange={event => setJobFilter(event.target.value)} className={field}>
+                <option value="">كل الوظائف</option>
+                {jobOptions.map(j => <option key={j.id} value={j.id}>{j.title} ({j.count})</option>)}
+              </select>
+            </label>
+          )}
           <label className="block">
             <span className="mb-1 block text-[11px] font-bold text-gray-500">الفرع</span>
-            <select value={branch} onChange={event => setBranch(event.target.value)}
-              className="w-full rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-xs">
+            <select value={branch} onChange={event => setBranch(event.target.value)} className={field}>
               <option value="">كل الفروع</option>
               {branchOptions.map(key => <option key={key} value={key}>{branchLabel(key)}</option>)}
             </select>
           </label>
           <label className="block">
             <span className="mb-1 block text-[11px] font-bold text-gray-500">الخبرة (حد أدنى)</span>
-            <select value={minExperience} onChange={event => setMinExperience(event.target.value)}
-              className="w-full rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-xs">
+            <select value={minExperience} onChange={event => setMinExperience(event.target.value)} className={field}>
               <option value="">أي خبرة</option>
               <option value="only_none">بدون خبرة فقط</option>
               {EXPERIENCE_ORDER.filter(key => key !== 'none').map(key => (
@@ -425,170 +200,247 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
               ))}
             </select>
           </label>
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-bold text-gray-500">الحالة</span>
-            <select value={status} onChange={event => setStatus(event.target.value as Status | 'all')}
-              className="w-full rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-xs">
-              <option value="all">كل الحالات</option>
-              {(Object.keys(STATUS) as Status[]).map(key => <option key={key} value={key}>{STATUS[key].label}</option>)}
-            </select>
-          </label>
-          {group === 'teaching' && (
-            <label className="block">
-              <span className="mb-1 block text-[11px] font-bold text-gray-500">النوع</span>
-              <select value={kind} onChange={event => setKind(event.target.value as Kind | 'all')}
-                className="w-full rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-xs">
-                <option value="all">محاضرين واستشاريين</option>
-                <option value="instructor">محاضر</option>
-                <option value="consultant">استشاري</option>
-              </select>
-            </label>
-          )}
         </div>
-        {filtersActive && (
-          <p className="text-[11px] font-bold text-gray-500">ظاهر {rows.length} طلب من {joinUsApplications.length}</p>
-        )}
+        {filtersActive && <p className="text-[11px] font-bold text-gray-500">ظاهر {rows.length} طلب من {apps.length}</p>}
       </div>
 
-      {rows.length === 0 ? <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center text-gray-400">لا توجد طلبات مطابقة.</div> : (
-        <div className="space-y-3">
-          {rows.map(app => {
-            const appStatus = statusOf(app.status);
-            return (
-              <article key={app.id} className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <span className={`rounded-lg px-2 py-0.5 text-xs font-bold ${STATUS[appStatus].className}`}>{STATUS[appStatus].label}</span>
-                      <span className="rounded-lg bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{KIND_LABEL[kindOf(app.type)]}</span>
-                      {jobLabel(app) && <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-700">{jobLabel(app)}</span>}
-                      {app.convertedApplicantId && <span className="rounded-lg bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-700">داخل HR: {STAGE_LABEL[app.applicantStage || 'applied'] || app.applicantStage}</span>}
-                      {!app.convertedApplicantId && justMoved.has(app.id) && <span className="rounded-lg bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-700">✓ نُقل للمقابلات</span>}
-                      {app.hiredStaffId && <span className="rounded-lg bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">موظف مرتبط</span>}
-                    </div>
-                    <h3 className="text-lg font-bold text-gray-900">{app.name}</h3>
-                    <p className="text-sm text-gray-600">{app.specialty}</p>
-                    <div className="mt-1 flex flex-wrap gap-3 text-xs text-gray-500">
-                      <span className="flex items-center gap-1"><Mail size={13} /> {app.email}</span>
-                      <span className="flex items-center gap-1"><Phone size={13} /> {app.phone}</span>
-                      <span>{cairoDay(app.createdAt)}</span>
-                    </div>
-                    {/* What the form actually collected. Without it, judging an
-                        application meant phoning to ask the three things it
-                        already answered. */}
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      {app.experienceYears && (
-                        <span className="flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-0.5 text-[11px] font-bold text-gray-700">
-                          <Briefcase size={11} /> {yearsLabel(app.experienceYears)}
-                        </span>
-                      )}
-                      {app.applicantBranch && (
-                        <span className="flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-0.5 text-[11px] font-bold text-gray-700">
-                          <Building2 size={11} /> {branchLabel(app.applicantBranch)}
-                        </span>
-                      )}
-                      {app.education && (
-                        <span className="flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-0.5 text-[11px] font-bold text-gray-700">
-                          <GraduationCap size={11} /> {app.education}
-                        </span>
-                      )}
-                      {app.linkedin && (
-                        <a href={app.linkedin} target="_blank" rel="noopener noreferrer"
-                          className="rounded-lg bg-sky-100 px-2 py-0.5 text-[11px] font-bold text-sky-700 hover:bg-sky-200">
-                          LinkedIn / الموقع
-                        </a>
-                      )}
-                    </div>
-                    {app.experiencePlaces && (
-                      <p title={app.experiencePlaces} className="mt-1 line-clamp-1 text-[11px] text-gray-500">اشتغل قبل كده: {app.experiencePlaces}</p>
-                    )}
-                    {app.message && <p title={app.message} className="mt-1.5 line-clamp-2 whitespace-pre-line rounded-lg bg-gray-50 px-2 py-1 text-[11px] text-gray-600">{app.message}</p>}
-                    {app.adminNote && <p title={app.adminNote} className="mt-1 line-clamp-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">ملاحظة HR: {app.adminNote}</p>}
-                    {/* The call, written down where it can be read. All of this
-                        was already being stored on every «تواصل» — the date, the
-                        staff member and the note — and none of it was shown. */}
-                    {app.contactedAt && (
-                      <div className="mt-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2 py-1.5 text-[11px] text-sky-900">
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-bold">
-                          <span className="flex items-center gap-1"><Phone size={11} /> تم التواصل</span>
-                          <span className="font-mono text-[10px] font-normal text-sky-700" dir="ltr">{fmtDateTime(app.contactedAt)}</span>
-                          {app.contactedByName && <span className="font-normal text-sky-700">بواسطة {app.contactedByName}</span>}
-                        </div>
-                        {app.contactNote && (
-                          <p title={app.contactNote} className="mt-1 whitespace-pre-line border-t border-sky-200/70 pt-1 font-normal text-sky-800">
-                            {app.contactNote}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                    {app.interviewAt && (
-                      <p className="mt-1 flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-bold text-violet-800">
-                        <CalendarCheck size={11} /> موعد المقابلة:
-                        <span className="font-mono text-[10px]" dir="ltr">{fmtDateTime(app.interviewAt)}</span>
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 flex-row flex-wrap gap-1.5 sm:flex-col sm:w-40">
-                    <select value={appStatus} onChange={event => changeStatus(app, event.target.value as Status)} className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-bold">
-                      {(Object.keys(STATUS) as Status[]).map(key => <option key={key} value={key}>{STATUS[key].label}</option>)}
-                    </select>
-                    <button
-                      disabled={busyId === app.id}
-                      onClick={() => openContact(app)}
-                      title={app.contactedAt ? `آخر تواصل: ${fmtDateTime(app.contactedAt) || app.contactedAt}` : 'تسجيل أنه تم الاتصال بالمتقدم'}
-                      className="flex items-center justify-center gap-1 rounded-xl bg-sky-50 px-3 py-2 text-xs font-bold text-sky-700 disabled:opacity-40"
-                    >
-                      <Phone size={13} /> {app.contactedAt ? 'تواصل مرة أخرى' : 'تواصل'}
-                    </button>
-                    {app.contactedAt && (
-                      <div className="rounded-xl border border-gray-200 p-1.5">
-                        <span className="px-1 text-[10px] font-bold text-gray-500">التقييم بعد التواصل</span>
-                        <button disabled={busyId === app.id}
-                          onClick={() => openEvaluate(app, 'ACCEPTED', true)}
-                          className="mt-1 w-full rounded-lg bg-emerald-50 px-2 py-1.5 text-[11px] font-bold text-emerald-700 disabled:opacity-40">
-                          مقبول + تحديد موعد
-                        </button>
-                        <button disabled={busyId === app.id}
-                          onClick={() => openEvaluate(app, 'ACCEPTED', false)}
-                          className="mt-1 w-full rounded-lg bg-emerald-50/60 px-2 py-1.5 text-[11px] font-bold text-emerald-700 disabled:opacity-40">
-                          مقبول بدون موعد
-                        </button>
-                        <button disabled={busyId === app.id}
-                          onClick={() => openEvaluate(app, 'REJECTED', false)}
-                          className="mt-1 w-full rounded-lg bg-red-50 px-2 py-1.5 text-[11px] font-bold text-red-600 disabled:opacity-40">
-                          مرفوض
-                        </button>
-                      </div>
-                    )}
-                    <button onClick={() => editNote(app)} className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-bold text-amber-700 hover:bg-amber-100">ملاحظة HR</button>
-                    {(() => {
-                      const moved = Boolean(app.convertedApplicantId) || justMoved.has(app.id);
-                      return (
-                        <button
-                          disabled={movingId === app.id}
-                          onClick={() => openMoveToInterview(app)}
-                          title={moved
-                            ? 'المرشح في صفحة الانترفيوهات — اضغط لتعديل الموعد'
-                            : 'يحدد موعد المقابلة وينقله لصفحة الانترفيوهات'}
-                          className={`flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold ${
-                            moved ? 'bg-violet-100 text-violet-700 cursor-default' : 'bg-violet-50 text-violet-700 hover:bg-violet-100'}`}
-                        >
-                          <CalendarCheck size={13} /> {movingId === app.id ? '...' : moved ? 'انترفيو ✓' : 'انترفيو'}
-                        </button>
-                      );
-                    })()}
-                    <button disabled={busyId === app.id} onClick={() => remove(app)}
-                      title={app.convertedApplicantId ? 'الطلب داخل مسار التوظيف — الحذف هيتم رفضه من السيرفر مع توضيح السبب' : 'حذف الطلب نهائيًا'}
-                      className="flex items-center justify-center gap-1 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100 disabled:opacity-40">
-                      <Trash2 size={13} /> {busyId === app.id ? '...' : 'حذف'}
-                    </button>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
+      {rows.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-12 text-center text-sm text-gray-400">
+          {apps.length === 0 ? `مفيش ${GROUPS[group].title} لسه.` : 'مفيش طلبات مطابقة للفلاتر.'}
+        </div>
+      ) : (
+        <div className="grid gap-3 2xl:grid-cols-2">
+          {rows.map(app => (
+            <ApplicationCard key={app.id} app={app} busy={busyId === app.id} moved={justMoved.has(app.id)} actions={actions} />
+          ))}
         </div>
       )}
+    </div>
+  );
+}
+
+export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: Kind | 'all' }) {
+  const {
+    joinUsApplications, updateJoinUsApplication, deleteJoinUsApplication, reloadJoinUsApplications,
+    isAdmin, currentStaff,
+  } = useSiteData();
+  // Staff-first by default (the owner asked for الموظفون to be the default group);
+  // the lecturers' entry point opens on its own list.
+  const [group, setGroup] = useState<Group>(
+    initialType === 'instructor' || initialType === 'consultant' ? 'teaching' : 'staff',
+  );
+  const [toast, setToast] = useState<Toast | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [justMoved, setJustMoved] = useState<Set<string>>(new Set());
+  const [firstCallFor, setFirstCallFor] = useState<JoinUsApplication | null>(null);
+  const [interviewFor, setInterviewFor] = useState<{ app: JoinUsApplication; mode: 'move' | 'accept' } | null>(null);
+  const [prompt, setPrompt] = useState<{
+    title: string; label: string; hint?: string; placeholder?: string;
+    initialValue?: string; confirmLabel?: string; multiline?: boolean; required?: boolean;
+    run: (value: string) => Promise<void> | void;
+  } | null>(null);
+
+  const staff = currentStaff ? { role: currentStaff.role as RoleKey, permissions: currentStaff.permissions as PermissionKey[] | undefined } : null;
+  // A branch manager works their branch's applications (the API narrows the
+  // list); deleting one and publishing postings stay with HR.
+  const branchOnly = ['daqqi_manager', 'tagamoa_manager'].includes(String(currentStaff?.role || '').toLowerCase());
+  const canDelete = isAdmin || hasPermission(staff, 'manage_join_us');
+
+  // The tab's own data can be minutes stale — refresh whenever staff actually
+  // open the tab, not just on the wider app's schedule.
+  useEffect(() => { void reloadJoinUsApplications(); }, [reloadJoinUsApplications]);
+  const refresh = async () => {
+    setRefreshing(true);
+    try { await reloadJoinUsApplications(); } finally { setRefreshing(false); }
+  };
+
+  const notify = useMemo(() => (type: Toast['type'], text: string) => {
+    setToast({ type, text });
+    window.setTimeout(() => setToast(current => (current?.text === text ? null : current)), 4500);
+  }, []);
+
+  const byGroup = useMemo(() => ({
+    teaching: joinUsApplications.filter(app => groupOf(app) === 'teaching'),
+    staff: joinUsApplications.filter(app => groupOf(app) === 'staff'),
+  }), [joinUsApplications]);
+  const fresh = (list: JoinUsApplication[]) => list.filter(app => statusOf(app.status) === 'new').length;
+
+  const run = async (app: JoinUsApplication, work: () => Promise<string>, failure: string) => {
+    setBusyId(app.id);
+    try {
+      const done = await work();
+      notify('success', done);
+      setPrompt(null); setFirstCallFor(null); setInterviewFor(null);
+      await reloadJoinUsApplications();
+    } catch (error) {
+      notify('error', `${failure}${error instanceof Error && error.message ? ` — ${error.message}` : ''}`);
+    } finally { setBusyId(null); }
+  };
+
+  const actions: CardActions = {
+    onContact: app => setPrompt({
+      title: `تسجيل تواصل — ${app.name}`,
+      label: 'اتكلمتوا في إيه؟ (اختياري)',
+      hint: 'هيتسجّل الوقت واسمك في سجل الطلب، والحالة هتبقى «تم التواصل».',
+      placeholder: 'مثال: كلمته وطلب نكلمه تاني بكرة الساعة 5',
+      confirmLabel: 'تسجيل التواصل',
+      multiline: true,
+      run: note => run(app, async () => {
+        const result = await mysqlAdmin.contactJoinUs(app.id, note.trim() || undefined);
+        return `اتسجّل التواصل مع ${app.name} — بواسطة ${result.contactedBy}`;
+      }, 'تعذّر تسجيل التواصل'),
+    }),
+    onFirstCall: app => setFirstCallFor(app),
+    onMoveToInterview: app => setInterviewFor({ app, mode: 'move' }),
+    onAccept: app => setInterviewFor({ app, mode: 'accept' }),
+    onReject: app => setPrompt({
+      title: `رفض ${app.name}`,
+      label: 'سبب الرفض (اختياري)',
+      confirmLabel: 'تأكيد الرفض',
+      multiline: true,
+      run: note => run(app, async () => {
+        await mysqlAdmin.evaluateJoinUs(app.id, { decision: 'REJECTED', body: note.trim() || undefined });
+        return `اترفض ${app.name}`;
+      }, 'تعذّر حفظ الرفض'),
+    }),
+    onNote: app => setPrompt({
+      title: `ملاحظة HR — ${app.name}`,
+      label: 'ملاحظة فريق الموارد البشرية',
+      initialValue: app.adminNote || '',
+      confirmLabel: 'حفظ الملاحظة',
+      multiline: true,
+      run: note => run(app, async () => {
+        const ok = await updateJoinUsApplication({ ...app, adminNote: note.trim() || undefined });
+        if (!ok) throw new Error('');
+        return 'اتحفظت الملاحظة';
+      }, 'تعذّر حفظ الملاحظة'),
+    }),
+    onStatus: (app, next) => {
+      void run(app, async () => {
+        const ok = await updateJoinUsApplication({ ...app, status: next });
+        if (!ok) throw new Error('');
+        return `${app.name}: ${STATUS[next].label}`;
+      }, 'تعذّر تغيير الحالة');
+    },
+    onDelete: canDelete ? async app => {
+      if (!await confirmDialog(app.convertedApplicantId
+        ? 'الطلب ده مرتبط بمسار التوظيف — المتقدم هيفضل في المسار، والطلب نفسه هيتمسح. تكمل؟'
+        : 'حذف الطلب نهائيًا؟')) return;
+      await run(app, async () => {
+        await deleteJoinUsApplication(app.id);
+        return `اتمسح طلب ${app.name}`;
+      }, `تعذّر حذف طلب ${app.name}`);
+    } : undefined,
+  };
+
+  const submitInterview = (interviewAt: string | undefined) => {
+    if (!interviewFor) return;
+    const { app, mode } = interviewFor;
+    void run(app, async () => {
+      if (mode === 'accept') {
+        await mysqlAdmin.evaluateJoinUs(app.id, { decision: 'ACCEPTED', interviewAt });
+      } else {
+        await mysqlAdmin.moveJoinUsToInterview(app.id, interviewAt);
+      }
+      setJustMoved(prev => new Set(prev).add(app.id));
+      return interviewAt
+        ? `${app.name} في الانترفيوهات تحت «القادم» — الميعاد ${interviewAt}`
+        : `${app.name} اتقبل واتنقل للانترفيوهات — من غير ميعاد لسه`;
+    }, `تعذّر نقل ${app.name} للانترفيو`);
+  };
+
+  return (
+    <div className="space-y-4" dir="rtl">
+      {prompt && (
+        <PromptModal
+          title={prompt.title} label={prompt.label} hint={prompt.hint} placeholder={prompt.placeholder}
+          initialValue={prompt.initialValue} confirmLabel={prompt.confirmLabel} multiline={prompt.multiline}
+          required={prompt.required} busy={busyId !== null}
+          onSubmit={value => { void prompt.run(value); }}
+          onCancel={() => setPrompt(null)}
+        />
+      )}
+      {firstCallFor && (
+        <FirstCallModal app={firstCallFor} busy={busyId === firstCallFor.id}
+          onCancel={() => setFirstCallFor(null)}
+          onSubmit={value => {
+            const app = firstCallFor;
+            void run(app, async () => {
+              await mysqlAdmin.firstCallJoinUs(app.id, value);
+              return `اتسجّل تقييم أول مكالمة لـ ${app.name}: ${value.rating}/5`;
+            }, 'تعذّر حفظ التقييم');
+          }} />
+      )}
+      {interviewFor && (
+        <InterviewTimeModal
+          title={interviewFor.mode === 'accept' ? `قبول ${interviewFor.app.name}` : `نقل ${interviewFor.app.name} للانترفيو`}
+          hint={interviewFor.mode === 'accept'
+            ? 'القبول بينقله لصفحة الانترفيوهات — حدد الميعاد لو اتفقتوا عليه'
+            : 'هيظهر في صفحة الانترفيوهات تحت «القادم»'}
+          confirmLabel={interviewFor.mode === 'accept' ? 'قبول وتحديد الميعاد' : 'تحديد ونقل للانترفيو'}
+          initialValue={interviewFor.app.interviewAt}
+          allowUndated={interviewFor.mode === 'accept'}
+          busy={busyId === interviewFor.app.id}
+          onSubmit={submitInterview}
+          onCancel={() => setInterviewFor(null)}
+        />
+      )}
+      {toast && (
+        <div role="status" className={`sticky top-2 z-10 rounded-xl px-4 py-2.5 text-sm font-bold shadow-sm ${
+          toast.type === 'error' ? 'border border-red-200 bg-red-50 text-red-700'
+            : toast.type === 'success' ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+              : 'border border-sky-200 bg-sky-50 text-sky-700'}`}
+        >
+          {toast.text}
+        </div>
+      )}
+
+      <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-gray-900 px-5 py-4 text-white">
+        <div>
+          <h2 className="text-xl font-black">طلبات الانضمام</h2>
+          <p className="mt-0.5 text-xs text-gray-300">
+            {branchOnly ? 'طلبات فرعك بس — المحاضرين والموظفين كل واحد في صفحة.' : 'المحاضرين والموظفين كل واحد في صفحة، بفلاتره وبحثه.'}
+          </p>
+        </div>
+        <button onClick={refresh} disabled={refreshing}
+          className="flex items-center gap-1.5 rounded-xl bg-white/15 px-3 py-2 text-xs font-bold hover:bg-white/25 disabled:opacity-60">
+          <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /> تحديث
+        </button>
+      </section>
+
+      <div role="tablist" className="grid gap-2 sm:grid-cols-2">
+        {(['teaching', 'staff'] as Group[]).map(key => {
+          const { title, Icon, tab, ring } = GROUPS[key];
+          const active = group === key;
+          const newCount = fresh(byGroup[key]);
+          return (
+            <button key={key} role="tab" aria-selected={active} onClick={() => setGroup(key)}
+              className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-right transition ${
+                active ? `${tab} border-transparent shadow-lg` : `border-gray-200 bg-white ${ring}`}`}>
+              <span className="flex items-center gap-2 text-base font-black"><Icon size={20} /> {title}</span>
+              <span className="flex items-center gap-1.5 text-xs font-bold">
+                <span className={`rounded-full px-2 py-0.5 ${active ? 'bg-white/20' : 'bg-gray-100 text-gray-700'}`}>{byGroup[key].length}</span>
+                {newCount > 0 && <span className={`rounded-full px-2 py-0.5 ${active ? 'bg-white text-gray-900' : 'bg-sky-600 text-white'}`}>{newCount} جديد</span>}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Both lists stay mounted, so each keeps its own filters and search. */}
+      <div hidden={group !== 'teaching'}>
+        <ApplicationsBoard group="teaching" apps={byGroup.teaching} busyId={busyId} justMoved={justMoved} actions={actions} />
+      </div>
+      <div hidden={group !== 'staff'} className="space-y-4">
+        {/* The postings themselves — publish one, see who applied, close it. */}
+        {!branchOnly && (
+          <React.Suspense fallback={<div className="rounded-2xl border border-gray-100 bg-white py-8 text-center text-sm text-gray-400">جاري تحميل الوظائف...</div>}>
+            <JobPostingsPanel notify={notify} />
+          </React.Suspense>
+        )}
+        <ApplicationsBoard group="staff" apps={byGroup.staff} busyId={busyId} justMoved={justMoved} actions={actions} />
+      </div>
     </div>
   );
 }
