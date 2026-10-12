@@ -91,10 +91,13 @@ jobs:
         run: node tools/mahad-quality-check.mjs
       - name: Dependency audit (new advisories fail; expiring risks are explicit)
         run: npm run audit:dependencies
+      # From inside e2e/: run from the root, Playwright finds no config, lists
+      # zero specs and picks up the API's own *.test.js files instead.
       - name: E2E compile check (Playwright --list)
+        working-directory: e2e
         run: |
-          npm --prefix e2e ci || npm --prefix e2e install
-          npm --prefix e2e exec -- playwright test --list
+          npm ci || npm install
+          npx playwright test --list
 
   migrations-from-empty:
     name: Database built by the migration runner alone
