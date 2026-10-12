@@ -13,19 +13,40 @@ import { useSeo } from '../lib/useSeo';
 // employee track (a distinct design, jobs-board-first).
 const JoinTeaching: React.FC = () => {
   useSeo({ title: 'انضم إلينا كمحاضر | معهد الدراسات النفسية', path: '/join', description: 'انضم إلى معهد الدراسات النفسية كمحاضر — قدّم سيرتك الذاتية وتخصصك.' });
-  const { addJoinUsApplication, content } = useSiteData();
+  const { addJoinUsApplication, content, courses } = useSiteData();
   const [form, setForm] = useState({
     name: '', email: '', phone: '', specialty: '', experience: '',
     type: 'instructor' as 'instructor' | 'consultant', linkedin: '', message: '',
-    branch: '', education: '', experiencePlaces: '', teachingTopics: '',
+    branch: '', education: '', experiencePlaces: '', programsOther: '',
   });
+  // «في صفحه تسجيل محاضر جديد محتاجين نزود سوال صح او غلط هل عملت محاضر من قبل ,,
+  // وسوال هل عملت في جلسات نفسيه مع عملاء من قبل ؟؟ واخر تعديل هيكون في البرامج
+  // محتاجين نخليه يختار اكتر من برنامج من اسماء البرامج اللى احنا بنقدمها يكونو
+  // مكتوبين كلهم وجمبهم علامه صح … ويبقي تحتها مكان يضيف او يكتب لو برامج زيادة
+  // بيشتغلها» (12 Oct 2026).
+  //
+  // The programmes are the institute's published courses — what the site itself
+  // calls «الدبلومات والبرامج التدريبية» on /courses — each with a tick box.
+  const [lecturedBefore, setLecturedBefore] = useState<boolean | null>(null);
+  const [sessionsBefore, setSessionsBefore] = useState<boolean | null>(null);
+  const [programs, setPrograms] = useState<string[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [answersError, setAnswersError] = useState(false);
+
+  const offered = courses.filter(course => course.id && course.title);
+  const toggleProgram = (id: string) => setPrograms(current => (current.includes(id)
+    ? current.filter(p => p !== id) : [...current, id]));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submitting) return;
+    if (lecturedBefore === null || sessionsBefore === null) {
+      setAnswersError(true);
+      document.getElementById('join-experience-questions')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
     setSubmitting(true);
     setSubmitError('');
     try {
@@ -38,14 +59,16 @@ const JoinTeaching: React.FC = () => {
         experience: form.experience,
         experienceYears: form.experience || undefined,
         type: form.type,
+        form: 'teaching',
+        lecturedBefore,
+        sessionsBefore,
+        programs,
+        programsOther: form.programsOther.trim() || undefined,
         linkedin: form.linkedin || undefined,
         branch: form.branch || undefined,
         education: form.education || undefined,
         experiencePlaces: form.experiencePlaces || undefined,
-        message: [
-          form.teachingTopics.trim() ? `يقدر يدرّس: ${form.teachingTopics.trim()}` : '',
-          form.message.trim(),
-        ].filter(Boolean).join('\n') || undefined,
+        message: form.message.trim() || undefined,
         status: 'new',
         createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: CAIRO_TIME_ZONE }),
       });
@@ -240,10 +263,57 @@ const JoinTeaching: React.FC = () => {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">المواضيع أو الدبلومات اللي تقدر تدرّسها</label>
-                  <textarea rows={2} value={form.teachingTopics} onChange={(e) => setForm({ ...form, teachingTopics: e.target.value })} placeholder="مثال: العلاج المعرفي السلوكي، اضطرابات القلق، تعديل السلوك للأطفال" className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition resize-none" />
+                {/* Two required yes/no questions. */}
+                <div id="join-experience-questions" className={`rounded-2xl border p-4 space-y-4 ${answersError && (lecturedBefore === null || sessionsBefore === null) ? 'border-red-300 bg-red-50/40' : 'border-gray-200 bg-gray-50/60'}`}>
+                  {([
+                    { label: 'هل اشتغلت محاضر قبل كده؟ *', value: lecturedBefore, set: setLecturedBefore, name: 'lecturedBefore' },
+                    { label: 'هل اشتغلت في جلسات نفسية مع عملاء قبل كده؟ *', value: sessionsBefore, set: setSessionsBefore, name: 'sessionsBefore' },
+                  ]).map(question => (
+                    <fieldset key={question.name}>
+                      <legend className="block text-sm font-bold text-gray-700 mb-2">{question.label}</legend>
+                      <div className="grid grid-cols-2 gap-2 max-w-xs">
+                        {([[true, 'آه'], [false, 'لأ']] as const).map(([answer, text]) => (
+                          <label key={text}
+                            className={`flex items-center justify-center gap-2 rounded-xl border-2 py-2.5 text-sm font-bold cursor-pointer transition ${
+                              question.value === answer ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'}`}>
+                            <input type="radio" name={question.name} checked={question.value === answer}
+                              onChange={() => { question.set(answer); setAnswersError(false); }} className="sr-only" />
+                            {question.value === answer && <CheckCircle size={16} />} {text}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                  ))}
+                  {answersError && (lecturedBefore === null || sessionsBefore === null) && (
+                    <p role="alert" className="text-xs font-bold text-red-600">جاوب على السؤالين دول الأول.</p>
+                  )}
                 </div>
+
+                {/* The institute's programmes, each with a tick box; more than one is fine. */}
+                <fieldset>
+                  <legend className="block text-sm font-bold text-gray-700 mb-1">البرامج اللي تقدر تقدّمها معانا</legend>
+                  <p className="text-xs text-gray-500 mb-2">علّم على كل البرامج اللي تقدر تشتغل فيها — تقدر تختار أكتر من برنامج.</p>
+                  {offered.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-80 overflow-y-auto rounded-xl border border-gray-200 p-2">
+                      {offered.map(course => {
+                        const on = programs.includes(course.id);
+                        return (
+                          <label key={course.id}
+                            className={`flex items-start gap-2.5 rounded-lg px-3 py-2 text-sm cursor-pointer transition ${on ? 'bg-primary-50 text-primary-800' : 'hover:bg-gray-50 text-gray-700'}`}>
+                            <input type="checkbox" checked={on} onChange={() => toggleProgram(course.id)}
+                              className="mt-0.5 h-4 w-4 shrink-0 accent-primary-600" />
+                            <span className="leading-snug">{course.title}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="rounded-xl border border-dashed border-gray-200 px-4 py-3 text-xs text-gray-400">جاري تحميل البرامج… لو مظهرتش، اكتب البرامج في الخانة اللي تحت.</p>
+                  )}
+                  {programs.length > 0 && <p className="mt-1.5 text-xs font-bold text-primary-700">اخترت {programs.length} برنامج</p>}
+                  <label className="block text-sm font-bold text-gray-700 mt-3 mb-1" htmlFor="join-programs-other">برامج تانية بتقدّمها</label>
+                  <textarea id="join-programs-other" rows={2} maxLength={1000} value={form.programsOther} onChange={(e) => setForm({ ...form, programsOther: e.target.value })} placeholder="لو بتقدّم برامج مش في القايمة اكتبها هنا — مثال: تعديل السلوك للأطفال، الإرشاد الأسري" className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition resize-none" />
+                </fieldset>
 
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">اشتغلت أو درّست فين قبل كده؟</label>

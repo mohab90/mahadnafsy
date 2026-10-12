@@ -60,4 +60,80 @@ async function staffInReach(db, req, staffId) {
 
 const outOfReach = res => res.status(404).json({ error: 'الموظف ده مش من موظفين فرعك' });
 
-module.exports = { BRANCH_HR, hrReach, outOfReach, requireHr, staffInReach, staffReachSql };
+/*
+ * Recruitment — «اتاكد ان طلبات الانضمام للدقي والانترفيو للدقي بيظهر لنشوي مدير
+ * الدقي» (12 Oct 2026).
+ *
+ * The join applications and the interviews were gated on view_join_us / view_hr,
+ * and hasPermission refuses view_hr to a branch manager whatever their grid says
+ * (above), so the Dokki manager could reach neither. A branch manager now reaches
+ * the applications and interviews for their branch only; everyone else keeps the
+ * permission the route always asked for.
+ *
+ * "For Dokki" is the branch the applicant chose on the form
+ * (join_us_applications.branch, copied to job_applicants.branch), else the branch
+ * of the posting they applied to. The forms send lower-case keys ('daqqi'); the
+ * postings hold branch_key ('DAQQI') — compared lower-case.
+ */
+const recruitBranchKey = reach => String(reach.branch || '').toLowerCase();
+
+/** Guard after requireAnyPermission(permission, 'branch_hr'); sets req.recruitReach. */
+const requireRecruiting = permission => (req, res, next) => {
+  if (req.isSuperAdmin) { req.recruitReach = { all: true }; return next(); }
+  const branch = BRANCH_HR[String(req.staffRecord?.role || '').toUpperCase()];
+  if (branch) { req.recruitReach = { all: false, ...branch, key: recruitBranchKey(branch) }; return next(); }
+  if (hasPermission(req.staffRecord, permission)) { req.recruitReach = { all: true }; return next(); }
+  return res.status(403).json({ error: 'Insufficient permissions', required: permission });
+};
+
+/** ` AND …` narrowing a join application (j, its applicant a, the posting p) to the reach. */
+function joinUsReachSql(reach, j = 'j', a = 'a', p = 'jp') {
+  if (!reach || reach.all) return { sql: '', params: [] };
+  return {
+    sql: ` AND LOWER(COALESCE(NULLIF(${j}.branch,''), NULLIF(${a}.branch,''), NULLIF(${p}.branch,''), '')) = ?`,
+    params: [recruitBranchKey(reach)],
+  };
+}
+
+/** ` AND …` narrowing an applicant (a) and their posting (p) to the reach. */
+function applicantReachSql(reach, a = 'a', p = 'j') {
+  if (!reach || reach.all) return { sql: '', params: [] };
+  return {
+    sql: ` AND LOWER(COALESCE(NULLIF(${a}.branch,''), NULLIF(${p}.branch,''), '')) = ?`,
+    params: [recruitBranchKey(reach)],
+  };
+}
+
+/** Is this join application within the caller's recruitment reach? */
+async function joinUsInReach(db, req, id) {
+  const reach = req.recruitReach;
+  if (!reach) return false;
+  const scope = joinUsReachSql(reach);
+  const [[row]] = await db.query(
+    `SELECT j.id FROM join_us_applications j
+       LEFT JOIN job_applicants a ON a.id=j.converted_applicant_id AND a.tenant_id=j.tenant_id
+       LEFT JOIN job_postings jp ON jp.id=a.job_id AND jp.tenant_id=a.tenant_id
+      WHERE j.id=? AND j.tenant_id=?${scope.sql} LIMIT 1`,
+    [id, req.tenantId, ...scope.params]);
+  return Boolean(row);
+}
+
+/** Is this applicant within the caller's recruitment reach? */
+async function applicantInReach(db, req, id) {
+  const reach = req.recruitReach;
+  if (!reach) return false;
+  const scope = applicantReachSql(reach);
+  const [[row]] = await db.query(
+    `SELECT a.id FROM job_applicants a
+       LEFT JOIN job_postings j ON j.id=a.job_id AND j.tenant_id=a.tenant_id
+      WHERE a.id=? AND a.tenant_id=?${scope.sql} LIMIT 1`,
+    [id, req.tenantId, ...scope.params]);
+  return Boolean(row);
+}
+
+const outOfRecruitReach = res => res.status(404).json({ error: 'الطلب ده مش على فرعك' });
+
+module.exports = {
+  BRANCH_HR, hrReach, outOfReach, requireHr, staffInReach, staffReachSql,
+  requireRecruiting, joinUsReachSql, applicantReachSql, joinUsInReach, applicantInReach, outOfRecruitReach,
+};

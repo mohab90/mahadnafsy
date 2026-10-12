@@ -7,7 +7,7 @@
 // fails to match rows labelled by another.
 
 /** Must match the options in client/pages/JoinStaff.tsx. */
-import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
+import { CAIRO_TIME_ZONE, cairoDateOnly } from '../../../../../shared/cairoDate';
 
 export const EXPERIENCE_YEARS: Record<string, string> = {
   none: 'بدون خبرة',
@@ -82,6 +82,9 @@ export const matchesMinExperience = (
 export const branchLabel = (value: string | null | undefined): string =>
   (value && BRANCH_LABELS[value]) || value || '';
 
+/** "YYYY-MM-DD HH:MM[:SS]" with no zone — a Cairo wall-clock time. */
+const WALL_CLOCK = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::\d{2})?$/;
+
 /**
  * A stored datetime as a person reads it.
  *
@@ -96,7 +99,23 @@ export const branchLabel = (value: string | null | undefined): string =>
  */
 export const fmtDateTime = (value: string | null | undefined): string | null => {
   if (!value) return null;
+  // An interview time comes back as the Cairo wall clock it was typed as
+  // ("2026-10-14 15:00:00", no zone) and is printed as exactly that, whatever
+  // zone the browser is in. Instants (with a Z) are converted to Cairo as before.
+  const wall = WALL_CLOCK.exec(String(value));
+  if (wall) {
+    const [, y, mo, d, h, mi] = wall.map(Number);
+    return new Date(Date.UTC(y, mo - 1, d, h, mi)).toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' });
+  }
   const parsed = new Date(String(value).replace(' ', 'T'));
   if (Number.isNaN(parsed.getTime())) return null;
   return parsed.toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'medium', timeStyle: 'short', timeZone: CAIRO_TIME_ZONE });
+};
+
+
+/** The Cairo day a stored time falls on ('' when it cannot be read). */
+export const cairoDayOf = (value: string | null | undefined): string => {
+  if (!value) return '';
+  if (WALL_CLOCK.test(String(value))) return String(value).slice(0, 10);
+  return cairoDateOnly(String(value));
 };

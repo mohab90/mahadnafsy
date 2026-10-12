@@ -15,9 +15,11 @@ const migration = read('migrations/199_v25_recruitment_and_hr_controls.sql');
 test('every workflow write is permission gated and tenant scoped', () => {
   // Reading a candidate list and deciding someone's employment are different
   // privileges; the decision endpoints must not settle for view_hr.
-  assert.match(workflow, /const view = \[requireAuth, requireAdminOrStaff, requirePermission\('view_hr'\)\]/);
-  assert.match(workflow, /const manage = \[requireAuth, requireAdminOrStaff, requirePermission\('manage_hr'\)\]/);
-  for (const route of ['/contact', '/evaluate', '/grade']) {
+  // A branch manager reaches their own branch's rows (12 Oct 2026); everyone
+  // else still needs view_hr / manage_hr, and each handler checks the row's reach.
+  assert.match(workflow, /const view = \[requireAuth, requireAdminOrStaff, requireAnyPermission\('view_hr', 'branch_hr'\), requireRecruiting\('view_hr'\)\]/);
+  assert.match(workflow, /const manage = \[requireAuth, requireAdminOrStaff, requireAnyPermission\('manage_hr', 'branch_hr'\), requireRecruiting\('manage_hr'\)\]/);
+  for (const route of ['/contact', '/evaluate', '/grade', '/first-call']) {
     const at = workflow.indexOf(route);
     assert.ok(at > 0, `${route} must exist`);
     assert.match(workflow.slice(at, at + 120), /\.\.\.manage/, `${route} must require manage_hr`);
@@ -67,8 +69,12 @@ test('the decision writes both outcomes through one transaction', () => {
   assert.match(route, /rollback\(\)/);
   assert.match(route, /conn\.release\(\)/);
   // "accepted, no date yet" is a real state, so interview_at must be allowed to
-  // stay null on an ACCEPTED row rather than being forced.
-  assert.match(route, /decision === 'ACCEPTED' && req\.body\?\.interviewAt[\s\S]{0,120}: null/);
+  // stay null on an ACCEPTED row rather than being forced (parseInterviewAt
+  // answers { value: null } for a blank date — pinned in joinApplication.test.js).
+  assert.match(route, /decision === 'ACCEPTED' \? parseInterviewAt\(req\.body\?\.interviewAt\) : \{ value: null \}/);
+  // Accepting walks the applicant onto the interview stage, inside the same
+  // transaction, so «مقبول + تحديد موعد» reaches the interviews screen.
+  assert.match(route, /if \(decision === 'ACCEPTED'\) \{[\s\S]{0,200}advanceToInterview\(conn,/);
 });
 
 test('hiring is reachable from the interview stage but not from nothing', () => {

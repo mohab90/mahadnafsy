@@ -271,8 +271,10 @@ test('website recruiting is atomic, tenant linked and never a fire-and-forget HR
   assert.doesNotMatch(publicRoutes, /join-us→pipeline/);
   assert.match(talent, /createJoinApplication/);
   // createJoinApplication forwards an optional job_id so an application made
-  // from a specific posting attaches to it instead of the generic talent pool.
-  assert.match(talent, /convertJoinUs\(data, \{ jobId: data\.job_id \|\| undefined, db: conn \}\)/);
+  // from a specific posting attaches to it instead of the generic talent pool —
+  // and converts without reviewing, so the application arrives as NEW
+  // («لازم اي طلب بيكون جديد مش قيد المراجعه», 12 Oct 2026).
+  assert.match(talent, /convertJoinUs\(data, \{ jobId: data\.job_id \|\| undefined, db: conn, review: false \}\)/);
   assert.match(clientContext, /const addJoinUsApplication = async[\s\S]{0,180}await mysqlForms\.submitJoinUs/);
   for (const joinUsPage of joinPages) {
     assert.match(joinUsPage, /await addJoinUsApplication/);
@@ -294,7 +296,8 @@ test('recruiting mutations use management permission, legal states and immutable
   assert.match(recruiting, /APPLICANT_IMMUTABLE/);
   assert.match(recruiting, /ACTIVE_ONBOARDING_EXISTS/);
   assert.match(recruiting, /ONBOARDING_TASK_REQUIRED/);
-  assert.match(adminOps, /SET status=\?,admin_note=\?,reviewed_at=/);
+  // The note is written only when one is sent: a bare status change keeps it.
+  assert.match(adminOps, /SET status=\?,admin_note=\$\{notes === undefined \? 'admin_note' : '\?'\}/);
   assert.doesNotMatch(adminOps, /SET status=\?, message=/);
 });
 

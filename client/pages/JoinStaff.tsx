@@ -63,6 +63,9 @@ const JoinStaff: React.FC = () => {
         specialty: form.specialty,
         experience: form.experience,
         type: 'employee',
+        // The page says which list it belongs on, so an employee is never filed
+        // as a lecturer (12 Oct 2026).
+        form: 'staff',
         linkedin: form.linkedin || undefined,
         message: form.message || undefined,
         status: 'new',

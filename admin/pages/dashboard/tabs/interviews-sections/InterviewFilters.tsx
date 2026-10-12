@@ -1,7 +1,8 @@
 import React from 'react';
 import { Filter, RotateCcw } from 'lucide-react';
 
-import { EXPERIENCE_ORDER, EXPERIENCE_YEARS, branchLabel } from '../hr-sections/applicantLabels';
+import { EXPERIENCE_ORDER, EXPERIENCE_YEARS, branchLabel, cairoDayOf } from '../hr-sections/applicantLabels';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 
 export type InterviewFilterState = {
   jobId: string;
@@ -35,11 +36,27 @@ export const emptyInterviewFilters = (): InterviewFilterState => ({
 export const interviewFiltersActive = (f: InterviewFilterState): boolean =>
   Boolean(f.jobId || f.minExperience || f.branch || f.query.trim()) || f.view !== 'all';
 
-/** Has this interview already happened? Undated means it has not. */
-export const isPastInterview = (interviewAt: string | null | undefined, now = Date.now()): boolean => {
+/**
+ * Has this interview already happened? Undated means it has not.
+ *
+ * «ليه لما بننقل عميل للانترفيو بيظهر في السابق» (12 Oct 2026). This compared the
+ * appointment with the current minute, and the times it was given were often
+ * already behind it: the job's applicant list booked every interview at a fixed
+ * 10:00, the move dialog took a typed 24-hour time (an afternoon «03:00» is three
+ * in the morning), and the driver handed Cairo wall-clock times back as UTC. A
+ * candidate moved for an interview later today went straight to السابق.
+ *
+ * An interview is past once it has a grade — it was held — or once its day is
+ * over. Today's interviews stay under القادم all day.
+ */
+export const isPastInterview = (
+  interviewAt: string | null | undefined,
+  options: { graded?: boolean; now?: Date } = {},
+): boolean => {
+  if (options.graded) return true;
   if (!interviewAt) return false;
-  const at = new Date(String(interviewAt).replace(' ', 'T')).getTime();
-  return Number.isFinite(at) && at < now;
+  const day = cairoDayOf(interviewAt);
+  return Boolean(day) && day < cairoDateOnly(options.now ?? new Date());
 };
 
 type Option = { value: string; label: string; count: number };

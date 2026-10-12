@@ -883,6 +883,16 @@ export const mysqlAdmin = {
     apiFetch<{ ok: boolean; status: string; interviewAt: string | null }>(
       `/admin/join-us/${encodeURIComponent(id)}/evaluate`,
       { method: 'POST', body: JSON.stringify(o) }, A),
+  // «تقييم أول مكالمة» — 1–5, quick tags and notes (12 Oct 2026).
+  firstCallJoinUs: (id: string, o: { rating: number; tags: string[]; notes?: string }) =>
+    apiFetch<{ ok: boolean; rating: number; tags: string[]; by: string }>(
+      `/admin/join-us/${encodeURIComponent(id)}/first-call`,
+      { method: 'POST', body: JSON.stringify(o) }, A),
+  // A call from the interviews screen: the result, stamped by the server, with a note.
+  contactHrApplicant: (id: string, o: { result: 'no_answer' | 'passed' | 'failed'; body?: string }) =>
+    apiFetch<{ ok: boolean; result: string; by: string }>(
+      `/admin/hr/applicants/${encodeURIComponent(id)}/contact`,
+      { method: 'POST', body: JSON.stringify(o) }, A),
   gradeApplicant: (id: string, o: { grade: string; round?: 1 | 2; body?: string }) =>
     apiFetch<{ ok: boolean; grade: string; round: number; by: string }>(
       `/admin/hr/applicants/${encodeURIComponent(id)}/grade`,
