@@ -288,7 +288,11 @@ const Dashboard: React.FC = () => {
   } = useLeadFilters();
   const navigate = useNavigate();
   const { tab: urlTab, param: urlParam } = useParams<{ tab: string; param?: string }>();
-  const [activeTabState, setActiveTabState] = useState<TabKey>((urlTab as TabKey) || 'overview');
+  // Through tabForUrl, as the URL effect below does: /dashboard/my_clients is
+  // online_clients. Taken raw, the first render after the panel mounts on that
+  // address had no such screen — it drew nothing for a frame, and the lists a
+  // screen loads (tabSiteLists.ts) were all fetched for a key that names none.
+  const [activeTabState, setActiveTabState] = useState<TabKey>(urlTab ? tabForUrl(urlTab) : 'overview');
   const [pendingProofsCount, setPendingProofsCount] = useState(0);
   const [onlineMgrAcademyOpen, setOnlineMgrAcademyOpen] = useState(false);
   // -- Horizontal dropdown nav state --
@@ -483,6 +487,23 @@ const Dashboard: React.FC = () => {
     setStaffScopedRounds: bulkSetDaqqiRounds,
     mergeContent,
   });
+  // The bell's count for an admin who also has a staff record: one COUNT from
+  // the server, in the session's own scope, where it used to be the 500 newest
+  // leads loaded on every screen to count their follow-ups. Refreshed on the
+  // same two minutes the lists were, and after a write anywhere (crmChanged).
+  const countsOwnFollowups = Boolean(currentStaff) && !usesStaffScopedData;
+  const [dueFollowups, setDueFollowups] = useState<number | null>(null);
+  const refreshDueFollowups = useCallback(() => {
+    mysqlAdmin.getDueFollowups().then(res => setDueFollowups(Number(res?.due) || 0)).catch(() => { /* keep the last count */ });
+  }, []);
+  useVisibleInterval(refreshDueFollowups, 2 * 60 * 1000, countsOwnFollowups);
+  useEffect(() => {
+    if (!countsOwnFollowups) return undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onChanged = () => { clearTimeout(timer); timer = setTimeout(refreshDueFollowups, 300); };
+    window.addEventListener(CRM_CHANGED_EVENT, onChanged);
+    return () => { clearTimeout(timer); window.removeEventListener(CRM_CHANGED_EVENT, onChanged); };
+  }, [countsOwnFollowups, refreshDueFollowups]);
   const {
     staffNotifBadge,
     onlineMgrFollowupBadge,
@@ -491,7 +512,7 @@ const Dashboard: React.FC = () => {
     currentStaff,
     isNonAdminStaff: usesStaffScopedData,
     isOnlineManager,
-    leads,
+    dueFollowups,
     salesOwnLeads,
     subscribers,
     salesOwnSubscribers,
@@ -668,15 +689,15 @@ const Dashboard: React.FC = () => {
     void ensureSiteLists(listsForTab(activeTab));
   }, [activeTab, physicalBranch, loadFullCrmData, loadFullLeads, loadFullSubscribers, loadBranchSubscribers, ensureSiteLists]);
 
-  // Drawn over every screen, so they ask for their own lists: the follow-up bell
-  // counts the loaded leads' follow-ups, «حجز / دفعة» matches the loaded people
-  // before the database search, the online manager's panels read the clients.
+  // Drawn over every screen, so they ask for their own lists: the follow-up
+  // drawer lists the loaded leads' follow-ups (its bell counts on the server —
+  // dueFollowups above), «حجز / دفعة» matches the loaded people before the
+  // database search, the online manager's panels read the clients.
   const overlayLists = useMemo<SiteList[]>(() => [
-    ...(currentStaff && !usesStaffScopedData ? ['leads' as const] : []),
     ...(salesNotifOpen ? ['leads' as const] : []),
     ...(quickBookOpen ? ['leads' as const, 'subscribers' as const] : []),
     ...(onlineMgrFollowupOpen || onlineMgrNewEventsOpen ? ['subscribers' as const] : []),
-  ], [currentStaff, usesStaffScopedData, salesNotifOpen, quickBookOpen, onlineMgrFollowupOpen, onlineMgrNewEventsOpen]);
+  ], [salesNotifOpen, quickBookOpen, onlineMgrFollowupOpen, onlineMgrNewEventsOpen]);
   useEffect(() => {
     if (overlayLists.length) void ensureSiteLists(overlayLists);
   }, [overlayLists, ensureSiteLists]);
@@ -801,8 +822,6 @@ const Dashboard: React.FC = () => {
           setActiveDropdownGroup={setActiveDropdownGroup}
           dropdownRect={dropdownRect}
           setDropdownRect={setDropdownRect}
-          leads={leads}
-          subscribers={subscribers}
           notifRef={notifRef}
           notifOpen={notifOpen}
           setNotifOpen={setNotifOpen}
@@ -981,7 +1000,6 @@ const Dashboard: React.FC = () => {
                   isSupport={isSupport}
                   isOnlineManager={isOnlineManager}
                   isAdmin={isAdmin}
-                  subscribers={subscribers}
                   salesOwnSubscribers={salesOwnSubscribers}
                   setSalesOwnSubscribers={setSalesOwnSubscribers}
                   courses={courses}

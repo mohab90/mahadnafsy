@@ -11,11 +11,14 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { useStaticData } from '../../../../context/siteDataSlices';
+import { useEnsureSiteLists } from '../../../../context/SiteDataContext';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 export default function TestimonialsPanel({ notify }: { notify: NotifyFn }) {
   const { testimonials, addTestimonial, updateTestimonial, deleteTestimonial } = useStaticData();
+  // Not loaded at sign-in (siteLists.ts): the list this panel is.
+  useEnsureSiteLists(['testimonials']);
   const [saving, setSaving] = useState(false);
   const [editingTestimonialId, setEditingTestimonialId] = useState<number | null>(null);
   const [isTestimonialFormOpen, setIsTestimonialFormOpen] = useState(false);

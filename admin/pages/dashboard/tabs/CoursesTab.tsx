@@ -3,7 +3,7 @@ import {
   Plus, Radio, Save, Upload, Users, Video, X,
 } from 'lucide-react';
 import { Course } from '../../../types';
-import { useSiteData, useEnsureLectures } from '../../../context/SiteDataContext';
+import { useSiteData, useEnsureLectures, useEnsureSiteLists } from '../../../context/SiteDataContext';
 import { SafeHtml } from '../../../../shared/ui/SafeHtml';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { uploadImage } from '../../../lib/uploadImage';
@@ -83,6 +83,9 @@ export default function CoursesTab({
 
   // Lectures are not loaded at login any more — the course cards count lectures, and the editor lists the recorded ones.
   useEnsureLectures();
+  // The course list counts the enrolled clients; the other views of this screen
+  // (bundles, testimonials, discounts) do not read them, so only it asks.
+  useEnsureSiteLists(['subscribers'], activeTab === 'courses');
 
   // The same content key Dashboard used to parse and hand down. Parsed where it
   // is read instead, so the value has one owner per reader rather than a prop
