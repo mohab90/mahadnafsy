@@ -13,6 +13,7 @@ import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 import { isOpenLeadStatus } from '../../../../shared/leadStatuses';
 import { useToast } from '../../../../shared/ui/Toast';
 import { useCanDelete } from '../../../hooks/useCanDelete';
+import { MoveBatchToLocalNew, MoveSelectedToLocalNew } from './leads/MoveToLocalNew';
 
 const LEAD_STATUS_CFG = STATUS_CFG;
 
@@ -186,6 +187,8 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
   };
   return (
     <>
+      {/* «نقل دفعة كاملة لمحلي جديد» — the desk's, not a rep's. */}
+      {canManageLeads && !isSalesOnly && <MoveBatchToLocalNew rows={rows} reloadLeads={reloadLeads} />}
       {/* ─── Bulk Action Bar ─── */}
       {canManageLeads && selectedIds.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 bg-primary-50 border border-primary-200 rounded-xl px-4 py-3 mb-3">
@@ -213,6 +216,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
               {salesStaff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           )}
+          {!isSalesOnly && <MoveSelectedToLocalNew selectedIds={selectedIds} reloadLeads={reloadLeads} onDone={() => setSelectedIds([])} />}
           <button
             onClick={handleBulkApply}
             disabled={!bulkStatus && !bulkSalesId}
