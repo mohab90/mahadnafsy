@@ -47,13 +47,20 @@ export function useUnifiedClientPermissions(params: {
     permissions: currentStaff.permissions as PermissionKey[] | undefined,
   } : null, 'view_financial');
 
+  // «بيانات الشهادة»: the English name, national id and course dates — collection and
+  // customer service alike, whoever holds one of the two permissions the route asks for.
+  const canEditCertificateData = isAdmin || ['manage_certificates', 'manage_financial'].some(permission => hasPermission(currentStaff ? {
+    role: currentStaff.role as RoleKey,
+    permissions: currentStaff.permissions as PermissionKey[] | undefined,
+  } : null, permission as PermissionKey));
+
   // Deleting the client, or a note on them, is the owner's list's alone:
   // «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
   const canDelete = useCanDelete();
 
   return {
     currentStaff,
-    canCorrectPayments, canSeeProofs, canDelete,
+    canCorrectPayments, canSeeProofs, canDelete, canEditCertificateData,
     isOnlineManager,
     isCollectionManager,
     canManageCourseAccess,

@@ -58,6 +58,7 @@ const UnifiedClientOverviewTab = React.lazy(() => import('./unified-client/Unifi
 const UnifiedClientSubscriberPaymentsPanel = React.lazy(() => import('./unified-client/UnifiedClientSubscriberPaymentsPanel').then(module => ({ default: module.UnifiedClientSubscriberPaymentsPanel })));
 const ClientContactsPanel = React.lazy(() => import('./unified-client/ClientContactLog').then(module => ({ default: module.ClientContactsPanel })));
 const ClientContactDialog = React.lazy(() => import('./unified-client/ClientContactLog').then(module => ({ default: module.ClientContactDialog })));
+const ClientCertificateDataModal = React.lazy(() => import('./unified-client/ClientCertificateDataModal').then(module => ({ default: module.ClientCertificateDataModal })));
 const UnifiedClientModalsHost = React.lazy(() => import('./unified-client/UnifiedClientModalsHost').then(module => ({ default: module.UnifiedClientModalsHost })));
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -82,7 +83,8 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   useEnsureLectures();
   useEnsureSiteLists(['subscribers', 'leads', 'daqqiRounds']); // nor these, since 11 Oct 2026 (siteLists.ts)
 
-  const { isOnlineManager, canManageCourseAccess, canSeeCourses, canCorrectPayments, canSeeProofs, canDelete } = useUnifiedClientPermissions({ isAdmin, currentStaff });
+  const { isOnlineManager, canManageCourseAccess, canSeeCourses, canCorrectPayments, canSeeProofs, canDelete, canEditCertificateData } = useUnifiedClientPermissions({ isAdmin, currentStaff });
+  const [certificateDataOpen, setCertificateDataOpen] = useState(false);
 
   const isSub = !!subscriber;
   const clientName   = subscriber?.name   ?? lead?.name   ?? '';
@@ -386,6 +388,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
             onLegacyPayment={openLegacyPaymentForm}
             onInstallmentPlan={() => setActiveTab('installments')}
             onEdit={() => { setEditing(!editing); setActiveTab('edit'); }}
+            onCertificateData={isSub && subscriber && canEditCertificateData ? () => setCertificateDataOpen(true) : undefined}
           />
 
           <UnifiedClientSidebarNotesCard quickNote={quickNote} onSaveQuickNote={saveQuickNote} />
@@ -636,6 +639,16 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
           </div>
         </div>
       </div>
+
+      {certificateDataOpen && subscriber && (
+        <React.Suspense fallback={null}>
+          <ClientCertificateDataModal
+            subscriberId={subscriber.id} notify={notify}
+            onClose={() => setCertificateDataOpen(false)}
+            onSaved={() => { setCertificateDataOpen(false); void reloadSubscribers(); }}
+          />
+        </React.Suspense>
+      )}
 
       {(showAccessModal || showContactPopup || showConvertModal
         || showAddComm || showLeadPayForm
