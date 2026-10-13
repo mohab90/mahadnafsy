@@ -240,7 +240,7 @@ test('no second screen records a customer payment', () => {
   // Nothing is valid until the screen knows whose payment it is.
   const modal = codeOnly(read('admin/components/PaymentModal.tsx'));
   assert.ok(modal.includes('const subjectChosen = !subjectOptions || !!subject.id;'));
-  assert.ok(modal.includes('const isValid = !subjectChosen || !certificatesTyped ? false'));
+  assert.match(modal, /const isValid = !subjectChosen \|\| !certificatesTyped \|\| photoMissing \|\| photoBusy !== null \? false/);
 });
 
 test('every booking and payment button opens that one screen', () => {

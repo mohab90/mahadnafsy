@@ -16,6 +16,7 @@ const { logLeadEvent } = require('../lib/crm');
 const { convertLeadOfPayment } = require('../lib/leadState');
 const { enqueueFinanceEvent } = require('../lib/financeOutbox');
 const { enqueueEmailSequence } = require('../lib/emailSequence');
+const { cleanPhotoLinks } = require('../lib/googleDrive');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { safeDateOnly, cairoDayOf, cairoToday } = require('../lib/dates');
 const { branchIdForBranch, branchForId } = require('../lib/branches');
@@ -826,6 +827,17 @@ async function recordSubscriberPayment(req, res) {
         paymentBranchId,
       ]
     );
+
+    // The pictures asked for with a certificate or a carnet (lib/googleDrive.js):
+    // only their Drive LINKS are kept, on the client's file, and a later request
+    // reuses them. A link that is not a Drive file's is dropped, not stored.
+    const photoLinks = cleanPhotoLinks(payment.photos);
+    if (photoLinks.personal || photoLinks.id) {
+      await conn.query(
+        `UPDATE subscribers SET personal_photo_url = COALESCE(?, personal_photo_url), id_photo_url = COALESCE(?, id_photo_url)
+          WHERE id = ? AND tenant_id = ?`,
+        [photoLinks.personal, photoLinks.id, subscriber_id, paymentTenantId]);
+    }
 
     // A price the desk entered is the client's price for the item from now on,
     // on every payment for it and on the client — so the online table, the

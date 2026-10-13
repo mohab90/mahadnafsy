@@ -307,7 +307,8 @@ test('the owner names who brought a payment, the name rides on that payment only
   assert.match(attribution, /const value = pending;\s+pending = null;\s+return value;/);
   const api = read('admin/lib/mysqlapi.ts');
   assert.equal(api.split('const staffId = takePaymentAttribution();').length - 1, 2);
-  assert.match(api, /staffId && !payment\.staffId \? \{ \.\.\.payment, staffId \} : payment/);
+  // The name rides on the payment only when it carries none of its own (the pictures' links ride the same way).
+  assert.match(api, /\.\.\.\(staffId && !payment\.staffId \? \{ staffId \} : \{\}\)/);
   const modal = read('admin/components/PaymentModal.tsx');
   assert.match(modal, /if \(asksWhoBroughtIt\) attributeNextPayment\(broughtBy\);/);
   assert.match(modal, /attributeNextPayment\(null\);/);

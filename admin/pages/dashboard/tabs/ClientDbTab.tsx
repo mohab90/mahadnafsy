@@ -39,6 +39,11 @@ type ClientRow = {
   assignedSalesName: string;
   courseNames: string;
   courseIds: string[];
+  // Only a client has them: the export ends with the links of the pictures on file.
+  nameEn?: string;
+  nationalId?: string;
+  personalPhotoUrl?: string;
+  idPhotoUrl?: string;
 };
 
 function normPhone(p: string) {
@@ -246,6 +251,10 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
         )
       ),
       assignedSalesName: s.assignedSalesName || '',
+      nameEn: s.nameEn || '',
+      nationalId: s.nationalId || '',
+      personalPhotoUrl: s.personalPhotoUrl || '',
+      idPhotoUrl: s.idPhotoUrl || '',
       courseIds: s.enrolledCourseIds || [],
       courseNames: (() => {
         // Extract bundle names from payment history
@@ -419,7 +428,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
 
   function exportSelectedCSV() {
     const rows = filtered.filter(c => selectedIds.has(`${c.type}-${c.id}`));
-    const header = ['الاسم', 'الكود', 'الهاتف', 'الإيميل', 'النوع', 'الفرع', 'الكورسات', 'المدفوع', 'المبيعات', 'التاريخ'];
+    const header = ['الاسم', 'الكود', 'الهاتف', 'الإيميل', 'النوع', 'الفرع', 'الكورسات', 'المدفوع', 'المبيعات', 'التاريخ', 'الاسم بالإنجليزي', 'الرقم القومي', 'رابط الصورة الشخصية', 'رابط صورة الهوية'];
     // The values used to be joined raw, with only الكورسات wrapped in quotes and
     // the quotes inside it left undoubled. A course list with a comma in it
     // opened an extra column, and a name written «أحمد "أبو مازن"» ended its
@@ -428,6 +437,8 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
       c.name, c.clientCode, c.phone, c.email,
       (() => { const ti = c.clientType ? CLIENT_TYPE_INFO[c.clientType] : null; return ti ? `${ti.label} - ${ti.entity}` : (c.subType ? SUB_TYPE_LABEL[c.subType] : 'عميل محتمل'); })(),
       c.branch, c.courseNames, c.totalPaid, c.assignedSalesName, cairoDay(c.createdAt),
+      // The whole row first, the links of the pictures last.
+      c.nameEn || '', c.nationalId || '', c.personalPhotoUrl || '', c.idPhotoUrl || '',
     ]);
     downloadCsv('clients_export', [header, ...lines]);
     notify('success', `تم تصدير ${rows.length} عميل`);

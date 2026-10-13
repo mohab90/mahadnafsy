@@ -5,6 +5,10 @@
 import { latinDigits } from '../../shared/latinDigits';
 import React, { useEffect, useState } from 'react';
 import { arabicReason } from '../lib/apiErrorText';
+import {
+  attachPhotosToNextPayment, fetchClientPhotoLinks, PHOTO_ACCEPT, photoNeeds, uploadClientPhoto, useDriveConfigured,
+  type PhotoKind, type PhotoLinks, type PhotoNeed,
+} from '../lib/drivePhotos';
 import { cairoDateOnly } from '../../shared/cairoDate';
 import { CreditCard, Home, X } from 'lucide-react';
 import { useCrmData, useStaticData } from '../context/siteDataSlices';
@@ -309,6 +313,44 @@ interface PaymentModalProps {
   branchLabel?: string;
 }
 
+const PHOTO_COPY: Record<PhotoKind, { icon: string; title: string; why: string }> = {
+  personal: { icon: '🙂', title: 'صورة شخصية', why: 'للكارنيه وشهادة البورد' },
+  id: { icon: '🪪', title: 'صورة الهوية', why: 'للتوثيق' },
+};
+
+/** One picture: shows what is on the client's file, takes a new one, says what happened. */
+function PhotoPicker({ kind, need, uploaded, onFile, busy, disabled, onPick }: {
+  kind: PhotoKind; need: PhotoNeed; uploaded?: string; onFile: string | null;
+  busy: boolean; disabled: boolean; onPick: (file: File | undefined) => void;
+}) {
+  const copy = PHOTO_COPY[kind];
+  const link = uploaded || onFile;
+  return (
+    <div className="flex flex-wrap items-center gap-2 bg-white border border-sky-200 rounded-lg px-3 py-2">
+      <span className="text-sm font-bold text-gray-800">{copy.icon} {copy.title}</span>
+      <span className="text-[11px] text-gray-500">{copy.why}</span>
+      <span className={`text-[10px] font-extrabold rounded-full px-2 py-0.5 ${need === 'required' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
+        {need === 'required' ? 'مطلوبة' : 'اختيارية'}
+      </span>
+      <span className="mr-auto flex items-center gap-2">
+        {busy && <span className="text-[11px] font-bold text-sky-700">جاري الرفع…</span>}
+        {!busy && link && (
+          <a href={link} target="_blank" rel="noreferrer" className="text-[11px] font-bold text-emerald-700 underline">
+            {uploaded ? '✓ اترفعت — فتح' : '✓ على ملف العميل — فتح'}
+          </a>
+        )}
+        <label className={`text-[11px] font-bold border rounded-lg px-2.5 py-1 ${disabled ? 'opacity-50 cursor-not-allowed border-gray-200 text-gray-400' : 'cursor-pointer border-sky-400 text-sky-800 hover:bg-sky-50'}`}>
+          {link ? 'استبدال' : 'رفع صورة'}
+          <input
+            type="file" accept={PHOTO_ACCEPT} className="hidden" disabled={disabled}
+            onChange={event => { onPick(event.target.files?.[0]); event.target.value = ''; }}
+          />
+        </label>
+      </span>
+    </div>
+  );
+}
+
 const PaymentModal: React.FC<PaymentModalProps> = ({
   mode, subject, draft, setDraft, onSubmit, onClose,
   requirePaymentApproval, lockPrice = false, branchOptions = [], instituteName = 'معهد الدراسات النفسية',
@@ -334,6 +376,19 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   // runs on some renders and not others.
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  // The pictures a certificate or a carnet asks for: to Google Drive at once, and only
+  // the link is kept (lib/drivePhotos.ts). A client who already has one on file is not asked again.
+  const driveOn = useDriveConfigured();
+  const [photos, setPhotos] = useState<PhotoLinks>({});
+  const [photoOnFile, setPhotoOnFile] = useState<{ personal: string | null; id: string | null }>({ personal: null, id: null });
+  const [photoBusy, setPhotoBusy] = useState<PhotoKind | null>(null);
+  const [photoError, setPhotoError] = useState('');
+  useEffect(() => {
+    if (mode !== 'subscriber' || !subject.id) return undefined;
+    let alive = true;
+    fetchClientPhotoLinks(subject.id).then(links => { if (alive) setPhotoOnFile(links); });
+    return () => { alive = false; };
+  }, [mode, subject.id]);
   // «الدفعة دي جت عن طريق مين؟» — the owner records payments from an account
   // with no staff row, so without this none of them names whose money it was.
   // An admin login with no staff row is the owner, matched as useSignedInStaff does.
@@ -649,7 +704,26 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   // server refused it in English: 17 times on 5–7 Oct.
   const certificatesTyped = (d.paymentType !== 'certificate' || !!d.certReqId || !!d.certType)
     && (d.extraItems || []).every(item => item.type !== 'certificate' || !(Number(item.amount) > 0) || !!item.certType);
-  const isValid = !subjectChosen || !certificatesTyped ? false : tierProblem || identityProblem ? false : mode === 'new'
+  // «شهادة البورد لازم صورة، والكارنيه لازم صورة، واي توثيق لازم صورة الهوية» — asked for
+  // only once Drive is set up, so a missing setting does not stop the desk booking.
+  const photoNeed = photoNeeds(d, type => certCatalog.label(type));
+  const photoMissing = driveOn === true && photoBusy === null && (
+    (photoNeed.personal === 'required' && !photos.personal && !photoOnFile.personal)
+    || (photoNeed.id === 'required' && !photos.id && !photoOnFile.id));
+  const pickPhoto = async (kind: PhotoKind, file: File | undefined) => {
+    if (!file) return;
+    setPhotoBusy(kind);
+    setPhotoError('');
+    try {
+      const url = await uploadClientPhoto(file, kind, { clientName: personName });
+      setPhotos(previous => ({ ...previous, [kind]: url }));
+    } catch (error) {
+      setPhotoError(arabicReason(error, 'تعذّر رفع الصورة'));
+    } finally {
+      setPhotoBusy(null);
+    }
+  };
+  const isValid = !subjectChosen || !certificatesTyped || photoMissing || photoBusy !== null ? false : tierProblem || identityProblem ? false : mode === 'new'
     ? hasIdentity && (_amtPaid === 0 || (!!d.paymentMethod && (d.paymentType !== 'course' || !!d.courseId)))
     : _amtPaid > 0 && !!d.paymentMethod && (mode === 'lead' ? !!d.branch : true)
       && (!upgrading || (!!upgradeFrom && d.courseId.startsWith('bundle:')));
@@ -716,6 +790,10 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       const changedPrice = _customExp > 0 || _discPct > 0;
       const shownPrice = _effPx > 0 ? String(_effPx) : d.customExpected;
       if (asksWhoBroughtIt) attributeNextPayment(broughtBy);
+      attachPhotosToNextPayment({
+        personal: photoNeed.personal ? photos.personal : undefined,
+        id: photoNeed.id ? photos.id : undefined,
+      });
       if (upgrading && upgradeFrom) {
         // The course becomes part of the track first, its money with it; the
         // payment is then an instalment on the track, at the price set here.
@@ -755,6 +833,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     } finally {
       // Never carried to a later payment, whatever happened to this one.
       attributeNextPayment(null);
+      attachPhotosToNextPayment(null);
       setSubmitting(false);
     }
   };
@@ -1267,6 +1346,29 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
               <span className="text-[10px] text-amber-600 font-medium whitespace-nowrap">متبقي: <span className="font-bold">{_remaining.toLocaleString('ar-EG-u-nu-latn')}</span></span>
             )}
           </div>
+
+          {/* ── 4b: the pictures a certificate or a carnet asks for → Google Drive ── */}
+          {(photoNeed.personal || photoNeed.id) && (
+            <div className="border-2 border-sky-200 bg-sky-50/60 rounded-xl p-3 space-y-2">
+              <p className="text-xs font-extrabold text-sky-800">📷 الصور المطلوبة (بتترفع على جوجل درايف)</p>
+              {driveOn === false && (
+                <p className="text-[11px] font-bold text-amber-700">رفع الصور على جوجل درايف لسه غير مُفعّل — الصورة مش مطلوبة دلوقتي، وهتتطلب أول ما المسئول يفعّله.</p>
+              )}
+              {(['personal', 'id'] as const).filter(kind => photoNeed[kind]).map(kind => (
+                <PhotoPicker
+                  key={kind}
+                  kind={kind}
+                  need={photoNeed[kind] as PhotoNeed}
+                  uploaded={photos[kind]}
+                  onFile={photoOnFile[kind]}
+                  busy={photoBusy === kind}
+                  disabled={driveOn !== true || photoBusy !== null}
+                  onPick={file => pickPhoto(kind, file)}
+                />
+              ))}
+              {photoError && <p className="text-[11px] font-bold text-red-600">{photoError}</p>}
+            </div>
+          )}
 
           {/* ── 5: Add extra items ── */}
           <div className="flex items-center gap-2 flex-wrap">

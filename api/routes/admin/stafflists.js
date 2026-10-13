@@ -509,6 +509,12 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
         courseAccess: enrollmentProjection[r.id]?.access || {},
         certificates: completionProjection[r.id] || [],
         clientCode,      // authoritative
+        // The certificate's English name and the national id, and the Drive links of the
+        // pictures asked for with a certificate or a carnet — the client's row in an export.
+        nameEn: r.name_en || crm.nameEn || null,
+        nationalId: r.national_id || crm.nationalId || null,
+        personalPhotoUrl: r.personal_photo_url || null,
+        idPhotoUrl: r.id_photo_url || null,
         paymentHistory,  // authoritative from payments table
         extraCertificateRequests: certificatesBySub[r.id] || [],
         branch: (() => { const rb = r.branch || crm.branch || null; if (!rb) return null; const nb = rb.toUpperCase().replace(/[-\s]/g,'_'); return ['DAQQI','TAGAMOA','ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_ABROAD','OTHER'].includes(nb) ? nb : rb; })(),

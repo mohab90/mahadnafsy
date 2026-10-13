@@ -498,6 +498,9 @@ export interface SubscriberItem {
   installmentPlans?: InstallmentPlan[];
   notes?: string;
   nationalId?: string;   // رقم قومي — set on booking from staff modal
+  /** Google Drive links of the pictures a certificate or a carnet asked for (api/lib/googleDrive.js). */
+  personalPhotoUrl?: string | null;
+  idPhotoUrl?: string | null;
   updatedAt?: string;    // Server-side updated_at for optimistic concurrency control
   nextFollowUpDate?: string;  // Next follow-up date for collection/sales follow-up tracking
   lastFollowUp?: string;  // Last contact date

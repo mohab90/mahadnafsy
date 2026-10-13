@@ -4,6 +4,7 @@
 
 import { AuthUser, CrmInsights, CxPerformance, DaqqiPerformance, OnlinePerformance, SalesTeamPerformance, ScoredLeadsResult, StaffLeadPerformance, SubscriberStats } from '../types';
 import { takePaymentAttribution } from './paymentAttribution';
+import { takePendingPhotos } from './paymentPhotos';
 
 // Relative by default — always targets whatever origin actually served the page
 // (Nginx-proxied in every real deploy). A hardcoded absolute production URL here
@@ -958,11 +959,17 @@ export const mysqlAdmin = {
   // The employee the owner named in the payment dialog (lib/paymentAttribution.ts).
   saveSubscriberPayment: (subscriber_id: string, payment: AR) => {
     const staffId = takePaymentAttribution();
-    return post('/admin/subscriber-payments', { subscriber_id, payment: staffId && !payment.staffId ? { ...payment, staffId } : payment });
+    const photos = takePendingPhotos();
+    return post('/admin/subscriber-payments', {
+      subscriber_id,
+      payment: { ...payment, ...(staffId && !payment.staffId ? { staffId } : {}), ...(photos ? { photos } : {}) },
+    });
   },
   saveLeadPayment: (lead_id: string, payment: AR, subscriber?: { email?: string; nationalId?: string }) => {
     const staffId = takePaymentAttribution();
+    const photos = takePendingPhotos();
     if (staffId && !payment.staffId) payment = { ...payment, staffId };
+    if (photos) payment = { ...payment, photos };
     return (
     apiFetch<{
       ok: boolean;

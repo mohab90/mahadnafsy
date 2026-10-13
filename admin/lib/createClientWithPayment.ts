@@ -1,3 +1,4 @@
+import { takePendingPhotos } from './paymentPhotos';
 import type { PaymentDraft } from '../components/PaymentModal';
 import { mysqlAdmin } from './mysqlapi';
 import { bookingTierFields } from './bookingIdentity';
@@ -92,6 +93,8 @@ export async function createClientWithPayment(
     subscriber,
     ...(draft.daqqiRoundId ? { daqqiRoundId: draft.daqqiRoundId } : {}),
     payment: {
+      // The pictures asked for with a certificate or a carnet (lib/drivePhotos.ts).
+      ...(() => { const photos = takePendingPhotos(); return photos ? { photos } : {}; })(),
       amount,
       currency: draft.currency,
       paymentType,
