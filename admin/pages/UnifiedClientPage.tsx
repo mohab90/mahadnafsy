@@ -8,6 +8,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { useBranches } from '../hooks/useBranches';
+import { useGoBack } from '../lib/useGoBack';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   
@@ -68,7 +69,7 @@ interface UnifiedClientPageProps {
 }
 
 const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber }) => {
-  const navigate = useNavigate();
+  const navigate = useNavigate(); const goBack = useGoBack();
   // Same list every other screen shows — see hooks/useBranches.
   const branchOptions = useBranches();
   const {
@@ -103,7 +104,6 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   const notify = React.useCallback(
     (type: 'success' | 'error' | 'info', text: string) => toastShow(text, type), [toastShow]);
   const [codeCopied, setCodeCopied] = useState(false);
-
   // ── session / activity stats — no longer tracked from Firestore ──────────
   const sessionData: UserSessionData | null = null;
   const {
@@ -260,7 +260,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
         lastCommDate={lastCommDate}
         canManageCourseAccess={canManageCourseAccess}
         isAdmin={isAdmin}
-        onDashboard={() => navigate('/dashboard')}
+        onDashboard={() => goBack('/dashboard')}
         onList={() => navigate(isSub ? '/dashboard/subscribers' : '/dashboard')}
         onCopyClientLink={() => {
           navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname.replace(/\/[^/]+$/, '')}#/client/${clientCode}`).catch(() => {});
@@ -287,8 +287,8 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
         clientName, 'الحذف أرشفة — المدفوعات والسجل يفضلوا محفوظين.',
       ].join('\n'),
           })) return;
-          if (subscriber && await deleteSubscriber(subscriber.id)) navigate('/dashboard/subscribers');
-          else if (lead && await deleteLead(lead.id)) navigate('/dashboard');
+          if (subscriber && await deleteSubscriber(subscriber.id)) goBack('/dashboard/subscribers');
+          else if (lead && await deleteLead(lead.id)) goBack('/dashboard');
         }}
       />
 

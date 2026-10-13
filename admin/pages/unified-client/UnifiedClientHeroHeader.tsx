@@ -84,8 +84,8 @@ export function UnifiedClientHeroHeader({
     <div className="bg-gradient-to-br from-slate-800 via-slate-750 to-slate-900 text-white shadow-xl">
       <div className="max-w-7xl mx-auto px-4 pt-4 pb-5">
         <div className="flex items-center gap-2 text-slate-400 text-xs mb-4 flex-wrap">
-          <button onClick={onDashboard} className="hover:text-white flex items-center gap-1 transition-colors">
-            <ArrowRight size={13} /> لوحة التحكم
+          <button onClick={onDashboard} className="hover:text-white flex items-center gap-1 transition-colors" title="الرجوع للصفحة اللي كنت فيها">
+            <ArrowRight size={13} /> رجوع
           </button>
           <span className="text-slate-600">/</span>
           <button onClick={onList} className="hover:text-white transition-colors">

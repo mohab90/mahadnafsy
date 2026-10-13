@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Navigate } from 'react-router-dom';
+import { useParams, Navigate } from 'react-router-dom';
 import { Info, ArrowRight, Loader } from 'lucide-react';
 import { useCrmData } from '../context/siteDataSlices';
 import { useEnsureSiteLists } from '../context/SiteDataContext';
 import { mysqlAdmin } from '../lib/mysqlapi';
 import { LeadItem, SubscriberItem } from '../types';
+import { useGoBack } from '../lib/useGoBack';
 
 const UnifiedClientPage = React.lazy(() => import('./UnifiedClientPage'));
 
@@ -31,7 +32,7 @@ const UnifiedClientView: React.FC<{ subscriber?: SubscriberItem; lead?: LeadItem
  */
 const ClientProfile: React.FC = () => {
   const { code } = useParams<{ code: string }>();
-  const navigate = useNavigate();
+  const goBack = useGoBack();
   const { subscribers, leads, daqqiRounds, consultations, staffScopedSubscribers, staffScopedLeads } = useCrmData();
   // A page of its own, outside the dashboard's tabs: it asks for what it looks the client up in.
   useEnsureSiteLists(['subscribers', 'leads', 'daqqiRounds']);
@@ -52,8 +53,8 @@ const ClientProfile: React.FC = () => {
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-gray-500" dir="rtl">
         <Info size={48} className="text-gray-300" />
         <p className="text-xl">لم يتم تحديد كود العميل</p>
-        <button onClick={() => navigate('/dashboard')} className="px-5 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center gap-2">
-          <ArrowRight size={16} /> العودة للوحة التحكم
+        <button onClick={() => goBack('/dashboard')} className="px-5 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center gap-2">
+          <ArrowRight size={16} /> رجوع
         </button>
       </div>
     );
@@ -133,7 +134,7 @@ const RemoteFallback: React.FC<{
   remoteError: string | null; setRemoteError: (v: string | null) => void;
   remoteChecked: boolean; setRemoteChecked: (v: boolean) => void;
 }> = ({ code, remoteLoading, setRemoteLoading, remoteSub, setRemoteSub, remoteLead, setRemoteLead, remoteError, setRemoteError, remoteChecked, setRemoteChecked }) => {
-  const navigate = useNavigate();
+  const goBack = useGoBack();
 
   useEffect(() => {
     if (remoteChecked) return;
@@ -180,8 +181,8 @@ const RemoteFallback: React.FC<{
       <Info size={48} className="text-gray-300" />
       <p className="text-xl font-bold">{remoteError || 'العميل غير موجود'}</p>
       <p className="text-sm text-gray-400">الكود: <span className="font-mono font-bold">{code}</span></p>
-      <button onClick={() => navigate('/dashboard')} className="px-5 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center gap-2">
-        <ArrowRight size={16} /> العودة للوحة التحكم
+      <button onClick={() => goBack('/dashboard')} className="px-5 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center gap-2">
+        <ArrowRight size={16} /> رجوع
       </button>
     </div>
   );

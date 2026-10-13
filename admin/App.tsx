@@ -1,5 +1,5 @@
 import React, { Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigationType } from 'react-router-dom';
 import { SiteDataProvider, useSiteData } from './context/SiteDataContext';
 import { AuthProvider } from './context/AuthContext';
 import ErrorBoundary from '../shared/ui/ErrorBoundary';
@@ -64,15 +64,57 @@ const StaffRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     : <Suspense fallback={<PageSpinner />}><Auth /></Suspense>;
 };
 
+/**
+ * Where the page is when you leave it, and back there when you return.
+ *
+ * «في مشكلة عند الرجوع داخل السيستم بيرجع للصفحة الرئيسية مش مكان ما كنت موجود» (13 Oct
+ * 2026). Back used to land on the top of the page (and, from a client's page, on the
+ * overview): the list a client was opened from was found again at its first row. The
+ * position is saved when the person acts on the page — before they leave it, not from
+ * scroll events, which the browser fires again when a shorter page clamps the old one —
+ * and put back on a BACK/FORWARD step, retried while the page's data arrives and given up
+ * as soon as the person scrolls themselves.
+ */
 const ScrollToTop: React.FC = () => {
-  const { pathname } = useLocation();
+  const location = useLocation();
+  const navigationType = useNavigationType();
+  const { pathname } = location;
   const prev = React.useRef(pathname);
+  const keyRef = React.useRef(location.key);
+  const positions = React.useRef(new Map<string, number>());
+
+  React.useEffect(() => {
+    const save = () => { positions.current.set(keyRef.current, window.scrollY); };
+    const events = ['pointerdown', 'keydown', 'touchstart', 'pagehide'] as const;
+    events.forEach(name => window.addEventListener(name, save, { capture: true, passive: true }));
+    return () => events.forEach(name => window.removeEventListener(name, save, { capture: true }));
+  }, []);
+
   React.useEffect(() => {
     const p = prev.current;
     prev.current = pathname;
+    keyRef.current = location.key;
     const isDashNav = p.startsWith('/dashboard') && pathname.startsWith('/dashboard');
+    if (navigationType === 'POP') {
+      const target = positions.current.get(location.key);
+      if (!target) { if (!isDashNav) window.scrollTo(0, 0); return undefined; }
+      let tries = 0;
+      let stopped = false;
+      const stop = () => { stopped = true; };
+      const settle = () => {
+        if (stopped) return;
+        window.scrollTo(0, target);
+        if (Math.abs(window.scrollY - target) > 4 && (tries += 1) < 40) window.setTimeout(settle, 60);
+      };
+      ['wheel', 'touchmove', 'keydown'].forEach(name => window.addEventListener(name, stop, { once: true, passive: true }));
+      window.setTimeout(settle, 0);
+      return () => { stopped = true; ['wheel', 'touchmove', 'keydown'].forEach(name => window.removeEventListener(name, stop)); };
+    }
     if (!isDashNav) window.scrollTo(0, 0);
-  }, [pathname]);
+    return undefined;
+    // One run per step of the history: the key says which one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
   return null;
 };
 
