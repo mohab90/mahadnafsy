@@ -15,6 +15,8 @@ interface Params {
   updateLead: (lead: LeadItem) => Promise<boolean>;
   reloadLeads: () => Promise<unknown>;
   reloadSubscribers: () => Promise<unknown>;
+  /** «بيانات الشهادة»: whether this viewer may open it, and how it tells them what happened. */
+  certificateData?: { allowed: boolean; notify: (type: 'success' | 'error' | 'info', text: string) => void };
 }
 
 function persistenceError(field: string, error: unknown) {
@@ -32,7 +34,9 @@ export function useUnifiedClientLifecycleActions(params: Params) {
     lead, subscriber, isSaving, setIsSaving, setLeadDraft,
     updateLead, reloadLeads, reloadSubscribers,
   } = params;
-  const certificateState = useUnifiedClientCertificateState();
+  const certificateState = useUnifiedClientCertificateState(params.certificateData && {
+    ...params.certificateData, subscriberId: subscriber?.id, onSaved: reloadSubscribers,
+  });
   const [showConvertModal, setShowConvertModal] = useState(false);
   const [convertCourseId, setConvertCourseId] = useState(lead?.enrolledCourseId || '');
   const [convertAccessMode, setConvertAccessMode] = useState<'full' | 'limited'>('full');

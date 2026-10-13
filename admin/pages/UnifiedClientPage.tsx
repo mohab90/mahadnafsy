@@ -58,7 +58,6 @@ const UnifiedClientOverviewTab = React.lazy(() => import('./unified-client/Unifi
 const UnifiedClientSubscriberPaymentsPanel = React.lazy(() => import('./unified-client/UnifiedClientSubscriberPaymentsPanel').then(module => ({ default: module.UnifiedClientSubscriberPaymentsPanel })));
 const ClientContactsPanel = React.lazy(() => import('./unified-client/ClientContactLog').then(module => ({ default: module.ClientContactsPanel })));
 const ClientContactDialog = React.lazy(() => import('./unified-client/ClientContactLog').then(module => ({ default: module.ClientContactDialog })));
-const ClientCertificateDataModal = React.lazy(() => import('./unified-client/ClientCertificateDataModal').then(module => ({ default: module.ClientCertificateDataModal })));
 const UnifiedClientModalsHost = React.lazy(() => import('./unified-client/UnifiedClientModalsHost').then(module => ({ default: module.UnifiedClientModalsHost })));
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -84,7 +83,6 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   useEnsureSiteLists(['subscribers', 'leads', 'daqqiRounds']); // nor these, since 11 Oct 2026 (siteLists.ts)
 
   const { isOnlineManager, canManageCourseAccess, canSeeCourses, canCorrectPayments, canSeeProofs, canDelete, canEditCertificateData } = useUnifiedClientPermissions({ isAdmin, currentStaff });
-  const [certificateDataOpen, setCertificateDataOpen] = useState(false);
 
   const isSub = !!subscriber;
   const clientName   = subscriber?.name   ?? lead?.name   ?? '';
@@ -177,14 +175,14 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   } = useUnifiedClientCourseAccess({ subscriber, content, reloadSubscribers });
 
   const {
-    viewCertId, setViewCertId,
+    viewCertId, setViewCertId, certificateDataModal, openCertificateData,
     showConvertModal, setShowConvertModal, convertCourseId, setConvertCourseId,
     convertAccessMode, setConvertAccessMode, convertPartialCount, setConvertPartialCount,
     promoCopied, setPromoCopied, subCerts, activeSubCerts, extraReqs,
     handleConvert, handleGeneratePromo, handleCertificateLifecycle,
   } = useUnifiedClientLifecycleActions({
     lead, subscriber, isSaving, setIsSaving, setLeadDraft,
-    updateLead, reloadLeads, reloadSubscribers,
+    updateLead, reloadLeads, reloadSubscribers, certificateData: { allowed: canEditCertificateData && isSub, notify },
   });
 
   // ── payment proofs (client-uploaded receipts) ─────────────────────────────
@@ -294,7 +292,6 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
         }}
       />
 
-
       {/* ══ Overdue installments warning banner ══ */}
       {isSub && instOverdueCount > 0 && (
         <div className="bg-red-600 text-white px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
@@ -388,7 +385,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
             onLegacyPayment={openLegacyPaymentForm}
             onInstallmentPlan={() => setActiveTab('installments')}
             onEdit={() => { setEditing(!editing); setActiveTab('edit'); }}
-            onCertificateData={isSub && subscriber && canEditCertificateData ? () => setCertificateDataOpen(true) : undefined}
+            onCertificateData={openCertificateData}
           />
 
           <UnifiedClientSidebarNotesCard quickNote={quickNote} onSaveQuickNote={saveQuickNote} />
@@ -640,21 +637,11 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
         </div>
       </div>
 
-      {certificateDataOpen && subscriber && (
-        <React.Suspense fallback={null}>
-          <ClientCertificateDataModal
-            subscriberId={subscriber.id} notify={notify}
-            onClose={() => setCertificateDataOpen(false)}
-            onSaved={() => { setCertificateDataOpen(false); void reloadSubscribers(); }}
-          />
-        </React.Suspense>
-      )}
-
       {(showAccessModal || showContactPopup || showConvertModal
         || showAddComm || showLeadPayForm
-        || Boolean(viewCertId) || showPayDetailModal) && (
+        || Boolean(viewCertId) || showPayDetailModal || Boolean(certificateDataModal)) && (
         <React.Suspense fallback={null}>
-          <UnifiedClientModalsHost
+          <UnifiedClientModalsHost certificateData={certificateDataModal}
             access={showAccessModal && isSub ? {
               open: true, subscriber, canManageCourseAccess, courses, getCourseLectures,
               accessSaving, accessMsg, accessPresets, setAccessPresets, manualLimitDraft,

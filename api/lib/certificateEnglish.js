@@ -8,7 +8,7 @@
 // Now a certificate with no English name, or whose course has no English title,
 // is not printed: it says which one is missing and where to add it.
 
-const ARABIC = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
+const ARABIC = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
 const HAS_LETTER = /[A-Za-z]/;
 
 /** English text: it has Latin letters and no Arabic ones. */

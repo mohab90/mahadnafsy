@@ -119,8 +119,11 @@ test('the button is on a client’s page for those who hold one of the two permi
   const permissions = read('admin/pages/unified-client/useUnifiedClientPermissions.ts');
   assert.match(permissions, /\['manage_certificates', 'manage_financial'\]\.some\(/);
   const page = read('admin/pages/UnifiedClientPage.tsx');
-  assert.match(page, /onCertificateData=\{isSub && subscriber && canEditCertificateData \? \(\) => setCertificateDataOpen\(true\) : undefined\}/);
-  assert.match(page, /<ClientCertificateDataModal/);
+  assert.match(page, /onCertificateData=\{openCertificateData\}/);
+  assert.match(page, /certificateData: \{ allowed: canEditCertificateData && isSub, notify \}/);
+  assert.match(page, /<UnifiedClientModalsHost certificateData=\{certificateDataModal\}/);
+  assert.match(read('admin/pages/unified-client/UnifiedClientModalsHost.tsx'), /props\.certificateData && <ClientCertificateDataModal/);
+  assert.match(read('admin/pages/unified-client/useUnifiedClientCertificateState.ts'), /options\?\.allowed && options\.subscriberId/);
   assert.match(read('admin/pages/unified-client/UnifiedClientSidebarCards.tsx'), /بيانات الشهادة/);
   const modal = read('admin/pages/unified-client/ClientCertificateDataModal.tsx');
   assert.match(modal, /اسم العميل بالإنجليزي/);
