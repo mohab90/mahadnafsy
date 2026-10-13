@@ -25,6 +25,7 @@ const {
 } = require('./_shared');
 
 const { isArchiveSource } = require('../../../lib/leadArchive');
+const { CONVERTED_LEAD_STATUSES } = require('../../../lib/leadStatuses');
 
 const router = Router();
 
@@ -238,7 +239,8 @@ const LOCAL_NEW_SOURCE = 'محلي جديد — منقول';
 router.post('/api/admin/leads/move-to-local-new', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), bulkOperationLimiter, async (req, res) => {
   try {
     // Desk work, like handing leads out: a rep or a collection officer does not refill the pool.
-    if (['sales', 'collection'].includes(String(req.staffRecord?.role || '').toLowerCase())) return res.status(403).json({ error: 'غير مصرح' });
+    const deskRole = String(req.staffRecord?.role || '').toLowerCase();
+    if (deskRole === 'sales' || deskRole === 'collection') return res.status(403).json({ error: 'غير مصرح' });
     const ids = [...new Set((Array.isArray(req.body?.leadIds) ? req.body.leadIds : []).map(id => String(id || '').trim()).filter(Boolean))];
     const batchSource = typeof req.body?.source === 'string' ? req.body.source.trim() : '';
     if (!ids.length && !batchSource) return res.status(400).json({ error: 'اختار العملاء أو الدفعة اللي هتتنقل لمحلي جديد.', code: 'NOTHING_CHOSEN' });
@@ -249,11 +251,11 @@ router.post('/api/admin/leads/move-to-local-new', requireAuth, requireAdminOrSta
     const chosen = [];
     if (ids.length) chosen.push(`l.id IN (${ids.map(() => '?').join(',')})`);
     if (batchSource) chosen.push('TRIM(l.source) = ?');
-    const params = [req.tenantId, ...ids, ...(batchSource ? [batchSource] : []), ...scope.params];
+    const params = [req.tenantId, ...ids, ...(batchSource ? [batchSource] : []), ...scope.params, [...CONVERTED_LEAD_STATUSES]];
     const [rows] = await pool.query(
       `SELECT l.id, l.source, l.status, l.crm_json FROM leads l
         WHERE l.tenant_id = ? AND (${chosen.join(' OR ')})${scope.sql}
-          AND LOWER(COALESCE(l.status, '')) NOT IN ('converted', 'won')
+          AND COALESCE(l.status, '') NOT IN (?)
           AND l.merged_into_lead_id IS NULL AND l.deleted_at IS NULL`,
       params);
     if (req.body?.dryRun) return res.json({ ok: true, dryRun: true, matched: rows.length });
@@ -268,6 +270,7 @@ router.post('/api/admin/leads/move-to-local-new', requireAuth, requireAdminOrSta
       bySource.get(landing).push(row);
     }
     let moved = 0;
+    const stamp = new Date().toISOString();
     for (const [landing, group] of bySource) {
       for (let i = 0; i < group.length; i += 500) {
         const part = group.slice(i, i + 500);
@@ -277,12 +280,12 @@ router.post('/api/admin/leads/move-to-local-new', requireAuth, requireAdminOrSta
                     THEN JSON_SET(crm_json, '$.movedToLocalNewFrom', source, '$.movedToLocalNewAt', ?)
                     ELSE JSON_OBJECT('movedToLocalNewFrom', source, 'movedToLocalNewAt', ?) END,
                   source = ?, hidden = 0,
-                  status = CASE WHEN LOWER(status) IN ('archived', 'not_interested_hidden') THEN 'new' ELSE status END,
+                  status = CASE WHEN status IN (?) THEN 'new' ELSE status END,
                   assigned_sales_id = NULL, assigned_sales_name = NULL, assigned_cs_id = NULL, assigned_cs_name = NULL,
                   updated_at = NOW()
             WHERE tenant_id = ? AND id IN (${part.map(() => '?').join(',')})
-              AND LOWER(COALESCE(status, '')) NOT IN ('converted', 'won')`,
-          [new Date().toISOString(), new Date().toISOString(), landing, req.tenantId, ...part.map(row => row.id)]);
+              AND COALESCE(status, '') NOT IN (?)`,
+          [stamp, stamp, landing, BACK_IN_PLAY, req.tenantId, ...part.map(row => row.id), [...CONVERTED_LEAD_STATUSES]]);
         moved += Number(result.affectedRows || 0);
         const who = req.staffRecord?.name || req.user?.email || 'admin';
         await pool.query(

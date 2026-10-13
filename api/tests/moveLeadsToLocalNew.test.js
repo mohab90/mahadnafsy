@@ -63,8 +63,10 @@ test('an archive lead gets its earlier source back, a table lead is taken from i
   for (const update of updates) {
     assert.match(update.sql, /assigned_sales_id = NULL, assigned_sales_name = NULL, assigned_cs_id = NULL, assigned_cs_name = NULL/);
     assert.match(update.sql, /hidden = 0/);
-    assert.match(update.sql, /WHEN LOWER\(status\) IN \('archived', 'not_interested_hidden'\) THEN 'new'/);
-    assert.match(update.sql, /NOT IN \('converted', 'won'\)/, 'a client is never moved');
+    assert.match(update.sql, /status = CASE WHEN status IN \(\?\) THEN 'new' ELSE status END/);
+    assert.deepEqual(update.params[3], ['archived', 'not_interested_hidden'], 'archived and hidden-as-not-interested come back as new');
+    assert.match(update.sql, /COALESCE\(status, ''\) NOT IN \(\?\)/, 'a client is never moved');
+    assert.deepEqual(update.params.at(-1), ['converted', 'won']);
   }
   const timeline = statements.filter(s => /^INSERT INTO lead_timeline/.test(s.sql));
   assert.ok(timeline.length >= 1);
