@@ -227,7 +227,6 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
   const daysOfWeek = DAQQI_DAYS_OF_WEEK;
   const timeSlotsList = DAQQI_TIME_SLOTS;
   const timeSlotColors = DAQQI_TIME_SLOT_COLORS;
-  const assignedSubIds = new Set(daqqiRounds.flatMap(r => r.attendees.map(a => a.subscriberId)));
 
   // The branch in numbers, above the schedule. (A list of «سكّن N» per round sat
   // here for a day: the same people counted once for every round of their
@@ -846,7 +845,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
         <DaqqiNewRoundModal
           daqqiDraft={daqqiDraft}
           enrolledLabels={enrolledLabels}
-          assignedSubIds={assignedSubIds}
+          daqqiRounds={daqqiRounds}
           bundles={bundles}
           daqqiShowAllClients={daqqiShowAllClients}
           setDaqqiShowAllClients={setDaqqiShowAllClients}
@@ -880,7 +879,6 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
         setDaqqiAddClientsSel={setDaqqiAddClientsSel}
         daqqiAddClientsCourseSel={daqqiAddClientsCourseSel}
         setDaqqiAddClientsCourseSel={setDaqqiAddClientsCourseSel}
-        assignedSubIds={assignedSubIds}
         handleAddClientsToRound={handleAddClientsToRound}
       />
 

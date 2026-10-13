@@ -1,4 +1,5 @@
 import React from 'react';
+import type { HousingNeed } from '../daqqi/daqqiHousingNeeds';
 import { cairoDateOnly, cairoDay, cairoDaysAhead } from '../../../../../shared/cairoDate';
 import { Modal } from '../../../../../shared/ui/Modal';
 import { useNavigate } from 'react-router-dom';
@@ -48,6 +49,8 @@ interface Props {
   collOnlineSelected: Set<string>;
   setCollOnlineSelected: React.Dispatch<React.SetStateAction<Set<string>>>;
   housingMap: Map<string, HousingInfo>;
+  /** Per course: which of the client's courses are seated and which still wait (daqqi/daqqiHousingNeeds.ts). */
+  housingNeeds: Map<string, HousingNeed>;
   courses: Course[];
   bundles: Bundle[];
   staffMembers: StaffMember[];
@@ -86,7 +89,7 @@ interface Props {
 
 export function ClientsTable({
   pageRows, vc, cw, startColResize, isDaqqiClientsTab, collOnlineSelected, setCollOnlineSelected,
-  housingMap, courses, bundles, staffMembers, onlineTeamMembers, isAdmin, isOnlineManager, isCollection = false,
+  housingMap, housingNeeds, courses, bundles, staffMembers, onlineTeamMembers, isAdmin, isOnlineManager, isCollection = false,
   canDeleteSubscriber: canDeleteByPermission, shouldUseScopedSubscribers,
   updateSubscriber, reloadSubscribers, setSalesOwnSubscribers, deleteSubscriber, setSubPayRow, setSubPayDraft,
   setDaqqiHousingModal, setDaqqiHousingRoundId,
@@ -217,11 +220,17 @@ export function ClientsTable({
             const csName = (row as unknown as {assignedCsName?: string}).assignedCsName || '';
             // Housing info for this row (daqqi tab only)
             const rowHousing = housingMap.get(row.id) || null;
+            // Seated for some of their courses and not others: «جزئي», and which still wait.
+            const rowNeed = housingNeeds.get(row.id);
+            const missingTitles = (rowNeed?.missingCourseIds ?? []).map(id => courses.find(course => course.id === id)).map(course => course?.titleAr || course?.title || '').filter(Boolean);
             const housingCell = isDaqqiClientsTab ? (
               rowHousing ? (
                 <div className="flex flex-col items-center gap-0.5">
-                  <span className="inline-flex items-center gap-0.5 text-[9px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-full px-1.5 py-0.5">🏠 مسكن</span>
-                  <span className="text-[9px] font-bold text-gray-700">{rowHousing.roundCode}</span>
+                  <span className={`inline-flex items-center gap-0.5 text-[9px] font-bold border rounded-full px-1.5 py-0.5 ${missingTitles.length ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-indigo-100 text-indigo-700 border-indigo-200'}`}>
+                    {missingTitles.length ? '🏠 جزئي' : '🏠 مسكن'}
+                  </span>
+                  <span className="text-[9px] font-bold text-gray-700">{rowNeed?.roundCodes.length ? rowNeed.roundCodes.join('، ') : rowHousing.roundCode}</span>
+                  {missingTitles.length > 0 && <span className="text-[9px] font-bold text-amber-700" title={missingTitles.join('، ')}>لسه: {missingTitles.join('، ')}</span>}
                 </div>
               ) : (
                 <span className="text-[9px] text-gray-400">غير مسكن</span>

@@ -257,7 +257,8 @@ test('the Dokki schedule', () => {
 
   const modal = read('admin/pages/dashboard/tabs/daqqi/DaqqiAddClientsModal.tsx');
   assert.match(modal, /بحث بالاسم أو رقم التليفون/);
-  assert.match(modal, /housing === 'unhoused' && assignedSubIds\.has\(s\.id\)/);
+  // «غير مسكن» is housed FOR THE COURSE being filled (daqqi/daqqiHousingNeeds.ts), not seated in any round.
+  assert.match(modal, /housing === 'unhoused' && housedHere\) return false/);
   assert.match(modal, /isEnrolledInCourse\(bundles, s\.enrolledCourseIds \|\| \[\], wantedCourse\)/);
 
   const tab = read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx');

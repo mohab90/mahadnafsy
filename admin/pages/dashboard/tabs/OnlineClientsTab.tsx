@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { housingNeedOf, isFullyHoused, needsHousing, type HousingNeed } from './daqqi/daqqiHousingNeeds';
 import { cairoDateOnly, cairoMonthOnly, cairoDay, cairoWeekStart } from '../../../../shared/cairoDate';
 import { Modal } from '../../../../shared/ui/Modal';
 import { useSearchParams } from 'react-router-dom';
@@ -267,6 +268,13 @@ export default function OnlineClientsTab({
                   });
                 });
               }
+              // Housing is per COURSE (daqqi/daqqiHousingNeeds.ts): a client seated in one course's
+              // round still needs the others they hold. The map above keeps the one round the
+              // client follows (the reception); this says which of their courses are seated.
+              const housingNeeds = new Map<string, HousingNeed>();
+              if (isDaqqiClientsTab) {
+                for (const subscriber of subscribers) housingNeeds.set(subscriber.id, housingNeedOf(salesOwnDaqqiRounds ?? [], bundles, subscriber));
+              }
               // سنة الحجز — the year a client was booked into a round, off
               // attendee.bookedAt. A client can be booked into more than one
               // round, so a cohort tab shows everyone booked that year rather
@@ -384,8 +392,10 @@ export default function OnlineClientsTab({
                 // فلتر مسئول التحصيل
                 if (collOnlineCollectionFilter && s.assignedCsId !== collOnlineCollectionFilter) return false;
                 // فلتر التسكين (لتب عملاء الدقي فقط)
-                if (isDaqqiClientsTab && daqqiHousingFilter === 'housed'   && !housingMap.has(s.id)) return false;
-                if (isDaqqiClientsTab && daqqiHousingFilter === 'unhoused' && housingMap.has(s.id))  return false;
+                // «مسكن» is seated for every course of theirs that has a round; «غير مسكن» is none, or one still missing.
+                const _need = housingNeeds.get(s.id);
+                if (isDaqqiClientsTab && daqqiHousingFilter === 'housed'   && !(_need && isFullyHoused(_need))) return false;
+                if (isDaqqiClientsTab && daqqiHousingFilter === 'unhoused' && _need && !needsHousing(_need))   return false;
                 if (isDaqqiClientsTab && daqqiRoundFilter) {
                   const _h = housingMap.get(s.id);
                   if (!_h || _h.roundId !== daqqiRoundFilter) return false;
@@ -653,6 +663,7 @@ export default function OnlineClientsTab({
                     collOnlineSelected={collOnlineSelected}
                     setCollOnlineSelected={setCollOnlineSelected}
                     housingMap={housingMap}
+                    housingNeeds={housingNeeds}
                     courses={courses}
                     bundles={bundles}
                     staffMembers={staffMembers}
