@@ -20,6 +20,8 @@ type Row = {
   downloadedAt: string | null; downloads: number; subscriberId: string; subscriberName: string; nameEn: string | null;
   phone: string; clientCode: string | null; branch: string | null; courseTitle: string;
   nationalId: string | null; personalPhotoUrl: string | null; idPhotoUrl: string | null;
+  /** The course's title in English, and what the English-only certificate still lacks. */
+  courseTitleEn: string | null; missing: string[];
 };
 
 const STAGES: Record<Stage, { label: string; cls: string }> = {
@@ -192,7 +194,12 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
                     </td>
                     <td className="px-3 py-2 font-bold text-indigo-700">{row.courseTitle}</td>
                     <td className="px-3 py-2">
-                      {row.nameEn ? <div dir="ltr" className="text-right">{row.nameEn}</div> : <div className="text-[11px] text-red-600">مفيش اسم بالإنجليزي — هيطلع بالعربي</div>}
+                      {row.nameEn ? <div dir="ltr" className="text-right">{row.nameEn}</div> : null}
+                      {row.courseTitleEn && <div dir="ltr" className="text-right text-[11px] text-gray-500">{row.courseTitleEn}</div>}
+                      {/* English only: a certificate lacking either is not printed, and says what to add. */}
+                      {row.missing?.length > 0 && (
+                        <div className="text-[11px] font-bold text-red-600">ناقص: {row.missing.join('، ')} — الشهادة مش هتتطبع لحد ما يتضاف (من ملف العميل ← بيانات الشهادة)</div>
+                      )}
                     </td>
                     <td className="px-3 py-2 font-mono text-[11px] text-gray-500" dir="ltr">{row.code}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-gray-500">{cairoDay(row.issuedAt)}</td>
@@ -210,9 +217,13 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex flex-nowrap items-center gap-1">
-                        <a href={certificateUrl(row.code, true)} target="_blank" rel="noreferrer" title="الشهادة — طباعة أو حفظ PDF"
-                          className={`${btn} bg-slate-800 text-white hover:bg-slate-900`}><FileText size={10} /> PDF / طباعة</a>
-                        {share && (
+                        {row.missing?.length ? (
+                          <span title={`ناقص: ${row.missing.join('، ')}`} className={`${btn} cursor-not-allowed bg-gray-200 text-gray-400`}><FileText size={10} /> PDF / طباعة</span>
+                        ) : (
+                          <a href={certificateUrl(row.code, true)} target="_blank" rel="noreferrer" title="الشهادة — طباعة أو حفظ PDF"
+                            className={`${btn} bg-slate-800 text-white hover:bg-slate-900`}><FileText size={10} /> PDF / طباعة</a>
+                        )}
+                        {share && !row.missing?.length && (
                           <a href={share} target="_blank" rel="noreferrer" title="ابعتها للعميل على الواتساب"
                             className={`${btn} bg-emerald-600 text-white hover:bg-emerald-700`}><Share2 size={10} /> شير</a>
                         )}

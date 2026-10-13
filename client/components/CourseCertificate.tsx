@@ -20,6 +20,14 @@ interface CourseCertificateProps {
   onPrinted?: () => void;
 }
 
+// The certificate carries the name and the course in English only («مينفعش بالعربي
+// في الشهادة دي»): Latin letters, no Arabic. The server holds the same rule
+// (api/lib/certificateEnglish.js).
+const englishOnly = (value?: string | null) => {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+  return text && /[A-Za-z]/.test(text) && !/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(text) ? text : '';
+};
+
 // The old hosted logo first if the domain's own is missing, then nothing.
 const certificateLogoError = (e: React.SyntheticEvent<HTMLImageElement>) => {
   if (e.currentTarget.dataset.logoFallback) e.currentTarget.style.display = 'none';
@@ -35,19 +43,22 @@ const CourseCertificate: React.FC<CourseCertificateProps> = ({
   useEscapeKey(onClose);
   const { content } = useSiteData();
   const LOGO_URL = content['institute.logo'] || BRAND_LOGO;
-  const certName  = (studentNameEn || studentName).toUpperCase();
-  const certCourse = courseNameEn || courseName;
+  // Never the Arabic name or title: a certificate lacking either is not shown.
+  const certName  = englishOnly(studentNameEn).toUpperCase();
+  const certCourse = englishOnly(courseNameEn) || englishOnly(courseName);
+  const incomplete = !certName || !certCourse;
 
   // Generated entirely client-side (qrcode npm package) — no network call, so the
   // student's name/course/certificate number is never sent to a third-party service.
   const [qrUrl, setQrUrl] = useState('');
   useEffect(() => {
+    if (incomplete) return undefined;
     let cancelled = false;
     QRCode.toDataURL(`CERT:${certNumber}|${certName}|${certCourse}`, {
       width: 90, margin: 1, color: { dark: '#8B0000', light: '#ffffff' },
     }).then(url => { if (!cancelled) setQrUrl(url); }).catch(() => {});
     return () => { cancelled = true; };
-  }, [certNumber, certName, certCourse]);
+  }, [certNumber, certName, certCourse, incomplete]);
 
   const handlePrint = () => {
     const el = document.getElementById('psy-cert-printable');
@@ -71,6 +82,21 @@ const CourseCertificate: React.FC<CourseCertificateProps> = ({
     win.focus();
     setTimeout(() => { win.print(); win.close(); }, 700);
   };
+
+  if (incomplete) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-3" onClick={onClose}>
+        <div className="w-full max-w-md rounded-2xl bg-white p-6 text-center" dir="rtl" onClick={event => event.stopPropagation()}>
+          <h3 className="mb-2 text-lg font-extrabold text-amber-700">شهادتك لسه محتاجة بيانات</h3>
+          <p className="text-sm leading-relaxed text-gray-600">
+            شهادة المعهد بتتطبع بالإنجليزي فقط، وناقص {!certName ? 'اسمك بالإنجليزي' : 'اسم الكورس بالإنجليزي'}.
+            ابعت اسمك بالإنجليزي لخدمة العملاء وهنفتحلك الشهادة فوراً.
+          </p>
+          <button onClick={onClose} className="mt-4 rounded-xl bg-gray-900 px-5 py-2 text-sm font-bold text-white">تمام</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

@@ -25,6 +25,7 @@ const { itemBalances } = require('../lib/agreedPrice');
 const { capturePublicLead } = require('../lib/publicLead');
 const metaCapi = require('../lib/metaCapi');
 const joinApplication = require('../lib/joinApplication');
+const { certificateCourse, certificateName, missingForCertificate } = require('../lib/certificateEnglish');
 const { SYSTEM_SEARCH_PERMISSIONS, searchSystem } = require('../lib/systemSearch');
 
 // The contact form's subjects that are sales' to answer (client/pages/Contact.tsx).
@@ -477,8 +478,8 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
   try {
     const [[row]] = await pool.query(
       `SELECT cc.certificate_code,cc.completed_at,cc.tenant_id,
-              COALESCE(NULLIF(s.name_en, ''), s.name) AS subscriber_name, s.client_code,
-              c.title AS course_title, c.hours AS hours_count,
+              s.name_en AS subscriber_name_en, s.client_code,
+              c.title AS course_title, c.title_en AS course_title_en, c.hours AS hours_count,
               u.name AS instructor_name
        FROM course_completions cc
        JOIN subscribers s ON s.id = cc.subscriber_id AND s.tenant_id=cc.tenant_id
@@ -497,8 +498,17 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
     }
 
     const certCode    = row.certificate_code || req.params.code;
-    const studentName = (row.subscriber_name || 'Student').toUpperCase();
-    const courseName  = row.course_title || 'Training Course';
+    // English only («اسم العميل واسم الكورس بالانجليزي فقط»): never the Arabic name or title.
+    const studentName = certificateName(row.subscriber_name_en);
+    const courseName  = certificateCourse({ title_en: row.course_title_en, title: row.course_title });
+    if (!studentName || !courseName) {
+      const missing = missingForCertificate({ nameEn: row.subscriber_name_en, courseTitleEn: row.course_title_en, courseTitle: row.course_title });
+      return res.status(409).type('html').send(`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>الشهادة غير جاهزة</title></head>
+<body style="font-family:Tahoma,Arial,sans-serif;max-width:520px;margin:12vh auto;padding:0 20px;text-align:center;color:#333">
+<h2 style="color:#B45309">الشهادة غير جاهزة للطباعة</h2>
+<p style="line-height:1.9">شهادة المعهد بتتطبع بالإنجليزي فقط، وناقص: <b>${escapeHtml(missing.join(' و'))}</b>.</p>
+<p style="line-height:1.9;color:#666">التحصيل أو خدمة العملاء يضيفوه من ملف العميل ← «بيانات الشهادة»، وبعدها الشهادة تتفتح.</p></body></html>`);
+    }
     const issuedAt    = row.completed_at
       ? new Date(row.completed_at).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric', timeZone: 'Africa/Cairo' })
       : new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric', timeZone: 'Africa/Cairo' });

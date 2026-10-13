@@ -5,6 +5,7 @@
 // The desk that works the certificates: manage_certificates.
 
 const express = require('express');
+const { certificateCourse, missingForCertificate } = require('../lib/certificateEnglish');
 const router = express.Router();
 const logger = require('../lib/logger');
 const { pool } = require('../lib/db');
@@ -25,7 +26,7 @@ router.get('/api/admin/institute-certificates', ...desk, async (req, res) => {
               cc.downloaded_at, cc.download_count,
               s.id AS subscriber_id, s.name AS subscriber_name, s.name_en, s.phone, s.client_code, s.branch,
               s.national_id, s.personal_photo_url, s.id_photo_url,
-              COALESCE(NULLIF(c.title_ar, ''), c.title) AS course_title
+              COALESCE(NULLIF(c.title_ar, ''), c.title) AS course_title, c.title AS course_title_main, c.title_en AS course_title_en
          FROM course_completions cc
          JOIN subscribers s ON s.id = cc.subscriber_id AND s.tenant_id = cc.tenant_id AND s.deleted_at IS NULL
          LEFT JOIN courses c ON c.id = cc.course_id AND c.tenant_id = cc.tenant_id
@@ -37,6 +38,9 @@ router.get('/api/admin/institute-certificates', ...desk, async (req, res) => {
       downloadedAt: row.downloaded_at, downloads: Number(row.download_count) || 0,
       subscriberId: row.subscriber_id, subscriberName: row.subscriber_name || '', nameEn: row.name_en || null,
       phone: row.phone || '', clientCode: row.client_code || null, branch: row.branch || null, courseTitle: row.course_title || '',
+      // The certificate prints in English only: what is missing before it can be printed.
+      courseTitleEn: certificateCourse({ title_en: row.course_title_en, title: row.course_title_main }),
+      missing: missingForCertificate({ nameEn: row.name_en, courseTitleEn: row.course_title_en, courseTitle: row.course_title_main }),
       nationalId: row.national_id || null, personalPhotoUrl: row.personal_photo_url || null, idPhotoUrl: row.id_photo_url || null,
     })));
   } catch (e) { logger.error('[institute-certificates/list]', e.message); res.status(500).json({ error: 'Internal server error' }); }
