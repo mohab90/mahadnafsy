@@ -173,7 +173,8 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
       for (const courseId of [...new Set(courseIds)]) {
         let accessType = 'full';
         let paidRatio = null;
-        if (payment.is_installment && Number(payment.course_expected) > 0) {
+        // A pending booking approved for less than its price opens its first payment's videos, like an instalment.
+        if (Number(payment.course_expected) > 0) {
           const resolved = await resolvePaymentAccess({
             db: conn,
             tenantId,
@@ -184,6 +185,7 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
             currentAmount: payment.amount,
             currency: payment.currency,
             expectedAmount: payment.course_expected,
+            lenient: !payment.is_installment,
           });
           accessType = accessModeOf(resolved);
           paidRatio = paidRatioOf(resolved);

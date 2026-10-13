@@ -3,6 +3,13 @@
 // Determines whether a paid installment may unlock full learning access.
 // Installment aggregation is intentionally single-currency: mixing nominal
 // amounts or changing the expected total would grant access incorrectly.
+//
+// `lenient` is for a BOOKING that paid less than its price (the first payment, the
+// deposit): «لما العميل بيتحول من محتمل الي اونلاين ليه بيتفتح له الفيديوهات كاملة
+// المفروض دا حجز جزئي يظهر الفيديوهات اول دفعة فقط» (13 Oct 2026). Only instalments
+// were measured against the price; a booking with a deposit was granted the whole
+// course. A booking has no instalment plan to contradict, so a different currency or
+// price on an older row is no reason to refuse it — only same-currency money counts.
 async function resolvePaymentAccess({
   db,
   tenantId,
@@ -13,6 +20,7 @@ async function resolvePaymentAccess({
   currentAmount,
   currency,
   expectedAmount,
+  lenient = false,
 }) {
   const amount = Number(currentAmount);
   const expected = Number(expectedAmount);
@@ -35,11 +43,13 @@ async function resolvePaymentAccess({
       GROUP BY currency`,
     [tenantId, subscriberId, currentPaymentId, courseId, bundleId],
   );
-  if (priorRows.some(row => String(row.currency || '').toUpperCase() !== normalizedCurrency)) {
+  if (!lenient && priorRows.some(row => String(row.currency || '').toUpperCase() !== normalizedCurrency)) {
     throw financialConflict('Installment payments cannot mix currencies', 'INSTALLMENT_CURRENCY_MISMATCH');
   }
-  const prior = priorRows[0];
-  if (prior && (
+  const prior = lenient
+    ? priorRows.find(row => String(row.currency || '').toUpperCase() === normalizedCurrency)
+    : priorRows[0];
+  if (!lenient && prior && (
     (prior.min_expected != null && Math.abs(Number(prior.min_expected) - expected) >= 0.01)
     || (prior.max_expected != null && Math.abs(Number(prior.max_expected) - expected) >= 0.01)
   )) {

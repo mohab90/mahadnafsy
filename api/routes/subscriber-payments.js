@@ -861,7 +861,9 @@ async function recordSubscriberPayment(req, res) {
     if (isPaid && paysForItem && (courseId || bundleId)) {
       let enrollAccessType = 'full';
       let enrollPaidRatio = null;
-      if (payment.isInstallment) {
+      // An instalment is measured against the price; so is a booking that paid less
+      // than it — a deposit opens the first payment's videos, not the whole course.
+      if (payment.isInstallment || Number(resolvedExpected) > 0) {
         const resolved = await resolvePaymentAccess({
           db: conn,
           tenantId: paymentTenantId,
@@ -872,6 +874,7 @@ async function recordSubscriberPayment(req, res) {
           currentAmount: paymentAmount,
           currency: paymentCurrency,
           expectedAmount: resolvedExpected,
+          lenient: !payment.isInstallment,
         });
         enrollAccessType = accessModeOf(resolved);
         enrollPaidRatio = paidRatioOf(resolved);
