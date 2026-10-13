@@ -1,4 +1,5 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
+import { arabicReason } from '../../lib/apiErrorText';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import type { LeadItem, SubscriberCertificate, SubscriberItem } from '../../types';
 import { generatePromoCode } from './constants';
@@ -21,6 +22,7 @@ function persistenceError(field: string, error: unknown) {
     detail: {
       field,
       name: error instanceof Error ? error.message : 'تعذر حفظ العملية',
+      reason: arabicReason(error),
     },
   }));
 }

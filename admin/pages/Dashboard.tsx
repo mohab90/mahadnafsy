@@ -1,4 +1,5 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { arabicReason } from '../lib/apiErrorText';
 const LeadSalesNotificationsPanel = React.lazy(() => import('./dashboard/tabs/leads/LeadSalesNotificationsPanel').then(m => ({ default: m.LeadSalesNotificationsPanel })));
 import { adminAuthHeaders } from '../lib/adminAuthHeaders';
 
@@ -198,7 +199,7 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{ field?: string; name?: string; reason?: string; action?: string }>).detail;
-      const reason = String(detail?.reason || '').trim();
+      const reason = detail?.reason ? arabicReason(String(detail.reason), '') : '';
       // A delete the server refused is not a failed save. Prefixing it with
       // "فشل الحفظ" named the wrong action and read as a bug in the panel rather
       // than as the rule it is, so a refusal that already explains itself is

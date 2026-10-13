@@ -4,6 +4,7 @@
  */
 import { latinDigits } from '../../shared/latinDigits';
 import React, { useEffect, useState } from 'react';
+import { arabicReason } from '../lib/apiErrorText';
 import { cairoDateOnly } from '../../shared/cairoDate';
 import { CreditCard, Home, X } from 'lucide-react';
 import { useCrmData, useStaticData } from '../context/siteDataSlices';
@@ -741,7 +742,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       if (printPayload) setPrintData(printPayload);
       else onClose();
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : 'تعذر حفظ الدفعة. حاول مرة أخرى.');
+      setSubmitError(arabicReason(error, 'تعذر حفظ الدفعة'));
     } finally {
       // Never carried to a later payment, whatever happened to this one.
       attributeNextPayment(null);

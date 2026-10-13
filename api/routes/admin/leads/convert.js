@@ -81,7 +81,7 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
        FROM leads WHERE id=? AND tenant_id=? AND hidden=0 LIMIT 1 FOR UPDATE`, [leadId, tenantId]);
     if (!lead) {
       await conn.rollback(); transactionStarted = false;
-      return res.status(404).json({ error: 'Lead not found' });
+      return res.status(404).json({ error: 'العميل المحتمل ده مش موجود أو اتنقل — حدّث الصفحة وابحث عنه تاني.', code: 'LEAD_NOT_FOUND' });
     }
     // Within the caller's own leads, whatever the role — this checked a sales
     // rep's ownership and nobody else's, so any other role holding manage_leads
@@ -114,7 +114,7 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
       );
       if (!course) {
         await conn.rollback(); transactionStarted = false;
-        return res.status(400).json({ error: 'Course does not belong to tenant' });
+        return res.status(400).json({ error: 'الكورس المختار مش موجود — حدّث الصفحة واختاره تاني.', code: 'COURSE_NOT_FOUND' });
       }
     }
 

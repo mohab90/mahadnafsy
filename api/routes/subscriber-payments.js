@@ -122,19 +122,19 @@ async function recordSubscriberPayment(req, res) {
     const subscriberDraft = req.body.subscriber || {};
     const createFromDraftRequested = !subscriber_id && !leadId && subscriberDraft && typeof subscriberDraft === 'object';
     if ((!subscriber_id && !leadId && !createFromDraftRequested) || !payment) {
-      return res.status(400).json({ error: 'subscriber_id, lead_id, or subscriber draft and payment required' });
+      return res.status(400).json({ error: 'بيانات الحجز ناقصة — اختر العميل وأدخل الدفعة وحاول تاني.', code: 'BOOKING_DATA_MISSING' });
     }
     const paymentAmount = Number(payment.amount);
     if (!Number.isFinite(paymentAmount) || paymentAmount <= 0 || paymentAmount > 10000000) {
-      return res.status(400).json({ error: 'payment.amount must be a finite positive amount' });
+      return res.status(400).json({ error: 'المبلغ لازم يكون رقم أكبر من صفر (وأقل من 10,000,000).', code: 'AMOUNT_INVALID' });
     }
     const paymentCurrency = String(payment.currency || 'EGP').toUpperCase();
     if (!['EGP', 'SAR', 'USD'].includes(paymentCurrency)) {
-      return res.status(400).json({ error: 'Unsupported payment currency' });
+      return res.status(400).json({ error: 'العملة دي مش مدعومة — اختر جنيه أو ريال أو دولار.', code: 'CURRENCY_UNSUPPORTED' });
     }
     const requestedStatus = String(payment.status || 'paid').toLowerCase();
     if (!['paid', 'pending'].includes(requestedStatus)) {
-      return res.status(400).json({ error: 'New manual payments must be paid or pending' });
+      return res.status(400).json({ error: 'الدفعة اليدوية الجديدة لازم تكون «مدفوعة» أو «معلّقة» فقط.', code: 'STATUS_INVALID' });
     }
     // «تسكين» with the booking: a Dokki booking may name the round the client is seated
     // in. Checked before any money is recorded, so a stale round is told at once.
@@ -218,13 +218,13 @@ async function recordSubscriberPayment(req, res) {
       }
     } else {
       if (!req.isSuperAdmin && !hasPermission(req.staffRecord, 'manage_subscribers')) {
-        return res.status(403).json({ error: 'Insufficient permissions to create subscriber' });
+        return res.status(403).json({ error: 'مش من صلاحياتك تسجّل عميل جديد — اطلب من المسئول أو اختر عميل موجود.', code: 'CANNOT_CREATE_CLIENT' });
       }
       const safeName = sanitize(subscriberDraft.name || '', 300);
       const safeEmail = sanitize(subscriberDraft.email || '', 255).trim().toLowerCase();
       const typedPhone = sanitize(subscriberDraft.phone || '', 30).trim();
       if (!safeName || !typedPhone) {
-        return res.status(400).json({ error: 'Subscriber name and phone are required' });
+        return res.status(400).json({ error: 'اسم العميل ورقم التليفون مطلوبين لتسجيل عميل جديد.', code: 'NAME_PHONE_REQUIRED' });
       }
       // The branch, or the branch of whoever is recording it.
       //
@@ -247,14 +247,21 @@ async function recordSubscriberPayment(req, res) {
       // A Saudi client's 05… gets its 966 before anything is compared or stored.
       const safePhone = String(completeForBranch(typedPhone, branch) || '').trim();
       const [[existing]] = await pool.query(
-        `SELECT id FROM subscribers
+        `SELECT id, name, client_code, phone, email, COALESCE(assigned_cs_name, assigned_sales_name) AS owner_name
+           FROM subscribers
           WHERE tenant_id=? AND deleted_at IS NULL
             AND (phone=? OR (?<>'' AND email = ?))
           LIMIT 1`,
         [req.tenantId, safePhone, safeEmail, safeEmail]
       );
       if (existing) {
-        return res.status(409).json({ error: 'الرقم أو الإيميل ده عليه عميل تاني في قاعدة العملاء — سجّل الدفعة على العميل ده.', code: 'SUBSCRIBER_EXISTS', existingId: existing.id });
+        // Says who it is: «العميل مسجل من قبل» alone sent the desk searching.
+        const sameNumber = existing.phone === safePhone;
+        const who = `«${existing.name || 'عميل'}»${existing.client_code ? ` (كود ${existing.client_code})` : ''}`;
+        return res.status(409).json({
+          error: `العميل مسجل من قبل بنفس ${sameNumber ? 'رقم التليفون' : 'الإيميل'}: ${who}${existing.owner_name ? ` — المسئول عنه ${existing.owner_name}` : ''}. سجّل الدفعة على ملفه بدل تسجيله من جديد (زر «بحث»).`,
+          code: 'SUBSCRIBER_EXISTS', existingId: existing.id, existingName: existing.name || null, existingCode: existing.client_code || null,
+        });
       }
       createFromDraft = true;
       subscriber_id = uuidv4();
@@ -275,7 +282,7 @@ async function recordSubscriberPayment(req, res) {
       };
     }
     if (!financialRecordMatches(scope, subRow)) {
-      return res.status(403).json({ error: 'Subscriber is outside your payment scope' });
+      return res.status(403).json({ error: 'العميل ده خارج نطاق صلاحياتك في الدفع — ده عميل مسئول عنه موظف أو فرع تاني.', code: 'SUBSCRIBER_OUT_OF_SCOPE' });
     }
     // «متخليش السيستم يقبل عميل دفع بدون رقم تليفون حقيقي»: money is recorded
     // only against a client who can be reached. 29 paying clients had no real
@@ -317,7 +324,7 @@ async function recordSubscriberPayment(req, res) {
       payment.certId || payment.cert_id || payment.certReqId || payment.certificate_request_id || ''
     ).trim();
     if (rawCertificateRequestId.length > 36) {
-      return res.status(400).json({ error: 'Invalid certificate request ID' });
+      return res.status(400).json({ error: 'طلب الشهادة المختار غير صالح — حدّث الصفحة واختاره تاني.', code: 'CERTIFICATE_REQUEST_INVALID' });
     }
     const suppliedCertificateRequestId = sanitize(rawCertificateRequestId, 36) || null;
     if (safeType === 'CERTIFICATE' && !suppliedCertificateRequestId && !certType) {
@@ -353,7 +360,7 @@ async function recordSubscriberPayment(req, res) {
         'SELECT name FROM staff WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
         [resolvedStaffId, paymentTenantId]
       );
-      if (!su) return res.status(400).json({ error: 'Staff does not belong to tenant' });
+      if (!su) return res.status(400).json({ error: 'الموظف المسجَّل عليه الدفعة مش تابع للمعهد ده.', code: 'STAFF_NOT_IN_TENANT' });
       resolvedStaffName = su.name || null;
     }
 
@@ -383,7 +390,7 @@ async function recordSubscriberPayment(req, res) {
     const submittedDate = payment.date || payment.at;
     const resolvedDate = submittedDate ? cairoDayOf(submittedDate) : cairoToday();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(resolvedDate)) {
-      return res.status(400).json({ error: 'Invalid payment date' });
+      return res.status(400).json({ error: 'تاريخ الدفعة غير صحيح.', code: 'PAYMENT_DATE_INVALID' });
     }
     const isPaid = storedStatus === 'paid';
     // A riyal or dollar payment is posted in pounds at today's rate. A stale
@@ -414,7 +421,7 @@ async function recordSubscriberPayment(req, res) {
     }
     const courseId = payment.courseId || payment.course_id || null;
     const bundleId = payment.bundleId || payment.bundle_id || null;
-    if (courseId && bundleId) return res.status(400).json({ error: 'Payment cannot target a course and bundle together' });
+    if (courseId && bundleId) return res.status(400).json({ error: 'الدفعة تكون على كورس أو على باقة، مش الاتنين مع بعض.', code: 'COURSE_AND_BUNDLE' });
     // A COURSE payment has to name what was bought.
     //
     // 88 rows on production are payment_type COURSE with neither a course nor a
@@ -435,7 +442,7 @@ async function recordSubscriberPayment(req, res) {
     const suppliedExpected = reviewedByManager(req) ? null : (payment.courseExpected ?? payment.course_expected);
     const courseExpected = suppliedExpected == null ? null : Number(suppliedExpected);
     if (courseExpected != null && (!Number.isFinite(courseExpected) || courseExpected <= 0 || courseExpected > 10000000)) {
-      return res.status(400).json({ error: 'courseExpected must be a finite positive amount' });
+      return res.status(400).json({ error: 'سعر الكورس المتفق عليه لازم يكون رقم أكبر من صفر.', code: 'EXPECTED_INVALID' });
     }
     // What the customer owes for this course, when nobody said.
     //
@@ -470,7 +477,7 @@ async function recordSubscriberPayment(req, res) {
       && (req.isSuperAdmin || hasPermission(req.staffRecord, 'set_client_price'));
     let tierPrice = null;
     if (priceTier && paysForItem && (courseId || bundleId)) {
-      if (!PRICE_TIER_KEYS.has(priceTier)) return res.status(400).json({ error: 'Unknown price tier', code: 'PRICE_TIER_UNKNOWN' });
+      if (!PRICE_TIER_KEYS.has(priceTier)) return res.status(400).json({ error: 'فئة السعر المختارة غير معروفة — حدّث الصفحة.', code: 'PRICE_TIER_UNKNOWN' });
       tierPrice = await resolveTierPrice(pool, {
         tenantId: paymentTenantId,
         type: bundleId ? 'bundle' : 'course',
@@ -519,14 +526,14 @@ async function recordSubscriberPayment(req, res) {
         'SELECT id FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
         [courseId, paymentTenantId]
       );
-      if (!course) return res.status(400).json({ error: 'Course does not belong to tenant' });
+      if (!course) return res.status(400).json({ error: 'الكورس المختار مش موجود — حدّث الصفحة واختاره تاني.', code: 'COURSE_NOT_FOUND' });
     }
     if (bundleId) {
       const [[bundle]] = await pool.query(
         'SELECT id FROM bundles WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
         [bundleId, paymentTenantId]
       );
-      if (!bundle) return res.status(400).json({ error: 'Bundle does not belong to tenant' });
+      if (!bundle) return res.status(400).json({ error: 'الباقة المختارة مش موجودة — حدّث الصفحة واختارها تاني.', code: 'BUNDLE_NOT_FOUND' });
     }
 
     // A new customer from a collection account is a request, not a customer:

@@ -33,9 +33,9 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
     const { status, reviewNote } = req.body || {};
     const scope = resolveFinancialScope(req, { requestedBranch: req.body.branch || null });
     if (!['paid', 'failed', 'pending'].includes(status)) {
-      return res.status(400).json({ error: 'Invalid status; use the refund workflow for refunds' });
+      return res.status(400).json({ error: 'الحالة دي غير صحيحة — الاسترداد له مسار خاص (طلب استرداد).', code: 'PAYMENT_STATUS_INVALID' });
     }
-    if (String(reviewNote || '').length > 2000) return res.status(400).json({ error: 'reviewNote is too long' });
+    if (String(reviewNote || '').length > 2000) return res.status(400).json({ error: 'ملاحظة المراجعة أطول من المسموح (2000 حرف).', code: 'REVIEW_NOTE_TOO_LONG' });
     const tenantId = req.tenantId;
     const actor = req.user?.email || req.user?.uid || 'admin';
     await conn.beginTransaction();
@@ -51,22 +51,22 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
     );
     if (!payment) {
       await conn.rollback(); transactionStarted = false;
-      return res.status(404).json({ error: 'Payment not found' });
+      return res.status(404).json({ error: 'الدفعة دي مش موجودة — يمكن اتحذفت، حدّث الصفحة.', code: 'PAYMENT_NOT_FOUND' });
     }
     if (!financialRecordMatches(scope, payment)) {
       await conn.rollback();
       transactionStarted = false;
-      return res.status(403).json({ error: 'Payment is outside your financial scope' });
+      return res.status(403).json({ error: 'الدفعة دي خارج نطاق صلاحياتك المالية (فرع أو موظف تاني).', code: 'PAYMENT_OUT_OF_SCOPE' });
     }
     await assertWritable(payment.date, conn, tenantId);
     const oldStatus = payment.status || 'pending';
     if (oldStatus === 'refunded') {
       await conn.rollback(); transactionStarted = false;
-      return res.status(409).json({ error: 'Refunded payments are immutable' });
+      return res.status(409).json({ error: 'الدفعة دي مستردّة ومينفعش تتعدّل.', code: 'PAYMENT_REFUNDED' });
     }
     if (oldStatus === 'paid' && status !== 'paid') {
       await conn.rollback(); transactionStarted = false;
-      return res.status(409).json({ error: 'Paid payments require a refund/reversal workflow' });
+      return res.status(409).json({ error: 'الدفعة دي مدفوعة بالفعل — لتغييرها استخدم التصحيح أو الاسترداد.', code: 'PAYMENT_ALREADY_PAID' });
     }
     if (oldStatus === status) {
       await conn.commit(); transactionStarted = false;

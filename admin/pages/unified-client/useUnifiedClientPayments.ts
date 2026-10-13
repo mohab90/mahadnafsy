@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { arabicReason } from '../../lib/apiErrorText';
 import { cairoDateOnly, cairoDaysAhead } from '../../../shared/cairoDate';
 import type { PaymentDraft } from '../../components/PaymentModal';
 import { currencyForBranch, currencyLabel } from '../../lib/branchCurrency';
@@ -46,6 +47,7 @@ function persistenceError(field: string, error: unknown) {
     detail: {
       field,
       name: error instanceof Error ? error.message : 'تعذر حفظ العملية',
+      reason: arabicReason(error),
     },
   }));
 }
