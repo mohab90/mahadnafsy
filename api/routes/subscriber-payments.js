@@ -29,7 +29,7 @@ const { financialRecordMatches, resolveFinancialScope } = require('../lib/financ
 const { grantCourseSelections } = require('../lib/entitlements');
 const { getNextClientCode } = require('../lib/mappers');
 const { leadScope } = require('../lib/leadAccess');
-const { completeForBranch, isRealPhone } = require('../lib/phoneNumber');
+const { completeForBranch, identitySpellings, isRealPhone } = require('../lib/phoneNumber');
 const { VALID_BRANCHES } = require('../constants/permissions');
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../lib/paymentEntitlementAccess');
 const { isCashMethod, linkTransfer } = require('../lib/incomingTransfers');
@@ -247,17 +247,20 @@ async function recordSubscriberPayment(req, res) {
       }
       // A Saudi client's 05… gets its 966 before anything is compared or stored.
       const safePhone = String(completeForBranch(typedPhone, branch) || '').trim();
+      // The same number however it was written — «+966 50 123 4567», 0501234567,
+      // 966501234567 — not just the exact text typed now.
+      const spellings = [...new Set([safePhone, ...identitySpellings(safePhone)])].filter(Boolean);
       const [[existing]] = await pool.query(
         `SELECT id, name, client_code, phone, email, COALESCE(assigned_cs_name, assigned_sales_name) AS owner_name
            FROM subscribers
           WHERE tenant_id=? AND deleted_at IS NULL
-            AND (phone=? OR (?<>'' AND email = ?))
+            AND (phone IN (?) OR REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '') IN (?) OR (?<>'' AND email = ?))
           LIMIT 1`,
-        [req.tenantId, safePhone, safeEmail, safeEmail]
+        [req.tenantId, spellings, spellings, safeEmail, safeEmail]
       );
       if (existing) {
         // Says who it is: «العميل مسجل من قبل» alone sent the desk searching.
-        const sameNumber = existing.phone === safePhone;
+        const sameNumber = existing.phone === safePhone || spellings.includes(String(existing.phone || '').replace(/\D/g, ''));
         const who = `«${existing.name || 'عميل'}»${existing.client_code ? ` (كود ${existing.client_code})` : ''}`;
         return res.status(409).json({
           error: `العميل مسجل من قبل بنفس ${sameNumber ? 'رقم التليفون' : 'الإيميل'}: ${who}${existing.owner_name ? ` — المسئول عنه ${existing.owner_name}` : ''}. سجّل الدفعة على ملفه بدل تسجيله من جديد (زر «بحث»).`,
