@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { arabicReason } from '../../lib/apiErrorText';
+import { extraPaymentEntries } from '../../lib/extraPaymentEntries';
 import { cairoDateOnly, cairoDaysAhead } from '../../../shared/cairoDate';
 import type { PaymentDraft } from '../../components/PaymentModal';
 import { currencyForBranch, currencyLabel } from '../../lib/branchCurrency';
@@ -272,7 +273,26 @@ export function useUnifiedClientPayments(params: Params) {
     // The branch tier and the client's real name (lib/bookingIdentity.ts); the server prices it.
     const tierFields = draft.bookingType === 'new_booking' ? bookingTierFields(draft) : {};
     try {
+      // The added rows (a second course, a carnet, a certificate…) are built BEFORE
+      // any money is recorded, so a missing price stops the whole save rather than
+      // leaving the main payment in and the rest out.
+      const extras = extraPaymentEntries(draft, {
+        courses, bundles, staff: currentStaff,
+        noteParts: [draft.note, draft.transactionId].filter(Boolean) as string[],
+      });
       await recordSubscriberPayment(subscriber.id, { ...entry, ...tierFields } as unknown as Record<string, unknown>);
+      // The client's page used to record the main payment alone and drop every added row, silently.
+      for (const [position, extra] of extras.entries()) {
+        try {
+          await recordSubscriberPayment(subscriber.id, extra as unknown as Record<string, unknown>);
+        } catch (extraError) {
+          const left = extras.length - position;
+          // The main payment is already in: the dialog closes, so it cannot be sent twice.
+          setShowSubPayForm(false);
+          persistenceError('payment', new Error(`تم تسجيل الدفعة الأساسية، لكن فشل تسجيل ${left > 1 ? `${left} إضافات` : 'الإضافة'} (${extra.amount} ${extra.currency}): ${arabicReason(extraError)} — سجّلها من جديد من «حجز أو دفع جديد» ولا تكرر الدفعة الأساسية.`));
+          return;
+        }
+      }
       setShowSubPayForm(false);
       setPayModalDraft(createClientPaymentDraft({
         branch: subscriber.branch,

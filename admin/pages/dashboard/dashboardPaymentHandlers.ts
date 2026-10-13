@@ -50,10 +50,10 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
   if (!subPayRow) return;
   const courseItemsComputed = draft.paymentType === 'course'
     ? [
-        { courseId: draft.courseId, amount: draft.amount, customExpected: draft.customExpected, discountPct: draft.discountPct, useDiscount: draft.useDiscount, tierDiscountPct: draft.tierDiscountPct || 0 },
+        { courseId: draft.courseId, amount: draft.amount, customExpected: draft.customExpected, discountPct: draft.discountPct, useDiscount: draft.useDiscount, tierDiscountPct: draft.tierDiscountPct || 0, newBooking: false },
         // The percentage buttons are the main course's; an added course is its tier's price or discount price.
         ...draft.extraItems.filter(i => i.type === 'course').map(i => ({
-          courseId: i.courseId || '', amount: i.amount, customExpected: i.customExpected || '', discountPct: i.discountPct || '', useDiscount: i.useDiscount, tierDiscountPct: 0,
+          courseId: i.courseId || '', amount: i.amount, customExpected: i.customExpected || '', discountPct: i.discountPct || '', useDiscount: i.useDiscount, tierDiscountPct: 0, newBooking: Boolean(i.newBooking),
         })),
       ].filter(item => item.courseId && item.amount)
     : [];
@@ -173,14 +173,28 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
         const isBundleItem = item.courseId.startsWith('bundle:');
         const itemBundle = isBundleItem ? bundles.find(row => row.id === item.courseId.replace('bundle:', '')) : null;
         const custom = Number(item.customExpected) || 0;
+        // A course the client does not hold is BOOKED, with its price — not paid as
+        // an instalment on a course they never booked («هيحجز كورس جديد»).
+        const bookedPrice = item.newBooking
+          ? (custom > 0 ? custom : (() => {
+            const catalogue = isBundleItem
+              ? priceForCurrency(itemBundle?.price, subPayDraft.currency)
+              : (courses.find(c => c.id === item.courseId)?.price?.[subPayDraft.currency as 'EGP' | 'SAR' | 'USD'] || 0);
+            const pct = Number(item.discountPct) || 0;
+            return pct > 0 && catalogue > 0 ? Math.round(catalogue * (1 - pct / 100)) : catalogue;
+          })())
+          : 0;
+        if (item.newBooking && bookedPrice <= 0) {
+          throw new Error(`سعر ${subPayDraft.currency} غير مُعرّف للكورس الجديد؛ اكتب «السعر المتفق عليه» قبل الحفظ.`);
+        }
         return {
           id: `pay-${Date.now()}-inst-${index}`,
           amount: Number(item.amount),
           // Its own price only when the desk changed it; otherwise the agreed one (api/lib/agreedPrice.js).
-          courseExpected: custom > 0 ? custom : undefined,
+          courseExpected: item.newBooking ? bookedPrice : (custom > 0 ? custom : undefined),
           currency: subPayDraft.currency,
           paymentType: 'course',
-          isInstallment: true,
+          isInstallment: !item.newBooking,
           courseId: isBundleItem ? undefined : item.courseId,
           bundleId: isBundleItem ? item.courseId.replace('bundle:', '') : undefined,
           note: [noteParts.join(' | '), itemBundle ? `مسار تعليمي: ${itemBundle.title}` : undefined].filter(Boolean).join(' | ') || undefined,
@@ -192,6 +206,12 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
         } as PaymentHistoryEntry;
       });
       updated = { ...updated, paymentHistory: [...(updated.paymentHistory || []), ...addedEntries] };
+      // A course booked new inside the instalment is the client's from now on.
+      for (const item of added.filter(row => row.newBooking)) {
+        const bundleRow = item.courseId.startsWith('bundle:') ? bundles.find(row => row.id === item.courseId.slice(7)) : null;
+        const ids = bundleRow ? bundleRow.courses.map((c: { id: string }) => c.id) : [item.courseId];
+        updated = { ...updated, enrolledCourseIds: [...new Set([...(updated.enrolledCourseIds || []), ...ids])] };
+      }
     }
 
     if (subPayDraft.paymentType === 'course') {
@@ -262,6 +282,19 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
 
     const isFirstPayment = subPayDraft.bookingType === 'new_booking';
     let newCourseAccess = { ...(updated.courseAccess ?? {}) };
+
+    // A course booked new inside an instalment opens like any first payment: the
+    // deposit's videos, not the whole course.
+    if (!isMultiCourse) {
+      for (const item of subPayDraft.courseItems.filter(row => row.newBooking && row.courseId && row.amount)) {
+        const bundleRow = item.courseId.startsWith('bundle:') ? bundles.find(row => row.id === item.courseId.slice(7)) : null;
+        const ids = bundleRow ? bundleRow.courses.map((c: { id: string }) => c.id) : [item.courseId];
+        for (const id of ids) {
+          if (normalizeAccessEntry(newCourseAccess[id]).mode === 'full') continue;
+          newCourseAccess[id] = { mode: 'limited', lectureLimit: depositVids };
+        }
+      }
+    }
 
     for (const cid of affectedCourseIds) {
       const curAccess = normalizeAccessEntry(newCourseAccess[cid]);
@@ -370,10 +403,10 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
   if (!leadPayRow) return;
   const courseItemsComputed = draft.paymentType === 'course'
     ? [
-        { courseId: draft.courseId, amount: draft.amount, customExpected: draft.customExpected, discountPct: draft.discountPct, useDiscount: draft.useDiscount, tierDiscountPct: draft.tierDiscountPct || 0 },
+        { courseId: draft.courseId, amount: draft.amount, customExpected: draft.customExpected, discountPct: draft.discountPct, useDiscount: draft.useDiscount, tierDiscountPct: draft.tierDiscountPct || 0, newBooking: false },
         // The percentage buttons are the main course's; an added course is its tier's price or discount price.
         ...draft.extraItems.filter(i => i.type === 'course').map(i => ({
-          courseId: i.courseId || '', amount: i.amount, customExpected: i.customExpected || '', discountPct: i.discountPct || '', useDiscount: i.useDiscount, tierDiscountPct: 0,
+          courseId: i.courseId || '', amount: i.amount, customExpected: i.customExpected || '', discountPct: i.discountPct || '', useDiscount: i.useDiscount, tierDiscountPct: 0, newBooking: Boolean(i.newBooking),
         })),
       ].filter(item => item.courseId && item.amount)
     : [];

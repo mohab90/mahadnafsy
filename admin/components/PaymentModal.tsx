@@ -92,6 +92,11 @@ export interface ExtraPayItem {
   customExpected?: string;
   /** A course added to a tier-priced booking takes the same tier; this is its discount choice. */
   useDiscount?: boolean;
+  /**
+   * A course added to an INSTALMENT that the client does not hold: it is booked
+   * (with its price), not paid as an instalment on a course they never booked.
+   */
+  newBooking?: boolean;
 }
 
 export const blankPaymentDraft = (opts?: {
@@ -579,6 +584,10 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
         return { cid, label, px, paid, remaining, isBnd };
       }),
   ];
+
+  // Everything the client already holds: an added course outside it is a new booking.
+  const heldCids = new Set<string>(enrolledOptions.map(opt => opt.cid));
+  autoDetectedCourseIds.forEach(cid => heldCids.add(cid));
 
   // The totals bar: every course and track they hold, at the price agreed.
   // It summed only bookings that had recorded a price — a quarter had none —
@@ -1347,26 +1356,39 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                       <>
                         <select
                           value={item.courseId || ''}
-                          onChange={e => updateItem({ courseId: e.target.value, discountPct: '', customExpected: '' })}
+                          onChange={e => updateItem({
+                            courseId: e.target.value, discountPct: '', customExpected: '',
+                            // In an instalment, a course the client does not hold is a new booking.
+                            newBooking: d.bookingType === 'installment' && !!e.target.value && !heldCids.has(e.target.value),
+                          })}
                           className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:border-blue-400"
                         >
                           <option value="">— اختر الكورس —</option>
-                          {/* A split instalment is paid on the client's own courses, with what each still owes. */}
-                          {d.bookingType === 'installment' && enrolledOptions.length > 0 ? (
-                            <optgroup label="كورسات العميل">
+                          {/* A split instalment is paid on the client's own courses, with what each still owes —
+                              and any other course is booked new: «لازم يختار باقي الكورسات». */}
+                          {d.bookingType === 'installment' && enrolledOptions.length > 0 ? (<>
+                            <optgroup label="💳 قسط على كورسات العميل">
                               {enrolledOptions.filter(opt => opt.cid !== d.courseId).map(opt => (
                                 <option key={opt.cid} value={opt.cid}>
                                   {opt.isBnd ? '📌 ' : ''}{opt.label}{opt.remaining != null ? ` — متبقي ${opt.remaining.toLocaleString('ar-EG-u-nu-latn')}` : ''}
                                 </option>
                               ))}
                             </optgroup>
-                          ) : (<>
+                            {bundles.some(b => !heldCids.has(`bundle:${b.id}`)) && (
+                              <optgroup label="🆕 حجز مسار جديد">
+                                {bundles.filter(b => !heldCids.has(`bundle:${b.id}`)).map(b => <option key={`bundle:${b.id}`} value={`bundle:${b.id}`}>📌 {b.title}</option>)}
+                              </optgroup>
+                            )}
+                            <optgroup label="🆕 حجز كورس جديد">
+                              {courses.filter(c => !heldCids.has(c.id)).map(c => <option key={c.id} value={c.id}>{c.titleAr || c.title}</option>)}
+                            </optgroup>
+                          </>) : (<>
                             {bundles.length > 0 && <optgroup label="📌 المسارات">{bundles.map(b => <option key={`bundle:${b.id}`} value={`bundle:${b.id}`}>📌 {b.title}</option>)}</optgroup>}
                             <optgroup label="🎓 الكورسات">{courses.map(c => <option key={c.id} value={c.id}>{c.titleAr || c.title}</option>)}</optgroup>
                           </>)}
                         </select>
                         <div className="flex flex-wrap items-center gap-2 bg-red-50 border-2 border-red-200 rounded-xl px-3 py-2.5">
-                          <span className="text-xs font-extrabold text-red-700 whitespace-nowrap">{d.bookingType === 'installment' ? '💳 مبلغ القسط' : '💰 المقدم'}<span className="text-red-500">*</span></span>
+                          <span className="text-xs font-extrabold text-red-700 whitespace-nowrap">{d.bookingType === 'installment' && !item.newBooking ? '💳 مبلغ القسط' : '💰 المقدم'}<span className="text-red-500">*</span></span>
                           <input
                             type="number" min="0" placeholder="0" value={item.amount}
                             onChange={e => updateItem({ amount: e.target.value })}
@@ -1395,6 +1417,19 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                           )}
                           {item.courseId && !tierBooking && eiSysPx > 0 && (
                             <span className="text-xs font-bold text-gray-500 whitespace-nowrap">{eiSysPx.toLocaleString('ar-EG-u-nu-latn')} {d.currency}</span>
+                          )}
+                          {item.courseId && item.newBooking && (
+                            <>
+                              <span className="rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5 text-[11px] font-extrabold whitespace-nowrap">🆕 حجز جديد</span>
+                              <label className="flex items-center gap-1 text-[11px] font-bold text-gray-600 whitespace-nowrap">
+                                السعر المتفق عليه
+                                <input
+                                  type="number" min="0" placeholder={eiSysPx > 0 ? String(eiSysPx) : 'اكتب السعر'} value={item.customExpected || ''}
+                                  onChange={e => updateItem({ customExpected: e.target.value })}
+                                  className="w-24 border border-gray-300 bg-white rounded-lg px-2 py-1 text-xs font-bold text-center"
+                                />
+                              </label>
+                            </>
                           )}
                         </div>
                       </>
