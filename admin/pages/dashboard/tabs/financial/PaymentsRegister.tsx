@@ -9,6 +9,9 @@ import { downloadCsv } from '../../../../../shared/csv';
 type RegisterRow = {
   id: string;
   number: number | null;
+  /** «الدقي» / «التجمع» when `number` is that branch's own receipt number, else null. */
+  receiptBranch?: string | null;
+  operationNo?: number | null;
   date: string;
   amount: number;
   currency: string;
@@ -35,14 +38,14 @@ type Register = { rows: RegisterRow[]; total: number; totalEgp: number; facets: 
 const PAGE_SIZE = 50;
 const STATUS_LABEL: Record<string, string> = { paid: 'مؤكدة', pending: 'قيد المراجعة', refunded: 'مستردة', failed: 'فاشلة' };
 const fmt = (value: number) => Math.round(value).toLocaleString('ar-EG-u-nu-latn');
-export const paymentNumber = (n: number | null) => (n == null ? '—' : `#${n}`);
+export const paymentNumber = (n: number | null, branch?: string | null) => (n == null ? '—' : branch ? `${branch} #${n}` : `#${n}`);
 
 /** A printable receipt carrying the operation number. Every value is escaped. */
 function printReceipt(row: RegisterRow) {
   const w = window.open('', '_blank', 'width=700,height=900');
   if (!w) return;
   const amount = `${escapeHtml(row.amount)} ${escapeHtml(row.currency)}`;
-  w.document.write(`<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><title>إيصال ${escapeHtml(paymentNumber(row.number))}</title><style>body{font-family:Arial,sans-serif;padding:40px;direction:rtl;color:#111}.header{text-align:center;border-bottom:3px solid #059669;padding-bottom:20px;margin-bottom:30px}h1{color:#059669;margin:0;font-size:24px}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{padding:12px 16px;border:1px solid #e5e7eb;text-align:right}th{background:#f0fdf4;font-weight:700}tfoot td{font-weight:700;background:#f0fdf4}.footer{margin-top:40px;text-align:center;color:#888;font-size:12px;border-top:1px solid #e5e7eb;padding-top:16px}</style></head><body><div class="header"><h1>معهد الدراسات النفسية</h1><p style="color:#888;font-size:12px">إيصال رقم ${escapeHtml(paymentNumber(row.number))} — ${escapeHtml(cairoDay(row.date))}</p></div><h3>العميل: ${escapeHtml(row.client.name || '—')}${row.client.code ? ` (${escapeHtml(row.client.code)})` : ''}${row.recordedBy ? ` | بواسطة: ${escapeHtml(row.recordedBy)}` : ''}</h3><table><thead><tr><th>الخدمة</th><th>النوع</th><th>وسيلة الدفع</th><th>المبلغ</th></tr></thead><tbody><tr><td>${escapeHtml(row.service)}</td><td>${escapeHtml(row.typeLabel)}</td><td>${escapeHtml(row.channel)}</td><td>${amount}</td></tr></tbody><tfoot><tr><td colspan="3">الإجمالي</td><td>${amount}</td></tr></tfoot></table><div class="footer">معهد الدراسات النفسية — mahadnafsy.com</div></body></html>`);
+  w.document.write(`<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><title>إيصال ${escapeHtml(paymentNumber(row.number, row.receiptBranch))}</title><style>body{font-family:Arial,sans-serif;padding:40px;direction:rtl;color:#111}.header{text-align:center;border-bottom:3px solid #059669;padding-bottom:20px;margin-bottom:30px}h1{color:#059669;margin:0;font-size:24px}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{padding:12px 16px;border:1px solid #e5e7eb;text-align:right}th{background:#f0fdf4;font-weight:700}tfoot td{font-weight:700;background:#f0fdf4}.footer{margin-top:40px;text-align:center;color:#888;font-size:12px;border-top:1px solid #e5e7eb;padding-top:16px}</style></head><body><div class="header"><h1>معهد الدراسات النفسية</h1><p style="color:#888;font-size:12px">إيصال رقم ${escapeHtml(paymentNumber(row.number, row.receiptBranch))} — ${escapeHtml(cairoDay(row.date))}</p></div><h3>العميل: ${escapeHtml(row.client.name || '—')}${row.client.code ? ` (${escapeHtml(row.client.code)})` : ''}${row.recordedBy ? ` | بواسطة: ${escapeHtml(row.recordedBy)}` : ''}</h3><table><thead><tr><th>الخدمة</th><th>النوع</th><th>وسيلة الدفع</th><th>المبلغ</th></tr></thead><tbody><tr><td>${escapeHtml(row.service)}</td><td>${escapeHtml(row.typeLabel)}</td><td>${escapeHtml(row.channel)}</td><td>${amount}</td></tr></tbody><tfoot><tr><td colspan="3">الإجمالي</td><td>${amount}</td></tr></tfoot></table><div class="footer">معهد الدراسات النفسية — mahadnafsy.com</div></body></html>`);
   w.document.close();
   setTimeout(() => w.print(), 500);
 }
@@ -112,7 +115,7 @@ export function PaymentsRegister({ branch, initialMethod }: { branch?: string; i
       }
       downloadCsv('payments', [
         ['رقم العملية', 'التاريخ', 'العميل', 'كود العميل', 'الخدمة', 'النوع', 'القناة', 'المبلغ', 'العملة', 'القائم بالعملية', 'رقم التحويل', 'الحالة'],
-        ...rows.map(r => [paymentNumber(r.number), cairoDay(r.date), r.client.name || '', r.client.code || '', r.service, r.typeLabel, r.channel,
+        ...rows.map(r => [paymentNumber(r.number, r.receiptBranch), cairoDay(r.date), r.client.name || '', r.client.code || '', r.service, r.typeLabel, r.channel,
           String(r.amount), r.currency, r.recordedBy || '', r.transactionId || '', STATUS_LABEL[r.status] || r.status]),
       ]);
     } finally { setExporting(false); }
@@ -210,7 +213,7 @@ export function PaymentsRegister({ branch, initialMethod }: { branch?: string; i
             <tbody className="divide-y divide-gray-50">
               {data?.rows.map(row => (
                 <tr key={row.id} className="hover:bg-gray-50/80">
-                  <td className="px-3 py-2.5 font-mono text-xs font-bold text-gray-700">{paymentNumber(row.number)}</td>
+                  <td className="px-3 py-2.5 font-mono text-xs font-bold text-gray-700">{paymentNumber(row.number, row.receiptBranch)}</td>
                   <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">{cairoDay(row.date)}</td>
                   <td className="px-3 py-2.5">
                     {row.client.id

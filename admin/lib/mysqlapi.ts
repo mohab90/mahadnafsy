@@ -5,6 +5,7 @@
 import { AuthUser, CrmInsights, CxPerformance, DaqqiPerformance, OnlinePerformance, SalesTeamPerformance, ScoredLeadsResult, StaffLeadPerformance, SubscriberStats } from '../types';
 import { takePaymentAttribution } from './paymentAttribution';
 import { takePendingPhotos } from './paymentPhotos';
+import { noteReceipt } from './lastReceipt';
 
 // Relative by default — always targets whatever origin actually served the page
 // (Nginx-proxied in every real deploy). A hardcoded absolute production URL here
@@ -963,7 +964,7 @@ export const mysqlAdmin = {
     return post('/admin/subscriber-payments', {
       subscriber_id,
       payment: { ...payment, ...(staffId && !payment.staffId ? { staffId } : {}), ...(photos ? { photos } : {}) },
-    });
+    }).then(answer => { noteReceipt(answer); return answer; });
   },
   saveLeadPayment: (lead_id: string, payment: AR, subscriber?: { email?: string; nationalId?: string }) => {
     const staffId = takePaymentAttribution();
@@ -982,7 +983,7 @@ export const mysqlAdmin = {
       '/admin/subscriber-payments',
       { method: 'POST', body: JSON.stringify({ lead_id, payment, subscriber }) },
       A,
-    ));
+    ).then(answer => { noteReceipt(answer); return answer; }));
   },
   // paymentMethod is only needed when settling a payment that was stored
   // without one — the API refuses to mark money received without saying how it

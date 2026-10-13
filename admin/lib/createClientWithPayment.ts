@@ -1,4 +1,5 @@
 import { takePendingPhotos } from './paymentPhotos';
+import { noteReceipt } from './lastReceipt';
 import type { PaymentDraft } from '../components/PaymentModal';
 import { mysqlAdmin } from './mysqlapi';
 import { bookingTierFields } from './bookingIdentity';
@@ -115,6 +116,7 @@ export async function createClientWithPayment(
     },
   });
 
+  noteReceipt(result);
   // The carnet, the book, the added course: each on the client just made. A
   // booking waiting for the manager has no client yet, and says so instead.
   const extras = (draft.extraItems || []).filter(extra => Number(extra.amount) > 0);

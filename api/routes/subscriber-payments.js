@@ -17,6 +17,7 @@ const { convertLeadOfPayment } = require('../lib/leadState');
 const { enqueueFinanceEvent } = require('../lib/financeOutbox');
 const { enqueueEmailSequence } = require('../lib/emailSequence');
 const { cleanPhotoLinks } = require('../lib/googleDrive');
+const { nextReceiptNo, receiptSeriesOf } = require('../lib/receiptNumbers');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { safeDateOnly, cairoDayOf, cairoToday } = require('../lib/dates');
 const { branchIdForBranch, branchForId } = require('../lib/branches');
@@ -116,6 +117,7 @@ router.get('/api/admin/payment-boxes', requireAuth, requireAdminOrStaff, require
  */
 async function recordSubscriberPayment(req, res) {
   let conn;
+  let receiptNo = null;
   try {
     let { subscriber_id } = req.body;
     const { payment } = req.body;
@@ -799,12 +801,15 @@ async function recordSubscriberPayment(req, res) {
       }, conn, paymentTenantId, { settle: isPaid });
     }
 
+    // The branch's own receipt number, taken in this transaction (lib/receiptNumbers.js): Dokki and
+    // Tagamoa run 1, 2, 3…, and a payment that rolls back gives its number back. Online has none.
+    receiptNo = await nextReceiptNo(conn, { tenantId: paymentTenantId, branch: paymentBranch });
     await conn.query(
       `INSERT INTO payments
          (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method,
           transaction_id, is_installment, course_expected, date, note, status, staff_id, staff_name,
-           from_account, source, item_title, cert_type, certificate_request_id, tenant_id, branch, branch_id)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+           from_account, source, item_title, cert_type, certificate_request_id, tenant_id, branch, branch_id, receipt_no)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         id, subscriber_id,
         courseId, bundleId,
@@ -828,6 +833,7 @@ async function recordSubscriberPayment(req, res) {
         paymentTenantId,
         paymentBranch,
         paymentBranchId,
+        receiptNo,
       ]
     );
 
@@ -1072,6 +1078,8 @@ async function recordSubscriberPayment(req, res) {
       subscriberCreated: createFromLead || createFromDraft,
       status: storedStatus,
       approvalRequired: storedStatus === 'pending',
+      // What the printed receipt carries, for a branch that numbers them.
+      ...(receiptNo ? { receiptNo, receiptBranch: receiptSeriesOf(paymentBranch) } : {}),
       ...(housed ? { housed } : {}),
     });
   } catch (e) {

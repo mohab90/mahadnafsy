@@ -17,6 +17,7 @@ import { useCertificateCatalog } from '../lib/certificateCatalog';
 import { agreedPriceFor } from '../lib/agreedPrice';
 import { mysqlAdmin } from '../lib/mysqlapi';
 import { attributeNextPayment } from '../lib/paymentAttribution';
+import { forgetReceipts, takeReceiptLabel } from '../lib/lastReceipt';
 import type {
   PaymentItemType, PaymentHistoryEntry,
   ExtraCertificateRequest, DaqqiRound,
@@ -151,6 +152,8 @@ interface PrintData {
   transactionId?: string;
   instituteName: string;
   branchLabel?: string;
+  /** The branch's receipt number, «57» or «57–59» (api/lib/receiptNumbers.js); only Dokki and Tagamoa number them. */
+  receiptNo?: string;
 }
 
 const PrintReceiptModal: React.FC<{ data: PrintData; onClose: () => void }> = ({ data, onClose }) => (
@@ -167,6 +170,7 @@ const PrintReceiptModal: React.FC<{ data: PrintData; onClose: () => void }> = ({
         <div className="text-center mb-1">
           <div className="font-extrabold text-[13px]">{data.instituteName}</div>
           {data.branchLabel && <div className="text-[11px]">{data.branchLabel}</div>}
+          {data.receiptNo && <div className="mt-0.5 text-[12px] font-extrabold">إيصال رقم {data.receiptNo}</div>}
           <div className="text-[10px] text-gray-500">{data.date}</div>
         </div>
         <div className="border-t border-dashed border-gray-400 my-1.5" />
@@ -780,6 +784,13 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     })) return;
     setSubmitting(true);
     setSubmitError('');
+    forgetReceipts();
+    // The receipt carries the branch's number once the save has been answered with it.
+    const finishWith = (payload: PrintData | null) => {
+      const receiptNo = takeReceiptLabel();
+      if (payload) setPrintData(receiptNo ? { ...payload, receiptNo } : payload);
+      else onClose();
+    };
     try {
       const printPayload = shouldPrint ? buildPrintData() : null;
       // The handler records exactly the price shown here. It recomputed a
@@ -801,8 +812,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           item: upgradeFrom, toItem: d.courseId, price: changedPrice ? Number(shownPrice) : null,
         });
         await onSubmit({ ...d, bookingType: 'installment', customExpected: '' }, shouldPrint);
-        if (printPayload) setPrintData(printPayload);
-        else onClose();
+        finishWith(printPayload);
         return;
       }
       if (tierBooking && tierPx != null) {
@@ -816,8 +826,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
             return price == null ? item : { ...item, customExpected: String(price), discountPct: '' };
           }),
         }, shouldPrint);
-        if (printPayload) setPrintData(printPayload);
-        else onClose();
+        finishWith(printPayload);
         return;
       }
       await onSubmit({
@@ -826,8 +835,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           ? (changedPrice ? shownPrice : '')
           : (changedPrice || (_effPx > 0 && _effPx !== _sysPx) ? shownPrice : d.customExpected),
       }, shouldPrint);
-      if (printPayload) setPrintData(printPayload);
-      else onClose();
+      finishWith(printPayload);
     } catch (error) {
       setSubmitError(arabicReason(error, 'تعذر حفظ الدفعة'));
     } finally {

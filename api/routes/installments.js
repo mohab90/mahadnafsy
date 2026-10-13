@@ -24,6 +24,7 @@ const { assertWritable } = require('../lib/periodLock');
 const { branchIdForBranch } = require('../lib/branches');
 const { applyInstallmentPayment, removeInstallmentEntry } = require('../lib/installmentMath');
 const { financialRecordMatches, resolveFinancialScope } = require('../lib/financialScope');
+const { nextReceiptNo } = require('../lib/receiptNumbers');
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../lib/paymentEntitlementAccess');
 const { itemBalances } = require('../lib/agreedPrice');
 const { grantCourseEntitlement } = require('../lib/entitlements');
@@ -184,12 +185,14 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
 
     const branch = plan.branch || 'ONLINE_EGYPT';
     const payType = plan.course_id ? 'COURSE' : (plan.bundle_id ? 'BUNDLE' : 'OTHER');
+    // A Dokki or Tagamoa instalment is a receipt of the branch like any other (lib/receiptNumbers.js).
+    const receiptNo = await nextReceiptNo(conn, { tenantId: req.tenantId, branch });
     await conn.query(
       `INSERT INTO payments
          (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method,
           is_installment, course_expected, note, date, status, source, item_title, branch, branch_id,
-          tenant_id, staff_name, created_at)
-       VALUES (?,?,?,?,?,?,?,?,1,?,?,?,'paid','installment',?,?,?,?,?,NOW())`,
+          tenant_id, staff_name, created_at, receipt_no)
+       VALUES (?,?,?,?,?,?,?,?,1,?,?,?,'paid','installment',?,?,?,?,?,NOW(),?)`,
       [payId, plan.subscriber_id, plan.course_id || null, plan.bundle_id || null, paidAmount, plan.currency || 'EGP',
        payType, method,
        // The course's agreed price (the plan's total when none is on file),
@@ -206,7 +209,7 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
        courseExpected, `قسط رقم ${index + 1} من ${update.installmentAmounts.length} — خطة ${plan.title || planId}`,
        effectiveDate,
        plan.title || null, branch, plan.branch_id || branchIdForBranch(branch),
-       req.tenantId, req.user?.email || req.staffRecord?.name || 'system']
+       req.tenantId, req.user?.email || req.staffRecord?.name || 'system', receiptNo]
     );
     const journalId = await postPaymentJournal({
       paymentId: payId, amount: paidAmount, currency: plan.currency || 'EGP',
