@@ -1,5 +1,6 @@
 // What the orders views do: confirm, reject, link to a transfer — and who may.
 import React from 'react';
+import { askRejectionReason } from '../../../../lib/rejectionReason';
 import { usePaymentBoxes } from '../../../../lib/paymentMethods';
 import { useNavigate } from 'react-router-dom';
 import type { OrderItem } from '../../../../types';
@@ -75,13 +76,17 @@ export function useOrderActions(props: OrdersTabProps) {
   };
 
   const handleRejectOrder = async (row: OrderItem) => {
+    // The reason is asked first; it is kept and sent to whoever took the payment.
+    const reason = await askRejectionReason('الدفعة', row.customerName);
+    if (reason === null) return;
     try {
       if (isDeskPayment(row)) {
-        await mysqlAdmin.updatePaymentStatus(row.id, 'failed');
+        await mysqlAdmin.updatePaymentStatus(row.id, 'failed', reason);
         await Promise.all([reloadOrders(), reloadSubscribers()]);
       } else {
-        await updateOrderStatus(row.id, 'failed');
+        await updateOrderStatus(row.id, 'failed', reason);
       }
+      notify('info', 'اترفضت الدفعة وسبب الرفض وصل للموظف اللي سجّلها.');
     } catch (error) {
       notify('error', messageOf(error, 'تعذر رفض الدفعة.'));
     }

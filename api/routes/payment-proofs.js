@@ -19,6 +19,7 @@ const { recordLectureProgress } = require('../lib/learningProgress');
 const { resolveLectureAccess } = require('../lib/learningAccess');
 const { grantCourseSelections } = require('../lib/entitlements');
 const { financialRecordMatches, financialScopeClause, resolveFinancialScope } = require('../lib/financialScope');
+const { hasReason, notifyPaymentRejected, reasonOf, REASON_REQUIRED } = require('../lib/paymentRejection');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { inspectProofImageDataUrl } = require('../lib/uploadSafety');
 const { isJourneyState } = require('../lib/journeyStates');
@@ -347,7 +348,10 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
     const { action, reviewer_note } = req.body; // action: 'approve' | 'reject'
     const scope = resolveFinancialScope(req, { requestedBranch: req.body.branch || null });
     if (!['approve', 'reject'].includes(action)) return res.status(400).json({ error: 'action must be approve or reject' });
-    if (String(reviewer_note || '').length > 2000) return res.status(400).json({ error: 'reviewer_note is too long' });
+    if (String(reviewer_note || '').length > 2000) return res.status(400).json({ error: 'ملاحظة المراجعة أطول من المسموح (2000 حرف).', code: 'REVIEW_NOTE_TOO_LONG' });
+    // A rejected receipt is explained: the reason is asked for and sent on (lib/paymentRejection.js).
+    const rejectionReason = action === 'reject' ? reasonOf(reviewer_note) : '';
+    if (action === 'reject' && !hasReason(rejectionReason)) return res.status(REASON_REQUIRED.status).json(REASON_REQUIRED.body);
     const tenantId = tenantIdFor(req);
     await conn.beginTransaction();
     transactionStarted = true;
@@ -581,6 +585,15 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
       logger.warn('[payment-proof] WhatsApp notify failed:', notifyErr.message);
     }
 
+    if (action === 'reject') {
+      const [[client]] = await pool.query('SELECT name, client_code, assigned_cs_id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [proof.subscriber_id, tenantId]).catch(() => [[null]]);
+      await notifyPaymentRejected({
+        tenantId, reason: rejectionReason, amount: proof.amount, currency: proof.currency,
+        clientName: client?.name || proof.customer_name, clientCode: client?.client_code, subscriberId: proof.subscriber_id,
+        assignedSalesId: proof.assigned_sales_id, assignedCsId: client?.assigned_cs_id,
+        rejectedBy: req.staffRecord?.id, rejectedByName: req.staffRecord?.name, kind: 'payment_proof',
+      });
+    }
     res.json({ ok: true, status: newStatus });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});

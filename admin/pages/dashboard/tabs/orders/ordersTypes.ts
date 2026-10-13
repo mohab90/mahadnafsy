@@ -75,7 +75,7 @@ export interface OrdersTabProps {
   currentStaff: StaffMember | null;
   authUser: { displayName?: string | null; email?: string | null; uid?: string } | null;
   content: Record<string, string>;
-  updateOrderStatus: (id: string, status: 'paid' | 'failed' | 'refunded') => Promise<boolean>;
+  updateOrderStatus: (id: string, status: 'paid' | 'failed' | 'refunded', reason?: string) => Promise<boolean>;
   deleteOrder: (id: string) => Promise<boolean>;
   reloadOrders: () => Promise<void>;
   reloadSubscribers: () => Promise<void>;

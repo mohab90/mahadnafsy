@@ -137,7 +137,7 @@ export interface SiteDataShape {
   updateChapter: (item: CourseChapterItem) => Promise<boolean>;
   deleteChapter: (id: string) => Promise<boolean>;
   getCourseChapters: (courseId: string) => CourseChapterItem[];
-  updateOrderStatus: (id: string, status: OrderItem['status']) => Promise<boolean>;
+  updateOrderStatus: (id: string, status: OrderItem['status'], reason?: string) => Promise<boolean>;
   deleteOrder: (id: string) => Promise<boolean>;
   addCommunityPost: (item: CommunityPostItem) => Promise<boolean>;
   updateCommunityPost: (item: CommunityPostItem) => Promise<boolean>;

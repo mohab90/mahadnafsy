@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { askRejectionReason } from '../../../../lib/rejectionReason';
 import { CheckCircle2, Clock, RefreshCw, UserPlus, Wallet, XCircle } from 'lucide-react';
 import { cairoDay } from '../../../../../shared/cairoDate';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
@@ -77,10 +78,11 @@ export function CollectionBookingsReview({ notify, onChanged }: { notify: Notify
 
   const reject = async (item: Target) => {
     const name = item.kind === 'request' ? item.row.name : item.row.subscriberName;
-    if (!await confirmDialog(`ترفض ${item.kind === 'request' ? 'حجز' : 'دفعة'} ${name}؟ الموظف هيوصله الرفض.`)) return;
+    const reason = await askRejectionReason(item.kind === 'request' ? 'الحجز' : 'الدفعة', name);
+    if (reason === null) return;
     try {
-      if (item.kind === 'request') await mysqlAdmin.adminPost(`/admin/subscriber-requests/${encodeURIComponent(item.row.id)}/reject`, {});
-      else await mysqlAdmin.adminPatch(`/admin/payments/${encodeURIComponent(item.row.id)}/status`, { status: 'failed', reviewNote: 'رفض المسئول' });
+      if (item.kind === 'request') await mysqlAdmin.adminPost(`/admin/subscriber-requests/${encodeURIComponent(item.row.id)}/reject`, { note: reason });
+      else await mysqlAdmin.adminPatch(`/admin/payments/${encodeURIComponent(item.row.id)}/status`, { status: 'failed', reviewNote: reason });
       notify('success', 'اترفض');
       await load();
       onChanged?.();

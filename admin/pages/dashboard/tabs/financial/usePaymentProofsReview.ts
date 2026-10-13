@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { askRejectionReason } from '../../../../lib/rejectionReason';
+import { arabicReason } from '../../../../lib/apiErrorText';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { PaymentProof } from '../../../../types';
 
@@ -48,9 +50,16 @@ export function usePaymentProofsReview({
   };
 
   const handleProofReview = async (proofId: string, action: 'approve' | 'reject') => {
+    // A rejected receipt is explained: the note on the screen, else asked for here.
+    let reviewerNote = proofsReviewerNote.trim();
+    if (action === 'reject' && reviewerNote.length < 3) {
+      const reason = await askRejectionReason('الإيصال');
+      if (reason === null) return;
+      reviewerNote = reason;
+    }
     setProofsReviewLoading(true);
     try {
-      const result = await mysqlAdmin.reviewPaymentProof(proofId, action, proofsReviewerNote || undefined, branchFilter);
+      const result = await mysqlAdmin.reviewPaymentProof(proofId, action, reviewerNote || undefined, branchFilter);
       if (action === 'approve' && !result.pendingSecondApproval) await reloadSubscribers();
       setAllProofs((previous) => previous ? previous.map((proof) => proof.id === proofId ? {
         ...proof,
@@ -61,7 +70,7 @@ export function usePaymentProofsReview({
               first_reviewed_at: new Date().toISOString(),
             }
           : {
-              reviewer_note: proofsReviewerNote || null,
+              reviewer_note: reviewerNote || null,
               reviewed_at: new Date().toISOString(),
             }),
       } : proof) : previous);
@@ -69,9 +78,9 @@ export function usePaymentProofsReview({
       setProofsReviewerNote('');
       notify('success', result.pendingSecondApproval
         ? 'تم تسجيل الاعتماد الأول؛ العملية الحساسة تنتظر مراجعًا ثانيًا.'
-        : action === 'approve' ? 'تم قبول الإيصال وإضافة الدفعة.' : 'تم رفض الإيصال.');
-    } catch {
-      notify('error', 'حدث خطأ أثناء مراجعة الإيصال.');
+        : action === 'approve' ? 'تم قبول الإيصال وإضافة الدفعة.' : 'تم رفض الإيصال وسبب الرفض وصل للموظف المسئول.');
+    } catch (error) {
+      notify('error', arabicReason(error, 'حدث خطأ أثناء مراجعة الإيصال.'));
     } finally {
       setProofsReviewLoading(false);
     }

@@ -19,6 +19,7 @@ const { financialRecordMatches, resolveFinancialScope } = require('../../lib/fin
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../../lib/paymentEntitlementAccess');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { deleteTransfer, importTransfers, isCashMethod, linkTransfer, recordTransfer, updateTransfer } = require('../../lib/incomingTransfers');
+const { hasReason, notifyPaymentRejected, reasonOf, REASON_REQUIRED } = require('../../lib/paymentRejection');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { mustLinkTransfer, TRANSFER_REQUIRED } = require('../../lib/paymentApprovalPolicy');
 
@@ -36,6 +37,10 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
       return res.status(400).json({ error: 'الحالة دي غير صحيحة — الاسترداد له مسار خاص (طلب استرداد).', code: 'PAYMENT_STATUS_INVALID' });
     }
     if (String(reviewNote || '').length > 2000) return res.status(400).json({ error: 'ملاحظة المراجعة أطول من المسموح (2000 حرف).', code: 'REVIEW_NOTE_TOO_LONG' });
+    // A rejection is explained: the reason is asked for, kept on the payment and
+    // sent to whoever took it (lib/paymentRejection.js).
+    const rejectionReason = status === 'failed' ? reasonOf(reviewNote, req.body?.reason) : '';
+    if (status === 'failed' && !hasReason(rejectionReason)) return res.status(REASON_REQUIRED.status).json(REASON_REQUIRED.body);
     const tenantId = req.tenantId;
     const actor = req.user?.email || req.user?.uid || 'admin';
     await conn.beginTransaction();
@@ -148,7 +153,7 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
          ELSE CONCAT(COALESCE(note,''),IF(COALESCE(note,'')='','',' | '),'Review: ',?) END
        WHERE id=? AND tenant_id=? AND deleted_at IS NULL`,
       [status, settledMethod || payment.payment_method || null,
-        String(reviewNote || ''), String(reviewNote || ''), id, tenantId]
+        String(rejectionReason || reviewNote || ''), String(rejectionReason || reviewNote || ''), id, tenantId]
     );
 
     if (becomingPaid && payment.subscriber_id) {
@@ -277,6 +282,18 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
         } catch (error) {
           logger.warn('[patch-payment] confirmation notification failed:', error.message);
         }
+      });
+    }
+    if (status === 'failed') {
+      // Told after the rejection is committed; whoever took the payment learns why (lib/paymentRejection.js).
+      const [[client]] = payment.subscriber_id
+        ? await pool.query('SELECT name, client_code, assigned_sales_id, assigned_cs_id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [payment.subscriber_id, tenantId])
+        : [[null]];
+      await notifyPaymentRejected({
+        tenantId, reason: rejectionReason, amount: payment.amount, currency: payment.currency,
+        clientName: client?.name, clientCode: client?.client_code, subscriberId: payment.subscriber_id,
+        recordedBy: payment.staff_id, assignedSalesId: client?.assigned_sales_id, assignedCsId: client?.assigned_cs_id,
+        rejectedBy: req.staffRecord?.id, rejectedByName: req.staffRecord?.name || signerName(req),
       });
     }
     res.json({ ok: true, id, status });

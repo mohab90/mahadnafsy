@@ -1,5 +1,6 @@
 // The online manager's view of their clients' payments.
 import { cairoDateOnly, cairoMonthOnly, cairoDay } from '../../../../../shared/cairoDate';
+import { askRejectionReason } from '../../../../lib/rejectionReason';
 import { paymentOrigin, PAYMENT_ORIGIN, PAYMENT_ORIGIN_CLASS } from '../../../../lib/paymentOrigin';
 import { Search } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
@@ -190,10 +191,12 @@ export function OrdersOnlineManagerView({ props, actions }: { props: OrdersTabPr
                                        <button type="button" onClick={()=>setLinkTarget({ id: payId, name: p.clientName || '', amount: payAmt, currency: payCur, method: storedMethod, reference: (p as {transactionId?:string}).transactionId || '', at: cairoDay((p as {at?:string}).at) })}
                                          className="text-xs bg-violet-600 hover:bg-violet-700 text-white px-2 py-1 rounded-lg font-bold" title="ربط بالتحويل واعتماد">🔗 ربط</button>
                                        <button onClick={async()=>{
+                                         const reason = await askRejectionReason('الدفعة', p.clientName || '');
+                                         if (reason === null) return;
                                          try {
-                                           await mysqlAdmin.updatePaymentStatus(payId, 'failed');
+                                           await mysqlAdmin.updatePaymentStatus(payId, 'failed', reason);
                                            await Promise.all([reloadSubscribers(), reloadOrders()]);
-                                           notify('info', 'تم رفض الدفعة');
+                                           notify('info', 'تم رفض الدفعة وسبب الرفض وصل للموظف اللي سجّلها');
                                          } catch (error) {
                                            notify('error', error instanceof Error ? error.message : 'تعذر رفض الدفعة');
                                          }

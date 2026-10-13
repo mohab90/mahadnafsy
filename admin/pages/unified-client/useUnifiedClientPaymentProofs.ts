@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { askRejectionReason } from '../../lib/rejectionReason';
+import { arabicReason } from '../../lib/apiErrorText';
 
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import type { PaymentProof, SubscriberItem } from '../../types';
@@ -53,23 +55,31 @@ export function useUnifiedClientPaymentProofs({
   };
 
   const handleReviewProof = async (proofId: string, action: ReviewAction) => {
+    // A rejected receipt is explained: the note on the screen, else asked for here.
+    let note = reviewerNote.trim();
+    if (action === 'reject' && note.length < 3) {
+      const reason = await askRejectionReason('الإيصال');
+      if (reason === null) return;
+      note = reason;
+    }
     setReviewLoading(true);
     try {
-      await mysqlAdmin.reviewPaymentProof(proofId, action, reviewerNote || undefined);
+      await mysqlAdmin.reviewPaymentProof(proofId, action, note || undefined);
       if (action === 'approve') await reloadSubscribers();
 
       setClientProofs(prev => prev.map(proof => proof.id === proofId
         ? {
           ...proof,
           status: action === 'approve' ? 'APPROVED' : 'REJECTED',
-          reviewer_note: reviewerNote || null,
+          reviewer_note: note || null,
           reviewed_at: new Date().toISOString(),
         }
         : proof));
       setReviewingProofId(null);
       setReviewerNote('');
-    } catch {
-      // The legacy page kept proof review failures silent; preserve UX until a toast path is added.
+    } catch (error) {
+      // No longer silent: a refused review says why (a rejection without a reason, a scope, a second reviewer).
+      window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field: 'paymentProof', name: proofId, reason: arabicReason(error) } }));
     } finally {
       setReviewLoading(false);
     }
