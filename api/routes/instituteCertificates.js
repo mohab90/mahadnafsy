@@ -24,6 +24,7 @@ router.get('/api/admin/institute-certificates', ...desk, async (req, res) => {
       `SELECT cc.id, cc.certificate_code, cc.completed_at, cc.delivery_status, cc.delivery_updated_at, cc.delivery_updated_by,
               cc.downloaded_at, cc.download_count,
               s.id AS subscriber_id, s.name AS subscriber_name, s.name_en, s.phone, s.client_code, s.branch,
+              s.national_id, s.personal_photo_url, s.id_photo_url,
               COALESCE(NULLIF(c.title_ar, ''), c.title) AS course_title
          FROM course_completions cc
          JOIN subscribers s ON s.id = cc.subscriber_id AND s.tenant_id = cc.tenant_id AND s.deleted_at IS NULL
@@ -36,6 +37,7 @@ router.get('/api/admin/institute-certificates', ...desk, async (req, res) => {
       downloadedAt: row.downloaded_at, downloads: Number(row.download_count) || 0,
       subscriberId: row.subscriber_id, subscriberName: row.subscriber_name || '', nameEn: row.name_en || null,
       phone: row.phone || '', clientCode: row.client_code || null, branch: row.branch || null, courseTitle: row.course_title || '',
+      nationalId: row.national_id || null, personalPhotoUrl: row.personal_photo_url || null, idPhotoUrl: row.id_photo_url || null,
     })));
   } catch (e) { logger.error('[institute-certificates/list]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

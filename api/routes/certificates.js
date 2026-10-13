@@ -91,6 +91,7 @@ router.get('/api/admin/certificate-requests', requireAuth, requireAdminOrStaff, 
               cr.collection_party, cr.requested_at, cr.issued_at, cr.course_start_date, cr.course_end_date,
               s.name AS subscriber_name, s.phone AS subscriber_phone, s.client_code, s.branch,
               s.name_en AS client_name_en, s.national_id AS client_national_id,
+              s.personal_photo_url, s.id_photo_url,
               -- The dates the certificate states, until the desk types them: the
               -- client's Dokki round, else their enrolment; the end, when it is recorded.
               COALESCE((SELECT MIN(dr.start_date) FROM daqqi_attendees da
@@ -134,6 +135,9 @@ router.get('/api/admin/certificate-requests', requireAuth, requireAdminOrStaff, 
         nameEn: row.name_en || row.client_name_en || null,
         nationality: row.nationality ? String(row.nationality).toLowerCase() : null,
         idNumber: row.id_number || row.client_national_id || null,
+        // The Drive links of the pictures asked for with the certificate (api/lib/googleDrive.js).
+        personalPhotoUrl: row.personal_photo_url || null,
+        idPhotoUrl: row.id_photo_url || null,
         courseStartDate: dayOf(row.course_start_date),
         courseEndDate: dayOf(row.course_end_date),
         suggestedStart: dayOf(row.suggested_start),
