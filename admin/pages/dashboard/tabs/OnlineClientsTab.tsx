@@ -46,6 +46,7 @@ import { OnlineImportModal } from './online-clients-sections/OnlineImportModal';
 import { itemKeyOf } from '../../../lib/agreedPrice';
 import { usePhysicalBranch } from '../../../lib/physicalBranch';
 import { matchesSearch } from '../../../lib/clientSearch';
+import { followUpOf, matchesFollowFilter, type FollowFilter } from '../../../lib/clientFollowUp';
 import {
   calcSubscribersPaidEGP,
   formatCompactNumber,
@@ -155,6 +156,8 @@ export default function OnlineClientsTab({
   const [collOnlineCertFilter, setCollOnlineCertFilter] = useState<'all'|'has_cert'|'no_cert'>('all');
   // «فلتر بحالة العميل»: the status in the table's «الحالة» column.
   const [collOnlineStatusFilter, setCollOnlineStatusFilter] = useState('');
+  // «المتابعات»: who is due to be called today / is overdue (lib/clientFollowUp.ts).
+  const [collOnlineFollowFilter, setCollOnlineFollowFilter] = useState<FollowFilter>('');
   // Collection/online_manager — client sub-view tabs
   // The open tab lives in the URL rather than in component state, so the link
   // in the address bar names the view you are actually looking at: it can be
@@ -356,7 +359,7 @@ export default function OnlineClientsTab({
                 // could run. collOnlineViewTab above is the control that is
                 // actually wired to the tab strip.
                 allCombined;
-              const filtered = tabFiltered.filter(s => {
+              const matchesFilters = (s: SubscriberItem, withFollow: boolean): boolean => {
                 // View tab filter — use clientStatus field (set by convert button)
                 const clientSt = s.clientStatus || '';
                 if (collOnlineViewTab === 'active') {
@@ -410,8 +413,17 @@ export default function OnlineClientsTab({
                 if (collOnlineCertFilter === 'no_cert' && (s.certificates||[]).length > 0) return false;
                 if (collOnlineRemainingFilter === 'has_remaining' && balanceOf(s).remainingEgp <= 0) return false;
                 if (collOnlineRemainingFilter === 'paid' && !isFullyPaid(balanceOf(s))) return false;
+                if (withFollow && !matchesFollowFilter(followUpOf(s), collOnlineFollowFilter)) return false;
                 return true;
-              });
+              };
+              const filtered = tabFiltered.filter(s => matchesFilters(s, true));
+              // The counts above the table: everything the other filters let through, split by when it is due.
+              const followCounts = { overdue: 0, today: 0, tomorrow: 0 };
+              for (const s of tabFiltered) {
+                if (!matchesFilters(s, false)) continue;
+                const status = followUpOf(s).status;
+                if (status === 'overdue' || status === 'today' || status === 'tomorrow') followCounts[status] += 1;
+              }
               const todayOnlineStr = cairoDateOnly();
               // Collection financial stats
               const thisWeekStart = cairoWeekStart();
@@ -544,6 +556,9 @@ export default function OnlineClientsTab({
                     setCollOnlineCertFilter={setCollOnlineCertFilter}
                     collOnlineStatusFilter={collOnlineStatusFilter}
                     setCollOnlineStatusFilter={setCollOnlineStatusFilter}
+                    collOnlineFollowFilter={collOnlineFollowFilter}
+                    setCollOnlineFollowFilter={setCollOnlineFollowFilter}
+                    followCounts={followCounts}
                     collOnlineCourseFilter={collOnlineCourseFilter}
                     setCollOnlineCourseFilter={setCollOnlineCourseFilter}
                     courses={courses}

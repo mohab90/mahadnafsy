@@ -219,6 +219,8 @@ function scheduleFollowUpReminders() {
   dailyAtCairo(8, 'followup-reminders', runFollowUpReminders);
 }
 scheduleFollowUpReminders();
+// And the day's follow-ups as in-app notifications, to each owner and a team one to the managers.
+require('../../lib/followUpDigest').scheduleFollowUpDigest();
 
 // Every open ticket in the system had passed its first-response window, which
 // is what happens when nothing ever raises its hand: a ticket that breaches its
