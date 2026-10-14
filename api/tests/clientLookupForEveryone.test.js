@@ -70,7 +70,9 @@ test("a rep finds somebody else's client, told whose it is, and may not open the
   leadRows = [];
   const answer = await call({ query: { q: 'احمد' }, staffRecord: rep });
   assert.equal(answer.rows.length, 2);
-  const [theirs, mine] = answer.rows;
+  const theirs = answer.rows.find(r => r.id === 's1');
+  const mine = answer.rows.find(r => r.id === 's2');
+  assert.equal(answer.rows[0].id, 's2', 'the caller’s own come first');
   assert.equal(theirs.owner, 'منى');
   assert.equal(theirs.canOpen, false);
   assert.equal(theirs.mine, false);
@@ -93,9 +95,9 @@ test('a manager opens every file, and a converted lead is not listed twice', asy
     { id: 'l2', client_code: 'L2', name: 'سارة محمد', phone: '1022222222', branch: 'DAQQI', status: 'new', can_open: 0, owner_name: 'y', assigned_sales_id: 'y' },
   ];
   const answer = await call({ query: { q: 'سارة' }, staffRecord: { id: 'm1', role: 'daqqi_manager' } });
-  assert.deepEqual(answer.rows.map(r => r.id), ['s1', 'l2']);
-  assert.equal(answer.rows[0].canOpen, true, 'a branch manager opens any client');
-  assert.equal(answer.rows[1].canOpen, false, "a lead outside the caller's lead scope stays closed");
+  assert.deepEqual(answer.rows.map(r => r.id), ['l2', 's1'], 'a lead before a subscriber on a tie; the converted one once, as the client');
+  assert.equal(answer.rows.find(r => r.id === 's1').canOpen, true, 'a branch manager opens any client');
+  assert.equal(answer.rows.find(r => r.id === 'l2').canOpen, false, "a lead outside the caller's lead scope stays closed");
 });
 
 test('the lead scope is asked of the same SQL the lists use, and never hides the row', async () => {
@@ -108,4 +110,23 @@ test('the lead scope is asked of the same SQL the lists use, and never hides the
   assert.doesNotMatch(leadQuery.sql, /WHERE[^]*l\.assigned_sales_id=\?[^]*ORDER BY/, 'the scope is a column, not a filter');
   assert.equal(leadQuery.params[0], 'rep1', 'the scope parameter comes first, as it appears first in the SQL');
   assert.equal(leadQuery.params[1], 't1');
+});
+
+test('every row says what it is — a lead, or a subscriber of online, Dokki or Tagamoa — and hidden leads are found', async () => {
+  queries.length = 0;
+  subscriberRows = [
+    { id: 'a', client_code: 'C1', name: 'مها أونلاين', phone: '1', email: 'm@x.test', branch: 'ONLINE_EGYPT', is_active: 1, assigned_sales_id: null, assigned_cs_id: null, owner_name: null, lead_sales_id: null, lead_cs_id: null },
+    { id: 'b', client_code: 'C2', name: 'مها الدقي', phone: '2', branch: 'DAQQI', is_active: 1, assigned_sales_id: null, assigned_cs_id: null, owner_name: null, lead_sales_id: null, lead_cs_id: null },
+    { id: 'c', client_code: 'C3', name: 'مها التجمع', phone: '3', branch: 'TAGAMOA', is_active: 1, assigned_sales_id: null, assigned_cs_id: null, owner_name: null, lead_sales_id: null, lead_cs_id: null },
+  ];
+  leadRows = [{ id: 'l', client_code: 'L9', name: 'مها ليد', phone: '4', branch: 'ONLINE_EGYPT', status: 'new', hidden: 1, can_open: 1, owner_name: 'z', assigned_sales_id: 'z' }];
+  const answer = await call({ query: { q: 'مها' }, staffRecord: { id: 'm1', role: 'admin' } });
+  const byId = Object.fromEntries(answer.rows.map(r => [r.id, r]));
+  assert.deepEqual([byId.l.type, byId.a.type, byId.b.type, byId.c.type], ['lead', 'online', 'daqqi', 'tagamoa']);
+  assert.deepEqual([byId.l.typeLabel, byId.a.typeLabel, byId.b.typeLabel, byId.c.typeLabel], ['ليد', 'مشترك أونلاين', 'مشترك الدقي', 'مشترك التجمع']);
+  assert.equal(byId.c.place, 'عميل التجمع');
+  assert.equal(byId.l.place, 'ليد مخفي', 'a hidden lead is still a person — the one a rep would register twice');
+  assert.equal(byId.a.email, 'm@x.test');
+  const leadQuery = queries.find(q => /FROM leads l/.test(q.sql));
+  assert.doesNotMatch(leadQuery.sql, /hidden, 0\) = 0/, 'hidden leads are not filtered out');
 });

@@ -29,7 +29,8 @@ const PER_KIND = 50;
 function subscriberPlace(row) {
   if (row.deleted_at) return 'أرشيف العملاء';
   if (Number(row.is_active) === 0) return 'عميل غير نشط';
-  return String(row.branch || '').toUpperCase() === 'DAQQI' ? 'عميل الدقي' : 'عميل أونلاين';
+  const branch = String(row.branch || '').toUpperCase();
+  return branch === 'DAQQI' ? 'عميل الدقي' : branch === 'TAGAMOA' ? 'عميل التجمع' : 'عميل أونلاين';
 }
 
 function leadPlace(row) {
@@ -147,6 +148,24 @@ function canOpenSubscriber(req, row, linkedLead) {
   return Boolean(linkedLead && (linkedLead.assigned_sales_id === staff.id || linkedLead.assigned_cs_id === staff.id));
 }
 
+// What a row IS, said once for every screen: a lead, or a subscriber of one of the three
+// places the institute teaches in — «مشترك دي متنفعش، هو مشترك أونلاين ولا دقي؟».
+function typeOf(kind, branch) {
+  if (kind === 'lead') return { type: 'lead', typeLabel: 'ليد' };
+  const key = String(branch || '').toUpperCase().replace(/[-\s]/g, '_');
+  if (key === 'DAQQI') return { type: 'daqqi', typeLabel: 'مشترك الدقي' };
+  if (key === 'TAGAMOA') return { type: 'tagamoa', typeLabel: 'مشترك التجمع' };
+  return { type: 'online', typeLabel: 'مشترك أونلاين' };
+}
+
+// Who comes first: the name that starts with what was typed, then one with a word that does,
+// then the rest; the caller's own before another's; a lead before a subscriber on a tie.
+function rankOf(row, q) {
+  const name = foldText(row.name || '');
+  const starts = name.startsWith(q) ? 0 : name.split(/\s+/).some(word => word.startsWith(q)) ? 1 : 2;
+  return starts * 4 + (row.mine ? 0 : 2) + (row.kind === 'lead' ? 0 : 1);
+}
+
 router.get('/api/admin/client-lookup', requireAuth, requireAdminOrStaff, requirePermission('manage_payments'), async (req, res) => {
   try {
     const q = foldText(String(req.query.q || '').slice(0, 80));
@@ -161,7 +180,7 @@ router.get('/api/admin/client-lookup', requireAuth, requireAdminOrStaff, require
 
     const [[subscribers], [leads]] = await Promise.all([
       pool.query(
-        `SELECT s.id, s.client_code, s.name, s.phone, s.branch, s.is_active, s.assigned_sales_id, s.assigned_cs_id,
+        `SELECT s.id, s.client_code, s.name, s.phone, s.email, s.branch, s.is_active, s.assigned_sales_id, s.assigned_cs_id,
                 COALESCE(cs.name, s.assigned_cs_name, sa.name, s.assigned_sales_name) AS owner_name,
                 l.assigned_sales_id AS lead_sales_id, l.assigned_cs_id AS lead_cs_id
            FROM subscribers s
@@ -171,12 +190,13 @@ router.get('/api/admin/client-lookup', requireAuth, requireAdminOrStaff, require
           WHERE s.tenant_id = ? AND s.deleted_at IS NULL AND ${subMatch.sql}
           ORDER BY s.created_at DESC LIMIT ${LOOKUP_PER_KIND}`,
         [req.tenantId, ...subMatch.params]),
+      // Hidden leads are people too — and the ones a rep would register a second time.
       pool.query(
-        `SELECT l.id, l.client_code, l.name, l.phone, l.branch, l.status, l.source,
+        `SELECT l.id, l.client_code, l.name, l.phone, l.email, l.branch, l.status, l.source, l.hidden,
                 ${leadOpens} AS can_open, COALESCE(st.name, l.assigned_sales_name) AS owner_name, l.assigned_sales_id
            FROM leads l
            LEFT JOIN staff st ON st.id = l.assigned_sales_id AND st.tenant_id = l.tenant_id
-          WHERE l.tenant_id = ? AND l.deleted_at IS NULL AND COALESCE(l.hidden, 0) = 0
+          WHERE l.tenant_id = ? AND l.deleted_at IS NULL
             AND l.merged_into_lead_id IS NULL AND ${leadMatch.sql}
           ORDER BY l.created_at DESC LIMIT ${LOOKUP_PER_KIND}`,
         [...(leadRange.none ? [] : leadRange.params), req.tenantId, ...leadMatch.params]),
@@ -185,18 +205,18 @@ router.get('/api/admin/client-lookup', requireAuth, requireAdminOrStaff, require
     // A lead that already became a client is shown once, as the client.
     const rows = [
       ...subscribers.map(s => ({
-        kind: 'subscriber', id: s.id, clientCode: s.client_code || null, name: s.name, phone: s.phone,
+        kind: 'subscriber', ...typeOf('subscriber', s.branch), id: s.id, clientCode: s.client_code || null, name: s.name, phone: s.phone, email: s.email || null,
         place: subscriberPlace(s), branch: s.branch || null, owner: s.owner_name || null,
         mine: Boolean(req.staffRecord && (s.assigned_sales_id === req.staffRecord.id || s.assigned_cs_id === req.staffRecord.id)),
         canOpen: canOpenSubscriber(req, s, { assigned_sales_id: s.lead_sales_id, assigned_cs_id: s.lead_cs_id }),
       })),
       ...leads.filter(l => String(l.status || '').toLowerCase() !== 'converted').map(l => ({
-        kind: 'lead', id: l.id, clientCode: l.client_code || null, name: l.name, phone: l.phone,
-        place: leadPlace(l), branch: l.branch || null, owner: l.owner_name || null,
+        kind: 'lead', ...typeOf('lead', l.branch), id: l.id, clientCode: l.client_code || null, name: l.name, phone: l.phone, email: l.email || null,
+        place: Number(l.hidden) === 1 ? 'ليد مخفي' : leadPlace(l), branch: l.branch || null, owner: l.owner_name || null,
         mine: Boolean(req.staffRecord && l.assigned_sales_id === req.staffRecord.id),
         canOpen: req.isSuperAdmin ? true : Number(l.can_open) === 1,
       })),
-    ];
+    ].sort((a, b) => rankOf(a, q) - rankOf(b, q));
     res.json({ rows, capped: subscribers.length === LOOKUP_PER_KIND || leads.length === LOOKUP_PER_KIND });
   } catch (e) {
     logger.error('[client-lookup]', e.message);

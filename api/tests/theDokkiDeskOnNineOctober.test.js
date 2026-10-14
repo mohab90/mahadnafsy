@@ -42,7 +42,7 @@ test('two letters find the people with them, not the first eight on the list', {
   assert.deepEqual(found('0119'), ['منى علي'], 'a number by its digits');
   const modal = read('admin/pages/dashboard/DashboardQuickBooking.tsx');
   assert.doesNotMatch(modal, /replace\(\/\D\/g, ''\)\.includes\(qDigits\)/, 'the empty-digits test is gone');
-  assert.match(modal, /\{searching && <ClientLookupResults query=\{q\} skipIds=\{ownIds\} \/>\}/, 'every account finds everyone, not only view_client_db');
+  assert.match(modal, /<ClientLookupList query=\{q\} onPay=\{pay\} onOpen=\{openFile\} \/>/, 'every account finds everyone, in one list, not only view_client_db');
 });
 
 // «ممنوع تسكين عميل في روند من غير دفعة متسجلة» · «كل عملاء روند هيبقوا تبع نفس الرسيبشن».
