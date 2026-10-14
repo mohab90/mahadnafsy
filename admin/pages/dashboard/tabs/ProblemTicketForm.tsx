@@ -16,6 +16,8 @@ export function ProblemTicketForm({ subscriberId, onBack, onDone }: {
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
   const [to, setTo] = useState<'support' | 'management'>('support');
+  // «لازم الفرع اللى بينقل مشكلة هو يحدد درجة الأولوية»: no default, nothing made up for it.
+  const [priority, setPriority] = useState<'' | 'urgent' | 'high' | 'medium' | 'low'>('');
 
   const send = async () => {
     setSending(true);
@@ -25,6 +27,7 @@ export function ProblemTicketForm({ subscriberId, onBack, onDone }: {
         subject: subject.trim() || (to === 'management' ? 'شكوى عميل للإدارة' : 'مشكلة عميل محتاجة خدمة العملاء'),
         body: body.trim(),
         category: to === 'management' ? 'complaint' : 'client_problem',
+        priority,
         channel: 'internal',
       });
       onDone('success', to === 'management' ? 'الشكوى وصلت للإدارة، واتسجلت في ملف العميل' : 'اتفتح تيكت لخدمة العملاء، واتسجل في ملف العميل');
@@ -46,6 +49,19 @@ export function ProblemTicketForm({ subscriberId, onBack, onDone }: {
           </button>
         ))}
       </div>
+      <div role="radiogroup" aria-label="درجة الأولوية">
+        <p className="mb-1 text-sm font-bold text-gray-700">درجة الأولوية: <span className="text-red-500">*</span></p>
+        <div className="grid grid-cols-4 gap-1.5">
+          {([['low', 'منخفضة', 'border-slate-300 bg-slate-50 text-slate-700'], ['medium', 'متوسطة', 'border-amber-300 bg-amber-50 text-amber-800'],
+            ['high', 'عالية', 'border-orange-400 bg-orange-50 text-orange-800'], ['urgent', 'عاجلة', 'border-red-400 bg-red-50 text-red-700']] as const).map(([key, label, tone]) => (
+            <button key={key} type="button" role="radio" aria-checked={priority === key} onClick={() => setPriority(key)}
+              className={`rounded-xl border-2 px-2 py-1.5 text-xs font-bold transition ${priority === key ? `${tone} ring-2 ring-offset-1 ring-sky-300` : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {!priority && <p className="mt-1 text-[11px] text-amber-700">اختار درجة الأولوية عشان تقدر تبعت.</p>}
+      </div>
       <label className="block text-sm font-bold text-gray-700">عنوان المشكلة:</label>
       <input value={subject} onChange={event => setSubject(event.target.value)} maxLength={200}
         placeholder="مثلاً: مش راضي عن المحاضر"
@@ -56,7 +72,7 @@ export function ProblemTicketForm({ subscriberId, onBack, onDone }: {
         className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-200 resize-none" />
       <div className="flex items-center gap-2 pt-1">
         <button onClick={onBack} className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm hover:bg-gray-50">رجوع</button>
-        <button disabled={sending || !body.trim()} onClick={() => void send()}
+        <button disabled={sending || !body.trim() || !priority} onClick={() => void send()}
           className="flex-1 bg-sky-600 text-white rounded-xl px-3 py-2 text-sm font-bold hover:bg-sky-700 disabled:opacity-50 transition">
           {sending ? '⏳...' : to === 'management' ? '⚠️ ابعت للإدارة' : '🎫 ابعت لخدمة العملاء'}
         </button>

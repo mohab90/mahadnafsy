@@ -38,11 +38,15 @@ const CATEGORY_META = Object.freeze({
 });
 
 // Which staff roles staff each department queue (first match wins for labelling).
+// A problem goes to the team that handles it, in turn, never to the managers:
+// «مازلت لسه بتوزع المشاكل علي المديرين ليه؟» (14 Oct 2026). With nobody of the team
+// on duty it waits in the department's queue, unassigned, where the managers see it.
+// Management, HR and the two branches keep their manager: that is who they are for.
 const DEPARTMENT_ROLES = Object.freeze({
-  support:     ['support', 'online_manager'],
-  collection:  ['collection', 'sales_collection_manager'],
-  accounting:  ['accountant', 'sales_collection_manager'],
-  sales:       ['sales', 'sales_collection_manager'],
+  support:     ['support'],
+  collection:  ['collection'],
+  accounting:  ['accountant'],
+  sales:       ['sales'],
   instruction: ['instructor', 'trainer'],
   management:  ['manager', 'admin'],
   daqqi:       ['daqqi_manager', 'reception_daqqi'],

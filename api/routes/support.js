@@ -395,6 +395,11 @@ router.post('/api/admin/cs/tickets', requireAuth, requireAdminOrStaff, requirePe
   let conn;
   try {
     const { category, priority, channel } = req.body;
+    // «الفرع اللي بينقل مشكلة لازم هو يحدد درجة الأولوية» — a problem passed on from a
+    // client's row carries the priority its sender chose, never one made up for it.
+    if (channel === 'internal' && !VALID_PRIORITIES.has(String(priority || '').toLowerCase())) {
+      return res.status(400).json({ error: 'حدّد أولوية المشكلة قبل ما تبعتها', code: 'PRIORITY_REQUIRED' });
+    }
     let subscriber_id = req.body.subscriber_id || null;
     let email = cleanText(req.body.email, 320) || null;
     let name = cleanText(req.body.name, 255) || null;
@@ -1072,6 +1077,49 @@ router.put('/api/admin/tickets/:id/priority', requireAuth, requireAdminOrStaff, 
   } catch (e) {
     if (conn) { await conn.rollback().catch(() => {}); conn.release(); }
     logger.error('[cs/priority]', e.message); res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── CONTACT: the team called or wrote to the client, and what was said ───────
+// «ضيف في الاجراءات زر تواصل وزر واتس اب وتسجل قالت ايه للعميل» (14 Oct 2026). Every
+// contact is one entry on the ticket and one on the client's file; the first one is the
+// first response the SLA counts.
+const CONTACT_CHANNELS = Object.freeze({ call: 'اتصال', whatsapp: 'واتساب' });
+const CONTACT_OUTCOMES = Object.freeze({ answered: 'رد', no_answer: 'ماردش', busy: 'مشغول', wrong_number: 'الرقم غلط', read: 'اتقرت (واتساب)' });
+router.post('/api/admin/tickets/:id/contact', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
+  let conn;
+  try {
+    const channel = String(req.body?.channel || '');
+    const outcome = String(req.body?.outcome || 'answered');
+    const said = cleanText(req.body?.said, TEXT_LIMITS.reason);
+    if (!CONTACT_CHANNELS[channel]) return res.status(400).json({ error: 'اختار اتصال ولا واتساب', code: 'CONTACT_CHANNEL' });
+    if (!CONTACT_OUTCOMES[outcome]) return res.status(400).json({ error: 'نتيجة التواصل غير معروفة', code: 'CONTACT_OUTCOME' });
+    if (!said) return res.status(400).json({ error: 'اكتب قلت للعميل إيه (أو إيه اللي حصل)', code: 'CONTACT_SAID_REQUIRED' });
+    conn = await pool.getConnection(); await conn.beginTransaction();
+    const [[ticket]] = await conn.query(
+      'SELECT status,department,assigned_to,subject,subscriber_id,id FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
+      [req.params.id, req.tenantId]);
+    if (!ticket || !canAccessTicket(req, ticket)) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Not found' }); }
+    const actor = await actorOf(req);
+    await conn.query(
+      `UPDATE support_tickets SET first_response_at = COALESCE(first_response_at, NOW()),
+              status = IF(status='open', 'in_progress', status), updated_at = NOW() WHERE id=? AND tenant_id=?`,
+      [req.params.id, req.tenantId]);
+    await logTicketEvent(conn, {
+      tenantId: req.tenantId, ticketId: req.params.id, type: 'contacted', actorId: actor.id, actorName: actor.name,
+      to: `${CONTACT_CHANNELS[channel]} — ${CONTACT_OUTCOMES[outcome]}`, detail: said,
+    });
+    if (ticket.subscriber_id) {
+      await logClientEvent(conn, {
+        tenantId: req.tenantId, subscriberId: ticket.subscriber_id, action: 'problem_ticket_contacted', actor: actor.name,
+        label: `تواصل خدمة العملاء (${CONTACT_CHANNELS[channel]} — ${CONTACT_OUTCOMES[outcome]}) بخصوص «${ticket.subject || 'تيكت'}»: ${said}`,
+      });
+    }
+    await conn.commit(); conn.release(); conn = null;
+    res.json({ ok: true });
+  } catch (e) {
+    if (conn) { await conn.rollback().catch(() => {}); conn.release(); }
+    logger.error('[cs/contact]', e.message); res.status(500).json({ error: 'Internal server error' });
   }
 });
 

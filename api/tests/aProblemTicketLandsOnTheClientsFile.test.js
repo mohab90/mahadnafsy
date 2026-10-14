@@ -46,10 +46,10 @@ async function call(method, route, req) {
 const historyOf = () => writes.filter(w => /^INSERT INTO activity_logs/.test(w.sql)).map(w => ({ action: w.params[2], subscriber: w.params[4], label: w.params[5], actor: w.params[6] }));
 
 test('«فتح تيكت مشكلة» goes to customer service and is written on the client\'s file', async () => {
-  const res = await call('post', '/api/admin/cs/tickets', { body: { subscriber_id: 's-1', subject: 'مش راضية عن المحاضر', body: 'بتقول الشرح سريع', category: 'client_problem', channel: 'internal' } });
+  const res = await call('post', '/api/admin/cs/tickets', { body: { subscriber_id: 's-1', subject: 'مش راضية عن المحاضر', body: 'بتقول الشرح سريع', category: 'client_problem', priority: 'medium', channel: 'internal' } });
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.department, 'support', 'customer service\'s queue');
-  assert.equal(res.body.priority, 'high');
+  assert.equal(res.body.priority, 'medium', 'the priority the sender chose');
   const [entry] = historyOf();
   assert.equal(entry.action, 'problem_ticket_opened');
   assert.equal(entry.subscriber, 's-1');
@@ -101,4 +101,38 @@ test('one page: the inbox carries what the old tickets screen showed', async () 
   // «تبع فرع ايه … مين المسئول في الفرع اللى رفعتها» (10 Oct 2026).
   assert.match(list, /COALESCE\(t\.branch, sb\.branch\) AS branch/);
   assert.match(list, /COALESCE\(t\.created_by_name, \(SELECT te\.actor_name FROM ticket_events te/);
+});
+
+test('a problem passed on from a client\'s row must carry the priority its sender chose', async () => {
+  const res = await call('post', '/api/admin/cs/tickets', { body: { subscriber_id: 's-1', subject: 'شكوى', body: 'تفاصيل', category: 'complaint', channel: 'internal' } });
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.body.code, 'PRIORITY_REQUIRED');
+  assert.ok(!writes.some(w => /^INSERT INTO support_tickets/.test(w.sql)), 'nothing is made up for it');
+  const form = fs.readFileSync(path.join(__dirname, '../../admin/pages/dashboard/tabs/ProblemTicketForm.tsx'), 'utf8');
+  assert.match(form, /priority,/);
+  assert.match(form, /disabled=\{sending \|\| !body\.trim\(\) \|\| !priority\}/);
+});
+
+test('customer-service problems are never handed to the managers', () => {
+  const { DEPARTMENT_ROLES } = require('../lib/ticketRouting');
+  for (const dept of ['support', 'collection', 'accounting', 'sales']) {
+    assert.ok(!DEPARTMENT_ROLES[dept].some(role => /manager|admin/.test(role)), `${dept}: ${DEPARTMENT_ROLES[dept]}`);
+  }
+});
+
+const CS = { id: 'st-cs', name: 'منى', role: 'support' };
+test('every contact with the client is written on the ticket and on the client\'s file', async () => {
+  ticket = { id: 'tk-1', status: 'open', department: 'support', assigned_to: 'st-cs', subject: 'مش راضية عن المحاضر', subscriber_id: 's-1' };
+  const none = await call('post', '/api/admin/tickets/:id/contact', { params: { id: 'tk-1' }, staffRecord: CS, body: { channel: 'whatsapp', said: ' ' } });
+  assert.equal(none.statusCode, 400, 'what was said is the point');
+  const bad = await call('post', '/api/admin/tickets/:id/contact', { params: { id: 'tk-1' }, staffRecord: CS, body: { channel: 'pigeon', said: 'x' } });
+  assert.equal(bad.statusCode, 400);
+  const res = await call('post', '/api/admin/tickets/:id/contact', { params: { id: 'tk-1' }, staffRecord: CS, body: { channel: 'call', outcome: 'answered', said: 'وعدتها بمحاضر تاني من الأسبوع الجاي' } });
+  assert.equal(res.statusCode, 200);
+  assert.ok(writes.some(w => /first_response_at = COALESCE\(first_response_at, NOW\(\)\)/.test(w.sql)), 'the first contact is the first response');
+  const event = writes.find(w => /^INSERT INTO ticket_events/.test(w.sql));
+  assert.ok(event.params.includes('contacted') && event.params.includes('وعدتها بمحاضر تاني من الأسبوع الجاي'));
+  const [entry] = historyOf();
+  assert.equal(entry.action, 'problem_ticket_contacted');
+  assert.match(entry.label, /اتصال — رد.*وعدتها بمحاضر تاني/);
 });

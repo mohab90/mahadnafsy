@@ -11,6 +11,7 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 import { promptDialog } from '../../../../shared/ui/promptDialog';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
+import { TicketContactButtons } from './TicketContact';
 
 // «محتاجين نطور صفحه تذاكر الدعم … تكون بخلاص صفحه الانبوكس اللى بتيجي المشاكل
 // من الموقع لان نفس المشاكل كدا بتتعرض مرتين … ازرار اجراءات لكل مشكله وللادارة
@@ -103,7 +104,7 @@ type TimelineRow = { event_type: string; actor_name?: string; to_value?: string;
 type CannedResponse = { id: string; title: string; body: string; category: string };
 const EVENT_LABEL: Record<string, string> = {
   created: 'اتفتحت', routed: 'اتوجهت', assigned: 'اتسلمت', replied: 'رد', status_changed: 'الحالة اتغيرت',
-  escalated: 'اتصعدت للإدارة', converted: 'اتحولت من رسالة', priority_changed: 'الأولوية اتغيرت', archived: 'اتحذفت', note: 'ملاحظة',
+  escalated: 'اتصعدت للإدارة', converted: 'اتحولت من رسالة', priority_changed: 'الأولوية اتغيرت', archived: 'اتحذفت', note: 'ملاحظة', contacted: 'تواصل مع العميل',
 };
 
 const btn = 'inline-flex items-center gap-0.5 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[10px] font-bold disabled:opacity-50';
@@ -643,6 +644,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                 {item.source === 'ticket' ? (
                   <>
                     {item.status === 'open' && <button disabled={working} onClick={() => void follow(item)} className="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50"><Clock size={13} /> تحت المتابعة</button>}
+                    {!closed && <TicketContactButtons ticketId={item.id} phone={item.phone} onLogged={() => { notify('success', 'اتسجل التواصل في التذكرة وفي ملف العميل'); void openDetail(item); void loadRemote(); }} onError={text => notify('error', text)} />}
                     {!closed && <button disabled={working} onClick={() => void resolve(item, 'resolved')} className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"><CheckCircle2 size={13} /> اتحلت</button>}
                     {!closed && <button disabled={working} onClick={() => void resolve(item, 'closed')} className="inline-flex items-center gap-1 rounded-xl bg-slate-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-50"><X size={13} /> قفل</button>}
                     {closed && <button disabled={working} onClick={() => void reopen(item)} className="inline-flex items-center gap-1 rounded-xl border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700 disabled:opacity-50"><RotateCcw size={13} /> فتح تاني</button>}
