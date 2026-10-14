@@ -4,6 +4,7 @@ const { listCustomerTimeline } = require('../lib/customerTimeline');
 const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { Router } = require('express');
 const QRCode = require('qrcode');
+const path = require('node:path');
 const router = Router();
 
 const { uuidv4 } = require('../lib/id');
@@ -11,18 +12,23 @@ const { uuidv4 } = require('../lib/id');
 const { pool, cached, cacheInvalidate } = require('../lib/db');
 const { parseLimit, parseOffset, sanitize, tryJson, validate } = require('../lib/helpers');
 const { getBrandSettings } = require('../lib/brandSettings');
-const { escapeHtml, safeUrl } = require('../lib/html');
+const { escapeHtml } = require('../lib/html');
+const { certificateHtml, certificateFormHtml } = require('../lib/certificateHtml');
 const { getTenantSetting } = require('../lib/tenantSettings');
 const { COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber, mapQuiz, loadCourseMaterials, LIVE_STREAM_COLS, mapLiveStream } = require('../lib/mappers');
 const { recordQuizAttempt } = require('../lib/quizAttempts');
 const { sendEmail, htmlEmail } = require('../lib/email');
 const { sendWhatsApp } = require('../lib/whatsapp');
-const { optionalAuth, requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { optionalAuth, requireAuth, requireAdmin, requireAdminOrStaff, requireAnyPermission, requirePermission } = require('../middleware/auth');
 const { setOnlineUser } = require('../lib/onlineUsers');
 const { publicLimiter, contactLimiter } = require('../middleware/rateLimits');
 const { resolveClientContext, getClientIp, hashClientIp } = require('../lib/clientContext');
 const { itemBalances } = require('../lib/agreedPrice');
 const { capturePublicLead } = require('../lib/publicLead');
+const metaCapi = require('../lib/metaCapi');
+const joinApplication = require('../lib/joinApplication');
+const { effectiveCertificate, missingForCertificate } = require('../lib/certificateEnglish');
+const { SYSTEM_SEARCH_PERMISSIONS, searchSystem } = require('../lib/systemSearch');
 
 // The contact form's subjects that are sales' to answer (client/pages/Contact.tsx).
 const SALES_SUBJECTS = new Map([['courses', 'استفسار عن الدبلومات والبرامج'], ['payment', 'استفسار عن الدفع والأسعار']]);
@@ -54,7 +60,25 @@ router.get('/api/public/client-context', publicLimiter, optionalAuth, async (req
   res.json(clientContext);
 });
 
+// GET /api/search?scope=system&q=… — the same box for the institute's own staff:
+// clients, leads, payments by transaction number, certificates and tickets, each
+// for an account that may open it and inside its scope (lib/systemSearch.js).
+// Signed in, staff, and holding one of the kinds' permissions — or refused, as
+// any admin route refuses; without scope=system the public catalogue answers.
+const SYSTEM_SEARCH_GUARD = [requireAuth, requireAdminOrStaff, requireAnyPermission(...SYSTEM_SEARCH_PERMISSIONS)];
+const runGuards = (guards, req, res, done) => guards.reduceRight((next, guard) => () => guard(req, res, next), done)();
+async function answerSystemSearch(req, res) {
+  try {
+    res.set('Cache-Control', 'private, no-store');
+    res.json(await searchSystem(req, req.query.q));
+  } catch (e) {
+    logger.error('[system-search]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
 router.get('/api/search', publicLimiter, async (req, res) => {
+  if (req.query.scope === 'system') return runGuards(SYSTEM_SEARCH_GUARD, req, res, () => answerSystemSearch(req, res));
   try {
     const query = sanitize(String(req.query.q || '').trim(), 80);
     if (query.length < 2) return res.json({ courses: [], bundles: [], articles: [] });
@@ -456,8 +480,9 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
   try {
     const [[row]] = await pool.query(
       `SELECT cc.certificate_code,cc.completed_at,cc.tenant_id,
-              COALESCE(NULLIF(s.name_en, ''), s.name) AS subscriber_name, s.client_code,
-              c.title AS course_title, c.hours AS hours_count,
+              cc.cert_name_en, cc.cert_course_en, cc.cert_duration, cc.cert_trainer,
+              s.name_en AS subscriber_name_en, s.client_code,
+              c.title AS course_title, c.title_en AS course_title_en, c.hours AS hours_count,
               u.name AS instructor_name
        FROM course_completions cc
        JOIN subscribers s ON s.id = cc.subscriber_id AND s.tenant_id=cc.tenant_id
@@ -467,32 +492,44 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
       [req.params.code]
     );
     if (!row) return res.status(404).send('<h3>الشهادة غير موجودة</h3>');
+    // «لو طباعة للعميل اعرضها بالتصميم الكامل انما لو من السيستم … نطبع اسم العميل واسم الكورس فقط»:
+    // ?mode=form is the desk's copy for the pre-printed paper; it is never a client download.
+    const formMode = String(req.query.mode || '') === 'form';
     // «لو العميل عمل تحميل للشهاده pdf من الموقع يظهر انه العميل عملها تحميل»:
     // the desk's own print and preview carry ?staff=1.
-    if (String(req.query.staff || '') !== '1') {
+    if (!formMode && String(req.query.staff || '') !== '1') {
       pool.query(
         'UPDATE course_completions SET downloaded_at=COALESCE(downloaded_at, NOW()), download_count=download_count+1 WHERE certificate_code=? AND tenant_id=?',
         [row.certificate_code, row.tenant_id]).catch(() => {});
     }
 
     const certCode    = row.certificate_code || req.params.code;
-    const studentName = (row.subscriber_name || 'Student').toUpperCase();
-    const courseName  = row.course_title || 'Training Course';
+    // English only («اسم العميل واسم الكورس بالانجليزي فقط»): never the Arabic name or title,
+    // whether it comes from the client's file or from the desk's change on this certificate.
+    const certificate = effectiveCertificate({
+      cert_name_en: row.cert_name_en, name_en: row.subscriber_name_en,
+      cert_course_en: row.cert_course_en, course_title_en: row.course_title_en, course_title: row.course_title,
+      cert_duration: row.cert_duration, hours: row.hours_count,
+      cert_trainer: row.cert_trainer, instructor_name: row.instructor_name,
+    });
+    const studentName = certificate.name;
+    const courseName  = certificate.course;
+    if (!studentName || !courseName) {
+      const missing = missingForCertificate({ nameEn: row.cert_name_en || row.subscriber_name_en, courseTitleEn: row.cert_course_en || row.course_title_en, courseTitle: row.course_title });
+      return res.status(409).type('html').send(`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>الشهادة غير جاهزة</title></head>
+<body style="font-family:Tahoma,Arial,sans-serif;max-width:520px;margin:12vh auto;padding:0 20px;text-align:center;color:#333">
+<h2 style="color:#B45309">الشهادة غير جاهزة للطباعة</h2>
+<p style="line-height:1.9">شهادة المعهد بتتطبع بالإنجليزي فقط، وناقص: <b>${escapeHtml(missing.join(' و'))}</b>.</p>
+<p style="line-height:1.9;color:#666">التحصيل أو خدمة العملاء يضيفوه من ملف العميل ← «بيانات الشهادة»، وبعدها الشهادة تتفتح.</p></body></html>`);
+    }
     const issuedAt    = row.completed_at
       ? new Date(row.completed_at).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric', timeZone: 'Africa/Cairo' })
       : new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric', timeZone: 'Africa/Cairo' });
-    // Identity from the central brand (Settings → الهوية): logo, colour, name.
-    const [brand, content] = await Promise.all([
-      getBrandSettings(row.tenant_id),
-      getTenantSetting('content', { tenantId: row.tenant_id, fallback: {} }),
-    ]);
-    const instituteName = brand.instituteName || 'Psychology Institute';
-    const trainingMgr   = content['training_manager_name'] || content['institute.trainingManager'] || 'WALID ABDRAHMAN';
-    const instructorName = row.instructor_name || 'Trainer';
+    // Identity from the central brand (Settings → الهوية): the button's colour.
+    const brand = await getBrandSettings(row.tenant_id);
     const serialNo = row.client_code || certCode.slice(-8).toUpperCase();
 
     const primaryColor = brand.primaryColor;
-    const LOGO_URL = brand.logoUrl;
     const qrData   = encodeURIComponent(`CERT:${certCode}|${studentName}|${courseName}`);
     const qrUrl    = `/api/qr?size=90&data=${qrData}`;
     // Must match completeCourse()'s own completion email link (lib/courseCompletion.js)
@@ -502,6 +539,11 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
     const clientBase = String(process.env.CLIENT_URL || 'https://mahadnafsy.com').replace(/\/$/, '');
     const verifyUrl = `${clientBase}/certificate/${encodeURIComponent(certCode)}`;
 
+    // The institute's own picture with the lines written on it (lib/certificateHtml.js);
+    // this page adds the toolbar and the print rules around it.
+    const cert = formMode
+      ? certificateFormHtml({ studentName, courseName, duration: certificate.duration, nameTop: req.query.nameTop, courseTop: req.query.courseTop })
+      : certificateHtml({ studentName, courseName, duration: certificate.duration, trainer: certificate.trainer, serialNo, issuedAt, qrUrl, verifyUrl });
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -509,21 +551,17 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Certificate – ${escapeHtml(studentName)}</title>
 <style>
-  @page { size: A4 portrait; margin: 5mm; }
+  @page { size: A4 portrait; margin: 0; }
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; }
-  body { background: #f0f0f0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; font-family: Georgia, 'Times New Roman', serif; }
-  .toolbar { width: 600px; display: flex; justify-content: space-between; align-items: center; padding: 12px 0; }
-  .cert { width: 600px; background: #fff; border: 1px solid #e0e0e0; position: relative; overflow: hidden; }
-  .body-pad { padding: 24px 50px 0; text-align: center; }
-  .footer-row { display: flex; justify-content: space-between; align-items: flex-end; padding: 8px 36px 0; border-top: 1px solid #eee; gap: 8px; }
-  .sig-block { text-align: center; min-width: 135px; }
-  .sig-line { width: 88px; height: 30px; border-bottom: 2px solid #333; margin: 0 auto 8px; }
-  .sig-badge { border: 1px solid #ccc; border-radius: 4px; padding: 5px 8px; display: inline-flex; align-items: center; gap: 5px; font-size: 10px; color: #555; }
-  .serial-badge { border: 1px solid #ccc; border-radius: 4px; padding: 5px 8px; font-size: 9px; color: #555; line-height: 1.5; }
+  body { background: #f0f0f0; display: flex; flex-direction: column; align-items: center; font-family: Georgia, 'Times New Roman', serif; }
+  .toolbar { width: 600px; max-width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 12px 0; }
+  .cert { width: 600px; height: 849px; background: #fff; position: relative; overflow: hidden; flex: none; box-shadow: 0 2px 14px rgba(0,0,0,.18); }
+  .form-sheet { width: 21cm; height: 29.7cm; background: #fff; position: relative; overflow: hidden; flex: none; box-shadow: 0 2px 14px rgba(0,0,0,.18); }
   @media print {
-    body { background: #fff; padding: 0; }
-    .toolbar { display: none !important; }
-    .cert { border: none; }
+    body { background: #fff; padding: 0; display: block; }
+    .toolbar, .verify-note, .guide { display: none !important; }
+    .cert { zoom: 1.32; box-shadow: none; }
+    .form-sheet { box-shadow: none; }
   }
   @media screen {
     body { padding: 20px; min-height: 100vh; }
@@ -533,121 +571,16 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
 <body>
 
 <div class="toolbar no-print">
-  <div style="font-size:13px;color:#555">Certificate of Achievement</div>
+  <div style="font-size:13px;color:#555">${formMode ? 'Print on the institute\'s form — name and course only' : 'Certificate of Achievement'}</div>
   <button onclick="window.print()"
     style="background:${primaryColor};color:#fff;border:none;padding:9px 24px;border-radius:6px;font-size:14px;cursor:pointer;font-weight:bold;font-family:Arial">
     🖨️ Print / Save PDF
   </button>
 </div>
 
-<div class="cert" id="cert">
+${cert}
 
-  <!-- Top swoosh SVG -->
-  <svg viewBox="0 0 595 210" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;margin-bottom:-2px" preserveAspectRatio="none">
-    <path d="M 0 0 L 0 205 Q 100 155 297 172 Q 494 189 595 148 L 595 0 Z" fill="#D97706"/>
-    <path d="M 0 0 L 0 188 Q 100 138 297 155 Q 494 172 595 132 L 595 0 Z" fill="${primaryColor}"/>
-    <path d="M 0 0 L 152 12 Q 68 58 0 120 Z" fill="#F59E0B" opacity="0.55"/>
-    <path d="M 595 0 L 443 12 Q 527 58 595 120 Z" fill="#F59E0B" opacity="0.55"/>
-  </svg>
-
-  <!-- Gold medal (logo) -->
-  <div style="position:absolute;top:22px;left:50%;transform:translateX(-50%);width:82px;height:82px;border-radius:50%;background:radial-gradient(circle at 35% 32%, #FEF3C7, #F59E0B 52%, #92400E);box-shadow:0 4px 18px rgba(0,0,0,0.45),0 0 0 4px #FCD34D;display:flex;align-items:center;justify-content:center;z-index:10">
-    <img src="${safeUrl(LOGO_URL)}" style="width:52px;height:52px;border-radius:50%;object-fit:contain" onerror="this.style.display='none'"/>
-  </div>
-
-  <!-- Body -->
-  <div class="body-pad">
-    <div style="font-size:42px;font-weight:900;letter-spacing:7px;color:#111;line-height:1">CERTIFICATE</div>
-    <div style="font-size:14px;letter-spacing:8px;color:#666;margin-top:5px;margin-bottom:12px;font-style:italic">OF ACHIEVEMENT</div>
-
-    <!-- Divider -->
-    <div style="display:flex;align-items:center;gap:10px;margin:0 40px 14px">
-      <div style="flex:1;height:2px;background:linear-gradient(to right,transparent,${primaryColor})"></div>
-      <div style="display:flex;gap:4px">
-        <div style="width:6px;height:6px;border-radius:50%;background:#D97706"></div>
-        <div style="width:8px;height:8px;border-radius:50%;background:${primaryColor}"></div>
-        <div style="width:6px;height:6px;border-radius:50%;background:#D97706"></div>
-      </div>
-      <div style="flex:1;height:2px;background:linear-gradient(to left,transparent,${primaryColor})"></div>
-    </div>
-
-    <div style="font-size:22px;font-weight:900;color:${primaryColor};letter-spacing:2px;margin-bottom:5px">${escapeHtml(instituteName.toUpperCase())}</div>
-    <div style="font-size:11px;letter-spacing:5px;color:#777;margin-bottom:16px">IS PROUDLY PRESENTED TO</div>
-
-    <!-- Student name -->
-    <div style="font-size:${studentName.length > 28 ? '20px' : '27px'};font-weight:900;color:${primaryColor};letter-spacing:2px;padding:10px 16px;border-top:2px solid ${primaryColor};border-bottom:2px solid ${primaryColor};margin:0 24px 16px;line-height:1.4;min-height:54px;display:flex;align-items:center;justify-content:center">
-      ${escapeHtml(studentName)}
-    </div>
-
-    <div style="font-size:12px;color:#444;letter-spacing:2px;line-height:2">FOR THE SUCCESSFUL COMPLETION</div>
-    <div style="font-size:12px;color:#444;letter-spacing:2px;line-height:2;margin-bottom:10px">OF THE TRAINING COURSE</div>
-
-    <!-- Course name -->
-    <div style="font-size:${courseName.length > 50 ? '13px' : '16px'};font-weight:700;color:#1a1a1a;margin:0 16px 16px;letter-spacing:0.5px;line-height:1.5;padding:8px 16px;background:#fafafa;border:1px solid #eee;border-radius:4px">
-      ${escapeHtml(courseName)}
-    </div>
-  </div>
-
-  <!-- Footer signatures -->
-  <div class="footer-row">
-    <!-- Trainer -->
-    <div class="sig-block">
-      <div style="font-size:13px;font-weight:800;margin-bottom:10px;letter-spacing:0.5px">Trainer</div>
-      <div class="sig-line"></div>
-      <div class="sig-badge" style="direction:rtl">
-        <img src="${safeUrl(LOGO_URL)}" style="width:18px;height:18px;border-radius:50%;object-fit:contain;flex-shrink:0" onerror="this.style.display='none'"/>
-        ${escapeHtml(instituteName)}
-      </div>
-    </div>
-
-    <!-- Center: ribbon badge + serial -->
-    <div style="text-align:center;flex:1">
-      <svg width="52" height="68" viewBox="0 0 52 68" style="display:block;margin:0 auto 6px">
-        <defs>
-          <radialGradient id="mg" cx="35%" cy="32%">
-            <stop offset="0%" stop-color="#FEF3C7"/>
-            <stop offset="55%" stop-color="#F59E0B"/>
-            <stop offset="100%" stop-color="#92400E"/>
-          </radialGradient>
-        </defs>
-        <circle cx="26" cy="22" r="20" fill="url(#mg)" stroke="#B45309" stroke-width="2"/>
-        <text x="26" y="29" text-anchor="middle" font-size="20" fill="#7C2D12" font-weight="bold">★</text>
-        <polygon points="14,40 20,40 17,68 9,60" fill="${primaryColor}"/>
-        <polygon points="32,40 38,40 43,60 35,68" fill="${primaryColor}"/>
-      </svg>
-      <div style="font-size:8px;color:#999;letter-spacing:1px;text-transform:uppercase">Serial No.</div>
-      <div style="font-size:11px;font-weight:700;font-family:monospace;color:${primaryColor};margin-top:2px">${escapeHtml(serialNo)}</div>
-      <div style="font-size:8px;color:#aaa;margin-top:2px">${escapeHtml(issuedAt)}</div>
-    </div>
-
-    <!-- Training Manager -->
-    <div class="sig-block">
-      <div style="font-size:13px;font-weight:800;margin-bottom:10px;letter-spacing:0.5px">Training Manager</div>
-      <div class="sig-line"></div>
-      <div class="serial-badge">
-        <div style="font-weight:800">${escapeHtml(trainingMgr.toUpperCase())}</div>
-        <div>PSY TRAINING MANAGER</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- QR row -->
-  <div style="text-align:center;padding:10px 0 0">
-    <a href="${escapeHtml(verifyUrl)}" target="_blank">
-      <img src="${qrUrl}" alt="QR" style="width:54px;height:54px;display:inline-block"/>
-    </a>
-    <div style="font-size:8px;color:#bbb;margin-top:2px">Scan to verify certificate authenticity</div>
-  </div>
-
-  <!-- Bottom swoosh -->
-  <svg viewBox="0 0 595 62" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;margin-top:-1px" preserveAspectRatio="none">
-    <path d="M 0 62 L 0 25 Q 100 65 297 48 Q 494 31 595 55 L 595 62 Z" fill="#D97706"/>
-    <path d="M 0 62 L 0 10 Q 100 50 297 33 Q 494 16 595 42 L 595 62 Z" fill="${primaryColor}"/>
-  </svg>
-
-</div><!-- /cert -->
-
-<div style="text-align:center;padding:12px;font-size:12px;color:#999">
+<div class="verify-note" style="text-align:center;padding:12px;font-size:12px;color:#999">
   Verify at: <a href="${escapeHtml(verifyUrl)}" style="color:${primaryColor}">${escapeHtml(verifyUrl)}</a>
 </div>
 
@@ -657,9 +590,18 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
 </body></html>`;
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
+    // A page the desk may have just edited is never served from a cache.
+    res.setHeader('Cache-Control', 'no-store');
     res.send(html);
   } catch (e) { logger.error('[certificate]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// The institute's own certificate design (the picture the printable page is written on).
+router.get('/api/certificate-template.jpg', publicLimiter, (req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=604800');
+  res.type('image/jpeg').sendFile(path.join(__dirname, '../assets/certificate-template.jpg'), err => {
+    if (err && !res.headersSent) res.status(404).end();
+  });
 });
 
 // ── Referral System ──────────────────────────────────────────────────────────
@@ -917,6 +859,8 @@ router.post('/api/contact', contactLimiter, async (req, res) => {
         notes: `صفحة التواصل — ${SALES_SUBJECTS.get(subject)}: ${String(message).slice(0, 400)}`,
       }).catch(error => logger.warn('[contact] lead not filed', { error: error.message }));
     }
+    // A message on the contact page is a Lead to the ads, whatever its subject.
+    void metaCapi.trackLead(req, { name, email, phone, leadId: id, contentName: subject || 'contact' });
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -925,12 +869,36 @@ router.post('/api/contact', contactLimiter, async (req, res) => {
 router.post('/api/join-us', contactLimiter, async (req, res) => {
   try {
     const { name, email, phone, specialty, experience, type, linkedin, message, jobId,
-      branch, education, experiencePlaces, experienceYears } = req.body;
-    const verr = validate(req.body, { name: 'required|120', email: 'email|160', phone: 'required|40', specialty: 'required|160', type: 'required|40', experience: 'optional|2000', linkedin: 'optional|300', message: 'optional|2000' });
+      branch, education, experiencePlaces, experienceYears, form } = req.body;
+    const verr = validate(req.body, { name: 'required|120', email: 'email|160', phone: 'required|40', specialty: 'required|160', type: 'optional|40', experience: 'optional|2000', linkedin: 'optional|300', message: 'optional|2000', programsOther: 'optional|1000', branch: 'optional|60' });
     if (verr) return res.status(400).json({ error: verr });
     const id = uuidv4();
-    const safeType = ['INSTRUCTOR', 'CONSULTANT', 'EMPLOYEE'].includes(String(type || '').toUpperCase())
-      ? String(type).toUpperCase() : 'INSTRUCTOR';
+    // Which list the application belongs on comes from the page it was sent from,
+    // not from a type that silently fell back to INSTRUCTOR — «لازم تفرق بيينهم
+    // بشكل كبير» (12 Oct 2026). See lib/joinApplication.js.
+    const kind = joinApplication.resolveApplicationKind({ form, type, jobId });
+    const safeType = kind.type;
+    // The lecturer form's two required questions — «هل اشتغلت محاضر قبل كده؟» and
+    // «هل اشتغلت في جلسات نفسية مع عملاء قبل كده؟» (12 Oct 2026). Required from the
+    // teaching page; a page cached from before them sends no `form` and is let
+    // through without, rather than losing the applicant.
+    const lecturedBefore = joinApplication.parseYesNo(req.body.lecturedBefore);
+    const sessionsBefore = joinApplication.parseYesNo(req.body.sessionsBefore);
+    if (String(form || '').toLowerCase() === 'teaching' && (lecturedBefore === null || sessionsBefore === null)) {
+      return res.status(400).json({ error: 'جاوب على سؤالي الخبرة: اشتغلت محاضر قبل كده؟ واشتغلت في جلسات نفسية مع عملاء؟' });
+    }
+    // The programmes ticked, read back from the tenant's own published courses —
+    // a title from the browser is not stored as something the institute offers.
+    let programs = [];
+    const programIds = kind.sourceForm === 'teaching' ? joinApplication.programIdsFrom(req.body.programs) : [];
+    if (programIds.length) {
+      const [rows] = await pool.query(
+        `SELECT id, title FROM courses WHERE tenant_id=? AND is_published=1 AND id IN (${programIds.map(() => '?').join(',')})`,
+        [req.tenantId, ...programIds]);
+      const byId = new Map(rows.map(row => [String(row.id), row.title]));
+      programs = programIds.filter(pid => byId.has(pid)).map(pid => ({ id: pid, title: byId.get(pid) }));
+    }
+    const programsOther = kind.sourceForm === 'teaching' ? String(req.body.programsOther || '').trim() || null : null;
     // Applying from a specific job listing's "قدّم الآن" list must land the
     // applicant on THAT posting, not the generic talent pool it silently fell
     // into before (jobId was collected on the form but never sent). Re-checked
@@ -954,6 +922,10 @@ router.post('/api/join-us', contactLimiter, async (req, res) => {
       name, email, phone, specialty, experience, type: safeType, linkedin, message,
       branch, education, experiencePlaces, experienceYears,
       job_id: targetJobId,
+      source_form: kind.sourceForm,
+      lectured_before: kind.sourceForm === 'teaching' ? lecturedBefore : null,
+      sessions_before: kind.sourceForm === 'teaching' ? sessionsBefore : null,
+      programs, programs_other: programsOther,
     });
     const roleLabel = { INSTRUCTOR: 'محاضر', CONSULTANT: 'مستشار', EMPLOYEE: 'وظيفة إدارية' }[safeType] || '';
     await Promise.all([

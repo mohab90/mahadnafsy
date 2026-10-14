@@ -18,7 +18,7 @@ const featureRules = [
   // Every Dokki route, the schedule and its operations included: the prefix
   // '/api/admin/daqqi' matches '/api/admin/daqqi/…' and not '/api/admin/daqqi-rounds'.
   { feature: 'daqqi', prefixes: ['/api/admin/daqqi', '/api/admin/daqqi-rounds', '/api/admin/daqqi-performance', '/api/admin/dokki', '/api/admin/waitlist'] },
-  { feature: 'settings', prefixes: ['/api/admin/settings', '/api/admin/sys-config', '/api/admin/content', '/api/admin/kv', '/api/admin/ip-whitelist', '/api/admin/tenant-domain', '/api/admin/payment-gateway', '/api/admin/lead-sources', '/api/admin/otp-provider'] },
+  { feature: 'settings', prefixes: ['/api/admin/settings', '/api/admin/sys-config', '/api/admin/content', '/api/admin/kv', '/api/admin/ip-whitelist', '/api/admin/tenant-domain', '/api/admin/payment-gateway', '/api/admin/lead-sources', '/api/admin/otp-provider', '/api/admin/meta-capi'] },
   { feature: 'security', prefixes: ['/api/admin/security', '/api/admin/backup', '/api/admin/backups'] },
   { feature: 'analytics', prefixes: ['/api/admin/analytics', '/api/admin/kpi', '/api/admin/dashboard/kpi', '/api/admin/forecast'] },
 ];

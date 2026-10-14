@@ -103,6 +103,13 @@ function identitySpellings(input) {
     out.add(`${DEFAULT_COUNTRY_CODE}0${identity}`);
     out.add(`00${DEFAULT_COUNTRY_CODE}${identity}`);
   }
+  // A Saudi mobile is written 05XXXXXXXX, 5XXXXXXXX and 9665XXXXXXXX alike.
+  const saudi = /^966(5\d{8})$/.exec(identity);
+  if (saudi) {
+    out.add(saudi[1]);
+    out.add(`0${saudi[1]}`);
+    out.add(`00${identity}`);
+  }
   return [...out];
 }
 
@@ -117,7 +124,26 @@ const SA_MOBILE_NATIONAL = /^5\d{8}$/;
 function completeForBranch(input, branch) {
   const identity = toIdentity(input);
   const saudi = String(branch || '').trim().toUpperCase().replace(/[-\s]+/g, '_') === 'ONLINE_SAUDI';
-  return saudi && SA_MOBILE_NATIONAL.test(identity) ? `966${identity}` : input;
+  return saudi && SA_MOBILE_NATIONAL.test(identity) ? `966${identity}` : tidyTyped(input);
+}
+
+/**
+ * A number as people type an international one — «+966 50 123 4567», «00966-50…»,
+ * «(+44) 7911 123456» — in the one shape the system stores: digits, the country
+ * code in front, no «+», no separators. «+966 50 123 4567» was stored as typed,
+ * so the same client written «966501234567» was not found, and a Saudi or an
+ * international booking registered the client a second time. A local number
+ * (010 1234 5678) only loses its separators; anything with a letter in it is
+ * left exactly as given.
+ */
+function tidyTyped(input) {
+  if (typeof input !== 'string') return input;
+  const typed = latinDigits(input).trim();
+  if (!/^[+\d\s().-]+$/.test(typed) || !/\d/.test(typed)) return input;
+  const digits = typed.replace(/\D/g, '');
+  if (typed.startsWith('+')) return digits;
+  if (digits.startsWith('00') && digits.length > 9) return digits.slice(2);
+  return digits;
 }
 
 /** True when this number can actually receive a WhatsApp message. */

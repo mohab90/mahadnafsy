@@ -7,6 +7,10 @@
 
 import type { JoinUsApplication } from '../../types';
 
+/** A stored yes/no (1/0, true/false) — null when it was never asked. */
+const yesNo = (value: unknown): boolean | null => (value === null || value === undefined || value === ''
+  ? null : value === true || Number(value) === 1);
+
 export function normalizeApplicants(rows: unknown): JoinUsApplication[] {
   return (rows as Record<string, unknown>[]).map(row => ({
     ...row,
@@ -35,5 +39,20 @@ export function normalizeApplicants(rows: unknown): JoinUsApplication[] {
     experiencePlaces: (row.experiencePlaces ?? row.experience_places) as string | undefined,
     jobId: (row.jobId ?? row.job_id) as string | undefined,
     jobTitle: (row.jobTitle ?? row.job_title) as string | undefined,
+    // Which list it belongs on. A row from before the column says nothing, and
+    // its type decides — the same fallback the API applies.
+    sourceForm: ((row.sourceForm ?? row.source_form)
+      || (String(row.type || '').toUpperCase() === 'EMPLOYEE' ? 'staff' : 'teaching')) as JoinUsApplication['sourceForm'],
+    lecturedBefore: yesNo(row.lecturedBefore ?? row.lectured_before),
+    sessionsBefore: yesNo(row.sessionsBefore ?? row.sessions_before),
+    programs: (Array.isArray(row.programs) ? row.programs : []) as JoinUsApplication['programs'],
+    programsOther: (row.programsOther ?? row.programs_other) as string | undefined,
+    firstCallRating: row.firstCallRating != null || row.first_call_rating != null
+      ? Number(row.firstCallRating ?? row.first_call_rating) : null,
+    firstCallTags: (Array.isArray(row.firstCallTags ?? row.first_call_tags) ? (row.firstCallTags ?? row.first_call_tags) : []) as string[],
+    firstCallNotes: (row.firstCallNotes ?? row.first_call_notes) as string | undefined,
+    firstCallAt: (row.firstCallAt ?? row.first_call_at) as string | undefined,
+    firstCallByName: (row.firstCallByName ?? row.first_call_by_name) as string | undefined,
+    phoneInterviewResult: (row.phoneInterviewResult ?? row.phone_interview_result ?? null) as JoinUsApplication['phoneInterviewResult'],
   })) as JoinUsApplication[];
 }

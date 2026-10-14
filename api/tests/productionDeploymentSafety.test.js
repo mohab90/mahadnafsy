@@ -120,6 +120,16 @@ test('the deploy script uses the release it was given', () => {
   );
   assert.match(script, /PRODUCTION FAILED - rolled back/);
 
+  // 12 Oct 2026: the two halves run separately so the staging E2E can sit
+  // between them, and the production half only ships what staging runs.
+  assert.match(script, /^TARGET=\$\{MAHAD_DEPLOY_TARGET:-both\}$/m);
+  assert.match(script, /if \[ "\$TARGET" = staging \]; then[\s\S]*?exit 0/);
+  assert.match(script, /grep -qx "APP_RELEASE=\$R" "\$STAGING_API\/\.env"/,
+    'production refuses unless staging already runs this release');
+  // tools/release-gate.mjs cuts the script at this line for a staging-only run.
+  assert.match(script, /^echo "staging is healthy; continuing to production"$/m);
+  assert.ok(script.indexOf('if [ "$TARGET" = staging ]; then') < script.indexOf('\necho "staging is healthy; continuing to production"'));
+
   // The release id is stamped into the environment it deploys, so a report
   // from production can name its own build. Without it "is the fix live?" can
   // only be answered by reading files on the box, which is how the rollback
@@ -132,4 +142,37 @@ test('the deploy script uses the release it was given', () => {
   assert.ok(script.includes('[ -s "/staging/$R-$part.tgz" ] || {'), 'a missing archive must stop the run');
   assert.ok(script.indexOf('for part in api admin client; do') < script.indexOf('deploy() {'),
     'the archives are checked before anything is backed up, stamped or restarted');
+});
+
+// 11 Oct 2026: the schema before the code. Migrations ran after production was
+// restarted on the new code, piped through tail so a failure still said DONE.
+test('the deploy migrates before it switches the code, and checks what the API reports', () => {
+  const script = readRepo('deploy-release.sh');
+  const body = script.slice(script.indexOf('deploy() {'), script.indexOf('rollback_api() {'));
+  const migrate = body.indexOf('npm run -s migrate');
+  assert.ok(migrate > 0, 'deploy() runs the migrations');
+  assert.ok(migrate < body.indexOf('systemctl restart "$svc"'), 'before the service restarts on the new code');
+  assert.ok(migrate < body.indexOf('tar -xzf "/staging/$R-admin.tgz"'), 'before the admin is switched');
+  assert.match(body, /MIGRATION FAILED[\s\S]*return 1/);
+  assert.match(body, /applied_migration "\$port"/);
+  assert.doesNotMatch(script, /npm run migrate 2>&1 \| grep/);
+  assert.match(script, /tail -n \+4/, 'old archives are pruned to the last 3');
+
+  const release = readRepo('deploy/release-all.sh');
+  assert.match(release, /git branch -r --contains HEAD/);
+  assert.match(release, /npm run release:gate -- --skip-live/);
+  assert.match(release, /MAHAD_DEPLOY_EMERGENCY/);
+  assert.ok(release.indexOf('release:gate') < release.indexOf('npm run release:prepare'));
+
+  // The staging E2E is a gate, not a report: staging, then the specs, then
+  // production — each half its own server call, the e2e run in between.
+  const staging = release.indexOf('MAHAD_DEPLOY_TARGET=staging bash');
+  const e2e = release.indexOf('npx playwright test "$spec"');
+  const production = release.indexOf('MAHAD_DEPLOY_TARGET=production bash');
+  assert.ok(staging > 0 && e2e > staging && production > e2e, 'production is deployed only after the staging E2E');
+  assert.match(release, /tests\/public-smoke\.spec\.ts tests\/payment-flow\.spec\.ts/);
+  assert.match(release, /MAHAD_SKIP_E2E/);
+  assert.match(release, /npm run test:e2e:install/);
+  assert.match(release, /PRODUCTION IS UNTOUCHED/);
+  assert.equal((release.match(/npm run release:prepare/g) || []).length, 1, 'built once, for both halves');
 });

@@ -22,6 +22,7 @@
 
 const { uuidv4 } = require('./id');
 const { normalizeBonuses } = require('./priceTiers');
+const { cairoDayOf, cairoToday } = require('./dates');
 
 const SALES_ROLES = new Set(['sales', 'sales_collection_manager']);
 const SERVICE_ROLES = new Set(['collection', 'support', 'reception_daqqi', 'reception_tagamoa']);
@@ -63,9 +64,10 @@ async function recordBookingBonuses(db, { tenantId, payment, amountEgp, actor = 
   // payment's exchange rate, else the payment itself.
   const rate = Number(payment.amount) > 0 ? Number(amountEgp) / Number(payment.amount) : 1;
   const baseEgp = Number(payment.course_expected) > 0 ? round2(Number(payment.course_expected) * rate) : Number(amountEgp);
-  const day = String(payment.date instanceof Date ? payment.date.toISOString() : payment.date || '').slice(0, 10);
-  const month = Number(day.slice(5, 7)) || new Date().getMonth() + 1;
-  const year = Number(day.slice(0, 4)) || new Date().getFullYear();
+  // The payment's Cairo day, or today's in Cairo — the server's month is UTC.
+  const day = cairoDayOf(payment.date) || cairoToday();
+  const month = Number(day.slice(5, 7));
+  const year = Number(day.slice(0, 4));
   const label = item?.title || itemId;
   let recorded = 0;
 

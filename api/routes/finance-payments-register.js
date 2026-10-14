@@ -105,7 +105,7 @@ router.get('/api/admin/finance/payments-register', requireAuth, requireAdminOrSt
         const clauses = ['s.name LIKE ?', 's.client_code LIKE ?', 'p.transaction_id LIKE ?', 'p.item_title LIKE ?', 'c.title LIKE ?', 'c.title_ar LIKE ?', 'b.title LIKE ?'];
         const values = [like, like, like, like, like, like, like];
         // «#1234» or a bare number is the operation number.
-        if (/^#?\d+$/.test(q)) { clauses.push('p.payment_no = ?'); values.push(Number(digits)); }
+        if (/^#?\d+$/.test(q)) { clauses.push('(p.payment_no = ? OR p.receipt_no = ?)'); values.push(Number(digits), Number(digits)); }
         if (digits.length >= 8) { clauses.push('s.phone IN (?)'); values.push([...new Set([digits, ...identitySpellings(digits)])]); }
         where += ` AND (${clauses.join(' OR ')})`;
         params.push(...values);
@@ -115,7 +115,7 @@ router.get('/api/admin/finance/payments-register', requireAuth, requireAdminOrSt
         pool.query(`SELECT COUNT(*) AS total, COALESCE(SUM(p.amount_egp), 0) AS egp ${from} WHERE p.tenant_id = ?${where}`, [req.tenantId, ...params])
           .then(([result]) => [result]),
         pool.query(
-          `SELECT p.id, p.payment_no, p.date, p.created_at, p.amount, p.currency, p.amount_egp, p.payment_type, p.payment_method,
+          `SELECT p.id, p.payment_no, p.receipt_no, p.date, p.created_at, p.amount, p.currency, p.amount_egp, p.payment_type, p.payment_method,
                   p.transaction_id, p.status, p.note, p.source, p.is_installment, p.branch,
                   ${SERVICE_SQL} AS service,
                   p.subscriber_id, s.name AS client_name, s.client_code, s.phone AS client_phone,
@@ -130,7 +130,11 @@ router.get('/api/admin/finance/payments-register', requireAuth, requireAdminOrSt
       res.json({
         rows: rows.map(r => ({
           id: r.id,
-          number: r.payment_no != null ? Number(r.payment_no) : null,
+          // Dokki and Tagamoa receipts carry their branch's own running number (lib/receiptNumbers.js);
+          // every other payment keeps the institute-wide one.
+          number: r.receipt_no != null ? Number(r.receipt_no) : (r.payment_no != null ? Number(r.payment_no) : null),
+          receiptBranch: r.receipt_no != null ? (r.branch === 'TAGAMOA' ? 'التجمع' : 'الدقي') : null,
+          operationNo: r.payment_no != null ? Number(r.payment_no) : null,
           date: r.date,
           amount: Number(r.amount),
           currency: r.currency,

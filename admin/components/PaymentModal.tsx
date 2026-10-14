@@ -4,13 +4,20 @@
  */
 import { latinDigits } from '../../shared/latinDigits';
 import React, { useEffect, useState } from 'react';
+import { arabicReason } from '../lib/apiErrorText';
+import {
+  attachPhotosToNextPayment, fetchClientPhotoLinks, PHOTO_ACCEPT, photoNeeds, uploadClientPhoto, useDriveConfigured,
+  type PhotoKind, type PhotoLinks, type PhotoNeed,
+} from '../lib/drivePhotos';
 import { cairoDateOnly } from '../../shared/cairoDate';
 import { CreditCard, Home, X } from 'lucide-react';
 import { useCrmData, useStaticData } from '../context/siteDataSlices';
+import { useEnsureSiteLists } from '../context/SiteDataContext';
 import { useCertificateCatalog } from '../lib/certificateCatalog';
 import { agreedPriceFor } from '../lib/agreedPrice';
 import { mysqlAdmin } from '../lib/mysqlapi';
 import { attributeNextPayment } from '../lib/paymentAttribution';
+import { forgetReceipts, takeReceiptLabel } from '../lib/lastReceipt';
 import type {
   PaymentItemType, PaymentHistoryEntry,
   ExtraCertificateRequest, DaqqiRound,
@@ -90,6 +97,11 @@ export interface ExtraPayItem {
   customExpected?: string;
   /** A course added to a tier-priced booking takes the same tier; this is its discount choice. */
   useDiscount?: boolean;
+  /**
+   * A course added to an INSTALMENT that the client does not hold: it is booked
+   * (with its price), not paid as an instalment on a course they never booked.
+   */
+  newBooking?: boolean;
 }
 
 export const blankPaymentDraft = (opts?: {
@@ -140,6 +152,8 @@ interface PrintData {
   transactionId?: string;
   instituteName: string;
   branchLabel?: string;
+  /** The branch's receipt number, «57» or «57–59» (api/lib/receiptNumbers.js); only Dokki and Tagamoa number them. */
+  receiptNo?: string;
 }
 
 const PrintReceiptModal: React.FC<{ data: PrintData; onClose: () => void }> = ({ data, onClose }) => (
@@ -156,6 +170,7 @@ const PrintReceiptModal: React.FC<{ data: PrintData; onClose: () => void }> = ({
         <div className="text-center mb-1">
           <div className="font-extrabold text-[13px]">{data.instituteName}</div>
           {data.branchLabel && <div className="text-[11px]">{data.branchLabel}</div>}
+          {data.receiptNo && <div className="mt-0.5 text-[12px] font-extrabold">إيصال رقم {data.receiptNo}</div>}
           <div className="text-[10px] text-gray-500">{data.date}</div>
         </div>
         <div className="border-t border-dashed border-gray-400 my-1.5" />
@@ -302,6 +317,44 @@ interface PaymentModalProps {
   branchLabel?: string;
 }
 
+const PHOTO_COPY: Record<PhotoKind, { icon: string; title: string; why: string }> = {
+  personal: { icon: '🙂', title: 'صورة شخصية', why: 'للكارنيه وشهادة البورد' },
+  id: { icon: '🪪', title: 'صورة الهوية', why: 'للتوثيق' },
+};
+
+/** One picture: shows what is on the client's file, takes a new one, says what happened. */
+function PhotoPicker({ kind, need, uploaded, onFile, busy, disabled, onPick }: {
+  kind: PhotoKind; need: PhotoNeed; uploaded?: string; onFile: string | null;
+  busy: boolean; disabled: boolean; onPick: (file: File | undefined) => void;
+}) {
+  const copy = PHOTO_COPY[kind];
+  const link = uploaded || onFile;
+  return (
+    <div className="flex flex-wrap items-center gap-2 bg-white border border-sky-200 rounded-lg px-3 py-2">
+      <span className="text-sm font-bold text-gray-800">{copy.icon} {copy.title}</span>
+      <span className="text-[11px] text-gray-500">{copy.why}</span>
+      <span className={`text-[10px] font-extrabold rounded-full px-2 py-0.5 ${need === 'required' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
+        {need === 'required' ? 'مطلوبة' : 'اختيارية'}
+      </span>
+      <span className="mr-auto flex items-center gap-2">
+        {busy && <span className="text-[11px] font-bold text-sky-700">جاري الرفع…</span>}
+        {!busy && link && (
+          <a href={link} target="_blank" rel="noreferrer" className="text-[11px] font-bold text-emerald-700 underline">
+            {uploaded ? '✓ اترفعت — فتح' : '✓ على ملف العميل — فتح'}
+          </a>
+        )}
+        <label className={`text-[11px] font-bold border rounded-lg px-2.5 py-1 ${disabled ? 'opacity-50 cursor-not-allowed border-gray-200 text-gray-400' : 'cursor-pointer border-sky-400 text-sky-800 hover:bg-sky-50'}`}>
+          {link ? 'استبدال' : 'رفع صورة'}
+          <input
+            type="file" accept={PHOTO_ACCEPT} className="hidden" disabled={disabled}
+            onChange={event => { onPick(event.target.files?.[0]); event.target.value = ''; }}
+          />
+        </label>
+      </span>
+    </div>
+  );
+}
+
 const PaymentModal: React.FC<PaymentModalProps> = ({
   mode, subject, draft, setDraft, onSubmit, onClose,
   requirePaymentApproval, lockPrice = false, branchOptions = [], instituteName = 'معهد الدراسات النفسية',
@@ -310,6 +363,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 }) => {
   const { courses, bundles, content, authUser, isAdmin } = useStaticData();
   const { staffMembers, daqqiRounds, currentStaff } = useCrmData();
+  // The rounds a booking can join — opened from any screen, so it asks for them.
+  useEnsureSiteLists(['daqqiRounds']);
   // «رجع يظهر للمديرين ولحساب هنا فقط انه يدخل سعر مختلف للعميل».
   const canSetPrice = isAdmin || hasPermission(currentStaff
     ? { role: currentStaff.role as RoleKey, permissions: currentStaff.permissions as PermissionKey[] | undefined } : null,
@@ -325,6 +380,21 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   // runs on some renders and not others.
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  // The pictures a certificate or a carnet asks for: to Google Drive at once, and only
+  // the link is kept (lib/drivePhotos.ts). A client who already has one on file is not asked again.
+  const driveOn = useDriveConfigured();
+  const [photos, setPhotos] = useState<PhotoLinks>({});
+  const [photoOnFile, setPhotoOnFile] = useState<{ personal: string | null; id: string | null }>({ personal: null, id: null });
+  const [photoBusy, setPhotoBusy] = useState<PhotoKind | null>(null);
+  const [photoError, setPhotoError] = useState('');
+  useEffect(() => {
+    // Never another client's links while this one's are on their way.
+    setPhotoOnFile({ personal: null, id: null });
+    if (mode !== 'subscriber' || !subject.id) return undefined;
+    let alive = true;
+    fetchClientPhotoLinks(subject.id).then(links => { if (alive) setPhotoOnFile(links); });
+    return () => { alive = false; };
+  }, [mode, subject.id]);
   // «الدفعة دي جت عن طريق مين؟» — the owner records payments from an account
   // with no staff row, so without this none of them names whose money it was.
   // An admin login with no staff row is the owner, matched as useSignedInStaff does.
@@ -576,6 +646,10 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       }),
   ];
 
+  // Everything the client already holds: an added course outside it is a new booking.
+  const heldCids = new Set<string>(enrolledOptions.map(opt => opt.cid));
+  autoDetectedCourseIds.forEach(cid => heldCids.add(cid));
+
   // The totals bar: every course and track they hold, at the price agreed.
   // It summed only bookings that had recorded a price — a quarter had none —
   // and counted certificate and book money as paid towards the courses.
@@ -636,7 +710,26 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   // server refused it in English: 17 times on 5–7 Oct.
   const certificatesTyped = (d.paymentType !== 'certificate' || !!d.certReqId || !!d.certType)
     && (d.extraItems || []).every(item => item.type !== 'certificate' || !(Number(item.amount) > 0) || !!item.certType);
-  const isValid = !subjectChosen || !certificatesTyped ? false : tierProblem || identityProblem ? false : mode === 'new'
+  // «شهادة البورد لازم صورة، والكارنيه لازم صورة، واي توثيق لازم صورة الهوية» — asked for
+  // only once Drive is set up, so a missing setting does not stop the desk booking.
+  const photoNeed = photoNeeds(d, type => certCatalog.label(type));
+  const photoMissing = driveOn === true && photoBusy === null && (
+    (photoNeed.personal === 'required' && !photos.personal && !photoOnFile.personal)
+    || (photoNeed.id === 'required' && !photos.id && !photoOnFile.id));
+  const pickPhoto = async (kind: PhotoKind, file: File | undefined) => {
+    if (!file) return;
+    setPhotoBusy(kind);
+    setPhotoError('');
+    try {
+      const url = await uploadClientPhoto(file, kind, { clientName: personName });
+      setPhotos(previous => ({ ...previous, [kind]: url }));
+    } catch (error) {
+      setPhotoError(arabicReason(error, 'تعذّر رفع الصورة'));
+    } finally {
+      setPhotoBusy(null);
+    }
+  };
+  const isValid = !subjectChosen || !certificatesTyped || photoMissing || photoBusy !== null ? false : tierProblem || identityProblem ? false : mode === 'new'
     ? hasIdentity && (_amtPaid === 0 || (!!d.paymentMethod && (d.paymentType !== 'course' || !!d.courseId)))
     : _amtPaid > 0 && !!d.paymentMethod && (mode === 'lead' ? !!d.branch : true)
       && (!upgrading || (!!upgradeFrom && d.courseId.startsWith('bundle:')));
@@ -693,6 +786,13 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     })) return;
     setSubmitting(true);
     setSubmitError('');
+    forgetReceipts();
+    // The receipt carries the branch's number once the save has been answered with it.
+    const finishWith = (payload: PrintData | null) => {
+      const receiptNo = takeReceiptLabel();
+      if (payload) setPrintData(receiptNo ? { ...payload, receiptNo } : payload);
+      else onClose();
+    };
     try {
       const printPayload = shouldPrint ? buildPrintData() : null;
       // The handler records exactly the price shown here. It recomputed a
@@ -703,6 +803,10 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       const changedPrice = _customExp > 0 || _discPct > 0;
       const shownPrice = _effPx > 0 ? String(_effPx) : d.customExpected;
       if (asksWhoBroughtIt) attributeNextPayment(broughtBy);
+      attachPhotosToNextPayment({
+        personal: photoNeed.personal ? photos.personal : undefined,
+        id: photoNeed.id ? photos.id : undefined,
+      });
       if (upgrading && upgradeFrom) {
         // The course becomes part of the track first, its money with it; the
         // payment is then an instalment on the track, at the price set here.
@@ -710,8 +814,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           item: upgradeFrom, toItem: d.courseId, price: changedPrice ? Number(shownPrice) : null,
         });
         await onSubmit({ ...d, bookingType: 'installment', customExpected: '' }, shouldPrint);
-        if (printPayload) setPrintData(printPayload);
-        else onClose();
+        finishWith(printPayload);
         return;
       }
       if (tierBooking && tierPx != null) {
@@ -725,8 +828,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
             return price == null ? item : { ...item, customExpected: String(price), discountPct: '' };
           }),
         }, shouldPrint);
-        if (printPayload) setPrintData(printPayload);
-        else onClose();
+        finishWith(printPayload);
         return;
       }
       await onSubmit({
@@ -735,13 +837,13 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           ? (changedPrice ? shownPrice : '')
           : (changedPrice || (_effPx > 0 && _effPx !== _sysPx) ? shownPrice : d.customExpected),
       }, shouldPrint);
-      if (printPayload) setPrintData(printPayload);
-      else onClose();
+      finishWith(printPayload);
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : 'تعذر حفظ الدفعة. حاول مرة أخرى.');
+      setSubmitError(arabicReason(error, 'تعذر حفظ الدفعة'));
     } finally {
       // Never carried to a later payment, whatever happened to this one.
       attributeNextPayment(null);
+      attachPhotosToNextPayment(null);
       setSubmitting(false);
     }
   };
@@ -1255,6 +1357,29 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
             )}
           </div>
 
+          {/* ── 4b: the pictures a certificate or a carnet asks for → Google Drive ── */}
+          {(photoNeed.personal || photoNeed.id) && (
+            <div className="border-2 border-sky-200 bg-sky-50/60 rounded-xl p-3 space-y-2">
+              <p className="text-xs font-extrabold text-sky-800">📷 الصور المطلوبة (بتترفع على جوجل درايف)</p>
+              {driveOn === false && (
+                <p className="text-[11px] font-bold text-amber-700">رفع الصور على جوجل درايف لسه غير مُفعّل — الصورة مش مطلوبة دلوقتي، وهتتطلب أول ما المسئول يفعّله.</p>
+              )}
+              {(['personal', 'id'] as const).filter(kind => photoNeed[kind]).map(kind => (
+                <PhotoPicker
+                  key={kind}
+                  kind={kind}
+                  need={photoNeed[kind] as PhotoNeed}
+                  uploaded={photos[kind]}
+                  onFile={photoOnFile[kind]}
+                  busy={photoBusy === kind}
+                  disabled={driveOn !== true || photoBusy !== null}
+                  onPick={file => pickPhoto(kind, file)}
+                />
+              ))}
+              {photoError && <p className="text-[11px] font-bold text-red-600">{photoError}</p>}
+            </div>
+          )}
+
           {/* ── 5: Add extra items ── */}
           <div className="flex items-center gap-2 flex-wrap">
             <button
@@ -1343,26 +1468,39 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                       <>
                         <select
                           value={item.courseId || ''}
-                          onChange={e => updateItem({ courseId: e.target.value, discountPct: '', customExpected: '' })}
+                          onChange={e => updateItem({
+                            courseId: e.target.value, discountPct: '', customExpected: '',
+                            // In an instalment, a course the client does not hold is a new booking.
+                            newBooking: d.bookingType === 'installment' && !!e.target.value && !heldCids.has(e.target.value),
+                          })}
                           className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:border-blue-400"
                         >
                           <option value="">— اختر الكورس —</option>
-                          {/* A split instalment is paid on the client's own courses, with what each still owes. */}
-                          {d.bookingType === 'installment' && enrolledOptions.length > 0 ? (
-                            <optgroup label="كورسات العميل">
+                          {/* A split instalment is paid on the client's own courses, with what each still owes —
+                              and any other course is booked new: «لازم يختار باقي الكورسات». */}
+                          {d.bookingType === 'installment' && enrolledOptions.length > 0 ? (<>
+                            <optgroup label="💳 قسط على كورسات العميل">
                               {enrolledOptions.filter(opt => opt.cid !== d.courseId).map(opt => (
                                 <option key={opt.cid} value={opt.cid}>
                                   {opt.isBnd ? '📌 ' : ''}{opt.label}{opt.remaining != null ? ` — متبقي ${opt.remaining.toLocaleString('ar-EG-u-nu-latn')}` : ''}
                                 </option>
                               ))}
                             </optgroup>
-                          ) : (<>
+                            {bundles.some(b => !heldCids.has(`bundle:${b.id}`)) && (
+                              <optgroup label="🆕 حجز مسار جديد">
+                                {bundles.filter(b => !heldCids.has(`bundle:${b.id}`)).map(b => <option key={`bundle:${b.id}`} value={`bundle:${b.id}`}>📌 {b.title}</option>)}
+                              </optgroup>
+                            )}
+                            <optgroup label="🆕 حجز كورس جديد">
+                              {courses.filter(c => !heldCids.has(c.id)).map(c => <option key={c.id} value={c.id}>{c.titleAr || c.title}</option>)}
+                            </optgroup>
+                          </>) : (<>
                             {bundles.length > 0 && <optgroup label="📌 المسارات">{bundles.map(b => <option key={`bundle:${b.id}`} value={`bundle:${b.id}`}>📌 {b.title}</option>)}</optgroup>}
                             <optgroup label="🎓 الكورسات">{courses.map(c => <option key={c.id} value={c.id}>{c.titleAr || c.title}</option>)}</optgroup>
                           </>)}
                         </select>
                         <div className="flex flex-wrap items-center gap-2 bg-red-50 border-2 border-red-200 rounded-xl px-3 py-2.5">
-                          <span className="text-xs font-extrabold text-red-700 whitespace-nowrap">{d.bookingType === 'installment' ? '💳 مبلغ القسط' : '💰 المقدم'}<span className="text-red-500">*</span></span>
+                          <span className="text-xs font-extrabold text-red-700 whitespace-nowrap">{d.bookingType === 'installment' && !item.newBooking ? '💳 مبلغ القسط' : '💰 المقدم'}<span className="text-red-500">*</span></span>
                           <input
                             type="number" min="0" placeholder="0" value={item.amount}
                             onChange={e => updateItem({ amount: e.target.value })}
@@ -1391,6 +1529,19 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                           )}
                           {item.courseId && !tierBooking && eiSysPx > 0 && (
                             <span className="text-xs font-bold text-gray-500 whitespace-nowrap">{eiSysPx.toLocaleString('ar-EG-u-nu-latn')} {d.currency}</span>
+                          )}
+                          {item.courseId && item.newBooking && (
+                            <>
+                              <span className="rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5 text-[11px] font-extrabold whitespace-nowrap">🆕 حجز جديد</span>
+                              <label className="flex items-center gap-1 text-[11px] font-bold text-gray-600 whitespace-nowrap">
+                                السعر المتفق عليه
+                                <input
+                                  type="number" min="0" placeholder={eiSysPx > 0 ? String(eiSysPx) : 'اكتب السعر'} value={item.customExpected || ''}
+                                  onChange={e => updateItem({ customExpected: e.target.value })}
+                                  className="w-24 border border-gray-300 bg-white rounded-lg px-2 py-1 text-xs font-bold text-center"
+                                />
+                              </label>
+                            </>
                           )}
                         </div>
                       </>

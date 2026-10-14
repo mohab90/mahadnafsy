@@ -4,6 +4,8 @@
 
 import { AuthUser, CrmInsights, CxPerformance, DaqqiPerformance, OnlinePerformance, SalesTeamPerformance, ScoredLeadsResult, StaffLeadPerformance, SubscriberStats } from '../types';
 import { takePaymentAttribution } from './paymentAttribution';
+import { takePendingPhotos } from './paymentPhotos';
+import { noteReceipt } from './lastReceipt';
 
 // Relative by default — always targets whatever origin actually served the page
 // (Nginx-proxied in every real deploy). A hardcoded absolute production URL here
@@ -587,6 +589,10 @@ export const mysqlAdmin = {
     apiFetch(`/admin/overview/revenue`, {}, A),
   getLeadStats:            (): Promise<{ total: number; byStatus: Record<string, number>; assigned: number; unassigned: number; totalDealValue: number; byOwner: Record<string, { total: number; converted: number; avgScore: number; comms: Record<string, number> }>; bySource: Record<string, number>; byMonth: Record<string, { total: number; converted: number }>; avgScore: number; totalCommunications: number; createdToday: number; collectionHolders?: Array<{ id: string; name: string; count: number }> }> =>
     apiFetch(`/admin/leads/stats`, {}, A),
+  // The header bell's count: open leads followed up today or overdue, in the
+  // caller's own scope — instead of the 500 newest leads to count them from.
+  getDueFollowups:         (): Promise<{ due: number; overdue: number; today: number }> =>
+    apiFetch(`/admin/leads/followups-due`, {}, A),
   // The CRM workspace panels — reminders, weekly scorecard, redistribution
   // suggestions — in one request. Each of them used to filter the full leads
   // array in the browser, which is what forced all 26k rows down the wire.
@@ -622,8 +628,9 @@ export const mysqlAdmin = {
     return apiFetch(`/admin/leads/scored${qs ? `?${qs}` : ''}`, {}, A);
   },
   // The subscriber count, so an audience picker does not have to hold the table.
-  getSubscriberStats:      (): Promise<SubscriberStats> =>
-    apiFetch(`/admin/subscribers/stats`, {}, A),
+  // overview: also today's new clients and each course's clients, for الرئيسية.
+  getSubscriberStats:      (overview = false): Promise<SubscriberStats> =>
+    apiFetch(`/admin/subscribers/stats${overview ? '?overview=1' : ''}`, {}, A),
   getCrmInsights:          (idleDays = 14): Promise<CrmInsights> =>
     apiFetch(`/admin/leads/crm-insights?idleDays=${idleDays}`, {}, A),
   // Unified endpoint — server auto-scopes by role (replaces my-subscribers / my-collection-clients / my-daqqi-clients)
@@ -878,6 +885,16 @@ export const mysqlAdmin = {
     apiFetch<{ ok: boolean; status: string; interviewAt: string | null }>(
       `/admin/join-us/${encodeURIComponent(id)}/evaluate`,
       { method: 'POST', body: JSON.stringify(o) }, A),
+  // «تقييم أول مكالمة» — 1–5, quick tags and notes (12 Oct 2026).
+  firstCallJoinUs: (id: string, o: { rating: number; tags: string[]; notes?: string }) =>
+    apiFetch<{ ok: boolean; rating: number; tags: string[]; by: string }>(
+      `/admin/join-us/${encodeURIComponent(id)}/first-call`,
+      { method: 'POST', body: JSON.stringify(o) }, A),
+  // A call from the interviews screen: the result, stamped by the server, with a note.
+  contactHrApplicant: (id: string, o: { result: 'no_answer' | 'passed' | 'failed'; body?: string }) =>
+    apiFetch<{ ok: boolean; result: string; by: string }>(
+      `/admin/hr/applicants/${encodeURIComponent(id)}/contact`,
+      { method: 'POST', body: JSON.stringify(o) }, A),
   gradeApplicant: (id: string, o: { grade: string; round?: 1 | 2; body?: string }) =>
     apiFetch<{ ok: boolean; grade: string; round: number; by: string }>(
       `/admin/hr/applicants/${encodeURIComponent(id)}/grade`,
@@ -934,7 +951,7 @@ export const mysqlAdmin = {
   }) => post('/admin/refund-requests/by-admin', payload as unknown as AR),
 
   // ── Orders ──
-  updateOrderStatus: (id: string, status: string) => patch(`/admin/orders/${id}`, { status }),
+  updateOrderStatus: (id: string, status: string, reason?: string) => patch(`/admin/orders/${id}`, { status, ...(reason ? { reason } : {}) }),
   // Reconcile a customer payment (order) against a bank transfer: confirm + record the link.
   linkOrderTransfer: (orderId: string, transferId: string) => patch(`/admin/orders/${orderId}`, { status: 'paid', linked_transfer_id: transferId }),
   deleteOrder:       (id: string) => del(`/admin/orders/${id}`),
@@ -943,11 +960,17 @@ export const mysqlAdmin = {
   // The employee the owner named in the payment dialog (lib/paymentAttribution.ts).
   saveSubscriberPayment: (subscriber_id: string, payment: AR) => {
     const staffId = takePaymentAttribution();
-    return post('/admin/subscriber-payments', { subscriber_id, payment: staffId && !payment.staffId ? { ...payment, staffId } : payment });
+    const photos = takePendingPhotos();
+    return post('/admin/subscriber-payments', {
+      subscriber_id,
+      payment: { ...payment, ...(staffId && !payment.staffId ? { staffId } : {}), ...(photos ? { photos } : {}) },
+    }).then(answer => { noteReceipt(answer); return answer; });
   },
   saveLeadPayment: (lead_id: string, payment: AR, subscriber?: { email?: string; nationalId?: string }) => {
     const staffId = takePaymentAttribution();
+    const photos = takePendingPhotos();
     if (staffId && !payment.staffId) payment = { ...payment, staffId };
+    if (photos) payment = { ...payment, photos };
     return (
     apiFetch<{
       ok: boolean;
@@ -960,7 +983,7 @@ export const mysqlAdmin = {
       '/admin/subscriber-payments',
       { method: 'POST', body: JSON.stringify({ lead_id, payment, subscriber }) },
       A,
-    ));
+    ).then(answer => { noteReceipt(answer); return answer; }));
   },
   // paymentMethod is only needed when settling a payment that was stored
   // without one — the API refuses to mark money received without saying how it
@@ -1303,12 +1326,21 @@ export const mysqlAuth = {
   // which type-checks and is undefined at runtime.
   verify2fa: (pendingToken: string, token: string) =>
     apiFetch<{ ok: boolean }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, token }) }),
+  // The phone is gone: one of the ten one-time codes stands in, and is burned.
+  verify2faRecovery: (pendingToken: string, recoveryCode: string) =>
+    apiFetch<{ ok: boolean; recoveryCodesLeft?: number | null }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, recoveryCode }) }),
   get2faStatus: () =>
-    apiFetch<{ enabled: boolean }>('/auth/2fa/status'),
+    apiFetch<{ enabled: boolean; recoveryCodesLeft?: number | null }>('/auth/2fa/status'),
   setup2fa: () =>
     apiFetch<{ secret: string; qrDataUrl: string; otpAuthUrl: string }>('/auth/2fa/setup', { method: 'POST' }),
+  // recoveryCodes come back once, here, and are never shown again.
   enable2fa: (token: string) =>
-    apiFetch<{ ok: boolean }>('/auth/2fa/enable', { method: 'POST', body: JSON.stringify({ token }) }),
+    apiFetch<{ ok: boolean; recoveryCodes?: string[] }>('/auth/2fa/enable', { method: 'POST', body: JSON.stringify({ token }) }),
+  regenerateRecoveryCodes: (token: string) =>
+    apiFetch<{ ok: boolean; recoveryCodes: string[] }>('/auth/2fa/recovery-codes', { method: 'POST', body: JSON.stringify({ token }) }),
+  // Owner only: clears an employee's 2FA and recovery codes, ends their sessions.
+  resetStaff2fa: (staffId: string) =>
+    apiFetch<{ ok: boolean; message?: string }>(`/admin/staff/${encodeURIComponent(staffId)}/reset-2fa`, { method: 'POST', body: JSON.stringify({}) }, true),
   disable2fa: (token?: string) =>
     apiFetch<{ ok: boolean }>('/auth/2fa/disable', { method: 'POST', body: JSON.stringify({ token }) }),
   logout: () => { localStorage.removeItem('mahad-token'); apiFetch<{ ok: boolean }>('/auth/logout', { method: 'POST' }).catch(() => {}); },

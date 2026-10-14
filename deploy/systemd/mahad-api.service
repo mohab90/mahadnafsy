@@ -9,6 +9,9 @@ User=mahad
 Group=mahad
 WorkingDirectory=/opt/mahad/current
 EnvironmentFile=/etc/mahad/api.env
+# Storage is UTC and the Cairo day is computed in lib/dates.js; the API also
+# pins this itself, so the line is for tools started under this unit.
+Environment=TZ=UTC
 Environment=NODE_ENV=production
 Environment=UV_THREADPOOL_SIZE=8
 Environment=PROCESS_MANAGER=systemd
@@ -46,6 +49,44 @@ Environment=AUDIT_HMAC_SECRET_FILE=%d/audit
 # Provenance the boot-time policy verifies. Bump the two ROTATED_AT dates and
 # the four references whenever the secrets are rotated; the policy fails the
 # boot once they pass 370 days.
+#
+# ── Rotating them (the 2026-08-03 dates below are due by 2027-08-08) ────────
+# Nothing fails on day 370 itself — the running process carries on — but the
+# next start (a deploy, a reboot, a crash) is refused and the site is down.
+# From day 330, /api/health/detailed carries `secretRotation`, the admin's
+# system card («لوحة KPI للمدير» and «الإعدادات ← التحقق بخطوتين») turns amber,
+# and the numbers saved under
+# «تقارير الإدارة ← التقرير اليومي على واتساب» get a WhatsApp once a week.
+# Rotate then, at a quiet hour, as root:
+#
+#   0. Once, before the first rotation: give lib/secretBox.js a key of its own.
+#      Without CHANNEL_SECRET_KEY it seals the messaging-channel credentials and
+#      every 2FA secret with a key derived from JWT_SECRET, so step 1 would make
+#      them all unreadable and every enrolled employee would need an owner 2FA
+#      reset. The admin card says «مفتاح التخزين المشفّر مستقل» once this is
+#      done. Copy the
+#      CURRENT JWT_SECRET into it, so what is already sealed still opens:
+#        install -m 400 /etc/mahad/secrets/jwt /etc/mahad/secrets/channel
+#      and add, beside the four LoadCredential lines above:
+#        LoadCredential=channel:/etc/mahad/secrets/channel
+#        Environment=CHANNEL_SECRET_KEY_FILE=%d/channel
+#      This key is never rotated with the others.
+#   1. New values, each independent and at least 48 chars:
+#        for f in jwt session otp audit; do
+#          openssl rand -hex 36 | tr -d "\n" > /etc/mahad/secrets/$f.new
+#          chmod 400 /etc/mahad/secrets/$f.new
+#          mv /etc/mahad/secrets/$f.new /etc/mahad/secrets/$f
+#        done
+#      Keep the old audit value root-only and offline first if past audit rows
+#      must stay verifiable: the chain verifies with the current key only.
+#   2. Below, set AUTH_SECRET_ROTATED_AT and AUDIT_SECRET_ROTATED_AT to today
+#      (YYYY-MM-DD) and the @date of the four *_REFERENCE values to match — in
+#      this file in the repository too, or the next bootstrap installs the old
+#      dates back. Staging (mahad-api-staging.service) has its own copy.
+#   3. systemctl daemon-reload && systemctl restart mahad-api
+#      curl -s 127.0.0.1:$PORT/api/health/detailed   → "secretRotation":{"state":"ok"
+#   Everyone signs in again (a new JWT_SECRET ends every session), and an OTP
+#   sent before the restart is refused.
 Environment=AUTH_SECRET_SOURCE=platform-secret
 Environment=AUTH_SECRET_PROVIDER=systemd-credentials
 Environment=AUTH_SECRET_ROTATED_AT=2026-08-03

@@ -12,6 +12,8 @@ import { courseBadgeLabel, isRawCourse } from './leads/leadCourseLabel';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 import { isOpenLeadStatus } from '../../../../shared/leadStatuses';
 import { useToast } from '../../../../shared/ui/Toast';
+import { useCanDelete } from '../../../hooks/useCanDelete';
+import { MoveBatchToLocalNew, MoveSelectedToLocalNew } from './leads/MoveToLocalNew';
 
 const LEAD_STATUS_CFG = STATUS_CFG;
 
@@ -59,6 +61,8 @@ type LeadTableProps = {
 
 export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, courses, bundles, navigate, updateLead, reloadLeads, deleteLead, subscribers, salesStaff, isSalesOnly, canManageLeads, onSalesClick, onBook, branchOptions, sources, paging }) => {
   const toast = useToast();
+  // Deleting a lead, or a contact on one, is the owner's list's: «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
+  const canDelete = useCanDelete();
   // The eye: one small request for the one column, and the server's own words
   // when it cannot — not the whole row re-sent and «تحقق من الاتصال بالإنترنت».
   const toggleHidden = async (row: LeadItem) => {
@@ -183,6 +187,8 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
   };
   return (
     <>
+      {/* «نقل دفعة كاملة لمحلي جديد» — the desk's, not a rep's. */}
+      {canManageLeads && !isSalesOnly && <MoveBatchToLocalNew rows={rows} reloadLeads={reloadLeads} />}
       {/* ─── Bulk Action Bar ─── */}
       {canManageLeads && selectedIds.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 bg-primary-50 border border-primary-200 rounded-xl px-4 py-3 mb-3">
@@ -210,6 +216,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
               {salesStaff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           )}
+          {!isSalesOnly && <MoveSelectedToLocalNew selectedIds={selectedIds} reloadLeads={reloadLeads} onDone={() => setSelectedIds([])} />}
           <button
             onClick={handleBulkApply}
             disabled={!bulkStatus && !bulkSalesId}
@@ -500,7 +507,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                       {canManageLeads && <button onClick={() => { void toggleHidden(row); }} title={row.hidden ? 'إظهار' : 'إخفاء'} className={`h-6 w-6 rounded-md flex items-center justify-center transition ${row.hidden ? 'text-amber-500' : 'text-gray-300 hover:text-gray-500'}`}>
                         {row.hidden ? <Eye size={13}/> : <EyeOff size={13}/>}
                       </button>}
-                      {canManageLeads && !isSalesOnly ? (
+                      {canManageLeads && !isSalesOnly && canDelete ? (
                         <button onClick={() => deleteLead(row.id)} title="حذف" className="h-6 w-6 rounded-md text-gray-300 hover:text-red-500 flex items-center justify-center transition"><Trash2 size={13}/></button>
                       ) : <span />}
                     </div>
@@ -678,7 +685,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                           <span className="text-xs font-bold">{meta.icon} {meta.label}</span>
                           <div className="flex items-center gap-2">
                             <span className="text-[11px] text-gray-400">{cairoDateTime(c.date)}</span>
-                            {canManageLeads && <button
+                            {canManageLeads && canDelete && <button
                               onClick={async () => {
                                 if (!await confirmDialog('حذف سجل التواصل؟ سيظل حدث الحذف ظاهرًا في سجل التدقيق.')) return;
                                 try {

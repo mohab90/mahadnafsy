@@ -159,8 +159,10 @@ test('there is one payment screen, and every booking button opens it', () => {
   // submit unmounted it before the receipt could render, so the Daqqi desk
   // would have lost the printed slip it takes for every cash payment.
   const modal = codeOnly(read('admin/components/PaymentModal.tsx'));
-  assert.ok(modal.includes('if (printPayload) setPrintData(printPayload);'));
+  // Every save ends in finishWith: the receipt (with the branch's number), else the dialog closes.
+  assert.ok(modal.includes('if (payload) setPrintData(receiptNo ? { ...payload, receiptNo } : payload);'));
   assert.ok(modal.includes('else onClose();'));
+  assert.equal((modal.match(/finishWith\(printPayload\);/g) || []).length, 3, 'all three ways a booking is saved end the same way');
   assert.ok(schedule.includes('onClose={() => { setDaqqiPayModal(null); resetDaqqiPayDraft(); }}'));
 
   // And the Daqqi draft is the shared one, not a copy that can drift again.
@@ -240,7 +242,7 @@ test('no second screen records a customer payment', () => {
   // Nothing is valid until the screen knows whose payment it is.
   const modal = codeOnly(read('admin/components/PaymentModal.tsx'));
   assert.ok(modal.includes('const subjectChosen = !subjectOptions || !!subject.id;'));
-  assert.ok(modal.includes('const isValid = !subjectChosen || !certificatesTyped ? false'));
+  assert.match(modal, /const isValid = !subjectChosen \|\| !certificatesTyped \|\| photoMissing \|\| photoBusy !== null \? false/);
 });
 
 test('every booking and payment button opens that one screen', () => {

@@ -8,7 +8,8 @@ import {
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { EXPERIENCE_YEARS as YEARS, BRANCH_LABELS as BRANCHES, STAGE_LABELS as STAGES } from "./hr-sections/applicantLabels";
 import { promptDialog } from '../../../../shared/ui/promptDialog';
-import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
+import { CAIRO_TIME_ZONE, cairoDateOnly } from '../../../../shared/cairoDate';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -87,6 +88,22 @@ export const JobApplicantsPanel: React.FC<{
     } finally { setBusyId(''); }
   };
 
+  // The phone screen is a call, logged as one: the server stamps the time and
+  // the caller and writes it to the applicant's history. This sent the browser's
+  // UTC clock as phone_interview_at, three hours off the Cairo time it is read as
+  // — «ليه التواصل مش بيتجسل صح» (12 Oct 2026).
+  const logCall = async (row: Applicant, result: 'passed' | 'no_answer', ok: string) => {
+    setBusyId(row.id);
+    try {
+      await mysqlAdmin.contactHrApplicant(row.id, { result });
+      notify('success', ok);
+      load();
+      onChanged();
+    } catch (e) {
+      notify('error', e instanceof Error ? e.message : 'تعذر الحفظ');
+    } finally { setBusyId(''); }
+  };
+
   const active = rows.filter(r => r.stage !== 'rejected' && r.stage !== 'hired');
   const closed = rows.filter(r => r.stage === 'rejected' || r.stage === 'hired');
 
@@ -149,23 +166,26 @@ export const JobApplicantsPanel: React.FC<{
             {!row.phone_interview_result && (
               <>
                 <button disabled={busy}
-                  onClick={() => patch(row, { phone_interview_result: 'passed', phone_interview_at: new Date().toISOString().slice(0, 19).replace('T', ' ') }, 'اتسجل: الفون انترفيو نجح')}
+                  onClick={() => logCall(row, 'passed', 'اتسجل: الفون انترفيو نجح')}
                   className="flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-[11px] font-bold hover:bg-emerald-100 transition disabled:opacity-40">
                   <Phone size={11} />فون انترفيو نجح
                 </button>
                 <button disabled={busy}
-                  onClick={() => patch(row, { phone_interview_result: 'no_answer', phone_interview_at: new Date().toISOString().slice(0, 19).replace('T', ' ') }, 'اتسجل: لم يرد')}
+                  onClick={() => logCall(row, 'no_answer', 'اتسجل: لم يرد')}
                   className="flex items-center gap-1 px-2.5 py-1 bg-amber-50 text-amber-700 rounded-lg text-[11px] font-bold hover:bg-amber-100 transition disabled:opacity-40">
                   <PhoneOff size={11} />لم يرد
                 </button>
               </>
             )}
             <span className="flex items-center gap-1">
-              <input type="date" value={dateDraft[row.id] || ''}
+              {/* The day and the hour. Every interview booked here used to be
+                  at 10:00, so one booked for this afternoon landed under السابق
+                  on the interviews screen the moment it was made. */}
+              <input type="datetime-local" value={dateDraft[row.id] || ''} min={`${cairoDateOnly()}T00:00`} step={900}
                 onChange={e => setDateDraft(d => ({ ...d, [row.id]: e.target.value }))}
-                className="border border-gray-200 rounded-lg px-2 py-1 text-[11px]" />
+                className="border border-gray-200 rounded-lg px-2 py-1 text-[11px]" dir="ltr" />
               <button disabled={busy || !dateDraft[row.id]}
-                onClick={() => patch(row, { interview_at: `${dateDraft[row.id]} 10:00:00`, stage: 'interview' }, 'اتحدد موعد المقابلة — المتقدم راح لصفحة المقابلات')}
+                onClick={() => patch(row, { interview_at: String(dateDraft[row.id]).replace('T', ' '), stage: 'interview' }, 'اتحدد موعد المقابلة — المتقدم راح لصفحة المقابلات')}
                 className="flex items-center gap-1 px-2.5 py-1 bg-indigo-600 text-white rounded-lg text-[11px] font-bold hover:bg-indigo-700 transition disabled:opacity-40">
                 {busy ? <Loader2 size={11} className="animate-spin" /> : <CalendarPlus size={11} />}حدد مقابلة
               </button>

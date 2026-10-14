@@ -106,7 +106,8 @@ test('one task failing does not stop the others, and without a key nothing runs'
 
 test('the search fields reach the site, and the day\'s run is queued once', () => {
   assert.match(read('api/lib/mappers.js'), /seo_title: r\.seo_title \|\| undefined,/);
-  assert.match(read('tools/generate-seo.mjs'), /title: `\$\{c\.seo_title \|\| c\.title\} \| معهد الدراسات النفسية`/);
+  // The page renderer the release and the API share (api/lib/seoPages.js).
+  assert.match(read('api/lib/seoPages.js'), /title: `\$\{course\.seo_title \|\| course\.title\} \| \$\{SITE_NAME\}`/);
   assert.match(read('api/lib/aiAutopilot.js'), /dedupeKey: `ai_autopilot:\$\{clock\.date\}`/);
   assert.match(read('api/lib/backgroundScheduler.js'), /ai_autopilot: \(\{ tenantId, date, only \}\) =>/);
 });

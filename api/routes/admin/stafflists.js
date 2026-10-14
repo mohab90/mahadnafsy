@@ -18,7 +18,7 @@ const { branchesFromScope, leadScope } = require('../../lib/leadAccess');
 const { enqueueEmailSequence } = require('../../lib/emailSequence');
 const { ADMIN_EMAILS, requireAuth, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../../middleware/auth');
 const { VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES, normalizeDataScope, resolveDataScope, hasPermission, PERMISSIONS } = require('../../constants/permissions');
-const { safeIsoString, safeDateOnly, sqlCairoDayStartUtc } = require('../../lib/dates');
+const { safeIsoString, safeDateOnly, sqlCairoDayStartUtc, sqlCairoDayEndUtc, sqlCairoWall } = require('../../lib/dates');
 const { bulkOperationLimiter } = require('../../middleware/rateLimits');
 const { keyset } = require('../../lib/pagination');
 const { installmentPlansBySubscriber, withInstallmentPlans } = require('../../lib/installmentPlansBySubscriber');
@@ -103,13 +103,13 @@ router.get('/api/admin/online-performance', requireAuth, requireAdminOrStaff,
         // Six months of both, so the screen's chart has a server-side source.
         pool.query(
           `SELECT month, SUM(clients) clients, SUM(leads) leads FROM (
-             SELECT DATE_FORMAT(created_at, '%Y-%m') month, COUNT(*) clients, 0 leads
+             SELECT DATE_FORMAT(${sqlCairoWall('created_at')}, '%Y-%m') month, COUNT(*) clients, 0 leads
                FROM subscribers
               WHERE tenant_id=? AND deleted_at IS NULL AND branch IN ('ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_ABROAD')
                 AND created_at >= DATE_SUB(${sqlCairoDayStartUtc()}, INTERVAL 6 MONTH)
               GROUP BY month
              UNION ALL
-             SELECT DATE_FORMAT(created_at, '%Y-%m') month, 0 clients, COUNT(*) leads
+             SELECT DATE_FORMAT(${sqlCairoWall('created_at')}, '%Y-%m') month, 0 clients, COUNT(*) leads
                FROM leads
               WHERE tenant_id=? AND branch IN ('ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_ABROAD')
                 AND created_at >= DATE_SUB(${sqlCairoDayStartUtc()}, INTERVAL 6 MONTH)
@@ -215,7 +215,35 @@ router.get('/api/admin/subscribers/stats', requireAuth, requireAdminOrStaff, req
       paidBySubscriber = Object.fromEntries(paidRows.map(r => [r.id, Math.round(Number(r.egp) || 0)]));
     }
 
-    res.json({ total, byBranch, ...(paidBySubscriber ? { paidBySubscriber } : {}) });
+    // overview=1: what الرئيسية shows beside the total — the clients who joined
+    // today and each course's clients. It counted both out of the 500 newest
+    // clients it loaded at sign-in; it loads none now (admin siteLists.ts, 11 Oct
+    // 2026), so the database counts them, over the same clients as the total.
+    let overview;
+    if (req.query.overview === '1') {
+      const [[[todayRow]], [courseRows]] = await Promise.all([
+        pool.query(
+          `SELECT COUNT(*) AS cnt FROM subscribers s
+            WHERE s.tenant_id = ? AND s.deleted_at IS NULL ${adminExclusions} AND ${scopeClause}
+              AND s.created_at >= ${sqlCairoDayStartUtc()} AND s.created_at < ${sqlCairoDayEndUtc()}`,
+          params,
+        ),
+        pool.query(
+          `SELECT e.course_id AS id, COUNT(DISTINCT e.subscriber_id) AS cnt
+             FROM enrollments e
+             JOIN subscribers s ON s.id = e.subscriber_id AND s.tenant_id = e.tenant_id
+            WHERE s.tenant_id = ? AND e.status = 'active' AND s.deleted_at IS NULL ${adminExclusions} AND ${scopeClause}
+            GROUP BY e.course_id`,
+          params,
+        ),
+      ]);
+      overview = {
+        createdToday: Number(todayRow?.cnt) || 0,
+        byCourse: Object.fromEntries(courseRows.map(row => [row.id, Number(row.cnt) || 0])),
+      };
+    }
+
+    res.json({ total, byBranch, ...(paidBySubscriber ? { paidBySubscriber } : {}), ...(overview || {}) });
   } catch (e) { logger.error('[route]', e.message); sendRouteError(res, e); }
 });
 
@@ -481,6 +509,12 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
         courseAccess: enrollmentProjection[r.id]?.access || {},
         certificates: completionProjection[r.id] || [],
         clientCode,      // authoritative
+        // The certificate's English name and the national id, and the Drive links of the
+        // pictures asked for with a certificate or a carnet — the client's row in an export.
+        nameEn: r.name_en || crm.nameEn || null,
+        nationalId: r.national_id || crm.nationalId || null,
+        personalPhotoUrl: r.personal_photo_url || null,
+        idPhotoUrl: r.id_photo_url || null,
         paymentHistory,  // authoritative from payments table
         extraCertificateRequests: certificatesBySub[r.id] || [],
         branch: (() => { const rb = r.branch || crm.branch || null; if (!rb) return null; const nb = rb.toUpperCase().replace(/[-\s]/g,'_'); return ['DAQQI','TAGAMOA','ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_ABROAD','OTHER'].includes(nb) ? nb : rb; })(),

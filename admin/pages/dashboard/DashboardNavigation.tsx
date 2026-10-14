@@ -13,7 +13,8 @@ import { useSiteData } from '../../context/SiteDataContext';
 import MessagesBell from './MessagesBell';
 import { hasPermission } from '../../constants/permissions';
 import { NotificationsBell } from './NotificationsBell';
-import type { LeadItem, StaffMember, SubscriberItem } from '../../types';
+import { GlobalSearch, canUseGlobalSearch } from './GlobalSearch';
+import type { StaffMember } from '../../types';
 import type { TabKey } from './navigation';
 import { isProfileTab } from './my-profile/profileTabs';
 import { branchOfRole, PHYSICAL_BRANCHES } from '../../lib/physicalBranch';
@@ -45,8 +46,6 @@ type Props = {
   setActiveDropdownGroup: React.Dispatch<React.SetStateAction<string | null>>;
   dropdownRect: DOMRect | null;
   setDropdownRect: React.Dispatch<React.SetStateAction<DOMRect | null>>;
-  leads: LeadItem[];
-  subscribers: SubscriberItem[];
   notifRef: React.RefObject<HTMLDivElement | null>;
   notifOpen: boolean;
   setNotifOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -177,6 +176,7 @@ function CompactRoleNav({
         {currentStaff && (
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {salesDataLoading && <span className="w-4 h-4 border-2 border-t-transparent border-primary-400 rounded-full animate-spin" />}
+            {canUseGlobalSearch(false, currentStaff) && <GlobalSearch className={iconButtonClass} />}
             <ProfileIconButton activeTab={activeTab} setActiveTab={setActiveTab} />
             <button onClick={() => setSalesNotifOpen(true)} className={iconButtonClass} title="الإشعارات والمتابعات">
               <Bell size={15} />
@@ -354,6 +354,9 @@ export function DashboardNavigation(props: Props) {
                     <UserCheck size={15} />
                   </button>
                 )}
+                {canUseGlobalSearch(isAdmin, currentStaff) && (
+                  <GlobalSearch className="w-8 h-8 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-600 grid place-items-center transition" />
+                )}
                 <ProfileIconButton activeTab={activeTab} setActiveTab={setActiveTab} />
                 {/* Staff messages used to be visible one employee at a time,
                     inside each profile page — so an incoming message went unseen
@@ -519,6 +522,10 @@ export function DashboardNavigation(props: Props) {
                   { key: 'ratings', label: 'التقييمات', icon: Star },
                   // «نظام الموارد البشريه … فقط علي موظفين الدقي» (9 Oct 2026).
                   { key: 'branch_hr', label: `موارد بشرية ${staffBranchLabel}`, icon: Users },
+                  // «اتاكد ان طلبات الانضمام للدقي والانترفيو للدقي بيظهر لنشوي مدير
+                  // الدقي» (12 Oct 2026) — the branch's applications and interviews.
+                  { key: 'join_us', label: 'طلبات الانضمام', icon: UserPlus },
+                  { key: 'interviews', label: 'الانترفيوهات', icon: CalendarCheck },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 currentStaff={currentStaff} salesDataLoading={salesDataLoading}

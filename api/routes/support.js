@@ -22,6 +22,9 @@ const { findSubscriberForIdentity } = require('../lib/privacyService');
 const { writeAuditEvent } = require('../lib/auditTrail');
 const { phoneIdentityClause } = require('../lib/leadMatching');
 const { logClientEvent } = require('../lib/clientHistory');
+const { branchForId } = require('../lib/branches');
+// Where a client writes on the site: the contact form, the enquiry box, their dashboard, the assistant.
+const WEBSITE_CHANNELS = ['web', 'web_contact', 'user_dashboard', 'ai_assistant'];
 const {
   CATEGORY_META, DEPARTMENT_LABEL, DEPARTMENT_ROLES, resolveDepartment, defaultPriority,
   computeSlaDue, pickAssignee, logTicketEvent,
@@ -95,7 +98,7 @@ function slaFlag(t) {
 // Create a ticket with full routing + SLA. Returns the inserted row id.
 async function createRoutedTicket(conn, {
   tenantId, subscriberId, email, name, subject, body, category, priority, channel,
-  sourceType, sourceId, actor,
+  sourceType, sourceId, actor, raisedBy = null, branch = null,
 }) {
   subject = cleanText(subject, TEXT_LIMITS.subject);
   body = cleanText(body, TEXT_LIMITS.body);
@@ -107,16 +110,24 @@ async function createRoutedTicket(conn, {
     : defaultPriority(cat);
   const slaDue = computeSlaDue(prio);
   const assignee = await pickAssignee(conn, tenantId, dept);
+  // Which branch it is for: the client's, else the branch of the employee who
+  // raised it (10 Oct 2026: «تبع فرع ايه … مين المسئول في الفرع اللى رفعتها»).
+  let ticketBranch = branch;
+  if (subscriberId) {
+    const [[client]] = await conn.query('SELECT branch FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriberId, tenantId]);
+    ticketBranch = client?.branch || ticketBranch;
+  }
   const id = uuidv4();
   await conn.query(
     `INSERT INTO support_tickets
        (id, tenant_id, subscriber_id, subscriber_email, subscriber_name, subject, body,
         status, priority, category, department, channel, source_type, source_id,
-        assigned_to, sla_due_at)
-     VALUES (?,?,?,?,?,?,?, 'open', ?,?,?,?,?,?,?,?)`,
+        assigned_to, sla_due_at, created_by_id, created_by_name, branch)
+     VALUES (?,?,?,?,?,?,?, 'open', ?,?,?,?,?,?,?,?,?,?,?)`,
     [id, tenantId, subscriberId || null, email || null, name || null, subject, body,
      prio, cat, dept, channel || 'system', sourceType || null, sourceId || null,
-     assignee?.id || null, slaDue]
+     assignee?.id || null, slaDue, raisedBy?.id || null, raisedBy?.name || null,
+     ticketBranch ? String(ticketBranch).toUpperCase().slice(0, 16) : null]
   );
   await logTicketEvent(conn, { tenantId, ticketId: id, type: 'created', actorId: actor?.id, actorName: actor?.name, to: cat, detail: subject });
   await logTicketEvent(conn, { tenantId, ticketId: id, type: 'routed', actorId: actor?.id, actorName: actor?.name, to: `${DEPARTMENT_LABEL[dept] || dept}${assignee ? ' → ' + assignee.name : ''}` });
@@ -243,7 +254,10 @@ router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermi
     const unscoped = scope.sql === '1=1';
     if (department && department !== 'all') { where.push('t.department = ?'); params.push(department); }
     // A client's complaint goes to the administration (9 Oct 2026), so it is here too.
-    else if (!department && unscoped) where.push("(t.department IN ('support','management') OR t.escalated_at IS NOT NULL)");
+    // And whatever a client wrote on the site — the contact form, their dashboard,
+    // the assistant — whichever department it went to: «اتاكد ان اي تواصل من
+    // العملاء من السايت بيسمع في الصفحه دي» (10 Oct 2026).
+    else if (!department && unscoped) where.push(`(t.department IN ('support','management') OR t.escalated_at IS NOT NULL OR t.channel IN (${WEBSITE_CHANNELS.map(() => '?').join(',')}))`), params.push(...WEBSITE_CHANNELS);
     if (category) { where.push('t.category = ?'); params.push(category); }
     if (status === 'open') where.push(`t.status IN ('open','in_progress')`);
     else if (status) { where.push('t.status = ?'); params.push(status); }
@@ -267,6 +281,11 @@ router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermi
               LEFT(t.body, 400) AS body, t.resolution_note, t.subscriber_id,
               sb.phone AS subscriber_phone, sb.client_code,
               s.name AS assignee_name,
+              COALESCE(t.branch, sb.branch) AS branch,
+              -- Who opened it: the employee, or (older tickets) the «created» event's actor.
+              COALESCE(t.created_by_name, (SELECT te.actor_name FROM ticket_events te
+                 WHERE te.ticket_id = t.id AND te.tenant_id = t.tenant_id AND te.event_type = 'created' AND te.actor_id IS NOT NULL
+                 ORDER BY te.created_at LIMIT 1)) AS raised_by_name,
               (SELECT COUNT(*) FROM ticket_replies tr WHERE tr.ticket_id = t.id AND tr.tenant_id=t.tenant_id) AS reply_count
          FROM support_tickets t
          LEFT JOIN staff s ON s.id = t.assigned_to AND s.tenant_id=t.tenant_id
@@ -277,15 +296,16 @@ router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermi
     let tickets = rows.map(r => ({ ...r, kind: 'ticket', sla: slaFlag(r) }));
     if (sla) tickets = tickets.filter(t => t.sla === sla);
 
-    // Un-triaged website contact messages (not converted to a ticket yet) that
-    // report a problem; the rest are in «رسائل التواصل», and a course or price
-    // question is a lead as well (routes/public.js).
+    // Every un-triaged website contact message (not converted to a ticket yet).
+    // Only the «technical» ones showed; the rest waited in «رسائل التواصل» and the
+    // service team never saw them. A course or price question is a lead as well
+    // (routes/public.js).
     let contacts = [];
     if ((!department || department === 'all') && !category && !assignee && (!status || status === 'open')) {
       const [crows] = await pool.query(
         `SELECT id, name, email, phone, subject, message, status, priority, created_at
            FROM contact_messages
-          WHERE tenant_id = ? AND converted_ticket_id IS NULL AND subject = 'technical'
+          WHERE tenant_id = ? AND converted_ticket_id IS NULL
             AND LOWER(COALESCE(status,'new')) IN ('new','read','pending','unread')
           ORDER BY created_at DESC LIMIT 100`, [req.tenantId]);
       contacts = crows.map(r => ({
@@ -404,6 +424,7 @@ router.post('/api/admin/cs/tickets', requireAuth, requireAdminOrStaff, requirePe
     const r = await createRoutedTicket(conn, {
       tenantId: req.tenantId, subscriberId: subscriber_id, email, name, subject, body,
       category, priority, channel: channel || 'phone', actor,
+      raisedBy: actor, branch: req.staffRecord?.branch_id ? branchForId(req.staffRecord.branch_id, '') || null : null,
     });
     // On the client's file: the problem, who raised it, and where it went.
     if (subscriber_id) {

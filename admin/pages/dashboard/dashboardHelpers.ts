@@ -1,6 +1,6 @@
 import type { Price, StaffMember, SubscriberItem } from '../../types';
 import { isCollected, toEgp } from '../../lib/money';
-import { cairoDay, cairoMonthOnly } from '../../../shared/cairoDate';
+import { cairoDay, cairoMonthOnly, cairoMonthProgress } from '../../../shared/cairoDate';
 
 export type StaffWire = StaffMember & { is_active?: number | boolean };
 
@@ -26,8 +26,8 @@ export const buildStaffSettingsMetrics = (
       .reduce((sum, payment) => sum + toEgp(payment.amount, payment.currency), 0);
     return total + paid;
   }, 0);
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const dayOfMonth = now.getDate();
+  // Cairo's day of the month, not the browser's.
+  const { dayOfMonth, daysInMonth } = cairoMonthProgress(now);
   const daysLeft = daysInMonth - dayOfMonth;
   const dailyTargetPace = achieved / Math.max(1, dayOfMonth);
   const projectedEnd = Math.round(dailyTargetPace * daysInMonth);
@@ -35,12 +35,10 @@ export const buildStaffSettingsMetrics = (
     const weekStart = index * 7 + 1;
     const weekEnd = Math.min((index + 1) * 7, daysInMonth);
     const count = subscribers.filter((subscriber) => {
-      const date = subscriber.createdAt ? new Date(subscriber.createdAt) : null;
-      if (!date) return false;
-      return date.getFullYear() === now.getFullYear()
-        && date.getMonth() === now.getMonth()
-        && date.getDate() >= weekStart
-        && date.getDate() <= weekEnd;
+      const day = cairoDay(subscriber.createdAt);
+      if (!day || day.slice(0, 7) !== currentMonth) return false;
+      const date = Number(day.slice(8, 10));
+      return date >= weekStart && date <= weekEnd;
     }).length;
     return { label: `أسبوع ${index + 1}`, count };
   });

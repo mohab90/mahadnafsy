@@ -10,7 +10,6 @@ const { tryJson } = require('../lib/helpers');
 const { ensureSubscriberForOrder } = require('../lib/subscriberProvisioning');
 const { postPaymentJournal } = require('../lib/finance');
 const { assertWritable } = require('../lib/periodLock');
-const { sendWhatsApp } = require('../lib/whatsapp');
 const { enqueueFinanceEvent } = require('../lib/financeOutbox');
 const { createNotification } = require('../lib/notification');
 const { convertLeadOfPayment } = require('../lib/leadState');
@@ -20,6 +19,7 @@ const { recordLectureProgress } = require('../lib/learningProgress');
 const { resolveLectureAccess } = require('../lib/learningAccess');
 const { grantCourseSelections } = require('../lib/entitlements');
 const { financialRecordMatches, financialScopeClause, resolveFinancialScope } = require('../lib/financialScope');
+const { hasReason, notifyPaymentRejected, reasonOf, REASON_REQUIRED } = require('../lib/paymentRejection');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { inspectProofImageDataUrl } = require('../lib/uploadSafety');
 const { isJourneyState } = require('../lib/journeyStates');
@@ -348,7 +348,10 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
     const { action, reviewer_note } = req.body; // action: 'approve' | 'reject'
     const scope = resolveFinancialScope(req, { requestedBranch: req.body.branch || null });
     if (!['approve', 'reject'].includes(action)) return res.status(400).json({ error: 'action must be approve or reject' });
-    if (String(reviewer_note || '').length > 2000) return res.status(400).json({ error: 'reviewer_note is too long' });
+    if (String(reviewer_note || '').length > 2000) return res.status(400).json({ error: 'ملاحظة المراجعة أطول من المسموح (2000 حرف).', code: 'REVIEW_NOTE_TOO_LONG' });
+    // A rejected receipt is explained: the reason is asked for and sent on (lib/paymentRejection.js).
+    const rejectionReason = action === 'reject' ? reasonOf(reviewer_note) : '';
+    if (action === 'reject' && !hasReason(rejectionReason)) return res.status(REASON_REQUIRED.status).json(REASON_REQUIRED.body);
     const tenantId = tenantIdFor(req);
     await conn.beginTransaction();
     transactionStarted = true;
@@ -560,7 +563,15 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
         const msg = action === 'approve'
           ? `✅ مرحباً ${sub.name || ''}، ${statusAr} إيصال دفعتك بمبلغ ${proof.amount} ${proof.currency || 'EGP'}. شكراً لك! 🎓`
           : `❌ مرحباً ${sub.name || ''}، ${statusAr} إيصال دفعتك بمبلغ ${proof.amount} ${proof.currency || 'EGP'}.${reviewer_note ? '\nالسبب: ' + reviewer_note : ''} يرجى التواصل معنا للمساعدة.`;
-        await sendWhatsApp(sub.phone, msg, { tenantId: req.tenantId, category: 'payment' });
+        // Queued, one per decision on this proof: the reviewer is not kept
+        // waiting on the provider, and a failed send is retried.
+        const recipient = require('../lib/phoneNumber').toDialable(sub.phone);
+        if (recipient) {
+          await require('../lib/outbox').enqueue({
+            channel: 'whatsapp', recipient, tenantId: req.tenantId, refType: 'payment_proof', refId: proof.id,
+            dedupeKey: `payment-proof-${action}:${proof.id}`, payload: { message: msg, category: 'payment' },
+          });
+        }
       }
       if (sub?.email) {
         publishRealtimeEvent('client:payment-updated', {
@@ -574,6 +585,15 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
       logger.warn('[payment-proof] WhatsApp notify failed:', notifyErr.message);
     }
 
+    if (action === 'reject') {
+      const [[client]] = await pool.query('SELECT name, client_code, assigned_cs_id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [proof.subscriber_id, tenantId]).catch(() => [[null]]);
+      await notifyPaymentRejected({
+        tenantId, reason: rejectionReason, amount: proof.amount, currency: proof.currency,
+        clientName: client?.name || proof.customer_name, clientCode: client?.client_code, subscriberId: proof.subscriber_id,
+        assignedSalesId: proof.assigned_sales_id, assignedCsId: client?.assigned_cs_id,
+        rejectedBy: req.staffRecord?.id, rejectedByName: req.staffRecord?.name, kind: 'payment_proof',
+      });
+    }
     res.json({ ok: true, status: newStatus });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});

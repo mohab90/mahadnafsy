@@ -32,7 +32,7 @@
     "audit:enums": "node tools/enum-value-audit.cjs",
     "audit:routes": "node tools/route-integrity-scan.mjs",
     "audit:paymob": "node tools/paymob-reconcile.cjs",
-    "verify:backup-restores": "node tools/verify-backup-restores.cjs",
+    "verify:backup-restores": "npm --prefix api run verify:backup-restores",
     "audit:orphan-modules": "node tools/orphan-module-scan.mjs",
     "audit:content-keys": "node tools/content-key-scan.mjs",
     "migrate:check": "npm --prefix api run migrate:check"

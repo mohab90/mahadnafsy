@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { arabicReason } from '../../../lib/apiErrorText';
 import { UserPlus, RefreshCw, UserCheck, UserX, Trash2, Lock } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { RegistrationItem } from '../../../lib/mysqlapi';
@@ -114,7 +115,9 @@ const RegistrationsTab: React.FC<Props> = ({ notify }) => {
       setRows(prev => prev.filter(r => r.id !== bookingRow.id));
       setBookingRow(null);
     } catch (err) {
-      notify('error', err instanceof Error ? err.message : 'تعذّر إتمام الحجز');
+      notify('error', arabicReason(err, 'تعذّر إتمام الحجز'));
+      // The booking dialog waits on this: swallowed, it printed a receipt for a refused booking.
+      throw err;
     } finally {
       setSubmitting(false);
     }

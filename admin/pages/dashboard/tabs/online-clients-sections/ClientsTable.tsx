@@ -1,4 +1,5 @@
 import React from 'react';
+import type { HousingNeed } from '../daqqi/daqqiHousingNeeds';
 import { cairoDateOnly, cairoDay, cairoDaysAhead } from '../../../../../shared/cairoDate';
 import { Modal } from '../../../../../shared/ui/Modal';
 import { useNavigate } from 'react-router-dom';
@@ -32,7 +33,9 @@ import { waLink } from '../../../../lib/whatsappLink';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 import { WhatsAppIcon } from '../../../../components/WhatsAppIcon';
 import { useCertificateCatalog } from '../../../../lib/certificateCatalog';
+import { IssuedCertificateBadge } from './IssuedCertificateBadge';
 import { ClientContactDialog } from '../../../unified-client/ClientContactLog';
+import { useCanDelete } from '../../../../hooks/useCanDelete';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type HousingInfo = { roundId: string; roundCode: string; receptionId: string; receptionName: string };
@@ -46,6 +49,8 @@ interface Props {
   collOnlineSelected: Set<string>;
   setCollOnlineSelected: React.Dispatch<React.SetStateAction<Set<string>>>;
   housingMap: Map<string, HousingInfo>;
+  /** Per course: which of the client's courses are seated and which still wait (daqqi/daqqiHousingNeeds.ts). */
+  housingNeeds: Map<string, HousingNeed>;
   courses: Course[];
   bundles: Bundle[];
   staffMembers: StaffMember[];
@@ -84,13 +89,16 @@ interface Props {
 
 export function ClientsTable({
   pageRows, vc, cw, startColResize, isDaqqiClientsTab, collOnlineSelected, setCollOnlineSelected,
-  housingMap, courses, bundles, staffMembers, onlineTeamMembers, isAdmin, isOnlineManager, isCollection = false,
-  canDeleteSubscriber, shouldUseScopedSubscribers,
+  housingMap, housingNeeds, courses, bundles, staffMembers, onlineTeamMembers, isAdmin, isOnlineManager, isCollection = false,
+  canDeleteSubscriber: canDeleteByPermission, shouldUseScopedSubscribers,
   updateSubscriber, reloadSubscribers, setSalesOwnSubscribers, deleteSubscriber, setSubPayRow, setSubPayDraft,
   setDaqqiHousingModal, setDaqqiHousingRoundId,
   setConvertRow, setConvertType, setConvertAttendedLive, setConvertGotCert, setConvertPauseReason,
   setConvertRefundReason, setConvertRefundAmount, setConvertRefundMethod, setConvertRefundPaymentId, setInstallmentsRow, filteredLength, notify,
 }: Props) {
+  // The permission and the owner's list both: «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
+  const canDeleteAnything = useCanDelete();
+  const canDeleteSubscriber = canDeleteAnything && canDeleteByPermission;
   // Which customer we are adjusting course access for. The default length is
   // set per course in the catalogue; this is where one person is changed.
   const [accessRow, setAccessRow] = React.useState<SubscriberItem | null>(null);
@@ -212,11 +220,17 @@ export function ClientsTable({
             const csName = (row as unknown as {assignedCsName?: string}).assignedCsName || '';
             // Housing info for this row (daqqi tab only)
             const rowHousing = housingMap.get(row.id) || null;
+            // Seated for some of their courses and not others: «جزئي», and which still wait.
+            const rowNeed = housingNeeds.get(row.id);
+            const missingTitles = (rowNeed?.missingCourseIds ?? []).map(id => courses.find(course => course.id === id)).map(course => course?.titleAr || course?.title || '').filter(Boolean);
             const housingCell = isDaqqiClientsTab ? (
               rowHousing ? (
                 <div className="flex flex-col items-center gap-0.5">
-                  <span className="inline-flex items-center gap-0.5 text-[9px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-full px-1.5 py-0.5">🏠 مسكن</span>
-                  <span className="text-[9px] font-bold text-gray-700">{rowHousing.roundCode}</span>
+                  <span className={`inline-flex items-center gap-0.5 text-[9px] font-bold border rounded-full px-1.5 py-0.5 ${missingTitles.length ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-indigo-100 text-indigo-700 border-indigo-200'}`}>
+                    {missingTitles.length ? '🏠 جزئي' : '🏠 مسكن'}
+                  </span>
+                  <span className="text-[9px] font-bold text-gray-700">{rowNeed?.roundCodes.length ? rowNeed.roundCodes.join('، ') : rowHousing.roundCode}</span>
+                  {missingTitles.length > 0 && <span className="text-[9px] font-bold text-amber-700" title={missingTitles.join('، ')}>لسه: {missingTitles.join('، ')}</span>}
                 </div>
               ) : (
                 <span className="text-[9px] text-gray-400">غير مسكن</span>
@@ -359,9 +373,7 @@ export function ClientsTable({
                     if (issuedCerts.length === 0 && certReqs.length === 0) return <span className="text-gray-300">—</span>;
                     return (
                       <div className="flex flex-col items-center gap-0.5">
-                        {issuedCerts.slice(0,3).map((cert,ci2) => (
-                          <span key={ci2} className="inline-flex items-center gap-0.5 font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-1.5 py-0.5 text-[9px]">🎓 {(cert as {certificateNumber?:string}).certificateNumber||'شهادة'}</span>
-                        ))}
+                        {issuedCerts.slice(0,3).map((cert,ci2) => <IssuedCertificateBadge key={ci2} cert={cert} />)}
                         {certReqs.map((req, rqi) => {
                           const reqPaid = req.paidAmount||0;
                           const reqTotal = req.price||0;
@@ -403,7 +415,6 @@ export function ClientsTable({
                     || (other.cid.startsWith('bundle:') && !!bundles.find(b => `bundle:${b.id}` === other.cid)?.courses.some(co => co.id === courseId));
                 })?.cid ?? courseRows[0]?.cid;
                 const crCertReqs = (row.extraCertificateRequests||[]).filter(req => rowOfRequest(req.courseId) === cr.cid);
-                const crCertStatus = cr.remaining <= 0 ? 'مكتمل' : 'جزئي';
                 return (
                 <tr key={`${row.id}-${cr.cid}`} className={`hover:bg-gray-50/40 ${ci%2===1?'bg-gray-50/30':''} ${collOnlineSelected.has(row.id)?'bg-blue-50':''}`}>
                   {ci === 0 && (
@@ -451,12 +462,7 @@ export function ClientsTable({
                   {vc.certificates && <td className="px-2 py-2 border border-gray-200 text-center text-[10px]">
                     {(crCert || crCertReqs.length > 0) ? (
                       <div className="flex flex-col items-center gap-0.5">
-                        {crCert && (
-                          <>
-                            <span className="inline-flex items-center gap-0.5 font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-1.5 py-0.5">🎓 {crCert.certificateNumber||'شهادة'}</span>
-                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${crCertStatus==='مكتمل'?'bg-emerald-100 text-emerald-700':'bg-orange-100 text-orange-700'}`}>{crCertStatus}</span>
-                          </>
-                        )}
+                        {crCert && <IssuedCertificateBadge cert={crCert} owes={cr.remaining > 0} />}
                         {crCertReqs.map((req, rqi) => {
                           const reqPaid = req.paidAmount||0;
                           const reqTotal = req.price||0;

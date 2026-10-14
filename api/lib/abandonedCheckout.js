@@ -86,7 +86,10 @@ async function sendAbandonedCheckoutReminders(options = {}, services = {}) {
         continue;
       }
 
-      const delivery = await deliver(phone, buildMessage(order), { tenantId: order.tenant_id });
+      // Direct: the run reports what went, order by order. It named no
+      // category, so the gate refused every one of them; a nudge about a
+      // checkout left half-way is a 'reminder', like the journey's own.
+      const delivery = await deliver(phone, buildMessage(order), { tenantId: order.tenant_id, category: 'reminder' });
       if (!delivery?.ok) throw new Error(
         typeof delivery?.reason === 'string' ? delivery.reason : 'WhatsApp provider rejected reminder'
       );

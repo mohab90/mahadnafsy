@@ -158,6 +158,7 @@ router.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res)
     // from a made-up one.
     const dialable = user.phone ? toDialable(user.phone) : '';
     if (dialable) {
+      // Direct, not queued: a reset code is waited for on the screen.
       const sent = await sendWhatsApp(
         dialable,
         `رمز إعادة تعيين كلمة المرور: ${otp}\nصالح لمدة 15 دقيقة. لا تشاركه مع أحد.`,

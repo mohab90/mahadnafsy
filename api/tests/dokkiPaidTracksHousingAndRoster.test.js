@@ -281,7 +281,8 @@ test('the answer about the seating is told to the desk, and the rosters are read
   assert.match(state, /window\.addEventListener\(ROUNDS_CHANGED_EVENT/);
   assert.match(state, /if \(hasRounds\.current\) void refreshDaqqiRounds\(\)/, 'an account that cannot read the rounds is not sent to ask');
   const { housingOutcome } = (() => {
-    try { return load('admin/lib/daqqiHousing.ts'); } catch { return {}; }
+    // Without the admin's TypeScript loader (CI's API job installs the API only) load() gives null.
+    try { return load('admin/lib/daqqiHousing.ts') || {}; } catch { return {}; }
   })();
   if (housingOutcome) {
     assert.deepEqual(housingOutcome([{ housed: 'seated' }]), { text: ' واتسكّن في الروند ✓', warning: false, changed: true });

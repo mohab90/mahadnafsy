@@ -8,12 +8,13 @@
  */
 import React, { useEffect, useState } from 'react';
 import { useBranches } from '../hooks/useBranches';
+import { useGoBack } from '../lib/useGoBack';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   
   CreditCard, 
 } from 'lucide-react';
-import { useSiteData, useEnsureLectures } from '../context/SiteDataContext';
+import { useSiteData, useEnsureLectures, useEnsureSiteLists } from '../context/SiteDataContext';
 import { confirmDialog } from '../../shared/ui/confirmDialog';
 import { useUnifiedClientActiveTab, type UnifiedClientTab } from './unified-client/useUnifiedClientActiveTab';
 import { buildUnifiedClientTabs, UnifiedClientTabs } from './unified-client/UnifiedClientTabs';
@@ -68,7 +69,7 @@ interface UnifiedClientPageProps {
 }
 
 const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber }) => {
-  const navigate = useNavigate();
+  const navigate = useNavigate(); const goBack = useGoBack();
   // Same list every other screen shows — see hooks/useBranches.
   const branchOptions = useBranches();
   const {
@@ -80,8 +81,9 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
 
   // Lectures are not loaded at login any more — the client's progress is «شاهد N من M محاضرة», and M comes from here.
   useEnsureLectures();
+  useEnsureSiteLists(['subscribers', 'leads', 'daqqiRounds']); // nor these, since 11 Oct 2026 (siteLists.ts)
 
-  const { isOnlineManager, canManageCourseAccess, canSeeCourses, canCorrectPayments, canSeeProofs } = useUnifiedClientPermissions({ isAdmin, currentStaff });
+  const { isOnlineManager, canManageCourseAccess, canSeeCourses, canCorrectPayments, canSeeProofs, canDelete, canEditCertificateData } = useUnifiedClientPermissions({ isAdmin, currentStaff });
 
   const isSub = !!subscriber;
   const clientName   = subscriber?.name   ?? lead?.name   ?? '';
@@ -102,7 +104,6 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   const notify = React.useCallback(
     (type: 'success' | 'error' | 'info', text: string) => toastShow(text, type), [toastShow]);
   const [codeCopied, setCodeCopied] = useState(false);
-
   // ── session / activity stats — no longer tracked from Firestore ──────────
   const sessionData: UserSessionData | null = null;
   const {
@@ -174,14 +175,14 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   } = useUnifiedClientCourseAccess({ subscriber, content, reloadSubscribers });
 
   const {
-    viewCertId, setViewCertId,
+    viewCertId, setViewCertId, certificateDataModal, openCertificateData,
     showConvertModal, setShowConvertModal, convertCourseId, setConvertCourseId,
     convertAccessMode, setConvertAccessMode, convertPartialCount, setConvertPartialCount,
     promoCopied, setPromoCopied, subCerts, activeSubCerts, extraReqs,
     handleConvert, handleGeneratePromo, handleCertificateLifecycle,
   } = useUnifiedClientLifecycleActions({
     lead, subscriber, isSaving, setIsSaving, setLeadDraft,
-    updateLead, reloadLeads, reloadSubscribers,
+    updateLead, reloadLeads, reloadSubscribers, certificateData: { allowed: canEditCertificateData && isSub, notify },
   });
 
   // ── payment proofs (client-uploaded receipts) ─────────────────────────────
@@ -259,7 +260,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
         lastCommDate={lastCommDate}
         canManageCourseAccess={canManageCourseAccess}
         isAdmin={isAdmin}
-        onDashboard={() => navigate('/dashboard')}
+        onDashboard={() => goBack('/dashboard')}
         onList={() => navigate(isSub ? '/dashboard/subscribers' : '/dashboard')}
         onCopyClientLink={() => {
           navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname.replace(/\/[^/]+$/, '')}#/client/${clientCode}`).catch(() => {});
@@ -286,11 +287,10 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
         clientName, 'الحذف أرشفة — المدفوعات والسجل يفضلوا محفوظين.',
       ].join('\n'),
           })) return;
-          if (subscriber && await deleteSubscriber(subscriber.id)) navigate('/dashboard/subscribers');
-          else if (lead && await deleteLead(lead.id)) navigate('/dashboard');
+          if (subscriber && await deleteSubscriber(subscriber.id)) goBack('/dashboard/subscribers');
+          else if (lead && await deleteLead(lead.id)) goBack('/dashboard');
         }}
       />
-
 
       {/* ══ Overdue installments warning banner ══ */}
       {isSub && instOverdueCount > 0 && (
@@ -385,6 +385,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
             onLegacyPayment={openLegacyPaymentForm}
             onInstallmentPlan={() => setActiveTab('installments')}
             onEdit={() => { setEditing(!editing); setActiveTab('edit'); }}
+            onCertificateData={openCertificateData}
           />
 
           <UnifiedClientSidebarNotesCard quickNote={quickNote} onSaveQuickNote={saveQuickNote} />
@@ -464,7 +465,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
                   clientPhone={clientPhone}
                   isSubscriber={isSub}
                   onAdd={() => setShowAddComm(true)}
-                  onDelete={handleDeleteComm}
+                  onDelete={canDelete ? handleDeleteComm : undefined}
                 />
               )}
 
@@ -556,7 +557,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
                   onViewCertificate={setViewCertId}
                   onRevokeCertificate={(certificateId) => void handleCertificateLifecycle(certificateId, 'revoke')}
                   onReissueCertificate={(certificateId) => void handleCertificateLifecycle(certificateId, 'reissue')}
-                />
+                  notify={notify} onCertificateDataSaved={reloadSubscribers} />
               )}
 
               {isSub && activeTab === 'loyalty' && subscriber && (
@@ -638,9 +639,9 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
 
       {(showAccessModal || showContactPopup || showConvertModal
         || showAddComm || showLeadPayForm
-        || Boolean(viewCertId) || showPayDetailModal) && (
+        || Boolean(viewCertId) || showPayDetailModal || Boolean(certificateDataModal)) && (
         <React.Suspense fallback={null}>
-          <UnifiedClientModalsHost
+          <UnifiedClientModalsHost certificateData={certificateDataModal}
             access={showAccessModal && isSub ? {
               open: true, subscriber, canManageCourseAccess, courses, getCourseLectures,
               accessSaving, accessMsg, accessPresets, setAccessPresets, manualLimitDraft,

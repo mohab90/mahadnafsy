@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { Search } from 'lucide-react';
 import type { Course, Bundle, SubscriberItem, DaqqiRound } from '../../../../types';
 import { isEnrolledInCourse } from './daqqiScheduleUtils';
+import { housingNeedOf, isFullyHoused, isHousedForCourse } from './daqqiHousingNeeds';
 import { courseMoneyFor } from '../../../../lib/agreedPrice';
 import { Modal } from '../../../../../shared/ui/Modal';
 
@@ -24,7 +25,6 @@ export function DaqqiAddClientsModal({
   setDaqqiAddClientsSel,
   daqqiAddClientsCourseSel,
   setDaqqiAddClientsCourseSel,
-  assignedSubIds,
   handleAddClientsToRound,
 }: {
   enrolledLabels: (courses: Course[], bundles: Bundle[], ids: string[]) => string[];
@@ -38,8 +38,6 @@ export function DaqqiAddClientsModal({
   setDaqqiAddClientsSel: React.Dispatch<React.SetStateAction<Set<string>>>;
   daqqiAddClientsCourseSel: Record<string, string>;
   setDaqqiAddClientsCourseSel: React.Dispatch<React.SetStateAction<Record<string, string>>>;
-  /** Clients already placed in a round (مسكّنين). */
-  assignedSubIds: Set<string>;
   handleAddClientsToRound: () => void | Promise<void>;
 }) {
   // «زر بحث بالاسم او برقم التليفون … وفلتر بالكورسات وفلتر بالمسكنين والغير
@@ -58,8 +56,12 @@ export function DaqqiAddClientsModal({
       const available = daqqiSubs.filter(s => {
         if (alreadyIn.has(s.id)) return false;
         if (wantedCourse !== 'all' && !isEnrolledInCourse(bundles, s.enrolledCourseIds || [], wantedCourse)) return false;
-        if (housing === 'housed' && !assignedSubIds.has(s.id)) return false;
-        if (housing === 'unhoused' && assignedSubIds.has(s.id)) return false;
+        // Housed FOR THE COURSE being filled — a client seated in another course's round still needs this one.
+        const housedHere = wantedCourse !== 'all'
+          ? isHousedForCourse(daqqiRounds, s.id, wantedCourse)
+          : isFullyHoused(housingNeedOf(daqqiRounds, bundles, s));
+        if (housing === 'housed' && !housedHere) return false;
+        if (housing === 'unhoused' && housedHere) return false;
         if (term) {
           const byName = String(s.name || '').toLowerCase().includes(term) || String(s.clientCode || '').toLowerCase().includes(term);
           const byPhone = digits.length >= 3 && String(s.phone || '').replace(/\D/g, '').includes(digits);

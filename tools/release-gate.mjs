@@ -147,9 +147,11 @@ if (REUSE_CLIENT) {
 }
 
 // ── 3. staging, then everything that needs a running server ───────────────
+// The env var is what keeps a current deploy-release.sh to staging; the sed cut
+// at its "continuing to production" line does the same for an older copy.
 run('deploy to staging only', ssh(
   `sed '/^echo "staging is healthy; continuing to production"/,$d' /root/deploy-release.sh > /tmp/gate-staging.sh` +
-  ` && bash /tmp/gate-staging.sh ${release}; code=$?; rm -f /tmp/gate-staging.sh; exit $code`));
+  ` && MAHAD_DEPLOY_TARGET=staging bash /tmp/gate-staging.sh ${release}; code=$?; rm -f /tmp/gate-staging.sh; exit $code`));
 
 // deploy-release.sh migrates production and not staging, so staging's schema
 // drifts behind — which is how a release gets tested against a database that is
@@ -208,4 +210,4 @@ if (!SKIP_E2E) {
 console.log(`\n${'─'.repeat(72)}`);
 console.log(`${release} passed every stage in ${Math.round((Date.now() - started) / 1000)}s. It is live on staging.`);
 console.log('\nProduction is a decision, not a stage. When you want it:');
-console.log(`\n  ssh -i ${KEY} ${HOST} "bash /root/deploy-release.sh ${release}"\n`);
+console.log(`\n  ssh -i ${KEY} ${HOST} "MAHAD_DEPLOY_TARGET=production bash /root/deploy-release.sh ${release}"\n`);

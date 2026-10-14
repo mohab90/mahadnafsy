@@ -37,6 +37,8 @@ const {
   identitySpellings,
 } = require('./_shared');
 
+const deleteRights = require('../../lib/deleteRights');
+
 const router = Router();
 
 // POST /api/auth/login
@@ -312,7 +314,20 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
       }
       if (!phone) phone = u.phone || '';
     } catch { /* phone is best-effort */ }
-    res.json({ uid: u.id, email: u.email, displayName: u.name || '', phone, isAdmin, permissions: isAdmin ? '*' : staffPermissions });
+    // Whether the delete buttons are drawn at all — «شيل من صلاحيات اي شخص غير
+    // المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026). The server refuses
+    // the deletion anyway (lib/deleteRights.js); this only stops the panel
+    // offering a button that would answer 403. A customer is neither.
+    let canDelete = false;
+    let canManageDeleteRights = false;
+    if (isAdmin || staffPermissions) {
+      try {
+        canDelete = await deleteRights.canDelete(req);
+        canManageDeleteRights = await deleteRights.isDeleteOwner(req);
+      } catch (error) { logger.warn('[auth/me] delete rights unavailable', { error: error.message }); }
+    }
+    res.json({ uid: u.id, email: u.email, displayName: u.name || '', phone, isAdmin,
+      permissions: isAdmin ? '*' : staffPermissions, canDelete, canManageDeleteRights });
   } catch (err) {
     logger.error('[auth/me]', err);
     if (!res.headersSent) {

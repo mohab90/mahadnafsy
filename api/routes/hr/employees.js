@@ -7,7 +7,7 @@ const { getEffectiveHrPolicy } = require('../../lib/hrPolicy');
 const { PERMISSIONS, normalizeDataScope } = require('../../constants/permissions');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { requireHr, staffReachSql } = require('../../lib/branchHr');
-const { sqlCairoToday } = require('../../lib/dates');
+const { sqlCairoToday, cairoYearMonth } = require('../../lib/dates');
 
 
 // GET /api/admin/hr/employees — list all employees with HR info
@@ -61,9 +61,9 @@ router.get('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
     `, [id, req.tenantId]);
 
     // Commission this month from crm_commissions
-    const now = new Date();
-    const curMonth = now.getMonth() + 1;
-    const curYear = now.getFullYear();
+    // The Cairo month: the server's (UTC) one is still last month for the
+    // first two or three hours of the 1st.
+    const { month: curMonth, year: curYear } = cairoYearMonth();
     // Half-open month window [monthStart, nextMonthStart) for the leads/payments
     // KPI subqueries below. MONTH(col)=? AND YEAR(col)=? can't use an index and
     // those two tables grow without bound, unlike the staff-sized HR tables.

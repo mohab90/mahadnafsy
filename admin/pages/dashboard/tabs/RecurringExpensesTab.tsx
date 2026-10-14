@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshCcw, Plus, Trash2, Edit2, Save, Calendar } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
+import { cairoDateOnly } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -69,7 +70,7 @@ const RecurringExpensesTab: React.FC<Props> = ({ notify }) => {
     const active = items.filter(i => i.is_active);
     const monthlyTotal = active.reduce((s, i) => s + i.amount_egp * (FREQ_MULTIPLIER[i.frequency] / 12), 0);
     const yearlyTotal = monthlyTotal * 12;
-    const today = new Date().getDate();
+    const today = Number(cairoDateOnly().slice(8, 10));
     const dueSoon = active.filter(i => i.frequency === 'monthly' && i.day_of_month >= today && i.day_of_month <= today + 7).length;
     return { monthlyTotal, yearlyTotal, dueSoon, activeCount: active.length };
   }, [items]);

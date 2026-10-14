@@ -10,6 +10,7 @@ const { logLeadEvent } = require('../../lib/crm');
 const { sanitize } = require('../../lib/helpers');
 const { DEFAULT_TENANT_ID } = require('../../lib/tenantScope');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
+const { requireDeleteRight } = require('../../lib/deleteRights');
 const { itemBalances, itemKey, setAgreedPrice, setPriorPaid } = require('../../lib/agreedPrice');
 const { cairoDayStartUtc, isValidDateOnly } = require('../../lib/dates');
 const { isCourseManager, removeClientCourse, transferClientCourse, upgradeClientCourse } = require('../../lib/clientCourseActions');
@@ -387,7 +388,9 @@ const courseActionRoute = (action, run) => async (req, res) => {
   } finally { conn.release(); }
 };
 
-router.post('/api/admin/subscribers/:id/course-remove', requireAuth, requireAdminOrStaff, requirePermission('manage_subscribers'),
+// «مسح كورس من عميل» is a deletion, so it is the managers' AND the owner's
+// list's: «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
+router.post('/api/admin/subscribers/:id/course-remove', requireAuth, requireAdminOrStaff, requirePermission('manage_subscribers'), requireDeleteRight,
   courseActionRoute('remove', (conn, args) => removeClientCourse(conn, { ...args, item: args.body.item })));
 
 router.post('/api/admin/subscribers/:id/course-transfer', requireAuth, requireAdminOrStaff, requirePermission('manage_subscribers'),

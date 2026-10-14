@@ -50,7 +50,9 @@ function routeGuardFor(fn) {
   assert.ok(route, `${fn}: no /admin route in «${line.trim()}»`);
   const handler = routes.split('\n').find(l => l.includes(`router.get('/api${route}',`));
   assert.ok(handler, `${fn}: GET /api${route} not found in api/routes`);
-  return { route, handler, permission: (/requirePermission\('([a-z_]+)'\)/.exec(handler) || [])[1] };
+  // requireAnyPermission('view_join_us', 'branch_hr') names the permission the
+  // boot asks by first; the branch manager's alternative is the screen's own load.
+  return { route, handler, permission: (/require(?:Any)?Permission\('([a-z_]+)'/.exec(handler) || [])[1] };
 }
 
 test('every skipped list is one the server gives to admins only', () => {

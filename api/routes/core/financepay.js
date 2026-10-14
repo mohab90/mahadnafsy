@@ -7,8 +7,8 @@ const logger = require('../../lib/logger');
 const { pool } = require('../../lib/db');
 const { isItemPaymentType } = require('../../lib/agreedPrice');
 const { queuePaymentReceipt } = require('../../lib/paymentReceipt');
-const { sendWhatsApp } = require('../../lib/whatsapp');
 const { logPaymentAudit, postPaymentJournal } = require('../../lib/finance');
+const { ensureFreshFx, fxStaleError } = require('../../lib/fxRefresh');
 const { recordPaymentCompensation } = require('../../lib/paymentCompensation');
 const { assertWritable } = require('../../lib/periodLock');
 const { convertLeadOfPayment } = require('../../lib/leadState');
@@ -19,6 +19,7 @@ const { financialRecordMatches, resolveFinancialScope } = require('../../lib/fin
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../../lib/paymentEntitlementAccess');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { deleteTransfer, importTransfers, isCashMethod, linkTransfer, recordTransfer, updateTransfer } = require('../../lib/incomingTransfers');
+const { hasReason, notifyPaymentRejected, reasonOf, REASON_REQUIRED } = require('../../lib/paymentRejection');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { mustLinkTransfer, TRANSFER_REQUIRED } = require('../../lib/paymentApprovalPolicy');
 
@@ -33,9 +34,13 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
     const { status, reviewNote } = req.body || {};
     const scope = resolveFinancialScope(req, { requestedBranch: req.body.branch || null });
     if (!['paid', 'failed', 'pending'].includes(status)) {
-      return res.status(400).json({ error: 'Invalid status; use the refund workflow for refunds' });
+      return res.status(400).json({ error: 'الحالة دي غير صحيحة — الاسترداد له مسار خاص (طلب استرداد).', code: 'PAYMENT_STATUS_INVALID' });
     }
-    if (String(reviewNote || '').length > 2000) return res.status(400).json({ error: 'reviewNote is too long' });
+    if (String(reviewNote || '').length > 2000) return res.status(400).json({ error: 'ملاحظة المراجعة أطول من المسموح (2000 حرف).', code: 'REVIEW_NOTE_TOO_LONG' });
+    // A rejection is explained: the reason is asked for, kept on the payment and
+    // sent to whoever took it (lib/paymentRejection.js).
+    const rejectionReason = status === 'failed' ? reasonOf(reviewNote, req.body?.reason) : '';
+    if (status === 'failed' && !hasReason(rejectionReason)) return res.status(REASON_REQUIRED.status).json(REASON_REQUIRED.body);
     const tenantId = req.tenantId;
     const actor = req.user?.email || req.user?.uid || 'admin';
     await conn.beginTransaction();
@@ -51,22 +56,22 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
     );
     if (!payment) {
       await conn.rollback(); transactionStarted = false;
-      return res.status(404).json({ error: 'Payment not found' });
+      return res.status(404).json({ error: 'الدفعة دي مش موجودة — يمكن اتحذفت، حدّث الصفحة.', code: 'PAYMENT_NOT_FOUND' });
     }
     if (!financialRecordMatches(scope, payment)) {
       await conn.rollback();
       transactionStarted = false;
-      return res.status(403).json({ error: 'Payment is outside your financial scope' });
+      return res.status(403).json({ error: 'الدفعة دي خارج نطاق صلاحياتك المالية (فرع أو موظف تاني).', code: 'PAYMENT_OUT_OF_SCOPE' });
     }
     await assertWritable(payment.date, conn, tenantId);
     const oldStatus = payment.status || 'pending';
     if (oldStatus === 'refunded') {
       await conn.rollback(); transactionStarted = false;
-      return res.status(409).json({ error: 'Refunded payments are immutable' });
+      return res.status(409).json({ error: 'الدفعة دي مستردّة ومينفعش تتعدّل.', code: 'PAYMENT_REFUNDED' });
     }
     if (oldStatus === 'paid' && status !== 'paid') {
       await conn.rollback(); transactionStarted = false;
-      return res.status(409).json({ error: 'Paid payments require a refund/reversal workflow' });
+      return res.status(409).json({ error: 'الدفعة دي مدفوعة بالفعل — لتغييرها استخدم التصحيح أو الاسترداد.', code: 'PAYMENT_ALREADY_PAID' });
     }
     if (oldStatus === status) {
       await conn.commit(); transactionStarted = false;
@@ -125,6 +130,12 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
       }
       const rawAmount = Number(payment.amount) || 0;
       if (rawAmount <= 0) throw new Error('Paid payment must have a positive amount');
+      const fx = await ensureFreshFx(tenantId, payment.currency);
+      if (!fx.usable) {
+        await conn.rollback(); transactionStarted = false;
+        const stale = fxStaleError(payment.currency, fx.snapshot);
+        return res.status(stale.statusCode).json({ error: stale.message, code: stale.code });
+      }
       const journalId = await postPaymentJournal({
         paymentId: id, amount: rawAmount, currency: payment.currency, payType: payment.payment_type,
         // Passed as it came out of the row. payments.date is DATETIME, so this
@@ -142,7 +153,7 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
          ELSE CONCAT(COALESCE(note,''),IF(COALESCE(note,'')='','',' | '),'Review: ',?) END
        WHERE id=? AND tenant_id=? AND deleted_at IS NULL`,
       [status, settledMethod || payment.payment_method || null,
-        String(reviewNote || ''), String(reviewNote || ''), id, tenantId]
+        String(rejectionReason || reviewNote || ''), String(rejectionReason || reviewNote || ''), id, tenantId]
     );
 
     if (becomingPaid && payment.subscriber_id) {
@@ -162,7 +173,8 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
       for (const courseId of [...new Set(courseIds)]) {
         let accessType = 'full';
         let paidRatio = null;
-        if (payment.is_installment && Number(payment.course_expected) > 0) {
+        // A pending booking approved for less than its price opens its first payment's videos, like an instalment.
+        if (Number(payment.course_expected) > 0) {
           const resolved = await resolvePaymentAccess({
             db: conn,
             tenantId,
@@ -173,6 +185,7 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
             currentAmount: payment.amount,
             currency: payment.currency,
             expectedAmount: payment.course_expected,
+            lenient: !payment.is_installment,
           });
           accessType = accessModeOf(resolved);
           paidRatio = paidRatioOf(resolved);
@@ -259,13 +272,30 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
             'SELECT phone FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1',
             [payment.subscriber_id, tenantId]
           );
-          if (subscriber?.phone) {
-            await sendWhatsApp(subscriber.phone.replace(/\D/g, ''),
-              `✅ تم تأكيد دفعتك: ${payment.amount} ${payment.currency || 'EGP'} — معهد الدراسات النفسية`, { tenantId, category: 'payment' });
+          // Queued, one per payment: retried by the outbox, not lost here.
+          const recipient = require('../../lib/phoneNumber').toDialable(subscriber?.phone);
+          if (recipient) {
+            await require('../../lib/outbox').enqueue({
+              channel: 'whatsapp', recipient, tenantId, refType: 'payment', refId: id,
+              dedupeKey: `payment-confirmed-wa:${id}`,
+              payload: { message: `✅ تم تأكيد دفعتك: ${payment.amount} ${payment.currency || 'EGP'} — معهد الدراسات النفسية`, category: 'payment' },
+            });
           }
         } catch (error) {
           logger.warn('[patch-payment] confirmation notification failed:', error.message);
         }
+      });
+    }
+    if (status === 'failed') {
+      // Told after the rejection is committed; whoever took the payment learns why (lib/paymentRejection.js).
+      const [[client]] = payment.subscriber_id
+        ? await pool.query('SELECT name, client_code, assigned_sales_id, assigned_cs_id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [payment.subscriber_id, tenantId])
+        : [[null]];
+      await notifyPaymentRejected({
+        tenantId, reason: rejectionReason, amount: payment.amount, currency: payment.currency,
+        clientName: client?.name, clientCode: client?.client_code, subscriberId: payment.subscriber_id,
+        recordedBy: payment.staff_id, assignedSalesId: client?.assigned_sales_id, assignedCsId: client?.assigned_cs_id,
+        rejectedBy: req.staffRecord?.id, rejectedByName: req.staffRecord?.name || signerName(req),
       });
     }
     res.json({ ok: true, id, status });
@@ -287,7 +317,8 @@ router.get('/api/admin/incoming-transfers', requireAuth, requireAdminOrStaff, re
     const unlinked = String(req.query.unlinked || '') === '1';
     const [rows] = await pool.query(
       `SELECT t.id, t.amount, t.currency, t.method, t.reference, t.sender_name, t.sender_phone, t.received_on,
-              t.note, t.recorded_by_name, t.payment_id, t.linked_at, t.created_at, s.name AS customer_name
+              t.note, t.recorded_by_name, t.payment_id, t.linked_at, t.created_at, s.name AS customer_name,
+              t.parent_transfer_id, t.original_amount, p.amount AS payment_amount
          FROM incoming_transfers t
          LEFT JOIN payments p ON p.id=t.payment_id AND p.tenant_id=t.tenant_id
          LEFT JOIN subscribers s ON s.id=p.subscriber_id AND s.tenant_id=t.tenant_id
@@ -298,6 +329,10 @@ router.get('/api/admin/incoming-transfers', requireAuth, requireAdminOrStaff, re
       senderName: row.sender_name, senderPhone: row.sender_phone, receivedOn: row.received_on, note: row.note,
       recordedByName: row.recorded_by_name, paymentId: row.payment_id, linkedAt: row.linked_at,
       customerName: row.customer_name || null, createdAt: row.created_at,
+      // «باقي ربط من تحويل 3,000»: a remainder, and what the whole transfer was.
+      parentTransferId: row.parent_transfer_id || null,
+      originalAmount: row.original_amount != null ? Number(row.original_amount) : null,
+      paymentAmount: row.payment_amount != null ? Number(row.payment_amount) : null,
     })));
   } catch (error) {
     logger.error('[incoming-transfers/list]', error.message);

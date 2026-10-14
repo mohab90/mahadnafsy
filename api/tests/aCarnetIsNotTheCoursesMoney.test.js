@@ -22,7 +22,7 @@ test('the course\'s instalments sum only its own money', async () => {
   const { resolvePaymentAccess } = require('../lib/paymentEntitlementAccess');
   const db = { query: async sql => { seen.push(String(sql)); return [[{ currency: 'EGP', total_paid: 1000, min_expected: 3400, max_expected: 3400 }]]; } };
   await resolvePaymentAccess({ db, tenantId: 't', subscriberId: 's', courseId: 'c', bundleId: null, currentPaymentId: 'p', currentAmount: 500, currency: 'EGP', expectedAmount: 3400 });
-  assert.match(seen[0], /payment_type IN \('COURSE','BUNDLE','OTHER'\)/);
+  assert.match(seen[0], /payment_type IS NULL OR payment_type IN \('COURSE','BUNDLE','OTHER'\)/, 'older untyped rows are course money; a carnet is not');
 });
 
 test('a paid carnet neither takes the course\'s price nor opens it', () => {

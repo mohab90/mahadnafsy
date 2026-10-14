@@ -68,5 +68,17 @@ test('a SAR order is charged in EGP at the day\'s rate, and a retry asks for the
 
 test('with no fresh rate the checkout is refused, not charged at a guess', { skip }, async () => {
   await rates(13, new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString());
-  assert.equal(await paymobCharge('sar-2', TENANT, await order('sar-2', 50, 'SAR')), null);
+  // A stale rate is fetched afresh before giving up (lib/fxRefresh.js). With a
+  // network — GitHub's runners have one — that fetch succeeds and the order is
+  // charged; this is the case where the provider cannot be reached either.
+  const { resetFxBackoff } = require('../../lib/fxRefresh');
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('rate provider unreachable (test)'); };
+  resetFxBackoff();
+  try {
+    assert.equal(await paymobCharge('sar-2', TENANT, await order('sar-2', 50, 'SAR')), null);
+  } finally {
+    globalThis.fetch = realFetch;
+    resetFxBackoff();
+  }
 });

@@ -43,7 +43,7 @@ test('issued without an online enrolment or an email, by the same function as by
 
 test('the client opening it from the site is recorded; the desk\'s own print is not', () => {
   const site = read('api/routes/public.js');
-  assert.match(site, /if \(String\(req\.query\.staff \|\| ''\) !== '1'\) \{\s*pool\.query\(\s*'UPDATE course_completions SET downloaded_at=COALESCE\(downloaded_at, NOW\(\)\), download_count=download_count\+1/);
+  assert.match(site, /if \(!formMode && String\(req\.query\.staff \|\| ''\) !== '1'\) \{\s*pool\.query\(\s*'UPDATE course_completions SET downloaded_at=COALESCE\(downloaded_at, NOW\(\)\), download_count=download_count\+1/);
   assert.match(site, /router\.post\('\/api\/me\/completions\/:code\/downloaded', requireAuth/);
   assert.match(read('client/pages/UserDashboard.tsx'), /onPrinted=\{\(\) => \{ mysqlClient\.markCertificateDownloaded\(certModal\.certCode\)/);
   const panel = read('admin/pages/dashboard/tabs/InstituteCertificatesPanel.tsx');

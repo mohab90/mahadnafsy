@@ -5,6 +5,7 @@ import Header from './components/Header';
 import Footer from './components/Footer';
 import Home from './pages/Home';
 import { useVisibleInterval } from '../shared/useVisibleInterval';
+import { trackLead, trackPageView } from './lib/tracking';
 
 // ── Lazily-loaded pages ────────────────────────────────────────────────────────
 const UserDashboard = React.lazy(() => import('./pages/UserDashboard'));
@@ -148,6 +149,7 @@ const LeadCaptureWidget: React.FC = () => {
         try { localStorage.setItem(ENQUIRY_TOKEN_KEY, String(data.token)); } catch { /* private mode */ }
         setThreadToken(String(data.token));
       }
+      trackLead({ source: `enquiry:${department}` });
       setSent(true);
     } catch (cause) {
       setSubmitError(cause instanceof Error ? cause.message : 'تعذر إرسال طلبك حاليًا. حاول مرة أخرى أو تواصل معنا عبر واتساب.');
@@ -337,6 +339,14 @@ const ScrollToTop = () => {
   return null;
 };
 
+// A page view for every route, the landing one included — the tags in
+// index.html sent only that first one (lib/tracking.ts).
+const RouteTracker = () => {
+  const { pathname, search } = useLocation();
+  useEffect(() => { trackPageView(pathname + search); }, [pathname, search]);
+  return null;
+};
+
 /** Server keepalive — silently pings /api/health every 5 minutes to prevent Hostinger shared
  *  hosting from suspending the Node.js process between requests */
 const ServerKeepalive: React.FC = () => {
@@ -478,6 +488,7 @@ const AppShell: React.FC = () => {
   return (
     <>
       <ScrollToTop />
+      <RouteTracker />
       <ServerKeepalive />
       <ErrorBoundary key={location.pathname}>
         <div className="min-h-screen flex flex-col font-sans">

@@ -13,7 +13,7 @@ const { financialScopeClause, resolveFinancialScope } = require('../lib/financia
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
 const { leadScope } = require('../lib/leadAccess');
-const { sqlCairoToday, cairoToday } = require('../lib/dates');
+const { sqlCairoToday, cairoToday, cairoClock, addDaysToDateOnly, cairoDayStartUtc } = require('../lib/dates');
 const { itemBalances, itemKey } = require('../lib/agreedPrice');
 const { itemTitle, parseItem } = require('../lib/clientCourseActions');
 const { logClientEvent } = require('../lib/clientHistory');
@@ -104,6 +104,14 @@ router.get('/api/admin/backup-status', requireAuth, requireAdmin, async (req, re
       undersizedFiles: files.filter(file => !file.credible).length,
     });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// How close the server's signing secrets are to the 370-day boot refusal
+// (lib/productionConfig.js). The admin's system card shows it from day 330 —
+// the dates only, never a secret — so a restart after day 370 is not the first
+// anyone hears of it.
+router.get('/api/admin/system/secret-rotation', requireAuth, requireAdmin, (_req, res) => {
+  res.json(require('../lib/productionConfig').secretRotationStatus());
 });
 
 router.post('/api/admin/backup-now', requireAuth, requireAdmin, async (req, res) => {
@@ -352,9 +360,10 @@ router.get('/api/admin/export/payments', requireAuth, requireAdmin, bulkOperatio
 let _lastFollowUpReminderDay = '';
 if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
   try {
-    const now = new Date();
-    const cairoHour = (now.getUTCHours() + 2) % 24;
-    const today = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    // Cairo's hour and day from Intl: a fixed +2 was an hour early all summer.
+    const clock = cairoClock();
+    const cairoHour = Math.floor(clock.minutes / 60);
+    const today = clock.date;
     if (cairoHour !== 9 || today === _lastFollowUpReminderDay) return;
     _lastFollowUpReminderDay = today;
     // Find all overdue follow-ups with assigned staff emails
@@ -425,9 +434,9 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
 let _lastInstallmentReminderDay = '';
 if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
   try {
-    const now       = new Date();
-    const cairoHour = (now.getUTCHours() + 2) % 24;
-    const today     = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const clock     = cairoClock();
+    const cairoHour = Math.floor(clock.minutes / 60);
+    const today     = clock.date;
     if (cairoHour !== 9 || today === _lastInstallmentReminderDay) return;
     _lastInstallmentReminderDay = today;
 
@@ -494,6 +503,7 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
         `${lines}\n\n` +
         `يُرجى التواصل مع الفريق لترتيب السداد.\nشكراً لتعاونكم 🙏`;
 
+      // Direct: the run reports how many went, number by number.
       const result = await sendWhatsApp(item.subPhone, msg, { tenantId: item.tenantId, category: 'crm' });
       if (result.ok) waSent++;
     }
@@ -782,20 +792,22 @@ router.get('/api/admin/refund-requests', requireAuth, requireAdminOrStaff, requi
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Weekly Performance Summary Email ─────────────────────────────
-// Sent every Sunday at 8:00 AM Cairo time (UTC+2) to all admin emails.
+// Sent every Sunday at 8:00 AM Cairo time (UTC+2 or +3, from Intl) to all admin emails.
 // Covers the last 7 days: revenue, new leads, new subscribers, top staff.
 // ═══════════════════════════════════════════════════════════════════════════
 let _lastWeeklySummaryDate = '';
 if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
   try {
     const now = new Date();
-    const cairoHour = (now.getUTCHours() + 2) % 24;
-    const cairoDow  = new Date(now.getTime() + 2 * 60 * 60 * 1000).getDay(); // 0=Sunday
-    const today     = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const clock     = cairoClock(now);
+    const cairoHour = Math.floor(clock.minutes / 60);
+    const cairoDow  = new Date(`${clock.date}T00:00:00Z`).getUTCDay(); // 0=Sunday
+    const today     = clock.date;
     if (cairoDow !== 0 || cairoHour !== 8 || today === _lastWeeklySummaryDate) return;
     _lastWeeklySummaryDate = today;
 
-    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const weekAgo = addDaysToDateOnly(today, -7);
+    const weekAgoUtc = cairoDayStartUtc(weekAgo);
 
     // Revenue (last 7 days)
     const [[{ revenue }]] = await pool.query(
@@ -806,13 +818,13 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
     // New leads
     const [[{ newLeads }]] = await pool.query(
       `SELECT COUNT(*) AS newLeads FROM leads WHERE tenant_id=? AND created_at >= ?`,
-      [DEFAULT_TENANT_ID, weekAgo]
+      [DEFAULT_TENANT_ID, weekAgoUtc]
     ).catch(() => [[{ newLeads: 0 }]]);
 
     // New subscribers
     const [[{ newSubs }]] = await pool.query(
       `SELECT COUNT(*) AS newSubs FROM subscribers WHERE tenant_id=? AND created_at >= ?`,
-      [DEFAULT_TENANT_ID, weekAgo]
+      [DEFAULT_TENANT_ID, weekAgoUtc]
     ).catch(() => [[{ newSubs: 0 }]]);
 
     // Conversion rate

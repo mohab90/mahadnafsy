@@ -470,6 +470,17 @@ export interface JoinUsApplication {
    * pool. Optional: instructor/consultant applications and free-form employee
    * applications with no listing picked leave this unset. */
   jobId?: string;
+  /** Which page sent it — 'teaching' (/join) or 'staff' (/join-us). The API files
+   * the application under the lecturers or the employees by this. */
+  form?: 'teaching' | 'staff';
+  /** «هل اشتغلت محاضر قبل كده؟» — lecturer form only. */
+  lecturedBefore?: boolean;
+  /** «هل اشتغلت في جلسات نفسية مع عملاء قبل كده؟» — lecturer form only. */
+  sessionsBefore?: boolean;
+  /** Published course ids the lecturer can teach; the API reads their titles back. */
+  programs?: string[];
+  /** «برامج تانية بتقدّمها» — free text. */
+  programsOther?: string;
 }
 
 export interface ContactMessage {

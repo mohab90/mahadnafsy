@@ -9,9 +9,7 @@ import { currencyForBranch } from '../../lib/branchCurrency';
 import { realCourseIds } from './tabs/leads/leadCourseLabel';
 import { isOpenLeadStatus } from '../../../shared/leadStatuses';
 import { matchesSearch, SEARCH_MIN_CHARS } from '../../lib/clientSearch';
-import { useSiteData } from '../../context/SiteDataContext';
-import { hasPermission } from '../../constants/permissions';
-import { WholeDatabaseSearch } from './tabs/client-db/WholeDatabaseSearch';
+import { ClientLookupResults } from './ClientLookupResults';
 
 type DashboardQuickBookingProps = {
   open: boolean;
@@ -51,10 +49,10 @@ export function DashboardQuickBooking({
             setSearch('');
           }}
           className="fixed bottom-6 left-6 z-40 flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl shadow-2xl px-4 py-3 font-bold text-sm transition hover:scale-105 active:scale-95"
-          title="حجز جديد / تسجيل دفعة"
+          title="بحث في كل العملاء — وحجز جديد / تسجيل دفعة"
         >
           <Search size={18} />
-          <span>حجز / دفعة</span>
+          <span>بحث</span>
         </button>
       )}
 
@@ -102,17 +100,17 @@ function QuickBookingModal({
   const matchedSubs: SubscriberItem[] = !searching ? [] : subscribers
     .filter((subscriber) => matchesSearch(q, { name: subscriber.name, phone: subscriber.phone, email: subscriber.email, code: subscriber.clientCode }))
     .slice(0, 10);
-  // Whoever may read the whole database finds anyone in it under their own results.
-  const { isAdmin, currentStaff } = useSiteData();
-  const searchesEverything = isAdmin || hasPermission(currentStaff, 'view_client_db');
+  // «بحث»: everyone in the system is found under the caller's own results, whoever
+  // owns them (ClientLookupResults) — the rows above are the ones bookable here.
+  const ownIds = new Set<string>([...matchedLeads.map((lead) => lead.id), ...matchedSubs.map((subscriber) => subscriber.id)]);
   const hasResults = matchedLeads.length > 0 || matchedSubs.length > 0;
 
   return (
     <Modal
       open
       onClose={onClose}
-      title="البحث داخل قاعدة العملاء"
-      subtitle="ابحث بالاسم أو رقم الهاتف"
+      title="بحث"
+      subtitle="كل العملاء على الموقع — بالاسم أو رقم الهاتف أو الكود"
       icon={<div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center"><Search size={20} className="text-emerald-600" /></div>}
       size="lg"
       align="sheet"
@@ -137,7 +135,7 @@ function QuickBookingModal({
             <p className="text-center text-xs text-gray-400 py-6">اكتب 2 حرف أو أكثر للبحث</p>
           )}
           {searching && !hasResults && (
-            <p className="text-center text-xs text-gray-400 py-6">مفيش حد من عملائك بالاسم أو الرقم ده{searchesEverything ? ' — شوف البحث في قاعدة البيانات تحت' : ''}</p>
+            <p className="text-center text-xs text-gray-400 py-3">مفيش حد من عملائك بالاسم أو الرقم ده — شوف كل العملاء تحت</p>
           )}
           {matchedLeads.length > 0 && (
             <LeadResults
@@ -157,7 +155,7 @@ function QuickBookingModal({
               navigate={navigate}
             />
           )}
-          {searching && searchesEverything && <WholeDatabaseSearch query={q} />}
+          {searching && <ClientLookupResults query={q} skipIds={ownIds} />}
         </div>
     </Modal>
   );

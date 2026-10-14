@@ -5,7 +5,7 @@
 const { Router } = require('express');
 const router = Router();
 const {
-  requirePermission, pool, uuidv4, requireAuth, requireAdminOrStaff,
+  requirePermission, requireAnyPermission, pool, uuidv4, requireAuth, requireAdminOrStaff,
   createNotification, logger,
   hrError,
 } = require('./_shared');
@@ -17,6 +17,9 @@ const { PERMISSIONS } = require('../../constants/permissions');
 const { assertGrantable, heldByTarget } = require('../../lib/permissionGrant');
 const { ADMIN_EMAILS } = require('../../middleware/auth');
 const { sqlCairoToday } = require('../../lib/dates');
+const { requireRecruiting, joinUsInReach, outOfRecruitReach } = require('../../lib/branchHr');
+const { parseInterviewAt } = require('../../lib/joinApplication');
+const { signerName } = require('../../lib/staffNames');
 
 // Lower-case permission keys, the form stored in staff.permissions_json.
 const ALL_PERMISSIONS = Object.values(PERMISSIONS).map(String);
@@ -29,6 +32,46 @@ const STAFF_ROLES = new Set([
   'TAGAMOA_MANAGER', 'RECEPTION_TAGAMOA',
 ]);
 const talentPoolJobId = tenantId => `talent-${String(tenantId || 'tenant-default').slice(0, 29)}`;
+
+/** A branch key as the forms send it ('daqqi'), lower-case; blank is none. */
+const cleanBranch = value => String(value || '').trim().toLowerCase().slice(0, 60) || null;
+
+/**
+ * Walk an applicant onto the interview stage through the legal hops
+ * (APPLICANT_TRANSITIONS in recruiting.js: applied→screening→interview, and
+ * rejected→screening for someone given a second chance), inside the caller's
+ * transaction. Returns the stage they were at.
+ *
+ * A rejected applicant used to be left where they were while the route answered
+ * ok — "moved", and nowhere on the interviews screen.
+ */
+async function advanceToInterview(conn, { tenantId, applicantId, actorId, interviewAt }) {
+  const [[applicant]] = await conn.query(
+    'SELECT stage FROM job_applicants WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
+    [applicantId, tenantId]
+  );
+  if (!applicant) throw new Error('Applicant row missing after conversion');
+  const from = applicant.stage;
+  if (from === 'applied' || from === 'rejected') {
+    await conn.query(
+      "UPDATE job_applicants SET stage='screening', updated_by=? WHERE id=? AND tenant_id=?",
+      [actorId || null, applicantId, tenantId]
+    );
+  }
+  if (from === 'applied' || from === 'rejected' || from === 'screening') {
+    await conn.query(
+      "UPDATE job_applicants SET stage='interview', updated_by=? WHERE id=? AND tenant_id=?",
+      [actorId || null, applicantId, tenantId]
+    );
+  }
+  if (interviewAt) {
+    await conn.query(
+      'UPDATE job_applicants SET interview_at=?, updated_by=? WHERE id=? AND tenant_id=?',
+      [interviewAt, actorId || null, applicantId, tenantId]
+    );
+  }
+  return from;
+}
 
 async function ensureTalentPoolJob(tenantId, db = pool) {
   const id = talentPoolJobId(tenantId);
@@ -47,7 +90,11 @@ async function ensureTalentPoolJob(tenantId, db = pool) {
   return id;
 }
 
-async function convertJoinUs(j, { jobId, actorId, db } = {}) {
+// `review` — whether converting is a reviewer's act. A staff member pulling an
+// application into the pipeline reviews it; the automatic conversion on arrival
+// does not. Every website application used to arrive stamped REVIEWED («قيد
+// المراجعة») for that reason: «لازم اي طلب بيكون جديد مش قيد المراجعه» (12 Oct 2026).
+async function convertJoinUs(j, { jobId, actorId, db, review = true } = {}) {
   const tenantId = j.tenant_id || 'tenant-default';
   const ownsTransaction = !db;
   const conn = db || await pool.getConnection();
@@ -79,13 +126,17 @@ async function convertJoinUs(j, { jobId, actorId, db } = {}) {
        VALUES (?,?,?,?,?,?,?, 'website', ?,?,?,?,?,?,?,?,?)`,
       [appId, tenantId, targetJob, j.name, j.email || null, j.phone || null, notes,
         j.id, j.specialty || null, j.type || null, j.linkedin || null, actorId || null,
-        j.branch || null, j.education || null, j.experiencePlaces || null, j.experienceYears || null]
+        cleanBranch(j.branch), j.education || null, j.experiencePlaces || null, j.experienceYears || null]
     );
     await conn.query(
-      `UPDATE join_us_applications
-       SET status='REVIEWED', converted_applicant_id=?, reviewed_at=NOW(),
-           assigned_to=COALESCE(assigned_to,?)
-       WHERE id=? AND tenant_id=?`,
+      review
+        ? `UPDATE join_us_applications
+           SET status=IF(status='NEW','REVIEWED',status), converted_applicant_id=?, reviewed_at=NOW(),
+               assigned_to=COALESCE(assigned_to,?)
+           WHERE id=? AND tenant_id=?`
+        : `UPDATE join_us_applications
+           SET converted_applicant_id=?, assigned_to=COALESCE(assigned_to,?)
+           WHERE id=? AND tenant_id=?`,
       [appId, actorId || null, j.id, tenantId]
     );
     if (ownsTransaction) await conn.commit();
@@ -102,16 +153,24 @@ async function createJoinApplication(data) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    // status is written as NEW rather than left to the column default, and the
+    // conversion below is told it is not a review — so «جديد» is what the desk
+    // sees until somebody acts on the application.
     await conn.query(
       `INSERT INTO join_us_applications
-        (id, tenant_id, branch_id, name, email, phone, specialty, experience, type, linkedin, message)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        (id, tenant_id, branch_id, name, email, phone, specialty, experience, type, linkedin, message,
+         status, source_form, branch, lectured_before, sessions_before, programs_json, programs_other)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?, 'NEW', ?,?,?,?,?,?)`,
       [
         data.id, data.tenant_id, data.branch_id || null, data.name, data.email, data.phone,
         data.specialty, data.experience || '', data.type, data.linkedin || null, data.message || null,
+        data.source_form || (data.type === 'EMPLOYEE' ? 'staff' : 'teaching'), cleanBranch(data.branch),
+        data.lectured_before ?? null, data.sessions_before ?? null,
+        Array.isArray(data.programs) && data.programs.length ? JSON.stringify(data.programs) : null,
+        data.programs_other || null,
       ]
     );
-    const applicantId = await convertJoinUs(data, { jobId: data.job_id || undefined, db: conn });
+    const applicantId = await convertJoinUs(data, { jobId: data.job_id || undefined, db: conn, review: false });
     await conn.commit();
     return { id: data.id, applicantId };
   } catch (error) {
@@ -178,85 +237,64 @@ router.post('/api/admin/hr/join-us/:id/to-applicant', requireAuth, requireAdminO
 // interview) inside the same transaction — it does NOT weaken
 // APPLICANT_TRANSITIONS to allow a direct jump; it just performs the two
 // permitted hops atomically so the caller only needs one click.
-router.post('/api/admin/hr/join-us/:id/to-interview', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
+router.post('/api/admin/hr/join-us/:id/to-interview',
+  requireAuth, requireAdminOrStaff, requireAnyPermission('manage_hr', 'branch_hr'), requireRecruiting('manage_hr'),
+  async (req, res) => {
   const conn = await pool.getConnection();
   try {
+    // A date, because "انترفيو" without one produced nothing anybody could see —
+    // the interviews screen sorts by interview_at and parks an undated row at the
+    // end. Optional rather than required: a candidate can be moved before a time
+    // is agreed. Given one, it must parse, and it must not be a day already gone:
+    // «ليه لما بننقل عميل للانترفيو بيظهر في السابق» (12 Oct 2026) — a time that
+    // has passed is exactly what files a just-moved candidate under السابق.
+    const parsed = parseInterviewAt(req.body?.interviewAt);
+    if (parsed.error) return res.status(400).json({ error: parsed.error, code: parsed.code });
+    const interviewAt = parsed.value;
+
     await conn.beginTransaction();
     const [[j]] = await conn.query(
       'SELECT * FROM join_us_applications WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
       [req.params.id, req.tenantId]
     );
     if (!j) { await conn.rollback(); return res.status(404).json({ error: 'Not found' }); }
-
-    // A date, because "انترفيو" without one produced nothing anybody could see.
-    //
-    // This moved the applicant to stage='interview' and stopped. But the
-    // interviews screen sorts by interview_at and calls a row with none
-    // "undated" — the schema says as much on the column itself: "Set = it
-    // belongs to the interviews screen". So the button did move the candidate,
-    // to the bottom of a list, with no time against their name, which is
-    // indistinguishable from having done nothing. Pressing it again just said
-    // they were already there.
-    //
-    // Optional rather than required: a candidate can legitimately be moved into
-    // the stage before a time is agreed, and that path already exists through
-    // "مقبول بدون موعد". Given one, it must be a real datetime — a string that
-    // silently fails to parse would store NULL and reproduce the same bug.
-    const rawInterviewAt = String(req.body?.interviewAt || '').trim();
-    let interviewAt = null;
-    if (rawInterviewAt) {
-      if (!/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?$/.test(rawInterviewAt)) {
-        await conn.rollback();
-        return res.status(400).json({ error: 'صيغة الموعد لازم تكون YYYY-MM-DD HH:MM' });
-      }
-      interviewAt = rawInterviewAt.replace('T', ' ');
-      if (Number.isNaN(new Date(interviewAt.replace(' ', 'T')).getTime())) {
-        await conn.rollback();
-        return res.status(400).json({ error: 'الموعد غير صالح' });
-      }
-    }
+    // The Dokki manager moves Dokki's applicants only.
+    if (!await joinUsInReach(conn, req, j.id)) { await conn.rollback(); return outOfRecruitReach(res); }
 
     const appId = await convertJoinUs(j, { jobId: req.body.job_id, actorId: req.staffRecord?.id, db: conn });
-    const [[applicant]] = await conn.query(
-      'SELECT stage FROM job_applicants WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
-      [appId, req.tenantId]
-    );
-    if (!applicant) { await conn.rollback(); return res.status(500).json({ error: 'Applicant row missing after conversion' }); }
-    if (applicant.stage === 'applied') {
-      await conn.query(
-        "UPDATE job_applicants SET stage='screening', updated_by=? WHERE id=? AND tenant_id=?",
-        [req.staffRecord?.id || null, appId, req.tenantId]
-      );
-    }
-    if (applicant.stage === 'applied' || applicant.stage === 'screening') {
-      await conn.query(
-        "UPDATE job_applicants SET stage='interview', updated_by=? WHERE id=? AND tenant_id=?",
-        [req.staffRecord?.id || null, appId, req.tenantId]
-      );
-    }
+    const fromStage = await advanceToInterview(conn, {
+      tenantId: req.tenantId, applicantId: appId, actorId: req.staffRecord?.id, interviewAt,
+    });
     // Written to both rows: job_applicants.interview_at is what the interviews
     // screen reads, join_us_applications.interview_at is what the recruitment
-    // list shows beside the candidate it was scheduled from. The column existed
-    // on both tables and was being set on neither by this route.
-    if (interviewAt) {
-      await conn.query(
-        'UPDATE job_applicants SET interview_at=?, updated_by=? WHERE id=? AND tenant_id=?',
-        [interviewAt, req.staffRecord?.id || null, appId, req.tenantId]
-      );
-      await conn.query(
-        'UPDATE join_us_applications SET interview_at=? WHERE id=? AND tenant_id=?',
-        [interviewAt, req.params.id, req.tenantId]
-      );
-    }
+    // list shows beside the candidate it was scheduled from. Moving someone to an
+    // interview is accepting them for one, so a still-open application says so
+    // (an already decided one keeps its decision).
+    await conn.query(
+      `UPDATE join_us_applications
+          SET interview_at=COALESCE(?, interview_at),
+              status=IF(status IN ('NEW','REVIEWED','CONTACTED'),'ACCEPTED',status),
+              reviewed_at=COALESCE(reviewed_at, NOW())
+        WHERE id=? AND tenant_id=?`,
+      [interviewAt, req.params.id, req.tenantId]
+    );
+    await conn.query(
+      `INSERT INTO recruitment_notes (id, tenant_id, ref_type, ref_id, kind, body, author_id, author_name)
+       VALUES (?,?, 'join_us', ?, 'evaluation', ?, ?, ?)`,
+      [uuidv4(), req.tenantId, j.id,
+        interviewAt ? `اتنقل للانترفيو — الموعد ${interviewAt.slice(0, 16)}` : 'اتنقل للانترفيو — من غير موعد',
+        req.staffRecord?.id || null, signerName(req)]
+    );
     await writeAuditEvent({
       action: 'hr.applicant.moved_to_interview',
       entityType: 'job_applicant',
       entityId: appId,
-      metadata: { source_id: j.id, from_stage: applicant.stage },
+      metadata: { source_id: j.id, from_stage: fromStage },
       req, db: conn,
     });
     const [[app]] = await conn.query(
-      `SELECT id, job_id, name, email, phone, stage, source, specialty, applicant_type, interview_rating
+      `SELECT id, job_id, name, email, phone, stage, source, specialty, applicant_type, interview_rating,
+              DATE_FORMAT(interview_at, '%Y-%m-%d %H:%i:%s') interview_at
        FROM job_applicants WHERE id=? AND tenant_id=?`,
       [appId, req.tenantId]
     );
@@ -472,4 +510,4 @@ router.post(
   }
 });
 
-module.exports = { router, convertJoinUs, createJoinApplication, ensureTalentPoolJob };
+module.exports = { router, advanceToInterview, convertJoinUs, createJoinApplication, ensureTalentPoolJob };

@@ -8,7 +8,7 @@ const { tryJson } = require('../../lib/helpers');
 const { leadScope } = require('../../lib/leadAccess');
 const { hasPermission } = require('../../constants/permissions');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
-const { cairoToday } = require('../../lib/dates');
+const { cairoToday, cairoDayBoundsUtc, sqlCairoWall } = require('../../lib/dates');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Campaign Analytics ──────────────────────────────────────────
@@ -19,9 +19,11 @@ const { cairoToday } = require('../../lib/dates');
 // Returns: leads by source, utm_campaign performance, monthly trend, conversion funnel
 router.get('/api/admin/reports/campaign', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), requirePermission('view_reports'), async (req, res) => {
   try {
-    const from = req.query.from || `${new Date().getFullYear()}-01-01`;
+    const from = req.query.from || `${cairoToday().slice(0, 4)}-01-01`;
     const to   = req.query.to   || cairoToday();
     const scope = leadScope(req, 'l');
+    // from/to are Cairo days; the columns below are UTC instants.
+    const [fromUtc, toUtc] = cairoDayBoundsUtc(from, to);
     if (scope.none) return res.json({
       period: { from, to },
       summary: { total_leads: 0, converted: 0, conversion_rate: 0 },
@@ -36,9 +38,9 @@ router.get('/api/admin/reports/campaign', requireAuth, requireAdminOrStaff, requ
         SUM(CASE WHEN l.status IN ('CONVERTED','converted','won') THEN 1 ELSE 0 END) AS converted,
         SUM(CASE WHEN l.status = 'lost' THEN 1 ELSE 0 END) AS lost
       FROM leads l
-      WHERE l.tenant_id=? AND l.created_at >= ? AND l.created_at < DATE_ADD(?, INTERVAL 1 DAY)${scope.sql}
+      WHERE l.tenant_id=? AND l.created_at >= ? AND l.created_at < ?${scope.sql}
       GROUP BY l.source ORDER BY total_leads DESC
-    `, [req.tenantId, from, to, ...scope.params]);
+    `, [req.tenantId, fromUtc, toUtc, ...scope.params]);
 
     // By UTM campaign
     const [byCampaign] = await pool.query(`
@@ -49,22 +51,22 @@ router.get('/api/admin/reports/campaign', requireAuth, requireAdminOrStaff, requ
         COUNT(*) AS total_leads,
         SUM(CASE WHEN l.status IN ('CONVERTED','converted','won') THEN 1 ELSE 0 END) AS converted
       FROM leads l
-      WHERE l.tenant_id=? AND l.created_at >= ? AND l.created_at < DATE_ADD(?, INTERVAL 1 DAY)${scope.sql}
+      WHERE l.tenant_id=? AND l.created_at >= ? AND l.created_at < ?${scope.sql}
       GROUP BY l.utm_campaign, l.utm_source, l.utm_medium
       ORDER BY total_leads DESC
       LIMIT 100
-    `, [req.tenantId, from, to, ...scope.params]);
+    `, [req.tenantId, fromUtc, toUtc, ...scope.params]);
 
     // Monthly new leads + conversions trend
     const [monthlyTrend] = await pool.query(`
       SELECT
-        DATE_FORMAT(l.created_at, '%Y-%m') AS month,
+        DATE_FORMAT(${sqlCairoWall('l.created_at')}, '%Y-%m') AS month,
         COUNT(*) AS new_leads,
         SUM(CASE WHEN l.status IN ('CONVERTED','converted','won') THEN 1 ELSE 0 END) AS converted
       FROM leads l
-      WHERE l.tenant_id=? AND l.created_at >= ? AND l.created_at < DATE_ADD(?, INTERVAL 1 DAY)${scope.sql}
+      WHERE l.tenant_id=? AND l.created_at >= ? AND l.created_at < ?${scope.sql}
       GROUP BY month ORDER BY month ASC
-    `, [req.tenantId, from, to, ...scope.params]);
+    `, [req.tenantId, fromUtc, toUtc, ...scope.params]);
 
     // Revenue by source (joins leads → subscribers → payments)
     let revenueBySource = [];
@@ -90,9 +92,9 @@ router.get('/api/admin/reports/campaign', requireAuth, requireAdminOrStaff, requ
         SUM(CASE WHEN l.status IN ('CONVERTED','converted','won') THEN 1 ELSE 0 END) AS converted
       FROM leads l
       JOIN courses c ON c.id = l.enrolled_course_id AND c.tenant_id = l.tenant_id
-      WHERE l.tenant_id=? AND l.created_at >= ? AND l.created_at < DATE_ADD(?, INTERVAL 1 DAY)${scope.sql}
+      WHERE l.tenant_id=? AND l.created_at >= ? AND l.created_at < ?${scope.sql}
       GROUP BY l.enrolled_course_id, c.title ORDER BY interested_count DESC LIMIT 20
-    `, [req.tenantId, from, to, ...scope.params]);
+    `, [req.tenantId, fromUtc, toUtc, ...scope.params]);
 
     const totalLeads     = bySource.reduce((s, r) => s + Number(r.total_leads), 0);
     const totalConverted = bySource.reduce((s, r) => s + Number(r.converted), 0);
@@ -116,7 +118,7 @@ router.get('/api/admin/reports/campaign', requireAuth, requireAdminOrStaff, requ
       revenue_by_source: revenueBySource,
       top_courses: topCourses
     });
-  } catch (e) { logger.error('[reports/campaign]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[reports/campaign]', e.message); res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
 });
 
 // PATCH /api/admin/leads/:id/utm — attach UTM params to a lead

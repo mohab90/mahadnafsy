@@ -10,8 +10,12 @@ const {
   requireAdminOrStaff,
   requirePermission,
   sqlCairoDayStartUtc,
+  cairoToday,
+  TERMINAL_LIST,
   logger,
 } = require('./_shared');
+const { NEXT_FOLLOWUP } = require('../../../lib/leadTableFilter');
+const { sqlCairoWall, sqlCairoDayEndUtc } = require('../../../lib/dates');
 
 const router = Router();
 
@@ -70,18 +74,18 @@ router.get('/api/admin/leads/stats', requireAuth, requireAdminOrStaff, requirePe
         params,
       ),
       pool.query(
-        `SELECT DATE_FORMAT(l.created_at, '%Y-%m') AS ym,
+        `SELECT DATE_FORMAT(${sqlCairoWall('l.created_at')}, '%Y-%m') AS ym,
                 COUNT(*) AS cnt,
                 SUM(l.status = 'converted') AS converted
          FROM leads l WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
            AND l.created_at >= DATE_FORMAT(${sqlCairoDayStartUtc()} - INTERVAL 5 MONTH, '%Y-%m-01')
-         GROUP BY DATE_FORMAT(l.created_at, '%Y-%m')`,
+         GROUP BY DATE_FORMAT(${sqlCairoWall('l.created_at')}, '%Y-%m')`,
         params,
       ),
       pool.query(
         `SELECT COUNT(*) AS cnt FROM leads l
           WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
-            AND l.created_at >= ${sqlCairoDayStartUtc()} AND l.created_at < ${sqlCairoDayStartUtc()} + INTERVAL 1 DAY`,
+            AND l.created_at >= ${sqlCairoDayStartUtc()} AND l.created_at < ${sqlCairoDayEndUtc()}`,
         params,
       ),
       // The collection officers who hold leads — handed to them from the
@@ -210,6 +214,35 @@ router.get('/api/admin/leads/stats', requireAuth, requireAdminOrStaff, requirePe
       collectionHolders: holderRows.map(row => ({ id: row.id, name: row.name, count: Number(row.cnt) })),
     });
   } catch (e) { logger.error('[leads-stats]', e.message); sendRouteError(res, e); }
+});
+
+// GET /api/admin/leads/followups-due — the header bell's number: open leads
+// whose follow-up is today or already past, for whoever is asking.
+//
+// The bell counted them in the browser out of the 500 newest leads, so an admin
+// who also has a staff record downloaded those 500 rows (350 KB on the local copy
+// of production) on every screen, for one number — and a follow-up on an older
+// lead was never counted. The same rule, over the same scope the leads list
+// answers with (leadScope), as one COUNT: an open status (shared/leadStatuses.ts
+// isOpenLeadStatus) and a follow-up date (the column, else crm_json's, as
+// mapLeadRow reads it) on or before today in Cairo.
+router.get('/api/admin/leads/followups-due', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
+  try {
+    const accessScope = leadScope(req, 'l');
+    if (accessScope.none) return res.json({ due: 0, overdue: 0, today: 0 });
+    const today = cairoToday();
+    const [[row]] = await pool.query(
+      `SELECT SUM(${NEXT_FOLLOWUP} < ?) AS overdue, SUM(${NEXT_FOLLOWUP} = ?) AS today
+         FROM leads l
+        WHERE l.tenant_id = ? AND l.hidden = 0${accessScope.sql}
+          AND COALESCE(l.status, '') NOT IN (${TERMINAL_LIST.map(() => '?').join(',')})
+          AND ${NEXT_FOLLOWUP} <= ?`,
+      [today, today, req.tenantId, ...accessScope.params, ...TERMINAL_LIST, today],
+    );
+    const overdue = Number(row?.overdue || 0);
+    const dueToday = Number(row?.today || 0);
+    res.json({ due: overdue + dueToday, overdue, today: dueToday });
+  } catch (e) { logger.error('[leads-followups-due]', e.message); sendRouteError(res, e); }
 });
 
 module.exports = router;

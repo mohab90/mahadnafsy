@@ -9,6 +9,7 @@ const { pool } = require('../lib/db');
 const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { parseLimit } = require('../lib/helpers');
 const { logPaymentAudit } = require('../lib/finance');
+const { hasReason, notifyPaymentRejected, reasonOf, REASON_REQUIRED } = require('../lib/paymentRejection');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { safeIsoString, cairoToday } = require('../lib/dates');
 const { resolvePaymentExecutors } = require('../lib/paymentExecutor');
@@ -306,6 +307,9 @@ router.patch('/api/admin/orders/:id', requireAuth, requireAdminOrStaff, requireP
     if (['paid', 'refunded'].includes(newStatus)) {
       return res.status(409).json({ error: 'Use payment approval/refund workflow for financial statuses' });
     }
+    // Rejecting an order's payment is explained and sent on (lib/paymentRejection.js).
+    const rejectionReason = newStatus === 'failed' ? reasonOf(req.body.reason, req.body.reviewNote) : '';
+    if (newStatus === 'failed' && !hasReason(rejectionReason)) return res.status(REASON_REQUIRED.status).json(REASON_REQUIRED.body);
     // order.status and payments.status must never diverge — one transaction, all or nothing.
     await conn.beginTransaction();
     const [[order]] = await conn.query(
@@ -343,6 +347,18 @@ router.patch('/api/admin/orders/:id', requireAuth, requireAdminOrStaff, requireP
     }
     await conn.commit();
     logPaymentAudit(req.params.id, 'order_status', order.status, newStatus, null, order.subscriber_id || null, req.user?.email || req.user?.uid, req.tenantId).catch(() => {});
+    if (newStatus === 'failed' && String(order.status || '').toLowerCase() !== 'failed') {
+      const [[client]] = order.subscriber_id
+        ? await pool.query('SELECT name, client_code FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [order.subscriber_id, req.tenantId]).catch(() => [[null]])
+        : [[null]];
+      const [[detail]] = await pool.query('SELECT customer_name, amount, currency, staff_id FROM orders WHERE id=? AND tenant_id=? LIMIT 1', [req.params.id, req.tenantId]).catch(() => [[null]]);
+      await notifyPaymentRejected({
+        tenantId: req.tenantId, reason: rejectionReason, amount: detail?.amount, currency: detail?.currency, recordedBy: detail?.staff_id,
+        clientName: client?.name || detail?.customer_name, clientCode: client?.client_code, subscriberId: order.subscriber_id,
+        assignedSalesId: order.assigned_sales_id, assignedCsId: order.assigned_cs_id,
+        rejectedBy: req.staffRecord?.id, rejectedByName: req.staffRecord?.name, kind: 'order',
+      });
+    }
     // P1 CLOSED: the crm_json.paymentHistory status-mirror was removed — the
     // payments table (updated in the transaction above) is the single source of
     // truth and every reader rebuilds paymentHistory from it, so mirroring the

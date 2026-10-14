@@ -82,11 +82,14 @@ test('every path that makes a client says which branch it is for', () => {
   const path = require('path');
   const read = rel => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
   for (const [file, count] of [['routes/admin/subscribers.js', 1], ['routes/admin/leads/convert.js', 1],
-    ['routes/subscriber-payments.js', 2], ['lib/collectionSheets.js', 1]]) {
+    ['routes/subscriber-payments.js', 2]]) {
     const picks = read(file).split('pickCollectionOfficer(').slice(1).map(after => after.slice(0, 260));
     assert.equal(picks.length, count, file);
     picks.forEach(pick => assert.match(pick, /subscriberMarket\(\{[^}]*\}\),\s*branch\b/, `${file}: the branch is passed`));
   }
+  // A sheet import turns one picker for the whole sheet, and skips branch clients itself.
+  const sheets = read('lib/collectionSheets.js');
+  assert.match(sheets, /const nextOfficer = async market => \{\s*if \(isBranchClient\(branch\)\) return null;\s*collectionPicker \|\|= await loadCollectionPicker\(conn, tenantId\);/);
 });
 
 const staffRouter = require('../routes/staff');

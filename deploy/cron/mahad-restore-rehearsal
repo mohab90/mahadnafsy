@@ -1,0 +1,13 @@
+# Weekly restore rehearsal — installed to /etc/cron.d/ by deploy-release.sh.
+#
+# «الباك اب لازم يترجع فعلاً» — the backups had been checked for being there and
+# being the right size, but a backup is only proven by restoring it. Every
+# Friday morning (the institute's quietest hour, and after the nightly dump) the
+# newest /var/backups/mahad-db archive is restored into a throwaway database,
+# compared with the live one, and dropped (api/tools/verify-backup-restores.cjs).
+# A failure is written to its log and to syslog as an ALERT line.
+#
+# No "%" anywhere below: cron treats it as a newline.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+30 5 * * 5 root cd /var/www/mahad-api && { date -Iseconds; npm run -s verify:backup-restores; } >> /var/log/mahad-restore-rehearsal.log 2>&1 || logger -p user.err -t mahad-restore-rehearsal "ALERT weekly restore rehearsal FAILED - see /var/log/mahad-restore-rehearsal.log"

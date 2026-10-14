@@ -332,6 +332,9 @@ router.put('/api/admin/hr/offboarding/:id', requireAuth, requireAdminOrStaff, re
           WHERE tenant_id=? AND LOWER(TRIM(email))=?`,
         [req.tenantId, String(row.email || '').toLowerCase().trim()]
       );
+      // The 2FA recovery codes go with the factor: kept, they would let the
+      // account past its second step again the day it was ever reactivated.
+      await require('../../lib/twoFactor').clearRecoveryCodes(conn, { tenantId: req.tenantId, userIds: users.map(user => user.id) });
     }
     await conn.query(
       `UPDATE therapists

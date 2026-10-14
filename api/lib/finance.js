@@ -246,6 +246,13 @@ async function getFxToEgp(tenantId = DEFAULT_TENANT) {
   return (await getFxSnapshot(tenantId)).rates;
 }
 
+/** The snapshot, fetched afresh once when it is too old to price `currency` (lib/fxRefresh.js). */
+async function usableFxSnapshot(tenantId, currency) {
+  const snapshot = await getFxSnapshot(tenantId);
+  if (isFxSnapshotUsable(snapshot, currency)) return snapshot;
+  return (await require('./fxRefresh').ensureFreshFx(tenantId, currency)).snapshot;
+}
+
 function isFxSnapshotUsable(snapshot, currency, now = Date.now()) {
   const cur = String(currency || 'EGP').toUpperCase();
   if (cur === 'EGP') return true;
@@ -265,7 +272,7 @@ async function toEgp(amount, currency, tenantId = DEFAULT_TENANT) {
   const cur = String(currency || 'EGP').toUpperCase();
   if (cur === 'EGP') return amt;
   if (!['SAR', 'USD'].includes(cur)) throw new Error(`Unsupported currency: ${cur}`);
-  const snapshot = await getFxSnapshot(tenantId);
+  const snapshot = await usableFxSnapshot(tenantId, cur);
   if (!isFxSnapshotUsable(snapshot, cur)) throw new Error(`Fresh FX snapshot unavailable for ${cur}`);
   const rate = Number(snapshot.rates[cur]);
   if (!Number.isFinite(rate) || rate <= 0) throw new Error(`FX rate unavailable for ${cur}`);
@@ -279,9 +286,9 @@ async function toEgp(amount, currency, tenantId = DEFAULT_TENANT) {
 async function postPaymentJournal({ paymentId, amount, currency, payType, date, actor, tenantId = 'tenant-default', branch = null, branchId = null }, db = pool) {
   try {
     const [accCode, accName] = _paymentAccountCode((payType || 'OTHER').toUpperCase());
-    const fx = await getFxSnapshot(tenantId);
-    const rates = fx.rates;
     const normalizedCurrency = String(currency || 'EGP').toUpperCase();
+    const fx = await usableFxSnapshot(tenantId, normalizedCurrency);
+    const rates = fx.rates;
     if (!['EGP', 'SAR', 'USD'].includes(normalizedCurrency)) {
       throw new Error(`Unsupported payment currency: ${normalizedCurrency}`);
     }
@@ -336,9 +343,10 @@ async function postPaymentJournal({ paymentId, amount, currency, payType, date, 
 // into the shared finance lib so the LIVE expense handlers can post to the ledger.
 async function postExpenseJournal(expense, sign, actor, db = pool, tenantId = expense.tenant_id || 'tenant-default') {
   try {
-    const fx = await getFxSnapshot(tenantId);
-    const rates = fx.rates;
     const normalizedCurrency = String(expense.currency || 'EGP').toUpperCase();
+    const reversingSnapshot = sign < 0 && Number(expense.amount_egp) > 0;
+    const fx = reversingSnapshot ? await getFxSnapshot(tenantId) : await usableFxSnapshot(tenantId, normalizedCurrency);
+    const rates = fx.rates;
     // A reversal must use the exact EGP snapshot from the original posting.
     // Revaluing it with today's FX rate would leave an artificial balance in
     // the ledger after editing or deleting a foreign-currency expense — and it

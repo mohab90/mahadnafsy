@@ -18,14 +18,14 @@ import type { SubscriberStats } from '../../../types';
  * Scoped server-side by the same rule as the subscriber list, so a rep's count
  * matches the list they can actually see.
  */
-export function useSubscriberStats(): SubscriberStats | null {
+export function useSubscriberStats(overview = false): SubscriberStats | null {
   const [stats, setStats] = useState<SubscriberStats | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const result = await mysqlAdmin.getSubscriberStats();
+        const result = await mysqlAdmin.getSubscriberStats(overview);
         if (!cancelled) setStats(result);
       } catch {
         // Silent: the caller falls back to the array it already has, which is
@@ -33,7 +33,7 @@ export function useSubscriberStats(): SubscriberStats | null {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [overview]);
 
   return stats;
 }

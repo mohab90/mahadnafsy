@@ -76,9 +76,13 @@ async function everyLead() {
   // The list leaves hidden rows out; «محلي جديد» keeps the ones with a number,
   // so they are read whole, as the pool route would send them.
   const [hidden] = await pool.query(
-    "SELECT id, phone, email, source, status, branch, assigned_sales_id, assigned_cs_id FROM leads WHERE tenant_id=? AND hidden=1", [T]);
+    "SELECT id, phone, email, source, status, branch, crm_json, assigned_sales_id, assigned_cs_id FROM leads WHERE tenant_id=? AND hidden=1", [T]);
+  // The branch as mapLeadRow sends it (routes/admin/leads/_shared.js): the
+  // column, else crm_json.branch — a hidden Saudi lead with only the latter
+  // read as local here and failed the parity against a server that was right.
+  const crmBranch = json => { try { return (typeof json === 'string' ? JSON.parse(json) : json)?.branch || null; } catch { return null; } };
   return [...visible, ...hidden.map(r => ({
-    id: r.id, hidden: true, phone: r.phone, email: r.email, source: r.source, status: r.status, branch: r.branch,
+    id: r.id, hidden: true, phone: r.phone, email: r.email, source: r.source, status: r.status, branch: r.branch || crmBranch(r.crm_json),
     assignedSalesId: r.assigned_sales_id || null, assignedCsId: r.assigned_cs_id || null,
   }))];
 }

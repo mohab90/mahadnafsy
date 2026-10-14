@@ -4,7 +4,7 @@ import { AlertCircle, Bot, RefreshCw, Send, Trash2, Users, Zap, Copy, Check, Che
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { toEgp } from '../../../lib/money';
-import { CAIRO_TIME_ZONE, cairoDateOnly, cairoDay } from '../../../../shared/cairoDate';
+import { CAIRO_TIME_ZONE, cairoDateOnly, cairoDay, cairoMonthOnly } from '../../../../shared/cairoDate';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 // Module scope: a constant map and a pure function of its arguments. In the
@@ -44,9 +44,10 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
 
   const _aiAllManualForBranch = _aiAllManual;
   const _aiBranchStats = useMemo(() => {
-    const now = new Date(); const tM = now.getMonth(), tY = now.getFullYear();
-    const isToday = (d: string) => !!d && new Date(d).toDateString() === now.toDateString();
-    const isThisMonth = (d: string) => { if (!d) return false; const x = new Date(d); return x.getMonth() === tM && x.getFullYear() === tY; };
+    // Cairo's today and month, whatever zone the browser is in.
+    const today = cairoDateOnly(); const thisMonth = cairoMonthOnly();
+    const isToday = (d: string) => !!d && cairoDay(d) === today;
+    const isThisMonth = (d: string) => !!d && cairoDay(d).slice(0, 7) === thisMonth;
     const toEGP = _aiToEGP;
     const branchCodes = [...new Set(subscribers.map(s => s.branch || 'other'))] as string[];
     return branchCodes.map(code => {

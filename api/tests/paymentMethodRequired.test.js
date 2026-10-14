@@ -94,8 +94,8 @@ test('it cannot be approved until one is chosen, and the choice is sent', () => 
 });
 
 test('rejecting still needs nothing', () => {
-  // Refusing a payment is not a claim that money arrived.
-  assert.match(ordersTab, /updatePaymentStatus\(payId, 'failed'\)/);
+  // Refusing a payment is not a claim that money arrived: no method is asked, only the reason.
+  assert.match(ordersTab, /updatePaymentStatus\(payId, 'failed', reason\)/);
 });
 
 test('the API client forwards the method', () => {

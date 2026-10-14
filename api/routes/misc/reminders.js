@@ -17,7 +17,7 @@ const router = express.Router();
 const { logLogin, sendDailyReport, scheduleDailyReport, pushAdminNotif, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
 
 const { escapeHtml } = require('../../lib/html');
-const { sqlCairoToday, cairoToday, addDaysToDateOnly } = require('../../lib/dates');
+const { sqlCairoToday, cairoToday, addDaysToDateOnly, cairoDayBoundsUtc, sqlCairoWall } = require('../../lib/dates');
 
 router.get('/api/admin/leads/due-today', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
   try {
@@ -84,44 +84,45 @@ router.post('/api/admin/payments/reminders/send-now', requireAuth, requireAdmin,
 // GET /api/admin/analytics/revenue-sources?from=&to=
 router.get('/api/admin/analytics/revenue-sources', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
-    const now = new Date();
-    const from = req.query.from || new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10);
-    const to   = req.query.to   || now.toISOString().slice(0, 10);
+    const from = req.query.from || `${cairoToday().slice(0, 4)}-01-01`;
+    const to   = req.query.to   || cairoToday();
+    // from/to are Cairo days; the columns below are UTC instants.
+    const [fromUtc, toUtc] = cairoDayBoundsUtc(from, to);
 
     // By payment_type
     const [byType] = await pool.query(`
       SELECT COALESCE(payment_type, 'other') AS source,
              COUNT(*) AS transactions, SUM(amount_egp) AS total
-      FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) AND deleted_at IS NULL
-      GROUP BY source ORDER BY total DESC`, [req.tenantId, from, to]);
+      FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < ? AND deleted_at IS NULL
+      GROUP BY source ORDER BY total DESC`, [req.tenantId, fromUtc, toUtc]);
 
     // Monthly breakdown by source
     const [monthly] = await pool.query(`
-      SELECT DATE_FORMAT(created_at,'%Y-%m') AS month,
+      SELECT DATE_FORMAT(${sqlCairoWall('created_at')}, '%Y-%m') AS month,
              COALESCE(payment_type, 'other') AS source,
              SUM(amount_egp) AS total
-      FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) AND deleted_at IS NULL
-      GROUP BY month, source ORDER BY month, total DESC`, [req.tenantId, from, to]);
+      FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < ? AND deleted_at IS NULL
+      GROUP BY month, source ORDER BY month, total DESC`, [req.tenantId, fromUtc, toUtc]);
 
     // Top paying clients
     const [topClients] = await pool.query(`
       SELECT s.id, s.name, s.phone, s.branch, s.client_code,
              SUM(p.amount_egp) AS total_paid, COUNT(p.id) AS payment_count
       FROM payments p JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
-      WHERE p.tenant_id=? AND p.status='paid' AND p.created_at >= ? AND p.created_at < DATE_ADD(?, INTERVAL 1 DAY) AND p.deleted_at IS NULL
-      GROUP BY s.id ORDER BY total_paid DESC LIMIT 20`, [req.tenantId, from, to]);
+      WHERE p.tenant_id=? AND p.status='paid' AND p.created_at >= ? AND p.created_at < ? AND p.deleted_at IS NULL
+      GROUP BY s.id ORDER BY total_paid DESC LIMIT 20`, [req.tenantId, fromUtc, toUtc]);
 
     // By branch
     const [byBranch] = await pool.query(`
       SELECT COALESCE(s.branch,'غير محدد') AS branch,
              SUM(p.amount_egp) AS total, COUNT(p.id) AS count
       FROM payments p JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
-      WHERE p.tenant_id=? AND p.status='paid' AND p.created_at >= ? AND p.created_at < DATE_ADD(?, INTERVAL 1 DAY) AND p.deleted_at IS NULL
-      GROUP BY branch ORDER BY total DESC`, [req.tenantId, from, to]);
+      WHERE p.tenant_id=? AND p.status='paid' AND p.created_at >= ? AND p.created_at < ? AND p.deleted_at IS NULL
+      GROUP BY branch ORDER BY total DESC`, [req.tenantId, fromUtc, toUtc]);
 
     const [[{ grand_total }]] = await pool.query(
-      `SELECT COALESCE(SUM(amount_egp),0) AS grand_total FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) AND deleted_at IS NULL`,
-      [req.tenantId, from, to]
+      `SELECT COALESCE(SUM(amount_egp),0) AS grand_total FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < ? AND deleted_at IS NULL`,
+      [req.tenantId, fromUtc, toUtc]
     );
 
     const sourceLabel = {
@@ -143,7 +144,7 @@ router.get('/api/admin/analytics/revenue-sources', requireAuth, requireAdminOrSt
       topClients: topClients.map((c) => ({ ...c, total_paid: parseFloat(c.total_paid) })),
       byBranch: byBranch.map((b) => ({ ...b, total: parseFloat(b.total), pct: grand_total > 0 ? Math.round(b.total / grand_total * 100) : 0 })),
     });
-  } catch (e) { logger.error(e); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error(e); res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -154,6 +155,8 @@ router.get('/api/admin/analytics/revenue-sources', requireAuth, requireAdminOrSt
 router.get('/api/admin/automation/stats', requireAuth, requireAdmin, async (req, res) => {
   try {
     const today = cairoToday();
+    // today is a Cairo day; reminder_log.sent_at is a UTC instant.
+    const [dayStart, dayEnd] = cairoDayBoundsUtc(today);
 
     const [[{ followup_due }]] = await pool.query(
       `SELECT COUNT(*) AS followup_due FROM leads WHERE tenant_id=? AND next_follow_up_date >= ? AND next_follow_up_date < DATE_ADD(?, INTERVAL 1 DAY) AND status NOT IN ${TERMINAL_SQL}`, [req.tenantId, today, today]);
@@ -164,7 +167,7 @@ router.get('/api/admin/automation/stats', requireAuth, requireAdmin, async (req,
     const [[{ payment_overdue }]] = await pool.query(
       `SELECT COUNT(*) AS payment_overdue FROM payments WHERE tenant_id=? AND status='pending' AND is_installment=1 AND date < ? AND deleted_at IS NULL`, [req.tenantId, today]);
     const [[{ reminders_sent_today }]] = await pool.query(
-      `SELECT COUNT(*) AS reminders_sent_today FROM reminder_log WHERE tenant_id=? AND sent_at >= ? AND sent_at < DATE_ADD(?, INTERVAL 1 DAY)`, [req.tenantId, today, today]).catch(() => [[{ reminders_sent_today: 0 }]]);
+      `SELECT COUNT(*) AS reminders_sent_today FROM reminder_log WHERE tenant_id=? AND sent_at >= ? AND sent_at < ?`, [req.tenantId, dayStart, dayEnd]).catch(() => [[{ reminders_sent_today: 0 }]]);
     // Was drip_campaigns.is_active — a column that table never had (MKT-08),
     // and drip_campaigns itself is the dead parallel system removed for
     // MKT-05/07 in favor of drip_sequences (the one with a real send worker).
@@ -182,7 +185,7 @@ router.get('/api/admin/automation/stats', requireAuth, requireAdmin, async (req,
       drip_campaigns_active: parseInt(drip_active),
       workflows_active: parseInt(workflows_active),
     });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

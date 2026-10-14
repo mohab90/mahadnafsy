@@ -9,8 +9,12 @@ const { requireAuth, requireAdminOrStaff, requirePermission } = require('../midd
 const { uploadLimiter } = require('../middleware/rateLimits');
 const { uuidv4 } = require('../lib/id');
 const { writeAuditEvent } = require('../lib/auditTrail');
-const { VIDEO_ROOT, VIDEO_TYPES, inspectMediaFile, safeTenantSegment } = require('../lib/uploadSafety');
+const { VIDEO_ROOT, VIDEO_ROOT_IN_RELEASE, VIDEO_TYPES, inspectMediaFile, safeTenantSegment } = require('../lib/uploadSafety');
 const logger = require('../lib/logger').child({ module: 'upload-route' });
+
+if (VIDEO_ROOT_IN_RELEASE && process.env.NODE_ENV === 'production') {
+  logger.warn(`[upload] videos are stored inside the release directory (${VIDEO_ROOT}); set VIDEO_UPLOAD_DIR to a directory outside it`);
+}
 
 const router = express.Router();
 const TEMP_DIR = path.resolve(VIDEO_ROOT, '.tmp');

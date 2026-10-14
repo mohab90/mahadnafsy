@@ -71,7 +71,8 @@ test('a desk payment is approved, rejected and linked through the payments route
   const tab = ordersScreenSource();
   assert.match(tab, /const isDeskPayment = \(row: OrderItem\) => row\.source === 'crm';/);
   assert.match(tab, /await mysqlAdmin\.updatePaymentStatus\(row\.id, 'paid', undefined, method\);/);
-  assert.match(tab, /await mysqlAdmin\.updatePaymentStatus\(row\.id, 'failed'\);/);
+  // A rejection carries the reason the accountant was asked for (lib/rejectionReason.ts).
+  assert.match(tab, /await mysqlAdmin\.updatePaymentStatus\(row\.id, 'failed', reason\);/);
   assert.match(tab, /updatePaymentStatus\(row\.id, 'paid', undefined, storedMethodOf\(row\) \|\| transfer\.method, \{ transferId: transfer\.id \}\)/);
   // The orders route stays for orders.
   assert.match(tab, /adminPost\(`\/admin\/orders\/\$\{row\.id\}\/confirm-payment`, \{\}\)/);

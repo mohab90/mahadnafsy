@@ -6,7 +6,7 @@ const logger = require('../../lib/logger');
 const { withStaffNames } = require('../../lib/staffNames');
 const { pool } = require('../../lib/db');
 const { tryJson } = require('../../lib/helpers');
-const { isValidDateOnly } = require('../../lib/dates');
+const { isValidDateOnly, cairoDayOf, cairoToday } = require('../../lib/dates');
 const { toNumbers } = require('../../lib/mappers');
 const { postPaymentJournal, logPaymentAudit } = require('../../lib/finance');
 const { LIVE_SUBSCRIBER_FOR_LEAD } = require('../../lib/reconcileChecks');
@@ -59,7 +59,8 @@ router.post('/api/admin/backfill-payments', requireAuth, requireAdmin, async (re
         if (existingIds.has(item.id)) { skipped += 1; continue; }
         const paymentType = validTypes.has(String(item.paymentType || '').toUpperCase())
           ? String(item.paymentType).toUpperCase() : 'OTHER';
-        const date = String(item.at || item.date || new Date().toISOString()).slice(0, 10);
+        // item.at is an instant; its Cairo day, not its UTC one, is the payment's.
+        const date = cairoDayOf(item.at || item.date) || cairoToday();
         await assertWritable(date, conn, tenantId);
         await conn.query(
           `INSERT INTO payments

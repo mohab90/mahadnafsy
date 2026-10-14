@@ -9,6 +9,7 @@ import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 import { BRANCH_LABELS_AR, normalizeBranch } from '../../../../constants/branches';
 import { AddTransferModal, IncomingTransfersTable, type IncomingTransfer } from './IncomingTransfers';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
+import { useCanDelete } from '../../../../hooks/useCanDelete';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 import { transferMatch } from '../../../../../shared/transferSheet';
 import { ORDER_METHOD_FILTERS } from './ordersTypes';
@@ -22,6 +23,8 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
   // A recorded payment is voided or corrected by a manager through the payments
   // route, which reverses its books; the orders route only archives an unpaid order.
   const [correcting, setCorrecting] = useState<{ row: OrderItem; mode: 'edit' | 'void' } | null>(null);
+  // Wiping a payment or an order is the owner's list's: «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
+  const canDelete = useCanDelete();
   // A transfer a manager corrects (canAcceptDirectly is the manager's line).
   const [editingTransfer, setEditingTransfer] = useState<IncomingTransfer | null>(null);
   const deleteTransfer = async (transfer: IncomingTransfer) => {
@@ -422,7 +425,7 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                                         <Pencil size={11} />
                                       </button>
                                     )}
-                                    {canAcceptDirectly && (isDeskPayment(row) || row.status === 'paid') && row.status !== 'refunded' ? (
+                                    {!canDelete ? null : canAcceptDirectly && (isDeskPayment(row) || row.status === 'paid') && row.status !== 'refunded' ? (
                                       <button type="button" onClick={() => setCorrecting({ row, mode: 'void' })}
                                         className="text-red-400 hover:text-red-600 p-1 rounded-md hover:bg-red-50 transition" title="مسح الدفعة" aria-label="مسح الدفعة">
                                         <Trash2 size={11} />

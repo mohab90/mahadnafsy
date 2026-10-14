@@ -60,7 +60,7 @@ const SCREENS = [
   'tagamoa_schedule', 'tagamoa_clients', 'tagamoa_team', 'tagamoa_accounting', 'tagamoa_stats', 'tagamoa_waitlist',
   'customer_inbox', 'whatsapp_web', 'team_inbox', 'cx_team', 'ratings', 'branch_hr', 'service_hub', 'refund_requests', 'consultations', 'cert_requests',
   'financial', 'orders', 'financial_reports', 'recurring_expenses',
-  'hr', 'staff_performance', 'hr_analytics', 'enps_dashboard', 'offboarding', 'instructors', 'join_us', 'interviews',
+  'hr', 'staff_performance', 'hr_analytics', 'enps_dashboard', 'offboarding', 'instructors', 'join_us', 'lecturer_applications', 'interviews',
   'marketing_hub', 'campaigns', 'notif_inbox',
   'content_hub', 'courses', 'lectures', 'bundles', 'quizzes', 'course_waitlist',
   'live_streams', 'community',

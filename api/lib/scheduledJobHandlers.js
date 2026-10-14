@@ -1,27 +1,42 @@
 'use strict';
 
-const { tryJson } = require('./helpers');
-const { sendWhatsApp } = require('./whatsapp');
+const { tryJson, ymd } = require('./helpers');
+const outbox = require('./outbox');
+const { filterSuppressed, WHATSAPP_OPT_OUT_HINT } = require('./marketingConsent');
+const { toDialable } = require('./phoneNumber');
 const { renderTemplate } = require('./messageTemplates');
 const { createNotification } = require('./notification');
 const { getTenantSetting, setTenantSetting } = require('./tenantSettings');
 const { invalidateFxCache } = require('./finance');
 const { cacheInvalidate } = require('./db');
 const { notifyWaitlistForFreedSeats } = require('./courseWaitlist');
-const { cairoToday, addDaysToDateOnly } = require('./dates');
+const { cairoToday, cairoClock, addDaysToDateOnly } = require('./dates');
 const { installmentPlansBySubscriber } = require('./installmentPlansBySubscriber');
 
-function createScheduledJobHandlers({ pool, logger }) {
-  const installmentSentToday = new Set();
-  let installmentResetDate = cairoToday();
+// Every message these jobs send goes through the outbox (lib/outbox.js), each
+// under a key that says what it is about, so a second run of the job — the
+// next hour, a restart, a second process — finds it already queued instead of
+// sending it again. They used to call sendWhatsApp one by one: the installment
+// reminder remembered what it had sent in a Set that a restart emptied, and
+// the Dokki reminder's 24-hour window is two hours wide, so an hourly job
+// reached the same people twice.
+const DAY_MS = 24 * 60 * 60 * 1000;
+// «كل 30 يوم» — the re-engagement message's window: one per lead per window.
+const REENGAGEMENT_WINDOW_DAYS = 30;
+const reengagementWindow = (now = Date.now()) => Math.floor(now / (REENGAGEMENT_WINDOW_DAYS * DAY_MS));
 
+function queueWhatsApp({ tenantId, phone, message, category, dedupeKey, refType = null, refId = null }) {
+  const recipient = toDialable(phone);
+  if (!recipient || !message) return Promise.resolve(null);
+  return outbox.enqueue({
+    channel: 'whatsapp', recipient, tenantId, dedupeKey, refType, refId,
+    payload: { message, category },
+  });
+}
+
+function createScheduledJobHandlers({ pool, logger }) {
   async function installmentReminder() {
     try {
-      const today = cairoToday();
-      if (today !== installmentResetDate) {
-        installmentSentToday.clear();
-        installmentResetDate = today;
-      }
       const target = addDaysToDateOnly(cairoToday(), 3);
       const [subscribers] = await pool.query(
         `SELECT DISTINCT s.id,s.tenant_id,s.name,s.phone,s.crm_json FROM subscribers s
@@ -40,22 +55,24 @@ function createScheduledJobHandlers({ pool, logger }) {
         for (const plan of plans) {
           for (const entry of plan.entries || []) {
             const dueDate = String(entry.dueDate || '').slice(0, 10);
-            const key = `${subscriber.tenant_id}:${subscriber.id}:${dueDate}:${plan.courseId || ''}`;
-            if (dueDate !== target || entry.paidAt || !subscriber.phone || installmentSentToday.has(key)) continue;
-            installmentSentToday.add(key);
+            if (dueDate !== target || entry.paidAt || !subscriber.phone) continue;
             const message = renderTemplate('installment_reminder', {
               amount: entry.amount,
               currency: plan.currency || 'EGP',
               dueDate,
               courseName: plan.courseTitle || 'قسط',
             }, subscriber.tenant_id);
-            await sendWhatsApp(subscriber.phone, message, { tenantId: subscriber.tenant_id, category: 'reminder' }).catch(() => {});
-            sent += 1;
-            if (sent % 5 === 0) await new Promise(resolve => setTimeout(resolve, 2000));
+            // Hourly job, one reminder per installment: the key holds it.
+            const queued = await queueWhatsApp({
+              tenantId: subscriber.tenant_id, phone: subscriber.phone, message, category: 'reminder',
+              dedupeKey: `installment-reminder:${subscriber.id}:${dueDate}:${plan.courseId || ''}`,
+              refType: 'subscriber', refId: subscriber.id,
+            }).catch(error => { logger.warn('[jobs] installment reminder not queued:', error.message); return null; });
+            if (queued) sent += 1;
           }
         }
       }
-      if (sent) logger.info(`[jobs] installment reminders sent=${sent}`);
+      if (sent) logger.info(`[jobs] installment reminders queued=${sent}`);
     } catch (error) {
       logger.warn('[jobs] installment reminder failed:', error.message);
     }
@@ -72,14 +89,19 @@ function createScheduledJobHandlers({ pool, logger }) {
           LIMIT 50`,
         [cutoff]
       );
+      // Once a day per payment still pending, as before — now by its key, so a
+      // second run on the same day queues nothing.
+      const today = cairoToday();
       for (const row of rows) {
         const message = renderTemplate('pending_payment_reminder', {
           amount: row.amount,
           currency: row.currency || 'EGP',
           date: String(row.date || '').slice(0, 10),
         }, row.tenant_id);
-        await sendWhatsApp(row.phone, message, { tenantId: row.tenant_id, category: 'reminder' });
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await queueWhatsApp({
+          tenantId: row.tenant_id, phone: row.phone, message, category: 'reminder',
+          dedupeKey: `pending-payment-reminder:${row.id}:${today}`, refType: 'payment', refId: row.id,
+        }).catch(error => logger.warn('[jobs] pending payment reminder not queued:', error.message));
       }
       const counts = rows.reduce((result, row) => {
         result[row.tenant_id] = (result[row.tenant_id] || 0) + 1;
@@ -102,26 +124,11 @@ function createScheduledJobHandlers({ pool, logger }) {
 
   async function refreshFxRates() {
     try {
-      const response = await fetch('https://open.er-api.com/v6/latest/EGP', {
-        signal: AbortSignal.timeout(8000),
-      });
-      if (!response.ok) throw new Error(`provider returned ${response.status}`);
-      const data = await response.json();
-      if (!data.rates?.SAR || !data.rates?.USD) throw new Error('provider response has no SAR/USD rates');
-      const sarToEgp = Number((1 / data.rates.SAR).toFixed(4));
-      const usdToEgp = Number((1 / data.rates.USD).toFixed(4));
+      // One provider read for every institute (lib/fxRefresh.js — payments refresh on demand too).
+      const { fetchProviderRates, storeTenantRates } = require('./fxRefresh');
+      const { sarToEgp, usdToEgp } = await fetchProviderRates();
       const [tenants] = await pool.query("SELECT id FROM tenants WHERE status='active'");
-      for (const tenant of tenants) {
-        const content = await getTenantSetting('content', { tenantId: tenant.id, fallback: {} });
-        await setTenantSetting('content', {
-          ...content,
-          'exchange.sar_to_egp': String(sarToEgp),
-          'exchange.usd_to_egp': String(usdToEgp),
-          'exchange.source': 'open.er-api.com',
-          'exchange.updated_at': new Date().toISOString(),
-        }, { tenantId: tenant.id, actorId: 'fx-refresh' });
-        invalidateFxCache(tenant.id);
-      }
+      for (const tenant of tenants) await storeTenantRates(tenant.id, { sarToEgp, usdToEgp });
       cacheInvalidate('site_content');
       logger.info(`[jobs] FX refreshed SAR=${sarToEgp} USD=${usdToEgp}`);
     } catch (error) {
@@ -130,13 +137,20 @@ function createScheduledJobHandlers({ pool, logger }) {
     }
   }
 
-  async function daqqiSessionReminder() {
+  async function daqqiSessionReminder(now = new Date()) {
     try {
-      const now = Date.now();
-      const windows = [
-        [now + 23 * 3600000, now + 25 * 3600000, '24 ساعة'],
-        [now + 110 * 60000, now + 130 * 60000, 'ساعتين'],
-      ];
+      // On Cairo's calendar. The session was taken as starting at its date's
+      // UTC midnight — 02:00/03:00 Cairo — so «24 ساعة» went out between 02:00
+      // and 04:00 on the day itself and «ساعتين» at about 01:00, both at night
+      // and the second before the first. A round has a coarse slot, not an
+      // hour, so the day before is reminded from noon and the day itself from
+      // 08:00. The labels stay as they were: they are in the outbox's dedupe
+      // key, and a reminder already queued must not go a second time.
+      const clock = cairoClock(now);
+      const hour = Math.floor(clock.minutes / 60);
+      const windows = [];
+      if (hour >= 12) windows.push([addDaysToDateOnly(clock.date, 1), '24 ساعة']);
+      if (hour >= 8) windows.push([clock.date, 'ساعتين']);
       const [rounds] = await pool.query(
         `SELECT dr.id,dr.tenant_id,dr.code,dr.time_slot,dr.start_date,dr.current_lecture,
                 dr.postponed_weeks_json,c.title course_title
@@ -144,21 +158,23 @@ function createScheduledJobHandlers({ pool, logger }) {
            JOIN courses c ON c.id=dr.course_id AND c.tenant_id=dr.tenant_id
           WHERE dr.status='ACTIVE'`
       );
-      const mondayOf = value => {
-        const date = new Date(value);
-        const day = date.getDay();
-        date.setDate(date.getDate() - (day === 0 ? 6 : day - 1));
-        return date.toISOString().slice(0, 10);
+      // Date-only arithmetic in UTC: a calendar day has no zone to drift in.
+      const mondayOf = dateOnly => {
+        const day = new Date(`${dateOnly}T00:00:00Z`).getUTCDay();
+        return addDaysToDateOnly(dateOnly, -(day === 0 ? 6 : day - 1));
       };
-      for (const [from, to, label] of windows) {
+      for (const [sessionDay, label] of windows) {
         const due = rounds.filter(round => {
-          if (!round.start_date) return false;
+          const start = ymd(round.start_date);
+          if (!start) return false;
           const postponed = tryJson(round.postponed_weeks_json, []);
-          const next = new Date(new Date(round.start_date).getTime()
-            + (Number(round.current_lecture || 0) + postponed.length) * 7 * 86400000);
-          if (postponed.includes(mondayOf(next))) return false;
-          round.nextSession = next;
-          return next.getTime() >= from && next.getTime() <= to;
+          const next = addDaysToDateOnly(start,
+            (Number(round.current_lecture || 0) + postponed.length) * 7);
+          if (!next || postponed.includes(mondayOf(next))) return false;
+          // Its UTC midnight is still that day in Cairo, which is how the
+          // message prints it and how the dedupe key has always named it.
+          round.nextSession = new Date(`${next}T00:00:00Z`);
+          return next === sessionDay;
         });
         if (!due.length) continue;
         // Recipient filter, deliberately scoped to this messaging path only.
@@ -191,8 +207,14 @@ function createScheduledJobHandlers({ pool, logger }) {
               sessionDate,
               timeLabel,
             }, round.tenant_id);
-            await sendWhatsApp(attendee.phone, message, { tenantId: round.tenant_id, category: 'reminder' }).catch(() => {});
-            sent += 1;
+            // The 24-hour window is two hours wide and the job runs hourly:
+            // the key is what keeps that to one reminder per session.
+            const queued = await queueWhatsApp({
+              tenantId: round.tenant_id, phone: attendee.phone, message, category: 'reminder',
+              dedupeKey: `daqqi-reminder:${round.id}:${round.nextSession.toISOString().slice(0, 10)}:${label}:${toDialable(attendee.phone)}`,
+              refType: 'daqqi_round', refId: round.id,
+            }).catch(error => { logger.warn('[jobs] Daqqi reminder not queued:', error.message); return null; });
+            if (queued) sent += 1;
           }
         }
         if (sent) logger.info(`[jobs] Daqqi reminder ${label} sent=${sent}`);
@@ -202,36 +224,63 @@ function createScheduledJobHandlers({ pool, logger }) {
     }
   }
 
+  // The 30-day re-engagement message to a lead gone quiet. A promotion nobody
+  // asked for, so it is one: its own 'marketing' kind (closed until the owner
+  // opens it in «أنواع الرسايل»), never to a number that wrote «ستوب» or a lead
+  // whose data was erased (is_unsubscribed), and through the outbox, one per
+  // lead per 30-day window. It went as 'reminder' — the kind a customer's own
+  // session reminder uses — straight from here, without looking at either list.
   async function leadRetargeting() {
     try {
       const [leads] = await pool.query(
         `SELECT id,tenant_id,name,phone,email FROM leads
-          WHERE hidden=0
+          WHERE hidden=0 AND COALESCE(is_unsubscribed,0)=0
             AND status NOT IN ('converted','lost','not_interested','no_answer')
             AND (retargeting_sent_at IS NULL OR retargeting_sent_at<DATE_SUB(NOW(),INTERVAL 30 DAY))
             AND created_at<DATE_SUB(NOW(),INTERVAL 30 DAY)
             AND phone IS NOT NULL AND phone!=''
           LIMIT 50`
       );
-      let sent = 0;
-      for (const lead of leads) {
-        const message = renderTemplate('lead_retargeting', { name: lead.name }, lead.tenant_id);
-        const result = await sendWhatsApp(lead.phone, message, { tenantId: lead.tenant_id, category: 'reminder' })
-          .catch(() => ({ ok: false }));
-        if (!result.ok) continue;
-        await pool.query(
-          'UPDATE leads SET retargeting_sent_at=NOW() WHERE id=? AND tenant_id=?',
-          [lead.id, lead.tenant_id]
-        );
-        await pool.query(
+      const window = reengagementWindow();
+      let queued = 0;
+      let skipped = 0;
+      const mark = (lead, status) => Promise.all([
+        // Set for a skipped lead too: left unmarked, the same opted-out leads
+        // would fill the 50 every day and nobody else would be reached.
+        pool.query('UPDATE leads SET retargeting_sent_at=NOW() WHERE id=? AND tenant_id=?', [lead.id, lead.tenant_id]),
+        pool.query(
           `INSERT IGNORE INTO retargeting_log
              (id,tenant_id,lead_id,channel,template,status,sent_at)
-           VALUES (UUID(),?,?,'WHATSAPP','reactivation_30d','SENT',NOW())`,
-          [lead.tenant_id, lead.id]
-        );
-        sent += 1;
+           VALUES (UUID(),?,?,'WHATSAPP','reactivation_30d',?,NOW())`,
+          [lead.tenant_id, lead.id, status]
+        ),
+      ]);
+      for (const tenantId of new Set(leads.map(lead => lead.tenant_id))) {
+        const tenantLeads = leads.filter(lead => lead.tenant_id === tenantId);
+        // Fails closed: a list that cannot be read sends nothing this round.
+        const allowed = await filterSuppressed(tenantId, 'whatsapp', tenantLeads, 'phone', pool).catch(error => {
+          logger.warn('[jobs] lead retargeting: opt-out list unreadable — nothing sent', error.message);
+          return null;
+        });
+        if (!allowed) continue;
+        const allowedIds = new Set(allowed.map(lead => lead.id));
+        for (const lead of tenantLeads) {
+          if (!allowedIds.has(lead.id)) {
+            await mark(lead, 'SKIPPED');
+            skipped += 1;
+            continue;
+          }
+          const message = `${renderTemplate('lead_retargeting', { name: lead.name }, tenantId)}\n\n${WHATSAPP_OPT_OUT_HINT}`;
+          const id = await queueWhatsApp({
+            tenantId, phone: lead.phone, message, category: 'marketing',
+            dedupeKey: `lead-reengagement:${lead.id}:${window}`, refType: 'lead', refId: lead.id,
+          });
+          if (!id) continue;
+          await mark(lead, 'QUEUED');
+          queued += 1;
+        }
       }
-      if (sent) logger.info(`[jobs] lead retargeting sent=${sent}`);
+      if (queued || skipped) logger.info(`[jobs] lead retargeting queued=${queued} opted-out=${skipped}`);
     } catch (error) {
       logger.warn('[jobs] lead retargeting failed:', error.message);
     }
@@ -322,4 +371,4 @@ function createScheduledJobHandlers({ pool, logger }) {
   };
 }
 
-module.exports = { createScheduledJobHandlers };
+module.exports = { createScheduledJobHandlers, reengagementWindow, REENGAGEMENT_WINDOW_DAYS };

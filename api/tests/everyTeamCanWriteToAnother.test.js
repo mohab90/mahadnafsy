@@ -99,3 +99,11 @@ test('the composer is offered the teams that have someone, and the managers', as
   assert.deepEqual(res.body.managers.map(manager => manager.scope).sort(), ['manager:st-dm', 'manager:st-mgr']);
   assert.equal(res.body.everyone, 6);
 });
+
+test('opening the thread reads every message the bell counts, a team\'s message included', () => {
+  // A message from another team is stored peer_broadcast; only to_staff was
+  // marked read, so the bell counted it forever and announced it every 15 s.
+  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'routes/hr/staffprofile.js'), 'utf8');
+  assert.match(source, /UPDATE staff_messages SET read_at=NOW\(\)\s*WHERE tenant_id=\? AND staff_id=\? AND direction<>'from_staff' AND read_at IS NULL/);
+  assert.match(source, /COUNT\(\*\) n FROM staff_messages\s*WHERE tenant_id=\? AND staff_id=\? AND direction<>'from_staff' AND read_at IS NULL/);
+});

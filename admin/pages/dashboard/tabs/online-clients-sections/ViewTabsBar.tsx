@@ -57,6 +57,9 @@ interface Props {
 
 const MARKET_TAB: Partial<Record<ViewTabKey, Market>> = { 'real-local': 'local', 'real-saudi': 'saudi', 'real-intl': 'intl' };
 const TERMINAL = ['finished', 'paused', 'refunded', 'refund_pending'];
+// The client's row ends with their English name, national id and the Drive links of the pictures on file.
+const PICTURE_HEADERS = ['الاسم بالإنجليزي','الرقم القومي','رابط الصورة الشخصية','رابط صورة الهوية'];
+const pictureColumns = (s: SubscriberItem) => [s.nameEn || '', s.nationalId || '', s.personalPhotoUrl || '', s.idPhotoUrl || ''];
 
 export function ViewTabsBar({
   isDaqqiClientsTab, allCombined, isIntlSub, marketOf, bookedInYear, collOnlineViewTab, setCollOnlineViewTab,
@@ -80,15 +83,15 @@ export function ViewTabsBar({
       if (isDaqqiClientsTab) {
         const hInfo = housingMap.get(s.id);
         return [s.name, s.phone, s.email, s.branch || '', courseTitles(s), s.clientStatus || s.status || '', paid, remaining,
-          hInfo?.roundCode || '', hInfo?.receptionName || '', cairoDay(s.createdAt), s.clientCode || ''];
+          hInfo?.roundCode || '', hInfo?.receptionName || '', cairoDay(s.createdAt), s.clientCode || '', ...pictureColumns(s)];
       }
       const agent = staffMembers.find(st => st.id === s.assignedCsId)?.name || '';
       return [s.name, s.phone, s.email, s.branch || '', courseTitles(s), s.clientStatus || s.status || '', paid, remaining,
-        agent, cairoDay(s.createdAt), s.clientCode || ''];
+        agent, cairoDay(s.createdAt), s.clientCode || '', ...pictureColumns(s)];
     });
     const header = isDaqqiClientsTab
-      ? ['الاسم','الهاتف','الإيميل','الفرع','الكورسات','الحالة','المدفوع (ج.م)','المتبقي (ج.م)','الروند','الرسيبشن','تاريخ الاشتراك','الكود']
-      : ['الاسم','الهاتف','الإيميل','الفرع','الكورسات','الحالة','المدفوع (ج.م)','المتبقي (ج.م)','مسئول التحصيل','تاريخ الاشتراك','الكود'];
+      ? ['الاسم','الهاتف','الإيميل','الفرع','الكورسات','الحالة','المدفوع (ج.م)','المتبقي (ج.م)','الروند','الرسيبشن','تاريخ الاشتراك','الكود', ...PICTURE_HEADERS]
+      : ['الاسم','الهاتف','الإيميل','الفرع','الكورسات','الحالة','المدفوع (ج.م)','المتبقي (ج.م)','مسئول التحصيل','تاريخ الاشتراك','الكود', ...PICTURE_HEADERS];
     downloadCsv(`${isDaqqiClientsTab ? 'daqqi' : 'online'}-clients-${cairoDateOnly()}`, [header, ...rows]);
     setDaqqiSettingsOpen(false);
   };

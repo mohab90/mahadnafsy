@@ -14,7 +14,9 @@
 const { TERMINAL_SQL } = require('./leadStatuses');
 const { pool } = require('./db');
 const { tryJson } = require('./helpers');
-const { sendWhatsApp } = require('./whatsapp');
+const outbox = require('./outbox');
+const { toDialable } = require('./phoneNumber');
+const { cairoToday, addDaysToDateOnly } = require('./dates');
 const { logLeadEvent } = require('./crm');
 const { transitionLead } = require('./leadState');
 const { assignLead } = require('./leadAssignment');
@@ -349,13 +351,14 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
           const msg = sub(cfg.message || '');
 
           if (step.action === 'add_followup_reminder' && lead.id) {
-            const newDate = new Date();
-            newDate.setDate(newDate.getDate() + parseInt(cfg.days || actionCfg.days || '3'));
+            // N days from Cairo's today: the UTC day plus N was a day short when
+            // the workflow ran between midnight and 02:00/03:00 Cairo.
+            const followUpDay = addDaysToDateOnly(cairoToday(), Number.parseInt(cfg.days || actionCfg.days || '3', 10) || 0);
             await pool.query(
               'UPDATE leads SET next_follow_up_date = ? WHERE id = ? AND tenant_id=? AND (next_follow_up_date IS NULL OR next_follow_up_date < NOW())',
-              [newDate.toISOString().slice(0, 10), lead.id, tid]
+              [followUpDay, lead.id, tid]
             );
-            await logLeadEvent(lead.id, 'followup_set', `Automation scheduled follow-up for ${newDate.toISOString().slice(0, 10)}`, { workflowId: wf.id, automation: true }, tid);
+            await logLeadEvent(lead.id, 'followup_set', `Automation scheduled follow-up for ${followUpDay}`, { workflowId: wf.id, automation: true }, tid);
             actionsRun++;
           }
 
@@ -386,7 +389,7 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
               [tid, sub(cfg.task_title || actionCfg.task_title || `متابعة: ${lead.name}`),
                msg || null, lead.id,
                cfg.priority || actionCfg.priority || 'medium', 'todo',
-               (() => { const d = new Date(); d.setDate(d.getDate() + parseInt(cfg.due_days || actionCfg.due_days || '2')); return d.toISOString().slice(0, 10); })(),
+               addDaysToDateOnly(cairoToday(), Number.parseInt(cfg.due_days || actionCfg.due_days || '2', 10) || 0),
                'automation']
             );
             actionsRun++;
@@ -403,10 +406,19 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
           }
 
           else if (step.action === 'send_whatsapp' && msg && lead.phone) {
+            // Queued, not sent from here: the outbox paces and retries it, and
+            // the key holds one message per workflow step, person and day —
+            // the daily run and the «شغّل دلوقتي» button on the same day used
+            // to send it twice. 'automation' is a promotional kind, so a
+            // number that wrote «ستوب» is skipped when it is sent.
             try {
-              const cleanPhone = String(lead.phone).replace(/\D/g, '');
-              if (cleanPhone.length >= 10) {
-                await sendWhatsApp(cleanPhone, msg, { tenantId: tid, category: 'automation' });
+              const recipient = toDialable(lead.phone);
+              if (recipient) {
+                await outbox.enqueue({
+                  channel: 'whatsapp', recipient, tenantId: tid, refType: 'automation_workflow', refId: wf.id,
+                  dedupeKey: `automation:${wf.id}:${actionSteps.indexOf(step)}:${lead.id || recipient}:${cairoToday()}`,
+                  payload: { message: msg, category: 'automation' },
+                });
                 actionsRun++;
               }
             } catch (_) { /* best-effort */ }

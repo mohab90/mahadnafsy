@@ -11,6 +11,11 @@ export interface AuthUser {
    *  first data request, which is what lets the boot ask only for what it
    *  holds instead of collecting a 403 for each list it may not read. */
   permissions?: string[] | '*' | null;
+  /** Whether this account may delete anything (lib/deleteRights.js on the
+   *  server): the owner and the people on «صلاحية الحذف», nobody else. */
+  canDelete?: boolean;
+  /** The owner, who alone sets that list. */
+  canManageDeleteRights?: boolean;
 }
 
 export type MeetingProvider = 'zoom' | 'google_meet' | 'custom';
@@ -382,6 +387,8 @@ export type StaffPermission =
 
 export interface StaffMember {
   id: string;
+  /** Set on the signed-in employee only, from /api/auth/me — see AuthUser.canDelete. */
+  canDelete?: boolean;
   name: string;
   email: string;
   phone: string;
@@ -491,6 +498,9 @@ export interface SubscriberItem {
   installmentPlans?: InstallmentPlan[];
   notes?: string;
   nationalId?: string;   // رقم قومي — set on booking from staff modal
+  /** Google Drive links of the pictures a certificate or a carnet asked for (api/lib/googleDrive.js). */
+  personalPhotoUrl?: string | null;
+  idPhotoUrl?: string | null;
   updatedAt?: string;    // Server-side updated_at for optimistic concurrency control
   nextFollowUpDate?: string;  // Next follow-up date for collection/sales follow-up tracking
   lastFollowUp?: string;  // Last contact date
@@ -621,6 +631,28 @@ export interface JoinUsApplication {
   experiencePlaces?: string;
   jobId?: string;
   jobTitle?: string;
+  /**
+   * Which public page it came through — 'teaching' (/join, محاضر/استشاري) or
+   * 'staff' (/join-us, موظف). The list it belongs on: «لازم تفرق بيينهم بشكل كبير»
+   * (12 Oct 2026).
+   */
+  sourceForm?: 'teaching' | 'staff';
+  /** «هل اشتغلت محاضر قبل كده؟» — null when the form did not ask. */
+  lecturedBefore?: boolean | null;
+  /** «هل اشتغلت في جلسات نفسية مع عملاء قبل كده؟» */
+  sessionsBefore?: boolean | null;
+  /** The institute's programmes the lecturer ticked. */
+  programs?: { id: string | null; title: string }[];
+  /** «برامج تانية بتقدّمها» — free text. */
+  programsOther?: string;
+  /** «تقييم أول مكالمة». */
+  firstCallRating?: number | null;
+  firstCallTags?: string[];
+  firstCallNotes?: string;
+  firstCallAt?: string;
+  firstCallByName?: string;
+  /** The applicant's phone screen on the interviews screen. */
+  phoneInterviewResult?: 'passed' | 'failed' | 'no_answer' | null;
 }
 
 export interface ContactMessage {
@@ -815,7 +847,8 @@ export interface NotificationBroadcast {
   sentAt?: string;
 }
 
-export type ExpenseCategory = 'رواتب' | 'تسويق' | 'إيجار' | 'برمجيات' | 'معدات' | 'أخرى';
+// The institute's own list (الإعدادات › فئات المصاريف, GET /admin/expense-categories).
+export type ExpenseCategory = string;
 
 export interface ExpenseItem {
   id: string;
@@ -827,6 +860,7 @@ export interface ExpenseItem {
   receiptUrl?: string;
   branchType?: BranchType;   // which branch this expense belongs to
   paymentMethod?: string;    // cash, bank transfer, etc.
+  staffName?: string | null; // «القائم بالعملية» — who entered it
   createdAt: string;
   title?: string;
 }
@@ -1379,6 +1413,10 @@ export interface SubscriberStats {
   total: number;
   /** Count per branch. '' is the bucket for subscribers with no branch set. */
   byBranch: Record<string, number>;
+  /** With ?overview=1: the clients who joined today (Cairo day)… */
+  createdToday?: number;
+  /** …and each course's clients, keyed by course id (active enrolments). */
+  byCourse?: Record<string, number>;
 }
 
 /** One rep's week, as counted by the database rather than by filtering the

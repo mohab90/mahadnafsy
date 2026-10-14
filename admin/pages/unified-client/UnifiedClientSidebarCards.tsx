@@ -316,6 +316,8 @@ type QuickActionsProps = {
   onLegacyPayment: () => void;
   onInstallmentPlan: () => void;
   onEdit: () => void;
+  /** «بيانات الشهادة»: given to those who may (collection and customer service), for a client. */
+  onCertificateData?: () => void;
 };
 
 export function UnifiedClientSidebarQuickActions({
@@ -326,6 +328,7 @@ export function UnifiedClientSidebarQuickActions({
   onLegacyPayment,
   onInstallmentPlan,
   onEdit,
+  onCertificateData,
 }: QuickActionsProps) {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
@@ -357,6 +360,12 @@ export function UnifiedClientSidebarQuickActions({
               <CalendarDays size={18} /><span className="text-[11px] font-bold">خطة أقساط</span>
             </button>
           </>
+        )}
+        {onCertificateData && (
+          <button onClick={onCertificateData}
+            className="flex flex-col items-center gap-1.5 py-3 bg-amber-50 text-amber-800 rounded-2xl hover:bg-amber-100 transition border border-amber-200">
+            <Award size={18} /><span className="text-[11px] font-bold">بيانات الشهادة</span>
+          </button>
         )}
         <button onClick={onEdit}
           className="flex flex-col items-center gap-1.5 py-3 bg-gray-50 text-gray-600 rounded-2xl hover:bg-gray-100 transition border border-gray-100">

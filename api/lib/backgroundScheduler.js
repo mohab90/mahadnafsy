@@ -1,6 +1,5 @@
 'use strict';
 
-const { sendWhatsApp } = require('./whatsapp');
 const { promoteLegacyEmailSequenceQueue } = require('./emailSequence');
 const { syncAllConfiguredSheets } = require('./sheets');
 
@@ -71,6 +70,12 @@ function startBackgroundScheduler({ pool, logger, port }) {
     run();
     repeat(run, 60 * 60 * 1000);
   }, 5 * 60 * 1000);
+
+  // Once per boot, a minute in: authenticator secrets still stored in plain
+  // text are sealed (lib/totpSecretSweep.js) instead of waiting for each
+  // owner's next sign-in. Under a lock so two processes booting together do
+  // not both sweep; idempotent, so every later boot finds nothing to do.
+  later(lockedJob('totp_secret_seal', () => require('./totpSecretSweep').runTotpSecretSweep({ pool, logger })), 60 * 1000);
 
   later(() => {
     const sync = lockedJob('sheets_sync', () => syncAllConfiguredSheets(undefined, { autoOnly: true })
@@ -149,6 +154,28 @@ function startBackgroundScheduler({ pool, logger, port }) {
     repeat(tick, 10 * 60 * 1000);
   }, 4 * 60 * 1000);
 
+  // The signing secrets refuse the boot at 370 days and nobody was told
+  // beforehand (lib/secretRotationAlert.js). From day 330 the owner hears it on
+  // WhatsApp; asked every six hours, sent once a week per number by the
+  // outbox's dedupe key.
+  later(() => {
+    const tick = lockedJob('secret_rotation_alert', () => require('./secretRotationAlert')
+      .queueSecretRotationAlerts({ logger })
+      .then(queued => { if (queued) logger.warn(`[jobs] signing secrets due for rotation — owner warned on ${queued} number(s)`); })
+      .catch(error => logger.warn('[jobs] secret rotation alert failed:', error.message)));
+    tick();
+    repeat(tick, 6 * 60 * 60 * 1000);
+  }, 12 * 60 * 1000);
+
+  // A disk at DISK_ALERT_PERCENT (80%) or more WhatsApps the owner-report
+  // numbers, once a week per disk by its dedupe key (lib/diskUsage.js).
+  later(() => {
+    const check = lockedJob('disk_alert', () => require('./diskUsage').alertOnFullDisks({ pool, logger })
+      .catch(error => logger.warn('[jobs] disk check failed:', error.message)));
+    check();
+    repeat(check, 6 * 60 * 60 * 1000);
+  }, 12 * 60 * 1000);
+
   later(() => {
     const tick = () => require('./aiAutopilot').queueDueAutopilot({ queue, logger })
       .catch(error => logger.warn('[jobs] ai autopilot tick failed:', error.message));
@@ -175,67 +202,73 @@ function startBackgroundScheduler({ pool, logger, port }) {
     subscription_billing: () => subscriptionBilling.runSubscriptionBilling(),
     // «خلي السيستم يفيد نفسه»: SEO, community posts, study articles, quizzes.
     ai_autopilot: ({ tenantId, date, only }) => require('./aiAutopilot').runAutopilot({ tenantId, date, only }),
-    // A report that reached no number is retried; a switched-off one is not.
+    // Built here, delivered by the outbox: one per number per day by its key,
+    // and a number it did not reach is retried there, not by rebuilding the
+    // report. A switched-off report queues nothing.
     owner_daily_report: async ({ tenantId, date }) => {
-      const result = await ownerReports.sendOwnerDailyReport({ tenantId, date });
-      if (!result.sent && result.results?.length) {
-        throw new Error(`owner report not delivered: ${result.results.map(r => r.reason).join(', ')}`);
-      }
+      await ownerReports.sendOwnerDailyReport({ tenantId, date, queue: true });
     },
   };
-  const worker = async () => {
-    try {
-      await crmSla.enqueueOverdueLeadAlerts();
-      await promoteLegacyEmailSequenceQueue();
-      await outbox.drain({
-        // A category queued with the message (a receipt is 'payment') survives
-        // EMAIL_OUTBOUND_CATEGORIES the way the direct send does.
-        email: ({ recipient, subject, body, html, tenantId, category }) =>
-          email.sendEmail(recipient, subject, html || body || '', { tenantId, category }),
-        // channelId decides which identity it goes out from — the company
-        // number, or the rep's own WhatsApp the campaign was composed against.
-        // The category the message was queued with. Every queued message was
-        // sent as 'broadcast' — a receipt, a welcome, a reply to a ticket, an
-        // alert to a rep — so the gate refused them all as bulk messaging, and
-        // opening 'payment' could never have let a receipt through.
-        // A campaign on an approved Meta template carries it in the payload;
-        // the text beside it is only the preview the campaign screen shows.
-        whatsapp: ({ recipient, message, template, tenantId, channelId, staffId, category }) => (template
-          ? require('./whatsapp').sendWhatsAppTemplate(recipient, template, { tenantId, channelId, category: category || 'broadcast' })
-          : sendWhatsApp(recipient, message || '', { tenantId, channelId, staffId, category: category || 'broadcast' })),
-        messenger: async ({ recipient, message, tenantId, channelId }) => {
-          const { getSendableChannel } = require('./messagingChannels');
-          const resolved = await getSendableChannel({ tenantId, channelId, kind: 'messenger' });
-          if (!resolved) return { ok: false, reason: 'not_configured' };
-          return messenger.sendMessengerMessage(recipient, message || '', resolved.credentials);
-        },
-        sms: ({ recipient, message, tenantId }) =>
-          sms.sendSms({ phone: recipient, message: message || '', tenantId }),
-      });
-      await financeOutbox.drainFinanceOutbox({
-        sync_lead_deal_value: ({ tenant_id: tenantId, payload }) =>
-          leadDealValue.syncLeadDealValue(payload.subscriberId, tenantId, true),
-        // Commission used to be computed in a setImmediate off the Paymob
-        // callback whose catch only logged, so any fault silently dropped what a
-        // rep was owed. Here a fault is retried by the outbox instead.
-        record_commission: ({ tenant_id: tenantId, payload }) =>
-          commissionCalc.recordCommissionForPayment({
-            tenantId,
-            paymentId: payload.paymentId,
-            subscriberId: payload.subscriberId,
-            amount: payload.amount,
-            branchId: payload.branchId,
-          }),
-      });
-      await connectorEvents.drainConnectorEvents({
-        facebook_leads: processFacebookLeadEvent,
-      });
-      await queue.processBatch(handlers, `srv-${process.pid}`);
-    } catch (error) {
-      logger.warn('[worker] tick failed:', error.message);
-    }
-  };
-  repeat(worker, 60 * 1000);
+  // Three ticks, each its own lock (lib/jobLock.js exclusiveTick), so none
+  // overlaps itself and none waits on another. Commission and a lead's deal
+  // value used to share one tick with the WhatsApp sends: a provider hanging
+  // for its 20 seconds a message held what a rep was owed behind the queue.
+  const { exclusiveTick } = require('./jobLock');
+  const messageWorker = exclusiveTick('message_outbox', async () => {
+    await crmSla.enqueueOverdueLeadAlerts();
+    await promoteLegacyEmailSequenceQueue();
+    await outbox.drain({
+      // A category queued with the message (a receipt is 'payment') survives
+      // EMAIL_OUTBOUND_CATEGORIES the way the direct send does.
+      email: ({ recipient, subject, body, html, tenantId, category }) =>
+        email.sendEmail(recipient, subject, html || body || '', { tenantId, category }),
+      // channelId decides which identity it goes out from — the company
+      // number, or the rep's own WhatsApp the campaign was composed against.
+      // The category the message was queued with. Every queued message was
+      // sent as 'broadcast' — a receipt, a welcome, a reply to a ticket, an
+      // alert to a rep — so the gate refused them all as bulk messaging, and
+      // opening 'payment' could never have let a receipt through.
+      // A message on an approved Meta template carries it in the payload (or
+      // its kind has one set in «قوالب ميتا»); the text beside it is what a
+      // number on any other provider receives (lib/whatsapp.js sendQueuedWhatsApp).
+      whatsapp: ({ recipient, message, template, tenantId, channelId, staffId, category }) =>
+        require('./whatsapp').sendQueuedWhatsApp(recipient, {
+          message, template, tenantId, channelId, staffId, category: category || 'broadcast',
+        }),
+      messenger: async ({ recipient, message, tenantId, channelId }) => {
+        const { getSendableChannel } = require('./messagingChannels');
+        const resolved = await getSendableChannel({ tenantId, channelId, kind: 'messenger' });
+        if (!resolved) return { ok: false, reason: 'not_configured' };
+        return messenger.sendMessengerMessage(recipient, message || '', resolved.credentials);
+      },
+      sms: ({ recipient, message, tenantId }) =>
+        sms.sendSms({ phone: recipient, message: message || '', tenantId }),
+    });
+  });
+  const financeWorker = exclusiveTick('finance_outbox', () => financeOutbox.drainFinanceOutbox({
+    sync_lead_deal_value: ({ tenant_id: tenantId, payload }) =>
+      leadDealValue.syncLeadDealValue(payload.subscriberId, tenantId, true),
+    // Commission used to be computed in a setImmediate off the Paymob
+    // callback whose catch only logged, so any fault silently dropped what a
+    // rep was owed. Here a fault is retried by the outbox instead.
+    record_commission: ({ tenant_id: tenantId, payload }) =>
+      commissionCalc.recordCommissionForPayment({
+        tenantId,
+        paymentId: payload.paymentId,
+        subscriberId: payload.subscriberId,
+        amount: payload.amount,
+        branchId: payload.branchId,
+      }),
+  }));
+  const jobWorker = exclusiveTick('job_queue', async () => {
+    await connectorEvents.drainConnectorEvents({
+      facebook_leads: processFacebookLeadEvent,
+    });
+    await queue.processBatch(handlers, `srv-${process.pid}`);
+  });
+  repeat(messageWorker, 60 * 1000);
+  repeat(financeWorker, 60 * 1000);
+  repeat(jobWorker, 60 * 1000);
 
   const lifecycle = () => require('./lifecycle').scanScheduled()
     .catch(error => logger.warn('[lifecycle] scan failed:', error.message));

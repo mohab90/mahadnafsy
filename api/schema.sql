@@ -1215,6 +1215,10 @@ CREATE TABLE `course_completions` (
   `delivery_updated_by` varchar(255) DEFAULT NULL,
   `downloaded_at` datetime DEFAULT NULL,
   `download_count` int(11) NOT NULL DEFAULT 0,
+  `cert_name_en` varchar(160) DEFAULT NULL,
+  `cert_course_en` varchar(255) DEFAULT NULL,
+  `cert_duration` varchar(80) DEFAULT NULL,
+  `cert_trainer` varchar(160) DEFAULT NULL,
   `status` varchar(24) NOT NULL DEFAULT 'active',
   `version` int(11) NOT NULL DEFAULT 1,
   `revoked_at` datetime DEFAULT NULL,
@@ -3085,12 +3089,25 @@ CREATE TABLE `join_us_applications` (
   `contacted_at` datetime DEFAULT NULL,
   `contacted_by` varchar(36) DEFAULT NULL,
   `interview_at` datetime DEFAULT NULL,
+  `source_form` enum('teaching','staff') DEFAULT NULL,
+  `branch` varchar(60) DEFAULT NULL,
+  `lectured_before` tinyint(1) DEFAULT NULL,
+  `sessions_before` tinyint(1) DEFAULT NULL,
+  `programs_json` text DEFAULT NULL,
+  `programs_other` text DEFAULT NULL,
+  `first_call_rating` tinyint(4) DEFAULT NULL,
+  `first_call_tags` text DEFAULT NULL,
+  `first_call_notes` text DEFAULT NULL,
+  `first_call_at` datetime DEFAULT NULL,
+  `first_call_by` varchar(36) DEFAULT NULL,
+  `first_call_by_name` varchar(200) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_joinus_status` (`status`),
   KEY `idx_joinus_converted` (`converted_applicant_id`),
   KEY `idx_join_us_tenant_created` (`tenant_id`,`created_at`),
   KEY `idx_join_us_tenant_type_status` (`tenant_id`,`type`,`status`,`created_at`),
   KEY `fk_join_us_applicant_tenant` (`tenant_id`,`converted_applicant_id`),
+  KEY `idx_join_us_tenant_form_branch` (`tenant_id`,`source_form`,`branch`),
   CONSTRAINT `fk_join_us_applicant_tenant` FOREIGN KEY (`tenant_id`, `converted_applicant_id`) REFERENCES `job_applicants` (`tenant_id`, `id`) ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -4453,7 +4470,7 @@ CREATE TABLE `recruitment_notes` (
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `ref_type` enum('join_us','applicant') NOT NULL,
   `ref_id` varchar(36) NOT NULL,
-  `kind` enum('note','contact','evaluation') NOT NULL DEFAULT 'note',
+  `kind` enum('note','contact','evaluation','first_call') NOT NULL DEFAULT 'note',
   `body` text NOT NULL,
   `author_id` varchar(36) DEFAULT NULL,
   `author_name` varchar(200) DEFAULT NULL,
@@ -4607,6 +4624,20 @@ CREATE TABLE `refunds` (
   PRIMARY KEY (`id`),
   KEY `idx_refund_payment` (`payment_id`),
   KEY `idx_refund_status` (`tenant_id`,`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `receipt_counters`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `receipt_counters` (
+  `tenant_id` varchar(64) NOT NULL,
+  `branch` varchar(32) NOT NULL,
+  `last_no` int(11) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`tenant_id`,`branch`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -4921,7 +4952,7 @@ CREATE TABLE `staff` (
   `base_salary` decimal(12,2) DEFAULT NULL,
   `commission_type` enum('NONE','PERCENT','TARGET') NOT NULL DEFAULT 'NONE',
   `permissions_json` text DEFAULT NULL,
-  `totp_secret` varchar(64) DEFAULT NULL,
+  `totp_secret` varchar(255) DEFAULT NULL,
   `totp_enabled` tinyint(1) NOT NULL DEFAULT 0,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
@@ -5691,6 +5722,25 @@ CREATE TABLE `token_blacklist` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `user_mfa_recovery_codes`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `user_mfa_recovery_codes` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
+  `user_id` varchar(100) NOT NULL,
+  `code_hash` char(64) NOT NULL,
+  `used_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_mfa_recovery_code` (`tenant_id`,`user_id`,`code_hash`),
+  KEY `idx_mfa_recovery_unused` (`tenant_id`,`user_id`,`used_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `users`
 --
 
@@ -5713,7 +5763,7 @@ CREATE TABLE `users` (
   `last_country_code` char(2) DEFAULT NULL,
   `preferred_currency` char(3) DEFAULT NULL,
   `last_geo_at` datetime DEFAULT NULL,
-  `totp_secret` varchar(64) DEFAULT NULL,
+  `totp_secret` varchar(255) DEFAULT NULL,
   `totp_enabled` tinyint(1) NOT NULL DEFAULT 0,
   `created_at` datetime DEFAULT current_timestamp(),
   `login_count` int(11) DEFAULT 0,

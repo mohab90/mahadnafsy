@@ -35,7 +35,12 @@ const db = {
       return [[{ id: 'r-1', code: '3018', start_date: '2026-09-14', status: 'ACTIVE', reception_name: 'donia hassan', price_egp: 3400,
         postponed_weeks_json: '[]', held_weeks_json: '["2026-09-14","2026-09-21"]', course_title: 'العلاج المعرفي' }]];
     }
-    if (/FROM daqqi_attendance_events/.test(flat)) return [[{ round_id: 'r-1', came: 1 }]];
+    if (/FROM daqqi_attendance_events/.test(flat)) {
+      // The table's column is marked_at; created_at made the report a 500.
+      assert.match(flat, /marked_at >= \?/);
+      assert.doesNotMatch(flat, /created_at/);
+      return [[{ round_id: 'r-1', came: 1 }]];
+    }
     if (/FROM staff WHERE tenant_id = \? AND role = \?/.test(flat)) return [[{ id: 'st-nashwa', name: 'nashwa', phone: '01000000002' }]];
     if (/FROM daqqi_attendees da JOIN daqqi_rounds r/.test(flat)) {
       return [[

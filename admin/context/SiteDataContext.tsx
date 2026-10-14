@@ -24,6 +24,7 @@ import { useDaqqiRoundsState } from './site-data-hooks/useDaqqiRoundsState';
 import { useStaffState } from './site-data-hooks/useStaffState';
 import { useCrmCoreState } from './site-data-hooks/useCrmCoreState';
 import { useAdminDataRuntime } from './site-data-hooks/useAdminDataRuntime';
+import type { SiteList } from './site-data-hooks/siteLists';
 import { readVersionedCache, writeVersionedCache } from '../../shared/siteDataCache';
 import {
   defaultCommunityEvents,
@@ -71,6 +72,8 @@ export interface SiteDataShape {
   /** One branch's clients only ('DAQQI'), page by page — for the screens about a
    *  single branch, which otherwise read the 500 newest clients of every branch. */
   loadBranchSubscribers: (branch: string) => Promise<void>;
+  /** The lists that come when a screen asks (site-data-hooks/siteLists.ts); see useEnsureSiteLists. */
+  ensureSiteLists: (lists: readonly SiteList[]) => Promise<void>;
   staffMembers: StaffMember[];
   consultations: ConsultationItem[];
   lectures: CourseLectureItem[];
@@ -134,7 +137,7 @@ export interface SiteDataShape {
   updateChapter: (item: CourseChapterItem) => Promise<boolean>;
   deleteChapter: (id: string) => Promise<boolean>;
   getCourseChapters: (courseId: string) => CourseChapterItem[];
-  updateOrderStatus: (id: string, status: OrderItem['status']) => Promise<boolean>;
+  updateOrderStatus: (id: string, status: OrderItem['status'], reason?: string) => Promise<boolean>;
   deleteOrder: (id: string) => Promise<boolean>;
   addCommunityPost: (item: CommunityPostItem) => Promise<boolean>;
   updateCommunityPost: (item: CommunityPostItem) => Promise<boolean>;
@@ -479,7 +482,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.uid, isAdmin]);
 
-  const { loadFullCrmData, loadFullLeads, loadFullSubscribers, loadBranchSubscribers } = useAdminDataRuntime({
+  const { loadFullCrmData, loadFullLeads, loadFullSubscribers, loadBranchSubscribers, ensureSiteLists } = useAdminDataRuntime({
     authUser, isHydratingRef, dbContentLoadedRef, lastCRMWriteRef,
     subscribersRef, leadsRef, staffMembersRef, contentRef,
     setRemoteReady, setSubscribers, setLeads, setStaffMembers, setConsultations,
@@ -655,6 +658,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     loadFullLeads,
     loadFullSubscribers,
     loadBranchSubscribers,
+    ensureSiteLists,
     staffMembers,
     consultations,
     lectures,
@@ -810,7 +814,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     joinUsApplications, contactMessages, automationWorkflows, adminAiConfig, aiAgentConfig,
     messagingChannels, inboxConversations, fbLeadAdsConfig, courseQuizzes, quizAttempts,
     liveStreams, currency, authUser, isAdmin, currentStaff, staffSelf, staffSelfLoading, remoteReady,
-    staffScopedSubscribers, staffScopedLeads]);
+    staffScopedSubscribers, staffScopedLeads, ensureSiteLists]);
 
   // The same values, grouped by how often they change, so a screen that reads
   // only one group re-renders only when that group does. Provided around the
@@ -884,4 +888,10 @@ export const useEnsureLectures = () => {
   useEffect(() => { void ensureLectures(); }, [ensureLectures]);
 };
 
-
+/** The same for the on-demand lists (site-data-hooks/siteLists.ts): a page or popup drawn outside the
+ *  dashboard's tabs that reads one asks with this, or it reads an empty list as "none". */
+export const useEnsureSiteLists = (lists: readonly SiteList[], active = true) => {
+  const { ensureSiteLists } = useSiteData();
+  const key = lists.join(',');
+  useEffect(() => { if (active && key) void ensureSiteLists(key.split(',') as SiteList[]); }, [active, key, ensureSiteLists]);
+};

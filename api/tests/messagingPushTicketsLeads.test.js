@@ -102,7 +102,7 @@ test('every journey message names a kind the owner can switch', async () => {
 
 test('the drain passes each message\'s own kind, and every enqueuer gives one', () => {
   assert.match(read('api/lib/backgroundScheduler.js'),
-    /sendWhatsApp\(recipient, message \|\| '', \{ tenantId, channelId, staffId, category: category \|\| 'broadcast' \}\)/);
+    /sendQueuedWhatsApp\(recipient, \{\s*message, template, tenantId, channelId, staffId, category: category \|\| 'broadcast',\s*\}\)/);
   const kinds = {
     'api/lib/crmSla.js': 'staff_alert',
     'api/lib/leadInteractions.js': 'crm',
@@ -307,7 +307,8 @@ test('the owner names who brought a payment, the name rides on that payment only
   assert.match(attribution, /const value = pending;\s+pending = null;\s+return value;/);
   const api = read('admin/lib/mysqlapi.ts');
   assert.equal(api.split('const staffId = takePaymentAttribution();').length - 1, 2);
-  assert.match(api, /staffId && !payment\.staffId \? \{ \.\.\.payment, staffId \} : payment/);
+  // The name rides on the payment only when it carries none of its own (the pictures' links ride the same way).
+  assert.match(api, /\.\.\.\(staffId && !payment\.staffId \? \{ staffId \} : \{\}\)/);
   const modal = read('admin/components/PaymentModal.tsx');
   assert.match(modal, /if \(asksWhoBroughtIt\) attributeNextPayment\(broughtBy\);/);
   assert.match(modal, /attributeNextPayment\(null\);/);
@@ -371,9 +372,10 @@ test('schema.sql has what production has', () => {
 });
 
 test('a course page tells a search engine it is a course, with no price and nothing that closes the script', () => {
-  const seo = read('tools/generate-seo.mjs');
+  // Shared by the release's generator and the API's fresh pages.
+  const seo = read('api/lib/seoPages.js');
   assert.match(seo, /'@type': 'Course'/);
-  assert.match(seo, /provider: \{ '@type': 'EducationalOrganization'/);
+  assert.match(seo, /provider: \{\s*'@type': 'EducationalOrganization'/);
   assert.ok(seo.includes(".replace(/<\\//g, '<\\\\/')"));
   assert.doesNotMatch(seo.slice(seo.indexOf('function courseJsonLd'), seo.indexOf('function render')), /offers|price:/);
   assert.equal(seo.split('jsonLd: courseJsonLd(').length - 1, 2);

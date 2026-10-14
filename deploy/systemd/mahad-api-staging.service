@@ -7,6 +7,9 @@ Wants=mariadb.service
 Type=simple
 WorkingDirectory=/var/www/mahad-staging/api
 ExecStart=/usr/bin/node server.js
+# Storage is UTC and the Cairo day is computed in lib/dates.js; the API also
+# pins this itself, so the line is for tools started under this unit.
+Environment=TZ=UTC
 Restart=always
 RestartSec=3
 User=root

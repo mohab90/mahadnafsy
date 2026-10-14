@@ -40,8 +40,9 @@ test('nothing navigates to a key that no longer routes', () => {
   const profile = read('admin/pages/StaffProfile.tsx');
   assert.ok(!profile.includes('/dashboard/staff_management'),
     'the staff profile had three links into the removed key');
-  assert.equal((profile.match(/\/dashboard\/hr/g) || []).length, 3,
-    'all three now point at the key that survives');
+  // The three links, and the page's back button, whose fallback is the staff list (lib/useGoBack.ts).
+  assert.equal((profile.match(/\/dashboard\/hr/g) || []).length, 4,
+    'all of them point at the key that survives');
 });
 
 test('the two keys that share a component are kept, because they are not duplicates', () => {

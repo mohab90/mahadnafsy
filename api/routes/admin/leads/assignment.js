@@ -14,6 +14,7 @@ const {
   distributionMode,
   listDistributableReps,
   excludeArchiveSourcesSql,
+  uuidv4,
   queueLeadWhatsAppBatch,
   leadScope,
   requireAuth,
@@ -22,6 +23,9 @@ const {
   bulkOperationLimiter,
   logger,
 } = require('./_shared');
+
+const { isArchiveSource } = require('../../../lib/leadArchive');
+const { CONVERTED_LEAD_STATUSES } = require('../../../lib/leadStatuses');
 
 const router = Router();
 
@@ -212,6 +216,91 @@ router.post('/api/admin/leads/bulk-whatsapp', requireAuth, requireAdminOrStaff, 
     // already-established "queued now means sent" wording used for email/SMS campaigns.
     res.json({ ok: true, queued: results.length, sent: results.length, failed: 0, total: results.length });
   } catch (e) { logger.error('[bulk-whatsapp]', e.message); sendRouteError(res, e); }
+});
+
+// POST /api/admin/leads/move-to-local-new — put leads into «محلي جديد» (or «دولي جديد»,
+// by their branch): from «محلي قديم» or from the data table.
+// body: { leadIds?: string[], source?: string, dryRun?: boolean }
+//   leadIds   these leads, one by one or a hand-picked group
+//   source    a WHOLE BATCH: every open lead of the caller's whose source is exactly this
+//             («محلي قديم — شيت 3»)
+//
+// «محتاج من صفحة الجدول او صفحة محلي قديم اقدر اوّل داتا لمحلي جديد واقدر احولها عميل
+// عميل او دفعة كاملة» (13 Oct 2026). The inverse of move-to-archive. A lead's tab is
+// decided by its source and its owner (leadSourceGroups.ts / lib/leadPoolFilter.js), so
+// «محلي جديد» is: not an archive source, nobody holding it, not ended. Hence
+//   · an archive lead gets its earlier source back (crm_json.archivedFromSource), else
+//     «محلي جديد — منقول»;
+//   · a lead on the table is taken from its rep and collection officer;
+//   · a hidden, archived or not-interested-hidden one is shown and back as new.
+// Nothing else is touched, a converted lead never moves, and every move is on the
+// lead's timeline. Leads outside the caller's own scope are skipped.
+const LOCAL_NEW_SOURCE = 'محلي جديد — منقول';
+router.post('/api/admin/leads/move-to-local-new', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), bulkOperationLimiter, async (req, res) => {
+  try {
+    // Desk work, like handing leads out: a rep or a collection officer does not refill the pool.
+    const deskRole = String(req.staffRecord?.role || '').toLowerCase();
+    if (deskRole === 'sales' || deskRole === 'collection') return res.status(403).json({ error: 'غير مصرح' });
+    const ids = [...new Set((Array.isArray(req.body?.leadIds) ? req.body.leadIds : []).map(id => String(id || '').trim()).filter(Boolean))];
+    const batchSource = typeof req.body?.source === 'string' ? req.body.source.trim() : '';
+    if (!ids.length && !batchSource) return res.status(400).json({ error: 'اختار العملاء أو الدفعة اللي هتتنقل لمحلي جديد.', code: 'NOTHING_CHOSEN' });
+    if (ids.length > 20000) return res.status(400).json({ error: 'العدد كبير — انقل على دفعات (حتى 20,000).', code: 'TOO_MANY' });
+    const scope = leadScope(req, 'l');
+    if (scope.none) return res.status(403).json({ error: 'غير مصرح' });
+
+    const chosen = [];
+    if (ids.length) chosen.push(`l.id IN (${ids.map(() => '?').join(',')})`);
+    if (batchSource) chosen.push('TRIM(l.source) = ?');
+    const params = [req.tenantId, ...ids, ...(batchSource ? [batchSource] : []), ...scope.params, [...CONVERTED_LEAD_STATUSES]];
+    const [rows] = await pool.query(
+      `SELECT l.id, l.source, l.status, l.crm_json FROM leads l
+        WHERE l.tenant_id = ? AND (${chosen.join(' OR ')})${scope.sql}
+          AND COALESCE(l.status, '') NOT IN (?)
+          AND l.merged_into_lead_id IS NULL AND l.deleted_at IS NULL`,
+      params);
+    if (req.body?.dryRun) return res.json({ ok: true, dryRun: true, matched: rows.length });
+
+    // Where each one lands: the source it had before it was archived, else the default.
+    const bySource = new Map();
+    for (const row of rows) {
+      let earlier = '';
+      try { earlier = String(JSON.parse(row.crm_json || '{}').archivedFromSource || '').trim(); } catch { earlier = ''; }
+      const landing = earlier && !isArchiveSource(earlier) ? earlier : LOCAL_NEW_SOURCE;
+      if (!bySource.has(landing)) bySource.set(landing, []);
+      bySource.get(landing).push(row);
+    }
+    let moved = 0;
+    const stamp = new Date().toISOString();
+    for (const [landing, group] of bySource) {
+      for (let i = 0; i < group.length; i += 500) {
+        const part = group.slice(i, i + 500);
+        const [result] = await pool.query(
+          `UPDATE leads
+              SET crm_json = CASE WHEN JSON_VALID(crm_json)
+                    THEN JSON_SET(crm_json, '$.movedToLocalNewFrom', source, '$.movedToLocalNewAt', ?)
+                    ELSE JSON_OBJECT('movedToLocalNewFrom', source, 'movedToLocalNewAt', ?) END,
+                  source = ?, hidden = 0,
+                  status = CASE WHEN status IN (?) THEN 'new' ELSE status END,
+                  assigned_sales_id = NULL, assigned_sales_name = NULL, assigned_cs_id = NULL, assigned_cs_name = NULL,
+                  updated_at = NOW()
+            WHERE tenant_id = ? AND id IN (${part.map(() => '?').join(',')})
+              AND COALESCE(status, '') NOT IN (?)`,
+          [stamp, stamp, landing, BACK_IN_PLAY, req.tenantId, ...part.map(row => row.id), [...CONVERTED_LEAD_STATUSES]]);
+        moved += Number(result.affectedRows || 0);
+        const who = req.staffRecord?.name || req.user?.email || 'admin';
+        await pool.query(
+          `INSERT INTO lead_timeline (id, tenant_id, lead_id, event_type, description, meta_json, at)
+           VALUES ${part.map(() => '(?, ?, ?, ?, ?, ?, NOW())').join(',')}`,
+          part.flatMap(row => [
+            uuidv4(), req.tenantId, row.id, 'moved_to_local_new',
+            `اتنقل لمحلي جديد بواسطة ${who} (كان: ${row.source || '—'})`,
+            JSON.stringify({ from: row.source || null, to: landing, by: who }),
+          ])).catch(error => logger.warn('[move-to-local-new] timeline not written', { error: error.message }));
+      }
+    }
+    logger.info('[move-to-local-new]', { tenantId: req.tenantId, moved, requested: ids.length, batch: batchSource || null, actor: req.user?.email || null });
+    res.json({ ok: true, moved, skipped: Math.max(0, (ids.length || rows.length) - moved) });
+  } catch (e) { logger.error('[move-to-local-new]', e.message); sendRouteError(res, e); }
 });
 
 module.exports = router;

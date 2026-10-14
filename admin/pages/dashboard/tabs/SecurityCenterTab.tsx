@@ -1,5 +1,5 @@
 import { lazy } from 'react';
-import { Activity, Database, Shield, ShieldCheck } from 'lucide-react';
+import { Activity, Database, Shield, ShieldAlert, ShieldCheck } from 'lucide-react';
 import type { NotifyFn } from '../../../types';
 import { SectionedTab, type TabSection } from './SectionedTab';
 
@@ -21,6 +21,7 @@ const SecurityDashboardTab = lazy(() => import('./SecurityDashboardTab'));
 const IpWhitelistTab = lazy(() => import('./IpWhitelistTab'));
 const ServerMonitorTab = lazy(() => import('./ServerMonitorTab'));
 const PgMigrateTab = lazy(() => import('./PgMigrateTab'));
+const DeleteRightsPanel = lazy(() => import('./DeleteRightsPanel'));
 
 // Each gate is the one that actually rendered the screen before, which for the
 // last two was an inline check rather than the permission map: مراقبة السيرفر
@@ -32,6 +33,9 @@ export const SECURITY_SECTIONS: TabSection[] = [
   { id: 'ip', label: 'قائمة IP المسموحة', icon: Shield, permission: 'manage_security', Component: IpWhitelistTab },
   { id: 'server', label: 'مراقبة السيرفر', icon: Activity, permission: 'view_security', adminOnly: true, Component: ServerMonitorTab },
   { id: 'migrate', label: 'ترحيل قاعدة البيانات', icon: Database, permission: 'manage_staff', Component: PgMigrateTab },
+  // «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct
+  // 2026) — the owner's own list, so the owner's own section.
+  { id: 'delete_rights', label: 'صلاحية الحذف', icon: ShieldAlert, permission: 'manage_security', ownerOnly: true, Component: DeleteRightsPanel },
 ];
 
 /** The retired menu keys, and the section each one now opens. */

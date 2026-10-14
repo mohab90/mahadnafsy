@@ -22,6 +22,7 @@ const {
 const { normalizeOrderTypeForDb, normalizedOrderType } = require('../lib/orderFields');
 const { paymobReady, postPaymobJson, buildBillingData, paymobIntention, paymobCharge, paymobIntentionReady, paymobCapture, paymobSuccess } = require('../lib/paymobGateway');
 const { finalisePaymobOrder, syncLeadDealValue } = require('../lib/paymobFinalise');
+const { adContextFromRequest } = require('../lib/metaCapi');
 
 function gatewayUnavailable(res, reason = 'gateway_disabled') {
   return res.status(503).json({
@@ -283,7 +284,10 @@ router.post('/api/orders/reserve', publicLimiter, async (req, res) => {
       return res.status(409).json({ error: 'الطلب مدفوع بالفعل', code: 'ORDER_ALREADY_PAID' });
     }
 
-    const extra = JSON.stringify({ bundleCourseIds, subscriberEmail, isInstallment, installmentLimit });
+    const extra = JSON.stringify({
+      bundleCourseIds, subscriberEmail, isInstallment, installmentLimit,
+      adContext: adContextFromRequest(req),
+    });
     const orderBranchId = branchIdForBranch(req.body?.branch || 'ONLINE_EGYPT');
     const orderType = normalizeOrderTypeForDb(type);
     conn = await pool.getConnection();

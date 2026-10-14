@@ -36,13 +36,15 @@ export function sentLabel(scope: string, targets: Targets | null): string {
   return 'اتبعتت';
 }
 
-export function useStaffMessageTargets() {
+/** `enabled` false skips the request — the owner's management bell has no composer and no staff record. */
+export function useStaffMessageTargets(enabled = true) {
   const [targets, setTargets] = useState<Targets | null>(null);
   useEffect(() => {
+    if (!enabled) return undefined;
     let alive = true;
     void loadTargets().then(result => { if (alive) setTargets(result); });
     return () => { alive = false; };
-  }, []);
+  }, [enabled]);
   return targets;
 }
 

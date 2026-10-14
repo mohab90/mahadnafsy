@@ -14,6 +14,7 @@ import InterviewFilters, {
   InterviewFilterState, emptyInterviewFilters, interviewFiltersActive, isPastInterview,
 } from './interviews-sections/InterviewFilters';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
+import { KindBadge, YesNoBadge, kindOfApplicant } from './join-us/joinUsUi';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -69,8 +70,21 @@ interface JobApplicant {
   experience_years: string | null;
   experience_places: string | null;
   phone_interview_result: 'passed' | 'failed' | 'no_answer' | null;
+  phone_interview_at: string | null;
   interview_at: string | null;
+  /** From the website application, when there is one (12 Oct 2026). */
+  source_form: 'teaching' | 'staff' | null;
+  lectured_before: number | null;
+  sessions_before: number | null;
+  first_call_rating: number | null;
+  /** The latest call from either screen, with who made it. */
+  last_contact_note: string | null;
+  last_contact_by: string | null;
+  last_contact_at: string | null;
 }
+
+/** Held = graded: an interview with a grade has happened, whatever its date. */
+const gradedRow = (row: JobApplicant) => Boolean(row.interview_grade || row.second_interview_grade);
 
 interface JobOption { id: string; title: string; status: string; }
 
@@ -257,7 +271,7 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
   // Counted against the open tab, so "في المقابلات ٣" describes the three rows
   // actually on screen rather than three that may all be in the other list.
   const inTimeline = useMemo(
-    () => rows.filter(r => isPastInterview(r.interview_at) === (filters.timeline === 'past')),
+    () => rows.filter(r => isPastInterview(r.interview_at, { graded: gradedRow(r) }) === (filters.timeline === 'past')),
     [rows, filters.timeline]);
 
   const counts = useMemo(() => ({
@@ -269,7 +283,7 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
   // The tab tallies are counted over everything, never over the open tab —
   // otherwise the tab you are not looking at would always read 0.
   const timelineCounts = useMemo(() => {
-    const past = rows.filter(r => isPastInterview(r.interview_at)).length;
+    const past = rows.filter(r => isPastInterview(r.interview_at, { graded: gradedRow(r) })).length;
     return { upcoming: rows.length - past, past };
   }, [rows]);
 
@@ -383,21 +397,48 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
   const [contactFor, setContactFor] = useState<JobApplicant | null>(null);
   const [rejectFor, setRejectFor] = useState<JobApplicant | null>(null);
 
+  const [contactNote, setContactNote] = useState('');
+
+  // «ليه التواصل مش بيتجسل صح» (12 Oct 2026): «لا يرد» used to write the result
+  // alone — no time, no caller, nothing in the history — and the other two
+  // answers recorded no call at all. Every answer is logged as a call now (the
+  // server stamps the time and the caller), then acted on.
+  const logCall = async (row: JobApplicant, result: 'no_answer' | 'passed' | 'failed') => {
+    await mysqlAdmin.contactHrApplicant(row.id, { result, body: contactNote.trim() || undefined });
+  };
+
   const markNoAnswer = async (row: JobApplicant) => {
     setBusyId(row.id);
     try {
-      await mysqlAdmin.updateHrApplicant(row.id, { phone_interview_result: 'no_answer' });
-      notify('success', `${row.name} — مسجّل: لا يرد`);
+      await logCall(row, 'no_answer');
+      notify('success', `${row.name} — اتسجّل: مردّش`);
       setContactFor(null);
+      setContactNote('');
       await load();
     } catch (err) {
       notify('error', err instanceof Error ? err.message : 'تعذّر التسجيل');
     } finally { setBusyId(null); }
   };
 
+  const markTraining = async (row: JobApplicant) => {
+    setBusyId(row.id);
+    try {
+      await logCall(row, 'passed');
+      setContactFor(null);
+      setContactNote('');
+    } catch (err) {
+      notify('error', err instanceof Error ? err.message : 'تعذّر التسجيل');
+      setBusyId(null);
+      return;
+    }
+    setBusyId(null);
+    await advance(row, 'offer');
+  };
+
   const rejectWithReason = async (row: JobApplicant, reason: string) => {
     setBusyId(row.id);
     try {
+      if (contactFor?.id === row.id) await logCall(row, 'failed');
       await mysqlAdmin.updateHrApplicant(row.id, { stage: 'rejected', stage_notes: reason.trim() || undefined });
       notify('success', `تم رفض ${row.name}`);
       setRejectFor(null);
@@ -433,12 +474,15 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
       subtitle="اختار اللي حصل في المكالمة"
       size="sm"
     >
-            <p className="text-[11px] text-gray-500">اختار اللي حصل في المكالمة.</p>
+            <p className="text-[11px] text-gray-500">اختار اللي حصل في المكالمة — هتتسجّل باسمك ووقتها في سجل المتقدم.</p>
+            <textarea value={contactNote} onChange={e => setContactNote(e.target.value)} rows={2}
+              placeholder="ملاحظة عن المكالمة (اختياري)"
+              className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" />
             <button disabled={busyId === contactFor.id} onClick={() => markNoAnswer(contactFor)}
               className="w-full rounded-xl bg-gray-100 px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-200 disabled:opacity-40">
               لا يرد
             </button>
-            <button disabled={busyId === contactFor.id} onClick={() => { const r = contactFor; setContactFor(null); void advance(r, 'offer'); }}
+            <button disabled={busyId === contactFor.id} onClick={() => { void markTraining(contactFor); }}
               className="w-full rounded-xl bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-700 hover:bg-emerald-100 disabled:opacity-40">
               هينزل تدريب
             </button>
@@ -446,7 +490,7 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
               className="w-full rounded-xl bg-red-50 px-3 py-2 text-sm font-bold text-red-600 hover:bg-red-100 disabled:opacity-40">
               رفض
             </button>
-            <button onClick={() => setContactFor(null)}
+            <button onClick={() => { setContactFor(null); setContactNote(''); }}
               className="w-full rounded-xl px-3 py-2 text-xs font-bold text-gray-400 hover:bg-gray-50">إلغاء</button>
     </Modal>
       )}
@@ -574,6 +618,9 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                   <div className="min-w-0 flex-1">
                     <div className="mb-2 flex flex-wrap items-center gap-2">
+                      {/* محاضر or موظف, in the same colours as طلبات الانضمام —
+                          «لازم تفرق بيينهم بشكل كبير» (12 Oct 2026). */}
+                      <KindBadge kind={kindOfApplicant(row.applicant_type, row.source_form)} />
                       <span className={`rounded-lg px-2 py-0.5 text-xs font-bold ${row.stage === 'offer' ? 'bg-amber-100 text-amber-700' : 'bg-violet-100 text-violet-700'}`}>
                         {row.stage === 'offer' ? 'مقبول للتدريب' : 'مقابلة'}
                       </span>
@@ -640,6 +687,22 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
                     {row.experience_places && (
                       <p className="mt-1.5 text-[11px] text-gray-500" dir="rtl">
                         اشتغل قبل كده: {row.experience_places}
+                      </p>
+                    )}
+
+                    {(row.lectured_before !== null || row.sessions_before !== null) && (
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        <YesNoBadge label="اشتغل محاضر قبل كده" value={row.lectured_before} />
+                        <YesNoBadge label="جلسات نفسية مع عملاء" value={row.sessions_before} />
+                        {row.first_call_rating ? <span className="rounded-lg bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">أول مكالمة {row.first_call_rating}/5</span> : null}
+                      </div>
+                    )}
+                    {row.last_contact_at && (
+                      <p className="mt-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] text-sky-900">
+                        <span className="font-bold">آخر تواصل</span>
+                        <span className="mx-1 text-[10px]">{fmtDateTime(row.last_contact_at)}</span>
+                        {row.last_contact_by && <span className="text-sky-700">بواسطة {row.last_contact_by}</span>}
+                        {row.last_contact_note && <span className="block text-sky-800">{row.last_contact_note}</span>}
                       </p>
                     )}
 

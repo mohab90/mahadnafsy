@@ -4,6 +4,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const VIDEO_ROOT = path.resolve(process.env.VIDEO_UPLOAD_DIR || path.join(__dirname, '..', 'uploads', 'videos'));
+// Inside the release directory, uploaded lectures are copied into every
+// deploy's rollback copy and live and die with the release. VIDEO_UPLOAD_DIR
+// (e.g. /var/lib/mahad/videos) puts them outside it; the URLs do not change.
+const RELEASE_ROOT = path.resolve(__dirname, '..');
+const VIDEO_ROOT_IN_RELEASE = VIDEO_ROOT === RELEASE_ROOT || VIDEO_ROOT.startsWith(`${RELEASE_ROOT}${path.sep}`);
 const VIDEO_TYPES = Object.freeze({
   'video/mp4': { extension: 'mp4', contentType: 'video/mp4' },
   'video/quicktime': { extension: 'mov', contentType: 'video/quicktime' },
@@ -123,6 +128,7 @@ async function streamTenantMedia(req, res, url, tenantId) {
 
 module.exports = {
   VIDEO_ROOT,
+  VIDEO_ROOT_IN_RELEASE,
   VIDEO_TYPES,
   detectImageSignature,
   detectMediaSignature,

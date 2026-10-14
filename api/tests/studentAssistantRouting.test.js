@@ -166,9 +166,12 @@ test('the widget asks first, and the inbox holds only the site\'s problems', () 
   const support = read('api/routes/support.js');
   const inbox = support.slice(support.indexOf("router.get('/api/admin/cs/inbox'"), support.indexOf('// ── STATS + AGENT WORKLOAD'));
   // The administration's default is the support queue, plus what was escalated
-  // to it (8 Oct 2026); «كل الأقسام» is a choice on the page.
-  assert.match(inbox, /else if \(!department && unscoped\) where\.push\("\(t\.department IN \('support','management'\) OR t\.escalated_at IS NOT NULL\)"\);/);
-  assert.match(inbox, /converted_ticket_id IS NULL AND subject = 'technical'/);
+  // to it (8 Oct 2026), plus whatever a client wrote on the site (10 Oct 2026:
+  // «اي تواصل من العملاء من السايت بيسمع في الصفحه دي»); «كل الأقسام» is a choice.
+  assert.match(inbox, /else if \(!department && unscoped\) where\.push\(`\(t\.department IN \('support','management'\) OR t\.escalated_at IS NOT NULL OR t\.channel IN \(\$\{WEBSITE_CHANNELS/);
+  assert.match(support, /const WEBSITE_CHANNELS = \['web', 'web_contact', 'user_dashboard', 'ai_assistant'\];/);
+  // Every un-triaged contact message, not the «technical» ones only.
+  assert.match(inbox, /WHERE tenant_id = \? AND converted_ticket_id IS NULL\s+AND LOWER/);
   const screen = read('admin/pages/dashboard/tabs/CustomerInboxTab.tsx');
   assert.match(screen, /type InboxSource = 'ticket' \| 'contact';/);
   assert.doesNotMatch(screen, /\/admin\/finance\/refunds'/, 'refunds have their own page');

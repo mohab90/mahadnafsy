@@ -38,7 +38,7 @@ async function call(method, route, { params = {}, body = {}, query = {}, staff =
 }
 
 async function clean() {
-  for (const table of ['daqqi_attendees', 'daqqi_rounds', 'subscribers', 'courses', 'activity_logs', 'audit_events']) {
+  for (const table of ['daqqi_attendees', 'daqqi_rounds', 'payments', 'subscribers', 'courses', 'activity_logs', 'audit_events']) {
     await pool.query(`DELETE FROM ${table} WHERE tenant_id=?`, [TENANT]).catch(() => {});
   }
 }
@@ -54,6 +54,10 @@ before(async () => {
      VALUES ('co-tg-1', ?, 'كورس', '', '', '', '', 'GENERAL', 'RECORDED')`, [TENANT]);
   await pool.query(
     "INSERT INTO subscribers (id, tenant_id, name, phone, branch) VALUES ('sub-tg-1', ?, 'عميل التجمع', '1016000001', 'ONLINE_EGYPT')", [TENANT]);
+  // No client is seated without a payment for the round's course (lib/daqqiHousing.js, 9 Oct 2026).
+  await pool.query(
+    `INSERT INTO payments (id, tenant_id, subscriber_id, course_id, amount, currency, payment_type, status, date)
+     VALUES ('pay-tg-1', ?, 'sub-tg-1', 'co-tg-1', 500, 'EGP', 'COURSE', 'paid', NOW())`, [TENANT]);
   await pool.query(
     `INSERT INTO daqqi_rounds (id, tenant_id, code, course_id, instructor_name, reception_name, day_of_week, start_date, time_slot, status, branch)
      VALUES ('rd-dq-1', ?, '9001', 'co-tg-1', '', '', 'السبت', '2026-10-10', 'EVENING', 'NEW', 'DAQQI')`, [TENANT]);

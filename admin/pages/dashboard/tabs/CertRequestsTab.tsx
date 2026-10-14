@@ -5,13 +5,16 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { Course } from '../../../types';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 import { Modal } from '../../../../shared/ui/Modal';
-import { cairoDay } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoDay } from '../../../../shared/cairoDate';
+import { exportToExcel, type ExportColumn } from '../../../lib/exportUtils';
 import { useCertificateCatalog } from '../../../lib/certificateCatalog';
 import { branchLabels, normBranchKey } from '../../unified-client/constants';
 import ExtraRequestsPanel from './ExtraRequestsPanel';
 import InstituteCertificatesPanel from './InstituteCertificatesPanel';
 import { CertDataModal, missingCertData } from './CertDataModal';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { useCanDelete } from '../../../hooks/useCanDelete';
+import { SelectionExportBar, useRowPicker } from './SelectionExportBar';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -45,6 +48,8 @@ type CertRow = {
   nameSuggested: string | null;
   currency: string; collectionParty: string | null; note: string | null; adminNote: string | null;
   requestedAt: string | null; issuedAt: string | null;
+  /** Drive links of the pictures asked for with the certificate. */
+  personalPhotoUrl: string | null; idPhotoUrl: string | null;
 };
 
 type CertStatus = 'pending' | 'priced' | 'paid' | 'in_progress' | 'not_sent' | 'issued' | 'shipped' | 'at_branch' | 'delivered' | 'returned';
@@ -71,6 +76,50 @@ const STATUS_FILTERS: Array<{ key: string; label: string; match: CertStatus[] }>
   { key: 'unpaid', label: 'في انتظار تأكيد الدفعة', match: UNPAID },
   ...PAID_STAGES.map(stage => ({ key: stage, label: STATUS_META[stage].label, match: stage === 'paid' ? ['paid', 'not_sent'] as CertStatus[] : [stage] })),
 ];
+/**
+ * The download: each request as the whole row of its client, ending with the Drive
+ * links of the pictures asked for with it («صف العميل كامل بكل بياناته وفي الآخر لينك
+ * الصورة»).
+ */
+const CERT_EXPORT_COLUMNS: ExportColumn[] = [
+  { header: 'اسم العميل', key: 'client', width: 26 },
+  { header: 'كود العميل', key: 'clientCode', width: 12 },
+  { header: 'التليفون', key: 'phone', width: 16 },
+  { header: 'الفرع', key: 'branch', width: 14 },
+  { header: 'المسئول', key: 'owner', width: 16 },
+  { header: 'نوع الشهادة', key: 'type', width: 22 },
+  { header: 'الكورس', key: 'course', width: 24 },
+  { header: 'الاسم بالعربي على الشهادة', key: 'nameAr', width: 28 },
+  { header: 'الاسم بالإنجليزي', key: 'nameEn', width: 28 },
+  { header: 'الجنسية', key: 'nationality', width: 16 },
+  { header: 'الرقم القومي / الهوية', key: 'idNumber', width: 20 },
+  { header: 'بداية الكورس', key: 'start', width: 14 },
+  { header: 'نهاية الكورس', key: 'end', width: 14 },
+  { header: 'السعر', key: 'price', width: 10 },
+  { header: 'المدفوع', key: 'paid', width: 10 },
+  { header: 'المتبقي', key: 'remaining', width: 10 },
+  { header: 'العملة', key: 'currency', width: 8 },
+  { header: 'جهة التحصيل', key: 'party', width: 18 },
+  { header: 'الحالة', key: 'status', width: 22 },
+  { header: 'ملاحظات', key: 'adminNote', width: 30 },
+  { header: 'تاريخ الطلب', key: 'requestedAt', width: 14 },
+  { header: 'تاريخ الإصدار', key: 'issuedAt', width: 14 },
+  { header: 'رابط الصورة الشخصية', key: 'personalPhoto', width: 40 },
+  { header: 'رابط صورة الهوية', key: 'idPhoto', width: 40 },
+];
+function certificateExportRow(row: CertRow, typeLabel: string): Record<string, unknown> {
+  return {
+    client: row.subscriberName, clientCode: row.clientCode || '', phone: row.subscriberPhone, branch: branchName(row.branch),
+    owner: row.ownerName || '', type: typeLabel, course: row.courseTitle || '',
+    nameAr: row.nameAr || row.nameSuggested || '', nameEn: row.nameEn || '',
+    nationality: row.nationality ? NATIONALITIES[row.nationality] || row.nationality : '',
+    idNumber: row.idNumber || '', start: row.courseStartDate || row.suggestedStart || '', end: row.courseEndDate || row.suggestedEnd || '',
+    price: row.systemPrice ?? row.price ?? '', paid: row.paid, remaining: row.remaining ?? '', currency: row.currency,
+    party: row.collectionParty || '', status: (STATUS_META[row.status] || STATUS_META.pending).label,
+    adminNote: row.adminNote || '', requestedAt: row.requestedAt ? cairoDay(row.requestedAt) : '', issuedAt: row.issuedAt ? cairoDay(row.issuedAt) : '',
+    personalPhoto: row.personalPhotoUrl || '', idPhoto: row.idPhotoUrl || '',
+  };
+}
 const CERT_MANAGERS = new Set(['admin', 'manager', 'online_manager', 'daqqi_manager', 'tagamoa_manager', 'sales_collection_manager']);
 
 const NATIONALITIES: Record<string, string> = {
@@ -107,6 +156,9 @@ export default function CertRequestsTab({
   const { isAdmin, currentStaff } = useSiteData();
   // «عند المديرين اقدر امسح شهاده واقدر اعدل شهاده» — the server holds the same line.
   const canManage = isAdmin || CERT_MANAGERS.has(String(currentStaff?.role || '').toLowerCase());
+  // Editing a certificate stays the managers'; deleting one is the owner's
+  // list's: «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
+  const canDelete = useCanDelete();
   const [innerTab, setInnerTab] = useState<'requests' | 'institute' | 'extras' | 'pricing'>(pricing ? initialTab : 'requests');
   const certCatalog = useCertificateCatalog();
   const [rows, setRows] = useState<CertRow[]>([]);
@@ -186,6 +238,18 @@ export default function CertRequestsTab({
     return true;
   });
 
+  const downloadExcel = async () => {
+    const chosen = picker.chosen.length ? picker.chosen : filtered;
+    if (!chosen.length) { notify('error', 'مفيش شهادات للتنزيل.'); return; }
+    await exportToExcel(
+      chosen.map(row => certificateExportRow(row, certCatalog.label(row.type, row.customName))),
+      CERT_EXPORT_COLUMNS,
+      { filename: `certificates-${cairoDateOnly()}`, title: 'الشهادات' },
+    );
+    notify('success', `تم تنزيل ${chosen.length} شهادة في ملف Excel${picker.chosen.length ? ' (المحدد فقط)' : ' (كل المعروض)'}.`);
+  };
+
+  const picker = useRowPicker(filtered);
   const countOf = (match: CertStatus[]) => rows.filter(row => match.includes(row.status)).length;
   const hasFilters = certSearch || certTypeFilter !== 'all' || certStatusFilter !== 'all' || branchFilter || ownerFilter || partyFilter;
   // «صغر كل الفلاتر تكون علي صف واحد».
@@ -254,6 +318,8 @@ export default function CertRequestsTab({
           )}
         </div>
 
+        <SelectionExportBar picker={picker} shown={filtered.length} onDownload={downloadExcel} notify={notify} />
+
         {loading && !rows.length ? (
           <div className="py-16 text-center text-gray-400"><Loader2 size={20} className="mx-auto animate-spin" /></div>
         ) : filtered.length === 0 ? (
@@ -266,6 +332,9 @@ export default function CertRequestsTab({
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="bg-gray-50 border border-gray-200">
+                  <th className={`${th} w-8`}>
+                    <input type="checkbox" checked={picker.allSelected} onChange={picker.toggleAll} aria-label="تحديد كل الشهادات المعروضة" />
+                  </th>
                   <th className={th}>العميل</th>
                   <th className={th}>التليفون</th>
                   <th className={th}>الفرع</th>
@@ -289,7 +358,10 @@ export default function CertRequestsTab({
                   const meta = STATUS_META[row.status] || STATUS_META.pending;
                   const busy = busyId === row.id;
                   return (
-                    <tr key={row.id} className={`${index % 2 ? 'bg-gray-50/60' : 'bg-white'} hover:bg-amber-50/40 border border-gray-100`}>
+                    <tr key={row.id} className={`${picker.isSelected(row.id) ? 'bg-amber-50' : index % 2 ? 'bg-gray-50/60' : 'bg-white'} hover:bg-amber-50/40 border border-gray-100`}>
+                      <td className={td}>
+                        <input type="checkbox" checked={picker.isSelected(row.id)} onChange={() => picker.toggle(row.id)} aria-label={`تحديد شهادة ${row.subscriberName}`} />
+                      </td>
                       <td className={td}>
                         <div className="font-bold text-gray-900">{row.subscriberName || '—'}</div>
                         {row.clientCode && <div className="text-[11px] text-gray-400" dir="ltr">{row.clientCode}</div>}
@@ -388,7 +460,7 @@ export default function CertRequestsTab({
                             <button onClick={() => navigate(`/client/${row.clientCode || row.subscriberId}`)} title="ملف العميل"
                               className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg transition"><ExternalLink size={14} /></button>
                           )}
-                          {canManage && (
+                          {canManage && canDelete && (
                             <button onClick={() => void remove(row)} disabled={busy} title="حذف الشهادة (للمديرين)"
                               className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"><Trash2 size={14} /></button>
                           )}

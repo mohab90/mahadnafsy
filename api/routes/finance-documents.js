@@ -5,7 +5,7 @@ const express = require('express');
 const router = express.Router();
 const logger = require('../lib/logger').child({ module: 'finance-documents-route' });
 const { pool } = require('../lib/db');
-const { isValidDateOnly, dateOnlyInTimeZone } = require('../lib/dates');
+const { isValidDateOnly, dateOnlyInTimeZone, cairoDayBoundsUtc } = require('../lib/dates');
 const { resolveFinancialScope } = require('../lib/financialScope');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
@@ -32,8 +32,10 @@ router.get('/api/admin/finance/documents', ...view, async (req, res) => {
     if (type && !['invoice', 'credit_note'].includes(type)) {
       return res.status(400).json({ error: 'Invalid document type' });
     }
-    const params = [req.tenantId, range.from, range.to];
-    let where = 'fd.tenant_id=? AND fd.issued_at >= ? AND fd.issued_at < DATE_ADD(?, INTERVAL 1 DAY)';
+    // range is in Cairo days; issued_at holds an instant (or a picked day at
+    // UTC midnight, which falls inside the same Cairo day either way).
+    const params = [req.tenantId, ...cairoDayBoundsUtc(range.from, range.to)];
+    let where = 'fd.tenant_id=? AND fd.issued_at >= ? AND fd.issued_at < ?';
     if (scope.branchId) { where += ' AND fd.branch_id=?'; params.push(scope.branchId); }
     if (type) { where += ' AND fd.document_type=?'; params.push(type); }
     const [rows] = await pool.query(
@@ -128,14 +130,20 @@ router.get('/api/admin/finance/audit-package', ...view, bulkOperationLimiter, as
     const params = scope.branchId
       ? [req.tenantId, range.from, range.to, scope.branchId]
       : [req.tenantId, range.from, range.to];
+    // The documents and the audit log are held against UTC instants, the
+    // journal against its entry_date — a calendar day — so they bound apart.
+    const [fromUtc, toUtc] = cairoDayBoundsUtc(range.from, range.to);
+    const instantParams = scope.branchId
+      ? [req.tenantId, fromUtc, toUtc, scope.branchId]
+      : [req.tenantId, fromUtc, toUtc];
     const [documents, journals, audit] = await Promise.all([
       pool.query(
         `SELECT id,document_type,document_number,source_type,source_id,related_document_id,
                 amount,currency,issued_at,issued_by,branch_id
            FROM financial_documents
-          WHERE tenant_id=? AND issued_at >= ? AND issued_at < DATE_ADD(?, INTERVAL 1 DAY)${branchSql}
+          WHERE tenant_id=? AND issued_at >= ? AND issued_at < ?${branchSql}
           ORDER BY issued_at,id LIMIT 10000`,
-        params
+        instantParams
       ).then(([rows]) => rows),
       pool.query(
         `SELECT je.id,je.ref_type,je.ref_id,je.entry_date,je.description,je.total_debit,
@@ -153,9 +161,9 @@ router.get('/api/admin/finance/audit-package', ...view, bulkOperationLimiter, as
       pool.query(
         `SELECT id,entity_type,entity_id,action,old_json,new_json,amount,actor,created_at
            FROM financial_audit_log
-          WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)
+          WHERE tenant_id=? AND created_at >= ? AND created_at < ?
           ORDER BY created_at,id LIMIT 10000`,
-        params.slice(0, 3)
+        instantParams.slice(0, 3)
       ).then(([rows]) => rows),
     ]);
     const packageData = {

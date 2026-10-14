@@ -15,16 +15,18 @@ const { getTenantSetting } = require('./tenantSettings');
 
 const SECTION = 'daqqi_automation';
 const MISSED = 2;
+// Signed with the round's own branch — a Tagamoa client was told «فرع الدقي».
+const BRANCH_LABEL = { DAQQI: 'الدقي', TAGAMOA: 'التجمع' };
 
 async function dokkiAutomationSettings(tenantId) {
   const saved = await getTenantSetting(SECTION, { tenantId, fallback: {} }).catch(() => ({})) || {};
-  return { absenceFollowUp: saved.absenceFollowUp === true, weeklyReport: saved.weeklyReport !== false };
+  return { absenceFollowUp: saved.absenceFollowUp === true, weeklyReport: saved.weeklyReport !== false, dailyBrief: saved.dailyBrief !== false };
 }
 
 async function runAbsenceFollowUp(db, { tenantId, force = false }) {
   if (!force && !(await dokkiAutomationSettings(tenantId)).absenceFollowUp) return 0;
   const [rows] = await db.query(
-    `SELECT da.round_id, da.subscriber_id, da.attended_lectures, r.code, s.name, s.phone,
+    `SELECT da.round_id, da.subscriber_id, da.attended_lectures, r.code, r.branch, s.name, s.phone,
             COALESCE(NULLIF(c.title_ar, ''), c.title) AS course_title,
             (SELECT MAX(x.attended_lectures) FROM daqqi_attendees x WHERE x.tenant_id = da.tenant_id AND x.round_id = da.round_id) AS sessions
        FROM daqqi_attendees da
@@ -41,7 +43,7 @@ async function runAbsenceFollowUp(db, { tenantId, force = false }) {
       dedupeKey: `absence:${tenantId}:${row.round_id}:${row.subscriber_id}:${missed}`,
       payload: {
         category: 'reminder',
-        message: `أهلاً ${row.name || ''} 🌷\nوحشتنا في محاضرات «${row.course_title || 'الكورس'}» — فاتك ${missed} محاضرات.\nلو في أي ظرف أو حاجة نقدر نساعدك فيها، ردّ علينا هنا ونرتبلك تعويض.\n— معهد الدراسات النفسية، فرع الدقي`,
+        message: `أهلاً ${row.name || ''} 🌷\nوحشتنا في محاضرات «${row.course_title || 'الكورس'}» — فاتك ${missed} محاضرات.\nلو في أي ظرف أو حاجة نقدر نساعدك فيها، ردّ علينا هنا ونرتبلك تعويض.\n— معهد الدراسات النفسية، فرع ${BRANCH_LABEL[String(row.branch || '').toUpperCase()] || 'الدقي'}`,
       },
     }, db);
     queued += 1;

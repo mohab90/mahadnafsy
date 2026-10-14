@@ -659,7 +659,11 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   recurring_expenses: 'view_financial',
   hr:                 'view_hr',
   hr_analytics:       'view_hr',
-  lecturer_applications: 'view_join_us',
+  // A branch manager reaches their branch's applications and interviews — «اتاكد
+  // ان طلبات الانضمام للدقي والانترفيو للدقي بيظهر لنشوي مدير الدقي» (12 Oct
+  // 2026). branch_hr is theirs whatever their grid says (hasPermission), and the
+  // API narrows each list to the branch (api/lib/branchHr.js).
+  lecturer_applications: ['view_join_us', 'branch_hr'],
   customer_inbox:     'manage_inbox',
   // Each rep's own WhatsApp; the API scopes every chat to the person signed in.
   whatsapp_web:       'manage_inbox',
@@ -667,8 +671,8 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   team_inbox:         'manage_inbox',
   service_hub:        'manage_inbox',
   cx_team:            ['manage_inbox', 'view_perf_cx'],
-  join_us:            'view_join_us',
-  interviews:         'view_hr',
+  join_us:            ['view_join_us', 'branch_hr'],
+  interviews:         ['view_hr', 'branch_hr'],
   contacts:           'view_contacts',
   tickets:            'manage_inbox',
   faq_manager:        'manage_inbox',

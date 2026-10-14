@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { DiscountRule } from '../../../../types';
 import { useStaticData } from '../../../../context/siteDataSlices';
+import { useEnsureSiteLists } from '../../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 import { isExpiryActive, cairoDateOnly } from '../../../../../shared/cairoDate';
@@ -17,6 +18,8 @@ interface Props {
 
 export function DiscountsView({ notify, policyDrafts, setPolicyDrafts }: Props) {
   const { discounts, addDiscount, updateDiscount, deleteDiscount, courses, bundles, therapists, content, setContentValue } = useStaticData();
+  // Not loaded at sign-in (siteLists.ts): the rules this view lists.
+  useEnsureSiteLists(['discounts']);
   const [discountDraft, setDiscountDraft] = useState<Omit<DiscountRule, 'id' | 'createdAt'>>({ type: 'course', targetId: '', discountPercent: 10, label: '', promoCode: '', active: true, expiresAt: '' });
   const [editingDiscountId, setEditingDiscountId] = useState('');
   const [promoCodes, setPromoCodes] = useState<PromoCode[]>([]);

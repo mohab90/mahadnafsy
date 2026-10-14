@@ -89,13 +89,32 @@ function composeOwnerReport(report, parts = PART_KEYS) {
  * Build and send today's report (or the day given) to the saved numbers.
  * `force` sends even when the daily report is switched off — the «ابعت
  * دلوقتي» button, which still needs a number.
+ *
+ * `queue`: the scheduled report goes through the outbox like every other
+ * message the system sends on its own — one per number per day by its key,
+ * retried there, and visible in «رسايل العملاء» when it dies. The button
+ * sends directly: the owner pressed it and is waiting to hear whether it
+ * arrived, and only the provider's own answer says that.
  */
-async function sendOwnerDailyReport({ tenantId, date = cairoToday(), force = false }, db = pool) {
+async function sendOwnerDailyReport({ tenantId, date = cairoToday(), force = false, queue = false }, db = pool) {
   const settings = await ownerReportSettings(tenantId, db);
   if (!settings.phones.length) return { sent: 0, reason: 'no_numbers' };
   if (!settings.enabled && !force) return { sent: 0, reason: 'disabled' };
   const report = await buildManagementReport({ tenantId, from: date, to: date, today: cairoToday() }, db);
   const text = composeOwnerReport(report, settings.parts);
+  if (queue) {
+    const outbox = require('./outbox');
+    let queued = 0;
+    for (const phone of settings.phones) {
+      const id = await outbox.enqueue({
+        channel: 'whatsapp', recipient: toDialable(phone), tenantId, refType: 'owner_report', refId: date,
+        dedupeKey: `owner-report:${date}:${toDialable(phone)}`,
+        payload: { message: text, category: 'owner_report' },
+      }, db);
+      if (id) queued += 1;
+    }
+    return { sent: 0, queued };
+  }
   const { sendWhatsApp } = require('./whatsapp');
   const results = [];
   for (const phone of settings.phones) {

@@ -31,7 +31,7 @@ const { findLeadByContact } = require('./leadMatching');
 const { transitionLead } = require('./leadState');
 const { fetchCsvFollowRedirects, isHtmlResponse } = require('./sheets');
 const { setTenantSetting } = require('./tenantSettings');
-const { loadCollectionConfig, pickCollectionOfficer, subscriberMarket } = require('./collectionDistribution');
+const { isBranchClient, loadCollectionConfig, loadCollectionPicker, subscriberMarket } = require('./collectionDistribution');
 const { detectLayout, paidBefore, parseAmount, splitPhones, tabClientRows } = require('./sheetCells');
 const { cairoToday } = require('./dates');
 
@@ -146,6 +146,16 @@ async function importCollectionRows({ tenantId, staff = null, kind = 'old_local'
 
     const result = { created: 0, assigned: 0, skipped: 0, others: 0, failed: 0 };
     const seen = new Set();
+    // One picker for the whole sheet, turning by itself. Loaded per row, it read
+    // «who waited longest» from assigned_cs_at — whole seconds — and once every
+    // officer had a client in the same second the first name took the rest.
+    let collectionPicker = null;
+    const nextOfficer = async market => {
+      if (isBranchClient(branch)) return null;
+      collectionPicker ||= await loadCollectionPicker(conn, tenantId);
+      const officer = collectionPicker.next(market);
+      return officer ? { id: officer.id, name: officer.name } : null;
+    };
     for (const row of rows || []) {
       // The cell cleaned again here: a row from an older screen, or a linked
       // sheet, may still carry «01558282609-01050954780» or a dropped zero.
@@ -182,9 +192,9 @@ async function importCollectionRows({ tenantId, staff = null, kind = 'old_local'
         const courseId = cell(row._course) ? matchCourseId(cell(row._course), courses, bundles) : null;
         // The old-data screens hand a new client to collection by the
         // distribution rules, as a client added by hand is.
-        const officer = staff || (autoAssign ? await pickCollectionOfficer(conn, tenantId, {
-          market: subscriberMarket({ branch: branch || (kind === 'old_intl' ? 'ONLINE_ABROAD' : 'ONLINE_EGYPT') }), branch,
-        }) : null);
+        const officer = staff || (autoAssign
+          ? await nextOfficer(subscriberMarket({ branch: branch || (kind === 'old_intl' ? 'ONLINE_ABROAD' : 'ONLINE_EGYPT') }))
+          : null);
         const id = await createClient(conn, {
           tenantId, staff: officer, kind, branch, source, row, email, phone: phonesAll[0] || null, otherPhones: phonesAll.slice(1), courseId, actor,
         });

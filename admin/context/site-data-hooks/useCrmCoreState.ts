@@ -400,13 +400,13 @@ export function useCrmCoreState(
     return assigned;
   };
 
-  const updateOrderStatus = async (id: string, status: OrderItem['status']): Promise<boolean> => {
+  const updateOrderStatus = async (id: string, status: OrderItem['status'], reason?: string): Promise<boolean> => {
     lastCRMWriteRef.current = Date.now();
     try {
-      await mysqlAdmin.updateOrderStatus(id, status);
+      await mysqlAdmin.updateOrderStatus(id, status, reason);
       await reloadOrders();
-    } catch {
-      window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field: 'order', name: id } }));
+    } catch (error) {
+      window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field: 'order', name: id, reason: error instanceof Error ? error.message : '' } }));
       return false;
     }
     track('update', 'order', `${id} -> ${status}`);

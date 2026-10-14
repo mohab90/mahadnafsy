@@ -4,6 +4,7 @@ import {
   Activity,
   AlertTriangle,
   CheckCircle2,
+  Clock,
   Cpu,
   HardDrive,
   RefreshCw,
@@ -17,9 +18,26 @@ import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
+/** The institute's clock as the server reads it — see routes/server-monitor.js. */
+interface ServerClock {
+  date: string;
+  time: string;
+  offsetMinutes: number;
+  utc: string;
+  processTimeZone?: string;
+  processOffsetMinutes?: number;
+  dbSessionTimeZone?: string | null;
+  dbGlobalTimeZone?: string | null;
+  dbSystemTimeZone?: string | null;
+  dbSkewSeconds?: number | null;
+  dbServerIsUtc?: boolean | null;
+  ok?: boolean;
+}
+
 interface ServerStatusData {
   ok: boolean;
   time: string;
+  clock?: ServerClock;
   pm2: {
     status: string;
     uptime: number | null;
@@ -58,6 +76,13 @@ interface FinancialAuditData {
   recent?: { payments?: unknown[]; refunds?: unknown[]; journalEntries?: unknown[] };
   issues?: { duplicatePaymentJournals?: unknown[]; orphanPaymentJournals?: unknown[]; missingPaymentJournals?: unknown[] };
   rollbackPolicy?: { destructiveRollbackAllowed: boolean; recommendedAction: string };
+}
+
+/** 180 → «UTC+3»: Egypt is +3 in summer and +2 in winter, so it is read, never assumed. */
+function formatOffset(minutes: number): string {
+  const sign = minutes < 0 ? '-' : '+';
+  const abs = Math.abs(minutes);
+  return `UTC${sign}${Math.floor(abs / 60)}${abs % 60 ? `:${String(abs % 60).padStart(2, '0')}` : ''}`;
 }
 
 function formatUptime(ms: number | null): string {
@@ -233,6 +258,32 @@ export default function ServerMonitorTab({ notify }: { notify: NotifyFn }) {
               <CheckCircle2 size={11} /> Auto-Heal ({data.stats?.autoHeals ?? 0} مرة)
             </span>
           </div>
+        </div>
+      )}
+
+      {/* ── The institute's clock ── */}
+      {data?.clock && (
+        <div className={`border rounded-2xl p-4 shadow-sm ${data.clock.ok === false || data.clock.dbServerIsUtc === false ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'}`}>
+          <h3 className="font-bold text-gray-800 text-sm mb-2 flex items-center gap-2">
+            <Clock size={15} className="text-slate-600" /> ساعة السيستم (توقيت القاهرة)
+          </h3>
+          <p className="text-2xl font-extrabold text-slate-800" dir="ltr">
+            {data.clock.date} {data.clock.time} <span className="text-sm font-bold text-slate-500">{formatOffset(data.clock.offsetMinutes)}</span>
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            {data.clock.offsetMinutes === 180 ? 'التوقيت الصيفي شغال' : 'التوقيت الشتوي'} · السيرفر بيخزن كل الأوقات UTC وبيعرضها بتوقيت مصر
+          </p>
+          <p className="text-[11px] text-gray-400 mt-1" dir="ltr">
+            process: {data.clock.processTimeZone || '?'} ({formatOffset(data.clock.processOffsetMinutes ?? 0)}) · DB session: {data.clock.dbSessionTimeZone ?? '?'} · DB server: {data.clock.dbGlobalTimeZone ?? '?'}{data.clock.dbSystemTimeZone ? ` / ${data.clock.dbSystemTimeZone}` : ''}
+          </p>
+          {(data.clock.ok === false || data.clock.dbServerIsUtc === false) && (
+            <p className="text-xs font-bold text-amber-700 mt-2 flex items-center gap-1">
+              <AlertTriangle size={12} />
+              {data.clock.ok === false
+                ? 'ساعة السيرفر أو قاعدة البيانات مش على UTC — الأوقات ممكن تتسجل متزحلقة. كلّم المسؤول عن السيرفر.'
+                : 'قاعدة البيانات نفسها مضبوطة على توقيت غير UTC. السيستم بيصلّح ده في اتصالاته، بس أي حاجة اتكتبت من برّه ممكن تكون متزحلقة.'}
+            </p>
+          )}
         </div>
       )}
 

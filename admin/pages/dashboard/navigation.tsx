@@ -347,7 +347,10 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'enps_dashboard', label: 'رضا الموظفين (eNPS)', icon: Smile },
       { key: 'offboarding', label: 'إنهاء الخدمة', icon: UserMinus },
       { key: 'instructors', label: 'المحاضرون والخبراء', icon: GraduationCap },
-      { key: 'join_us', label: 'طلبات الانضمام', icon: GraduationCap },
+      // Two entries into the one screen, each opening its own list —
+      // «خلي صفحه طلبات الانضمام للمحاضر غير الموظفين» (12 Oct 2026).
+      { key: 'join_us', label: 'طلبات انضمام الموظفين', icon: Briefcase },
+      { key: 'lecturer_applications', label: 'طلبات انضمام المحاضرين', icon: GraduationCap },
       { key: 'interviews', label: 'الانترفيوهات', icon: CalendarCheck2 },
     ],
   },

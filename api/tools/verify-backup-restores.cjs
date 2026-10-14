@@ -13,7 +13,14 @@
 // any name not carrying that prefix, so a mistake in this file cannot become a
 // dropped production database.
 //
-//   node tools/verify-backup-restores.cjs
+//   npm run verify:backup-restores        (from the repo root, or from the API
+//                                          release dir on the server)
+//
+// It lives under api/ since 11 Oct 2026 so that it ships inside the API release:
+// the server has no checkout of the repository root, so a tool kept in the root
+// tools/ folder could be run by hand from a laptop but never by the server's
+// weekly cron (deploy/cron/mahad-restore-rehearsal), which is the run that
+// actually matters — a rehearsal nobody schedules is a rehearsal nobody does.
 require('dotenv').config({ path: '/var/www/mahad-api/.env' });
 const fs = require('node:fs');
 const path = require('node:path');

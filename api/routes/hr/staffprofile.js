@@ -20,7 +20,7 @@ const {
   hrError,
 } = require('./_shared');
 const { writeAuditEvent } = require('../../lib/auditTrail');
-const { dateOnlyInTimeZone, addDaysToDateOnly, sqlCairoToday, cairoToday } = require('../../lib/dates');
+const { dateOnlyInTimeZone, addDaysToDateOnly, sqlCairoToday, cairoToday, sqlCairoWall } = require('../../lib/dates');
 
 const MAX_BODY = 4000;
 
@@ -121,7 +121,7 @@ router.get('/api/admin/hr/staff/:id/profile', requireAuth, requireAdminOrStaff, 
         [req.tenantId, id, since]
       ),
       pool.query(
-        `SELECT DATE_FORMAT(created_at,'%Y-%m') ym, COUNT(*) leads,
+        `SELECT DATE_FORMAT(${sqlCairoWall('created_at')}, '%Y-%m') ym, COUNT(*) leads,
                 SUM(status IN ${CONVERTED_SQL}) converted
            FROM leads
           WHERE tenant_id=? AND assigned_sales_id=? AND deleted_at IS NULL AND created_at>=?
@@ -690,9 +690,11 @@ router.get('/api/staff/me/messages', requireAuth, async (req, res) => {
         ORDER BY created_at ASC LIMIT 300`,
       [req.tenantId, me.id]
     );
+    // Whatever the bell counts is read once opened — a message from another team
+    // (peer_broadcast) stayed unread and was announced again every 15 seconds.
     pool.query(
       `UPDATE staff_messages SET read_at=NOW()
-        WHERE tenant_id=? AND staff_id=? AND direction='to_staff' AND read_at IS NULL`,
+        WHERE tenant_id=? AND staff_id=? AND direction<>'from_staff' AND read_at IS NULL`,
       [req.tenantId, me.id]
     ).catch(() => {});
     res.json(rows);

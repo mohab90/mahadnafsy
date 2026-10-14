@@ -23,6 +23,13 @@ test.describe('Checkout surface', () => {
 });
 
 test.describe('Student payment journey', () => {
+  // The default account is the local UAT seed; staging and production have no
+  // such student, so against them this needs a real one — skipped, and said so,
+  // rather than failing the deploy gate on an account that was never there.
+  const localTarget = /127\.0\.0\.1|localhost/.test(process.env.BASE_URL || 'http://127.0.0.1:3000');
+  test.skip(!localTarget && !process.env.TEST_STUDENT_EMAIL,
+    'set TEST_STUDENT_EMAIL and TEST_STUDENT_PASSWORD for a student account on this deployment');
+
   test('student logs in and sees their dashboard', async ({ page }) => {
     // The sign-in field takes an email or a phone number, so it is type="text"
     // with no name — the old `input[type="email"]` selector found nothing and the

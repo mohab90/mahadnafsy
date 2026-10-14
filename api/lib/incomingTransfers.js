@@ -65,14 +65,62 @@ async function linkTransfer(conn, { tenantId, paymentId, link, actor = {} }) {
   let transferId = link.transferId ? String(link.transferId) : null;
   if (!transferId) transferId = await recordTransfer(conn, { tenantId, transfer: link, actor });
   const [[row]] = await conn.query(
-    'SELECT id, payment_id FROM incoming_transfers WHERE tenant_id=? AND id=? LIMIT 1 FOR UPDATE', [tenantId, transferId]);
+    'SELECT * FROM incoming_transfers WHERE tenant_id=? AND id=? LIMIT 1 FOR UPDATE', [tenantId, transferId]);
   if (!row) throw refused('التحويل مش موجود', 404);
   if (row.payment_id && String(row.payment_id) !== String(paymentId)) {
     throw refused('التحويل ده متربط بدفعة تانية بالفعل', 409, 'TRANSFER_ALREADY_LINKED');
   }
+  if (!row.payment_id) await splitOffRemainder(conn, { tenantId, transfer: row, paymentId, actor });
   await conn.query('UPDATE incoming_transfers SET payment_id=?, linked_at=NOW() WHERE tenant_id=? AND id=?', [paymentId, tenantId, transferId]);
   await conn.query('UPDATE payments SET linked_transfer_id=? WHERE tenant_id=? AND id=?', [transferId, tenantId, paymentId]);
   return transferId;
+}
+
+/**
+ * «يتبقي اتوماتك … ويبقي فيها علامة ان دا باقي مبلغ كبير» (10 Oct 2026). A
+ * transfer bigger than the payment it confirms keeps only the payment's amount;
+ * the rest becomes a free transfer of its own, marked with the transfer it came
+ * from (parent_transfer_id, always the first one) and that one's full amount.
+ * Its operation number is the first one's with «/باقي n», so the box's numbers
+ * stay unique. Different currencies are not split: the amounts do not compare.
+ */
+async function splitOffRemainder(conn, { tenantId, transfer, paymentId, actor = {} }) {
+  const [[payment]] = await conn.query(
+    'SELECT amount, currency FROM payments WHERE tenant_id=? AND id=? LIMIT 1', [tenantId, paymentId]);
+  const paid = Number(payment?.amount);
+  const whole = Number(transfer.amount);
+  if (!payment || !(paid > 0) || String(payment.currency || 'EGP').toUpperCase() !== String(transfer.currency || 'EGP').toUpperCase()) return null;
+  const rest = Math.round((whole - paid) * 100) / 100;
+  if (rest < 0.01) return null;
+  const rootId = transfer.parent_transfer_id || transfer.id;
+  const original = Number(transfer.original_amount) || whole;
+  const [[root]] = rootId === transfer.id ? [[transfer]] : await conn.query(
+    'SELECT reference FROM incoming_transfers WHERE tenant_id=? AND id=? LIMIT 1', [tenantId, rootId]);
+  // The highest «/باقي n» so far, not the count: a deleted remainder would
+  // otherwise hand its number to one that still exists.
+  const [siblings] = await conn.query(
+    'SELECT reference FROM incoming_transfers WHERE tenant_id=? AND parent_transfer_id=?', [tenantId, rootId]);
+  const n = siblings.reduce((max, sibling) => Math.max(max, Number(/\/باقي (\d+)$/.exec(String(sibling.reference || ''))?.[1]) || 0), 0);
+  const baseRef = String(root?.reference || transfer.reference || '').replace(/\/باقي \d+$/, '');
+  const id = uuidv4();
+  await conn.query(
+    `INSERT INTO incoming_transfers
+       (id, tenant_id, amount, currency, method, reference, sender_name, sender_phone, received_on, note,
+        recorded_by, recorded_by_name, parent_transfer_id, original_amount)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [id, tenantId, rest, transfer.currency, transfer.method, `${baseRef}/باقي ${n + 1}`.slice(0, 191),
+      transfer.sender_name, transfer.sender_phone, transfer.received_on,
+      `باقي ربط من تحويل ${original.toLocaleString('en-US')} ${transfer.currency}${baseRef ? ` — رقم العملية ${baseRef}` : ''}`,
+      actor.id || transfer.recorded_by || null, actor.name || transfer.recorded_by_name || null, rootId, original]);
+  await conn.query(
+    'UPDATE incoming_transfers SET amount=?, original_amount=COALESCE(original_amount, ?) WHERE tenant_id=? AND id=?',
+    [paid, original, tenantId, transfer.id]);
+  return { id, amount: rest };
+}
+
+/** A voided payment's transfer is free again, for the payment that replaces it. */
+async function releaseTransfer(conn, { tenantId, paymentId }) {
+  await conn.query('UPDATE incoming_transfers SET payment_id=NULL, linked_at=NULL WHERE tenant_id=? AND payment_id=?', [tenantId, paymentId]);
 }
 
 /**
@@ -141,4 +189,4 @@ async function deleteTransfer(conn, { tenantId, transferId }) {
   return before;
 }
 
-module.exports = { cleanTransfer, recordTransfer, linkTransfer, importTransfers, updateTransfer, deleteTransfer, isCashMethod, IMPORT_LIMIT };
+module.exports = { cleanTransfer, recordTransfer, linkTransfer, splitOffRemainder, releaseTransfer, importTransfers, updateTransfer, deleteTransfer, isCashMethod, IMPORT_LIMIT };

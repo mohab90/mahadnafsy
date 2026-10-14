@@ -9,7 +9,6 @@ const {
   pickCollectionOfficer,
   subscriberMarket,
   mailer,
-  sendWhatsApp,
   tryJson,
   sanitize,
   sendRouteError,
@@ -82,7 +81,7 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
        FROM leads WHERE id=? AND tenant_id=? AND hidden=0 LIMIT 1 FOR UPDATE`, [leadId, tenantId]);
     if (!lead) {
       await conn.rollback(); transactionStarted = false;
-      return res.status(404).json({ error: 'Lead not found' });
+      return res.status(404).json({ error: 'العميل المحتمل ده مش موجود أو اتنقل — حدّث الصفحة وابحث عنه تاني.', code: 'LEAD_NOT_FOUND' });
     }
     // Within the caller's own leads, whatever the role — this checked a sales
     // rep's ownership and nobody else's, so any other role holding manage_leads
@@ -115,7 +114,7 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
       );
       if (!course) {
         await conn.rollback(); transactionStarted = false;
-        return res.status(400).json({ error: 'Course does not belong to tenant' });
+        return res.status(400).json({ error: 'الكورس المختار مش موجود — حدّث الصفحة واختاره تاني.', code: 'COURSE_NOT_FOUND' });
       }
     }
 
@@ -312,11 +311,14 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
     transactionStarted = false;
 
     // 12. Post-commit: send WhatsApp welcome + enqueue registration sequence
-    const sendTenantWhatsApp = (phone, message) => sendWhatsApp(phone, message, { tenantId, category: 'crm' });
-    if (lead.phone) {
-      sendTenantWhatsApp(lead.phone.replace(/\D/g, ''),
-        `أهلاً ${lead.name} 🎉\nتم تفعيل اشتراكك في معهد الدراسات النفسية.\nيسعدنا انضمامك لأسرتنا. 💚`
-      ).catch(() => {});
+    // Queued, once per converted lead: retried by the outbox, not lost here.
+    const welcomeTo = require('../../../lib/phoneNumber').toDialable(lead.phone);
+    if (welcomeTo) {
+      require('../../../lib/outbox').enqueue({
+        channel: 'whatsapp', recipient: welcomeTo, tenantId, refType: 'lead', refId: lead.id,
+        dedupeKey: `lead-converted-wa:${lead.id}`,
+        payload: { message: `أهلاً ${lead.name} 🎉\nتم تفعيل اشتراكك في معهد الدراسات النفسية.\nيسعدنا انضمامك لأسرتنا. 💚`, category: 'crm' },
+      }).catch(error => logger.warn('[lead-convert] WhatsApp welcome not queued', { error: error.message }));
     }
     if (lead.email) {
       enqueueEmailSequence({ tenantId, triggerEvent: 'enrollment', recipientEmail: lead.email, recipientName: lead.name }).catch(error => logger.warn('[lead-convert] sequence enqueue failed', { error: error.message }));

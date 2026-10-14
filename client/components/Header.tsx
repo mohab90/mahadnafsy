@@ -3,12 +3,11 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Menu, X, Globe, LogIn, LogOut, User } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import GlobalSearch from './GlobalSearch';
-
-const FALLBACK_LOGO = 'https://h.top4top.io/p_3734xfq501.png';
+import { BRAND_LOGO, logoFallback } from '../lib/brand';
 
 const Header: React.FC = () => {
   const { currency, authUser, logout, content } = useSiteData();
-  const logoUrl = content['institute.logo'] || FALLBACK_LOGO;
+  const logoUrl = content['institute.logo'] || BRAND_LOGO;
   // Signing in should return you to the page you were reading, not the
   // home page. Checkout already passed this; nothing else did.
   const location = useLocation();
@@ -29,7 +28,7 @@ const Header: React.FC = () => {
         <div className="flex justify-between items-center">
           {/* Logo */}
           <Link to="/" className="flex items-center">
-            <img src={logoUrl} alt="معهد الدراسات النفسية" className="h-14 w-auto object-contain" />
+            <img src={logoUrl} onError={logoFallback} alt="معهد الدراسات النفسية" className="h-14 w-auto object-contain" />
           </Link>
 
           {/* Desktop Nav */}

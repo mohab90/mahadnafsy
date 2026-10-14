@@ -494,11 +494,23 @@ export function resolvePermissions(staff: {
  * Returns true if the staff member has the given permission.
  */
 export function hasPermission(
-  staff: { role: RoleKey; permissions?: PermissionKey[] } | null | undefined,
+  staff: { role: RoleKey; permissions?: PermissionKey[]; canDelete?: boolean } | null | undefined,
   permission: PermissionKey,
 ): boolean {
   if (!staff) return false;
+  // «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (the
+  // owner, 12 Oct 2026). Asked before the full-access roles on purpose: a
+  // manager off the list holds every permission except deleting. The server
+  // refuses the deletion either way (api/lib/deleteRights.js).
+  if (String(permission).startsWith('delete_') && staff.canDelete === false) return false;
   if (FULL_ACCESS_ROLES.includes(staff.role)) return true;
+  // A branch manager runs their branch's HR whatever their grid says — the API's
+  // hasPermission holds the same line (a grid saved before branch_hr existed has no box for it).
+  if (['daqqi_manager', 'tagamoa_manager'].includes(String(staff.role || '').toLowerCase())) {
+    if (permission === 'branch_hr') return true;
+    // Their branch's HR only — the institute-wide HR boxes do not apply to them.
+    if (permission === 'view_hr' || permission === 'manage_hr') return false;
+  }
   const perms = resolvePermissions(staff);
   if (perms === '*') return true;
   return perms.includes(permission);

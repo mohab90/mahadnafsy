@@ -17,7 +17,6 @@ type Props = {
   isSupport: boolean;
   isOnlineManager: boolean;
   isAdmin: boolean;
-  subscribers: SubscriberItem[];
   salesOwnSubscribers: SubscriberItem[];
   setSalesOwnSubscribers: React.Dispatch<React.SetStateAction<SubscriberItem[]>>;
   courses: Course[];

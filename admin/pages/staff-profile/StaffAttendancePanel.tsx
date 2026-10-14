@@ -5,7 +5,7 @@
 // the boundary.
 
 import { useEffect, useMemo, useState } from 'react';
-import { CAIRO_TIME_ZONE, cairoDay } from '../../../shared/cairoDate';
+import { CAIRO_TIME_ZONE, cairoDay, cairoMonthOnly } from '../../../shared/cairoDate';
 
 interface AttendanceLog {
   id: string; date: string; check_in: string | null; check_out: string | null;
@@ -25,9 +25,9 @@ const ATTENDANCE_STATUS_LABEL: Record<string, { label: string; cls: string }> = 
 export default function StaffAttendancePanel({ staffId }: { staffId?: string }) {
   const id = staffId;
   // ── Attendance (month picker + fetch from HR attendance log) ─────────────────
-  const now = new Date();
-  const [attMonth, setAttMonth] = useState(now.getMonth() + 1);
-  const [attYear, setAttYear] = useState(now.getFullYear());
+  const [thisYear, thisMonth] = cairoMonthOnly().split('-').map(Number);
+  const [attMonth, setAttMonth] = useState(thisMonth);
+  const [attYear, setAttYear] = useState(thisYear);
   const [attLogs, setAttLogs] = useState<AttendanceLog[]>([]);
   const [attLoading, setAttLoading] = useState(false);
   useEffect(() => {
@@ -61,7 +61,7 @@ export default function StaffAttendancePanel({ staffId }: { staffId?: string }) 
             </select>
             <select value={attYear} onChange={e => setAttYear(Number(e.target.value))}
               className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
-              {Array.from({ length: 3 }, (_, i) => now.getFullYear() - i).map(y => (
+              {Array.from({ length: 3 }, (_, i) => thisYear - i).map(y => (
                 <option key={y} value={y}>{y}</option>
               ))}
             </select>

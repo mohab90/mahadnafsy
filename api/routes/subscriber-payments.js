@@ -7,17 +7,19 @@ const router  = express.Router();
 const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
 const { queuePaymentReceipt } = require('../lib/paymentReceipt');
-const { sendWhatsApp } = require('../lib/whatsapp');
 const { sanitize } = require('../lib/helpers');
 const { createNotification } = require('../lib/notification');
 const { recordPaymentCompensation } = require('../lib/paymentCompensation');
 const { logPaymentAudit, postPaymentJournal } = require('../lib/finance');
+const { ensureFreshFx, fxStaleError } = require('../lib/fxRefresh');
 const { logLeadEvent } = require('../lib/crm');
 const { convertLeadOfPayment } = require('../lib/leadState');
 const { enqueueFinanceEvent } = require('../lib/financeOutbox');
 const { enqueueEmailSequence } = require('../lib/emailSequence');
+const { cleanPhotoLinks } = require('../lib/googleDrive');
+const { nextReceiptNo, receiptSeriesOf } = require('../lib/receiptNumbers');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
-const { safeDateOnly } = require('../lib/dates');
+const { safeDateOnly, cairoDayOf, cairoToday } = require('../lib/dates');
 const { branchIdForBranch, branchForId } = require('../lib/branches');
 const { assertWritable } = require('../lib/periodLock');
 const { agreedPrice, isItemPaymentType, setAgreedPrice } = require('../lib/agreedPrice');
@@ -28,7 +30,7 @@ const { financialRecordMatches, resolveFinancialScope } = require('../lib/financ
 const { grantCourseSelections } = require('../lib/entitlements');
 const { getNextClientCode } = require('../lib/mappers');
 const { leadScope } = require('../lib/leadAccess');
-const { completeForBranch, isRealPhone } = require('../lib/phoneNumber');
+const { completeForBranch, identitySpellings, isRealPhone } = require('../lib/phoneNumber');
 const { VALID_BRANCHES } = require('../constants/permissions');
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../lib/paymentEntitlementAccess');
 const { isCashMethod, linkTransfer } = require('../lib/incomingTransfers');
@@ -42,7 +44,7 @@ const PRICE_TIER_KEYS = new Set(PRICE_TIERS.map(tier => tier.key));
 // Tiers whose clients carry an Egyptian national ID; the others may carry a
 // passport or a residence number instead.
 const EGYPTIAN_ID_TIERS = new Set(['DAQQI', 'TAGAMOA', 'ONLINE_EGYPT']);
-const TIER_NATIONALITY = { ONLINE_EGYPT: 'EGYPTIAN', ONLINE_EGYPT_FOREIGN: 'NON_EGYPTIAN_EGYPT' };
+const TIER_NATIONALITY = { ONLINE_EGYPT: 'EGYPTIAN', ONLINE_EGYPT_FOREIGN: 'NON_EGYPTIAN_EGYPT', DAQQI_FOREIGN: 'NON_EGYPTIAN_EGYPT' };
 
 /**
  * Money recorded from a collection account is the manager's to confirm —
@@ -115,6 +117,7 @@ router.get('/api/admin/payment-boxes', requireAuth, requireAdminOrStaff, require
  */
 async function recordSubscriberPayment(req, res) {
   let conn;
+  let receiptNo = null;
   try {
     let { subscriber_id } = req.body;
     const { payment } = req.body;
@@ -122,19 +125,19 @@ async function recordSubscriberPayment(req, res) {
     const subscriberDraft = req.body.subscriber || {};
     const createFromDraftRequested = !subscriber_id && !leadId && subscriberDraft && typeof subscriberDraft === 'object';
     if ((!subscriber_id && !leadId && !createFromDraftRequested) || !payment) {
-      return res.status(400).json({ error: 'subscriber_id, lead_id, or subscriber draft and payment required' });
+      return res.status(400).json({ error: 'بيانات الحجز ناقصة — اختر العميل وأدخل الدفعة وحاول تاني.', code: 'BOOKING_DATA_MISSING' });
     }
     const paymentAmount = Number(payment.amount);
     if (!Number.isFinite(paymentAmount) || paymentAmount <= 0 || paymentAmount > 10000000) {
-      return res.status(400).json({ error: 'payment.amount must be a finite positive amount' });
+      return res.status(400).json({ error: 'المبلغ لازم يكون رقم أكبر من صفر (وأقل من 10,000,000).', code: 'AMOUNT_INVALID' });
     }
     const paymentCurrency = String(payment.currency || 'EGP').toUpperCase();
     if (!['EGP', 'SAR', 'USD'].includes(paymentCurrency)) {
-      return res.status(400).json({ error: 'Unsupported payment currency' });
+      return res.status(400).json({ error: 'العملة دي مش مدعومة — اختر جنيه أو ريال أو دولار.', code: 'CURRENCY_UNSUPPORTED' });
     }
     const requestedStatus = String(payment.status || 'paid').toLowerCase();
     if (!['paid', 'pending'].includes(requestedStatus)) {
-      return res.status(400).json({ error: 'New manual payments must be paid or pending' });
+      return res.status(400).json({ error: 'الدفعة اليدوية الجديدة لازم تكون «مدفوعة» أو «معلّقة» فقط.', code: 'STATUS_INVALID' });
     }
     // «تسكين» with the booking: a Dokki booking may name the round the client is seated
     // in. Checked before any money is recorded, so a stale round is told at once.
@@ -218,13 +221,13 @@ async function recordSubscriberPayment(req, res) {
       }
     } else {
       if (!req.isSuperAdmin && !hasPermission(req.staffRecord, 'manage_subscribers')) {
-        return res.status(403).json({ error: 'Insufficient permissions to create subscriber' });
+        return res.status(403).json({ error: 'مش من صلاحياتك تسجّل عميل جديد — اطلب من المسئول أو اختر عميل موجود.', code: 'CANNOT_CREATE_CLIENT' });
       }
       const safeName = sanitize(subscriberDraft.name || '', 300);
       const safeEmail = sanitize(subscriberDraft.email || '', 255).trim().toLowerCase();
       const typedPhone = sanitize(subscriberDraft.phone || '', 30).trim();
-      if (!safeName || !safePhone) {
-        return res.status(400).json({ error: 'Subscriber name and phone are required' });
+      if (!safeName || !typedPhone) {
+        return res.status(400).json({ error: 'اسم العميل ورقم التليفون مطلوبين لتسجيل عميل جديد.', code: 'NAME_PHONE_REQUIRED' });
       }
       // The branch, or the branch of whoever is recording it.
       //
@@ -246,15 +249,25 @@ async function recordSubscriberPayment(req, res) {
       }
       // A Saudi client's 05… gets its 966 before anything is compared or stored.
       const safePhone = String(completeForBranch(typedPhone, branch) || '').trim();
+      // The same number however it was written — «+966 50 123 4567», 0501234567,
+      // 966501234567 — not just the exact text typed now.
+      const spellings = [...new Set([safePhone, ...identitySpellings(safePhone)])].filter(Boolean);
       const [[existing]] = await pool.query(
-        `SELECT id FROM subscribers
+        `SELECT id, name, client_code, phone, email, COALESCE(assigned_cs_name, assigned_sales_name) AS owner_name
+           FROM subscribers
           WHERE tenant_id=? AND deleted_at IS NULL
-            AND (phone=? OR (?<>'' AND email = ?))
+            AND (phone IN (?) OR REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '') IN (?) OR (?<>'' AND email = ?))
           LIMIT 1`,
-        [req.tenantId, safePhone, safeEmail, safeEmail]
+        [req.tenantId, spellings, spellings, safeEmail, safeEmail]
       );
       if (existing) {
-        return res.status(409).json({ error: 'الرقم أو الإيميل ده عليه عميل تاني في قاعدة العملاء — سجّل الدفعة على العميل ده.', code: 'SUBSCRIBER_EXISTS', existingId: existing.id });
+        // Says who it is: «العميل مسجل من قبل» alone sent the desk searching.
+        const sameNumber = existing.phone === safePhone || spellings.includes(String(existing.phone || '').replace(/\D/g, ''));
+        const who = `«${existing.name || 'عميل'}»${existing.client_code ? ` (كود ${existing.client_code})` : ''}`;
+        return res.status(409).json({
+          error: `العميل مسجل من قبل بنفس ${sameNumber ? 'رقم التليفون' : 'الإيميل'}: ${who}${existing.owner_name ? ` — المسئول عنه ${existing.owner_name}` : ''}. سجّل الدفعة على ملفه بدل تسجيله من جديد (زر «بحث»).`,
+          code: 'SUBSCRIBER_EXISTS', existingId: existing.id, existingName: existing.name || null, existingCode: existing.client_code || null,
+        });
       }
       createFromDraft = true;
       subscriber_id = uuidv4();
@@ -275,7 +288,7 @@ async function recordSubscriberPayment(req, res) {
       };
     }
     if (!financialRecordMatches(scope, subRow)) {
-      return res.status(403).json({ error: 'Subscriber is outside your payment scope' });
+      return res.status(403).json({ error: 'العميل ده خارج نطاق صلاحياتك في الدفع — ده عميل مسئول عنه موظف أو فرع تاني.', code: 'SUBSCRIBER_OUT_OF_SCOPE' });
     }
     // «متخليش السيستم يقبل عميل دفع بدون رقم تليفون حقيقي»: money is recorded
     // only against a client who can be reached. 29 paying clients had no real
@@ -317,7 +330,7 @@ async function recordSubscriberPayment(req, res) {
       payment.certId || payment.cert_id || payment.certReqId || payment.certificate_request_id || ''
     ).trim();
     if (rawCertificateRequestId.length > 36) {
-      return res.status(400).json({ error: 'Invalid certificate request ID' });
+      return res.status(400).json({ error: 'طلب الشهادة المختار غير صالح — حدّث الصفحة واختاره تاني.', code: 'CERTIFICATE_REQUEST_INVALID' });
     }
     const suppliedCertificateRequestId = sanitize(rawCertificateRequestId, 36) || null;
     if (safeType === 'CERTIFICATE' && !suppliedCertificateRequestId && !certType) {
@@ -353,7 +366,7 @@ async function recordSubscriberPayment(req, res) {
         'SELECT name FROM staff WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
         [resolvedStaffId, paymentTenantId]
       );
-      if (!su) return res.status(400).json({ error: 'Staff does not belong to tenant' });
+      if (!su) return res.status(400).json({ error: 'الموظف المسجَّل عليه الدفعة مش تابع للمعهد ده.', code: 'STAFF_NOT_IN_TENANT' });
       resolvedStaffName = su.name || null;
     }
 
@@ -377,11 +390,25 @@ async function recordSubscriberPayment(req, res) {
     const resolvedSource = staffOwnedSource && !canApprovePayment
       ? staffOwnedSource
       : (VALID_SOURCES_SP.has(payment.source) ? payment.source : (staffOwnedSource || null));
-    const resolvedDate = safeDateOnly(payment.date || payment.at || new Date());
+    // The day the payment was taken, on Cairo's calendar. With nothing sent it
+    // defaulted to the UTC day, which until 02:00/03:00 Cairo is still
+    // yesterday; an instant ('…T22:30:00Z') was cut at its UTC date the same way.
+    const submittedDate = payment.date || payment.at;
+    const resolvedDate = submittedDate ? cairoDayOf(submittedDate) : cairoToday();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(resolvedDate)) {
-      return res.status(400).json({ error: 'Invalid payment date' });
+      return res.status(400).json({ error: 'تاريخ الدفعة غير صحيح.', code: 'PAYMENT_DATE_INVALID' });
     }
     const isPaid = storedStatus === 'paid';
+    // A riyal or dollar payment is posted in pounds at today's rate. A stale
+    // rate is fetched now; one that still cannot be had is said, not «500»
+    // (lib/fxRefresh.js — Saudi and international bookings, 10 Oct 2026).
+    if (isPaid && paymentCurrency !== 'EGP') {
+      const fx = await ensureFreshFx(paymentTenantId, paymentCurrency);
+      if (!fx.usable) {
+        const stale = fxStaleError(paymentCurrency, fx.snapshot);
+        return res.status(stale.statusCode).json({ error: stale.message, code: stale.code });
+      }
+    }
     // A settled payment has to say how the money arrived.
     //
     // 192 paid rows on production carry no method, and one of them is why a
@@ -400,7 +427,7 @@ async function recordSubscriberPayment(req, res) {
     }
     const courseId = payment.courseId || payment.course_id || null;
     const bundleId = payment.bundleId || payment.bundle_id || null;
-    if (courseId && bundleId) return res.status(400).json({ error: 'Payment cannot target a course and bundle together' });
+    if (courseId && bundleId) return res.status(400).json({ error: 'الدفعة تكون على كورس أو على باقة، مش الاتنين مع بعض.', code: 'COURSE_AND_BUNDLE' });
     // A COURSE payment has to name what was bought.
     //
     // 88 rows on production are payment_type COURSE with neither a course nor a
@@ -421,7 +448,7 @@ async function recordSubscriberPayment(req, res) {
     const suppliedExpected = reviewedByManager(req) ? null : (payment.courseExpected ?? payment.course_expected);
     const courseExpected = suppliedExpected == null ? null : Number(suppliedExpected);
     if (courseExpected != null && (!Number.isFinite(courseExpected) || courseExpected <= 0 || courseExpected > 10000000)) {
-      return res.status(400).json({ error: 'courseExpected must be a finite positive amount' });
+      return res.status(400).json({ error: 'سعر الكورس المتفق عليه لازم يكون رقم أكبر من صفر.', code: 'EXPECTED_INVALID' });
     }
     // What the customer owes for this course, when nobody said.
     //
@@ -456,7 +483,7 @@ async function recordSubscriberPayment(req, res) {
       && (req.isSuperAdmin || hasPermission(req.staffRecord, 'set_client_price'));
     let tierPrice = null;
     if (priceTier && paysForItem && (courseId || bundleId)) {
-      if (!PRICE_TIER_KEYS.has(priceTier)) return res.status(400).json({ error: 'Unknown price tier', code: 'PRICE_TIER_UNKNOWN' });
+      if (!PRICE_TIER_KEYS.has(priceTier)) return res.status(400).json({ error: 'فئة السعر المختارة غير معروفة — حدّث الصفحة.', code: 'PRICE_TIER_UNKNOWN' });
       tierPrice = await resolveTierPrice(pool, {
         tenantId: paymentTenantId,
         type: bundleId ? 'bundle' : 'course',
@@ -505,14 +532,14 @@ async function recordSubscriberPayment(req, res) {
         'SELECT id FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
         [courseId, paymentTenantId]
       );
-      if (!course) return res.status(400).json({ error: 'Course does not belong to tenant' });
+      if (!course) return res.status(400).json({ error: 'الكورس المختار مش موجود — حدّث الصفحة واختاره تاني.', code: 'COURSE_NOT_FOUND' });
     }
     if (bundleId) {
       const [[bundle]] = await pool.query(
         'SELECT id FROM bundles WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
         [bundleId, paymentTenantId]
       );
-      if (!bundle) return res.status(400).json({ error: 'Bundle does not belong to tenant' });
+      if (!bundle) return res.status(400).json({ error: 'الباقة المختارة مش موجودة — حدّث الصفحة واختارها تاني.', code: 'BUNDLE_NOT_FOUND' });
     }
 
     // A new customer from a collection account is a request, not a customer:
@@ -774,12 +801,15 @@ async function recordSubscriberPayment(req, res) {
       }, conn, paymentTenantId, { settle: isPaid });
     }
 
+    // The branch's own receipt number, taken in this transaction (lib/receiptNumbers.js): Dokki and
+    // Tagamoa run 1, 2, 3…, and a payment that rolls back gives its number back. Online has none.
+    receiptNo = await nextReceiptNo(conn, { tenantId: paymentTenantId, branch: paymentBranch });
     await conn.query(
       `INSERT INTO payments
          (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method,
           transaction_id, is_installment, course_expected, date, note, status, staff_id, staff_name,
-           from_account, source, item_title, cert_type, certificate_request_id, tenant_id, branch, branch_id)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+           from_account, source, item_title, cert_type, certificate_request_id, tenant_id, branch, branch_id, receipt_no)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         id, subscriber_id,
         courseId, bundleId,
@@ -803,8 +833,20 @@ async function recordSubscriberPayment(req, res) {
         paymentTenantId,
         paymentBranch,
         paymentBranchId,
+        receiptNo,
       ]
     );
+
+    // The pictures asked for with a certificate or a carnet (lib/googleDrive.js):
+    // only their Drive LINKS are kept, on the client's file, and a later request
+    // reuses them. A link that is not a Drive file's is dropped, not stored.
+    const photoLinks = cleanPhotoLinks(payment.photos);
+    if (photoLinks.personal || photoLinks.id) {
+      await conn.query(
+        `UPDATE subscribers SET personal_photo_url = COALESCE(?, personal_photo_url), id_photo_url = COALESCE(?, id_photo_url)
+          WHERE id = ? AND tenant_id = ?`,
+        [photoLinks.personal, photoLinks.id, subscriber_id, paymentTenantId]);
+    }
 
     // A price the desk entered is the client's price for the item from now on,
     // on every payment for it and on the client — so the online table, the
@@ -825,7 +867,9 @@ async function recordSubscriberPayment(req, res) {
     if (isPaid && paysForItem && (courseId || bundleId)) {
       let enrollAccessType = 'full';
       let enrollPaidRatio = null;
-      if (payment.isInstallment) {
+      // An instalment is measured against the price; so is a booking that paid less
+      // than it — a deposit opens the first payment's videos, not the whole course.
+      if (payment.isInstallment || Number(resolvedExpected) > 0) {
         const resolved = await resolvePaymentAccess({
           db: conn,
           tenantId: paymentTenantId,
@@ -836,6 +880,7 @@ async function recordSubscriberPayment(req, res) {
           currentAmount: paymentAmount,
           currency: paymentCurrency,
           expectedAmount: resolvedExpected,
+          lenient: !payment.isInstallment,
         });
         enrollAccessType = accessModeOf(resolved);
         enrollPaidRatio = paidRatioOf(resolved);
@@ -998,7 +1043,15 @@ async function recordSubscriberPayment(req, res) {
           .then(([[r]]) => r?.phone || null).catch(() => null);
         if (subPhone) {
           const waMsg = `✅ تم استلام دفعتك بنجاح!\nالمبلغ: ${payment.amount} ${payment.currency || 'EGP'}${courseLabel ? '\nالبرنامج: ' + courseLabel : ''}\nالتاريخ: ${paymentDate}\nشكراً لثقتك بمعهد الدراسات النفسية 💚`;
-          sendWhatsApp(subPhone.replace(/\D/g, ''), waMsg, { tenantId: paymentTenantId, category: 'payment' }).catch(() => {});
+          // Queued, one per payment: retried if the provider is down instead
+          // of lost in a fire-and-forget call.
+          const recipient = require('../lib/phoneNumber').toDialable(subPhone);
+          if (recipient) {
+            require('../lib/outbox').enqueue({
+              channel: 'whatsapp', recipient, tenantId: paymentTenantId, refType: 'payment', refId: id,
+              dedupeKey: `payment-received-wa:${id}`, payload: { message: waMsg, category: 'payment' },
+            }).catch(error => logger.warn('[payment] WhatsApp confirmation not queued', error.message));
+          }
         }
       }
     }
@@ -1025,6 +1078,8 @@ async function recordSubscriberPayment(req, res) {
       subscriberCreated: createFromLead || createFromDraft,
       status: storedStatus,
       approvalRequired: storedStatus === 'pending',
+      // What the printed receipt carries, for a branch that numbers them.
+      ...(receiptNo ? { receiptNo, receiptBranch: receiptSeriesOf(paymentBranch) } : {}),
       ...(housed ? { housed } : {}),
     });
   } catch (e) {

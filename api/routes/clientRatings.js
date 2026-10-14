@@ -9,6 +9,7 @@
 // file reads the ratings through «رحلة العميل» (lib/customerTimeline.js).
 
 const express = require('express');
+const { addDaysToDateOnly, cairoDayStartUtc } = require('../lib/dates');
 const router = express.Router();
 const logger = require('../lib/logger');
 const { pool } = require('../lib/db');
@@ -93,8 +94,9 @@ router.get('/api/admin/client-ratings', ...readers, async (req, res) => {
     if (scope.sql) { where.push(scope.sql.replace(/^ AND /, '')); params.push(...scope.params); }
     const from = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.from || '')) ? req.query.from : null;
     const to = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.to || '')) ? req.query.to : null;
-    if (from) { where.push('cr.created_at >= ?'); params.push(`${from} 00:00:00`); }
-    if (to) { where.push('cr.created_at <= ?'); params.push(`${to} 23:59:59`); }
+    // Cairo days: created_at holds UTC, and a rating at 01:00 Cairo is that day's.
+    if (from) { where.push('cr.created_at >= ?'); params.push(cairoDayStartUtc(from)); }
+    if (to) { where.push('cr.created_at < ?'); params.push(cairoDayStartUtc(addDaysToDateOnly(to, 1))); }
     const [rows] = await pool.query(
       `SELECT cr.id, cr.subscriber_id, cr.round_id, cr.branch, cr.course_id, cr.instructor_name,
               cr.instructor_score, cr.material_score, cr.delivery_score, cr.branch_staff_score,

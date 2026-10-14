@@ -10,6 +10,7 @@ import { Modal } from '../../../../../shared/ui/Modal';
 import { DAQQI_DAYS_OF_WEEK as daysOfWeek, DAQQI_TIME_SLOTS as timeSlotsList } from './daqqiScheduleConfig';
 import type { DaqqiDraftType } from './daqqiScheduleUtils';
 import { isEnrolledInCourse } from './daqqiScheduleUtils';
+import { isHousedForCourse } from './daqqiHousingNeeds';
 import { courseMoneyFor } from '../../../../lib/agreedPrice';
 import { cairoDay } from '../../../../../shared/cairoDate';
 import { usePhysicalBranch } from '../../../../lib/physicalBranch';
@@ -18,7 +19,7 @@ import { usePhysicalBranch } from '../../../../lib/physicalBranch';
 export function DaqqiNewRoundModal({
   daqqiDraft,
   enrolledLabels,
-  assignedSubIds,
+  daqqiRounds,
   bundles,
   daqqiShowAllClients,
   setDaqqiShowAllClients,
@@ -38,7 +39,7 @@ export function DaqqiNewRoundModal({
   handleSaveNewRound,
 }: {
   enrolledLabels: (courses: Course[], bundles: Bundle[], ids: string[]) => string[];
-  assignedSubIds: Set<string>;
+  daqqiRounds: DaqqiRound[];
   bundles: Bundle[];
   daqqiShowAllClients: boolean;
   setDaqqiShowAllClients: (value: boolean) => void;
@@ -141,10 +142,11 @@ export function DaqqiNewRoundModal({
                 </div>
                 {(() => {
                   const roundCourseId = daqqiPendingRound.courseId;
+                  // Not yet seated for THIS course: a client seated in another course's round still needs this one.
                   const candidatesFiltered = daqqiSubs.filter(s =>
-                    !assignedSubIds.has(s.id) && isEnrolledInCourse(bundles, s.enrolledCourseIds || [], roundCourseId)
+                    !isHousedForCourse(daqqiRounds, s.id, roundCourseId) && isEnrolledInCourse(bundles, s.enrolledCourseIds || [], roundCourseId)
                   );
-                  const candidatesAll = daqqiSubs.filter(s => !assignedSubIds.has(s.id));
+                  const candidatesAll = daqqiSubs.filter(s => !isHousedForCourse(daqqiRounds, s.id, roundCourseId));
                   const displayList = daqqiShowAllClients ? candidatesAll : candidatesFiltered;
                   return (
                     <>

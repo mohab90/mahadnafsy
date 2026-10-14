@@ -1,4 +1,5 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { arabicReason } from '../lib/apiErrorText';
 const LeadSalesNotificationsPanel = React.lazy(() => import('./dashboard/tabs/leads/LeadSalesNotificationsPanel').then(m => ({ default: m.LeadSalesNotificationsPanel })));
 import { adminAuthHeaders } from '../lib/adminAuthHeaders';
 
@@ -30,6 +31,8 @@ import { createClientPaymentDraft } from '../lib/clientActionDrafts';
 import { currencyForBranch } from '../lib/branchCurrency';
 import { CONTENT_HUB_TABS } from './dashboard/contentHubConfig';
 import { branchSubscriberTabs, contentHubRouteTabs, directContentTabs, fullCrmDataTabs, fullLeadTabs, fullSubscriberTabs, growthOpsTabs, saasOpsTabs } from './dashboard/dashboardTabGroups';
+import { listsForTab } from './dashboard/tabSiteLists';
+import type { SiteList } from '../context/site-data-hooks/siteLists';
 import { useStaffRoleRedirects } from './dashboard/hooks/useStaffRoleRedirects';
 import { CRM_CHANGED_EVENT } from '../lib/crmChanged';
 import { useCurrentStaff } from './dashboard/hooks/useCurrentStaff';
@@ -64,6 +67,7 @@ import { useNotificationsBell } from './dashboard/useNotificationsBell';
 import { useStaffOwnData } from './dashboard/useStaffOwnData';
 import { useDashboardDerived } from './dashboard/useDashboardDerived';
 import { useBranches } from '../hooks/useBranches';
+import { useCanDelete } from '../hooks/useCanDelete';
 import { PhysicalBranchProvider, branchOfRole, screenForTab, tabForScreen } from '../lib/physicalBranch';
 import { useVisibleInterval } from '../../shared/useVisibleInterval';
 
@@ -106,6 +110,7 @@ const Dashboard: React.FC = () => {
     loadFullLeads,
     loadFullSubscribers,
     loadBranchSubscribers,
+    ensureSiteLists,
     daqqiRounds: siteDaqqiRounds,
     bulkSetDaqqiRounds,
     staffMembers,
@@ -194,7 +199,7 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{ field?: string; name?: string; reason?: string; action?: string }>).detail;
-      const reason = String(detail?.reason || '').trim();
+      const reason = detail?.reason ? arabicReason(String(detail.reason), '') : '';
       // A delete the server refused is not a failed save. Prefixing it with
       // "فشل الحفظ" named the wrong action and read as a bug in the panel rather
       // than as the rule it is, so a refusal that already explains itself is
@@ -285,7 +290,11 @@ const Dashboard: React.FC = () => {
   } = useLeadFilters();
   const navigate = useNavigate();
   const { tab: urlTab, param: urlParam } = useParams<{ tab: string; param?: string }>();
-  const [activeTabState, setActiveTabState] = useState<TabKey>((urlTab as TabKey) || 'overview');
+  // Through tabForUrl, as the URL effect below does: /dashboard/my_clients is
+  // online_clients. Taken raw, the first render after the panel mounts on that
+  // address had no such screen — it drew nothing for a frame, and the lists a
+  // screen loads (tabSiteLists.ts) were all fetched for a key that names none.
+  const [activeTabState, setActiveTabState] = useState<TabKey>(urlTab ? tabForUrl(urlTab) : 'overview');
   const [pendingProofsCount, setPendingProofsCount] = useState(0);
   const [onlineMgrAcademyOpen, setOnlineMgrAcademyOpen] = useState(false);
   // -- Horizontal dropdown nav state --
@@ -375,7 +384,10 @@ const Dashboard: React.FC = () => {
     if (isTabKey(tab)) { setActiveTab(tab); return; }
     console.warn(`[dashboard] refused navigation to unknown tab: ${tab}`);
   }, [setActiveTab]);
-  const activeTab = activeScreen as TabKey;
+  // A branch manager's HR is their branch's: «الموارد البشرية» from any link or
+  // address opens it, not the institute's HR they are refused.
+  const branchHrOnly = ['daqqi_manager', 'tagamoa_manager'].includes(String(currentStaff?.role || '').toLowerCase());
+  const activeTab = (branchHrOnly && ['hr', 'hr_analytics'].includes(activeScreen) ? 'branch_hr' : activeScreen) as TabKey;
 
 
   const {
@@ -477,6 +489,23 @@ const Dashboard: React.FC = () => {
     setStaffScopedRounds: bulkSetDaqqiRounds,
     mergeContent,
   });
+  // The bell's count for an admin who also has a staff record: one COUNT from
+  // the server, in the session's own scope, where it used to be the 500 newest
+  // leads loaded on every screen to count their follow-ups. Refreshed on the
+  // same two minutes the lists were, and after a write anywhere (crmChanged).
+  const countsOwnFollowups = Boolean(currentStaff) && !usesStaffScopedData;
+  const [dueFollowups, setDueFollowups] = useState<number | null>(null);
+  const refreshDueFollowups = useCallback(() => {
+    mysqlAdmin.getDueFollowups().then(res => setDueFollowups(Number(res?.due) || 0)).catch(() => { /* keep the last count */ });
+  }, []);
+  useVisibleInterval(refreshDueFollowups, 2 * 60 * 1000, countsOwnFollowups);
+  useEffect(() => {
+    if (!countsOwnFollowups) return undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onChanged = () => { clearTimeout(timer); timer = setTimeout(refreshDueFollowups, 300); };
+    window.addEventListener(CRM_CHANGED_EVENT, onChanged);
+    return () => { clearTimeout(timer); window.removeEventListener(CRM_CHANGED_EVENT, onChanged); };
+  }, [countsOwnFollowups, refreshDueFollowups]);
   const {
     staffNotifBadge,
     onlineMgrFollowupBadge,
@@ -485,7 +514,7 @@ const Dashboard: React.FC = () => {
     currentStaff,
     isNonAdminStaff: usesStaffScopedData,
     isOnlineManager,
-    leads,
+    dueFollowups,
     salesOwnLeads,
     subscribers,
     salesOwnSubscribers,
@@ -578,14 +607,18 @@ const Dashboard: React.FC = () => {
 
   // -- Permission helpers -------------------------------------------------
   // Uses master resolvePermissions — single source of truth from admin/constants/permissions.ts
+  const canDeleteAnything = useCanDelete();
   const hasPermission = React.useCallback((perm: StaffPermission): boolean => {
+    // Before isAdmin: a manager off the owner's list holds everything but
+    // deleting — «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
+    if (String(perm).startsWith('delete_') && !canDeleteAnything) return false;
     if (isAdmin) return true;
     if (!currentStaff) return false;
     return masterHasPermission(
-      { role: currentStaff.role as RoleKey, permissions: currentStaff.permissions as PermissionKey[] | undefined },
+      { role: currentStaff.role as RoleKey, permissions: currentStaff.permissions as PermissionKey[] | undefined, canDelete: currentStaff.canDelete },
       perm as PermissionKey,
     );
-  }, [isAdmin, currentStaff]);
+  }, [isAdmin, currentStaff, canDeleteAnything]);
 
   // The inbox and «واتسابي» go by the job (constants/permissions.ts canUseChannel).
   const canOpenChannelTab = React.useCallback((tab: TabKey): boolean | undefined => {
@@ -656,12 +689,29 @@ const Dashboard: React.FC = () => {
       const branch = branchSubscriberTabs[activeTab] === 'DAQQI' ? physicalBranch : branchSubscriberTabs[activeTab];
       loadBranchSubscribers(branch).catch(() => { /* retried on the next visit */ });
     }
-  }, [activeTab, physicalBranch, loadFullCrmData, loadFullLeads, loadFullSubscribers, loadBranchSubscribers]);
+    // Then the lists the screen reads that no longer come with the panel —
+    // every one of them for a screen nobody has listed yet (tabSiteLists.ts).
+    // After the full loads above, so a list a full load is bringing waits for it.
+    void ensureSiteLists(listsForTab(activeTab));
+  }, [activeTab, physicalBranch, loadFullCrmData, loadFullLeads, loadFullSubscribers, loadBranchSubscribers, ensureSiteLists]);
+
+  // Drawn over every screen, so they ask for their own lists: the follow-up
+  // drawer lists the loaded leads' follow-ups (its bell counts on the server —
+  // dueFollowups above), «حجز / دفعة» matches the loaded people before the
+  // database search, the online manager's panels read the clients.
+  const overlayLists = useMemo<SiteList[]>(() => [
+    ...(salesNotifOpen ? ['leads' as const] : []),
+    ...(quickBookOpen ? ['leads' as const, 'subscribers' as const] : []),
+    ...(onlineMgrFollowupOpen || onlineMgrNewEventsOpen ? ['subscribers' as const] : []),
+  ], [salesNotifOpen, quickBookOpen, onlineMgrFollowupOpen, onlineMgrNewEventsOpen]);
+  useEffect(() => {
+    if (overlayLists.length) void ensureSiteLists(overlayLists);
+  }, [overlayLists, ensureSiteLists]);
 
   // The books' own revenue (the browser's sum only sees the newest 500 orders and
   // payments). Refreshed on a slow timer while the tab is in view; a failure
   // leaves the browser's figure on screen, as before.
-  const [booksRevenue, setBooksRevenue] = useState<{ totalEgp: number; monthEgp: number; todayEgp: number } | null>(null);
+  const [booksRevenue, setBooksRevenue] = useState<{ totalEgp: number; monthEgp: number; todayEgp: number; payments?: number } | null>(null);
   const refreshBooksRevenue = useCallback(() => {
     if (!authUser) return;
     mysqlAdmin.getOverviewRevenue().then(setBooksRevenue).catch(() => { /* keep the local figure */ });
@@ -778,8 +828,6 @@ const Dashboard: React.FC = () => {
           setActiveDropdownGroup={setActiveDropdownGroup}
           dropdownRect={dropdownRect}
           setDropdownRect={setDropdownRect}
-          leads={leads}
-          subscribers={subscribers}
           notifRef={notifRef}
           notifOpen={notifOpen}
           setNotifOpen={setNotifOpen}
@@ -958,7 +1006,6 @@ const Dashboard: React.FC = () => {
                   isSupport={isSupport}
                   isOnlineManager={isOnlineManager}
                   isAdmin={isAdmin}
-                  subscribers={subscribers}
                   salesOwnSubscribers={salesOwnSubscribers}
                   setSalesOwnSubscribers={setSalesOwnSubscribers}
                   courses={courses}

@@ -47,9 +47,14 @@ test('a retry backoff is still allowed to wait', () => {
 });
 
 test('the waves themselves are kept', () => {
-  // Five batches, each awaited, so the screen paints on the first one instead
-  // of waiting for all twenty-one calls to land.
-  const waves = source.match(/await Promise\.allSettled\(\[/g) || [];
-  assert.ok(waves.length >= 5,
+  // Staged, each awaited, so the screen paints on the first one. There were
+  // five waves of twenty-one calls; since 11 Oct 2026 the boot keeps the two the
+  // landing screen draws from and the rest load when a screen reads them
+  // (siteLists.ts, adminLoadsWhatTheScreenReads.test.js) — so two, not five.
+  const boot = source.slice(source.indexOf('void (async () => {'), source.indexOf('const fetchList = useCallback'));
+  const waves = boot.match(/await Promise\.allSettled\(\[/g) || [];
+  assert.ok(waves.length >= 2,
     'the boot is staged on purpose — the first wave is what the dashboard draws from');
+  assert.ok(boot.indexOf('setRemoteReady(true)') < boot.lastIndexOf('await Promise.allSettled(['),
+    'the dashboard is let in after the first wave, not after the last');
 });

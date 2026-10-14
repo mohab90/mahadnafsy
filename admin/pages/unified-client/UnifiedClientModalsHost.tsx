@@ -2,6 +2,7 @@ import React from 'react';
 
 const UnifiedClientAccessModal = React.lazy(() => import('./UnifiedClientAccessModal').then(module => ({ default: module.UnifiedClientAccessModal })));
 const UnifiedClientCertificateViewModal = React.lazy(() => import('./UnifiedClientCertificateViewModal').then(module => ({ default: module.UnifiedClientCertificateViewModal })));
+const ClientCertificateDataModal = React.lazy(() => import('./ClientCertificateDataModal').then(module => ({ default: module.ClientCertificateDataModal })));
 const UnifiedClientCommunicationModal = React.lazy(() => import('./UnifiedClientCommunicationModal').then(module => ({ default: module.UnifiedClientCommunicationModal })));
 const UnifiedClientConvertModal = React.lazy(() => import('./UnifiedClientConvertModal').then(module => ({ default: module.UnifiedClientConvertModal })));
 // The shared dialog, the same one the leads page opens. This used to be a
@@ -15,6 +16,7 @@ type ModalProps<T extends React.ElementType> = React.ComponentProps<T>;
 export interface UnifiedClientModalsHostProps {
   access?: ModalProps<typeof UnifiedClientAccessModal>;
   certificateView?: ModalProps<typeof UnifiedClientCertificateViewModal>;
+  certificateData?: ModalProps<typeof ClientCertificateDataModal>;
   communication?: ModalProps<typeof UnifiedClientCommunicationModal>;
   contact?: ModalProps<typeof UnifiedClientCommunicationModal>;
   convert?: ModalProps<typeof UnifiedClientConvertModal>;
@@ -31,6 +33,7 @@ export function UnifiedClientModalsHost(props: UnifiedClientModalsHostProps) {
       {props.communication && <UnifiedClientCommunicationModal {...props.communication} />}
       {props.leadPayment && <PaymentModal {...props.leadPayment} />}
       {props.certificateView && <UnifiedClientCertificateViewModal {...props.certificateView} />}
+      {props.certificateData && <ClientCertificateDataModal {...props.certificateData} />}
       {props.paymentDetail && <UnifiedClientPaymentDetailModal {...props.paymentDetail} />}
     </React.Suspense>
   );

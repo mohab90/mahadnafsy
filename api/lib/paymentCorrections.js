@@ -24,6 +24,7 @@
  * Managers only: the owner, ADMIN and MANAGER (canCorrectPayments).
  */
 const { pool } = require('./db');
+const { insertNotification } = require('./notification');
 const { postJournalEntry, logPaymentAudit, logFinancialAudit } = require('./finance');
 const { assertWritable } = require('./periodLock');
 const { dateOnlyInTimeZone } = require('./dates');
@@ -43,7 +44,7 @@ async function voidPayment(conn, { tenantId, paymentId, actor, reason }) {
   if (!why) throw refuse(400, 'اكتب سبب المسح', 'REASON_REQUIRED');
   const [[pay]] = await conn.query(
     `SELECT id, subscriber_id, course_id, bundle_id, amount, amount_egp, currency, payment_type, status,
-            branch, branch_id, date
+            branch, branch_id, date, receipt_no
        FROM payments WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`, [paymentId, tenantId]);
   if (!pay) throw refuse(404, 'الدفعة مش موجودة أو اتمسحت قبل كده', 'NOT_FOUND');
   const status = String(pay.status || '').toLowerCase();
@@ -87,6 +88,9 @@ async function voidPayment(conn, { tenantId, paymentId, actor, reason }) {
         note=CONCAT(COALESCE(note,''), IF(note IS NULL OR note='', '', ' | '), ?)
       WHERE id=? AND tenant_id=?`, [`اتمسحت بواسطة ${actor}: ${why}`.slice(0, 400), paymentId, tenantId]);
   await conn.query('UPDATE orders SET deleted_at=NOW() WHERE id=? AND tenant_id=? AND deleted_at IS NULL', [paymentId, tenantId]);
+  // The transfer it was confirmed against is free again — it stayed «linked» to
+  // a payment that no longer exists, and nothing else could use the money.
+  await require('./incomingTransfers').releaseTransfer(conn, { tenantId, paymentId });
 
   if (wasPaid) {
     // After the row is archived, so it no longer counts as the course's grant.
@@ -115,6 +119,13 @@ async function voidPayment(conn, { tenantId, paymentId, actor, reason }) {
     oldData: { amount: Number(pay.amount), currency: pay.currency, status: pay.status, date: pay.date }, newData: { reason: why },
     amount: Number(pay.amount_egp) || Number(pay.amount) || 0, actor, tenantId, db: conn,
   }).catch(() => {});
+  // A numbered receipt that is voided leaves a hole in the branch's sequence: the managers are
+  // told which one, in the same transaction (lib/receiptNumbers.js, GET /api/admin/receipts/gaps).
+  if (pay.receipt_no) {
+    await insertNotification(conn, 'payment', '⚠️ إيصال اتمسح من التسلسل',
+      `إيصال رقم ${pay.receipt_no} (${pay.branch === 'TAGAMOA' ? 'التجمع' : 'الدقي'}) — ${Number(pay.amount)} ${pay.currency || 'EGP'} اتمسح بواسطة ${actor}: ${why}`,
+      { receiptNo: pay.receipt_no, branch: pay.branch, paymentId, reason: why, tab: 'orders' }, tenantId, null).catch(() => {});
+  }
   return { voided: true, journalId, subscriberId: pay.subscriber_id };
 }
 

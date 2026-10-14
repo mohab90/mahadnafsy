@@ -58,11 +58,15 @@ test('payment audit is tenant scoped and the reference schema has no duplicate c
 
 test('production readiness rejects stale or fallback FX snapshots', () => {
   const readiness = read('api/tools/production-readiness.cjs');
+  // The refresh button, the daily job and a payment that finds the rate stale
+  // all store it through lib/fxRefresh.js (10 Oct 2026).
   const config = read('api/routes/config.js');
+  const refresh = read('api/lib/fxRefresh.js');
   assert.match(readiness, /snapshot\.source !== 'static-fallback'/);
   assert.match(readiness, /ageHours <= 72/);
-  assert.match(config, /'exchange\.source': 'open\.er-api\.com'/);
-  assert.match(config, /'exchange\.updated_at': updatedAt/);
+  assert.match(config, /storeTenantRates\(req\.tenantId, rates/);
+  assert.match(refresh, /source = 'open\.er-api\.com'/);
+  assert.match(refresh, /'exchange\.updated_at': updatedAt/);
 });
 
 test('lead payments use the transactional payment API before enrollment or conversion truth', () => {
@@ -182,7 +186,9 @@ test('expense UI waits for the server ledger and the API preserves category, bra
   const categories = read('api/lib/expenseCategories.js');
   assert.ok(route.includes("require('../lib/expenseCategories')"));
   assert.match(categories, /EXPENSE_CATEGORY_DB/);
-  assert.ok(financeRouteSource().includes('EXPENSE_CATEGORY_LABEL[s.category]'));
+  // The labels are the settings' list (الإعدادات › فئات المصاريف), read per tenant.
+  assert.ok(financeRouteSource().includes('expenseCategoryLabel(s.category, categories)'));
+  assert.match(route, /expenseCategory\(e2\.category, await loadExpenseCategories\(tenantId\)\)/);
   assert.match(route, /deleted_at IS NULL/);
   assert.match(route, /financialRecordMatches\(sourceScope, oldExp\)/);
   assert.match(route, /SET description=\?, amount=\?, currency=\?, category=\?, date=\?, receipt_url=\?, note=\?, branch_id=\?/);
@@ -193,8 +199,10 @@ test('expense UI waits for the server ledger and the API preserves category, bra
   assert.match(panel, /await updateExpense/);
   assert.match(panel, /await addExpense/);
   assert.match(panel, /await deleteExpense/);
-  assert.match(runtime, /if \(expensesRes\.status === 'fulfilled'\) setExpenses/);
-  assert.equal((runtime.match(/if \(expensesRes\.status === 'fulfilled'\) setExpenses/g) || []).length, 2);
+  // An emptied ledger has to read as empty: neither the load nor the poll may
+  // skip an empty answer. The load is on demand since 11 Oct 2026 (siteLists.ts).
+  assert.match(runtime, /if \(expensesRes\.status === 'fulfilled' && expensesRes\.value\) setExpenses/);
+  assert.match(runtime, /const rows = await \(permitted\('view_financial'\) \? mysqlAdmin\.listAllExpenses\(\) : refused\('view_financial'\)\);\n\s+setExpenses\(rows/);
 });
 
 test('payment review and certificate settlement preserve tenant and workflow identity', () => {

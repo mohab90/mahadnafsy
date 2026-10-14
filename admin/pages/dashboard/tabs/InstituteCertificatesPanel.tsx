@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, ExternalLink, FileText, RefreshCw, Search, Share2 } from 'lucide-react';
+import { Download, ExternalLink, FileText, Pencil, Printer, RefreshCw, Search, Share2 } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { waLink } from '../../../lib/whatsappLink';
-import { cairoDay } from '../../../../shared/cairoDate';
+import { cairoDateOnly, cairoDay } from '../../../../shared/cairoDate';
 import { branchLabels, normBranchKey } from '../../unified-client/constants';
+import { exportToExcel, type ExportColumn } from '../../../lib/exportUtils';
+import { SelectionExportBar, useRowPicker } from './SelectionExportBar';
+import { CertificateEditModal } from './CertificateEditModal';
+import { formPrintUrl, loadFormOffsets } from '../../../lib/certificateForm';
 
 // «تاب في صفحه الشهادات اسمه شهادات المعهد ودا بيكون اتوماتك ومجاني لاي عميل خلص
 // فلوسه او 90 % من فلوسه … نقدر نطلع منها نسخه pdf ونعملها شير للعميل او نعملها
@@ -17,6 +21,12 @@ type Row = {
   id: string; code: string; issuedAt: string; status: Stage; statusAt: string | null; statusBy: string | null;
   downloadedAt: string | null; downloads: number; subscriberId: string; subscriberName: string; nameEn: string | null;
   phone: string; clientCode: string | null; branch: string | null; courseTitle: string;
+  nationalId: string | null; personalPhotoUrl: string | null; idPhotoUrl: string | null;
+  /** The course's title in English, and what the English-only certificate still lacks. */
+  courseTitleEn: string | null; missing: string[];
+  /** What prints (the desk's change on this certificate, else the client's file and the course). */
+  printed: { name: string | null; course: string | null; duration: string; trainer: string };
+  edits: { nameEn: string | null; courseEn: string | null; duration: string | null; trainer: string | null };
 };
 
 const STAGES: Record<Stage, { label: string; cls: string }> = {
@@ -31,6 +41,30 @@ const STAGES: Record<Stage, { label: string; cls: string }> = {
 // they are not read as the client downloading it.
 const SITE = 'https://mahadnafsy.com';
 const certificateUrl = (code: string, staff = false) => `${SITE}/api/completions/${encodeURIComponent(code)}/certificate${staff ? '?staff=1' : ''}`;
+// The download: the client's whole row, ending with the Drive links of the pictures on file.
+const EXPORT_COLUMNS: ExportColumn[] = [
+  { header: 'اسم العميل', key: 'client', width: 26 },
+  { header: 'كود العميل', key: 'clientCode', width: 12 },
+  { header: 'التليفون', key: 'phone', width: 16 },
+  { header: 'الفرع', key: 'branch', width: 14 },
+  { header: 'الكورس', key: 'course', width: 26 },
+  { header: 'الاسم بالإنجليزي على الشهادة', key: 'nameEn', width: 30 },
+  { header: 'الرقم القومي / الهوية', key: 'nationalId', width: 20 },
+  { header: 'رقم الشهادة', key: 'code', width: 22 },
+  { header: 'تاريخ الإصدار', key: 'issuedAt', width: 14 },
+  { header: 'الحالة', key: 'status', width: 16 },
+  { header: 'حمّلها العميل من الموقع', key: 'downloaded', width: 22 },
+  { header: 'رابط الشهادة', key: 'link', width: 50 },
+  { header: 'رابط الصورة الشخصية', key: 'personalPhoto', width: 40 },
+  { header: 'رابط صورة الهوية', key: 'idPhoto', width: 40 },
+];
+const exportRow = (row: Row): Record<string, unknown> => ({
+  client: row.subscriberName, clientCode: row.clientCode || '', phone: row.phone,
+  branch: row.branch ? branchLabels[normBranchKey(row.branch)] || row.branch : '', course: row.courseTitle,
+  nameEn: row.nameEn || '', nationalId: row.nationalId || '', code: row.code, issuedAt: cairoDay(row.issuedAt),
+  status: STAGES[row.status]?.label || row.status, downloaded: row.downloadedAt ? cairoDay(row.downloadedAt) : 'لسه',
+  link: certificateUrl(row.code), personalPhoto: row.personalPhotoUrl || '', idPhoto: row.idPhotoUrl || '',
+});
 
 export default function InstituteCertificatesPanel({ notify }: { notify: NotifyFn }) {
   const navigate = useNavigate();
@@ -42,6 +76,7 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
   const [stage, setStage] = useState('');
   const [branch, setBranch] = useState('');
   const [downloaded, setDownloaded] = useState('');
+  const [editing, setEditing] = useState<Row | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -86,6 +121,13 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
         .some(value => String(value || '').toLowerCase().includes(q));
     });
   }, [rows, query, stage, branch, downloaded]);
+  const picker = useRowPicker(shown);
+  const downloadExcel = async () => {
+    const chosen = picker.chosen.length ? picker.chosen : shown;
+    if (!chosen.length) { notify('error', 'مفيش شهادات للتنزيل.'); return; }
+    await exportToExcel(chosen.map(exportRow), EXPORT_COLUMNS, { filename: `institute-certificates-${cairoDateOnly()}`, title: 'شهادات المعهد' });
+    notify('success', `تم تنزيل ${chosen.length} شهادة في ملف Excel${picker.chosen.length ? ' (المحدد فقط)' : ' (كل المعروض)'}.`);
+  };
   const counts = useMemo(() => {
     const out: Record<string, number> = { all: rows.length, downloaded: rows.filter(row => row.downloadedAt).length };
     rows.forEach(row => { out[row.status] = (out[row.status] || 0) + 1; });
@@ -124,6 +166,8 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
         </button>
       </div>
 
+      <SelectionExportBar picker={picker} shown={shown.length} onDownload={downloadExcel} notify={notify} />
+
       {shown.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-gray-200 bg-white py-14 text-center text-sm text-gray-400">
           {loading ? 'جاري التحميل…' : 'مفيش شهادات بالفلاتر دي.'}
@@ -133,6 +177,9 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
           <table className="w-full text-xs">
             <thead className="bg-gray-50 text-gray-500">
               <tr>
+                <th className="w-8 px-3 py-2 text-right">
+                  <input type="checkbox" checked={picker.allSelected} onChange={picker.toggleAll} aria-label="تحديد كل الشهادات المعروضة" />
+                </th>
                 {['العميل', 'الكورس', 'الاسم على الشهادة', 'رقم الشهادة', 'اتصدرت', 'الحالة', 'من الموقع', 'إجراءات'].map(title => (
                   <th key={title} className="px-3 py-2 text-right font-bold">{title}</th>
                 ))}
@@ -142,7 +189,10 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
               {shown.slice(0, 1000).map(row => {
                 const share = waLink(row.phone, `مبروك يا ${row.subscriberName} 🎓\nشهادة «${row.courseTitle}» من معهد الدراسات النفسية جاهزة:\n${certificateUrl(row.code)}`);
                 return (
-                  <tr key={row.id} className="border-t border-gray-100 align-top hover:bg-amber-50/30">
+                  <tr key={row.id} className={`border-t border-gray-100 align-top hover:bg-amber-50/30 ${picker.isSelected(row.id) ? 'bg-amber-50' : ''}`}>
+                    <td className="px-3 py-2">
+                      <input type="checkbox" checked={picker.isSelected(row.id)} onChange={() => picker.toggle(row.id)} aria-label={`تحديد شهادة ${row.subscriberName}`} />
+                    </td>
                     <td className="px-3 py-2">
                       <div className="whitespace-nowrap font-bold text-gray-800">{row.subscriberName}</div>
                       {row.phone && <div className="text-right text-[11px] text-gray-500" dir="ltr">{row.phone}</div>}
@@ -150,7 +200,15 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
                     </td>
                     <td className="px-3 py-2 font-bold text-indigo-700">{row.courseTitle}</td>
                     <td className="px-3 py-2">
-                      {row.nameEn ? <div dir="ltr" className="text-right">{row.nameEn}</div> : <div className="text-[11px] text-red-600">مفيش اسم بالإنجليزي — هيطلع بالعربي</div>}
+                      {row.printed?.name ? <div dir="ltr" className="text-right font-bold">{row.printed.name}</div> : null}
+                      {row.courseTitleEn && <div dir="ltr" className="text-right text-[11px] text-gray-500">{row.courseTitleEn}{row.printed?.duration ? ` · ${row.printed.duration}` : ''}</div>}
+                      {(row.edits?.nameEn || row.edits?.courseEn || row.edits?.duration || row.edits?.trainer) && (
+                        <div className="text-[10px] font-bold text-amber-700">اتعدّلت يدوياً</div>
+                      )}
+                      {/* English only: a certificate lacking either is not printed, and says what to add. */}
+                      {row.missing?.length > 0 && (
+                        <div className="text-[11px] font-bold text-red-600">ناقص: {row.missing.join('، ')} — الشهادة مش هتتطبع لحد ما يتضاف (من ملف العميل ← بيانات الشهادة، أو من زر «تعديل»)</div>
+                      )}
                     </td>
                     <td className="px-3 py-2 font-mono text-[11px] text-gray-500" dir="ltr">{row.code}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-gray-500">{cairoDay(row.issuedAt)}</td>
@@ -168,9 +226,20 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex flex-nowrap items-center gap-1">
-                        <a href={certificateUrl(row.code, true)} target="_blank" rel="noreferrer" title="الشهادة — طباعة أو حفظ PDF"
-                          className={`${btn} bg-slate-800 text-white hover:bg-slate-900`}><FileText size={10} /> PDF / طباعة</a>
-                        {share && (
+                        {row.missing?.length ? (
+                          <span title={`ناقص: ${row.missing.join('، ')} — اضغط «تعديل» وكمّله`} className={`${btn} cursor-not-allowed bg-gray-200 text-gray-400`}><FileText size={10} /> PDF / طباعة</span>
+                        ) : (
+                          <a href={certificateUrl(row.code, true)} target="_blank" rel="noreferrer" title="الشهادة — طباعة أو حفظ PDF"
+                            className={`${btn} bg-slate-800 text-white hover:bg-slate-900`}><FileText size={10} /> PDF / طباعة</a>
+                        )}
+                        {!row.missing?.length && (
+                          <a href={formPrintUrl(SITE, row.code, loadFormOffsets(), true)} target="_blank" rel="noreferrer"
+                            title="طباعة اسم العميل والكورس والمدة فقط على النموذج الجاهز"
+                            className={`${btn} bg-indigo-600 text-white hover:bg-indigo-700`}><Printer size={10} /> طباعة على النموذج</a>
+                        )}
+                        <button onClick={() => setEditing(row)} title="تعديل الاسم أو الكورس أو المدة أو المحاضر"
+                          className={`${btn} border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100`}><Pencil size={10} /> تعديل</button>
+                        {share && !row.missing?.length && (
                           <a href={share} target="_blank" rel="noreferrer" title="ابعتها للعميل على الواتساب"
                             className={`${btn} bg-emerald-600 text-white hover:bg-emerald-700`}><Share2 size={10} /> شير</a>
                         )}
@@ -185,6 +254,10 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
             </tbody>
           </table>
         </div>
+      )}
+      {editing && (
+        <CertificateEditModal row={{ ...editing, courseTitle: editing.courseTitle }} notify={notify} onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); void load(); }} />
       )}
     </div>
   );

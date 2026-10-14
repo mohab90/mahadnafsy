@@ -2,6 +2,12 @@
 
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
+// The process clock is UTC, whatever the host is set to. Storage is UTC and the
+// Cairo day and hour are asked for explicitly (lib/dates.js); a few readers use
+// Date's local getters on values the pool returns (lib/helpers.js ymd(), the
+// booking hour in routes/core/staffacct.js), and on a VPS set to Africa/Cairo
+// those moved by the host's offset. Assigned before anything builds a Date.
+process.env.TZ = 'UTC';
 
 const logger = require('./lib/logger');
 const { pool } = require('./lib/db');
@@ -56,6 +62,10 @@ migrationReady.then(migrationResult => {
     logger.info(`Ready: http://localhost:${PORT}/api/health`);
 
     loadBlacklistFromDB().catch(() => {});
+    require('./lib/db').clockContract().then(clock => {
+      if (clock.ok && clock.dbServerIsUtc !== false) logger.info('[clock] process and database sessions run in UTC', clock);
+      else logger.warn('[clock] a clock is not UTC — see «مراقبة السيرفر» → ساعة السيستم', clock);
+    }).catch(() => {});
     require('./lib/rbacOverrides').startRbacRefresh();
     require('./lib/messageTemplates').startTemplatesRefresh();
     startBackgroundScheduler({ pool, logger, port: PORT });

@@ -65,18 +65,96 @@ jobs:
         run: npm run syntax:api
       - name: ESLint (api — no-undef)
         run: npm run lint:api
+      # Unit tests run without the database settings, as they do locally: with
+      # DB_* in the environment some suites open a real pool that keeps the
+      # process alive, and on 10 Oct 2026 this step sat for six hours until
+      # GitHub cancelled the run — so no commit could ever show green CI, which
+      # the release gate (deploy/release-all.sh) now requires.
       - name: Unit tests (finance / RBAC / templates / helpers / tenant / pagination)
-        run: npm --prefix api run test:unit
+        timeout-minutes: 20
+        shell: bash
+        run: set -o pipefail; env -u DB_HOST -u DB_USER -u DB_PASSWORD -u DB_NAME -u DB_PORT npm --prefix api run test:unit 2>&1 | tee "$RUNNER_TEMP/unit.tap"
       - name: Integration tests (real MySQL — schema/ledger invariants)
-        run: npm --prefix api run test:integration
+        timeout-minutes: 30
+        shell: bash
+        run: set -o pipefail; npm --prefix api run test:integration 2>&1 | tee "$RUNNER_TEMP/integration.tap"
+      # Thousands of TAP lines bury the one that failed; this prints just the
+      # failing tests and their errors at the end of a red run.
+      - name: Failing tests
+        if: failure()
+        shell: bash
+        run: |
+          for f in "$RUNNER_TEMP"/unit.tap "$RUNNER_TEMP"/integration.tap; do
+            [ -f "$f" ] && grep -n -A40 -E '^\s*not ok' "$f" | head -400 || true
+          done
       - name: Quality gate
         run: node tools/mahad-quality-check.mjs
       - name: Dependency audit (new advisories fail; expiring risks are explicit)
         run: npm run audit:dependencies
+      # From inside e2e/: run from the root, Playwright finds no config, lists
+      # zero specs and picks up the API's own *.test.js files instead.
       - name: E2E compile check (Playwright --list)
+        working-directory: e2e
         run: |
-          npm --prefix e2e ci || npm --prefix e2e install
-          npm --prefix e2e exec -- playwright test --list
+          npm ci || npm install
+          npx playwright test --list
+
+  migrations-from-empty:
+    name: Database built by the migration runner alone
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The job above loads api/schema.sql by hand and then migrates — the path a
+    # developer takes. A new server takes the other one: an empty database and
+    # `npm run migrate`, nothing else. The runner then bootstraps from its own
+    # reference snapshot and replays every migration after 033 against it —
+    # including 065's unguarded `DROP INDEX uniq_payroll_run`, which stopped
+    # every migration after it until the runner learned to treat a drop of an
+    # index that is already gone as done (lib/migrationRunner.js). 065 itself
+    # cannot be edited: production recorded its checksum, and migrate:verify
+    # would report the edited file as tampered with.
+    #
+    # Literally "migrations only" is not possible: 001-033 predate the runner
+    # and ALTER tables (courses, leads, …) that the old boot-time DDL created,
+    # so the reference snapshot is the floor every database is built from.
+    services:
+      mysql:
+        image: mariadb:10.11
+        env:
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: 'yes'
+          MARIADB_DATABASE: mahad_fresh
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: ''
+      DB_NAME: mahad_fresh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - name: Install API dependencies
+        run: npm --prefix api ci
+      - name: Migrate an empty database (no schema.sql loaded by hand)
+        run: npm run migrate
+      - name: A second run changes nothing
+        run: npm run migrate 2>&1 | tee second-run.log && grep -q 'applied=0 failed=0' second-run.log
+      - name: The newest applied migration is the newest file shipped
+        run: |
+          want=$(ls api/migrations | grep -E '^[0-9]+.*\.sql$' | LC_ALL=C sort | tail -1)
+          got=$(mysql -h127.0.0.1 -P3306 -uroot -N -B mahad_fresh -e 'SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1')
+          echo "shipped: $want  applied: $got"
+          test "$want" = "$got"
+          mysql -h127.0.0.1 -P3306 -uroot -N -B mahad_fresh -e "SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema='mahad_fresh' AND table_name='payroll_runs' AND index_name='uniq_payroll_run_scope'" | grep -qv '^0$'
 
   admin:
     name: Admin — type-check + build
