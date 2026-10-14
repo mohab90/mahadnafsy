@@ -5340,6 +5340,7 @@ CREATE TABLE `support_tickets` (
   `source_id` varchar(100) DEFAULT NULL,
   `first_response_by` varchar(36) DEFAULT NULL,
   `escalated_at` datetime DEFAULT NULL,
+  `escalation_kind` varchar(20) DEFAULT NULL,
   `closed_reason` varchar(255) DEFAULT NULL,
   `responded_at` datetime DEFAULT NULL,
   `sla_breached` tinyint(1) DEFAULT 0,

@@ -12,6 +12,7 @@ import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 import { promptDialog } from '../../../../shared/ui/promptDialog';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
 import { TicketContactButtons } from './TicketContact';
+import { TicketEscalateDialog } from './TicketEscalateDialog';
 
 // «محتاجين نطور صفحه تذاكر الدعم … تكون بخلاص صفحه الانبوكس اللى بتيجي المشاكل
 // من الموقع لان نفس المشاكل كدا بتتعرض مرتين … ازرار اجراءات لكل مشكله وللادارة
@@ -44,6 +45,8 @@ type InboxItem = {
   fromWebsite?: boolean;
   sla?: string;
   escalated: boolean;
+  /** «مهم جدا» or «متكررة» — what the administration was told it is. */
+  escalationKind?: string;
   replies: number;
   resolution?: string;
   createdAt?: string;
@@ -131,6 +134,8 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   const [ticketReplies, setTicketReplies] = useState<TicketReply[]>([]);
   const [timeline, setTimeline] = useState<TimelineRow[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
+  // Whether the client has the chat open right now (GET /admin/tickets/:id → chat).
+  const [chatOpen, setChatOpen] = useState(false);
   const [replyText, setReplyText] = useState('');
 
   const [canned, setCanned] = useState<CannedResponse[]>([]);
@@ -189,6 +194,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
       assigneeName: row.assignee_name || '',
       sla: row.sla,
       escalated: !!row.escalated_at,
+      escalationKind: row.escalation_kind || '',
       replies: Number(row.reply_count || 0),
       resolution: row.resolution_note || '',
       createdAt: row.created_at,
@@ -275,11 +281,24 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
         at: r.created_at || '',
       })));
       setTimeline(Array.isArray(row?.timeline) ? row.timeline : []);
+      setChatOpen(Boolean(row?.chat?.open));
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر تحميل المحادثة');
     } finally { setDetailLoading(false); }
   }, [notify]);
-  const closeDetail = () => { setDetailItem(null); setTicketReplies([]); setTimeline([]); setReplyText(''); };
+  const closeDetail = () => { setDetailItem(null); setTicketReplies([]); setTimeline([]); setReplyText(''); setChatOpen(false); };
+
+  // The chat opens and closes with the client: look again every 20 seconds while the drawer is open.
+  const openTicketId = detailItem?.source === 'ticket' ? detailItem.id : '';
+  useEffect(() => {
+    if (!openTicketId) return undefined;
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      mysqlAdmin.adminGet<any>(`/admin/tickets/${encodeURIComponent(openTicketId)}`)
+        .then(row => setChatOpen(Boolean(row?.chat?.open))).catch(() => {});
+    }, 20000);
+    return () => window.clearInterval(timer);
+  }, [openTicketId]);
 
   // A link from a notification, the old tickets page or the header's search
   // (?focus=<ticket>) opens that one, once, then drops the parameter. Keyed on
@@ -330,11 +349,8 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   };
   const reopen = (item: InboxItem) => run(item.id,
     () => mysqlAdmin.adminPut(`/admin/tickets/${encodeURIComponent(item.id)}/status`, { status: 'open' }), 'اتفتحت تاني');
-  const escalate = async (item: InboxItem) => {
-    const reason = await promptDialog('تصعيد للإدارة — اكتب السبب:');
-    if (reason === null) return;
-    await run(item.id, () => mysqlAdmin.adminPost(`/admin/tickets/${encodeURIComponent(item.id)}/escalate`, { reason }), 'اتصعدت للإدارة');
-  };
+  const [escalating, setEscalating] = useState<InboxItem | null>(null);
+  const escalate = (item: InboxItem) => setEscalating(item);
   const setPriority = (item: InboxItem, priority: string) => run(item.id,
     () => mysqlAdmin.adminPut(`/admin/tickets/${encodeURIComponent(item.id)}/priority`, { priority }), 'الأولوية اتغيرت');
   const reroute = (item: InboxItem, category: string) => run(item.id,
@@ -527,7 +543,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                     <div className="mt-0.5 flex flex-wrap gap-1">
                       {item.category && <span className="rounded bg-slate-100 px-1.5 text-[10px] font-bold text-slate-600">{CATEGORY_LABEL[item.category] || item.category}</span>}
                       <span className={`text-[10px] font-bold ${PRIORITY_META[item.priority]?.cls || ''}`}>{PRIORITY_META[item.priority]?.label || item.priority}</span>
-                      {item.escalated && <span className="text-[10px] font-bold text-purple-600">⚠ مصعّدة</span>}
+                      {item.escalated && <span className={`text-[10px] font-bold ${item.escalationKind === 'repeated' ? 'text-violet-700' : item.escalationKind === 'critical' ? 'text-red-700' : 'text-purple-600'}`}>{item.escalationKind === 'repeated' ? '🔁 مصعّدة — متكررة' : item.escalationKind === 'critical' ? '🚨 مصعّدة — مهم جدا' : '⚠ مصعّدة'}</span>}
                       {item.replies > 0 && <span className="text-[10px] text-slate-400">{item.replies} رد</span>}
                     </div>
                     {item.detail && <p className="mt-0.5 line-clamp-2 text-[11px] text-slate-500">{item.detail}</p>}
@@ -609,18 +625,31 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                       ))}
                     </div>
                   )}
-                  <div className="flex items-end gap-2 pt-1">
-                    <button onClick={() => setShowCanned(v => !v)} title="ردود جاهزة"
-                      className={`rounded-xl border px-2.5 py-2 text-xs ${showCanned ? 'border-indigo-300 bg-indigo-50 text-indigo-600' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
-                      <Star size={14} />
-                    </button>
-                    <textarea value={replyText} onChange={event => setReplyText(event.target.value)} rows={2} placeholder="اكتب ردك للعميل…"
-                      className="flex-1 resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-200" />
-                    <button onClick={() => void sendReply(item)} disabled={working || !replyText.trim()}
-                      className="inline-flex items-center gap-1 rounded-xl bg-indigo-600 px-3 py-2 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-50">
-                      <Send size={14} /> إرسال
-                    </button>
-                  </div>
+                  {chatOpen ? (
+                    <div className="flex items-end gap-2 pt-1">
+                      <button onClick={() => setShowCanned(v => !v)} title="ردود جاهزة"
+                        className={`rounded-xl border px-2.5 py-2 text-xs ${showCanned ? 'border-indigo-300 bg-indigo-50 text-indigo-600' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
+                        <Star size={14} />
+                      </button>
+                      <textarea value={replyText} onChange={event => setReplyText(event.target.value)} rows={2} placeholder="اكتب ردك للعميل…"
+                        className="flex-1 resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-200" />
+                      <button onClick={() => void sendReply(item)} disabled={working || !replyText.trim()}
+                        className="inline-flex items-center gap-1 rounded-xl bg-indigo-600 px-3 py-2 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-50">
+                        <Send size={14} /> إرسال
+                      </button>
+                    </div>
+                  ) : (
+                    !closed && (
+                      <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                        <p className="text-xs font-bold text-amber-800">🔒 الشات مقفول — العميل مش فاتحه دلوقتي</p>
+                        <p className="text-[11px] text-amber-700">الشات بيتفتح أول ما العميل يفتح صفحة تذاكره. لحد وقتها كلّمه تليفون أو واتساب، وسجّل اللي قلته له.</p>
+                        <div className="flex flex-wrap gap-2">
+                          <TicketContactButtons ticketId={item.id} phone={item.phone} onLogged={() => { notify('success', 'اتسجل التواصل في التذكرة وفي ملف العميل'); void openDetail(item); void loadRemote(); }} onError={text => notify('error', text)} />
+                          {!item.phone && <span className="text-[11px] text-amber-700">مفيش رقم تليفون للعميل — افتح ملفه وضيفه.</span>}
+                        </div>
+                      </div>
+                    )
+                  )}
                   {timeline.length > 0 && (
                     <details className="rounded-xl border border-slate-100 bg-white p-3">
                       <summary className="cursor-pointer text-xs font-bold text-slate-500">سجل التذكرة ({timeline.length})</summary>
@@ -673,6 +702,18 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
           </Modal>
         );
       })()}
+
+      {escalating && (
+        <TicketEscalateDialog ticketId={escalating.id} title={escalating.title}
+          onClose={() => setEscalating(null)}
+          onError={text => notify('error', text)}
+          onDone={(kind, repeats) => {
+            setEscalating(null);
+            notify('success', kind === 'repeated' ? `اتصعدت للإدارة كمشكلة متكررة${repeats ? ` (رجعت ${repeats} مرة)` : ''}` : 'اتصعدت للإدارة — مهم جدا');
+            closeDetail();
+            void loadRemote();
+          }} />
+      )}
 
       {creating && <NewTicketModal notify={notify} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); void loadRemote(); }} />}
 

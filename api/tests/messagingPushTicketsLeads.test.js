@@ -235,7 +235,8 @@ test('a late ticket the sweep escalates keeps its department; «رفع للإد�
   assert.match(sweep, /UPDATE support_tickets SET priority='high', escalated_at=NOW\(\), updated_at=NOW\(\)/);
   assert.doesNotMatch(sweep, /department='management'/);
   const manual = routes.slice(routes.indexOf("router.post('/api/admin/tickets/:id/escalate'"));
-  assert.match(manual, /SET department='management', priority='high'/);
+  assert.match(manual, /SET department='management', priority=\?, escalation_kind=\?/);
+  assert.match(manual, /KINDS\.critical|ESCALATION_KINDS\[kind\]\.priority/);
 });
 
 test('a ticket the team answered and the client left for a week is resolved, on its timeline', async () => {

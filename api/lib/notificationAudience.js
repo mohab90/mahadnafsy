@@ -24,6 +24,9 @@ const TYPE_AUDIENCE = Object.freeze({
   warning: { perms: ['view_financial', 'manage_financial'] },
   hr: { perms: ['view_hr', 'manage_hr'] },
   ticket: { perms: MANAGEMENT, roles: ['support'] },
+  // What the team escalates to the administration, in two kinds (lib/ticketEscalation.js).
+  escalation_critical: { perms: MANAGEMENT },
+  escalation_repeated: { perms: MANAGEMENT },
   lead: { perms: MANAGEMENT },
   info: { perms: MANAGEMENT },
   sales: { perms: MANAGEMENT },

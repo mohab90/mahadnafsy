@@ -15,6 +15,8 @@ const { pool, getStaffIdByEmail } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
 const outbox = require('../lib/outbox');
 const { createNotification, insertNotification } = require('../lib/notification');
+const { clientChatState } = require('../lib/ticketChat');
+const { KINDS: ESCALATION_KINDS, repeatsOf, kindOf, notificationFor } = require('../lib/ticketEscalation');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../middleware/auth');
 const { hasPermission, PERMISSIONS } = require('../constants/permissions');
 const { publicLimiter } = require('../middleware/rateLimits');
@@ -277,7 +279,7 @@ router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermi
     const [rows] = await pool.query(
       `SELECT t.id, t.subject, t.subscriber_name, t.subscriber_email, t.status, t.priority,
               t.category, t.department, t.channel, t.assigned_to, t.sla_due_at,
-              t.first_response_at, t.escalated_at, t.created_at, t.resolved_at,
+              t.first_response_at, t.escalated_at, t.escalation_kind, t.created_at, t.resolved_at,
               LEFT(t.body, 400) AS body, t.resolution_note, t.subscriber_id,
               sb.phone AS subscriber_phone, sb.client_code,
               s.name AS assignee_name,
@@ -386,7 +388,9 @@ router.get('/api/admin/tickets/:id', requireAuth, requireAdminOrStaff, requirePe
     } catch (error) {
       logger.warn('[cs/detail-linked]', { ticketId: req.params.id, error: error.message });
     }
-    res.json({ ...t, sla: slaFlag(t), replies, timeline, linked });
+    // Whether the client has the chat open right now: staff write in it only then (lib/ticketChat.js).
+    const chat = await clientChatState(pool, req.tenantId, t).catch(() => ({ open: false, lastSeen: null }));
+    res.json({ ...t, sla: slaFlag(t), replies, timeline, linked, chat });
   } catch (e) { logger.error('[cs/detail]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -610,6 +614,12 @@ router.post('/api/admin/tickets/:id/reply', requireAuth, requireAdminOrStaff, re
     if (t.status === 'closed') {
       await conn.rollback(); conn.release(); conn = null;
       return res.status(409).json({ error: 'Reopen the closed ticket before replying' });
+    }
+    // The chat is for a client who is there to read it; otherwise the team calls or writes on WhatsApp.
+    const chat = await clientChatState(conn, req.tenantId, t);
+    if (!chat.open) {
+      await conn.rollback(); conn.release(); conn = null;
+      return res.status(409).json({ error: 'العميل مش فاتح الشات دلوقتي — كلّمه تليفون أو واتساب وسجّل اللي اتقال', code: 'CLIENT_NOT_IN_CHAT' });
     }
     const replyId = uuidv4();
     await conn.query('INSERT INTO ticket_replies (id, tenant_id, ticket_id, author_type, author_name, body) VALUES (?,?,?,?,?,?)',
@@ -1128,21 +1138,33 @@ router.post('/api/admin/tickets/:id/escalate', requireAuth, requireAdminOrStaff,
   try {
     conn = await pool.getConnection(); await conn.beginTransaction();
     const [[ticket]] = await conn.query(
-      'SELECT id,department,assigned_to FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
+      'SELECT id,department,assigned_to,subject,category,subscriber_id,subscriber_email,subscriber_name,escalated_at FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
       [req.params.id, req.tenantId]);
     if (!ticket) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Not found' }); }
     if (!canAccessTicket(req, ticket)) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Not found' }); }
     const assignee = await pickAssignee(conn, req.tenantId, 'management');
+    // Two kinds reach the administration, told apart on the bell: «مهم جدا» and «متكررة».
+    const repeats = await repeatsOf(conn, req.tenantId, ticket);
+    const kind = kindOf(String(req.body?.kind || ''), repeats);
     await conn.query(
-      `UPDATE support_tickets SET department='management', priority='high',
+      `UPDATE support_tickets SET department='management', priority=?, escalation_kind=?,
                escalated_at=COALESCE(escalated_at, NOW()), assigned_to=?, updated_at=NOW() WHERE id=? AND tenant_id=?`,
-      [assignee?.id || null, req.params.id, req.tenantId]);
+      [ESCALATION_KINDS[kind].priority, kind, assignee?.id || null, req.params.id, req.tenantId]);
     const actor = await actorOf(req);
     const reason = cleanText(req.body.reason, TEXT_LIMITS.reason);
-    await logTicketEvent(conn, { tenantId: req.tenantId, ticketId: req.params.id, type: 'escalated', actorId: actor.id, actorName: actor.name, to: assignee?.name || 'الإدارة', detail: reason || null });
+    await logTicketEvent(conn, {
+      tenantId: req.tenantId, ticketId: req.params.id, type: 'escalated', actorId: actor.id, actorName: actor.name,
+      to: `${ESCALATION_KINDS[kind].label}${assignee ? ' → ' + assignee.name : ''}`,
+      detail: [reason, kind === 'repeated' && repeats.count ? `رجعت ${repeats.count} مرة` : ''].filter(Boolean).join(' — ') || null,
+    });
+    const note = notificationFor(kind, { ticket, repeats, reason, by: actor.name });
+    const data = { ticketId: req.params.id, department: 'management', kind, repeats: repeats.count };
+    // To every manager (unaddressed — the bell shows it to the management audience), and by name to
+    // the manager it landed on, who would otherwise read it only as one more line of the same list.
+    await insertNotification(conn, note.type, note.title, note.message, data, req.tenantId, null);
+    if (assignee?.id) await insertNotification(conn, note.type, note.title, note.message, data, req.tenantId, assignee.id);
     await conn.commit(); conn.release(); conn = null;
-    createNotification('ticket', '⚠️ تذكرة مُصعّدة', `تم تصعيد تذكرة للإدارة${reason ? ': ' + reason : ''}`, { ticketId: req.params.id }, req.tenantId, assignee?.id || null).catch(() => {});
-    res.json({ ok: true, assignee });
+    res.json({ ok: true, assignee, kind, repeats: repeats.count });
   } catch (e) {
     if (conn) { await conn.rollback().catch(() => {}); conn.release(); }
     logger.error('[cs/escalate]', e.message); res.status(500).json({ error: 'Internal server error' });
