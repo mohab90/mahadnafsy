@@ -12,7 +12,7 @@ const { pool } = require('../../lib/db');
 const logger = require('../../lib/logger');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { PHYSICAL_BRANCHES, PHYSICAL_BRANCH_KEYS, boundBranch } = require('../../lib/physicalBranches');
-const { findReceiptGaps } = require('../../lib/receiptNumbers');
+const { findReceiptGaps, findExpenseGaps } = require('../../lib/receiptNumbers');
 
 const router = express.Router();
 // The people this is for: the owner, the managers, accounts and a branch's own manager.
@@ -25,19 +25,30 @@ router.get('/api/admin/receipts/gaps', requireAuth, requireAdminOrStaff, require
     }
     const bound = boundBranch(req);
     const branches = bound ? [bound] : PHYSICAL_BRANCH_KEYS;
-    const found = await findReceiptGaps(pool, { tenantId: req.tenantId, branches });
-    const result = found.map(entry => ({
-      branch: entry.branch,
-      label: PHYSICAL_BRANCHES[entry.branch]?.label || entry.branch,
+    const [found, foundExpenses] = await Promise.all([
+      findReceiptGaps(pool, { tenantId: req.tenantId, branches }),
+      findExpenseGaps(pool, { tenantId: req.tenantId, branches }),
+    ]);
+    const shape = entry => ({
       highest: entry.highest,
       count: entry.count,
       missing: entry.missing,
       removed: entry.removed.map(row => ({
         receiptNo: row.receiptNo, paymentId: row.paymentId, amount: row.amount, currency: row.currency, date: row.date, staffName: row.staffName,
       })),
-      ok: entry.missing.length === 0 && entry.removed.length === 0,
-    }));
-    res.json({ branches: result, problems: result.reduce((sum, entry) => sum + entry.missing.length + entry.removed.length, 0) });
+    });
+    const result = found.map(entry => {
+      const expenses = shape(foundExpenses.find(item => item.branch === entry.branch) || { highest: 0, count: 0, missing: [], removed: [] });
+      return {
+        branch: entry.branch,
+        label: PHYSICAL_BRANCHES[entry.branch]?.label || entry.branch,
+        ...shape(entry),
+        // «ضيف رقم عملية للمصروفات»: the branch's expense numbers run in sequence too, and are checked the same way.
+        expenses,
+        ok: entry.missing.length === 0 && entry.removed.length === 0 && expenses.missing.length === 0 && expenses.removed.length === 0,
+      };
+    });
+    res.json({ branches: result, problems: result.reduce((sum, entry) => sum + entry.missing.length + entry.removed.length + entry.expenses.missing.length + entry.expenses.removed.length, 0) });
   } catch (error) {
     logger.error('[receipt-gaps]', error.message);
     res.status(500).json({ error: 'تعذّر فحص تسلسل الإيصالات' });

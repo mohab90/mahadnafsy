@@ -11,6 +11,7 @@ const { bulkOperationLimiter } = require('../../middleware/rateLimits');
 const { resolveFinancialScope } = require('../../lib/financialScope');
 const { dateOnlyInTimeZone, isValidDateOnly, zonedDateTimeParts } = require('../../lib/dates');
 const { getTenantSetting } = require('../../lib/tenantSettings');
+const { nextExpenseNo } = require('../../lib/receiptNumbers');
 
 function validDateRange(from, to) {
   return isValidDateOnly(from) && isValidDateOnly(to) && from <= to;
@@ -336,12 +337,13 @@ setInterval(async () => {
           ? String(rec.category).toUpperCase()
           : 'OTHER';
         const description = `[تلقائي] ${rec.title}${rec.category ? ' — ' + rec.category : ''}`;
+        const expenseNo = await nextExpenseNo(conn, { tenantId: rec.tenant_id, branchId: rec.branch_id });
         await conn.query(
           `INSERT INTO expenses
-             (id,description,amount,currency,category,\`date\`,note,tenant_id,branch_id)
-           VALUES (?,?,?,'EGP',?,?,?,?,?)`,
+             (id,description,amount,currency,category,\`date\`,note,tenant_id,branch_id,expense_no)
+           VALUES (?,?,?,'EGP',?,?,?,?,?,?)`,
           [expenseId, description, rec.amount_egp, expenseCategory, today,
-           `مصروف متكرر - ${rec.frequency}`, rec.tenant_id, rec.branch_id]
+           `مصروف متكرر - ${rec.frequency}`, rec.tenant_id, rec.branch_id, expenseNo]
         );
         const journalId = await postExpenseJournal(
           {

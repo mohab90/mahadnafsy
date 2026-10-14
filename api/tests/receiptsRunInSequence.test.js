@@ -117,7 +117,12 @@ test('the endpoint answers the managers, a branch’s manager sees only their br
   const stub = (rel, exports) => { const file = require.resolve(rel); require.cache[file] = { id: file, filename: file, loaded: true, exports }; };
   const pass = (req, res, next) => next();
   const askedBranches = [];
-  stub('../lib/db', { pool: { query: async (sql, params) => { askedBranches.push(params[1]); return [[{ id: 'a', receipt_no: 1, deleted_at: null, amount: 1, currency: 'EGP' }, { id: 'c', receipt_no: 3, deleted_at: null, amount: 1, currency: 'EGP' }]]; } } });
+  stub('../lib/db', { pool: { query: async (sql, params) => {
+    // The receipts' run is the one asked about here; the expenses' run (its own query) is whole.
+    if (/FROM expenses/.test(sql)) return [[]];
+    askedBranches.push(params[1]);
+    return [[{ id: 'a', receipt_no: 1, deleted_at: null, amount: 1, currency: 'EGP' }, { id: 'c', receipt_no: 3, deleted_at: null, amount: 1, currency: 'EGP' }]];
+  } } });
   stub('../lib/logger', { error() {}, warn() {}, info() {} });
   stub('../middleware/auth', { requireAuth: pass, requireAdminOrStaff: pass, requirePermission: () => pass });
   delete require.cache[require.resolve('../routes/misc/receiptGaps')];

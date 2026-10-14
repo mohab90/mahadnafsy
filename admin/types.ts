@@ -861,6 +861,9 @@ export interface ExpenseItem {
   branchType?: BranchType;   // which branch this expense belongs to
   paymentMethod?: string;    // cash, bank transfer, etc.
   staffName?: string | null; // «القائم بالعملية» — who entered it
+  /** «رقم العملية» of a Dokki / Tagamoa expense: 1, 2, 3 … per branch; null for an online one. */
+  expenseNo?: number | null;
+  receiptBranch?: string | null;
   createdAt: string;
   title?: string;
 }
