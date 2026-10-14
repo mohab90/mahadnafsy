@@ -4624,6 +4624,20 @@ CREATE TABLE `refunds` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `receipt_counters`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `receipt_counters` (
+  `tenant_id` varchar(64) NOT NULL,
+  `branch` varchar(32) NOT NULL,
+  `last_no` int(11) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`tenant_id`,`branch`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `reminder_log`
 --
 
