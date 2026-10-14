@@ -2,8 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { useEscapeKey } from '../../shared/ui/useEscapeKey';
 import { X, Printer } from 'lucide-react';
 import QRCode from 'qrcode';
-import { useSiteData } from '../context/SiteDataContext';
-import { BRAND_LOGO } from '../lib/brand';
 import CertificateSheet, { CERT_W, CERT_H } from './CertificateSheet';
 
 interface CourseCertificateProps {
@@ -13,7 +11,10 @@ interface CourseCertificateProps {
   courseNameEn?: string;    // English course name for certificate
   instructorName: string;
   lectureCount?: number;
-  hoursLabel?: string;
+  /** The course's hours: printed as «Duration: 60 Hours» (a change made at the desk wins). */
+  hours?: number;
+  /** What the desk changed on this certificate (api: course_completions.cert_*); empty = as the sources say. */
+  edits?: { nameEn?: string | null; courseEn?: string | null; duration?: string | null; trainer?: string | null };
   certNumber: string;       // = clientCode (serial number)
   issuedAt: string;
   onClose: () => void;
@@ -30,17 +31,21 @@ const englishOnly = (value?: string | null) => {
 };
 
 const CourseCertificate: React.FC<CourseCertificateProps> = ({
-  studentName, studentNameEn, courseName, courseNameEn,
+  studentName, studentNameEn, courseName, courseNameEn, instructorName, hours, edits,
   certNumber, issuedAt, onClose, onPrinted,
 }) => {
   // The certificate itself, full-bleed on a dark ground. A viewer, not a
   // dialog — but Escape closes it now, which it did not.
   useEscapeKey(onClose);
-  const { content } = useSiteData();
-  const LOGO_URL = content['institute.logo'] || BRAND_LOGO;
-  // Never the Arabic name or title: a certificate lacking either is not shown.
-  const certName  = englishOnly(studentNameEn).toUpperCase();
-  const certCourse = englishOnly(courseNameEn) || englishOnly(courseName);
+  // Never the Arabic name or title: a certificate lacking either is not shown. The desk's
+  // own change on this certificate comes first, as it does on the server's page.
+  const certName  = (englishOnly(edits?.nameEn) || englishOnly(studentNameEn)).toUpperCase();
+  const certCourse = englishOnly(edits?.courseEn) || englishOnly(courseNameEn) || englishOnly(courseName);
+  const typedDuration = String(edits?.duration ?? '').replace(/\s+/g, ' ').trim();
+  const duration = typedDuration
+    ? (/[\u0600-\u06FF]/.test(typedDuration) ? '' : typedDuration)
+    : (Number(hours) > 0 ? `${+Number(hours).toFixed(2)} Hours` : '');
+  const trainer = String(edits?.trainer ?? '').replace(/\s+/g, ' ').trim() || String(instructorName || '').trim();
   const incomplete = !certName || !certCourse;
 
   // The sheet is a fixed 600 px canvas: on a narrower screen it is scaled down to fit.
@@ -128,9 +133,10 @@ const CourseCertificate: React.FC<CourseCertificateProps> = ({
             <CertificateSheet
               certName={certName}
               certCourse={certCourse}
+              duration={duration}
+              trainer={trainer}
               certNumber={certNumber}
               issuedAt={issuedAt}
-              logoUrl={LOGO_URL}
               qrUrl={qrUrl}
             />
           </div>

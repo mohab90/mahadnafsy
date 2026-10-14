@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, ExternalLink, FileText, RefreshCw, Search, Share2 } from 'lucide-react';
+import { Download, ExternalLink, FileText, Pencil, Printer, RefreshCw, Search, Share2 } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { waLink } from '../../../lib/whatsappLink';
 import { cairoDateOnly, cairoDay } from '../../../../shared/cairoDate';
 import { branchLabels, normBranchKey } from '../../unified-client/constants';
 import { exportToExcel, type ExportColumn } from '../../../lib/exportUtils';
 import { SelectionExportBar, useRowPicker } from './SelectionExportBar';
+import { CertificateEditModal } from './CertificateEditModal';
+import { formPrintUrl, loadFormOffsets } from '../../../lib/certificateForm';
 
 // «تاب في صفحه الشهادات اسمه شهادات المعهد ودا بيكون اتوماتك ومجاني لاي عميل خلص
 // فلوسه او 90 % من فلوسه … نقدر نطلع منها نسخه pdf ونعملها شير للعميل او نعملها
@@ -22,6 +24,9 @@ type Row = {
   nationalId: string | null; personalPhotoUrl: string | null; idPhotoUrl: string | null;
   /** The course's title in English, and what the English-only certificate still lacks. */
   courseTitleEn: string | null; missing: string[];
+  /** What prints (the desk's change on this certificate, else the client's file and the course). */
+  printed: { name: string | null; course: string | null; duration: string; trainer: string };
+  edits: { nameEn: string | null; courseEn: string | null; duration: string | null; trainer: string | null };
 };
 
 const STAGES: Record<Stage, { label: string; cls: string }> = {
@@ -71,6 +76,7 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
   const [stage, setStage] = useState('');
   const [branch, setBranch] = useState('');
   const [downloaded, setDownloaded] = useState('');
+  const [editing, setEditing] = useState<Row | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -194,11 +200,14 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
                     </td>
                     <td className="px-3 py-2 font-bold text-indigo-700">{row.courseTitle}</td>
                     <td className="px-3 py-2">
-                      {row.nameEn ? <div dir="ltr" className="text-right">{row.nameEn}</div> : null}
-                      {row.courseTitleEn && <div dir="ltr" className="text-right text-[11px] text-gray-500">{row.courseTitleEn}</div>}
+                      {row.printed?.name ? <div dir="ltr" className="text-right font-bold">{row.printed.name}</div> : null}
+                      {row.courseTitleEn && <div dir="ltr" className="text-right text-[11px] text-gray-500">{row.courseTitleEn}{row.printed?.duration ? ` · ${row.printed.duration}` : ''}</div>}
+                      {(row.edits?.nameEn || row.edits?.courseEn || row.edits?.duration || row.edits?.trainer) && (
+                        <div className="text-[10px] font-bold text-amber-700">اتعدّلت يدوياً</div>
+                      )}
                       {/* English only: a certificate lacking either is not printed, and says what to add. */}
                       {row.missing?.length > 0 && (
-                        <div className="text-[11px] font-bold text-red-600">ناقص: {row.missing.join('، ')} — الشهادة مش هتتطبع لحد ما يتضاف (من ملف العميل ← بيانات الشهادة)</div>
+                        <div className="text-[11px] font-bold text-red-600">ناقص: {row.missing.join('، ')} — الشهادة مش هتتطبع لحد ما يتضاف (من ملف العميل ← بيانات الشهادة، أو من زر «تعديل»)</div>
                       )}
                     </td>
                     <td className="px-3 py-2 font-mono text-[11px] text-gray-500" dir="ltr">{row.code}</td>
@@ -218,11 +227,18 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
                     <td className="px-3 py-2">
                       <div className="flex flex-nowrap items-center gap-1">
                         {row.missing?.length ? (
-                          <span title={`ناقص: ${row.missing.join('، ')}`} className={`${btn} cursor-not-allowed bg-gray-200 text-gray-400`}><FileText size={10} /> PDF / طباعة</span>
+                          <span title={`ناقص: ${row.missing.join('، ')} — اضغط «تعديل» وكمّله`} className={`${btn} cursor-not-allowed bg-gray-200 text-gray-400`}><FileText size={10} /> PDF / طباعة</span>
                         ) : (
                           <a href={certificateUrl(row.code, true)} target="_blank" rel="noreferrer" title="الشهادة — طباعة أو حفظ PDF"
                             className={`${btn} bg-slate-800 text-white hover:bg-slate-900`}><FileText size={10} /> PDF / طباعة</a>
                         )}
+                        {!row.missing?.length && (
+                          <a href={formPrintUrl(SITE, row.code, loadFormOffsets(), true)} target="_blank" rel="noreferrer"
+                            title="طباعة اسم العميل والكورس والمدة فقط على النموذج الجاهز"
+                            className={`${btn} bg-indigo-600 text-white hover:bg-indigo-700`}><Printer size={10} /> طباعة على النموذج</a>
+                        )}
+                        <button onClick={() => setEditing(row)} title="تعديل الاسم أو الكورس أو المدة أو المحاضر"
+                          className={`${btn} border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100`}><Pencil size={10} /> تعديل</button>
                         {share && !row.missing?.length && (
                           <a href={share} target="_blank" rel="noreferrer" title="ابعتها للعميل على الواتساب"
                             className={`${btn} bg-emerald-600 text-white hover:bg-emerald-700`}><Share2 size={10} /> شير</a>
@@ -238,6 +254,10 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
             </tbody>
           </table>
         </div>
+      )}
+      {editing && (
+        <CertificateEditModal row={{ ...editing, courseTitle: editing.courseTitle }} notify={notify} onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); void load(); }} />
       )}
     </div>
   );

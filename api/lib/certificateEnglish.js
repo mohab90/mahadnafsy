@@ -37,4 +37,32 @@ function missingForCertificate({ nameEn, courseTitleEn, courseTitle }) {
   return missing;
 }
 
-module.exports = { isEnglish, certificateName, certificateCourse, missingForCertificate };
+const squeeze = value => String(value ?? '').replace(/\s+/g, ' ').trim();
+
+/** A duration as the certificate prints it: English («60 Hours», «6 Months»), or '' . */
+function certificateDuration(value, hours) {
+  const typed = squeeze(value);
+  if (typed) return typed.length <= 80 && !ARABIC.test(typed) ? typed : '';
+  const count = Number(hours);
+  return count > 0 ? `${+count.toFixed(2)} Hours` : '';
+}
+
+/**
+ * What one certificate prints: the desk's own change when there is one, else what the
+ * client's file and the course say. `row` carries the course_completions cert_* columns
+ * and name_en / course titles / hours / instructor_name. A change that is not English is
+ * ignored for the name and the course (the English-only rule holds for edits too).
+ */
+function effectiveCertificate(row = {}) {
+  const name = certificateName(row.cert_name_en) || certificateName(row.name_en);
+  const course = certificateCourse({ title_en: row.cert_course_en })
+    || certificateCourse({ title_en: row.course_title_en, title: row.course_title });
+  return {
+    name,
+    course,
+    duration: certificateDuration(row.cert_duration, row.hours),
+    trainer: squeeze(row.cert_trainer) || squeeze(row.instructor_name),
+  };
+}
+
+module.exports = { isEnglish, certificateName, certificateCourse, missingForCertificate, certificateDuration, effectiveCertificate };

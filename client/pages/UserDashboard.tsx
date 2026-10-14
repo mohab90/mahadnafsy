@@ -58,6 +58,11 @@ const AVATAR_COLORS = [
 const pickColor = (email: string) =>
   AVATAR_COLORS[email.charCodeAt(0) % AVATAR_COLORS.length];
 
+// A completion as the server lists it: the certificate's code, and what the desk changed on it.
+type CompletionRow = {
+  course_id: string; certificate_code: string; completed_at: string;
+  cert_name_en?: string | null; cert_course_en?: string | null; cert_duration?: string | null; cert_trainer?: string | null;
+};
 type Tab = 'overview' | 'learning' | 'consultations' | 'community' | 'account';
 type LearningSection = 'courses' | 'certificates' | 'materials' | 'quiz' | 'live';
 type AccountSection = 'payments' | 'notifications' | 'loyalty' | 'referral' | 'support' | 'settings';
@@ -155,11 +160,12 @@ const UserDashboard: React.FC = () => {
      certificates tab is opened, so a completion earned moments earlier
      (finishing the last lecture, passing the quiz) shows up without a full
      page reload */
-  const [completions, setCompletions] = useState<{ course_id: string; certificate_code: string; completed_at: string }[]>([]);
+  const [completions, setCompletions] = useState<CompletionRow[]>([]);
+  const completionOf = (code: string) => completions.find(row => row.certificate_code === code);
   useEffect(() => {
     if (!authUser?.uid || !(activeTab === 'learning' && learningSection === 'certificates')) return;
     mysqlClient.getMyCompletions()
-      .then(rows => setCompletions(rows as unknown as { course_id: string; certificate_code: string; completed_at: string }[]))
+      .then(rows => setCompletions(rows as unknown as CompletionRow[]))
       .catch(() => {});
   }, [authUser?.uid, activeTab, learningSection]);
 
@@ -939,7 +945,6 @@ const UserDashboard: React.FC = () => {
             if (!course || !subscriber) return null;
             const courseLectures = getCourseLectures(course.id);
             const issuedDate = new Date(certModal.completedAt).toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric', timeZone: CAIRO_TIME_ZONE });
-            const hoursLabel = course.duration || '';
             return (
               <CourseCertificate
                 studentName={subscriber.name}
@@ -948,7 +953,11 @@ const UserDashboard: React.FC = () => {
                 courseNameEn={course.titleEn}
                 instructorName={course.instructor}
                 lectureCount={courseLectures.length || Number(course.students)}
-                hoursLabel={hoursLabel}
+                hours={course.hours}
+                edits={{
+                  nameEn: completionOf(certModal.certCode)?.cert_name_en, courseEn: completionOf(certModal.certCode)?.cert_course_en,
+                  duration: completionOf(certModal.certCode)?.cert_duration, trainer: completionOf(certModal.certCode)?.cert_trainer,
+                }}
                 certNumber={certModal.certCode}
                 issuedAt={issuedDate}
                 onClose={() => setCertModal(null)}

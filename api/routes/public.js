@@ -4,6 +4,7 @@ const { listCustomerTimeline } = require('../lib/customerTimeline');
 const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { Router } = require('express');
 const QRCode = require('qrcode');
+const path = require('node:path');
 const router = Router();
 
 const { uuidv4 } = require('../lib/id');
@@ -12,7 +13,7 @@ const { pool, cached, cacheInvalidate } = require('../lib/db');
 const { parseLimit, parseOffset, sanitize, tryJson, validate } = require('../lib/helpers');
 const { getBrandSettings } = require('../lib/brandSettings');
 const { escapeHtml } = require('../lib/html');
-const { certificateHtml } = require('../lib/certificateHtml');
+const { certificateHtml, certificateFormHtml } = require('../lib/certificateHtml');
 const { getTenantSetting } = require('../lib/tenantSettings');
 const { COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber, mapQuiz, loadCourseMaterials, LIVE_STREAM_COLS, mapLiveStream } = require('../lib/mappers');
 const { recordQuizAttempt } = require('../lib/quizAttempts');
@@ -26,7 +27,7 @@ const { itemBalances } = require('../lib/agreedPrice');
 const { capturePublicLead } = require('../lib/publicLead');
 const metaCapi = require('../lib/metaCapi');
 const joinApplication = require('../lib/joinApplication');
-const { certificateCourse, certificateName, missingForCertificate } = require('../lib/certificateEnglish');
+const { effectiveCertificate, missingForCertificate } = require('../lib/certificateEnglish');
 const { SYSTEM_SEARCH_PERMISSIONS, searchSystem } = require('../lib/systemSearch');
 
 // The contact form's subjects that are sales' to answer (client/pages/Contact.tsx).
@@ -479,6 +480,7 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
   try {
     const [[row]] = await pool.query(
       `SELECT cc.certificate_code,cc.completed_at,cc.tenant_id,
+              cc.cert_name_en, cc.cert_course_en, cc.cert_duration, cc.cert_trainer,
               s.name_en AS subscriber_name_en, s.client_code,
               c.title AS course_title, c.title_en AS course_title_en, c.hours AS hours_count,
               u.name AS instructor_name
@@ -490,20 +492,30 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
       [req.params.code]
     );
     if (!row) return res.status(404).send('<h3>الشهادة غير موجودة</h3>');
+    // «لو طباعة للعميل اعرضها بالتصميم الكامل انما لو من السيستم … نطبع اسم العميل واسم الكورس فقط»:
+    // ?mode=form is the desk's copy for the pre-printed paper; it is never a client download.
+    const formMode = String(req.query.mode || '') === 'form';
     // «لو العميل عمل تحميل للشهاده pdf من الموقع يظهر انه العميل عملها تحميل»:
     // the desk's own print and preview carry ?staff=1.
-    if (String(req.query.staff || '') !== '1') {
+    if (!formMode && String(req.query.staff || '') !== '1') {
       pool.query(
         'UPDATE course_completions SET downloaded_at=COALESCE(downloaded_at, NOW()), download_count=download_count+1 WHERE certificate_code=? AND tenant_id=?',
         [row.certificate_code, row.tenant_id]).catch(() => {});
     }
 
     const certCode    = row.certificate_code || req.params.code;
-    // English only («اسم العميل واسم الكورس بالانجليزي فقط»): never the Arabic name or title.
-    const studentName = certificateName(row.subscriber_name_en);
-    const courseName  = certificateCourse({ title_en: row.course_title_en, title: row.course_title });
+    // English only («اسم العميل واسم الكورس بالانجليزي فقط»): never the Arabic name or title,
+    // whether it comes from the client's file or from the desk's change on this certificate.
+    const certificate = effectiveCertificate({
+      cert_name_en: row.cert_name_en, name_en: row.subscriber_name_en,
+      cert_course_en: row.cert_course_en, course_title_en: row.course_title_en, course_title: row.course_title,
+      cert_duration: row.cert_duration, hours: row.hours_count,
+      cert_trainer: row.cert_trainer, instructor_name: row.instructor_name,
+    });
+    const studentName = certificate.name;
+    const courseName  = certificate.course;
     if (!studentName || !courseName) {
-      const missing = missingForCertificate({ nameEn: row.subscriber_name_en, courseTitleEn: row.course_title_en, courseTitle: row.course_title });
+      const missing = missingForCertificate({ nameEn: row.cert_name_en || row.subscriber_name_en, courseTitleEn: row.cert_course_en || row.course_title_en, courseTitle: row.course_title });
       return res.status(409).type('html').send(`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>الشهادة غير جاهزة</title></head>
 <body style="font-family:Tahoma,Arial,sans-serif;max-width:520px;margin:12vh auto;padding:0 20px;text-align:center;color:#333">
 <h2 style="color:#B45309">الشهادة غير جاهزة للطباعة</h2>
@@ -513,16 +525,11 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
     const issuedAt    = row.completed_at
       ? new Date(row.completed_at).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric', timeZone: 'Africa/Cairo' })
       : new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric', timeZone: 'Africa/Cairo' });
-    // Identity from the central brand (Settings → الهوية): logo, colour, name.
-    const [brand, content] = await Promise.all([
-      getBrandSettings(row.tenant_id),
-      getTenantSetting('content', { tenantId: row.tenant_id, fallback: {} }),
-    ]);
-    const trainingMgr   = content['training_manager_name'] || content['institute.trainingManager'] || 'WALID ABDRAHMAN';
+    // Identity from the central brand (Settings → الهوية): the button's colour.
+    const brand = await getBrandSettings(row.tenant_id);
     const serialNo = row.client_code || certCode.slice(-8).toUpperCase();
 
     const primaryColor = brand.primaryColor;
-    const LOGO_URL = brand.logoUrl;
     const qrData   = encodeURIComponent(`CERT:${certCode}|${studentName}|${courseName}`);
     const qrUrl    = `/api/qr?size=90&data=${qrData}`;
     // Must match completeCourse()'s own completion email link (lib/courseCompletion.js)
@@ -532,9 +539,11 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
     const clientBase = String(process.env.CLIENT_URL || 'https://mahadnafsy.com').replace(/\/$/, '');
     const verifyUrl = `${clientBase}/certificate/${encodeURIComponent(certCode)}`;
 
-    // The institute's own design, drawn by lib/certificateHtml.js; this page adds
-    // the toolbar and the print rules around it.
-    const cert = certificateHtml({ studentName, courseName, trainingManager: trainingMgr, serialNo, issuedAt, logoUrl: LOGO_URL, qrUrl, verifyUrl });
+    // The institute's own picture with the lines written on it (lib/certificateHtml.js);
+    // this page adds the toolbar and the print rules around it.
+    const cert = formMode
+      ? certificateFormHtml({ studentName, courseName, duration: certificate.duration, nameTop: req.query.nameTop, courseTop: req.query.courseTop })
+      : certificateHtml({ studentName, courseName, duration: certificate.duration, trainer: certificate.trainer, serialNo, issuedAt, qrUrl, verifyUrl });
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -547,10 +556,12 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
   body { background: #f0f0f0; display: flex; flex-direction: column; align-items: center; font-family: Georgia, 'Times New Roman', serif; }
   .toolbar { width: 600px; max-width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 12px 0; }
   .cert { width: 600px; height: 849px; background: #fff; position: relative; overflow: hidden; flex: none; box-shadow: 0 2px 14px rgba(0,0,0,.18); }
+  .form-sheet { width: 21cm; height: 29.7cm; background: #fff; position: relative; overflow: hidden; flex: none; box-shadow: 0 2px 14px rgba(0,0,0,.18); }
   @media print {
     body { background: #fff; padding: 0; display: block; }
-    .toolbar, .verify-note { display: none !important; }
+    .toolbar, .verify-note, .guide { display: none !important; }
     .cert { zoom: 1.32; box-shadow: none; }
+    .form-sheet { box-shadow: none; }
   }
   @media screen {
     body { padding: 20px; min-height: 100vh; }
@@ -560,7 +571,7 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
 <body>
 
 <div class="toolbar no-print">
-  <div style="font-size:13px;color:#555">Certificate of Achievement</div>
+  <div style="font-size:13px;color:#555">${formMode ? 'Print on the institute\'s form — name and course only' : 'Certificate of Achievement'}</div>
   <button onclick="window.print()"
     style="background:${primaryColor};color:#fff;border:none;padding:9px 24px;border-radius:6px;font-size:14px;cursor:pointer;font-weight:bold;font-family:Arial">
     🖨️ Print / Save PDF
@@ -579,9 +590,18 @@ ${cert}
 </body></html>`;
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
+    // A page the desk may have just edited is never served from a cache.
+    res.setHeader('Cache-Control', 'no-store');
     res.send(html);
   } catch (e) { logger.error('[certificate]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// The institute's own certificate design (the picture the printable page is written on).
+router.get('/api/certificate-template.jpg', publicLimiter, (req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=604800');
+  res.type('image/jpeg').sendFile(path.join(__dirname, '../assets/certificate-template.jpg'), err => {
+    if (err && !res.headersSent) res.status(404).end();
+  });
 });
 
 // ── Referral System ──────────────────────────────────────────────────────────

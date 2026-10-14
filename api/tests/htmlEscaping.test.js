@@ -62,7 +62,7 @@ test('the public certificate escapes every value a customer controls', () => {
 
   // The page and the sheet both import the shared escaper.
   assert.match(src, /const \{ escapeHtml \} = require\('\.\.\/lib\/html'\)/, 'public.js does not import the shared escaper');
-  assert.match(sheet, /const \{ escapeHtml, safeUrl \} = require\('\.\/html'\)/, 'the sheet does not import the shared escaper');
+  assert.match(sheet, /const \{ escapeHtml \} = require\('\.\/html'\)/, 'the sheet does not import the shared escaper');
 
   // Isolate the certificate handler.
   const start = src.indexOf("router.get('/api/completions/:code/certificate'");
@@ -82,14 +82,15 @@ test('the public certificate escapes every value a customer controls', () => {
   }
   assert.match(markup, /\$\{escapeHtml\(studentName\)\}/);
 
-  // The sheet itself: every value comes in through escapeHtml, the logo through safeUrl.
+  // The sheet itself: every value comes in through escapeHtml.
   const body = sheet.slice(sheet.indexOf('function certificateHtml'));
-  for (const name of ['studentName', 'courseName', 'serialNo', 'issuedAt', 'verifyUrl', 'manager', 'logo']) {
+  for (const name of ['studentName', 'courseName', 'duration', 'trainer', 'serialNo', 'issuedAt', 'verifyUrl']) {
     assert.ok(!new RegExp('\\$\\{' + name + '\\}').test(body), `${name} is interpolated into the sheet without escapeHtml`);
   }
-  assert.match(body, /const logo = safeUrl\(logoUrl\);/);
   assert.match(body, /\$\{escapeHtml\(studentName\)\}/);
   assert.match(body, /\$\{escapeHtml\(courseName\)\}/);
+  assert.match(body, /\$\{escapeHtml\(duration\)\}/);
+  assert.match(body, /\$\{escapeHtml\(trainer\)\}/);
 
   // The QR payload is a URL parameter, not markup — encoded, not escaped.
   assert.match(handler, /encodeURIComponent\(`CERT:\$\{certCode\}\|\$\{studentName\}/);

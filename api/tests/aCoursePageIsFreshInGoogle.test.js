@@ -138,7 +138,8 @@ test('the logo and the share image are the institute\'s own', () => {
   assert.match(html, /<meta property="og:image" content="https:\/\/mahadnafsy\.com\/brand\/og\.jpg"/);
   assert.match(html, /"logo": "https:\/\/mahadnafsy\.com\/brand\/logo\.png"/);
   assert.doesNotMatch(html, /top4top/);
-  for (const rel of ['client/components/Header.tsx', 'client/components/Footer.tsx', 'client/components/CourseCertificate.tsx']) {
+  // (the certificate carries the logo inside the institute's own design picture)
+  for (const rel of ['client/components/Header.tsx', 'client/components/Footer.tsx']) {
     const source = read(rel);
     assert.match(source, /BRAND_LOGO/, rel);
     assert.doesNotMatch(source, /top4top/, rel);

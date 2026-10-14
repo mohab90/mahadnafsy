@@ -45,11 +45,14 @@ test('what is missing is said in Arabic for the desk', () => {
 test('the printable certificate refuses to fall back to the Arabic name or title', () => {
   const route = read('api/routes/public.js');
   const start = route.indexOf("router.get('/api/completions/:code/certificate'");
-  const certificate = route.slice(start, start + 4500);
+  const certificate = route.slice(start, start + 6000);
   assert.match(certificate, /s\.name_en AS subscriber_name_en/);
   assert.doesNotMatch(certificate, /COALESCE\(NULLIF\(s\.name_en, ''\), s\.name\)/, 'the Arabic name is no fallback');
-  assert.match(certificate, /certificateName\(row\.subscriber_name_en\)/);
-  assert.match(certificate, /certificateCourse\(\{ title_en: row\.course_title_en, title: row\.course_title \}\)/);
+  // The name and the course come only through the English-only rule (the desk's own change included).
+  assert.match(certificate, /effectiveCertificate\(\{/);
+  assert.match(certificate, /name_en: row\.subscriber_name_en/);
+  assert.match(certificate, /const studentName = certificate\.name;/);
+  assert.match(certificate, /const courseName  = certificate\.course;/);
   assert.match(certificate, /res\.status\(409\)/);
   assert.match(certificate, /الشهادة غير جاهزة للطباعة/);
 });
@@ -64,8 +67,8 @@ test("the desk's list says what is missing and does not offer print or share for
 
 test("the client's own viewer never shows an Arabic name or course", () => {
   const viewer = read('client/components/CourseCertificate.tsx');
-  assert.match(viewer, /const certName  = englishOnly\(studentNameEn\)\.toUpperCase\(\);/);
-  assert.match(viewer, /englishOnly\(courseNameEn\) \|\| englishOnly\(courseName\)/);
+  assert.match(viewer, /const certName  = \(englishOnly\(edits\?\.nameEn\) \|\| englishOnly\(studentNameEn\)\)\.toUpperCase\(\);/);
+  assert.match(viewer, /englishOnly\(edits\?\.courseEn\) \|\| englishOnly\(courseNameEn\) \|\| englishOnly\(courseName\)/);
   assert.doesNotMatch(viewer, /\(studentNameEn \|\| studentName\)/);
   assert.match(viewer, /if \(incomplete\) \{/);
 });
