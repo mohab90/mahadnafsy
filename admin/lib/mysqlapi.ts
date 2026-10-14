@@ -502,7 +502,7 @@ export type SalesPulse = {
 
 /** One round of «جدول الدقي» — the schedule a rep can sell, never who sits in it. */
 export type SalesScheduleRound = {
-  id: string; code: string; branch: string; courseId: string; courseTitle: string; instructorName: string;
+  id: string; code: string; branch: string; courseId: string; courseTitle: string; instructorId: string; instructorName: string; receptionName: string;
   dayOfWeek: string; timeSlot: string; room: string; startDate: string;
   /** 0 = not started yet; 1 or 2 = the lecture it is on. */
   lecture: number;
