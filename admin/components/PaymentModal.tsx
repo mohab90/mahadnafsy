@@ -262,6 +262,23 @@ const PrintReceiptModal: React.FC<{ data: PrintData; onClose: () => void }> = ({
   </div>
 );
 
+// The booking kinds and the item types as tiles, each in its own colour (small, and told apart at a glance).
+const BOOKING_TONE: Record<string, { on: string; off: string; tile: string }> = {
+  new_booking: { on: 'border-rose-600 bg-gradient-to-l from-rose-600 to-red-500', off: 'border-gray-200 text-gray-600 hover:border-rose-400 hover:text-rose-600', tile: 'bg-rose-50' },
+  installment: { on: 'border-sky-600 bg-gradient-to-l from-sky-600 to-blue-500', off: 'border-gray-200 text-gray-600 hover:border-sky-400 hover:text-sky-600', tile: 'bg-sky-50' },
+  retake: { on: 'border-emerald-600 bg-gradient-to-l from-emerald-600 to-green-500', off: 'border-gray-200 text-gray-600 hover:border-emerald-400 hover:text-emerald-600', tile: 'bg-emerald-50' },
+  upgrade: { on: 'border-violet-600 bg-gradient-to-l from-violet-600 to-purple-500', off: 'border-gray-200 text-gray-600 hover:border-violet-400 hover:text-violet-600', tile: 'bg-violet-50' },
+};
+const PAYMENT_TYPE_TILES: Array<{ v: PaymentItemType | 'track'; ic: string; lb: string; on: string; off: string }> = [
+  { v: 'course', ic: '🎓', lb: 'كورس', on: 'border-rose-600 bg-rose-600', off: 'border-gray-200 text-gray-600 hover:border-rose-300' },
+  { v: 'track', ic: '🧭', lb: 'مسار', on: 'border-violet-600 bg-violet-600', off: 'border-gray-200 text-gray-600 hover:border-violet-300' },
+  { v: 'certificate', ic: '🏅', lb: 'شهادة', on: 'border-amber-500 bg-amber-500', off: 'border-gray-200 text-gray-600 hover:border-amber-300' },
+  { v: 'consultation', ic: '💬', lb: 'استشارة', on: 'border-sky-600 bg-sky-600', off: 'border-gray-200 text-gray-600 hover:border-sky-300' },
+  { v: 'book', ic: '📚', lb: 'كتاب', on: 'border-emerald-600 bg-emerald-600', off: 'border-gray-200 text-gray-600 hover:border-emerald-300' },
+  { v: 'carneh', ic: '🗂️', lb: 'كارنيه', on: 'border-indigo-600 bg-indigo-600', off: 'border-gray-200 text-gray-600 hover:border-indigo-300' },
+  { v: 'other', ic: '📦', lb: 'أخرى', on: 'border-slate-600 bg-slate-600', off: 'border-gray-200 text-gray-600 hover:border-slate-300' },
+];
+
 // ── Main PaymentModal ──────────────────────────────────────────────────────
 interface SubjectInfo {
   id: string;
@@ -437,6 +454,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   // recorded. The button shows once the booking's branch is one of them (see
   // bookingBranch below) and there are open rounds there.
   const [housingOpen, setHousingOpen] = useState(false);
+  // «مسار»: the course picker lists the catalogue's tracks only.
+  const [tracksOnly, setTracksOnly] = useState(false);
   // The dashboard loads the rounds for manage_daqqi alone; anyone else booking a
   // client there reads the booking list (api/routes/daqqi-rounds.js for-booking).
   const [bookingRounds, setBookingRounds] = useState<DaqqiRound[]>([]);
@@ -941,7 +960,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           )}
 
           {/* ── 1: Booking type chips ── */}
-          <div className={`grid gap-3 ${canRetake && upgradeCandidates.length ? 'grid-cols-4' : canRetake || upgradeCandidates.length ? 'grid-cols-3' : 'grid-cols-2'}`}>
+          <div className={`grid gap-2 ${canRetake && upgradeCandidates.length ? 'grid-cols-4' : canRetake || upgradeCandidates.length ? 'grid-cols-3' : 'grid-cols-2'}`}>
             {[
               { v: 'new_booking', ic: '🆕', lb: 'حجز جديد' }, { v: 'installment', ic: '💳', lb: 'قسط' },
               ...(canRetake ? [{ v: 'retake', ic: '🔁', lb: 'إعادة' }] : []),
@@ -974,29 +993,32 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                     set({ bookingType: 'new_booking', courseId: '', amount: '', customExpected: '', discountPct: '' });
                   }
                 }}
-                className={`flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-base font-extrabold border-2 transition ${(opt.v === 'upgrade' ? upgrading : opt.v === 'retake' ? retakeOpen : !upgrading && d.bookingType === opt.v) ? 'bg-red-600 border-red-600 text-white shadow-md' : 'bg-white border-gray-200 text-gray-600 hover:border-red-400 hover:text-red-600'}`}
+                className={`group flex items-center justify-center gap-2 rounded-xl border-2 px-3 py-2 text-sm font-extrabold transition ${(opt.v === 'upgrade' ? upgrading : opt.v === 'retake' ? retakeOpen : !upgrading && d.bookingType === opt.v) ? `${BOOKING_TONE[opt.v].on} text-white shadow-md` : `bg-white ${BOOKING_TONE[opt.v].off}`}`}
               >
-                <span className="text-xl">{opt.ic}</span>{opt.lb}
+                <span className={`grid h-7 w-7 place-items-center rounded-lg text-base ${(opt.v === 'upgrade' ? upgrading : opt.v === 'retake' ? retakeOpen : !upgrading && d.bookingType === opt.v) ? 'bg-white/25' : BOOKING_TONE[opt.v].tile}`}>{opt.ic}</span>{opt.lb}
               </button>
             ))}
           </div>
 
-          {/* ── 2: Payment type chips ── */}
-          <div className="flex items-center gap-1.5 flex-wrap bg-gray-50 border border-gray-100 rounded-xl px-2 py-2">
-            {[
-              { v: 'course', ic: '🎓', lb: 'كورس' }, { v: 'certificate', ic: '🏅', lb: 'شهادة' },
-              { v: 'consultation', ic: '💬', lb: 'استشارة' }, { v: 'book', ic: '📚', lb: 'كتاب' },
-              { v: 'carneh', ic: '🗂️', lb: 'كارنيه' }, { v: 'other', ic: '📦', lb: 'أخرى' },
-            ].map(opt => (
-              <button
-                key={opt.v}
-                type="button"
-                onClick={() => { setUpgradeFrom(null); set({ paymentType: opt.v as PaymentItemType, courseId: '', certReqId: '', certType: '', itemTitle: '' }); }}
-                className={`flex items-center gap-0.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition ${d.paymentType === opt.v ? 'bg-red-600 border-red-600 text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-red-300 hover:text-red-600'}`}
-              >
-                {opt.ic} {opt.lb}
-              </button>
-            ))}
+          {/* ── 2: Payment type chips — one tile each, in its own colour; «مسار» is the tracks of the catalogue ── */}
+          <div className="grid grid-cols-4 gap-1.5 rounded-xl border border-gray-100 bg-gray-50 p-1.5 sm:grid-cols-7">
+            {PAYMENT_TYPE_TILES.map(opt => {
+              const on = opt.v === 'track' ? (d.paymentType === 'course' && tracksOnly) : (d.paymentType === opt.v && !(opt.v === 'course' && tracksOnly));
+              return (
+                <button
+                  key={opt.v}
+                  type="button"
+                  onClick={() => {
+                    setUpgradeFrom(null);
+                    setTracksOnly(opt.v === 'track');
+                    set({ paymentType: (opt.v === 'track' ? 'course' : opt.v) as PaymentItemType, courseId: '', certReqId: '', certType: '', itemTitle: '' });
+                  }}
+                  className={`flex h-14 flex-col items-center justify-center gap-0.5 rounded-xl border-2 text-[11px] font-extrabold leading-none transition ${on ? `${opt.on} text-white shadow-md` : `bg-white ${opt.off}`}`}
+                >
+                  <span className="text-lg leading-none">{opt.ic}</span>{opt.lb}
+                </button>
+              );
+            })}
           </div>
 
           {/* ── 3: Course / item selection ── */}
@@ -1161,7 +1183,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                   >
                     <option value="">— اختر الكورس أو المسار —</option>
                     {bundles.length > 0 && <optgroup label="📌 المسارات">{bundles.map(b => <option key={`bundle:${b.id}`} value={`bundle:${b.id}`}>📌 {b.title}</option>)}</optgroup>}
-                    <optgroup label="🎓 الكورسات">{courses.map(c => <option key={c.id} value={c.id}>{c.titleAr || c.title}</option>)}</optgroup>
+                    {!(tracksOnly && isCourse) && <optgroup label="🎓 الكورسات">{courses.map(c => <option key={c.id} value={c.id}>{c.titleAr || c.title}</option>)}</optgroup>}
                   </select>
                 )}
                 {/* «يختار الكورس وبعدها يختار الفرع وقتها يظهر السعر … بالعمله بتاعته ويظهر اوبشنز الخصم» */}
