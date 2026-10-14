@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import { useVisibleInterval } from '../../../shared/useVisibleInterval';
 
-export type NotifRow = { id: string; type: string; title: string; message: string; read_at: string | null; created_at: string };
+export type NotifRow = { id: string; type: string; title: string; message: string; data_json?: string | null; read_at: string | null; created_at: string };
 
 /**
  * In-app notifications bell: 60s polling while the tab is in front, for

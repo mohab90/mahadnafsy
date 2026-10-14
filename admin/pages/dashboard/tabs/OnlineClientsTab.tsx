@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { housingNeedOf, isFullyHoused, needsHousing, type HousingNeed } from './daqqi/daqqiHousingNeeds';
 import { cairoDateOnly, cairoMonthOnly, cairoDay, cairoWeekStart } from '../../../../shared/cairoDate';
 import { Modal } from '../../../../shared/ui/Modal';
@@ -46,7 +46,7 @@ import { OnlineImportModal } from './online-clients-sections/OnlineImportModal';
 import { itemKeyOf } from '../../../lib/agreedPrice';
 import { usePhysicalBranch } from '../../../lib/physicalBranch';
 import { matchesSearch } from '../../../lib/clientSearch';
-import { followUpOf, matchesFollowFilter, type FollowFilter } from '../../../lib/clientFollowUp';
+import { FOLLOW_FILTERS, followUpOf, matchesFollowFilter, type FollowFilter } from '../../../lib/clientFollowUp';
 import {
   calcSubscribersPaidEGP,
   formatCompactNumber,
@@ -165,6 +165,11 @@ export default function OnlineClientsTab({
   // through tabs instead of leaving the page.
   const [searchParams, setSearchParams] = useSearchParams();
   const urlView = searchParams.get('view') as OnlineViewTab | null;
+  // A link from a notification («عندك 3 متابعات النهاردة») opens the table already filtered: ?follow=due|overdue|today.
+  const urlFollow = searchParams.get('follow');
+  useEffect(() => {
+    if (urlFollow && FOLLOW_FILTERS.some(([key]) => key === urlFollow)) setCollOnlineFollowFilter(urlFollow as FollowFilter);
+  }, [urlFollow]);
   const collOnlineViewTab: OnlineViewTab = urlView && ONLINE_VIEW_TABS.includes(urlView) ? urlView : 'active';
   // A staff-built tab open in the same row; opening a built-in one closes it.
   const [customTabId, setCustomTabId] = useState<string | null>(null);

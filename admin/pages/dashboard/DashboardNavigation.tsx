@@ -12,7 +12,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useSiteData } from '../../context/SiteDataContext';
 import MessagesBell from './MessagesBell';
 import { hasPermission } from '../../constants/permissions';
-import { NotificationsBell } from './NotificationsBell';
+import { NotificationsBell, type NotificationsBellProps } from './NotificationsBell';
 import { GlobalSearch, canUseGlobalSearch } from './GlobalSearch';
 import type { StaffMember } from '../../types';
 import type { TabKey } from './navigation';
@@ -69,6 +69,10 @@ type Props = {
 };
 
 type Notify = (kind: 'success' | 'error' | 'warning' | 'info', message: string) => void;
+
+// Every employee's bar carries the same bell: the role bars used to open the sales follow-up drawer in its
+// place, so a collector or a receptionist never saw their own notifications.
+const BellContext = React.createContext<NotificationsBellProps | null>(null);
 
 type CompactTab = { key: TabKey; label: string; icon: React.ComponentType<{ size?: number }> };
 
@@ -136,6 +140,11 @@ function ProfileIconButton({ activeTab, setActiveTab }: { activeTab: TabKey; set
   );
 }
 
+function RoleBell() {
+  const bell = React.useContext(BellContext);
+  return bell ? <NotificationsBell {...bell} /> : null;
+}
+
 function CompactRoleNav({
   tabs, activeTab, setActiveTab, currentStaff, salesDataLoading, staffNotifBadge,
   setSalesNotifOpen, notify, extraTabsSlot, extraHeaderButtons,
@@ -178,9 +187,10 @@ function CompactRoleNav({
             {salesDataLoading && <span className="w-4 h-4 border-2 border-t-transparent border-primary-400 rounded-full animate-spin" />}
             {canUseGlobalSearch(false, currentStaff) && <GlobalSearch className={iconButtonClass} />}
             <ProfileIconButton activeTab={activeTab} setActiveTab={setActiveTab} />
-            <button onClick={() => setSalesNotifOpen(true)} className={iconButtonClass} title="الإشعارات والمتابعات">
-              <Bell size={15} />
-              {staffNotifBadge > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold grid place-items-center">{staffNotifBadge > 9 ? '9+' : staffNotifBadge}</span>}
+            <RoleBell />
+            <button onClick={() => setSalesNotifOpen(true)} className={iconButtonClass} title="متابعاتي — اليوم والمتأخرة">
+              <AlarmClock size={15} />
+              {staffNotifBadge > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] font-bold grid place-items-center">{staffNotifBadge > 9 ? '9+' : staffNotifBadge}</span>}
             </button>
             <MessagesBell mode="staff" notify={notify} />
             {extraHeaderButtons}
@@ -276,8 +286,9 @@ export function DashboardNavigation(props: Props) {
     );
   };
 
+  const bellProps: NotificationsBellProps = { rows: notifRows, setRows: setNotifRows, unread: notifUnread, setUnread: setNotifUnread, open: notifOpen, setOpen: setNotifOpen, panelRef: notifRef, onNavigate: setActiveTab };
   return (
-<>
+<BellContext.Provider value={bellProps}>
         {/* ── Main nav bar ── */}
         {!hasRoleBar && (
           // sticky, because the screens under this bar are long ones — the
@@ -625,6 +636,6 @@ export function DashboardNavigation(props: Props) {
                 />
               );
             })()}
-</>
+</BellContext.Provider>
   );
 }
