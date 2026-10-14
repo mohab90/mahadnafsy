@@ -103,7 +103,9 @@ test('the receipt, the register and the managers see the number — and voiding 
   assert.match(read('admin/components/PaymentModal.tsx'), /forgetReceipts\(\);/);
   assert.match(read('admin/lib/mysqlapi.ts'), /noteReceipt\(answer\)/);
   assert.match(read('api/routes/finance-payments-register.js'), /number: r\.receipt_no != null \? Number\(r\.receipt_no\)/);
-  assert.match(read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx'), /<ReceiptGapsAlert branch=\{physicalBranch\.key\} \/>/);
+  // The alert is in the accounts — the branch's own and the main ones — not on the Dokki schedule page.
+  assert.match(read('admin/pages/dashboard/tabs/FinancialTab.tsx'), /<ReceiptGapsAlert branch=\{branchFilter \? branchFilter\.toUpperCase\(\) : undefined\} \/>/);
+  assert.doesNotMatch(read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx'), /ReceiptGapsAlert/);
   const gaps = read('api/routes/misc/receiptGaps.js');
   assert.match(gaps, /GAP_VIEWERS/);
   assert.match(gaps, /boundBranch\(req\)/, "a branch's own manager sees only their branch");

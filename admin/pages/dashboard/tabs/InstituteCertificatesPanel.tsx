@@ -135,7 +135,7 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
   }, [rows]);
   const branches = useMemo(() => [...new Set(rows.map(row => normBranchKey(row.branch || '')).filter(Boolean))], [rows]);
   const selectCls = 'rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-bold text-gray-700';
-  const btn = 'inline-flex items-center gap-0.5 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[10px] font-bold';
+  const iconBtn = 'inline-flex h-7 w-7 items-center justify-center rounded-md transition';
 
   return (
     <div className="space-y-3" dir="rtl">
@@ -173,79 +173,95 @@ export default function InstituteCertificatesPanel({ notify }: { notify: NotifyF
           {loading ? 'جاري التحميل…' : 'مفيش شهادات بالفلاتر دي.'}
         </div>
       ) : (
+        // Five columns that fit the screen — the table used to be nine, wider than the page, and the
+        // buttons at its far end were out of sight («بتظهر جزء منها … زر طباعة مش شغال»).
         <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
-          <table className="w-full text-xs">
+          <table className="w-full table-fixed text-xs">
+            <colgroup>
+              <col className="w-9" />
+              <col className="w-[22%]" />
+              <col />
+              <col className="w-[17%]" />
+              <col className="w-[170px]" />
+            </colgroup>
             <thead className="bg-gray-50 text-gray-500">
               <tr>
-                <th className="w-8 px-3 py-2 text-right">
+                <th className="px-2 py-2 text-center">
                   <input type="checkbox" checked={picker.allSelected} onChange={picker.toggleAll} aria-label="تحديد كل الشهادات المعروضة" />
                 </th>
-                {['العميل', 'الكورس', 'الاسم على الشهادة', 'رقم الشهادة', 'اتصدرت', 'الحالة', 'من الموقع', 'إجراءات'].map(title => (
-                  <th key={title} className="px-3 py-2 text-right font-bold">{title}</th>
+                {['العميل', 'الشهادة (بالإنجليزي)', 'الحالة', 'إجراءات'].map(title => (
+                  <th key={title} className={`px-2 py-2 font-bold ${title === 'إجراءات' ? 'text-center' : 'text-right'}`}>{title}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {shown.slice(0, 1000).map(row => {
                 const share = waLink(row.phone, `مبروك يا ${row.subscriberName} 🎓\nشهادة «${row.courseTitle}» من معهد الدراسات النفسية جاهزة:\n${certificateUrl(row.code)}`);
+                const ready = !row.missing?.length;
+                const edited = Boolean(row.edits?.nameEn || row.edits?.courseEn || row.edits?.duration || row.edits?.trainer);
                 return (
                   <tr key={row.id} className={`border-t border-gray-100 align-top hover:bg-amber-50/30 ${picker.isSelected(row.id) ? 'bg-amber-50' : ''}`}>
-                    <td className="px-3 py-2">
+                    <td className="px-2 py-2 text-center">
                       <input type="checkbox" checked={picker.isSelected(row.id)} onChange={() => picker.toggle(row.id)} aria-label={`تحديد شهادة ${row.subscriberName}`} />
                     </td>
-                    <td className="px-3 py-2">
-                      <div className="whitespace-nowrap font-bold text-gray-800">{row.subscriberName}</div>
+                    <td className="px-2 py-2">
+                      <div className="break-words font-bold leading-snug text-gray-800">{row.subscriberName}</div>
                       {row.phone && <div className="text-right text-[11px] text-gray-500" dir="ltr">{row.phone}</div>}
                       <div className="text-[10px] text-gray-400">{row.branch ? branchLabels[normBranchKey(row.branch)] || row.branch : ''}</div>
                     </td>
-                    <td className="px-3 py-2 font-bold text-indigo-700">{row.courseTitle}</td>
-                    <td className="px-3 py-2">
-                      {row.printed?.name ? <div dir="ltr" className="text-right font-bold">{row.printed.name}</div> : null}
-                      {row.courseTitleEn && <div dir="ltr" className="text-right text-[11px] text-gray-500">{row.courseTitleEn}{row.printed?.duration ? ` · ${row.printed.duration}` : ''}</div>}
-                      {(row.edits?.nameEn || row.edits?.courseEn || row.edits?.duration || row.edits?.trainer) && (
-                        <div className="text-[10px] font-bold text-amber-700">اتعدّلت يدوياً</div>
+                    <td className="px-2 py-2">
+                      <div className="break-words text-[11px] font-bold leading-snug text-indigo-700">{row.courseTitle}</div>
+                      {row.printed?.name ? <div dir="ltr" className="break-words text-right font-bold text-gray-800">{row.printed.name}</div> : null}
+                      {row.courseTitleEn && (
+                        <div dir="ltr" className="break-words text-right text-[11px] text-gray-500">{row.courseTitleEn}{row.printed?.duration ? ` · ${row.printed.duration}` : ''}</div>
                       )}
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[10px] text-gray-400">
+                        <span className="font-mono" dir="ltr">{row.code}</span>
+                        <span>اتصدرت {cairoDay(row.issuedAt)}</span>
+                        {edited && <span className="font-bold text-amber-700">اتعدّلت يدوياً</span>}
+                      </div>
                       {/* English only: a certificate lacking either is not printed, and says what to add. */}
-                      {row.missing?.length > 0 && (
-                        <div className="text-[11px] font-bold text-red-600">ناقص: {row.missing.join('، ')} — الشهادة مش هتتطبع لحد ما يتضاف (من ملف العميل ← بيانات الشهادة، أو من زر «تعديل»)</div>
+                      {!ready && (
+                        <div className="mt-0.5 text-[11px] font-bold text-red-600">ناقص: {row.missing.join('، ')} — اضغط «تعديل» وكمّله</div>
                       )}
                     </td>
-                    <td className="px-3 py-2 font-mono text-[11px] text-gray-500" dir="ltr">{row.code}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-gray-500">{cairoDay(row.issuedAt)}</td>
-                    <td className="px-3 py-2">
+                    <td className="px-2 py-2">
                       <select value={row.status} disabled={busy === row.id} onChange={event => void move(row, event.target.value as Stage)}
-                        className={`rounded-lg border-0 px-2 py-1 text-[11px] font-bold ${STAGES[row.status]?.cls || ''} disabled:opacity-50`} aria-label="حالة الشهادة">
+                        className={`w-full rounded-lg border-0 px-1.5 py-1 text-[11px] font-bold ${STAGES[row.status]?.cls || ''} disabled:opacity-50`} aria-label="حالة الشهادة">
                         {(Object.keys(STAGES) as Stage[]).map(key => <option key={key} value={key}>{STAGES[key].label}</option>)}
                       </select>
                       {row.statusBy && <div className="mt-0.5 text-[10px] text-gray-400">{row.statusBy}{row.statusAt ? ` · ${cairoDay(row.statusAt)}` : ''}</div>}
+                      <div className="mt-1">
+                        {row.downloadedAt
+                          ? <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700"><Download size={10} className="inline" /> حمّلها {cairoDay(row.downloadedAt)}{row.downloads > 1 ? ` · ${row.downloads}×` : ''}</span>
+                          : <span className="text-[10px] text-gray-300">لسه محمّلهاش</span>}
+                      </div>
                     </td>
-                    <td className="whitespace-nowrap px-3 py-2">
-                      {row.downloadedAt
-                        ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700"><Download size={10} className="inline" /> حمّلها {cairoDay(row.downloadedAt)}{row.downloads > 1 ? ` · ${row.downloads} مرات` : ''}</span>
-                        : <span className="text-[10px] text-gray-300">لسه</span>}
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex flex-nowrap items-center gap-1">
-                        {row.missing?.length ? (
-                          <span title={`ناقص: ${row.missing.join('، ')} — اضغط «تعديل» وكمّله`} className={`${btn} cursor-not-allowed bg-gray-200 text-gray-400`}><FileText size={10} /> PDF / طباعة</span>
-                        ) : (
-                          <a href={certificateUrl(row.code, true)} target="_blank" rel="noreferrer" title="الشهادة — طباعة أو حفظ PDF"
-                            className={`${btn} bg-slate-800 text-white hover:bg-slate-900`}><FileText size={10} /> PDF / طباعة</a>
-                        )}
-                        {!row.missing?.length && (
+                    <td className="px-1 py-2">
+                      {/* Icon buttons, close together; each says what it does when hovered. A certificate that is not ready
+                          opens the edit dialog instead of doing nothing. */}
+                      <div className="flex flex-nowrap items-center justify-center gap-1">
+                        {ready ? (
                           <a href={formPrintUrl(SITE, row.code, loadFormOffsets(), true)} target="_blank" rel="noreferrer"
-                            title="طباعة اسم العميل والكورس والمدة فقط على النموذج الجاهز"
-                            className={`${btn} bg-indigo-600 text-white hover:bg-indigo-700`}><Printer size={10} /> طباعة على النموذج</a>
+                            title="طباعة على النموذج الجاهز — اسم العميل والكورس والمدة فقط"
+                            className={`${iconBtn} bg-indigo-600 text-white hover:bg-indigo-700`}><Printer size={13} /></a>
+                        ) : (
+                          <button onClick={() => setEditing(row)} title={`ناقص: ${row.missing.join('، ')} — كمّله الأول`} className={`${iconBtn} bg-gray-200 text-gray-500`}><Printer size={13} /></button>
+                        )}
+                        {ready ? (
+                          <a href={certificateUrl(row.code, true)} target="_blank" rel="noreferrer" title="الشهادة بالتصميم الكامل — PDF أو طباعة"
+                            className={`${iconBtn} bg-slate-800 text-white hover:bg-slate-900`}><FileText size={13} /></a>
+                        ) : (
+                          <button onClick={() => setEditing(row)} title={`ناقص: ${row.missing.join('، ')} — كمّله الأول`} className={`${iconBtn} bg-gray-200 text-gray-500`}><FileText size={13} /></button>
                         )}
                         <button onClick={() => setEditing(row)} title="تعديل الاسم أو الكورس أو المدة أو المحاضر"
-                          className={`${btn} border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100`}><Pencil size={10} /> تعديل</button>
-                        {share && !row.missing?.length && (
+                          className={`${iconBtn} border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100`}><Pencil size={13} /></button>
+                        {share && ready && (
                           <a href={share} target="_blank" rel="noreferrer" title="ابعتها للعميل على الواتساب"
-                            className={`${btn} bg-emerald-600 text-white hover:bg-emerald-700`}><Share2 size={10} /> شير</a>
+                            className={`${iconBtn} bg-emerald-600 text-white hover:bg-emerald-700`}><Share2 size={13} /></a>
                         )}
-                        <button onClick={() => navigate(`/client/${row.clientCode || row.subscriberId}`)} className={`${btn} border border-gray-200 bg-white text-gray-600 hover:bg-gray-100`}>
-                          <ExternalLink size={10} /> الملف
-                        </button>
+                        <button onClick={() => navigate(`/client/${row.clientCode || row.subscriberId}`)} title="ملف العميل"
+                          className={`${iconBtn} border border-gray-200 bg-white text-gray-600 hover:bg-gray-100`}><ExternalLink size={13} /></button>
                       </div>
                     </td>
                   </tr>

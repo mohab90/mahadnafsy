@@ -433,11 +433,13 @@ export default function OnlineClientsTab({
                 const th = (e.currentTarget as HTMLElement).closest('th') as HTMLTableCellElement;
                 collOnlineResizing.current = { col, startX: e.clientX, startW: th.offsetWidth };
                 const onMove = (me: MouseEvent) => {
-                  if (!collOnlineResizing.current) return;
-                  const diff = me.clientX - collOnlineResizing.current.startX;
-                  const newW = Math.max(48, collOnlineResizing.current.startW + diff);
+                  const drag = collOnlineResizing.current;
+                  if (!drag) return;
+                  const newW = Math.max(48, drag.startW + (me.clientX - drag.startX));
+                  // The width is taken from `drag` now: the state updater below runs later,
+                  // after the mouse may already be up and the ref cleared («reading 'col'»).
                   setCollOnlineColWidths(prev => {
-                    const next = { ...prev, [collOnlineResizing.current!.col]: newW };
+                    const next = { ...prev, [drag.col]: newW };
                     try { localStorage.setItem('collOnlineColWidths', JSON.stringify(next)); } catch {}
                     return next;
                   });

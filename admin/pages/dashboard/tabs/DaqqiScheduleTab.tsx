@@ -41,7 +41,6 @@ import { branchMatchesFilter } from '../branchWorkspaceFilters';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
-import { ReceiptGapsAlert } from './daqqi/ReceiptGapsAlert';
 import { DaqqiNewRoundModal } from './daqqi/DaqqiNewRoundModal';
 import { DaqqiAddClientsModal } from './daqqi/DaqqiAddClientsModal';
 import { DaqqiRoundRow } from './daqqi/DaqqiRoundRow';
@@ -619,9 +618,6 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
         }}
       />
 
-
-
-      <ReceiptGapsAlert branch={physicalBranch.key} />
 
       <DaqqiOverviewStrip overview={overview} />
 
