@@ -11,7 +11,8 @@ const { uuidv4 } = require('../lib/id');
 const { pool, cached, cacheInvalidate } = require('../lib/db');
 const { parseLimit, parseOffset, sanitize, tryJson, validate } = require('../lib/helpers');
 const { getBrandSettings } = require('../lib/brandSettings');
-const { escapeHtml, safeUrl } = require('../lib/html');
+const { escapeHtml } = require('../lib/html');
+const { certificateHtml } = require('../lib/certificateHtml');
 const { getTenantSetting } = require('../lib/tenantSettings');
 const { COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber, mapQuiz, loadCourseMaterials, LIVE_STREAM_COLS, mapLiveStream } = require('../lib/mappers');
 const { recordQuizAttempt } = require('../lib/quizAttempts');
@@ -517,9 +518,7 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
       getBrandSettings(row.tenant_id),
       getTenantSetting('content', { tenantId: row.tenant_id, fallback: {} }),
     ]);
-    const instituteName = brand.instituteName || 'Psychology Institute';
     const trainingMgr   = content['training_manager_name'] || content['institute.trainingManager'] || 'WALID ABDRAHMAN';
-    const instructorName = row.instructor_name || 'Trainer';
     const serialNo = row.client_code || certCode.slice(-8).toUpperCase();
 
     const primaryColor = brand.primaryColor;
@@ -533,6 +532,9 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
     const clientBase = String(process.env.CLIENT_URL || 'https://mahadnafsy.com').replace(/\/$/, '');
     const verifyUrl = `${clientBase}/certificate/${encodeURIComponent(certCode)}`;
 
+    // The institute's own design, drawn by lib/certificateHtml.js; this page adds
+    // the toolbar and the print rules around it.
+    const cert = certificateHtml({ studentName, courseName, trainingManager: trainingMgr, serialNo, issuedAt, logoUrl: LOGO_URL, qrUrl, verifyUrl });
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -540,21 +542,15 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Certificate – ${escapeHtml(studentName)}</title>
 <style>
-  @page { size: A4 portrait; margin: 5mm; }
+  @page { size: A4 portrait; margin: 0; }
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; }
-  body { background: #f0f0f0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; font-family: Georgia, 'Times New Roman', serif; }
-  .toolbar { width: 600px; display: flex; justify-content: space-between; align-items: center; padding: 12px 0; }
-  .cert { width: 600px; background: #fff; border: 1px solid #e0e0e0; position: relative; overflow: hidden; }
-  .body-pad { padding: 24px 50px 0; text-align: center; }
-  .footer-row { display: flex; justify-content: space-between; align-items: flex-end; padding: 8px 36px 0; border-top: 1px solid #eee; gap: 8px; }
-  .sig-block { text-align: center; min-width: 135px; }
-  .sig-line { width: 88px; height: 30px; border-bottom: 2px solid #333; margin: 0 auto 8px; }
-  .sig-badge { border: 1px solid #ccc; border-radius: 4px; padding: 5px 8px; display: inline-flex; align-items: center; gap: 5px; font-size: 10px; color: #555; }
-  .serial-badge { border: 1px solid #ccc; border-radius: 4px; padding: 5px 8px; font-size: 9px; color: #555; line-height: 1.5; }
+  body { background: #f0f0f0; display: flex; flex-direction: column; align-items: center; font-family: Georgia, 'Times New Roman', serif; }
+  .toolbar { width: 600px; max-width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 12px 0; }
+  .cert { width: 600px; height: 849px; background: #fff; position: relative; overflow: hidden; flex: none; box-shadow: 0 2px 14px rgba(0,0,0,.18); }
   @media print {
-    body { background: #fff; padding: 0; }
-    .toolbar { display: none !important; }
-    .cert { border: none; }
+    body { background: #fff; padding: 0; display: block; }
+    .toolbar, .verify-note { display: none !important; }
+    .cert { zoom: 1.32; box-shadow: none; }
   }
   @media screen {
     body { padding: 20px; min-height: 100vh; }
@@ -571,114 +567,9 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
   </button>
 </div>
 
-<div class="cert" id="cert">
+${cert}
 
-  <!-- Top swoosh SVG -->
-  <svg viewBox="0 0 595 210" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;margin-bottom:-2px" preserveAspectRatio="none">
-    <path d="M 0 0 L 0 205 Q 100 155 297 172 Q 494 189 595 148 L 595 0 Z" fill="#D97706"/>
-    <path d="M 0 0 L 0 188 Q 100 138 297 155 Q 494 172 595 132 L 595 0 Z" fill="${primaryColor}"/>
-    <path d="M 0 0 L 152 12 Q 68 58 0 120 Z" fill="#F59E0B" opacity="0.55"/>
-    <path d="M 595 0 L 443 12 Q 527 58 595 120 Z" fill="#F59E0B" opacity="0.55"/>
-  </svg>
-
-  <!-- Gold medal (logo) -->
-  <div style="position:absolute;top:22px;left:50%;transform:translateX(-50%);width:82px;height:82px;border-radius:50%;background:radial-gradient(circle at 35% 32%, #FEF3C7, #F59E0B 52%, #92400E);box-shadow:0 4px 18px rgba(0,0,0,0.45),0 0 0 4px #FCD34D;display:flex;align-items:center;justify-content:center;z-index:10">
-    <img src="${safeUrl(LOGO_URL)}" style="width:52px;height:52px;border-radius:50%;object-fit:contain" onerror="this.style.display='none'"/>
-  </div>
-
-  <!-- Body -->
-  <div class="body-pad">
-    <div style="font-size:42px;font-weight:900;letter-spacing:7px;color:#111;line-height:1">CERTIFICATE</div>
-    <div style="font-size:14px;letter-spacing:8px;color:#666;margin-top:5px;margin-bottom:12px;font-style:italic">OF ACHIEVEMENT</div>
-
-    <!-- Divider -->
-    <div style="display:flex;align-items:center;gap:10px;margin:0 40px 14px">
-      <div style="flex:1;height:2px;background:linear-gradient(to right,transparent,${primaryColor})"></div>
-      <div style="display:flex;gap:4px">
-        <div style="width:6px;height:6px;border-radius:50%;background:#D97706"></div>
-        <div style="width:8px;height:8px;border-radius:50%;background:${primaryColor}"></div>
-        <div style="width:6px;height:6px;border-radius:50%;background:#D97706"></div>
-      </div>
-      <div style="flex:1;height:2px;background:linear-gradient(to left,transparent,${primaryColor})"></div>
-    </div>
-
-    <div style="font-size:22px;font-weight:900;color:${primaryColor};letter-spacing:2px;margin-bottom:5px">${escapeHtml(instituteName.toUpperCase())}</div>
-    <div style="font-size:11px;letter-spacing:5px;color:#777;margin-bottom:16px">IS PROUDLY PRESENTED TO</div>
-
-    <!-- Student name -->
-    <div style="font-size:${studentName.length > 28 ? '20px' : '27px'};font-weight:900;color:${primaryColor};letter-spacing:2px;padding:10px 16px;border-top:2px solid ${primaryColor};border-bottom:2px solid ${primaryColor};margin:0 24px 16px;line-height:1.4;min-height:54px;display:flex;align-items:center;justify-content:center">
-      ${escapeHtml(studentName)}
-    </div>
-
-    <div style="font-size:12px;color:#444;letter-spacing:2px;line-height:2">FOR THE SUCCESSFUL COMPLETION</div>
-    <div style="font-size:12px;color:#444;letter-spacing:2px;line-height:2;margin-bottom:10px">OF THE TRAINING COURSE</div>
-
-    <!-- Course name -->
-    <div style="font-size:${courseName.length > 50 ? '13px' : '16px'};font-weight:700;color:#1a1a1a;margin:0 16px 16px;letter-spacing:0.5px;line-height:1.5;padding:8px 16px;background:#fafafa;border:1px solid #eee;border-radius:4px">
-      ${escapeHtml(courseName)}
-    </div>
-  </div>
-
-  <!-- Footer signatures -->
-  <div class="footer-row">
-    <!-- Trainer -->
-    <div class="sig-block">
-      <div style="font-size:13px;font-weight:800;margin-bottom:10px;letter-spacing:0.5px">Trainer</div>
-      <div class="sig-line"></div>
-      <div class="sig-badge" style="direction:rtl">
-        <img src="${safeUrl(LOGO_URL)}" style="width:18px;height:18px;border-radius:50%;object-fit:contain;flex-shrink:0" onerror="this.style.display='none'"/>
-        ${escapeHtml(instituteName)}
-      </div>
-    </div>
-
-    <!-- Center: ribbon badge + serial -->
-    <div style="text-align:center;flex:1">
-      <svg width="52" height="68" viewBox="0 0 52 68" style="display:block;margin:0 auto 6px">
-        <defs>
-          <radialGradient id="mg" cx="35%" cy="32%">
-            <stop offset="0%" stop-color="#FEF3C7"/>
-            <stop offset="55%" stop-color="#F59E0B"/>
-            <stop offset="100%" stop-color="#92400E"/>
-          </radialGradient>
-        </defs>
-        <circle cx="26" cy="22" r="20" fill="url(#mg)" stroke="#B45309" stroke-width="2"/>
-        <text x="26" y="29" text-anchor="middle" font-size="20" fill="#7C2D12" font-weight="bold">★</text>
-        <polygon points="14,40 20,40 17,68 9,60" fill="${primaryColor}"/>
-        <polygon points="32,40 38,40 43,60 35,68" fill="${primaryColor}"/>
-      </svg>
-      <div style="font-size:8px;color:#999;letter-spacing:1px;text-transform:uppercase">Serial No.</div>
-      <div style="font-size:11px;font-weight:700;font-family:monospace;color:${primaryColor};margin-top:2px">${escapeHtml(serialNo)}</div>
-      <div style="font-size:8px;color:#aaa;margin-top:2px">${escapeHtml(issuedAt)}</div>
-    </div>
-
-    <!-- Training Manager -->
-    <div class="sig-block">
-      <div style="font-size:13px;font-weight:800;margin-bottom:10px;letter-spacing:0.5px">Training Manager</div>
-      <div class="sig-line"></div>
-      <div class="serial-badge">
-        <div style="font-weight:800">${escapeHtml(trainingMgr.toUpperCase())}</div>
-        <div>PSY TRAINING MANAGER</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- QR row -->
-  <div style="text-align:center;padding:10px 0 0">
-    <a href="${escapeHtml(verifyUrl)}" target="_blank">
-      <img src="${qrUrl}" alt="QR" style="width:54px;height:54px;display:inline-block"/>
-    </a>
-    <div style="font-size:8px;color:#bbb;margin-top:2px">Scan to verify certificate authenticity</div>
-  </div>
-
-  <!-- Bottom swoosh -->
-  <svg viewBox="0 0 595 62" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;margin-top:-1px" preserveAspectRatio="none">
-    <path d="M 0 62 L 0 25 Q 100 65 297 48 Q 494 31 595 55 L 595 62 Z" fill="#D97706"/>
-    <path d="M 0 62 L 0 10 Q 100 50 297 33 Q 494 16 595 42 L 595 62 Z" fill="${primaryColor}"/>
-  </svg>
-
-</div><!-- /cert -->
-
-<div style="text-align:center;padding:12px;font-size:12px;color:#999">
+<div class="verify-note" style="text-align:center;padding:12px;font-size:12px;color:#999">
   Verify at: <a href="${escapeHtml(verifyUrl)}" style="color:${primaryColor}">${escapeHtml(verifyUrl)}</a>
 </div>
 

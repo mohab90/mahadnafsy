@@ -58,10 +58,11 @@ test('safeUrl admits http(s) and nothing else', () => {
 
 test('the public certificate escapes every value a customer controls', () => {
   const src = read('routes/public.js');
+  const sheet = read('lib/certificateHtml.js');
 
-  // The handler must import the shared escaper.
-  assert.match(src, /const \{ escapeHtml, safeUrl \} = require\('\.\.\/lib\/html'\)/,
-    'public.js does not import the shared escaper');
+  // The page and the sheet both import the shared escaper.
+  assert.match(src, /const \{ escapeHtml \} = require\('\.\.\/lib\/html'\)/, 'public.js does not import the shared escaper');
+  assert.match(sheet, /const \{ escapeHtml, safeUrl \} = require\('\.\/html'\)/, 'the sheet does not import the shared escaper');
 
   // Isolate the certificate handler.
   const start = src.indexOf("router.get('/api/completions/:code/certificate'");
@@ -75,18 +76,20 @@ test('the public certificate escapes every value a customer controls', () => {
   assert.ok(htmlStart > 0, 'the certificate template moved');
   const markup = handler.slice(htmlStart);
 
-  // Nothing a customer or an admin can set may reach the markup raw.
-  for (const name of ['studentName', 'courseName', 'instituteName', 'serialNo', 'trainingMgr']) {
-    const raw = new RegExp('\\$\\{' + name + '(?:\\.toUpperCase\\(\\))?\\}');
-    assert.ok(!raw.test(markup),
-      `${name} is interpolated into the certificate without escapeHtml`);
+  // The page around the sheet: nothing a customer can set reaches it raw.
+  for (const name of ['studentName', 'courseName', 'serialNo', 'trainingMgr', 'verifyUrl']) {
+    assert.ok(!new RegExp('\\$\\{' + name + '(?:\\.toUpperCase\\(\\))?\\}').test(markup), `${name} is interpolated into the certificate page without escapeHtml`);
   }
-  // The logo is a URL, so it takes the URL guard rather than the text one.
-  assert.ok(!/\$\{LOGO_URL\}/.test(markup),
-    'LOGO_URL goes into an img src without safeUrl');
-  assert.match(markup, /\$\{safeUrl\(LOGO_URL\)\}/);
   assert.match(markup, /\$\{escapeHtml\(studentName\)\}/);
-  assert.match(markup, /\$\{escapeHtml\(courseName\)\}/);
+
+  // The sheet itself: every value comes in through escapeHtml, the logo through safeUrl.
+  const body = sheet.slice(sheet.indexOf('function certificateHtml'));
+  for (const name of ['studentName', 'courseName', 'serialNo', 'issuedAt', 'verifyUrl', 'manager', 'logo']) {
+    assert.ok(!new RegExp('\\$\\{' + name + '\\}').test(body), `${name} is interpolated into the sheet without escapeHtml`);
+  }
+  assert.match(body, /const logo = safeUrl\(logoUrl\);/);
+  assert.match(body, /\$\{escapeHtml\(studentName\)\}/);
+  assert.match(body, /\$\{escapeHtml\(courseName\)\}/);
 
   // The QR payload is a URL parameter, not markup — encoded, not escaped.
   assert.match(handler, /encodeURIComponent\(`CERT:\$\{certCode\}\|\$\{studentName\}/);
