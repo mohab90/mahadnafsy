@@ -23,6 +23,7 @@ const { safeDateOnly, cairoDayOf, cairoToday } = require('../lib/dates');
 const { branchIdForBranch, branchForId } = require('../lib/branches');
 const { assertWritable } = require('../lib/periodLock');
 const { agreedPrice, isItemPaymentType, setAgreedPrice } = require('../lib/agreedPrice');
+const { planRetake } = require('../lib/courseRetake');
 const { pickCollectionOfficer, subscriberMarket } = require('../lib/collectionDistribution');
 const { hasPermission } = require('../constants/permissions');
 const { applyCertificatePayment } = require('../lib/certificatePayments');
@@ -527,6 +528,18 @@ async function recordSubscriberPayment(req, res) {
       }).catch(() => null);
     }
     if (resolvedExpected == null && !payment.isInstallment) resolvedExpected = paymentAmount;
+    // «إعادة»: a course taken before, again, at 50% off (lib/courseRetake.js). Its price comes from the
+    // catalogue and is added to what the client agreed for the course; the access they hold is left as it is.
+    const isRetake = payment.retake === true && safeType === 'COURSE';
+    if (isRetake) {
+      const plan = await planRetake(pool, {
+        tenantId: paymentTenantId, subscriberId: subscriber_id, courseId, currency: paymentCurrency, amount: paymentAmount,
+      });
+      if (!plan.ok) return res.status(plan.status).json({ error: plan.error, code: plan.code });
+      resolvedExpected = plan.expected;
+      payment.isInstallment = false;
+      payment.note = [payment.note || payment.notes, plan.note].filter(Boolean).join(' | ');
+    }
     if (courseId) {
       const [[course]] = await pool.query(
         'SELECT id FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
@@ -854,7 +867,7 @@ async function recordSubscriberPayment(req, res) {
     // an instalment at the new price does not disagree with the booking's. An
     // instalment with no price brings the item's rows to the agreed one too,
     // so the access check below never finds two prices for one course.
-    if (resolvedExpected != null && (courseExpected != null || tierPrice || payment.isInstallment)
+    if (resolvedExpected != null && (courseExpected != null || tierPrice || payment.isInstallment || isRetake)
       && (courseId || bundleId) && ['COURSE', 'BUNDLE'].includes(safeType)) {
       await setAgreedPrice(conn, {
         tenantId: paymentTenantId, subscriberId: subscriber_id, courseId, bundleId, price: resolvedExpected,
@@ -864,7 +877,7 @@ async function recordSubscriberPayment(req, res) {
     // Auto-create enrollment when payment is paid and a course/bundle is specified
     // access_type = 'full' only if NOT an installment payment AND amount covers the full expected price
     // access_type = 'limited' (preview-only) for partial/installment payments until fully paid
-    if (isPaid && paysForItem && (courseId || bundleId)) {
+    if (isPaid && paysForItem && (courseId || bundleId) && !isRetake) {
       let enrollAccessType = 'full';
       let enrollPaidRatio = null;
       // An instalment is measured against the price; so is a booking that paid less

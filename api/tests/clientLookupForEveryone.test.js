@@ -126,6 +126,7 @@ test('every row says what it is — a lead, or a subscriber of online, Dokki or 
   assert.deepEqual([byId.l.typeLabel, byId.a.typeLabel, byId.b.typeLabel, byId.c.typeLabel], ['ليد', 'مشترك أونلاين', 'مشترك الدقي', 'مشترك التجمع']);
   assert.equal(byId.c.place, 'عميل التجمع');
   assert.equal(byId.l.place, 'ليد مخفي', 'a hidden lead is still a person — the one a rep would register twice');
+  assert.equal(byId.l.canOpen, false, 'a hidden lead has no file page — it is shown, not opened');
   assert.equal(byId.a.email, 'm@x.test');
   const leadQuery = queries.find(q => /FROM leads l/.test(q.sql));
   assert.doesNotMatch(leadQuery.sql, /hidden, 0\) = 0/, 'hidden leads are not filtered out');

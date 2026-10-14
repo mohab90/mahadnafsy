@@ -32,6 +32,7 @@ import { hasPermission, type PermissionKey, type RoleKey } from '../constants/pe
 import { DISCOUNT_PERCENTS, getCatalogPricing, tierForBranch, formatMoney, type CatalogPricing, type PriceTierKey, type TierPrice } from '../lib/catalogPricing';
 import { arabicNameProblem, englishNameProblem, nationalIdProblem } from '../lib/bookingIdentity';
 import { priceIn, useExtraItemsCatalog } from '../lib/extraItemsCatalog';
+import { RetakeDialog } from './RetakeDialog';
 
 // ── Shared draft type ──────────────────────────────────────────────────────
 export interface PaymentDraft {
@@ -656,6 +657,10 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   // «تكملة يعني العميل يحول الكورس الصغير لمسار»: a course they hold that some
   // track contains, and the tracks it can grow into.
   const tracksHolding = (courseId: string) => bundles.filter(b => (b.courses || []).some(course => course.id === courseId));
+  // «إعادة»: only for a client who holds a course (not a track) — the one they take again.
+  const [retakeOpen, setRetakeOpen] = useState(false);
+  const retakeOptions = enrolledOptions.filter(opt => !opt.isBnd);
+  const canRetake = mode === 'subscriber' && Boolean(subject.id) && retakeOptions.length > 0;
   const upgradeCandidates = mode === 'subscriber' && subject.id
     ? enrolledOptions.filter(opt => !opt.isBnd && tracksHolding(opt.cid).length > 0)
     : [];
@@ -928,15 +933,18 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           )}
 
           {/* ── 1: Booking type chips ── */}
-          <div className={`grid gap-3 ${upgradeCandidates.length ? 'grid-cols-3' : 'grid-cols-2'}`}>
+          <div className={`grid gap-3 ${canRetake && upgradeCandidates.length ? 'grid-cols-4' : canRetake || upgradeCandidates.length ? 'grid-cols-3' : 'grid-cols-2'}`}>
             {[
               { v: 'new_booking', ic: '🆕', lb: 'حجز جديد' }, { v: 'installment', ic: '💳', lb: 'قسط' },
+              ...(canRetake ? [{ v: 'retake', ic: '🔁', lb: 'إعادة' }] : []),
               ...(upgradeCandidates.length ? [{ v: 'upgrade', ic: '⬆️', lb: 'تكملة لمسار' }] : []),
             ].map(opt => (
               <button
                 key={opt.v}
                 type="button"
                 onClick={() => {
+                  // «إعادة»: its own small dialog (RetakeDialog) — the course is the one already taken, at 50% off.
+                  if (opt.v === 'retake') { setRetakeOpen(true); return; }
                   if (opt.v === 'upgrade') {
                     const first = upgradeCandidates[0];
                     const track = first ? tracksHolding(first.cid)[0] : undefined;
@@ -958,7 +966,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                     set({ bookingType: 'new_booking', courseId: '', amount: '', customExpected: '', discountPct: '' });
                   }
                 }}
-                className={`flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-base font-extrabold border-2 transition ${(opt.v === 'upgrade' ? upgrading : !upgrading && d.bookingType === opt.v) ? 'bg-red-600 border-red-600 text-white shadow-md' : 'bg-white border-gray-200 text-gray-600 hover:border-red-400 hover:text-red-600'}`}
+                className={`flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-base font-extrabold border-2 transition ${(opt.v === 'upgrade' ? upgrading : opt.v === 'retake' ? retakeOpen : !upgrading && d.bookingType === opt.v) ? 'bg-red-600 border-red-600 text-white shadow-md' : 'bg-white border-gray-200 text-gray-600 hover:border-red-400 hover:text-red-600'}`}
               >
                 <span className="text-xl">{opt.ic}</span>{opt.lb}
               </button>
@@ -1840,6 +1848,19 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
             >إلغاء</button>
           </div>
         </div>
+        {retakeOpen && (
+          <RetakeDialog
+            subjectId={subject.id}
+            subjectName={subject.name}
+            options={retakeOptions.map(opt => ({ cid: opt.cid, label: opt.label, remaining: opt.remaining }))}
+            courses={courses}
+            currency={d.currency}
+            branch={bookingBranch || undefined}
+            paymentMethods={paymentMethods}
+            onClose={() => setRetakeOpen(false)}
+            onDone={() => { setRetakeOpen(false); onClose(); }}
+          />
+        )}
     </Modal>
   );
 };

@@ -214,7 +214,8 @@ router.get('/api/admin/client-lookup', requireAuth, requireAdminOrStaff, require
         kind: 'lead', ...typeOf('lead', l.branch), id: l.id, clientCode: l.client_code || null, name: l.name, phone: l.phone, email: l.email || null,
         place: Number(l.hidden) === 1 ? 'ليد مخفي' : leadPlace(l), branch: l.branch || null, owner: l.owner_name || null,
         mine: Boolean(req.staffRecord && l.assigned_sales_id === req.staffRecord.id),
-        canOpen: req.isSuperAdmin ? true : Number(l.can_open) === 1,
+        // A hidden lead is shown so nobody registers the person twice, but has no file page to open.
+        canOpen: Number(l.hidden) === 1 ? false : req.isSuperAdmin ? true : Number(l.can_open) === 1,
       })),
     ].sort((a, b) => rankOf(a, q) - rankOf(b, q));
     res.json({ rows, capped: subscribers.length === LOOKUP_PER_KIND || leads.length === LOOKUP_PER_KIND });
