@@ -1,6 +1,7 @@
 'use strict';
 const { signerName } = require('../../lib/staffNames');
 const { completeForBranch, toIdentity } = require('../../lib/phoneNumber');
+const { clientHoldingPhone, phoneInUse, spellingsOf } = require('../../lib/phoneDuplicates');
 const { findLeadByContact } = require('../../lib/leadMatching');
 const logger = require('../../lib/logger');
 const { escapeHtml } = require('../../lib/html');
@@ -190,7 +191,7 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
 
     // ── 1. Try subscriber (by id or client_code) ────────────────────────────
     const [subRows] = await pool.query(
-       `SELECT id, firebase_uid, client_code, lead_id, name, email, phone, branch,
+       `SELECT id, firebase_uid, client_code, lead_id, name, email, phone, phone2, branch,
        is_active, notes, client_type, assigned_sales_id, assigned_sales_name, assigned_cs_id, assigned_cs_name,
        crm_json, created_at, updated_at
        FROM subscribers
@@ -318,7 +319,7 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
       const normB = rawBranch ? rawBranch.toUpperCase().replace(/[-\s]/g,'_') : null;
       const branch = (normB && VALID_BRANCHES.has(normB)) ? normB : rawBranch;
       return res.json({ type: 'subscriber', data: {
-        id: r.id, name: r.name, email: r.email, phone: r.phone,
+        id: r.id, name: r.name, email: r.email, phone: r.phone, phone2: r.phone2 || '',
         firebaseUid: r.firebase_uid, isActive: !!r.is_active, notes: r.notes, createdAt: r.created_at,
         ...crm, enrolledCourseIds, enrolledBundleIds, courseAccess,
         // P1: payments table is the sole source of truth for money; the stale
@@ -649,8 +650,10 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
     let {
       name, email, phone, isActive, is_active, notes,
     } = s;
+    // The client's second number is its own column (below), not crm_json's.
+    const hasPhone2 = Object.prototype.hasOwnProperty.call(s, 'phone2');
     const {
-      id: _id, name: _name, email: _email, phone: _phone, isActive: _isActive, is_active: _isActiveRaw,
+      id: _id, name: _name, email: _email, phone: _phone, phone2: _phone2, isActive: _isActive, is_active: _isActiveRaw,
       firebaseUid, firebase_uid,
       notes: _notes, createdAt, created_at, clientCode, client_code, updatedAt: clientUpdatedAt,
       credentialUpdate,
@@ -841,15 +844,19 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
       });
     }
     // Phone uniqueness (excluding current record) — normalize digits before comparing
-    if (safePhone) {
-      const [[phoneRow]] = await conn.query(
-        `SELECT id FROM subscribers WHERE tenant_id=? AND phone=? AND id != ? LIMIT 1`,
-        [tenantId, safePhone, id]
-      );
-      if (phoneRow) return res.status(409).json({
-        error: `رقم الهاتف ${safePhone} مسجل بالفعل لعميل آخر`,
-        existingId: phoneRow.id,
-      });
+    // The second number: the same form, never the first, and never held by another client.
+    const safePhone2 = hasPhone2 && (!partial || onlyFields.has('phone2'))
+      ? (toIdentity(completeForBranch(s.phone2, crmData.branch || s.branch)) || null) : undefined;
+    if (safePhone2 && safePhone2 === safePhone) {
+      return res.status(400).json({ error: 'الرقم التاني هو نفس الرقم الأساسي — اكتب رقم مختلف أو سيبه فاضي.', code: 'PHONE2_SAME_AS_FIRST' });
+    }
+    const heldBy = (safePhone || safePhone2)
+      ? await clientHoldingPhone(conn, { tenantId, phones: [safePhone, safePhone2].filter(Boolean), exceptId: id })
+      : null;
+    if (heldBy) {
+      const refusal = phoneInUse(heldBy);
+      const clash = [safePhone, safePhone2].filter(Boolean).find(number => spellingsOf(number).some(spelling => spelling === heldBy.phone || spelling === heldBy.phone2)) || safePhone || safePhone2;
+      return res.status(refusal.status).json({ ...refusal.body, error: `رقم الهاتف ${clash} متسجّل قبل كده للعميل ${heldBy.name || ''}${heldBy.client_code ? ` (${heldBy.client_code})` : ''} — مينفعش رقم واحد لعميلين.` });
     }
     // client_code uniqueness (excluding current record)
     if (code) {
@@ -932,6 +939,9 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
         [id, tenantId, firebaseUid || firebase_uid || null, code, safeName||'', safeEmail, safePhone, active?1:0,
          safeNotes||null, csId, csName, salesId, salesName, branchVal, branchIdVal, clientTypeVal, JSON.stringify(crmData)]
       );
+    }
+    if (safePhone2 !== undefined) {
+      await conn.query('UPDATE subscribers SET phone2=? WHERE id=? AND tenant_id=?', [safePhone2, id, tenantId]);
     }
     if (credentialUpdate) {
       const currentLoginEmail = String(credentialUpdate.currentEmail || existingSub?.email || '').toLowerCase().trim();

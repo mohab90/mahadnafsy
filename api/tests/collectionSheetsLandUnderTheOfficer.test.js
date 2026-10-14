@@ -181,7 +181,9 @@ test('a row lands with the sheet\'s remaining, its date, its numbers cleaned, an
     const columns = ['id', 'tenant_id', 'client_code', 'name', 'email', 'phone', 'branch', 'branch_id', 'notes',
       'assigned_cs_id', 'assigned_cs_name', 'crm_json', 'source', 'created_at'];
     const [first, second] = inserted.map(row => Object.fromEntries(columns.map((column, index) => [column, row[index]])));
-    assert.equal(first.phone, '01009441632', 'the zero Excel dropped is back');
+    // One form for a number — the ten digits, no trunk zero (migration 283): the zero Excel dropped is not put back,
+    // and «01009441632» and «1009441632» are one client.
+    assert.equal(first.phone, '1009441632', 'a collection sheet stores the identity form');
     assert.equal(first.branch, 'ONLINE_EGYPT');
     assert.equal(first.created_at, '2026-01-08 12:00:00');
     assert.equal(second.created_at, null, 'a date ahead of today is not a date');

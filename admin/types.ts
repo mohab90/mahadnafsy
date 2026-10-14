@@ -477,6 +477,8 @@ export interface SubscriberItem {
   nameAr?: string;      // Explicit Arabic name (same as name by default)
   email: string;
   phone: string;
+  /** The client's second number (same form as `phone`); never the first, never another client's. */
+  phone2?: string;
   isActive?: boolean;    // Authoritative subscribers.is_active flag from the API
   enrolledCourseIds: string[];
   courseAccess?: Record<string, 'preview' | 'full' | CourseAccessSetting>;

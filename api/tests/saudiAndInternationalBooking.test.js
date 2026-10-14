@@ -52,7 +52,8 @@ test('the international form of a Saudi mobile finds every way it was stored', (
 test("the booking route looks the client up by every spelling and names the one it found", () => {
   const route = read('api/routes/subscriber-payments.js');
   assert.match(route, /identitySpellings\(safePhone\)/);
-  assert.match(route, /phone IN \(\?\) OR REGEXP_REPLACE\(COALESCE\(phone, ''\), '\[\^0-9\]', ''\) IN \(\?\)/);
+  assert.match(route, /phone IN \(\?\) OR phone2 IN \(\?\) OR REGEXP_REPLACE\(COALESCE\(phone, ''\), '\[\^0-9\]', ''\) IN \(\?\)/, 'the client\'s second number is a number too');
+  assert.match(route, /const safePhone = toIdentity\(completeForBranch\(typedPhone, branch\)\)/, 'a booked client is stored as the identity, not as typed');
   assert.match(route, /العميل مسجل من قبل بنفس/);
 });
 

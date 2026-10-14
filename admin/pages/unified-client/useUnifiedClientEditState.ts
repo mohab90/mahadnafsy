@@ -21,6 +21,7 @@ function subscriberDraft(subscriber?: SubscriberItem): UnifiedClientSubscriberDr
     name: subscriber?.name || '',
     email: subscriber?.email || '',
     phone: subscriber?.phone || '',
+    phone2: subscriber?.phone2 || '',
     branch: subscriber?.branch,
     expectedEGP: String(subscriber?.expectedTotals?.EGP || ''),
     expectedSAR: String(subscriber?.expectedTotals?.SAR || ''),
@@ -88,6 +89,7 @@ export function useUnifiedClientEditState(params: Params) {
       name: subDraft.name,
       email: subDraft.email,
       phone: subDraft.phone,
+      phone2: subDraft.phone2.trim(),
       branch: subDraft.branch,
       expectedTotals: (subDraft.expectedEGP || subDraft.expectedSAR || subDraft.expectedUSD)
         ? {

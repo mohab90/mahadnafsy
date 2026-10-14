@@ -31,7 +31,8 @@ const { financialRecordMatches, resolveFinancialScope } = require('../lib/financ
 const { grantCourseSelections } = require('../lib/entitlements');
 const { getNextClientCode } = require('../lib/mappers');
 const { leadScope } = require('../lib/leadAccess');
-const { completeForBranch, identitySpellings, isRealPhone } = require('../lib/phoneNumber');
+const { completeForBranch, identitySpellings, isRealPhone, toIdentity } = require('../lib/phoneNumber');
+const { clientHoldingPhone, phoneInUse } = require('../lib/phoneDuplicates');
 const { VALID_BRANCHES } = require('../constants/permissions');
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../lib/paymentEntitlementAccess');
 const { isCashMethod, linkTransfer } = require('../lib/incomingTransfers');
@@ -249,21 +250,23 @@ async function recordSubscriberPayment(req, res) {
         });
       }
       // A Saudi client's 05… gets its 966 before anything is compared or stored.
-      const safePhone = String(completeForBranch(typedPhone, branch) || '').trim();
+      // Stored as the identity (the ten digits of an Egyptian mobile — lib/phoneNumber.js), the form the
+      // unique key and every duplicate check compare: «01157575809» and «1157575809» are one client.
+      const safePhone = toIdentity(completeForBranch(typedPhone, branch)) || String(completeForBranch(typedPhone, branch) || '').trim();
       // The same number however it was written — «+966 50 123 4567», 0501234567,
       // 966501234567 — not just the exact text typed now.
       const spellings = [...new Set([safePhone, ...identitySpellings(safePhone)])].filter(Boolean);
       const [[existing]] = await pool.query(
-        `SELECT id, name, client_code, phone, email, COALESCE(assigned_cs_name, assigned_sales_name) AS owner_name
+        `SELECT id, name, client_code, phone, phone2, email, COALESCE(assigned_cs_name, assigned_sales_name) AS owner_name
            FROM subscribers
           WHERE tenant_id=? AND deleted_at IS NULL
-            AND (phone IN (?) OR REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '') IN (?) OR (?<>'' AND email = ?))
+            AND (phone IN (?) OR phone2 IN (?) OR REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '') IN (?) OR (?<>'' AND email = ?))
           LIMIT 1`,
-        [req.tenantId, spellings, spellings, safeEmail, safeEmail]
+        [req.tenantId, spellings, spellings, spellings, safeEmail, safeEmail]
       );
       if (existing) {
         // Says who it is: «العميل مسجل من قبل» alone sent the desk searching.
-        const sameNumber = existing.phone === safePhone || spellings.includes(String(existing.phone || '').replace(/\D/g, ''));
+        const sameNumber = existing.phone === safePhone || spellings.includes(String(existing.phone || '').replace(/\D/g, '')) || spellings.includes(String(existing.phone2 || ''));
         const who = `«${existing.name || 'عميل'}»${existing.client_code ? ` (كود ${existing.client_code})` : ''}`;
         return res.status(409).json({
           error: `العميل مسجل من قبل بنفس ${sameNumber ? 'رقم التليفون' : 'الإيميل'}: ${who}${existing.owner_name ? ` — المسئول عنه ${existing.owner_name}` : ''}. سجّل الدفعة على ملفه بدل تسجيله من جديد (زر «بحث»).`,
@@ -684,6 +687,19 @@ async function recordSubscriberPayment(req, res) {
           }),
         ]
       );
+      // «رقمين لنفس العميل»: a second number typed with the booking, in the same form, never one a client holds.
+      const draftPhone2 = toIdentity(completeForBranch(sanitize(subscriberDraft.phone2 || '', 30), subRow.branch)) || null;
+      if (draftPhone2 && draftPhone2 !== toIdentity(subRow.phone)) {
+        const holder = await clientHoldingPhone(conn, { tenantId: paymentTenantId, phones: [draftPhone2], exceptId: subscriber_id });
+        if (holder) {
+          const refusal = phoneInUse(holder);
+          await conn.rollback();
+          conn.release();
+          conn = null;
+          return res.status(refusal.status).json(refusal.body);
+        }
+        await conn.query('UPDATE subscribers SET phone2=? WHERE id=? AND tenant_id=?', [draftPhone2, subscriber_id, paymentTenantId]);
+      }
     }
     if (createFromLead) {
       const accessScope = leadScope(req, 'l');
@@ -759,6 +775,15 @@ async function recordSubscriberPayment(req, res) {
           assignedCollectionId: csId,
           assignedCollectionName: csName,
         });
+        // One number, one client: a lead whose number a client already holds is that client.
+        const numberHolder = await clientHoldingPhone(conn, { tenantId: paymentTenantId, phones: [lockedLead.phone] });
+        if (numberHolder) {
+          const refusal = phoneInUse(numberHolder);
+          await conn.rollback();
+          conn.release();
+          conn = null;
+          return res.status(refusal.status).json(refusal.body);
+        }
         await conn.query(
           `INSERT INTO subscribers
              (id,tenant_id,client_code,lead_id,name,email,phone,national_id,is_active,
@@ -768,7 +793,7 @@ async function recordSubscriberPayment(req, res) {
           [
             subscriber_id, paymentTenantId, clientCode, lockedLead.id,
             sanitize(lockedLead.name, 300), email,
-            sanitize(lockedLead.phone || '', 30) || null, nationalId,
+            toIdentity(lockedLead.phone) || null, nationalId,
             paymentBranch, paymentBranchId,
             lockedLead.assigned_sales_id || null, lockedLead.assigned_sales_name || null,
             csId, csName, sanitize(lockedLead.notes || '', 2000) || null,

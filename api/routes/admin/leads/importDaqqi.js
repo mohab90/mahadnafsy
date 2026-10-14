@@ -18,6 +18,8 @@ const {
   assertWritable,
   logger,
 } = require('./_shared');
+const { toIdentity } = require('../../../lib/phoneNumber');
+const { spellingsOf } = require('../../../lib/phoneDuplicates');
 
 const router = Router();
 
@@ -99,8 +101,8 @@ router.post('/api/admin/import/daqqi', requireAuth, requireAdminOrStaff, require
         // Find or create subscriber
         let subscriberId, clientCode, isNew = false;
         const [[existing]] = await conn.query(
-          'SELECT id, client_code, tenant_id, branch, branch_id FROM subscribers WHERE tenant_id=? AND (email=? OR phone=?) LIMIT 1',
-          [req.tenantId, email, phone]
+          'SELECT id, client_code, tenant_id, branch, branch_id FROM subscribers WHERE tenant_id=? AND (email=? OR phone IN (?) OR phone2 IN (?)) LIMIT 1',
+          [req.tenantId, email, spellingsOf(phone).length ? spellingsOf(phone) : [''], spellingsOf(phone).length ? spellingsOf(phone) : ['']]
         );
 
         let subscriberTenantId = req.tenantId || 'tenant-default';
@@ -121,7 +123,7 @@ router.post('/api/admin/import/daqqi', requireAuth, requireAdminOrStaff, require
             await conn.query(
               `INSERT INTO subscribers (id,client_code,name,email,phone,national_id,whatsapp,nationality,branch,branch_id,discount,is_active,notes,created_at,tenant_id)
                VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`,
-              [subscriberId,clientCode,name,email,phone,nationalId,whatsapp,nationality,subscriberBranch,subscriberBranchId,discount,notes,createdAt,subscriberTenantId]
+              [subscriberId,clientCode,name,email,toIdentity(phone) || null,nationalId,whatsapp,nationality,subscriberBranch,subscriberBranchId,discount,notes,createdAt,subscriberTenantId]
             );
           }
           stats.newSubscribers++;

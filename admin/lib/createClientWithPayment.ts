@@ -60,6 +60,7 @@ export async function createClientWithPayment(
   const subscriber = {
     name,
     phone,
+    ...((draft.phone2 || '').trim() ? { phone2: (draft.phone2 || '').trim() } : {}),
     email: (draft.email || '').trim(),
     branch,
     notes: draft.note || undefined,

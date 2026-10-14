@@ -500,7 +500,7 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
         : [];
       const enrolledCourseIds = enrollmentProjection[r.id]?.ids || [];
       return {
-        id: r.id, name: r.name, email: r.email, phone: r.phone,
+        id: r.id, name: r.name, email: r.email, phone: r.phone, phone2: r.phone2 || '',
         firebaseUid: r.firebase_uid, isActive: !!r.is_active,
         notes: r.notes, createdAt: r.created_at,
         ...crm,          // other CRM fields: courseAccess, installmentPlans, etc.
@@ -659,7 +659,7 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePe
       const rb = r.branch || crm.branch || null;
       const nb = rb ? rb.toUpperCase().replace(/[-\s]/g,'_') : null;
       return {
-        id: r.id, name: r.name, email: r.email, phone: r.phone,
+        id: r.id, name: r.name, email: r.email, phone: r.phone, phone2: r.phone2 || '',
         firebaseUid: r.firebase_uid, isActive: !!r.is_active,
         notes: r.notes, createdAt: r.created_at,
         ...crm,
@@ -739,7 +739,7 @@ router.get('/api/staff/leads', requireAuth, requireAdminOrStaff, requirePermissi
       const crm = parseCrm(r.crm_json);
       return {
         ...crm,
-        id: r.id, name: r.name, email: r.email, phone: r.phone,
+        id: r.id, name: r.name, email: r.email, phone: r.phone, phone2: r.phone2 || '',
         status: r.status, source: r.source, notes: r.notes,
         leadType: r.lead_type || crm.leadType || 'course',
         enrolledCourseId: r.enrolled_course_id || crm.enrolledCourseId || '',
@@ -821,7 +821,7 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, requir
       const clientCode = r.client_code || crm.clientCode || null;
       const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : [];
       return {
-        id: r.id, name: r.name, email: r.email, phone: r.phone,
+        id: r.id, name: r.name, email: r.email, phone: r.phone, phone2: r.phone2 || '',
         firebaseUid: r.firebase_uid, isActive: !!r.is_active,
         notes: r.notes, createdAt: r.created_at, ...crm,
         enrolledCourseIds: enrollmentProjection[r.id]?.ids || [],
@@ -892,7 +892,7 @@ router.get('/api/staff/my-collection-clients', requireAuth, requireAdminOrStaff,
       const clientCode = r.client_code || crm.clientCode || null;
       const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : [];
       return {
-        id: r.id, name: r.name, email: r.email, phone: r.phone,
+        id: r.id, name: r.name, email: r.email, phone: r.phone, phone2: r.phone2 || '',
         firebaseUid: r.firebase_uid, isActive: !!r.is_active,
         notes: r.notes, createdAt: r.created_at, ...crm,
         enrolledCourseIds: enrollmentProjection[r.id]?.ids || [],
@@ -965,7 +965,7 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, requ
       const clientCode = r.client_code || crm.clientCode || null;
       const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : [];
       return {
-        id: r.id, name: r.name, email: r.email, phone: r.phone,
+        id: r.id, name: r.name, email: r.email, phone: r.phone, phone2: r.phone2 || '',
         firebaseUid: r.firebase_uid, isActive: !!r.is_active,
         notes: r.notes, createdAt: r.created_at, ...crm,
         enrolledCourseIds: enrollmentProjection[r.id]?.ids || [],

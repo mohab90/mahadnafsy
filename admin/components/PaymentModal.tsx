@@ -33,6 +33,7 @@ import { DISCOUNT_PERCENTS, getCatalogPricing, tierForBranch, formatMoney, type 
 import { arabicNameProblem, englishNameProblem, nationalIdProblem } from '../lib/bookingIdentity';
 import { priceIn, useExtraItemsCatalog } from '../lib/extraItemsCatalog';
 import { RetakeDialog } from './RetakeDialog';
+import { PhoneConfirm } from './PhoneConfirm';
 
 // ── Shared draft type ──────────────────────────────────────────────────────
 export interface PaymentDraft {
@@ -84,6 +85,8 @@ export interface PaymentDraft {
   nameAr?: string;
   nameEn?: string;
   phoneConfirmed?: boolean;
+  /** «رقمين لنفس العميل»: the second number of a client made with the booking. */
+  phone2?: string;
   /** The carnet or book picked from the catalogue (lib/extraItemsCatalog.ts) — the payment's name. */
   itemTitle?: string;
 }
@@ -264,6 +267,7 @@ interface SubjectInfo {
   id: string;
   name: string;
   phone?: string;
+  phone2?: string;
   enrolledCourseIds?: string[];
   paymentHistory?: PaymentHistoryEntry[];
   extraCertificateRequests?: ExtraCertificateRequest[];
@@ -440,7 +444,11 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   // Who this payment is for. In 'new' mode they do not exist yet, so it is
   // whoever is being typed into the form.
   const personName = mode === 'new' ? (d.name || '').trim() : subject.name;
-  const personPhone = mode === 'new' ? (d.phone || '').trim() : subject.phone;
+  // A number changed in the confirmation line (components/PhoneConfirm.tsx) holds for the rest of this booking.
+  const [phoneNow, setPhoneNow] = useState<string | null>(null);
+  const [phone2Now, setPhone2Now] = useState<string | null>(null);
+  const personPhone = mode === 'new' ? (d.phone || '').trim() : (phoneNow ?? subject.phone);
+  const personPhone2 = mode === 'new' ? (d.phone2 || '').trim() : (phone2Now ?? subject.phone2 ?? '');
 
   // ── Helpers ────────────────────────────────────────────────────────────
   const sysPrice = (courseId: string): number => {
@@ -1676,13 +1684,19 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                     className={`w-full rounded-xl border px-3 py-2 text-sm font-mono ${nationalIdProblem(d.nationalId, egyptianId) ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white'}`} />
                   {nationalIdProblem(d.nationalId, egyptianId) && <span className="mt-1 block text-[11px] text-red-600">{nationalIdProblem(d.nationalId, egyptianId)}</span>}
                 </label>
-                <label className={`flex items-center gap-2 rounded-xl border-2 px-3 py-2 ${d.phoneConfirmed ? 'border-emerald-300 bg-white' : 'border-amber-300 bg-amber-50'}`}>
-                  <input type="checkbox" checked={Boolean(d.phoneConfirmed)} onChange={e => set({ phoneConfirmed: e.target.checked })} className="h-4 w-4" />
-                  <span className="text-xs font-bold text-gray-700">
-                    أكّدت رقم التليفون مع العميل
-                    <span dir="ltr" className="mr-1 font-mono text-gray-900">{personPhone || '—'}</span>
-                  </span>
-                </label>
+                <div className="sm:col-span-2">
+                  <PhoneConfirm
+                    confirmed={Boolean(d.phoneConfirmed)}
+                    onConfirmed={value => set({ phoneConfirmed: value })}
+                    phone={personPhone || ''}
+                    phone2={personPhone2}
+                    saveFor={mode === 'subscriber' && subject.id ? { id: subject.id, name: subject.name } : undefined}
+                    onChange={(a, b) => {
+                      if (mode === 'new') set({ phone: a, phone2: b });
+                      else { setPhoneNow(a); setPhone2Now(b); }
+                    }}
+                  />
+                </div>
               </div>
             </div>
           )}

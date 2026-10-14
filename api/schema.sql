@@ -5166,6 +5166,7 @@ CREATE TABLE `subscribers` (
   `name_ar` varchar(255) DEFAULT NULL,
   `email` varchar(255) DEFAULT NULL,
   `phone` varchar(50) DEFAULT NULL,
+  `phone2` varchar(50) DEFAULT NULL,
   `national_id` varchar(50) DEFAULT NULL,
   `whatsapp` varchar(50) DEFAULT NULL,
   `nationality` enum('EGYPTIAN','NON_EGYPTIAN_EGYPT','SAUDI_RESIDENT','INTERNATIONAL') DEFAULT NULL,

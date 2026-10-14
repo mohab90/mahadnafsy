@@ -60,7 +60,7 @@ router.get('/api/admin/client-db/search', requireAuth, requireAdminOrStaff, requ
     );
     const leadRange = leadScope(req, 'l');
 
-    const subMatch = personMatch(q, 's');
+    const subMatch = personMatch(q, 's', { withPhone2: true });
     const leadMatch = personMatch(q, 'l');
     const userMatch = personMatch(q, 'u', { withCode: false });
 
@@ -171,7 +171,7 @@ router.get('/api/admin/client-lookup', requireAuth, requireAdminOrStaff, require
     const q = foldText(String(req.query.q || '').slice(0, 80));
     if (q.length < SEARCH_MIN_CHARS) return res.json({ rows: [] });
 
-    const subMatch = personMatch(q, 's');
+    const subMatch = personMatch(q, 's', { withPhone2: true });
     const leadMatch = personMatch(q, 'l');
     const leadRange = leadScope(req, 'l');
     // Whether the caller's own lead scope reaches the row, asked of the same SQL

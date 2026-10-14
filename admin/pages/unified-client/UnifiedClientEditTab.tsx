@@ -11,6 +11,7 @@ export type UnifiedClientSubscriberDraft = {
   name: string;
   email: string;
   phone: string;
+  phone2: string;
   branch?: BranchType;
   expectedEGP: string;
   expectedSAR: string;
@@ -112,6 +113,9 @@ export function UnifiedClientEditTab({
             <input value={subDraft.name} onChange={e => setSubDraft({ ...subDraft, name: e.target.value })} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
           <div><label className="text-xs text-gray-600 mb-1 block">الهاتف</label>
             <input value={subDraft.phone} onChange={e => setSubDraft({ ...subDraft, phone: e.target.value })} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+          <div><label className="text-xs text-gray-600 mb-1 block">هاتف تاني للعميل (اختياري)</label>
+            <input value={subDraft.phone2} onChange={e => setSubDraft({ ...subDraft, phone2: e.target.value })} dir="ltr" placeholder="01XXXXXXXXX" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            <p className="text-[10px] text-gray-400 mt-0.5">بيتدوّر بيه زي الأول، ومينفعش يتسجّل لعميل تاني.</p></div>
           <div><label className="text-xs text-gray-600 mb-1 block">البريد الإلكتروني</label>
             <input value={subDraft.email} onChange={e => setSubDraft({ ...subDraft, email: e.target.value })} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <p className="text-[10px] text-amber-600 mt-0.5">تغيير الإيميل سيحدث بيانات الدخول أيضاً</p>
