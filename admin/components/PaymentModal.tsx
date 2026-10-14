@@ -388,6 +388,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const [photoBusy, setPhotoBusy] = useState<PhotoKind | null>(null);
   const [photoError, setPhotoError] = useState('');
   useEffect(() => {
+    // Never another client's links while this one's are on their way.
+    setPhotoOnFile({ personal: null, id: null });
     if (mode !== 'subscriber' || !subject.id) return undefined;
     let alive = true;
     fetchClientPhotoLinks(subject.id).then(links => { if (alive) setPhotoOnFile(links); });
