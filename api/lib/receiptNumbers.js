@@ -25,7 +25,11 @@ async function nextReceiptNo(conn, { tenantId, branch }) {
   if (!series) return null;
   await conn.query('INSERT IGNORE INTO receipt_counters (tenant_id, branch, last_no) VALUES (?, ?, 0)', [tenantId, series]);
   const [[row]] = await conn.query('SELECT last_no FROM receipt_counters WHERE tenant_id = ? AND branch = ? FOR UPDATE', [tenantId, series]);
-  const next = Number(row?.last_no || 0) + 1;
+  // The counter is never behind the numbers already given: a restored backup, or a number
+  // written by hand, must not make every later payment collide with an existing receipt.
+  // (The highest is read under the counter's lock; the index on tenant, branch, receipt_no serves it.)
+  const [[top]] = await conn.query('SELECT MAX(receipt_no) AS top FROM payments WHERE tenant_id = ? AND branch = ?', [tenantId, series]);
+  const next = Math.max(Number(row?.last_no || 0), Number(top?.top || 0)) + 1;
   await conn.query('UPDATE receipt_counters SET last_no = ? WHERE tenant_id = ? AND branch = ?', [next, tenantId, series]);
   return next;
 }
