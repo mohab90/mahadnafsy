@@ -17,6 +17,8 @@ export type LookupRow = {
   owner: string | null;
   mine: boolean;
   canOpen: boolean;
+  /** The number is shared with a linked account on purpose. */
+  sharedPhone?: boolean;
 };
 
 // One look for every kind, told apart by colour and by name: a lead is yellow, an online
@@ -78,7 +80,7 @@ export function ClientLookupList({ query, onPay, onOpen }: {
                 {row.name || '—'}
                 {row.clientCode && <span className="mr-1.5 text-[10px] font-normal text-gray-400">{row.clientCode}</span>}
               </p>
-              <p className="truncate text-xs text-gray-500" dir="ltr" style={{ textAlign: 'right' }}>{row.phone || '—'}{row.email ? ` · ${row.email}` : ''}</p>
+              <p className="truncate text-xs text-gray-500" dir="ltr" style={{ textAlign: 'right' }}>{row.phone || '—'}{row.email ? ` · ${row.email}` : ''}{row.sharedPhone && <span className="mr-1 rounded bg-sky-100 px-1 text-[9px] font-bold text-sky-800" title="رقم مشترك مع حساب مرتبط">🔗 رقم مشترك</span>}</p>
             </div>
             <div className="shrink-0 text-left">
               <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold ${style.badge}`} title={row.place}>{row.typeLabel}</span>

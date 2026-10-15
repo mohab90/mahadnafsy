@@ -180,7 +180,7 @@ router.get('/api/admin/client-lookup', requireAuth, requireAdminOrStaff, require
 
     const [[subscribers], [leads]] = await Promise.all([
       pool.query(
-        `SELECT s.id, s.client_code, s.name, s.phone, s.email, s.branch, s.is_active, s.assigned_sales_id, s.assigned_cs_id,
+        `SELECT s.id, s.client_code, s.name, s.phone, s.phone_slot, s.phone_shared_with, s.email, s.branch, s.is_active, s.assigned_sales_id, s.assigned_cs_id,
                 COALESCE(cs.name, s.assigned_cs_name, sa.name, s.assigned_sales_name) AS owner_name,
                 l.assigned_sales_id AS lead_sales_id, l.assigned_cs_id AS lead_cs_id
            FROM subscribers s
@@ -207,6 +207,8 @@ router.get('/api/admin/client-lookup', requireAuth, requireAdminOrStaff, require
       ...subscribers.map(s => ({
         kind: 'subscriber', ...typeOf('subscriber', s.branch), id: s.id, clientCode: s.client_code || null, name: s.name, phone: s.phone, email: s.email || null,
         place: subscriberPlace(s), branch: s.branch || null, owner: s.owner_name || null,
+        // Two people on one number, on purpose (lib/phoneDuplicates.js): told on the row so nobody takes it for a duplicate.
+        sharedPhone: Number(s.phone_slot) > 0 || Boolean(s.phone_shared_with),
         mine: Boolean(req.staffRecord && (s.assigned_sales_id === req.staffRecord.id || s.assigned_cs_id === req.staffRecord.id)),
         canOpen: canOpenSubscriber(req, s, { assigned_sales_id: s.lead_sales_id, assigned_cs_id: s.lead_cs_id }),
       })),

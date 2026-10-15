@@ -32,7 +32,7 @@ const { grantCourseSelections } = require('../lib/entitlements');
 const { getNextClientCode } = require('../lib/mappers');
 const { leadScope } = require('../lib/leadAccess');
 const { completeForBranch, identitySpellings, isRealPhone, toIdentity } = require('../lib/phoneNumber');
-const { clientHoldingPhone, phoneInUse } = require('../lib/phoneDuplicates');
+const { clientHoldingPhone, phoneInUse, sharedPhoneSlot, recordSharedPhone } = require('../lib/phoneDuplicates');
 const { VALID_BRANCHES } = require('../constants/permissions');
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../lib/paymentEntitlementAccess');
 const { isCashMethod, linkTransfer } = require('../lib/incomingTransfers');
@@ -256,13 +256,22 @@ async function recordSubscriberPayment(req, res) {
       // The same number however it was written — «+966 50 123 4567», 0501234567,
       // 966501234567 — not just the exact text typed now.
       const spellings = [...new Set([safePhone, ...identitySpellings(safePhone)])].filter(Boolean);
+      // «العميل بيجيب صاحبه … نفس رقم التليفون لحسابين»: a number another client holds may be given to a new person
+      // only when staff names that client and says why (lib/phoneDuplicates.js); the account is then linked to it.
+      let sharing = null;
+      const sharedAsked = subscriberDraft.sharedPhone && typeof subscriberDraft.sharedPhone === 'object' ? subscriberDraft.sharedPhone : null;
+      if (sharedAsked) {
+        const verdict = await sharedPhoneSlot(pool, { tenantId: req.tenantId, phone: safePhone, sharedWithId: String(sharedAsked.withId || ''), reason: sharedAsked.reason, relation: String(sharedAsked.relation || '') });
+        if (!verdict.ok) return res.status(verdict.status).json(verdict.body);
+        sharing = { ...verdict, reason: String(sharedAsked.reason).trim().slice(0, 300), relation: String(sharedAsked.relation) };
+      }
       const [[existing]] = await pool.query(
         `SELECT id, name, client_code, phone, phone2, email, COALESCE(assigned_cs_name, assigned_sales_name) AS owner_name
            FROM subscribers
           WHERE tenant_id=? AND deleted_at IS NULL
-            AND (phone IN (?) OR phone2 IN (?) OR REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '') IN (?) OR (?<>'' AND email = ?))
+            AND (${sharing ? '0' : "phone IN (?) OR phone2 IN (?) OR REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '') IN (?)"} OR (?<>'' AND email = ?))
           LIMIT 1`,
-        [req.tenantId, spellings, spellings, spellings, safeEmail, safeEmail]
+        sharing ? [req.tenantId, safeEmail, safeEmail] : [req.tenantId, spellings, spellings, spellings, safeEmail, safeEmail]
       );
       if (existing) {
         // Says who it is: «العميل مسجل من قبل» alone sent the desk searching.
@@ -280,6 +289,9 @@ async function recordSubscriberPayment(req, res) {
         name: safeName,
         email: safeEmail || null,
         phone: safePhone,
+        phone_slot: sharing ? sharing.slot : 0,
+        phone_shared_with: sharing ? sharing.primaryId : null,
+        sharing,
         lead_id: null,
         assigned_sales_id: null,
         assigned_sales_name: null,
@@ -653,9 +665,9 @@ async function recordSubscriberPayment(req, res) {
       const [[racedSubscriber]] = await conn.query(
         `SELECT id FROM subscribers
           WHERE tenant_id=? AND deleted_at IS NULL
-            AND (phone=? OR (?<>'' AND email = ?))
+            AND ((phone=? AND phone_slot=?) OR (?<>'' AND email = ?))
           LIMIT 1 FOR UPDATE`,
-        [paymentTenantId, subRow.phone, String(subRow.email || ''), String(subRow.email || '')]
+        [paymentTenantId, subRow.phone, subRow.phone_slot || 0, String(subRow.email || ''), String(subRow.email || '')]
       );
       if (racedSubscriber) {
         const error = new Error('الرقم أو الإيميل ده اتسجل على عميل تاني في نفس اللحظة — حدّث الصفحة وسجّل الدفعة عليه.');
@@ -673,11 +685,11 @@ async function recordSubscriberPayment(req, res) {
       subRow.client_code = clientCode;
       await conn.query(
         `INSERT INTO subscribers
-           (id,tenant_id,client_code,name,email,phone,is_active,branch,branch_id,
+           (id,tenant_id,client_code,name,email,phone,phone_slot,phone_shared_with,is_active,branch,branch_id,
             assigned_cs_id,assigned_cs_name,notes,source,crm_json,created_at,updated_at)
-         VALUES (?,?,?,?,?,?,1,?,?,?,?,?,?,?,NOW(),NOW())`,
+         VALUES (?,?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,NOW(),NOW())`,
         [
-          subscriber_id, paymentTenantId, clientCode, subRow.name, subRow.email, subRow.phone,
+          subscriber_id, paymentTenantId, clientCode, subRow.name, subRow.email, subRow.phone, subRow.phone_slot || 0, subRow.phone_shared_with || null,
           subRow.branch, subRow.branch_id, subRow.assigned_cs_id, subRow.assigned_cs_name,
           sanitize(subscriberDraft.notes || subscriberDraft.note || '', 2000) || null,
           sanitize(subscriberDraft.source || 'reception', 100) || 'reception',
@@ -687,6 +699,7 @@ async function recordSubscriberPayment(req, res) {
           }),
         ]
       );
+      if (subRow.sharing) await recordSharedPhone(conn, { tenantId: paymentTenantId, newId: subscriber_id, newName: subRow.name, sharing: subRow.sharing, actor: req.staffRecord?.name || req.user?.email || 'staff' });
       // «رقمين لنفس العميل»: a second number typed with the booking, in the same form, never one a client holds.
       const draftPhone2 = toIdentity(completeForBranch(sanitize(subscriberDraft.phone2 || '', 30), subRow.branch)) || null;
       if (draftPhone2 && draftPhone2 !== toIdentity(subRow.phone)) {

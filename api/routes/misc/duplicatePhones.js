@@ -31,12 +31,12 @@ router.get('/api/admin/subscribers/duplicate-phones', requireAuth, requireAdminO
               COALESCE(s.assigned_cs_name, s.assigned_sales_name) AS owner_name
          FROM (
            SELECT tenant_id, phone_key FROM (
-             SELECT tenant_id, ${KEY('phone')} AS phone_key, id FROM subscribers WHERE tenant_id = ? AND deleted_at IS NULL AND phone IS NOT NULL AND phone <> ''
+             SELECT tenant_id, ${KEY('phone')} AS phone_key, id FROM subscribers WHERE tenant_id = ? AND deleted_at IS NULL AND phone_slot = 0 AND phone IS NOT NULL AND phone <> ''
              UNION ALL
-             SELECT tenant_id, ${KEY('phone2')} AS phone_key, id FROM subscribers WHERE tenant_id = ? AND deleted_at IS NULL AND phone2 IS NOT NULL AND phone2 <> ''
+             SELECT tenant_id, ${KEY('phone2')} AS phone_key, id FROM subscribers WHERE tenant_id = ? AND deleted_at IS NULL AND phone_slot = 0 AND phone2 IS NOT NULL AND phone2 <> ''
            ) keyed GROUP BY tenant_id, phone_key HAVING COUNT(DISTINCT id) > 1
          ) x
-         JOIN subscribers s ON s.tenant_id = x.tenant_id AND s.deleted_at IS NULL
+         JOIN subscribers s ON s.tenant_id = x.tenant_id AND s.deleted_at IS NULL AND s.phone_slot = 0
           AND (${KEY('s.phone')} = x.phone_key OR ${KEY('s.phone2')} = x.phone_key)
         ORDER BY x.phone_key, s.created_at LIMIT 2000`,
       [req.tenantId, req.tenantId]);
@@ -52,6 +52,22 @@ router.get('/api/admin/subscribers/duplicate-phones', requireAuth, requireAdminO
   } catch (error) {
     logger.error('[duplicate-phones]', error.message);
     res.status(500).json({ error: 'تعذّر فحص الأرقام المكررة' });
+  }
+});
+
+// GET /api/admin/subscribers/phone-holder?phone= — who holds a number now, for the form that is being filled:
+// it can then offer «ده شخص تاني بنفس الرقم» instead of waiting for the refusal. Name and code only.
+router.get('/api/admin/subscribers/phone-holder', requireAuth, requireAdminOrStaff, requirePermission('view_subscribers'), async (req, res) => {
+  try {
+    const { clientHoldingPhone } = require('../../lib/phoneDuplicates');
+    const { completeForBranch, toIdentity } = require('../../lib/phoneNumber');
+    const phone = toIdentity(completeForBranch(String(req.query.phone || '').slice(0, 30), String(req.query.branch || '')));
+    if (!phone || phone.length < 9) return res.json({ holder: null });
+    const holder = await clientHoldingPhone(pool, { tenantId: req.tenantId, phones: [phone] });
+    res.json({ holder: holder ? { id: holder.id, name: holder.name || '', clientCode: holder.client_code || null } : null });
+  } catch (error) {
+    logger.error('[phone-holder]', error.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

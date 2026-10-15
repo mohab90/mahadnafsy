@@ -34,6 +34,7 @@ import { arabicNameProblem, englishNameProblem, nationalIdProblem } from '../lib
 import { priceIn, useExtraItemsCatalog } from '../lib/extraItemsCatalog';
 import { RetakeDialog } from './RetakeDialog';
 import { PhoneConfirm } from './PhoneConfirm';
+import { SharedPhonePanel, type SharedPhone } from './SharedPhonePanel';
 
 // ── Shared draft type ──────────────────────────────────────────────────────
 export interface PaymentDraft {
@@ -87,6 +88,8 @@ export interface PaymentDraft {
   phoneConfirmed?: boolean;
   /** «رقمين لنفس العميل»: the second number of a client made with the booking. */
   phone2?: string;
+  /** «حساب مرتبط»: a new person using a number another client holds — who, how related, why. */
+  sharedPhone?: SharedPhone | null;
   /** The carnet or book picked from the catalogue (lib/extraItemsCatalog.ts) — the payment's name. */
   itemTitle?: string;
 }
@@ -1630,6 +1633,9 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                   />
                 </div>
               </div>
+              <SharedPhonePanel phone={d.phone || ''} branch={d.branch || ''} value={d.sharedPhone}
+                onChange={next => set({ sharedPhone: next })}
+                onOpenHolder={holder => window.open(`/client/${encodeURIComponent(holder.clientCode || holder.id)}`, '_blank', 'noopener')} />
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-gray-600 mb-1.5">البريد الإلكتروني <span className="text-gray-400 font-normal">(اختياري)</span></label>

@@ -3,7 +3,7 @@ const { certificateDue } = require('../../lib/certificatePricing');
 const { certificatePricing } = require('../../lib/certificatePayments');
 const { signerName } = require('../../lib/staffNames');
 const { completeForBranch, toIdentity } = require('../../lib/phoneNumber');
-const { clientHoldingPhone, phoneInUse, spellingsOf } = require('../../lib/phoneDuplicates');
+const { clientHoldingPhone, phoneInUse, spellingsOf, sharedPhoneSlot, recordSharedPhone } = require('../../lib/phoneDuplicates');
 const { findLeadByContact } = require('../../lib/leadMatching');
 const logger = require('../../lib/logger');
 const { escapeHtml } = require('../../lib/html');
@@ -853,8 +853,20 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
     if (safePhone2 && safePhone2 === safePhone) {
       return res.status(400).json({ error: 'الرقم التاني هو نفس الرقم الأساسي — اكتب رقم مختلف أو سيبه فاضي.', code: 'PHONE2_SAME_AS_FIRST' });
     }
+    // «العميل بيجيب صاحبه … نفس رقم التليفون لحسابين»: a NEW account may take a number another client holds only when a
+    // member of staff names that client and says why (lib/phoneDuplicates.js sharedPhoneSlot); it is then linked.
+    let sharing = null;
+    const sharedAsked = s.sharedPhone && typeof s.sharedPhone === 'object' ? s.sharedPhone : null;
+    if (sharedAsked && safePhone) {
+      const [[already]] = await conn.query('SELECT id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [id, tenantId]);
+      if (!already) {
+        const verdict = await sharedPhoneSlot(conn, { tenantId, phone: safePhone, sharedWithId: String(sharedAsked.withId || ''), reason: sharedAsked.reason, relation: String(sharedAsked.relation || '') });
+        if (!verdict.ok) return res.status(verdict.status).json(verdict.body);
+        sharing = { ...verdict, reason: String(sharedAsked.reason).trim().slice(0, 300), relation: String(sharedAsked.relation) };
+      }
+    }
     const heldBy = (safePhone || safePhone2)
-      ? await clientHoldingPhone(conn, { tenantId, phones: [safePhone, safePhone2].filter(Boolean), exceptId: id })
+      ? await clientHoldingPhone(conn, { tenantId, phones: (sharing ? [safePhone2] : [safePhone, safePhone2]).filter(Boolean), exceptId: id })
       : null;
     if (heldBy) {
       const refusal = phoneInUse(heldBy);
@@ -936,12 +948,13 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
       );
     } else {
       await conn.query(
-        `INSERT INTO subscribers (id, tenant_id, firebase_uid, client_code, name, email, phone, is_active, notes,
+        `INSERT INTO subscribers (id, tenant_id, firebase_uid, client_code, name, email, phone, phone_slot, phone_shared_with, is_active, notes,
            assigned_cs_id, assigned_cs_name, assigned_sales_id, assigned_sales_name, branch, branch_id, client_type, crm_json)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [id, tenantId, firebaseUid || firebase_uid || null, code, safeName||'', safeEmail, safePhone, active?1:0,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [id, tenantId, firebaseUid || firebase_uid || null, code, safeName||'', safeEmail, safePhone, sharing ? sharing.slot : 0, sharing ? sharing.primaryId : null, active?1:0,
          safeNotes||null, csId, csName, salesId, salesName, branchVal, branchIdVal, clientTypeVal, JSON.stringify(crmData)]
       );
+      if (sharing) await recordSharedPhone(conn, { tenantId, newId: id, newName: safeName || '', sharing, actor: signerName(req) });
     }
     if (safePhone2 !== undefined) {
       await conn.query('UPDATE subscribers SET phone2=? WHERE id=? AND tenant_id=?', [safePhone2, id, tenantId]);
