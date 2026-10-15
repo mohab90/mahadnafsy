@@ -28,6 +28,7 @@ const { capturePublicLead } = require('../lib/publicLead');
 const metaCapi = require('../lib/metaCapi');
 const joinApplication = require('../lib/joinApplication');
 const { effectiveCertificate, missingForCertificate } = require('../lib/certificateEnglish');
+const { verifyCertificate } = require('../lib/certificateVerification');
 const { SYSTEM_SEARCH_PERMISSIONS, searchSystem } = require('../lib/systemSearch');
 
 // The contact form's subjects that are sales' to answer (client/pages/Contact.tsx).
@@ -471,6 +472,18 @@ router.get('/api/completions/verify/:code', publicLimiter, async (req, res) => {
     if (row.status !== 'active') return res.status(410).json({ valid: false, status: row.status, error: 'Certificate revoked' });
     res.json(row);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// GET /api/certificates/verify/:code — the public check of ANY certificate the system issues: the
+// institute's own and the ones arranged with other bodies (lib/certificateVerification.js). Not
+// tenant-scoped, for the reason given above: the verify page is one shared URL.
+router.get('/api/certificates/verify/:code', publicLimiter, async (req, res) => {
+  try {
+    const found = await verifyCertificate(pool, req.params.code);
+    if (!found) return res.status(404).json({ state: 'not_found', error: 'الشهادة غير موجودة' });
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(found.state === 'revoked' ? 410 : 200).json(found);
+  } catch (e) { logger.error('[certificates/verify]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/completions/:code/certificate — printable HTML certificate (A4 portrait)

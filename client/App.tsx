@@ -536,6 +536,7 @@ const AppShell: React.FC = () => {
               <Route path="/join" element={lazyPage(<JoinTeaching />)} />
               <Route path="/join-us" element={lazyPage(<JoinStaff />)} />
               <Route path="/enroll" element={lazyPage(<Enrollment />)} />
+              <Route path="/certificate" element={lazyPage(<CertificateVerify />)} />
               <Route path="/certificate/:code" element={lazyPage(<CertificateVerify />)} />
               <Route path="/rate/:roundId" element={lazyPage(<RateRound />)} />
               <Route path="*" element={<NotFound />} />
