@@ -22,6 +22,7 @@ const SECTIONS = Object.freeze({
   leads: { label: 'ليدز', icon: '🎯' },
   online: { label: 'عملاء أونلاين', icon: '💻' },
   dokki: { label: 'عملاء الدقي والتجمع', icon: '🏫' },
+  tickets: { label: 'مشاكل عملاء', icon: '🎫' },
 });
 const BRANCH_DOKKI = new Set(['DAQQI', 'TAGAMOA']);
 
@@ -46,7 +47,15 @@ async function collectDue(db, tenantId) {
       WHERE l.tenant_id = ? AND l.hidden = 0 AND l.next_follow_up_date IS NOT NULL
         AND l.next_follow_up_date < ${dayEnd} AND l.status NOT IN ${TERMINAL_SQL}
       LIMIT 5000`, [tenantId]);
+  // A problem the team promised to come back to: due on the date set when it was last contacted.
+  const [tickets] = await db.query(
+    `SELECT t.id, t.subject AS name, t.next_contact_at AS due, t.assigned_to AS owner_id, s.name AS owner_name
+       FROM support_tickets t LEFT JOIN staff s ON s.id = t.assigned_to AND s.tenant_id = t.tenant_id
+      WHERE t.tenant_id = ? AND t.deleted_at IS NULL AND t.status IN ('open','in_progress')
+        AND t.next_contact_at IS NOT NULL AND t.next_contact_at < ${dayEnd}
+      LIMIT 2000`, [tenantId]);
   return [
+    ...tickets.map(row => ({ ...row, section: 'tickets' })),
     ...clients.map(row => ({ ...row, section: BRANCH_DOKKI.has(String(row.branch || '').toUpperCase()) ? 'dokki' : 'online' })),
     ...leads.map(row => ({ ...row, section: 'leads' })),
   ];

@@ -279,7 +279,7 @@ router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermi
     const [rows] = await pool.query(
       `SELECT t.id, t.subject, t.subscriber_name, t.subscriber_email, t.status, t.priority,
               t.category, t.department, t.channel, t.assigned_to, t.sla_due_at,
-              t.first_response_at, t.escalated_at, t.escalation_kind, t.created_at, t.resolved_at,
+              t.first_response_at, t.escalated_at, t.escalation_kind, t.root_cause, t.next_contact_at, t.created_at, t.resolved_at,
               LEFT(t.body, 400) AS body, t.resolution_note, t.subscriber_id,
               sb.phone AS subscriber_phone, sb.client_code,
               s.name AS assignee_name,
@@ -1094,17 +1094,29 @@ router.put('/api/admin/tickets/:id/priority', requireAuth, requireAdminOrStaff, 
 // «ضيف في الاجراءات زر تواصل وزر واتس اب وتسجل قالت ايه للعميل» (14 Oct 2026). Every
 // contact is one entry on the ticket and one on the client's file; the first one is the
 // first response the SLA counts.
-const CONTACT_CHANNELS = Object.freeze({ call: 'اتصال', whatsapp: 'واتساب' });
-const CONTACT_OUTCOMES = Object.freeze({ answered: 'رد', no_answer: 'ماردش', busy: 'مشغول', wrong_number: 'الرقم غلط', read: 'اتقرت (واتساب)' });
+const CONTACT_CHANNELS = Object.freeze({ call: 'اتصال', whatsapp: 'واتساب', email: 'إيميل' });
+const CONTACT_OUTCOMES = Object.freeze({ answered: 'رد', no_answer: 'ماردش', busy: 'مشغول', wrong_number: 'الرقم غلط', read: 'اتقرت (واتساب)', sent: 'اتبعت' });
+// What happens to the problem next — chosen by the one who spoke to the client: it is done, the client is
+// to be contacted again (on a date), it goes back to the administration, or the client is to be refunded.
+const CONTACT_NEXT = Object.freeze({ resolved: 'المشكلة انتهت', follow_up: 'لسه في تواصل تاني', escalate: 'يرجع للإدارة', refund: 'هيسترد' });
+const dayOnly = value => (/^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) ? String(value) : null);
 router.post('/api/admin/tickets/:id/contact', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
   let conn;
   try {
     const channel = String(req.body?.channel || '');
     const outcome = String(req.body?.outcome || 'answered');
     const said = cleanText(req.body?.said, TEXT_LIMITS.reason);
+    const cause = cleanText(req.body?.cause, TEXT_LIMITS.reason);
+    const reached = outcome === 'answered' || outcome === 'read' || outcome === 'sent';
+    // Not reached: the only thing left is to try again.
+    const next = reached ? String(req.body?.next || '') : 'follow_up';
+    const nextDate = dayOnly(req.body?.nextDate);
     if (!CONTACT_CHANNELS[channel]) return res.status(400).json({ error: 'اختار اتصال ولا واتساب', code: 'CONTACT_CHANNEL' });
     if (!CONTACT_OUTCOMES[outcome]) return res.status(400).json({ error: 'نتيجة التواصل غير معروفة', code: 'CONTACT_OUTCOME' });
     if (!said) return res.status(400).json({ error: 'اكتب قلت للعميل إيه (أو إيه اللي حصل)', code: 'CONTACT_SAID_REQUIRED' });
+    if (!CONTACT_NEXT[next]) return res.status(400).json({ error: 'اختار الخطوة الجاية: انتهت / تواصل تاني / للإدارة / استرداد', code: 'CONTACT_NEXT_REQUIRED' });
+    if (reached && !cause) return res.status(400).json({ error: 'اكتب سبب المشكلة الحقيقي', code: 'CONTACT_CAUSE_REQUIRED' });
+    if (next === 'follow_up' && !nextDate) return res.status(400).json({ error: 'حدّد ميعاد التواصل الجاي', code: 'CONTACT_DATE_REQUIRED' });
     conn = await pool.getConnection(); await conn.beginTransaction();
     const [[ticket]] = await conn.query(
       'SELECT status,department,assigned_to,subject,subscriber_id,id FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
@@ -1113,20 +1125,23 @@ router.post('/api/admin/tickets/:id/contact', requireAuth, requireAdminOrStaff, 
     const actor = await actorOf(req);
     await conn.query(
       `UPDATE support_tickets SET first_response_at = COALESCE(first_response_at, NOW()),
-              status = IF(status='open', 'in_progress', status), updated_at = NOW() WHERE id=? AND tenant_id=?`,
-      [req.params.id, req.tenantId]);
+              status = IF(status='open', 'in_progress', status),
+              root_cause = COALESCE(NULLIF(?, ''), root_cause),
+              next_contact_at = ?, updated_at = NOW() WHERE id=? AND tenant_id=?`,
+      [cause || '', next === 'follow_up' ? nextDate : null, req.params.id, req.tenantId]);
+    const detail = [cause ? `السبب الحقيقي: ${cause}` : '', `اللي اتعمل/اتقال: ${said}`, `الخطوة الجاية: ${CONTACT_NEXT[next]}${next === 'follow_up' ? ` (${nextDate})` : ''}`].filter(Boolean).join(' — ');
     await logTicketEvent(conn, {
       tenantId: req.tenantId, ticketId: req.params.id, type: 'contacted', actorId: actor.id, actorName: actor.name,
-      to: `${CONTACT_CHANNELS[channel]} — ${CONTACT_OUTCOMES[outcome]}`, detail: said,
+      to: `${CONTACT_CHANNELS[channel]} — ${CONTACT_OUTCOMES[outcome]}`, detail,
     });
     if (ticket.subscriber_id) {
       await logClientEvent(conn, {
         tenantId: req.tenantId, subscriberId: ticket.subscriber_id, action: 'problem_ticket_contacted', actor: actor.name,
-        label: `تواصل خدمة العملاء (${CONTACT_CHANNELS[channel]} — ${CONTACT_OUTCOMES[outcome]}) بخصوص «${ticket.subject || 'تيكت'}»: ${said}`,
+        label: `تواصل خدمة العملاء (${CONTACT_CHANNELS[channel]} — ${CONTACT_OUTCOMES[outcome]}) بخصوص «${ticket.subject || 'تيكت'}»: ${detail}`,
       });
     }
     await conn.commit(); conn.release(); conn = null;
-    res.json({ ok: true });
+    res.json({ ok: true, next });
   } catch (e) {
     if (conn) { await conn.rollback().catch(() => {}); conn.release(); }
     logger.error('[cs/contact]', e.message); res.status(500).json({ error: 'Internal server error' });

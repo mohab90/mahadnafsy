@@ -29,14 +29,17 @@ async function accountIdsOf(db, tenantId, ticket) {
   return uids;
 }
 
-/** { open, lastSeen } — open when one of the client's accounts was seen within the window. */
+/**
+ * { open, lastSeen, reason } — open when one of the client's accounts was seen within the window;
+ * otherwise `reason` says why it is closed: no_account (nothing to chat with) or offline.
+ */
 async function clientChatState(db, tenantId, ticket) {
-  if (!ticket) return { open: false, lastSeen: null };
+  if (!ticket) return { open: false, lastSeen: null, reason: 'no_account' };
   const uids = await accountIdsOf(db, tenantId, ticket);
-  if (!uids.size) return { open: false, lastSeen: null };
+  if (!uids.size) return { open: false, lastSeen: null, reason: 'no_account' };
   const online = await listOnlineUsers(tenantId, CHAT_WINDOW_MS);
   const seen = online.filter(user => uids.has(String(user.uid))).map(user => user.lastSeen);
-  return seen.length ? { open: true, lastSeen: Math.max(...seen) } : { open: false, lastSeen: null };
+  return seen.length ? { open: true, lastSeen: Math.max(...seen), reason: null } : { open: false, lastSeen: null, reason: 'offline' };
 }
 
 module.exports = { clientChatState, CHAT_WINDOW_MS };

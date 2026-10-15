@@ -121,18 +121,40 @@ test('customer-service problems are never handed to the managers', () => {
 });
 
 const CS = { id: 'st-cs', name: 'منى', role: 'support' };
-test('every contact with the client is written on the ticket and on the client\'s file', async () => {
+test('every contact with the client is written on the ticket and on the client\'s file, with the cause and the next step', async () => {
   ticket = { id: 'tk-1', status: 'open', department: 'support', assigned_to: 'st-cs', subject: 'مش راضية عن المحاضر', subscriber_id: 's-1' };
-  const none = await call('post', '/api/admin/tickets/:id/contact', { params: { id: 'tk-1' }, staffRecord: CS, body: { channel: 'whatsapp', said: ' ' } });
-  assert.equal(none.statusCode, 400, 'what was said is the point');
-  const bad = await call('post', '/api/admin/tickets/:id/contact', { params: { id: 'tk-1' }, staffRecord: CS, body: { channel: 'pigeon', said: 'x' } });
-  assert.equal(bad.statusCode, 400);
-  const res = await call('post', '/api/admin/tickets/:id/contact', { params: { id: 'tk-1' }, staffRecord: CS, body: { channel: 'call', outcome: 'answered', said: 'وعدتها بمحاضر تاني من الأسبوع الجاي' } });
+  const call2 = body => call('post', '/api/admin/tickets/:id/contact', { params: { id: 'tk-1' }, staffRecord: CS, body });
+  assert.equal((await call2({ channel: 'whatsapp', said: ' ' })).statusCode, 400, 'what was said is the point');
+  assert.equal((await call2({ channel: 'pigeon', said: 'x' })).statusCode, 400);
+  const noCause = await call2({ channel: 'call', outcome: 'answered', said: 'x', next: 'resolved' });
+  assert.equal(noCause.body.code, 'CONTACT_CAUSE_REQUIRED', 'a client who was reached: the real cause is asked');
+  const noNext = await call2({ channel: 'call', outcome: 'answered', said: 'x', cause: 'y' });
+  assert.equal(noNext.body.code, 'CONTACT_NEXT_REQUIRED', 'and what happens next');
+  const noDate = await call2({ channel: 'call', outcome: 'answered', said: 'x', cause: 'y', next: 'follow_up' });
+  assert.equal(noDate.body.code, 'CONTACT_DATE_REQUIRED');
+  const res = await call2({ channel: 'call', outcome: 'answered', said: 'وعدتها بمحاضر تاني من الأسبوع الجاي', cause: 'المحاضر اتغيّر من غير إبلاغ', next: 'follow_up', nextDate: '2026-10-20' });
   assert.equal(res.statusCode, 200);
   assert.ok(writes.some(w => /first_response_at = COALESCE\(first_response_at, NOW\(\)\)/.test(w.sql)), 'the first contact is the first response');
+  const update = writes.find(w => /root_cause = COALESCE/.test(w.sql));
+  assert.deepEqual([update.params[0], update.params[1]], ['المحاضر اتغيّر من غير إبلاغ', '2026-10-20'], 'the cause and the next contact are kept on the ticket');
   const event = writes.find(w => /^INSERT INTO ticket_events/.test(w.sql));
-  assert.ok(event.params.includes('contacted') && event.params.includes('وعدتها بمحاضر تاني من الأسبوع الجاي'));
+  assert.ok(event.params.includes('contacted') && event.params.some(v => String(v).includes('السبب الحقيقي: المحاضر اتغيّر')));
   const [entry] = historyOf();
   assert.equal(entry.action, 'problem_ticket_contacted');
   assert.match(entry.label, /اتصال — رد.*وعدتها بمحاضر تاني/);
+  // Not reached: only another attempt is left, so no cause and no choice are asked.
+  const missed = await call2({ channel: 'call', outcome: 'no_answer', said: 'اتصلت مرتين', nextDate: '2026-10-16' });
+  assert.equal(missed.statusCode, 200);
+  assert.equal(missed.body.next, 'follow_up');
+});
+
+test('the contact form offers the four next steps and each is carried out', () => {
+  const form = fs.readFileSync(path.join(__dirname, '../../admin/pages/dashboard/tabs/TicketContact.tsx'), 'utf8');
+  for (const label of ['المشكلة انتهت', 'لسه في تواصل تاني', 'يرجع للإدارة', 'هيسترد']) assert.ok(form.includes(label), label);
+  assert.match(form, /status`, \{ status: 'resolved', closed_reason: summary \}/);
+  assert.match(form, /escalate`, \{ reason: summary, kind \}/);
+  assert.match(form, /route`, \{ category: 'refund' \}/);
+  // A client with no number still has a way in.
+  assert.match(form, /ضيف رقم العميل/);
+  assert.match(form, /mailto:/);
 });

@@ -5327,6 +5327,8 @@ CREATE TABLE `support_tickets` (
   `first_response_at` datetime DEFAULT NULL,
   `resolved_at` datetime DEFAULT NULL,
   `resolution_note` text DEFAULT NULL,
+  `root_cause` text DEFAULT NULL,
+  `next_contact_at` date DEFAULT NULL,
   `tags_json` text DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),

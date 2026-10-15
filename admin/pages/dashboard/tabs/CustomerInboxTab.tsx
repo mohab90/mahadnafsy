@@ -33,6 +33,9 @@ type InboxItem = {
   phone?: string;
   email?: string;
   clientCode?: string;
+  subscriberId?: string;
+  rootCause?: string;
+  nextContactAt?: string;
   detail?: string;
   status: InboxStatus;
   category?: string;
@@ -136,6 +139,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   const [detailLoading, setDetailLoading] = useState(false);
   // Whether the client has the chat open right now (GET /admin/tickets/:id → chat).
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatReason, setChatReason] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
 
   const [canned, setCanned] = useState<CannedResponse[]>([]);
@@ -182,6 +186,9 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
       phone: row.subscriber_phone || (String(row.body || '').match(/رقم الهاتف:\s*([+\d][\d\s-]{6,})/)?.[1] || '').trim(),
       email: row.subscriber_email || '',
       clientCode: row.client_code || '',
+      subscriberId: row.subscriber_id || '',
+      rootCause: row.root_cause || '',
+      nextContactAt: row.next_contact_at ? String(row.next_contact_at).slice(0, 10) : '',
       branch: row.branch || '',
       raisedBy: row.raised_by_name || '',
       fromWebsite: ['web', 'web_contact', 'user_dashboard', 'ai_assistant'].includes(String(row.channel || '')),
@@ -282,11 +289,18 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
       })));
       setTimeline(Array.isArray(row?.timeline) ? row.timeline : []);
       setChatOpen(Boolean(row?.chat?.open));
+      setChatReason(row?.chat?.reason || null);
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر تحميل المحادثة');
     } finally { setDetailLoading(false); }
   }, [notify]);
   const closeDetail = () => { setDetailItem(null); setTicketReplies([]); setTimeline([]); setReplyText(''); setChatOpen(false); };
+
+  // «تواصل» / «واتس» / «إيميل»: the same three from the drawer and from the closed chat (TicketContact.tsx).
+  const contactButtons = (item: InboxItem) => (
+    <TicketContactButtons ticketId={item.id} subscriberId={item.subscriberId} personName={item.person} phone={item.phone} email={item.email}
+      onLogged={summary => { notify('success', summary); void openDetail(item); void loadRemote(); }} onError={text => notify('error', text)} />
+  );
 
   // The chat opens and closes with the client: look again every 20 seconds while the drawer is open.
   const openTicketId = detailItem?.source === 'ticket' ? detailItem.id : '';
@@ -596,6 +610,8 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
               </div>
 
               {item.detail && <div className="whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm leading-relaxed text-slate-700">{item.detail}</div>}
+              {item.rootCause && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><b>السبب الحقيقي:</b> {item.rootCause}</div>}
+              {item.nextContactAt && <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm font-bold text-sky-800">📞 تواصل تاني: {item.nextContactAt}</div>}
               {item.resolution && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800"><b>الحل:</b> {item.resolution}</div>}
 
               {item.source === 'ticket' && (
@@ -641,11 +657,15 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                   ) : (
                     !closed && (
                       <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
-                        <p className="text-xs font-bold text-amber-800">🔒 الشات مقفول — العميل مش فاتحه دلوقتي</p>
-                        <p className="text-[11px] text-amber-700">الشات بيتفتح أول ما العميل يفتح صفحة تذاكره. لحد وقتها كلّمه تليفون أو واتساب، وسجّل اللي قلته له.</p>
+                        <p className="text-xs font-bold text-amber-800">🔒 الشات مقفول — {chatReason === 'no_account' ? 'العميل ده مالوش حساب على الموقع' : 'العميل مش فاتحه دلوقتي'}</p>
+                        <p className="text-[11px] text-amber-700">
+                          {chatReason === 'no_account'
+                            ? 'مفيش شات مع زائر من غير حساب — كلّمه تليفون أو واتساب أو إيميل، وسجّل اللي قلته له.'
+                            : 'الشات بيتفتح أول ما العميل يفتح صفحة تذاكره. لحد وقتها كلّمه تليفون أو واتساب، وسجّل اللي قلته له.'}
+                        </p>
                         <div className="flex flex-wrap gap-2">
-                          <TicketContactButtons ticketId={item.id} phone={item.phone} onLogged={() => { notify('success', 'اتسجل التواصل في التذكرة وفي ملف العميل'); void openDetail(item); void loadRemote(); }} onError={text => notify('error', text)} />
-                          {!item.phone && <span className="text-[11px] text-amber-700">مفيش رقم تليفون للعميل — افتح ملفه وضيفه.</span>}
+                          {contactButtons(item)}
+                          
                         </div>
                       </div>
                     )
@@ -673,7 +693,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                 {item.source === 'ticket' ? (
                   <>
                     {item.status === 'open' && <button disabled={working} onClick={() => void follow(item)} className="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50"><Clock size={13} /> تحت المتابعة</button>}
-                    {!closed && <TicketContactButtons ticketId={item.id} phone={item.phone} onLogged={() => { notify('success', 'اتسجل التواصل في التذكرة وفي ملف العميل'); void openDetail(item); void loadRemote(); }} onError={text => notify('error', text)} />}
+                    {!closed && contactButtons(item)}
                     {!closed && <button disabled={working} onClick={() => void resolve(item, 'resolved')} className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"><CheckCircle2 size={13} /> اتحلت</button>}
                     {!closed && <button disabled={working} onClick={() => void resolve(item, 'closed')} className="inline-flex items-center gap-1 rounded-xl bg-slate-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-50"><X size={13} /> قفل</button>}
                     {closed && <button disabled={working} onClick={() => void reopen(item)} className="inline-flex items-center gap-1 rounded-xl border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700 disabled:opacity-50"><RotateCcw size={13} /> فتح تاني</button>}
