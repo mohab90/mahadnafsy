@@ -5,6 +5,9 @@ import type { Bundle, Course, DaqqiRound, StaffMember } from '../../../../types'
 import { SUB_STATUS_CFG } from '../../dashboardShared';
 import { FOLLOW_FILTERS, type FollowFilter } from '../../../../lib/clientFollowUp';
 
+/** The collection filter's «none»: clients with no collection officer. */
+export const NO_COLLECTOR = '__none__';
+
 // The date filter's quick ranges, in Cairo days; «مخصص» opens the two dates.
 const DATE_PRESETS: [string, string, number][] = [
   ['today', 'النهارده', 0], ['yesterday', 'أمس', 1], ['7', 'آخر 7 أيام', 6], ['15', 'آخر 15 يوم', 14], ['30', 'آخر 30 يوم', 29],
@@ -148,6 +151,7 @@ export function FiltersToolbar({
           <select value={collOnlineCollectionFilter} onChange={e=>{setCollOnlineCollectionFilter(e.target.value);setCollOnlinePage(1);}}
             className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none max-w-[150px]">
             <option value="">كل مسئولي التحصيل</option>
+            <option value={NO_COLLECTOR}>⚠️ بدون مسئول تحصيل</option>
             {(isOnlineManager ? onlineTeamMembers : isAdmin ? staffMembers : staffMembers).filter(s => (s.role||'').toLowerCase() === 'collection').map(s => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}

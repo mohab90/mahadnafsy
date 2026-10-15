@@ -61,7 +61,10 @@ function sanitizeCollectionConfig(input = {}) {
       };
     })
     .filter(sheet => sheet.staffId && sheet.sheetId);
-  return { members, sheets };
+  // «في قسم الأونلاين أي عميل جديد لازم يروح لموظف اسمه تحصيل جديد»: one employee who takes every new
+  // online client first, whatever the rotation says; the others receive what he passes on.
+  const newClientOfficerId = String(input.newClientOfficerId || '').trim().slice(0, 64);
+  return { members, sheets, newClientOfficerId };
 }
 
 // The distribute button's rule: `branch NOT LIKE '%DAQQI%' AND branch <> 'TAGAMOA'`.
@@ -170,6 +173,14 @@ async function loadCollectionPicker(db, tenantId) {
  */
 async function pickCollectionOfficer(db, tenantId, { market = 'local', branch = null } = {}) {
   if (isBranchClient(branch)) return null;
+  // The employee set to take every new online client gets it, ahead of the rotation, the caps and the markets.
+  const config = await loadCollectionConfig(db, tenantId);
+  if (config.newClientOfficerId) {
+    const [[officer]] = await db.query(
+      "SELECT id, name FROM staff WHERE id=? AND tenant_id=? AND is_active=1 AND deleted_at IS NULL LIMIT 1",
+      [config.newClientOfficerId, tenantId]);
+    if (officer) return { id: officer.id, name: officer.name };
+  }
   const picker = await loadCollectionPicker(db, tenantId);
   const officer = picker.next(market);
   return officer ? { id: officer.id, name: officer.name } : null;

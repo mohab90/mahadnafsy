@@ -46,6 +46,7 @@ import { OnlineImportModal } from './online-clients-sections/OnlineImportModal';
 import { itemKeyOf } from '../../../lib/agreedPrice';
 import { usePhysicalBranch } from '../../../lib/physicalBranch';
 import { matchesSearch } from '../../../lib/clientSearch';
+import { NO_COLLECTOR } from './online-clients-sections/FiltersToolbar';
 import { FOLLOW_FILTERS, followUpOf, matchesFollowFilter, type FollowFilter } from '../../../lib/clientFollowUp';
 import {
   calcSubscribersPaidEGP,
@@ -398,7 +399,9 @@ export default function OnlineClientsTab({
                 // enrolledCourseIds, so choosing one showed nobody.
                 if (collOnlineCourseFilter && !holdsItem(s, collOnlineCourseFilter)) return false;
                 // فلتر مسئول التحصيل
-                if (collOnlineCollectionFilter && s.assignedCsId !== collOnlineCollectionFilter) return false;
+                // «بدون مسئول تحصيل»: the clients nobody collects from yet.
+                if (collOnlineCollectionFilter === NO_COLLECTOR) { if (s.assignedCsId) return false; }
+                else if (collOnlineCollectionFilter && s.assignedCsId !== collOnlineCollectionFilter) return false;
                 // فلتر التسكين (لتب عملاء الدقي فقط)
                 // «مسكن» is seated for every course of theirs that has a round; «غير مسكن» is none, or one still missing.
                 const _need = housingNeeds.get(s.id);
