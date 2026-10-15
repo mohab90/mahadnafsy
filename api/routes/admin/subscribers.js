@@ -1,4 +1,6 @@
 'use strict';
+const { certificateDue } = require('../../lib/certificatePricing');
+const { certificatePricing } = require('../../lib/certificatePayments');
 const { signerName } = require('../../lib/staffNames');
 const { completeForBranch, toIdentity } = require('../../lib/phoneNumber');
 const { clientHoldingPhone, phoneInUse, spellingsOf } = require('../../lib/phoneDuplicates');
@@ -279,6 +281,7 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
           ORDER BY requested_at DESC`,
         [req.tenantId, r.id]
       );
+      const certificatePricingConfig = await certificatePricing(pool, req.tenantId);
       const extraCertificateRequests = certificateRows.map(request => ({
         id: request.id,
         courseId: request.course_id || undefined,
@@ -289,7 +292,7 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
         nationality: request.nationality ? String(request.nationality).toLowerCase() : undefined,
         idNumber: request.id_number || undefined,
         status: String(request.status || 'PENDING').toLowerCase(),
-        price: request.price != null ? Number(request.price) : undefined,
+        price: certificateDue(certificatePricingConfig, request) || undefined,
         paidAmount: request.paid_amount != null ? Number(request.paid_amount) : 0,
         currency: request.currency || undefined,
         requestedAt: safeIsoString(request.requested_at) || null,

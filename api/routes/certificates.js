@@ -9,8 +9,8 @@ const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { parseLimit } = require('../lib/helpers');
 const { publishRealtimeEvent } = require('../lib/realtime');
 const { getTenantSetting } = require('../lib/tenantSettings');
-const { basePriceForCurrency, certificateTypeCodes, resolveCertificatePrice } = require('../lib/certificatePricing');
-const { certificateNameOf, certificatePrice } = require('../lib/certificatePayments');
+const { basePriceForCurrency, certificateDue, certificateTypeCodes, resolveCertificatePrice } = require('../lib/certificatePricing');
+const { certificateNameOf, certificatePrice, syncCertificateRequest } = require('../lib/certificatePayments');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../middleware/auth');
 const { isString, isOneOf, validateBody } = require('../middleware/validate');
 const { resolveClientContext } = require('../lib/clientContext');
@@ -77,6 +77,101 @@ const fullyPaid = (request, systemPrice) => {
   const due = priceDue(request, systemPrice);
   return due > 0 && Number(request.paid_amount) >= due;
 };
+
+// ── The review of certificate prices and what was paid on them ───────────────
+// «في بعض الشهادات مكتوب سعرها غلط في جدول عملاء الاونلاين محتاجة مراجعة دقيقة جدا» (15 Oct 2026).
+// Two things made them wrong: a certificate payment that was voided or corrected never took its money
+// off the request (paid_amount was only ever added to), and a request opened by a payment with no stated
+// price took the payment as the price. This lists every request whose figures disagree with the payments
+// still standing or with the price list, and fixes the ones the desk selects.
+const AUDIT_PROBLEMS = Object.freeze({
+  paid_mismatch: 'المدفوع المسجّل مش زي مجموع الدفعات الموجودة',
+  overpaid: 'المدفوع أكتر من سعر الشهادة',
+  price_differs: 'السعر المسجّل مختلف عن قايمة الأسعار',
+  paid_without_price: 'عليها مدفوع من غير سعر',
+  currency_mismatch: 'في دفعات بعملة غير عملة الشهادة',
+  status_wrong: 'الحالة مش مظبوطة مع المدفوع',
+});
+async function auditRequests(tenantId) {
+  const pricing = await loadPricing(tenantId);
+  const [rows] = await pool.query(
+    `SELECT cr.id, cr.type, cr.custom_name, cr.status, cr.price, cr.paid_amount, cr.currency, cr.course_id, cr.requested_at,
+            s.name AS subscriber_name, s.client_code,
+            (SELECT COUNT(*) FROM payments p WHERE p.certificate_request_id=cr.id AND p.tenant_id=cr.tenant_id) AS payment_rows,
+            (SELECT COALESCE(SUM(p.amount),0) FROM payments p WHERE p.certificate_request_id=cr.id AND p.tenant_id=cr.tenant_id
+               AND p.status='paid' AND p.deleted_at IS NULL AND UPPER(p.currency)=UPPER(COALESCE(cr.currency,'EGP'))) AS linked_paid,
+            (SELECT COUNT(*) FROM payments p WHERE p.certificate_request_id=cr.id AND p.tenant_id=cr.tenant_id
+               AND p.status='paid' AND p.deleted_at IS NULL AND UPPER(p.currency)<>UPPER(COALESCE(cr.currency,'EGP'))) AS other_currency
+       FROM certificate_requests cr
+       LEFT JOIN subscribers s ON s.id=cr.subscriber_id AND s.tenant_id=cr.tenant_id
+      WHERE cr.tenant_id=? ORDER BY cr.requested_at DESC LIMIT 5000`, [tenantId]);
+  const issues = [];
+  for (const row of rows) {
+    const currency = String(row.currency || 'EGP').toUpperCase();
+    const listed = basePriceForCurrency(pricing, row.type, currency) || 0;
+    const stored = Number(row.price) || 0;
+    const due = certificateDue(pricing, { type: row.type, currency, price: stored });
+    const paid = Number(row.paid_amount) || 0;
+    const linkedPaid = Number(row.linked_paid) || 0;
+    const problems = [];
+    const fix = {};
+    if (Number(row.payment_rows) > 0 && Math.abs(paid - linkedPaid) > 0.001) { problems.push('paid_mismatch'); fix.paid = linkedPaid; }
+    if (due > 0 && paid > due + 0.001) problems.push('overpaid');
+    if (listed > 0 && stored > 0 && Math.abs(stored - listed) > 0.001) { problems.push('price_differs'); fix.price = listed; }
+    if (paid > 0 && due <= 0) problems.push('paid_without_price');
+    if (Number(row.other_currency) > 0) problems.push('currency_mismatch');
+    const status = String(row.status || '');
+    // The status is judged against what is really paid: the standing payments when there are any.
+    const really = Number(row.payment_rows) > 0 ? linkedPaid : paid;
+    if ((status === 'PAID' && due > 0 && really + 0.001 < due) || (status === 'PRICED' && due > 0 && really >= due)) problems.push('status_wrong');
+    if (!problems.length) continue;
+    issues.push({
+      id: row.id, subscriberName: row.subscriber_name || '', clientCode: row.client_code || null,
+      type: String(row.type || '').toLowerCase(), customName: row.custom_name || null, status, currency,
+      price: stored || null, systemPrice: listed || null, paid, linkedPaid, paymentRows: Number(row.payment_rows) || 0,
+      requestedAt: row.requested_at, problems, problemLabels: problems.map(key => AUDIT_PROBLEMS[key]), fix,
+    });
+  }
+  return { checked: rows.length, issues };
+}
+
+router.get('/api/admin/certificate-requests/audit', requireAuth, requireAdminOrStaff, requirePermission('manage_certificates'), async (req, res) => {
+  try {
+    if (!isCertManager(req)) return res.status(403).json({ error: 'مراجعة أسعار الشهادات للمديرين بس', code: 'MANAGER_ONLY' });
+    res.json(await auditRequests(req.tenantId));
+  } catch (e) { logger.error('[cert audit]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// Corrects what the review proposed, for the requests the desk selected: the paid amount from the
+// payments that stand, and the price from the price list — each only where the review found it wrong.
+router.post('/api/admin/certificate-requests/audit/fix', requireAuth, requireAdminOrStaff, requirePermission('manage_certificates'), async (req, res) => {
+  let conn;
+  try {
+    if (!isCertManager(req)) return res.status(403).json({ error: 'تصحيح أسعار الشهادات للمديرين بس', code: 'MANAGER_ONLY' });
+    const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).map(id => String(id)).slice(0, 500);
+    if (!ids.length) return res.status(400).json({ error: 'اختار الشهادات اللي هتتصحح' });
+    const { issues } = await auditRequests(req.tenantId);
+    const chosen = issues.filter(issue => ids.includes(issue.id));
+    conn = await pool.getConnection(); await conn.beginTransaction();
+    let fixed = 0;
+    const actor = actorName(req);
+    for (const issue of chosen) {
+      if (issue.fix.price) {
+        await conn.query('UPDATE certificate_requests SET price=? WHERE id=? AND tenant_id=?', [issue.fix.price, issue.id, req.tenantId]);
+      }
+      if (issue.fix.paid !== undefined || issue.problems.includes('status_wrong')) await syncCertificateRequest(conn, req.tenantId, issue.id);
+      if (issue.fix.price || issue.fix.paid !== undefined || issue.problems.includes('status_wrong')) {
+        fixed += 1;
+        logger.info('[cert audit] fixed', { id: issue.id, by: actor, was: { price: issue.price, paid: issue.paid }, fix: issue.fix });
+      }
+    }
+    await conn.commit(); conn.release(); conn = null;
+    res.json({ ok: true, fixed, requested: ids.length });
+  } catch (e) {
+    if (conn) { await conn.rollback().catch(() => {}); conn.release(); }
+    logger.error('[cert audit fix]', e.message); res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // ── Certificate Requests admin routes ─────────────────────────────────────────
 // The certificates screen reads this, not the clients it happens to have
@@ -687,3 +782,4 @@ router.post('/api/me/certificate-request', requireAuth, async (req, res) => {
 
 module.exports = router;
 module.exports.certificateEligible = certificateEligible;
+module.exports.auditRequests = auditRequests;

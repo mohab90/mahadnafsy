@@ -1,4 +1,6 @@
 'use strict';
+const { certificateDue } = require('../../lib/certificatePricing');
+const { certificatePricing } = require('../../lib/certificatePayments');
 const { CONVERTED_SQL } = require('../../lib/leadStatuses');
 const logger = require('../../lib/logger');
 const crypto   = require('crypto');
@@ -467,6 +469,8 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
        ORDER BY requested_at DESC`,
       [req.tenantId, ...ids]
     );
+    // The price a certificate shows is the price list's for its type and currency (lib/certificatePricing.js certificateDue).
+    const certificatePricingConfig = await certificatePricing(pool, req.tenantId);
     const certificatesBySub = {};
     certificateRows.forEach(request => {
       if (!certificatesBySub[request.subscriber_id]) certificatesBySub[request.subscriber_id] = [];
@@ -480,7 +484,7 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
         nationality: request.nationality ? String(request.nationality).toLowerCase() : undefined,
         idNumber: request.id_number || undefined,
         status: String(request.status || 'PENDING').toLowerCase(),
-        price: request.price != null ? Number(request.price) : undefined,
+        price: certificateDue(certificatePricingConfig, request) || undefined,
         paidAmount: request.paid_amount != null ? Number(request.paid_amount) : 0,
         currency: request.currency || undefined,
         requestedAt: safeIsoString(request.requested_at) || null,
@@ -629,6 +633,7 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePe
        ORDER BY requested_at DESC`,
       [req.tenantId, ...ids]
     );
+    const certificatePricingConfig = await certificatePricing(pool, req.tenantId);
     const staffCertificatesBySub = {};
     staffCertificateRows.forEach(request => {
       if (!staffCertificatesBySub[request.subscriber_id]) staffCertificatesBySub[request.subscriber_id] = [];
@@ -642,7 +647,7 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePe
         nationality: request.nationality ? String(request.nationality).toLowerCase() : undefined,
         idNumber: request.id_number || undefined,
         status: String(request.status || 'PENDING').toLowerCase(),
-        price: request.price != null ? Number(request.price) : undefined,
+        price: certificateDue(certificatePricingConfig, request) || undefined,
         paidAmount: request.paid_amount != null ? Number(request.paid_amount) : 0,
         currency: request.currency || undefined,
         requestedAt: safeIsoString(request.requested_at) || null,
