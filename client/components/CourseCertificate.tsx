@@ -18,8 +18,6 @@ interface CourseCertificateProps {
   certNumber: string;       // = clientCode (serial number)
   issuedAt: string;
   onClose: () => void;
-  /** Told when the client prints or saves it (the desk sees it as downloaded). */
-  onPrinted?: () => void;
 }
 
 // The certificate carries the name and the course in English only («مينفعش بالعربي
@@ -32,7 +30,7 @@ const englishOnly = (value?: string | null) => {
 
 const CourseCertificate: React.FC<CourseCertificateProps> = ({
   studentName, studentNameEn, courseName, courseNameEn, instructorName, hours, edits,
-  certNumber, issuedAt, onClose, onPrinted,
+  certNumber, issuedAt, onClose,
 }) => {
   // The certificate itself, full-bleed on a dark ground. A viewer, not a
   // dialog — but Escape closes it now, which it did not.
@@ -68,28 +66,14 @@ const CourseCertificate: React.FC<CourseCertificateProps> = ({
     return () => { cancelled = true; };
   }, [certNumber, certName, certCourse, incomplete]);
 
+  // «زر تحميل pdf بتاع العميل مش شغال»: the old button wrote the sheet into a blank window and printed it
+  // after 700 ms — before the picture had arrived, and with nothing to say when a pop-up was refused.
+  // It now opens the server's own printable page (api/routes/public.js), which prints itself once its
+  // picture is loaded and counts the download; the person picks «Save as PDF» there.
   const handlePrint = () => {
-    const el = document.getElementById('psy-cert-printable');
-    if (!el) return;
-    onPrinted?.();
-    const win = window.open('', '_blank', 'width=700,height=1050');
-    if (!win) { window.print(); return; }
-    win.document.write(`<!DOCTYPE html>
-      <html lang="en"><head>
-        <meta charset="UTF-8"/>
-        <title>Certificate – ${certName}</title>
-        <style>
-          @page { size: A4 portrait; margin: 0; }
-          body { margin:0; padding:0; background:white; }
-          #psy-cert-printable { zoom: 1.32; }
-          * { box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-        </style>
-      </head>
-      <body>${el.outerHTML}</body>
-    </html>`);
-    win.document.close();
-    win.focus();
-    setTimeout(() => { win.print(); win.close(); }, 700);
+    const url = `/api/completions/${encodeURIComponent(certNumber)}/certificate?print=1`;
+    const win = window.open(url, '_blank');
+    if (!win) window.location.assign(url);
   };
 
   if (incomplete) {

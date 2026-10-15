@@ -84,12 +84,14 @@ test('the public certificate escapes every value a customer controls', () => {
 
   // The sheet itself: every value comes in through escapeHtml.
   const body = sheet.slice(sheet.indexOf('function certificateHtml'));
-  for (const name of ['studentName', 'courseName', 'duration', 'trainer', 'serialNo', 'issuedAt', 'verifyUrl']) {
+  for (const name of ['studentName', 'courseName', 'trainer', 'serialNo', 'issuedAt', 'verifyUrl', 'certCode']) {
     assert.ok(!new RegExp('\\$\\{' + name + '\\}').test(body), `${name} is interpolated into the sheet without escapeHtml`);
   }
   assert.match(body, /\$\{escapeHtml\(studentName\)\}/);
   assert.match(body, /\$\{escapeHtml\(courseName\)\}/);
-  assert.match(body, /\$\{escapeHtml\(duration\)\}/);
+  // The duration reaches the page through trainingLine(), which escapes what it is given; the code is escaped here.
+  assert.match(sheet, /completed \$\{escapeHtml\(text\)\} of training/);
+  assert.match(body, /\$\{escapeHtml\(certCode\)\}/);
   assert.match(body, /\$\{escapeHtml\(trainer\)\}/);
 
   // The QR payload is a URL parameter, not markup — encoded, not escaped.

@@ -19,7 +19,7 @@ const { effectiveCertificate, certificateDuration } = require('../lib/certificat
 
 const sample = {
   studentName: 'AHMED MOHAMED ALI', courseName: 'Clinical Psychology Diploma', duration: '60 Hours', trainer: 'Dr Sara Adel',
-  serialNo: 'C-1', issuedAt: 'October 14, 2026', qrUrl: '/api/qr?size=90&data=x', verifyUrl: 'https://example.test/certificate/x',
+  serialNo: 'C-1', certCode: 'CERT-ABC-123', year: '2026', issuedAt: 'October 14, 2026', qrUrl: '/api/qr?size=90&data=x', verifyUrl: 'https://example.test/certificate/x',
 };
 
 test("the client's copy is the supplied picture with the lines written on it", () => {
@@ -27,30 +27,33 @@ test("the client's copy is the supplied picture with the lines written on it", (
   assert.ok(html.includes('src="/api/certificate-template.jpg"'), 'the picture is the design');
   assert.ok(html.includes('>AHMED MOHAMED ALI</div>'));
   assert.ok(html.includes('>Clinical Psychology Diploma</div>'));
-  assert.ok(html.includes('>Duration: 60 Hours</div>'));
+  assert.ok(html.includes('>completed 60 training hours in 2026</div>'), 'the sentence under the course');
+  assert.ok(html.includes('>CERT-ABC-123</div>'), "the certificate's own code, small, under it");
+  assert.match(html, /font-weight:900;color:#000[^>]*>Clinical Psychology Diploma/, 'the course is bold and solid black');
   assert.ok(html.includes('>Dr Sara Adel</div>'), "the course's trainer is written for the client");
   assert.doesNotMatch(html, /<svg/, 'nothing of the design is redrawn');
   const jpg = fs.readFileSync(path.join(__dirname, '../assets/certificate-template.jpg'));
   assert.equal(jpg.readUInt16BE(0), 0xFFD8, 'the template is a JPEG');
 });
 
-test('the desk copy writes the name and the course only, at 17 and 22 cm, and leaves the trainer empty', () => {
+test('the desk copy writes the name, the course, the sentence and the code, at 16 and 22.6 cm, and leaves the trainer empty', () => {
   const html = certificateFormHtml({ ...sample });
   assert.ok(html.includes('>AHMED MOHAMED ALI</span>'));
   assert.ok(html.includes('>Clinical Psychology Diploma</span>'));
-  assert.ok(html.includes('>Duration: 60 Hours</span>'));
+  assert.ok(html.includes('>completed 60 training hours in 2026</span>'));
+  assert.ok(html.includes('>CERT-ABC-123</span>'), 'the code prints on the paper too');
   assert.ok(!html.includes('Dr Sara Adel'), 'the trainer is for a pen');
-  assert.ok(!html.includes('C-1') && !html.includes('QR'), 'no code, no serial on the paper');
-  assert.match(html, /top:calc\(17cm - 0\.8cm\)/, 'the name is 17 cm from the top');
-  assert.match(html, /top:calc\(22cm - 0\.7cm\)/, 'the course is 22 cm from the top');
+  assert.ok(!html.includes('C-1<') && !html.includes('QR'), 'no serial, no QR on the paper');
+  assert.match(html, /top:calc\(16cm - 0\.8cm\)/, 'the name is 16 cm from the top — 1 cm higher');
+  assert.match(html, /top:calc\(22\.6cm - 0\.8cm\)/, 'the course is a little lower');
   assert.match(html, /class="guide"/, 'the picture is only a screen guide');
   assert.match(read('api/routes/public.js'), /\.toolbar, \.verify-note, \.guide \{ display: none !important; \}/, 'and never printed');
 });
 
 test('the distances can be moved, but stay on the sheet', () => {
   assert.deepEqual(formOffsets({ nameTop: '16.5', courseTop: '21' }), { nameTop: 16.5, courseTop: 21 });
-  assert.deepEqual(formOffsets({ nameTop: '99', courseTop: 'abc' }), { nameTop: 17, courseTop: 22 });
-  assert.deepEqual(formOffsets(), { nameTop: 17, courseTop: 22 });
+  assert.deepEqual(formOffsets({ nameTop: '99', courseTop: 'abc' }), { nameTop: 16, courseTop: 22.6 });
+  assert.deepEqual(formOffsets(), { nameTop: 16, courseTop: 22.6 });
   assert.match(certificateFormHtml({ ...sample, nameTop: 16, courseTop: 21 }), /top:calc\(16cm - 0\.8cm\)/);
 });
 
@@ -104,14 +107,18 @@ test('the desk can edit, and print on the form, from the certificates list', () 
   const panel = read('admin/pages/dashboard/tabs/InstituteCertificatesPanel.tsx');
   assert.match(panel, /طباعة على النموذج/);
   assert.match(panel, /<CertificateEditModal /);
-  assert.match(read('admin/lib/certificateForm.ts'), /nameTop: 17, courseTop: 22/);
+  assert.match(read('admin/lib/certificateForm.ts'), /nameTop: 16, courseTop: 22\.6/);
 });
 
 test("the client's viewer writes the same lines on the same picture", () => {
   const sheet = read('client/components/CertificateSheet.tsx');
   assert.match(sheet, /CERT_TEMPLATE = '\/api\/certificate-template\.jpg'/);
-  for (const needle of ['{certName}', '{certCourse}', 'Duration: {duration}', '{trainer}']) assert.ok(sheet.includes(needle), needle);
+  for (const needle of ['{certName}', '{certCourse}', '{line}', '{trainer}', 'completed ${hours[1]} training hours']) assert.ok(sheet.includes(needle), needle);
   assert.doesNotMatch(sheet, /<svg/, 'nothing of the design is redrawn');
   assert.match(read('client/components/CourseCertificate.tsx'), /<CertificateSheet/);
-  assert.match(read('client/components/CourseCertificate.tsx'), /@page \{ size: A4 portrait; margin: 0; \}/);
+  // Printing is the server's page: it carries its own nonce'd script (the API's policy allows none).
+  const page = read('api/routes/public.js');
+  assert.match(page, /script-src 'nonce-\$\{nonce\}'/);
+  assert.match(page, /document\.getElementById\('printBtn'\)\.addEventListener\('click', printNow\)/);
+  assert.doesNotMatch(page, /onclick="window\.print\(\)"/);
 });

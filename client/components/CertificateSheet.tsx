@@ -29,7 +29,19 @@ interface CertificateSheetProps {
   qrUrl: string;
 }
 
-const CertificateSheet: React.FC<CertificateSheetProps> = ({ certName, certCourse, duration, trainer, certNumber, issuedAt, qrUrl }) => (
+/** «completed 60 training hours in 2026»: the hours of «60 Hours», the year of the issue date. */
+const trainingLine = (duration: string, issuedAt: string) => {
+  const text = duration.trim();
+  if (!text) return '';
+  const year = /\b(20\d{2})\b/.exec(issuedAt)?.[1];
+  const hours = /^(\d+(?:\.\d+)?)\s*hours?$/i.exec(text);
+  return hours ? `completed ${hours[1]} training hours${year ? ` in ${year}` : ''}` : `completed ${text} of training${year ? ` in ${year}` : ''}`;
+};
+
+const CertificateSheet: React.FC<CertificateSheetProps> = ({ certName, certCourse, duration, trainer, certNumber, issuedAt, qrUrl }) => {
+  const courseSize = fitSize(certCourse, 480, 29, 15);
+  const line = trainingLine(duration, issuedAt);
+  return (
   <div
     id="psy-cert-printable"
     style={{ width: CERT_W, height: CERT_H, background: '#fff', position: 'relative', overflow: 'hidden', fontFamily: SERIF }}
@@ -37,20 +49,25 @@ const CertificateSheet: React.FC<CertificateSheetProps> = ({ certName, certCours
     <img src={CERT_TEMPLATE} alt="" style={{ position: 'absolute', left: 0, top: 0, width: CERT_W, height: CERT_H, display: 'block' }} />
 
     <div style={{
-      position: 'absolute', left: 57, width: 486, top: 402, height: 50,
+      position: 'absolute', left: 57, width: 486, top: 373, height: 50,
       display: 'flex', alignItems: 'flex-end', justifyContent: 'center', textAlign: 'center',
       fontSize: fitSize(certName, 470, 30, 14), fontWeight: 700, color: '#B3141B', letterSpacing: 1,
       lineHeight: 1.2, paddingBottom: 3, whiteSpace: 'nowrap',
     }}>{certName}</div>
+    {/* The course: larger, solid black, lower; the sentence under it in the same lettering, a little smaller;
+        then the certificate's own code (api/lib/certificateHtml.js writes the same). */}
     <div style={{
-      position: 'absolute', left: 57, width: 486, top: 604, height: 48,
+      position: 'absolute', left: 57, width: 486, top: 604, height: 54,
       display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center',
-      fontSize: fitSize(certCourse, 470, 21, 13), fontWeight: 700, color: '#111', lineHeight: 1.2, whiteSpace: 'nowrap',
+      fontSize: courseSize, fontWeight: 900, color: '#000', lineHeight: 1.15, whiteSpace: 'nowrap',
     }}>{certCourse}</div>
-    {duration && (
-      <div style={{ position: 'absolute', left: 57, width: 486, top: 652, textAlign: 'center', fontSize: 15, fontWeight: 700, color: '#444', letterSpacing: 0.5 }}>
-        Duration: {duration}
+    {line && (
+      <div style={{ position: 'absolute', left: 57, width: 486, top: 658, textAlign: 'center', fontSize: Math.max(11, Math.round(courseSize * 0.62)), fontWeight: 900, color: '#000', lineHeight: 1.2, whiteSpace: 'nowrap' }}>
+        {line}
       </div>
+    )}
+    {certNumber && (
+      <div style={{ position: 'absolute', left: 57, width: 486, top: line ? 681 : 664, textAlign: 'center', fontFamily: 'monospace', fontSize: 9, fontWeight: 700, letterSpacing: 0.4, color: '#333' }}>{certNumber}</div>
     )}
     {trainer && (
       <div style={{
@@ -68,6 +85,7 @@ const CertificateSheet: React.FC<CertificateSheetProps> = ({ certName, certCours
       </div>
     </div>
   </div>
-);
+  );
+};
 
 export default CertificateSheet;
