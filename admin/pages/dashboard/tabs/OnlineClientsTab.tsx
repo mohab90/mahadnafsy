@@ -46,6 +46,7 @@ import { OnlineImportModal } from './online-clients-sections/OnlineImportModal';
 import { itemKeyOf } from '../../../lib/agreedPrice';
 import { usePhysicalBranch } from '../../../lib/physicalBranch';
 import { matchesSearch } from '../../../lib/clientSearch';
+import { holdsIn, itemShowsIn, type BranchTest } from '../../../lib/coursePlacement';
 import { NO_COLLECTOR } from './online-clients-sections/FiltersToolbar';
 import { FOLLOW_FILTERS, followUpOf, matchesFollowFilter, type FollowFilter } from '../../../lib/clientFollowUp';
 import {
@@ -336,9 +337,14 @@ export default function OnlineClientsTab({
               // list every branch, so Dokki and Tagamoa clients sat in it, and
               // «إجمالي العملاء» (1491) was more than its own three markets
               // added up to (1477).
+              // A client split between branches (a course placed in another — lib/coursePlacement.ts) belongs to
+              // both: a branch lists the clients it owns and the ones with a course placed in it.
+              const isDokkiHere: BranchTest = branch => normBranchId(branch) === physicalBranch.key;
+              const isOnlineHere: BranchTest = branch => !['DAQQI', 'TAGAMOA'].includes(normBranchId(branch) || '');
+              const hereTest = isDaqqiClientsTab ? isDokkiHere : isOnlineHere;
               const allCombined = isDaqqiClientsTab
-                ? branchScopedMasterList.filter(s => normBranchId(s.branch) === physicalBranch.key)
-                : isSalesStaff ? branchScopedMasterList : branchScopedMasterList.filter(isOnlineClient);
+                ? branchScopedMasterList.filter(s => holdsIn(s, isDokkiHere))
+                : isSalesStaff ? branchScopedMasterList : branchScopedMasterList.filter(s => holdsIn(s, isOnlineHere));
               const hasBooking = (s: SubscriberItem) => (s.paymentHistory || [])
                 .some(payment => Boolean(payment.courseId || payment.bundleId) && payment.status !== 'refunded' && payment.status !== 'failed');
               const holdsItem = (s: SubscriberItem, item: string) => (item.startsWith('bundle:')
@@ -679,6 +685,7 @@ export default function OnlineClientsTab({
                     setSalesOwnSubscribers={setSalesOwnSubscribers}
                   />
                   <ClientsTable
+                    itemVisible={(client, item) => itemShowsIn(client, item, hereTest)}
                     canDeleteSubscriber={canDeleteSubscriber}
                     pageRows={pageRows}
                     vc={vc}
@@ -996,6 +1003,7 @@ export default function OnlineClientsTab({
                       currentMarket={isOnlineClient(convertRow) ? subscriberMarket(convertRow) : null}
                       onClose={() => setConvertRow(null)}
                       notify={notify}
+                      onPlacementsChanged={reloadSubscribers}
                       onConfirm={async () => {
                                     if (!convertRow) return;
                                     setConvertSaving(true);

@@ -4,8 +4,9 @@ import { REFUND_METHOD_CODES, paymentMethodLabel } from '../../../../shared/paym
 import { isCollected } from '../../../lib/money';
 import { cairoDay } from '../../../../shared/cairoDate';
 import { ProblemTicketForm } from './ProblemTicketForm';
+import { CoursePlacementForm } from './CoursePlacementForm';
 
-export type OnlineClientConvertType = 'finished' | 'paused' | 'refunded' | 'daqqi' | 'leads' | 'online' | 'local' | 'saudi' | 'intl' | 'ticket' | '';
+export type OnlineClientConvertType = 'finished' | 'paused' | 'refunded' | 'daqqi' | 'leads' | 'online' | 'local' | 'saudi' | 'intl' | 'ticket' | 'course' | '';
 const MARKET_OPTIONS = [
   { key: 'local' as const, label: '🇪🇬 محلي (جنيه)', cls: 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100' },
   { key: 'saudi' as const, label: '🇸🇦 سعودي (ريال)', cls: 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100' },
@@ -38,6 +39,8 @@ type OnlineClientConvertModalProps = {
   onClose: () => void;
   onConfirm: () => void | Promise<void>;
   notify: (type: 'success' | 'error', text: string) => void;
+  /** After a course was placed in another branch: the lists are read again. */
+  onPlacementsChanged?: () => void | Promise<void>;
 };
 
 export function OnlineClientConvertModal({
@@ -64,6 +67,7 @@ export function OnlineClientConvertModal({
   onClose,
   onConfirm,
   notify,
+  onPlacementsChanged,
 }: OnlineClientConvertModalProps) {
   const disabled = saving
     || (convertType === 'paused' && !pauseReason.trim())
@@ -79,6 +83,8 @@ export function OnlineClientConvertModal({
             <div className="space-y-2">
               <p className="text-sm font-bold text-gray-700 mb-3">اختر نوع التحويل:</p>
               {([
+                // «تحويل جزئي لكورس معين»: one course of the client to another branch, not the whole client.
+                { key: 'course' as const, label: '🧩 تحويل كورس معيّن لفرع تاني (جزئي) — العميل يفضل في الاتنين', cls: 'bg-teal-50 border-teal-300 text-teal-800 hover:bg-teal-100' },
                 // «محلي / سعودي / دولي» — every market but the one they are in.
                 ...(isDaqqiClientsTab ? [] : MARKET_OPTIONS.filter(option => option.key !== currentMarket)),
                 { key: 'finished' as const, label: '✅ منتهي', cls: 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100' },
@@ -96,6 +102,9 @@ export function OnlineClientConvertModal({
                 </button>
               ))}
             </div>
+          ) : convertType === 'course' ? (
+            <CoursePlacementForm row={row} onBack={() => setConvertType('')}
+              onDone={(type, text, changed) => { notify(type, text); if (changed) void onPlacementsChanged?.(); if (type === 'success') onClose(); }} />
           ) : convertType === 'ticket' ? (
             <ProblemTicketForm subscriberId={row.id} onBack={() => setConvertType('')}
               onDone={(type, text) => { notify(type, text); if (type === 'success') onClose(); }} />

@@ -1,5 +1,6 @@
 'use strict';
 const { certificateDue } = require('../../lib/certificatePricing');
+const { loadPlacements, placeCourse, ownOrPlaced } = require('../../lib/coursePlacement');
 const { certificatePricing } = require('../../lib/certificatePayments');
 const { CONVERTED_SQL } = require('../../lib/leadStatuses');
 const logger = require('../../lib/logger');
@@ -167,8 +168,8 @@ router.get('/api/admin/subscribers/stats', requireAuth, requireAdminOrStaff, req
     const scopeParams = [];
     if (scope.startsWith('branch:')) {
       const branches = branchesFromScope(scope);
-      scopeClause = branches.length ? `s.branch IN (${branches.map(() => '?').join(',')})` : '1=0';
-      scopeParams.push(...branches);
+      scopeClause = branches.length ? ownOrPlaced(branches) : '1=0';
+      scopeParams.push(...branches, ...branches);
     } else if (scope === 'assigned_sales') {
       const staffId = req.staffRecord?.id;
       if (!staffId) return res.status(403).json({ error: 'Staff record required' });
@@ -264,7 +265,10 @@ function branchFilter(req, column = 's.branch') {
     .filter(value => VALID_BRANCHES.has(value)))];
   // Named but none of them real: nothing, rather than everything.
   if (!branches.length) return { sql: ' AND 1=0', params: [] };
-  return { sql: ` AND ${column} IN (${branches.map(() => '?').join(',')})`, params: branches };
+  // Its own, or a course placed there (lib/coursePlacement.js).
+  return column === 's.branch'
+    ? { sql: ` AND ${ownOrPlaced(branches)}`, params: [...branches, ...branches] }
+    : { sql: ` AND ${column} IN (${branches.map(() => '?').join(',')})`, params: branches };
 }
 
 // The data-scope clause every subscriber list shares, as one function. The list,
@@ -277,8 +281,8 @@ function subscriberScope(req) {
   const params = [];
   if (scope.startsWith('branch:')) {
     const branches = branchesFromScope(scope);
-    clause = branches.length ? `s.branch IN (${branches.map(() => '?').join(',')})` : '1=0';
-    params.push(...branches);
+    clause = branches.length ? ownOrPlaced(branches) : '1=0';
+    params.push(...branches, ...branches);
   } else if (scope === 'assigned_sales') {
     const staffId = req.staffRecord?.id;
     if (!staffId) return { forbidden: true };
@@ -344,8 +348,8 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
     const scopeParams = [];
     if (scope.startsWith('branch:')) {
       const branches = branchesFromScope(scope);
-      scopeClause = branches.length ? `s.branch IN (${branches.map(() => '?').join(',')})` : '1=0';
-      scopeParams.push(...branches);
+      scopeClause = branches.length ? ownOrPlaced(branches) : '1=0';
+      scopeParams.push(...branches, ...branches);
     } else if (scope === 'assigned_sales') {
       const staffId = req.staffRecord?.id;
       if (!staffId) return res.status(403).json({ error: 'Staff record required' });
@@ -416,6 +420,8 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
     // Batch-load payments from the payments table (authoritative source, one query for all)
     const ids = rows.map(r => r.id);
     const plansBySub = await installmentPlansBySubscriber(req.tenantId, ids);
+    // A course placed in another branch than the client's (lib/coursePlacement.js).
+    const placementsBySub = await loadPlacements(pool, req.tenantId, ids);
     const placeholders = ids.map(() => '?').join(',');
     const [payRows] = await pool.query(
       `SELECT id, subscriber_id, course_id, bundle_id, amount, currency,
@@ -507,7 +513,7 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
         id: r.id, name: r.name, email: r.email, phone: r.phone, phone2: r.phone2 || '',
         firebaseUid: r.firebase_uid, isActive: !!r.is_active,
         notes: r.notes, createdAt: r.created_at,
-        ...crm,          // other CRM fields: courseAccess, installmentPlans, etc.
+        ...crm, coursePlacements: placementsBySub.get(r.id) || {},          // other CRM fields: courseAccess, installmentPlans, etc.
         enrolledCourseIds,
         enrolledBundleIds: enrollmentProjection[r.id]?.bundleIds || [],
         courseAccess: enrollmentProjection[r.id]?.access || {},
@@ -569,8 +575,8 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePe
       params.push(staffId);
     } else if (scope.startsWith('branch:')) {
       const branches = branchesFromScope(scope); // e.g. 'DAQQI' or 'ONLINE_EGYPT,ONLINE_SAUDI'
-      whereClause = branches.length ? `s.branch IN (${branches.map(() => '?').join(',')})` : '1=0';
-      params.push(...branches);
+      whereClause = branches.length ? ownOrPlaced(branches) : '1=0';
+      params.push(...branches, ...branches);
     }
 
     const limit  = parseLimit(req.query.limit, 5000, 10000);
@@ -593,6 +599,8 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePe
 
     const ids = rows.map(r => r.id);
     const plansBySub = await installmentPlansBySubscriber(req.tenantId, ids);
+    // A course placed in another branch than the client's (lib/coursePlacement.js).
+    const placementsBySub = await loadPlacements(pool, req.tenantId, ids);
     const [payRows] = await pool.query(
       `SELECT id, subscriber_id, course_id, bundle_id, amount, currency,
               payment_type, payment_method, transaction_id, is_installment, course_expected, \`date\`, note,
@@ -667,7 +675,7 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePe
         id: r.id, name: r.name, email: r.email, phone: r.phone, phone2: r.phone2 || '',
         firebaseUid: r.firebase_uid, isActive: !!r.is_active,
         notes: r.notes, createdAt: r.created_at,
-        ...crm,
+        ...crm, coursePlacements: placementsBySub.get(r.id) || {},
         enrolledCourseIds,
         enrolledBundleIds: enrollmentProjection[r.id]?.bundleIds || [],
         courseAccess: enrollmentProjection[r.id]?.access || {},
@@ -794,6 +802,8 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, requir
 
     const ids = rows.map(r => r.id);
     const plansBySub = await installmentPlansBySubscriber(req.tenantId, ids);
+    // A course placed in another branch than the client's (lib/coursePlacement.js).
+    const placementsBySub = await loadPlacements(pool, req.tenantId, ids);
     const enrollmentProjection = await loadEnrollmentProjection(req.tenantId, ids);
     const completionProjection = await loadCompletionProjection(req.tenantId, ids);
     const [payRows] = await pool.query(
@@ -828,7 +838,7 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, requir
       return {
         id: r.id, name: r.name, email: r.email, phone: r.phone, phone2: r.phone2 || '',
         firebaseUid: r.firebase_uid, isActive: !!r.is_active,
-        notes: r.notes, createdAt: r.created_at, ...crm,
+        notes: r.notes, createdAt: r.created_at, ...crm, coursePlacements: placementsBySub.get(r.id) || {},
         enrolledCourseIds: enrollmentProjection[r.id]?.ids || [],
         enrolledBundleIds: enrollmentProjection[r.id]?.bundleIds || [],
         courseAccess: enrollmentProjection[r.id]?.access || {},
@@ -864,6 +874,8 @@ router.get('/api/staff/my-collection-clients', requireAuth, requireAdminOrStaff,
 
     const ids = rows.map(r => r.id);
     const plansBySub = await installmentPlansBySubscriber(req.tenantId, ids);
+    // A course placed in another branch than the client's (lib/coursePlacement.js).
+    const placementsBySub = await loadPlacements(pool, req.tenantId, ids);
     const enrollmentProjection = await loadEnrollmentProjection(req.tenantId, ids);
     const completionProjection = await loadCompletionProjection(req.tenantId, ids);
     // Show ALL payments for assigned clients (not filtered by staff_id — client may have payments from multiple staff)
@@ -899,7 +911,7 @@ router.get('/api/staff/my-collection-clients', requireAuth, requireAdminOrStaff,
       return {
         id: r.id, name: r.name, email: r.email, phone: r.phone, phone2: r.phone2 || '',
         firebaseUid: r.firebase_uid, isActive: !!r.is_active,
-        notes: r.notes, createdAt: r.created_at, ...crm,
+        notes: r.notes, createdAt: r.created_at, ...crm, coursePlacements: placementsBySub.get(r.id) || {},
         enrolledCourseIds: enrollmentProjection[r.id]?.ids || [],
         enrolledBundleIds: enrollmentProjection[r.id]?.bundleIds || [],
         courseAccess: enrollmentProjection[r.id]?.access || {},
@@ -939,6 +951,8 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, requ
 
     const ids = rows.map(r => r.id);
     const plansBySub = await installmentPlansBySubscriber(req.tenantId, ids);
+    // A course placed in another branch than the client's (lib/coursePlacement.js).
+    const placementsBySub = await loadPlacements(pool, req.tenantId, ids);
     const enrollmentProjection = await loadEnrollmentProjection(req.tenantId, ids);
     const completionProjection = await loadCompletionProjection(req.tenantId, ids);
     const [payRows] = await pool.query(
@@ -972,7 +986,7 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, requ
       return {
         id: r.id, name: r.name, email: r.email, phone: r.phone, phone2: r.phone2 || '',
         firebaseUid: r.firebase_uid, isActive: !!r.is_active,
-        notes: r.notes, createdAt: r.created_at, ...crm,
+        notes: r.notes, createdAt: r.created_at, ...crm, coursePlacements: placementsBySub.get(r.id) || {},
         enrolledCourseIds: enrollmentProjection[r.id]?.ids || [],
         enrolledBundleIds: enrollmentProjection[r.id]?.bundleIds || [],
         courseAccess: enrollmentProjection[r.id]?.access || {},
@@ -991,6 +1005,34 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, requ
 });
 
 // PUT /api/admin/subscribers/:id/assign-collection — assign a subscriber to a collection staff
+// PUT /api/admin/subscribers/:id/course-branch { item, branch } — «تحويل جزئي لكورس معين»: one course (or track)
+// of a client placed in another branch, or — with no branch — put back in the client's own. The client keeps
+// one file; each branch lists them and shows only the courses that are its own (lib/coursePlacement.js).
+router.put('/api/admin/subscribers/:id/course-branch', requireAuth, requireAdminOrStaff, requirePermission('view_subscribers'), async (req, res) => {
+  try {
+    const scope = subscriberScope(req);
+    if (scope.none) return res.status(404).json({ error: 'Not found' });
+    if (scope.forbidden) return res.status(403).json({ error: 'Staff record required' });
+    const [[subscriber]] = await pool.query(
+      `SELECT s.id, s.name, s.branch FROM subscribers s WHERE s.id = ? AND s.tenant_id = ? AND s.deleted_at IS NULL AND (${scope.clause})`,
+      [req.params.id, req.tenantId, ...scope.params]);
+    if (!subscriber) return res.status(404).json({ error: 'Not found' });
+    const actor = req.staffRecord?.name || req.user?.email || 'staff';
+    const placed = await placeCourse(pool, { tenantId: req.tenantId, subscriberId: subscriber.id, item: req.body?.item, branch: req.body?.branch, actor });
+    const { logClientEvent } = require('../../lib/clientHistory');
+    const [[course]] = await pool.query('SELECT title FROM courses WHERE id = ? AND tenant_id = ? LIMIT 1', [String(placed.item).replace(/^bundle:/, ''), req.tenantId]).catch(() => [[null]]);
+    await logClientEvent(pool, {
+      tenantId: req.tenantId, subscriberId: subscriber.id, action: 'course_branch', actor,
+      label: placed.branch ? `اتنقل كورس «${course?.title || placed.item}» لفرع ${placed.branch}` : `رجع كورس «${course?.title || placed.item}» لفرع العميل (${subscriber.branch || '—'})`,
+    }).catch(() => {});
+    res.json({ ok: true, ...placed });
+  } catch (e) {
+    if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
+    logger.error('[course-branch]', e.message);
+    sendRouteError(res, e);
+  }
+});
+
 router.put('/api/admin/subscribers/:id/assign-collection', requireAuth, requireAdminOrStaff, requirePermission('manage_subscribers'), async (req, res) => {
   let conn;
   try {

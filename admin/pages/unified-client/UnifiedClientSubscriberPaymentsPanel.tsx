@@ -106,7 +106,7 @@ export function UnifiedClientSubscriberPaymentsPanel({
         <Suspense fallback={<ModalFallback />}>
           <PaymentModal
             mode="subscriber"
-            subject={{ id: subscriber.id, name: subscriber.name, phone: subscriber.phone, phone2: subscriber.phone2, enrolledCourseIds: subscriber.enrolledCourseIds, paymentHistory: subscriber.paymentHistory || [], customPrices: subscriber.customPrices, priorPaid: subscriber.priorPaid, extraCertificateRequests: subscriber.extraCertificateRequests || [] }}
+            subject={{ id: subscriber.id, name: subscriber.name, phone: subscriber.phone, phone2: subscriber.phone2, coursePlacements: subscriber.coursePlacements, enrolledCourseIds: subscriber.enrolledCourseIds, paymentHistory: subscriber.paymentHistory || [], customPrices: subscriber.customPrices, priorPaid: subscriber.priorPaid, extraCertificateRequests: subscriber.extraCertificateRequests || [] }}
             draft={payModalDraft}
             setDraft={setPayModalDraft}
             branchOptions={branchOptions}

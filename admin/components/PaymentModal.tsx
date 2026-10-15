@@ -288,6 +288,8 @@ interface SubjectInfo {
   name: string;
   phone?: string;
   phone2?: string;
+  /** A course placed in another branch than the client's: a payment for it is that branch's (lib/coursePlacement.ts). */
+  coursePlacements?: Record<string, string>;
   enrolledCourseIds?: string[];
   paymentHistory?: PaymentHistoryEntry[];
   extraCertificateRequests?: ExtraCertificateRequest[];
@@ -507,7 +509,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   // The branch the booking is for: the branch price chosen, else the client's.
   // An online client booked at the Dokki price kept their own branch here, so
   // «تسكين العملاء» never appeared for them.
-  const bookingBranch = String(chosenTier?.branch || (mode === 'subscriber' ? (subject.branch || d.branch) : d.branch) || '')
+  const bookingBranch = String(chosenTier?.branch || (mode === 'subscriber' ? (subject.coursePlacements?.[d.courseId] || subject.branch || d.branch) : d.branch) || '')
     .toUpperCase().replace(/[-\s]/g, '_');
   const housesClients = bookingBranch === 'DAQQI' || bookingBranch === 'TAGAMOA';
   const storeHasRounds = (daqqiRounds || []).length > 0;

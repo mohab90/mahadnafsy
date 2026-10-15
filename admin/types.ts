@@ -479,6 +479,8 @@ export interface SubscriberItem {
   phone: string;
   /** The client's second number (same form as `phone`); never the first, never another client's. */
   phone2?: string;
+  /** «تحويل جزئي لكورس معين»: a course or track placed in a branch other than the client's own — item → branch. */
+  coursePlacements?: Record<string, string>;
   isActive?: boolean;    // Authoritative subscribers.is_active flag from the API
   enrolledCourseIds: string[];
   courseAccess?: Record<string, 'preview' | 'full' | CourseAccessSetting>;

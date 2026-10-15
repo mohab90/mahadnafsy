@@ -42,6 +42,8 @@ type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type HousingInfo = { roundId: string; roundCode: string; receptionId: string; receptionName: string };
 
 interface Props {
+  /** A client split between branches shows each branch only its own courses (lib/coursePlacement.ts). */
+  itemVisible?: (client: SubscriberItem, item: string) => boolean;
   pageRows: SubscriberItem[];
   vc: Record<string, boolean>;
   cw: Record<string, number>;
@@ -91,7 +93,7 @@ interface Props {
 export function ClientsTable({
   pageRows, vc, cw, startColResize, isDaqqiClientsTab, collOnlineSelected, setCollOnlineSelected,
   housingMap, housingNeeds, courses, bundles, staffMembers, onlineTeamMembers, isAdmin, isOnlineManager, isCollection = false,
-  canDeleteSubscriber: canDeleteByPermission, shouldUseScopedSubscribers,
+  canDeleteSubscriber: canDeleteByPermission, shouldUseScopedSubscribers, itemVisible,
   updateSubscriber, reloadSubscribers, setSalesOwnSubscribers, deleteSubscriber, setSubPayRow, setSubPayDraft,
   setDaqqiHousingModal, setDaqqiHousingRoundId,
   setConvertRow, setConvertType, setConvertAttendedLive, setConvertGotCert, setConvertPauseReason,
@@ -166,7 +168,7 @@ export function ClientsTable({
             // (lib/agreedPrice.ts clientItems). This guessed a track whenever a
             // client held all of its courses and folded several courses into one
             // «باقة» row, so the table could list items no other screen did.
-            const courseRows = clientItems(row, courses, bundles, branchCurrency).map(item => ({
+            const courseRows = clientItems(row, courses, bundles, branchCurrency).filter(item => !itemVisible || itemVisible(row, item.item)).map(item => ({
               cid: item.item,
               label: item.isTrack ? `📌 ${item.title}` : item.title,
               expected: item.expected, paid: item.paid, pending: item.pending, remaining: item.remaining, cur: item.currency,

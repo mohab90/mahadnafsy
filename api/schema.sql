@@ -5153,6 +5153,24 @@ CREATE TABLE `subscriber_subscriptions` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `subscriber_course_branches`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `subscriber_course_branches` (
+  `tenant_id` varchar(64) NOT NULL,
+  `subscriber_id` varchar(36) NOT NULL,
+  `item_key` varchar(80) NOT NULL COMMENT 'a course id, or bundle:<id> for a track',
+  `branch` varchar(32) NOT NULL,
+  `placed_by` varchar(120) DEFAULT NULL,
+  `placed_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`tenant_id`,`subscriber_id`,`item_key`),
+  KEY `idx_scb_branch` (`tenant_id`,`branch`,`subscriber_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `subscribers`
 --
 
