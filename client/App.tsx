@@ -37,9 +37,11 @@ const AiTutorWidget = React.lazy(() => import('./components/AiTutorWidget'));
 const SpecialOffer = React.lazy(() => import('./components/SpecialOffer'));
 
 /** Minimal spinner shown while lazy pages load */
+// A full screen tall: a short placeholder put the footer on screen, and when the
+// page arrived the footer jumped down — the largest layout shift on every inner page.
 const PageSpinner: React.FC = () => (
-  <div className="min-h-[40vh] flex items-center justify-center">
-    <div className="w-10 h-10 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+  <div className="flex min-h-screen items-start justify-center bg-paper pt-[30vh]">
+    <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary-100 border-t-primary-700" />
   </div>
 );
 

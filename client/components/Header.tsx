@@ -38,7 +38,7 @@ const Header: React.FC = () => {
           </Link>
 
           {/* Desktop Nav */}
-          <nav className="hidden items-center gap-5 text-[15px] font-bold text-muted-strong lg:flex xl:gap-7">
+          <nav className="hidden items-center gap-3.5 whitespace-nowrap text-[14px] font-bold text-muted-strong lg:flex xl:gap-5 xl:text-[15px]">
             <Link to="/" className={navClass('/')}>الرئيسية</Link>
             <Link to="/about" className={navClass('/about')}>عن المعهد</Link>
             <Link to="/courses" className={navClass('/courses')}>الكورسات</Link>
@@ -49,7 +49,7 @@ const Header: React.FC = () => {
           </nav>
 
           {/* Actions */}
-          <div className="hidden items-center gap-2.5 lg:flex">
+          <div className="hidden flex-none items-center gap-2 lg:flex">
             <GlobalSearch />
             {/* Not a picker. Pricing currency is decided by the server from the
                 visitor's location and cannot be chosen in the browser, so this
@@ -57,7 +57,7 @@ const Header: React.FC = () => {
                 read as a dropdown, and the tester filed it as one that does not
                 open. The tooltip explaining it never appears on touch. */}
             <div
-              className="hidden cursor-default select-none items-center gap-1 rounded-md px-2 py-1 text-[13px] text-muted xl:flex"
+              className="hidden cursor-default select-none items-center gap-1 whitespace-nowrap rounded-md px-2 py-1 text-[13px] text-muted 2xl:flex"
               title="العملة محددة تلقائيًا حسب موقع الاتصال"
             >
                 <Globe size={15} />
@@ -75,12 +75,12 @@ const Header: React.FC = () => {
                 </button>
               </div>
             ) : (
-              <Link to={loginHref} className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-bold text-ink transition hover:bg-paper">
+              <Link to={loginHref} className="flex items-center gap-1.5 whitespace-nowrap rounded-xl px-2.5 py-2 text-sm font-bold text-ink transition hover:bg-paper">
                 <LogIn size={17} />
                 <span>دخول</span>
               </Link>
             )}
-            <Link to="/enroll" className="inline-flex min-h-[44px] items-center rounded-xl bg-primary-700 px-5 text-sm font-black text-white shadow-[0_10px_24px_-12px_rgba(159,18,57,.9)] transition hover:bg-primary-800">
+            <Link to="/enroll" className="inline-flex min-h-[44px] items-center whitespace-nowrap rounded-xl bg-primary-700 px-4 xl:px-5 text-sm font-black text-white shadow-[0_10px_24px_-12px_rgba(159,18,57,.9)] transition hover:bg-primary-800">
               احجز مكانك
             </Link>
           </div>
