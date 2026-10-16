@@ -63,14 +63,14 @@ const PaymentSuccess: React.FC = () => {
 
   if (outcome === 'declined') {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4" dir="rtl">
-        <div className="bg-white w-full max-w-lg rounded-3xl shadow-xl p-8 sm:p-10 border border-gray-100">
+      <div className="flex min-h-screen items-center justify-center bg-paper px-4 py-10" dir="rtl">
+        <div className="w-full max-w-lg rounded-[28px] bg-white p-6 shadow-[0_40px_80px_-45px_rgba(26,15,18,.5)] ring-1 ring-line sm:p-10">
           <div className="text-center">
-            <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-5">
+            <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-red-50 ring-1 ring-red-100">
               <XCircle size={44} className="text-red-600" />
             </div>
-            <h1 className="text-2xl font-extrabold text-gray-900 mb-2">لم تتم عملية الدفع</h1>
-            <p className="text-gray-500 mb-6">
+            <h1 className="mb-2 text-2xl font-black text-ink sm:text-3xl">لم تتم عملية الدفع</h1>
+            <p className="mb-6 leading-relaxed text-muted-body">
               البنك رفض العملية ولم يُخصم منك أي مبلغ. تقدر تجرب بطاقة تانية، أو تدفع بالتحويل ونفعّل حسابك بعد المراجعة.
             </p>
           </div>
@@ -78,14 +78,14 @@ const PaymentSuccess: React.FC = () => {
           <div className="flex flex-col gap-3">
             <Link
               to="/courses"
-              className="w-full flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 rounded-xl transition"
+              className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 px-7 font-black text-white transition hover:bg-primary-800"
             >
               <CreditCard size={20} />
               حاول مرة أخرى
             </Link>
             <Link
               to="/my-account?section=payments"
-              className="w-full flex items-center justify-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 font-bold py-3 rounded-xl transition"
+              className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl border-[1.5px] border-ink/15 bg-white px-7 font-extrabold text-ink transition hover:border-ink/40"
             >
               <Upload size={20} />
               ادفع بالتحويل وارفع الإيصال
@@ -95,9 +95,9 @@ const PaymentSuccess: React.FC = () => {
                 href={`https://wa.me/${whatsapp}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition"
+                className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl border-[1.5px] border-ink/15 bg-white px-7 font-extrabold text-ink transition hover:border-ink/40"
               >
-                <MessageCircle size={20} />
+                <MessageCircle size={20} className="text-green-600" />
                 تواصل معنا عبر واتساب
               </a>
             )}
@@ -111,16 +111,16 @@ const PaymentSuccess: React.FC = () => {
   const steps = paidByCard ? CARD_STEPS : TRANSFER_STEPS;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4" dir="rtl">
-      <div className="bg-white w-full max-w-lg rounded-3xl shadow-xl p-8 sm:p-10 border border-gray-100">
+    <div className="flex min-h-screen items-center justify-center bg-paper px-4 py-10" dir="rtl">
+      <div className="w-full max-w-lg rounded-[28px] bg-white p-6 shadow-[0_40px_80px_-45px_rgba(26,15,18,.5)] ring-1 ring-line sm:p-10">
         <div className="text-center">
-          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-5">
+          <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-green-50 ring-1 ring-green-100">
             <CheckCircle size={44} className="text-green-600" />
           </div>
-          <h1 className="text-2xl font-extrabold text-gray-900 mb-2">
+          <h1 className="mb-2 text-2xl font-black text-ink sm:text-3xl">
             {paidByCard ? 'تم الدفع بنجاح! 🎉' : 'تم استلام طلبك! 🎉'}
           </h1>
-          <p className="text-gray-500 mb-6">
+          <p className="mb-6 leading-relaxed text-muted-body">
             {paidByCard
               ? 'وصلنا تأكيد الدفع من البنك. بنسجّل الدفعة ونفتح المحتوى في حسابك — لو مافتحش خلال شوية، كلمنا واتساب ونظبطه فوراً.'
               : 'خطوة واحدة بسيطة تفصلك عن بدء رحلتك — ارفع إيصال التحويل وفريقنا هيأكّد ويفعّل حسابك بسرعة.'}
@@ -132,28 +132,28 @@ const PaymentSuccess: React.FC = () => {
           {steps.map((s, i) => {
             const Ic = s.icon;
             return (
-              <li key={s.title} className={`flex items-start gap-3 rounded-2xl border p-3 ${s.done ? 'bg-green-50 border-green-100' : 'bg-gray-50 border-gray-100'}`}>
-                <span className={`w-9 h-9 rounded-xl grid place-items-center shrink-0 ${s.done ? 'bg-green-600 text-white' : 'bg-white text-gray-400 border border-gray-200'}`}>
+              <li key={s.title} className={`flex items-start gap-3 rounded-2xl border p-3 ${s.done ? 'border-green-100 bg-green-50' : 'border-line bg-paper'}`}>
+                <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${s.done ? 'bg-green-600 text-white' : 'border border-line bg-white text-muted-soft'}`}>
                   <Ic size={17} />
                 </span>
                 <div className="min-w-0">
-                  <p className="font-bold text-gray-800 text-sm">{i + 1}. {s.title}</p>
-                  <p className="text-xs text-gray-500">{s.desc}</p>
+                  <p className="text-sm font-black text-ink">{i + 1}. {s.title}</p>
+                  <p className="text-xs leading-relaxed text-muted">{s.desc}</p>
                 </div>
               </li>
             );
           })}
         </ol>
 
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 mb-6 flex items-center gap-2 text-amber-800 text-sm">
-          <Clock size={16} className="shrink-0" />
+        <div className="mb-6 flex items-center gap-2 rounded-2xl bg-paper px-4 py-3 text-sm text-muted-strong ring-1 ring-line">
+          <Clock size={16} className="shrink-0 text-gold-deep" />
           <span>عادةً بنرد ونفعّل خلال ساعات العمل (السبت – الخميس).</span>
         </div>
 
         <div className="flex flex-col gap-3">
           <Link
             to="/my-account?section=payments"
-            className="w-full flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 rounded-xl transition"
+            className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 px-7 font-black text-white transition hover:bg-primary-800"
           >
             {paidByCard ? <><LayoutDashboard size={20} /> الذهاب لحسابي</> : <><Upload size={20} /> ارفع إيصال التحويل الآن</>}
           </Link>
@@ -162,15 +162,15 @@ const PaymentSuccess: React.FC = () => {
               href={`https://wa.me/${whatsapp}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition"
+              className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl border-[1.5px] border-ink/15 bg-white px-7 font-extrabold text-ink transition hover:border-ink/40"
             >
-              <MessageCircle size={20} />
+              <MessageCircle size={20} className="text-green-600" />
               تواصل معنا عبر واتساب
             </a>
           )}
           <Link
             to="/"
-            className="w-full bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 font-bold py-3 rounded-xl transition flex justify-center items-center gap-2"
+            className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl font-extrabold text-muted transition hover:bg-paper hover:text-ink"
           >
             <Home size={20} />
             العودة للرئيسية

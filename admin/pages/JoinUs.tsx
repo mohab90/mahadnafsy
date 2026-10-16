@@ -197,7 +197,7 @@ const JoinUs: React.FC = () => {
                       <option value="">اختر</option>
                       <option value="3-5">3 – 5 سنوات</option>
                       <option value="5-10">5 – 10 سنوات</option>
-                      <option value="10+">أكثر من 10 سنوات</option>
+                      <option value="10plus">أكثر من 10 سنوات</option>
                     </select>
                   </div>
                 </div>

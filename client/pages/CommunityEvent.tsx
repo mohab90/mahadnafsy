@@ -5,6 +5,7 @@ import { ArrowRight, CalendarDays, CalendarPlus, CheckCircle, Copy, MapPin, Moni
 import { useSiteData } from '../context/SiteDataContext';
 import { mysqlClient } from '../lib/mysqlapi';
 import { useSeo } from '../lib/useSeo';
+import { cdnImg, cdnSrcSet } from '../lib/img';
 import { downloadEventCalendar, eventPath, eventSpeakers, eventWhen, isUpcoming } from '../lib/communityEvents';
 import type { CommunityEventItem } from '../types';
 
@@ -55,16 +56,18 @@ const CommunityEvent: React.FC = () => {
 
   if (missing && !event) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-24 text-center" dir="rtl">
-        <p className="mb-3 text-5xl">📅</p>
-        <h1 className="mb-2 text-2xl font-extrabold text-gray-900">الفعالية دي مش موجودة</h1>
-        <p className="mb-6 text-gray-500">ممكن تكون اتلغت أو اللينك اتغير.</p>
-        <Link to="/community/events" className="rounded-xl bg-primary-600 px-6 py-3 font-bold text-white">كل الفعاليات</Link>
+      <div className="bg-paper" dir="rtl">
+        <div className="mx-auto max-w-2xl px-4 py-24 text-center">
+          <p className="mb-3 text-5xl">📅</p>
+          <h1 className="mb-2 text-2xl font-black text-ink sm:text-3xl">الفعالية دي مش موجودة</h1>
+          <p className="mb-6 text-muted-body">ممكن تكون اتلغت أو اللينك اتغير.</p>
+          <Link to="/community/events" className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-2xl bg-primary-700 px-7 font-black text-white transition hover:bg-primary-800">كل الفعاليات</Link>
+        </div>
       </div>
     );
   }
   if (!event) {
-    return <div className="flex min-h-[60vh] items-center justify-center"><span className="h-8 w-8 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" /></div>;
+    return <div className="flex min-h-[60vh] items-center justify-center bg-paper"><span className="h-8 w-8 animate-spin rounded-full border-2 border-primary-700 border-t-transparent" /></div>;
   }
 
   const upcoming = isUpcoming(event);
@@ -97,121 +100,124 @@ const CommunityEvent: React.FC = () => {
     catch { setShowLink(true); }
   };
 
+  const fieldClass = 'min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10';
+  const primaryBtn = 'inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 px-7 font-black text-white transition hover:bg-primary-800';
+
   return (
-    <div className="bg-gray-50 pb-20" dir="rtl">
+    <div className="bg-paper pb-20" dir="rtl">
       <div className="mx-auto max-w-6xl px-4 pt-6">
-        <Link to="/community/events" className="mb-4 inline-flex items-center gap-1.5 text-sm font-bold text-primary-700 hover:underline">
+        <Link to="/community/events" className="mb-4 inline-flex min-h-[44px] items-center gap-1.5 text-sm font-extrabold text-primary-700 hover:underline">
           <ArrowRight size={16} /> كل الفعاليات
         </Link>
 
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary-700 via-primary-600 to-violet-600 shadow-lg">
-          {event.imageUrl && <img src={event.imageUrl} alt={event.title} className="h-64 w-full object-cover sm:h-96" />}
-          <div className={`${event.imageUrl ? 'absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent' : ''} p-6 sm:p-10`}>
+        <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-primary-700 via-primary-800 to-[#4c0519] shadow-[0_40px_80px_-45px_rgba(26,15,18,.6)]">
+          {event.imageUrl && <img src={cdnImg(event.imageUrl, 1200)} srcSet={cdnSrcSet(event.imageUrl, [640, 1000, 1200])} sizes="(min-width: 1152px) 1120px, 100vw" alt={event.title} fetchPriority="high" decoding="async" className="h-64 w-full bg-primary-900 object-cover sm:h-96" />}
+          <div className={`${event.imageUrl ? 'absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink/90 via-ink/50 to-transparent' : ''} p-6 sm:p-10`}>
             <div className="mb-3 flex flex-wrap gap-2 text-xs font-bold">
-              <span className="rounded-full bg-white/90 px-3 py-1 text-primary-700">{event.eventType || 'فعالية'}</span>
-              <span className="flex items-center gap-1 rounded-full bg-white/20 px-3 py-1 text-white backdrop-blur">
+              <span className="rounded-full bg-white px-3 py-1 font-extrabold text-primary-700">{event.eventType || 'فعالية'}</span>
+              <span className="flex items-center gap-1 rounded-full bg-white/15 px-3 py-1 text-white ring-1 ring-white/20">
                 {event.isOnline === false ? <><MapPin size={12} /> حضور</> : <><MonitorPlay size={12} /> أونلاين</>}
               </span>
-              {!upcoming && <span className="rounded-full bg-gray-900/60 px-3 py-1 text-white">انتهت</span>}
+              {!upcoming && <span className="rounded-full bg-ink/70 px-3 py-1 text-white">انتهت</span>}
             </div>
-            <h1 className="text-2xl font-extrabold leading-snug text-white sm:text-4xl">{event.title}</h1>
-            {event.description && <p className="mt-2 max-w-3xl text-sm text-white/90 sm:text-base">{event.description}</p>}
+            <h1 className="text-balance text-2xl font-black leading-snug text-white sm:text-4xl">{event.title}</h1>
+            {event.description && <p className="mt-2 max-w-3xl text-sm leading-relaxed text-white/80 sm:text-base">{event.description}</p>}
           </div>
         </div>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
-          <div className="space-y-6">
+          <div className="min-w-0 space-y-6">
             <div className="grid gap-3 sm:grid-cols-3">
               {[
                 { icon: CalendarDays, label: 'الموعد', value: eventWhen(event) },
                 { icon: event.isOnline === false ? MapPin : MonitorPlay, label: 'المكان', value: where },
                 { icon: Users, label: 'المهتمين', value: count ? `${count} شخص مهتم` : 'كن أول المهتمين' },
               ].map(({ icon: Icon, label, value }) => (
-                <div key={label} className="flex items-start gap-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
-                  <span className="rounded-xl bg-primary-50 p-2 text-primary-600"><Icon size={18} /></span>
-                  <div><p className="text-xs text-gray-500">{label}</p><p className="text-sm font-bold text-gray-900">{value}</p></div>
+                <div key={label} className="flex items-start gap-3 rounded-[20px] border border-line bg-white p-4">
+                  <span className="flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-primary-50 text-primary-700"><Icon size={18} /></span>
+                  <div className="min-w-0"><p className="text-xs text-muted">{label}</p><p className="text-sm font-extrabold text-ink">{value}</p></div>
                 </div>
               ))}
             </div>
 
             {(event.speakers?.length || event.speaker) && (
-              <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-                <h2 className="mb-4 text-lg font-extrabold text-gray-900">{(event.speakers?.length || 0) + (event.speaker ? 1 : 0) > 1 ? 'المحاضرين' : 'المحاضر'}</h2>
+              <section className="rounded-[24px] border border-line bg-white p-5 sm:p-6">
+                <h2 className="mb-4 text-xl font-black text-ink">{(event.speakers?.length || 0) + (event.speaker ? 1 : 0) > 1 ? 'المحاضرين' : 'المحاضر'}</h2>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {(event.speakers || []).map(person => (
-                    <Link key={person.id} to={`/instructor/${person.id}`} className="flex items-center gap-3 rounded-xl border border-gray-100 p-3 transition hover:border-primary-200 hover:bg-primary-50/40">
+                    <Link key={person.id} to={`/instructor/${person.id}`} className="flex items-center gap-3 rounded-2xl border border-line p-3 transition hover:border-line-deep hover:bg-paper">
                       {person.image
-                        ? <img src={person.image} alt={person.name} className="h-14 w-14 rounded-full object-cover" />
-                        : <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary-100 text-lg font-bold text-primary-700">{person.name.slice(0, 1)}</span>}
-                      <div className="min-w-0"><p className="truncate font-bold text-gray-900">{person.name}</p><p className="truncate text-xs text-gray-500">{person.title}</p></div>
+                        ? <img src={cdnImg(person.image, 120)} alt={person.name} width={56} height={56} loading="lazy" decoding="async" className="h-14 w-14 flex-none rounded-full bg-sand object-cover object-top" />
+                        : <span className="flex h-14 w-14 flex-none items-center justify-center rounded-full bg-primary-50 text-lg font-black text-primary-700">{person.name.slice(0, 1)}</span>}
+                      <div className="min-w-0"><p className="truncate font-black text-ink">{person.name}</p><p className="truncate text-xs text-muted">{person.title}</p></div>
                     </Link>
                   ))}
                   {event.speaker && (
-                    <div className="flex items-center gap-3 rounded-xl border border-gray-100 p-3">
-                      <span className="flex h-14 w-14 items-center justify-center rounded-full bg-violet-100 text-lg font-bold text-violet-700">{event.speaker.slice(0, 1)}</span>
-                      <div><p className="font-bold text-gray-900">{event.speaker}</p><p className="text-xs text-gray-500">ضيف الفعالية</p></div>
+                    <div className="flex items-center gap-3 rounded-2xl border border-line p-3">
+                      <span className="flex h-14 w-14 flex-none items-center justify-center rounded-full bg-ink text-lg font-black text-gold-pale">{event.speaker.slice(0, 1)}</span>
+                      <div className="min-w-0"><p className="font-black text-ink">{event.speaker}</p><p className="text-xs text-muted">ضيف الفعالية</p></div>
                     </div>
                   )}
                 </div>
               </section>
             )}
 
-            <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:p-7">
-              <h2 className="mb-3 text-lg font-extrabold text-gray-900">عن الفعالية</h2>
-              <div className="whitespace-pre-line text-[15px] leading-8 text-gray-700">
+            <section className="rounded-[24px] border border-line bg-white p-5 sm:p-7">
+              <h2 className="mb-3 text-xl font-black text-ink">عن الفعالية</h2>
+              <div className="whitespace-pre-line break-words text-[15px] leading-8 text-muted-body">
                 {event.content || event.description || 'التفاصيل هتتنشر قريب.'}
               </div>
               {upcoming && !done && (
                 <button type="button" onClick={openForm}
-                  className="mt-6 w-full rounded-xl bg-primary-600 py-3 text-lg font-bold text-white shadow hover:bg-primary-700 sm:w-auto sm:px-10">
+                  className="mt-6 inline-flex min-h-[56px] w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 text-lg font-black text-white transition hover:bg-primary-800 sm:w-auto sm:px-10">
                   🙋 أنا مهتم
                 </button>
               )}
             </section>
           </div>
 
-          <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
-            <div ref={formRef} className="rounded-2xl border border-primary-100 bg-white p-5 shadow-md">
+          <aside className="min-w-0 space-y-4 lg:sticky lg:top-24 lg:self-start">
+            <div ref={formRef} className="rounded-[24px] bg-white p-5 shadow-[0_30px_60px_-35px_rgba(26,15,18,.45)] ring-1 ring-line sm:p-6">
               {!upcoming ? (
                 <div className="text-center">
-                  <p className="mb-1 font-extrabold text-gray-900">الفعالية دي انتهت</p>
-                  <p className="mb-4 text-sm text-gray-500">تابع الفعاليات الجاية وسجّل فيها.</p>
-                  <Link to="/community/events" className="block rounded-xl bg-primary-600 py-3 font-bold text-white">الفعاليات الجاية</Link>
+                  <p className="mb-1 text-lg font-black text-ink">الفعالية دي انتهت</p>
+                  <p className="mb-4 text-sm text-muted">تابع الفعاليات الجاية وسجّل فيها.</p>
+                  <Link to="/community/events" className={primaryBtn}>الفعاليات الجاية</Link>
                 </div>
               ) : done ? (
                 <div className="text-center">
-                  <CheckCircle size={44} className="mx-auto mb-2 text-emerald-500" />
-                  <p className="font-extrabold text-gray-900">{done === 'again' ? 'انت مسجّل قبل كده ✓' : 'تم تسجيلك ✓'}</p>
-                  <p className="mt-1 text-sm text-gray-500">هنتواصل معاك على الرقم ده بتفاصيل الحضور.</p>
+                  <CheckCircle size={44} className="mx-auto mb-2 text-green-600" />
+                  <p className="text-lg font-black text-ink">{done === 'again' ? 'انت مسجّل قبل كده ✓' : 'تم تسجيلك ✓'}</p>
+                  <p className="mt-1 text-sm text-muted">هنتواصل معاك على الرقم ده بتفاصيل الحضور.</p>
                 </div>
               ) : formOpen ? (
                 <form onSubmit={register} className="space-y-3">
-                  <p className="font-extrabold text-gray-900">سجّل اهتمامك</p>
+                  <p className="text-lg font-black text-ink">سجّل اهتمامك</p>
                   <input value={name} onChange={e => setName(e.target.value)} required minLength={2} maxLength={120} placeholder="الاسم"
-                    className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-primary-400 focus:outline-none" />
+                    className={fieldClass} />
                   <input value={phone} onChange={e => setPhone(e.target.value)} required inputMode="tel" dir="ltr" placeholder="رقم الموبايل / الواتساب"
-                    className="w-full rounded-xl border border-gray-200 px-4 py-3 text-right text-sm focus:border-primary-400 focus:outline-none" />
+                    className={`${fieldClass} text-right`} />
                   <fieldset>
-                    <legend className="mb-1.5 text-sm font-bold text-gray-700">درست في المعهد قبل كده؟</legend>
+                    <legend className="mb-1.5 text-[13px] font-bold text-muted-strong">درست في المعهد قبل كده؟</legend>
                     <div className="grid grid-cols-2 gap-2">
                       {([[true, 'نعم'], [false, 'لا']] as const).map(([value, text]) => (
                         <button key={text} type="button" onClick={() => setStudiedBefore(value)} aria-pressed={studiedBefore === value}
-                          className={`rounded-xl border py-2.5 text-sm font-bold transition ${studiedBefore === value ? 'border-primary-600 bg-primary-600 text-white' : 'border-gray-200 bg-white text-gray-700 hover:border-primary-300'}`}>
+                          className={`min-h-[48px] rounded-xl border-2 text-sm font-extrabold transition ${studiedBefore === value ? 'border-primary-700 bg-primary-50/60 text-primary-800' : 'border-line bg-white text-ink hover:border-line-deep'}`}>
                           {text}
                         </button>
                       ))}
                     </div>
                   </fieldset>
-                  {error && <p className="text-sm text-red-600">{error}</p>}
-                  <button type="submit" disabled={sending} className="w-full rounded-xl bg-primary-600 py-3 font-bold text-white hover:bg-primary-700 disabled:opacity-60">
+                  {error && <p className="text-sm font-bold text-red-600">{error}</p>}
+                  <button type="submit" disabled={sending} className={`${primaryBtn} disabled:opacity-60`}>
                     {sending ? 'جاري التسجيل…' : 'تأكيد التسجيل'}
                   </button>
                 </form>
               ) : (
                 <div className="text-center">
-                  <p className="mb-1 font-extrabold text-gray-900">مهتم تحضر؟</p>
-                  <p className="mb-4 text-sm text-gray-500">سيب اسمك ورقمك وهنبعتلك التفاصيل.</p>
-                  <button type="button" onClick={openForm} className="w-full rounded-xl bg-primary-600 py-3 text-lg font-bold text-white shadow hover:bg-primary-700">
+                  <p className="mb-1 text-lg font-black text-ink">مهتم تحضر؟</p>
+                  <p className="mb-4 text-sm text-muted">سيب اسمك ورقمك وهنبعتلك التفاصيل.</p>
+                  <button type="button" onClick={openForm} className={`${primaryBtn} text-lg`}>
                     🙋 أنا مهتم
                   </button>
                 </div>
@@ -219,22 +225,22 @@ const CommunityEvent: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-3 gap-2 text-xs font-bold">
-              <button type="button" onClick={() => { void copyLink(); }} className="flex flex-col items-center gap-1 rounded-xl border border-gray-100 bg-white p-3 text-gray-700 hover:bg-gray-50">
+              <button type="button" onClick={() => { void copyLink(); }} className="flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-2xl border border-line bg-white p-3 text-ink transition hover:border-line-deep">
                 <Copy size={16} /> {copied ? 'اتنسخ ✓' : 'نسخ اللينك'}
               </button>
               <a href={`https://wa.me/?text=${encodeURIComponent(`${event.title}\n${url}`)}`} target="_blank" rel="noreferrer"
-                className="flex flex-col items-center gap-1 rounded-xl border border-gray-100 bg-white p-3 text-emerald-700 hover:bg-emerald-50">
+                className="flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-2xl border border-line bg-white p-3 text-green-700 transition hover:border-line-deep">
                 <Share2 size={16} /> واتساب
               </a>
               <button type="button" disabled={!event.eventDate} onClick={() => downloadEventCalendar(event)}
-                className="flex flex-col items-center gap-1 rounded-xl border border-gray-100 bg-white p-3 text-gray-700 hover:bg-gray-50 disabled:opacity-40">
+                className="flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-2xl border border-line bg-white p-3 text-ink transition hover:border-line-deep disabled:opacity-40">
                 <CalendarPlus size={16} /> للتقويم
               </button>
             </div>
             {showLink && (
-              <input readOnly value={url} onFocus={e => e.target.select()} dir="ltr" className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs" />
+              <input readOnly value={url} onFocus={e => e.target.select()} dir="ltr" className="w-full rounded-xl border border-line-strong bg-white px-3 py-2.5 text-xs text-ink" />
             )}
-            {eventSpeakers(event) && <p className="text-center text-xs text-gray-400">مع {eventSpeakers(event)}</p>}
+            {eventSpeakers(event) && <p className="text-center text-xs text-muted-soft">مع {eventSpeakers(event)}</p>}
           </aside>
         </div>
       </div>

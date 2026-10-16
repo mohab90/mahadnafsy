@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams, useNavigate, useLocation, Link } from 'react-router-dom';
-import { Check, AlertCircle, LogIn, MessageCircle, Banknote, Loader2, CreditCard } from 'lucide-react';
+import { Check, AlertCircle, LogIn, MessageCircle, Banknote, Loader2, CreditCard, Lock, ShieldCheck } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import { usePaymentAvailability, useManualPaymentMethods } from '../lib/usePaymentAvailability';
 import { paymentMethodLabel } from '../../shared/paymentMethods';
@@ -344,22 +344,27 @@ const Checkout: React.FC = () => {
     finally { setProofSubmitting(false); }
   };
 
+  const fieldClass = 'min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10';
+  const labelClass = 'mb-1 block text-[13px] font-bold text-muted-strong';
+  const primaryBtn = 'flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 px-5 text-[15px] font-black text-white transition hover:bg-primary-800 disabled:cursor-not-allowed disabled:opacity-50';
+  const secondaryBtn = 'flex min-h-[50px] w-full items-center justify-center gap-2 rounded-2xl border-[1.5px] border-ink/15 bg-white px-5 text-sm font-extrabold text-ink transition hover:border-ink/40 disabled:cursor-not-allowed disabled:opacity-50';
+
   // Require login before any payable customer workflow.
   if (paymentLinkLoading) {
-    return <div className="min-h-screen bg-gray-50 grid place-items-center text-gray-500" dir="rtl"><Loader2 className="animate-spin" /> جاري التحقق من رابط الدفع...</div>;
+    return <div className="grid min-h-screen place-items-center bg-paper text-muted" dir="rtl"><span className="flex items-center gap-2 font-bold"><Loader2 className="animate-spin text-primary-700" /> جاري التحقق من رابط الدفع...</span></div>;
   }
   if (paymentLinkError) {
-    return <div className="min-h-screen bg-gray-50 grid place-items-center p-4" dir="rtl"><div className="rounded-2xl border border-red-200 bg-white p-8 text-center text-red-700">{paymentLinkError}</div></div>;
+    return <div className="grid min-h-screen place-items-center bg-paper p-4" dir="rtl"><div className="w-full max-w-md rounded-[24px] border border-red-200 bg-white p-8 text-center font-bold text-red-700">{paymentLinkError}</div></div>;
   }
   if (requiresLogin && authUser === null) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4" dir="rtl">
-        <div className="bg-white w-full max-w-md rounded-3xl shadow-xl p-10 text-center border border-gray-100">
-          <div className="w-20 h-20 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <LogIn size={36} className="text-primary-600" />
+      <div className="flex min-h-screen items-center justify-center bg-paper p-4" dir="rtl">
+        <div className="w-full max-w-md rounded-[28px] bg-white p-7 text-center shadow-[0_40px_80px_-45px_rgba(26,15,18,.5)] ring-1 ring-line sm:p-10">
+          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-primary-50">
+            <LogIn size={34} className="text-primary-700" />
           </div>
-          <h2 className="text-2xl font-extrabold text-gray-900 mb-3">يرجى تسجيل الدخول أولاً</h2>
-          <p className="text-gray-500 mb-8">لإتمام الشراء وضمان وصولك للكورس، يجب تسجيل الدخول أو إنشاء حساب جديد أولاً.</p>
+          <h2 className="mb-3 text-2xl font-black text-ink">يرجى تسجيل الدخول أولاً</h2>
+          <p className="mb-8 leading-relaxed text-muted-body">لإتمام الشراء وضمان وصولك للكورس، يجب تسجيل الدخول أو إنشاء حساب جديد أولاً.</p>
           <div className="flex flex-col gap-3">
             <Link
               // This read window.location.hash, left over from a HashRouter the
@@ -367,11 +372,11 @@ const Checkout: React.FC = () => {
               // so the redirect was always empty and a customer who signed in
               // to buy never came back to their order.
               to={`/auth?redirect=${encodeURIComponent(location.pathname + location.search)}`}
-              className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 rounded-xl transition"
+              className={primaryBtn}
             >
               تسجيل الدخول / إنشاء حساب
             </Link>
-            <button onClick={() => navigate(-1)} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 rounded-xl transition">
+            <button onClick={() => navigate(-1)} className={secondaryBtn}>
               رجوع
             </button>
           </div>
@@ -382,14 +387,14 @@ const Checkout: React.FC = () => {
 
     if (!itemFound) {
         return (
-            <div className="bg-gray-50 min-h-screen py-10">
-                <div className="container mx-auto px-4 max-w-3xl">
-                    <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center shadow-sm">
-                        <h1 className="text-2xl font-extrabold text-gray-900 mb-3">الطلب غير صالح</h1>
-                        <p className="text-gray-600 mb-6">لم نتمكن من العثور على المنتج المطلوب. من فضلك ارجع للصفحة السابقة وأعد المحاولة.</p>
+            <div className="min-h-screen bg-paper py-10 sm:py-16">
+                <div className="container mx-auto max-w-3xl px-4">
+                    <div className="rounded-[28px] border border-line bg-white p-7 text-center sm:p-10">
+                        <h1 className="mb-3 text-2xl font-black text-ink sm:text-3xl">الطلب غير صالح</h1>
+                        <p className="mb-6 leading-relaxed text-muted-body">لم نتمكن من العثور على المنتج المطلوب. من فضلك ارجع للصفحة السابقة وأعد المحاولة.</p>
                         <button
                             onClick={() => navigate(-1)}
-                            className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-6 py-3 rounded-xl transition"
+                            className="inline-flex min-h-[52px] items-center justify-center rounded-2xl bg-primary-700 px-7 font-black text-white transition hover:bg-primary-800"
                         >
                             رجوع
                         </button>
@@ -400,84 +405,87 @@ const Checkout: React.FC = () => {
     }
 
   return (
-    <div className="bg-gray-50 min-h-screen py-10" dir="rtl">
-        <div className="container mx-auto px-4 max-w-4xl">
-            <h1 className="text-2xl font-bold mb-8 text-gray-900">إتمام الشراء</h1>
+    <div className="min-h-screen bg-paper py-8 sm:py-12" dir="rtl">
+        <div className="container mx-auto max-w-5xl px-4">
+            <div className="mb-6 text-center sm:mb-8 lg:text-right">
+              <span className="inline-flex items-center gap-1.5 text-sm font-extrabold text-gold-deep"><ShieldCheck size={16} /> دفع آمن</span>
+              <h1 className="mt-1 text-3xl font-black leading-tight text-ink sm:text-4xl">إتمام الشراء</h1>
+            </div>
 
             {/* This notice used to be hardcoded, so it told every customer that
                 card payment was off even when the gateway was fully live and
                 ready to take the money. It now reflects what the server says. */}
             {onlinePayEnabled === false && (
-              <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 mb-6 flex items-start gap-3">
-                <AlertCircle size={18} className="text-amber-600 shrink-0 mt-0.5" />
-                <p className="text-amber-800 text-sm">
-                  <strong>الدفع الإلكتروني متوقف مؤقتاً.</strong> يُرجى إتمام الدفع عبر التحويل البنكي أو واتساب وسيتواصل معك فريقنا لتأكيد التسجيل.
+              <div className="mb-6 flex items-start gap-3 rounded-2xl border border-gold/30 bg-white p-4">
+                <AlertCircle size={18} className="mt-0.5 shrink-0 text-gold-deep" />
+                <p className="text-sm leading-relaxed text-muted-strong">
+                  <strong className="text-ink">الدفع الإلكتروني متوقف مؤقتاً.</strong> يُرجى إتمام الدفع عبر التحويل البنكي أو واتساب وسيتواصل معك فريقنا لتأكيد التسجيل.
                 </p>
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-2 lg:grid-cols-[1fr_minmax(0,400px)] lg:gap-8">
                 {/* Contact / payment form */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 order-2 md:order-1">
+                <div className="order-2 min-w-0 rounded-[28px] border border-line bg-white p-5 sm:p-7 md:order-1">
                   {orderSent ? (
                     proofDone ? (
-                    <div className="text-center py-4">
-                      <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <div className="py-4 text-center">
+                      <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-50 ring-1 ring-green-100">
                         <Check size={32} className="text-green-600" />
                       </div>
-                      <h3 className="text-lg font-extrabold text-gray-900 mb-2">تم استلام إيصالك ✅</h3>
-                      <p className="text-gray-500 text-sm mb-6">هنراجع الإيصال ونفعّل وصولك للكورس خلال وقت قصير — وهيوصلك تأكيد على بريدك وواتساب.</p>
-                      <Link to="/my-account" className="inline-block w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 rounded-xl transition text-sm">الذهاب لحسابي</Link>
+                      <h3 className="mb-2 text-xl font-black text-ink">تم استلام إيصالك ✅</h3>
+                      <p className="mb-6 text-sm leading-relaxed text-muted-body">هنراجع الإيصال ونفعّل وصولك للكورس خلال وقت قصير — وهيوصلك تأكيد على بريدك وواتساب.</p>
+                      <Link to="/my-account" className={primaryBtn}>الذهاب لحسابي</Link>
                     </div>
                     ) : (
-                    <div className="py-2">
-                      <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <div className="py-1">
+                      <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-green-50 ring-1 ring-green-100">
                         <Check size={28} className="text-green-600" />
                       </div>
-                      <h3 className="text-base font-extrabold text-gray-900 mb-1 text-center">تم استلام طلبك! 🎉</h3>
+                      <h3 className="mb-4 text-center text-xl font-black text-ink">تم استلام طلبك! 🎉</h3>
 
                       {/* When cards are live this is the fast path: the order is
                           already priced by the server, so it only has to be
                           handed to the gateway. The transfer route stays below
                           for anyone who prefers it, or if the gateway refuses. */}
                       {onlinePayEnabled && (
-                        <div className="mb-4">
+                        <div className="mb-5">
                           <button onClick={() => payByCard()} disabled={cardRedirecting}
-                            className="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl transition text-sm">
+                            className={primaryBtn}>
                             {cardRedirecting
                               ? <><Loader2 size={16} className="animate-spin" /> جارٍ تحويلك لصفحة الدفع...</>
                               : <><CreditCard size={16} /> ادفع الآن — محفظة أو بطاقة أو فوري ({finalAmount} {currencySymbol})</>}
                           </button>
-                          <p className="mt-2 text-center text-[11px] text-gray-400">دفع آمن عبر بوابة Paymob — أو أكمل بالتحويل البنكي بالأسفل</p>
+                          <p className="mt-2 flex items-center justify-center gap-1 text-center text-xs text-muted-soft"><Lock size={12} /> دفع آمن عبر بوابة Paymob — أو أكمل بالتحويل البنكي بالأسفل</p>
                           {settlementCurrency !== 'EGP' && (
-                            <p className="mt-1 text-center text-[11px] text-amber-600">صفحة الدفع هتطلب المبلغ بالجنيه المصري بسعر الصرف النهارده.</p>
+                            <p className="mt-1 text-center text-xs font-bold text-gold-deep">صفحة الدفع هتطلب المبلغ بالجنيه المصري بسعر الصرف النهارده.</p>
                           )}
                         </div>
                       )}
 
-                      <p className="text-gray-500 text-xs mb-4 text-center">حوّل المبلغ ({finalAmount} {currencySymbol}) ثم ارفع صورة الإيصال هنا لتفعيل وصولك فوراً بعد المراجعة.</p>
+                      <p className="mb-4 text-center text-sm leading-relaxed text-muted-body">حوّل المبلغ (<b className="tabular-nums text-ink">{finalAmount} {currencySymbol}</b>) ثم ارفع صورة الإيصال هنا لتفعيل وصولك فوراً بعد المراجعة.</p>
 
                       {/* Payment instructions (configurable from admin content) */}
-                      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs text-blue-900 whitespace-pre-line leading-6">
-                        <p className="font-bold flex items-center gap-1 mb-1"><Banknote size={14}/> تعليمات التحويل</p>
+                      <div className="mb-5 whitespace-pre-line break-words rounded-2xl bg-paper p-4 text-sm leading-7 text-muted-strong ring-1 ring-line">
+                        <p className="mb-1 flex items-center gap-1.5 font-black text-ink"><Banknote size={16} className="text-primary-700" /> تعليمات التحويل</p>
                         {content['finance.payment_instructions'] || 'إنستاباي / فودافون كاش / تحويل بنكي — راسلنا واتساب لطلب رقم الحساب إن لم يظهر هنا.'}
                       </div>
 
                       {/* Receipt upload */}
-                      <label className="block text-xs font-semibold text-gray-600 mb-1">طريقة الدفع</label>
+                      <label className={labelClass}>طريقة الدفع</label>
                       <select value={proofMethod || manualMethods[0] || ''} onChange={e => setProofMethod(e.target.value)}
-                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm mb-3">
+                        className={`${fieldClass} mb-3`}>
                         {manualMethods.map(m => <option key={m} value={m}>{paymentMethodLabel(m)}</option>)}
                         <option value="other">{paymentMethodLabel('other')}</option>
                       </select>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1">صورة الإيصال</label>
+                      <label className={labelClass}>صورة الإيصال</label>
                       <input type="file" accept="image/*" onChange={e => { void onProofFile(e.target.files?.[0]); }}
-                        className="w-full text-xs mb-2 file:ml-2 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-primary-50 file:text-primary-700" />
-                      {proofImage && <img loading="lazy" decoding="async" src={proofImage} alt="receipt" className="max-h-36 rounded-lg border border-gray-100 mb-3 mx-auto object-contain" />}
+                        className="mb-3 w-full rounded-xl border border-dashed border-line-deep bg-paper p-2.5 text-xs text-muted file:ml-3 file:min-h-[38px] file:rounded-lg file:border-0 file:bg-primary-50 file:px-3 file:font-extrabold file:text-primary-700" />
+                      {proofImage && <img loading="lazy" decoding="async" src={proofImage} alt="receipt" className="mx-auto mb-3 max-h-36 rounded-xl border border-line object-contain" />}
 
-                      {proofError && <p className="text-red-600 text-xs mb-2">{proofError}</p>}
+                      {proofError && <p className="mb-2 text-sm font-bold text-red-600">{proofError}</p>}
                       <button onClick={submitProof} disabled={proofSubmitting || !proofImage}
-                        className="w-full flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition text-sm mb-3">
+                        className={`${primaryBtn} mb-3`}>
                         {/* The button used to say "وتفعيل الوصول". Sending a
                             receipt does not activate anything — it creates a
                             PENDING payment proof for the accounts team, which
@@ -489,56 +497,56 @@ const Checkout: React.FC = () => {
                         <a
                           href={`https://wa.me/${whatsapp}?text=${encodeURIComponent(`مرحباً، حوّلت لاشتراك: ${itemTitle} (${finalAmount} ${currencySymbol})\nالاسم: ${customerName}\nالهاتف: ${customerPhone}`)}`}
                           target="_blank" rel="noreferrer"
-                          className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition text-sm"
+                          className={secondaryBtn}
                         >
-                          <MessageCircle size={17} /> أرسل الإيصال عبر واتساب بدلاً من ذلك
+                          <MessageCircle size={17} className="text-green-600" /> أرسل الإيصال عبر واتساب بدلاً من ذلك
                         </a>
                       )}
-                      <button onClick={() => setOrderSent(false)} className="block w-full text-center mt-3 text-xs text-gray-400 underline">تعديل البيانات</button>
+                      <button onClick={() => setOrderSent(false)} className="mt-3 block min-h-[44px] w-full text-center text-sm font-bold text-muted underline underline-offset-4 hover:text-ink">تعديل البيانات</button>
                     </div>
                     )
                   ) : (
                     <>
-                      <h2 className="text-lg font-bold mb-4 text-gray-900">بياناتك</h2>
-                      <div className="space-y-3 mb-5">
+                      <h2 className="mb-4 text-xl font-black text-ink">بياناتك</h2>
+                      <div className="mb-5 space-y-3.5">
                         <div>
-                          <label htmlFor="checkout-customer-name" className="block text-xs font-semibold text-gray-600 mb-1">الاسم الكامل</label>
+                          <label htmlFor="checkout-customer-name" className={labelClass}>الاسم الكامل</label>
                           <input
                             id="checkout-customer-name"
                             type="text"
                             value={customerName}
                             onChange={e => setCustomerName(e.target.value)}
                             placeholder="أدخل اسمك الكامل"
-                            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+                            className={fieldClass}
                           />
                         </div>
                         <div>
-                          <label htmlFor="checkout-customer-email" className="block text-xs font-semibold text-gray-600 mb-1">البريد الإلكتروني</label>
+                          <label htmlFor="checkout-customer-email" className={labelClass}>البريد الإلكتروني</label>
                           <input
                             id="checkout-customer-email"
                             type="email"
                             value={customerEmail}
                             onChange={e => setCustomerEmail(e.target.value)}
                             placeholder="example@email.com"
-                            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+                            className={fieldClass}
                           />
                         </div>
                         <div>
-                          <label htmlFor="checkout-customer-phone" className="block text-xs font-semibold text-gray-600 mb-1">رقم الهاتف (واتساب)</label>
+                          <label htmlFor="checkout-customer-phone" className={labelClass}>رقم الهاتف (واتساب)</label>
                           <input
                             id="checkout-customer-phone"
                             type="tel"
                             value={customerPhone}
                             onChange={e => setCustomerPhone(e.target.value)}
                             placeholder="01xxxxxxxxx"
-                            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+                            className={fieldClass}
                           />
                         </div>
                       </div>
 
                       {/* Payment methods info */}
-                      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4 text-sm text-blue-800 space-y-1">
-                        <p className="font-bold flex items-center gap-1"><Banknote size={15}/> طرق الدفع المتاحة:</p>
+                      <div className="mb-5 space-y-1 rounded-2xl bg-paper p-4 text-sm leading-relaxed text-muted-strong ring-1 ring-line">
+                        <p className="mb-1 flex items-center gap-1.5 font-black text-ink"><Banknote size={16} className="text-primary-700" /> طرق الدفع المتاحة:</p>
                         {onlinePayEnabled && <p>• بطاقة بنكية أو محفظة إلكترونية — الوصول يُفعَّل فوراً</p>}
                         {/* Listed what the institute takes regardless of what it
                             had been configured to take. Same source as the
@@ -548,9 +556,9 @@ const Checkout: React.FC = () => {
                       </div>
 
                       {payError && (
-                        <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
-                          <AlertCircle size={15} className="text-red-500 shrink-0 mt-0.5" />
-                          <p className="text-red-700 text-xs">{payError}</p>
+                        <div role="alert" className="mb-4 flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 p-3">
+                          <AlertCircle size={16} className="mt-0.5 shrink-0 text-red-600" />
+                          <p className="text-sm font-bold text-red-700">{payError}</p>
                         </div>
                       )}
 
@@ -559,7 +567,7 @@ const Checkout: React.FC = () => {
                           <button
                             onClick={payNowByCard}
                             disabled={payLoading || cardRedirecting || !canPay}
-                            className="w-full flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition shadow-lg mb-2 text-sm"
+                            className={`${primaryBtn} mb-2 shadow-[0_16px_30px_-14px_rgba(159,18,57,.8)]`}
                           >
                             {payLoading || cardRedirecting
                               ? <><Loader2 size={17} className="animate-spin" /> جارٍ تحويلك لصفحة الدفع...</>
@@ -567,7 +575,7 @@ const Checkout: React.FC = () => {
                             }
                           </button>
                           {settlementCurrency !== 'EGP' && (
-                            <p className="mb-2 text-center text-[11px] text-amber-600">صفحة الدفع هتطلب المبلغ بالجنيه المصري بسعر الصرف النهارده.</p>
+                            <p className="mb-2 text-center text-xs font-bold text-gold-deep">صفحة الدفع هتطلب المبلغ بالجنيه المصري بسعر الصرف النهارده.</p>
                           )}
                           {/* The transfer route is still a first-class option, not
                               a fallback nobody can find: this creates the same
@@ -575,16 +583,16 @@ const Checkout: React.FC = () => {
                           <button
                             onClick={() => handlePay()}
                             disabled={payLoading || cardRedirecting || !canPay}
-                            className="w-full flex items-center justify-center gap-2 border-2 border-primary-200 text-primary-700 hover:bg-primary-50 disabled:opacity-50 disabled:cursor-not-allowed font-bold py-2.5 rounded-xl transition mb-3 text-xs"
+                            className={`${secondaryBtn} mb-3`}
                           >
-                            <Banknote size={15} /> أو ادفع انستا باي وابعتلنا صورة التحويل من هنا
+                            <Banknote size={16} className="text-primary-700" /> أو ادفع انستا باي وابعتلنا صورة التحويل من هنا
                           </button>
                         </>
                       ) : (
                         <button
                           onClick={() => handlePay()}
                           disabled={payLoading || !canPay}
-                          className="w-full flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition shadow-lg mb-3 text-sm"
+                          className={`${primaryBtn} mb-3 shadow-[0_16px_30px_-14px_rgba(159,18,57,.8)]`}
                         >
                           {payLoading
                             ? <><Loader2 size={17} className="animate-spin" /> جارٍ الإرسال...</>
@@ -595,18 +603,18 @@ const Checkout: React.FC = () => {
 
                       {whatsapp && (
                         <>
-                          <div className="flex items-center gap-2 my-3">
-                            <div className="flex-1 h-px bg-gray-200" />
-                            <span className="text-xs text-gray-400">أو تواصل مباشرة</span>
-                            <div className="flex-1 h-px bg-gray-200" />
+                          <div className="my-4 flex items-center gap-3">
+                            <div className="h-px flex-1 bg-line" />
+                            <span className="text-xs font-bold text-muted-soft">أو تواصل مباشرة</span>
+                            <div className="h-px flex-1 bg-line" />
                           </div>
                           <a
                             href={`https://wa.me/${whatsapp}?text=${encodeURIComponent(`مرحباً، أريد الاشتراك في: ${itemTitle} — ${finalAmount} ${currencySymbol}`)}`}
                             target="_blank"
                             rel="noreferrer"
-                            className="w-full flex items-center justify-center gap-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition text-sm"
+                            className={secondaryBtn}
                           >
-                            <MessageCircle size={17} />
+                            <MessageCircle size={17} className="text-green-600" />
                             تواصل عبر واتساب
                           </a>
                         </>
@@ -614,7 +622,7 @@ const Checkout: React.FC = () => {
 
                       <button
                         onClick={() => navigate(-1)}
-                        className="w-full mt-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 rounded-xl transition text-sm"
+                        className="mt-3 flex min-h-[46px] w-full items-center justify-center rounded-2xl text-sm font-extrabold text-muted transition hover:bg-paper hover:text-ink"
                       >
                         رجوع
                       </button>
@@ -623,64 +631,64 @@ const Checkout: React.FC = () => {
                 </div>
 
                 {/* Order Summary */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-fit order-1 md:order-2">
-                    <h2 className="text-lg font-bold mb-4">ملخص الطلب</h2>
-                    <div className="flex gap-4 mb-4 pb-4 border-b">
+                <div className="order-1 h-fit min-w-0 rounded-[28px] bg-white p-5 shadow-[0_40px_80px_-45px_rgba(26,15,18,.45)] ring-1 ring-line sm:p-6 md:order-2 md:sticky md:top-24">
+                    <h2 className="mb-4 text-lg font-black text-ink">ملخص الطلب</h2>
+                    <div className="mb-4 flex gap-4 border-b border-line pb-4">
                         {itemImage
-                          ? <img loading="lazy" decoding="async" src={cdnImg(itemImage, 120)} className="w-16 h-16 rounded-lg object-cover bg-gray-100 flex-shrink-0" alt="" />
-                          : <div className="w-16 h-16 rounded-lg bg-gray-100 flex-shrink-0" />
+                          ? <img loading="lazy" decoding="async" width={64} height={64} src={cdnImg(itemImage, 120)} className="h-16 w-16 flex-shrink-0 rounded-2xl bg-sand object-cover" alt="" />
+                          : <div className="h-16 w-16 flex-shrink-0 rounded-2xl bg-sand" />
                         }
-                        <div>
-                            <h3 className="font-bold text-sm text-gray-800 line-clamp-2">{itemTitle}</h3>
-                            <p className="text-primary-600 font-bold mt-1">{itemPrice} {currencySymbol}</p>
+                        <div className="min-w-0">
+                            <h3 className="line-clamp-2 text-[15px] font-black leading-snug text-ink">{itemTitle}</h3>
+                            <p className="mt-1 font-extrabold tabular-nums text-primary-700">{itemPrice} {currencySymbol}</p>
                         </div>
                     </div>
-                    
-                    <div className="space-y-2 text-sm text-gray-600 mb-4">
+
+                    <div className="mb-4 space-y-2.5 text-sm text-muted-body">
                     {/* Show the arithmetic. "3,300 → 767" with nothing in between
                         reads as an error: the customer cannot tell a discount from a
                         deposit, and only one of those leaves a balance owing. */}
-                        <div className="flex justify-between">
+                        <div className="flex justify-between gap-3">
                             <span>السعر الأساسي</span>
-                            <span>{itemPrice} {currencySymbol}</span>
+                            <span className="tabular-nums text-ink">{itemPrice} {currencySymbol}</span>
                         </div>
                         {discountable && payMode === 'cash' && itemPrice > finalAmount && (
-                          <div className="flex justify-between text-green-700">
+                          <div className="flex justify-between gap-3 font-bold text-green-700">
                             <span>خصم الدفع الكامل ({percentLabel(rates.cash)}%)</span>
-                            <span>− {itemPrice - finalAmount} {currencySymbol}</span>
+                            <span className="tabular-nums">− {itemPrice - finalAmount} {currencySymbol}</span>
                           </div>
                         )}
                         {discountable && payMode === 'installment' && planTotal && (
                           <>
-                            <div className="flex justify-between text-green-700">
+                            <div className="flex justify-between gap-3 font-bold text-green-700">
                               <span>خصم التقسيط ({percentLabel(rates.install)}%)</span>
-                              <span>− {itemPrice - planTotal} {currencySymbol}</span>
+                              <span className="tabular-nums">− {itemPrice - planTotal} {currencySymbol}</span>
                             </div>
-                            <div className="flex justify-between font-semibold text-gray-800">
+                            <div className="flex justify-between gap-3 font-extrabold text-ink">
                               <span>إجمالي الكورس بعد الخصم</span>
-                              <span>{planTotal} {currencySymbol}</span>
+                              <span className="tabular-nums">{planTotal} {currencySymbol}</span>
                             </div>
-                            <div className="flex justify-between text-amber-700">
+                            <div className="flex justify-between gap-3 font-bold text-gold-deep">
                               <span>الباقي على أقساط</span>
-                              <span>{planTotal - finalAmount} {currencySymbol}</span>
+                              <span className="tabular-nums">{planTotal - finalAmount} {currencySymbol}</span>
                             </div>
                           </>
                         )}
                     </div>
 
-                    <div className="flex justify-between font-bold text-lg pt-4 border-t">
-                        <span>{payMode === 'installment' ? 'المقدم المطلوب الآن' : 'صافي الدفع'}</span>
-                        <span className="text-primary-600">{finalAmount} {currencySymbol}</span>
+                    <div className="flex items-end justify-between gap-3 rounded-[22px] bg-ink p-5 text-white">
+                        <span className="text-sm font-bold text-white/70">{payMode === 'installment' ? 'المقدم المطلوب الآن' : 'صافي الدفع'}</span>
+                        <span className="text-[30px] font-black leading-none tabular-nums text-gold-pale">{finalAmount} <span className="text-base text-white/80">{currencySymbol}</span></span>
                     </div>
                     {payMode === 'installment' && planTotal && (
-                      <p className="text-[11px] text-amber-700 mt-2 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                      <p className="mt-3 rounded-2xl bg-paper p-3 text-xs leading-relaxed text-muted-strong ring-1 ring-line">
                         دي أول دفعة ({percentLabel(rates.first)}% من إجمالي الكورس بعد الخصم). الباقي {planTotal - finalAmount} {currencySymbol}
                         بيتقسّط، وفريقنا هيتواصل معاك بمواعيده.
                       </p>
                     )}
 
-                    <div className="bg-gray-50 p-3 rounded-lg mt-4 text-xs text-gray-500 flex items-start gap-2">
-                        <Check className="text-green-500 mt-0.5" size={14} />
+                    <div className="mt-4 flex items-start gap-2 text-xs leading-relaxed text-muted">
+                        <Check className="mt-0.5 flex-none text-green-600" size={14} />
                         سيتم تفعيل حسابك فور تأكيد الدفع من فريقنا.
                     </div>
                 </div>

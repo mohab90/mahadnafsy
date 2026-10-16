@@ -359,17 +359,17 @@ const CourseDetails: React.FC = () => {
     // Still resolving (context list not loaded yet, or direct API fallback in-flight) → loader, not an error.
     if (!fallbackTried) {
       return (
-        <div className="flex flex-col items-center justify-center py-32 gap-3 text-gray-400">
-          <div className="w-10 h-10 border-4 border-gray-200 border-t-primary-600 rounded-full animate-spin"></div>
-          <p className="text-sm">{globalContent['common.loading'] || 'جارٍ التحميل...'}</p>
+        <div className="flex flex-col items-center justify-center gap-3 bg-paper py-32 text-muted">
+          <div className="h-10 w-10 rounded-full border-4 border-line border-t-primary-700 motion-safe:animate-spin"></div>
+          <p className="text-sm font-bold">{globalContent['common.loading'] || 'جارٍ التحميل...'}</p>
         </div>
       );
     }
-    return <div className="text-center py-20">{globalContent['courseDetails.notFound'] || 'الكورس غير موجود'}</div>;
+    return <div className="bg-paper px-4 py-24 text-center text-lg font-bold text-muted-body">{globalContent['courseDetails.notFound'] || 'الكورس غير موجود'}</div>;
   }
 
   return (
-    <div className="bg-white animate-fade-in pb-20 lg:pb-0">
+    <div className="bg-white pb-24 motion-safe:animate-fade-in lg:pb-0">
       <CourseHeroSection
         course={course}
         content={content}
@@ -381,12 +381,13 @@ const CourseDetails: React.FC = () => {
         isSubscribed={isSubscribed}
         onBuyNow={handleBuyNow}
         onPreviewCertificate={() => setCertModalOpen(true)}
+        rating={ratingData}
       />
 
       {/* Main Content */}
-      <div className="container mx-auto px-4 py-12">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
-            <div className="lg:col-span-2 space-y-12">
+      <div className="container mx-auto px-4 py-12 sm:py-16">
+        <div className="grid grid-cols-1 gap-10 lg:grid-cols-3 xl:gap-12">
+            <div className="min-w-0 space-y-10 sm:space-y-12 lg:col-span-2">
 
                 <PromoVideoSection
                     thumbnail={course.thumbnail}
@@ -495,7 +496,7 @@ const CourseDetails: React.FC = () => {
             <button
               onClick={() => setCertModalOpen(false)}
               aria-label="إغلاق"
-              className="absolute -top-3 -left-3 z-10 w-9 h-9 bg-white rounded-full shadow-xl flex items-center justify-center text-gray-600 hover:text-red-500 transition text-xl leading-none"
+              className="absolute -left-3 -top-3 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white text-xl leading-none text-ink shadow-xl transition hover:text-primary-700"
             >
               ×
             </button>

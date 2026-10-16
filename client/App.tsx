@@ -4,7 +4,9 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, Link } f
 import Header from './components/Header';
 import Footer from './components/Footer';
 import Home from './pages/Home';
-const HomeNew = React.lazy(() => import('./pages/HomeNew'));
+import { siteDesign, DEFAULT_DESIGN, type SiteDesignId } from '../shared/siteDesigns';
+// The home page as it was before the redesign, kept as a design the panel can switch back to.
+const HomeClassic = React.lazy(() => import('./pages/HomeClassic'));
 import { useVisibleInterval } from '../shared/useVisibleInterval';
 import { trackLead, trackPageView } from './lib/tracking';
 
@@ -38,9 +40,11 @@ const AiTutorWidget = React.lazy(() => import('./components/AiTutorWidget'));
 const SpecialOffer = React.lazy(() => import('./components/SpecialOffer'));
 
 /** Minimal spinner shown while lazy pages load */
+// A full screen tall: a short placeholder put the footer on screen, and when the
+// page arrived the footer jumped down — the largest layout shift on every inner page.
 const PageSpinner: React.FC = () => (
-  <div className="min-h-[40vh] flex items-center justify-center">
-    <div className="w-10 h-10 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+  <div className="flex min-h-screen items-start justify-center bg-paper pt-[30vh]">
+    <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary-100 border-t-primary-700" />
   </div>
 );
 
@@ -300,16 +304,35 @@ const NotFound: React.FC = () => {
   // Without a title of its own the tab kept the last page's.
   useSeo({ title: 'الصفحة غير موجودة | معهد الدراسات النفسية' });
   return (
-  <div className="min-h-[60vh] flex flex-col items-center justify-center text-center px-4">
-    <p className="text-8xl font-black text-primary-200 mb-4">404</p>
-    <h1 className="text-2xl font-bold text-gray-800 mb-2">الصفحة غير موجودة</h1>
-    <p className="text-gray-500 mb-8">الرابط الذي تطلبته غير موجود أو تم حذفه.</p>
-    <div className="flex gap-3 flex-wrap justify-center">
-      <Link to="/" className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-6 py-3 rounded-xl transition">الرئيسية</Link>
-      <Link to="/courses" className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 font-bold px-6 py-3 rounded-xl transition">تصفح الكورسات</Link>
+  <div className="flex min-h-[60vh] flex-col items-center justify-center bg-paper px-4 py-16 text-center">
+    <p className="mb-2 text-8xl font-black leading-none text-primary-100">404</p>
+    <h1 className="mb-2 text-3xl font-black text-ink">الصفحة غير موجودة</h1>
+    <p className="mb-8 text-base text-muted-body">الرابط الذي تطلبته غير موجود أو تم حذفه.</p>
+    <div className="flex flex-wrap justify-center gap-3">
+      <Link to="/" className="inline-flex min-h-[52px] items-center rounded-2xl bg-primary-700 px-7 font-black text-white transition hover:bg-primary-800">الرئيسية</Link>
+      <Link to="/courses" className="inline-flex min-h-[52px] items-center rounded-2xl border-[1.5px] border-ink/15 bg-white px-7 font-extrabold text-ink transition hover:border-ink/40">تصفح الكورسات</Link>
     </div>
   </div>
   );
+};
+
+const DESIGN_KEY = 'mahad.design';
+
+/**
+ * The home page in the design chosen in the panel («تصميم الموقع», site.design).
+ * Until the site content has loaded, the design this browser saw last is drawn,
+ * so a returning visitor never sees one design swap for the other.
+ */
+const HomeByDesign: React.FC = () => {
+  const { content, remoteReady } = useSiteData();
+  let remembered: SiteDesignId = DEFAULT_DESIGN;
+  try { if (window.localStorage.getItem(DESIGN_KEY) === 'classic') remembered = 'classic'; } catch { /* private mode */ }
+  const design = remoteReady ? siteDesign(content) : remembered;
+  useEffect(() => {
+    if (!remoteReady) return;
+    try { window.localStorage.setItem(DESIGN_KEY, design); } catch { /* private mode */ }
+  }, [remoteReady, design]);
+  return design === 'classic' ? lazyPage(<HomeClassic />) : <Home />;
 };
 
 /** Legacy locale URLs redirect only; the server owns customer currency. */
@@ -500,9 +523,9 @@ const AppShell: React.FC = () => {
               <Route path="/eg" element={<LocaleRoute locale="EGP" />} />
               <Route path="/sa" element={<LocaleRoute locale="SAR" />} />
               <Route path="/usd" element={<LocaleRoute locale="USD" />} />
-              <Route path="/" element={<Home />} />
+              <Route path="/" element={<HomeByDesign />} />
               {/* The redesigned home page, beside the real one — not linked from the menu, not indexed. */}
-              <Route path="/new" element={lazyPage(<HomeNew />)} />
+              <Route path="/new" element={<Navigate to="/" replace />} />
               <Route path="/about" element={lazyPage(<AboutUs />)} />
               <Route path="/courses" element={lazyPage(<Courses />)} />
               <Route path="/course/:id" element={lazyPage(<CourseDetails />)} />

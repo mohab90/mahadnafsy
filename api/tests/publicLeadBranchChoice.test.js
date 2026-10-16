@@ -65,7 +65,7 @@ test('the registrations route honours the choice and falls back to geo', () => {
 });
 
 test('the public forms really do offer a physical branch', () => {
-  for (const rel of ['client/pages/Home.tsx', 'client/pages/BundleDetails.tsx']) {
+  for (const rel of ['client/components/home/OfferSpotlight.tsx', 'client/pages/BundleDetails.tsx']) {
     const page = codeOnly(read(rel));
     assert.match(page, /value="daqqi"/, `${rel} no longer offers a physical branch`);
     assert.match(page, /value="tagamoa"/);

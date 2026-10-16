@@ -1,6 +1,8 @@
 import React, { useMemo, useEffect } from 'react';
 import { useSiteData } from '../context/SiteDataContext';
 import { useSeo } from '../lib/useSeo';
+import { cdnImg, cdnSrcSet } from '../lib/img';
+import PageHeader from '../components/PageHeader';
 
 const InstituteGallery: React.FC = () => {
   const { content } = useSiteData();
@@ -19,22 +21,33 @@ const InstituteGallery: React.FC = () => {
   }, [content]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white to-gray-50 py-10">
-      <div className="container mx-auto px-4">
-        <header className="text-center max-w-3xl mx-auto mb-10">
-          <h1 className="text-3xl md:text-4xl font-extrabold text-gray-900 mb-3">{content['institute.gallery.title'] || 'معرض صور المعهد'}</h1>
-          <p className="text-gray-600">{content['institute.gallery.subtitle'] || 'صور من القاعات، الفعاليات، والأنشطة التدريبية داخل المعهد.'}</p>
-        </header>
+    <div className="min-h-screen bg-white">
+      <PageHeader
+        eyebrow="من داخل المعهد"
+        title={content['institute.gallery.title'] || 'معرض صور المعهد'}
+        subtitle={content['institute.gallery.subtitle'] || 'صور من القاعات، الفعاليات، والأنشطة التدريبية داخل المعهد.'}
+      />
 
+      <div className="container mx-auto px-4 py-14 sm:py-20">
         {images.length === 0 ? (
-          <div className="max-w-xl mx-auto rounded-2xl border border-gray-200 bg-white p-8 text-center text-gray-500">
+          <div className="mx-auto max-w-xl rounded-[24px] border border-line bg-paper p-8 text-center text-muted">
             لا توجد صور متاحة حاليا.
           </div>
         ) : (
-          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
             {images.map((src, idx) => (
-              <article key={`${src}-${idx}`} className="rounded-2xl overflow-hidden border border-gray-200 shadow-sm bg-white">
-                <img loading="lazy" decoding="async" src={src} alt={`Institute gallery ${idx + 1}`} className="w-full h-64 object-cover" />
+              <article key={`${src}-${idx}`} className="group overflow-hidden rounded-[24px] bg-sand ring-1 ring-line">
+                <img
+                  loading={idx < 2 ? undefined : 'lazy'}
+                  decoding="async"
+                  src={cdnImg(src, 800)}
+                  srcSet={cdnSrcSet(src, [400, 640, 800, 1000])}
+                  sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                  alt={`Institute gallery ${idx + 1}`}
+                  width={800}
+                  height={600}
+                  className="aspect-[4/3] h-auto w-full object-cover transition duration-500 motion-safe:group-hover:scale-[1.03]"
+                />
               </article>
             ))}
           </section>

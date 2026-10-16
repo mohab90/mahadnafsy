@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Send, CheckCircle, Users, Award, BookOpen, Globe, Star, GraduationCap, Heart, Briefcase } from 'lucide-react';
+import { ArrowLeft, Send, Check, CheckCircle, Users, Award, BookOpen, Globe, Star, GraduationCap, Heart, Briefcase } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 import { useSeo } from '../lib/useSeo';
@@ -81,12 +81,12 @@ const JoinTeaching: React.FC = () => {
   };
 
   const benefits = [
-    { icon: Users, title: 'جمهور واسع', desc: 'وصل لأكثر من 12,000 متخصص نفسي مسجل في المنصة من جميع أنحاء الوطن العربي.', color: 'text-blue-500 bg-blue-50' },
-    { icon: Award, title: 'هوية مهنية معتمدة', desc: 'احصل على شارة "خبير معتمد" وملف احترافي يُبرز خبرتك ويزيد من مصداقيتك.', color: 'text-amber-500 bg-amber-50' },
-    { icon: BookOpen, title: 'أثر تعليمي حقيقي', desc: 'ساهم في بناء جيل جديد من المعالجين النفسيين المحترفين بمحتوى علمي وعملي راقٍ.', color: 'text-emerald-500 bg-emerald-50' },
-    { icon: Globe, title: 'انتشار عربي', desc: 'محاضراتك تصل لطلاب من مصر، السعودية، الإمارات، والكويت وأكثر من 15 دولة عربية.', color: 'text-violet-500 bg-violet-50' },
-    { icon: Star, title: 'دعم متكامل', desc: 'فريق المعهد يدعمك بالتصوير، الإنتاج، التسويق، وضمان جودة المحتوى بالكامل.', color: 'text-rose-500 bg-rose-50' },
-    { icon: Heart, title: 'مجتمع راقٍ', desc: 'انضم لشبكة من أفضل الأطباء والمعالجين النفسيين وتبادل الخبرات والمعرفة.', color: 'text-pink-500 bg-pink-50' },
+    { icon: Users, title: 'جمهور واسع', desc: 'وصل لأكثر من 12,000 متخصص نفسي مسجل في المنصة من جميع أنحاء الوطن العربي.' },
+    { icon: Award, title: 'هوية مهنية معتمدة', desc: 'احصل على شارة "خبير معتمد" وملف احترافي يُبرز خبرتك ويزيد من مصداقيتك.' },
+    { icon: BookOpen, title: 'أثر تعليمي حقيقي', desc: 'ساهم في بناء جيل جديد من المعالجين النفسيين المحترفين بمحتوى علمي وعملي راقٍ.' },
+    { icon: Globe, title: 'انتشار عربي', desc: 'محاضراتك تصل لطلاب من مصر، السعودية، الإمارات، والكويت وأكثر من 15 دولة عربية.' },
+    { icon: Star, title: 'دعم متكامل', desc: 'فريق المعهد يدعمك بالتصوير، الإنتاج، التسويق، وضمان جودة المحتوى بالكامل.' },
+    { icon: Heart, title: 'مجتمع راقٍ', desc: 'انضم لشبكة من أفضل الأطباء والمعالجين النفسيين وتبادل الخبرات والمعرفة.' },
   ];
 
   const requirements = [
@@ -97,60 +97,68 @@ const JoinTeaching: React.FC = () => {
     'القدرة على إنتاج محتوى تعليمي هادف ومنظم.',
   ];
 
+  const inputCls = 'min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10';
+  const areaCls = `${inputCls} resize-none py-3`;
+  const labelCls = 'mb-1 block text-[13px] font-bold text-muted-strong';
+  const stepCls = 'flex items-center gap-2.5 text-lg font-black text-ink';
+  const stepNum = 'flex h-8 w-8 flex-none items-center justify-center rounded-full bg-primary-50 text-sm font-black text-primary-700';
+
   return (
-    <div className="bg-gray-50 min-h-screen animate-fade-in">
-      {/* Hero — academic, violet/indigo identity */}
-      <div className="bg-gray-900 text-white py-20 relative overflow-hidden">
-        <div className="absolute inset-0 bg-primary-900/20"></div>
-        <div className="absolute top-0 right-0 w-80 h-80 bg-primary-600 rounded-full blur-[120px] opacity-25"></div>
-        <div className="absolute bottom-0 left-0 w-80 h-80 bg-secondary-500 rounded-full blur-[120px] opacity-25"></div>
-        <div className="container mx-auto px-4 relative z-10 text-center">
-          <div className="inline-flex items-center gap-2 bg-primary-600/30 border border-primary-500/40 text-primary-300 px-4 py-2 rounded-full text-sm font-bold mb-6">
-            <GraduationCap size={18} />
+    <div className="min-h-screen bg-white">
+      {/* Hero — the teaching track: burgundy, academic */}
+      <section className="relative overflow-hidden bg-gradient-to-br from-primary-700 via-primary-800 to-[#4c0519] text-white">
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-[.10]" style={{ backgroundImage: 'radial-gradient(rgba(255,255,255,.7) 1px, transparent 1px)', backgroundSize: '22px 22px' }} />
+        <div className="container relative mx-auto px-4 py-14 text-center sm:py-20">
+          <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5 text-sm font-extrabold text-gold-pale ring-1 ring-white/20">
+            <GraduationCap size={17} />
             فرصة انضمام للنخبة
-          </div>
-          <h1 className="text-4xl md:text-6xl font-bold mb-6">انضم إلينا كمحاضر<br />أو مستشار نفسي</h1>
-          <p className="text-xl text-gray-300 max-w-2xl mx-auto leading-relaxed">
+          </span>
+          <h1 className="mt-5 text-balance text-3xl font-black leading-tight sm:text-5xl">انضم إلينا كمحاضر<br />أو مستشار نفسي</h1>
+          <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-white/75 sm:text-lg">
             هل أنت خبير في مجال الصحة النفسية؟ شارك علمك مع الآلاف وكن جزءاً من مسيرة التغيير الحقيقي في مجال الصحة النفسية العربية.
           </p>
-          <div className="flex flex-wrap justify-center gap-6 mt-10">
+          <div className="mx-auto mt-8 grid max-w-lg grid-cols-3 divide-x divide-white/15 rounded-[24px] bg-white/[.07] py-4 ring-1 ring-white/15 rtl:divide-x-reverse">
             {[
               { value: content['joinus.stats.students'] || '12K+', label: 'طالب نشط' },
               { value: content['joinus.stats.countries'] || '15+', label: 'دولة عربية' },
               { value: content['joinus.stats.programs'] || '50+', label: 'برنامج معتمد' },
             ].map((stat) => (
-              <div key={stat.label} className="text-center">
-                <p className="text-3xl font-extrabold text-primary-400">{stat.value}</p>
-                <p className="text-sm text-gray-400">{stat.label}</p>
+              <div key={stat.label} className="px-2 text-center">
+                <p className="text-2xl font-black tabular-nums text-gold-light sm:text-3xl">{stat.value}</p>
+                <p className="mt-0.5 text-xs text-white/65 sm:text-sm">{stat.label}</p>
               </div>
             ))}
           </div>
-          <div className="mt-8">
-            <Link to="/join-us" className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition underline underline-offset-4">
+          <div className="mt-6 flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-4">
+            <a href="#join-teaching-form" className="inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-gold-light px-7 font-black text-ink transition hover:brightness-105 sm:w-auto">
+              {content['joinus.form.title'] || 'قدّم طلبك الآن'}
+              <ArrowLeft size={18} />
+            </a>
+            <Link to="/join-us" className="inline-flex min-h-[44px] items-center gap-2 text-sm font-bold text-white/70 underline underline-offset-4 transition hover:text-white">
               <Briefcase size={14} /> تبحث عن وظيفة إدارية بدلاً من ذلك؟
             </Link>
           </div>
         </div>
-      </div>
+      </section>
 
       {/* Benefits */}
-      <section className="py-20 bg-white">
+      <section className="bg-white py-14 sm:py-20">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-14">
-            <span className="bg-primary-50 text-primary-700 px-4 py-1.5 rounded-full text-sm font-bold">لماذا معهد الدراسات النفسية؟</span>
-            <h2 className="text-3xl font-bold text-gray-900 mt-4 mb-3">{content['joinus.benefits.title'] || 'مزايا الانضمام لفريقنا التعليمي'}</h2>
-            <p className="text-gray-500 max-w-xl mx-auto">{content['joinus.benefits.subtitle'] || 'نؤمن بأن الخبير الجيد يستحق بيئة تُبرز موهبته وتوصل علمه لأوسع شريحة.'}</p>
+          <div className="mx-auto mb-10 max-w-2xl text-center sm:mb-12">
+            <span className="text-sm font-extrabold text-gold-deep">لماذا معهد الدراسات النفسية؟</span>
+            <h2 className="mt-2 text-3xl font-black leading-tight text-ink sm:text-4xl">{content['joinus.benefits.title'] || 'مزايا الانضمام لفريقنا التعليمي'}</h2>
+            <p className="mt-3 text-base leading-relaxed text-muted-body sm:text-lg">{content['joinus.benefits.subtitle'] || 'نؤمن بأن الخبير الجيد يستحق بيئة تُبرز موهبته وتوصل علمه لأوسع شريحة.'}</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {benefits.map((b, i) => {
               const Icon = b.icon;
               return (
-                <div key={i} className="bg-gray-50 rounded-2xl p-6 hover:shadow-md transition border border-gray-100 hover:border-primary-200 group">
-                  <div className={`w-14 h-14 rounded-2xl ${b.color} flex items-center justify-center mb-4 group-hover:scale-110 transition`}>
-                    <Icon size={24} />
-                  </div>
-                  <h3 className="font-bold text-gray-900 text-lg mb-2">{b.title}</h3>
-                  <p className="text-gray-500 text-sm leading-relaxed">{b.desc}</p>
+                <div key={i} className="rounded-[24px] border border-line bg-white p-5 transition hover:-translate-y-1 hover:shadow-[0_30px_50px_-25px_rgba(26,15,18,.35)] sm:p-6">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-50 text-primary-700">
+                    <Icon size={22} />
+                  </span>
+                  <h3 className="mt-4 text-lg font-black text-ink">{b.title}</h3>
+                  <p className="mt-1.5 text-[15px] leading-relaxed text-muted">{b.desc}</p>
                 </div>
               );
             })}
@@ -159,17 +167,17 @@ const JoinTeaching: React.FC = () => {
       </section>
 
       {/* Requirements */}
-      <section className="py-16 bg-gray-50">
+      <section className="bg-paper py-14 sm:py-20">
         <div className="container mx-auto px-4">
-          <div className="max-w-3xl mx-auto">
-            <h2 className="text-2xl font-bold text-gray-900 mb-8 text-center">شروط ومتطلبات الانضمام</h2>
-            <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 space-y-4">
+          <div className="mx-auto max-w-3xl">
+            <h2 className="text-center text-3xl font-black leading-tight text-ink sm:text-4xl">شروط ومتطلبات الانضمام</h2>
+            <div className="mt-8 divide-y divide-line rounded-[28px] border border-line bg-white px-5 sm:px-8">
               {requirements.map((req, i) => (
-                <div key={i} className="flex items-start gap-4">
-                  <div className="w-7 h-7 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <CheckCircle size={16} className="text-primary-600" />
-                  </div>
-                  <p className="text-gray-700 leading-relaxed">{req}</p>
+                <div key={i} className="flex items-start gap-3.5 py-4">
+                  <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary-700">
+                    <Check size={15} strokeWidth={3} />
+                  </span>
+                  <p className="text-[15px] leading-relaxed text-muted-body sm:text-base">{req}</p>
                 </div>
               ))}
             </div>
@@ -178,164 +186,179 @@ const JoinTeaching: React.FC = () => {
       </section>
 
       {/* Application Form */}
-      <section className="py-20 bg-white">
+      <section id="join-teaching-form" className="scroll-mt-20 bg-white py-14 sm:py-20">
         <div className="container mx-auto px-4">
-          <div className="max-w-2xl mx-auto">
-            <div className="text-center mb-10">
-              <h2 className="text-3xl font-bold text-gray-900 mb-3">{content['joinus.form.title'] || 'قدّم طلبك الآن'}</h2>
-              <p className="text-gray-500">{content['joinus.form.subtitle'] || 'سيتواصل معك فريقنا خلال 3–5 أيام عمل لمراجعة طلبك.'}</p>
+          <div className="mx-auto max-w-2xl">
+            <div className="mb-8 text-center">
+              <span className="text-sm font-extrabold text-gold-deep">طلب الانضمام</span>
+              <h2 className="mt-2 text-3xl font-black leading-tight text-ink sm:text-4xl">{content['joinus.form.title'] || 'قدّم طلبك الآن'}</h2>
+              <p className="mt-3 text-base leading-relaxed text-muted-body">{content['joinus.form.subtitle'] || 'سيتواصل معك فريقنا خلال 3–5 أيام عمل لمراجعة طلبك.'}</p>
             </div>
 
             {submitted ? (
-              <div className="text-center py-16 bg-emerald-50 rounded-3xl border border-emerald-100">
-                <CheckCircle size={64} className="mx-auto text-emerald-500 mb-4" />
-                <h3 className="text-xl font-bold text-gray-900 mb-2">تم استلام طلبك بنجاح!</h3>
-                <p className="text-gray-500 mb-2">شكراً لاهتمامك بالانضمام إلى فريق معهد الدراسات النفسية.</p>
-                <p className="text-gray-500">سيتواصل معك فريق الاختيار خلال 3–5 أيام عمل.</p>
+              <div className="rounded-[28px] border border-green-200 bg-green-50 px-5 py-14 text-center">
+                <span className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-white text-green-600 ring-1 ring-green-200">
+                  <CheckCircle size={44} />
+                </span>
+                <h3 className="mt-5 text-2xl font-black text-ink">تم استلام طلبك بنجاح!</h3>
+                <p className="mt-2 text-muted-body">شكراً لاهتمامك بالانضمام إلى فريق معهد الدراسات النفسية.</p>
+                <p className="mt-1 text-muted-body">سيتواصل معك فريق الاختيار خلال 3–5 أيام عمل.</p>
               </div>
             ) : (
-              <form onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 space-y-5">
+              <form onSubmit={handleSubmit} className="space-y-8 rounded-[28px] border border-line bg-white p-5 shadow-[0_40px_80px_-55px_rgba(26,15,18,.45)] sm:p-8">
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">أريد الانضمام كـ *</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="mb-3 block text-[13px] font-bold text-muted-strong">أريد الانضمام كـ *</label>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {[
                       { value: 'instructor' as const, label: '👨‍🏫 محاضر / مدرب', desc: 'تدريس دبلومات وبرامج تعليمية' },
                       { value: 'consultant' as const, label: '🩺 مستشار نفسي', desc: 'تقديم جلسات استشارية للعملاء' },
                     ].map((t) => (
                       <label
                         key={t.value}
-                        className={`border-2 rounded-xl p-4 cursor-pointer transition ${form.type === t.value ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300'}`}
+                        className={`cursor-pointer rounded-2xl border-[1.5px] p-4 transition has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-primary-600/15 ${form.type === t.value ? 'border-primary-700 bg-primary-50' : 'border-line bg-paper hover:border-line-deep'}`}
                       >
                         <input type="radio" name="type" value={t.value} checked={form.type === t.value} onChange={(e) => setForm({ ...form, type: e.target.value as 'instructor' | 'consultant' })} className="sr-only" />
-                        <p className="font-bold text-gray-900 mb-1">{t.label}</p>
-                        <p className="text-xs text-gray-500">{t.desc}</p>
+                        <p className="font-black text-ink">{t.label}</p>
+                        <p className="mt-1 text-xs text-muted">{t.desc}</p>
                       </label>
                     ))}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">الاسم الكامل *</label>
-                    <input required type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="د. أحمد محمد" className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition" />
+                <div className="space-y-4 border-t border-line pt-7">
+                  <p className={stepCls}><span className={stepNum}>1</span>بياناتك</p>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className={labelCls}>الاسم الكامل *</label>
+                      <input required type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="د. أحمد محمد" className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>رقم الهاتف *</label>
+                      <input required type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="مثال: +20 100 000 0000" className={inputCls} />
+                    </div>
                   </div>
+
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">رقم الهاتف *</label>
-                    <input required type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="مثال: +20 100 000 0000" className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition" />
+                    <label className={labelCls}>البريد الإلكتروني *</label>
+                    <input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="مثال: name@example.com" className={inputCls} />
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">البريد الإلكتروني *</label>
-                  <input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="مثال: name@example.com" className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition" />
-                </div>
+                <div className="space-y-4 border-t border-line pt-7">
+                  <p className={stepCls}><span className={stepNum}>2</span>خبرتك</p>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className={labelCls}>التخصص الرئيسي *</label>
+                      <input required type="text" value={form.specialty} onChange={(e) => setForm({ ...form, specialty: e.target.value })} placeholder="العلاج المعرفي السلوكي" className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>سنوات الخبرة *</label>
+                      <select required value={form.experience} onChange={(e) => setForm({ ...form, experience: e.target.value })} className={inputCls}>
+                        <option value="">اختر</option>
+                        <option value="3-5">3 – 5 سنوات</option>
+                        <option value="5-10">5 – 10 سنوات</option>
+                        <option value="10plus">أكثر من 10 سنوات</option>
+                      </select>
+                    </div>
+                  </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">التخصص الرئيسي *</label>
-                    <input required type="text" value={form.specialty} onChange={(e) => setForm({ ...form, specialty: e.target.value })} placeholder="العلاج المعرفي السلوكي" className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition" />
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className={labelCls}>المؤهل العلمي *</label>
+                      <input required type="text" value={form.education} onChange={(e) => setForm({ ...form, education: e.target.value })} placeholder="مثال: ماجستير علم نفس إكلينيكي — جامعة القاهرة" className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>الفرع اللي تفضّل تحاضر فيه *</label>
+                      <select required value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })} className={inputCls}>
+                        <option value="">اختر الفرع</option>
+                        <option value="daqqi">فرع الدقي</option>
+                        <option value="tagamoa">فرع التجمع الخامس</option>
+                        <option value="tanta_admin">الفرع الإداري — طنطا</option>
+                        <option value="online_egypt">أونلاين — تصوير عن بُعد</option>
+                      </select>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">سنوات الخبرة *</label>
-                    <select required value={form.experience} onChange={(e) => setForm({ ...form, experience: e.target.value })} className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition bg-white">
-                      <option value="">اختر</option>
-                      <option value="3-5">3 – 5 سنوات</option>
-                      <option value="5-10">5 – 10 سنوات</option>
-                      <option value="10plus">أكثر من 10 سنوات</option>
-                    </select>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">المؤهل العلمي *</label>
-                    <input required type="text" value={form.education} onChange={(e) => setForm({ ...form, education: e.target.value })} placeholder="مثال: ماجستير علم نفس إكلينيكي — جامعة القاهرة" className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition" />
+                  {/* Two required yes/no questions. */}
+                  <div id="join-experience-questions" className={`space-y-5 rounded-[20px] border p-4 sm:p-5 ${answersError && (lecturedBefore === null || sessionsBefore === null) ? 'border-red-300 bg-red-50/60' : 'border-line bg-paper'}`}>
+                    {([
+                      { label: 'هل اشتغلت محاضر قبل كده؟ *', value: lecturedBefore, set: setLecturedBefore, name: 'lecturedBefore' },
+                      { label: 'هل اشتغلت في جلسات نفسية مع عملاء قبل كده؟ *', value: sessionsBefore, set: setSessionsBefore, name: 'sessionsBefore' },
+                    ]).map(question => (
+                      <fieldset key={question.name}>
+                        <legend className="mb-2 block text-[14px] font-extrabold text-ink">{question.label}</legend>
+                        <div className="grid max-w-xs grid-cols-2 gap-2">
+                          {([[true, 'آه'], [false, 'لأ']] as const).map(([answer, text]) => (
+                            <label key={text}
+                              className={`flex min-h-[46px] cursor-pointer items-center justify-center gap-2 rounded-xl border-[1.5px] text-sm font-extrabold transition has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-primary-600/15 ${
+                                question.value === answer ? 'border-primary-700 bg-primary-50 text-primary-700' : 'border-line bg-white text-muted-strong hover:border-line-deep'}`}>
+                              <input type="radio" name={question.name} checked={question.value === answer}
+                                onChange={() => { question.set(answer); setAnswersError(false); }} className="sr-only" />
+                              {question.value === answer && <CheckCircle size={16} />} {text}
+                            </label>
+                          ))}
+                        </div>
+                      </fieldset>
+                    ))}
+                    {answersError && (lecturedBefore === null || sessionsBefore === null) && (
+                      <p role="alert" className="text-xs font-bold text-red-600">جاوب على السؤالين دول الأول.</p>
+                    )}
                   </div>
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">الفرع اللي تفضّل تحاضر فيه *</label>
-                    <select required value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })} className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition bg-white">
-                      <option value="">اختر الفرع</option>
-                      <option value="daqqi">فرع الدقي</option>
-                      <option value="tagamoa">فرع التجمع الخامس</option>
-                      <option value="tanta_admin">الفرع الإداري — طنطا</option>
-                      <option value="online_egypt">أونلاين — تصوير عن بُعد</option>
-                    </select>
-                  </div>
-                </div>
 
-                {/* Two required yes/no questions. */}
-                <div id="join-experience-questions" className={`rounded-2xl border p-4 space-y-4 ${answersError && (lecturedBefore === null || sessionsBefore === null) ? 'border-red-300 bg-red-50/40' : 'border-gray-200 bg-gray-50/60'}`}>
-                  {([
-                    { label: 'هل اشتغلت محاضر قبل كده؟ *', value: lecturedBefore, set: setLecturedBefore, name: 'lecturedBefore' },
-                    { label: 'هل اشتغلت في جلسات نفسية مع عملاء قبل كده؟ *', value: sessionsBefore, set: setSessionsBefore, name: 'sessionsBefore' },
-                  ]).map(question => (
-                    <fieldset key={question.name}>
-                      <legend className="block text-sm font-bold text-gray-700 mb-2">{question.label}</legend>
-                      <div className="grid grid-cols-2 gap-2 max-w-xs">
-                        {([[true, 'آه'], [false, 'لأ']] as const).map(([answer, text]) => (
-                          <label key={text}
-                            className={`flex items-center justify-center gap-2 rounded-xl border-2 py-2.5 text-sm font-bold cursor-pointer transition ${
-                              question.value === answer ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'}`}>
-                            <input type="radio" name={question.name} checked={question.value === answer}
-                              onChange={() => { question.set(answer); setAnswersError(false); }} className="sr-only" />
-                            {question.value === answer && <CheckCircle size={16} />} {text}
-                          </label>
-                        ))}
-                      </div>
-                    </fieldset>
-                  ))}
-                  {answersError && (lecturedBefore === null || sessionsBefore === null) && (
-                    <p role="alert" className="text-xs font-bold text-red-600">جاوب على السؤالين دول الأول.</p>
-                  )}
+                  <div>
+                    <label className={labelCls}>اشتغلت أو درّست فين قبل كده؟</label>
+                    <textarea rows={2} value={form.experiencePlaces} onChange={(e) => setForm({ ...form, experiencePlaces: e.target.value })} placeholder="أسماء الجهات والمدة في كل واحدة — عيادات، جامعات، مراكز تدريب" className={areaCls} />
+                  </div>
                 </div>
 
                 {/* The institute's programmes, each with a tick box; more than one is fine. */}
-                <fieldset>
-                  <legend className="block text-sm font-bold text-gray-700 mb-1">البرامج اللي تقدر تقدّمها معانا</legend>
-                  <p className="text-xs text-gray-500 mb-2">علّم على كل البرامج اللي تقدر تشتغل فيها — تقدر تختار أكتر من برنامج.</p>
+                <fieldset className="border-t border-line pt-7">
+                  <legend className="sr-only">البرامج اللي تقدر تقدّمها معانا</legend>
+                  <p className={stepCls} aria-hidden="true"><span className={stepNum}>3</span>البرامج اللي تقدر تقدّمها معانا</p>
+                  <p className="mb-3 mt-1.5 text-[13px] text-muted">علّم على كل البرامج اللي تقدر تشتغل فيها — تقدر تختار أكتر من برنامج.</p>
                   {offered.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-80 overflow-y-auto rounded-xl border border-gray-200 p-2">
+                    <div className="grid max-h-80 grid-cols-1 gap-1.5 overflow-y-auto rounded-[20px] border border-line bg-paper p-2 sm:grid-cols-2">
                       {offered.map(course => {
                         const on = programs.includes(course.id);
                         return (
                           <label key={course.id}
-                            className={`flex items-start gap-2.5 rounded-lg px-3 py-2 text-sm cursor-pointer transition ${on ? 'bg-primary-50 text-primary-800' : 'hover:bg-gray-50 text-gray-700'}`}>
+                            className={`flex min-h-[44px] cursor-pointer items-start gap-2.5 rounded-xl px-3 py-2.5 text-sm transition ${on ? 'bg-white font-bold text-primary-800 ring-1 ring-primary-200' : 'text-muted-strong hover:bg-white'}`}>
                             <input type="checkbox" checked={on} onChange={() => toggleProgram(course.id)}
-                              className="mt-0.5 h-4 w-4 shrink-0 accent-primary-600" />
-                            <span className="leading-snug">{course.title}</span>
+                              className="mt-0.5 h-4 w-4 shrink-0 accent-primary-700" />
+                            <span className="min-w-0 leading-snug">{course.title}</span>
                           </label>
                         );
                       })}
                     </div>
                   ) : (
-                    <p className="rounded-xl border border-dashed border-gray-200 px-4 py-3 text-xs text-gray-400">جاري تحميل البرامج… لو مظهرتش، اكتب البرامج في الخانة اللي تحت.</p>
+                    <p className="rounded-xl border border-dashed border-line-deep px-4 py-3 text-xs text-muted-soft">جاري تحميل البرامج… لو مظهرتش، اكتب البرامج في الخانة اللي تحت.</p>
                   )}
-                  {programs.length > 0 && <p className="mt-1.5 text-xs font-bold text-primary-700">اخترت {programs.length} برنامج</p>}
-                  <label className="block text-sm font-bold text-gray-700 mt-3 mb-1" htmlFor="join-programs-other">برامج تانية بتقدّمها</label>
-                  <textarea id="join-programs-other" rows={2} maxLength={1000} value={form.programsOther} onChange={(e) => setForm({ ...form, programsOther: e.target.value })} placeholder="لو بتقدّم برامج مش في القايمة اكتبها هنا — مثال: تعديل السلوك للأطفال، الإرشاد الأسري" className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition resize-none" />
+                  {programs.length > 0 && <p className="mt-2 text-xs font-extrabold text-primary-700">اخترت {programs.length} برنامج</p>}
+                  <label className={`${labelCls} mt-4`} htmlFor="join-programs-other">برامج تانية بتقدّمها</label>
+                  <textarea id="join-programs-other" rows={2} maxLength={1000} value={form.programsOther} onChange={(e) => setForm({ ...form, programsOther: e.target.value })} placeholder="لو بتقدّم برامج مش في القايمة اكتبها هنا — مثال: تعديل السلوك للأطفال، الإرشاد الأسري" className={areaCls} />
                 </fieldset>
 
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">اشتغلت أو درّست فين قبل كده؟</label>
-                  <textarea rows={2} value={form.experiencePlaces} onChange={(e) => setForm({ ...form, experiencePlaces: e.target.value })} placeholder="أسماء الجهات والمدة في كل واحدة — عيادات، جامعات، مراكز تدريب" className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition resize-none" />
+                <div className="space-y-4 border-t border-line pt-7">
+                  <p className={stepCls}><span className={stepNum}>4</span>عرّفنا بنفسك</p>
+                  <div>
+                    <label className={labelCls}>رابط LinkedIn أو موقعك الشخصي</label>
+                    <input type="url" value={form.linkedin} onChange={(e) => setForm({ ...form, linkedin: e.target.value })} placeholder="رابط LinkedIn أو موقعك الشخصي (اختياري)" className={inputCls} />
+                  </div>
+
+                  <div>
+                    <label className={labelCls}>رسالتك ودوافعك للانضمام</label>
+                    <textarea rows={4} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} placeholder="أخبرنا عن نفسك وماذا تريد أن تقدم للطلاب..." className={areaCls} />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">رابط LinkedIn أو موقعك الشخصي</label>
-                  <input type="url" value={form.linkedin} onChange={(e) => setForm({ ...form, linkedin: e.target.value })} placeholder="رابط LinkedIn أو موقعك الشخصي (اختياري)" className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition" />
+                <div className="space-y-3">
+                  {submitError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{submitError}</p>}
+                  <button type="submit" disabled={submitting} className="inline-flex min-h-[56px] w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 px-7 text-lg font-black text-white transition hover:bg-primary-800 disabled:cursor-not-allowed disabled:opacity-50">
+                    <Send size={20} />
+                    {submitting ? 'جاري الإرسال...' : 'إرسال الطلب'}
+                  </button>
+                  <p className="text-center text-xs text-muted-soft">بالإرسال توافق على شروط الاستخدام وسياسة الخصوصية الخاصة بالمعهد.</p>
                 </div>
-
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">رسالتك ودوافعك للانضمام</label>
-                  <textarea rows={4} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} placeholder="أخبرنا عن نفسك وماذا تريد أن تقدم للطلاب..." className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition resize-none" />
-                </div>
-
-                {submitError && <p role="alert" className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">{submitError}</p>}
-                <button type="submit" disabled={submitting} className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition text-lg disabled:opacity-50">
-                  <Send size={20} />
-                  {submitting ? 'جاري الإرسال...' : 'إرسال الطلب'}
-                </button>
-                <p className="text-center text-xs text-gray-400">بالإرسال توافق على شروط الاستخدام وسياسة الخصوصية الخاصة بالمعهد.</p>
               </form>
             )}
           </div>

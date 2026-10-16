@@ -1,6 +1,6 @@
 import React from 'react';
 import { Play } from 'lucide-react';
-import { cdnImg } from '../../lib/img';
+import { cdnImg, cdnSrcSet } from '../../lib/img';
 import { useEscapeKey } from '../../../shared/ui/useEscapeKey';
 import { VideoSurface } from '../../components/VideoSurface';
 
@@ -27,20 +27,33 @@ export const PromoVideoSection: React.FC<PromoVideoSectionProps> = ({
   return (
     <>
       <section
-          className="rounded-2xl overflow-hidden shadow-lg border border-gray-100 relative bg-black group cursor-pointer aspect-video flex items-center justify-center"
+          className="group relative flex aspect-video cursor-pointer items-center justify-center overflow-hidden rounded-[28px] bg-ink shadow-[0_40px_80px_-45px_rgba(26,15,18,.6)]"
           onClick={() => promoVideoUrl && setShowPromoModal(true)}
       >
-          {thumbnail && <img loading="lazy" decoding="async" src={cdnImg(thumbnail, 640)} className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-40 transition duration-500" alt="Video cover" />}
-          <div className="relative z-10 w-20 h-20 bg-primary-600/90 rounded-full flex items-center justify-center text-white shadow-xl group-hover:scale-110 transition duration-300">
-              <Play size={32} fill="currentColor" className="ml-1" />
+          {thumbnail && (
+            <img
+              loading="lazy"
+              decoding="async"
+              src={cdnImg(thumbnail, 800)}
+              srcSet={cdnSrcSet(thumbnail, [400, 640, 800, 1000])}
+              sizes="(min-width: 1024px) 800px, 100vw"
+              width={800}
+              height={450}
+              className="absolute inset-0 h-full w-full object-cover opacity-60 transition duration-500 group-hover:opacity-45"
+              alt="Video cover"
+            />
+          )}
+          <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-ink/90 to-transparent" />
+          <div className="relative z-10 flex h-16 w-16 items-center justify-center rounded-full bg-primary-700 text-white shadow-[0_16px_30px_-12px_rgba(159,18,57,.9)] ring-8 ring-white/15 transition duration-300 group-hover:scale-110 motion-reduce:transform-none sm:h-20 sm:w-20">
+              <Play size={30} fill="currentColor" className="ml-1" />
           </div>
-          <div className="absolute bottom-6 right-6 text-white z-10">
-              <h3 className="font-bold text-xl">{content['courseDetails.promo.title'] || 'شاهد مقدمة تعريفية'}</h3>
-              <p className="text-sm text-gray-200">{content['courseDetails.promo.subtitle'] || 'تعرف على محتويات الدبلومة في دقيقتين'}</p>
+          <div className="absolute bottom-4 right-4 left-4 z-10 text-white sm:bottom-6 sm:right-6">
+              <h3 className="text-lg font-black sm:text-xl">{content['courseDetails.promo.title'] || 'شاهد مقدمة تعريفية'}</h3>
+              <p className="text-sm text-white/70">{content['courseDetails.promo.subtitle'] || 'تعرف على محتويات الدبلومة في دقيقتين'}</p>
           </div>
           {!promoVideoUrl && (
-              <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
-                  <span className="bg-black/50 text-white/70 text-xs px-3 py-1.5 rounded-full">سيتوفر قريباً</span>
+              <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+                  <span className="rounded-full bg-ink/70 px-3 py-1.5 text-xs font-bold text-white/80">سيتوفر قريباً</span>
               </div>
           )}
       </section>
@@ -56,7 +69,7 @@ export const PromoVideoSection: React.FC<PromoVideoSectionProps> = ({
               >
                   <button
                       onClick={() => setShowPromoModal(false)}
-                      className="absolute -top-10 left-0 text-white text-sm font-bold bg-white/20 px-3 py-1 rounded-full hover:bg-white/40 transition z-10"
+                      className="absolute -top-12 left-0 z-10 min-h-[40px] rounded-full bg-white/20 px-4 text-sm font-bold text-white transition hover:bg-white/40"
                   >
                       ✕ إغلاق
                   </button>
@@ -64,7 +77,7 @@ export const PromoVideoSection: React.FC<PromoVideoSectionProps> = ({
                       url={promoVideoUrl}
                       title={content['courseDetails.promo.title'] || 'فيديو تعريفي'}
                       autoplay
-                      className="rounded-xl"
+                      className="rounded-2xl"
                   />
               </div>
           </div>

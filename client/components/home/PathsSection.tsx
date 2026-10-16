@@ -1,95 +1,86 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronRight } from 'lucide-react';
+import { ArrowLeft, Check } from 'lucide-react';
 import type { Bundle, Currency } from '../../types';
 import { discountPercent, formatPrice, isDiscounted } from '../../../shared/priceFormat';
 import { bundlesForHome } from '../../../shared/homePaths';
+import { Reveal } from './Reveal';
 
 type Content = Record<string, string | undefined>;
 
 /**
- * «المسارات التعليمية الكاملة» — each path is drawn as the steps a student
- * takes (1 ← 2 ← 3), with the saving in a seal on the card. The featured card
- * (the one that saves the most) is dark. Everything comes from the bundles the
- * marketing team publishes; nothing here is typed.
+ * «المسارات التعليمية الكاملة» — three paths, each listing the programmes in it,
+ * the price of the path against the programmes bought one by one, and the
+ * saving. The one that saves the most is raised and dark. Everything comes
+ * from the bundles marketing publishes; nothing here is typed.
  */
 const PathsSection: React.FC<{ content: Content; bundles: Bundle[]; currency: Currency }> = ({ content, bundles, currency }) => {
   const shown = bundlesForHome(bundles);
   if (shown.length === 0) return null;
   const saving = (bundle: Bundle) => discountPercent(bundle.originalPrice?.[currency], bundle.price?.[currency]);
   const bestSaving = Math.max(...shown.map(saving));
+  const featuredIndex = bestSaving > 0 ? shown.findIndex(b => saving(b) === bestSaving) : -1;
 
   return (
-    <section id="paths" className="scroll-mt-24 bg-[#fffaf5] py-14 sm:py-24">
+    <section id="paths" className="cv-auto scroll-mt-24 bg-white py-16 sm:py-24">
       <div className="container mx-auto px-4">
-        <div className="mx-auto mb-12 max-w-2xl text-center sm:mb-14">
-          <span className="text-sm font-extrabold text-amber-700">{content['home.paths.badge'] || 'الطريق المختصر للاحتراف'}</span>
-          <h2 className="mb-3 mt-2 text-3xl font-black leading-tight text-gray-900 sm:text-4xl lg:text-[46px]">{content['home.paths.title'] || 'المسارات التعليمية الكاملة'}</h2>
-          <p className="text-base leading-relaxed text-gray-500 sm:text-lg">
+        <Reveal className="mx-auto mb-12 max-w-2xl text-center sm:mb-14">
+          <span className="text-sm font-extrabold text-gold-deep">{content['home.paths.badge'] || 'الطريق المختصر للاحتراف'}</span>
+          <h2 className="mt-2 text-3xl font-black leading-tight text-ink sm:text-4xl lg:text-[44px]">{content['home.paths.title'] || 'المسارات التعليمية الكاملة'}</h2>
+          <p className="mt-3 text-base leading-relaxed text-muted-body sm:text-lg">
             {content['home.paths.subtitle'] || 'وفر وقتك ومالك مع باقاتنا المجمعة التي تضم مجموعة من الدبلومات في تخصص معين بخصومات تصل إلى 40%'}
           </p>
-        </div>
+        </Reveal>
 
-        <div className="grid gap-x-6 gap-y-12 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid items-stretch gap-6 md:grid-cols-2 lg:grid-cols-3 lg:gap-7">
           {shown.map((bundle, index) => {
             const pct = saving(bundle);
-            const featured = bestSaving > 0 && pct === bestSaving && index === shown.findIndex(b => saving(b) === bestSaving);
-            const dark = featured;
+            const dark = index === featuredIndex;
             return (
-              <article
-                key={bundle.id}
-                className={`relative flex flex-col rounded-[28px] border p-6 pt-8 transition hover:-translate-y-1.5 hover:shadow-2xl sm:p-7 sm:pt-9 ${dark ? 'border-[#1b0a12] bg-[#1b0a12] text-white' : 'border-[#f0e4dc] bg-white text-gray-900'} ${index === 2 ? 'md:col-span-2 lg:col-span-1' : ''}`}
-              >
-                {pct > 0 && (
-                  <div className="absolute -top-7 left-5 flex h-[84px] w-[84px] flex-col items-center justify-center rounded-full border-4 border-[#fffaf5] bg-secondary-500 text-center font-black leading-tight text-[#1b0a12] shadow-lg">
-                    <span className="text-xs">وفّر</span>
-                    <span className="text-2xl tabular-nums">{pct}%</span>
+              <Reveal key={bundle.id} delay={index * 90} className={`h-full ${index === 2 ? 'md:col-span-2 lg:col-span-1' : ''}`}>
+                <article className={`relative flex h-full flex-col rounded-[28px] p-6 transition duration-300 hover:-translate-y-1.5 sm:p-7 ${dark ? 'bg-ink text-white shadow-[0_40px_70px_-30px_rgba(26,15,18,.7)]' : 'border border-line bg-white text-ink hover:shadow-[0_30px_50px_-30px_rgba(26,15,18,.35)]'}`}>
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <span className={`rounded-full px-3.5 py-1 text-[13px] font-extrabold ${dark ? 'bg-gold-light text-ink' : 'bg-paper text-muted-strong ring-1 ring-line'}`}>
+                      {dark ? 'الأكثر توفيراً' : `مسار من ${bundle.courses.length} برامج`}
+                    </span>
+                    {pct > 0 && <span className={`text-sm font-black ${dark ? 'text-gold-pale' : 'text-primary-700'}`}>وفّر {pct}%</span>}
                   </div>
-                )}
-                <span className={`mb-3 self-start rounded-full px-3.5 py-1 text-[13px] font-extrabold ${dark ? 'bg-primary-600 text-white' : 'bg-primary-50 text-primary-700'}`}>
-                  {dark ? 'الأكثر توفيراً' : `باقة ${bundle.courses.length} برامج`}
-                </span>
-                <h3 className="mb-1.5 pe-20 text-2xl font-black leading-snug">{bundle.title}</h3>
-                {bundle.shortDescription && <p className={`mb-5 line-clamp-2 text-[15px] leading-relaxed ${dark ? 'text-white/70' : 'text-gray-500'}`}>{bundle.shortDescription.replace(/<[^>]*>/g, '').trim()}</p>}
+                  <h3 className="text-2xl font-black leading-snug">{bundle.title}</h3>
+                  {bundle.shortDescription && <p className={`mt-2 line-clamp-2 text-[15px] leading-relaxed ${dark ? 'text-white/65' : 'text-muted'}`}>{bundle.shortDescription.replace(/<[^>]*>/g, '').trim()}</p>}
 
-                <ol className="mb-5 flex-1">
-                  {bundle.courses.map((course, i) => (
-                    <li key={course.id || i} className="relative flex gap-3.5 pb-4 last:pb-0">
-                      {i < bundle.courses.length - 1 && (
-                        <span aria-hidden="true" className={`absolute start-[15px] top-8 bottom-0.5 border-s-2 border-dashed ${dark ? 'border-white/30' : 'border-[#d9c7bf]'}`} />
-                      )}
-                      <span className={`relative z-[1] flex h-8 w-8 flex-none items-center justify-center rounded-full text-[15px] font-black ${dark ? 'bg-primary-600 text-white' : 'bg-primary-50 text-primary-700'}`}>{i + 1}</span>
-                      <span className="min-w-0 flex-1 pt-1">
-                        <b className="block text-base leading-snug">{course.title}</b>
-                        {Number(course.price?.[currency]) > 0 && (
-                          <span className={`text-sm tabular-nums ${dark ? 'text-white/70' : 'text-gray-500'}`}>{formatPrice(course.price?.[currency], currency)}</span>
-                        )}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
+                  <ul className="my-6 flex-1 space-y-2.5">
+                    {bundle.courses.map((course, i) => (
+                      <li key={course.id || i} className="flex items-start gap-2.5 text-[15px] font-bold leading-snug">
+                        <span className={`mt-0.5 flex h-5 w-5 flex-none items-center justify-center rounded-full ${dark ? 'bg-primary-600 text-white' : 'bg-primary-50 text-primary-700'}`}><Check size={13} strokeWidth={3} /></span>
+                        {course.title}
+                      </li>
+                    ))}
+                  </ul>
 
-                <div className={`mb-4 rounded-[18px] px-4 py-3.5 ${dark ? 'bg-white/10' : 'bg-primary-50'}`}>
-                  {isDiscounted(bundle.originalPrice?.[currency], bundle.price?.[currency]) && (
-                    <p className={`text-[13px] ${dark ? 'text-white/70' : 'text-gray-500'}`}>بدل <s className="tabular-nums">{formatPrice(bundle.originalPrice?.[currency], currency)}</s> اشتراك منفصل</p>
-                  )}
-                  <p className="text-4xl font-black tabular-nums">{formatPrice(bundle.price?.[currency], currency)}</p>
-                </div>
-                <Link
-                  to={`/enroll?bundle=${encodeURIComponent(bundle.id)}`}
-                  className={`flex min-h-[52px] items-center justify-center rounded-2xl text-[17px] font-black transition hover:brightness-105 ${dark ? 'bg-secondary-500 text-[#1b0a12]' : 'bg-primary-600 text-white'}`}
-                >
-                  احجز المسار كامل
-                </Link>
-                <Link to={`/bundle/${bundle.id}`} className={`mt-2 inline-flex min-h-[44px] items-center justify-center text-sm font-bold ${dark ? 'text-white/80 hover:text-white' : 'text-gray-500 hover:text-gray-800'}`}>التفاصيل</Link>
-              </article>
+                  <div className={`border-t pt-5 ${dark ? 'border-white/10' : 'border-line'}`}>
+                    {isDiscounted(bundle.originalPrice?.[currency], bundle.price?.[currency]) && (
+                      <p className={`text-[13px] ${dark ? 'text-white/55' : 'text-muted-soft'}`}>بدل <s className="tabular-nums">{formatPrice(bundle.originalPrice?.[currency], currency)}</s> لو اشتركت في كل برنامج لوحده</p>
+                    )}
+                    <p className="mt-1 text-4xl font-black tabular-nums">{formatPrice(bundle.price?.[currency], currency)}</p>
+                  </div>
+                  <Link
+                    to={`/enroll?bundle=${encodeURIComponent(bundle.id)}`}
+                    className={`mt-5 flex min-h-[54px] items-center justify-center gap-2 rounded-2xl text-[17px] font-black transition ${dark ? 'bg-gold-light text-ink hover:brightness-105' : 'bg-primary-700 text-white hover:bg-primary-800'}`}
+                  >
+                    احجز المسار كامل
+                    <ArrowLeft size={18} />
+                  </Link>
+                  <Link to={`/bundle/${bundle.id}`} className={`mt-1.5 inline-flex min-h-[44px] items-center justify-center text-sm font-bold ${dark ? 'text-white/70 hover:text-white' : 'text-muted hover:text-ink'}`}>تفاصيل المسار</Link>
+                </article>
+              </Reveal>
             );
           })}
         </div>
 
-        <div className="mt-10 text-center">
-          <Link to="/bundles" className="inline-flex min-h-[48px] items-center gap-2 rounded-xl border border-gray-300 bg-white px-8 font-bold text-gray-700 transition hover:bg-gray-50">
-            {content['home.paths.viewAll'] || 'عرض جميع المسارات'} <ChevronRight size={18} className="rtl:rotate-180" />
+        <div className="mt-12 text-center">
+          <Link to="/bundles" className="inline-flex min-h-[50px] items-center gap-2 rounded-2xl border-[1.5px] border-ink/15 px-8 text-base font-extrabold text-ink transition hover:border-ink/40">
+            {content['home.paths.viewAll'] || 'عرض جميع المسارات'}
+            <ArrowLeft size={18} />
           </Link>
         </div>
       </div>

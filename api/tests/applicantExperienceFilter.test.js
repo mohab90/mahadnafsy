@@ -62,3 +62,12 @@ test('the stored codes are the ones the public forms write', () => {
   assert.equal(matches('10+', '5-10'), false,
     'the old instructor value must not silently pass — it is not a known band');
 });
+
+test('every application form sends the stored code, never "10+"', () => {
+  const fsx = require('node:fs');
+  const pathx = require('node:path');
+  for (const rel of ['client/pages/JoinStaff.tsx', 'client/pages/JoinTeaching.tsx', 'admin/pages/JoinUs.tsx']) {
+    const src = fsx.readFileSync(pathx.join(__dirname, '..', '..', rel), 'utf8');
+    assert.doesNotMatch(src, /value="10\+"/, `${rel} writes "10+", which no experience filter matches`);
+  }
+});

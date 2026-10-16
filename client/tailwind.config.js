@@ -38,6 +38,13 @@ export default {
           500: '#f59e0b',
           600: '#d97706',
         },
+        // The site's own palette: warm paper, deep ink, burgundy (primary) and gold.
+        ink: '#1a0f12',
+        paper: '#fbf7f2',
+        sand: '#f4ebe3',
+        line: { DEFAULT: '#ecdfd6', strong: '#e6d8cf', deep: '#d9c7bf' },
+        gold: { DEFAULT: '#c8962e', light: '#e3b65a', pale: '#f3c969', deep: '#a87a1c' },
+        muted: { DEFAULT: '#7a6a64', strong: '#5b4b46', body: '#6b5b55', soft: '#8f7f79', faint: '#a99891' },
         glass: {
           light: 'rgba(255, 255, 255, 0.7)',
           dark: 'rgba(17, 24, 39, 0.7)',

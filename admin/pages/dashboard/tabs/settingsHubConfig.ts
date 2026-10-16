@@ -64,7 +64,8 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
     blurb: 'كل صفحة في الموقع ونصوصها، من الرئيسية للفوتر.',
     tone: 'bg-violet-500',
     entries: [
-      { title: 'الصفحة الرئيسية والعرض', desc: 'كورس العرض، العدّاد، ونصوص الصفحة الرئيسية.', href: PAGE('home_offer'), tab: 'content_hub', keywords: 'هيرو عرض عداد' },
+      { title: 'تصميم الموقع والهيدر', desc: 'التصميم اللي الموقع بيظهر بيه (الجديد أو الكلاسيكي)، والهيدر المتغير بألوانه التلاتة وكلام كل لون.', href: PAGE('site_design'), tab: 'content_hub', keywords: 'تصميم قديم جديد هيدر ثيم كلاسيك شكل الموقع هيرو' },
+      { title: 'الصفحة الرئيسية والعرض', desc: 'كورس العرض، العدّاد، ونصوص الصفحة الرئيسية قسم قسم.', href: PAGE('home_offer'), tab: 'content_hub', keywords: 'عرض عداد فيديو اسئلة شائعة ارقام' },
       { title: 'نصوص صفحات الموقع', desc: 'العناوين والأوصاف والأسئلة الشائعة في كل صفحة.', href: PAGE('page_courses'), tab: 'content_hub', keywords: 'صفحة نصوص عناوين',
         links: [
           { label: 'الكورسات', href: PAGE('page_courses') },

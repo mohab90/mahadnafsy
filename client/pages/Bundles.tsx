@@ -1,15 +1,15 @@
-import React, { useEffect } from 'react';
-import { Layers, Map, ArrowRight, Check, Send, Award, Clock } from 'lucide-react';
+import React from 'react';
+import { Layers, Map as MapIcon, ArrowLeft, Check, Send, Award, Clock } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSiteData } from '../context/SiteDataContext';
-import { cdnImg } from '../lib/img';
-import { formatPrice, isDiscounted } from '../../shared/priceFormat';
+import { cdnImg, cdnSrcSet } from '../lib/img';
+import { discountPercent, formatPrice, isDiscounted } from '../../shared/priceFormat';
 import { useSeo } from '../lib/useSeo';
+import PageHeader from '../components/PageHeader';
 
 const Bundles: React.FC = () => {
-    const { bundles, content, currency, remoteReady } = useSiteData();
+  const { bundles, content, currency, remoteReady } = useSiteData();
   const navigate = useNavigate();
-  const currencySymbol = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
 
   useSeo({ title: 'المسارات والباقات | معهد الدراسات النفسية', path: '/bundles', description: 'مسارات تعليمية متكاملة وباقات مجمعة بخصومات تصل إلى 40% — من المبتدئ إلى المحترف.' });
 
@@ -18,180 +18,189 @@ const Bundles: React.FC = () => {
   const visibleBundles = bundles.filter(b => b.courses && b.courses.length > 0);
 
   return (
-    <div className="bg-gray-50 min-h-screen">
-      {/* Hero */}
-      <div className="bg-gradient-to-br from-gray-900 via-violet-950 to-gray-900 text-white py-16 relative overflow-hidden">
-        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5"></div>
-        <div className="absolute top-0 right-0 w-96 h-96 bg-violet-700 rounded-full blur-[120px] opacity-20"></div>
-        <div className="absolute bottom-0 left-0 w-72 h-72 bg-primary-800 rounded-full blur-[100px] opacity-15"></div>
-        <div className="container mx-auto px-4 relative z-10 text-center">
-          <div className="inline-flex items-center gap-2 bg-violet-600/30 border border-violet-400/30 rounded-full px-4 py-1.5 text-sm font-medium mb-5">
-            <Map size={14} className="text-violet-300" />
-            <span>{visibleBundles.length} مسار تعليمي وباقة متاحة</span>
-          </div>
-          <h1 className="text-4xl md:text-5xl font-extrabold mb-4">{content['bundles.title'] || 'المسارات التعليمية والباقات'}</h1>
-          <p className="text-gray-300 text-lg max-w-2xl mx-auto leading-relaxed">
-            {content['bundles.subtitle'] || 'خطط دراسية متكاملة تأخذ بيدك من البداية وحتى الاحتراف، أو باقات توفيرية تجمع لك أهم الدبلومات.'}
-          </p>
-          <div className="flex flex-wrap justify-center gap-4 mt-8">
-            {[
-              { icon: Map, label: 'مسارات متكاملة', sub: 'من المبتدئ للمحترف' },
-              { icon: Layers, label: 'باقات توفيرية', sub: 'وفر حتى 40%' },
-              { icon: Award, label: 'شهادات معتمدة', sub: 'دولياً ومحلياً' },
-              { icon: Clock, label: 'مرونة كاملة', sub: 'ادرس بوقتك' },
-            ].map(({ icon: Icon, label, sub }) => (
-              <div key={label} className="flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/10 rounded-2xl px-4 py-3 text-sm">
-                <Icon size={18} className="text-violet-300" />
-                <div className="text-right">
-                  <div className="font-bold text-white">{label}</div>
-                  <div className="text-gray-400 text-xs">{sub}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-      <div className="container mx-auto px-4 py-10">
-        {/* Path Explanation */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-16">
-           <div className="bg-blue-50 p-8 rounded-2xl border border-blue-100 flex items-start gap-4">
-              <div className="bg-blue-100 p-3 rounded-lg text-blue-600">
-                  <Map size={32} />
-              </div>
-              <div>
-                  <h3 className="text-xl font-bold text-blue-900 mb-2">{content['bundles.info.pathsTitle'] || 'مسارات التعلم (Learning Paths)'}</h3>
-                  <p className="text-blue-800/70 text-sm leading-relaxed">{content['bundles.info.pathsDesc'] || 'خطة منهجية مرتبة خطوة بخطوة. لا تحتاج للتفكير "بم أبدأ؟"، نحن نرسم لك الطريق لتصبح متخصصاً محترفاً.'}</p>
-              </div>
-           </div>
-           <div className="bg-primary-50 p-8 rounded-2xl border border-primary-100 flex items-start gap-4">
-              <div className="bg-primary-100 p-3 rounded-lg text-primary-600">
-                  <Layers size={32} />
-              </div>
-              <div>
-                  <h3 className="text-xl font-bold text-primary-900 mb-2">{content['bundles.info.bundlesTitle'] || 'الباقات المجمعة (Bundles)'}</h3>
-                  <p className="text-primary-800/70 text-sm leading-relaxed">{content['bundles.info.bundlesDesc'] || 'مجموعة كورسات في تخصص معين بسعر مخفض جداً مقارنة بشراء كل كورس بمفرده.'}</p>
-              </div>
-           </div>
-        </div>
+    <div className="min-h-screen bg-white">
+      <PageHeader
+        eyebrow={<span className="inline-flex items-center gap-1.5"><MapIcon size={15} />{visibleBundles.length} مسار تعليمي وباقة متاحة</span>}
+        title={content['bundles.title'] || 'المسارات التعليمية والباقات'}
+        subtitle={content['bundles.subtitle'] || 'خطط دراسية متكاملة تأخذ بيدك من البداية وحتى الاحتراف، أو باقات توفيرية تجمع لك أهم الدبلومات.'}
+      >
+        <ul className="mx-auto grid max-w-3xl grid-cols-2 gap-2.5 sm:flex sm:flex-wrap sm:justify-center sm:gap-3">
+          {[
+            { icon: MapIcon, label: 'مسارات متكاملة', sub: 'من المبتدئ للمحترف' },
+            { icon: Layers, label: 'باقات توفيرية', sub: 'وفر حتى 40%' },
+            { icon: Award, label: 'شهادات معتمدة', sub: 'دولياً ومحلياً' },
+            { icon: Clock, label: 'مرونة كاملة', sub: 'ادرس بوقتك' },
+          ].map(({ icon: Icon, label, sub }) => (
+            <li key={label} className="flex items-center gap-2.5 rounded-2xl bg-white px-3 py-2.5 text-right ring-1 ring-line sm:px-4">
+              <span className="flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-primary-50 text-primary-700"><Icon size={18} /></span>
+              <span className="min-w-0">
+                <b className="block text-sm font-extrabold text-ink">{label}</b>
+                <span className="block text-xs text-muted">{sub}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </PageHeader>
 
-        {/* List */}
-        {/* An empty list is not the same thing as a list that has not arrived.
-            Keyed on length alone, the spinner never stopped for an institute
-            with no bundles published: the page said "loading" forever. */}
-        {/* Checked against the list that is actually drawn, not the raw one. The
-            list below hides any bundle with no courses attached, so a set of
-            bundles that were all still empty produced neither the list nor this
-            message — just a hero, two info cards and nothing else. */}
-        {visibleBundles.length === 0 && (
-          remoteReady ? (
-            <div className="flex flex-col items-center justify-center py-24 gap-3 text-center">
-              <p className="text-gray-500 font-bold">لا توجد مسارات متاحة حالياً</p>
-              <p className="text-gray-400 text-sm">تابعنا — يتم إضافة مسارات جديدة باستمرار.</p>
+      <section className="py-14 sm:py-20">
+        <div className="container mx-auto px-4">
+          {/* Path Explanation */}
+          <div className="mb-12 grid grid-cols-1 gap-4 sm:mb-16 md:grid-cols-2 md:gap-6">
+            <div className="flex items-start gap-4 rounded-[24px] border border-line bg-paper p-5 sm:p-7">
+              <span className="flex h-12 w-12 flex-none items-center justify-center rounded-2xl bg-ink text-gold-pale">
+                <MapIcon size={24} />
+              </span>
+              <div className="min-w-0">
+                <h2 className="mb-1.5 text-lg font-black text-ink sm:text-xl">{content['bundles.info.pathsTitle'] || 'مسارات التعلم (Learning Paths)'}</h2>
+                <p className="text-[15px] leading-relaxed text-muted-body">{content['bundles.info.pathsDesc'] || 'خطة منهجية مرتبة خطوة بخطوة. لا تحتاج للتفكير "بم أبدأ؟"، نحن نرسم لك الطريق لتصبح متخصصاً محترفاً.'}</p>
+              </div>
             </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-24 gap-4">
-              <div className="w-10 h-10 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
-              <p className="text-gray-400 text-sm">جاري تحميل المسارات...</p>
+            <div className="flex items-start gap-4 rounded-[24px] border border-line bg-paper p-5 sm:p-7">
+              <span className="flex h-12 w-12 flex-none items-center justify-center rounded-2xl bg-primary-50 text-primary-700">
+                <Layers size={24} />
+              </span>
+              <div className="min-w-0">
+                <h2 className="mb-1.5 text-lg font-black text-ink sm:text-xl">{content['bundles.info.bundlesTitle'] || 'الباقات المجمعة (Bundles)'}</h2>
+                <p className="text-[15px] leading-relaxed text-muted-body">{content['bundles.info.bundlesDesc'] || 'مجموعة كورسات في تخصص معين بسعر مخفض جداً مقارنة بشراء كل كورس بمفرده.'}</p>
+              </div>
             </div>
-          )
-        )}
-        <div className="space-y-12">
-            {visibleBundles.map(bundle => (
-                <div key={bundle.id} className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden flex flex-col lg:flex-row group hover:shadow-xl transition duration-300">
-                    <div className="lg:w-1/3 bg-gray-900 relative">
-                        <div className="absolute inset-0 bg-gradient-to-br from-primary-600 to-primary-900 opacity-90"></div>
-                        {(bundle.courses[0]?.thumbnail || bundle.thumbnail) && (
-                          <img loading="lazy" decoding="async" src={cdnImg(bundle.courses[0]?.thumbnail || bundle.thumbnail, 600)} className="w-full h-full object-cover absolute mix-blend-overlay opacity-50" alt="" />
+          </div>
+
+          {/* List */}
+          {/* An empty list is not the same thing as a list that has not arrived.
+              Keyed on length alone, the spinner never stopped for an institute
+              with no bundles published: the page said "loading" forever. */}
+          {/* Checked against the list that is actually drawn, not the raw one. The
+              list below hides any bundle with no courses attached, so a set of
+              bundles that were all still empty produced neither the list nor this
+              message — just a hero, two info cards and nothing else. */}
+          {visibleBundles.length === 0 && (
+            remoteReady ? (
+              <div className="flex flex-col items-center justify-center gap-2 rounded-[24px] border border-dashed border-line-deep bg-paper px-4 py-20 text-center">
+                <p className="text-lg font-black text-ink">لا توجد مسارات متاحة حالياً</p>
+                <p className="text-sm text-muted">تابعنا — يتم إضافة مسارات جديدة باستمرار.</p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center gap-4 py-24">
+                <div className="h-10 w-10 animate-spin rounded-full border-4 border-line border-t-primary-700" />
+                <p className="text-sm text-muted">جاري تحميل المسارات...</p>
+              </div>
+            )
+          )}
+          <div className="space-y-8 sm:space-y-10">
+            {visibleBundles.map(bundle => {
+              const price = bundle.price?.[currency] ?? 0;
+              const saving = price > 0 ? discountPercent(bundle.originalPrice?.[currency], bundle.price?.[currency]) : 0;
+              const cover = bundle.courses[0]?.thumbnail || bundle.thumbnail;
+              return (
+                <article
+                  key={bundle.id}
+                  className="grid overflow-hidden rounded-[28px] border border-line bg-white transition duration-300 hover:shadow-[0_30px_50px_-30px_rgba(26,15,18,.35)] lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]"
+                >
+                  {/* The path at a glance: what it is and what it costs. */}
+                  <div className="relative flex flex-col bg-ink p-6 text-white sm:p-8">
+                    {cover && (
+                      <div className="mb-6 aspect-[16/10] overflow-hidden rounded-[20px] bg-white/5">
+                        <img loading="lazy" decoding="async" src={cdnImg(cover, 640)} srcSet={cdnSrcSet(cover, [400, 640, 800])} sizes="(min-width: 1024px) 420px, calc(100vw - 80px)" width={640} height={400} className="h-full w-full object-cover" alt="" />
+                      </div>
+                    )}
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <span className="rounded-full bg-gold-light px-3.5 py-1 text-[13px] font-extrabold text-ink">{content['bundles.card.badge'] || 'مسار كامل'}</span>
+                      {saving > 0 && <span className="text-sm font-black text-gold-pale">وفّر {saving}%</span>}
+                    </div>
+                    <h2 className="mt-4 text-2xl font-black leading-snug sm:text-[28px]">{bundle.title}</h2>
+                    {bundle.description && <p className="mt-2 line-clamp-3 text-[15px] leading-relaxed text-white/65">{bundle.description}</p>}
+
+                    <div className="mt-auto pt-6">
+                      <div className="border-t border-white/10 pt-5">
+                        {price > 0 ? (
+                          <>
+                            {isDiscounted(bundle.originalPrice?.[currency], bundle.price?.[currency]) && (
+                              <p className="text-[13px] text-white/55">{content['bundles.card.oldPricePrefix'] || 'بدلاً من'} <s className="tabular-nums">{formatPrice(bundle.originalPrice?.[currency], currency)}</s></p>
+                            )}
+                            <p className="mt-1 text-4xl font-black tabular-nums">{formatPrice(bundle.price?.[currency], currency)}</p>
+                          </>
+                        ) : (
+                          <p className="text-sm font-bold text-gold-pale">السعر غير متاح في دولتك حاليًا</p>
                         )}
-                        <div className="relative z-10 p-8 h-full flex flex-col justify-between text-white">
-                            <div>
-                                <span className="bg-secondary-500 text-white text-xs font-bold px-3 py-1 rounded-full mb-4 inline-block shadow-lg">{content['bundles.card.badge'] || 'مسار كامل'}</span>
-                                <h3 className="text-2xl font-bold mb-4">{bundle.title}</h3>
-                                <p className="text-gray-200 text-sm leading-relaxed line-clamp-3">{bundle.description}</p>
-                            </div>
-                            <div className="mt-8">
-                                {(bundle.price?.[currency] ?? 0) > 0 ? (
-                                  <>
-                                    <div className="text-3xl font-bold mb-1">{formatPrice(bundle.price?.[currency], currency)}</div>
-                                    {isDiscounted(bundle.originalPrice?.[currency], bundle.price?.[currency]) && (
-                                      <div className="text-white/60 line-through text-sm mb-4">{content['bundles.card.oldPricePrefix'] || 'بدلاً من'} {formatPrice(bundle.originalPrice?.[currency], currency)}</div>
-                                    )}
-                                  </>
-                                ) : (
-                                  <div className="text-sm font-bold text-amber-200 mb-4">السعر غير متاح في دولتك حاليًا</div>
-                                )}
-                                <Link to={`/bundle/${bundle.slug || bundle.id}`} className="block w-full text-center bg-white text-primary-700 font-bold py-3 rounded-lg hover:bg-gray-50 transition shadow-lg">
-                                    {content['bundles.card.detailsCta'] || 'عرض تفاصيل المسار'}
-                                </Link>
-                            </div>
-                        </div>
+                      </div>
+                      <Link
+                        to={`/bundle/${bundle.slug || bundle.id}`}
+                        className="mt-5 flex min-h-[52px] items-center justify-center gap-2 rounded-2xl bg-gold-light px-5 text-base font-black text-ink transition hover:brightness-105"
+                      >
+                        {content['bundles.card.detailsCta'] || 'عرض تفاصيل المسار'}
+                        <ArrowLeft size={18} />
+                      </Link>
                     </div>
-                    
-                    <div className="lg:w-2/3 p-8 flex flex-col justify-between">
-                        <div>
-                            <h4 className="font-bold text-lg text-gray-800 mb-6 flex items-center gap-2">
-                                <Layers size={20} className="text-primary-500" />
-                                {content['bundles.card.journeyTitle'] || 'رحلة التعلم'} ({bundle.courses.length} {content['bundles.card.stationsLabel'] || 'محطات'})
-                            </h4>
-                            
-                            <div className="space-y-6 relative before:absolute before:right-8 before:top-4 before:bottom-4 before:w-0.5 before:bg-gray-200">
-                                {bundle.courses.map((course, idx) => (
-                                    <div key={course.id} className="relative pr-16">
-                                        <div className="absolute right-6 top-0 w-4 h-4 rounded-full bg-primary-500 ring-4 ring-white z-10"></div>
-                                        <Link to={`/c/${course.slug || course.id}`} className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex gap-4 items-center hover:bg-white hover:shadow-md hover:border-primary-200 transition group">
-                                            <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
-                                                {course?.thumbnail && <img loading="lazy" decoding="async" src={cdnImg(course.thumbnail, 400)} className="w-full h-full object-cover" alt={course.title} />}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <h5 className="font-bold text-gray-800 group-hover:text-primary-700 transition">{course.title}</h5>
-                                                <p className="text-xs text-gray-500 mt-1">{course.duration} • {course.instructor}</p>
-                                            </div>
-                                            <span className="text-primary-400 text-xs opacity-0 group-hover:opacity-100 transition flex-shrink-0">»</span>
-                                        </Link>
-                                        {idx < bundle.courses.length - 1 && (
-                                            <div className="flex justify-center my-2 pr-12 opacity-0">
-                                                <ArrowRight size={20} className="text-gray-300 rotate-90" />
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
+                  </div>
 
-                        <div className="mt-8 pt-6 border-t flex flex-wrap gap-3 items-center">
-                            <div className="flex items-center gap-2 text-sm text-gray-600 bg-green-50 px-3 py-1 rounded-full border border-green-100">
-                                <Check size={14} className="text-green-600" />
-                                <span className="text-green-800 font-medium">{content['bundles.benefits.certificate'] || 'شهادة مجمعة للمسار'}</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-sm text-gray-600 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
-                                <Check size={14} className="text-blue-600" />
-                                <span className="text-blue-800 font-medium">{content['bundles.benefits.supervision'] || 'إشراف مهني مجاني'}</span>
-                            </div>
-                            <div className="mr-auto flex gap-2">
-                                {(bundle.price?.[currency] ?? 0) > 0 ? (
-                                  <button
-                                      onClick={() => navigate(`/checkout?type=bundle&id=${bundle.id}`)}
-                                      className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition shadow shadow-primary-500/20 flex items-center gap-1.5"
-                                  >
-                                      <Check size={15} /> اشترك الآن واحصل على خصم إضافي
-                                  </button>
-                                ) : (
-                                  <span className="bg-amber-50 border border-amber-200 text-amber-800 font-bold px-5 py-2.5 rounded-xl text-sm">
-                                    تواصل معنا لتجهيز السعر
-                                  </span>
-                                )}
-                                <Link to={`/bundle/${bundle.slug || bundle.id}#register-form`}
-                                    className="border-2 border-primary-600 text-primary-700 hover:bg-primary-50 font-bold px-5 py-2.5 rounded-xl text-sm transition flex items-center gap-1.5"
-                                >
-                                    <Send size={15} /> سجل بياناتك للتواصل
-                                </Link>
-                            </div>
-                        </div>
+                  {/* The programmes in it, in order. */}
+                  <div className="flex flex-col p-5 sm:p-8">
+                    <h3 className="flex items-center gap-2 text-lg font-black text-ink">
+                      <Layers size={20} className="flex-none text-primary-700" />
+                      {content['bundles.card.journeyTitle'] || 'رحلة التعلم'} ({bundle.courses.length} {content['bundles.card.stationsLabel'] || 'محطات'})
+                    </h3>
+
+                    <ol className="mt-5 flex-1 space-y-2.5">
+                      {bundle.courses.map(course => (
+                        <li key={course.id}>
+                          <Link
+                            to={`/c/${course.slug || course.id}`}
+                            className="group flex min-h-[60px] items-center gap-3 rounded-2xl border border-line bg-paper p-2.5 transition hover:border-line-deep hover:bg-white sm:p-3"
+                          >
+                            <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-primary-50 text-primary-700"><Check size={14} strokeWidth={3} /></span>
+                            <span className="h-12 w-12 flex-none overflow-hidden rounded-xl bg-sand">
+                              {course?.thumbnail && <img loading="lazy" decoding="async" src={cdnImg(course.thumbnail, 120)} width={48} height={48} className="h-full w-full object-cover" alt={course.title} />}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <b className="block text-[15px] font-bold leading-snug text-ink transition group-hover:text-primary-700">{course.title}</b>
+                              <span className="mt-0.5 block truncate text-xs text-muted">{course.duration} • {course.instructor}</span>
+                            </span>
+                            <ArrowLeft size={16} className="flex-none text-muted-faint transition group-hover:text-primary-700" />
+                          </Link>
+                        </li>
+                      ))}
+                    </ol>
+
+                    <div className="mt-6 flex flex-wrap gap-2">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-paper px-3 py-1 text-xs font-extrabold text-muted-strong ring-1 ring-line">
+                        <Check size={13} className="text-primary-700" />
+                        {content['bundles.benefits.certificate'] || 'شهادة مجمعة للمسار'}
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-paper px-3 py-1 text-xs font-extrabold text-muted-strong ring-1 ring-line">
+                        <Check size={13} className="text-primary-700" />
+                        {content['bundles.benefits.supervision'] || 'إشراف مهني مجاني'}
+                      </span>
                     </div>
-                </div>
-            ))}
+
+                    <div className="mt-6 flex flex-col gap-2.5 border-t border-line pt-6 sm:flex-row sm:flex-wrap">
+                      {price > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/checkout?type=bundle&id=${bundle.id}`)}
+                          className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-2xl bg-primary-700 px-6 text-[15px] font-black text-white transition hover:bg-primary-800"
+                        >
+                          <Check size={16} /> اشترك الآن واحصل على خصم إضافي
+                        </button>
+                      ) : (
+                        <span className="inline-flex min-h-[52px] items-center justify-center rounded-2xl bg-paper px-6 text-[15px] font-extrabold text-muted-strong ring-1 ring-line">
+                          تواصل معنا لتجهيز السعر
+                        </span>
+                      )}
+                      <Link
+                        to={`/bundle/${bundle.slug || bundle.id}#register-form`}
+                        className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-2xl border-[1.5px] border-ink/15 bg-white px-6 text-[15px] font-extrabold text-ink transition hover:border-ink/40"
+                      >
+                        <Send size={16} /> سجل بياناتك للتواصل
+                      </Link>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 };

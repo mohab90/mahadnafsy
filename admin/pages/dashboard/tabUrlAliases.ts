@@ -25,6 +25,7 @@ const URL_TO_TAB: Record<string, TabKey> = {
   analytics: 'analytics_hub',
   ai_dev: 'ask_ai',
   hub_advanced: 'content_hub',
+  site_design: 'content_hub',
 };
 
 /** The address-bar spelling for a tab key. */

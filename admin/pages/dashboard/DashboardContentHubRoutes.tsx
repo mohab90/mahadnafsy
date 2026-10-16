@@ -5,6 +5,7 @@ import { DashboardContentHubAdvancedPanel } from './DashboardContentHubAdvancedP
 import { DashboardContentHubPanel } from './DashboardContentHubPanel';
 import { DashboardFooterSettingsPanel } from './DashboardFooterSettingsPanel';
 import { DashboardHomeOfferPanel } from './DashboardHomeOfferPanel';
+import { DashboardSiteDesignPanel } from './DashboardSiteDesignPanel';
 import { GeneralDashboardTabs } from './GeneralDashboardTabs';
 import type { InstituteBranch } from './dashboardShared';
 import type { TabKey } from './navigation';
@@ -95,6 +96,10 @@ export function DashboardContentHubRoutes({
                 notify={notify}
                 instituteBranches={instituteBranches}
               />
+            )}
+            {/* Which design the site shows, and the rotating hero's colours and text. */}
+            {(activeTab === 'content_hub' && contentHubSubTab === 'site_design') && (
+              <DashboardSiteDesignPanel notify={notify} />
             )}
             {/* The offer's course, timer and texts — what «الصفحة الرئيسية» leads to. */}
             {(activeTab === 'content_hub' && contentHubSubTab === 'home_offer') && (

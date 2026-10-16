@@ -726,7 +726,8 @@ const Dashboard: React.FC = () => {
 
 
   // -- Content Hub sub-tab ---------------------------------------------------
-  const [contentHubSubTab, setContentHubSubTabState] = useState<TabKey>('home_offer');
+  // 'content_hub' itself means no page is open: the hub shows its grid of pages.
+  const [contentHubSubTab, setContentHubSubTabState] = useState<TabKey>('content_hub');
   // Same shape as navigateToTab: the content-hub panels choose their sub-tab
   // from data, so the name arrives as a string and is checked before it lands.
   // Checked against the hub's own pages, not the sidebar: isTabKey knows only
@@ -740,9 +741,11 @@ const Dashboard: React.FC = () => {
     console.warn(`[dashboard] refused content-hub sub-tab: ${tab}`);
   }, []);
   // /dashboard/content_hub/<page> opens that page's editor — the settings hub
-  // links each part of the site straight to its editor.
+  // links each part of the site straight to its editor — and /dashboard/content_hub
+  // alone is the grid of pages, so the sidebar entry and «كل الصفحات» land there.
   useEffect(() => {
     if (urlTab === 'content_hub' && urlParam && CONTENT_HUB_TABS.some(t => t.key === urlParam)) setContentHubSubTab(urlParam);
+    else if (urlTab === 'content_hub' && !urlParam) setContentHubSubTab('content_hub');
   }, [urlTab, urlParam, setContentHubSubTab]);
 
   // -- Staff Profile Modal ----------------------------------------------------

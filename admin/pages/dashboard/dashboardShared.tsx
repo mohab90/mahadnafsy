@@ -767,6 +767,7 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   page_course_details: 'manage_content',
   page_bundle_details: 'manage_content',
   page_misc:          'manage_content',
+  site_design:        'manage_content',
   policies:           'manage_content',
   footer_settings:    'manage_content',
   institute_gallery:  'manage_content',

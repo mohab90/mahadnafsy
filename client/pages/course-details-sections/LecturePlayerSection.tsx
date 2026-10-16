@@ -49,11 +49,35 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
     setSelectedLectureId(lecture.id);
   };
 
+
+  // One row of the curriculum. The chapter view and the flat list label the
+  // lock in different words, so the caller passes them in.
+  const lectureRow = (lecture: LockedLecture, index: number, lockedText: string, openText: string) => (
+    <button
+      type="button"
+      onClick={() => handleLectureClick(lecture)}
+      aria-current={selectedLectureId === lecture.id ? 'true' : undefined}
+      className={`w-full rounded-2xl border p-3 text-right transition ${selectedLectureId === lecture.id ? 'border-primary-600 bg-primary-50' : 'border-line bg-white hover:border-ink/30'} ${lecture.locked ? 'opacity-80' : ''}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-extrabold text-ink">{index + 1}. {lecture.title}</p>
+          <p className="mt-0.5 text-xs text-muted">{lecture.duration} • {lecture.lectureType === 'live' ? 'بث مباشر' : 'مسجّلة'}</p>
+        </div>
+        {lecture.locked ? (
+          <span className="inline-flex flex-none items-center gap-1 rounded-full bg-paper px-2 py-1 text-xs font-extrabold text-gold-deep ring-1 ring-line"><Lock size={12} />{lockedText}</span>
+        ) : (
+          <span className="inline-flex flex-none items-center gap-1 rounded-full bg-green-50 px-2 py-1 text-xs font-extrabold text-green-700">{openText}</span>
+        )}
+      </div>
+    </button>
+  );
+
   return (
-    <section className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-            <h2 className="text-2xl font-bold text-gray-900 border-r-4 border-primary-600 pr-3">{content['courseDetails.player.title'] || 'تشغيل المحاضرات'}</h2>
-                                    <div className={`px-3 py-1 rounded-full text-xs font-bold ${subscriberLoading ? 'bg-gray-100 text-gray-400' : accessMode === 'full' ? 'bg-green-100 text-green-700' : accessMode === 'limited' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+    <section className="rounded-[28px] border border-line bg-white p-4 sm:p-7">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-2xl font-black leading-tight text-ink sm:text-3xl">{content['courseDetails.player.title'] || 'تشغيل المحاضرات'}</h2>
+                                    <div className={`rounded-full px-3 py-1 text-xs font-extrabold ${subscriberLoading ? 'bg-paper text-muted-soft ring-1 ring-line' : accessMode === 'full' ? 'bg-green-50 text-green-700 ring-1 ring-green-200' : accessMode === 'limited' ? 'bg-primary-50 text-primary-700 ring-1 ring-primary-100' : 'bg-paper text-gold-deep ring-1 ring-line'}`}>
                                             {subscriberLoading
                                                 ? '⏳ جاري التحقق...'
                                                 : accessMode === 'full'
@@ -65,15 +89,15 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
         </div>
 
         {lecturesWithLock.length === 0 && (
-            <div className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-xl p-4">
+            <div className="rounded-2xl bg-paper p-4 text-sm text-muted ring-1 ring-line">
                 {content['courseDetails.player.empty'] || 'لا توجد محاضرات مضافة لهذا الكورس حتى الآن.'}
             </div>
         )}
 
         {lecturesWithLock.length > 0 && (
-            <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-4">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_1fr]">
                 <div
-                    className="rounded-xl border border-gray-200 overflow-hidden bg-black aspect-video relative"
+                    className="relative aspect-video overflow-hidden rounded-[20px] bg-ink"
                     onContextMenu={(e) => e.preventDefault()}
                 >
                     {selectedLecture && !selectedLecture.locked ? (
@@ -140,15 +164,15 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
                     ) : (
                         <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-5 relative">
                             {selectedLecture?.thumbnail ? (
-                                <img loading="lazy" decoding="async" src={cdnImg(selectedLecture.thumbnail, 500)} className="absolute inset-0 w-full h-full object-cover opacity-30" alt="" />
+                                <img loading="lazy" decoding="async" src={cdnImg(selectedLecture.thumbnail, 640)} className="absolute inset-0 h-full w-full object-cover opacity-25" alt="" />
                             ) : null}
                             <div className="relative z-10">
                                 <Lock className="mx-auto mb-2 text-white/90" size={28} />
-                                <p className="text-white font-bold">{content['courseDetails.player.lockedTitle'] || 'هذه المحاضرة مقفولة في المعاينة المجانية'}</p>
-                                <p className="text-gray-200 text-sm mt-1">{content['courseDetails.player.lockedHint'] || 'للانتقال للمشاهدة الكاملة، قم بالترقية إلى Full.'}</p>
+                                <p className="font-black text-white">{content['courseDetails.player.lockedTitle'] || 'هذه المحاضرة مقفولة في المعاينة المجانية'}</p>
+                                <p className="mt-1 text-sm text-white/65">{content['courseDetails.player.lockedHint'] || 'للانتقال للمشاهدة الكاملة، قم بالترقية إلى Full.'}</p>
                                 <button
                                   onClick={onLockedLectureClick}
-                                  className="mt-4 bg-white text-primary-700 hover:bg-primary-50 font-bold px-5 py-2 rounded-xl text-sm transition shadow-lg"
+                                  className="mt-4 inline-flex min-h-[46px] items-center rounded-2xl bg-gold-light px-5 text-sm font-black text-ink shadow-lg transition hover:bg-gold-pale"
                                 >
                                   🔓 اشترك وافتح جميع المحاضرات
                                 </button>
@@ -157,7 +181,7 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
                     )}
                 </div>
 
-                <div className="space-y-2 max-h-[420px] overflow-auto">
+                <div className="max-h-[420px] space-y-2 overflow-auto overscroll-contain pl-1">
                     {chapters.length > 0 ? (() => {
                       const chaptersWithLectures = chapters.map((ch) => ({
                         chapter: ch,
@@ -169,19 +193,14 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
                         <>
                           {chaptersWithLectures.map(({ chapter, lectures: chLectures }) => chLectures.length > 0 && (
                             <div key={chapter.id}>
-                              <div className="text-xs font-bold text-primary-700 bg-primary-50 px-3 py-1.5 rounded-lg mb-1.5 flex items-center gap-1">
-                                <span className="w-5 h-5 bg-primary-600 text-white rounded-full flex items-center justify-center text-[10px] font-bold">{chapter.order}</span>
+                              <div className="mb-1.5 flex items-center gap-2 rounded-xl bg-paper px-3 py-2 text-xs font-extrabold text-ink ring-1 ring-line">
+                                <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-primary-700 text-[11px] font-black text-white">{chapter.order}</span>
                                 {chapter.title}
                               </div>
                               {chLectures.map((lecture) => {
                                 const idx = globalIdx++;
                                 return (
-                                  <button key={lecture.id} onClick={() => handleLectureClick(lecture)} className={`w-full text-right border rounded-xl p-3 transition mb-1 ${selectedLectureId === lecture.id ? 'border-primary-400 bg-primary-50' : 'border-gray-200 bg-white'} ${lecture.locked ? 'opacity-80' : ''}`}>
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div><p className="font-bold text-sm text-gray-800">{idx + 1}. {lecture.title}</p><p className="text-xs text-gray-500 mt-0.5">{lecture.duration} • {lecture.lectureType === 'live' ? 'بث مباشر' : 'مسجّلة'}</p></div>
-                                      {lecture.locked ? <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full bg-amber-100 text-amber-700"><Lock size={12} />Locked</span> : <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full bg-green-100 text-green-700">Open</span>}
-                                    </div>
-                                  </button>
+                                  <div key={lecture.id} className="mb-1">{lectureRow(lecture, idx, 'Locked', 'Open')}</div>
                                 );
                               })}
                             </div>
@@ -189,41 +208,20 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
                           {uncategorized.map((lecture) => {
                             const idx = globalIdx++;
                             return (
-                              <button key={lecture.id} onClick={() => handleLectureClick(lecture)} className={`w-full text-right border rounded-xl p-3 transition ${selectedLectureId === lecture.id ? 'border-primary-400 bg-primary-50' : 'border-gray-200 bg-white'} ${lecture.locked ? 'opacity-80' : ''}`}>
-                                <div className="flex items-center justify-between gap-2">
-                                  <div><p className="font-bold text-sm text-gray-800">{idx + 1}. {lecture.title}</p><p className="text-xs text-gray-500 mt-0.5">{lecture.duration} • {lecture.lectureType === 'live' ? 'بث مباشر' : 'مسجّلة'}</p></div>
-                                  {lecture.locked ? <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full bg-amber-100 text-amber-700"><Lock size={12} />Locked</span> : <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full bg-green-100 text-green-700">Open</span>}
-                                </div>
-                              </button>
+                              <React.Fragment key={lecture.id}>{lectureRow(lecture, idx, 'Locked', 'Open')}</React.Fragment>
                             );
                           })}
                         </>
                       );
                     })() : lecturesWithLock.map((lecture, index) => (
-                        <button
-                          key={lecture.id}
-                          onClick={() => handleLectureClick(lecture)}
-                          className={`w-full text-right border rounded-xl p-3 transition ${selectedLectureId === lecture.id ? 'border-primary-400 bg-primary-50' : 'border-gray-200 bg-white'} ${lecture.locked ? 'opacity-80' : ''}`}
-                        >
-                            <div className="flex items-center justify-between gap-2">
-                                <div>
-                                    <p className="font-bold text-sm text-gray-800">{index + 1}. {lecture.title}</p>
-                                    <p className="text-xs text-gray-500 mt-0.5">{lecture.duration} • {lecture.lectureType === 'live' ? 'بث مباشر' : 'مسجّلة'}</p>
-                                </div>
-                                {lecture.locked ? (
-                                    <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full bg-amber-100 text-amber-700"><Lock size={12} />مقفل</span>
-                                ) : (
-                                    <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full bg-green-100 text-green-700">مفتوح</span>
-                                )}
-                            </div>
-                        </button>
+                        <React.Fragment key={lecture.id}>{lectureRow(lecture, index, 'مقفل', 'مفتوح')}</React.Fragment>
                     ))}
                 </div>
             </div>
         )}
 
         {lectureGateNotice && (
-            <div className="mt-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <div role="status" className="mt-3 rounded-xl bg-paper px-3 py-2.5 text-sm font-bold text-gold-deep ring-1 ring-line">
                 {lectureGateNotice}
             </div>
         )}

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import type React from 'react';
 
 // The logo on the institute's own domain, not on a free image host.
@@ -17,4 +18,22 @@ export function logoFallback(event: React.SyntheticEvent<HTMLImageElement>): voi
   if (img.dataset.logoFallback) return;
   img.dataset.logoFallback = '1';
   img.src = LEGACY_LOGO;
+}
+
+const LOGO_KEY = 'mahad.logo';
+
+/**
+ * The logo to draw now. The uploaded logo (institute.logo) is only known once
+ * the site content has loaded, so on every visit the header used to draw the
+ * fallback first and then download the real one — two logos, the first of them
+ * sent uncacheable. The address of the uploaded one is remembered in this
+ * browser, so from the second visit on it is drawn straight away.
+ */
+export function useLogoUrl(fromContent: string | undefined, fallback: string): string {
+  useEffect(() => {
+    if (!fromContent) return;
+    try { window.localStorage.setItem(LOGO_KEY, fromContent); } catch { /* private mode */ }
+  }, [fromContent]);
+  if (fromContent) return fromContent;
+  try { return window.localStorage.getItem(LOGO_KEY) || fallback; } catch { return fallback; }
 }
