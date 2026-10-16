@@ -11,6 +11,7 @@ const { publishRealtimeEvent } = require('../lib/realtime');
 const { getTenantSetting } = require('../lib/tenantSettings');
 const { basePriceForCurrency, certificateDue, certificateTypeCodes, resolveCertificatePrice } = require('../lib/certificatePricing');
 const { certificateNameOf, certificatePrice, syncCertificateRequest } = require('../lib/certificatePayments');
+const { withFreshCode } = require('../lib/certificateCodes');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../middleware/auth');
 const { isString, isOneOf, validateBody } = require('../middleware/validate');
 const { resolveClientContext } = require('../lib/clientContext');
@@ -484,16 +485,17 @@ router.post('/api/admin/certificate-requests', requireAuth, requireAdminOrStaff,
     }
     const initialStatus = Number(finalPrice) > 0 ? 'PRICED' : 'PENDING';
     const requestId = require('crypto').randomUUID();
-    await conn.query(
+    const nameForRequest = b.nameAr || certificateNameOf((await conn.query('SELECT name FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriberId, req.tenantId]))[0][0]?.name);
+    await withFreshCode(code => conn.query(
       `INSERT INTO certificate_requests
-         (id, subscriber_id, course_id, type, custom_name, name_ar, name_en, nationality,
+         (id, certificate_code, subscriber_id, course_id, type, custom_name, name_ar, name_en, nationality,
           id_number, status, price, paid_amount, currency, note, tenant_id, requested_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, NOW())`,
-      [requestId, subscriberId, courseId, type, b.customName || null,
-        b.nameAr || certificateNameOf((await conn.query('SELECT name FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriberId, req.tenantId]))[0][0]?.name),
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, NOW())`,
+      [requestId, code, subscriberId, courseId, type, b.customName || null,
+        nameForRequest,
         b.nameEn || null,
        nationality, b.idNumber || null, initialStatus, finalPrice, finalCurrency, b.note || null, req.tenantId]
-    );
+    ));
     await conn.commit();
     conn.release();
     conn = null;
@@ -757,11 +759,11 @@ router.post('/api/me/certificate-request', requireAuth, async (req, res) => {
       type, nationality, countryCode: clientContext.countryCode, pricingConfig,
     });
     const requestId = require('crypto').randomUUID();
-    await pool.query(
+    await withFreshCode(code => pool.query(
       `INSERT INTO certificate_requests
-         (id, subscriber_id, course_id, type, custom_name, name_ar, name_en, nationality, id_number, status, price, currency, note, tenant_id, requested_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-      [requestId, sub.id, b.courseId, type, b.customName || null, b.nameAr || certificateNameOf(sub.name), b.nameEn || null,
+         (id, certificate_code, subscriber_id, course_id, type, custom_name, name_ar, name_en, nationality, id_number, status, price, currency, note, tenant_id, requested_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [requestId, code, sub.id, b.courseId, type, b.customName || null, b.nameAr || certificateNameOf(sub.name), b.nameEn || null,
        nationality, b.idNumber || null, status, price, currency,
        // Say so on the row when the country could not be resolved, so the admin
        // pricing a PENDING request knows this one was priced by nationality
@@ -769,7 +771,7 @@ router.post('/api/me/certificate-request', requireAuth, async (req, res) => {
        [b.note, clientContext.locationResolved ? '' : 'الموقع الجغرافي غير محدد — التسعير بالجنسية']
          .filter(Boolean).join(' | ') || null,
        tenantId]
-    );
+    ));
     res.json({ ok: true, id: requestId, status: status.toLowerCase(), price, currency });
   } catch (e) {
     logger.error('[route]', e.message);

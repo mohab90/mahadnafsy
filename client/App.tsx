@@ -4,6 +4,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, Link } f
 import Header from './components/Header';
 import Footer from './components/Footer';
 import Home from './pages/Home';
+const HomeNew = React.lazy(() => import('./pages/HomeNew'));
 import { useVisibleInterval } from '../shared/useVisibleInterval';
 import { trackLead, trackPageView } from './lib/tracking';
 
@@ -500,6 +501,8 @@ const AppShell: React.FC = () => {
               <Route path="/sa" element={<LocaleRoute locale="SAR" />} />
               <Route path="/usd" element={<LocaleRoute locale="USD" />} />
               <Route path="/" element={<Home />} />
+              {/* The redesigned home page, beside the real one — not linked from the menu, not indexed. */}
+              <Route path="/new" element={lazyPage(<HomeNew />)} />
               <Route path="/about" element={lazyPage(<AboutUs />)} />
               <Route path="/courses" element={lazyPage(<Courses />)} />
               <Route path="/course/:id" element={lazyPage(<CourseDetails />)} />

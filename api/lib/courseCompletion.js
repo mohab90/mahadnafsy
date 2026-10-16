@@ -103,21 +103,28 @@ async function completeCourse({
       return { ...existing, alreadyCompleted: true };
     }
     const id = uuidv4();
-    const code = certificateCode();
-    const [inserted] = await conn.query(
-      `INSERT IGNORE INTO course_completions
-       (id,subscriber_id,course_id,certificate_code,completed_at,status,version,tenant_id)
-       VALUES (?,?,?,?,NOW(),'active',1,?)`,
-      [id, subscriberId, courseId, code, tenantId]
-    );
-    if (!inserted.affectedRows) {
+    let code = '';
+    let issued = false;
+    for (let attempt = 0; attempt < 8 && !issued; attempt += 1) {
+      code = certificateCode();
+      const [inserted] = await conn.query(
+        `INSERT IGNORE INTO course_completions
+         (id,subscriber_id,course_id,certificate_code,completed_at,status,version,tenant_id)
+         VALUES (?,?,?,?,NOW(),'active',1,?)`,
+        [id, subscriberId, courseId, code, tenantId]
+      );
+      if (inserted.affectedRows) { issued = true; break; }
+      // Ignored: either this client was completed at the same moment, or the code collided with another.
       const [[concurrent]] = await conn.query(
         'SELECT id,certificate_code,completed_at,status,version FROM course_completions WHERE subscriber_id=? AND course_id=? AND tenant_id=? LIMIT 1',
         [subscriberId, courseId, tenantId]
       );
-      if (ownsConnection) await conn.commit();
-      return { ...concurrent, alreadyCompleted: true };
+      if (concurrent) {
+        if (ownsConnection) await conn.commit();
+        return { ...concurrent, alreadyCompleted: true };
+      }
     }
+    if (!issued) throw new Error('could not allocate a certificate code');
     await writeCertificateEvent(conn, {
       tenantId, completionId: id, eventType: 'issued', newCode: code, actor,
       reason: reason ? String(reason).trim().slice(0, 500) : null,

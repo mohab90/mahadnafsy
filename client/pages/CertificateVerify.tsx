@@ -67,7 +67,7 @@ function SearchBox({ initial, onSearch, busy }: { initial: string; onSearch: (co
       className="mx-auto flex w-full max-w-xl items-center gap-2 rounded-2xl bg-white/10 p-1.5 ring-1 ring-white/20 backdrop-blur focus-within:ring-2 focus-within:ring-amber-300/70">
       <Search size={18} className="mr-3 shrink-0 text-amber-200" />
       <input value={value} onChange={event => setValue(event.target.value)} dir="ltr" autoComplete="off" spellCheck={false}
-        placeholder="اكتب كود الشهادة — CERT-… أو PSY-C-…" aria-label="كود الشهادة"
+        placeholder="اكتب كود الشهادة، مثل MAHAD…" aria-label="كود الشهادة"
         className="min-w-0 flex-1 bg-transparent px-2 py-2.5 text-left font-mono text-sm tracking-wider text-white placeholder:text-white/40 focus:outline-none" />
       <button type="submit" disabled={busy || !value.trim()}
         className="shrink-0 rounded-xl bg-gradient-to-l from-amber-400 to-amber-500 px-5 py-2.5 text-sm font-extrabold text-gray-900 shadow-lg transition hover:brightness-110 disabled:opacity-50">
