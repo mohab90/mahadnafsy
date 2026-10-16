@@ -44,32 +44,32 @@ const PaymentPlanner: React.FC<{ content: Content; courses: Course[]; currency: 
         type="button"
         aria-pressed={on}
         onClick={() => setMode(id)}
-        className={`flex min-h-[64px] items-center gap-2.5 rounded-2xl border-2 px-3 text-right transition sm:px-4 ${on ? 'border-primary-700 bg-primary-50/60' : 'border-[#ecdfd6] bg-white hover:border-[#d9c7bf]'}`}
+        className={`flex min-h-[64px] items-center gap-2.5 rounded-2xl border-2 px-3 text-right transition sm:px-4 ${on ? 'border-primary-700 bg-primary-50/60' : 'border-line bg-white hover:border-line-deep'}`}
       >
-        <span className={`hidden h-10 w-10 flex-none items-center justify-center rounded-xl sm:flex ${on ? 'bg-primary-700 text-white' : 'bg-[#fbf7f2] text-[#7a6a64]'}`}><Icon size={20} /></span>
+        <span className={`hidden h-10 w-10 flex-none items-center justify-center rounded-xl sm:flex ${on ? 'bg-primary-700 text-white' : 'bg-paper text-muted'}`}><Icon size={20} /></span>
         <span className="min-w-0">
-          <b className="block text-[15px] leading-tight text-[#1a0f12] sm:text-base">{title}</b>
-          <span className={`text-[13px] font-extrabold ${on ? 'text-primary-700' : 'text-[#8f7f79]'}`}>خصم {pct}%</span>
+          <b className="block text-[15px] leading-tight text-ink sm:text-base">{title}</b>
+          <span className={`text-[13px] font-extrabold ${on ? 'text-primary-700' : 'text-muted-soft'}`}>خصم {pct}%</span>
         </span>
       </button>
     );
   };
 
   return (
-    <section id="pay" className="scroll-mt-24 bg-[#fbf7f2] py-16 sm:py-24">
+    <section id="pay" className="scroll-mt-24 bg-paper py-16 sm:py-24">
       <div className="container mx-auto grid items-center gap-10 px-4 lg:grid-cols-[1fr_minmax(0,520px)] lg:gap-16">
         <Reveal className="text-center lg:text-right">
-          <span className="text-sm font-extrabold text-[#a87a1c]">طريقة الدفع</span>
-          <h2 className="mt-2 text-3xl font-black leading-tight text-[#1a0f12] sm:text-4xl lg:text-[44px]">ادفع كاش وفّر أكتر، أو قسّط على راحتك</h2>
-          <p className="mx-auto mt-3 max-w-xl text-base leading-relaxed text-[#6b5b55] sm:text-lg lg:mx-0">من أول ما تختار لحد ما تستلم شهادتك، كل خطوة واضحة ومعاك فريق يتابعك.</p>
+          <span className="text-sm font-extrabold text-gold-deep">طريقة الدفع</span>
+          <h2 className="mt-2 text-3xl font-black leading-tight text-ink sm:text-4xl lg:text-[44px]">ادفع كاش وفّر أكتر، أو قسّط على راحتك</h2>
+          <p className="mx-auto mt-3 max-w-xl text-base leading-relaxed text-muted-body sm:text-lg lg:mx-0">من أول ما تختار لحد ما تستلم شهادتك، كل خطوة واضحة ومعاك فريق يتابعك.</p>
 
           <ol className="mx-auto mt-8 grid max-w-xl gap-3 text-right sm:grid-cols-2 lg:mx-0">
             {STEPS.map((step, i) => (
-              <li key={step.title} className="flex gap-3.5 rounded-[20px] bg-white p-4 ring-1 ring-[#ecdfd6]">
-                <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-[#1a0f12] text-base font-black text-[#f3c969]">{i + 1}</span>
+              <li key={step.title} className="flex gap-3.5 rounded-[20px] bg-white p-4 ring-1 ring-line">
+                <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-ink text-base font-black text-gold-pale">{i + 1}</span>
                 <span>
-                  <b className="block text-base text-[#1a0f12]">{step.title}</b>
-                  <span className="text-sm leading-relaxed text-[#7a6a64]">{step.text}</span>
+                  <b className="block text-base text-ink">{step.title}</b>
+                  <span className="text-sm leading-relaxed text-muted">{step.text}</span>
                 </span>
               </li>
             ))}
@@ -78,27 +78,27 @@ const PaymentPlanner: React.FC<{ content: Content; courses: Course[]; currency: 
 
         {course && (
           <Reveal delay={120}>
-            <div className="rounded-[32px] bg-white p-5 shadow-[0_40px_80px_-40px_rgba(26,15,18,.45)] ring-1 ring-[#ecdfd6] sm:p-7">
+            <div className="rounded-[32px] bg-white p-5 shadow-[0_40px_80px_-40px_rgba(26,15,18,.45)] ring-1 ring-line sm:p-7">
               <div className="mb-4 flex items-center justify-between gap-3">
-                <b className="text-lg font-black text-[#1a0f12]">احسب قسطك</b>
-                <span className="rounded-full bg-[#fbf7f2] px-3 py-1 text-xs font-extrabold text-[#7a6a64] ring-1 ring-[#ecdfd6]">بالأسعار الحالية</span>
+                <b className="text-lg font-black text-ink">احسب قسطك</b>
+                <span className="rounded-full bg-paper px-3 py-1 text-xs font-extrabold text-muted ring-1 ring-line">بالأسعار الحالية</span>
               </div>
 
-              <label htmlFor="pay-course" className="mb-1.5 block text-[13px] font-bold text-[#7a6a64]">البرنامج</label>
+              <label htmlFor="pay-course" className="mb-1.5 block text-[13px] font-bold text-muted">البرنامج</label>
               <div className="relative">
                 <select
                   id="pay-course"
                   value={course.id}
                   onChange={e => setPick(e.target.value)}
-                  className="min-h-[56px] w-full appearance-none rounded-2xl border border-[#e6d8cf] bg-[#fbf7f2] pe-11 ps-4 text-base font-extrabold text-[#1a0f12] outline-none focus:border-primary-600 focus:ring-4 focus:ring-primary-600/10"
+                  className="min-h-[56px] w-full appearance-none rounded-2xl border border-line-strong bg-paper pe-11 ps-4 text-base font-extrabold text-ink outline-none focus:border-primary-600 focus:ring-4 focus:ring-primary-600/10"
                 >
                   {options.map(c => <option key={c.id} value={c.id}>{c.title.trim()}</option>)}
                 </select>
-                <ChevronDown size={20} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#7a6a64]" />
+                <ChevronDown size={20} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
               </div>
-              <div className="mt-3 rounded-2xl border border-dashed border-[#e6d8cf] px-4 py-3">
-                <p className="text-xl font-black leading-snug text-[#1a0f12]">{course.title.trim()}</p>
-                {blurb && <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-[#7a6a64]">{blurb}</p>}
+              <div className="mt-3 rounded-2xl border border-dashed border-line-strong px-4 py-3">
+                <p className="text-xl font-black leading-snug text-ink">{course.title.trim()}</p>
+                {blurb && <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted">{blurb}</p>}
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-2.5">
@@ -106,12 +106,12 @@ const PaymentPlanner: React.FC<{ content: Content; courses: Course[]; currency: 
                 {toggle('installment', 'تقسيط مرن', percentLabel(rates.install), CalendarClock)}
               </div>
 
-              <div className="mt-4 rounded-[22px] bg-[#1a0f12] p-5 text-white">
+              <div className="mt-4 rounded-[22px] bg-ink p-5 text-white">
                 <div className="flex items-end justify-between gap-3">
                   <span className="text-sm text-white/65">{mode === 'cash' ? 'هتدفع مرة واحدة' : 'هتدفع النهارده (أول دفعة)'}</span>
                   {base > today && <s className="text-sm text-white/40 tabular-nums">{formatPrice(base, currency)}</s>}
                 </div>
-                <p className="mt-1 text-[40px] font-black leading-none tabular-nums text-[#f3c969]">{formatPrice(today, currency)}</p>
+                <p className="mt-1 text-[40px] font-black leading-none tabular-nums text-gold-pale">{formatPrice(today, currency)}</p>
                 <p className="mt-2 text-[13px] leading-relaxed text-white/65">
                   {mode === 'cash' ? 'وتتفتح لك كل المحاضرات فوراً.' : `إجمالي الخطة ${formatPrice(plan, currency)}، والباقي على دفعات مريحة.`}
                 </p>

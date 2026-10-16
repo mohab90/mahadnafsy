@@ -22,9 +22,9 @@ const HomeFaq: React.FC<{ content: Content }> = ({ content }) => {
 
   return (
     <div>
-      <span className="text-sm font-extrabold text-[#a87a1c]">قبل ما تحجز</span>
-      <h2 className="mt-2 text-3xl font-black leading-tight text-[#1a0f12] sm:text-4xl">أسئلة بتتسأل كتير</h2>
-      <div className="mt-6 divide-y divide-[#ecdfd6] rounded-[26px] border border-[#ecdfd6] bg-white">
+      <span className="text-sm font-extrabold text-gold-deep">قبل ما تحجز</span>
+      <h2 className="mt-2 text-3xl font-black leading-tight text-ink sm:text-4xl">أسئلة بتتسأل كتير</h2>
+      <div className="mt-6 divide-y divide-line rounded-[26px] border border-line bg-white">
         {items.map((item, i) => {
           const on = open === i;
           return (
@@ -33,13 +33,13 @@ const HomeFaq: React.FC<{ content: Content }> = ({ content }) => {
                 type="button"
                 aria-expanded={on}
                 onClick={() => setOpen(on ? -1 : i)}
-                className="flex min-h-[60px] w-full items-center justify-between gap-4 px-5 py-4 text-right text-base font-extrabold text-[#1a0f12] sm:text-[17px]"
+                className="flex min-h-[60px] w-full items-center justify-between gap-4 px-5 py-4 text-right text-base font-extrabold text-ink sm:text-[17px]"
               >
                 {item.q}
-                <span className={`flex h-8 w-8 flex-none items-center justify-center rounded-full transition ${on ? 'rotate-45 bg-primary-700 text-white' : 'bg-[#fbf7f2] text-[#5b4b46]'}`}><Plus size={18} /></span>
+                <span className={`flex h-8 w-8 flex-none items-center justify-center rounded-full transition ${on ? 'rotate-45 bg-primary-700 text-white' : 'bg-paper text-muted-strong'}`}><Plus size={18} /></span>
               </button>
               <div className={`grid transition-all duration-300 ${on ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
-                <p className="overflow-hidden px-5 text-[15px] leading-[1.9] text-[#6b5b55]">
+                <p className="overflow-hidden px-5 text-[15px] leading-[1.9] text-muted-body">
                   <span className="block pb-5">{item.a}</span>
                 </p>
               </div>

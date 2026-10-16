@@ -1,8 +1,7 @@
 'use strict';
 
 // «التزم بالمنيو الرئيسية والهدف بتاعنا — بدل زر الاستشارات يبقى زر الحجز».
-// The new home page (client/pages/HomeNew.tsx, served at /new beside the real one, which stays
-// exactly as it was) keeps the site's menu, drops the consultation / «هل لديك
+// The home page (client/pages/Home.tsx) keeps the site's menu, drops the consultation / «هل لديك
 // استفسار؟ تواصل معنا» calls to action in favour of booking, puts the
 // certificate check straight under «لماذا نختار…», keeps it apart from the
 // payment band, and reads everything it shows from the real catalogue.
@@ -16,7 +15,7 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '..', '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
-const home = read('client/pages/HomeNew.tsx');
+const home = read('client/pages/Home.tsx');
 const hero = read('client/components/home/HeroSection.tsx');
 const consultation = read('client/components/home/ConsultationSection.tsx');
 const offer = read('client/components/home/OfferSpotlight.tsx');
@@ -60,18 +59,17 @@ test('«مش عارف تبدأ منين؟» sits at the end, right above one clo
   const closing = home.indexOf('{/* Closing slide');
   assert.ok(find > 0 && closing > find, 'the finder comes right before the closing slide');
   assert.ok(home.indexOf('<PaymentPlanner') < find, 'the payment section is still above it');
-  const slide = home.slice(closing, home.indexOf('export default Home'));
-  // One slide: booking on the red half, joining on the dark half, the graduates between them.
+  const slide = home.slice(closing, home.indexOf('{lightbox &&'));
+  // One slide: booking on the burgundy card, joining on the dark one, no photo between them.
   assert.match(slide, /جاهز تبدأ مسارك المهني/);
-  assert.match(slide, /bg-primary-700/);
-  assert.match(slide, /bg-\[#1a0f12\]/);
-  assert.match(slide, /brand\/graduates\.jpg/);
+  assert.match(slide, /from-primary-700/);
+  assert.match(slide, /bg-ink/);
+  assert.doesNotMatch(slide, /<img|<Picture/, 'the photo in the middle is gone');
   for (const to of ['/enroll', '/courses', '/join', '/join-us']) assert.ok(slide.includes(`<Link to="${to}"`), `${to} is on the slide`);
   assert.ok(slide.includes('انضم إلينا كمحاضر') && slide.includes('انضم إلينا كموظف'));
   // The contact button and the separate «هل لديك استفسار؟» slide are gone.
   assert.doesNotMatch(home, /هل لديك استفسار/);
   assert.doesNotMatch(home, /<Link to="\/contact"/);
-  assert.ok(fs.existsSync(path.join(root, 'client/public/brand/graduates.jpg')), 'the photo ships with the site');
 });
 
 test('the sections follow one order: why → certificate check → payment → paths', () => {
@@ -173,48 +171,56 @@ test('the certificate code field is a short one', () => {
   assert.doesNotMatch(check, /maxLength/, 'older, longer codes still verify');
 });
 
-test('the reasons beside the tour video are compact, so the video matches their height', () => {
+test('the tour video is a square beside the reasons, and loads only when played', () => {
   const why = read('client/components/home/WhyChooseSection.tsx');
   assert.match(why, /lg:grid-cols-2 lg:items-stretch/);
-  assert.match(why, /lg:aspect-auto lg:min-h-0/);
+  assert.match(why, /aspect-square/, 'the tour video is a square');
+  assert.match(why, /<VideoSurface url=\{videoUrl\}[^>]*cover/, 'filling the square, played in place');
+  assert.match(why, /playing && videoUrl \?/, 'and the player loads only when asked for');
 });
 
-test('the new home page is a page of its own at /new: the real home page is untouched, and /new is never indexed', () => {
+test('the new design is the home page, and the old /new address leads to it', () => {
   const app = read('client/App.tsx');
-  assert.match(app, /<Route path="\/" element=\{<Home \/>\} \/>/, 'the real home page is still at /');
-  assert.match(app, /<Route path="\/new" element=\{lazyPage\(<HomeNew \/>\)\} \/>/);
-  assert.match(app, /React\.lazy\(\(\) => import\('\.\/pages\/HomeNew'\)\)/, 'loaded only when /new is opened');
-  assert.match(home, /noindex, nofollow/);
-  assert.match(home, /useSeo\(\{[^}]*path: '\/'/, 'its canonical is the real home page');
-  const original = read('client/pages/Home.tsx');
-  for (const name of ['GoalFinder', 'PaymentPlanner', 'PathsSection', 'WhyChooseSection', 'CertificateCheck', 'HeroSection', 'GraduatesGallery']) {
-    assert.ok(!original.includes(name), `the real home page does not use ${name}`);
-  }
-  assert.match(original, /consultation\.show_on_home/);
+  assert.match(app, /<Route path="\/" element=\{<Home \/>\} \/>/);
+  assert.match(app, /import Home from '\.\/pages\/Home';/, 'loaded with the first screen, not lazily');
+  assert.match(app, /<Route path="\/new" element=\{<Navigate to="\/" replace \/>\} \/>/);
+  assert.ok(!fs.existsSync(path.join(root, 'client/pages/HomeNew.tsx')), 'one home page');
+  assert.doesNotMatch(home, /noindex/, 'and it is indexed');
+  assert.match(home, /useSeo\(\{[^}]*path: '\/'/);
 });
 
-test('the hero shows three real graduates, small files, described for screen readers', () => {
-  const tiles = [...hero.matchAll(/src: '([^']+\.jpg)', alt: '([^']+)'/g)];
+test('the hero shows three real graduates, larger, as light WebP, with nothing written over them', () => {
+  const tiles = [...hero.matchAll(/\{ name: '([a-z]+)', alt: '([^']+)' \}/g)];
   assert.equal(tiles.length, 3, 'three graduates');
-  for (const [, file, alt] of tiles) {
-    assert.ok(alt.length > 10, `${file} is described`);
-    assert.ok(fs.statSync(path.join(root, 'client/public/brand/grads', file)).size < 200 * 1024, `${file} is under 200KB`);
+  for (const [, name, alt] of tiles) {
+    assert.ok(alt.length > 10, `${name} is described`);
+    for (const file of [`hero-${name}-360.webp`, `hero-${name}-640.webp`, `hero-${name}.jpg`]) {
+      const size = fs.statSync(path.join(root, 'client/public/brand/grads', file)).size;
+      assert.ok(size < (file.endsWith('360.webp') ? 30 : 100) * 1024, `${file} is light (${Math.round(size / 1024)}KB)`);
+    }
   }
-  assert.match(hero, /brand\/grads\/\$\{g\.src\}/);
+  assert.match(hero, /<Picture[\s\S]*?base=\{`brand\/grads\/hero-\$\{g\.name\}`\}/);
+  const photos = hero.slice(hero.indexOf("three of the institute's graduates"), hero.indexOf('</section>'));
+  assert.doesNotMatch(photos, /absolute -bottom|absolute -top/, 'no card floats over the photos');
 });
 
 test('the graduation photos ship with the site and open in the one lightbox', () => {
   const gallery = read('client/components/home/GraduatesGallery.tsx');
-  const photos = [...gallery.matchAll(/\{ src: '([^']+\.jpg)', alt: '[^']+' \}/g)].map(m => m[1]);
+  const photos = [...gallery.matchAll(/\{ src: '([^']+)\.jpg', widths: \[([\d, ]+)\]/g)].map(m => [m[1], m[2].split(', ').map(Number)]);
   assert.ok(photos.length >= 6, 'a wall of real photos');
-  for (const file of photos) assert.ok(fs.statSync(path.join(root, 'client/public/brand/grads', file)).size < 300 * 1024, `${file} is light enough`);
+  for (const [name, widths] of photos) {
+    for (const w of widths) {
+      const size = fs.statSync(path.join(root, 'client/public/brand/grads', `${name}-${w}.webp`)).size;
+      assert.ok(size < (w <= 480 ? 45 : 120) * 1024, `${name}-${w}.webp is light (${Math.round(size / 1024)}KB)`);
+    }
+  }
   assert.match(home, /className="fixed inset-0 z-\[80\]/, 'on the shared stacking scale');
   assert.match(home, /GRADUATION_PHOTOS\[lightbox\.index\]/);
 });
 
 test('every picture below the first screen loads lazily', () => {
   const dir = path.join(root, 'client/components/home');
-  const files = [['HomeNew', home], ...fs.readdirSync(dir).filter(f => f.endsWith('.tsx') && f !== 'HeroSection.tsx').map(f => [f, read(`client/components/home/${f}`)])];
+  const files = [['Home', home], ...fs.readdirSync(dir).filter(f => f.endsWith('.tsx') && f !== 'HeroSection.tsx').map(f => [f, read(`client/components/home/${f}`)])];
   for (const [name, src] of files) {
     for (const match of src.matchAll(/<img\b[^>]*>/g)) assert.match(match[0], /loading="lazy"/, `${name}: ${match[0].slice(0, 80)}`);
   }

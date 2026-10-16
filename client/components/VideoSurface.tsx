@@ -76,11 +76,17 @@ export interface VideoSurfaceProps {
   onTimeUpdate?: (currentTime: number, duration: number) => void;
   onEnded?: () => void;
   className?: string;
+  /**
+   * Fill the box instead of fitting inside it: the frame is drawn 16:9 at the
+   * box's full height and centred, so a square box shows a square video whole
+   * and the middle of a wide one, with no black bars either way.
+   */
+  cover?: boolean;
 }
 
 export const VideoSurface: React.FC<VideoSurfaceProps> = ({
   url, title, autoplay = false, startSeconds = 0, watermark,
-  onTimeUpdate, onEnded, className = '',
+  onTimeUpdate, onEnded, className = '', cover = false,
 }) => {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -335,7 +341,7 @@ export const VideoSurface: React.FC<VideoSurfaceProps> = ({
       <iframe
         ref={frameRef}
         src={src}
-        className="absolute inset-0 w-full h-full"
+        className={cover ? 'absolute inset-y-0 left-1/2 h-full w-[177.78%] -translate-x-1/2' : 'absolute inset-0 w-full h-full'}
         // The whole point. Nothing YouTube draws — now or after their next
         // redesign — can be clicked, so nothing it draws can be a way out.
         style={{ pointerEvents: sealed ? 'none' : 'auto' }}

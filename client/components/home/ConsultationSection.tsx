@@ -19,18 +19,18 @@ const ConsultationSection: React.FC<{ content: Content; therapists: Therapist[];
   const sym = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
 
   return (
-    <section className="bg-[#fbf7f2] px-4 py-16 sm:py-24">
+    <section className="bg-paper px-4 py-16 sm:py-24">
       <Reveal className="container mx-auto">
-        <div className="grid overflow-hidden rounded-[36px] bg-white shadow-[0_40px_80px_-45px_rgba(26,15,18,.5)] ring-1 ring-[#ecdfd6] lg:grid-cols-[.75fr_1.25fr]">
+        <div className="grid overflow-hidden rounded-[36px] bg-white shadow-[0_40px_80px_-45px_rgba(26,15,18,.5)] ring-1 ring-line lg:grid-cols-[.75fr_1.25fr]">
           <div className="relative flex flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-primary-700 to-[#4c0519] px-6 py-10 text-center text-white sm:py-12">
             <div aria-hidden="true" className="absolute inset-0 opacity-[.12]" style={{ backgroundImage: 'radial-gradient(rgba(255,255,255,.7) 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
-            <span className="relative inline-flex items-center gap-2 rounded-full bg-white px-3.5 py-1.5 text-[13px] font-extrabold text-[#1a0f12] shadow-lg">
+            <span className="relative inline-flex items-center gap-2 rounded-full bg-white px-3.5 py-1.5 text-[13px] font-extrabold text-ink shadow-lg">
               <span className="relative flex h-2.5 w-2.5"><span className="absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-70 motion-safe:animate-ping" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" /></span>
               متاح الآن — جلسة فورية
             </span>
             {therapist && (
               <>
-                <span className="relative mt-7 block rounded-full bg-gradient-to-br from-[#f3c969] to-[#c8962e] p-1.5 shadow-2xl">
+                <span className="relative mt-7 block rounded-full bg-gradient-to-br from-gold-pale to-gold p-1.5 shadow-2xl">
                   <img src={cdnImg(therapist.image, 320)} alt={therapist.name} loading="lazy" className="h-36 w-36 rounded-full border-4 border-[#4c0519] object-cover object-top sm:h-40 sm:w-40" />
                   <span aria-hidden="true" className="absolute bottom-3 right-3 h-5 w-5 rounded-full border-4 border-[#4c0519] bg-green-500" />
                 </span>
@@ -44,9 +44,9 @@ const ConsultationSection: React.FC<{ content: Content; therapists: Therapist[];
           </div>
 
           <div className="flex flex-col justify-center p-6 text-center sm:p-10 lg:p-12 lg:text-right">
-            <span className="text-sm font-extrabold text-[#a87a1c]">استشارة نفسية أونلاين</span>
-            <h2 className="mt-2 text-3xl font-black leading-tight text-[#1a0f12] sm:text-4xl">{content['home.express.title'] || 'تحدث مع معالج نفسي متخصص الآن'}</h2>
-            <p className="mt-3 text-base leading-relaxed text-[#6b5b55] sm:text-lg">{content['home.express.subtitle'] || 'جلسة خاصة عبر الإنترنت. احجز في دقائق واحصل على دعم فوري.'}</p>
+            <span className="text-sm font-extrabold text-gold-deep">استشارة نفسية أونلاين</span>
+            <h2 className="mt-2 text-3xl font-black leading-tight text-ink sm:text-4xl">{content['home.express.title'] || 'تحدث مع معالج نفسي متخصص الآن'}</h2>
+            <p className="mt-3 text-base leading-relaxed text-muted-body sm:text-lg">{content['home.express.subtitle'] || 'جلسة خاصة عبر الإنترنت. احجز في دقائق واحصل على دعم فوري.'}</p>
 
             <ul className="mx-auto mt-6 grid max-w-md gap-2.5 text-right sm:grid-cols-2 lg:mx-0 lg:max-w-none">
               {[
@@ -64,17 +64,17 @@ const ConsultationSection: React.FC<{ content: Content; therapists: Therapist[];
 
             <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:justify-center lg:justify-start">
               <div className="text-center lg:text-right">
-                <span className="block text-[13px] text-[#8f7f79]">سعر الجلسة</span>
+                <span className="block text-[13px] text-muted-soft">سعر الجلسة</span>
                 {price > 0
-                  ? <span className="text-4xl font-black tabular-nums text-[#1a0f12]">{price.toLocaleString('ar-EG-u-nu-latn')} <span className="text-xl text-primary-700">{sym}</span></span>
-                  : <span className="text-xl font-black text-[#1a0f12]">احجز ونبلغك بالسعر</span>}
+                  ? <span className="text-4xl font-black tabular-nums text-ink">{price.toLocaleString('ar-EG-u-nu-latn')} <span className="text-xl text-primary-700">{sym}</span></span>
+                  : <span className="text-xl font-black text-ink">احجز ونبلغك بالسعر</span>}
               </div>
               <Link to="/consultations" className="inline-flex min-h-[56px] w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 px-8 text-lg font-black text-white shadow-[0_16px_30px_-12px_rgba(159,18,57,.8)] transition hover:bg-primary-800 sm:w-auto">
                 احجز جلستك الآن
                 <ArrowLeft size={20} />
               </Link>
             </div>
-            <p className="mt-3 text-[13px] text-[#8f7f79]">{content['home.express.note'] || 'سيتواصل معك المعالج خلال ساعات'}</p>
+            <p className="mt-3 text-[13px] text-muted-soft">{content['home.express.note'] || 'سيتواصل معك المعالج خلال ساعات'}</p>
           </div>
         </div>
       </Reveal>

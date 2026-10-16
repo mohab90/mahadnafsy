@@ -42,7 +42,6 @@ const NOT_A_DIALOG = {
   'client/pages/CourseDetails.tsx': 'a certificate preview',
   'client/pages/BundleDetails.tsx': 'a certificate preview',
   'client/pages/Home.tsx': 'a video lightbox',
-  'client/pages/HomeNew.tsx': 'a video lightbox',
   'client/pages/Community.tsx': 'a video lightbox',
   'client/pages/course-details-sections/GallerySection.tsx': 'an image lightbox',
   'client/pages/course-details-sections/PromoVideoSection.tsx': 'a video lightbox',

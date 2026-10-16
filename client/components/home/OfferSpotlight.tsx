@@ -69,7 +69,7 @@ const OfferSpotlight: React.FC<{
     }
   };
 
-  const field = 'w-full min-h-[50px] rounded-xl border border-[#e6d8cf] bg-[#fbf7f2] px-4 text-[15px] text-[#1a0f12] outline-none transition placeholder:text-[#b3a39c] focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10';
+  const field = 'w-full min-h-[50px] rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-[#b3a39c] focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10';
 
   return (
     <section id="offer" className="scroll-mt-24 bg-white px-4 py-6 sm:py-10">
@@ -80,7 +80,7 @@ const OfferSpotlight: React.FC<{
 
           <div className="relative grid items-center gap-8 lg:grid-cols-[1.1fr_.9fr] lg:gap-12">
             <div className="text-center lg:text-right">
-              <span className="inline-flex items-center gap-2 rounded-full bg-[#e3b65a] px-4 py-1.5 text-sm font-black text-[#2a0b14]">
+              <span className="inline-flex items-center gap-2 rounded-full bg-gold-light px-4 py-1.5 text-sm font-black text-[#2a0b14]">
                 <Timer size={16} />
                 {content['home.offer.badge'] || 'عرض لمدة 24 ساعة فقط'}
               </span>
@@ -93,7 +93,7 @@ const OfferSpotlight: React.FC<{
                 <span className="text-5xl font-black leading-none tabular-nums text-white sm:text-6xl">{newPrice}</span>
                 <span className="pb-1 text-right leading-tight">
                   <s className="block text-lg text-white/50 tabular-nums">{oldPrice}</s>
-                  <span className="text-sm font-extrabold text-[#f3c969]">{content['home.offer.discount'] || `خصم ${pct}%`}</span>
+                  <span className="text-sm font-extrabold text-gold-pale">{content['home.offer.discount'] || `خصم ${pct}%`}</span>
                 </span>
               </div>
 
@@ -110,12 +110,12 @@ const OfferSpotlight: React.FC<{
               <p className="mt-3 text-sm text-white/55">{content['home.offer.validUntil'] || 'ساري حتى منتصف الليل'}</p>
             </div>
 
-            <form onSubmit={submit} className="relative rounded-[28px] bg-white p-5 text-[#1a0f12] shadow-2xl sm:p-7">
+            <form onSubmit={submit} className="relative rounded-[28px] bg-white p-5 text-ink shadow-2xl sm:p-7">
               {offerCourse?.thumbnail && (
-                <div className="mb-5 flex items-center gap-3 rounded-2xl bg-[#fbf7f2] p-2.5 ring-1 ring-[#ecdfd6]">
+                <div className="mb-5 flex items-center gap-3 rounded-2xl bg-paper p-2.5 ring-1 ring-line">
                   <img src={cdnImg(offerCourse.thumbnail, 160)} alt="" loading="lazy" className="h-14 w-20 flex-none rounded-xl object-cover" />
                   <span className="min-w-0 text-right">
-                    <span className="block text-xs font-bold text-[#7a6a64]">أنت بتحجز:</span>
+                    <span className="block text-xs font-bold text-muted">أنت بتحجز:</span>
                     <b className="block truncate text-[15px] text-primary-700">{content['home.offer.registerFor'] || offerCourse.title}</b>
                   </span>
                 </div>
@@ -123,15 +123,15 @@ const OfferSpotlight: React.FC<{
               <h3 className="mb-4 text-xl font-black">{content['home.offer.formBadge'] || 'سجل الآن واضمن السعر'}</h3>
               <div className="space-y-3">
                 <label className="block">
-                  <span className="mb-1 block text-[13px] font-bold text-[#5b4b46]">{content['home.offer.formNameLabel'] || 'الاسم الكامل'}</span>
+                  <span className="mb-1 block text-[13px] font-bold text-muted-strong">{content['home.offer.formNameLabel'] || 'الاسم الكامل'}</span>
                   <input type="text" value={name} onChange={e => setName(e.target.value)} autoComplete="name" className={field} placeholder={content['home.offer.formNamePlaceholder'] || 'الاسم الثلاثي'} />
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-[13px] font-bold text-[#5b4b46]">{content['home.offer.formPhoneLabel'] || 'رقم الهاتف (واتساب)'}</span>
+                  <span className="mb-1 block text-[13px] font-bold text-muted-strong">{content['home.offer.formPhoneLabel'] || 'رقم الهاتف (واتساب)'}</span>
                   <input type="tel" dir="ltr" value={phone} onChange={e => setPhone(e.target.value)} autoComplete="tel" className={`${field} text-right`} placeholder={content['home.offer.formPhonePlaceholder'] || '01xxxxxxxxx'} />
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-[13px] font-bold text-[#5b4b46]">{content['home.offer.formBranchLabel'] || 'الفرع الأقرب'}</span>
+                  <span className="mb-1 block text-[13px] font-bold text-muted-strong">{content['home.offer.formBranchLabel'] || 'الفرع الأقرب'}</span>
                   <select value={branch} onChange={e => setBranch(e.target.value)} className={field}>
                     <option value="">{content['home.offer.formBranchPlaceholder'] || 'اختر الفرع الأقرب إليك'}</option>
                     {branches.length > 0
@@ -159,7 +159,7 @@ const OfferSpotlight: React.FC<{
                 <Send size={18} />
                 {content['home.offer.registerButton'] || 'حجز العرض الآن'}
               </button>
-              <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-xs text-[#8f7f79]">
+              <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-xs text-muted-soft">
                 <Lock size={12} />
                 {content['home.offer.registerNote'] || 'سيقوم فريق المبيعات بالتواصل معك لتأكيد الحجز والدفع'}
               </p>
