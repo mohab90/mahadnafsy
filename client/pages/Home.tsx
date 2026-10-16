@@ -486,7 +486,7 @@ const Home: React.FC = () => {
       )}
 
       {/* SECTION: Express Consultation Banner — «اعرض قسم الاستشارة في الرئيسية» */}
-      {content['consultation.show_on_home'] === 'true' && (
+      {content['consultation.show_on_home'] !== 'false' && (
       <section className="py-20 bg-white relative overflow-hidden">
         {/* Subtle background accents */}
         <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-primary-50 rounded-full blur-[120px] opacity-60 -translate-x-1/2 -translate-y-1/2"></div>
@@ -627,35 +627,6 @@ const Home: React.FC = () => {
           </div>
       </section>
 
-      {/* SECTION: join the team — job and lecturer applications */}
-      <section id="join" className="scroll-mt-24 bg-[#f6ede6] py-14 sm:py-20">
-        <div className="container mx-auto px-4">
-          <div className="mx-auto mb-9 max-w-2xl text-center">
-            <span className="text-sm font-extrabold tracking-wide text-amber-700">فرص العمل</span>
-            <h2 className="mb-2.5 mt-2 text-3xl font-black leading-tight text-gray-900 sm:text-4xl">انضم لفريق معهد الدراسات النفسية</h2>
-            <p className="text-base leading-relaxed text-gray-500 sm:text-lg">قدّم الآن كمحاضر أو كموظف، وفريقنا يراجع طلبك ويتواصل معك.</p>
-          </div>
-          <div className="mx-auto grid max-w-4xl gap-5 md:grid-cols-2">
-            <Link to="/join" className="group flex items-center gap-5 rounded-[26px] bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
-              <span className="flex h-16 w-16 flex-none items-center justify-center rounded-2xl bg-primary-600 text-white"><GraduationCap size={30} /></span>
-              <span className="min-w-0 flex-1">
-                <b className="mb-1 block text-xl text-gray-900">قدّم كمحاضر أو مستشار</b>
-                <span className="text-sm leading-relaxed text-gray-500">شارك خبرتك وقدّم برامجك للمتدربين.</span>
-              </span>
-              <ArrowRight size={22} className="flex-none text-primary-600 transition group-hover:-translate-x-1 rtl:rotate-180" />
-            </Link>
-            <Link to="/join-us" className="group flex items-center gap-5 rounded-[26px] bg-[#1b0a12] p-6 text-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
-              <span className="flex h-16 w-16 flex-none items-center justify-center rounded-2xl bg-secondary-500 text-[#1b0a12]"><Briefcase size={30} /></span>
-              <span className="min-w-0 flex-1">
-                <b className="mb-1 block text-xl">قدّم على وظيفة</b>
-                <span className="text-sm leading-relaxed text-white/70">اطّلع على الوظائف المتاحة وأرسل طلبك.</span>
-              </span>
-              <ArrowRight size={22} className="flex-none text-secondary-400 transition group-hover:-translate-x-1 rtl:rotate-180" />
-            </Link>
-          </div>
-        </div>
-      </section>
-
       {/* Booking call to action — the page ends on the same goal it starts with */}
       <section className="bg-[#fffaf5] px-4 pb-16 pt-4 sm:pb-20">
         <div className="container relative mx-auto overflow-hidden rounded-[32px] bg-primary-600 px-5 py-12 text-center text-white sm:px-10 sm:py-14">
@@ -669,6 +640,32 @@ const Home: React.FC = () => {
               <Link to="/enroll" className="inline-flex min-h-[56px] items-center justify-center rounded-2xl bg-white px-9 text-lg font-black text-primary-700 transition hover:bg-primary-50">احجز مكانك الآن</Link>
               <Link to="/courses" className="inline-flex min-h-[56px] items-center justify-center rounded-2xl border-[1.5px] border-white/70 px-8 text-lg font-extrabold text-white transition hover:bg-white/10">تصفح الكورسات</Link>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Hiring and contact slide — «هل لديك استفسار؟ تواصل معنا», lecturer and job applications; right before the footer */}
+      <section id="join" className="relative scroll-mt-24 overflow-hidden bg-[#1b0a12] py-16 text-white sm:py-20">
+        <div aria-hidden="true" className="absolute -left-24 -top-24 h-72 w-72 rounded-full bg-primary-600 opacity-25" />
+        <div className="container relative mx-auto px-4 text-center">
+          <span className="text-sm font-extrabold tracking-wide text-amber-300">فرص العمل والتواصل</span>
+          <h2 className="mb-3.5 mt-2 text-3xl font-black leading-tight sm:text-4xl">هل لديك استفسار؟ تواصل معنا</h2>
+          <p className="mx-auto mb-8 max-w-xl text-base leading-relaxed text-white/75 sm:text-lg">
+            فريقنا مستعد للإجابة على جميع أسئلتك عن البرامج والاشتراكات والاستشارات النفسية.
+          </p>
+          <div className="mx-auto grid max-w-3xl gap-3.5 sm:grid-cols-3">
+            <Link to="/contact" className="inline-flex min-h-[56px] items-center justify-center gap-2 rounded-2xl bg-white px-6 font-black text-primary-700 shadow transition hover:-translate-y-0.5 hover:bg-primary-50">
+              <Phone size={18} />
+              تواصل معنا
+            </Link>
+            <Link to="/join" className="inline-flex min-h-[56px] items-center justify-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-6 font-bold transition hover:-translate-y-0.5 hover:bg-white/20">
+              <GraduationCap size={18} />
+              انضم إلينا كمحاضر
+            </Link>
+            <Link to="/join-us" className="inline-flex min-h-[56px] items-center justify-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-6 font-bold transition hover:-translate-y-0.5 hover:bg-white/20">
+              <Briefcase size={18} />
+              انضم إلينا كموظف
+            </Link>
           </div>
         </div>
       </section>

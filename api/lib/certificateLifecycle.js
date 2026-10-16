@@ -2,10 +2,10 @@
 
 const { pool } = require('./db');
 const { uuidv4 } = require('./id');
+const { newCertificateCode, withFreshCode } = require('./certificateCodes');
 
-function certificateCode() {
-  return `MHAD-${Date.now().toString(36).toUpperCase()}-${uuidv4().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
-}
+// MAHAD + 6 letters and digits (see certificateCodes.js).
+const certificateCode = newCertificateCode;
 
 async function writeCertificateEvent(conn, {
   tenantId, completionId, eventType, oldCode = null, newCode = null,
@@ -60,14 +60,16 @@ async function mutateCertificate({ tenantId, completionId, actor, reason, action
       return { ...completion, status: 'revoked', changed: true };
     }
 
-    const newCode = certificateCode();
-    await conn.query(
-      `UPDATE course_completions
-       SET certificate_code=?,status='active',version=version+1,reissued_at=NOW(),reissued_by=?,
-           revoked_at=NULL,revoked_by=NULL,revoke_reason=NULL
-       WHERE id=? AND tenant_id=?`,
-      [newCode, actor, completionId, tenantId]
-    );
+    const newCode = await withFreshCode(async code => {
+      await conn.query(
+        `UPDATE course_completions
+         SET certificate_code=?,status='active',version=version+1,reissued_at=NOW(),reissued_by=?,
+             revoked_at=NULL,revoked_by=NULL,revoke_reason=NULL
+         WHERE id=? AND tenant_id=?`,
+        [code, actor, completionId, tenantId]
+      );
+      return code;
+    });
     await writeCertificateEvent(conn, {
       tenantId, completionId, eventType: 'reissued', oldCode: completion.certificate_code,
       newCode, actor, reason: String(reason).trim(), meta: { previousStatus: completion.status },

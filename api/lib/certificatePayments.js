@@ -3,6 +3,7 @@
 const { getTenantSetting } = require('./tenantSettings');
 const { cairoDayOf, cairoToday } = require('./dates');
 const { basePriceForCurrency, certificateTypeCodes } = require('./certificatePricing');
+const { withFreshCode } = require('./certificateCodes');
 
 // What a certificate costs: the figure the desk typed (the dialog fills in the
 // price list's), else the price list's own — never the payment. A request
@@ -74,12 +75,12 @@ async function applyCertificatePayment(payment, db, tenantId, options = {}) {
     const isInstallment = Boolean(Number(payment.is_installment) || payment.isInstallment === true);
     const price = await certificatePrice(db, tenantId, { stated: payment.price, type: requestedType, currency }) || (isInstallment ? null : amount);
     const [[client]] = await db.query('SELECT name FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [payment.subscriber_id, tenantId]).catch(() => [[]]);
-    await db.query(
+    await withFreshCode(code => db.query(
       `INSERT INTO certificate_requests
-         (id, subscriber_id, course_id, type, status, price, paid_amount, currency, note, tenant_id, requested_at, name_ar)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+         (id, certificate_code, subscriber_id, course_id, type, status, price, paid_amount, currency, note, tenant_id, requested_at, name_ar)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
-        requestId, payment.subscriber_id, payment.course_id || null, requestedType,
+        requestId, code, payment.subscriber_id, payment.course_id || null, requestedType,
         settle && price > 0 && amount >= price ? 'PAID' : 'PRICED', price || null, settle ? amount : 0, currency,
         payment.note || null, tenantId,
         // payment.date is a DATETIME — a Date — when the payment comes from its
@@ -87,7 +88,7 @@ async function applyCertificatePayment(payment, db, tenantId, options = {}) {
         cairoDayOf(payment.date) || cairoToday(),
         certificateNameOf(client?.name),
       ]
-    );
+    ));
   }
 
   return requestId;

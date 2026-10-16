@@ -15,9 +15,11 @@ function fakeDb(initialRequest = null) {
         return [[state.request ? structuredClone(state.request) : undefined]];
       }
       if (sql.startsWith('INSERT INTO certificate_requests')) {
+        // params[1] is the certificate code the helper allocated (MAHAD + 6 letters or digits).
+        assert.match(params[1], /^MAHAD[A-Z2-9]{6}$/, 'the request carries its own short code');
         state.request = {
-          id: params[0], subscriber_id: params[1], course_id: params[2], type: params[3],
-          status: params[4], price: params[5], paid_amount: params[6], currency: params[7],
+          id: params[0], subscriber_id: params[2], course_id: params[3], type: params[4],
+          status: params[5], price: params[6], paid_amount: params[7], currency: params[8],
         };
         state.inserts += 1;
         return [{ affectedRows: 1 }];

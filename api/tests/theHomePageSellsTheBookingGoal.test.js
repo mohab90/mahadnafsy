@@ -34,17 +34,23 @@ test('the main menu is untouched', () => {
   }
 });
 
-test('the home page asks for a booking, not a consultation or a contact', () => {
-  // The consultation banner only appears when marketing opts in (consultation.show_on_home === 'true').
-  const shown = home.replace(/\{content\['consultation\.show_on_home'\] === 'true' && \([\s\S]*?\n      \)\}\n/, '');
-  assert.ok(shown.length < home.length, 'the opt-in block was located');
-  assert.doesNotMatch(shown, /to="\/consultations"/, 'a consultation button is back on the home page');
-  assert.doesNotMatch(home, /هل لديك استفسار/);
+test('the home page leads with booking, and keeps the consultation and the hiring / contact slides', () => {
+  // Every call to action at the top and the bottom is a booking.
   assert.doesNotMatch(home, /احجز استشارة/);
   assert.match(home, /<Link to="\/enroll"[^>]*>[\s\S]{0,80}احجز مكانك الآن/);
   assert.match(home, /جاهز تبدأ مسارك المهني/);
   assert.match(home, /offerIsShown\(content\)/, 'the 24-hour strip still follows the marketing switch');
   assert.match(home, /<a href="#offer"[^>]*>احجز الآن<\/a>/);
+  // The consultation slide is back, on by default, with its own booking button.
+  assert.match(home, /content\['consultation\.show_on_home'\] !== 'false'/);
+  assert.match(home, /متاح الآن — جلسة فورية/);
+  assert.match(home, /تحدث مع معالج نفسي متخصص الآن/);
+  assert.match(home, /احجز جلستك الآن/);
+  assert.match(home, /expressPrice\(content, currency\)/);
+  // The hiring slide: the question, and the three ways to reach or join the institute.
+  assert.match(home, /هل لديك استفسار؟ تواصل معنا/);
+  for (const to of ['/contact', '/join', '/join-us']) assert.ok(home.includes(`<Link to="${to}"`), `${to} is on the slide`);
+  assert.ok(home.indexOf('هل لديك استفسار؟ تواصل معنا') > home.indexOf('جاهز تبدأ مسارك المهني'), 'it closes the page, right before the footer');
 });
 
 test('the sections follow one order: why → certificate check → payment → paths', () => {
@@ -113,10 +119,7 @@ test('the home page still honours what marketing controls', () => {
   assert.match(home, /value="daqqi"/);
 });
 
-test('job and lecturer applications have a place on the page, and the code field is a short one', () => {
-  assert.match(home, /<section id="join"/);
-  assert.match(home, /<Link to="\/join" /);
-  assert.match(home, /<Link to="\/join-us" /);
+test('the certificate code field is a short one', () => {
   const check = read('client/components/home/CertificateCheck.tsx');
   assert.match(check, /sm:w-44/, 'a field sized for a short code, not a long bar');
   assert.match(check, /toUpperCase\(\)/);

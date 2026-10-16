@@ -704,7 +704,7 @@ CREATE TABLE `certificate_lifecycle_events` (
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `certificate_requests` (
   `id` varchar(36) NOT NULL DEFAULT (uuid()),
-  `certificate_code` varchar(40) NOT NULL DEFAULT concat('PSY-C-',ucase(substr(replace(uuid(),'-',''),1,10))),
+  `certificate_code` varchar(40) NOT NULL DEFAULT concat('MAHAD',ucase(substr(replace(uuid(),'-',''),1,6))),
   `subscriber_id` varchar(36) DEFAULT NULL,
   `course_id` varchar(36) DEFAULT NULL,
   `type` enum('SOCIAL_SOLIDARITY','AIN_SHAMS','EXPERIENCE_EXTERNAL','PRACTICE_EXTERNAL','NATIONAL_COUNCIL','AMERICAN_BOARD','INSTITUTE','OTHER') NOT NULL,
