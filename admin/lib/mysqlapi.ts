@@ -509,6 +509,17 @@ export type SalesScheduleRound = {
   nextSession: string | null;
 };
 
+/** Every row of a paged admin list (?limit/&offset), a page at a time until one comes back short. */
+async function allPages(path: string, pageSize: number): Promise<AR[]> {
+  const all: AR[] = [];
+  for (let page = 0; page < 20; page++) {
+    const rows = await apiFetch<AR[]>(`${path}?limit=${pageSize}&offset=${page * pageSize}`, {}, A);
+    all.push(...rows);
+    if (rows.length < pageSize) break;
+  }
+  return all;
+}
+
 export const mysqlAdmin = {
   // ── Generic helpers (for ad-hoc admin endpoints) ──
   adminGet: <T = AR>(path: string) => apiFetch<T>(path, {}, A),
@@ -734,7 +745,15 @@ export const mysqlAdmin = {
   listDaqqiRoundsForBooking: (branch: string) => apiFetch<AR[]>(`/admin/daqqi-rounds/for-booking?branch=${encodeURIComponent(branch)}`, {}, A),
   // «جدول الدقي» for the sales team: rounds not started or on lecture 1–2, no attendees.
   listDaqqiSalesSchedule: () => apiFetch<SalesScheduleRound[]>('/admin/daqqi-rounds/sales-schedule', {}, A),
-  listAllJoinUs:           ()             => apiFetch<AR[]>('/admin/join-us', {}, A),
+  /** One page of the applications (the server holds up to 1000 a page). */
+  listJoinUsPage:          (limit: number, offset: number) => apiFetch<AR[]>(`/admin/join-us?limit=${limit}&offset=${offset}`, {}, A),
+  /**
+   * Every application, page by page. The list used to stop at the newest 500, so a tab of 1,285
+   * applications showed 427 staff ones among them; the screens count what they are given.
+   */
+  listAllJoinUs:           () => allPages('/admin/join-us', 1000),
+  /** How many applications there are — counted in the database over the whole scope, by form and status. */
+  joinUsCounts:            () => apiFetch<{ total: number; byForm: { staff: number; teaching: number }; byStatus: Record<string, number>; byFormStatus: Record<'staff' | 'teaching', Record<string, number>> }>('/admin/join-us/counts', {}, A),
   listAllContactMessages:  ()             => apiFetch<AR[]>('/admin/contact-messages', {}, A),
   listAllCertificateRequests: (limit = 3000) => apiFetch<AR[]>(`/admin/certificate-requests?limit=${limit}`, {}, A),
   // Carnets, books and extra attestations a client paid for («طلبات إضافية»).

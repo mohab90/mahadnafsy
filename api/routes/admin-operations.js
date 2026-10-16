@@ -363,24 +363,61 @@ router.post('/api/admin/activity-logs', requireAuth, requireAdmin, async (req, r
   } catch (e) { routeError(res, e); }
 });
 
+// The applications' scope — tenant, ?type, ?form and the branch HR's reach — shared by the list and its counts,
+// so a count is of exactly the rows the list would hold.
+function joinUsWhere(req) {
+  const params = [];
+  let where = appendTenantScope('WHERE 1=1', 'j', scopedTenantId(req), params);
+  if (req.query.type && req.query.type !== 'all') {
+    where += ' AND j.type = ?';
+    params.push(String(req.query.type).toUpperCase());
+  }
+  // ?form=teaching|staff — the two lists the owner asked to be kept apart.
+  if (['teaching', 'staff'].includes(String(req.query.form || ''))) {
+    where += " AND COALESCE(j.source_form, IF(j.type='EMPLOYEE','staff','teaching')) = ?";
+    params.push(String(req.query.form));
+  }
+  const reach = joinUsReachSql(req.recruitReach, 'j', 'a', 'jp');
+  where += reach.sql;
+  params.push(...reach.params);
+  return { where, params };
+}
+
+// «عدد طلبات انضمام الموظفين مكتوب 427 وفي مكان تاني 1285»: the list below stopped at 500 rows, newest first,
+// and every screen counted what reached it — so a tab of 1,285 applications showed the staff ones among the
+// newest 500. The figures are counted here, in the database, over the whole scope.
+router.get('/api/admin/join-us/counts', requireAuth, requireAdminOrStaff, requireAnyPermission('view_join_us', 'branch_hr'), requireRecruiting('view_join_us'), async (req, res) => {
+  try {
+    const { where, params } = joinUsWhere(req);
+    const [rows] = await pool.query(
+      `SELECT COALESCE(j.source_form, IF(j.type='EMPLOYEE','staff','teaching')) AS form,
+              UPPER(COALESCE(NULLIF(j.status,''),'NEW')) AS status, COUNT(*) AS n
+         FROM join_us_applications j
+         LEFT JOIN job_applicants a ON a.id=j.converted_applicant_id AND a.tenant_id=j.tenant_id
+         LEFT JOIN job_postings jp ON jp.id=a.job_id AND jp.tenant_id=a.tenant_id
+         ${where}
+        GROUP BY form, status`, params);
+    const out = { total: 0, byForm: { staff: 0, teaching: 0 }, byStatus: {}, byFormStatus: { staff: {}, teaching: {} } };
+    for (const row of rows) {
+      const n = Number(row.n) || 0;
+      const form = row.form === 'staff' ? 'staff' : 'teaching';
+      out.total += n;
+      out.byForm[form] += n;
+      out.byStatus[row.status] = (out.byStatus[row.status] || 0) + n;
+      out.byFormStatus[form][row.status] = (out.byFormStatus[form][row.status] || 0) + n;
+    }
+    res.json(out);
+  } catch (e) { routeError(res, e); }
+});
+
 // The Dokki manager reaches the applications for Dokki — «اتاكد ان طلبات الانضمام
 // للدقي والانترفيو للدقي بيظهر لنشوي مدير الدقي» (12 Oct 2026); lib/branchHr.js.
+// ?limit (≤ 1000, default 500) and ?offset page it: the screens read every page.
 router.get('/api/admin/join-us', requireAuth, requireAdminOrStaff, requireAnyPermission('view_join_us', 'branch_hr'), requireRecruiting('view_join_us'), async (req, res) => {
   try {
-    const params = [];
-    let where = appendTenantScope('WHERE 1=1', 'j', scopedTenantId(req), params);
-    if (req.query.type && req.query.type !== 'all') {
-      where += ' AND j.type = ?';
-      params.push(String(req.query.type).toUpperCase());
-    }
-    // ?form=teaching|staff — the two lists the owner asked to be kept apart.
-    if (['teaching', 'staff'].includes(String(req.query.form || ''))) {
-      where += " AND COALESCE(j.source_form, IF(j.type='EMPLOYEE','staff','teaching')) = ?";
-      params.push(String(req.query.form));
-    }
-    const reach = joinUsReachSql(req.recruitReach, 'j', 'a', 'jp');
-    where += reach.sql;
-    params.push(...reach.params);
+    const { where, params } = joinUsWhere(req);
+    const limit = Math.min(1000, Math.max(1, Math.floor(Number(req.query.limit)) || 500));
+    const offset = Math.max(0, Math.floor(Number(req.query.offset)) || 0);
     // contacted_at, contacted_by and interview_at are selected because the
     // screen needs them and this query never returned them. POST
     // /api/admin/join-us/:id/contact writes all three of the things being looked
@@ -424,7 +461,7 @@ router.get('/api/admin/join-us', requireAuth, requireAdminOrStaff, requireAnyPer
                 OR (n.ref_type='applicant' AND n.ref_id=j.converted_applicant_id))
             ORDER BY n.created_at DESC LIMIT 1)
          ${where}
-        ORDER BY j.created_at DESC LIMIT 500`,
+        ORDER BY j.created_at DESC, j.id DESC LIMIT ${limit} OFFSET ${offset}`,
       params);
     res.json(rows.map(r => ({
       ...r,
