@@ -34,7 +34,7 @@ const Courses = React.lazy(() => import('./pages/Courses'));
 const CertificateVerify = React.lazy(() => import('./pages/CertificateVerify'));
 const RateRound = React.lazy(() => import('./pages/RateRound'));
 const AiTutorWidget = React.lazy(() => import('./components/AiTutorWidget'));
-const SitePopup = React.lazy(() => import('./components/SitePopup'));
+const SpecialOffer = React.lazy(() => import('./components/SpecialOffer'));
 
 /** Minimal spinner shown while lazy pages load */
 const PageSpinner: React.FC = () => (
@@ -546,7 +546,7 @@ const AppShell: React.FC = () => {
           <Footer mini={miniFooter} />
           <LeadCaptureWidget />
           <Suspense fallback={null}><AiTutorWidget /></Suspense>
-          <Suspense fallback={null}><SitePopup /></Suspense>
+          <Suspense fallback={null}><SpecialOffer /></Suspense>
           <WaFloat />
           <SessionTimeoutWarner />
           <SessionEndedNotice />

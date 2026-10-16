@@ -8,7 +8,7 @@ import { compressImage } from '../../shared/imageCompress';
 import { expressPrice, getTherapistSessionPrice } from '../lib/consultations';
 import { cdnImg } from '../lib/img';
 import { instituteWhatsApp } from '../lib/whatsappLink';
-import { amountDueNow, installmentTotal, type PayMode } from '../../shared/enrollmentPricing';
+import { amountDueNow, enrollmentRates, installmentTotal, percentLabel, type PayMode } from '../../shared/enrollmentPricing';
 import { useSeo } from '../lib/useSeo';
 import { rememberCheckoutOrder, trackInitiateCheckout } from '../lib/tracking';
 
@@ -153,9 +153,10 @@ const Checkout: React.FC = () => {
   // is reading the page and deciding — so picking قسط looked like it had been
   // thrown away. It had not; the page simply never applied the discount.
   const discountable = itemPrice > 0 && !paymentLink && type !== 'certificate';
-  const displayAmount = discountable ? amountDueNow(itemPrice, payMode) : itemPrice;
+  const rates = enrollmentRates(content);
+  const displayAmount = discountable ? amountDueNow(itemPrice, payMode, rates) : itemPrice;
   const finalAmount = serverAmount ?? displayAmount;
-  const planTotal = serverPlanTotal ?? (discountable && payMode === 'installment' ? installmentTotal(itemPrice) : null);
+  const planTotal = serverPlanTotal ?? (discountable && payMode === 'installment' ? installmentTotal(itemPrice, rates) : null);
   const whatsapp = instituteWhatsApp(content);
 
   // InitiateCheckout once the page shows something payable to someone who can
@@ -645,14 +646,14 @@ const Checkout: React.FC = () => {
                         </div>
                         {discountable && payMode === 'cash' && itemPrice > finalAmount && (
                           <div className="flex justify-between text-green-700">
-                            <span>خصم الدفع الكامل (15%)</span>
+                            <span>خصم الدفع الكامل ({percentLabel(rates.cash)}%)</span>
                             <span>− {itemPrice - finalAmount} {currencySymbol}</span>
                           </div>
                         )}
                         {discountable && payMode === 'installment' && planTotal && (
                           <>
                             <div className="flex justify-between text-green-700">
-                              <span>خصم التقسيط (7%)</span>
+                              <span>خصم التقسيط ({percentLabel(rates.install)}%)</span>
                               <span>− {itemPrice - planTotal} {currencySymbol}</span>
                             </div>
                             <div className="flex justify-between font-semibold text-gray-800">
@@ -673,7 +674,7 @@ const Checkout: React.FC = () => {
                     </div>
                     {payMode === 'installment' && planTotal && (
                       <p className="text-[11px] text-amber-700 mt-2 bg-amber-50 border border-amber-200 rounded-lg p-2">
-                        دي أول دفعة (25% من إجمالي الكورس بعد الخصم). الباقي {planTotal - finalAmount} {currencySymbol}
+                        دي أول دفعة ({percentLabel(rates.first)}% من إجمالي الكورس بعد الخصم). الباقي {planTotal - finalAmount} {currencySymbol}
                         بيتقسّط، وفريقنا هيتواصل معاك بمواعيده.
                       </p>
                     )}

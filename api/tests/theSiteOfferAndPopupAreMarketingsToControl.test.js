@@ -115,9 +115,9 @@ test('the controls live in التسويق ← الخصومات and the site read
   assert.match(home, /offerPrices\(content, offerCourse, currency\)/, 'and shows the offer\'s own price');
   assert.doesNotMatch(home, /24 \* 60 \* 60 \* 1000/, 'no hard-coded 24 hours left in the page');
 
-  const popup = read('client/components/SitePopup.tsx');
+  const popup = read('client/components/SpecialOffer.tsx');
   assert.match(popup, /popupIsLive\(content\)/);
   assert.match(popup, /previewPopup/);
   assert.match(popup, /!isAdmin && !isStaff/, 'staff do not see it on the live site');
-  assert.match(read('client/App.tsx'), /<SitePopup \/>/, 'it is mounted for every page');
+  assert.match(read('client/App.tsx'), /<SpecialOffer \/>/, 'it is mounted for every page');
 });
