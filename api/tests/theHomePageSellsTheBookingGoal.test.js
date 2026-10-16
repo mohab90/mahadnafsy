@@ -1,7 +1,8 @@
 'use strict';
 
 // «التزم بالمنيو الرئيسية والهدف بتاعنا — بدل زر الاستشارات يبقى زر الحجز».
-// The new home page keeps the site's menu, drops the consultation / «هل لديك
+// The new home page (client/pages/HomeNew.tsx, served at /new beside the real one, which stays
+// exactly as it was) keeps the site's menu, drops the consultation / «هل لديك
 // استفسار؟ تواصل معنا» calls to action in favour of booking, puts the
 // certificate check straight under «لماذا نختار…», keeps it apart from the
 // payment band, and reads everything it shows from the real catalogue.
@@ -15,7 +16,7 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '..', '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
-const home = read('client/pages/Home.tsx');
+const home = read('client/pages/HomeNew.tsx');
 
 const goals = () => {
   const js = require('node:module').stripTypeScriptTypes(read('shared/homeGoals.ts')).replace(/^export /gm, '');
@@ -170,4 +171,32 @@ test('the reasons beside the tour video are compact, so the video matches their 
   const why = read('client/components/home/WhyChooseSection.tsx');
   assert.match(why, /lg:grid-cols-2 lg:items-stretch/);
   assert.match(why, /lg:aspect-auto lg:min-h-0/);
+});
+
+test('the new home page is a page of its own at /new: the real home page is untouched, and /new is never indexed', () => {
+  const app = read('client/App.tsx');
+  assert.match(app, /<Route path="\/" element=\{<Home \/>\} \/>/, 'the real home page is still at /');
+  assert.match(app, /<Route path="\/new" element=\{lazyPage\(<HomeNew \/>\)\} \/>/);
+  assert.match(app, /React\.lazy\(\(\) => import\('\.\/pages\/HomeNew'\)\)/, 'loaded only when /new is opened');
+  assert.match(home, /noindex, nofollow/);
+  assert.match(home, /useSeo\(\{[^}]*path: '\/'/, 'its canonical is the real home page');
+  const original = read('client/pages/Home.tsx');
+  for (const name of ['GoalFinder', 'PaymentBand', 'PathsSection', 'WhyChooseSection', 'CertificateCheck']) {
+    assert.ok(!original.includes(name), `the real home page does not use ${name}`);
+  }
+  assert.match(original, /consultation\.show_on_home/);
+});
+
+test('the new hero carries one small photo of three graduates, loaded lazily', () => {
+  const hero = home.slice(home.indexOf('{/* ── Hero'), home.indexOf('{/* Trust strip */}'));
+  assert.ok(hero.length > 500, 'the hero block was not located');
+  const images = hero.match(/<img\b[^>]*>/g) || [];
+  assert.equal(images.length, 1, 'exactly one hero image');
+  assert.match(images[0], /brand\/hero-graduates\.jpg/);
+  assert.match(images[0], /loading="lazy"/);
+  assert.match(images[0], /alt="[^"]+"/, 'described for screen readers');
+  const file = path.join(root, 'client/public/brand/hero-graduates.jpg');
+  assert.ok(fs.statSync(file).size < 200 * 1024, 'a hero photo under 200KB');
+  assert.doesNotMatch(home, /loading="eager"/);
+  for (const match of home.matchAll(/<img\b[^>]*>/g)) assert.match(match[0], /loading="lazy"/, `an image without lazy loading: ${match[0].slice(0, 80)}`);
 });
