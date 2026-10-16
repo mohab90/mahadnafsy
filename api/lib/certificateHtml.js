@@ -98,7 +98,7 @@ function certificateFormHtml({ studentName, courseName, duration, nameTop, cours
     `<div style="position:absolute;left:0;width:21cm;top:calc(${top}cm - ${height / 2}cm);height:${height}cm;display:flex;align-items:center;justify-content:center;text-align:center;white-space:nowrap">${inner}</div>`;
   return `<div class="form-sheet" id="cert">
 <img class="guide" src="${TEMPLATE_URL}" alt="" style="position:absolute;left:0;top:0;width:21cm;height:29.7cm;opacity:.32"/>
-${band(at.nameTop, 1.6, `<span style="font-family:${SERIF};font-size:${namePt}pt;font-weight:800;letter-spacing:.06em;color:#7E0F15">${escapeHtml(studentName)}</span>`)}
+${band(at.nameTop, 1.6, `<span style="font-family:${SERIF};font-size:${namePt}pt;font-weight:900;letter-spacing:.06em;color:#000">${escapeHtml(studentName)}</span>`)}
 ${band(at.courseTop, 1.6, `<span style="font-family:${SERIF};font-size:${coursePt}pt;font-weight:900;letter-spacing:.02em;color:#000">${escapeHtml(courseName)}</span>`)}
 ${line ? band(at.courseTop + 1.25, 1, `<span style="font-family:${SERIF};font-size:${linePt}pt;font-weight:900;letter-spacing:.02em;color:#000">${line}</span>`) : ''}
 ${certCode ? band(at.courseTop + (line ? 2.05 : 1.25), 0.7, `<span style="font-family:monospace;font-size:8.5pt;font-weight:700;letter-spacing:.08em;color:#333">${escapeHtml(certCode)}</span>`) : ''}

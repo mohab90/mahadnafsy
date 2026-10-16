@@ -66,19 +66,20 @@ test("the client's page is the whole design with the name, the course, the durat
   const html = String(res.sent);
   assert.match(html, />MONA AHMED ALI<\/div>/);
   assert.match(html, />Clinical Psychology Diploma<\/div>/);
-  assert.match(html, />Duration: 40 Hours<\/div>/);
+  assert.match(html, />completed 40 training hours in \d{4}<\/div>/, 'the duration is the sentence under the course');
   assert.match(html, />Dr Sara Adel<\/div>/, "the course's trainer is on the trainer's line");
   assert.match(html, /certificate-template\.jpg/);
 });
 
-test("the desk's copy has the name and the course only, at 17 and 22 cm, and no trainer", { skip }, async () => {
+test("the desk's copy has the name, the course and its line, at 16 and 22.6 cm, and no trainer", { skip }, async () => {
   const html = String((await page({ mode: 'form' })).sent);
   assert.match(html, />MONA AHMED ALI<\/span>/);
-  assert.match(html, />Duration: 40 Hours<\/span>/);
+  assert.match(html, />completed 40 training hours in \d{4}<\/span>/);
   assert.doesNotMatch(html, /Dr Sara Adel/);
-  assert.match(html, /top:calc\(17cm - 0\.8cm\)/);
-  assert.match(html, /top:calc\(22cm - 0\.7cm\)/);
-  assert.match(String((await page({ mode: 'form', nameTop: '16', courseTop: '21' })).sent), /top:calc\(16cm - 0\.8cm\)/);
+  assert.match(html, /top:calc\(16cm - 0\.8cm\)/, 'the name at 16 cm (a centimetre above where it was)');
+  assert.match(html, /top:calc\(22\.6cm - 0\.8cm\)/, 'the course lower, at 22.6 cm');
+  assert.match(html, /font-weight:900;letter-spacing:\.06em;color:#000[^>]*>MONA AHMED ALI/, 'the name is bold solid black');
+  assert.match(String((await page({ mode: 'form', nameTop: '15', courseTop: '21' })).sent), /top:calc\(15cm - 0\.8cm\)/);
 });
 
 test("the desk's list says what prints, and an edit changes this certificate only", { skip }, async () => {
@@ -94,7 +95,7 @@ test("the desk's list says what prints, and an edit changes this certificate onl
   const html = String((await page({})).sent);
   assert.match(html, />MONA AHMED ALI HASSAN<\/div>/);
   assert.match(html, />Clinical Psychology Diploma \(Advanced\)<\/div>/);
-  assert.match(html, />Duration: 6 Months<\/div>/);
+  assert.match(html, />completed 6 Months of training in \d{4}<\/div>/);
   assert.match(html, />Dr Hany<\/div>/);
   const [[client]] = await pool.query("SELECT name_en FROM subscribers WHERE id='s-cp-1'");
   assert.equal(client.name_en, 'mona ahmed ali', "the client's file is not rewritten");
