@@ -4,6 +4,9 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, Link } f
 import Header from './components/Header';
 import Footer from './components/Footer';
 import Home from './pages/Home';
+import { siteDesign, DEFAULT_DESIGN, type SiteDesignId } from '../shared/siteDesigns';
+// The home page as it was before the redesign, kept as a design the panel can switch back to.
+const HomeClassic = React.lazy(() => import('./pages/HomeClassic'));
 import { useVisibleInterval } from '../shared/useVisibleInterval';
 import { trackLead, trackPageView } from './lib/tracking';
 
@@ -313,6 +316,25 @@ const NotFound: React.FC = () => {
   );
 };
 
+const DESIGN_KEY = 'mahad.design';
+
+/**
+ * The home page in the design chosen in the panel («تصميم الموقع», site.design).
+ * Until the site content has loaded, the design this browser saw last is drawn,
+ * so a returning visitor never sees one design swap for the other.
+ */
+const HomeByDesign: React.FC = () => {
+  const { content, remoteReady } = useSiteData();
+  let remembered: SiteDesignId = DEFAULT_DESIGN;
+  try { if (window.localStorage.getItem(DESIGN_KEY) === 'classic') remembered = 'classic'; } catch { /* private mode */ }
+  const design = remoteReady ? siteDesign(content) : remembered;
+  useEffect(() => {
+    if (!remoteReady) return;
+    try { window.localStorage.setItem(DESIGN_KEY, design); } catch { /* private mode */ }
+  }, [remoteReady, design]);
+  return design === 'classic' ? lazyPage(<HomeClassic />) : <Home />;
+};
+
 /** Legacy locale URLs redirect only; the server owns customer currency. */
 const LocaleRoute: React.FC<{ locale: 'EGP' | 'SAR' | 'USD' }> = () => <Navigate to="/" replace />;
 
@@ -501,7 +523,7 @@ const AppShell: React.FC = () => {
               <Route path="/eg" element={<LocaleRoute locale="EGP" />} />
               <Route path="/sa" element={<LocaleRoute locale="SAR" />} />
               <Route path="/usd" element={<LocaleRoute locale="USD" />} />
-              <Route path="/" element={<Home />} />
+              <Route path="/" element={<HomeByDesign />} />
               {/* The redesigned home page, beside the real one — not linked from the menu, not indexed. */}
               <Route path="/new" element={<Navigate to="/" replace />} />
               <Route path="/about" element={lazyPage(<AboutUs />)} />

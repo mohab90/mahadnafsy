@@ -9,6 +9,7 @@ import { offerHours, offerIsShown, offerRemainingMs } from '../../shared/siteOff
 import { useSeo } from '../lib/useSeo';
 import { photoUrl } from '../components/Picture';
 import { goalsFromCourses, recommendedCourse } from '../../shared/homeGoals';
+import { heroChoices, nextHero, type HeroVariantId } from '../../shared/siteDesigns';
 import HeroSection from '../components/home/HeroSection';
 import ProgramExplorer from '../components/home/ProgramExplorer';
 import OfferSpotlight from '../components/home/OfferSpotlight';
@@ -57,9 +58,29 @@ const VideoSurface = React.lazy(() => import('../components/VideoSurface').then(
 
 type Lightbox = { kind: 'video' } | { kind: 'photo'; index: number } | null;
 
+const LAST_HERO = 'mahad.hero.last';
+
+// A different hero on each visit (or the one the panel fixed): the next of the
+// allowed variants after the one this browser saw last, so a refresh always
+// changes it. Picked before the first paint, so the page never redraws its top.
+function useHeroVariant(content: Record<string, string | undefined>): HeroVariantId {
+  const choices = heroChoices(content);
+  const [picked] = useState<HeroVariantId>(() => {
+    let last: string | null = null;
+    try { last = window.localStorage.getItem(LAST_HERO); } catch { /* private mode */ }
+    return nextHero(choices, last);
+  });
+  const variant = choices.includes(picked) ? picked : choices[0];
+  useEffect(() => {
+    try { window.localStorage.setItem(LAST_HERO, variant); } catch { /* private mode */ }
+  }, [variant]);
+  return variant;
+}
+
 const Home: React.FC = () => {
   const { courses, bundles, testimonials, therapists, addPublicLead, content, discounts, currency } = useSiteData();
   const timer = useOfferCountdown(content);
+  const heroVariant = useHeroVariant(content);
   const offerShown = offerIsShown(content);
   const videoUrl = content['home.video.url'] || '';
 
@@ -104,7 +125,7 @@ const Home: React.FC = () => {
     <div className="animate-fade-in bg-white">
       {/* ── Offer strip: the timed offer, with its countdown ── */}
       {offerShown && (
-        <div className="bg-ink text-white">
+        <div className={`text-white ${heroVariant === 'dark' ? 'bg-primary-800' : 'bg-ink'}`}>
           <div className="container mx-auto flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 px-4 py-2.5 text-center text-sm font-bold sm:text-[15px]">
             <span className="inline-flex items-center gap-2">
               <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full rounded-full bg-gold-light opacity-70 motion-safe:animate-ping" /><span className="relative inline-flex h-2 w-2 rounded-full bg-gold-light" /></span>
@@ -121,7 +142,7 @@ const Home: React.FC = () => {
       )}
 
       {/* ── Hero ── */}
-      <HeroSection content={content} therapists={therapists} hasVideo={!!videoUrl} onPlay={() => setLightbox({ kind: 'video' })} />
+      <HeroSection content={content} therapists={therapists} hasVideo={!!videoUrl} onPlay={() => setLightbox({ kind: 'video' })} variant={heroVariant} />
 
       {/* ── Programmes, by specialty ── */}
       <ProgramExplorer content={content} courses={courses} currency={currency} />

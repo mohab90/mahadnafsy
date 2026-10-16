@@ -41,8 +41,10 @@ test('the main menu is untouched', () => {
 test('the home page leads with booking and keeps the consultation slide', () => {
   assert.doesNotMatch(home, /احجز استشارة/);
   assert.match(home, /<Link to="\/enroll"[^>]*>[\s\S]{0,80}احجز مكانك الآن/);
-  assert.match(hero, /ابدأ مسارك المهني في <span[^>]*>الصحة النفسية<svg[\s\S]*?<\/svg><\/span> بتدريب نظري وعملي مع أفضل دكاترة علم النفس وبشهادة معتمدة/);
-  assert.match(hero, /<Link to="\/enroll"[^>]*>[\s\S]{0,80}احجز مكانك الآن/, 'the hero leads with booking');
+  const designs = read('shared/siteDesigns.ts');
+  assert.match(designs, /title: 'ابدأ مسارك المهني في الصحة النفسية بتدريب نظري وعملي مع أفضل دكاترة علم النفس وبشهادة معتمدة',\s*highlight: 'الصحة النفسية',/, 'the owner\'s headline is the white hero\'s');
+  assert.match(hero, /<Link to="\/enroll"[^>]*>\s*<span>\{text\.primaryCta\}<\/span>/, 'every hero leads with booking');
+  for (const id of ['white', 'red', 'dark']) assert.match(designs, new RegExp(`id: '${id}'[\\s\\S]*?primaryCta: 'احجز مكانك الآن'`), `${id} books`);
   assert.match(home, /offerIsShown\(content\)/, 'the 24-hour strip still follows the marketing switch');
   assert.match(home, /<a href="#offer"[^>]*>احجز الآن<\/a>/);
   assert.match(home, /content\['consultation\.show_on_home'\] !== 'false' && <ConsultationSection/);
@@ -179,14 +181,47 @@ test('the tour video is a square beside the reasons, and loads only when played'
   assert.match(why, /playing && videoUrl \?/, 'and the player loads only when asked for');
 });
 
-test('the new design is the home page, and the old /new address leads to it', () => {
+test('the home page shows the design chosen in the panel; the old /new address leads to it', () => {
   const app = read('client/App.tsx');
-  assert.match(app, /<Route path="\/" element=\{<Home \/>\} \/>/);
-  assert.match(app, /import Home from '\.\/pages\/Home';/, 'loaded with the first screen, not lazily');
+  assert.match(app, /<Route path="\/" element=\{<HomeByDesign \/>\} \/>/);
+  assert.match(app, /import Home from '\.\/pages\/Home';/, 'the new design loads with the first screen, not lazily');
+  assert.match(app, /const HomeClassic = React\.lazy\(\(\) => import\('\.\/pages\/HomeClassic'\)\)/, 'the classic one only when chosen');
+  assert.match(app, /const design = remoteReady \? siteDesign\(content\) : remembered;/, 'the panel decides; until it has answered, the design this browser saw last');
   assert.match(app, /<Route path="\/new" element=\{<Navigate to="\/" replace \/>\} \/>/);
-  assert.ok(!fs.existsSync(path.join(root, 'client/pages/HomeNew.tsx')), 'one home page');
+  assert.ok(!fs.existsSync(path.join(root, 'client/pages/HomeNew.tsx')), 'no third home page');
   assert.doesNotMatch(home, /noindex/, 'and it is indexed');
   assert.match(home, /useSeo\(\{[^}]*path: '\/'/);
+});
+
+test('three heroes, a different one on each visit, never the one just seen', () => {
+  const js = require('node:module').stripTypeScriptTypes(read('shared/siteDesigns.ts')).replace(/^export /gm, '');
+  const m = { exports: {} };
+  // eslint-disable-next-line no-new-func
+  new Function('module', `${js}\nmodule.exports = { siteDesign, heroText, heroChoices, nextHero, HERO_VARIANTS, DESIGNS };`)(m);
+  const { siteDesign, heroText, heroChoices, nextHero, HERO_VARIANTS, DESIGNS } = m.exports;
+  assert.deepEqual(HERO_VARIANTS.map(v => v.id), ['white', 'red', 'dark']);
+  assert.deepEqual(DESIGNS.map(d => d.id), ['modern', 'classic']);
+  assert.equal(siteDesign({}), 'modern');
+  assert.equal(siteDesign({ 'site.design': 'classic' }), 'classic');
+  assert.equal(siteDesign({ 'site.design': 'nonsense' }), 'modern');
+  assert.deepEqual(heroChoices({}), ['white', 'red', 'dark']);
+  assert.deepEqual(heroChoices({ 'home.hero.red.enabled': 'false' }), ['white', 'dark']);
+  assert.deepEqual(heroChoices({ 'home.hero.mode': 'dark' }), ['dark'], 'the panel can fix one');
+  assert.deepEqual(heroChoices({ 'home.hero.white.enabled': 'false', 'home.hero.red.enabled': 'false', 'home.hero.dark.enabled': 'false' }), ['white'], 'never none');
+  // A refresh moves on to the next one.
+  let last = null;
+  const seen = [];
+  for (let i = 0; i < 6; i++) { last = nextHero(['white', 'red', 'dark'], last, () => 0); seen.push(last); }
+  for (let i = 1; i < seen.length; i++) assert.notEqual(seen[i], seen[i - 1]);
+  assert.deepEqual(new Set(seen), new Set(['white', 'red', 'dark']));
+  // Panel text wins; the white hero still answers to the keys it had before variants.
+  assert.equal(heroText({ 'home.hero.red.title': 'عنوان' }, 'red').title, 'عنوان');
+  assert.equal(heroText({ 'home.heroSubtitle': 'وصف قديم' }, 'white').subtitle, 'وصف قديم');
+  assert.equal(heroText({}, 'dark').highlight, 'بشهادة معتمدة');
+  for (const v of HERO_VARIANTS) assert.ok(v.defaults.title.includes(v.defaults.highlight), `${v.id}: the highlight is part of its title`);
+  const homeSrc = read('client/pages/Home.tsx');
+  assert.match(homeSrc, /nextHero\(choices, last\)/);
+  assert.match(homeSrc, /localStorage\.setItem\(LAST_HERO, variant\)/);
 });
 
 test('the hero shows three real graduates, larger, as light WebP, with nothing written over them', () => {
@@ -200,8 +235,10 @@ test('the hero shows three real graduates, larger, as light WebP, with nothing w
     }
   }
   assert.match(hero, /<Picture[\s\S]*?photo=\{`hero-\$\{g\.name\}`\}/);
-  const photos = hero.slice(hero.indexOf("three of the institute's graduates"), hero.indexOf('</section>'));
-  assert.doesNotMatch(photos, /absolute -bottom|absolute -top/, 'no card floats over the photos');
+  const visuals = hero.slice(hero.indexOf('const ProofChips'), hero.indexOf('const HeroSection'));
+  assert.ok(visuals.length > 500, 'the photo blocks were not located');
+  assert.match(visuals, /<ProofChips content=\{content\} light \/>/, 'the labels sit under the three photos');
+  assert.match(visuals, /<div className="pt-4"><ProofChips content=\{content\} light=\{false\} \/><\/div>/, 'and under the arch photos, in the flow, not on them');
 });
 
 test('the graduation photos ship with the site and open in the one lightbox', () => {
