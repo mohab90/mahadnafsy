@@ -50,7 +50,8 @@ test('only a free transfer is deleted', async () => {
 test('the managers\' only, recorded in the audit trail; the buttons are theirs', () => {
   const route = fs.readFileSync(path.join(__dirname, '../routes/core/financepay.js'), 'utf8');
   assert.match(route, /const managesTransfers = req => req\.isSuperAdmin \|\| \['admin', 'manager'\]\.includes/);
-  assert.equal((route.match(/if \(!managesTransfers\(req\)\) return res\.status\(403\)/g) || []).length, 2);
+  // Edit, delete — and the two account-merge routes (lib/transferAccounts.js) that rewrite a box's name.
+  assert.equal((route.match(/if \(!managesTransfers\(req\)\) return res\.status\(403\)/g) || []).length, 4);
   assert.match(route, /action: 'incoming_transfer\.updated'/);
   assert.match(route, /action: 'incoming_transfer\.deleted'/);
   const view = fs.readFileSync(path.join(__dirname, '../../admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx'), 'utf8');

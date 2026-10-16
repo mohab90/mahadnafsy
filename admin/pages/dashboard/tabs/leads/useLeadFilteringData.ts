@@ -3,6 +3,7 @@ import { cairoDateOnly, cairoDaysAgo, cairoDaysAhead } from '../../../../../shar
 import type { BranchOption } from '../../../../hooks/useBranches';
 import type { LeadItem, LeadStatus, StaffMember } from '../../../../types';
 import { DEFAULT_SOURCES, isOnlineSource } from '../crmConstants';
+import { sourceKey } from '../../../../../shared/leadSources';
 import {
   BRANCH_ENUM_LABELS,
   PIPELINE_COLS,
@@ -112,7 +113,7 @@ export function useLeadFilteringData({
     (singleStatus === '' || lead.status === singleStatus) &&
     (!rottenFilter || getRottenLevel(lead) >= 1) &&
     !!(lead.name?.trim() || lead.phone?.trim()) &&
-    (!salesSourceFilter || (salesSourceFilter === '__none__' ? !lead.source?.trim() : (lead.source || '') === salesSourceFilter)) &&
+    (!salesSourceFilter || (salesSourceFilter === '__none__' ? !lead.source?.trim() : salesSourceFilter.split('||').includes(lead.source || ''))) &&
     (leadsFollowupFilter === 'all' || (() => {
       const todayDate = cairoDateOnly();
       const nextFollowupDate = lead.nextFollowUpDate || '';
@@ -171,9 +172,14 @@ export function useLeadFilteringData({
     [leads, today]
   );
 
+  // One entry per source however it was spelled (shared/leadSources.ts), not one per spelling.
   const sourceOptions = useMemo(() => {
-    const fromLeads = Array.from(new Set(effectiveLeads.map((lead) => lead.source).filter(Boolean))) as string[];
-    return Array.from(new Set([...DEFAULT_SOURCES, ...fromLeads]));
+    const fromLeads = effectiveLeads.map((lead) => lead.source).filter(Boolean) as string[];
+    const seen = new Set<string>();
+    return [...DEFAULT_SOURCES, ...fromLeads].filter(source => {
+      const key = sourceKey(source);
+      return key && !seen.has(key) && seen.add(key);
+    });
   }, [effectiveLeads]);
 
   return { activeLead, assignedReps, visibleLeads, scoredLeads, activeStatusCols, overdueLeads, sourceOptions, today, matchesFilters };

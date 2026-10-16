@@ -472,4 +472,35 @@ router.delete('/api/admin/leads/:id', requireAuth, requireAdmin, requirePermissi
   } finally { conn.release(); }
 });
 
+// Leads per source, spelling by spelling — what «توحيد المصادر» works from.
+router.get('/api/admin/leads/source-counts', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT source, COUNT(*) AS n FROM leads WHERE tenant_id=? AND TRIM(COALESCE(source, '')) <> '' GROUP BY source ORDER BY n DESC LIMIT 2000`,
+      [req.tenantId]);
+    res.json(Object.fromEntries(rows.map(row => [row.source, Number(row.n) || 0])));
+  } catch (e) { sendRouteError(res, e); }
+});
+
+// «في المصادر كمية كبيرة مكررة»: the spellings of one source become one. Managers only — it rewrites a
+// column on every lead that carries one of them — and audited. The leads' other fields are untouched.
+router.post('/api/admin/leads/merge-sources', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), async (req, res) => {
+  try {
+    if (!req.isSuperAdmin && !['admin', 'manager'].includes(String(req.staffRecord?.role || '').toLowerCase())) {
+      return res.status(403).json({ error: 'توحيد المصادر للمديرين', code: 'MANAGERS_ONLY' });
+    }
+    const to = sanitize(req.body?.to || '', 255).trim();
+    const from = [...new Set((Array.isArray(req.body?.from) ? req.body.from : []).map(name => String(name || '')).filter(name => name.trim() && name !== to))].slice(0, 60);
+    if (!to) return res.status(400).json({ error: 'اختار الاسم اللي المصادر هتتوحد عليه' });
+    if (!from.length) return res.status(400).json({ error: 'اختار مصدر واحد على الأقل' });
+    const [result] = await pool.query('UPDATE leads SET source=? WHERE tenant_id=? AND source IN (?)', [to, req.tenantId, from]);
+    const { writeAuditEvent } = require('../../../lib/auditTrail');
+    await writeAuditEvent({
+      action: 'lead.sources_merged', entityType: 'lead_source', entityId: to, severity: 'warning',
+      metadata: { from, to, leads: result.affectedRows || 0 }, req,
+    }).catch(() => {});
+    res.json({ ok: true, leads: result.affectedRows || 0, to });
+  } catch (e) { sendRouteError(res, e); }
+});
+
 module.exports = router;

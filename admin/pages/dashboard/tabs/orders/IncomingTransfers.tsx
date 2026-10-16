@@ -6,6 +6,7 @@ import { isCashBox } from '../../../../../shared/paymentMethods';
 import { foldText } from '../../../../../shared/sheetImport';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { toEgp } from '../../../../lib/money';
+import { TransferAccountsMerge } from './TransferAccountsMerge';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -51,13 +52,16 @@ export function useIncomingTransfers(enabled: boolean) {
   return { transfers, loading, reload };
 }
 
-export function IncomingTransfersTable({ transfers, loading, canLink, onLink, onAdd, canManage = false, onEdit, onDelete }: {
+export function IncomingTransfersTable({ transfers, loading, canLink, onLink, onAdd, canManage = false, onEdit, onDelete, notify, onMerged }: {
   transfers: IncomingTransfer[]; loading: boolean; canLink: boolean;
   onLink: (transfer: IncomingTransfer) => void; onAdd: () => void;
   /** «عند المديرين صلاحيه تعديل او حذف لتحويل معين موظف رفعه غلط». */
   canManage?: boolean;
   onEdit?: (transfer: IncomingTransfer) => void;
   onDelete?: (transfer: IncomingTransfer) => void;
+  /** «حساب 1010 وحساب 1079 دول حساب واحد»: the managers merge an account's names (TransferAccountsMerge). */
+  notify?: Notify;
+  onMerged?: () => void | Promise<void>;
 }) {
   const linked = transfers.filter(transfer => transfer.paymentId);
   const totalEgp = transfers.reduce((sum, transfer) => sum + toEgp(transfer.amount, transfer.currency), 0);
@@ -82,6 +86,7 @@ export function IncomingTransfersTable({ transfers, loading, canLink, onLink, on
   const field = 'rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-200';
   return (
     <div className="space-y-3">
+      {canManage && notify && onMerged && <TransferAccountsMerge notify={notify} onMerged={onMerged} />}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
           { label: 'إجمالي التحويلات', value: transfers.length, cls: 'bg-blue-50 border-blue-200 text-blue-700' },
