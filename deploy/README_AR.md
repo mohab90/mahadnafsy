@@ -139,3 +139,17 @@ MAHAD_HOST=<عنوان-السيرفر> MAHAD_KEY=~/.ssh/<مفتاحك> bash depl
 **تجربة استرجاع أسبوعية:** النشر بيسطّب `/etc/cron.d/mahad-restore-rehearsal`، كل جمعة 5:30 الصبح بيشغّل `npm run verify:backup-restores` في `/var/www/mahad-api`: بيرجّع أحدث باك أب في قاعدة مؤقتة، يقارنها بالحية، ويمسحها. النتيجة في `/var/log/mahad-restore-rehearsal.log`، والفشل سطر `ALERT` في syslog.
 
 **المساحة:** `/api/health` (من 127.0.0.1) بيعرض نسبة امتلاء القرص، ولو وصلت `DISK_ALERT_PERCENT` (80%) بيتبعت واتساب لأرقام التقرير اليومي مرة في الأسبوع.
+
+### النسخة الجانبية للرئيسية الجديدة
+
+`deploy/side-copy.sh` بيرفع الرئيسية الجديدة على `https://<الدومين>/new/` **من غير ما يلمس الرئيسية الأصلية**: بيبني الواجهة بـ`VITE_APP_BASE=/new/` و`VITE_ROUTER_BASENAME=/new` من غير service worker، ويشيل Google tag وMeta Pixel (عشان زيارات الاختبار ما تتحسبش) ويحط `noindex`، ويرفعها في فولدر لوحده (`/var/www/mahad-side/new`) ويبدّله بـ`mv`. مش بيعدّل nginx ولا أي خدمة.
+
+```bash
+bash deploy/side-copy.sh --prepare-only        # يبني artifacts/mahad-new-client-<commit>.tgz من غير رفع
+MAHAD_HOST=<عنوان-السيرفر> MAHAD_KEY=~/.ssh/<مفتاحك> bash deploy/side-copy.sh
+```
+
+خطوة nginx الوحيدة (مرة واحدة، بإيدك): احفظ `deploy/nginx/mahad-new-side.conf.example` في `/etc/nginx/snippets/mahad-new-side.conf`، وضيف `include /etc/nginx/snippets/mahad-new-side.conf;` جوه `server` بتاع `mahadnafsy.com`، وبعدها `nginx -t && systemctl reload nginx`.
+
+النسخة بتكلّم نفس الـAPI بتاع الموقع، فالمحتوى هو محتوى المعهد الفعلي، لكن **أي حجز أو تسجيل من `/new/` بيتسجّل فعلاً**. لازالتها: امسح `/var/www/mahad-side/new` (والـ`include` من nginx).
+

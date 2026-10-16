@@ -34,7 +34,9 @@ window.addEventListener('error', (event) => {
   recoverFromStaleChunk(event.message ?? '');
 });
 
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+// The side copy (deploy/side-copy.sh) is built with VITE_DISABLE_SW=1: it lives under /new/ on the
+// same domain, and a second worker registered from there would fight the main site's.
+if (import.meta.env.PROD && !import.meta.env.VITE_DISABLE_SW && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {/* SW optional */});
   });

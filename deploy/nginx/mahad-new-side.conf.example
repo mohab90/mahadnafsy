@@ -1,0 +1,26 @@
+# The side copy of the new home page, at https://mahadnafsy.com/new/ — the real home page at / is
+# not touched. One-time setup (deploy/side-copy.sh puts the files there; this only serves them):
+#
+#   1. save this as /etc/nginx/snippets/mahad-new-side.conf
+#   2. inside the existing `server { … }` block of mahadnafsy.com add the line
+#        include /etc/nginx/snippets/mahad-new-side.conf;
+#   3. nginx -t && systemctl reload nginx
+#
+# The copy is static; /api/ is the same API as the real site's (same content, same customers,
+# same orders), because it is served from the same domain.
+
+location = /new { return 301 /new/; }
+
+location ^~ /new/ {
+    root /var/www/mahad-side;                 # files live in /var/www/mahad-side/new/
+    try_files $uri $uri/ /new/index.html;
+    add_header X-Robots-Tag "noindex, nofollow" always;
+    add_header Cache-Control "no-store" always;
+}
+
+location ^~ /new/assets/ {
+    root /var/www/mahad-side;
+    try_files $uri =404;
+    add_header X-Robots-Tag "noindex, nofollow" always;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+}
