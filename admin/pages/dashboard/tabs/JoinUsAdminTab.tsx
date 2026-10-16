@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BriefcaseBusiness, Filter, GraduationCap, RefreshCw, RotateCcw, Search } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { useCanDelete } from '../../../hooks/useCanDelete';
@@ -252,10 +252,15 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
 
   // The tab's own data can be minutes stale — refresh whenever staff actually
   // open the tab, not just on the wider app's schedule.
+  // How many there are, counted by the server over the whole scope. The tab's own figures are what has
+  // loaded; when the two differ the tab says so rather than presenting a part as the whole.
+  const [serverCounts, setServerCounts] = useState<Awaited<ReturnType<typeof mysqlAdmin.joinUsCounts>> | null>(null);
+  const loadCounts = useCallback(() => { mysqlAdmin.joinUsCounts().then(setServerCounts).catch(() => setServerCounts(null)); }, []);
   useEffect(() => { void reloadJoinUsApplications(); }, [reloadJoinUsApplications]);
+  useEffect(() => { loadCounts(); }, [loadCounts]);
   const refresh = async () => {
     setRefreshing(true);
-    try { await reloadJoinUsApplications(); } finally { setRefreshing(false); }
+    try { await reloadJoinUsApplications(); loadCounts(); } finally { setRefreshing(false); }
   };
 
   const notify = useMemo(() => (type: Toast['type'], text: string) => {
@@ -412,6 +417,11 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
         </button>
       </section>
 
+      {serverCounts && serverCounts.total > joinUsApplications.length && (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+          ظاهر {joinUsApplications.length.toLocaleString('ar-EG-u-nu-latn')} من {serverCounts.total.toLocaleString('ar-EG-u-nu-latn')} طلب — دوس «تحديث» عشان تحمّلهم كلهم.
+        </p>
+      )}
       <div role="tablist" className="grid gap-2 sm:grid-cols-2">
         {(['teaching', 'staff'] as Group[]).map(key => {
           const { title, Icon, tab, ring } = GROUPS[key];
@@ -423,7 +433,9 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
                 active ? `${tab} border-transparent shadow-lg` : `border-gray-200 bg-white ${ring}`}`}>
               <span className="flex items-center gap-2 text-base font-black"><Icon size={20} /> {title}</span>
               <span className="flex items-center gap-1.5 text-xs font-bold">
-                <span className={`rounded-full px-2 py-0.5 ${active ? 'bg-white/20' : 'bg-gray-100 text-gray-700'}`}>{byGroup[key].length}</span>
+                <span className={`rounded-full px-2 py-0.5 ${active ? 'bg-white/20' : 'bg-gray-100 text-gray-700'}`}
+                  title={serverCounts && serverCounts.byForm[key] !== byGroup[key].length ? `ظاهر ${byGroup[key].length} من ${serverCounts.byForm[key]}` : undefined}>
+                  {serverCounts ? serverCounts.byForm[key] : byGroup[key].length}</span>
                 {newCount > 0 && <span className={`rounded-full px-2 py-0.5 ${active ? 'bg-white text-gray-900' : 'bg-sky-600 text-white'}`}>{newCount} جديد</span>}
               </span>
             </button>
