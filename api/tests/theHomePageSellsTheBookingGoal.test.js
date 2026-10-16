@@ -195,11 +195,11 @@ test('the hero shows three real graduates, larger, as light WebP, with nothing w
   for (const [, name, alt] of tiles) {
     assert.ok(alt.length > 10, `${name} is described`);
     for (const file of [`hero-${name}-360.webp`, `hero-${name}-640.webp`, `hero-${name}.jpg`]) {
-      const size = fs.statSync(path.join(root, 'client/public/brand/grads', file)).size;
+      const size = fs.statSync(path.join(root, 'client/assets/photos', file)).size;
       assert.ok(size < (file.endsWith('360.webp') ? 30 : 100) * 1024, `${file} is light (${Math.round(size / 1024)}KB)`);
     }
   }
-  assert.match(hero, /<Picture[\s\S]*?base=\{`brand\/grads\/hero-\$\{g\.name\}`\}/);
+  assert.match(hero, /<Picture[\s\S]*?photo=\{`hero-\$\{g\.name\}`\}/);
   const photos = hero.slice(hero.indexOf("three of the institute's graduates"), hero.indexOf('</section>'));
   assert.doesNotMatch(photos, /absolute -bottom|absolute -top/, 'no card floats over the photos');
 });
@@ -210,7 +210,7 @@ test('the graduation photos ship with the site and open in the one lightbox', ()
   assert.ok(photos.length >= 6, 'a wall of real photos');
   for (const [name, widths] of photos) {
     for (const w of widths) {
-      const size = fs.statSync(path.join(root, 'client/public/brand/grads', `${name}-${w}.webp`)).size;
+      const size = fs.statSync(path.join(root, 'client/assets/photos', `${name}-${w}.webp`)).size;
       assert.ok(size < (w <= 480 ? 45 : 120) * 1024, `${name}-${w}.webp is light (${Math.round(size / 1024)}KB)`);
     }
   }

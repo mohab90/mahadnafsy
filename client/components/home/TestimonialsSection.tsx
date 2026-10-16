@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Quote, Star } from 'lucide-react';
 import type { TestimonialItem } from '../../types';
 import { cdnImg } from '../../lib/img';
+import { photoUrl } from '../Picture';
 import { Reveal } from './Reveal';
 
 type Content = Record<string, string | undefined>;
@@ -27,8 +28,8 @@ const TestimonialsSection: React.FC<{ content: Content; testimonials: Testimonia
   const go = (step: number) => setAt(i => (i + step + count) % count);
 
   return (
-    <section className="relative overflow-hidden bg-ink py-16 text-white sm:py-24">
-      <img src={`${import.meta.env.BASE_URL}brand/grads/celebration-480.webp`} alt="" aria-hidden="true" loading="lazy" className="absolute inset-0 h-full w-full object-cover opacity-[.12]" />
+    <section className="cv-auto relative overflow-hidden bg-ink py-16 text-white sm:py-24">
+      <img src={photoUrl('celebration-480.webp')} alt="" aria-hidden="true" loading="lazy" className="absolute inset-0 h-full w-full object-cover opacity-[.12]" />
       <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-b from-ink via-ink/80 to-ink" />
 
       <div className="container relative mx-auto grid items-center gap-10 px-4 lg:grid-cols-[.8fr_1.2fr] lg:gap-16">

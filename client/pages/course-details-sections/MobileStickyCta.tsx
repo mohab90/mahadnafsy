@@ -27,37 +27,37 @@ export const MobileStickyCta: React.FC<MobileStickyCtaProps> = ({
   const strikePrice = discountedPrice !== null ? currentPrice : oldPrice;
   const payPrice = discountedPrice !== null ? discountedPrice : currentPrice;
   return (
-    <div data-sticky-cta="lg" className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] pb-8 md:pb-4">
-       <div className="flex gap-2 items-center max-w-lg mx-auto">
-           <div className="flex-shrink-0">
+    <div data-sticky-cta="lg" className="lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-line bg-white/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-18px_40px_-24px_rgba(26,15,18,.45)]">
+       <div className="mx-auto flex max-w-lg items-center gap-2">
+           <div className="min-w-0 flex-shrink-0">
                {currentPrice > 0 ? (
                  <>
                    {isDiscounted(strikePrice, payPrice) && (
-                     <p className="text-xs text-gray-500 line-through">{formatAmount(strikePrice)} {currencySymbol}</p>
+                     <s className="block text-xs tabular-nums text-muted-faint">{formatAmount(strikePrice)} {currencySymbol}</s>
                    )}
-                   <p className="text-lg font-bold text-primary-700">{formatAmount(payPrice)} {currencySymbol}</p>
+                   <p className="whitespace-nowrap text-lg font-black leading-tight tabular-nums text-ink">{formatAmount(payPrice)} <span className="text-sm text-primary-700">{currencySymbol}</span></p>
                  </>
-               ) : <p className="text-xs font-bold text-amber-700">السعر غير متاح</p>}
+               ) : <p className="text-xs font-bold text-gold-deep">السعر غير متاح</p>}
            </div>
            {isSubscribed ? (
-             <div className="bg-green-50 border-2 border-green-500 text-green-700 px-4 py-3 rounded-xl font-bold flex-1 text-sm flex justify-center items-center gap-1">
+             <div className="flex min-h-[48px] flex-1 items-center justify-center gap-1 rounded-2xl border-2 border-green-500 bg-green-50 px-3 text-sm font-bold text-green-700">
                <Check size={16} /> أنت مشترك
              </div>
            ) : currentPrice > 0 ? (
-             <button onClick={onBuyNow} className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-3 rounded-xl font-bold flex-1 shadow-lg shadow-primary-500/30 transition text-sm flex justify-center items-center gap-1">
-               <Check size={16} />
+             <button onClick={onBuyNow} className="flex min-h-[48px] min-w-0 flex-1 items-center justify-center gap-1 rounded-2xl bg-primary-700 px-3 text-[13px] font-black leading-tight sm:text-sm text-white shadow-[0_12px_24px_-12px_rgba(159,18,57,.8)] transition hover:bg-primary-800">
+               <Check size={16} className="flex-none" />
                احجز الآن واستفد بخصم
              </button>
            ) : (
-             <div className="bg-amber-50 border border-amber-300 text-amber-800 px-3 py-3 rounded-xl font-bold flex-1 text-xs text-center">
+             <div className="flex min-h-[48px] flex-1 items-center justify-center rounded-2xl bg-paper px-3 text-center text-xs font-bold text-gold-deep ring-1 ring-line">
                تواصل لتجهيز السعر
              </div>
            )}
            <button
              onClick={onRegisterClick}
-             className="bg-white border-2 border-primary-600 text-primary-700 px-4 py-3 rounded-xl font-bold flex-1 transition text-sm flex justify-center items-center gap-1"
+             className="flex min-h-[48px] flex-none items-center justify-center gap-1 whitespace-nowrap rounded-2xl border-[1.5px] border-ink/15 bg-white px-3 text-[13px] font-extrabold text-ink transition hover:border-ink/40"
            >
-             <Send size={14} /> سجل بياناتك
+             <Send size={15} /> سجل بياناتك
            </button>
        </div>
     </div>

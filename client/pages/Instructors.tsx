@@ -1,110 +1,118 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
-import { Star, Shield, ArrowRight, CalendarCheck2, Globe, GraduationCap } from 'lucide-react';
+import { Star, Shield, ArrowLeft, CalendarCheck2, Globe, GraduationCap } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import { isConsultationEnabled, meetingProviderLabels } from '../lib/consultations';
-import { cdnImg } from '../lib/img';
+import { cdnImg, cdnSrcSet } from '../lib/img';
 import { useSeo } from '../lib/useSeo';
+import PageHeader from '../components/PageHeader';
 
 const Instructors: React.FC = () => {
   const { therapists, content } = useSiteData();
   useSeo({ title: 'الخبراء والمدربين | معهد الدراسات النفسية', path: '/instructors', description: 'نخبة الخبراء والمدربين في معهد الدراسات النفسية — سِيَر ذاتية وتخصصات كل محاضر.' });
   return (
-    <div className="bg-gray-50 min-h-screen">
-      {/* Hero */}
-      <div className="bg-gradient-to-br from-gray-900 via-emerald-950 to-gray-900 text-white py-16 relative overflow-hidden">
-        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5"></div>
-        <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-700 rounded-full blur-[120px] opacity-20"></div>
-        <div className="absolute bottom-0 left-0 w-72 h-72 bg-primary-800 rounded-full blur-[100px] opacity-15"></div>
-        <div className="container mx-auto px-4 relative z-10 text-center">
-          <div className="inline-flex items-center gap-2 bg-emerald-600/30 border border-emerald-400/30 rounded-full px-4 py-1.5 text-sm font-medium mb-5">
-            <GraduationCap size={14} className="text-emerald-300" />
-            <span>{therapists.length} خبير ومدرب معتمد</span>
-          </div>
-          <h1 className="text-4xl md:text-5xl font-extrabold mb-4">{content['instructors.title'] || 'نخبة المدربين والخبراء'}</h1>
-          <p className="text-gray-300 text-lg max-w-2xl mx-auto leading-relaxed">
-            {content['instructors.subtitle'] || 'تعلم على يد أفضل الأطباء والمعالجين النفسيين في الوطن العربي. خبرة أكاديمية وعملية تمتد لسنوات.'}
-          </p>
-          <div className="flex flex-wrap justify-center gap-4 mt-8">
-            {[
-              { icon: GraduationCap, label: 'خبراء معتمدون', sub: 'دكاترة ومتخصصون' },
-              { icon: Star, label: 'تقييم مرتفع', sub: '4.9 من 5 نجوم' },
-              { icon: Globe, label: 'وصول عالمي', sub: 'خبرة دولية' },
-              { icon: Shield, label: 'كفاءة موثقة', sub: 'سنوات من الخبرة' },
-            ].map(({ icon: Icon, label, sub }) => (
-              <div key={label} className="flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/10 rounded-2xl px-4 py-3 text-sm">
-                <Icon size={18} className="text-emerald-300" />
-                <div className="text-right">
-                  <div className="font-bold text-white">{label}</div>
-                  <div className="text-gray-400 text-xs">{sub}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-      <div className="container mx-auto px-4 py-10">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {[...therapists].sort((a, b) => (a.sortOrder ?? 99) - (b.sortOrder ?? 99)).map((instructor) => (
-            <Link to={`/instructor/${instructor.id}`} key={instructor.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl transition duration-300 group flex flex-col">
-              <div className="relative h-64 bg-gray-100 overflow-hidden">
-                <img loading="lazy" decoding="async" 
-                  src={cdnImg(instructor.image, 400)}
-                  alt={instructor.name}
-                  className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-                <div className="absolute bottom-4 right-4 text-white">
-                  <p className="text-sm font-light opacity-90">{instructor.title}</p>
-                  <h3 className="text-xl font-bold">{instructor.name}</h3>
-                </div>
-              </div>
-              
-              <div className="p-6 flex-grow flex flex-col">
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {isConsultationEnabled(instructor) && (
-                    <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2 py-1 rounded-full text-xs font-bold">
-                      <CalendarCheck2 size={12} />
-                      متاح للحجز
-                    </span>
-                  )}
-                  {isConsultationEnabled(instructor) && instructor.consultationSettings && (
-                    <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded-full text-xs font-bold">
-                      {meetingProviderLabels[instructor.consultationSettings.meetingProvider]}
-                    </span>
-                  )}
-                </div>
-                <p className="text-gray-600 text-sm line-clamp-3 mb-6 leading-relaxed">
-                  {instructor.bio || (content['instructors.card.bioFallback'] || 'خبير متخصص في مجاله مع سنوات عديدة من الخبرة الأكاديمية والعملية...')}
-                </p>
-
-                {(instructor.focusAreas || []).length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-6">
-                    {(instructor.focusAreas || []).slice(0, 3).map((item) => (
-                      <span key={item} className="px-2 py-1 rounded-full bg-gray-100 text-gray-600 text-xs">{item}</span>
-                    ))}
-                  </div>
-                )}
-                
-                <div className="flex items-center justify-between text-sm text-gray-500 mt-auto pt-4 border-t">
-                  <div className="flex items-center gap-1">
-                    <Shield size={16} className="text-primary-500" />
-                    <span>{instructor.experience} {content['instructors.card.experienceSuffix'] || 'سنة خبرة'}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Star size={16} className="text-yellow-500" fill="currentColor" />
-                    <span>{instructor.rating}</span>
-                  </div>
-                </div>
-                
-                <div className="mt-4 text-primary-600 font-bold text-sm flex items-center gap-1 group-hover:gap-2 transition-all">
-                    {content['instructors.card.profileCta'] || 'عرض الملف الشخصي'} <ArrowRight size={16} className="rtl:rotate-180" />
-                </div>
-              </div>
-            </Link>
+    <div className="min-h-screen bg-white">
+      <PageHeader
+        eyebrow={<span className="inline-flex items-center gap-1.5"><GraduationCap size={15} />{therapists.length} خبير ومدرب معتمد</span>}
+        title={content['instructors.title'] || 'نخبة المدربين والخبراء'}
+        subtitle={content['instructors.subtitle'] || 'تعلم على يد أفضل الأطباء والمعالجين النفسيين في الوطن العربي. خبرة أكاديمية وعملية تمتد لسنوات.'}
+      >
+        <ul className="mx-auto grid max-w-3xl grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-center">
+          {[
+            { icon: GraduationCap, label: 'خبراء معتمدون', sub: 'دكاترة ومتخصصون' },
+            { icon: Star, label: 'تقييم مرتفع', sub: '4.9 من 5 نجوم' },
+            { icon: Globe, label: 'وصول عالمي', sub: 'خبرة دولية' },
+            { icon: Shield, label: 'كفاءة موثقة', sub: 'سنوات من الخبرة' },
+          ].map(({ icon: Icon, label, sub }) => (
+            <li key={label} className="flex min-w-0 items-center gap-2.5 rounded-2xl bg-white px-3 py-2.5 text-right ring-1 ring-line sm:px-4">
+              <span className="flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-primary-50 text-primary-700"><Icon size={18} /></span>
+              <span className="min-w-0">
+                <b className="block text-sm font-extrabold leading-tight text-ink">{label}</b>
+                <span className="block text-xs text-muted">{sub}</span>
+              </span>
+            </li>
           ))}
+        </ul>
+      </PageHeader>
+
+      <section className="py-14 sm:py-20">
+        <div className="container mx-auto px-4">
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:gap-8">
+            {[...therapists].sort((a, b) => (a.sortOrder ?? 99) - (b.sortOrder ?? 99)).map((instructor) => {
+              const bookable = isConsultationEnabled(instructor);
+              return (
+                <Link
+                  to={`/instructor/${instructor.id}`}
+                  key={instructor.id}
+                  className="group flex h-full flex-col rounded-[28px] border border-line bg-white p-3 transition duration-300 hover:-translate-y-1 hover:shadow-[0_30px_50px_-25px_rgba(26,15,18,.35)]"
+                >
+                  <div className="relative aspect-[4/5] overflow-hidden rounded-[22px] bg-sand">
+                    {instructor.image ? (
+                      <img
+                        loading="lazy"
+                        decoding="async"
+                        src={cdnImg(instructor.image, 500)}
+                        srcSet={cdnSrcSet(instructor.image, [320, 400, 640, 800])}
+                        sizes="(min-width: 1024px) 400px, (min-width: 640px) 50vw, 100vw"
+                        width={400}
+                        height={500}
+                        alt={instructor.name}
+                        className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
+                      />
+                    ) : (
+                      <span aria-hidden="true" className="flex h-full w-full items-center justify-center text-6xl font-black text-line-deep">{instructor.name?.[0] ?? '?'}</span>
+                    )}
+                    <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-ink/85 to-transparent" />
+                    {bookable && (
+                      <div className="absolute inset-x-3 top-3 flex flex-wrap gap-1.5">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-extrabold text-ink shadow-sm">
+                          <CalendarCheck2 size={13} className="text-green-600" />
+                          متاح للحجز
+                        </span>
+                        {instructor.consultationSettings && (
+                          <span className="rounded-full bg-ink/80 px-3 py-1 text-xs font-extrabold text-gold-pale">
+                            {meetingProviderLabels[instructor.consultationSettings.meetingProvider]}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <div className="absolute inset-x-4 bottom-4 text-white">
+                      <span className="line-clamp-1 text-[13px] text-white/80">{instructor.title}</span>
+                      <h3 className="text-xl font-black leading-snug">{instructor.name}</h3>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-1 flex-col px-2 pb-2 pt-4">
+                    <div className="mb-3 flex items-center justify-between text-[13px] font-bold text-muted">
+                      {Number(instructor.experience) > 0 ? (
+                        <span className="inline-flex items-center gap-1"><GraduationCap size={15} className="text-primary-700" />{instructor.experience} {content['instructors.card.experienceSuffix'] || 'سنة خبرة'}</span>
+                      ) : <span />}
+                      {Number(instructor.rating) > 0 && <span className="inline-flex items-center gap-1 text-gold-deep"><Star size={14} fill="currentColor" />{instructor.rating}</span>}
+                    </div>
+
+                    <p className="mb-4 line-clamp-3 text-sm leading-relaxed text-muted-body">
+                      {instructor.bio || (content['instructors.card.bioFallback'] || 'خبير متخصص في مجاله مع سنوات عديدة من الخبرة الأكاديمية والعملية...')}
+                    </p>
+
+                    {(instructor.focusAreas || []).length > 0 && (
+                      <div className="mb-4 flex flex-wrap gap-1.5">
+                        {(instructor.focusAreas || []).slice(0, 3).map((item) => (
+                          <span key={item} className="rounded-full bg-paper px-3 py-1 text-xs font-extrabold text-muted-strong ring-1 ring-line">{item}</span>
+                        ))}
+                      </div>
+                    )}
+
+                    <span className="mt-auto inline-flex min-h-[44px] items-center gap-1.5 border-t border-line pt-3 text-[15px] font-extrabold text-primary-700 transition-all group-hover:gap-2.5">
+                      {content['instructors.card.profileCta'] || 'عرض الملف الشخصي'}
+                      <ArrowLeft size={17} />
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 };

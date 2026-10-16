@@ -56,7 +56,7 @@ const PaymentPlanner: React.FC<{ content: Content; courses: Course[]; currency: 
   };
 
   return (
-    <section id="pay" className="scroll-mt-24 bg-paper py-16 sm:py-24">
+    <section id="pay" className="cv-auto scroll-mt-24 bg-paper py-16 sm:py-24">
       <div className="container mx-auto grid items-center gap-10 px-4 lg:grid-cols-[1fr_minmax(0,520px)] lg:gap-16">
         <Reveal className="text-center lg:text-right">
           <span className="text-sm font-extrabold text-gold-deep">طريقة الدفع</span>

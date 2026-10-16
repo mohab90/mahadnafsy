@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Send, CheckCircle, Users, Award, Star, Heart, Briefcase, GraduationCap, MapPin, Clock } from 'lucide-react';
+import { Send, Check, CheckCircle, Users, Award, Star, Heart, Briefcase, GraduationCap, MapPin, Clock } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 import { useSeo } from '../lib/useSeo';
@@ -86,10 +86,10 @@ const JoinStaff: React.FC = () => {
   };
 
   const benefits = [
-    { icon: Users, title: 'فريق محترف', desc: 'انضم لفريق عمل متعاون في بيئة احترافية داعمة للنمو والتطور المهني.', color: 'text-blue-400 bg-blue-500/10' },
-    { icon: Award, title: 'مسار وظيفي واضح', desc: 'فرص ترقٍّ حقيقية وتقييم أداء عادل يكافئ الإنجاز والتميّز.', color: 'text-amber-400 bg-amber-500/10' },
-    { icon: Star, title: 'حوافز ومكافآت', desc: 'رواتب تنافسية + عمولات ومكافآت مرتبطة بتحقيق الأهداف.', color: 'text-rose-400 bg-rose-500/10' },
-    { icon: Heart, title: 'بيئة عمل داعمة', desc: 'ثقافة عمل إيجابية تهتم بتوازن الحياة وتطوير المهارات باستمرار.', color: 'text-pink-400 bg-pink-500/10' },
+    { icon: Users, title: 'فريق محترف', desc: 'انضم لفريق عمل متعاون في بيئة احترافية داعمة للنمو والتطور المهني.' },
+    { icon: Award, title: 'مسار وظيفي واضح', desc: 'فرص ترقٍّ حقيقية وتقييم أداء عادل يكافئ الإنجاز والتميّز.' },
+    { icon: Star, title: 'حوافز ومكافآت', desc: 'رواتب تنافسية + عمولات ومكافآت مرتبطة بتحقيق الأهداف.' },
+    { icon: Heart, title: 'بيئة عمل داعمة', desc: 'ثقافة عمل إيجابية تهتم بتوازن الحياة وتطوير المهارات باستمرار.' },
   ];
 
   const requirements = [
@@ -100,93 +100,101 @@ const JoinStaff: React.FC = () => {
     'الرغبة في التعلّم والتطور المهني المستمر.',
   ];
 
+  const inputCls = 'min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10';
+  const areaCls = `${inputCls} resize-none py-3`;
+  const labelCls = 'mb-1 block text-[13px] font-bold text-muted-strong';
+  const stepCls = 'flex items-center gap-2.5 text-lg font-black text-ink';
+  const stepNum = 'flex h-8 w-8 flex-none items-center justify-center rounded-full bg-ink text-sm font-black text-gold-light';
+
   return (
-    <div className="bg-slate-50 min-h-screen animate-fade-in">
-      {/* Hero — distinct corporate/careers identity: dark slate + emerald, not the teaching page's violet */}
-      <div className="bg-slate-900 text-white py-20 relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-96 h-96 bg-emerald-600 rounded-full blur-[140px] opacity-20"></div>
-        <div className="absolute bottom-0 right-0 w-96 h-96 bg-teal-500 rounded-full blur-[140px] opacity-20"></div>
-        <div className="container mx-auto px-4 relative z-10 text-center">
-          <div className="inline-flex items-center gap-2 bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 px-4 py-2 rounded-full text-sm font-bold mb-6">
-            <Briefcase size={18} />
+    <div className="min-h-screen bg-white">
+      {/* Hero — the careers track: deep ink and gold, not the teaching page's burgundy */}
+      <section className="relative overflow-hidden bg-ink text-white">
+        <div aria-hidden="true" className="pointer-events-none absolute -left-40 -top-48 h-[460px] w-[460px] rounded-full bg-[radial-gradient(closest-side,rgba(227,182,90,.18),transparent)]" />
+        <div aria-hidden="true" className="pointer-events-none absolute -bottom-40 -right-32 h-[380px] w-[380px] rounded-full bg-[radial-gradient(closest-side,rgba(190,18,60,.28),transparent)]" />
+        <div className="container relative mx-auto px-4 py-14 text-center sm:py-20">
+          <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5 text-sm font-extrabold text-gold-light ring-1 ring-white/15">
+            <Briefcase size={17} />
             انضم لفريق العمل
-          </div>
-          <h1 className="text-4xl md:text-6xl font-bold mb-6">ابنِ مستقبلك المهني<br />مع فريقنا</h1>
-          <p className="text-xl text-slate-300 max-w-2xl mx-auto leading-relaxed">
+          </span>
+          <h1 className="mt-5 text-balance text-3xl font-black leading-tight sm:text-5xl">ابنِ مستقبلك المهني<br />مع فريقنا</h1>
+          <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-white/65 sm:text-lg">
             نبحث دائماً عن مواهب طموحة تشاركنا الشغف. تصفّح الوظائف المتاحة وقدّم للفرصة التي تناسب خبراتك وتطلعاتك.
           </p>
-          <div className="mt-8">
-            <Link to="/join" className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white transition underline underline-offset-4">
+          <div className="mt-6">
+            <Link to="/join" className="inline-flex min-h-[44px] items-center gap-2 text-sm font-bold text-white/65 underline underline-offset-4 transition hover:text-white">
               <GraduationCap size={14} /> معالج أو مدرب نفسي؟ قدّم من هنا بدلاً من ذلك
             </Link>
           </div>
         </div>
-      </div>
+      </section>
 
       {/* Open positions — leads the page, careers-board style */}
-      <section className="py-16 bg-white border-b border-slate-100">
+      <section className="bg-white py-14 sm:py-20">
         <div className="container mx-auto px-4">
-          <div className="max-w-4xl mx-auto">
-            <h2 className="text-2xl font-bold text-slate-900 mb-1 flex items-center gap-2"><Briefcase size={22} className="text-emerald-600" /> الوظائف المتاحة حالياً</h2>
-            <p className="text-sm text-slate-500 mb-6">اختر وظيفة لربط طلبك بها مباشرة، أو انزل للنموذج وأرسل طلبك العام.</p>
-            {jobsLoading ? (
-              <div className="py-10 text-center text-sm text-slate-400">جاري تحميل الوظائف...</div>
-            ) : jobs.length === 0 ? (
-              <div className="py-10 text-center text-sm text-slate-400 bg-slate-50 rounded-2xl border border-slate-100">
-                لا توجد وظائف مُعلنة حالياً — يمكنك إرسال طلبك العام أدناه وسنتواصل معك عند توفر شاغر مناسب.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {jobs.map(j => (
-                  <button key={j.id} type="button" onClick={() => pickJob(j)}
-                    className={`text-right border-2 rounded-2xl p-5 transition hover:shadow-md ${form.jobId === j.id ? 'border-emerald-500 bg-emerald-50/60 ring-1 ring-emerald-300' : 'border-slate-200 bg-white hover:border-emerald-300'}`}>
-                    <div className="flex items-center gap-2 flex-wrap mb-2">
-                      <span className="font-bold text-slate-900">{j.title}</span>
-                      {form.jobId === j.id && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-600 text-white font-bold">مُختارة</span>}
-                    </div>
-                    <div className="flex items-center gap-3 flex-wrap text-xs text-slate-500 mb-2">
-                      {j.employment_type && <span className="flex items-center gap-1"><Clock size={12} /> {EMP_LABEL[j.employment_type] || j.employment_type}</span>}
-                      {j.branch && <span className="flex items-center gap-1"><MapPin size={12} /> {BRANCH_LABEL[j.branch] || j.branch}</span>}
-                      {j.department && <span className="px-1.5 py-0.5 rounded bg-slate-100">{j.department}</span>}
-                    </div>
-                    {j.description && <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">{j.description}</p>}
-                    {/* Number(), because salary_min/max are DECIMAL columns and
-                        arrive as strings: "0.00" is truthy, so a posting with
-                        no salary set advertised «0.00–0.00 ج.م» — and the ones
-                        that do have a salary read «5000.00–15000.00» on a job
-                        ad rather than «5,000 – 15,000». */}
-                    {(Number(j.salary_min) > 0 || Number(j.salary_max) > 0) && (
-                      <p className="text-xs text-emerald-700 font-bold mt-2">
-                        {Number(j.salary_min) > 0 ? Number(j.salary_min).toLocaleString('ar-EG-u-nu-latn') : '?'}
-                        {' – '}
-                        {Number(j.salary_max) > 0 ? Number(j.salary_max).toLocaleString('ar-EG-u-nu-latn') : '?'} ج.م
-                      </p>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
+          <div className="mx-auto max-w-4xl">
+            <h2 className="flex items-center justify-center gap-2.5 text-center text-3xl font-black leading-tight text-ink sm:justify-start sm:text-right sm:text-4xl"><Briefcase size={28} className="flex-none text-gold-deep" /> الوظائف المتاحة حالياً</h2>
+            <p className="mt-2 text-center text-base leading-relaxed text-muted-body sm:text-right">اختر وظيفة لربط طلبك بها مباشرة، أو انزل للنموذج وأرسل طلبك العام.</p>
+            <div className="mt-7">
+              {jobsLoading ? (
+                <div className="rounded-[24px] border border-line bg-paper py-10 text-center text-sm text-muted">جاري تحميل الوظائف...</div>
+              ) : jobs.length === 0 ? (
+                <div className="rounded-[24px] border border-line bg-paper px-5 py-10 text-center text-sm leading-relaxed text-muted">
+                  لا توجد وظائف مُعلنة حالياً — يمكنك إرسال طلبك العام أدناه وسنتواصل معك عند توفر شاغر مناسب.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {jobs.map(j => (
+                    <button key={j.id} type="button" onClick={() => pickJob(j)}
+                      className={`flex flex-col rounded-[24px] border-[1.5px] p-5 text-right transition hover:-translate-y-1 hover:shadow-[0_30px_50px_-25px_rgba(26,15,18,.35)] ${form.jobId === j.id ? 'border-primary-700 bg-primary-50/60 ring-4 ring-primary-600/10' : 'border-line bg-white hover:border-line-deep'}`}>
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <span className="text-lg font-black text-ink">{j.title}</span>
+                        {form.jobId === j.id && <span className="rounded-full bg-primary-700 px-2.5 py-0.5 text-[11px] font-black text-white">مُختارة</span>}
+                      </div>
+                      <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-strong">
+                        {j.employment_type && <span className="inline-flex items-center gap-1 rounded-full bg-paper px-2.5 py-1 font-extrabold ring-1 ring-line"><Clock size={12} /> {EMP_LABEL[j.employment_type] || j.employment_type}</span>}
+                        {j.branch && <span className="inline-flex items-center gap-1 rounded-full bg-paper px-2.5 py-1 font-extrabold ring-1 ring-line"><MapPin size={12} /> {BRANCH_LABEL[j.branch] || j.branch}</span>}
+                        {j.department && <span className="rounded-full bg-paper px-2.5 py-1 font-extrabold ring-1 ring-line">{j.department}</span>}
+                      </div>
+                      {j.description && <p className="line-clamp-2 text-[13px] leading-relaxed text-muted">{j.description}</p>}
+                      {/* Number(), because salary_min/max are DECIMAL columns and
+                          arrive as strings: "0.00" is truthy, so a posting with
+                          no salary set advertised «0.00–0.00 ج.م» — and the ones
+                          that do have a salary read «5000.00–15000.00» on a job
+                          ad rather than «5,000 – 15,000». */}
+                      {(Number(j.salary_min) > 0 || Number(j.salary_max) > 0) && (
+                        <p className="mt-3 text-sm font-black tabular-nums text-ink">
+                          {Number(j.salary_min) > 0 ? Number(j.salary_min).toLocaleString('ar-EG-u-nu-latn') : '?'}
+                          {' – '}
+                          {Number(j.salary_max) > 0 ? Number(j.salary_max).toLocaleString('ar-EG-u-nu-latn') : '?'} ج.م
+                        </p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Benefits — dark band, staff-specific */}
-      <section className="py-20 bg-slate-900 text-white">
+      {/* Benefits — staff-specific */}
+      <section className="bg-paper py-14 sm:py-20">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-14">
-            <span className="bg-emerald-500/15 text-emerald-300 px-4 py-1.5 rounded-full text-sm font-bold">لماذا تنضم إلينا؟</span>
-            <h2 className="text-3xl font-bold mt-4 mb-3">مزايا العمل معنا</h2>
+          <div className="mx-auto mb-10 max-w-2xl text-center sm:mb-12">
+            <span className="text-sm font-extrabold text-gold-deep">لماذا تنضم إلينا؟</span>
+            <h2 className="mt-2 text-3xl font-black leading-tight text-ink sm:text-4xl">مزايا العمل معنا</h2>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {benefits.map((b, i) => {
               const Icon = b.icon;
               return (
-                <div key={i} className="bg-white/5 rounded-2xl p-6 border border-white/10 hover:border-emerald-500/40 transition group">
-                  <div className={`w-14 h-14 rounded-2xl ${b.color} flex items-center justify-center mb-4 group-hover:scale-110 transition`}>
-                    <Icon size={24} />
-                  </div>
-                  <h3 className="font-bold text-lg mb-2">{b.title}</h3>
-                  <p className="text-slate-400 text-sm leading-relaxed">{b.desc}</p>
+                <div key={i} className="rounded-[24px] border border-line bg-white p-5 transition hover:-translate-y-1 hover:shadow-[0_30px_50px_-25px_rgba(26,15,18,.35)] sm:p-6">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-ink text-gold-light">
+                    <Icon size={22} />
+                  </span>
+                  <h3 className="mt-4 text-lg font-black text-ink">{b.title}</h3>
+                  <p className="mt-1.5 text-[15px] leading-relaxed text-muted">{b.desc}</p>
                 </div>
               );
             })}
@@ -195,17 +203,17 @@ const JoinStaff: React.FC = () => {
       </section>
 
       {/* Requirements */}
-      <section className="py-16 bg-slate-50">
+      <section className="bg-white py-14 sm:py-20">
         <div className="container mx-auto px-4">
-          <div className="max-w-3xl mx-auto">
-            <h2 className="text-2xl font-bold text-slate-900 mb-8 text-center">المتطلبات العامة</h2>
-            <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 space-y-4">
+          <div className="mx-auto max-w-3xl">
+            <h2 className="text-center text-3xl font-black leading-tight text-ink sm:text-4xl">المتطلبات العامة</h2>
+            <div className="mt-8 divide-y divide-line rounded-[28px] border border-line bg-white px-5 sm:px-8">
               {requirements.map((req, i) => (
-                <div key={i} className="flex items-start gap-4">
-                  <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <CheckCircle size={16} className="text-emerald-600" />
-                  </div>
-                  <p className="text-slate-700 leading-relaxed">{req}</p>
+                <div key={i} className="flex items-start gap-3.5 py-4">
+                  <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-paper text-gold-deep ring-1 ring-line">
+                    <Check size={15} strokeWidth={3} />
+                  </span>
+                  <p className="text-[15px] leading-relaxed text-muted-body sm:text-base">{req}</p>
                 </div>
               ))}
             </div>
@@ -214,118 +222,135 @@ const JoinStaff: React.FC = () => {
       </section>
 
       {/* Application Form */}
-      <section id="staff-application-form" className="py-20 bg-white">
+      <section id="staff-application-form" className="scroll-mt-20 bg-paper py-14 sm:py-20">
         <div className="container mx-auto px-4">
-          <div className="max-w-2xl mx-auto">
-            <div className="text-center mb-10">
-              <h2 className="text-3xl font-bold text-slate-900 mb-3">قدّم طلبك الآن</h2>
-              <p className="text-slate-500">سيتواصل معك فريقنا خلال 3–5 أيام عمل لمراجعة طلبك.</p>
+          <div className="mx-auto max-w-2xl">
+            <div className="mb-8 text-center">
+              <span className="text-sm font-extrabold text-gold-deep">طلب التوظيف</span>
+              <h2 className="mt-2 text-3xl font-black leading-tight text-ink sm:text-4xl">قدّم طلبك الآن</h2>
+              <p className="mt-3 text-base leading-relaxed text-muted-body">سيتواصل معك فريقنا خلال 3–5 أيام عمل لمراجعة طلبك.</p>
               {form.jobId && (
-                <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1">
-                  <Briefcase size={12} /> طلبك مرتبط بوظيفة: {form.specialty}
+                <p className="mt-3 inline-flex max-w-full items-center gap-1.5 rounded-full bg-primary-50 px-3 py-1 text-xs font-extrabold text-primary-700 ring-1 ring-primary-100">
+                  <Briefcase size={12} className="flex-none" /> طلبك مرتبط بوظيفة: {form.specialty}
                 </p>
               )}
             </div>
 
             {submitted ? (
-              <div className="text-center py-16 bg-emerald-50 rounded-3xl border border-emerald-100">
-                <CheckCircle size={64} className="mx-auto text-emerald-500 mb-4" />
-                <h3 className="text-xl font-bold text-slate-900 mb-2">تم استلام طلبك بنجاح!</h3>
-                <p className="text-slate-500 mb-2">شكراً لاهتمامك بالانضمام إلى فريق معهد الدراسات النفسية.</p>
-                <p className="text-slate-500">سيتواصل معك فريق الاختيار خلال 3–5 أيام عمل.</p>
+              <div className="rounded-[28px] border border-green-200 bg-green-50 px-5 py-14 text-center">
+                <span className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-white text-green-600 ring-1 ring-green-200">
+                  <CheckCircle size={44} />
+                </span>
+                <h3 className="mt-5 text-2xl font-black text-ink">تم استلام طلبك بنجاح!</h3>
+                <p className="mt-2 text-muted-body">شكراً لاهتمامك بالانضمام إلى فريق معهد الدراسات النفسية.</p>
+                <p className="mt-1 text-muted-body">سيتواصل معك فريق الاختيار خلال 3–5 أيام عمل.</p>
               </div>
             ) : (
-              <form onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-sm border border-slate-100 p-8 space-y-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1">الاسم الكامل *</label>
-                    <input required type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="اسمك الثلاثي" className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition" />
+              <form onSubmit={handleSubmit} className="space-y-8 rounded-[28px] border border-line bg-white p-5 shadow-[0_40px_80px_-55px_rgba(26,15,18,.45)] sm:p-8">
+                <div className="space-y-4">
+                  <p className={stepCls}><span className={stepNum}>1</span>بياناتك</p>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className={labelCls}>الاسم الكامل *</label>
+                      <input required type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="اسمك الثلاثي" className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>رقم الهاتف *</label>
+                      <input required type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="مثال: +20 100 000 0000" className={inputCls} />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1">رقم الهاتف *</label>
-                    <input required type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="مثال: +20 100 000 0000" className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition" />
-                  </div>
-                </div>
 
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1">البريد الإلكتروني *</label>
-                  <input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="مثال: name@example.com" className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition" />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1">الوظيفة المتقدَّم لها *</label>
-                    <select required value={form.jobId}
-                      onChange={(e) => {
-                        const job = jobs.find(j => j.id === e.target.value);
-                        setForm({ ...form, jobId: e.target.value, specialty: job?.title || '' });
-                      }}
-                      className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition bg-white">
-                      <option value="">اختر الوظيفة</option>
-                      {jobs.map(job => (<option key={job.id} value={job.id}>{job.title}</option>))}
-                      <option value="">— مش لاقي وظيفتي، سجّلني في قاعدة المتقدمين —</option>
-                    </select>
-                    {!jobs.length && !jobsLoading && (
-                      <p className="text-[11px] text-slate-500 mt-1">مفيش وظائف معلنة دلوقتي — سجّل وهنرجعلك أول ما ينزل شاغر.</p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1">سنوات الخبرة *</label>
-                    <select required value={form.experience} onChange={(e) => setForm({ ...form, experience: e.target.value })} className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition bg-white">
-                      <option value="">اختر</option>
-                      <option value="none">بدون خبرة</option>
-                      <option value="under_1">أقل من سنة</option>
-                      <option value="1-3">من سنة إلى 3 سنوات</option>
-                      <option value="3-5">3 – 5 سنوات</option>
-                      <option value="5-10">5 – 10 سنوات</option>
-                      <option value="10+">أكثر من 10 سنوات</option>
-                    </select>
+                    <label className={labelCls}>البريد الإلكتروني *</label>
+                    <input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="مثال: name@example.com" className={inputCls} />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1">الفرع المتقدَّم له *</label>
-                    <select required value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })}
-                      className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition bg-white">
-                      <option value="">اختر الفرع</option>
-                      <option value="daqqi">فرع الدقي</option>
-                      <option value="tagamoa">فرع التجمع الخامس</option>
-                      <option value="tanta_admin">الفرع الإداري — طنطا</option>
-                      <option value="online_egypt">أونلاين</option>
-                    </select>
+                <div className="space-y-4 border-t border-line pt-7">
+                  <p className={stepCls}><span className={stepNum}>2</span>الوظيفة والفرع</p>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className={labelCls}>الوظيفة المتقدَّم لها *</label>
+                      <select required value={form.jobId}
+                        onChange={(e) => {
+                          const job = jobs.find(j => j.id === e.target.value);
+                          setForm({ ...form, jobId: e.target.value, specialty: job?.title || '' });
+                        }}
+                        className={inputCls}>
+                        <option value="">اختر الوظيفة</option>
+                        {jobs.map(job => (<option key={job.id} value={job.id}>{job.title}</option>))}
+                        <option value="">— مش لاقي وظيفتي، سجّلني في قاعدة المتقدمين —</option>
+                      </select>
+                      {!jobs.length && !jobsLoading && (
+                        <p className="mt-1 text-[12px] text-muted">مفيش وظائف معلنة دلوقتي — سجّل وهنرجعلك أول ما ينزل شاغر.</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className={labelCls}>الفرع المتقدَّم له *</label>
+                      <select required value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })}
+                        className={inputCls}>
+                        <option value="">اختر الفرع</option>
+                        <option value="daqqi">فرع الدقي</option>
+                        <option value="tagamoa">فرع التجمع الخامس</option>
+                        <option value="tanta_admin">الفرع الإداري — طنطا</option>
+                        <option value="online_egypt">أونلاين</option>
+                      </select>
+                    </div>
                   </div>
+                </div>
+
+                <div className="space-y-4 border-t border-line pt-7">
+                  <p className={stepCls}><span className={stepNum}>3</span>خبرتك</p>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className={labelCls}>سنوات الخبرة *</label>
+                      <select required value={form.experience} onChange={(e) => setForm({ ...form, experience: e.target.value })} className={inputCls}>
+                        <option value="">اختر</option>
+                        <option value="none">بدون خبرة</option>
+                        <option value="under_1">أقل من سنة</option>
+                        <option value="1-3">من سنة إلى 3 سنوات</option>
+                        <option value="3-5">3 – 5 سنوات</option>
+                        <option value="5-10">5 – 10 سنوات</option>
+                        <option value="10plus">أكثر من 10 سنوات</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelCls}>المؤهل الدراسي *</label>
+                      <input required type="text" value={form.education} onChange={(e) => setForm({ ...form, education: e.target.value })}
+                        placeholder="مثال: بكالوريوس آداب — قسم علم نفس"
+                        className={inputCls} />
+                    </div>
+                  </div>
+
                   <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1">المؤهل الدراسي *</label>
-                    <input required type="text" value={form.education} onChange={(e) => setForm({ ...form, education: e.target.value })}
-                      placeholder="مثال: بكالوريوس آداب — قسم علم نفس"
-                      className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition" />
+                    <label className={labelCls}>اشتغلت فين قبل كده؟</label>
+                    <textarea rows={2} value={form.experiencePlaces} onChange={(e) => setForm({ ...form, experiencePlaces: e.target.value })}
+                      placeholder="أسماء الجهات والمدة في كل واحدة — سيبها فاضية لو دي أول وظيفة"
+                      className={areaCls} />
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1">اشتغلت فين قبل كده؟</label>
-                  <textarea rows={2} value={form.experiencePlaces} onChange={(e) => setForm({ ...form, experiencePlaces: e.target.value })}
-                    placeholder="أسماء الجهات والمدة في كل واحدة — سيبها فاضية لو دي أول وظيفة"
-                    className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition" />
+                <div className="space-y-4 border-t border-line pt-7">
+                  <p className={stepCls}><span className={stepNum}>4</span>عرّفنا بنفسك</p>
+                  <div>
+                    <label className={labelCls}>رابط LinkedIn أو موقعك الشخصي</label>
+                    <input type="url" value={form.linkedin} onChange={(e) => setForm({ ...form, linkedin: e.target.value })} placeholder="رابط LinkedIn أو موقعك الشخصي (اختياري)" className={inputCls} />
+                  </div>
+
+                  <div>
+                    <label className={labelCls}>رسالتك ودوافعك للانضمام</label>
+                    <textarea rows={4} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} placeholder="أخبرنا عن نفسك ولماذا تناسبك هذه الوظيفة..." className={areaCls} />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1">رابط LinkedIn أو موقعك الشخصي</label>
-                  <input type="url" value={form.linkedin} onChange={(e) => setForm({ ...form, linkedin: e.target.value })} placeholder="رابط LinkedIn أو موقعك الشخصي (اختياري)" className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition" />
+                <div className="space-y-3">
+                  {submitError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{submitError}</p>}
+                  <button type="submit" disabled={submitting} className="inline-flex min-h-[56px] w-full items-center justify-center gap-2 rounded-2xl bg-ink px-7 text-lg font-black text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50">
+                    <Send size={20} />
+                    {submitting ? 'جاري الإرسال...' : 'إرسال الطلب'}
+                  </button>
+                  <p className="text-center text-xs text-muted-soft">بالإرسال توافق على شروط الاستخدام وسياسة الخصوصية الخاصة بالمعهد.</p>
                 </div>
-
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1">رسالتك ودوافعك للانضمام</label>
-                  <textarea rows={4} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} placeholder="أخبرنا عن نفسك ولماذا تناسبك هذه الوظيفة..." className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition resize-none" />
-                </div>
-
-                {submitError && <p role="alert" className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">{submitError}</p>}
-                <button type="submit" disabled={submitting} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition text-lg disabled:opacity-50">
-                  <Send size={20} />
-                  {submitting ? 'جاري الإرسال...' : 'إرسال الطلب'}
-                </button>
-                <p className="text-center text-xs text-slate-400">بالإرسال توافق على شروط الاستخدام وسياسة الخصوصية الخاصة بالمعهد.</p>
               </form>
             )}
           </div>

@@ -19,7 +19,7 @@ const ConsultationSection: React.FC<{ content: Content; therapists: Therapist[];
   const sym = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
 
   return (
-    <section className="bg-paper px-4 py-16 sm:py-24">
+    <section className="cv-auto bg-paper px-4 py-16 sm:py-24">
       <Reveal className="container mx-auto">
         <div className="grid overflow-hidden rounded-[36px] bg-white shadow-[0_40px_80px_-45px_rgba(26,15,18,.5)] ring-1 ring-line lg:grid-cols-[.75fr_1.25fr]">
           <div className="relative flex flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-primary-700 to-[#4c0519] px-6 py-10 text-center text-white sm:py-12">

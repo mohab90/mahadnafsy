@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { Suspense, useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Briefcase, CheckCircle2, ChevronLeft, ChevronRight, GraduationCap, Sparkles, X } from 'lucide-react';
 import { useEscapeKey } from '../../shared/ui/useEscapeKey';
@@ -7,7 +7,7 @@ import { cdnImg } from '../lib/img';
 import { isExpiryActive } from '../../shared/cairoDate';
 import { offerHours, offerIsShown, offerRemainingMs } from '../../shared/siteOffers';
 import { useSeo } from '../lib/useSeo';
-import { VideoSurface } from '../components/VideoSurface';
+import { photoUrl } from '../components/Picture';
 import { goalsFromCourses, recommendedCourse } from '../../shared/homeGoals';
 import HeroSection from '../components/home/HeroSection';
 import ProgramExplorer from '../components/home/ProgramExplorer';
@@ -51,6 +51,9 @@ function useOfferCountdown(content: Record<string, string | undefined>) {
 }
 
 const two = (n: number) => String(n).padStart(2, '0');
+
+// The video player is fetched only when the tour video is opened.
+const VideoSurface = React.lazy(() => import('../components/VideoSurface').then(m => ({ default: m.VideoSurface })));
 
 type Lightbox = { kind: 'video' } | { kind: 'photo'; index: number } | null;
 
@@ -144,7 +147,7 @@ const Home: React.FC = () => {
       {offerShown && <OfferSpotlight content={content} courses={courses} currency={currency} timer={timer} addPublicLead={addPublicLead} />}
 
       {/* ── Why the institute — tour video + reasons, then the certificate check right under it ── */}
-      <section id="why" className="scroll-mt-24 bg-white py-16 sm:py-24">
+      <section id="why" className="cv-auto scroll-mt-24 bg-white py-16 sm:py-24">
         <div className="container mx-auto px-4">
           <WhyChooseSection content={content} />
           <CertificateCheck />
@@ -170,7 +173,7 @@ const Home: React.FC = () => {
       {content['consultation.show_on_home'] !== 'false' && <ConsultationSection content={content} therapists={therapists} currency={currency} />}
 
       {/* ── «مش عارف تبدأ منين؟» and the questions people ask — right above the closing slide ── */}
-      <section id="find" className="scroll-mt-24 bg-white py-16 sm:py-24">
+      <section id="find" className="cv-auto scroll-mt-24 bg-white py-16 sm:py-24">
         <div className="container mx-auto grid items-start gap-10 px-4 lg:grid-cols-2 lg:gap-14">
           <GoalFinder goals={goals} goalId={goalId} onPick={setGoalPick} course={goalCourse} currency={currency} />
           <HomeFaq content={content} />
@@ -178,7 +181,7 @@ const Home: React.FC = () => {
       </section>
 
       {/* Closing slide: book (burgundy) beside joining the team (dark) */}
-      <section id="start" className="scroll-mt-24 bg-white px-4 pb-16 sm:pb-24">
+      <section id="start" className="cv-auto scroll-mt-24 bg-white px-4 pb-16 sm:pb-24">
         <div className="container mx-auto grid gap-5 lg:grid-cols-[1.15fr_.85fr] lg:gap-6">
           <div className="relative overflow-hidden rounded-[32px] bg-gradient-to-br from-primary-700 via-primary-800 to-[#4c0519] px-6 py-10 text-center text-white shadow-[0_40px_80px_-40px_rgba(76,5,25,.8)] sm:px-10 sm:py-12 lg:text-right">
             <div aria-hidden="true" className="absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[radial-gradient(closest-side,rgba(243,201,105,.3),transparent)]" />
@@ -241,13 +244,13 @@ const Home: React.FC = () => {
           {lightbox.kind === 'video' ? (
             <div className="w-full max-w-4xl" onClick={e => e.stopPropagation()}>
               <div className="relative aspect-video overflow-hidden rounded-2xl shadow-2xl">
-                <VideoSurface url={videoUrl} title="فيديو المعهد" autoplay />
+                <Suspense fallback={null}><VideoSurface url={videoUrl} title="فيديو المعهد" autoplay /></Suspense>
               </div>
             </div>
           ) : (
             <>
               <img
-                src={`${import.meta.env.BASE_URL}brand/grads/${GRADUATION_PHOTOS[lightbox.index].src}`}
+                src={photoUrl(GRADUATION_PHOTOS[lightbox.index].src)}
                 alt={GRADUATION_PHOTOS[lightbox.index].alt}
                 loading="lazy"
                 onClick={e => e.stopPropagation()}

@@ -20,6 +20,30 @@ function swVersionPlugin(version: string): Plugin {
   };
 }
 
+
+// The three Tajawal weights the first screen draws (body, extra-bold, black —
+// Arabic subset) are asked for together with the page instead of after the CSS
+// is parsed, so the text is laid out once, in the right font, and does not jump.
+function preloadFontsPlugin(): Plugin {
+  const wanted = ['tajawal-400-arabic', 'tajawal-800-arabic', 'tajawal-900-arabic'];
+  return {
+    name: 'preload-first-screen-fonts',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(_html, ctx) {
+        if (!ctx.bundle) return [];
+        const files = Object.keys(ctx.bundle).filter(name => wanted.some(w => name.includes(`${w}-`)) && name.endsWith('.woff2'));
+        return files.map(file => ({
+          tag: 'link',
+          attrs: { rel: 'preload', as: 'font', type: 'font/woff2', href: `${ctx.server?.config.base ?? ''}/${file}`.replace(/^\/\//, '/'), crossorigin: '' },
+          injectTo: 'head' as const,
+        }));
+      },
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     const appBase = env.VITE_APP_BASE || (mode === 'production' ? '/' : '/');
@@ -45,7 +69,7 @@ export default defineConfig(({ mode }) => {
           },
         },
       },
-      plugins: [react(), swVersionPlugin(buildVersion)],
+      plugins: [react(), swVersionPlugin(buildVersion), preloadFontsPlugin()],
       esbuild: {
         charset: 'ascii',
       },
@@ -69,7 +93,7 @@ export default defineConfig(({ mode }) => {
             manualChunks: (id) => {
               if (!id.includes('node_modules')) return;
               // React core → separate chunk (cached for long periods)
-              if (id.includes('react-dom') || id.includes('react-router') || id.includes('react-is')) return 'react-vendor';
+              if (id.includes('react-dom') || id.includes('react-router') || id.includes('react-is') || /node_modules\/(react|scheduler)\//.test(id)) return 'react-vendor';
               // Charts library → only loaded when stats pages render
               if (id.includes('/d3-') || id.includes('victory-vendor')) return 'd3-vendor';
               if (id.includes('recharts')) return 'recharts-vendor';
@@ -77,8 +101,10 @@ export default defineConfig(({ mode }) => {
               if (id.includes('hls.js')) return 'hls-vendor';
               // Icon set
               if (id.includes('lucide-react')) return 'icons';
-              // Everything else
-              return 'vendor';
+              // Everything else (the certificate QR code, the HTML sanitiser…)
+              // stays with the lazy pages that use it, instead of riding in a
+              // shared chunk that every first visit downloads.
+              return undefined;
             },
             assetFileNames: 'assets/[name]-[hash][extname]',
             chunkFileNames: (chunkInfo) => {

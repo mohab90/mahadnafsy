@@ -5,8 +5,12 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <!-- build: 2026-05-02 -->
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-EB4YE5YB9C"></script>
+    <!-- Google tag (gtag.js) and the Meta Pixel. Both queue their calls from
+         the start (dataLayer / fbq.queue), but their libraries — about 450KB of
+         script and the heaviest work on a phone's main thread — are only
+         fetched once the page has finished loading and the browser is idle, or
+         as soon as the visitor touches the page. No event is lost: everything
+         sent before then waits in the queue and goes out when they arrive. -->
     <script>
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
@@ -17,19 +21,39 @@
     </script>
     <!-- Meta Pixel Code -->
     <script>
-      !function(f,b,e,v,n,t,s)
-      {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+      !function(f){if(f.fbq)return;var n=f.fbq=function(){n.callMethod?
       n.callMethod.apply(n,arguments):n.queue.push(arguments)};
       if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-      n.queue=[];t=b.createElement(e);t.async=!0;
-      t.src=v;s=b.getElementsByTagName(e)[0];
-      s.parentNode.insertBefore(t,s)}(window, document,'script',
-      'https://connect.facebook.net/en_US/fbevents.js');
+      n.queue=[];}(window);
       fbq('init', '1879086466096343');
       // PageView, Lead, InitiateCheckout and Purchase: lib/tracking.ts.
       // api/lib/metaCapi.js sends the server's copies to this same pixel id.
     </script>
     <!-- End Meta Pixel Code -->
+    <script>
+      (function () {
+        var started = false;
+        function loadTags() {
+          if (started) return;
+          started = true;
+          ['https://www.googletagmanager.com/gtag/js?id=G-EB4YE5YB9C', 'https://connect.facebook.net/en_US/fbevents.js'].forEach(function (src) {
+            var s = document.createElement('script');
+            s.async = true;
+            s.src = src;
+            document.head.appendChild(s);
+          });
+        }
+        function whenIdle() {
+          if ('requestIdleCallback' in window) window.requestIdleCallback(loadTags, { timeout: 3000 });
+          else setTimeout(loadTags, 1500);
+        }
+        if (document.readyState === 'complete') whenIdle();
+        else window.addEventListener('load', whenIdle);
+        ['pointerdown', 'keydown', 'touchstart', 'scroll'].forEach(function (type) {
+          window.addEventListener(type, loadTags, { once: true, passive: true });
+        });
+      })();
+    </script>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
@@ -38,7 +62,7 @@
     <meta name="keywords" content="معهد الدراسات النفسية, دبلوم نفسي, علاج نفسي, صحة نفسية, إرشاد نفسي, كورسات نفسية, دبلوم معتمد, تعليم نفسي, استشارات نفسية, مدربين نفسيين" />
     <meta name="robots" content="index, follow" />
     <meta name="author" content="معهد الدراسات النفسية" />
-    <meta name="theme-color" content="#7c3aed" />
+    <meta name="theme-color" content="#9f1239" />
 
     <!-- Open Graph / Facebook. The share image and the logo below live on the
          institute's own domain (/brand/, see tools/fetch-brand-assets.mjs);
@@ -97,11 +121,8 @@
     }
     </script>
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
 </head>
-  <body class="bg-gray-50 text-gray-900">
+  <body class="bg-white text-ink">
     <!-- Meta Pixel noscript fallback -->
     <noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=1879086466096343&ev=PageView&noscript=1"></noscript>
     <!-- Shown until React paints, then replaced by the app. The root used to be
@@ -111,8 +132,8 @@
          Inline and above the module script on purpose: it must cost no extra
          request and must be painted before any JavaScript is fetched. -->
     <div id="root">
-      <div id="app-boot" style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#fff;font-family:system-ui,'Segoe UI',Tahoma,sans-serif" dir="rtl">
-        <div style="width:38px;height:38px;border:3px solid #e5e7eb;border-top-color:#0f766e;border-radius:50%;animation:mahad-spin .7s linear infinite"></div>
+      <div id="app-boot" style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#fbf7f2;font-family:system-ui,'Segoe UI',Tahoma,sans-serif" dir="rtl">
+        <div style="width:38px;height:38px;border:3px solid #ecdfd6;border-top-color:#9f1239;border-radius:50%;animation:mahad-spin .7s linear infinite"></div>
         <p style="margin:0;color:#6b7280;font-size:14px;font-weight:700">جارٍ تحميل معهد الدراسات النفسية...</p>
       </div>
     </div>

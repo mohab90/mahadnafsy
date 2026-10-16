@@ -22,32 +22,32 @@ export const CourseUpsellModal: React.FC<CourseUpsellModalProps> = ({ courseTitl
     // It was on z-[200], a level invented for this one dialog.
     <Modal open onClose={onClose} hideClose bodyClassName="p-0" layer="over">
         {/* Header */}
-        <div className="bg-gradient-to-r from-green-500 to-emerald-600 p-6 text-white text-center relative">
-          <button onClick={onClose} className="absolute top-3 left-3 w-7 h-7 rounded-full bg-white/20 hover:bg-white/40 grid place-items-center transition"><X size={14} /></button>
+        <div className="relative bg-gradient-to-br from-primary-700 via-primary-800 to-[#4c0519] p-6 text-center text-white">
+          <button onClick={onClose} aria-label="إغلاق" className="absolute left-3 top-3 grid h-10 w-10 place-items-center rounded-full bg-white/15 transition hover:bg-white/30"><X size={16} /></button>
           <div className="text-5xl mb-2">🎓</div>
-          <h2 className="text-xl font-extrabold">مبروك! أتممت الكورس</h2>
-          <p className="text-green-100 text-sm mt-1">{courseTitle}</p>
+          <h2 className="text-xl font-black">مبروك! أتممت الكورس</h2>
+          <p className="mt-1 text-sm text-white/70">{courseTitle}</p>
         </div>
-        <div className="p-6">
+        <div className="p-5 sm:p-6">
           {completionCert && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4 text-center">
-              <p className="text-xs text-amber-600 font-semibold mb-1">كود شهادتك الرقمية</p>
-              <p className="font-mono font-extrabold text-amber-800 text-lg tracking-wider">{completionCert}</p>
-              <p className="text-xs text-gray-400 mt-1">احتفظ بهذا الكود للتحقق من الشهادة</p>
+            <div className="mb-4 rounded-2xl bg-paper p-4 text-center ring-1 ring-line">
+              <p className="mb-1 text-xs font-bold text-gold-deep">كود شهادتك الرقمية</p>
+              <p className="font-mono text-lg font-extrabold tracking-wider text-ink">{completionCert}</p>
+              <p className="mt-1 text-xs text-muted-soft">احتفظ بهذا الكود للتحقق من الشهادة</p>
             </div>
           )}
           {relatedBundles.length > 0 ? (
             <>
-              <p className="text-gray-700 font-semibold mb-3 flex items-center gap-2"><Gift size={16} className="text-primary-600" /> ارتقِ بمهاراتك — باقات تشمل هذا الكورس:</p>
+              <p className="mb-3 flex items-center gap-2 font-bold text-ink"><Gift size={16} className="text-primary-700" /> ارتقِ بمهاراتك — باقات تشمل هذا الكورس:</p>
               <div className="space-y-3">
                 {relatedBundles.slice(0, 2).map(b => (
-                  <div key={b.id} className="border border-gray-200 rounded-xl p-3 flex items-center gap-3 hover:border-primary-300 transition">
-                    <img loading="lazy" decoding="async" src={cdnImg(b.thumbnail, 160)} alt="" className="w-14 h-12 object-cover rounded-lg flex-shrink-0" />
+                  <div key={b.id} className="flex items-center gap-3 rounded-2xl border border-line p-3 transition hover:border-ink/30">
+                    <img loading="lazy" decoding="async" src={cdnImg(b.thumbnail, 160)} alt="" width={56} height={48} className="h-12 w-14 flex-shrink-0 rounded-xl bg-sand object-cover" />
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-gray-800 text-sm line-clamp-1">{b.title}</p>
-                      <p className="text-primary-600 font-extrabold text-sm">{formatPrice(b.price?.[currency], currency)} {currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$'}</p>
+                      <p className="line-clamp-1 text-sm font-extrabold text-ink">{b.title}</p>
+                      <p className="text-sm font-black tabular-nums text-ink">{formatPrice(b.price?.[currency], currency)}</p>
                     </div>
-                    <Link to={`/bundle/${b.id}`} onClick={onClose} className="bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition flex-shrink-0">
+                    <Link to={`/bundle/${b.id}`} onClick={onClose} className="inline-flex min-h-[44px] flex-shrink-0 items-center rounded-xl bg-primary-700 px-4 text-sm font-black text-white transition hover:bg-primary-800">
                       عرض
                     </Link>
                   </div>
@@ -55,9 +55,9 @@ export const CourseUpsellModal: React.FC<CourseUpsellModalProps> = ({ courseTitl
               </div>
             </>
           ) : (
-            <p className="text-center text-gray-500 text-sm py-2">استمر في تعلمك وتطوير مهاراتك!</p>
+            <p className="py-2 text-center text-sm text-muted">استمر في تعلمك وتطوير مهاراتك!</p>
           )}
-          <button onClick={onClose} className="w-full mt-4 border-2 border-gray-200 text-gray-600 hover:bg-gray-50 font-bold py-2.5 rounded-xl transition text-sm">
+          <button onClick={onClose} className="mt-4 min-h-[48px] w-full rounded-2xl border-[1.5px] border-ink/15 text-sm font-extrabold text-ink transition hover:border-ink/40">
             إغلاق
           </button>
         </div>

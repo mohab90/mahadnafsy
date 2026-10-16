@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CreditCard, Loader2 } from 'lucide-react';
+import { AlertCircle, CreditCard, Loader2, Lock, MessageCircle } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { usePaymentAvailability } from '../lib/usePaymentAvailability';
 import { useSiteData } from '../context/SiteDataContext';
@@ -95,29 +95,33 @@ const StandalonePayment: React.FC = () => {
     }
   };
 
+  const fieldClass = 'min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10';
+  const labelClass = 'mb-1 block text-[13px] font-bold text-muted-strong';
+
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4" dir="rtl">
-      <div className="w-full max-w-md rounded-2xl border border-gray-100 bg-white p-6 shadow-xl">
+    <div className="flex min-h-screen items-center justify-center bg-paper px-4 py-10" dir="rtl">
+      <div className="w-full max-w-md rounded-[28px] bg-white p-5 shadow-[0_40px_80px_-45px_rgba(26,15,18,.5)] ring-1 ring-line sm:p-8">
         <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-50 text-primary-700">
-            <CreditCard size={22} />
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-50 text-primary-700">
+            <CreditCard size={24} />
           </div>
-          <h1 className="text-2xl font-extrabold text-gray-900">الدفع السريع</h1>
-          <p className="mt-1 text-sm text-gray-500">رابط مخصص لتحصيل أي مبلغ خارج صفحات الاشتراك العادية.</p>
+          <h1 className="text-3xl font-black text-ink">الدفع السريع</h1>
+          <p className="mt-2 text-sm leading-relaxed text-muted-body">رابط مخصص لتحصيل أي مبلغ خارج صفحات الاشتراك العادية.</p>
         </div>
 
         {onlinePayEnabled === false && (
-          <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <div className="mb-4 rounded-2xl border border-gold/30 bg-paper px-4 py-3 text-sm text-muted-strong">
             <p className="flex items-start gap-2">
-              <AlertCircle size={16} className="mt-0.5 shrink-0" />
-              <span><strong>الدفع الإلكتروني متوقف مؤقتاً.</strong> تواصل معنا وهنبعتلك تفاصيل التحويل ونسجّل دفعتك.</span>
+              <AlertCircle size={16} className="mt-0.5 shrink-0 text-gold-deep" />
+              <span><strong className="text-ink">الدفع الإلكتروني متوقف مؤقتاً.</strong> تواصل معنا وهنبعتلك تفاصيل التحويل ونسجّل دفعتك.</span>
             </p>
             {whatsapp && (
               <a
                 href={`https://wa.me/${whatsapp}?text=${encodeURIComponent(`مرحباً، أريد سداد ${purpose.trim() || 'مبلغ'}${numericAmount > 0 ? ` بمبلغ ${numericAmount} ج.م` : ''}`)}`}
                 target="_blank" rel="noreferrer"
-                className="mt-3 flex w-full items-center justify-center rounded-xl bg-emerald-600 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-700"
+                className="mt-3 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl border-[1.5px] border-ink/15 bg-white text-sm font-extrabold text-ink transition hover:border-ink/40"
               >
+                <MessageCircle size={17} className="text-green-600" />
                 تواصل معنا عبر واتساب
               </a>
             )}
@@ -125,7 +129,7 @@ const StandalonePayment: React.FC = () => {
         )}
 
         {error && (
-          <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div role="alert" className="mb-4 flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
             <AlertCircle size={16} className="mt-0.5 shrink-0" />
             <span>{error}</span>
           </div>
@@ -133,72 +137,80 @@ const StandalonePayment: React.FC = () => {
 
         <form onSubmit={handlePay} className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm font-semibold text-gray-700">المبلغ بالجنيه المصري</label>
+            <label className={labelClass}>المبلغ بالجنيه المصري</label>
             <input
               type="number"
               min="1"
               step="1"
               value={amount}
               onChange={(event) => setAmount(event.target.value)}
-              className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm outline-none transition focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
+              className={`${fieldClass} text-lg font-black tabular-nums`}
               placeholder="مثال: 1500"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-semibold text-gray-700">سبب الدفع</label>
+            <label className={labelClass}>سبب الدفع</label>
             <input
               type="text"
               value={purpose}
               onChange={(event) => setPurpose(event.target.value)}
-              className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm outline-none transition focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
+              className={fieldClass}
               placeholder="مثال: رسوم استشارة أو شهادة إضافية"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-semibold text-gray-700">اسم العميل</label>
+            <label className={labelClass}>اسم العميل</label>
             <input
               type="text"
               value={name}
               onChange={(event) => setName(event.target.value)}
-              className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm outline-none transition focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
+              className={fieldClass}
               placeholder="الاسم الكامل"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-semibold text-gray-700">البريد الإلكتروني</label>
+            <label className={labelClass}>البريد الإلكتروني</label>
             <input
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm outline-none transition focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
+              className={fieldClass}
               placeholder="name@example.com"
               dir="ltr"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-semibold text-gray-700">رقم الهاتف</label>
+            <label className={labelClass}>رقم الهاتف</label>
             <input
               type="tel"
               value={phone}
               onChange={(event) => setPhone(event.target.value)}
-              className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm outline-none transition focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
+              className={fieldClass}
               placeholder="01000000000"
               dir="ltr"
             />
           </div>
 
+          {numericAmount > 0 && (
+            <div className="flex items-end justify-between gap-3 rounded-[22px] bg-ink p-5 text-white">
+              <span className="text-sm font-bold text-white/70">المبلغ</span>
+              <span className="text-[30px] font-black leading-none tabular-nums text-gold-pale">{numericAmount} <span className="text-base text-white/80">ج.م</span></span>
+            </div>
+          )}
+
           <button
             type="submit"
             disabled={status !== 'idle' || onlinePayEnabled === false}
-            className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-primary-600 py-3 text-sm font-bold text-white shadow-lg shadow-primary-600/20 transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 px-7 font-black text-white shadow-[0_16px_30px_-14px_rgba(159,18,57,.8)] transition hover:bg-primary-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {status !== 'idle' && <Loader2 size={18} className="animate-spin" />}
             {status === 'reserving' ? 'جاري تجهيز الطلب...' : status === 'redirecting' ? 'جاري التحويل لبوابة الدفع...' : 'المتابعة للدفع الإلكتروني'}
           </button>
+          <p className="flex items-center justify-center gap-1 text-center text-xs text-muted-soft"><Lock size={12} /> دفع آمن عبر بوابة Paymob</p>
         </form>
       </div>
     </div>

@@ -299,13 +299,13 @@ const NotFound: React.FC = () => {
   // Without a title of its own the tab kept the last page's.
   useSeo({ title: 'الصفحة غير موجودة | معهد الدراسات النفسية' });
   return (
-  <div className="min-h-[60vh] flex flex-col items-center justify-center text-center px-4">
-    <p className="text-8xl font-black text-primary-200 mb-4">404</p>
-    <h1 className="text-2xl font-bold text-gray-800 mb-2">الصفحة غير موجودة</h1>
-    <p className="text-gray-500 mb-8">الرابط الذي تطلبته غير موجود أو تم حذفه.</p>
-    <div className="flex gap-3 flex-wrap justify-center">
-      <Link to="/" className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-6 py-3 rounded-xl transition">الرئيسية</Link>
-      <Link to="/courses" className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 font-bold px-6 py-3 rounded-xl transition">تصفح الكورسات</Link>
+  <div className="flex min-h-[60vh] flex-col items-center justify-center bg-paper px-4 py-16 text-center">
+    <p className="mb-2 text-8xl font-black leading-none text-primary-100">404</p>
+    <h1 className="mb-2 text-3xl font-black text-ink">الصفحة غير موجودة</h1>
+    <p className="mb-8 text-base text-muted-body">الرابط الذي تطلبته غير موجود أو تم حذفه.</p>
+    <div className="flex flex-wrap justify-center gap-3">
+      <Link to="/" className="inline-flex min-h-[52px] items-center rounded-2xl bg-primary-700 px-7 font-black text-white transition hover:bg-primary-800">الرئيسية</Link>
+      <Link to="/courses" className="inline-flex min-h-[52px] items-center rounded-2xl border-[1.5px] border-ink/15 bg-white px-7 font-extrabold text-ink transition hover:border-ink/40">تصفح الكورسات</Link>
     </div>
   </div>
   );

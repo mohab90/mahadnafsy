@@ -22,7 +22,7 @@ const PathsSection: React.FC<{ content: Content; bundles: Bundle[]; currency: Cu
   const featuredIndex = bestSaving > 0 ? shown.findIndex(b => saving(b) === bestSaving) : -1;
 
   return (
-    <section id="paths" className="scroll-mt-24 bg-white py-16 sm:py-24">
+    <section id="paths" className="cv-auto scroll-mt-24 bg-white py-16 sm:py-24">
       <div className="container mx-auto px-4">
         <Reveal className="mx-auto mb-12 max-w-2xl text-center sm:mb-14">
           <span className="text-sm font-extrabold text-gold-deep">{content['home.paths.badge'] || 'الطريق المختصر للاحتراف'}</span>

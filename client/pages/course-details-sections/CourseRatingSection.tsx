@@ -25,38 +25,39 @@ export const CourseRatingSection: React.FC<CourseRatingSectionProps> = ({
   onSubmitRating,
 }) => {
   return (
-    <section className="mt-10 bg-white border border-gray-100 rounded-2xl p-6 shadow-sm" id="rating-section">
-      <h3 className="font-extrabold text-lg text-gray-800 mb-4 flex items-center gap-2">
-        <Star size={20} className="text-amber-400 fill-amber-400" /> تقييمات الدورة
+    <section className="rounded-[28px] border border-line bg-white p-5 sm:p-7" id="rating-section">
+      <h3 className="mb-4 flex items-center gap-2 text-xl font-black text-ink">
+        <Star size={20} className="text-gold" fill="currentColor" /> تقييمات الدورة
       </h3>
       {/* Aggregate */}
       {ratingData && ratingData.count > 0 && (
-        <div className="flex items-center gap-4 mb-6 bg-amber-50 rounded-xl p-4">
+        <div className="mb-6 flex items-center gap-4 rounded-[22px] bg-paper p-4 ring-1 ring-line">
           <div className="text-center">
-            <p className="text-4xl font-extrabold text-amber-500">{ratingData.avg.toFixed(1)}</p>
-            <div className="flex gap-0.5 mt-1 justify-center">
+            <p className="text-4xl font-black tabular-nums text-ink">{ratingData.avg.toFixed(1)}</p>
+            <div className="mt-1 flex justify-center gap-0.5">
               {[1,2,3,4,5].map(s => (
-                <Star key={s} size={14} className={s <= Math.round(ratingData.avg) ? 'text-amber-400 fill-amber-400' : 'text-gray-300 fill-gray-200'} />
+                <Star key={s} size={14} className={s <= Math.round(ratingData.avg) ? 'text-gold' : 'text-line-deep'} fill="currentColor" />
               ))}
             </div>
-            <p className="text-xs text-gray-500 mt-1">{ratingData.count} تقييم</p>
+            <p className="mt-1 text-xs text-muted">{ratingData.count} تقييم</p>
           </div>
         </div>
       )}
       {/* Rate form for enrolled users */}
       {isEnrolled && (
-        <div className="bg-gray-50 rounded-xl p-4">
-          <p className="text-sm font-bold text-gray-700 mb-3">{ratingData?.myRating ? 'تعديل تقييمك' : 'قيّم هذه الدورة'}</p>
-          <div className="flex gap-1 mb-3">
+        <div className="rounded-[22px] bg-paper p-4 ring-1 ring-line">
+          <p className="mb-3 text-sm font-extrabold text-ink">{ratingData?.myRating ? 'تعديل تقييمك' : 'قيّم هذه الدورة'}</p>
+          <div className="mb-3 flex gap-1">
             {[1,2,3,4,5].map(s => (
               <button key={s} type="button"
                 onMouseEnter={() => setHoverStar(s)}
                 onMouseLeave={() => setHoverStar(0)}
                 onClick={() => onSubmitRating(s)}
                 disabled={ratingSubmitting}
-                className="focus:outline-none transition-transform hover:scale-125"
+                aria-label={`${s} من 5`}
+                className="flex h-11 w-11 items-center justify-center rounded-xl transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 motion-safe:hover:scale-110"
               >
-                <Star size={28} className={s <= (hoverStar || ratingData?.myRating?.rating || 0) ? 'text-amber-400 fill-amber-400' : 'text-gray-300 fill-gray-200'} />
+                <Star size={28} className={s <= (hoverStar || ratingData?.myRating?.rating || 0) ? 'text-gold' : 'text-line-deep'} fill="currentColor" />
               </button>
             ))}
           </div>
@@ -65,23 +66,23 @@ export const CourseRatingSection: React.FC<CourseRatingSectionProps> = ({
             onChange={e => setRatingComment(e.target.value)}
             placeholder="أضف تعليقاً (اختياري)…"
             rows={2}
-            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-primary-400 resize-none mb-2"
+            className="mb-2 w-full resize-none rounded-xl border border-line-strong bg-white px-4 py-3 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:ring-4 focus:ring-primary-600/10"
           />
           {ratingData?.myRating && (
             <button
               type="button"
               disabled={ratingSubmitting}
               onClick={() => onSubmitRating(ratingData.myRating!.rating)}
-              className="text-xs bg-primary-600 hover:bg-primary-700 text-white font-bold px-4 py-1.5 rounded-lg transition mb-2 disabled:opacity-50"
+              className="mb-2 inline-flex min-h-[44px] items-center rounded-xl bg-primary-700 px-5 text-sm font-black text-white transition hover:bg-primary-800 disabled:opacity-50"
             >
               {ratingSubmitting ? '…' : 'حفظ التعليق'}
             </button>
           )}
-          {ratingNotice && <p className="text-xs text-green-700 bg-green-50 rounded-lg px-3 py-2 mb-2">{ratingNotice}</p>}
+          {ratingNotice && <p className="mb-2 rounded-xl bg-green-50 px-3 py-2 text-sm font-bold text-green-700">{ratingNotice}</p>}
         </div>
       )}
       {!isEnrolled && (!ratingData || ratingData.count === 0) && (
-        <p className="text-sm text-gray-400">لا توجد تقييمات بعد. كن أول من يقيّم هذه الدورة بعد التسجيل!</p>
+        <p className="text-sm text-muted">لا توجد تقييمات بعد. كن أول من يقيّم هذه الدورة بعد التسجيل!</p>
       )}
     </section>
   );

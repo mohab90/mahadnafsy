@@ -333,30 +333,30 @@ const Auth: React.FC = () => {
     };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-md rounded-2xl shadow-xl p-8 border border-gray-100">
+    <div className="flex min-h-screen items-center justify-center bg-paper px-4 py-10">
+      <div className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-[0_40px_80px_-45px_rgba(26,15,18,.5)] ring-1 ring-line sm:p-8">
         <div className="text-center mb-8">
-           <div className="w-12 h-12 bg-primary-600 rounded-lg flex items-center justify-center text-white font-bold text-xl mx-auto mb-4 animate-float">
+           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-ink text-2xl font-black text-gold-pale">
               ن
            </div>
-           <h2 className="text-2xl font-bold text-gray-900">
+           <h2 className="text-2xl font-black text-ink sm:text-[28px]">
              {twoFaStep ? 'التحقق الثنائي' : forgotMode ? 'استعادة كلمة المرور' : isLogin ? 'تسجيل الدخول إلى حسابك' : 'إنشاء حساب جديد'}
            </h2>
-           <p className="text-gray-500 text-sm mt-2">مرحباً بك في مجتمع معهد الدراسات النفسية</p>
+           <p className="mt-2 text-sm text-muted-body">مرحباً بك في مجتمع معهد الدراسات النفسية</p>
         </div>
 
         {/* ── 2FA step (admin login) ── */}
         {twoFaStep ? (
           <form className="space-y-4 animate-fade-in" onSubmit={handleVerify2fa}>
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
+            <div className="rounded-2xl bg-paper p-4 text-center ring-1 ring-line">
               <div className="text-3xl mb-2">🔐</div>
               {/* This said «تم إرسال رمز التحقق إلى {email}» — nothing is sent.
                   The second line, telling them to open their authenticator, was
                   right; the headline above it had people waiting for an email
                   that was never going to arrive. */}
-              <p className="text-amber-800 font-bold text-sm">{twoFaRecovery ? 'أدخل كود من أكواد الاسترجاع' : 'هذا الحساب محمي بالتحقق الثنائي'}</p>
-              <p className="text-amber-700 font-mono text-sm mt-1">{twoFaEmail}</p>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-sm font-black text-ink">{twoFaRecovery ? 'أدخل كود من أكواد الاسترجاع' : 'هذا الحساب محمي بالتحقق الثنائي'}</p>
+              <p className="mt-1 font-mono text-sm text-primary-700">{twoFaEmail}</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted">
                 {twoFaRecovery
                   ? 'الأكواد اللي ظهرتلك لما فعّلت التحقق الثنائي — كل كود بيشتغل مرة واحدة بس'
                   : 'افتح تطبيق المصادقة (Google Authenticator أو ما شابه) وأدخل الرمز المعروض الآن'}
@@ -365,14 +365,14 @@ const Auth: React.FC = () => {
             <div>
               {twoFaRecovery ? (
                 <>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">كود الاسترجاع</label>
+                  <label className="mb-1 block text-[13px] font-bold text-muted-strong">كود الاسترجاع</label>
                   <input
                     key="recovery"
                     type="text"
                     dir="ltr"
                     value={twoFaCode}
                     onChange={e => setTwoFaCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 14))}
-                    className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-center font-mono text-xl tracking-wider"
+                    className="min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10 text-center font-mono text-xl tracking-wider"
                     placeholder="XXXX-XXXX-XXXX"
                     autoComplete="off"
                     autoFocus
@@ -381,13 +381,13 @@ const Auth: React.FC = () => {
                 </>
               ) : (
                 <>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">رمز التحقق (6 أرقام)</label>
+                  <label className="mb-1 block text-[13px] font-bold text-muted-strong">رمز التحقق (6 أرقام)</label>
                   <input
                     key="totp"
                     type="text"
                     value={twoFaCode}
                     onChange={e => setTwoFaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-center font-mono text-2xl tracking-widest"
+                    className="min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10 text-center font-mono text-2xl tracking-widest"
                     placeholder="000000"
                     maxLength={6}
                     autoFocus
@@ -398,18 +398,18 @@ const Auth: React.FC = () => {
               <button
                 type="button"
                 onClick={() => { setTwoFaRecovery(!twoFaRecovery); setTwoFaCode(''); setNotice(null); }}
-                className="mt-2 text-xs text-amber-700 hover:text-amber-900 underline"
+                className="mt-2 min-h-[36px] text-xs font-bold text-primary-700 underline underline-offset-4 hover:text-primary-800"
               >
                 {twoFaRecovery ? 'استخدم رمز التطبيق' : 'استخدم كود استرجاع'}
               </button>
             </div>
             {notice && (
-              <div className={`rounded-lg px-3 py-2 text-sm ${notice.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>{notice.text}</div>
+              <div className={`rounded-xl border px-3.5 py-2.5 text-sm font-bold ${notice.type === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>
             )}
-            <button type="submit" disabled={loading || (twoFaRecovery ? twoFaCode.replace(/[^A-Z0-9]/g, '').length !== 12 : twoFaCode.length !== 6)} className="w-full bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white font-bold py-3 rounded-lg transition">
+            <button type="submit" disabled={loading || (twoFaRecovery ? twoFaCode.replace(/[^A-Z0-9]/g, '').length !== 12 : twoFaCode.length !== 6)} className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 px-7 font-black text-white transition hover:bg-primary-800 disabled:cursor-not-allowed disabled:opacity-60">
               {loading ? 'جارٍ التحقق...' : 'تأكيد الدخول'}
             </button>
-            <button type="button" onClick={() => { setTwoFaStep(false); setTwoFaCode(''); setTwoFaTempToken(''); setTwoFaRecovery(false); setNotice(null); }} className="w-full text-sm text-gray-500 hover:text-gray-700 py-2">← العودة لتسجيل الدخول</button>
+            <button type="button" onClick={() => { setTwoFaStep(false); setTwoFaCode(''); setTwoFaTempToken(''); setTwoFaRecovery(false); setNotice(null); }} className="min-h-[44px] w-full text-sm font-bold text-muted hover:text-ink">← العودة لتسجيل الدخول</button>
           </form>
         ) : /* ── Forgot password mode ── */
         forgotMode ? (
@@ -417,14 +417,14 @@ const Auth: React.FC = () => {
             {forgotSent ? (
               /* ── Step 4: Success ── */
               <div className="space-y-4">
-                <div className="bg-green-50 border border-green-200 rounded-xl p-5 text-center">
+                <div className="rounded-2xl border border-green-200 bg-green-50 p-5 text-center">
                   <div className="text-4xl mb-3">✅</div>
                   <p className="text-green-800 font-bold mb-2">تم تغيير كلمة المرور!</p>
-                  <p className="text-sm text-gray-600">يمكنك الآن تسجيل الدخول بكلمة المرور الجديدة.</p>
+                  <p className="text-sm leading-relaxed text-muted-body">يمكنك الآن تسجيل الدخول بكلمة المرور الجديدة.</p>
                 </div>
                 <button
                   onClick={() => { setForgotMode(false); setForgotSent(false); setForgotEmail(''); setOtpCode(''); setResetToken(''); setNewPassword(''); setOtpStep(0); setIsLogin(true); }}
-                  className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 rounded-lg transition"
+                  className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 px-7 font-black text-white transition hover:bg-primary-800 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   العودة لتسجيل الدخول
                 </button>
@@ -432,86 +432,86 @@ const Auth: React.FC = () => {
             ) : otpStep === 0 ? (
               /* ── Step 1: Enter identifier ── */
               <form className="space-y-4" onSubmit={handleForgotPassword}>
-                <p className="text-sm text-gray-600">أدخل بريدك الإلكتروني أو رقم هاتفك وسنُرسل لك كود التحقق.</p>
+                <p className="text-sm leading-relaxed text-muted-body">أدخل بريدك الإلكتروني أو رقم هاتفك وسنُرسل لك كود التحقق.</p>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">البريد الإلكتروني أو رقم الهاتف</label>
+                  <label className="mb-1 block text-[13px] font-bold text-muted-strong">البريد الإلكتروني أو رقم الهاتف</label>
                   <input
                     type="text"
                     dir="ltr"
                     value={forgotEmail}
                     onChange={e => setForgotEmail(e.target.value)}
-                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
+                    className="min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10"
                     placeholder="example@domain.com أو 01012345678"
                     required
                   />
                 </div>
                 {notice && (
-                  <div className={`rounded-lg px-3 py-2 text-sm ${notice.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>{notice.text}</div>
+                  <div className={`rounded-xl border px-3.5 py-2.5 text-sm font-bold ${notice.type === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>
                 )}
-                <button type="submit" disabled={loading} className="w-full bg-primary-600 hover:bg-primary-700 disabled:opacity-60 text-white font-bold py-3 rounded-lg transition">
+                <button type="submit" disabled={loading} className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 px-7 font-black text-white transition hover:bg-primary-800 disabled:cursor-not-allowed disabled:opacity-60">
                   {loading ? 'جارٍ الإرسال...' : 'إرسال كود التحقق'}
                 </button>
-                <button type="button" onClick={() => { setForgotMode(false); setNotice(null); }} className="w-full text-sm text-gray-500 hover:text-gray-700 py-2">← العودة لتسجيل الدخول</button>
+                <button type="button" onClick={() => { setForgotMode(false); setNotice(null); }} className="min-h-[44px] w-full text-sm font-bold text-muted hover:text-ink">← العودة لتسجيل الدخول</button>
               </form>
             ) : otpStep === 1 ? (
               /* ── Step 2: Enter OTP ── */
               <form className="space-y-4" onSubmit={handleVerifyOtp}>
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
+                <div className="rounded-2xl bg-paper p-4 text-center ring-1 ring-line">
                   <div className="text-3xl mb-2">🔐</div>
                   {/* Worded conditionally, and channel-neutral, on purpose: the
                       API deliberately returns success even when no account
                       matches (so it can't be used to discover which accounts
                       exist), and it never reveals whether the code went out
                       over WhatsApp or email. */}
-                  <p className="text-blue-800 font-bold text-sm">إذا كان هناك حساب مسجّل، فقد أرسلنا كوداً من 6 أرقام على واتساب أو البريد الإلكتروني</p>
-                  <p className="text-blue-700 font-mono text-sm mt-1" dir="ltr">{forgotEmail}</p>
-                  <p className="text-xs text-gray-500 mt-1">تحقق من واتساب، أو من مجلد البريد المزعج (Spam). إذا لم يصلك الكود خلال دقائق، فغالباً لا يوجد حساب بهذه البيانات — جرّب بيانات أخرى أو تواصل مع الدعم.</p>
+                  <p className="text-sm font-black text-ink">إذا كان هناك حساب مسجّل، فقد أرسلنا كوداً من 6 أرقام على واتساب أو البريد الإلكتروني</p>
+                  <p className="mt-1 font-mono text-sm text-primary-700" dir="ltr">{forgotEmail}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted">تحقق من واتساب، أو من مجلد البريد المزعج (Spam). إذا لم يصلك الكود خلال دقائق، فغالباً لا يوجد حساب بهذه البيانات — جرّب بيانات أخرى أو تواصل مع الدعم.</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">كود التحقق</label>
+                  <label className="mb-1 block text-[13px] font-bold text-muted-strong">كود التحقق</label>
                   <input
                     type="text"
                     value={otpCode}
                     onChange={e => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none text-center font-mono text-2xl tracking-widest"
+                    className="min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10 text-center font-mono text-2xl tracking-widest"
                     placeholder="000000"
                     maxLength={6}
                     required
                   />
                 </div>
                 {notice && (
-                  <div className={`rounded-lg px-3 py-2 text-sm ${notice.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>{notice.text}</div>
+                  <div className={`rounded-xl border px-3.5 py-2.5 text-sm font-bold ${notice.type === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>
                 )}
-                <button type="submit" disabled={loading || otpCode.length !== 6} className="w-full bg-primary-600 hover:bg-primary-700 disabled:opacity-60 text-white font-bold py-3 rounded-lg transition">
+                <button type="submit" disabled={loading || otpCode.length !== 6} className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 px-7 font-black text-white transition hover:bg-primary-800 disabled:cursor-not-allowed disabled:opacity-60">
                   {loading ? 'جارٍ التحقق...' : 'تحقق من الكود'}
                 </button>
-                <button type="button" onClick={() => { setOtpStep(0); setOtpCode(''); setNotice(null); }} className="w-full text-sm text-gray-500 hover:text-gray-700 py-2">← تغيير البيانات</button>
+                <button type="button" onClick={() => { setOtpStep(0); setOtpCode(''); setNotice(null); }} className="min-h-[44px] w-full text-sm font-bold text-muted hover:text-ink">← تغيير البيانات</button>
               </form>
             ) : (
               /* ── Step 3: Enter new password ── */
               <form className="space-y-4" onSubmit={handleResetPassword}>
-                <p className="text-sm text-gray-600 text-center">أدخل كلمة المرور الجديدة.</p>
+                <p className="text-center text-sm text-muted-body">أدخل كلمة المرور الجديدة.</p>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">كلمة المرور الجديدة</label>
+                  <label className="mb-1 block text-[13px] font-bold text-muted-strong">كلمة المرور الجديدة</label>
                   <div className="relative">
                     <input
                       type={showNewPassword ? 'text' : 'password'}
                       value={newPassword}
                       onChange={e => setNewPassword(e.target.value)}
-                      className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none pr-10"
+                      className="min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10 pl-12"
                       placeholder="8 أحرف على الأقل"
                       required
                       minLength={8}
                     />
-                    <button type="button" onClick={() => setShowNewPassword(v => !v)} className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 hover:text-gray-600" tabIndex={-1}>
+                    <button type="button" onClick={() => setShowNewPassword(v => !v)} className="absolute inset-y-0 left-0 flex w-12 items-center justify-center text-muted-soft hover:text-ink" tabIndex={-1}>
                       {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
                   </div>
                 </div>
                 {notice && (
-                  <div className={`rounded-lg px-3 py-2 text-sm ${notice.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>{notice.text}</div>
+                  <div className={`rounded-xl border px-3.5 py-2.5 text-sm font-bold ${notice.type === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>
                 )}
-                <button type="submit" disabled={loading} className="w-full bg-primary-600 hover:bg-primary-700 disabled:opacity-60 text-white font-bold py-3 rounded-lg transition">
+                <button type="submit" disabled={loading} className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 px-7 font-black text-white transition hover:bg-primary-800 disabled:cursor-not-allowed disabled:opacity-60">
                   {loading ? 'جارٍ الحفظ...' : 'حفظ كلمة المرور الجديدة'}
                 </button>
               </form>
@@ -525,24 +525,24 @@ const Auth: React.FC = () => {
           <div className="space-y-4 animate-fade-in">
             {waStep === 0 ? (
               <form className="space-y-4" onSubmit={handleWaRequest}>
-                <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+                <div className="rounded-2xl bg-paper p-4 text-center ring-1 ring-line">
                   <div className="text-3xl mb-1">💬</div>
-                  <p className="text-green-800 font-bold text-sm">هنبعتلك رمز على واتساب</p>
-                  <p className="text-green-700 text-xs mt-1">جديد أو عندك حساب — نفس الخطوة</p>
+                  <p className="text-sm font-black text-ink">هنبعتلك رمز على واتساب</p>
+                  <p className="mt-1 text-xs text-muted">جديد أو عندك حساب — نفس الخطوة</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">رقم الواتساب</label>
+                  <label className="mb-1 block text-[13px] font-bold text-muted-strong">رقم الواتساب</label>
                   <input
                     type="tel" inputMode="tel" dir="ltr" value={waPhone}
                     onChange={e => setWaPhone(e.target.value)}
-                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none text-left"
+                    className="min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10 text-left"
                     placeholder="01012345678"
                   />
-                  <p className="text-xs text-gray-400 mt-1">اكتب الرقم بأي صيغة — 01… أو ‎+20…</p>
+                  <p className="mt-1 text-xs text-muted-soft">اكتب الرقم بأي صيغة — 01… أو ‎+20…</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    الاسم <span className="text-gray-400 font-normal">(لو حساب جديد)</span>
+                  <label className="mb-1 block text-[13px] font-bold text-muted-strong">
+                    الاسم <span className="font-normal text-muted-soft">(لو حساب جديد)</span>
                   </label>
                   {/* Collected here rather than after verification so a new
                       customer is never stopped mid-flow to be asked. It is
@@ -551,35 +551,35 @@ const Auth: React.FC = () => {
                   <input
                     type="text" value={waName}
                     onChange={e => setWaName(e.target.value)}
-                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
+                    className="min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10"
                     placeholder="اسمك"
                   />
                 </div>
                 {notice && (
-                  <div className={`rounded-lg px-3 py-2 text-sm ${notice.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>{notice.text}</div>
+                  <div className={`rounded-xl border px-3.5 py-2.5 text-sm font-bold ${notice.type === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>
                 )}
                 <button
                   type="submit" disabled={loading || !waPhone.trim()}
-                  className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-lg transition disabled:opacity-60"
+                  className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 px-7 font-black text-white transition hover:bg-primary-800 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {loading ? 'جاري الإرسال...' : 'إرسال الرمز'}
                 </button>
               </form>
             ) : (
               <form className="space-y-4" onSubmit={handleWaVerify}>
-                <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+                <div className="rounded-2xl bg-paper p-4 text-center ring-1 ring-line">
                   {/* Says the same thing whether or not the number is
                       registered — the API deliberately answers identically, so
                       the wording must not give away what it withholds. */}
-                  <p className="text-green-800 font-bold text-sm">بعتنا رمز من 6 أرقام على واتساب</p>
-                  <p className="text-green-700 font-mono text-sm mt-1" dir="ltr">{waPhone}</p>
+                  <p className="text-sm font-black text-ink">بعتنا رمز من 6 أرقام على واتساب</p>
+                  <p className="mt-1 font-mono text-sm text-primary-700" dir="ltr">{waPhone}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">رمز التحقق</label>
+                  <label className="mb-1 block text-[13px] font-bold text-muted-strong">رمز التحقق</label>
                   <input
                     type="text" inputMode="numeric" dir="ltr" value={waCode}
                     onChange={e => setWaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    className="w-full px-4 py-2 border rounded-lg text-center tracking-[0.4em] font-mono text-lg focus:ring-2 focus:ring-green-500 outline-none"
+                    className="min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10 text-center font-mono text-lg tracking-[0.4em]"
                     placeholder="000000"
                   />
                 </div>
@@ -587,23 +587,23 @@ const Auth: React.FC = () => {
                     accepted, the error was swallowed, and nothing on screen
                     changed. Every other form in this file already shows it. */}
                 {notice && (
-                  <div className={`rounded-lg px-3 py-2 text-sm ${notice.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>{notice.text}</div>
+                  <div className={`rounded-xl border px-3.5 py-2.5 text-sm font-bold ${notice.type === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>
                 )}
                 <button
                   type="submit" disabled={loading || waCode.length !== 6}
-                  className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-lg transition disabled:opacity-60"
+                  className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 px-7 font-black text-white transition hover:bg-primary-800 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {loading ? 'جاري التحقق...' : 'دخول'}
                 </button>
                 <button
                   type="button" onClick={() => { void handleWaResend(); }} disabled={loading || resendIn > 0}
-                  className="w-full text-green-700 text-sm font-medium hover:text-green-800 disabled:text-gray-400"
+                  className="min-h-[44px] w-full text-sm font-bold text-primary-700 hover:text-primary-800 disabled:text-muted-faint"
                 >
                   {resendIn > 0 ? `إعادة إرسال الرمز بعد ${resendIn} ثانية` : 'إعادة إرسال الرمز'}
                 </button>
                 <button
                   type="button" onClick={() => { setWaStep(0); setWaCode(''); setResendIn(0); }}
-                  className="w-full text-gray-500 text-sm hover:text-gray-700"
+                  className="min-h-[44px] w-full text-sm font-bold text-muted hover:text-ink"
                 >
                   تغيير الرقم
                 </button>
@@ -612,7 +612,7 @@ const Auth: React.FC = () => {
             <button
               type="button"
               onClick={() => { setWaMode(false); setWaStep(0); setWaCode(''); setNotice(null); }}
-              className="w-full text-primary-600 text-sm font-medium hover:underline"
+              className="min-h-[44px] w-full text-sm font-bold text-primary-700 hover:underline"
             >
               الدخول بالبريد الإلكتروني أو رقم الهاتف بدلاً من ذلك
             </button>
@@ -623,23 +623,23 @@ const Auth: React.FC = () => {
            {!isLogin && (
                <>
                    <div>
-                       <label className="block text-sm font-medium text-gray-700 mb-1">الاسم الكامل <span className="text-gray-400 font-normal">(اختياري)</span></label>
+                       <label className="mb-1 block text-[13px] font-bold text-muted-strong">الاسم الكامل <span className="font-normal text-muted-soft">(اختياري)</span></label>
                                              <input
                                                  type="text"
                                                  value={fullName}
                                                  onChange={(e) => setFullName(e.target.value)}
-                                                 className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
+                                                 className="min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10"
                                                  placeholder="الاسم الثلاثي"
                                              />
                    </div>
                    <div>
-                       <label className="block text-sm font-medium text-gray-700 mb-1">رقم الهاتف (واتساب)</label>
-                       <input type="tel" dir="ltr" required value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none text-left" placeholder="01012345678" />
+                       <label className="mb-1 block text-[13px] font-bold text-muted-strong">رقم الهاتف (واتساب)</label>
+                       <input type="tel" dir="ltr" required value={phone} onChange={(e) => setPhone(e.target.value)} className="min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10 text-left" placeholder="01012345678" />
                    </div>
                    <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">الدولة</label>
-                            <select value={country} onChange={(e) => setCountry(e.target.value)} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none bg-white">
+                            <label className="mb-1 block text-[13px] font-bold text-muted-strong">الدولة</label>
+                            <select value={country} onChange={(e) => setCountry(e.target.value)} className="min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10">
                                 <option>مصر</option>
                                 <option>السعودية</option>
                                 <option>الإمارات</option>
@@ -648,8 +648,8 @@ const Auth: React.FC = () => {
                             </select>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">الاهتمام</label>
-                            <select value={interest} onChange={(e) => setInterest(e.target.value)} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none bg-white">
+                            <label className="mb-1 block text-[13px] font-bold text-muted-strong">الاهتمام</label>
+                            <select value={interest} onChange={(e) => setInterest(e.target.value)} className="min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10">
                                 <option>علاج نفسي</option>
                                 <option>إرشاد أسري</option>
                                 <option>أطفال</option>
@@ -660,8 +660,8 @@ const Auth: React.FC = () => {
                </>
            )}
            <div>
-               <label className="block text-sm font-medium text-gray-700 mb-1">
-                 {isLogin ? 'البريد الإلكتروني أو رقم الهاتف' : <>البريد الإلكتروني <span className="text-gray-400 font-normal">(اختياري)</span></>}
+               <label className="mb-1 block text-[13px] font-bold text-muted-strong">
+                 {isLogin ? 'البريد الإلكتروني أو رقم الهاتف' : <>البريد الإلكتروني <span className="font-normal text-muted-soft">(اختياري)</span></>}
                </label>
                              <input
                                  type={isLogin ? 'text' : 'email'}
@@ -669,22 +669,22 @@ const Auth: React.FC = () => {
                                  value={email}
                                  onChange={(e) => setEmail(e.target.value)}
                                  placeholder={isLogin ? 'example@domain.com أو 01012345678' : undefined}
-                                 className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
+                                 className="min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10"
                              />
            </div>
            <div>
-               <label className="block text-sm font-medium text-gray-700 mb-1">كلمة المرور</label>
+               <label className="mb-1 block text-[13px] font-bold text-muted-strong">كلمة المرور</label>
                <div className="relative">
                  <input
                    type={showPassword ? 'text' : 'password'}
                    value={password}
                    onChange={(e) => setPassword(e.target.value)}
-                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none pr-10"
+                   className="min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10 pl-12"
                  />
                  <button
                    type="button"
                    onClick={() => setShowPassword(v => !v)}
-                   className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 hover:text-gray-600"
+                   className="absolute inset-y-0 left-0 flex w-12 items-center justify-center text-muted-soft hover:text-ink"
                    tabIndex={-1}
                  >
                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -696,7 +696,7 @@ const Auth: React.FC = () => {
                <button
                  type="button"
                  onClick={() => { setForgotMode(true); setNotice(null); }}
-                 className="text-sm text-primary-600 hover:underline"
+                 className="min-h-[36px] text-sm font-bold text-primary-700 hover:underline"
                >
                  نسيت كلمة المرور؟
                </button>
@@ -706,13 +706,13 @@ const Auth: React.FC = () => {
            {isLogin && (
              <div className="pt-1">
                <div className="relative my-2 text-center">
-                 <span className="bg-white px-2 text-xs text-gray-400 relative z-10">أو</span>
-                 <div className="absolute inset-x-0 top-1/2 h-px bg-gray-200" />
+                 <span className="relative z-10 bg-white px-3 text-xs font-bold text-muted-soft">أو</span>
+                 <div className="absolute inset-x-0 top-1/2 h-px bg-line" />
                </div>
                <button
                  type="button"
                  onClick={() => { setWaMode(true); setWaStep(0); setWaCode(''); setNotice(null); }}
-                 className="w-full flex items-center justify-center gap-2 border border-green-300 text-green-700 font-bold py-2.5 rounded-lg hover:bg-green-50 transition"
+                 className="flex min-h-[50px] w-full items-center justify-center gap-2 rounded-2xl border-[1.5px] border-ink/15 bg-white font-extrabold text-ink transition hover:border-ink/40"
                >
                  💬 الدخول برقم الواتساب
                </button>
@@ -721,7 +721,7 @@ const Auth: React.FC = () => {
 
                      {notice && (
                          <div
-                             className={`rounded-lg px-3 py-2 text-sm ${notice.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}
+                             className={`rounded-xl border px-3.5 py-2.5 text-sm font-bold ${notice.type === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}
                          >
                              {notice.text}
                          </div>
@@ -730,7 +730,7 @@ const Auth: React.FC = () => {
                      <button
                          type="submit"
                          disabled={loading}
-                         className="w-full bg-primary-600 hover:bg-primary-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg transition mt-4 shadow-lg shadow-primary-500/20"
+                         className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 px-7 font-black text-white transition hover:bg-primary-800 disabled:cursor-not-allowed disabled:opacity-60 mt-4 shadow-[0_16px_30px_-14px_rgba(159,18,57,.8)]"
                      >
                              {loading ? 'جاري التنفيذ...' : isLogin ? 'دخول' : 'تسجيل حساب جديد'}
            </button>
@@ -742,9 +742,9 @@ const Auth: React.FC = () => {
             reset), where switching to registration mid-flow makes no sense. */}
         {!twoFaStep && !forgotMode && (
           <div className="mt-6 text-center text-sm">
-              <p className="text-gray-600">
+              <p className="text-muted-body">
                   {isLogin ? 'ليس لديك حساب؟' : 'لديك حساب بالفعل؟'} {' '}
-                  <button onClick={() => { setIsLogin(!isLogin); setWaMode(false); setNotice(null); }} className="text-primary-600 font-bold hover:underline">
+                  <button onClick={() => { setIsLogin(!isLogin); setWaMode(false); setNotice(null); }} className="inline-flex min-h-[44px] items-center font-black text-primary-700 hover:underline">
                       {isLogin ? 'أنشئ حساباً' : 'سجل دخولك'}
                   </button>
               </p>

@@ -22,7 +22,7 @@ const SPAN = ['md:col-span-2 md:row-span-2', '', 'md:col-span-2', '', 'md:col-sp
  * phone it slides sideways; any photo opens full size.
  */
 const GraduatesGallery: React.FC<{ graduates: string; onOpen: (index: number) => void }> = ({ graduates, onOpen }) => (
-  <section id="graduates" className="scroll-mt-24 overflow-hidden bg-white pb-16 pt-6 sm:pb-24 sm:pt-10">
+  <section id="graduates" className="cv-auto scroll-mt-24 overflow-hidden bg-white pb-16 pt-6 sm:pb-24 sm:pt-10">
     <div className="container mx-auto px-4">
       <Reveal className="mb-8 flex flex-col items-center gap-4 text-center sm:mb-10 lg:flex-row lg:items-end lg:justify-between lg:text-right">
         <div className="max-w-2xl">
@@ -41,7 +41,7 @@ const GraduatesGallery: React.FC<{ graduates: string; onOpen: (index: number) =>
             aria-label={`عرض الصورة: ${photo.alt}`}
             className={`group relative h-[260px] w-[78%] flex-none snap-start overflow-hidden rounded-[24px] bg-sand sm:w-[48%] md:h-auto md:w-auto ${SPAN[i]}`}
           >
-            <Picture base={`brand/grads/${photo.src.replace(/\.jpg$/, '')}`} widths={photo.widths} sizes="(min-width: 768px) 50vw, 80vw" alt={photo.alt} width={960} height={720} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" />
+            <Picture photo={photo.src.replace(/\.jpg$/, '')} widths={photo.widths} sizes="(min-width: 768px) 50vw, 80vw" alt={photo.alt} width={960} height={720} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" />
             <span aria-hidden="true" className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent opacity-0 transition group-hover:opacity-100" />
             <span aria-hidden="true" className="absolute bottom-3 left-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-ink opacity-0 transition group-hover:opacity-100"><Expand size={18} /></span>
           </button>

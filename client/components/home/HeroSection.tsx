@@ -111,7 +111,7 @@ const HeroSection: React.FC<{ content: Content; therapists: Therapist[]; hasVide
               {HERO_GRADUATES.map((g, i) => (
                 <Picture
                   key={g.name}
-                  base={`brand/grads/hero-${g.name}`}
+                  photo={`hero-${g.name}`}
                   widths={[360, 640]}
                   sizes="(min-width: 1024px) 210px, 31vw"
                   alt={g.alt}

@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, ChevronLeft, ChevronRight, GraduationCap, Star } from 'lucide-react';
 import type { Therapist } from '../../types';
-import { cdnImg } from '../../lib/img';
+import { cdnImg, cdnSrcSet } from '../../lib/img';
 import { Reveal } from './Reveal';
 
 const MAX = 10;
@@ -29,7 +29,7 @@ const InstructorsCarousel: React.FC<{ therapists: Therapist[] }> = ({ therapists
   };
 
   return (
-    <section id="instructors" className="scroll-mt-24 bg-white py-16 sm:py-24">
+    <section id="instructors" className="cv-auto scroll-mt-24 bg-white py-16 sm:py-24">
       <div className="container mx-auto px-4">
         <Reveal className="mb-8 flex flex-col items-center gap-5 text-center sm:mb-10 lg:flex-row lg:items-end lg:justify-between lg:text-right">
           <div className="max-w-2xl">
@@ -48,7 +48,7 @@ const InstructorsCarousel: React.FC<{ therapists: Therapist[] }> = ({ therapists
             <article key={t.id} className="w-[68%] flex-none snap-start sm:w-[42%] md:w-[31%] lg:w-[calc((100%-60px)/4)]">
               <Link to={`/instructor/${t.id}`} className="group block">
                 <div className="relative aspect-[4/5] overflow-hidden rounded-[26px] bg-sand">
-                  <img src={cdnImg(t.image, 520)} alt={t.name} loading="lazy" className="h-full w-full object-cover transition duration-700 group-hover:scale-105" />
+                  <img src={cdnImg(t.image, 500)} srcSet={cdnSrcSet(t.image, [320, 500, 640])} sizes="(min-width: 1024px) 290px, (min-width: 768px) 31vw, 68vw" alt={t.name} loading="lazy" decoding="async" width={500} height={625} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" />
                   <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-ink/85 to-transparent" />
                   <span className="absolute inset-x-4 bottom-4 text-white">
                     <b className="block text-lg font-black leading-snug">{t.name}</b>

@@ -4,6 +4,7 @@ import { useSiteData } from '../context/SiteDataContext';
 import { instituteWhatsApp } from '../lib/whatsappLink';
 import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 import { useSeo } from '../lib/useSeo';
+import PageHeader from '../components/PageHeader';
 
 const Contact: React.FC = () => {
   useSeo({ title: 'تواصل معنا | معهد الدراسات النفسية', path: '/contact', description: 'تواصل مع معهد الدراسات النفسية — هاتف، واتساب، بريد إلكتروني ونموذج مراسلة.' });
@@ -44,89 +45,86 @@ const Contact: React.FC = () => {
     }
   };
 
-  return (
-    <div className="bg-gray-50 min-h-screen animate-fade-in">
-      {/* Hero */}
-      <div className="bg-gray-900 text-white py-16 relative overflow-hidden">
-        <div className="absolute inset-0 bg-primary-900/20"></div>
-        <div className="absolute top-0 right-0 w-64 h-64 bg-primary-600 rounded-full blur-[100px] opacity-20"></div>
-        <div className="absolute bottom-0 left-0 w-64 h-64 bg-secondary-500 rounded-full blur-[100px] opacity-20"></div>
-        <div className="container mx-auto px-4 relative z-10 text-center">
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 animate-slide-up">
-            {content['contact.heroTitle'] || 'تواصل معنا'}
-          </h1>
-          <p className="text-xl text-gray-300 max-w-2xl mx-auto animate-slide-up" style={{ animationDelay: '0.1s' }}>
-            {content['contact.heroSubtitle'] || 'نحن هنا للإجابة على جميع استفساراتك. لا تتردد في التواصل معنا في أي وقت.'}
-          </p>
-        </div>
-      </div>
+  const inputCls = 'min-h-[50px] w-full rounded-xl border border-line-strong bg-paper px-4 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10';
+  const labelCls = 'mb-1 block text-[13px] font-bold text-muted-strong';
+  const socialCls = 'inline-flex min-h-[44px] items-center gap-2 rounded-full bg-paper px-4 text-sm font-extrabold text-muted-strong ring-1 ring-line transition hover:text-ink hover:ring-line-deep';
 
-      <div className="container mx-auto px-4 py-16">
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-12">
+  return (
+    <div className="min-h-screen bg-white">
+      <PageHeader
+        eyebrow="نحن هنا لمساعدتك"
+        title={content['contact.heroTitle'] || 'تواصل معنا'}
+        subtitle={content['contact.heroSubtitle'] || 'نحن هنا للإجابة على جميع استفساراتك. لا تتردد في التواصل معنا في أي وقت.'}
+      />
+
+      <section className="bg-white py-14 sm:py-20">
+        <div className="container mx-auto grid grid-cols-1 gap-6 px-4 lg:grid-cols-5 lg:gap-8">
           {/* Contact Form */}
           <div className="lg:col-span-3">
-            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            <div className="rounded-[28px] border border-line bg-white p-5 shadow-[0_40px_80px_-55px_rgba(26,15,18,.45)] sm:p-8">
+              <h2 className="text-2xl font-black text-ink sm:text-3xl">
                 {content['contact.form.title'] || 'أرسل لنا رسالة'}
               </h2>
-              <p className="text-gray-500 mb-8">
+              <p className="mt-2 text-base text-muted-body">
                 {content['contact.form.subtitle'] || 'سنرد عليك خلال 24 ساعة عمل.'}
               </p>
 
               {submitted ? (
-                <div className="text-center py-16">
-                  <CheckCircle size={64} className="mx-auto text-emerald-500 mb-4" />
-                  <h3 className="text-xl font-bold text-gray-900 mb-2">تم استلام رسالتك!</h3>
-                  <p className="text-gray-500">سنتواصل معك قريباً. شكراً لثقتك بنا.</p>
+                <div className="py-14 text-center">
+                  <span className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-green-50 text-green-600">
+                    <CheckCircle size={44} />
+                  </span>
+                  <h3 className="mt-5 text-2xl font-black text-ink">تم استلام رسالتك!</h3>
+                  <p className="mt-2 text-muted-body">سنتواصل معك قريباً. شكراً لثقتك بنا.</p>
                   <button
                     onClick={() => { setSubmitted(false); setForm({ name: '', email: '', phone: '', subject: '', message: '' }); }}
-                    className="mt-6 text-primary-600 font-bold hover:underline"
+                    className="mt-6 inline-flex min-h-[48px] items-center justify-center rounded-2xl border-[1.5px] border-ink/15 bg-white px-6 font-extrabold text-ink transition hover:border-ink/40"
                   >
                     إرسال رسالة أخرى
                   </button>
                 </div>
               ) : (
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <form onSubmit={handleSubmit} className="mt-7 space-y-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
-                      <label className="block text-sm font-bold text-gray-700 mb-1">الاسم الكامل *</label>
+                      <label className={labelCls}>الاسم الكامل *</label>
                       <input
                         required
                         type="text"
                         value={form.name}
                         onChange={(e) => setForm({ ...form, name: e.target.value })}
                         placeholder="محمد أحمد"
-                        className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition"
+                        className={inputCls}
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-bold text-gray-700 mb-1">رقم الهاتف *</label>
+                      <label className={labelCls}>رقم الهاتف *</label>
                       <input
                         required
                         type="tel"
                         value={form.phone}
                         onChange={(e) => setForm({ ...form, phone: e.target.value })}
                         placeholder="مثال: +20 100 000 0000"
-                        className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition"
+                        className={inputCls}
                       />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">البريد الإلكتروني</label>
+                    <label className={labelCls}>البريد الإلكتروني</label>
                     <input
                       type="email"
                       value={form.email}
                       onChange={(e) => setForm({ ...form, email: e.target.value })}
                       placeholder="مثال: name@example.com"
-                      className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition"
+                      className={inputCls}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">موضوع الرسالة</label>
+                    <label className={labelCls}>موضوع الرسالة</label>
                     <select
                       value={form.subject}
                       onChange={(e) => setForm({ ...form, subject: e.target.value })}
-                      className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition bg-white"
+                      className={inputCls}
                     >
                       <option value="">اختر الموضوع</option>
                       <option value="courses">استفسار عن الدبلومات والبرامج</option>
@@ -139,20 +137,20 @@ const Contact: React.FC = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">رسالتك *</label>
+                    <label className={labelCls}>رسالتك *</label>
                     <textarea
                       required
                       rows={5}
                       value={form.message}
                       onChange={(e) => setForm({ ...form, message: e.target.value })}
                       placeholder="اكتب رسالتك هنا..."
-                      className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition resize-none"
+                      className={`${inputCls} resize-none py-3`}
                     />
                   </div>
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="w-full bg-primary-600 hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition"
+                    className="inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 px-7 font-black text-white transition hover:bg-primary-800 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <Send size={18} />
                     {submitting ? 'جارٍ الإرسال...' : 'إرسال الرسالة'}
@@ -166,92 +164,92 @@ const Contact: React.FC = () => {
           </div>
 
           {/* Contact Info Sidebar */}
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6">
-              <h3 className="font-bold text-gray-900 text-lg mb-6">معلومات التواصل</h3>
-              <div className="space-y-4">
-                <a href={`tel:${phone}`} className="flex items-center gap-4 group">
-                  <div className="w-12 h-12 rounded-2xl bg-primary-50 flex items-center justify-center text-primary-600 group-hover:bg-primary-100 transition flex-shrink-0">
+          <div className="space-y-6 lg:col-span-2">
+            <div className="rounded-[28px] bg-ink p-5 text-white sm:p-7">
+              <h3 className="text-lg font-black">معلومات التواصل</h3>
+              <div className="mt-5 space-y-2">
+                <a href={`tel:${phone}`} className="group flex min-h-[56px] items-center gap-4 rounded-2xl p-2 transition hover:bg-white/[.06]">
+                  <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-white/10 text-gold-light">
                     <Phone size={20} />
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">هاتف</p>
-                    <p className="font-bold text-gray-900 group-hover:text-primary-600 transition">{phone}</p>
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs text-white/65">هاتف</p>
+                    <p dir="ltr" className="break-words text-right font-bold tabular-nums">{phone}</p>
                   </div>
                 </a>
                 {whatsapp && (
-                  <a href={`https://wa.me/${whatsapp}`} target="_blank" rel="noreferrer" className="flex items-center gap-4 group">
-                    <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600 group-hover:bg-emerald-100 transition flex-shrink-0">
+                  <a href={`https://wa.me/${whatsapp}`} target="_blank" rel="noreferrer" className="group flex min-h-[56px] items-center gap-4 rounded-2xl p-2 transition hover:bg-white/[.06]">
+                    <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-white/10 text-green-400">
                       <MessageCircle size={20} />
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">واتساب</p>
-                      <p className="font-bold text-gray-900 group-hover:text-emerald-600 transition">{whatsapp}</p>
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-xs text-white/65">واتساب</p>
+                      <p dir="ltr" className="break-words text-right font-bold tabular-nums">{whatsapp}</p>
                     </div>
                   </a>
                 )}
-                <a href={`mailto:${email}`} className="flex items-center gap-4 group">
-                  <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 group-hover:bg-blue-100 transition flex-shrink-0">
+                <a href={`mailto:${email}`} className="group flex min-h-[56px] items-center gap-4 rounded-2xl p-2 transition hover:bg-white/[.06]">
+                  <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-white/10 text-gold-light">
                     <Mail size={20} />
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">البريد الإلكتروني</p>
-                    <p className="font-bold text-gray-900 group-hover:text-blue-600 transition">{email}</p>
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs text-white/65">البريد الإلكتروني</p>
+                    <p className="break-all font-bold">{email}</p>
                   </div>
                 </a>
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-rose-50 flex items-center justify-center text-rose-600 flex-shrink-0">
+                <div className="flex min-h-[56px] items-center gap-4 p-2">
+                  <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-white/10 text-gold-light">
                     <MapPin size={20} />
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">العنوان</p>
-                    <p className="font-bold text-gray-900">{address}</p>
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs text-white/65">العنوان</p>
+                    <p className="font-bold">{address}</p>
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Business Hours */}
-            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6">
-              <h3 className="font-bold text-gray-900 text-lg mb-4 flex items-center gap-2">
-                <Clock size={18} className="text-primary-500" />
+            <div className="rounded-[24px] border border-line bg-white p-5 sm:p-6">
+              <h3 className="flex items-center gap-2 text-lg font-black text-ink">
+                <Clock size={18} className="text-primary-700" />
                 أوقات العمل
               </h3>
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between items-center border-b border-gray-50 pb-2">
-                  <span className="text-gray-600">السبت – الخميس</span>
-                  <span className="font-bold text-gray-900">9:00 ص – 10:00 م</span>
+              <div className="mt-4 divide-y divide-line text-sm">
+                <div className="flex items-center justify-between gap-3 pb-3">
+                  <span className="text-muted-body">السبت – الخميس</span>
+                  <span className="font-black tabular-nums text-ink">9:00 ص – 10:00 م</span>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">الجمعة</span>
-                  <span className="text-gray-400 bg-red-50 text-red-500 px-2 py-0.5 rounded-full text-xs font-bold">مغلق</span>
+                <div className="flex items-center justify-between gap-3 pt-3">
+                  <span className="text-muted-body">الجمعة</span>
+                  <span className="rounded-full bg-primary-50 px-3 py-1 text-xs font-extrabold text-primary-700">مغلق</span>
                 </div>
               </div>
             </div>
 
             {/* Social Links */}
             {(facebook || instagram || youtube || whatsapp) && (
-              <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6">
-                <h3 className="font-bold text-gray-900 text-lg mb-4">تابعنا على</h3>
-                <div className="flex gap-3 flex-wrap">
+              <div className="rounded-[24px] border border-line bg-white p-5 sm:p-6">
+                <h3 className="text-lg font-black text-ink">تابعنا على</h3>
+                <div className="mt-4 flex flex-wrap gap-2">
                   {facebook && (
-                    <a href={facebook} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-blue-50 text-blue-700 hover:bg-blue-100 transition rounded-xl px-4 py-2 text-sm font-bold">
+                    <a href={facebook} target="_blank" rel="noreferrer" className={socialCls}>
                       <Facebook size={16} /> فيسبوك
                     </a>
                   )}
                   {instagram && (
-                    <a href={instagram} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-pink-50 text-pink-700 hover:bg-pink-100 transition rounded-xl px-4 py-2 text-sm font-bold">
+                    <a href={instagram} target="_blank" rel="noreferrer" className={socialCls}>
                       <Instagram size={16} /> إنستجرام
                     </a>
                   )}
                   {youtube && (
-                    <a href={youtube} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-red-50 text-red-700 hover:bg-red-100 transition rounded-xl px-4 py-2 text-sm font-bold">
+                    <a href={youtube} target="_blank" rel="noreferrer" className={socialCls}>
                       <Youtube size={16} /> يوتيوب
                     </a>
                   )}
                   {whatsapp && (
-                    <a href={`https://wa.me/${whatsapp}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition rounded-xl px-4 py-2 text-sm font-bold">
-                      <MessageCircle size={16} /> واتساب
+                    <a href={`https://wa.me/${whatsapp}`} target="_blank" rel="noreferrer" className={socialCls}>
+                      <MessageCircle size={16} className="text-green-600" /> واتساب
                     </a>
                   )}
                 </div>
@@ -259,7 +257,7 @@ const Contact: React.FC = () => {
             )}
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 };

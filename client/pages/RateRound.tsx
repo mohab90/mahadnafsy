@@ -42,34 +42,38 @@ const RateRound: React.FC = () => {
   };
 
   return (
-    <div className="bg-gray-50 min-h-screen py-10 px-4" dir="rtl">
-      <div className="mx-auto w-full max-w-md rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
-        {!form && !failed && <div className="mx-auto h-8 w-8 animate-spin rounded-full border-b-2 border-primary-600" />}
-        {!form && failed && <p className="py-8 text-center font-bold text-gray-600">{failed}</p>}
+    <div className="min-h-screen bg-paper px-4 py-10 sm:py-16" dir="rtl">
+      <div className="mx-auto w-full max-w-lg rounded-[28px] border border-line bg-white p-5 shadow-[0_40px_80px_-50px_rgba(26,15,18,.45)] sm:p-8">
+        {!form && !failed && <div className="mx-auto h-8 w-8 rounded-full border-2 border-line border-t-primary-700 motion-safe:animate-spin" />}
+        {!form && failed && <p className="py-8 text-center font-bold text-muted-strong">{failed}</p>}
         {form && done && (
           <div className="py-8 text-center">
-            <CheckCircle2 size={48} className="mx-auto mb-3 text-emerald-500" />
-            <h1 className="text-xl font-extrabold text-gray-900">شكراً يا {form.name} 🌷</h1>
-            <p className="mt-2 text-sm text-gray-500">تقييمك وصل للمعهد، وأي ملاحظة كتبتها بتوصل لخدمة العملاء.</p>
+            <span className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-green-50 text-green-600">
+              <CheckCircle2 size={44} />
+            </span>
+            <h1 className="mt-5 text-2xl font-black text-ink">شكراً يا {form.name} 🌷</h1>
+            <p className="mt-2 text-[15px] leading-relaxed text-muted-body">تقييمك وصل للمعهد، وأي ملاحظة كتبتها بتوصل لخدمة العملاء.</p>
           </div>
         )}
         {form && !done && (
-          <div className="space-y-5">
-            <div className="text-center">
-              <Star size={32} className="mx-auto mb-2 text-amber-500" />
-              <h1 className="text-xl font-extrabold text-gray-900">أهلاً {form.name}، قيّم الكورس</h1>
-              <p className="mt-1 text-sm text-gray-500">«{form.course}»{form.lecturer ? ` مع ${form.lecturer}` : ''}</p>
+          <div className="space-y-6">
+            <div className="border-b border-line pb-5 text-center">
+              <span className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-paper text-gold ring-1 ring-line">
+                <Star size={28} className="fill-gold-light text-gold-light" />
+              </span>
+              <h1 className="text-2xl font-black leading-tight text-ink">أهلاً {form.name}، قيّم الكورس</h1>
+              <p className="mt-2 text-sm leading-relaxed text-muted-body">«{form.course}»{form.lecturer ? ` مع ${form.lecturer}` : ''}</p>
             </div>
             {form.questions.map(question => (
               <div key={question.key}>
-                <p className="mb-1.5 text-sm font-bold text-gray-800">{question.label}</p>
-                <div className="grid grid-cols-10 gap-1" role="radiogroup" aria-label={question.label}>
+                <p className="mb-2 text-[15px] font-extrabold leading-snug text-ink">{question.label}</p>
+                <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-10 sm:gap-1" role="radiogroup" aria-label={question.label}>
                   {Array.from({ length: 10 }, (_, i) => i + 1).map(value => (
                     <button key={value} type="button" role="radio" aria-checked={scores[question.key] === value}
                       onClick={() => setScores(current => ({ ...current, [question.key]: value }))}
-                      className={`h-9 rounded-lg border text-sm font-bold transition ${scores[question.key] === value
-                        ? value >= 8 ? 'border-emerald-600 bg-emerald-600 text-white' : value >= 5 ? 'border-amber-500 bg-amber-500 text-white' : 'border-rose-600 bg-rose-600 text-white'
-                        : 'border-gray-200 bg-white text-gray-600'}`}>
+                      className={`h-11 rounded-xl border text-sm font-black tabular-nums transition ${scores[question.key] === value
+                        ? value >= 8 ? 'border-green-600 bg-green-600 text-white' : value >= 5 ? 'border-gold-light bg-gold-light text-ink' : 'border-red-600 bg-red-600 text-white'
+                        : 'border-line bg-paper text-muted-strong hover:border-line-deep'}`}>
                       {value}
                     </button>
                   ))}
@@ -77,13 +81,13 @@ const RateRound: React.FC = () => {
               </div>
             ))}
             <div>
-              <p className="mb-1.5 text-sm font-bold text-gray-800">عندك ملاحظة أو مشكلة أو اقتراح؟</p>
+              <p className="mb-2 text-[15px] font-extrabold text-ink">عندك ملاحظة أو مشكلة أو اقتراح؟</p>
               <textarea value={note} onChange={event => setNote(event.target.value)} rows={3} maxLength={2000}
-                className="w-full resize-none rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-200" />
+                className="w-full resize-none rounded-xl border border-line-strong bg-paper px-4 py-3 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10" />
             </div>
-            {failed && <p className="text-sm font-bold text-rose-600">{failed}</p>}
+            {failed && <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{failed}</p>}
             <button disabled={!complete || sending} onClick={() => void send()}
-              className="w-full rounded-xl bg-primary-600 py-3 text-sm font-extrabold text-white hover:bg-primary-700 disabled:opacity-50">
+              className="inline-flex min-h-[52px] w-full items-center justify-center rounded-2xl bg-primary-700 px-7 font-black text-white transition hover:bg-primary-800 disabled:cursor-not-allowed disabled:opacity-50">
               {sending ? '⏳…' : 'ابعت التقييم'}
             </button>
           </div>

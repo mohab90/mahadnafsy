@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import { Award, BookOpen, MessageCircle, Play, Users } from 'lucide-react';
-import { VideoSurface } from '../VideoSurface';
+// The player is fetched only when somebody presses play.
+const VideoSurface = React.lazy(() => import('../VideoSurface').then(m => ({ default: m.VideoSurface })));
 import Picture from '../Picture';
 import { Reveal } from './Reveal';
 
@@ -37,7 +38,7 @@ const WhyChooseSection: React.FC<{ content: Content }> = ({ content }) => {
               not loaded until somebody asks for it, so the page stays light. */}
           <div className="relative aspect-square w-full overflow-hidden rounded-[30px] bg-ink shadow-[0_40px_70px_-35px_rgba(76,5,25,.7)]">
             {playing && videoUrl ? (
-              <VideoSurface url={videoUrl} title="جولة داخل المعهد" autoplay cover className="!absolute inset-0" />
+              <Suspense fallback={null}><VideoSurface url={videoUrl} title="جولة داخل المعهد" autoplay cover className="!absolute inset-0" /></Suspense>
             ) : (
               <button
                 type="button"
@@ -46,7 +47,7 @@ const WhyChooseSection: React.FC<{ content: Content }> = ({ content }) => {
                 aria-label="تشغيل فيديو جولة داخل المعهد"
                 className="group absolute inset-0 block text-right disabled:cursor-default"
               >
-                <Picture base="brand/grads/why-poster" widths={[480, 800]} sizes="(min-width: 1024px) 560px, 92vw" alt="متدربو المعهد في يوم التخرج" width={800} height={800} className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105" />
+                <Picture photo="why-poster" widths={[480, 800]} sizes="(min-width: 1024px) 560px, 92vw" alt="متدربو المعهد في يوم التخرج" width={800} height={800} className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105" />
                 <span aria-hidden="true" className="absolute inset-0 bg-gradient-to-t from-ink/90 via-ink/20 to-transparent" />
                 {videoUrl && (
                   <span className="absolute left-1/2 top-1/2 flex h-20 w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-primary-700 shadow-2xl transition group-hover:scale-110 sm:h-24 sm:w-24">

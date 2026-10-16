@@ -1,8 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Filter, Search, BookOpen, Users, Play, Award } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import CourseCard from '../components/CourseCard';
+import PageHeader from '../components/PageHeader';
 import { useSeo } from '../lib/useSeo';
+
+/** One filter choice, drawn as a pill: ink when chosen, paper when not. */
+const Pill: React.FC<{ value: string; current: string; onPick: (value: string) => void; children: React.ReactNode }> = ({ value, current, onPick, children }) => {
+  const on = value === current;
+  return (
+    <button
+      type="button"
+      value={value}
+      aria-pressed={on}
+      onClick={() => onPick(value)}
+      className={`min-h-[44px] flex-none whitespace-nowrap rounded-full border px-5 text-[15px] font-extrabold transition ${on ? 'border-ink bg-ink text-white shadow-lg' : 'border-line bg-paper text-muted-strong hover:border-ink/30'}`}
+    >
+      {children}
+    </button>
+  );
+};
+
+const pillRow = '-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0';
 
 const Courses: React.FC = () => {
   const { courses, content, currency } = useSiteData();
@@ -20,104 +39,85 @@ const Courses: React.FC = () => {
   });
 
   return (
-    <div className="bg-gray-50 min-h-screen">
-      {/* Hero */}
-      <div className="bg-gradient-to-br from-gray-900 via-blue-950 to-gray-900 text-white py-16 relative overflow-hidden">
-        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5"></div>
-        <div className="absolute top-0 right-0 w-96 h-96 bg-blue-700 rounded-full blur-[120px] opacity-20"></div>
-        <div className="absolute bottom-0 left-0 w-72 h-72 bg-primary-800 rounded-full blur-[100px] opacity-15"></div>
-        <div className="container mx-auto px-4 relative z-10 text-center">
-          <div className="inline-flex items-center gap-2 bg-blue-600/30 border border-blue-400/30 rounded-full px-4 py-1.5 text-sm font-medium mb-5">
-            <BookOpen size={14} className="text-blue-300" />
-            <span>{courses.length} برنامج تدريبي متاح</span>
-          </div>
-          <h1 className="text-4xl md:text-5xl font-extrabold mb-4">{content['courses.title'] || 'الدبلومات والبرامج التدريبية'}</h1>
-          <p className="text-gray-300 text-lg max-w-2xl mx-auto leading-relaxed">
-            {content['courses.subtitle'] || 'استثمر في مستقبلك المهني مع أحدث البرامج التدريبية في علم النفس'}
-          </p>
-          <div className="flex flex-wrap justify-center gap-4 mt-8">
-            {[
-              { icon: BookOpen, label: 'دبلومات معتمدة', sub: 'شهادات موثقة' },
-              { icon: Users, label: '12,000+ طالب', sub: 'من الوطن العربي' },
-              { icon: Play, label: 'محاضرات تفاعلية', sub: 'تسجيلات حصرية' },
-              { icon: Award, label: 'تميز أكاديمي', sub: 'معايير دولية' },
-            ].map(({ icon: Icon, label, sub }) => (
-              <div key={label} className="flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/10 rounded-2xl px-4 py-3 text-sm">
-                <Icon size={18} className="text-blue-300" />
-                <div className="text-right">
-                  <div className="font-bold text-white">{label}</div>
-                  <div className="text-gray-400 text-xs">{sub}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-      <div className="container mx-auto px-4 py-10">
-        {/* Filters and Search */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-8">
-          <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-            {/* Search */}
-            <div className="relative w-full md:w-1/3">
-              <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-              <input 
-                type="text" 
-                placeholder={content['courses.searchPlaceholder'] || 'ابحث عن دبلومة...'} 
-                className="w-full pr-10 pl-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+    <div className="min-h-screen bg-white">
+      <PageHeader
+        eyebrow={<span className="inline-flex items-center gap-1.5"><BookOpen size={15} />{courses.length} برنامج تدريبي متاح</span>}
+        title={content['courses.title'] || 'الدبلومات والبرامج التدريبية'}
+        subtitle={content['courses.subtitle'] || 'استثمر في مستقبلك المهني مع أحدث البرامج التدريبية في علم النفس'}
+      >
+        <ul className="mx-auto grid max-w-3xl grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-center">
+          {[
+            { icon: BookOpen, label: 'دبلومات معتمدة', sub: 'شهادات موثقة' },
+            { icon: Users, label: '12,000+ طالب', sub: 'من الوطن العربي' },
+            { icon: Play, label: 'محاضرات تفاعلية', sub: 'تسجيلات حصرية' },
+            { icon: Award, label: 'تميز أكاديمي', sub: 'معايير دولية' },
+          ].map(({ icon: Icon, label, sub }) => (
+            <li key={label} className="flex min-w-0 items-center gap-2.5 rounded-2xl bg-white px-3 py-2.5 text-right ring-1 ring-line sm:px-4">
+              <span className="flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-primary-50 text-primary-700"><Icon size={18} /></span>
+              <span className="min-w-0">
+                <b className="block text-sm font-extrabold leading-tight text-ink">{label}</b>
+                <span className="block text-xs text-muted">{sub}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </PageHeader>
+
+      <section className="py-10 sm:py-14">
+        <div className="container mx-auto px-4">
+          {/* Search and filters */}
+          <div className="mb-8 space-y-4 sm:mb-10">
+            <div className="relative lg:max-w-md">
+              <Search className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-muted-soft" size={20} />
+              <input
+                type="text"
+                placeholder={content['courses.searchPlaceholder'] || 'ابحث عن دبلومة...'}
+                aria-label={content['courses.searchPlaceholder'] || 'ابحث عن دبلومة...'}
+                className="min-h-[52px] w-full rounded-2xl border border-line-strong bg-paper pl-4 pr-12 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
 
-            {/* Filters Group */}
-            <div className="flex flex-wrap gap-4 w-full md:w-auto">
-              <div className="flex items-center gap-2">
-                <Filter size={18} className="text-gray-400" />
-                <span className="text-sm font-medium text-gray-700">{content['courses.filterLabel'] || 'تصفية حسب:'}</span>
-              </div>
-              
-              <select 
-                className="px-4 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-                value={selectedType}
-                onChange={(e) => setSelectedType(e.target.value)}
-              >
-                <option value="All">{content['courses.types.all'] || 'كل الأنظمة'}</option>
-                <option value="Recorded">{content['courses.types.recorded'] || 'مسجل'}</option>
-                <option value="Live">{content['courses.types.live'] || 'بث مباشر'}</option>
-                <option value="Mix">{content['courses.types.mix'] || 'مختلط'}</option>
-              </select>
+            <p className="flex items-center gap-1.5 text-[13px] font-bold text-muted-strong">
+              <Filter size={15} className="text-gold-deep" />
+              {content['courses.filterLabel'] || 'تصفية حسب:'}
+            </p>
 
-              <select 
-                className="px-4 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-              >
-                <option value="All">{content['courses.categories.all'] || 'كل التخصصات'}</option>
-                <option value="Therapy">{content['courses.categories.therapy'] || 'علاج نفسي'}</option>
-                <option value="Child">{content['courses.categories.child'] || 'أطفال ومراهقين'}</option>
-                <option value="Diagnosis">{content['courses.categories.diagnosis'] || 'تشخيص'}</option>
-                {/* 'General' is the default the API writes and the largest group
-                    on the site, and it was the one category with no way to
-                    filter to it. */}
-                <option value="General">{content['courses.categories.general'] || 'عام'}</option>
-              </select>
+            <div role="group" aria-label="نظام الدراسة" className={pillRow}>
+              <Pill value="All" current={selectedType} onPick={setSelectedType}>{content['courses.types.all'] || 'كل الأنظمة'}</Pill>
+              <Pill value="Recorded" current={selectedType} onPick={setSelectedType}>{content['courses.types.recorded'] || 'مسجل'}</Pill>
+              <Pill value="Live" current={selectedType} onPick={setSelectedType}>{content['courses.types.live'] || 'بث مباشر'}</Pill>
+              <Pill value="Mix" current={selectedType} onPick={setSelectedType}>{content['courses.types.mix'] || 'مختلط'}</Pill>
+            </div>
+
+            <div role="group" aria-label="التخصص" className={pillRow}>
+              <Pill value="All" current={selectedCategory} onPick={setSelectedCategory}>{content['courses.categories.all'] || 'كل التخصصات'}</Pill>
+              <Pill value="Therapy" current={selectedCategory} onPick={setSelectedCategory}>{content['courses.categories.therapy'] || 'علاج نفسي'}</Pill>
+              <Pill value="Child" current={selectedCategory} onPick={setSelectedCategory}>{content['courses.categories.child'] || 'أطفال ومراهقين'}</Pill>
+              <Pill value="Diagnosis" current={selectedCategory} onPick={setSelectedCategory}>{content['courses.categories.diagnosis'] || 'تشخيص'}</Pill>
+              {/* 'General' is the default the API writes and the largest group
+                  on the site, and it was the one category with no way to
+                  filter to it. */}
+              <Pill value="General" current={selectedCategory} onPick={setSelectedCategory}>{content['courses.categories.general'] || 'عام'}</Pill>
             </div>
           </div>
-        </div>
 
-        {/* Results */}
-        {filteredCourses.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {filteredCourses.map(course => (
-              <CourseCard key={course.id} course={course} currency={currency} />
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-20">
-            <p className="text-xl text-gray-500">{content['courses.emptyState'] || 'لا توجد كورسات مطابقة لبحثك.'}</p>
-          </div>
-        )}
-      </div>
+          {/* Results */}
+          {filteredCourses.length > 0 ? (
+            <div className="grid grid-cols-1 gap-5 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {filteredCourses.map(course => (
+                <CourseCard key={course.id} course={course} currency={currency} />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-[24px] border border-line bg-paper px-5 py-16 text-center">
+              <Search size={28} className="mx-auto mb-3 text-muted-faint" />
+              <p className="text-lg font-bold text-muted-body">{content['courses.emptyState'] || 'لا توجد كورسات مطابقة لبحثك.'}</p>
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 };

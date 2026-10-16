@@ -21,3 +21,12 @@ export function cdnImg(url: string | null | undefined, width: number): string | 
   }
   return `/api/img?src=${encodeURIComponent(url)}&w=${width}`;
 }
+
+// The same picture at several widths, for srcSet: the browser takes the
+// smallest one that fills the box on that screen (a phone never pulls the
+// desktop size). Undefined for a picture the resize proxy does not serve.
+export function cdnSrcSet(url: string | null | undefined, widths: number[]): string | undefined {
+  const first = cdnImg(url, widths[0]);
+  if (!first || !first.startsWith('/api/img')) return undefined;
+  return widths.map(w => `${cdnImg(url, w)} ${w}w`).join(', ');
+}
