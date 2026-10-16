@@ -3,6 +3,8 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { Bundle, Course, LeadItem, LeadStatus, StaffMember } from '../../../../types';
 import { BRANCH_ENUM_LABELS, STATUS_CFG } from '../leadUtils';
 import { normBranchId } from './leadBranchUtils';
+import { DEFAULT_SOURCES } from '../crmConstants';
+import { groupSources } from '../../../../../shared/leadSources';
 
 type BranchOption = {
   id: string;
@@ -50,6 +52,8 @@ type Props = {
   totalLost: number;
   /** Every source in use, from the server's counts — effectiveLeads may be one page. */
   knownSources?: string[];
+  /** Leads per source as the server counted them (leadStats.bySource). */
+  sourceCounts?: Record<string, number>;
   visibleLeadsCount: number;
 };
 
@@ -81,6 +85,7 @@ export function LeadFilterBar({
   totalConverted,
   totalLost,
   knownSources = [],
+  sourceCounts,
   visibleLeadsCount,
 }: Props) {
   if (!visible) return null;
@@ -92,10 +97,18 @@ export function LeadFilterBar({
         ...enumEntries.filter(e => !instituteBranches.some(b => normBranchId(b.id) === normBranchId(e.id))),
       ]
     : enumEntries;
-  const sourceOptions = [...new Map(
-    [...effectiveLeads.map(l => l.source?.trim() || ''), ...knownSources.map(source => source.trim())].filter(Boolean)
-      .map(s => [s.toLowerCase(), s] as [string, string])
-  ).values()].sort((a, b) => a.localeCompare(b, 'ar'));
+  // One line per source, however it was spelled — «فيسبوك» / «Facebook» / «facebook » are one — each with
+  // how many leads it has (shared/leadSources.ts). The counts are the server's when it sent them.
+  const sourceGroups = groupSources(
+    sourceCounts && Object.keys(sourceCounts).length
+      ? sourceCounts
+      : effectiveLeads.reduce<Record<string, number>>((counts, lead) => {
+        const name = lead.source?.trim();
+        if (name) counts[name] = (counts[name] || 0) + 1;
+        return counts;
+      }, Object.fromEntries(knownSources.filter(Boolean).map(source => [source.trim(), 0]))),
+    DEFAULT_SOURCES,
+  );
   const hasActiveFilters = assignFilter.size > 0 || singleStatus || courseFilter || branchFilter || searchTerm || showHiddenLeads || salesSourceFilter || leadsFollowupFilter !== 'all';
 
   return (
@@ -162,14 +175,14 @@ export function LeadFilterBar({
           {masterBranchOptions.map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
         </select>
       )}
-      {sourceOptions.length > 0 && (
+      {sourceGroups.length > 0 && (
         <select
           value={salesSourceFilter}
           onChange={e => setSalesSourceFilter(e.target.value)}
-          className="border border-gray-200 rounded-lg px-1.5 py-1 text-xs bg-white focus:outline-none flex-shrink-0 max-w-[110px]">
+          className="border border-gray-200 rounded-lg px-1.5 py-1 text-xs bg-white focus:outline-none flex-shrink-0 max-w-[130px]">
           <option value="">📡 مصادر</option>
           <option value="__none__">⬜ بدون مصدر</option>
-          {sourceOptions.map(s => <option key={s} value={s}>{s}</option>)}
+          {sourceGroups.map(group => <option key={group.key} value={group.variants.map(variant => variant.name).join('||')}>{group.name} ({group.total.toLocaleString('ar-EG-u-nu-latn')})</option>)}
         </select>
       )}
       <select

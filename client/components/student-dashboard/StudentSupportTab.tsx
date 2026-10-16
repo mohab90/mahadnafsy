@@ -1,6 +1,7 @@
 import React from 'react';
 import { MessageSquare } from 'lucide-react';
 import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
+import { useVisibleInterval } from '../../../shared/useVisibleInterval';
 
 const API_SUPPORT = import.meta.env.VITE_API_URL || '/api';
 
@@ -83,7 +84,9 @@ export function StudentSupportTab() {
     setThreadLoading(true);
     setThread(null);
     try {
-      const response = await fetch(`${API_SUPPORT}/me/tickets/${encodeURIComponent(id)}`, {
+      // ?live=1: this conversation is open on the screen — that is what tells customer service the
+      // chat is open (see refreshThread).
+      const response = await fetch(`${API_SUPPORT}/me/tickets/${encodeURIComponent(id)}?live=1`, {
         headers,
         credentials: 'include',
       });
@@ -95,6 +98,21 @@ export function StudentSupportTab() {
       setThreadLoading(false);
     }
   }, [headers, showToast]);
+
+  // While a conversation is open and in front of the customer it asks again every ten seconds. That one
+  // call is two things at once: it brings the team's new replies onto the screen (it used to be read
+  // once, so an answer never appeared until the page was reopened), and it tells customer service the
+  // chat is open — the staff side opens its reply box only while the customer is actually here.
+  const refreshThread = React.useCallback(async () => {
+    if (!openId) return;
+    try {
+      const response = await fetch(`${API_SUPPORT}/me/tickets/${encodeURIComponent(openId)}?live=1`, { headers, credentials: 'include' });
+      if (!response.ok) return;
+      const fresh = (await response.json()) as TicketThread;
+      setThread(current => (current && current.id === fresh.id && current.replies.length === fresh.replies.length && current.status === fresh.status ? current : fresh));
+    } catch { /* the next tick tries again */ }
+  }, [openId, headers]);
+  useVisibleInterval(() => { void refreshThread(); }, 10_000, Boolean(openId && thread));
 
   const sendReply = async () => {
     const body = reply.trim();

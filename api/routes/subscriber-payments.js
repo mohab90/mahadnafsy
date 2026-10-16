@@ -23,6 +23,7 @@ const { safeDateOnly, cairoDayOf, cairoToday } = require('../lib/dates');
 const { branchIdForBranch, branchForId } = require('../lib/branches');
 const { assertWritable } = require('../lib/periodLock');
 const { agreedPrice, isItemPaymentType, setAgreedPrice } = require('../lib/agreedPrice');
+const { planRetake } = require('../lib/courseRetake');
 const { pickCollectionOfficer, subscriberMarket } = require('../lib/collectionDistribution');
 const { hasPermission } = require('../constants/permissions');
 const { applyCertificatePayment } = require('../lib/certificatePayments');
@@ -30,7 +31,8 @@ const { financialRecordMatches, resolveFinancialScope } = require('../lib/financ
 const { grantCourseSelections } = require('../lib/entitlements');
 const { getNextClientCode } = require('../lib/mappers');
 const { leadScope } = require('../lib/leadAccess');
-const { completeForBranch, identitySpellings, isRealPhone } = require('../lib/phoneNumber');
+const { completeForBranch, identitySpellings, isRealPhone, toIdentity } = require('../lib/phoneNumber');
+const { clientHoldingPhone, phoneInUse, sharedPhoneSlot, recordSharedPhone } = require('../lib/phoneDuplicates');
 const { VALID_BRANCHES } = require('../constants/permissions');
 const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../lib/paymentEntitlementAccess');
 const { isCashMethod, linkTransfer } = require('../lib/incomingTransfers');
@@ -248,21 +250,32 @@ async function recordSubscriberPayment(req, res) {
         });
       }
       // A Saudi client's 05… gets its 966 before anything is compared or stored.
-      const safePhone = String(completeForBranch(typedPhone, branch) || '').trim();
+      // Stored as the identity (the ten digits of an Egyptian mobile — lib/phoneNumber.js), the form the
+      // unique key and every duplicate check compare: «01157575809» and «1157575809» are one client.
+      const safePhone = toIdentity(completeForBranch(typedPhone, branch)) || String(completeForBranch(typedPhone, branch) || '').trim();
       // The same number however it was written — «+966 50 123 4567», 0501234567,
       // 966501234567 — not just the exact text typed now.
       const spellings = [...new Set([safePhone, ...identitySpellings(safePhone)])].filter(Boolean);
+      // «العميل بيجيب صاحبه … نفس رقم التليفون لحسابين»: a number another client holds may be given to a new person
+      // only when staff names that client and says why (lib/phoneDuplicates.js); the account is then linked to it.
+      let sharing = null;
+      const sharedAsked = subscriberDraft.sharedPhone && typeof subscriberDraft.sharedPhone === 'object' ? subscriberDraft.sharedPhone : null;
+      if (sharedAsked) {
+        const verdict = await sharedPhoneSlot(pool, { tenantId: req.tenantId, phone: safePhone, sharedWithId: String(sharedAsked.withId || ''), reason: sharedAsked.reason, relation: String(sharedAsked.relation || '') });
+        if (!verdict.ok) return res.status(verdict.status).json(verdict.body);
+        sharing = { ...verdict, reason: String(sharedAsked.reason).trim().slice(0, 300), relation: String(sharedAsked.relation) };
+      }
       const [[existing]] = await pool.query(
-        `SELECT id, name, client_code, phone, email, COALESCE(assigned_cs_name, assigned_sales_name) AS owner_name
+        `SELECT id, name, client_code, phone, phone2, email, COALESCE(assigned_cs_name, assigned_sales_name) AS owner_name
            FROM subscribers
           WHERE tenant_id=? AND deleted_at IS NULL
-            AND (phone IN (?) OR REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '') IN (?) OR (?<>'' AND email = ?))
+            AND (${sharing ? '0' : "phone IN (?) OR phone2 IN (?) OR REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '') IN (?)"} OR (?<>'' AND email = ?))
           LIMIT 1`,
-        [req.tenantId, spellings, spellings, safeEmail, safeEmail]
+        sharing ? [req.tenantId, safeEmail, safeEmail] : [req.tenantId, spellings, spellings, spellings, safeEmail, safeEmail]
       );
       if (existing) {
         // Says who it is: «العميل مسجل من قبل» alone sent the desk searching.
-        const sameNumber = existing.phone === safePhone || spellings.includes(String(existing.phone || '').replace(/\D/g, ''));
+        const sameNumber = existing.phone === safePhone || spellings.includes(String(existing.phone || '').replace(/\D/g, '')) || spellings.includes(String(existing.phone2 || ''));
         const who = `«${existing.name || 'عميل'}»${existing.client_code ? ` (كود ${existing.client_code})` : ''}`;
         return res.status(409).json({
           error: `العميل مسجل من قبل بنفس ${sameNumber ? 'رقم التليفون' : 'الإيميل'}: ${who}${existing.owner_name ? ` — المسئول عنه ${existing.owner_name}` : ''}. سجّل الدفعة على ملفه بدل تسجيله من جديد (زر «بحث»).`,
@@ -276,6 +289,9 @@ async function recordSubscriberPayment(req, res) {
         name: safeName,
         email: safeEmail || null,
         phone: safePhone,
+        phone_slot: sharing ? sharing.slot : 0,
+        phone_shared_with: sharing ? sharing.primaryId : null,
+        sharing,
         lead_id: null,
         assigned_sales_id: null,
         assigned_sales_name: null,
@@ -527,6 +543,18 @@ async function recordSubscriberPayment(req, res) {
       }).catch(() => null);
     }
     if (resolvedExpected == null && !payment.isInstallment) resolvedExpected = paymentAmount;
+    // «إعادة»: a course taken before, again, at 50% off (lib/courseRetake.js). Its price comes from the
+    // catalogue and is added to what the client agreed for the course; the access they hold is left as it is.
+    const isRetake = payment.retake === true && safeType === 'COURSE';
+    if (isRetake) {
+      const plan = await planRetake(pool, {
+        tenantId: paymentTenantId, subscriberId: subscriber_id, courseId, currency: paymentCurrency, amount: paymentAmount,
+      });
+      if (!plan.ok) return res.status(plan.status).json({ error: plan.error, code: plan.code });
+      resolvedExpected = plan.expected;
+      payment.isInstallment = false;
+      payment.note = [payment.note || payment.notes, plan.note].filter(Boolean).join(' | ');
+    }
     if (courseId) {
       const [[course]] = await pool.query(
         'SELECT id FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
@@ -637,9 +665,9 @@ async function recordSubscriberPayment(req, res) {
       const [[racedSubscriber]] = await conn.query(
         `SELECT id FROM subscribers
           WHERE tenant_id=? AND deleted_at IS NULL
-            AND (phone=? OR (?<>'' AND email = ?))
+            AND ((phone=? AND phone_slot=?) OR (?<>'' AND email = ?))
           LIMIT 1 FOR UPDATE`,
-        [paymentTenantId, subRow.phone, String(subRow.email || ''), String(subRow.email || '')]
+        [paymentTenantId, subRow.phone, subRow.phone_slot || 0, String(subRow.email || ''), String(subRow.email || '')]
       );
       if (racedSubscriber) {
         const error = new Error('الرقم أو الإيميل ده اتسجل على عميل تاني في نفس اللحظة — حدّث الصفحة وسجّل الدفعة عليه.');
@@ -657,11 +685,11 @@ async function recordSubscriberPayment(req, res) {
       subRow.client_code = clientCode;
       await conn.query(
         `INSERT INTO subscribers
-           (id,tenant_id,client_code,name,email,phone,is_active,branch,branch_id,
+           (id,tenant_id,client_code,name,email,phone,phone_slot,phone_shared_with,is_active,branch,branch_id,
             assigned_cs_id,assigned_cs_name,notes,source,crm_json,created_at,updated_at)
-         VALUES (?,?,?,?,?,?,1,?,?,?,?,?,?,?,NOW(),NOW())`,
+         VALUES (?,?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,NOW(),NOW())`,
         [
-          subscriber_id, paymentTenantId, clientCode, subRow.name, subRow.email, subRow.phone,
+          subscriber_id, paymentTenantId, clientCode, subRow.name, subRow.email, subRow.phone, subRow.phone_slot || 0, subRow.phone_shared_with || null,
           subRow.branch, subRow.branch_id, subRow.assigned_cs_id, subRow.assigned_cs_name,
           sanitize(subscriberDraft.notes || subscriberDraft.note || '', 2000) || null,
           sanitize(subscriberDraft.source || 'reception', 100) || 'reception',
@@ -671,6 +699,20 @@ async function recordSubscriberPayment(req, res) {
           }),
         ]
       );
+      if (subRow.sharing) await recordSharedPhone(conn, { tenantId: paymentTenantId, newId: subscriber_id, newName: subRow.name, sharing: subRow.sharing, actor: req.staffRecord?.name || req.user?.email || 'staff' });
+      // «رقمين لنفس العميل»: a second number typed with the booking, in the same form, never one a client holds.
+      const draftPhone2 = toIdentity(completeForBranch(sanitize(subscriberDraft.phone2 || '', 30), subRow.branch)) || null;
+      if (draftPhone2 && draftPhone2 !== toIdentity(subRow.phone)) {
+        const holder = await clientHoldingPhone(conn, { tenantId: paymentTenantId, phones: [draftPhone2], exceptId: subscriber_id });
+        if (holder) {
+          const refusal = phoneInUse(holder);
+          await conn.rollback();
+          conn.release();
+          conn = null;
+          return res.status(refusal.status).json(refusal.body);
+        }
+        await conn.query('UPDATE subscribers SET phone2=? WHERE id=? AND tenant_id=?', [draftPhone2, subscriber_id, paymentTenantId]);
+      }
     }
     if (createFromLead) {
       const accessScope = leadScope(req, 'l');
@@ -746,6 +788,15 @@ async function recordSubscriberPayment(req, res) {
           assignedCollectionId: csId,
           assignedCollectionName: csName,
         });
+        // One number, one client: a lead whose number a client already holds is that client.
+        const numberHolder = await clientHoldingPhone(conn, { tenantId: paymentTenantId, phones: [lockedLead.phone] });
+        if (numberHolder) {
+          const refusal = phoneInUse(numberHolder);
+          await conn.rollback();
+          conn.release();
+          conn = null;
+          return res.status(refusal.status).json(refusal.body);
+        }
         await conn.query(
           `INSERT INTO subscribers
              (id,tenant_id,client_code,lead_id,name,email,phone,national_id,is_active,
@@ -755,7 +806,7 @@ async function recordSubscriberPayment(req, res) {
           [
             subscriber_id, paymentTenantId, clientCode, lockedLead.id,
             sanitize(lockedLead.name, 300), email,
-            sanitize(lockedLead.phone || '', 30) || null, nationalId,
+            toIdentity(lockedLead.phone) || null, nationalId,
             paymentBranch, paymentBranchId,
             lockedLead.assigned_sales_id || null, lockedLead.assigned_sales_name || null,
             csId, csName, sanitize(lockedLead.notes || '', 2000) || null,
@@ -854,7 +905,7 @@ async function recordSubscriberPayment(req, res) {
     // an instalment at the new price does not disagree with the booking's. An
     // instalment with no price brings the item's rows to the agreed one too,
     // so the access check below never finds two prices for one course.
-    if (resolvedExpected != null && (courseExpected != null || tierPrice || payment.isInstallment)
+    if (resolvedExpected != null && (courseExpected != null || tierPrice || payment.isInstallment || isRetake)
       && (courseId || bundleId) && ['COURSE', 'BUNDLE'].includes(safeType)) {
       await setAgreedPrice(conn, {
         tenantId: paymentTenantId, subscriberId: subscriber_id, courseId, bundleId, price: resolvedExpected,
@@ -864,7 +915,7 @@ async function recordSubscriberPayment(req, res) {
     // Auto-create enrollment when payment is paid and a course/bundle is specified
     // access_type = 'full' only if NOT an installment payment AND amount covers the full expected price
     // access_type = 'limited' (preview-only) for partial/installment payments until fully paid
-    if (isPaid && paysForItem && (courseId || bundleId)) {
+    if (isPaid && paysForItem && (courseId || bundleId) && !isRetake) {
       let enrollAccessType = 'full';
       let enrollPaidRatio = null;
       // An instalment is measured against the price; so is a booking that paid less

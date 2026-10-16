@@ -60,6 +60,9 @@ export async function createClientWithPayment(
   const subscriber = {
     name,
     phone,
+    ...((draft.phone2 || '').trim() ? { phone2: (draft.phone2 || '').trim() } : {}),
+    // «حساب مرتبط»: the number another client holds, given to this person on purpose (SharedPhonePanel).
+    ...(draft.sharedPhone?.withId ? { sharedPhone: draft.sharedPhone } : {}),
     email: (draft.email || '').trim(),
     branch,
     notes: draft.note || undefined,

@@ -704,6 +704,7 @@ CREATE TABLE `certificate_lifecycle_events` (
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `certificate_requests` (
   `id` varchar(36) NOT NULL DEFAULT (uuid()),
+  `certificate_code` varchar(40) NOT NULL DEFAULT concat('PSY-C-',ucase(substr(replace(uuid(),'-',''),1,10))),
   `subscriber_id` varchar(36) DEFAULT NULL,
   `course_id` varchar(36) DEFAULT NULL,
   `type` enum('SOCIAL_SOLIDARITY','AIN_SHAMS','EXPERIENCE_EXTERNAL','PRACTICE_EXTERNAL','NATIONAL_COUNCIL','AMERICAN_BOARD','INSTITUTE','OTHER') NOT NULL,
@@ -727,6 +728,7 @@ CREATE TABLE `certificate_requests` (
   `active_request_marker` tinyint(4) GENERATED ALWAYS AS (case when `status` <> 'DELIVERED' then 1 else NULL end) STORED,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_certificate_active_request` (`tenant_id`,`subscriber_id`,`course_id`,`type`,`active_request_marker`),
+  UNIQUE KEY `uq_certificate_requests_code` (`certificate_code`),
   KEY `idx_cert_subscriber` (`subscriber_id`),
   KEY `fk_cert_course` (`course_id`),
   KEY `idx_cert_req_tenant` (`tenant_id`),
@@ -5151,6 +5153,38 @@ CREATE TABLE `subscriber_subscriptions` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `ticket_chat_presence`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `ticket_chat_presence` (
+  `tenant_id` varchar(64) NOT NULL,
+  `ticket_id` varchar(36) NOT NULL,
+  `seen_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`tenant_id`,`ticket_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `subscriber_course_branches`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `subscriber_course_branches` (
+  `tenant_id` varchar(64) NOT NULL,
+  `subscriber_id` varchar(36) NOT NULL,
+  `item_key` varchar(80) NOT NULL COMMENT 'a course id, or bundle:<id> for a track',
+  `branch` varchar(32) NOT NULL,
+  `placed_by` varchar(120) DEFAULT NULL,
+  `placed_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`tenant_id`,`subscriber_id`,`item_key`),
+  KEY `idx_scb_branch` (`tenant_id`,`branch`,`subscriber_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `subscribers`
 --
 
@@ -5166,6 +5200,9 @@ CREATE TABLE `subscribers` (
   `name_ar` varchar(255) DEFAULT NULL,
   `email` varchar(255) DEFAULT NULL,
   `phone` varchar(50) DEFAULT NULL,
+  `phone2` varchar(50) DEFAULT NULL,
+  `phone_slot` tinyint(3) unsigned NOT NULL DEFAULT 0,
+  `phone_shared_with` varchar(36) DEFAULT NULL,
   `national_id` varchar(50) DEFAULT NULL,
   `whatsapp` varchar(50) DEFAULT NULL,
   `nationality` enum('EGYPTIAN','NON_EGYPTIAN_EGYPT','SAUDI_RESIDENT','INTERNATIONAL') DEFAULT NULL,
@@ -5194,7 +5231,7 @@ CREATE TABLE `subscribers` (
   `source` varchar(120) DEFAULT NULL,
   `assigned_cs_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_subs_tenant_phone` (`tenant_id`,`phone`),
+  UNIQUE KEY `uq_subs_tenant_phone_slot` (`tenant_id`,`phone`,`phone_slot`),
   UNIQUE KEY `uq_subs_tenant_code` (`tenant_id`,`client_code`),
   UNIQUE KEY `uq_subscribers_tenant_firebase` (`tenant_id`,`firebase_uid`),
   UNIQUE KEY `uq_subs_tenant_email` (`tenant_id`,`email`(191)),
@@ -5326,6 +5363,8 @@ CREATE TABLE `support_tickets` (
   `first_response_at` datetime DEFAULT NULL,
   `resolved_at` datetime DEFAULT NULL,
   `resolution_note` text DEFAULT NULL,
+  `root_cause` text DEFAULT NULL,
+  `next_contact_at` date DEFAULT NULL,
   `tags_json` text DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
@@ -5339,6 +5378,7 @@ CREATE TABLE `support_tickets` (
   `source_id` varchar(100) DEFAULT NULL,
   `first_response_by` varchar(36) DEFAULT NULL,
   `escalated_at` datetime DEFAULT NULL,
+  `escalation_kind` varchar(20) DEFAULT NULL,
   `closed_reason` varchar(255) DEFAULT NULL,
   `responded_at` datetime DEFAULT NULL,
   `sla_breached` tinyint(1) DEFAULT 0,

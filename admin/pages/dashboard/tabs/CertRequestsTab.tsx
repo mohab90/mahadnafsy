@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CreditCard, ExternalLink, Loader2, Pencil, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
+import { CreditCard, ExternalLink, Loader2, Pencil, RefreshCw, Search, ShieldCheck, Star, Trash2, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { Course } from '../../../types';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
@@ -12,6 +12,7 @@ import { branchLabels, normBranchKey } from '../../unified-client/constants';
 import ExtraRequestsPanel from './ExtraRequestsPanel';
 import InstituteCertificatesPanel from './InstituteCertificatesPanel';
 import { CertDataModal, missingCertData } from './CertDataModal';
+import { CertificatePriceAudit } from './CertificatePriceAudit';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { useCanDelete } from '../../../hooks/useCanDelete';
 import { SelectionExportBar, useRowPicker } from './SelectionExportBar';
@@ -169,6 +170,7 @@ export default function CertRequestsTab({
   const [partyFilter, setPartyFilter] = useState('');
   const [editing, setEditing] = useState<{ row: CertRow; draft: EditDraft } | null>(null);
   const [completing, setCompleting] = useState<CertRow | null>(null);
+  const [auditOpen, setAuditOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -277,6 +279,12 @@ export default function CertRequestsTab({
           </h3>
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-500">{filtered.length} / {rows.length} طلب</span>
+            {canManage && (
+              <button onClick={() => setAuditOpen(true)} title="مقارنة السعر والمدفوع بالدفعات وقايمة الأسعار"
+                className="flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 hover:bg-emerald-100">
+                <ShieldCheck size={12} /> مراجعة الأسعار
+              </button>
+            )}
             <button onClick={() => void load()} disabled={loading}
               className="flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-50">
               {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} تحديث
@@ -475,6 +483,7 @@ export default function CertRequestsTab({
         )}
       </>)}
 
+      {auditOpen && <CertificatePriceAudit notify={notify} onClose={() => setAuditOpen(false)} onFixed={() => void load()} />}
       {completing && (
         <CertDataModal row={completing} notify={notify} onClose={() => setCompleting(null)}
           onSaved={() => { setCompleting(null); void load(); }} />

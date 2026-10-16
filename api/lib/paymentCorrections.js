@@ -1,4 +1,6 @@
 'use strict';
+
+const { syncCertificateRequest } = require('./certificatePayments');
 /**
  * Correcting a payment entered by mistake: «مش بقدر امسح دفعه لعميل ولما حبيت
  * اغيرها ضاف التغيير كانه دفعه جديدة … تغيير او مسح دفعه او تغيير كورس لازم يكون
@@ -44,7 +46,7 @@ async function voidPayment(conn, { tenantId, paymentId, actor, reason }) {
   if (!why) throw refuse(400, 'اكتب سبب المسح', 'REASON_REQUIRED');
   const [[pay]] = await conn.query(
     `SELECT id, subscriber_id, course_id, bundle_id, amount, amount_egp, currency, payment_type, status,
-            branch, branch_id, date, receipt_no
+            branch, branch_id, date, receipt_no, certificate_request_id
        FROM payments WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`, [paymentId, tenantId]);
   if (!pay) throw refuse(404, 'الدفعة مش موجودة أو اتمسحت قبل كده', 'NOT_FOUND');
   const status = String(pay.status || '').toLowerCase();
@@ -112,6 +114,9 @@ async function voidPayment(conn, { tenantId, paymentId, actor, reason }) {
       }
     }
   }
+
+  // A certificate's paid amount follows the payments that are left, not the ones ever recorded.
+  if (pay.certificate_request_id) await syncCertificateRequest(conn, tenantId, pay.certificate_request_id);
 
   await logPaymentAudit(paymentId, 'void', pay.status, null, pay.amount, pay.subscriber_id, actor, tenantId, conn, true);
   await logFinancialAudit({

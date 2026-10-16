@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useVisibleInterval } from '../../../../shared/useVisibleInterval';
 import { Modal } from '../../../../shared/ui/Modal';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -11,6 +12,8 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 import { promptDialog } from '../../../../shared/ui/promptDialog';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
+import { TicketContactButtons } from './TicketContact';
+import { TicketEscalateDialog } from './TicketEscalateDialog';
 
 // «محتاجين نطور صفحه تذاكر الدعم … تكون بخلاص صفحه الانبوكس اللى بتيجي المشاكل
 // من الموقع لان نفس المشاكل كدا بتتعرض مرتين … ازرار اجراءات لكل مشكله وللادارة
@@ -31,6 +34,9 @@ type InboxItem = {
   phone?: string;
   email?: string;
   clientCode?: string;
+  subscriberId?: string;
+  rootCause?: string;
+  nextContactAt?: string;
   detail?: string;
   status: InboxStatus;
   category?: string;
@@ -43,6 +49,8 @@ type InboxItem = {
   fromWebsite?: boolean;
   sla?: string;
   escalated: boolean;
+  /** «مهم جدا» or «متكررة» — what the administration was told it is. */
+  escalationKind?: string;
   replies: number;
   resolution?: string;
   createdAt?: string;
@@ -103,7 +111,7 @@ type TimelineRow = { event_type: string; actor_name?: string; to_value?: string;
 type CannedResponse = { id: string; title: string; body: string; category: string };
 const EVENT_LABEL: Record<string, string> = {
   created: 'اتفتحت', routed: 'اتوجهت', assigned: 'اتسلمت', replied: 'رد', status_changed: 'الحالة اتغيرت',
-  escalated: 'اتصعدت للإدارة', converted: 'اتحولت من رسالة', priority_changed: 'الأولوية اتغيرت', archived: 'اتحذفت', note: 'ملاحظة',
+  escalated: 'اتصعدت للإدارة', converted: 'اتحولت من رسالة', priority_changed: 'الأولوية اتغيرت', archived: 'اتحذفت', note: 'ملاحظة', contacted: 'تواصل مع العميل',
 };
 
 const btn = 'inline-flex items-center gap-0.5 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[10px] font-bold disabled:opacity-50';
@@ -130,6 +138,10 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   const [ticketReplies, setTicketReplies] = useState<TicketReply[]>([]);
   const [timeline, setTimeline] = useState<TimelineRow[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
+  // Whether the client has the chat open right now (GET /admin/tickets/:id → chat).
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatReason, setChatReason] = useState<string | null>(null);
+  const [chatLastSeen, setChatLastSeen] = useState<number | null>(null);
   const [replyText, setReplyText] = useState('');
 
   const [canned, setCanned] = useState<CannedResponse[]>([]);
@@ -176,6 +188,9 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
       phone: row.subscriber_phone || (String(row.body || '').match(/رقم الهاتف:\s*([+\d][\d\s-]{6,})/)?.[1] || '').trim(),
       email: row.subscriber_email || '',
       clientCode: row.client_code || '',
+      subscriberId: row.subscriber_id || '',
+      rootCause: row.root_cause || '',
+      nextContactAt: row.next_contact_at ? String(row.next_contact_at).slice(0, 10) : '',
       branch: row.branch || '',
       raisedBy: row.raised_by_name || '',
       fromWebsite: ['web', 'web_contact', 'user_dashboard', 'ai_assistant'].includes(String(row.channel || '')),
@@ -188,6 +203,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
       assigneeName: row.assignee_name || '',
       sla: row.sla,
       escalated: !!row.escalated_at,
+      escalationKind: row.escalation_kind || '',
       replies: Number(row.reply_count || 0),
       resolution: row.resolution_note || '',
       createdAt: row.created_at,
@@ -274,11 +290,44 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
         at: r.created_at || '',
       })));
       setTimeline(Array.isArray(row?.timeline) ? row.timeline : []);
+      setChatOpen(Boolean(row?.chat?.open));
+      setChatReason(row?.chat?.reason || null);
+      setChatLastSeen(row?.chat?.lastSeen ? Number(row.chat.lastSeen) : null);
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر تحميل المحادثة');
     } finally { setDetailLoading(false); }
   }, [notify]);
-  const closeDetail = () => { setDetailItem(null); setTicketReplies([]); setTimeline([]); setReplyText(''); };
+  const closeDetail = () => { setDetailItem(null); setTicketReplies([]); setTimeline([]); setReplyText(''); setChatOpen(false); };
+
+  // «تواصل» / «واتس» / «إيميل»: the same three from the drawer and from the closed chat (TicketContact.tsx).
+  const contactButtons = (item: InboxItem) => (
+    <TicketContactButtons ticketId={item.id} subscriberId={item.subscriberId} personName={item.person} phone={item.phone} email={item.email}
+      onLogged={summary => { notify('success', summary); void openDetail(item); void loadRemote(); }} onError={text => notify('error', text)} />
+  );
+
+  // The chat opens and closes with the client: look again every 10 seconds while the drawer is open —
+  // the state (and when the client was last here) and the conversation itself, so what the client writes
+  // appears without reopening. The reply being typed is never touched.
+  const openTicketId = detailItem?.source === 'ticket' ? detailItem.id : '';
+  const refreshChat = useCallback(() => {
+    if (!openTicketId) return;
+    mysqlAdmin.adminGet<any>(`/admin/tickets/${encodeURIComponent(openTicketId)}`)
+      .then(row => {
+        setChatOpen(Boolean(row?.chat?.open));
+        setChatReason(row?.chat?.reason || null);
+        setChatLastSeen(row?.chat?.lastSeen ? Number(row.chat.lastSeen) : null);
+        if (Array.isArray(row?.replies)) {
+          setTicketReplies(current => (current.length === row.replies.length ? current : row.replies.map((r: any) => ({
+            id: String(r.id),
+            text: r.body || '',
+            author: r.author_name || (String(r.author_type || '').toUpperCase() === 'CLIENT' ? 'العميل' : 'خدمة العملاء'),
+            isStaff: String(r.author_type || '').toUpperCase() !== 'CLIENT',
+            at: r.created_at || '',
+          }))));
+        }
+      }).catch(() => {});
+  }, [openTicketId]);
+  useVisibleInterval(refreshChat, 10000, Boolean(openTicketId));
 
   // A link from a notification, the old tickets page or the header's search
   // (?focus=<ticket>) opens that one, once, then drops the parameter. Keyed on
@@ -329,11 +378,8 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   };
   const reopen = (item: InboxItem) => run(item.id,
     () => mysqlAdmin.adminPut(`/admin/tickets/${encodeURIComponent(item.id)}/status`, { status: 'open' }), 'اتفتحت تاني');
-  const escalate = async (item: InboxItem) => {
-    const reason = await promptDialog('تصعيد للإدارة — اكتب السبب:');
-    if (reason === null) return;
-    await run(item.id, () => mysqlAdmin.adminPost(`/admin/tickets/${encodeURIComponent(item.id)}/escalate`, { reason }), 'اتصعدت للإدارة');
-  };
+  const [escalating, setEscalating] = useState<InboxItem | null>(null);
+  const escalate = (item: InboxItem) => setEscalating(item);
   const setPriority = (item: InboxItem, priority: string) => run(item.id,
     () => mysqlAdmin.adminPut(`/admin/tickets/${encodeURIComponent(item.id)}/priority`, { priority }), 'الأولوية اتغيرت');
   const reroute = (item: InboxItem, category: string) => run(item.id,
@@ -526,7 +572,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                     <div className="mt-0.5 flex flex-wrap gap-1">
                       {item.category && <span className="rounded bg-slate-100 px-1.5 text-[10px] font-bold text-slate-600">{CATEGORY_LABEL[item.category] || item.category}</span>}
                       <span className={`text-[10px] font-bold ${PRIORITY_META[item.priority]?.cls || ''}`}>{PRIORITY_META[item.priority]?.label || item.priority}</span>
-                      {item.escalated && <span className="text-[10px] font-bold text-purple-600">⚠ مصعّدة</span>}
+                      {item.escalated && <span className={`text-[10px] font-bold ${item.escalationKind === 'repeated' ? 'text-violet-700' : item.escalationKind === 'critical' ? 'text-red-700' : 'text-purple-600'}`}>{item.escalationKind === 'repeated' ? '🔁 مصعّدة — متكررة' : item.escalationKind === 'critical' ? '🚨 مصعّدة — مهم جدا' : '⚠ مصعّدة'}</span>}
                       {item.replies > 0 && <span className="text-[10px] text-slate-400">{item.replies} رد</span>}
                     </div>
                     {item.detail && <p className="mt-0.5 line-clamp-2 text-[11px] text-slate-500">{item.detail}</p>}
@@ -579,6 +625,8 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
               </div>
 
               {item.detail && <div className="whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm leading-relaxed text-slate-700">{item.detail}</div>}
+              {item.rootCause && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><b>السبب الحقيقي:</b> {item.rootCause}</div>}
+              {item.nextContactAt && <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm font-bold text-sky-800">📞 تواصل تاني: {item.nextContactAt}</div>}
               {item.resolution && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800"><b>الحل:</b> {item.resolution}</div>}
 
               {item.source === 'ticket' && (
@@ -608,18 +656,39 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                       ))}
                     </div>
                   )}
-                  <div className="flex items-end gap-2 pt-1">
-                    <button onClick={() => setShowCanned(v => !v)} title="ردود جاهزة"
-                      className={`rounded-xl border px-2.5 py-2 text-xs ${showCanned ? 'border-indigo-300 bg-indigo-50 text-indigo-600' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
-                      <Star size={14} />
-                    </button>
-                    <textarea value={replyText} onChange={event => setReplyText(event.target.value)} rows={2} placeholder="اكتب ردك للعميل…"
-                      className="flex-1 resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-200" />
-                    <button onClick={() => void sendReply(item)} disabled={working || !replyText.trim()}
-                      className="inline-flex items-center gap-1 rounded-xl bg-indigo-600 px-3 py-2 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-50">
-                      <Send size={14} /> إرسال
-                    </button>
-                  </div>
+                  {chatOpen ? (
+                    <div className="flex items-end gap-2 pt-1">
+                      <button onClick={() => setShowCanned(v => !v)} title="ردود جاهزة"
+                        className={`rounded-xl border px-2.5 py-2 text-xs ${showCanned ? 'border-indigo-300 bg-indigo-50 text-indigo-600' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
+                        <Star size={14} />
+                      </button>
+                      <textarea value={replyText} onChange={event => setReplyText(event.target.value)} rows={2} placeholder="اكتب ردك للعميل…"
+                        className="flex-1 resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-200" />
+                      <button onClick={() => void sendReply(item)} disabled={working || !replyText.trim()}
+                        className="inline-flex items-center gap-1 rounded-xl bg-indigo-600 px-3 py-2 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-50">
+                        <Send size={14} /> إرسال
+                      </button>
+                    </div>
+                  ) : (
+                    !closed && (
+                      <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-bold text-amber-800">🔒 الشات مقفول — {chatReason === 'no_account' ? 'العميل ده مالوش حساب على الموقع' : 'العميل مش فاتح المحادثة دلوقتي'}</p>
+                          <button type="button" onClick={refreshChat} className="rounded-lg border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-bold text-amber-800 hover:bg-amber-100">🔄 اتأكد تاني</button>
+                        </div>
+                        {chatLastSeen && <p className="text-[11px] text-amber-700">آخر مرة كان فاتحها: {fmtDate(new Date(chatLastSeen).toISOString())}</p>}
+                        <p className="text-[11px] text-amber-700">
+                          {chatReason === 'no_account'
+                            ? 'مفيش شات مع زائر من غير حساب — كلّمه تليفون أو واتساب أو إيميل، وسجّل اللي قلته له.'
+                            : 'الشات بيتفتح أول ما العميل يفتح صفحة تذاكره. لحد وقتها كلّمه تليفون أو واتساب، وسجّل اللي قلته له.'}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {contactButtons(item)}
+                          
+                        </div>
+                      </div>
+                    )
+                  )}
                   {timeline.length > 0 && (
                     <details className="rounded-xl border border-slate-100 bg-white p-3">
                       <summary className="cursor-pointer text-xs font-bold text-slate-500">سجل التذكرة ({timeline.length})</summary>
@@ -643,6 +712,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                 {item.source === 'ticket' ? (
                   <>
                     {item.status === 'open' && <button disabled={working} onClick={() => void follow(item)} className="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50"><Clock size={13} /> تحت المتابعة</button>}
+                    {!closed && contactButtons(item)}
                     {!closed && <button disabled={working} onClick={() => void resolve(item, 'resolved')} className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"><CheckCircle2 size={13} /> اتحلت</button>}
                     {!closed && <button disabled={working} onClick={() => void resolve(item, 'closed')} className="inline-flex items-center gap-1 rounded-xl bg-slate-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-50"><X size={13} /> قفل</button>}
                     {closed && <button disabled={working} onClick={() => void reopen(item)} className="inline-flex items-center gap-1 rounded-xl border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700 disabled:opacity-50"><RotateCcw size={13} /> فتح تاني</button>}
@@ -671,6 +741,18 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
           </Modal>
         );
       })()}
+
+      {escalating && (
+        <TicketEscalateDialog ticketId={escalating.id} title={escalating.title}
+          onClose={() => setEscalating(null)}
+          onError={text => notify('error', text)}
+          onDone={(kind, repeats) => {
+            setEscalating(null);
+            notify('success', kind === 'repeated' ? `اتصعدت للإدارة كمشكلة متكررة${repeats ? ` (رجعت ${repeats} مرة)` : ''}` : 'اتصعدت للإدارة — مهم جدا');
+            closeDetail();
+            void loadRemote();
+          }} />
+      )}
 
       {creating && <NewTicketModal notify={notify} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); void loadRemote(); }} />}
 

@@ -125,7 +125,7 @@ test('the online screen holds online clients, and says which market each is in',
   // A Daqqi client is on the Daqqi desk, and every client of every branch is in
   // «قاعدة العملاء», so a rep still finds whoever they signed up.
   const tab = codeOnly(read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx'));
-  assert.match(tab, /: branchScopedMasterList\.filter\(isOnlineClient\);/);
+  assert.match(tab, /branchScopedMasterList\.filter\(s => holdsIn\(s, isOnlineHere\)\);/);
   assert.match(tab, /branch: true,/, 'the market column is not switched on');
 
   const table = codeOnly(read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx'));

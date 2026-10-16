@@ -68,7 +68,11 @@ async function applyCertificatePayment(payment, db, tenantId, options = {}) {
     if (!certificateTypeCodes(await certificatePricing(db, tenantId)).has(requestedType)) {
       throw conflict('اختار نوع الشهادة قبل تسجيل دفعها');
     }
-    const price = await certificatePrice(db, tenantId, { stated: payment.price, type: requestedType, currency }) || amount;
+    // Never «whatever was paid is the price» for an INSTALMENT (8 Oct 2026): with no stated price and none on the
+    // price list, a part payment leaves the request without a price, and it is not «PAID» until the desk gives
+    // it one. A payment not marked as an instalment is the whole of it, and is its price.
+    const isInstallment = Boolean(Number(payment.is_installment) || payment.isInstallment === true);
+    const price = await certificatePrice(db, tenantId, { stated: payment.price, type: requestedType, currency }) || (isInstallment ? null : amount);
     const [[client]] = await db.query('SELECT name FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [payment.subscriber_id, tenantId]).catch(() => [[]]);
     await db.query(
       `INSERT INTO certificate_requests
@@ -76,7 +80,7 @@ async function applyCertificatePayment(payment, db, tenantId, options = {}) {
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         requestId, payment.subscriber_id, payment.course_id || null, requestedType,
-        settle && amount >= price ? 'PAID' : 'PRICED', price, settle ? amount : 0, currency,
+        settle && price > 0 && amount >= price ? 'PAID' : 'PRICED', price || null, settle ? amount : 0, currency,
         payment.note || null, tenantId,
         // payment.date is a DATETIME — a Date — when the payment comes from its
         // row, and String(Date).slice(0, 10) is «Mon Oct 12», not a date.
@@ -95,4 +99,38 @@ function certificateNameOf(clientName) {
   return name.split(' ').filter(Boolean).length >= 3 ? name : null;
 }
 
-module.exports = { applyCertificatePayment, certificateNameOf, certificatePrice };
+/**
+ * What a certificate request costs and what was paid on it, from the payments themselves.
+ *
+ * «بعض الشهادات مكتوب سعرها غلط في جدول عملاء الاونلاين … محتاجة مراجعة دقيقة جدا» (15 Oct 2026). The
+ * request's paid_amount was only ever added to: voiding a certificate payment left it standing, and
+ * correcting one (a new payment recorded, the old one voided) counted the money twice. So the paid and
+ * the remaining on a client's row could be wrong in either direction. This reads the payments that are
+ * still there. A request with no payment row at all — the ones imported «مدفوعة» from the Dokki sheet —
+ * keeps what it was imported with.
+ */
+async function syncCertificateRequest(db, tenantId, requestId) {
+  const id = String(requestId || '').trim();
+  if (!id) return null;
+  const [[request]] = await db.query(
+    'SELECT id, type, status, price, paid_amount, currency FROM certificate_requests WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE', [id, tenantId]);
+  if (!request) return null;
+  const [[any]] = await db.query('SELECT COUNT(*) AS n FROM payments WHERE certificate_request_id=? AND tenant_id=?', [id, tenantId]);
+  if (!Number(any.n)) return { id, changed: false, paid: Number(request.paid_amount) || 0 };
+  const currency = String(request.currency || 'EGP').toUpperCase();
+  const [[sum]] = await db.query(
+    `SELECT COALESCE(SUM(amount), 0) AS paid FROM payments
+      WHERE certificate_request_id=? AND tenant_id=? AND status='paid' AND deleted_at IS NULL AND UPPER(currency)=?`, [id, tenantId, currency]);
+  const paid = Number(sum.paid) || 0;
+  const due = Number(request.price) > 0
+    ? Number(request.price)
+    : basePriceForCurrency(await certificatePricing(db, tenantId), request.type, currency);
+  // Only the unpaid/paid pair is moved here: a certificate already on its way keeps its stage.
+  const movable = ['PENDING', 'PRICED', 'PAID'].includes(request.status);
+  const status = !movable ? request.status : (due > 0 && paid >= due ? 'PAID' : (request.status === 'PENDING' && paid === 0 ? 'PENDING' : 'PRICED'));
+  const changed = Math.abs(paid - (Number(request.paid_amount) || 0)) > 0.001 || status !== request.status;
+  if (changed) await db.query('UPDATE certificate_requests SET paid_amount=?, status=? WHERE id=? AND tenant_id=?', [paid, status, id, tenantId]);
+  return { id, changed, paid, status };
+}
+
+module.exports = { applyCertificatePayment, certificateNameOf, certificatePrice, certificatePricing, syncCertificateRequest };

@@ -28,6 +28,7 @@ const { capturePublicLead } = require('../lib/publicLead');
 const metaCapi = require('../lib/metaCapi');
 const joinApplication = require('../lib/joinApplication');
 const { effectiveCertificate, missingForCertificate } = require('../lib/certificateEnglish');
+const { verifyCertificate } = require('../lib/certificateVerification');
 const { SYSTEM_SEARCH_PERMISSIONS, searchSystem } = require('../lib/systemSearch');
 
 // The contact form's subjects that are sales' to answer (client/pages/Contact.tsx).
@@ -473,6 +474,18 @@ router.get('/api/completions/verify/:code', publicLimiter, async (req, res) => {
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// GET /api/certificates/verify/:code — the public check of ANY certificate the system issues: the
+// institute's own and the ones arranged with other bodies (lib/certificateVerification.js). Not
+// tenant-scoped, for the reason given above: the verify page is one shared URL.
+router.get('/api/certificates/verify/:code', publicLimiter, async (req, res) => {
+  try {
+    const found = await verifyCertificate(pool, req.params.code);
+    if (!found) return res.status(404).json({ state: 'not_found', error: 'الشهادة غير موجودة' });
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(found.state === 'revoked' ? 410 : 200).json(found);
+  } catch (e) { logger.error('[certificates/verify]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // GET /api/completions/:code/certificate — printable HTML certificate (A4 portrait)
 // RATE-03: rate-limited — 3 JOINs + brand/content lookups per request, an easy
 // resource-exhaustion target with no auth gate.
@@ -525,6 +538,8 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
     const issuedAt    = row.completed_at
       ? new Date(row.completed_at).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric', timeZone: 'Africa/Cairo' })
       : new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric', timeZone: 'Africa/Cairo' });
+    // «completed 60 training hours in 2026»: the year the course was completed, on Cairo's clock.
+    const issuedYear = new Date(row.completed_at || Date.now()).toLocaleDateString('en-US', { year: 'numeric', timeZone: 'Africa/Cairo' });
     // Identity from the central brand (Settings → الهوية): the button's colour.
     const brand = await getBrandSettings(row.tenant_id);
     const serialNo = row.client_code || certCode.slice(-8).toUpperCase();
@@ -542,8 +557,13 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
     // The institute's own picture with the lines written on it (lib/certificateHtml.js);
     // this page adds the toolbar and the print rules around it.
     const cert = formMode
-      ? certificateFormHtml({ studentName, courseName, duration: certificate.duration, nameTop: req.query.nameTop, courseTop: req.query.courseTop })
-      : certificateHtml({ studentName, courseName, duration: certificate.duration, trainer: certificate.trainer, serialNo, issuedAt, qrUrl, verifyUrl });
+      ? certificateFormHtml({ studentName, courseName, duration: certificate.duration, nameTop: req.query.nameTop, courseTop: req.query.courseTop, certCode, year: issuedYear })
+      : certificateHtml({ studentName, courseName, duration: certificate.duration, trainer: certificate.trainer, serialNo, issuedAt, qrUrl, verifyUrl, certCode, year: issuedYear });
+    // This page prints itself, so it carries the one script it needs, by nonce. The API's own policy
+    // allows no script at all, which is why «Print» did nothing on the live site.
+    const nonce = require('crypto').randomBytes(16).toString('base64');
+    res.setHeader('Content-Security-Policy',
+      `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'`);
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -572,7 +592,7 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
 
 <div class="toolbar no-print">
   <div style="font-size:13px;color:#555">${formMode ? 'Print on the institute\'s form — name and course only' : 'Certificate of Achievement'}</div>
-  <button onclick="window.print()"
+  <button id="printBtn" type="button"
     style="background:${primaryColor};color:#fff;border:none;padding:9px 24px;border-radius:6px;font-size:14px;cursor:pointer;font-weight:bold;font-family:Arial">
     🖨️ Print / Save PDF
   </button>
@@ -584,8 +604,20 @@ ${cert}
   Verify at: <a href="${escapeHtml(verifyUrl)}" style="color:${primaryColor}">${escapeHtml(verifyUrl)}</a>
 </div>
 
-<script>
-  if (new URLSearchParams(location.search).get('print') === '1') setTimeout(() => window.print(), 500);
+<script nonce="${nonce}">
+  // Print once the picture and the code are really on the page: a print started before the
+  // certificate's image arrived came out blank.
+  function whenLoaded(done) {
+    var images = Array.prototype.slice.call(document.images).filter(function (img) { return !img.complete; });
+    if (!images.length) { done(); return; }
+    var left = images.length;
+    var step = function () { left -= 1; if (left <= 0) done(); };
+    images.forEach(function (img) { img.addEventListener('load', step); img.addEventListener('error', step); });
+    setTimeout(done, 4000);
+  }
+  var printNow = function () { whenLoaded(function () { window.print(); }); };
+  document.getElementById('printBtn').addEventListener('click', printNow);
+  if (new URLSearchParams(location.search).get('print') === '1') printNow();
 </script>
 </body></html>`;
 

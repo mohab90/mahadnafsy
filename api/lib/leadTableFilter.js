@@ -93,7 +93,13 @@ function leadTableFilter(query, { today, salesOnly }) {
   }
   if (query.status) add('l.status = ?', String(query.status));
   if (query.salesSource === '__none__') add("TRIM(COALESCE(l.source, '')) = ''");
-  else if (query.salesSource) add('l.source = ?', String(query.salesSource));
+  // One option in the filter stands for every spelling of a source («فيسبوك||Facebook||facebook »),
+  // joined by '||' (admin shared/leadSources.ts) — a lead matches any of them.
+  else if (query.salesSource) {
+    const spellings = [...new Set(String(query.salesSource).split('||').filter(Boolean))].slice(0, 40);
+    if (spellings.length > 1) add(`l.source IN (${spellings.map(() => '?').join(',')})`, ...spellings);
+    else add('l.source = ?', spellings[0] || String(query.salesSource));
+  }
 
   // getRottenLevel(lead) >= 1: no contact (or, never contacted, no arrival) for
   // at least the first stale threshold, on a lead that can still go stale.

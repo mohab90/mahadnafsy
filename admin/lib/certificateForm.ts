@@ -5,8 +5,9 @@
  * الكورس على بعد 22 سم». The paper in the printer may sit a little differently,
  * so the two distances can be nudged and are remembered on this computer.
  */
-export const FORM_DEFAULTS = { nameTop: 17, courseTop: 22 };
-const KEY = 'psy.certificateForm.offsets';
+export const FORM_DEFAULTS = { nameTop: 16, courseTop: 22.6 };
+// v2: the name rose 1 cm and the course sank a little (15 Oct 2026) — distances nudged on the old ones are dropped.
+const KEY = 'psy.certificateForm.offsets.v2';
 
 export type FormOffsets = { nameTop: number; courseTop: number };
 

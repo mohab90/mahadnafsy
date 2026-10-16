@@ -296,7 +296,7 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                   {orderReviewTab === 'transfers' ? (
                     <IncomingTransfersTable transfers={ledger.transfers} loading={ledger.loading} canLink={canManageFinancial}
                       onLink={row => { setLinkQuery(''); setLinkTransferModal({ row }); }} onAdd={() => setShowAddTransfer(true)}
-                      canManage={canManageFinancial && canAcceptDirectly} onEdit={setEditingTransfer} onDelete={transfer => { void deleteTransfer(transfer); }} />
+                      canManage={canManageFinancial && canAcceptDirectly} notify={notify} onMerged={ledger.reload} onEdit={setEditingTransfer} onDelete={transfer => { void deleteTransfer(transfer); }} />
                   ) : (
                   /* ── Normal Orders Table ── */
                   <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">

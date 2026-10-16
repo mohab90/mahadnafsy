@@ -15,6 +15,9 @@ const { pool, getStaffIdByEmail } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
 const outbox = require('../lib/outbox');
 const { createNotification, insertNotification } = require('../lib/notification');
+const { clientChatState, markConversationOpen } = require('../lib/ticketChat');
+const { notifyClientMessage } = require('../lib/ticketAlerts');
+const { KINDS: ESCALATION_KINDS, repeatsOf, kindOf, notificationFor } = require('../lib/ticketEscalation');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../middleware/auth');
 const { hasPermission, PERMISSIONS } = require('../constants/permissions');
 const { publicLimiter } = require('../middleware/rateLimits');
@@ -277,7 +280,7 @@ router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermi
     const [rows] = await pool.query(
       `SELECT t.id, t.subject, t.subscriber_name, t.subscriber_email, t.status, t.priority,
               t.category, t.department, t.channel, t.assigned_to, t.sla_due_at,
-              t.first_response_at, t.escalated_at, t.created_at, t.resolved_at,
+              t.first_response_at, t.escalated_at, t.escalation_kind, t.root_cause, t.next_contact_at, t.created_at, t.resolved_at,
               LEFT(t.body, 400) AS body, t.resolution_note, t.subscriber_id,
               sb.phone AS subscriber_phone, sb.client_code,
               s.name AS assignee_name,
@@ -386,7 +389,9 @@ router.get('/api/admin/tickets/:id', requireAuth, requireAdminOrStaff, requirePe
     } catch (error) {
       logger.warn('[cs/detail-linked]', { ticketId: req.params.id, error: error.message });
     }
-    res.json({ ...t, sla: slaFlag(t), replies, timeline, linked });
+    // Whether the client has the chat open right now: staff write in it only then (lib/ticketChat.js).
+    const chat = await clientChatState(pool, req.tenantId, t).catch(() => ({ open: false, lastSeen: null }));
+    res.json({ ...t, sla: slaFlag(t), replies, timeline, linked, chat });
   } catch (e) { logger.error('[cs/detail]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -395,6 +400,11 @@ router.post('/api/admin/cs/tickets', requireAuth, requireAdminOrStaff, requirePe
   let conn;
   try {
     const { category, priority, channel } = req.body;
+    // «الفرع اللي بينقل مشكلة لازم هو يحدد درجة الأولوية» — a problem passed on from a
+    // client's row carries the priority its sender chose, never one made up for it.
+    if (channel === 'internal' && !VALID_PRIORITIES.has(String(priority || '').toLowerCase())) {
+      return res.status(400).json({ error: 'حدّد أولوية المشكلة قبل ما تبعتها', code: 'PRIORITY_REQUIRED' });
+    }
     let subscriber_id = req.body.subscriber_id || null;
     let email = cleanText(req.body.email, 320) || null;
     let name = cleanText(req.body.name, 255) || null;
@@ -605,6 +615,12 @@ router.post('/api/admin/tickets/:id/reply', requireAuth, requireAdminOrStaff, re
     if (t.status === 'closed') {
       await conn.rollback(); conn.release(); conn = null;
       return res.status(409).json({ error: 'Reopen the closed ticket before replying' });
+    }
+    // The chat is for a client who is there to read it; otherwise the team calls or writes on WhatsApp.
+    const chat = await clientChatState(conn, req.tenantId, t);
+    if (!chat.open) {
+      await conn.rollback(); conn.release(); conn = null;
+      return res.status(409).json({ error: 'العميل مش فاتح الشات دلوقتي — كلّمه تليفون أو واتساب وسجّل اللي اتقال', code: 'CLIENT_NOT_IN_CHAT' });
     }
     const replyId = uuidv4();
     await conn.query('INSERT INTO ticket_replies (id, tenant_id, ticket_id, author_type, author_name, body) VALUES (?,?,?,?,?,?)',
@@ -837,8 +853,7 @@ router.post('/api/public/enquiry/:token/reply', publicLimiter, async (req, res) 
     });
     await conn.commit(); conn.release(); conn = null;
 
-    createNotification('ticket', '💬 رد جديد من عميل', `${ticket.subject || 'استفسار'}: ${body.slice(0, 80)}`,
-      { ticketId }, req.tenantId, ticket.assigned_to || null).catch(() => {});
+    notifyClientMessage({ tenantId: req.tenantId, ticketId, subject: ticket.subject || 'استفسار', who: 'زائر الموقع', text: body, assigneeId: ticket.assigned_to }).catch(() => {});
     res.json({ ok: true });
   } catch (e) {
     if (conn) { await conn.rollback().catch(() => {}); conn.release(); }
@@ -900,6 +915,7 @@ router.post('/api/public/enquiry', publicLimiter, async (req, res) => {
       actor: { id: null, name },
     });
     await conn.commit(); conn.release(); conn = null;
+    notifyClientMessage({ tenantId: req.tenantId, ticketId: created.id, subject: DEPARTMENT_LABEL[created.department] || '', who: name, text: message, isNew: true, assigneeId: created.assignee?.id }).catch(() => {});
 
     res.json({
       ok: true,
@@ -1075,26 +1091,96 @@ router.put('/api/admin/tickets/:id/priority', requireAuth, requireAdminOrStaff, 
   }
 });
 
+// ── CONTACT: the team called or wrote to the client, and what was said ───────
+// «ضيف في الاجراءات زر تواصل وزر واتس اب وتسجل قالت ايه للعميل» (14 Oct 2026). Every
+// contact is one entry on the ticket and one on the client's file; the first one is the
+// first response the SLA counts.
+const CONTACT_CHANNELS = Object.freeze({ call: 'اتصال', whatsapp: 'واتساب', email: 'إيميل' });
+const CONTACT_OUTCOMES = Object.freeze({ answered: 'رد', no_answer: 'ماردش', busy: 'مشغول', wrong_number: 'الرقم غلط', read: 'اتقرت (واتساب)', sent: 'اتبعت' });
+// What happens to the problem next — chosen by the one who spoke to the client: it is done, the client is
+// to be contacted again (on a date), it goes back to the administration, or the client is to be refunded.
+const CONTACT_NEXT = Object.freeze({ resolved: 'المشكلة انتهت', follow_up: 'لسه في تواصل تاني', escalate: 'يرجع للإدارة', refund: 'هيسترد' });
+const dayOnly = value => (/^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) ? String(value) : null);
+router.post('/api/admin/tickets/:id/contact', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
+  let conn;
+  try {
+    const channel = String(req.body?.channel || '');
+    const outcome = String(req.body?.outcome || 'answered');
+    const said = cleanText(req.body?.said, TEXT_LIMITS.reason);
+    const cause = cleanText(req.body?.cause, TEXT_LIMITS.reason);
+    const reached = outcome === 'answered' || outcome === 'read' || outcome === 'sent';
+    // Not reached: the only thing left is to try again.
+    const next = reached ? String(req.body?.next || '') : 'follow_up';
+    const nextDate = dayOnly(req.body?.nextDate);
+    if (!CONTACT_CHANNELS[channel]) return res.status(400).json({ error: 'اختار اتصال ولا واتساب', code: 'CONTACT_CHANNEL' });
+    if (!CONTACT_OUTCOMES[outcome]) return res.status(400).json({ error: 'نتيجة التواصل غير معروفة', code: 'CONTACT_OUTCOME' });
+    if (!said) return res.status(400).json({ error: 'اكتب قلت للعميل إيه (أو إيه اللي حصل)', code: 'CONTACT_SAID_REQUIRED' });
+    if (!CONTACT_NEXT[next]) return res.status(400).json({ error: 'اختار الخطوة الجاية: انتهت / تواصل تاني / للإدارة / استرداد', code: 'CONTACT_NEXT_REQUIRED' });
+    if (reached && !cause) return res.status(400).json({ error: 'اكتب سبب المشكلة الحقيقي', code: 'CONTACT_CAUSE_REQUIRED' });
+    if (next === 'follow_up' && !nextDate) return res.status(400).json({ error: 'حدّد ميعاد التواصل الجاي', code: 'CONTACT_DATE_REQUIRED' });
+    conn = await pool.getConnection(); await conn.beginTransaction();
+    const [[ticket]] = await conn.query(
+      'SELECT status,department,assigned_to,subject,subscriber_id,id FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
+      [req.params.id, req.tenantId]);
+    if (!ticket || !canAccessTicket(req, ticket)) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Not found' }); }
+    const actor = await actorOf(req);
+    await conn.query(
+      `UPDATE support_tickets SET first_response_at = COALESCE(first_response_at, NOW()),
+              status = IF(status='open', 'in_progress', status),
+              root_cause = COALESCE(NULLIF(?, ''), root_cause),
+              next_contact_at = ?, updated_at = NOW() WHERE id=? AND tenant_id=?`,
+      [cause || '', next === 'follow_up' ? nextDate : null, req.params.id, req.tenantId]);
+    const detail = [cause ? `السبب الحقيقي: ${cause}` : '', `اللي اتعمل/اتقال: ${said}`, `الخطوة الجاية: ${CONTACT_NEXT[next]}${next === 'follow_up' ? ` (${nextDate})` : ''}`].filter(Boolean).join(' — ');
+    await logTicketEvent(conn, {
+      tenantId: req.tenantId, ticketId: req.params.id, type: 'contacted', actorId: actor.id, actorName: actor.name,
+      to: `${CONTACT_CHANNELS[channel]} — ${CONTACT_OUTCOMES[outcome]}`, detail,
+    });
+    if (ticket.subscriber_id) {
+      await logClientEvent(conn, {
+        tenantId: req.tenantId, subscriberId: ticket.subscriber_id, action: 'problem_ticket_contacted', actor: actor.name,
+        label: `تواصل خدمة العملاء (${CONTACT_CHANNELS[channel]} — ${CONTACT_OUTCOMES[outcome]}) بخصوص «${ticket.subject || 'تيكت'}»: ${detail}`,
+      });
+    }
+    await conn.commit(); conn.release(); conn = null;
+    res.json({ ok: true, next });
+  } catch (e) {
+    if (conn) { await conn.rollback().catch(() => {}); conn.release(); }
+    logger.error('[cs/contact]', e.message); res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.post('/api/admin/tickets/:id/escalate', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
   let conn;
   try {
     conn = await pool.getConnection(); await conn.beginTransaction();
     const [[ticket]] = await conn.query(
-      'SELECT id,department,assigned_to FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
+      'SELECT id,department,assigned_to,subject,category,subscriber_id,subscriber_email,subscriber_name,escalated_at FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
       [req.params.id, req.tenantId]);
     if (!ticket) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Not found' }); }
     if (!canAccessTicket(req, ticket)) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Not found' }); }
     const assignee = await pickAssignee(conn, req.tenantId, 'management');
+    // Two kinds reach the administration, told apart on the bell: «مهم جدا» and «متكررة».
+    const repeats = await repeatsOf(conn, req.tenantId, ticket);
+    const kind = kindOf(String(req.body?.kind || ''), repeats);
     await conn.query(
-      `UPDATE support_tickets SET department='management', priority='high',
+      `UPDATE support_tickets SET department='management', priority=?, escalation_kind=?,
                escalated_at=COALESCE(escalated_at, NOW()), assigned_to=?, updated_at=NOW() WHERE id=? AND tenant_id=?`,
-      [assignee?.id || null, req.params.id, req.tenantId]);
+      [ESCALATION_KINDS[kind].priority, kind, assignee?.id || null, req.params.id, req.tenantId]);
     const actor = await actorOf(req);
     const reason = cleanText(req.body.reason, TEXT_LIMITS.reason);
-    await logTicketEvent(conn, { tenantId: req.tenantId, ticketId: req.params.id, type: 'escalated', actorId: actor.id, actorName: actor.name, to: assignee?.name || 'الإدارة', detail: reason || null });
+    await logTicketEvent(conn, {
+      tenantId: req.tenantId, ticketId: req.params.id, type: 'escalated', actorId: actor.id, actorName: actor.name,
+      to: `${ESCALATION_KINDS[kind].label}${assignee ? ' → ' + assignee.name : ''}`,
+      detail: [reason, kind === 'repeated' && repeats.count ? `رجعت ${repeats.count} مرة` : ''].filter(Boolean).join(' — ') || null,
+    });
+    const note = notificationFor(kind, { ticket, repeats, reason, by: actor.name });
+    const data = { ticketId: req.params.id, department: 'management', kind, repeats: repeats.count };
+    // To every manager (unaddressed — the bell shows it to the management audience), and by name to
+    // the manager it landed on, who would otherwise read it only as one more line of the same list.
+    await insertNotification(conn, note.type, note.title, note.message, data, req.tenantId, null);
+    if (assignee?.id) await insertNotification(conn, note.type, note.title, note.message, data, req.tenantId, assignee.id);
     await conn.commit(); conn.release(); conn = null;
-    createNotification('ticket', '⚠️ تذكرة مُصعّدة', `تم تصعيد تذكرة للإدارة${reason ? ': ' + reason : ''}`, { ticketId: req.params.id }, req.tenantId, assignee?.id || null).catch(() => {});
-    res.json({ ok: true, assignee });
+    res.json({ ok: true, assignee, kind, repeats: repeats.count });
   } catch (e) {
     if (conn) { await conn.rollback().catch(() => {}); conn.release(); }
     logger.error('[cs/escalate]', e.message); res.status(500).json({ error: 'Internal server error' });
@@ -1134,6 +1220,7 @@ router.post('/api/me/tickets', requireAuth, async (req, res) => {
       subject, body, category, channel: 'user_dashboard', actor: { id: null, name: sub?.name || email },
     });
     await conn.commit(); conn.release(); conn = null;
+    notifyClientMessage({ tenantId: req.tenantId, ticketId: r.id, subject, who: sub?.name || req.user.name || email, text: body, isNew: true, assigneeId: r.assignee?.id }).catch(() => {});
     res.json({ ok: true, id: r.id });
   } catch (e) { if (conn) { await conn.rollback().catch(() => {}); conn.release(); } logger.error('[me/tickets create]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -1163,6 +1250,9 @@ router.get('/api/me/tickets/:id', requireAuth, async (req, res) => {
       'SELECT id,subscriber_id,subject,body,status,category,priority,created_at,subscriber_email FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
       [req.params.id, req.tenantId]);
     if (!ownsTicket(t, subscriber, email)) return res.status(404).json({ error: 'Not found' });
+    // The client's conversation asks with ?live=1 while it is open on their screen: that is the chat
+    // being open (lib/ticketChat.js). A plain read — the list, a refresh of the page — is not.
+    if (req.query.live === '1') await markConversationOpen(pool, req.tenantId, t.id).catch(() => {});
     const [replies] = await pool.query(
       'SELECT author_type, author_name, body, created_at FROM ticket_replies WHERE ticket_id=? AND tenant_id=? AND is_internal=0 ORDER BY created_at ASC', [req.params.id, req.tenantId]);
     res.json({ id: t.id, subject: t.subject, body: t.body, status: t.status, category: t.category, priority: t.priority, created_at: t.created_at, replies });
@@ -1189,7 +1279,8 @@ router.post('/api/me/tickets/:id/reply', requireAuth, async (req, res) => {
     await conn.query("UPDATE support_tickets SET status=IF(status IN ('resolved','closed'),'open',status), updated_at=NOW() WHERE id=? AND tenant_id=?", [req.params.id, req.tenantId]);
     await logTicketEvent(conn, { tenantId: req.tenantId, ticketId: req.params.id, type: 'replied', actorName: t.subscriber_name || 'العميل', detail: String(body).slice(0, 200) });
     await conn.commit(); conn.release(); conn = null;
-    createNotification('ticket', 'رد جديد من العميل', `${t.subscriber_name || email}: ${t.subject}`, { ticketId: req.params.id }, req.tenantId, t.assigned_to || null).catch(() => {});
+    markConversationOpen(pool, req.tenantId, req.params.id).catch(() => {});
+    notifyClientMessage({ tenantId: req.tenantId, ticketId: req.params.id, subject: t.subject, who: t.subscriber_name || email, text: body, assigneeId: t.assigned_to }).catch(() => {});
     res.json({
       ok: true,
       reply: { id: replyId, body, author_type: 'CLIENT', author_name: authorName, created_at: new Date().toISOString() },

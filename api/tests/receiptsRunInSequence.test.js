@@ -103,7 +103,9 @@ test('the receipt, the register and the managers see the number — and voiding 
   assert.match(read('admin/components/PaymentModal.tsx'), /forgetReceipts\(\);/);
   assert.match(read('admin/lib/mysqlapi.ts'), /noteReceipt\(answer\)/);
   assert.match(read('api/routes/finance-payments-register.js'), /number: r\.receipt_no != null \? Number\(r\.receipt_no\)/);
-  assert.match(read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx'), /<ReceiptGapsAlert branch=\{physicalBranch\.key\} \/>/);
+  // The alert is in the accounts — the branch's own and the main ones — not on the Dokki schedule page.
+  assert.match(read('admin/pages/dashboard/tabs/FinancialTab.tsx'), /<ReceiptGapsAlert branch=\{branchFilter \? branchFilter\.toUpperCase\(\) : undefined\} \/>/);
+  assert.doesNotMatch(read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx'), /ReceiptGapsAlert/);
   const gaps = read('api/routes/misc/receiptGaps.js');
   assert.match(gaps, /GAP_VIEWERS/);
   assert.match(gaps, /boundBranch\(req\)/, "a branch's own manager sees only their branch");
@@ -115,7 +117,12 @@ test('the endpoint answers the managers, a branch’s manager sees only their br
   const stub = (rel, exports) => { const file = require.resolve(rel); require.cache[file] = { id: file, filename: file, loaded: true, exports }; };
   const pass = (req, res, next) => next();
   const askedBranches = [];
-  stub('../lib/db', { pool: { query: async (sql, params) => { askedBranches.push(params[1]); return [[{ id: 'a', receipt_no: 1, deleted_at: null, amount: 1, currency: 'EGP' }, { id: 'c', receipt_no: 3, deleted_at: null, amount: 1, currency: 'EGP' }]]; } } });
+  stub('../lib/db', { pool: { query: async (sql, params) => {
+    // The receipts' run is the one asked about here; the expenses' run (its own query) is whole.
+    if (/FROM expenses/.test(sql)) return [[]];
+    askedBranches.push(params[1]);
+    return [[{ id: 'a', receipt_no: 1, deleted_at: null, amount: 1, currency: 'EGP' }, { id: 'c', receipt_no: 3, deleted_at: null, amount: 1, currency: 'EGP' }]];
+  } } });
   stub('../lib/logger', { error() {}, warn() {}, info() {} });
   stub('../middleware/auth', { requireAuth: pass, requireAdminOrStaff: pass, requirePermission: () => pass });
   delete require.cache[require.resolve('../routes/misc/receiptGaps')];

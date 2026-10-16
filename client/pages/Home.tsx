@@ -8,40 +8,40 @@ import CourseCard from '../components/CourseCard';
 import { cdnImg } from '../lib/img';
 import { isExpiryActive } from '../../shared/cairoDate';
 import { formatPrice, isDiscounted } from '../../shared/priceFormat';
+import { offerHours, offerIsShown, offerPrices, offerRemainingMs, offerDiscountPercent } from '../../shared/siteOffers';
 import { useSeo } from '../lib/useSeo';
 import { VideoSurface } from '../components/VideoSurface';
 import { expressPrice } from '../lib/consultations';
 
-// Countdown for the 24-hour offer, from the moment the admin started it
-// (offer.timerStartedAt, set by the "إعادة ضبط المؤقت" button on the offer
-// panel).
+// Countdown for the timed offer, from the moment the marketing team started it
+// (offer.timerStartedAt, «ابدأ العداد» in التسويق ← الخصومات) for as many hours
+// as they set there (offer.durationHours, 24 unless changed).
 //
 // It used to fall back to localStorage when no timestamp was set: the first
 // visit wrote "now" into the browser, and any visit more than 24 hours later
 // wrote "now" again. That is not a deadline, it is a stopwatch restarting for
-// every visitor forever — the badge promised 24 hours only and the clock never
-// once reached zero for anyone. The key has never been set in production, so
-// that fallback was the live behaviour. A countdown nobody set is not shown.
-function use24hCountdown(serverStart?: string) {
-  const calc = (srv?: string) => {
-    if (!srv) return null;
-    const start = new Date(srv).getTime();
-    if (!Number.isFinite(start)) return null;
-    const remaining = Math.max(0, 24 * 60 * 60 * 1000 - (Date.now() - start));
+// every visitor forever. A countdown nobody set is not shown, and one that has
+// run out takes the offer off the page (see offerIsShown).
+function useOfferCountdown(content: Record<string, string | undefined>) {
+  const calc = () => {
+    const remaining = offerRemainingMs(content);
+    if (remaining === null) return null;
     return {
       h: Math.floor(remaining / 3600000),
       m: Math.floor((remaining % 3600000) / 60000),
       s: Math.floor((remaining % 60000) / 1000),
     };
   };
-
-  const [time, setTime] = useState(() => calc(serverStart));
+  const startedAt = content['offer.timerStartedAt'] || '';
+  const hours = offerHours(content);
+  const [time, setTime] = useState(calc);
   useEffect(() => {
-    setTime(calc(serverStart));
-    if (!serverStart) return undefined;
-    const id = setInterval(() => setTime(calc(serverStart)), 1000);
+    setTime(calc());
+    if (!startedAt) return undefined;
+    const id = setInterval(() => { if (!document.hidden) setTime(calc()); }, 1000);
     return () => clearInterval(id);
-  }, [serverStart]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startedAt, hours]);
   return time;
 }
 
@@ -55,7 +55,8 @@ const Home: React.FC = () => {
   // A video lightbox. It sat on z-[9999], the highest number in either app.
   useEscapeKey(() => setShowVideoModal(false), showVideoModal);
   const currencySymbol = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
-  const timer = use24hCountdown(content['offer.timerStartedAt'] || undefined);
+  const timer = useOfferCountdown(content);
+  const offerShown = offerIsShown(content);
 
   useSeo({ title: 'الرئيسية | معهد الدراسات النفسية', path: '/', description: 'المنصة الأكاديمية الأولى عربياً لتعليم الصحة النفسية والعلاج النفسي — دبلومات معتمدة وتدريب عملي.' });
 
@@ -345,8 +346,8 @@ const Home: React.FC = () => {
         );
       })()}
 
-      {/* SECTION: 24-Hour Offer with Registration Form */}
-      <section className="py-16 bg-gray-900 relative overflow-hidden">
+      {/* SECTION: timed offer with registration form — off when switched off or its countdown has run out */}
+      {offerShown && <section className="py-16 bg-gray-900 relative overflow-hidden">
          {/* Background Elements */}
           <div className="absolute top-0 right-0 w-96 h-96 bg-primary-600 rounded-full blur-[150px] opacity-20"></div>
           <div className="absolute bottom-0 left-0 w-96 h-96 bg-secondary-600 rounded-full blur-[150px] opacity-20"></div>
@@ -368,20 +369,16 @@ const Home: React.FC = () => {
                       {(() => {
                         const offerCid = content['offer.courseId'];
                         const offerCourse = offerCid ? courses.find(c => c.id === offerCid) : null;
-                        const pctOff = Number(content['home.offer.discountPercent'] || 45);
+                        const pctOff = offerDiscountPercent(content);
                         const sym24 = currencySymbol;
-                        let displayOld: string;
-                        let displayNew: string;
-                        if (offerCourse && offerCourse.price) {
-                          // سعر الكورس هو السعر الفعلي (بعد الخصم)، السعر القبلي = سعر الكورس / (1 - خصم%)
-                          const newP = offerCourse.price[currency] ?? 0;
-                          const oldP = Math.round(newP / (1 - pctOff / 100));
-                          displayOld = `${oldP} ${sym24}`;
-                          displayNew = `${newP} ${sym24}`;
-                        } else {
-                          displayOld = content[`home.offer.oldPrice.${currency}`] || content['home.offer.oldPrice'] || `4500 ${sym24}`;
-                          displayNew = content[`home.offer.newPrice.${currency}`] || content['home.offer.newPrice'] || `2500 ${sym24}`;
-                        }
+                        // The offer's own price (typed by marketing) or the course's, in the visitor's currency.
+                        const prices = offerPrices(content, offerCourse, currency);
+                        const displayOld = prices
+                          ? `${prices.oldPrice} ${sym24}`
+                          : content[`home.offer.oldPrice.${currency}`] || content['home.offer.oldPrice'] || `4500 ${sym24}`;
+                        const displayNew = prices
+                          ? `${prices.newPrice} ${sym24}`
+                          : content[`home.offer.newPrice.${currency}`] || content['home.offer.newPrice'] || `2500 ${sym24}`;
                         return (
                           <div className="flex items-center justify-center lg:justify-start gap-6 mb-8">
                             <div className="text-center">
@@ -469,7 +466,7 @@ const Home: React.FC = () => {
                   </div>
               </div>
           </div>
-      </section>
+      </section>}
 
       {/* SECTION: Institute Video - side by side */}
       <section className="py-24 bg-white relative overflow-hidden">

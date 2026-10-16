@@ -32,6 +32,9 @@ const {
   bcrypt,
 } = require('./_shared');
 
+const { toIdentity } = require('../../../lib/phoneNumber');
+const { clientHoldingPhone, phoneInUse } = require('../../../lib/phoneDuplicates');
+
 const router = Router();
 
 // GET /api/admin/leads/:id/timeline
@@ -185,6 +188,14 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
       });
     }
 
+    // One number, one client: «ونمنع اي تكرار» — whoever already holds this number, as their first or second.
+    const holder = await clientHoldingPhone(conn, { tenantId, phones: [lead.phone] });
+    if (holder) {
+      await conn.rollback(); transactionStarted = false;
+      const refusal = phoneInUse(holder);
+      return res.status(refusal.status).json(refusal.body);
+    }
+
     // 4. Generate subscriber ID + ensure client_code
     const subId = uuidv4();
     let clientCode = lead.client_code || null;
@@ -263,7 +274,7 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
         subId, clientCode, leadId,
         sanitize(lead.name, 300),
         normEmail || null,
-        ((lead.phone || '').replace(/[^\d+\-\s()]/g, '').trim().substring(0, 30)) || null,
+        toIdentity(lead.phone) || null,
         branch,
         lead.assigned_sales_id || null, lead.assigned_sales_name || null,
         csId, csName,

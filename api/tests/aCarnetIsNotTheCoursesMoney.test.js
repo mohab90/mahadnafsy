@@ -30,7 +30,7 @@ test('a paid carnet neither takes the course\'s price nor opens it', () => {
   assert.match(route, /const paysForItem = isItemPaymentType\(safeType\);/);
   assert.match(route, /if \(priceTier && paysForItem && \(courseId \|\| bundleId\)\)/);
   assert.match(route, /if \(resolvedExpected == null && paysForItem && \(courseId \|\| bundleId\)\)/);
-  assert.match(route, /if \(isPaid && paysForItem && \(courseId \|\| bundleId\)\) \{\s*let enrollAccessType = 'full';/);
+  assert.match(route, /if \(isPaid && paysForItem && \(courseId \|\| bundleId\) && !isRetake\) \{\s*let enrollAccessType = 'full';/);
   const approval = read('api/routes/core/financepay.js');
   assert.match(approval, /const opensItem = isItemPaymentType\(payment\.payment_type\);\s*if \(opensItem && payment\.course_id\)/);
 });

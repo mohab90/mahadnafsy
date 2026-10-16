@@ -626,6 +626,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         totalConverted={totalConverted}
         totalLost={totalLost}
         knownSources={Object.keys(leadStats?.bySource || {})}
+        sourceCounts={leadStats?.bySource}
         visibleLeadsCount={subTab === 'table' ? serverTable.total : visibleLeads.length}
       />
 

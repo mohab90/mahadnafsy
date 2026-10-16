@@ -2,11 +2,12 @@
  * CrmSettingsModal is imported directly from Dashboard.tsx because CRM settings
  * can be opened from outside the Leads tab.
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { DEFAULT_STALE_DAYS } from './leadUtils';
 import { Modal } from '../../../../shared/ui/Modal';
 import { AlertTriangle, CheckCircle2, Plus, RefreshCw, Settings, Wifi, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { groupSources, sourceKey, type SourceGroup } from '../../../../shared/leadSources';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 
 /** One tab of a sheet, as «فحص» reads it (POST /admin/leads/gsheet-check). */
@@ -147,6 +148,33 @@ export function CrmSettingsModal({ section, onClose, notify, salesReps, branchOp
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ imported: number; skipped: number } | null>(null);
   const [newSource, setNewSource] = useState('');
+  // «في المصادر كمية كبيرة مكررة»: the spellings the leads actually carry, merged by meaning, so the
+  // managers can make each group one source (POST /admin/leads/merge-sources).
+  const [sourceGroups, setSourceGroups] = useState<SourceGroup[]>([]);
+  const [mergingSource, setMergingSource] = useState('');
+  const loadSourceGroups = useCallback(async () => {
+    try {
+      const counts = await mysqlAdmin.adminGet<Record<string, number>>('/admin/leads/source-counts');
+      setSourceGroups(groupSources(counts || {}, DEFAULT_SOURCES).filter(group => group.variants.length > 1));
+    } catch { setSourceGroups([]); }
+  }, []);
+  useEffect(() => { if (tab === 'sources') void loadSourceGroups(); }, [tab, loadSourceGroups]);
+  const mergeSourceGroup = async (group: SourceGroup) => {
+    const ok = await confirmDialog({
+      title: 'توحيد المصدر',
+      message: `كل الليدز اللي مصدرها ${group.variants.filter(v => v.name !== group.name).map(v => `«${v.name}»`).join(' و')} هتبقى «${group.name}».`,
+      confirmLabel: 'وحّد', tone: 'normal',
+    });
+    if (!ok) return;
+    setMergingSource(group.key);
+    try {
+      const result = await mysqlAdmin.adminPost<{ leads: number }>('/admin/leads/merge-sources', { from: group.variants.map(v => v.name), to: group.name });
+      notify('success', `اتوحّد ${result.leads} ليد على «${group.name}».`);
+      await loadSourceGroups();
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر توحيد المصدر');
+    } finally { setMergingSource(''); }
+  };
   const [newSheet, setNewSheet] = useState<Omit<GSheet, 'id'>>({ name: '', sheetId: '', gid: '', autoSync: true, defaultCourse: '' });
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { ok: boolean; hint: string; headers?: string[] }>>({});
@@ -226,7 +254,13 @@ export function CrmSettingsModal({ section, onClose, notify, salesReps, branchOp
 
   const addSource = () => {
     const s = newSource.trim();
-    if (!s || settings.leadSources.includes(s)) return;
+    if (!s) return;
+    // «فيسبوك» and «Facebook» are one source — adding the second only makes the list longer.
+    if (settings.leadSources.some(existing => sourceKey(existing) === sourceKey(s))) {
+      notify('info', 'المصدر ده موجود بالفعل (بنفس المعنى).');
+      setNewSource('');
+      return;
+    }
     setSettings(x => ({ ...x, leadSources: [...x.leadSources, s] }));
     setNewSource('');
   };
@@ -366,6 +400,20 @@ export function CrmSettingsModal({ section, onClose, notify, salesReps, branchOp
                 <input value={newSource} onChange={e => setNewSource(e.target.value)} onKeyDown={e => e.key === 'Enter' && addSource()} placeholder="اسم المصدر الجديد..." className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm" />
                 <button onClick={addSource} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition"><Plus size={15} /></button>
               </div>
+              {sourceGroups.length > 0 && (
+                <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-xs font-bold text-amber-900">🧹 مصادر مكررة على الليدز — نفس المصدر بأكتر من اسم</p>
+                  {sourceGroups.map(group => (
+                    <div key={group.key} className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="text-amber-800">
+                        {group.variants.map(variant => `${variant.name} (${variant.count})`).join('  +  ')}
+                      </span>
+                      <button type="button" disabled={mergingSource === group.key} onClick={() => void mergeSourceGroup(group)}
+                        className="rounded-lg bg-amber-600 px-3 py-1 font-bold text-white hover:bg-amber-700 disabled:opacity-50">وحّدهم في «{group.name}»</button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ) : tab === 'assign' ? (
             <div className="space-y-5">

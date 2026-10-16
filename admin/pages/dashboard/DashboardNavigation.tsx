@@ -12,7 +12,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useSiteData } from '../../context/SiteDataContext';
 import MessagesBell from './MessagesBell';
 import { hasPermission } from '../../constants/permissions';
-import { NotificationsBell } from './NotificationsBell';
+import { NotificationsBell, type NotificationsBellProps } from './NotificationsBell';
 import { GlobalSearch, canUseGlobalSearch } from './GlobalSearch';
 import type { StaffMember } from '../../types';
 import type { TabKey } from './navigation';
@@ -70,10 +70,19 @@ type Props = {
 
 type Notify = (kind: 'success' | 'error' | 'warning' | 'info', message: string) => void;
 
+// Every employee's bar carries the same bell: the role bars used to open the sales follow-up drawer in its
+// place, so a collector or a receptionist never saw their own notifications.
+const BellContext = React.createContext<NotificationsBellProps | null>(null);
+
 type CompactTab = { key: TabKey; label: string; icon: React.ComponentType<{ size?: number }> };
+// «الايقونات كتير محتاجين نرتبهم داخل قوائم فى المنيو الاساسى»: a bar with many tabs keeps its main
+// ones in view and folds the rest into named menus, as the management bar does.
+type CompactGroup = { group: string; label: string; icon: React.ComponentType<{ size?: number }>; items: CompactTab[] };
+type CompactEntry = CompactTab | CompactGroup;
+const isGroup = (entry: CompactEntry): entry is CompactGroup => 'items' in entry;
 
 type CompactRoleNavProps = {
-  tabs: CompactTab[];
+  tabs: CompactEntry[];
   activeTab: TabKey;
   setActiveTab: (tab: TabKey) => void;
   currentStaff: StaffMember | null | undefined;
@@ -136,6 +145,55 @@ function ProfileIconButton({ activeTab, setActiveTab }: { activeTab: TabKey; set
   );
 }
 
+/** One named menu of a role bar: opens under its button, fixed, so the bar's own scrolling never clips it. */
+function BarGroup({ entry, activeTab, onPick }: { entry: CompactGroup; activeTab: TabKey; onPick: (key: TabKey) => void }) {
+  const [rect, setRect] = React.useState<DOMRect | null>(null);
+  const ref = React.useRef<HTMLButtonElement>(null);
+  React.useEffect(() => {
+    if (!rect) return undefined;
+    const close = () => setRect(null);
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') close(); };
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', close);
+    window.addEventListener('scroll', close, true);
+    return () => { document.removeEventListener('keydown', onKey); window.removeEventListener('resize', close); window.removeEventListener('scroll', close, true); };
+  }, [rect]);
+  const Icon = entry.icon;
+  const active = entry.items.some(item => item.key === activeTab);
+  return (
+    <>
+      <button ref={ref} type="button" aria-expanded={Boolean(rect)} onClick={() => setRect(current => (current ? null : ref.current?.getBoundingClientRect() ?? null))}
+        className={barButtonClass(active || Boolean(rect))}>
+        <Icon size={13} />
+        <span>{entry.label}</span>
+        <ChevronDown size={11} className={`transition-transform ${rect ? 'rotate-180' : ''}`} />
+      </button>
+      {rect && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setRect(null)} aria-hidden="true" />
+          <div className="fixed z-50 min-w-[210px] rounded-2xl border border-gray-200 bg-white p-1.5 shadow-2xl" dir="rtl"
+            style={{ top: rect.bottom + 6, right: Math.max(8, window.innerWidth - rect.right) }}>
+            {entry.items.map(item => {
+              const ItemIcon = item.icon;
+              return (
+                <button key={item.key} type="button" onClick={() => { setRect(null); onPick(item.key); }} className={menuRowClass(activeTab === item.key)}>
+                  <ItemIcon size={14} />
+                  <span className="truncate flex-1">{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+function RoleBell() {
+  const bell = React.useContext(BellContext);
+  return bell ? <NotificationsBell {...bell} /> : null;
+}
+
 function CompactRoleNav({
   tabs, activeTab, setActiveTab, currentStaff, salesDataLoading, staffNotifBadge,
   setSalesNotifOpen, notify, extraTabsSlot, extraHeaderButtons,
@@ -160,8 +218,9 @@ function CompactRoleNav({
             <Menu size={20} />
           </button>
         </div>
-        <div className="hidden md:flex items-center gap-0.5 overflow-x-auto flex-1 min-w-0">
+        <div className={`hidden md:flex items-center gap-0.5 flex-1 min-w-0 ${tabs.some(isGroup) ? 'flex-wrap' : 'overflow-x-auto'}`}>
           {tabs.map(tab => {
+            if (isGroup(tab)) return <BarGroup key={tab.group} entry={tab} activeTab={activeTab} onPick={pick} />;
             const Icon = tab.icon;
             return (
               <button key={tab.key} onClick={() => pick(tab.key)} className={barButtonClass(activeTab === tab.key)}>
@@ -178,9 +237,10 @@ function CompactRoleNav({
             {salesDataLoading && <span className="w-4 h-4 border-2 border-t-transparent border-primary-400 rounded-full animate-spin" />}
             {canUseGlobalSearch(false, currentStaff) && <GlobalSearch className={iconButtonClass} />}
             <ProfileIconButton activeTab={activeTab} setActiveTab={setActiveTab} />
-            <button onClick={() => setSalesNotifOpen(true)} className={iconButtonClass} title="الإشعارات والمتابعات">
-              <Bell size={15} />
-              {staffNotifBadge > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold grid place-items-center">{staffNotifBadge > 9 ? '9+' : staffNotifBadge}</span>}
+            <RoleBell />
+            <button onClick={() => setSalesNotifOpen(true)} className={iconButtonClass} title="متابعاتي — اليوم والمتأخرة">
+              <AlarmClock size={15} />
+              {staffNotifBadge > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] font-bold grid place-items-center">{staffNotifBadge > 9 ? '9+' : staffNotifBadge}</span>}
             </button>
             <MessagesBell mode="staff" notify={notify} />
             {extraHeaderButtons}
@@ -193,6 +253,23 @@ function CompactRoleNav({
       {menuOpen && (
         <div className="md:hidden mt-2 bg-white border border-gray-200 rounded-2xl shadow-xl p-1.5 max-h-[70vh] overflow-y-auto overscroll-contain">
           {tabs.map(tab => {
+            if (isGroup(tab)) {
+              const GroupIcon = tab.icon;
+              return (
+                <div key={tab.group} className="border-t border-gray-100 py-1 first:border-0">
+                  <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] font-extrabold text-gray-400"><GroupIcon size={12} /> {tab.label}</div>
+                  {tab.items.map(item => {
+                    const ItemIcon = item.icon;
+                    return (
+                      <button key={item.key} onClick={() => pick(item.key)} className={menuRowClass(activeTab === item.key)}>
+                        <ItemIcon size={14} />
+                        <span className="truncate flex-1">{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            }
             const Icon = tab.icon;
             return (
               <button key={tab.key} onClick={() => pick(tab.key)} className={menuRowClass(activeTab === tab.key)}>
@@ -276,8 +353,9 @@ export function DashboardNavigation(props: Props) {
     );
   };
 
+  const bellProps: NotificationsBellProps = { rows: notifRows, setRows: setNotifRows, unread: notifUnread, setUnread: setNotifUnread, open: notifOpen, setOpen: setNotifOpen, panelRef: notifRef, onNavigate: setActiveTab };
   return (
-<>
+<BellContext.Provider value={bellProps}>
         {/* ── Main nav bar ── */}
         {!hasRoleBar && (
           // sticky, because the screens under this bar are long ones — the
@@ -488,20 +566,26 @@ export function DashboardNavigation(props: Props) {
             {isSupport && (
               <CompactRoleNav
                 tabs={[
-                  { key: 'daqqi_schedule', label: 'جدول الدقي', icon: CalendarDays },
-                  { key: 'daqqi_clients', label: 'عملاء الدقي', icon: Users },
-                  { key: 'online_clients', label: 'عملاء الأونلاين', icon: UserCheck },
+                  { key: 'customer_inbox', label: 'المشاكل', icon: Headphones },
                   // «خلي يظهرها قاعده البيانات كامله … واظهرلها صفحه المدفوعات»:
                   // a caller is looked up among every person the institute holds,
                   // and the desk sees the payments to answer about them.
                   { key: 'client', label: 'قاعدة البيانات', icon: UserSearch },
                   { key: 'orders', label: 'المدفوعات', icon: CreditCard },
-                  { key: 'customer_inbox', label: 'المشاكل', icon: Headphones },
-                  { key: 'refund_requests', label: 'الاستردادات', icon: RotateCcw },
-                  { key: 'cert_requests', label: 'الشهادات', icon: FileText },
-                  { key: 'consultations', label: 'الاستشارات', icon: CalendarCheck },
-                  { key: 'ratings', label: 'التقييمات', icon: Star },
-                  { key: 'service_hub', label: 'الدعم والجودة', icon: Star },
+                  { group: 'clients', label: 'العملاء', icon: Users, items: [
+                    { key: 'daqqi_schedule', label: 'جدول الدقي', icon: CalendarDays },
+                    { key: 'daqqi_clients', label: 'عملاء الدقي', icon: Users },
+                    { key: 'online_clients', label: 'عملاء الأونلاين', icon: UserCheck },
+                  ] },
+                  { group: 'services', label: 'الخدمات', icon: FileText, items: [
+                    { key: 'refund_requests', label: 'الاستردادات', icon: RotateCcw },
+                    { key: 'cert_requests', label: 'الشهادات', icon: FileText },
+                    { key: 'consultations', label: 'الاستشارات', icon: CalendarCheck },
+                  ] },
+                  { group: 'quality', label: 'الجودة', icon: Star, items: [
+                    { key: 'ratings', label: 'التقييمات', icon: Star },
+                    { key: 'service_hub', label: 'الدعم والجودة', icon: Headphones },
+                  ] },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 currentStaff={currentStaff} salesDataLoading={salesDataLoading}
@@ -517,15 +601,19 @@ export function DashboardNavigation(props: Props) {
                   { key: 'daqqi_clients', label: `عملاء ${staffBranchLabel}`, icon: UserCheck },
                   { key: 'leads', label: 'العملاء المحتملين', icon: UserSearch },
                   { key: 'orders', label: 'الطلبات والمدفوعات', icon: CreditCard },
-                  { key: 'daqqi_accounting', label: `حسابات ${staffBranchLabel}`, icon: Wallet },
-                  { key: 'daqqi_stats', label: `إحصائيات فريق ${staffBranchLabel}`, icon: BarChart3 },
-                  { key: 'ratings', label: 'التقييمات', icon: Star },
-                  // «نظام الموارد البشريه … فقط علي موظفين الدقي» (9 Oct 2026).
-                  { key: 'branch_hr', label: `موارد بشرية ${staffBranchLabel}`, icon: Users },
-                  // «اتاكد ان طلبات الانضمام للدقي والانترفيو للدقي بيظهر لنشوي مدير
-                  // الدقي» (12 Oct 2026) — the branch's applications and interviews.
-                  { key: 'join_us', label: 'طلبات الانضمام', icon: UserPlus },
-                  { key: 'interviews', label: 'الانترفيوهات', icon: CalendarCheck },
+                  { group: 'branch', label: `إدارة ${staffBranchLabel}`, icon: Wallet, items: [
+                    { key: 'daqqi_accounting', label: `حسابات ${staffBranchLabel}`, icon: Wallet },
+                    { key: 'daqqi_stats', label: `إحصائيات فريق ${staffBranchLabel}`, icon: BarChart3 },
+                    { key: 'ratings', label: 'التقييمات', icon: Star },
+                  ] },
+                  { group: 'people', label: 'الفريق والتوظيف', icon: Users, items: [
+                    // «نظام الموارد البشريه … فقط علي موظفين الدقي» (9 Oct 2026).
+                    { key: 'branch_hr', label: `موارد بشرية ${staffBranchLabel}`, icon: Users },
+                    // «اتاكد ان طلبات الانضمام للدقي والانترفيو للدقي بيظهر لنشوي مدير
+                    // الدقي» (12 Oct 2026) — the branch's applications and interviews.
+                    { key: 'join_us', label: 'طلبات الانضمام', icon: UserPlus },
+                    { key: 'interviews', label: 'الانترفيوهات', icon: CalendarCheck },
+                  ] },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 currentStaff={currentStaff} salesDataLoading={salesDataLoading}
@@ -538,16 +626,20 @@ export function DashboardNavigation(props: Props) {
               <CompactRoleNav
                 tabs={[
                   { key: 'leads', label: 'العملاء المحتملون', icon: UserPlus },
-                  { key: 'sales_hub', label: 'أداء المبيعات', icon: TrendingUp },
-                  { key: 'sales_daqqi_schedule', label: 'جدول الدقي', icon: CalendarDays },
                   { key: 'online_clients', label: 'عملاء الأونلاين', icon: UserCheck },
-                  { key: 'online_hub', label: 'فريق التحصيل', icon: Monitor },
-                  { key: 'team_inbox', label: 'صندوق الرسائل', icon: Inbox },
-                  { key: 'whatsapp_web', label: 'واتسابي', icon: MessageCircle },
                   { key: 'orders', label: 'الطلبات والمدفوعات', icon: CreditCard },
-                  { key: 'financial', label: 'التقارير المالية', icon: BarChart3 },
-                  { key: 'activity', label: 'سجل النشاط', icon: Activity },
-                  { key: 'overview', label: 'إحصائيات', icon: BarChart3 },
+                  { group: 'sales', label: 'المبيعات', icon: TrendingUp, items: [
+                    { key: 'sales_hub', label: 'أداء المبيعات', icon: TrendingUp },
+                    { key: 'sales_daqqi_schedule', label: 'جدول الدقي', icon: CalendarDays },
+                    { key: 'team_inbox', label: 'صندوق الرسائل', icon: Inbox },
+                    { key: 'whatsapp_web', label: 'واتسابي', icon: MessageCircle },
+                  ] },
+                  { group: 'collection', label: 'التحصيل والتقارير', icon: BarChart3, items: [
+                    { key: 'online_hub', label: 'فريق التحصيل', icon: Monitor },
+                    { key: 'financial', label: 'التقارير المالية', icon: BarChart3 },
+                    { key: 'overview', label: 'إحصائيات', icon: BarChart3 },
+                    { key: 'activity', label: 'سجل النشاط', icon: Activity },
+                  ] },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 currentStaff={currentStaff} salesDataLoading={salesDataLoading}
@@ -625,6 +717,6 @@ export function DashboardNavigation(props: Props) {
                 />
               );
             })()}
-</>
+</BellContext.Provider>
   );
 }

@@ -477,6 +477,10 @@ export interface SubscriberItem {
   nameAr?: string;      // Explicit Arabic name (same as name by default)
   email: string;
   phone: string;
+  /** The client's second number (same form as `phone`); never the first, never another client's. */
+  phone2?: string;
+  /** «تحويل جزئي لكورس معين»: a course or track placed in a branch other than the client's own — item → branch. */
+  coursePlacements?: Record<string, string>;
   isActive?: boolean;    // Authoritative subscribers.is_active flag from the API
   enrolledCourseIds: string[];
   courseAccess?: Record<string, 'preview' | 'full' | CourseAccessSetting>;
@@ -861,6 +865,9 @@ export interface ExpenseItem {
   branchType?: BranchType;   // which branch this expense belongs to
   paymentMethod?: string;    // cash, bank transfer, etc.
   staffName?: string | null; // «القائم بالعملية» — who entered it
+  /** «رقم العملية» of a Dokki / Tagamoa expense: 1, 2, 3 … per branch; null for an online one. */
+  expenseNo?: number | null;
+  receiptBranch?: string | null;
   createdAt: string;
   title?: string;
 }

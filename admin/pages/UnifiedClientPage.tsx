@@ -128,18 +128,14 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   });
   // A client's contacts are rows with their author (ClientContactLog); a lead keeps its own log.
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
-  const openContact = React.useCallback(() => {
-    if (subscriber) setContactDialogOpen(true); else setShowAddComm(true);
-  }, [subscriber, setShowAddComm]);
+  const openContact = React.useCallback(() => { if (subscriber) setContactDialogOpen(true); else setShowAddComm(true); }, [subscriber, setShowAddComm]);
   // «تواصل» in a client list lands here with the form already open.
   const location = useLocation();
-  useEffect(() => {
-    if ((location.state as { addCommunication?: boolean } | null)?.addCommunication) openContact();
-  }, [location.state, openContact]);
+  useEffect(() => { if ((location.state as { addCommunication?: boolean } | null)?.addCommunication) openContact(); }, [location.state, openContact]);
 
-  // «دفع» on a certificate not yet paid in full (the certificates desk) lands
-  // here with ?pay=cert:<request>: the payment screen, on that certificate.
-  const payCertificate = new URLSearchParams(location.search).get('pay')?.match(/^cert:(.+)$/)?.[1] || null;
+  // ?pay=cert:<request> (the certificates desk) or ?pay=now («حجز / دفع» in «بحث») opens the payment screen.
+  const payParam = new URLSearchParams(location.search).get('pay');
+  const payCertificate = payParam?.match(/^cert:(.+)$/)?.[1] || null;
   const paymentState = useUnifiedClientPayments({
     lead, subscriber, subscribers, staffMembers, currentStaff, authUser, courses, bundles,
     isSaving, setIsSaving, addSubscriber, recordSubscriberPayment,
@@ -161,11 +157,13 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   } = paymentState;
   const openedCertificatePayment = React.useRef(false);
   useEffect(() => {
-    if (!payCertificate || !subscriber || openedCertificatePayment.current) return;
+    if ((!payCertificate && !(payParam === 'now' && (subscriber || lead))) || (payCertificate && !subscriber) || openedCertificatePayment.current) return;
     openedCertificatePayment.current = true;
     setActiveTab('payments');
-    openSubscriberPaymentForm({ draft: { paymentType: 'certificate', certReqId: payCertificate, bookingType: 'installment' } });
-  }, [payCertificate, subscriber, setActiveTab, openSubscriberPaymentForm]);
+    if (payCertificate) openSubscriberPaymentForm({ draft: { paymentType: 'certificate', certReqId: payCertificate, bookingType: 'installment' } });
+    else if (subscriber) openSubscriberPaymentForm();
+    else openLeadPaymentForm();
+  }, [payCertificate, payParam, subscriber, lead, setActiveTab, openSubscriberPaymentForm, openLeadPaymentForm]);
 
   const {
     showAccessModal, setShowAccessModal, showGrantFromCourses, setShowGrantFromCourses,

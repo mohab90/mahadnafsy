@@ -5,6 +5,7 @@ import {
   Plus, TrendingUp,
 } from 'lucide-react';
 import { FINANCIAL_SCREENS, FinancialSubTabs } from './financial/FinancialSubTabs';
+import { ReceiptGapsAlert } from './daqqi/ReceiptGapsAlert';
 import { PaymobPaymentsPanel } from './financial/PaymobPaymentsPanel';
 import { PaymentsRegister } from './financial/PaymentsRegister';
 import { useFinancialCommissionsData } from './financial/useFinancialCommissionsData';
@@ -461,6 +462,10 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
 
   return (
     <div className="space-y-5">
+      {/* «المفروض يظهر اي تنبيه في حسابات الدقي والحسابات الرئيسية»: a break in a branch's receipt
+          numbers is said where its money is kept — the branch's own accounts for that branch, the
+          main accounts for every branch — and nowhere else. Nothing is drawn while the run is whole. */}
+      <ReceiptGapsAlert branch={branchFilter ? branchFilter.toUpperCase() : undefined} />
       {/* Branch filter banner */}
       {branchFilter && (
         <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3">

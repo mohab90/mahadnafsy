@@ -259,7 +259,7 @@ router.get('/api/admin/daqqi-rounds/for-booking', requireAuth, requireAdminOrSta
 router.get('/api/admin/daqqi-rounds/sales-schedule', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
   try {
     const [rounds] = await pool.query(
-      `SELECT r.id, r.code, r.branch, r.course_id, c.title AS course_title, r.instructor_name, r.day_of_week,
+      `SELECT r.id, r.code, r.branch, r.course_id, c.title AS course_title, r.instructor_id, r.instructor_name, r.reception_name, r.day_of_week,
               r.start_date, r.time_slot, r.room, r.postponed_weeks_json
          FROM daqqi_rounds r
          LEFT JOIN courses c ON c.id = r.course_id AND c.tenant_id = r.tenant_id
@@ -275,7 +275,7 @@ router.get('/api/admin/daqqi-rounds/sales-schedule', requireAuth, requireAdminOr
         try { postponed = JSON.parse(r.postponed_weeks_json || '[]') || []; } catch { postponed = []; }
         return {
           id: r.id, code: r.code, branch: r.branch || 'DAQQI', courseId: r.course_id,
-          courseTitle: r.course_title || '', instructorName: r.instructor_name || '',
+          courseTitle: r.course_title || '', instructorId: r.instructor_id || '', instructorName: r.instructor_name || '', receptionName: r.reception_name || '',
           dayOfWeek: r.day_of_week, timeSlot: slots[r.time_slot] || 'مساءً', room: r.room || '',
           startDate, lecture: lectureToday(startDate, postponed, today), nextSession: nextSessionDate(startDate, today),
         };

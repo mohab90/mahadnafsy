@@ -36,11 +36,14 @@ import { useCertificateCatalog } from '../../../../lib/certificateCatalog';
 import { IssuedCertificateBadge } from './IssuedCertificateBadge';
 import { ClientContactDialog } from '../../../unified-client/ClientContactLog';
 import { useCanDelete } from '../../../../hooks/useCanDelete';
+import { followUpOf, statusOfDate } from '../../../../lib/clientFollowUp';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type HousingInfo = { roundId: string; roundCode: string; receptionId: string; receptionName: string };
 
 interface Props {
+  /** A client split between branches shows each branch only its own courses (lib/coursePlacement.ts). */
+  itemVisible?: (client: SubscriberItem, item: string) => boolean;
   pageRows: SubscriberItem[];
   vc: Record<string, boolean>;
   cw: Record<string, number>;
@@ -90,7 +93,7 @@ interface Props {
 export function ClientsTable({
   pageRows, vc, cw, startColResize, isDaqqiClientsTab, collOnlineSelected, setCollOnlineSelected,
   housingMap, housingNeeds, courses, bundles, staffMembers, onlineTeamMembers, isAdmin, isOnlineManager, isCollection = false,
-  canDeleteSubscriber: canDeleteByPermission, shouldUseScopedSubscribers,
+  canDeleteSubscriber: canDeleteByPermission, shouldUseScopedSubscribers, itemVisible,
   updateSubscriber, reloadSubscribers, setSalesOwnSubscribers, deleteSubscriber, setSubPayRow, setSubPayDraft,
   setDaqqiHousingModal, setDaqqiHousingRoundId,
   setConvertRow, setConvertType, setConvertAttendedLive, setConvertGotCert, setConvertPauseReason,
@@ -165,7 +168,7 @@ export function ClientsTable({
             // (lib/agreedPrice.ts clientItems). This guessed a track whenever a
             // client held all of its courses and folded several courses into one
             // «باقة» row, so the table could list items no other screen did.
-            const courseRows = clientItems(row, courses, bundles, branchCurrency).map(item => ({
+            const courseRows = clientItems(row, courses, bundles, branchCurrency).filter(item => !itemVisible || itemVisible(row, item.item)).map(item => ({
               cid: item.item,
               label: item.isTrack ? `📌 ${item.title}` : item.title,
               expected: item.expected, paid: item.paid, pending: item.pending, remaining: item.remaining, cur: item.currency,
@@ -284,13 +287,19 @@ export function ClientsTable({
                 {!salesName && !csName && !(isAdmin||isOnlineManager) && <span className="text-gray-300">—</span>}
               </div>
             );
-            const followupDate = row.nextFollowUpDate || (lastComm as CommunicationRecord | null)?.nextFollowUp || null;
-            const todayStr2 = cairoDateOnly();
-            const followupOverdue = !!(followupDate && followupDate < todayStr2);
-            const followupToday = !!(followupDate && followupDate === todayStr2);
-            const followupCell = followupDate ? (
-              <div className={`mt-1 inline-block text-[10px] font-semibold rounded-lg px-1.5 py-0.5 border whitespace-nowrap ${followupOverdue ? 'bg-red-50 border-red-200 text-red-700' : followupToday ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-indigo-50 border-indigo-200 text-indigo-700'}`}>
-                {followupOverdue ? '🔴' : followupToday ? '🟡' : '📅'} المتابعة: {followupDate.slice(0, 10)}
+            // The same rule the filter uses (lib/clientFollowUp.ts): the contact the team set, and an installment due.
+            const follow = followUpOf(row);
+            const followupCell = follow.date ? (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {follow.contactDate && (() => { const st = statusOfDate(follow.contactDate); return (
+                  <div className={`inline-block text-[10px] font-semibold rounded-lg px-1.5 py-0.5 border whitespace-nowrap ${st === 'overdue' ? 'bg-red-50 border-red-200 text-red-700' : st === 'today' ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-indigo-50 border-indigo-200 text-indigo-700'}`}>
+                    {st === 'overdue' ? '🔴' : st === 'today' ? '🟡' : '📅'} المتابعة: {follow.contactDate}
+                  </div>); })()}
+                {follow.installmentDate && (
+                  <div className="inline-block text-[10px] font-semibold rounded-lg px-1.5 py-0.5 border whitespace-nowrap bg-rose-50 border-rose-200 text-rose-700">
+                    💰 قسط مستحق: {follow.installmentDate}
+                  </div>
+                )}
               </div>
             ) : null;
             const contactCell = lastComm || followupCell ? (

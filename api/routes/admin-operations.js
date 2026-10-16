@@ -11,6 +11,8 @@ const { parseLimit, parseOffset } = require('../lib/helpers');
 const { branchForId, branchIdForBranch, defaultDigitalBranch } = require('../lib/branches');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { postExpenseJournal } = require('../lib/finance');
+const { nextExpenseNo, expenseSeriesOf } = require('../lib/receiptNumbers');
+const { insertNotification } = require('../lib/notification');
 const { financialRecordMatches, resolveFinancialScope } = require('../lib/financialScope');
 const { assertWritable } = require('../lib/periodLock');
 const { writeAuditEvent } = require('../lib/auditTrail');
@@ -76,7 +78,7 @@ router.get('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePermi
     const [[rows], categories] = await Promise.all([pool.query(
       `SELECT e.id, e.description, e.amount, e.currency, e.fx_rate_to_egp, e.amount_egp, e.fx_source,
        e.category, e.date, e.receipt_url, e.note, e.staff_id, e.branch_id,
-       e.vat_rate, e.vat_amount, e.amount_before_vat, e.created_at,
+       e.vat_rate, e.vat_amount, e.amount_before_vat, e.created_at, e.expense_no,
        COALESCE(e.created_by_name, st.name) AS staff_name
        FROM expenses e LEFT JOIN staff st ON st.id=e.staff_id AND st.tenant_id=e.tenant_id
        WHERE e.tenant_id=? AND e.deleted_at IS NULL${branchSql.replace('branch_id', 'e.branch_id')}
@@ -90,6 +92,9 @@ router.get('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePermi
       date: safeDateOnly(row.date),
       receiptUrl: row.receipt_url || '',
       branchType: branchForId(row.branch_id),
+      // «رقم العملية» of a branch's expense: 1, 2, 3 … per branch (null for an online one).
+      expenseNo: row.expense_no != null ? Number(row.expense_no) : null,
+      receiptBranch: expenseSeriesOf(row.branch_id),
       // «القائم بالعملية»: the name as it was when the expense was entered.
       staffName: staffName && !looksLikeAddress(staffName) ? staffName : null,
       createdAt: row.created_at,
@@ -130,16 +135,17 @@ router.post('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePerm
     await conn.beginTransaction();
     transactionStarted = true;
     await assertWritable(expDate, conn, tenantId);
+    const expenseNo = await nextExpenseNo(conn, { tenantId, branchId });
     // Column is `note` (singular) in the real schema — inserting into `notes`
     // threw "Unknown column 'notes'" and silently broke ALL expense creation
     // (confirmed: expenses table was empty in prod). Accept either field name.
     await conn.query(
       `INSERT INTO expenses
-         (id, tenant_id, branch_id, date, description, amount, currency, category, receipt_url, note, staff_id, created_by_name, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW())`,
+         (id, tenant_id, branch_id, date, description, amount, currency, category, receipt_url, note, staff_id, created_by_name, expense_no, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())`,
       [id, tenantId, branchId, expDate, String(e2.description || '').trim().slice(0, 2000),
        amount, currency, category, String(e2.receiptUrl || e2.receipt_url || '').slice(0, 2000) || null, e2.note ?? e2.notes ?? null,
-       req.staffRecord?.id || null, looksLikeAddress(actorName) ? 'المدير' : String(actorName).slice(0, 150)]
+       req.staffRecord?.id || null, looksLikeAddress(actorName) ? 'المدير' : String(actorName).slice(0, 150), expenseNo]
     );
     const journalId = await postExpenseJournal(
       { id, tenant_id: tenantId, branch_id: branchId, date: expDate, description: e2.description, amount, currency, category },
@@ -148,7 +154,7 @@ router.post('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePerm
     if (!journalId) throw new Error('Expense journal posting failed');
     await conn.commit();
     transactionStarted = false;
-    res.json({ ok: true, id, category: expenseCategoryLabel(category, await loadExpenseCategories(tenantId)), branchType: branchForId(branchId), staffName: looksLikeAddress(actorName) ? 'المدير' : actorName });
+    res.json({ ok: true, id, expenseNo, receiptBranch: expenseSeriesOf(branchId), category: expenseCategoryLabel(category, await loadExpenseCategories(tenantId)), branchType: branchForId(branchId), staffName: looksLikeAddress(actorName) ? 'المدير' : actorName });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     if (e.status) return res.status(e.status).json({ error: e.message, code: e.code });
@@ -169,7 +175,7 @@ router.patch('/api/admin/expenses/:id', requireAuth, requireAdminOrStaff, requir
     transactionStarted = true;
     // Fetch the old row (in tenant scope) so its ledger entry can be reversed.
     const [[oldExp]] = await conn.query(
-      `SELECT id, tenant_id, branch_id, date, description, amount, currency, fx_rate_to_egp, amount_egp, category, receipt_url, note
+      `SELECT id, tenant_id, branch_id, date, description, amount, currency, fx_rate_to_egp, amount_egp, category, receipt_url, note, expense_no
        FROM expenses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
       [req.params.id, tenantId]
     );
@@ -193,13 +199,16 @@ router.patch('/api/admin/expenses/:id', requireAuth, requireAdminOrStaff, requir
     await assertWritable(oldExp.date, conn, tenantId);
     if (newDate !== String(oldExp.date).slice(0, 10)) await assertWritable(newDate, conn, tenantId);
     // `note` (singular) is the real column — `notes` does not exist.
+    // An expense moved to another branch takes that branch's next number (none for an online one);
+    // the number it leaves behind is a gap the managers are shown.
+    const expenseNo = targetBranchId === oldExp.branch_id ? oldExp.expense_no : await nextExpenseNo(conn, { tenantId, branchId: targetBranchId });
     await conn.query(
       `UPDATE expenses
-          SET description=?, amount=?, currency=?, category=?, date=?, receipt_url=?, note=?, branch_id=?
+          SET description=?, amount=?, currency=?, category=?, date=?, receipt_url=?, note=?, branch_id=?, expense_no=?
         WHERE id=? AND tenant_id=?`,
       [String(e2.description || '').trim().slice(0, 2000), amount, currency, category,
        newDate, String(e2.receiptUrl || e2.receipt_url || '').slice(0, 2000) || null,
-       e2.note ?? e2.notes ?? oldExp.note ?? null, targetBranchId, req.params.id, tenantId]
+       e2.note ?? e2.notes ?? oldExp.note ?? null, targetBranchId, expenseNo, req.params.id, tenantId]
     );
     const reversalId = await postExpenseJournal(oldExp, -1, req.user?.email, conn, tenantId);
     const journalId = await postExpenseJournal(
@@ -231,7 +240,7 @@ router.delete('/api/admin/expenses/:id', requireAuth, requireAdminOrStaff, requi
     await conn.beginTransaction();
     transactionStarted = true;
     const [[oldExp]] = await conn.query(
-      `SELECT id, tenant_id, branch_id, date, description, amount, currency, fx_rate_to_egp, amount_egp, category
+      `SELECT id, tenant_id, branch_id, date, description, amount, currency, fx_rate_to_egp, amount_egp, category, expense_no
        FROM expenses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
       [req.params.id, tenantId]
     );
@@ -254,6 +263,12 @@ router.delete('/api/admin/expenses/:id', requireAuth, requireAdminOrStaff, requi
     if (!del.affectedRows) throw new Error('Expense deletion failed');
     const reversalId = await postExpenseJournal(oldExp, -1, req.user?.email, conn, tenantId);
     if (!reversalId) throw new Error('Expense reversal posting failed');
+    // A numbered expense that is deleted leaves a hole in the branch's run: the managers are told which.
+    if (oldExp.expense_no) {
+      await insertNotification(conn, 'payment', '⚠️ مصروف اتمسح من التسلسل',
+        `مصروف رقم ${oldExp.expense_no} (${oldExp.branch_id === 'branch-tagamoa' ? 'التجمع' : 'الدقي'}) — ${Number(oldExp.amount)} ${oldExp.currency || 'EGP'} اتمسح بواسطة ${req.staffRecord?.name || req.user?.email || 'المدير'}`,
+        { expenseNo: oldExp.expense_no, branchId: oldExp.branch_id, expenseId: oldExp.id, tab: 'financial' }, tenantId, null).catch(() => {});
+    }
     await conn.commit();
     transactionStarted = false;
     res.json({ ok: true });

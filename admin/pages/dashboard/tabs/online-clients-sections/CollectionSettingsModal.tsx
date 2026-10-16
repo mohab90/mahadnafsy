@@ -16,7 +16,7 @@ type Sheet = {
   id: string; staffId: string; name: string; sheetId: string; gid: string; clientStatus: 'old_local' | 'old_intl';
   autoSync?: boolean; lastSyncAt?: string | null; lastResult?: SyncResult | null;
 };
-type Config = { members: Member[]; sheets: Sheet[] };
+type Config = { members: Member[]; sheets: Sheet[]; newClientOfficerId?: string };
 type Counts = Record<string, { held: number; received: number }>;
 
 const MARKETS: [Market, string][] = [['local', '🇪🇬 محلي'], ['saudi', '🇸🇦 سعودي'], ['intl', '🌍 دولي']];
@@ -79,6 +79,7 @@ export function CollectionSettingsModal({ staffMembers, subscribers, notify, onC
           members: officers.map(officer => saved.get(officer.id)
             || { staffId: officer.id, isAvailable: saved.size === 0, markets: [], intakeLimit: null, intakePeriod: 'day' as Period }),
           sheets: stored?.sheets || [],
+          newClientOfficerId: stored?.newClientOfficerId || '',
         });
       })
       .catch(error => notify('error', error instanceof Error ? error.message : 'تعذّر تحميل إعدادات التحصيل'))
@@ -93,7 +94,7 @@ export function CollectionSettingsModal({ staffMembers, subscribers, notify, onC
     setSaving(true);
     try {
       const stored = await mysqlAdmin.adminPut<Config>('/admin/collection-distribution', next);
-      setConfig(current => ({ ...current, sheets: stored.sheets }));
+      setConfig(current => ({ ...current, sheets: stored.sheets, newClientOfficerId: stored.newClientOfficerId || '' }));
       setConfigured(true);
       notify('success', message);
     } catch (error) {
@@ -164,6 +165,17 @@ export function CollectionSettingsModal({ staffMembers, subscribers, notify, onC
               {!configured && <strong className="text-amber-700"> لسه متحفظش — دلوقتي التوزيع على كل موظفي التحصيل بالتساوي.</strong>}
             </p>
             {officers.length === 0 && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">مفيش موظفين بدور «تحصيل».</p>}
+            {/* «في قسم الأونلاين اي عميل جديد لازم يروح لموظف اسمه تحصيل جديد»: one employee who takes every new
+                online client first, ahead of the rotation, the caps and the markets below. */}
+            <div className="space-y-2 rounded-2xl border-2 border-teal-300 bg-teal-50/60 p-4">
+              <p className="text-sm font-extrabold text-teal-900">🆕 موظف «التحصيل الجديد»</p>
+              <p className="text-xs text-teal-800">أي عميل أونلاين جديد (من الموقع أو دفعة أو تحويل ليد) بيروح له هو الأول، من غير ما التوزيع الدوّار يتدخل. وبعدين هو أو المدير يوزّع.</p>
+              <select value={config.newClientOfficerId || ''} onChange={e => setConfig(current => ({ ...current, newClientOfficerId: e.target.value }))}
+                className={`${field} w-full max-w-sm font-bold`} aria-label="موظف التحصيل الجديد">
+                <option value="">— مفيش: التوزيع الدوّار زي ما هو —</option>
+                {officers.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}
+              </select>
+            </div>
             <div className="grid gap-3 lg:grid-cols-2">
               {config.members.map(member => {
                 const person = officers.find(item => item.id === member.staffId);

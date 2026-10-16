@@ -57,11 +57,13 @@ test('the printable certificate refuses to fall back to the Arabic name or title
   assert.match(certificate, /الشهادة غير جاهزة للطباعة/);
 });
 
-test("the desk's list says what is missing and does not offer print or share for it", () => {
+test("the desk's list says what is missing; a certificate that is not ready offers no link, only the edit that completes it", () => {
   assert.match(read('api/routes/instituteCertificates.js'), /missing: missingForCertificate\(/);
   const panel = read('admin/pages/dashboard/tabs/InstituteCertificatesPanel.tsx');
-  assert.match(panel, /row\.missing\?\.length > 0/);
-  assert.match(panel, /share && !row\.missing\?\.length/);
+  assert.match(panel, /const ready = !row\.missing\?\.length;/);
+  assert.match(panel, /!ready && \(/, 'it says what is missing');
+  assert.match(panel, /share && ready && \(/, 'no share for a certificate that is not ready');
+  assert.match(panel, /setEditing\(row\)\} title=\{`ناقص:/, 'the dead button opens the edit dialog');
   assert.doesNotMatch(panel, /هيطلع بالعربي/, 'the old promise of an Arabic certificate is gone');
 });
 

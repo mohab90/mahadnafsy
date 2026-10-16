@@ -29,14 +29,18 @@ const escapeLike = value => String(value).replace(/[\\%_]/g, match => `\\${match
  * by every spelling it can be stored as; anything else by name, email and code,
  * and — three digits or more — the digits of the phone.
  */
-function personMatch(query, alias, { withCode = true } = {}) {
+function personMatch(query, alias, { withCode = true, withPhone2 = false } = {}) {
   const q = foldText(query);
   const number = searchNumber(q);
   const digits = number ? number.digits : '';
+  // A client's second number is searched like the first: «رقمين لنفس العميل».
+  const second = withPhone2 ? column => ` OR ${alias}.phone2 ${column}` : () => '';
   if (digits.length >= 8) {
+    const spellings = [...new Set([digits, ...identitySpellings(digits)])];
+    const tail = `%${escapeLike(digits.slice(-9))}%`;
     return {
-      sql: `(${alias}.phone IN (?) OR ${alias}.phone LIKE ?)`,
-      params: [[...new Set([digits, ...identitySpellings(digits)])], `%${escapeLike(digits.slice(-9))}%`],
+      sql: `(${alias}.phone IN (?) OR ${alias}.phone LIKE ?${second('IN (?)')}${second('LIKE ?')})`,
+      params: [spellings, tail, ...(withPhone2 ? [spellings, tail] : [])],
     };
   }
   const like = `%${escapeLike(q)}%`;
@@ -44,8 +48,9 @@ function personMatch(query, alias, { withCode = true } = {}) {
   return {
     sql: `(${foldedSql(`${alias}.name`)} LIKE ? OR LOWER(COALESCE(${alias}.email, '')) LIKE ?`
       + (withCode ? ` OR LOWER(COALESCE(${alias}.client_code, '')) LIKE ?` : '')
-      + (shortNumber ? ` OR REGEXP_REPLACE(COALESCE(${alias}.phone, ''), '[^0-9]', '') LIKE ?` : '') + ')',
-    params: [like, like, ...(withCode ? [like] : []), ...(shortNumber ? [shortNumber] : [])],
+      + (shortNumber ? ` OR REGEXP_REPLACE(COALESCE(${alias}.phone, ''), '[^0-9]', '') LIKE ?` : '')
+      + (shortNumber && withPhone2 ? ` OR REGEXP_REPLACE(COALESCE(${alias}.phone2, ''), '[^0-9]', '') LIKE ?` : '') + ')',
+    params: [like, like, ...(withCode ? [like] : []), ...(shortNumber ? [shortNumber] : []), ...(shortNumber && withPhone2 ? [shortNumber] : [])],
   };
 }
 
@@ -81,7 +86,7 @@ async function searchSystem(req, rawQuery, db = pool) {
 
   const clients = async () => {
     if (!kinds.clients || noClients) return [];
-    const match = personMatch(q, 's');
+    const match = personMatch(q, 's', { withPhone2: true });
     const [rows] = await db.query(
       `SELECT s.id, s.client_code, s.name, s.phone, s.email, s.branch
          FROM subscribers s

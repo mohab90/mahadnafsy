@@ -10,11 +10,27 @@
 // two desks recording at once take one number each, in turn.
 
 const { isPhysicalBranch } = require('./physicalBranches');
+const { branchForId } = require('./branches');
 
 const normalize = branch => String(branch || '').trim().toUpperCase().replace(/[-\s]+/g, '_');
 
 /** The branch's series, or null: only the physical branches number their receipts. */
 const receiptSeriesOf = branch => (isPhysicalBranch(normalize(branch)) ? normalize(branch) : null);
+
+/**
+ * The next number of a counter, taken in `conn`'s open transaction: the counter row is locked, and
+ * the number is never below one already given — a restored backup, or a number written by hand,
+ * must not make every later record collide with an existing one. `highest` reads the largest
+ * number already in use (the index on tenant, branch, number serves it).
+ */
+async function nextOf(conn, { tenantId, key, highest }) {
+  await conn.query('INSERT IGNORE INTO receipt_counters (tenant_id, branch, last_no) VALUES (?, ?, 0)', [tenantId, key]);
+  const [[row]] = await conn.query('SELECT last_no FROM receipt_counters WHERE tenant_id = ? AND branch = ? FOR UPDATE', [tenantId, key]);
+  const top = await highest();
+  const next = Math.max(Number(row?.last_no || 0), Number(top || 0)) + 1;
+  await conn.query('UPDATE receipt_counters SET last_no = ? WHERE tenant_id = ? AND branch = ?', [next, tenantId, key]);
+  return next;
+}
 
 /**
  * The next receipt number of the branch, taken in `conn`'s open transaction; null for a
@@ -23,11 +39,26 @@ const receiptSeriesOf = branch => (isPhysicalBranch(normalize(branch)) ? normali
 async function nextReceiptNo(conn, { tenantId, branch }) {
   const series = receiptSeriesOf(branch);
   if (!series) return null;
-  await conn.query('INSERT IGNORE INTO receipt_counters (tenant_id, branch, last_no) VALUES (?, ?, 0)', [tenantId, series]);
-  const [[row]] = await conn.query('SELECT last_no FROM receipt_counters WHERE tenant_id = ? AND branch = ? FOR UPDATE', [tenantId, series]);
-  const next = Number(row?.last_no || 0) + 1;
-  await conn.query('UPDATE receipt_counters SET last_no = ? WHERE tenant_id = ? AND branch = ?', [next, tenantId, series]);
-  return next;
+  return nextOf(conn, {
+    tenantId, key: series,
+    highest: async () => (await conn.query('SELECT MAX(receipt_no) AS top FROM payments WHERE tenant_id = ? AND branch = ?', [tenantId, series]))[0][0]?.top,
+  });
+}
+
+/** The branch series an expense belongs to, from its branch id («branch-daqqi»), or null. */
+const expenseSeriesOf = branchId => receiptSeriesOf(branchForId(branchId, ''));
+
+/**
+ * The next expense number of the branch an expense is recorded under, in the same transaction;
+ * null for an online expense. «ضيف رقم عملية للمصروفات».
+ */
+async function nextExpenseNo(conn, { tenantId, branchId }) {
+  const series = expenseSeriesOf(branchId);
+  if (!series) return null;
+  return nextOf(conn, {
+    tenantId, key: `${series}_EXP`,
+    highest: async () => (await conn.query('SELECT MAX(expense_no) AS top FROM expenses WHERE tenant_id = ? AND branch_id = ?', [tenantId, branchId]))[0][0]?.top,
+  });
 }
 
 /**
@@ -67,4 +98,22 @@ async function findReceiptGaps(db, { tenantId, branches }) {
   return out;
 }
 
-module.exports = { receiptSeriesOf, nextReceiptNo, sequenceProblems, findReceiptGaps };
+/** The problems of each physical branch's EXPENSE numbers (one tenant), for the same alert. */
+async function findExpenseGaps(db, { tenantId, branches }) {
+  const out = [];
+  for (const branch of branches) {
+    const branchId = `branch-${String(branch).toLowerCase()}`;
+    const [rows] = await db.query(
+      `SELECT e.id, e.expense_no, e.deleted_at, e.amount, e.currency, e.date, e.created_by_name
+         FROM expenses e WHERE e.tenant_id = ? AND e.branch_id = ? AND e.expense_no IS NOT NULL
+        ORDER BY e.expense_no`, [tenantId, branchId]);
+    const problems = sequenceProblems(rows.map(row => ({
+      receiptNo: row.expense_no, deleted: Boolean(row.deleted_at), paymentId: row.id,
+      amount: Number(row.amount) || 0, currency: row.currency, date: row.date, staffName: row.created_by_name || null,
+    })));
+    out.push({ branch, ...problems });
+  }
+  return out;
+}
+
+module.exports = { receiptSeriesOf, expenseSeriesOf, nextReceiptNo, nextExpenseNo, sequenceProblems, findReceiptGaps, findExpenseGaps };

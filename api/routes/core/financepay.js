@@ -21,6 +21,8 @@ const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../m
 const { deleteTransfer, importTransfers, isCashMethod, linkTransfer, recordTransfer, updateTransfer } = require('../../lib/incomingTransfers');
 const { hasReason, notifyPaymentRejected, reasonOf, REASON_REQUIRED } = require('../../lib/paymentRejection');
 const { writeAuditEvent } = require('../../lib/auditTrail');
+const { getTenantSetting, setTenantSetting } = require('../../lib/tenantSettings');
+const { groupAccounts, loadAccounts, mergeAccounts } = require('../../lib/transferAccounts');
 const { mustLinkTransfer, TRANSFER_REQUIRED } = require('../../lib/paymentApprovalPolicy');
 
 // This is the only manual status transition endpoint for an existing payment.
@@ -346,8 +348,9 @@ router.post('/api/admin/incoming-transfers', requireAuth, requireAdminOrStaff, r
     if (!req.isSuperAdmin && String(req.staffRecord?.role || '').toLowerCase() === 'collection') {
       return res.status(403).json({ error: 'تسجيل التحويلات الواردة شغل المسئول' });
     }
+    const aliases = await accountAliases(req.tenantId);
     const id = await recordTransfer(pool, {
-      tenantId: req.tenantId, transfer: req.body || {},
+      tenantId: req.tenantId, transfer: { ...(req.body || {}), method: renamed(aliases, req.body?.method) },
       actor: { id: req.staffRecord?.id, name: signerName(req) },
     });
     res.json({ ok: true, id });
@@ -357,6 +360,14 @@ router.post('/api/admin/incoming-transfers', requireAuth, requireAdminOrStaff, r
     res.status(statusCode).json({ error: statusCode < 500 ? error.message : 'Internal server error' });
   }
 });
+
+// The names an account has been merged away from, and the name it now goes by: a transfer typed in or
+// imported under an old name lands on the account it was merged into (see merge-accounts below).
+async function accountAliases(tenantId) {
+  const aliases = await getTenantSetting('transfer_account_aliases', { tenantId, fallback: {} }).catch(() => ({}));
+  return aliases && typeof aliases === 'object' ? aliases : {};
+}
+const renamed = (aliases, method) => aliases[String(method || '').trim()] || method;
 
 // The managers' correction of a transfer somebody entered wrong: the old values
 // go to the audit trail (lib/incomingTransfers.js updateTransfer / deleteTransfer).
@@ -400,8 +411,10 @@ router.post('/api/admin/incoming-transfers/import', requireAuth, requireAdminOrS
     if (!req.isSuperAdmin && String(req.staffRecord?.role || '').toLowerCase() === 'collection') {
       return res.status(403).json({ error: 'تسجيل التحويلات الواردة شغل المسئول' });
     }
+    const aliases = await accountAliases(req.tenantId);
     const result = await importTransfers(pool, {
-      tenantId: req.tenantId, transfers: req.body?.transfers,
+      tenantId: req.tenantId,
+      transfers: Array.isArray(req.body?.transfers) ? req.body.transfers.map(row => ({ ...row, method: renamed(aliases, row?.method) })) : req.body?.transfers,
       actor: { id: req.staffRecord?.id, name: signerName(req) },
     });
     res.json({ ok: true, ...result });
@@ -410,6 +423,52 @@ router.post('/api/admin/incoming-transfers/import', requireAuth, requireAdminOrS
     if (statusCode >= 500) logger.error('[incoming-transfers/import]', error.message);
     res.status(statusCode).json({ error: statusCode < 500 ? error.message : 'Internal server error' });
   }
+});
+
+// «في حساب 1010 وحساب 1079 دول حساب واحد … وحسابين 4645»: the ledger's accounts, which of them are one
+// account (lib/transferAccounts.js), and the one-click merge onto the account the settings list knows.
+router.get('/api/admin/incoming-transfers/accounts', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+  if (!managesTransfers(req)) return res.status(403).json({ error: 'دمج الحسابات للمديرين', code: 'MANAGERS_ONLY' });
+  try {
+    const content = await getTenantSetting('content', { tenantId: req.tenantId, fallback: {} });
+    const registered = String(content['finance.payment_methods'] || '').split('||').map(name => name.trim()).filter(Boolean);
+    const { accounts, sheets } = await loadAccounts(pool, req.tenantId);
+    const groups = groupAccounts(accounts, { sheets, registered });
+    res.json({
+      registered,
+      accounts: accounts.map(account => ({ ...account, registered: registered.includes(account.name) })).sort((a, b) => b.rows - a.rows),
+      groups,
+    });
+  } catch (error) {
+    logger.error('[incoming-transfers/accounts]', error.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/api/admin/incoming-transfers/merge-accounts', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+  if (!managesTransfers(req)) return res.status(403).json({ error: 'دمج الحسابات للمديرين', code: 'MANAGERS_ONLY' });
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const result = await mergeAccounts(conn, { tenantId: req.tenantId, from: req.body?.from, to: req.body?.to });
+    await writeAuditEvent({
+      action: 'incoming_transfer.accounts_merged', entityType: 'incoming_transfer', entityId: result.target, severity: 'warning',
+      metadata: { from: req.body?.from, to: result.target, moved: result.moved, left: result.stuck.length, by: signerName(req) }, req, db: conn,
+    });
+    await conn.commit();
+    // Remember it, so the old name typed or imported later goes to the same account.
+    const aliases = await accountAliases(req.tenantId);
+    for (const name of new Set((req.body?.from || []).map(item => String(item || '').trim()))) {
+      if (name && name !== result.target) aliases[name] = result.target;
+    }
+    await setTenantSetting('transfer_account_aliases', aliases, { tenantId: req.tenantId, actorId: req.staffRecord?.id || req.user?.uid || null });
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    const statusCode = error.statusCode || 500;
+    if (statusCode >= 500) logger.error('[incoming-transfers/merge-accounts]', error.message);
+    res.status(statusCode).json({ error: statusCode < 500 ? error.message : 'Internal server error' });
+  } finally { conn.release(); }
 });
 
 module.exports = router;

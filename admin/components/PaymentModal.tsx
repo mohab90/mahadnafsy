@@ -32,6 +32,9 @@ import { hasPermission, type PermissionKey, type RoleKey } from '../constants/pe
 import { DISCOUNT_PERCENTS, getCatalogPricing, tierForBranch, formatMoney, type CatalogPricing, type PriceTierKey, type TierPrice } from '../lib/catalogPricing';
 import { arabicNameProblem, englishNameProblem, nationalIdProblem } from '../lib/bookingIdentity';
 import { priceIn, useExtraItemsCatalog } from '../lib/extraItemsCatalog';
+import { RetakeDialog } from './RetakeDialog';
+import { PhoneConfirm } from './PhoneConfirm';
+import { SharedPhonePanel, type SharedPhone } from './SharedPhonePanel';
 
 // ── Shared draft type ──────────────────────────────────────────────────────
 export interface PaymentDraft {
@@ -83,6 +86,10 @@ export interface PaymentDraft {
   nameAr?: string;
   nameEn?: string;
   phoneConfirmed?: boolean;
+  /** «رقمين لنفس العميل»: the second number of a client made with the booking. */
+  phone2?: string;
+  /** «حساب مرتبط»: a new person using a number another client holds — who, how related, why. */
+  sharedPhone?: SharedPhone | null;
   /** The carnet or book picked from the catalogue (lib/extraItemsCatalog.ts) — the payment's name. */
   itemTitle?: string;
 }
@@ -258,11 +265,31 @@ const PrintReceiptModal: React.FC<{ data: PrintData; onClose: () => void }> = ({
   </div>
 );
 
+// The booking kinds and the item types as tiles, each in its own colour (small, and told apart at a glance).
+const BOOKING_TONE: Record<string, { on: string; off: string; tile: string }> = {
+  new_booking: { on: 'border-rose-600 bg-gradient-to-l from-rose-600 to-red-500', off: 'border-gray-200 text-gray-600 hover:border-rose-400 hover:text-rose-600', tile: 'bg-rose-50' },
+  installment: { on: 'border-sky-600 bg-gradient-to-l from-sky-600 to-blue-500', off: 'border-gray-200 text-gray-600 hover:border-sky-400 hover:text-sky-600', tile: 'bg-sky-50' },
+  retake: { on: 'border-emerald-600 bg-gradient-to-l from-emerald-600 to-green-500', off: 'border-gray-200 text-gray-600 hover:border-emerald-400 hover:text-emerald-600', tile: 'bg-emerald-50' },
+  upgrade: { on: 'border-violet-600 bg-gradient-to-l from-violet-600 to-purple-500', off: 'border-gray-200 text-gray-600 hover:border-violet-400 hover:text-violet-600', tile: 'bg-violet-50' },
+};
+const PAYMENT_TYPE_TILES: Array<{ v: PaymentItemType | 'track'; ic: string; lb: string; on: string; off: string }> = [
+  { v: 'course', ic: '🎓', lb: 'كورس', on: 'border-rose-600 bg-rose-600', off: 'border-gray-200 text-gray-600 hover:border-rose-300' },
+  { v: 'track', ic: '🧭', lb: 'مسار', on: 'border-violet-600 bg-violet-600', off: 'border-gray-200 text-gray-600 hover:border-violet-300' },
+  { v: 'certificate', ic: '🏅', lb: 'شهادة', on: 'border-amber-500 bg-amber-500', off: 'border-gray-200 text-gray-600 hover:border-amber-300' },
+  { v: 'consultation', ic: '💬', lb: 'استشارة', on: 'border-sky-600 bg-sky-600', off: 'border-gray-200 text-gray-600 hover:border-sky-300' },
+  { v: 'book', ic: '📚', lb: 'كتاب', on: 'border-emerald-600 bg-emerald-600', off: 'border-gray-200 text-gray-600 hover:border-emerald-300' },
+  { v: 'carneh', ic: '🗂️', lb: 'كارنيه', on: 'border-indigo-600 bg-indigo-600', off: 'border-gray-200 text-gray-600 hover:border-indigo-300' },
+  { v: 'other', ic: '📦', lb: 'أخرى', on: 'border-slate-600 bg-slate-600', off: 'border-gray-200 text-gray-600 hover:border-slate-300' },
+];
+
 // ── Main PaymentModal ──────────────────────────────────────────────────────
 interface SubjectInfo {
   id: string;
   name: string;
   phone?: string;
+  phone2?: string;
+  /** A course placed in another branch than the client's: a payment for it is that branch's (lib/coursePlacement.ts). */
+  coursePlacements?: Record<string, string>;
   enrolledCourseIds?: string[];
   paymentHistory?: PaymentHistoryEntry[];
   extraCertificateRequests?: ExtraCertificateRequest[];
@@ -432,6 +459,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   // recorded. The button shows once the booking's branch is one of them (see
   // bookingBranch below) and there are open rounds there.
   const [housingOpen, setHousingOpen] = useState(false);
+  // «مسار»: the course picker lists the catalogue's tracks only.
+  const [tracksOnly, setTracksOnly] = useState(false);
   // The dashboard loads the rounds for manage_daqqi alone; anyone else booking a
   // client there reads the booking list (api/routes/daqqi-rounds.js for-booking).
   const [bookingRounds, setBookingRounds] = useState<DaqqiRound[]>([]);
@@ -439,7 +468,11 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   // Who this payment is for. In 'new' mode they do not exist yet, so it is
   // whoever is being typed into the form.
   const personName = mode === 'new' ? (d.name || '').trim() : subject.name;
-  const personPhone = mode === 'new' ? (d.phone || '').trim() : subject.phone;
+  // A number changed in the confirmation line (components/PhoneConfirm.tsx) holds for the rest of this booking.
+  const [phoneNow, setPhoneNow] = useState<string | null>(null);
+  const [phone2Now, setPhone2Now] = useState<string | null>(null);
+  const personPhone = mode === 'new' ? (d.phone || '').trim() : (phoneNow ?? subject.phone);
+  const personPhone2 = mode === 'new' ? (d.phone2 || '').trim() : (phone2Now ?? subject.phone2 ?? '');
 
   // ── Helpers ────────────────────────────────────────────────────────────
   const sysPrice = (courseId: string): number => {
@@ -476,7 +509,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   // The branch the booking is for: the branch price chosen, else the client's.
   // An online client booked at the Dokki price kept their own branch here, so
   // «تسكين العملاء» never appeared for them.
-  const bookingBranch = String(chosenTier?.branch || (mode === 'subscriber' ? (subject.branch || d.branch) : d.branch) || '')
+  const bookingBranch = String(chosenTier?.branch || (mode === 'subscriber' ? (subject.coursePlacements?.[d.courseId] || subject.branch || d.branch) : d.branch) || '')
     .toUpperCase().replace(/[-\s]/g, '_');
   const housesClients = bookingBranch === 'DAQQI' || bookingBranch === 'TAGAMOA';
   const storeHasRounds = (daqqiRounds || []).length > 0;
@@ -656,6 +689,10 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   // «تكملة يعني العميل يحول الكورس الصغير لمسار»: a course they hold that some
   // track contains, and the tracks it can grow into.
   const tracksHolding = (courseId: string) => bundles.filter(b => (b.courses || []).some(course => course.id === courseId));
+  // «إعادة»: only for a client who holds a course (not a track) — the one they take again.
+  const [retakeOpen, setRetakeOpen] = useState(false);
+  const retakeOptions = enrolledOptions.filter(opt => !opt.isBnd);
+  const canRetake = mode === 'subscriber' && Boolean(subject.id) && retakeOptions.length > 0;
   const upgradeCandidates = mode === 'subscriber' && subject.id
     ? enrolledOptions.filter(opt => !opt.isBnd && tracksHolding(opt.cid).length > 0)
     : [];
@@ -928,15 +965,18 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           )}
 
           {/* ── 1: Booking type chips ── */}
-          <div className={`grid gap-3 ${upgradeCandidates.length ? 'grid-cols-3' : 'grid-cols-2'}`}>
+          <div className={`grid gap-2 ${canRetake && upgradeCandidates.length ? 'grid-cols-4' : canRetake || upgradeCandidates.length ? 'grid-cols-3' : 'grid-cols-2'}`}>
             {[
               { v: 'new_booking', ic: '🆕', lb: 'حجز جديد' }, { v: 'installment', ic: '💳', lb: 'قسط' },
+              ...(canRetake ? [{ v: 'retake', ic: '🔁', lb: 'إعادة' }] : []),
               ...(upgradeCandidates.length ? [{ v: 'upgrade', ic: '⬆️', lb: 'تكملة لمسار' }] : []),
             ].map(opt => (
               <button
                 key={opt.v}
                 type="button"
                 onClick={() => {
+                  // «إعادة»: its own small dialog (RetakeDialog) — the course is the one already taken, at 50% off.
+                  if (opt.v === 'retake') { setRetakeOpen(true); return; }
                   if (opt.v === 'upgrade') {
                     const first = upgradeCandidates[0];
                     const track = first ? tracksHolding(first.cid)[0] : undefined;
@@ -958,29 +998,32 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                     set({ bookingType: 'new_booking', courseId: '', amount: '', customExpected: '', discountPct: '' });
                   }
                 }}
-                className={`flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-base font-extrabold border-2 transition ${(opt.v === 'upgrade' ? upgrading : !upgrading && d.bookingType === opt.v) ? 'bg-red-600 border-red-600 text-white shadow-md' : 'bg-white border-gray-200 text-gray-600 hover:border-red-400 hover:text-red-600'}`}
+                className={`group flex items-center justify-center gap-2 rounded-xl border-2 px-3 py-2 text-sm font-extrabold transition ${(opt.v === 'upgrade' ? upgrading : opt.v === 'retake' ? retakeOpen : !upgrading && d.bookingType === opt.v) ? `${BOOKING_TONE[opt.v].on} text-white shadow-md` : `bg-white ${BOOKING_TONE[opt.v].off}`}`}
               >
-                <span className="text-xl">{opt.ic}</span>{opt.lb}
+                <span className={`grid h-7 w-7 place-items-center rounded-lg text-base ${(opt.v === 'upgrade' ? upgrading : opt.v === 'retake' ? retakeOpen : !upgrading && d.bookingType === opt.v) ? 'bg-white/25' : BOOKING_TONE[opt.v].tile}`}>{opt.ic}</span>{opt.lb}
               </button>
             ))}
           </div>
 
-          {/* ── 2: Payment type chips ── */}
-          <div className="flex items-center gap-1.5 flex-wrap bg-gray-50 border border-gray-100 rounded-xl px-2 py-2">
-            {[
-              { v: 'course', ic: '🎓', lb: 'كورس' }, { v: 'certificate', ic: '🏅', lb: 'شهادة' },
-              { v: 'consultation', ic: '💬', lb: 'استشارة' }, { v: 'book', ic: '📚', lb: 'كتاب' },
-              { v: 'carneh', ic: '🗂️', lb: 'كارنيه' }, { v: 'other', ic: '📦', lb: 'أخرى' },
-            ].map(opt => (
-              <button
-                key={opt.v}
-                type="button"
-                onClick={() => { setUpgradeFrom(null); set({ paymentType: opt.v as PaymentItemType, courseId: '', certReqId: '', certType: '', itemTitle: '' }); }}
-                className={`flex items-center gap-0.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition ${d.paymentType === opt.v ? 'bg-red-600 border-red-600 text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-red-300 hover:text-red-600'}`}
-              >
-                {opt.ic} {opt.lb}
-              </button>
-            ))}
+          {/* ── 2: Payment type chips — one tile each, in its own colour; «مسار» is the tracks of the catalogue ── */}
+          <div className="grid grid-cols-4 gap-1.5 rounded-xl border border-gray-100 bg-gray-50 p-1.5 sm:grid-cols-7">
+            {PAYMENT_TYPE_TILES.map(opt => {
+              const on = opt.v === 'track' ? (d.paymentType === 'course' && tracksOnly) : (d.paymentType === opt.v && !(opt.v === 'course' && tracksOnly));
+              return (
+                <button
+                  key={opt.v}
+                  type="button"
+                  onClick={() => {
+                    setUpgradeFrom(null);
+                    setTracksOnly(opt.v === 'track');
+                    set({ paymentType: (opt.v === 'track' ? 'course' : opt.v) as PaymentItemType, courseId: '', certReqId: '', certType: '', itemTitle: '' });
+                  }}
+                  className={`flex h-14 flex-col items-center justify-center gap-0.5 rounded-xl border-2 text-[11px] font-extrabold leading-none transition ${on ? `${opt.on} text-white shadow-md` : `bg-white ${opt.off}`}`}
+                >
+                  <span className="text-lg leading-none">{opt.ic}</span>{opt.lb}
+                </button>
+              );
+            })}
           </div>
 
           {/* ── 3: Course / item selection ── */}
@@ -1145,7 +1188,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                   >
                     <option value="">— اختر الكورس أو المسار —</option>
                     {bundles.length > 0 && <optgroup label="📌 المسارات">{bundles.map(b => <option key={`bundle:${b.id}`} value={`bundle:${b.id}`}>📌 {b.title}</option>)}</optgroup>}
-                    <optgroup label="🎓 الكورسات">{courses.map(c => <option key={c.id} value={c.id}>{c.titleAr || c.title}</option>)}</optgroup>
+                    {!(tracksOnly && isCourse) && <optgroup label="🎓 الكورسات">{courses.map(c => <option key={c.id} value={c.id}>{c.titleAr || c.title}</option>)}</optgroup>}
                   </select>
                 )}
                 {/* «يختار الكورس وبعدها يختار الفرع وقتها يظهر السعر … بالعمله بتاعته ويظهر اوبشنز الخصم» */}
@@ -1592,6 +1635,9 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                   />
                 </div>
               </div>
+              <SharedPhonePanel phone={d.phone || ''} branch={d.branch || ''} value={d.sharedPhone}
+                onChange={next => set({ sharedPhone: next })}
+                onOpenHolder={holder => window.open(`/client/${encodeURIComponent(holder.clientCode || holder.id)}`, '_blank', 'noopener')} />
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-gray-600 mb-1.5">البريد الإلكتروني <span className="text-gray-400 font-normal">(اختياري)</span></label>
@@ -1668,13 +1714,19 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                     className={`w-full rounded-xl border px-3 py-2 text-sm font-mono ${nationalIdProblem(d.nationalId, egyptianId) ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white'}`} />
                   {nationalIdProblem(d.nationalId, egyptianId) && <span className="mt-1 block text-[11px] text-red-600">{nationalIdProblem(d.nationalId, egyptianId)}</span>}
                 </label>
-                <label className={`flex items-center gap-2 rounded-xl border-2 px-3 py-2 ${d.phoneConfirmed ? 'border-emerald-300 bg-white' : 'border-amber-300 bg-amber-50'}`}>
-                  <input type="checkbox" checked={Boolean(d.phoneConfirmed)} onChange={e => set({ phoneConfirmed: e.target.checked })} className="h-4 w-4" />
-                  <span className="text-xs font-bold text-gray-700">
-                    أكّدت رقم التليفون مع العميل
-                    <span dir="ltr" className="mr-1 font-mono text-gray-900">{personPhone || '—'}</span>
-                  </span>
-                </label>
+                <div className="sm:col-span-2">
+                  <PhoneConfirm
+                    confirmed={Boolean(d.phoneConfirmed)}
+                    onConfirmed={value => set({ phoneConfirmed: value })}
+                    phone={personPhone || ''}
+                    phone2={personPhone2}
+                    saveFor={mode === 'subscriber' && subject.id ? { id: subject.id, name: subject.name } : undefined}
+                    onChange={(a, b) => {
+                      if (mode === 'new') set({ phone: a, phone2: b });
+                      else { setPhoneNow(a); setPhone2Now(b); }
+                    }}
+                  />
+                </div>
               </div>
             </div>
           )}
@@ -1840,6 +1892,19 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
             >إلغاء</button>
           </div>
         </div>
+        {retakeOpen && (
+          <RetakeDialog
+            subjectId={subject.id}
+            subjectName={subject.name}
+            options={retakeOptions.map(opt => ({ cid: opt.cid, label: opt.label, remaining: opt.remaining }))}
+            courses={courses}
+            currency={d.currency}
+            branch={bookingBranch || undefined}
+            paymentMethods={paymentMethods}
+            onClose={() => setRetakeOpen(false)}
+            onDone={() => { setRetakeOpen(false); onClose(); }}
+          />
+        )}
     </Modal>
   );
 };

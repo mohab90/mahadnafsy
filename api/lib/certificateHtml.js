@@ -21,7 +21,8 @@ const { escapeHtml } = require('./html');
 const TEMPLATE_URL = '/api/certificate-template.jpg';
 
 // The sheet's A4 size is 21 × 29.7 cm; the design canvas is 600 × 849 px.
-const FORM_DEFAULTS = { nameTop: 17, courseTop: 22 };
+// «اسم العميل بيظهر تحت الخط شوية محتاجين نرفعه 1 سم» (15 Oct 2026): the name sits at 16 cm now, the course a little lower.
+const FORM_DEFAULTS = { nameTop: 16, courseTop: 22.6 };
 const clampCm = (value, fallback) => {
   const cm = Number(value);
   return Number.isFinite(cm) && cm >= 3 && cm <= 28 ? cm : fallback;
@@ -36,15 +37,34 @@ const fitSize = (text, widthPx, maxPx, minPx) => Math.max(minPx, Math.min(maxPx,
 
 const SERIF = "Georgia,'Times New Roman',serif";
 
+/**
+ * «completed 60 training hours in 2026» — under the course, in its own lettering, a little smaller.
+ * The hours are the course's («60 Hours» → 60); a duration that is not hours is written as it is.
+ */
+function trainingLine(duration, year) {
+  const text = String(duration || '').trim();
+  if (!text) return '';
+  const hours = /^(\d+(?:\.\d+)?)\s*hours?$/i.exec(text);
+  const when = year ? ` in ${escapeHtml(String(year))}` : '';
+  return hours ? `completed ${hours[1]} training hours${when}` : `completed ${escapeHtml(text)} of training${when}`;
+}
+
 /** The whole certificate: the picture, with the client's own lines written on it. */
-function certificateHtml({ studentName, courseName, duration, trainer, serialNo, issuedAt, qrUrl, verifyUrl }) {
+function certificateHtml({ studentName, courseName, duration, trainer, serialNo, issuedAt, qrUrl, verifyUrl, certCode, year }) {
   const nameSize = fitSize(studentName, 470, 30, 14);
-  const courseSize = fitSize(courseName, 470, 21, 13);
+  // «كبر حجم اسم الكورس وخليه بولد واسود فاقع وتحت شوية»: larger, solid black, lower; the sentence under
+  // it is the same lettering, a little smaller, and the certificate's own code under that.
+  const courseSize = fitSize(courseName, 480, 29, 15);
+  const line = trainingLine(duration, year);
+  const lineSize = Math.max(11, Math.round(courseSize * 0.62));
   const lines = [
-    `<div style="position:absolute;left:57px;width:486px;top:402px;height:50px;display:flex;align-items:flex-end;justify-content:center;text-align:center;font-family:${SERIF};font-size:${nameSize}px;font-weight:700;color:#B3141B;letter-spacing:1px;line-height:1.2;padding-bottom:3px;white-space:nowrap">${escapeHtml(studentName)}</div>`,
-    `<div style="position:absolute;left:57px;width:486px;top:604px;height:48px;display:flex;align-items:center;justify-content:center;text-align:center;font-family:${SERIF};font-size:${courseSize}px;font-weight:700;color:#111;line-height:1.2;white-space:nowrap">${escapeHtml(courseName)}</div>`,
-    duration
-      ? `<div style="position:absolute;left:57px;width:486px;top:652px;text-align:center;font-family:${SERIF};font-size:15px;font-weight:700;color:#444;letter-spacing:.5px">Duration: ${escapeHtml(duration)}</div>`
+    `<div style="position:absolute;left:57px;width:486px;top:373px;height:50px;display:flex;align-items:flex-end;justify-content:center;text-align:center;font-family:${SERIF};font-size:${nameSize}px;font-weight:900;color:#000;letter-spacing:1px;line-height:1.2;padding-bottom:3px;white-space:nowrap">${escapeHtml(studentName)}</div>`,
+    `<div style="position:absolute;left:57px;width:486px;top:604px;height:54px;display:flex;align-items:center;justify-content:center;text-align:center;font-family:${SERIF};font-size:${courseSize}px;font-weight:900;color:#000;line-height:1.15;white-space:nowrap">${escapeHtml(courseName)}</div>`,
+    line
+      ? `<div style="position:absolute;left:57px;width:486px;top:658px;text-align:center;font-family:${SERIF};font-size:${lineSize}px;font-weight:900;color:#000;line-height:1.2;white-space:nowrap">${line}</div>`
+      : '',
+    certCode
+      ? `<div style="position:absolute;left:57px;width:486px;top:${line ? 681 : 664}px;text-align:center;font-family:monospace;font-size:9px;font-weight:700;letter-spacing:.4px;color:#333">${escapeHtml(certCode)}</div>`
       : '',
     trainer
       ? `<div style="position:absolute;left:40px;width:196px;top:708px;height:26px;display:flex;align-items:flex-end;justify-content:center;text-align:center;font-family:${SERIF};font-size:14px;font-weight:700;color:#111;line-height:1.1;padding-bottom:2px">${escapeHtml(trainer)}</div>`
@@ -67,19 +87,22 @@ ${lines}
  * duration, in centimetres from the top of an A4 sheet. On screen the picture shows
  * faintly behind them so the desk can see where they will land; it is not printed.
  */
-function certificateFormHtml({ studentName, courseName, duration, nameTop, courseTop }) {
+function certificateFormHtml({ studentName, courseName, duration, nameTop, courseTop, certCode, year }) {
   const at = formOffsets({ nameTop, courseTop });
   // The sheet is 21 cm = 595 pt wide; the name may use 17 cm of it.
   const namePt = Math.max(15, Math.min(32, Math.floor(482 / (studentName.length * 0.74))));
-  const coursePt = Math.max(13, Math.min(24, Math.floor(482 / (courseName.length * 0.7))));
+  const coursePt = Math.max(15, Math.min(30, Math.floor(482 / (courseName.length * 0.68))));
+  const line = trainingLine(duration, year);
+  const linePt = Math.max(12, Math.round(coursePt * 0.62));
   const band = (top, height, inner) =>
     `<div style="position:absolute;left:0;width:21cm;top:calc(${top}cm - ${height / 2}cm);height:${height}cm;display:flex;align-items:center;justify-content:center;text-align:center;white-space:nowrap">${inner}</div>`;
   return `<div class="form-sheet" id="cert">
 <img class="guide" src="${TEMPLATE_URL}" alt="" style="position:absolute;left:0;top:0;width:21cm;height:29.7cm;opacity:.32"/>
-${band(at.nameTop, 1.6, `<span style="font-family:${SERIF};font-size:${namePt}pt;font-weight:800;letter-spacing:.06em;color:#7E0F15">${escapeHtml(studentName)}</span>`)}
-${band(at.courseTop, 1.4, `<span style="font-family:${SERIF};font-size:${coursePt}pt;font-weight:800;letter-spacing:.03em;color:#111">${escapeHtml(courseName)}</span>`)}
-${duration ? band(at.courseTop + 1.15, 1, `<span style="font-family:${SERIF};font-size:14pt;font-weight:700;letter-spacing:.04em;color:#333">Duration: ${escapeHtml(duration)}</span>`) : ''}
+${band(at.nameTop, 1.6, `<span style="font-family:${SERIF};font-size:${namePt}pt;font-weight:900;letter-spacing:.06em;color:#000">${escapeHtml(studentName)}</span>`)}
+${band(at.courseTop, 1.6, `<span style="font-family:${SERIF};font-size:${coursePt}pt;font-weight:900;letter-spacing:.02em;color:#000">${escapeHtml(courseName)}</span>`)}
+${line ? band(at.courseTop + 1.25, 1, `<span style="font-family:${SERIF};font-size:${linePt}pt;font-weight:900;letter-spacing:.02em;color:#000">${line}</span>`) : ''}
+${certCode ? band(at.courseTop + (line ? 2.05 : 1.25), 0.7, `<span style="font-family:monospace;font-size:8.5pt;font-weight:700;letter-spacing:.08em;color:#333">${escapeHtml(certCode)}</span>`) : ''}
 </div>`;
 }
 
-module.exports = { certificateHtml, certificateFormHtml, formOffsets, FORM_DEFAULTS, TEMPLATE_URL };
+module.exports = { certificateHtml, certificateFormHtml, formOffsets, trainingLine, FORM_DEFAULTS, TEMPLATE_URL };

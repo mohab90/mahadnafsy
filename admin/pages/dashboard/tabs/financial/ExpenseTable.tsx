@@ -2,6 +2,8 @@ import { Download } from 'lucide-react';
 import type { ExpenseItem } from '../../../../types';
 import { BRANCH_LABELS_AR, normalizeBranch } from '../../../../constants/branches';
 
+/** «رقم العملية»: the branch's own run (الدقي #12), blank for an online expense. */
+const operationNo = (expense: ExpenseItem) => (expense.expenseNo != null ? `${expense.receiptBranch === 'TAGAMOA' ? 'التجمع' : 'الدقي'} #${expense.expenseNo}` : '—');
 const branchLabel = (value?: string) => { const key = normalizeBranch(value); return key ? BRANCH_LABELS_AR[key] : '—'; };
 
 interface ExpenseTableProps {
@@ -21,8 +23,8 @@ export function ExpenseTable({ filteredExpenses, totalEGP, exportCSV, onEdit, on
         <button
           onClick={() => exportCSV(
             'expenses.csv',
-            filteredExpenses.map((expense) => [expense.category, expense.description, String(expense.amount), expense.currency, expense.date, branchLabel(expense.branchType), expense.staffName || '']),
-            ['البند', 'الوصف', 'المبلغ', 'العملة', 'التاريخ', 'الفرع', 'القائم بالعملية']
+            filteredExpenses.map((expense) => [operationNo(expense), expense.category, expense.description, String(expense.amount), expense.currency, expense.date, branchLabel(expense.branchType), expense.staffName || '']),
+            ['رقم العملية', 'البند', 'الوصف', 'المبلغ', 'العملة', 'التاريخ', 'الفرع', 'القائم بالعملية']
           )}
           className="flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl px-3 py-1.5 text-xs font-bold transition">
           <Download size={13} /> تصدير CSV
@@ -30,10 +32,11 @@ export function ExpenseTable({ filteredExpenses, totalEGP, exportCSV, onEdit, on
       </div>
       <div className="overflow-x-auto">
       <table className="w-full text-sm min-w-[720px]">
-        <thead><tr className="text-right border-b border-gray-100"><th className="py-2">البند</th><th className="py-2">الوصف</th><th className="py-2">المبلغ</th><th className="py-2">الفرع</th><th className="py-2">القائم بالعملية</th><th className="py-2">التاريخ</th><th className="py-2">إجراءات</th></tr></thead>
+        <thead><tr className="text-right border-b border-gray-100"><th className="py-2">رقم العملية</th><th className="py-2">البند</th><th className="py-2">الوصف</th><th className="py-2">المبلغ</th><th className="py-2">الفرع</th><th className="py-2">القائم بالعملية</th><th className="py-2">التاريخ</th><th className="py-2">إجراءات</th></tr></thead>
         <tbody>
           {filteredExpenses.map((expense) => (
             <tr key={expense.id} className="border-b border-gray-50 hover:bg-gray-50/50">
+              <td className="py-2.5 font-mono text-xs font-bold text-gray-700 whitespace-nowrap">{operationNo(expense)}</td>
               <td className="py-2.5"><span className="bg-red-50 text-red-700 text-xs px-2 py-0.5 rounded-full border border-red-200">{expense.category}</span></td>
               <td className="py-2.5 text-gray-700">{expense.description}</td>
               <td className="py-2.5 font-bold text-red-600 tabular-nums">{Number(expense.amount).toLocaleString('ar-EG-u-nu-latn')} {expense.currency}</td>
@@ -48,7 +51,7 @@ export function ExpenseTable({ filteredExpenses, totalEGP, exportCSV, onEdit, on
               </td>
             </tr>
           ))}
-          {filteredExpenses.length === 0 && (<tr><td colSpan={7} className="py-6 text-center text-gray-400">لا توجد مصروفات مطابقة للفلاتر</td></tr>)}
+          {filteredExpenses.length === 0 && (<tr><td colSpan={8} className="py-6 text-center text-gray-400">لا توجد مصروفات مطابقة للفلاتر</td></tr>)}
         </tbody>
       </table>
       </div>

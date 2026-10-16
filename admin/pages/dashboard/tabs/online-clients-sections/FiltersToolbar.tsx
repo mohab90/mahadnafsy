@@ -3,6 +3,10 @@ import { Eye, Search } from 'lucide-react';
 import { cairoDateOnly, cairoDaysAgo } from '../../../../../shared/cairoDate';
 import type { Bundle, Course, DaqqiRound, StaffMember } from '../../../../types';
 import { SUB_STATUS_CFG } from '../../dashboardShared';
+import { FOLLOW_FILTERS, type FollowFilter } from '../../../../lib/clientFollowUp';
+
+/** The collection filter's «none»: clients with no collection officer. */
+export const NO_COLLECTOR = '__none__';
 
 // The date filter's quick ranges, in Cairo days; «مخصص» opens the two dates.
 const DATE_PRESETS: [string, string, number][] = [
@@ -35,6 +39,9 @@ interface Props {
   collOnlineCertFilter: 'all'|'has_cert'|'no_cert';
   collOnlineStatusFilter: string;
   setCollOnlineStatusFilter: (v: string) => void;
+  collOnlineFollowFilter: FollowFilter;
+  setCollOnlineFollowFilter: (v: FollowFilter) => void;
+  followCounts: { overdue: number; today: number; tomorrow: number };
   setCollOnlineCertFilter: (v: 'all'|'has_cert'|'no_cert') => void;
   collOnlineCourseFilter: string;
   setCollOnlineCourseFilter: (v: string) => void;
@@ -56,6 +63,7 @@ export function FiltersToolbar({
   collOnlineCollectionFilter, setCollOnlineCollectionFilter, isOnlineManager, isAdmin,
   onlineTeamMembers, staffMembers, collOnlineCertFilter, setCollOnlineCertFilter,
   collOnlineStatusFilter, setCollOnlineStatusFilter,
+  collOnlineFollowFilter, setCollOnlineFollowFilter, followCounts,
   collOnlineCourseFilter, setCollOnlineCourseFilter, courses, bundles,
   collOnlineDateFrom, setCollOnlineDateFrom, collOnlineDateTo, setCollOnlineDateTo,
   vc, toggleCol,
@@ -74,8 +82,24 @@ export function FiltersToolbar({
       setCollOnlineDateTo('');
     }
   };
+  const chips: Array<[FollowFilter, string, number, string]> = [
+    ['overdue', '🔴 متابعات متأخرة', followCounts.overdue, 'border-red-200 bg-red-50 text-red-700'],
+    ['today', '🟡 متابعات النهاردة', followCounts.today, 'border-amber-200 bg-amber-50 text-amber-800'],
+    ['tomorrow', '📅 بكرة', followCounts.tomorrow, 'border-indigo-200 bg-indigo-50 text-indigo-700'],
+  ];
   return (
     <>
+      {/* «المتابعات»: who must be called today, one click away, with how many. */}
+      <div className="mb-2 flex flex-wrap items-center gap-2" role="group" aria-label="المتابعات">
+        {chips.map(([key, label, count, tone]) => (
+          <button key={key} type="button" aria-pressed={collOnlineFollowFilter === key}
+            onClick={() => { setCollOnlineFollowFilter(collOnlineFollowFilter === key ? '' : key); setCollOnlinePage(1); }}
+            className={`rounded-xl border px-3 py-1.5 text-xs font-bold transition ${tone} ${collOnlineFollowFilter === key ? 'ring-2 ring-offset-1 ring-teal-400' : 'opacity-90 hover:opacity-100'}`}>
+            {label} <span className="mr-1 rounded-full bg-white/70 px-1.5 font-extrabold">{count}</span>
+          </button>
+        ))}
+        {collOnlineFollowFilter && <button type="button" onClick={() => { setCollOnlineFollowFilter(''); setCollOnlinePage(1); }} className="text-xs font-bold text-gray-500 hover:text-gray-700">✕ إلغاء فلتر المتابعات</button>}
+      </div>
       {/* One line: the filters scroll sideways rather than wrapping into three. */}
       <div className="flex flex-nowrap gap-2 mb-3 items-center overflow-x-auto whitespace-nowrap pb-1 [&>*]:shrink-0">
         <div className="relative min-w-0 w-[140px]">
@@ -127,11 +151,16 @@ export function FiltersToolbar({
           <select value={collOnlineCollectionFilter} onChange={e=>{setCollOnlineCollectionFilter(e.target.value);setCollOnlinePage(1);}}
             className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none max-w-[150px]">
             <option value="">كل مسئولي التحصيل</option>
+            <option value={NO_COLLECTOR}>⚠️ بدون مسئول تحصيل</option>
             {(isOnlineManager ? onlineTeamMembers : isAdmin ? staffMembers : staffMembers).filter(s => (s.role||'').toLowerCase() === 'collection').map(s => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </select>
         )}
+        <select value={collOnlineFollowFilter} onChange={e=>{setCollOnlineFollowFilter(e.target.value as FollowFilter);setCollOnlinePage(1);}}
+          aria-label="المتابعات" className={`border rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none ${collOnlineFollowFilter ? 'border-teal-400 font-bold text-teal-700' : 'border-gray-200'}`}>
+          {FOLLOW_FILTERS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+        </select>
         {/* «فلتر بحالة العميل» — the table's «الحالة» */}
         <select value={collOnlineStatusFilter} onChange={e=>{setCollOnlineStatusFilter(e.target.value);setCollOnlinePage(1);}}
           aria-label="حالة العميل" className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none">

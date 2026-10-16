@@ -28,6 +28,10 @@ const load = async () => {
   return baileys;
 };
 const mode = file => fs.statSync(file).mode & 0o777;
+// Windows has no 600/700 file modes (every file reads as 666/777), so the permission
+// checks run where the server runs — Linux — and the sealing checks run everywhere,
+// including on the machine a release is built on.
+const assertMode = (file, expected) => { if (process.platform !== 'win32') assert.equal(mode(file), expected, file); };
 const made = [];
 const tmpRoot = () => { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wa-web-')); made.push(dir); return dir; };
 test.after(() => { for (const dir of made) fs.rmSync(dir, { recursive: true, force: true }); });
@@ -42,9 +46,9 @@ test('keys are written sealed and private, and read back whole', async () => {
   const credsText = fs.readFileSync(path.join(dir, 'creds.json'), 'utf8');
   assert.match(credsText, /^v1:/, 'sealed');
   assert.doesNotMatch(credsText, /noiseKey|registrationId/, 'nothing readable');
-  assert.equal(mode(path.join(dir, 'creds.json')), 0o600);
-  assert.equal(mode(path.join(dir, 'pre-key-7.json')), 0o600);
-  for (const folder of [dir, path.dirname(dir), root]) assert.equal(mode(folder), 0o700, folder);
+  assertMode(path.join(dir, 'creds.json'), 0o600);
+  assertMode(path.join(dir, 'pre-key-7.json'), 0o600);
+  for (const folder of [dir, path.dirname(dir), root]) assertMode(folder, 0o700);
 
   const again = await useSealedAuthState(dir, await load(), { root });
   assert.equal(again.state.creds.registrationId, state.creds.registrationId);
@@ -67,8 +71,8 @@ test('a file written before encryption is sealed the first time it is read', asy
   const { state } = await useSealedAuthState(dir, await load(), { root });
   assert.equal(state.creds.registrationId, creds.registrationId, 'the rep stays linked');
   assert.match(fs.readFileSync(path.join(dir, 'creds.json'), 'utf8'), /^v1:/);
-  assert.equal(mode(path.join(dir, 'creds.json')), 0o600);
-  assert.equal(mode(dir), 0o700);
+  assertMode(path.join(dir, 'creds.json'), 0o600);
+  assertMode(dir, 0o700);
 
   const { abc } = await state.keys.get('session', ['abc']);
   assert.equal(Buffer.from(abc.hello).toString(), 'x');

@@ -76,7 +76,7 @@ test('the online list is online clients only, and its numbers are the markets\' 
   assert.equal(utils.isOnlineClient(client({ branch: 'TAGAMOA' })), false);
   assert.equal(utils.isOnlineClient(client({ branch: 'ONLINE_SAUDI' })), true);
   const tab = read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx');
-  assert.match(tab, /: branchScopedMasterList\.filter\(isOnlineClient\);/);
+  assert.match(tab, /branchScopedMasterList\.filter\(s => holdsIn\(s, isOnlineHere\)\);/);
   assert.match(tab, /if \(collOnlineRemainingFilter === 'paid' && !isFullyPaid\(balanceOf\(s\)\)\) return false;/);
   assert.match(tab, /if \(collOnlineCourseFilter && !holdsItem\(s, collOnlineCourseFilter\)\) return false;/);
 });

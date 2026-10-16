@@ -63,7 +63,17 @@ function certificateTypeCodes(pricingConfig) {
   return new Set([...BUILT_IN_CERTIFICATE_TYPES, ...Object.keys(pricingConfig || {}).map(key => String(key).toUpperCase())]);
 }
 
+/**
+ * What a certificate costs for the books and for the screens: the price list's figure for its type
+ * and currency when there is one — «مينفعش تقول السعر اكتمل غير لما يطابق السعر عندك في السيستم»
+ * (8 Oct 2026) — else the price on the request itself.
+ */
+function certificateDue(pricingConfig, request) {
+  const listed = basePriceForCurrency(pricingConfig, request.type, request.currency || 'EGP');
+  return listed > 0 ? listed : (Number(request.price) || 0);
+}
+
 module.exports = {
-  certificateTypeCodes, basePriceForCurrency,
+  certificateTypeCodes, basePriceForCurrency, certificateDue,
   resolveCertificatePrice, priceKeyForNationality, priceKeyForCountry, currencyForPriceKey,
 };

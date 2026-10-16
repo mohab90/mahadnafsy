@@ -99,15 +99,14 @@ test('nothing chosen, a rep, or a collection officer is refused', async () => {
   assert.equal((await call({ leadIds: Array.from({ length: 20001 }, (_, i) => `lead-${i}`) })).body.code, 'TOO_MANY');
 });
 
-test('the table and «محلي قديم» both carry the controls — one at a time, a hand-picked group, a whole batch', () => {
+test('the table and «محلي قديم» carry the move from the selection bar; the whole-batch block is gone', () => {
   const table = read('admin/pages/dashboard/tabs/LeadTable.tsx');
-  assert.match(table, /<MoveBatchToLocalNew rows=\{rows\} reloadLeads=\{reloadLeads\} \/>/);
   assert.match(table, /<MoveSelectedToLocalNew selectedIds=\{selectedIds\}/);
-  assert.match(table, /canManageLeads && !isSalesOnly && <MoveBatchToLocalNew/);
+  assert.doesNotMatch(table, /MoveBatchToLocalNew/, '«نقل دفعة كاملة لمحلي جديد» was taken away («محتاجك تشيله»)');
   const controls = read('admin/pages/dashboard/tabs/leads/MoveToLocalNew.tsx');
   assert.match(controls, /\/admin\/leads\/move-to-local-new/);
   assert.match(controls, /moveToLocalNew\(\{ leadIds: selectedIds \}\)/);
-  assert.match(controls, /moveToLocalNew\(\{ source \}\)/);
+  assert.doesNotMatch(controls, /نقل دفعة كاملة|اختار الدفعة|MoveBatchToLocalNew/);
   // The archive tab and the data table are the same table component.
   assert.match(read('admin/pages/dashboard/tabs/leads/ArchiveTab.tsx'), /<LeadTable\s+rows=\{archiveLeads\}/);
 });

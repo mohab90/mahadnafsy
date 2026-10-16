@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { SegmentationTab } from './marketing-hub-sections/SegmentationTab';
 import { AbTestSection } from './marketing-hub-sections/AbTestSection';
+import { SiteOffersPanel } from './marketing-hub-sections/SiteOffersPanel';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { isContactedStatus, isInterestedStatus } from './leadUtils';
 
@@ -579,6 +580,8 @@ const MarketingHubTab: React.FC<Props> = ({ notify }) => {
       {/* ════════════════════ DISCOUNTS ════════════════════ */}
       {activeSubTab === 'discounts' && (
         <div className="space-y-5">
+
+          <SiteOffersPanel notify={notify} />
 
           {/* Stats row */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
