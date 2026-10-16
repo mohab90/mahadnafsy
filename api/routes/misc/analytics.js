@@ -119,14 +119,45 @@ router.get('/api/admin/analytics/revenue-forecast', requireAuth, requireAdminOrS
 
 // Helper to log login events — called from login endpoints
 
-// GET /api/admin/security/accounts — the sign-in accounts themselves.
-// Distinct from login-history, which is a stream of events: this answers "who
-// can actually get in, and how". Now that a WhatsApp number is the identity,
-// an account with no number simply cannot sign in, and that has to be visible
-// to staff instead of surfacing as a customer complaint.
+// ── One page for the sign-in accounts and their log ───────────────────────────
+//
+// «حسابات الدخول» and «سجل تسجيلات الدخول» were two pages over the same people: the accounts said who
+// can get in, the log said who tried. They are one list now — an account per row with its name and
+// number, how many times it signed in, and the last attempt's address, device, status and reason —
+// with the whole history of one account a click away, and the stream of every attempt (including the
+// ones nobody's account matches) beside it.
+
+const { reasonLabel } = require('../../lib/loginReasons');
+const SIGN_IN_OK = ['success', '2fa_success'];
+// A password step that asked for a code and was followed by the code within ten minutes finished.
+const TWO_FA_WINDOW_MS = 10 * 60 * 1000;
+
+/**
+ * How an attempt ended, in one word: ok | failed | pending (asked for the 2FA code and nothing came
+ * after it) | done (a pending row the code completed — it is not a second sign-in). The stored status
+ * alone mislabels both of the last two: «بانتظار التحقق» stayed on every row whose code was entered.
+ */
+function attemptState(row, newerSameUser = []) {
+  if (row.status === 'failed') return 'failed';
+  if (row.status === '2fa_pending') {
+    const at = new Date(row.created_at).getTime();
+    const done = newerSameUser.some(other => other.status === '2fa_success'
+      && new Date(other.created_at).getTime() >= at && new Date(other.created_at).getTime() - at <= TWO_FA_WINDOW_MS);
+    return done ? 'done' : 'pending';
+  }
+  return 'ok';
+}
+
+const shapeEvent = (row, siblings) => ({
+  ...row,
+  state: attemptState(row, siblings),
+  reason_label: reasonLabel(row.failure_reason),
+});
+
+// GET /api/admin/security/accounts?q=&filter=&limit= — the accounts, with how they have been signing in.
 router.get('/api/admin/security/accounts', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit || '200'), 500);
+    const limit = Math.min(Math.max(parseInt(req.query.limit || '200', 10) || 200, 1), 500);
     const q = String(req.query.q || '').trim();
     const filter = String(req.query.filter || '').trim();
 
@@ -136,15 +167,21 @@ router.get('/api/admin/security/accounts', requireAuth, requireAdmin, async (req
     else if (filter === 'unverified') where += ' AND u.phone IS NOT NULL AND u.phone_verified_at IS NULL';
     else if (filter === 'locked') where += ' AND u.sharing_locked_until IS NOT NULL AND u.sharing_locked_until > NOW()';
     else if (filter === 'inactive') where += ' AND u.is_active = 0';
+    else if (filter === 'never') where += ' AND u.last_login IS NULL AND COALESCE(u.login_count, 0) = 0';
     if (q) {
       // A complete email is an identifier — match it exactly so the index serves
-      // it; anything else stays a contains-search over name/phone.
+      // it; anything else stays a contains-search over name/phone/code.
       if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(q)) { where += ' AND u.email = ?'; params.push(q); }
-      else { where += ' AND (u.name LIKE ? OR u.phone LIKE ? OR u.email LIKE ?)'; params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
+      else {
+        const like = `%${q}%`;
+        where += ' AND (u.name LIKE ? OR s.name LIKE ? OR u.phone LIKE ? OR u.email LIKE ? OR s.client_code LIKE ?)';
+        params.push(like, like, like, like, like);
+      }
     }
 
     const [rows] = await pool.query(
-      `SELECT u.id, u.name, u.email, u.phone, u.phone_verified_at, u.role, u.is_active,
+      `SELECT u.id, COALESCE(NULLIF(s.name, ''), u.name) AS name, u.email, u.phone, u.phone_verified_at, u.role, u.is_active,
+              (u.password_hash IS NOT NULL AND u.password_hash <> '') AS has_password,
               u.last_login, u.login_count, u.sharing_locked_until, u.sharing_lock_reason,
               u.active_session_id IS NOT NULL AS has_active_session,
               u.active_session_last_seen_at,
@@ -157,15 +194,69 @@ router.get('/api/admin/security/accounts', requireAuth, requireAdmin, async (req
       [...params, limit]
     );
 
+    // What the log says about exactly these accounts: how many times each got in (the users column is
+    // only bumped by the two sign-in routes and misses everything older than it), failures this week,
+    // and the last attempt — its address, device, outcome and reason.
+    const ids = rows.map(row => row.id);
+    const counts = new Map();
+    const lastOf = new Map();
+    if (ids.length) {
+      const [sums] = await pool.query(
+        `SELECT user_id,
+                SUM(status IN ('success','2fa_success')) AS ok,
+                SUM(status = 'failed' AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)) AS failed_7d,
+                COUNT(DISTINCT CASE WHEN status IN ('success','2fa_success') AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN ip END) AS ips_7d
+           FROM login_history WHERE tenant_id = ? AND user_id IN (?) GROUP BY user_id`,
+        [req.tenantId, ids]);
+      for (const row of sums) counts.set(String(row.user_id), row);
+      const [lasts] = await pool.query(
+        `SELECT h.user_id, h.ip, h.user_agent, h.status, h.failure_reason, h.created_at
+           FROM login_history h
+          WHERE h.id IN (SELECT MAX(id) FROM login_history WHERE tenant_id = ? AND user_id IN (?) GROUP BY user_id)`,
+        [req.tenantId, ids]);
+      for (const row of lasts) lastOf.set(String(row.user_id), row);
+    }
+    const out = rows.map(row => {
+      const c = counts.get(String(row.id)) || {};
+      const last = lastOf.get(String(row.id)) || null;
+      return {
+        ...row,
+        login_count: Math.max(Number(row.login_count) || 0, Number(c.ok) || 0),
+        failed_7d: Number(c.failed_7d) || 0,
+        ips_7d: Number(c.ips_7d) || 0,
+        last_ip: last?.ip || null,
+        last_user_agent: last?.user_agent || null,
+        // The last attempt has nothing after it, so a pending code is a code never entered.
+        last_status: last ? attemptState(last, []) : null,
+        last_reason: last ? reasonLabel(last.failure_reason) : null,
+        last_attempt_at: last?.created_at || null,
+      };
+    });
+
     const [[stats]] = await pool.query(
       `SELECT COUNT(*) AS total,
               SUM(CASE WHEN phone IS NULL OR phone = '' THEN 1 ELSE 0 END) AS without_phone,
               SUM(CASE WHEN phone IS NOT NULL AND phone_verified_at IS NOT NULL THEN 1 ELSE 0 END) AS verified,
-              SUM(CASE WHEN sharing_locked_until IS NOT NULL AND sharing_locked_until > NOW() THEN 1 ELSE 0 END) AS locked
+              SUM(CASE WHEN sharing_locked_until IS NOT NULL AND sharing_locked_until > NOW() THEN 1 ELSE 0 END) AS locked,
+              SUM(CASE WHEN last_login IS NULL AND COALESCE(login_count, 0) = 0 THEN 1 ELSE 0 END) AS never
          FROM users WHERE tenant_id = ?`,
       [req.tenantId]
     );
-    res.json({ rows, stats });
+    res.json({ rows: out, stats });
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// GET /api/admin/security/accounts/:id/logins — one account's own history, newest first.
+router.get('/api/admin/security/accounts/:id/logins', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit || '50', 10) || 50, 1), 200);
+    const [[user]] = await pool.query('SELECT id, email, phone FROM users WHERE id=? AND tenant_id=? LIMIT 1', [req.params.id, req.tenantId]);
+    if (!user) return res.status(404).json({ error: 'الحساب غير موجود' });
+    const [rows] = await pool.query(
+      `SELECT id, user_id, email, phone, ip, user_agent, status, failure_reason, created_at
+         FROM login_history WHERE tenant_id = ? AND user_id = ? ORDER BY id DESC LIMIT ?`,
+      [req.tenantId, user.id, limit]);
+    res.json(rows.map(row => shapeEvent(row, rows.filter(other => other.id > row.id))));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -200,18 +291,45 @@ router.post('/api/admin/security/accounts/:id/toggle-active', requireAuth, requi
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// POST /api/admin/security/accounts/:id/unlock — lift a sharing lock now instead of waiting it out.
+router.post('/api/admin/security/accounts/:id/unlock', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [[user]] = await pool.query('SELECT id, email, name, sharing_locked_until FROM users WHERE id=? AND tenant_id=? LIMIT 1', [req.params.id, req.tenantId]);
+    if (!user) return res.status(404).json({ error: 'الحساب غير موجود' });
+    await pool.query('UPDATE users SET sharing_locked_until=NULL, sharing_lock_reason=NULL WHERE id=? AND tenant_id=?', [user.id, req.tenantId]);
+    invalidateIdentity(req.tenantId, user.id, user.email);
+    logger.info(`[security] account ${user.id} sharing lock lifted by ${req.user?.id || 'unknown'}`);
+    res.json({ ok: true, message: `اتفك إيقاف حساب ${user.name || user.email || ''}` });
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// GET /api/admin/security/login-history?limit=&email=&status=&q=&user_id= — every attempt, whoever it was
+// for: the account's name and number when it matched one, the number or e-mail that was tried when not.
 router.get('/api/admin/security/login-history', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit || '100'), 500);
-    const { email, status } = req.query;
-    let sql = 'SELECT id, user_id, email, ip, user_agent, status, failure_reason, created_at FROM login_history WHERE tenant_id=?';
+    const limit = Math.min(Math.max(parseInt(req.query.limit || '100', 10) || 100, 1), 500);
+    const { email, status, q, user_id: userId } = req.query;
+    let where = 'h.tenant_id=?';
     const params = [req.tenantId];
-    if (email)  { sql += ' AND email = ?';  params.push(email);  }
-    if (status) { sql += ' AND status = ?'; params.push(status); }
-    sql += ' ORDER BY created_at DESC LIMIT ?';
-    params.push(limit);
-    const [rows] = await pool.query(sql, params);
-    res.json(rows);
+    if (email)  { where += ' AND h.email = ?';  params.push(email);  }
+    if (status) { where += ' AND h.status = ?'; params.push(status); }
+    if (userId) { where += ' AND h.user_id = ?'; params.push(userId); }
+    if (q && String(q).trim()) {
+      const like = `%${String(q).trim()}%`;
+      where += ' AND (h.email LIKE ? OR h.phone LIKE ? OR h.ip LIKE ? OR u.name LIKE ? OR u.phone LIKE ? OR s.client_code LIKE ?)';
+      params.push(like, like, like, like, like, like);
+    }
+    const [rows] = await pool.query(
+      `SELECT h.id, h.user_id, h.email, COALESCE(NULLIF(h.phone, ''), u.phone) AS phone, h.ip, h.user_agent, h.status,
+              h.failure_reason, h.created_at,
+              COALESCE(NULLIF(s.name, ''), u.name) AS name, s.client_code, s.id AS subscriber_id
+         FROM login_history h
+         LEFT JOIN users u ON u.id = h.user_id AND u.tenant_id = h.tenant_id
+         LEFT JOIN subscribers s ON s.tenant_id = u.tenant_id AND s.firebase_uid = u.id
+        WHERE ${where}
+        ORDER BY h.id DESC LIMIT ?`,
+      [...params, limit]);
+    res.json(rows.map(row => shapeEvent(row, rows.filter(other => other.user_id && other.user_id === row.user_id && other.id > row.id))));
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 

@@ -322,13 +322,17 @@ router.post('/api/auth/2fa/verify', otpLimiter, async (req, res) => {
     if (recoveryCode) {
       const consumed = await consumeRecoveryCode(pool, { tenantId, userId: payload.uid, code: recoveryCode });
       if (!consumed) {
+        await logLoginAttempt({ userId: payload.uid, email: payload.email, req, tenantId, status: 'failed', failureReason: 'recovery_code_invalid' });
         return res.status(401).json({ error: 'كود الاسترجاع غير صحيح أو اتستخدم قبل كده', code: 'RECOVERY_CODE_INVALID' });
       }
       recoveryCodeUsed = true;
     } else {
       const check = await checkTotp(user.totp_secret, totpToken);
       if (check.unreadable) return res.status(401).json(UNREADABLE_SECRET);
-      if (!check.valid) return res.status(401).json({ error: 'رمز المصادقة غير صحيح' });
+      if (!check.valid) {
+        await logLoginAttempt({ userId: payload.uid, email: payload.email, req, tenantId, status: 'failed', failureReason: 'totp_invalid' });
+        return res.status(401).json({ error: 'رمز المصادقة غير صحيح' });
+      }
       // Written in plain text before secrets were sealed: sealed now that it
       // has proved itself. A failure here must not cost the sign-in.
       if (check.legacy) {

@@ -8,7 +8,6 @@ import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin, type RegistrationItem } from '../../../lib/mysqlapi';
 import { useBranches } from '../../../hooks/useBranches';
 import { useNavigate } from 'react-router-dom';
-import { LoginHistoryPanel } from './client-db/LoginHistoryPanel';
 import { LoginAccountsPanel } from './client-db/LoginAccountsPanel';
 import { WholeDatabaseSearch } from './client-db/WholeDatabaseSearch';
 import ArchivedClientsTab from './ArchivedClientsTab';
@@ -200,7 +199,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
     } finally { setRegBusy(null); }
   };
 
-  const [view, setView] = useState<'clients' | 'accounts' | 'logins' | 'archive'>('clients');
+  const [view, setView] = useState<'clients' | 'accounts' | 'archive'>('clients');
   // «الأرشيف»: every client deleted from the system — deleting archives them,
   // payments and courses kept — with «استعادة». For whoever may delete (the
   // archive route asks the same permission).
@@ -474,8 +473,8 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
       <div className="flex rounded-xl border border-gray-200 overflow-hidden text-xs w-fit">
         {([
           ['clients', 'قاعدة العملاء'],
-          ['accounts', 'حسابات الدخول'],
-          ['logins', 'سجل تسجيلات الدخول'],
+          // The accounts and their sign-in log are one page (client-db/LoginAccountsPanel).
+          ['accounts', 'تسجيلات الدخول'],
           ...(canSeeArchive ? [['archive', '🗄️ الأرشيف']] as const : []),
         ] as const).map(([key, label]) => (
           <button
@@ -491,6 +490,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
       {view === 'accounts' ? (
         <LoginAccountsPanel
           busyId={regBusy}
+          notify={notify}
           // Their file, and their booking, from the row itself. A person who
           // signed up is a person the desk works on; making them go and find
           // the same person on another screen first is what left hundreds of
@@ -507,7 +507,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
             void convertThenBook({ id: row.id, name: row.name || '', type: 'registration' } as ClientRow);
           }}
         />
-      ) : view === 'logins' ? <LoginHistoryPanel /> : view === 'archive' ? <ArchivedClientsTab notify={notify} /> : (<>
+      ) : view === 'archive' ? <ArchivedClientsTab notify={notify} /> : (<>
 
       {/* Filters */}
       <div className="bg-white border border-gray-200 rounded-2xl p-3 shadow-sm">
