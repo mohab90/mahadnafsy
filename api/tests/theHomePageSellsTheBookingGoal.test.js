@@ -34,23 +34,38 @@ test('the main menu is untouched', () => {
   }
 });
 
-test('the home page leads with booking, and keeps the consultation and the hiring / contact slides', () => {
-  // Every call to action at the top and the bottom is a booking.
+test('the home page leads with booking and keeps the consultation slide', () => {
   assert.doesNotMatch(home, /احجز استشارة/);
   assert.match(home, /<Link to="\/enroll"[^>]*>[\s\S]{0,80}احجز مكانك الآن/);
-  assert.match(home, /جاهز تبدأ مسارك المهني/);
+  assert.match(home, /ابدأ مسارك المهني في <span[^>]*>الصحة النفسية<\/span> بتدريب نظري وعملي مع أفضل دكاترة علم النفس وبشهادة معتمدة/);
   assert.match(home, /offerIsShown\(content\)/, 'the 24-hour strip still follows the marketing switch');
   assert.match(home, /<a href="#offer"[^>]*>احجز الآن<\/a>/);
-  // The consultation slide is back, on by default, with its own booking button.
   assert.match(home, /content\['consultation\.show_on_home'\] !== 'false'/);
   assert.match(home, /متاح الآن — جلسة فورية/);
-  assert.match(home, /تحدث مع معالج نفسي متخصص الآن/);
   assert.match(home, /احجز جلستك الآن/);
   assert.match(home, /expressPrice\(content, currency\)/);
-  // The hiring slide: the question, and the three ways to reach or join the institute.
-  assert.match(home, /هل لديك استفسار؟ تواصل معنا/);
-  for (const to of ['/contact', '/join', '/join-us']) assert.ok(home.includes(`<Link to="${to}"`), `${to} is on the slide`);
-  assert.ok(home.indexOf('هل لديك استفسار؟ تواصل معنا') > home.indexOf('جاهز تبدأ مسارك المهني'), 'it closes the page, right before the footer');
+});
+
+test('«مش عارف تبدأ منين؟» sits at the end, right above one closing slide for booking and joining', () => {
+  const hero = home.slice(home.indexOf('{/* ── Hero'), home.indexOf('{/* Trust strip */}'));
+  assert.doesNotMatch(hero, /<GoalFinder/, 'no longer in the hero');
+  assert.doesNotMatch(hero, /تواصل معنا|\/contact/, 'and no contact button at the top');
+  const find = home.indexOf('<GoalFinder');
+  const closing = home.indexOf('{/* Closing slide');
+  assert.ok(find > 0 && closing > find, 'the finder comes right before the closing slide');
+  assert.ok(home.indexOf('<PaymentBand') < find, 'the payment band is still above it');
+  const slide = home.slice(closing, home.indexOf('export default Home'));
+  // One slide: booking on the red half, joining on the dark half, the graduates between them.
+  assert.match(slide, /جاهز تبدأ مسارك المهني/);
+  assert.match(slide, /bg-primary-600/);
+  assert.match(slide, /bg-\[#1b0a12\]/);
+  assert.match(slide, /brand\/graduates\.jpg/);
+  for (const to of ['/enroll', '/courses', '/join', '/join-us']) assert.ok(slide.includes(`<Link to="${to}"`), `${to} is on the slide`);
+  assert.ok(slide.includes('انضم إلينا كمحاضر') && slide.includes('انضم إلينا كموظف'));
+  // The contact button and the separate «هل لديك استفسار؟» slide are gone.
+  assert.doesNotMatch(home, /هل لديك استفسار/);
+  assert.doesNotMatch(home, /<Link to="\/contact"/);
+  assert.ok(fs.existsSync(path.join(root, 'client/public/brand/graduates.jpg')), 'the photo ships with the site');
 });
 
 test('the sections follow one order: why → certificate check → payment → paths', () => {
@@ -84,6 +99,31 @@ test('the certificate check opens the public verification page', () => {
   const check = read('client/components/home/CertificateCheck.tsx');
   assert.match(check, /\/certificate\/\$\{encodeURIComponent\(clean\)\}/);
   assert.match(read('client/App.tsx'), /path="\/certificate\/:code"/);
+});
+
+test('the home page shows three paths, never the long integrated programme', () => {
+  const js = require('node:module').stripTypeScriptTypes(read('shared/homePaths.ts')).replace(/^export /gm, '');
+  const module_ = { exports: {} };
+  // eslint-disable-next-line no-new-func
+  new Function('module', 'exports', `${js}\nmodule.exports = { bundlesForHome, HOME_PATHS_MAX };`)(module_, module_.exports);
+  const { bundlesForHome, HOME_PATHS_MAX } = module_.exports;
+  const list = [
+    { title: 'دبلومة العلاج النفسي المتكامل " دراسة سنه ونص "' },
+    { title: 'دبلومة علم النفس المتكامل' }, { title: 'التشخيص الإكلينيكي' }, { title: 'المعالج النفسي المحترف' },
+    { title: 'سكيما' }, { title: 'التخاطب' }, { title: 'الكوتش' },
+  ];
+  const shown = bundlesForHome(list);
+  assert.equal(HOME_PATHS_MAX, 3);
+  assert.deepEqual(shown.map(b => b.title), ['دبلومة علم النفس المتكامل', 'التشخيص الإكلينيكي', 'المعالج النفسي المحترف']);
+  assert.equal(bundlesForHome([]).length, 0);
+  assert.match(read('client/components/home/PathsSection.tsx'), /bundlesForHome\(bundles\)/);
+});
+
+test('the payment band names the programme clearly, with a line about it', () => {
+  const band = read('client/components/home/PaymentBand.tsx');
+  assert.match(band, /للبرنامج المرشح لك/);
+  assert.match(band, /text-xl font-black[^"]*">\{course\.title\}/);
+  assert.match(band, /\{blurb && /);
 });
 
 test('the paths are drawn from the published bundles, with the saving worked out, not typed', () => {

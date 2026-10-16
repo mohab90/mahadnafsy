@@ -22,6 +22,7 @@ const PaymentBand: React.FC<{ content: Content; course: Course | null; currency:
   const plan = base ? installmentTotal(base, rates) : 0;
   const first = base ? amountDueNow(base, 'installment', rates) : 0;
   const today = mode === 'cash' ? cash : first;
+  const blurb = (course?.shortDescription || '').replace(/<[^>]*>/g, '').trim();
   const enrollTo = course ? `/enroll?course=${encodeURIComponent(course.id)}` : '/enroll';
 
   const option = (id: 'cash' | 'installment', title: string, pct: number, line: string, Icon: typeof Banknote) => {
@@ -51,7 +52,13 @@ const PaymentBand: React.FC<{ content: Content; course: Course | null; currency:
         <div>
           <span className="text-sm font-extrabold text-amber-200">طريقة الدفع</span>
           <h2 className="mt-1 text-2xl font-black leading-snug lg:text-[26px]">ادفع كاش وفّر أكتر، أو قسّط على راحتك</h2>
-          {course && <p className="mt-1.5 text-sm text-white/80">للبرنامج المرشح لك: <b className="text-white">{course.title}</b></p>}
+          {course && (
+            <div className="mt-3 rounded-2xl border border-white/25 bg-white/10 px-4 py-3">
+              <span className="text-xs font-extrabold text-amber-200">للبرنامج المرشح لك</span>
+              <p className="mt-0.5 text-xl font-black leading-snug text-white sm:text-2xl">{course.title}</p>
+              {blurb && <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-white/80">{blurb}</p>}
+            </div>
+          )}
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">

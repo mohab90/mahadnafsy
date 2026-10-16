@@ -1,8 +1,7 @@
 'use strict';
 // The homepage hero used to carry a 189KB photo that phones never showed and
 // still downloaded (it was loading="eager" inside a desktop-only container).
-// The hero's visual is now the «مش عارف تبدأ منين؟» card, drawn in code, so
-// there is no hero photo to fetch at all. This keeps it that way: any image
+// The hero is text and numbers only, so there is no hero photo to fetch at all. This keeps it that way: any image
 // that comes back to the first screen must be lazy.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -12,11 +11,10 @@ const path = require('node:path');
 const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8');
 const home = read('client/pages/Home.tsx');
 
-test('the hero has no photo to download — its visual is the goal-finder card', () => {
+test('the hero has no photo to download', () => {
   const hero = home.slice(home.indexOf('{/* ── Hero'), home.indexOf('{/* Trust strip */}'));
   assert.ok(hero.length > 500, 'the hero block was not located');
   assert.doesNotMatch(hero, /<img\b/, 'a hero image is back on the first screen');
-  assert.match(hero, /<GoalFinder /);
 });
 
 test('no image on the home page is fetched eagerly', () => {

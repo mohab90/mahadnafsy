@@ -127,49 +127,46 @@ const Home: React.FC = () => {
         </div>
       )}
 
-      {/* ── Hero: the offer in one sentence, one booking button, and «مش عارف تبدأ منين؟» where the photo used to be ── */}
+      {/* ── Hero: the offer in one sentence, one booking button ── */}
       <section
         className="relative overflow-hidden bg-[#1b0a12] text-white"
         style={{ backgroundImage: 'radial-gradient(rgba(255,255,255,.07) 1px, transparent 1px)', backgroundSize: '24px 24px' }}
       >
         <div aria-hidden="true" className="absolute -left-36 -top-32 h-[460px] w-[460px] rounded-full bg-primary-600 opacity-20" />
-        <div className="container relative z-10 mx-auto grid items-center gap-16 px-4 pb-20 pt-14 sm:pt-16 lg:grid-cols-[1.15fr_1fr] lg:gap-12 lg:pb-24 lg:pt-20">
-          <div className="text-center lg:text-right">
-            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/25 px-4 py-1.5 text-sm font-bold text-amber-200">
-              <span className="h-2 w-2 rounded-full bg-secondary-500" />
-              {content?.['home.hero.badge'] || 'المنصة الرائدة في العالم العربي'}
-            </div>
-            <h1 className="mb-5 text-[34px] font-black leading-[1.2] sm:text-5xl lg:text-6xl xl:text-7xl">
-              ابدأ مسارك المهني في <span className="text-primary-400">الصحة النفسية</span> بتدريب عملي وشهادة معتمدة
-            </h1>
-            <p className="mx-auto mb-8 max-w-xl text-base leading-relaxed text-white/80 sm:text-lg lg:mx-0">
-              {content?.['home.heroSubtitle'] || 'انضم إلى آلاف المتدربين في المنصة الأكاديمية الأولى لتعليم الصحة النفسية. دبلومات معتمدة، وتدريب عملي مع نخبة الخبراء.'}
-            </p>
-            <div className="mb-10 flex flex-col gap-3.5 sm:flex-row sm:justify-center lg:justify-start">
-              <Link to="/enroll" className="inline-flex min-h-[56px] items-center justify-center gap-3 rounded-2xl bg-primary-600 px-9 text-lg font-extrabold text-white shadow-xl shadow-primary-600/40 transition hover:-translate-y-0.5 hover:bg-primary-500">
-                <span>احجز مكانك الآن</span>
-                <ArrowRight size={22} className="rtl:rotate-180" />
-              </Link>
-              <Link to="/courses" className="inline-flex min-h-[56px] items-center justify-center rounded-2xl border-[1.5px] border-white/40 px-8 text-lg font-bold text-white transition hover:bg-white/10">
-                <span>{content?.['home.hero.primaryCta'] || 'ابدأ رحلتك الآن'}</span>
-              </Link>
-            </div>
-            <div className="grid grid-cols-2 gap-x-5 gap-y-6 sm:grid-cols-4">
-              {[
-                { value: content['home.stats.programs']  || '50+', label: content['home.stats.programsLabel']  || 'برنامج تدريبي' },
-                { value: content['home.stats.experts']   || '30+', label: content['home.stats.expertsLabel']   || 'خبير ومدرب' },
-                { value: content['home.stats.graduates'] || '12K', label: content['home.stats.graduatesLabel'] || 'خريج' },
-                { value: content['home.stats.rating']    || '4.9', label: 'تقييم الطلاب' },
-              ].map((stat, i) => (
-                <div key={i}>
-                  <div className="text-4xl font-black leading-none tabular-nums">{stat.value}</div>
-                  <div className="mt-1.5 text-sm text-white/70">{stat.label}</div>
-                </div>
-              ))}
-            </div>
+        <div aria-hidden="true" className="absolute -bottom-40 -right-32 h-[420px] w-[420px] rounded-full bg-secondary-500 opacity-10" />
+        <div className="container relative z-10 mx-auto px-4 pb-16 pt-14 text-center sm:pb-20 sm:pt-20 lg:pb-24 lg:pt-24">
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/25 px-4 py-1.5 text-sm font-bold text-amber-200">
+            <span className="h-2 w-2 rounded-full bg-secondary-500" />
+            {content?.['home.hero.badge'] || 'المنصة الرائدة في العالم العربي'}
           </div>
-
-          <GoalFinder goals={goals} goalId={goalId} onPick={setGoalPick} course={goalCourse} currency={currency} />
+          <h1 className="mx-auto mb-6 max-w-5xl text-balance text-[32px] font-black leading-[1.3] sm:text-5xl lg:text-[54px]">
+            ابدأ مسارك المهني في <span className="whitespace-nowrap text-primary-400">الصحة النفسية</span> بتدريب نظري وعملي مع أفضل دكاترة علم النفس وبشهادة معتمدة
+          </h1>
+          <p className="mx-auto mb-9 max-w-2xl text-base leading-relaxed text-white/80 sm:text-lg">
+            {content?.['home.heroSubtitle'] || 'انضم إلى آلاف المتدربين في المنصة الأكاديمية الأولى لتعليم الصحة النفسية. دبلومات معتمدة، وتدريب عملي مع نخبة الخبراء.'}
+          </p>
+          <div className="mx-auto mb-12 flex max-w-xl flex-col gap-3.5 sm:max-w-none sm:flex-row sm:justify-center">
+            <Link to="/enroll" className="inline-flex min-h-[56px] items-center justify-center gap-3 rounded-2xl bg-primary-600 px-10 text-lg font-extrabold text-white shadow-xl shadow-primary-600/40 transition hover:-translate-y-0.5 hover:bg-primary-500">
+              <span>احجز مكانك الآن</span>
+              <ArrowRight size={22} className="rtl:rotate-180" />
+            </Link>
+            <Link to="/courses" className="inline-flex min-h-[56px] items-center justify-center rounded-2xl border-[1.5px] border-white/40 px-9 text-lg font-bold text-white transition hover:bg-white/10">
+              <span>{content?.['home.hero.primaryCta'] || 'ابدأ رحلتك الآن'}</span>
+            </Link>
+          </div>
+          <div className="mx-auto grid max-w-3xl grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { value: content['home.stats.programs']  || '50+', label: content['home.stats.programsLabel']  || 'برنامج تدريبي' },
+              { value: content['home.stats.experts']   || '30+', label: content['home.stats.expertsLabel']   || 'خبير ومدرب' },
+              { value: content['home.stats.graduates'] || '12K', label: content['home.stats.graduatesLabel'] || 'خريج' },
+              { value: content['home.stats.rating']    || '4.9', label: 'تقييم الطلاب' },
+            ].map((stat, i) => (
+              <div key={i} className="rounded-2xl border border-white/15 bg-white/[0.07] px-3 py-4">
+                <div className="text-3xl font-black leading-none tabular-nums sm:text-4xl">{stat.value}</div>
+                <div className="mt-1.5 text-sm text-white/70">{stat.label}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -627,45 +624,83 @@ const Home: React.FC = () => {
           </div>
       </section>
 
-      {/* Booking call to action — the page ends on the same goal it starts with */}
-      <section className="bg-[#fffaf5] px-4 pb-16 pt-4 sm:pb-20">
-        <div className="container relative mx-auto overflow-hidden rounded-[32px] bg-primary-600 px-5 py-12 text-center text-white sm:px-10 sm:py-14">
-          <div aria-hidden="true" className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-primary-700" />
-          <div className="relative">
-            <h2 className="mb-3.5 text-3xl font-black leading-tight sm:text-5xl">جاهز تبدأ مسارك المهني؟</h2>
-            <p className="mx-auto mb-7 max-w-xl text-base leading-relaxed text-primary-100 sm:text-lg">
-              اختار برنامجك واحجز مكانك الآن، كاش بخصم أكبر أو بالتقسيط. وفريقنا معاك في كل خطوة.
+      {/* «مش عارف تبدأ منين؟» — right above the closing slide */}
+      <section id="find" className="relative scroll-mt-24 overflow-hidden bg-[#f6ede6] py-14 sm:py-20">
+        <div aria-hidden="true" className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-primary-200 opacity-50" />
+        <div className="container relative mx-auto grid items-center gap-12 px-4 lg:grid-cols-2 lg:gap-16">
+          <div className="text-center lg:text-right">
+            <span className="text-sm font-extrabold tracking-wide text-amber-700">ترشيح سريع</span>
+            <h2 className="mb-4 mt-2 text-3xl font-black leading-tight text-gray-900 sm:text-4xl lg:text-[44px]">اختار مجالك، وإحنا نرشح لك الأنسب</h2>
+            <p className="mx-auto mb-6 max-w-lg text-base leading-relaxed text-gray-600 sm:text-lg lg:mx-0">
+              من غير ما تضيع وقت بين البرامج: اختار اهتمامك وهنعرض لك البرنامج الأكثر طلباً فيه بسعره، وتحجز مكانك فوراً.
             </p>
-            <div className="flex flex-col items-stretch justify-center gap-3.5 sm:flex-row sm:items-center">
-              <Link to="/enroll" className="inline-flex min-h-[56px] items-center justify-center rounded-2xl bg-white px-9 text-lg font-black text-primary-700 transition hover:bg-primary-50">احجز مكانك الآن</Link>
-              <Link to="/courses" className="inline-flex min-h-[56px] items-center justify-center rounded-2xl border-[1.5px] border-white/70 px-8 text-lg font-extrabold text-white transition hover:bg-white/10">تصفح الكورسات</Link>
-            </div>
+            <ul className="mx-auto grid max-w-md gap-3 text-right lg:mx-0">
+              {['ترشيح من الأكثر طلباً بين المتدربين', 'السعر بعملتك، والدفع كاش أو تقسيط', 'حجز مباشر بدون تعقيد'].map(line => (
+                <li key={line} className="flex items-center gap-3 text-[15px] font-bold text-gray-800">
+                  <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-primary-600 text-white"><Check size={16} /></span>
+                  {line}
+                </li>
+              ))}
+            </ul>
           </div>
+          <GoalFinder goals={goals} goalId={goalId} onPick={setGoalPick} course={goalCourse} currency={currency} />
         </div>
       </section>
 
-      {/* Hiring and contact slide — «هل لديك استفسار؟ تواصل معنا», lecturer and job applications; right before the footer */}
-      <section id="join" className="relative scroll-mt-24 overflow-hidden bg-[#1b0a12] py-16 text-white sm:py-20">
-        <div aria-hidden="true" className="absolute -left-24 -top-24 h-72 w-72 rounded-full bg-primary-600 opacity-25" />
-        <div className="container relative mx-auto px-4 text-center">
-          <span className="text-sm font-extrabold tracking-wide text-amber-300">فرص العمل والتواصل</span>
-          <h2 className="mb-3.5 mt-2 text-3xl font-black leading-tight sm:text-4xl">هل لديك استفسار؟ تواصل معنا</h2>
-          <p className="mx-auto mb-8 max-w-xl text-base leading-relaxed text-white/75 sm:text-lg">
-            فريقنا مستعد للإجابة على جميع أسئلتك عن البرامج والاشتراكات والاستشارات النفسية.
-          </p>
-          <div className="mx-auto grid max-w-3xl gap-3.5 sm:grid-cols-3">
-            <Link to="/contact" className="inline-flex min-h-[56px] items-center justify-center gap-2 rounded-2xl bg-white px-6 font-black text-primary-700 shadow transition hover:-translate-y-0.5 hover:bg-primary-50">
-              <Phone size={18} />
-              تواصل معنا
-            </Link>
-            <Link to="/join" className="inline-flex min-h-[56px] items-center justify-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-6 font-bold transition hover:-translate-y-0.5 hover:bg-white/20">
-              <GraduationCap size={18} />
-              انضم إلينا كمحاضر
-            </Link>
-            <Link to="/join-us" className="inline-flex min-h-[56px] items-center justify-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-6 font-bold transition hover:-translate-y-0.5 hover:bg-white/20">
-              <Briefcase size={18} />
-              انضم إلينا كموظف
-            </Link>
+      {/* Closing slide: book (red) and join the team (dark), with the graduates between them */}
+      <section id="start" className="scroll-mt-24 bg-[#fffaf5] px-4 pb-16 pt-12 sm:pb-20 sm:pt-16">
+        <div className="container mx-auto overflow-hidden rounded-[32px] shadow-[0_40px_80px_-30px_rgba(76,5,25,.6)]">
+          <div className="grid lg:grid-cols-[1fr_minmax(260px,0.72fr)_1fr]">
+            {/* booking */}
+            <div className="relative flex flex-col justify-center overflow-hidden bg-primary-600 px-6 py-12 text-center text-white sm:px-10 sm:py-14 lg:text-right">
+              <div aria-hidden="true" className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-primary-700" />
+              <div className="relative">
+                <span className="text-sm font-extrabold tracking-wide text-amber-200">احجز مكانك</span>
+                <h2 className="mb-3.5 mt-2 text-3xl font-black leading-tight sm:text-4xl">جاهز تبدأ مسارك المهني؟</h2>
+                <p className="mx-auto mb-7 max-w-md text-base leading-relaxed text-primary-100 lg:mx-0">
+                  اختار برنامجك واحجز مكانك الآن، كاش بخصم أكبر أو بالتقسيط. وفريقنا معاك في كل خطوة.
+                </p>
+                <div className="flex flex-col gap-3 sm:flex-row sm:justify-center lg:justify-start">
+                  <Link to="/enroll" className="inline-flex min-h-[56px] items-center justify-center whitespace-nowrap rounded-2xl bg-white px-6 text-base font-black text-primary-700 shadow-lg transition hover:-translate-y-0.5 hover:bg-primary-50 sm:text-lg">احجز مكانك الآن</Link>
+                  <Link to="/courses" className="inline-flex min-h-[56px] items-center justify-center whitespace-nowrap rounded-2xl border-[1.5px] border-white/70 px-6 text-base font-extrabold text-white transition hover:bg-white/10 sm:text-lg">تصفح الكورسات</Link>
+                </div>
+              </div>
+            </div>
+
+            {/* the graduates */}
+            <div className="relative order-first min-h-[260px] lg:order-none lg:min-h-[420px]">
+              <img
+                src={`${import.meta.env.BASE_URL}brand/graduates.jpg`}
+                alt="خريجو معهد الدراسات النفسية بشهاداتهم"
+                loading="lazy"
+                className="absolute inset-0 h-full w-full object-cover object-top"
+              />
+              <div aria-hidden="true" className="absolute inset-y-0 right-0 hidden w-16 bg-gradient-to-l from-primary-600/70 to-transparent lg:block" />
+              <div aria-hidden="true" className="absolute inset-y-0 left-0 hidden w-16 bg-gradient-to-r from-[#1b0a12]/80 to-transparent lg:block" />
+              <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/50 to-transparent lg:hidden" />
+            </div>
+
+            {/* joining the team */}
+            <div id="join" className="relative flex scroll-mt-24 flex-col justify-center overflow-hidden bg-[#1b0a12] px-6 py-12 text-center text-white sm:px-10 sm:py-14 lg:text-right">
+              <div aria-hidden="true" className="absolute -bottom-24 -left-20 h-64 w-64 rounded-full bg-primary-800 opacity-60" />
+              <div className="relative">
+                <span className="text-sm font-extrabold tracking-wide text-amber-300">فرص العمل</span>
+                <h2 className="mb-3.5 mt-2 text-3xl font-black leading-tight sm:text-4xl">انضم لفريق معهد الدراسات النفسية</h2>
+                <p className="mx-auto mb-7 max-w-md text-base leading-relaxed text-white/75 lg:mx-0">
+                  قدّم الآن كمحاضر أو كموظف، وفريقنا يراجع طلبك ويتواصل معك.
+                </p>
+                <div className="flex flex-col gap-3 sm:flex-row sm:justify-center lg:justify-start">
+                  <Link to="/join" className="inline-flex min-h-[56px] items-center justify-center gap-2 whitespace-nowrap rounded-2xl bg-secondary-500 px-5 text-base font-black text-[#1b0a12] transition hover:-translate-y-0.5 hover:brightness-105">
+                    <GraduationCap size={20} />
+                    انضم إلينا كمحاضر
+                  </Link>
+                  <Link to="/join-us" className="inline-flex min-h-[56px] items-center justify-center gap-2 whitespace-nowrap rounded-2xl border-[1.5px] border-white/40 px-5 text-base font-bold text-white transition hover:bg-white/10">
+                    <Briefcase size={20} />
+                    انضم إلينا كموظف
+                  </Link>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>

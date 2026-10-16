@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import type { Bundle, Currency } from '../../types';
 import { discountPercent, formatPrice, isDiscounted } from '../../../shared/priceFormat';
+import { bundlesForHome } from '../../../shared/homePaths';
 
 type Content = Record<string, string | undefined>;
 
@@ -13,7 +14,7 @@ type Content = Record<string, string | undefined>;
  * marketing team publishes; nothing here is typed.
  */
 const PathsSection: React.FC<{ content: Content; bundles: Bundle[]; currency: Currency }> = ({ content, bundles, currency }) => {
-  const shown = bundles.slice(0, 6);
+  const shown = bundlesForHome(bundles);
   if (shown.length === 0) return null;
   const saving = (bundle: Bundle) => discountPercent(bundle.originalPrice?.[currency], bundle.price?.[currency]);
   const bestSaving = Math.max(...shown.map(saving));
