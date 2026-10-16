@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useEscapeKey } from '../../shared/ui/useEscapeKey';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Check, CheckCircle, Clock, Video, Users, Star, Play, Award, ChevronRight, Quote, Send, BookOpen, GraduationCap, Phone, Briefcase } from 'lucide-react';
+import { ArrowRight, Check, CheckCircle, Clock, Users, Star, Award, ChevronRight, Quote, Send, BookOpen, GraduationCap, Phone, Briefcase, MessageCircle } from 'lucide-react';
 import { LeadItem } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
 import CourseCard from '../components/CourseCard';
@@ -12,6 +12,12 @@ import { offerHours, offerIsShown, offerPrices, offerRemainingMs, offerDiscountP
 import { useSeo } from '../lib/useSeo';
 import { VideoSurface } from '../components/VideoSurface';
 import { expressPrice } from '../lib/consultations';
+import { goalsFromCourses, recommendedCourse } from '../../shared/homeGoals';
+import GoalFinder from '../components/home/GoalFinder';
+import WhyChooseSection from '../components/home/WhyChooseSection';
+import CertificateCheck from '../components/home/CertificateCheck';
+import PaymentBand from '../components/home/PaymentBand';
+import PathsSection from '../components/home/PathsSection';
 
 // Countdown for the timed offer, from the moment the marketing team started it
 // (offer.timerStartedAt, «ابدأ العداد» in التسويق ← الخصومات) for as many hours
@@ -58,16 +64,13 @@ const Home: React.FC = () => {
   const timer = useOfferCountdown(content);
   const offerShown = offerIsShown(content);
 
+  // «مش عارف تبدأ منين؟» — interests and the recommended course both come from the course list.
+  const goals = useMemo(() => goalsFromCourses(courses), [courses]);
+  const [goalPick, setGoalPick] = useState('');
+  const goalId = goals.some(g => g.id === goalPick) ? goalPick : (goals[0]?.id || '');
+  const goalCourse = useMemo(() => (goalId ? recommendedCourse(courses, goalId) : null), [courses, goalId]);
+
   useSeo({ title: 'الرئيسية | معهد الدراسات النفسية', path: '/', description: 'المنصة الأكاديمية الأولى عربياً لتعليم الصحة النفسية والعلاج النفسي — دبلومات معتمدة وتدريب عملي.' });
-
-  // Gallery images — stored as JSON string in content
-  const galleryImages: string[] = (() => {
-    try { return JSON.parse(content['institute.gallery.images'] || '[]'); } catch { return []; }
-  })();
-  // Pick a random gallery image each render (stable per session via useMemo-like approach)
-  const heroGalleryImg = galleryImages.length > 0 ? galleryImages[0] : '';
-  // For sections needing multiple gallery images, spread or pick sequentially
-
 
   // Helper filters
     const bestSellingCourses = [...courses].sort((a, b) => b.students - a.students).slice(0, 6);
@@ -109,174 +112,93 @@ const Home: React.FC = () => {
 
     return (
     <div className="animate-fade-in bg-white">
-      {/* ── NEW PREMIUM HERO SECTION ── */}
-      <section className="relative bg-slate-50 text-gray-900 overflow-hidden min-h-[700px] flex items-center border-b border-gray-200 animate-gradient-bg bg-gradient-to-tr from-slate-50 via-primary-50/10 to-secondary-50/10">
-        <div className="absolute inset-0 opacity-40 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
-        
-        {/* Dynamic Abstract Background Blobs */}
-        <div className="absolute top-10 right-20 w-[500px] h-[500px] bg-primary-500/10 rounded-full blur-[100px] animate-pulse"></div>
-        <div className="absolute bottom-10 left-20 w-[400px] h-[400px] bg-secondary-400/10 rounded-full blur-[100px]"></div>
+      {/* ── Offer strip: the timed offer, with its countdown, on every visit ── */}
+      {offerShown && (
+        <div className="bg-primary-600 text-white">
+          <div className="container mx-auto flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 px-4 py-2.5 text-center text-sm font-bold sm:text-[15px]">
+            <span>عرض الـ{offerHours(content)} ساعة على {content['home.offer.title'] || 'دبلومة العلاج السلوكي الجدلي (DBT)'}</span>
+            {timer && (
+              <span dir="ltr" className="rounded-full bg-black/25 px-3.5 py-0.5 font-black tabular-nums">
+                {String(timer.h).padStart(2, '0')} : {String(timer.m).padStart(2, '0')} : {String(timer.s).padStart(2, '0')}
+              </span>
+            )}
+            <a href="#offer" className="underline underline-offset-4">احجز الآن</a>
+          </div>
+        </div>
+      )}
 
-        <div className="container mx-auto px-4 relative z-10 grid lg:grid-cols-2 gap-16 items-center pt-20">
-          
-          {/* Right Content Area (Arabic is RTL) */}
-          <div className="text-center lg:text-right space-y-8 relative z-20">
-            <div className="inline-flex items-center gap-2 bg-white/80 backdrop-blur-md shadow-sm border border-gray-100 px-6 py-2 rounded-full text-sm font-bold text-primary-600 animate-slide-up">
-              <span className="w-2.5 h-2.5 rounded-full bg-primary-500 animate-pulse"></span>
+      {/* ── Hero: the offer in one sentence, one booking button, and «مش عارف تبدأ منين؟» where the photo used to be ── */}
+      <section
+        className="relative overflow-hidden bg-[#1b0a12] text-white"
+        style={{ backgroundImage: 'radial-gradient(rgba(255,255,255,.07) 1px, transparent 1px)', backgroundSize: '24px 24px' }}
+      >
+        <div aria-hidden="true" className="absolute -left-36 -top-32 h-[460px] w-[460px] rounded-full bg-primary-600 opacity-20" />
+        <div className="container relative z-10 mx-auto grid items-center gap-16 px-4 pb-20 pt-14 sm:pt-16 lg:grid-cols-[1.15fr_1fr] lg:gap-12 lg:pb-24 lg:pt-20">
+          <div className="text-center lg:text-right">
+            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/25 px-4 py-1.5 text-sm font-bold text-amber-200">
+              <span className="h-2 w-2 rounded-full bg-secondary-500" />
               {content?.['home.hero.badge'] || 'المنصة الرائدة في العالم العربي'}
             </div>
-            
-            <h1 className="text-5xl lg:text-7xl font-extrabold leading-[1.2] text-gray-900 animate-slide-up" style={{animationDelay: '0.1s'}}>
-                رحلة علم ووعي <br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-l from-primary-600 to-secondary-500">تغير حياتك للأفضل</span>
+            <h1 className="mb-5 text-[34px] font-black leading-[1.2] sm:text-5xl lg:text-6xl xl:text-7xl">
+              ابدأ مسارك المهني في <span className="text-primary-400">الصحة النفسية</span> بتدريب عملي وشهادة معتمدة
             </h1>
-            
-            <p className="text-xl text-gray-600 leading-relaxed max-w-xl mx-auto lg:mx-0 animate-slide-up" style={{animationDelay: '0.2s'}}>
-                {content?.['home.heroSubtitle'] || 'انضم إلى آلاف المتدربين في المنصة الأكاديمية الأولى لتعليم الصحة النفسية. دبلومات معتمدة، وتدريب عملي مع نخبة الخبراء.'}
+            <p className="mx-auto mb-8 max-w-xl text-base leading-relaxed text-white/80 sm:text-lg lg:mx-0">
+              {content?.['home.heroSubtitle'] || 'انضم إلى آلاف المتدربين في المنصة الأكاديمية الأولى لتعليم الصحة النفسية. دبلومات معتمدة، وتدريب عملي مع نخبة الخبراء.'}
             </p>
-            
-            <div className="flex flex-col sm:flex-row gap-5 justify-center lg:justify-start animate-slide-up" style={{animationDelay: '0.3s'}}>
-              <Link to="/courses" className="btn-glow bg-primary-600 hover:bg-primary-700 text-white px-10 py-4 rounded-2xl font-bold transition shadow-xl shadow-primary-600/30 flex items-center justify-center gap-3 text-lg">
-                <span>{content?.['home.hero.primaryCta'] || 'ابدأ رحلتك الآن'}</span>
+            <div className="mb-10 flex flex-col gap-3.5 sm:flex-row sm:justify-center lg:justify-start">
+              <Link to="/enroll" className="inline-flex min-h-[56px] items-center justify-center gap-3 rounded-2xl bg-primary-600 px-9 text-lg font-extrabold text-white shadow-xl shadow-primary-600/40 transition hover:-translate-y-0.5 hover:bg-primary-500">
+                <span>احجز مكانك الآن</span>
                 <ArrowRight size={22} className="rtl:rotate-180" />
               </Link>
-              <Link to="/consultations" className="glass-card-premium bg-white hover:bg-gray-50 text-gray-900 px-10 py-4 rounded-2xl font-bold transition flex items-center justify-center gap-3 shadow-md">
-                <Video size={22} className="text-primary-600" />
-                <span>{content?.['home.hero.secondaryCta'] || 'احجز استشارة'}</span>
+              <Link to="/courses" className="inline-flex min-h-[56px] items-center justify-center rounded-2xl border-[1.5px] border-white/40 px-8 text-lg font-bold text-white transition hover:bg-white/10">
+                <span>{content?.['home.hero.primaryCta'] || 'ابدأ رحلتك الآن'}</span>
               </Link>
             </div>
-
-            <div className="flex items-center justify-center lg:justify-start gap-8 pt-6 text-sm font-medium text-gray-500 animate-slide-up" style={{animationDelay: '0.4s'}}>
-                <div className="flex items-center gap-2 bg-white/60 px-4 py-2 rounded-lg backdrop-blur-sm border border-white">
-                    <CheckCircle size={18} className="text-green-500" />
-                    <span>اعتماد دولي ومحلي</span>
+            <div className="grid grid-cols-2 gap-x-5 gap-y-6 sm:grid-cols-4">
+              {[
+                { value: content['home.stats.programs']  || '50+', label: content['home.stats.programsLabel']  || 'برنامج تدريبي' },
+                { value: content['home.stats.experts']   || '30+', label: content['home.stats.expertsLabel']   || 'خبير ومدرب' },
+                { value: content['home.stats.graduates'] || '12K', label: content['home.stats.graduatesLabel'] || 'خريج' },
+                { value: content['home.stats.rating']    || '4.9', label: 'تقييم الطلاب' },
+              ].map((stat, i) => (
+                <div key={i}>
+                  <div className="text-4xl font-black leading-none tabular-nums">{stat.value}</div>
+                  <div className="mt-1.5 text-sm text-white/70">{stat.label}</div>
                 </div>
-                <div className="flex items-center gap-2 bg-white/60 px-4 py-2 rounded-lg backdrop-blur-sm border border-white">
-                    <Users size={18} className="text-primary-500" />
-                    <span>أكثر من 10,000 طالب</span>
-                </div>
-            </div>
-          </div>
-
-          {/* Left Visual Area */}
-          <div className="hidden lg:flex items-center justify-center relative">
-            <div className="relative w-full max-w-lg animate-float-slow">
-                {/* Decorative floating elements */}
-                <div className="absolute -top-10 -right-10 bg-white p-4 rounded-2xl shadow-xl border border-gray-100 z-30 flex items-center gap-4 animate-bounce-slow">
-                   <div className="bg-green-100 p-3 rounded-full text-green-600"><Star size={24} fill="currentColor" /></div>
-                   <div>
-                       <p className="font-bold text-gray-900 text-lg">4.9/5</p>
-                       <p className="text-xs text-gray-500">تقييم المتدربين</p>
-                   </div>
-                </div>
-                
-                {/* Main Hero Image in a glass frame */}
-                <div className="glass-card-premium p-4 rounded-[2.5rem] relative z-20 bg-white/40 border-white/80">
-                  <div className="overflow-hidden rounded-3xl relative">
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent z-10"></div>
-                    <img
-                      src={heroGalleryImg || "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?auto=format&fit=crop&q=80&w=1000"}
-                      alt="معهد الدراسات النفسية"
-                      loading="lazy"
-                      className="w-full h-[500px] object-cover transform hover:scale-105 transition-transform duration-700"
-                    />
-                  </div>
-                </div>
-
-                {/* Back decorative blobs */}
-                <div className="absolute -inset-4 bg-gradient-to-br from-primary-400/30 via-secondary-300/20 to-transparent rounded-[3rem] blur-2xl -z-10"></div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Stats — same style as the About page (icon + number + label + subtle motion),
-          on a light band. No floating card-over-card. */}
-      <section className="py-14 bg-white border-y border-gray-100 scroll-reveal">
-        <div className="container mx-auto px-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center divide-x-0 md:divide-x divide-gray-100 rtl:md:divide-x-reverse">
-            {[
-              { icon: BookOpen,      value: content['home.stats.programs']  || '50+', label: content['home.stats.programsLabel']  || 'برنامج تدريبي' },
-              { icon: Users,         value: content['home.stats.experts']   || '30+', label: content['home.stats.expertsLabel']   || 'خبير ومدرب' },
-              { icon: GraduationCap, value: content['home.stats.graduates'] || '12K', label: content['home.stats.graduatesLabel'] || 'خريج' },
-              { icon: Star,          value: content['home.stats.rating']    || '4.9', label: 'تقييم الطلاب' },
-            ].map(({ icon: Icon, value, label }, i) => (
-              <div key={i} className="px-2">
-                <Icon size={40} className="mx-auto text-primary-500 mb-4 animate-bounce-slow" style={{ animationDelay: `${i * 0.4}s` }} />
-                <h4 className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-1 animate-fade-in" style={{ animationDelay: `${i * 0.1}s` }}>{value}</h4>
-                <p className="text-gray-500">{label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* SECTION: Learning Paths & Bundles (Moved Up) */}
-      <section className="py-16 bg-gray-50 scroll-reveal">
-        <div className="container mx-auto px-4">
-           <div className="text-center mb-12">
-               <span className="text-secondary-600 font-bold tracking-wider text-sm uppercase">{content['home.paths.badge'] || 'الطريق المختصر للاحتراف'}</span>
-               <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mt-2 mb-4">{content['home.paths.title'] || 'المسارات التعليمية الكاملة'}</h2>
-               <p className="text-gray-500 max-w-2xl mx-auto text-lg">
-                   {content['home.paths.subtitle'] || 'وفر وقتك ومالك مع باقاتنا المجمعة التي تضم مجموعة من الدبلومات في تخصص معين بخصومات تصل إلى 40%'}
-               </p>
-           </div>
-           
-           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {bundles.slice(0, 6).map(bundle => (
-                  <div key={bundle.id} className="bg-white rounded-2xl overflow-hidden shadow-lg border border-gray-100 glow-card hover-float flex flex-col h-full group">
-                      <div className="relative h-48 bg-gray-900">
-                          {(bundle.courses[0]?.thumbnail || bundle.thumbnail) && (
-                            <img src={cdnImg(bundle.courses[0]?.thumbnail || bundle.thumbnail, 600)} loading="lazy" className="w-full h-full object-cover opacity-60 group-hover:opacity-40 transition" alt={bundle.title} />
-                          )}
-                          <div className="absolute inset-0 bg-gradient-to-t from-gray-900 to-transparent"></div>
-                          <div className="absolute bottom-4 right-4 text-white">
-                              <span className="bg-secondary-500 text-xs font-bold px-2 py-1 rounded mb-2 inline-block">مسار كامل</span>
-                              <h3 className="font-bold text-lg leading-tight">{bundle.title}</h3>
-                          </div>
-                      </div>
-                      <div className="p-6 flex-grow flex flex-col">
-                          <div className="space-y-3 mb-6">
-                              {bundle.courses.map((c, i) => (
-                                  <div key={i} className="flex items-center gap-2 text-sm text-gray-600 border-b border-gray-50 pb-2 last:border-0">
-                                      <CheckCircle size={14} className="text-primary-500 flex-shrink-0" />
-                                      <span className="line-clamp-1">{c.title}</span>
-                                  </div>
-                              ))}
-                          </div>
-                          <div className="mt-auto flex justify-between items-center border-t pt-4">
-                              <div>
-                                  {isDiscounted(bundle.originalPrice?.[currency], bundle.price?.[currency]) && (
-                                    <span className="text-gray-400 line-through text-xs block">{formatPrice(bundle.originalPrice?.[currency], currency)}</span>
-                                  )}
-                                  <span className="text-primary-700 font-bold text-xl">{formatPrice(bundle.price?.[currency], currency)}</span>
-                              </div>
-                              <Link to={`/bundle/${bundle.id}`} className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-800 transition">
-                                  التفاصيل
-                              </Link>
-                          </div>
-                      </div>
-                  </div>
               ))}
-           </div>
-           
-           <div className="text-center mt-10">
-              <Link to="/bundles" className="inline-flex items-center gap-2 bg-white border border-gray-300 text-gray-700 px-8 py-3 rounded-xl font-bold hover:bg-gray-50 transition">
-                        {content['home.paths.viewAll'] || 'عرض جميع المسارات'} <ChevronRight size={18} className="rtl:rotate-180" />
-              </Link>
-           </div>
+            </div>
+          </div>
+
+          <GoalFinder goals={goals} goalId={goalId} onPick={setGoalPick} course={goalCourse} currency={currency} />
+        </div>
+      </section>
+
+      {/* Trust strip */}
+      <section className="border-b border-gray-100 bg-white py-5">
+        <div className="container mx-auto grid grid-cols-1 gap-x-7 gap-y-4 px-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            { icon: Award, text: 'شهادات معتمدة بكود تحقق' },
+            { icon: Users, text: 'تدريب عملي مع الخبراء' },
+            { icon: Clock, text: 'دفع كاش أو تقسيط' },
+            { icon: MessageCircle, text: 'دعم مباشر على واتساب' },
+          ].map(({ icon: Icon, text }, i) => (
+            <div key={i} className="flex items-center gap-3 text-[15px] font-bold text-gray-800">
+              <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-primary-50 text-primary-600"><Icon size={20} /></span>
+              {text}
+            </div>
+          ))}
         </div>
       </section>
 
       {/* SECTION: Best Selling Courses */}
-      <section className="py-20 bg-white scroll-reveal">
+      <section id="programs" className="scroll-mt-24 bg-[#fffaf5] py-14 sm:py-24 scroll-reveal">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <span className="text-primary-600 font-bold tracking-wider text-sm">{content['home.bestSellers.badge'] || 'الأكثر طلباً'}</span>
-            <h2 className="text-3xl font-bold text-gray-900 mt-2">{content['home.bestSellers.title'] || 'الدبلومات الأكثر مبيعاً'}</h2>
+          <div className="mb-10 sm:mb-12">
+            <span className="text-sm font-extrabold tracking-wide text-amber-700">{content['home.bestSellers.badge'] || 'الأكثر طلباً'}</span>
+            <h2 className="mt-2 text-3xl font-black leading-tight text-gray-900 sm:text-4xl lg:text-[44px]">{content['home.bestSellers.title'] || 'الدبلومات الأكثر مبيعاً'}</h2>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 lg:gap-8">
             {bestSellingCourses.map(course => (
               <div key={course.id} className="glow-card hover-float rounded-2xl overflow-hidden">
                 <CourseCard course={course} currency={currency} />
@@ -284,8 +206,8 @@ const Home: React.FC = () => {
             ))}
           </div>
 
-          <div className="text-center mt-10">
-            <Link to="/courses" className="inline-flex items-center gap-2 bg-white border border-gray-300 text-gray-700 px-8 py-3 rounded-xl font-bold hover:bg-gray-50 transition">
+          <div className="mt-10 text-center">
+            <Link to="/courses" className="inline-flex min-h-[48px] items-center gap-2 rounded-xl border border-gray-300 bg-white px-8 font-bold text-gray-700 transition hover:bg-gray-50">
               عرض جميع الكورسات <ChevronRight size={18} className="rtl:rotate-180" />
             </Link>
           </div>
@@ -314,7 +236,7 @@ const Home: React.FC = () => {
                 {/* Thumbnail */}
                 {featuredCourse.thumbnail && (
                   <div className="w-full lg:w-80 flex-shrink-0 rounded-2xl overflow-hidden shadow-2xl">
-                    <img src={cdnImg(featuredCourse.thumbnail, 700)} alt={featuredCourse.title} className="w-full h-52 object-cover" />
+                    <img src={cdnImg(featuredCourse.thumbnail, 700)} alt={featuredCourse.title} loading="lazy" className="w-full h-52 object-cover" />
                   </div>
                 )}
                 {/* Info */}
@@ -347,7 +269,7 @@ const Home: React.FC = () => {
       })()}
 
       {/* SECTION: timed offer with registration form — off when switched off or its countdown has run out */}
-      {offerShown && <section className="py-16 bg-gray-900 relative overflow-hidden">
+      {offerShown && <section id="offer" className="py-16 bg-gray-900 relative overflow-hidden scroll-mt-24">
          {/* Background Elements */}
           <div className="absolute top-0 right-0 w-96 h-96 bg-primary-600 rounded-full blur-[150px] opacity-20"></div>
           <div className="absolute bottom-0 left-0 w-96 h-96 bg-secondary-600 rounded-full blur-[150px] opacity-20"></div>
@@ -468,65 +390,20 @@ const Home: React.FC = () => {
           </div>
       </section>}
 
-      {/* SECTION: Institute Video - side by side */}
-      <section className="py-24 bg-white relative overflow-hidden">
-          <div className="container mx-auto px-4">
-              <div className="flex flex-col lg:flex-row items-center gap-12">
-                  {/* Video */}
-                  <div className="w-full lg:w-1/2">
-                      <div
-                        role="button"
-                        tabIndex={content['home.video.url'] ? 0 : -1}
-                        aria-label="تشغيل الفيديو التعريفي"
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); content['home.video.url'] && setShowVideoModal(true); } }}
-                        className="relative w-full aspect-video rounded-3xl overflow-hidden shadow-2xl group border-4 border-gray-100"
-                        onClick={() => content['home.video.url'] && setShowVideoModal(true)}
-                        style={{ cursor: content['home.video.url'] ? 'pointer' : 'default' }}
-                      >
-                          <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition duration-500 z-10"></div>
-                          <div className="w-full h-full bg-gray-800"></div>
-                          <div className="absolute inset-0 flex items-center justify-center z-20">
-                              <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center group-hover:scale-110 transition duration-300">
-                                  <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center text-primary-600 shadow-lg">
-                                      <Play size={24} fill="currentColor" className="ml-1" />
-                                  </div>
-                              </div>
-                          </div>
-                          {!content['home.video.url'] && (
-                            <div className="absolute bottom-3 left-3 z-20 bg-black/60 backdrop-blur-sm text-white text-xs px-3 py-1 rounded-full">
-                              يمكن إضافة رابط الفيديو من لوحة التحكم
-                            </div>
-                          )}
-                      </div>
-                  </div>
-
-                  {/* Features text */}
-                  <div className="w-full lg:w-1/2 space-y-6">
-                      <div>
-                          <span className="text-primary-600 font-bold text-sm tracking-wider">{content['home.video.title'] || 'جولة داخل المعهد'}</span>
-                          <h2 className="text-3xl font-bold text-gray-900 mt-2 mb-3">لماذا نختار معهد الدراسات النفسية؟</h2>
-                          <p className="text-gray-500">{content['home.video.subtitle'] || 'تعرف على بيئة التعلم، قاعات التدريب، وفلسفتنا في تقديم المحتوى العلمي.'}</p>
-                      </div>
-                      {[
-                        { title: content['home.feature1.title'] || 'اعتماد مهني حقيقي', desc: content['home.feature1.desc'] || 'جميع برامجنا معتمدة مهنياً وتحمل شهادات تستحق وزناً حقيقياً في سوق العمل.' },
-                        { title: content['home.feature2.title'] || 'تدريب تطبيقي مكثف', desc: content['home.feature2.desc'] || '70% من البرنامج تدريب عملي مع نماذج حالات حقيقية وجلسات إشراف مباشر.' },
-                        { title: content['home.feature3.title'] || 'محتوى لمدى الحياة', desc: content['home.feature3.desc'] || 'بعد الاشتراك تحتفظ بوصول كامل لجميع المحاضرات والمراجع مدى الحياة بدون رسوم إضافية.' },
-                        { title: content['home.feature4.title'] || 'مجتمع متخصصين', desc: content['home.feature4.desc'] || 'انضم لأكثر من 12ألف متخصص من جميع أنحاء الوطن العربي وتبادل الخبرات.' },
-                      ].map((f, i) => (
-                        <div key={i} className="flex gap-4 items-start">
-                          <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0 mt-1">
-                            <CheckCircle size={16} className="text-primary-600" />
-                          </div>
-                          <div>
-                            <h4 className="font-bold text-gray-900 mb-1">{f.title}</h4>
-                            <p className="text-gray-500 text-sm leading-relaxed">{f.desc}</p>
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-              </div>
-          </div>
+      {/* SECTION: why choose the institute — tour video + reasons, then the certificate check right under it */}
+      <section id="why" className="relative scroll-mt-24 overflow-hidden bg-[#f6ede6] py-14 sm:py-24">
+        <div aria-hidden="true" className="absolute -right-36 -top-36 h-[420px] w-[420px] rounded-full bg-primary-200 opacity-55" />
+        <div className="container relative mx-auto px-4">
+          <WhyChooseSection content={content} onPlay={() => setShowVideoModal(true)} />
+          <CertificateCheck />
+        </div>
       </section>
+
+      {/* SECTION: payment — its own full-width band, kept short */}
+      <PaymentBand content={content} course={goalCourse} currency={currency} />
+
+      {/* SECTION: learning paths & bundles */}
+      <PathsSection content={content} bundles={bundles} currency={currency} />
 
       {showVideoModal && content['home.video.url'] && (
         <div
@@ -609,7 +486,7 @@ const Home: React.FC = () => {
       )}
 
       {/* SECTION: Express Consultation Banner — «اعرض قسم الاستشارة في الرئيسية» */}
-      {content['consultation.show_on_home'] !== 'false' && (
+      {content['consultation.show_on_home'] === 'true' && (
       <section className="py-20 bg-white relative overflow-hidden">
         {/* Subtle background accents */}
         <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-primary-50 rounded-full blur-[120px] opacity-60 -translate-x-1/2 -translate-y-1/2"></div>
@@ -738,7 +615,7 @@ const Home: React.FC = () => {
                               "{testimonial.text}"
                           </p>
                           <div className="flex items-center gap-4">
-                              {testimonial.image ? <img src={cdnImg(testimonial.image, 120)} className="w-12 h-12 rounded-full object-cover" alt={testimonial.name} /> : <div className="w-12 h-12 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 font-bold text-sm">{(testimonial.name||'?')[0]}</div>}
+                              {testimonial.image ? <img src={cdnImg(testimonial.image, 120)} loading="lazy" className="w-12 h-12 rounded-full object-cover" alt={testimonial.name} /> : <div className="w-12 h-12 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 font-bold text-sm">{(testimonial.name||'?')[0]}</div>}
                               <div>
                                   <h4 className="font-bold text-gray-900 text-sm">{testimonial.name}</h4>
                                   <p className="text-xs text-primary-600 font-medium">{testimonial.role}</p>
@@ -750,26 +627,23 @@ const Home: React.FC = () => {
           </div>
       </section>
 
-      {/* Contact CTA — mirrors the AboutUs section; sits right before the footer */}
-      <section className="bg-primary-700 text-white py-20">
-        <div className="container mx-auto px-4 text-center">
-          <h2 className="text-3xl font-bold mb-4">هل لديك استفسار؟ تواصل معنا</h2>
-          <p className="text-primary-200 mb-8 max-w-xl mx-auto">
-            فريقنا مستعد للإجابة على جميع أسئلتك عن البرامج والاشتراكات والاستشارات النفسية.
-          </p>
-          <div className="flex flex-wrap justify-center gap-4">
-            <Link to="/contact" className="bg-white text-primary-700 font-bold px-8 py-3 rounded-xl hover:bg-primary-50 transition flex items-center gap-2 shadow">
-              <Phone size={18} />
-              تواصل معنا
-            </Link>
-            <Link to="/join" className="bg-primary-600 border border-primary-400 text-white font-bold px-8 py-3 rounded-xl hover:bg-primary-500 transition flex items-center gap-2">
-              <GraduationCap size={18} />
-              انضم إلينا كمحاضر
-            </Link>
-            <Link to="/join-us" className="bg-primary-600 border border-primary-400 text-white font-bold px-8 py-3 rounded-xl hover:bg-primary-500 transition flex items-center gap-2">
-              <Briefcase size={18} />
-              انضم إلينا كموظف
-            </Link>
+      {/* Booking call to action — the page ends on the same goal it starts with */}
+      <section className="bg-[#fffaf5] px-4 pb-16 pt-4 sm:pb-20">
+        <div className="container relative mx-auto overflow-hidden rounded-[32px] bg-primary-600 px-5 py-12 text-center text-white sm:px-10 sm:py-14">
+          <div aria-hidden="true" className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-primary-700" />
+          <div className="relative">
+            <h2 className="mb-3.5 text-3xl font-black leading-tight sm:text-5xl">جاهز تبدأ مسارك المهني؟</h2>
+            <p className="mx-auto mb-7 max-w-xl text-base leading-relaxed text-primary-100 sm:text-lg">
+              اختار برنامجك واحجز مكانك الآن، كاش بخصم أكبر أو بالتقسيط. وفريقنا معاك في كل خطوة.
+            </p>
+            <div className="flex flex-col items-stretch justify-center gap-3.5 sm:flex-row sm:items-center">
+              <Link to="/enroll" className="inline-flex min-h-[56px] items-center justify-center rounded-2xl bg-white px-9 text-lg font-black text-primary-700 transition hover:bg-primary-50">احجز مكانك الآن</Link>
+              <Link to="/courses" className="inline-flex min-h-[56px] items-center justify-center rounded-2xl border-[1.5px] border-white/70 px-8 text-lg font-extrabold text-white transition hover:bg-white/10">تصفح الكورسات</Link>
+            </div>
+            <div className="mt-7 flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-sm text-primary-100">
+              <Link to="/join" className="inline-flex min-h-[44px] items-center gap-1.5 underline-offset-4 hover:underline"><GraduationCap size={16} /> انضم إلينا كمحاضر</Link>
+              <Link to="/join-us" className="inline-flex min-h-[44px] items-center gap-1.5 underline-offset-4 hover:underline"><Briefcase size={16} /> انضم إلينا كموظف</Link>
+            </div>
           </div>
         </div>
       </section>

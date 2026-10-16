@@ -117,7 +117,8 @@ test('the settings screen writes the keys the site reads', () => {
   for (const key of ['express.price.EGP', 'express.price.SAR', 'express.price.USD', 'express.therapistId', 'home.express.title', 'consult.express.desc', 'consultation.show_on_home']) {
     assert.ok(screen.includes(`'${key}'`), key);
   }
-  assert.ok(read('client/pages/Home.tsx').includes("content['consultation.show_on_home'] !== 'false'"));
+  // The home page's goal is booking a course, so the consultation banner is opt-in there now.
+  assert.ok(read('client/pages/Home.tsx').includes("content['consultation.show_on_home'] === 'true'"));
   assert.ok(!read('client/pages/Home.tsx').includes("(currency==='EGP'?'500'"), 'a price nobody set');
   assert.ok(!read('client/pages/Consultations.tsx').includes("|| '300')"), 'a second price nobody set');
 });
