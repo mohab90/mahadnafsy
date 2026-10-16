@@ -26,17 +26,19 @@ const CertificateCheck: React.FC = () => {
           <span className="text-[15px] text-white/70">اكتب كود الشهادة وتحقق منها في ثواني.</span>
         </span>
       </div>
-      <div className="relative flex min-w-[260px] flex-[1.2] flex-wrap gap-2.5">
+      <div className="relative flex w-full flex-wrap items-center gap-2.5 sm:w-auto">
         <label htmlFor="home-cert-code" className="sr-only">كود الشهادة</label>
         <input
           id="home-cert-code"
           value={code}
-          onChange={(e) => setCode(e.target.value)}
+          onChange={(e) => setCode(e.target.value.replace(/\s/g, '').toUpperCase())}
           dir="ltr"
-          placeholder="كود الشهادة"
-          className="min-h-[48px] min-w-0 flex-[1_1_180px] rounded-xl border-0 bg-white px-4 text-right text-base text-gray-900 outline-none focus:ring-4 focus:ring-primary-500/30"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="MAHAD1"
+          className="min-h-[48px] w-full min-w-0 rounded-xl border-0 bg-white px-4 text-center font-mono text-lg font-black uppercase tracking-[0.25em] text-gray-900 outline-none placeholder:font-bold placeholder:tracking-[0.25em] placeholder:text-gray-300 focus:ring-4 focus:ring-primary-500/30 sm:w-44"
         />
-        <button type="submit" className="min-h-[48px] flex-[1_1_auto] rounded-xl bg-secondary-500 px-8 text-base font-black text-[#1b0a12] transition hover:brightness-105">تحقق</button>
+        <button type="submit" className="min-h-[48px] w-full rounded-xl bg-secondary-500 px-8 text-base font-black text-[#1b0a12] transition hover:brightness-105 sm:w-auto">تحقق</button>
       </div>
     </form>
   );

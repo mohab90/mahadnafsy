@@ -112,3 +112,19 @@ test('the home page still honours what marketing controls', () => {
   assert.match(read('client/components/home/WhyChooseSection.tsx'), /content\['home\.video\.url'\]/);
   assert.match(home, /value="daqqi"/);
 });
+
+test('job and lecturer applications have a place on the page, and the code field is a short one', () => {
+  assert.match(home, /<section id="join"/);
+  assert.match(home, /<Link to="\/join" /);
+  assert.match(home, /<Link to="\/join-us" /);
+  const check = read('client/components/home/CertificateCheck.tsx');
+  assert.match(check, /sm:w-44/, 'a field sized for a short code, not a long bar');
+  assert.match(check, /toUpperCase\(\)/);
+  assert.doesNotMatch(check, /maxLength/, 'older, longer codes still verify');
+});
+
+test('the reasons beside the tour video are compact, so the video matches their height', () => {
+  const why = read('client/components/home/WhyChooseSection.tsx');
+  assert.match(why, /lg:grid-cols-2 lg:items-stretch/);
+  assert.match(why, /lg:aspect-auto lg:min-h-0/);
+});

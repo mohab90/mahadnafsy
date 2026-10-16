@@ -27,14 +27,14 @@ const WhyChooseSection: React.FC<{ content: Content; onPlay: () => void }> = ({ 
         <p className="text-base leading-relaxed text-gray-500 sm:text-lg">{content['home.video.subtitle'] || 'تعرف على بيئة التعلم، قاعات التدريب، وفلسفتنا في تقديم المحتوى العلمي.'}</p>
       </div>
 
-      <div className="grid gap-7 lg:grid-cols-[1.35fr_1fr] lg:items-stretch">
+      <div className="grid gap-7 lg:grid-cols-2 lg:items-stretch">
         <div
           role="button"
           tabIndex={videoUrl ? 0 : -1}
           aria-label="تشغيل فيديو جولة داخل المعهد"
           onClick={() => videoUrl && onPlay()}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (videoUrl) onPlay(); } }}
-          className={`group relative min-h-[250px] overflow-hidden rounded-[30px] bg-[#1b0a12] shadow-[0_40px_70px_-30px_rgba(76,5,25,.65)] sm:min-h-0 sm:aspect-video lg:aspect-auto lg:min-h-[420px] ${videoUrl ? 'cursor-pointer' : 'cursor-default'}`}
+          className={`group relative min-h-[250px] overflow-hidden rounded-[30px] bg-[#1b0a12] shadow-[0_40px_70px_-30px_rgba(76,5,25,.65)] sm:min-h-0 sm:aspect-video lg:aspect-auto lg:min-h-0 ${videoUrl ? 'cursor-pointer' : 'cursor-default'}`}
           style={{ backgroundImage: 'radial-gradient(rgba(255,255,255,.08) 1px, transparent 1px)', backgroundSize: '20px 20px' }}
         >
           <div aria-hidden="true" className="absolute inset-3.5 rounded-[22px] border-2 border-dashed border-white/25" />
@@ -53,17 +53,17 @@ const WhyChooseSection: React.FC<{ content: Content; onPlay: () => void }> = ({ 
           </div>
         </div>
 
-        <div className="flex flex-col gap-3.5">
+        <div className="flex flex-col gap-3">
           {reasons.map((reason, i) => {
             const Icon = reason.icon;
             return (
-              <div key={i} className="flex flex-1 items-center gap-4 rounded-[22px] bg-white px-5 py-5 shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
-                <span className={`flex h-[52px] w-[52px] flex-none items-center justify-center rounded-2xl ${i % 2 === 0 ? 'bg-primary-600 text-white' : 'bg-[#1b0a12] text-amber-300'}`}>
-                  <Icon size={26} />
+              <div key={i} className="flex flex-1 items-center gap-4 rounded-[20px] bg-white px-4 py-3.5 shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
+                <span className={`flex h-12 w-12 flex-none items-center justify-center rounded-2xl ${i % 2 === 0 ? 'bg-primary-600 text-white' : 'bg-[#1b0a12] text-amber-300'}`}>
+                  <Icon size={24} />
                 </span>
                 <span className="min-w-0">
-                  <b className="mb-0.5 block text-[19px] text-gray-900">{reason.title}</b>
-                  <span className="text-[15px] leading-relaxed text-gray-500">{reason.desc}</span>
+                  <b className="mb-0.5 block text-[17px] text-gray-900">{reason.title}</b>
+                  <span className="line-clamp-2 text-sm leading-relaxed text-gray-500">{reason.desc}</span>
                 </span>
               </div>
             );
