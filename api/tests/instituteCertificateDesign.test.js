@@ -85,7 +85,7 @@ test('a name or a course from the database is escaped, never markup', () => {
 });
 
 test('a long name shrinks to stay on one line', () => {
-  const size = html => Number(/font-size:(\d+)px;font-weight:700;color:#B3141B/.exec(html)[1]);
+  const size = html => Number(/font-size:(\d+)px;font-weight:900;color:#000/.exec(html)[1]);
   assert.equal(size(certificateHtml({ ...sample, studentName: 'ALI HASSAN' })), 30);
   const long = size(certificateHtml({ ...sample, studentName: 'MOHAMED ABDELRAHMAN IBRAHIM EL SAYED HASSAN' }));
   assert.ok(long < 20 && long >= 14);

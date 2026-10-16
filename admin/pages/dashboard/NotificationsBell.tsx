@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Bell, X, CheckCheck, Banknote, RotateCcw, Users, UserPlus, Ticket, Award, Settings, AlertTriangle, Info,
-  AlarmClock, Siren, Repeat, ChevronDown, ChevronLeft, type LucideIcon,
+  AlarmClock, Siren, Repeat, MessageCircle, ChevronDown, ChevronLeft, type LucideIcon,
 } from 'lucide-react';
 
 import { mysqlAdmin } from '../../lib/mysqlapi';
@@ -25,6 +25,7 @@ type Severity = 'critical' | 'repeated' | 'followup' | 'normal';
 /** Each kind of notification: what it is, how loud, and where it goes. The two escalations and the
  *  day's follow-ups are told apart at a glance — «زر الاشعارات لازم يكون اقوى». */
 const TYPES: Record<string, { label: string; icon: LucideIcon; tone: string; tab?: TabKey; severity?: Severity }> = {
+  ticket_client_message: { label: 'رسالة عميل', icon: MessageCircle, tone: 'text-white bg-red-600', tab: 'customer_inbox', severity: 'critical' },
   escalation_critical: { label: 'مهم جدا', icon: Siren, tone: 'text-white bg-red-600', tab: 'customer_inbox', severity: 'critical' },
   escalation_repeated: { label: 'متكررة', icon: Repeat, tone: 'text-white bg-violet-600', tab: 'customer_inbox', severity: 'repeated' },
   followup: { label: 'متابعاتي', icon: AlarmClock, tone: 'text-amber-700 bg-amber-100', severity: 'followup' },

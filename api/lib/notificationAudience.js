@@ -24,6 +24,8 @@ const TYPE_AUDIENCE = Object.freeze({
   warning: { perms: ['view_financial', 'manage_financial'] },
   hr: { perms: ['view_hr', 'manage_hr'] },
   ticket: { perms: MANAGEMENT, roles: ['support'] },
+  // A client has just written to customer service (lib/ticketAlerts.js): the team that answers, not management.
+  ticket_client_message: { perms: [], roles: ['support'] },
   // What the team escalates to the administration, in two kinds (lib/ticketEscalation.js).
   followup_team: { perms: MANAGEMENT },
   escalation_critical: { perms: MANAGEMENT },

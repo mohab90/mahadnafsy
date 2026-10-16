@@ -15,7 +15,8 @@ const { pool, getStaffIdByEmail } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
 const outbox = require('../lib/outbox');
 const { createNotification, insertNotification } = require('../lib/notification');
-const { clientChatState } = require('../lib/ticketChat');
+const { clientChatState, markConversationOpen } = require('../lib/ticketChat');
+const { notifyClientMessage } = require('../lib/ticketAlerts');
 const { KINDS: ESCALATION_KINDS, repeatsOf, kindOf, notificationFor } = require('../lib/ticketEscalation');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../middleware/auth');
 const { hasPermission, PERMISSIONS } = require('../constants/permissions');
@@ -852,8 +853,7 @@ router.post('/api/public/enquiry/:token/reply', publicLimiter, async (req, res) 
     });
     await conn.commit(); conn.release(); conn = null;
 
-    createNotification('ticket', '💬 رد جديد من عميل', `${ticket.subject || 'استفسار'}: ${body.slice(0, 80)}`,
-      { ticketId }, req.tenantId, ticket.assigned_to || null).catch(() => {});
+    notifyClientMessage({ tenantId: req.tenantId, ticketId, subject: ticket.subject || 'استفسار', who: 'زائر الموقع', text: body, assigneeId: ticket.assigned_to }).catch(() => {});
     res.json({ ok: true });
   } catch (e) {
     if (conn) { await conn.rollback().catch(() => {}); conn.release(); }
@@ -915,6 +915,7 @@ router.post('/api/public/enquiry', publicLimiter, async (req, res) => {
       actor: { id: null, name },
     });
     await conn.commit(); conn.release(); conn = null;
+    notifyClientMessage({ tenantId: req.tenantId, ticketId: created.id, subject: DEPARTMENT_LABEL[created.department] || '', who: name, text: message, isNew: true, assigneeId: created.assignee?.id }).catch(() => {});
 
     res.json({
       ok: true,
@@ -1219,6 +1220,7 @@ router.post('/api/me/tickets', requireAuth, async (req, res) => {
       subject, body, category, channel: 'user_dashboard', actor: { id: null, name: sub?.name || email },
     });
     await conn.commit(); conn.release(); conn = null;
+    notifyClientMessage({ tenantId: req.tenantId, ticketId: r.id, subject, who: sub?.name || req.user.name || email, text: body, isNew: true, assigneeId: r.assignee?.id }).catch(() => {});
     res.json({ ok: true, id: r.id });
   } catch (e) { if (conn) { await conn.rollback().catch(() => {}); conn.release(); } logger.error('[me/tickets create]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -1248,6 +1250,9 @@ router.get('/api/me/tickets/:id', requireAuth, async (req, res) => {
       'SELECT id,subscriber_id,subject,body,status,category,priority,created_at,subscriber_email FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
       [req.params.id, req.tenantId]);
     if (!ownsTicket(t, subscriber, email)) return res.status(404).json({ error: 'Not found' });
+    // The client's conversation asks with ?live=1 while it is open on their screen: that is the chat
+    // being open (lib/ticketChat.js). A plain read — the list, a refresh of the page — is not.
+    if (req.query.live === '1') await markConversationOpen(pool, req.tenantId, t.id).catch(() => {});
     const [replies] = await pool.query(
       'SELECT author_type, author_name, body, created_at FROM ticket_replies WHERE ticket_id=? AND tenant_id=? AND is_internal=0 ORDER BY created_at ASC', [req.params.id, req.tenantId]);
     res.json({ id: t.id, subject: t.subject, body: t.body, status: t.status, category: t.category, priority: t.priority, created_at: t.created_at, replies });
@@ -1274,7 +1279,8 @@ router.post('/api/me/tickets/:id/reply', requireAuth, async (req, res) => {
     await conn.query("UPDATE support_tickets SET status=IF(status IN ('resolved','closed'),'open',status), updated_at=NOW() WHERE id=? AND tenant_id=?", [req.params.id, req.tenantId]);
     await logTicketEvent(conn, { tenantId: req.tenantId, ticketId: req.params.id, type: 'replied', actorName: t.subscriber_name || 'العميل', detail: String(body).slice(0, 200) });
     await conn.commit(); conn.release(); conn = null;
-    createNotification('ticket', 'رد جديد من العميل', `${t.subscriber_name || email}: ${t.subject}`, { ticketId: req.params.id }, req.tenantId, t.assigned_to || null).catch(() => {});
+    markConversationOpen(pool, req.tenantId, req.params.id).catch(() => {});
+    notifyClientMessage({ tenantId: req.tenantId, ticketId: req.params.id, subject: t.subject, who: t.subscriber_name || email, text: body, assigneeId: t.assigned_to }).catch(() => {});
     res.json({
       ok: true,
       reply: { id: replyId, body, author_type: 'CLIENT', author_name: authorName, created_at: new Date().toISOString() },

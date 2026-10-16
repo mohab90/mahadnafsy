@@ -51,7 +51,7 @@ const CertificateSheet: React.FC<CertificateSheetProps> = ({ certName, certCours
     <div style={{
       position: 'absolute', left: 57, width: 486, top: 373, height: 50,
       display: 'flex', alignItems: 'flex-end', justifyContent: 'center', textAlign: 'center',
-      fontSize: fitSize(certName, 470, 30, 14), fontWeight: 700, color: '#B3141B', letterSpacing: 1,
+      fontSize: fitSize(certName, 470, 30, 14), fontWeight: 900, color: '#000', letterSpacing: 1,
       lineHeight: 1.2, paddingBottom: 3, whiteSpace: 'nowrap',
     }}>{certName}</div>
     {/* The course: larger, solid black, lower; the sentence under it in the same lettering, a little smaller;

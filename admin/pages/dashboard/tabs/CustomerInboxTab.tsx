@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useVisibleInterval } from '../../../../shared/useVisibleInterval';
 import { Modal } from '../../../../shared/ui/Modal';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -140,6 +141,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   // Whether the client has the chat open right now (GET /admin/tickets/:id → chat).
   const [chatOpen, setChatOpen] = useState(false);
   const [chatReason, setChatReason] = useState<string | null>(null);
+  const [chatLastSeen, setChatLastSeen] = useState<number | null>(null);
   const [replyText, setReplyText] = useState('');
 
   const [canned, setCanned] = useState<CannedResponse[]>([]);
@@ -290,6 +292,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
       setTimeline(Array.isArray(row?.timeline) ? row.timeline : []);
       setChatOpen(Boolean(row?.chat?.open));
       setChatReason(row?.chat?.reason || null);
+      setChatLastSeen(row?.chat?.lastSeen ? Number(row.chat.lastSeen) : null);
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر تحميل المحادثة');
     } finally { setDetailLoading(false); }
@@ -302,17 +305,29 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
       onLogged={summary => { notify('success', summary); void openDetail(item); void loadRemote(); }} onError={text => notify('error', text)} />
   );
 
-  // The chat opens and closes with the client: look again every 20 seconds while the drawer is open.
+  // The chat opens and closes with the client: look again every 10 seconds while the drawer is open —
+  // the state (and when the client was last here) and the conversation itself, so what the client writes
+  // appears without reopening. The reply being typed is never touched.
   const openTicketId = detailItem?.source === 'ticket' ? detailItem.id : '';
-  useEffect(() => {
-    if (!openTicketId) return undefined;
-    const timer = window.setInterval(() => {
-      if (document.hidden) return;
-      mysqlAdmin.adminGet<any>(`/admin/tickets/${encodeURIComponent(openTicketId)}`)
-        .then(row => setChatOpen(Boolean(row?.chat?.open))).catch(() => {});
-    }, 20000);
-    return () => window.clearInterval(timer);
+  const refreshChat = useCallback(() => {
+    if (!openTicketId) return;
+    mysqlAdmin.adminGet<any>(`/admin/tickets/${encodeURIComponent(openTicketId)}`)
+      .then(row => {
+        setChatOpen(Boolean(row?.chat?.open));
+        setChatReason(row?.chat?.reason || null);
+        setChatLastSeen(row?.chat?.lastSeen ? Number(row.chat.lastSeen) : null);
+        if (Array.isArray(row?.replies)) {
+          setTicketReplies(current => (current.length === row.replies.length ? current : row.replies.map((r: any) => ({
+            id: String(r.id),
+            text: r.body || '',
+            author: r.author_name || (String(r.author_type || '').toUpperCase() === 'CLIENT' ? 'العميل' : 'خدمة العملاء'),
+            isStaff: String(r.author_type || '').toUpperCase() !== 'CLIENT',
+            at: r.created_at || '',
+          }))));
+        }
+      }).catch(() => {});
   }, [openTicketId]);
+  useVisibleInterval(refreshChat, 10000, Boolean(openTicketId));
 
   // A link from a notification, the old tickets page or the header's search
   // (?focus=<ticket>) opens that one, once, then drops the parameter. Keyed on
@@ -657,7 +672,11 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                   ) : (
                     !closed && (
                       <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
-                        <p className="text-xs font-bold text-amber-800">🔒 الشات مقفول — {chatReason === 'no_account' ? 'العميل ده مالوش حساب على الموقع' : 'العميل مش فاتحه دلوقتي'}</p>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-bold text-amber-800">🔒 الشات مقفول — {chatReason === 'no_account' ? 'العميل ده مالوش حساب على الموقع' : 'العميل مش فاتح المحادثة دلوقتي'}</p>
+                          <button type="button" onClick={refreshChat} className="rounded-lg border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-bold text-amber-800 hover:bg-amber-100">🔄 اتأكد تاني</button>
+                        </div>
+                        {chatLastSeen && <p className="text-[11px] text-amber-700">آخر مرة كان فاتحها: {fmtDate(new Date(chatLastSeen).toISOString())}</p>}
                         <p className="text-[11px] text-amber-700">
                           {chatReason === 'no_account'
                             ? 'مفيش شات مع زائر من غير حساب — كلّمه تليفون أو واتساب أو إيميل، وسجّل اللي قلته له.'

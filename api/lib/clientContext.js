@@ -8,6 +8,12 @@ const { resolveSecret } = require('./secretResolver');
 const VALID_COUNTRY = /^[A-Z]{2}$/;
 const CACHE_TTL_MS = Math.max(60_000, Number(process.env.GEOIP_CACHE_TTL_MS) || 30 * 60_000);
 const CACHE_MAX = Math.max(100, Number(process.env.GEOIP_CACHE_MAX) || 10_000);
+// A failed lookup is remembered for seconds, not half an hour: it used to be
+// cached like an answer, so one provider hiccup pinned a Saudi visitor to the
+// dollar (or to «location unverified») for thirty minutes, and the price they
+// were shown flipped when the cache expired.
+const FAILURE_TTL_MS = Math.max(1_000, Number(process.env.GEOIP_FAILURE_TTL_MS) || 15_000);
+const FALLBACK_GEOIP_URL = 'https://get.geojs.io/v1/ip/country/{ip}.json';
 const cache = new Map();
 
 function normalizeCountryCode(value) {
@@ -77,9 +83,7 @@ function parseProviderCountry(body) {
   return normalizeCountryCode(body?.country || body?.country_code || body?.countryCode);
 }
 
-async function providerCountry(ip, fetchImpl = global.fetch) {
-  if (typeof fetchImpl !== 'function' || !ip || isPrivateIp(ip)) return null;
-  const template = process.env.GEOIP_API_URL || 'https://api.country.is/{ip}';
+async function askProvider(template, ip, fetchImpl) {
   if (!/^https:\/\//i.test(template)) throw new Error('GEOIP_API_URL must use HTTPS');
   const url = template.includes('{ip}')
     ? template.replace('{ip}', encodeURIComponent(ip))
@@ -88,7 +92,7 @@ async function providerCountry(ip, fetchImpl = global.fetch) {
   const timeout = setTimeout(() => controller.abort(), Math.max(500, Number(process.env.GEOIP_TIMEOUT_MS) || 2500));
   try {
     const response = await fetchImpl(url, {
-      headers: process.env.GEOIP_API_TOKEN ? { Authorization: `Bearer ${process.env.GEOIP_API_TOKEN}` } : {},
+      headers: process.env.GEOIP_API_TOKEN && template === process.env.GEOIP_API_URL ? { Authorization: `Bearer ${process.env.GEOIP_API_TOKEN}` } : {},
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`Geo provider HTTP ${response.status}`);
@@ -96,6 +100,32 @@ async function providerCountry(ip, fetchImpl = global.fetch) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+// The configured provider first; if it is down, unreachable or answers nothing
+// usable, a second one — so a single provider's outage does not decide what a
+// visitor from Saudi Arabia is charged in.
+async function providerCountry(ip, fetchImpl = global.fetch) {
+  if (typeof fetchImpl !== 'function' || !ip || isPrivateIp(ip)) return null;
+  const primary = process.env.GEOIP_API_URL || 'https://api.country.is/{ip}';
+  const fallback = process.env.GEOIP_FALLBACK_API_URL === undefined ? FALLBACK_GEOIP_URL : process.env.GEOIP_FALLBACK_API_URL;
+  let firstError = null;
+  try {
+    const country = await askProvider(primary, ip, fetchImpl);
+    if (country) return country;
+  } catch (error) {
+    if (/must use HTTPS/.test(error.message)) throw error;
+    firstError = error;
+  }
+  if (fallback && fallback !== primary) {
+    try {
+      return await askProvider(fallback, ip, fetchImpl);
+    } catch (error) {
+      throw firstError || error;
+    }
+  }
+  if (firstError) throw firstError;
+  return null;
 }
 
 function context(countryCode, source, resolved = true) {
@@ -121,17 +151,24 @@ async function resolveClientContext(req, { fetchImpl = global.fetch } = {}) {
   const key = crypto.createHash('sha256').update(ip).digest('hex');
   const hit = cache.get(key);
   if (hit && hit.expiresAt > Date.now()) return hit.value;
+  const remember = (value, ttl) => {
+    if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value);
+    cache.set(key, { value, expiresAt: Date.now() + ttl });
+    return value;
+  };
   try {
     const countryCode = await providerCountry(ip, fetchImpl);
-    const value = countryCode
-      ? context(countryCode, 'geo-provider')
-      : fallback ? context(fallback, 'configured-default') : context(null, 'provider-unresolved', false);
-    if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value);
-    cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
-    return value;
+    if (countryCode) return remember(context(countryCode, 'geo-provider'), CACHE_TTL_MS);
+    return remember(
+      fallback ? context(fallback, 'configured-default') : context(null, 'provider-unresolved', false),
+      FAILURE_TTL_MS,
+    );
   } catch (error) {
     logger.warn('country lookup failed', { error: error.message });
-    return fallback ? context(fallback, 'configured-default') : context(null, 'provider-unavailable', false);
+    return remember(
+      fallback ? context(fallback, 'configured-default') : context(null, 'provider-unavailable', false),
+      FAILURE_TTL_MS,
+    );
   }
 }
 
