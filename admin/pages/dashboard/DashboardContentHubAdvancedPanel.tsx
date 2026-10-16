@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ExternalLink, Plus, Save, Trash2, X } from 'lucide-react';
 import { contentEditorFor, type ContentEditorHome } from './contentFields';
 import type { TabKey } from './navigation';
@@ -54,9 +55,17 @@ export function DashboardContentHubAdvancedPanel({
   setContentHubSubTab,
 }: DashboardContentHubAdvancedPanelProps) {
   const videoKeys = ['video.autoplay', 'video.muted', 'video.loop', 'video.heroUrl'];
+  const navigate = useNavigate();
+  // A page of صفحات الموقع opens by its address (/dashboard/content_hub/<page>):
+  // the hub reads the page from the URL, and moving to the bare tab first
+  // would land on the hub's grid instead.
   const openEditor = (home: ContentEditorHome) => {
+    if (home.subTab) {
+      setContentHubSubTab(home.subTab);
+      navigate(`/dashboard/${home.tab}/${home.subTab}`);
+      return;
+    }
     setActiveTab(home.tab);
-    if (home.subTab) setContentHubSubTab(home.subTab);
   };
 
   return (

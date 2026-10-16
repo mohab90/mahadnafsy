@@ -182,7 +182,7 @@ export function DashboardDirectContentRoutes({
           page_community: { title: 'محتوى صفحة المجتمع', subtitle: 'تعديل عناوين أقسام صفحة مجتمع المعهد النفسي', fields: pageCommunityFields, msg: 'تم حفظ محتوى صفحة المجتمع بنجاح.' },
           page_course_details: { title: 'محتوى صفحة تفاصيل الكورس', subtitle: 'كل نص يظهر داخل صفحة الدبلومة: الأسعار والمزايا والضمان والأسئلة الشائعة ونموذج الاهتمام', fields: pageCourseDetailsFields, msg: 'تم حفظ محتوى صفحة تفاصيل الكورس بنجاح.' },
           page_bundle_details: { title: 'محتوى صفحة تفاصيل المسار', subtitle: 'نصوص صفحة المسار التعليمي: خريطة المحطات والشهادة والمهارات ونموذج الالتحاق', fields: pageBundleDetailsFields, msg: 'تم حفظ محتوى صفحة تفاصيل المسار بنجاح.' },
-          page_misc: { title: 'إعدادات محتوى متفرقة', subtitle: 'الأيقونة وتعليمات الدفع ونصوص الجلسة السريعة والكورس المميز', fields: pageMiscFields, msg: 'تم حفظ الإعدادات المتفرقة بنجاح.' },
+          page_misc: { title: 'إعدادات محتوى متفرقة', subtitle: 'الأيقونة وتعليمات الدفع ونصوص الجلسة السريعة', fields: pageMiscFields, msg: 'تم حفظ الإعدادات المتفرقة بنجاح.' },
         }}
         content={content}
         policyDrafts={policyDrafts}

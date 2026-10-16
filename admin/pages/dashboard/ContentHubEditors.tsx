@@ -1,11 +1,11 @@
-import type { Dispatch, SetStateAction } from 'react';
+import { useMemo, type Dispatch, type SetStateAction } from 'react';
+import { BookText, FileText, Scale } from 'lucide-react';
+
+import { ContentEditor } from './content-editor/ContentEditor';
+import type { EditorField, EditorSection } from './content-editor/types';
 
 type ContentMap = Record<string, string>;
-type ContentField = {
-  key: string;
-  label: string;
-  multiline?: boolean;
-};
+type ContentField = EditorField;
 type PolicySection = {
   title: string;
   fields: ContentField[];
@@ -26,41 +26,45 @@ type SimpleEditorProps = BaseProps & {
   title: string;
   fields: ContentField[];
   successMessage: string;
+  subtitle?: string;
 };
 
-function ContentFieldInput({
-  field,
-  value,
-  setPolicyDrafts,
-}: {
-  field: ContentField;
-  value: string;
-  setPolicyDrafts: Dispatch<SetStateAction<ContentMap>>;
-}) {
-  return (
-    <div key={field.key} className={field.multiline ? 'md:col-span-2' : ''}>
-      <label className="block text-xs font-bold text-gray-600 mb-1">
-        {field.label} • <code className="text-primary-500">{field.key}</code>
-      </label>
-      {field.multiline ? (
-        <textarea
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 min-h-24 text-sm"
-          value={value}
-          onChange={(e) => setPolicyDrafts((prev) => ({ ...prev, [field.key]: e.target.value }))}
-        />
-      ) : (
-        <input
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-          value={value}
-          onChange={(e) => setPolicyDrafts((prev) => ({ ...prev, [field.key]: e.target.value }))}
-        />
-      )}
-    </div>
-  );
+/**
+ * A flat field list as titled sections: by each field's `section` when it has
+ * one, else by the label's own prefix («المعرض — العنوان» goes under «المعرض»,
+ * labelled «العنوان»), else under `mainTitle`. Sections keep the order their
+ * first field appears in, which is the order the page draws them.
+ */
+export function sectionsFromFields(fields: ContentField[], mainTitle: string): EditorSection[] {
+  const sections: EditorSection[] = [];
+  const byTitle = new Map<string, EditorSection>();
+  for (const field of fields) {
+    let title = field.section || mainTitle;
+    let label = field.label;
+    const dash = field.label.indexOf(' — ');
+    if (!field.section && dash > 0) {
+      title = field.label.slice(0, dash).trim();
+      label = field.label.slice(dash + 3).trim();
+    }
+    let section = byTitle.get(title);
+    if (!section) {
+      section = { id: `s${sections.length}`, title, fields: [] };
+      byTitle.set(title, section);
+      sections.push(section);
+    }
+    section.fields.push(label === field.label ? field : { ...field, label });
+  }
+  return sections;
 }
+
+// One request for the whole page, from every editor below: the per-field loop
+// these replaced posted the entire content document once per field, so a failure
+// part-way through left the page half-saved while the fields that went first had
+// already reported success. The editor sends only the keys that changed.
 
 export function ContentHubSimpleEditor({
   title,
+  subtitle,
   fields,
   successMessage,
   content,
@@ -69,40 +73,20 @@ export function ContentHubSimpleEditor({
   setContentValues,
   notify,
 }: SimpleEditorProps) {
+  const pageSections = useMemo(() => sectionsFromFields(fields, 'نصوص الصفحة'), [fields]);
   return (
-    <article className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 className="font-bold text-gray-900">{title}</h3>
-        <div className="flex gap-2">
-          <button onClick={() => setPolicyDrafts({})} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm">إعادة تحميل</button>
-          <button
-            onClick={async () => {
-              // One request for the whole form. The per-field loop this replaces
-              // posted the entire content document once per field, so a failure
-              // part-way through left the page half-saved while the fields that
-              // went first had already reported success.
-              const edits = Object.fromEntries(fields.map((field) =>
-                [field.key, policyDrafts[field.key] ?? content[field.key] ?? '']));
-              const ok = await setContentValues(edits);
-              notify(ok ? 'success' : 'error', ok ? successMessage : 'تعذر حفظ الحقول على السيرفر.');
-            }}
-            className="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-bold"
-          >
-            حفظ التعديلات
-          </button>
-        </div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {fields.map((field) => (
-          <ContentFieldInput
-            key={field.key}
-            field={field}
-            value={policyDrafts[field.key] ?? content[field.key] ?? ''}
-            setPolicyDrafts={setPolicyDrafts}
-          />
-        ))}
-      </div>
-    </article>
+    <ContentEditor
+      title={title}
+      subtitle={subtitle}
+      icon={<BookText size={20} />}
+      sections={pageSections}
+      content={content}
+      drafts={policyDrafts}
+      setDrafts={setPolicyDrafts}
+      onSave={entries => setContentValues(entries)}
+      notify={notify}
+      successMessage={successMessage}
+    />
   );
 }
 
@@ -114,47 +98,26 @@ export function ContentHubPoliciesEditor({
   setContentValues,
   notify,
 }: BaseProps & { sections: PolicySection[] }) {
+  // Privacy and terms save together in one write. As 27 separate full-document
+  // posts, a failure part-way through could leave terms.* unsaved while the
+  // page still said "تم الحفظ".
+  const pageSections = useMemo(
+    () => sections.map((section, index) => ({ id: `p${index}`, title: section.title, fields: section.fields })),
+    [sections],
+  );
   return (
-    <article className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 className="font-bold text-gray-900">إدارة السياسات القانونية</h3>
-        <div className="flex gap-2">
-          <button onClick={() => setPolicyDrafts({})} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm">إعادة تحميل</button>
-          <button
-            onClick={async () => {
-              // Privacy and terms save together in one write. As 27 separate
-              // full-document posts, a failure part-way through could leave
-              // terms.* unsaved while the page still said "تم الحفظ".
-              const edits = Object.fromEntries(sections.flatMap((section) =>
-                section.fields.map((field) =>
-                  [field.key, policyDrafts[field.key] ?? content[field.key] ?? ''])));
-              const ok = await setContentValues(edits);
-              notify(ok ? 'success' : 'error', ok
-                ? 'تم حفظ نصوص السياسات القانونية بنجاح.'
-                : 'تعذر حفظ نصوص السياسات على السيرفر.');
-            }}
-            className="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-bold"
-          >
-            حفظ التعديلات
-          </button>
-        </div>
-      </div>
-      {sections.map((section) => (
-        <section key={section.title} className="border border-gray-200 rounded-xl p-4 space-y-3">
-          <h4 className="font-bold text-gray-800">{section.title}</h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {section.fields.map((field) => (
-              <ContentFieldInput
-                key={field.key}
-                field={field}
-                value={policyDrafts[field.key] ?? content[field.key] ?? ''}
-                setPolicyDrafts={setPolicyDrafts}
-              />
-            ))}
-          </div>
-        </section>
-      ))}
-    </article>
+    <ContentEditor
+      title="الشروط والسياسات"
+      subtitle="نصوص صفحة سياسة الخصوصية وصفحة الشروط والأحكام، قسم قسم."
+      icon={<Scale size={20} />}
+      sections={pageSections}
+      content={content}
+      drafts={policyDrafts}
+      setDrafts={setPolicyDrafts}
+      onSave={entries => setContentValues(entries)}
+      notify={notify}
+      successMessage="تم حفظ نصوص السياسات القانونية بنجاح."
+    />
   );
 }
 
@@ -180,40 +143,25 @@ export function ContentHubGenericPageEditor({
   notify,
 }: GenericPageEditorProps) {
   const tabCfg = pageConfigs[activeTab] || (activeTab === 'content_hub' ? pageConfigs[contentHubSubTab] : null);
+  // Keyed on the field list, which is a module constant: pageConfigs itself is
+  // rebuilt by the parent on every render.
+  const pageFields = tabCfg?.fields;
+  const pageSections = useMemo(() => sectionsFromFields(pageFields || [], 'نصوص عامة'), [pageFields]);
   if (!tabCfg) return null;
 
   return (
-    <article className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 className="font-bold text-gray-900 text-lg">{tabCfg.title}</h3>
-          <p className="text-xs text-gray-400 mt-1">{tabCfg.subtitle}</p>
-        </div>
-        <div className="flex gap-2">
-          <button onClick={() => setPolicyDrafts({})} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm">إعادة تحميل</button>
-          <button
-            onClick={async () => {
-              const edits = Object.fromEntries(tabCfg.fields.map(field =>
-                [field.key, policyDrafts[field.key] ?? content[field.key] ?? '']));
-              const ok = await setContentValues(edits);
-              notify(ok ? 'success' : 'error', ok ? tabCfg.msg : 'تعذر حفظ الحقول على السيرفر.');
-            }}
-            className="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-bold"
-          >
-            حفظ التعديلات
-          </button>
-        </div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {tabCfg.fields.map((field) => (
-          <ContentFieldInput
-            key={field.key}
-            field={field}
-            value={policyDrafts[field.key] ?? content[field.key] ?? ''}
-            setPolicyDrafts={setPolicyDrafts}
-          />
-        ))}
-      </div>
-    </article>
+    <ContentEditor
+      key={tabCfg.title}
+      title={tabCfg.title}
+      subtitle={tabCfg.subtitle}
+      icon={<FileText size={20} />}
+      sections={pageSections}
+      content={content}
+      drafts={policyDrafts}
+      setDrafts={setPolicyDrafts}
+      onSave={entries => setContentValues(entries)}
+      notify={notify}
+      successMessage={tabCfg.msg}
+    />
   );
 }

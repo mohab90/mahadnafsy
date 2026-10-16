@@ -157,6 +157,8 @@ export type TabKey =
   | 'notif_inbox'
   | 'content_hub'
   | 'hub_advanced'
+  // «تصميم الموقع» — a page of صفحات الموقع (content_hub/site_design), like hub_advanced.
+  | 'site_design'
   | 'waitlist'
   | 'staff_home';
 
