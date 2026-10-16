@@ -15,7 +15,7 @@ import type {
 } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { normBranchId } from '../dashboardShared';
-import PaymentModal, { blankPaymentDraft, type PaymentDraft } from '../../../components/PaymentModal';
+import { blankPaymentDraft, type PaymentDraft } from '../../../components/PaymentModal';
 import { createClientWithPayment } from '../../../lib/createClientWithPayment';
 import { announceRoundsChanged, housingOutcome } from '../../../lib/daqqiHousing';
 import SectionCustomTabs from './SectionCustomTabs';
@@ -33,6 +33,7 @@ const BOOKING_YEAR_TABS: Partial<Record<OnlineViewTab, number>> = { booked2024: 
 import { branchMatchesFilter } from '../branchWorkspaceFilters';
 import { OnlineClientConvertModal, type OnlineClientConvertType } from './OnlineClientConvertModal';
 import { DaqqiHousingModal } from './DaqqiHousingModal';
+import { NewSubscriberModal, blankNewSubscriber, type NewSubscriberDraft } from './NewSubscriberModal';
 import { OnlineClientsKpiStrip } from './OnlineClientsKpiStrip';
 import { OldDataImportSection } from './online-clients-sections/OldDataImportSection';
 import { BulkActionBar } from './online-clients-sections/BulkActionBar';
@@ -188,18 +189,16 @@ export default function OnlineClientsTab({
   const [daqqiHousingFilter, setDaqqiHousingFilter] = useState<'all'|'housed'|'unhoused'>('all');
   const [daqqiRoundFilter, setDaqqiRoundFilter] = useState('');
   const [daqqiReceptionFilter, setDaqqiReceptionFilter] = useState('');
-  // One draft for the shared booking screen. This was a hand-rolled object of
-  // twelve fields — a third spelling of the same form.
-  // A collection officer's new customer is a booking the manager reviews: the
-  // same booking screen, and nothing is added until the transfer is confirmed.
-  // Their customers are online ones, so the draft starts there, not at Daqqi.
+  // «مشترك جديد» is one form for the management, the collection accounts and the Dokki desk
+  // (NewSubscriberModal). A collection officer's new customer is a booking the manager reviews, and
+  // nothing is added until the transfer is confirmed. Their customers are online ones, so the booking
+  // starts there, not at Daqqi.
   const isCollectionStaff = String(currentStaff?.role || '').toLowerCase() === 'collection';
   // A rep's «عملائي» is every client they sold, whichever branch studies:
   // «Sama Shosha … عملته حجز ومظهرش عندها في عملاءها» — a Tagamoa booking of
   // hers was left out with every other Dokki and Tagamoa one.
   const isSalesStaff = String(currentStaff?.role || '').toLowerCase() === 'sales';
   const newClientBranch = isCollectionStaff ? 'ONLINE_EGYPT' : physicalBranch.key;
-  const [newClientDraft, setNewClientDraft] = useState<PaymentDraft>(blankPaymentDraft({ branch: newClientBranch }));
   // Creating the customer and recording the money in one place, through the
   // endpoint that journals it. This screen used to post the payment itself and
   // the Daqqi desk wrote it onto the subscriber record — two spellings, one of
@@ -223,6 +222,91 @@ export default function OnlineClientsTab({
         ? `✅ تم إضافة ${(draft.name || '').trim()} والدفعة بانتظار اعتماد المالية`
         : `✅ تم إضافة ${(draft.name || '').trim()} بنجاح`) + housing.text);
   };
+  // «مشترك جديد» from the management: a login account with its courses and first payment in one call.
+  const submitNewAccount = async () => {
+    const d = omNewSubDraft;
+    if (!d.name.trim() || !d.email.trim() || !d.password.trim()) return;
+    setOmNewSubSaving(true);
+    try {
+      const validCourses = d.courses.filter(c => c.courseId).map(c => ({
+        courseId: c.courseId,
+        accessType: c.accessType,
+        ...(c.accessType === 'limited' && c.videoCount ? { videoCount: String(c.videoCount) } : {}),
+        ...(c.customPrice ? { customPrice: Number(c.customPrice) } : {}),
+        ...(c.discount ? { discount: Number(c.discount) } : {}),
+      }));
+      const firstCourse = validCourses[0];
+      const firstPaymentAmount = Number(d.amount);
+      const accountResult = await mysqlAdmin.createAccount({
+        name: d.name.trim(),
+        email: d.email.trim(),
+        password: d.password,
+        phone: d.phone.trim(),
+        ...(validCourses.length > 0 ? { courses: validCourses } : {}),
+        ...(d.referredBy.trim() ? { referredBy: d.referredBy.trim() } : {}),
+        ...(firstPaymentAmount > 0 ? {
+          firstPayment: {
+            amount: firstPaymentAmount,
+            currency: d.currency,
+            paymentMethod: d.paymentMethod || undefined,
+            date: d.date,
+            transactionId: d.transactionId || undefined,
+            note: d.note || undefined,
+            courseId: firstCourse?.courseId || undefined,
+            courseExpected: firstCourse?.customPrice ? Number(firstCourse.customPrice) : undefined,
+          },
+        } : {}),
+      });
+      setOmNewSubOpen(false);
+      omNewSubReset();
+      notify(
+        'success',
+        accountResult.approvalRequired
+          ? `✅ تم إنشاء حساب ${d.name.trim()} والدفعة بانتظار اعتماد المالية`
+          : `✅ تم إنشاء حساب ${d.name.trim()} بنجاح`
+      );
+    } catch (err: unknown) {
+      notify('error', '❌ فشل إنشاء الحساب: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setOmNewSubSaving(false);
+    }
+  };
+  // The same form from the collection accounts and the Dokki desk, without the login: the client and the
+  // first booking go through the booking endpoint (a collection officer's customer still waits for the manager).
+  const submitNewBooking = async () => {
+    const d = omNewSubDraft;
+    const first = d.courses[0];
+    const lockedPrice = isCollectionStaff && !isDaqqiClientsTab;
+    // The price the booking expects: the one typed, or the list price less the discount — never for a locked desk.
+    let expected = 0;
+    if (first?.courseId && !lockedPrice) {
+      if (Number(first.customPrice) > 0) expected = Number(first.customPrice);
+      else if (Number(first.discount) > 0) {
+        const item = first.courseId.startsWith('bundle:')
+          ? bundles.find(b => b.id === first.courseId.slice(7)) : courses.find(c => c.id === first.courseId);
+        const list = Number(item?.price?.[d.currency]) || 0;
+        if (!list) { notify('error', 'مفيش سعر للكورس ده بالعملة دي — اكتب السعر المخصص بدل الخصم.'); return; }
+        expected = Math.round(list * (1 - Math.min(100, Number(first.discount)) / 100));
+      }
+    }
+    const draft: PaymentDraft = {
+      ...blankPaymentDraft({ branch: newClientBranch, currency: d.currency }),
+      name: d.name.trim(), phone: d.phone.trim(),
+      courseId: first?.courseId || '', customExpected: expected ? String(expected) : '',
+      amount: d.amount, paymentMethod: d.paymentMethod, transactionId: d.transactionId, date: d.date,
+      note: [d.note.trim(), d.referredBy.trim() ? `المحوِّل: ${d.referredBy.trim()}` : ''].filter(Boolean).join(' | '),
+    };
+    setOmNewSubSaving(true);
+    try {
+      if (isDaqqiClientsTab) await handleNewDaqqiClient(draft); else await handleNewCollectionClient(draft);
+      setOmNewSubOpen(false);
+      omNewSubReset();
+    } catch (err: unknown) {
+      notify('error', '❌ تعذر تسجيل المشترك: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setOmNewSubSaving(false);
+    }
+  };
   const [daqqiSettingsOpen, setDaqqiSettingsOpen] = useState(false);
   // The staff-built tabs dialog, opened from this screen's own settings menu.
   const [showSectionTabs, setShowSectionTabs] = useState(false);
@@ -245,9 +329,9 @@ export default function OnlineClientsTab({
   const [convertSaving, setConvertSaving] = useState(false);
   // New subscriber popup (online manager)
   const [omNewSubOpen, setOmNewSubOpen] = useState(false);
-  const [omNewSubDraft, setOmNewSubDraft] = useState<{name:string;phone:string;email:string;password:string;branch:string;amount:string;currency:'EGP'|'SAR'|'USD';paymentMethod:string;date:string;transactionId:string;note:string;referredBy:string;courses:{courseId:string;accessType:'full'|'limited';videoCount:string;discount:string;customPrice:string}[]}>({ name: '', phone: '', email: '', password: '', branch: '', amount: '', currency: 'EGP', paymentMethod: '', date: cairoDateOnly(), transactionId: '', note: '', referredBy: '', courses: [{courseId:'',accessType:'full',videoCount:'',discount:'',customPrice:''}] });
+  const [omNewSubDraft, setOmNewSubDraft] = useState<NewSubscriberDraft>(blankNewSubscriber);
   const [omNewSubSaving, setOmNewSubSaving] = useState(false);
-  const omNewSubReset = () => setOmNewSubDraft({name:'',phone:'',email:'',password:'',branch:'',amount:'',currency:'EGP',paymentMethod:'',date:cairoDateOnly(),transactionId:'',note:'',referredBy:'',courses:[{courseId:'',accessType:'full',videoCount:'',discount:'',customPrice:''}]});
+  const omNewSubReset = () => setOmNewSubDraft(blankNewSubscriber());
   // "تفاصيل" popup for online_clients table
   const [installmentsRow, setInstallmentsRow] = useState<SubscriberItem | null>(null);
   const [collectionSettingsOpen, setCollectionSettingsOpen] = useState(false);
@@ -744,239 +828,21 @@ export default function OnlineClientsTab({
                   )}
 
                   {/* ===== مشترك جديد popup ===== */}
-                  {omNewSubOpen && (() => {
-                    const pmList: string[] = paymentBoxes;
-                    return (
-                    <>
-                      {isCollectionStaff && !isDaqqiClientsTab ? (
-                        <PaymentModal
-                          mode="new"
-                          subject={{ id: '', name: '' }}
-                          draft={newClientDraft}
-                          setDraft={setNewClientDraft}
-                          onSubmit={handleNewCollectionClient}
-                          lockPrice
-                          onClose={() => { setOmNewSubOpen(false); setNewClientDraft(blankPaymentDraft({ branch: newClientBranch })); }}
-                        />
-                      ) : isDaqqiClientsTab ? (
-                        /* عميل دقي جديد — نفس شاشة الحجز والدفع المستخدمة في كل مكان.
-                           كانت نسخة مكتوبة هنا بحقولها الخاصة، وتوأمها في مكتب الدقي. */
-                        <PaymentModal
-                          mode="new"
-                          subject={{ id: '', name: '' }}
-                          draft={newClientDraft}
-                          setDraft={setNewClientDraft}
-                          onSubmit={handleNewDaqqiClient}
-                          onClose={() => { setOmNewSubOpen(false); setNewClientDraft(blankPaymentDraft({ branch: newClientBranch })); }}
-                        />
-                      ) : (
-                      /* مشترك أونلاين جديد — إنشاء حساب دخول:
-                         باسورد، وصلاحية كل كورس، وأول دفعة في نداء واحد. */
-                      <Modal
-                        open
-                        onClose={() => { setOmNewSubOpen(false); omNewSubReset(); }}
-                        title="🌐 مشترك أونلاين جديد"
-                        subtitle="إنشاء حساب عميل أونلاين"
-                        tone="emerald"
-                        size="md"
-                        align="sheet"
-                      >
-                        <div className="space-y-4">
-                          {/* بيانات الحساب */}
-                          <div>
-                            <p className="text-xs font-extrabold text-gray-500 uppercase mb-2">👤 بيانات الحساب</p>
-                            <div className="grid grid-cols-2 gap-3">
-                              <div>
-                                <label className="block text-xs font-bold text-gray-600 mb-1">الاسم الكامل *</label>
-                                <input type="text" value={omNewSubDraft.name} onChange={e=>setOmNewSubDraft(d=>({...d,name:e.target.value}))}
-                                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200" placeholder="اسم العميل" />
-                              </div>
-                              <div>
-                                <label className="block text-xs font-bold text-gray-600 mb-1">رقم الهاتف *</label>
-                                <input type="tel" value={omNewSubDraft.phone} onChange={e=>setOmNewSubDraft(d=>({...d,phone:e.target.value}))}
-                                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200" placeholder="+201xxxxxxxxx" dir="ltr" />
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3 mt-2">
-                              <div>
-                                <label className="block text-xs font-bold text-gray-600 mb-1">البريد الإلكتروني *</label>
-                                <input type="email" value={omNewSubDraft.email} onChange={e=>setOmNewSubDraft(d=>({...d,email:e.target.value}))}
-                                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200" placeholder="email@example.com" dir="ltr" />
-                              </div>
-                              <div>
-                                <label className="block text-xs font-bold text-gray-600 mb-1">كلمة المرور *</label>
-                                <input type="text" value={omNewSubDraft.password} onChange={e=>setOmNewSubDraft(d=>({...d,password:e.target.value}))}
-                                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-200" placeholder="كلمة مرور" dir="ltr" />
-                              </div>
-                            </div>
-                          </div>
-                          {/* الكورسات */}
-                          <div>
-                            <p className="text-xs font-extrabold text-gray-500 uppercase mb-2">🎓 الكورسات والصلاحيات</p>
-                            <div className="border border-gray-200 rounded-xl p-3 space-y-2">
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-xs text-gray-500">اختر الكورس/الباقة وحدد الصلاحية</span>
-                                <button onClick={()=>setOmNewSubDraft(d=>({...d,courses:[...d.courses,{courseId:'',accessType:'full',videoCount:'',discount:'',customPrice:''}]}))}
-                                  className="flex items-center gap-1 text-xs text-emerald-700 font-bold border border-emerald-200 bg-emerald-50 rounded-lg px-2 py-1 hover:bg-emerald-100">
-                                  <Plus size={11}/> إضافة
-                                </button>
-                              </div>
-                              {omNewSubDraft.courses.map((c, i) => (
-                                <div key={i} className="bg-gray-50 border border-gray-200 rounded-xl p-2 space-y-1.5">
-                                  <div className="flex items-center gap-2">
-                                    <select value={c.courseId} onChange={e=>setOmNewSubDraft(d=>({...d,courses:d.courses.map((x,j)=>j===i?{...x,courseId:e.target.value}:x)}))}
-                                      className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-200">
-                                      <option value="">— اختر الكورس —</option>
-                                      {courses.map(co=><option key={co.id} value={co.id}>🎓 {co.titleAr||co.title}</option>)}
-                                      {bundles.map(b=><option key={`bundle:${b.id}`} value={`bundle:${b.id}`}>📌 {b.titleAr||b.title}</option>)}
-                                    </select>
-                                    {omNewSubDraft.courses.length > 1 && (
-                                      <button onClick={()=>setOmNewSubDraft(d=>({...d,courses:d.courses.filter((_,j)=>j!==i)}))}
-                                        className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50"><X size={13}/></button>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[11px] text-gray-500">الصلاحية:</span>
-                                    <button onClick={()=>setOmNewSubDraft(d=>({...d,courses:d.courses.map((x,j)=>j===i?{...x,accessType:'full',videoCount:''}:x)}))}
-                                      className={`text-[11px] font-bold px-2 py-0.5 rounded-full border transition ${c.accessType==='full'?'bg-emerald-600 text-white border-emerald-600':'border-gray-200 text-gray-600 hover:bg-gray-100'}`}>صلاحية كاملة</button>
-                                    <button onClick={()=>setOmNewSubDraft(d=>({...d,courses:d.courses.map((x,j)=>j===i?{...x,accessType:'limited'}:x)}))}
-                                      className={`text-[11px] font-bold px-2 py-0.5 rounded-full border transition ${c.accessType==='limited'?'bg-blue-600 text-white border-blue-600':'border-gray-200 text-gray-600 hover:bg-gray-100'}`}>عدد فيديوهات</button>
-                                    {c.accessType === 'limited' && (
-                                      <input type="number" min="1" value={c.videoCount} onChange={e=>setOmNewSubDraft(d=>({...d,courses:d.courses.map((x,j)=>j===i?{...x,videoCount:e.target.value}:x)}))}
-                                        className="w-16 border border-blue-200 rounded-lg px-2 py-0.5 text-xs text-center focus:outline-none focus:ring-2 focus:ring-blue-200" placeholder="عدد" />
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-2 mt-1">
-                                    <div className="flex-1">
-                                      <label className="text-[10px] text-gray-500 mb-0.5 block">سعر مخصص (ج.م)</label>
-                                      <input type="number" min="0" value={c.customPrice} onChange={e=>setOmNewSubDraft(d=>({...d,courses:d.courses.map((x,j)=>j===i?{...x,customPrice:e.target.value,discount:''}:x)}))}
-                                        className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-200" placeholder="السعر الأصلي" />
-                                    </div>
-                                    <div className="text-[10px] text-gray-400 pt-4">أو</div>
-                                    <div className="w-20">
-                                      <label className="text-[10px] text-gray-500 mb-0.5 block">خصم %</label>
-                                      <input type="number" min="0" max="100" value={c.discount} onChange={e=>setOmNewSubDraft(d=>({...d,courses:d.courses.map((x,j)=>j===i?{...x,discount:e.target.value,customPrice:''}:x)}))}
-                                        className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-emerald-200" placeholder="0" />
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                          {/* الدفعة الأولى */}
-                          <div className="bg-gradient-to-l from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-3 space-y-3">
-                            <p className="text-xs font-extrabold text-emerald-700 flex items-center gap-1">💳 دفعة أولى (اختياري)</p>
-                            <div className="grid grid-cols-2 gap-2">
-                              <div>
-                                <label className="block text-[11px] font-bold text-gray-600 mb-1">المبلغ</label>
-                                <input type="number" min="0" value={omNewSubDraft.amount} onChange={e=>setOmNewSubDraft(d=>({...d,amount:e.target.value}))}
-                                  className="w-full border border-emerald-200 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200" placeholder="0" />
-                              </div>
-                              <div>
-                                <label className="block text-[11px] font-bold text-gray-600 mb-1">العملة</label>
-                                <select value={omNewSubDraft.currency} onChange={e=>setOmNewSubDraft(d=>({...d,currency:e.target.value as 'EGP'|'SAR'|'USD'}))}
-                                  className="w-full border border-emerald-200 rounded-xl px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-200">
-                                  <option value="EGP">ج.م — جنيه مصري</option>
-                                  <option value="SAR">ر.س — ريال سعودي</option>
-                                  <option value="USD">$ — دولار</option>
-                                </select>
-                              </div>
-                            </div>
-                            <div>
-                              <label className="block text-[11px] font-bold text-gray-600 mb-1">طريقة الدفع</label>
-                              <select value={omNewSubDraft.paymentMethod} onChange={e=>setOmNewSubDraft(d=>({...d,paymentMethod:e.target.value}))}
-                                className="w-full border border-emerald-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-200">
-                                <option value="">— اختر طريقة الدفع —</option>
-                                {pmList.map(pm=><option key={pm} value={pm}>{pm}</option>)}
-                              </select>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2">
-                              <div>
-                                <label className="block text-[11px] font-bold text-gray-600 mb-1">تاريخ الدفع</label>
-                                <input type="date" value={omNewSubDraft.date} onChange={e=>setOmNewSubDraft(d=>({...d,date:e.target.value}))}
-                                  className="w-full border border-emerald-200 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200" />
-                              </div>
-                              <div>
-                                <label className="block text-[11px] font-bold text-gray-600 mb-1">رقم الإيصال</label>
-                                <input type="text" value={omNewSubDraft.transactionId} onChange={e=>setOmNewSubDraft(d=>({...d,transactionId:e.target.value}))}
-                                  className="w-full border border-emerald-200 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200" placeholder="اختياري" />
-                              </div>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-xs font-bold text-gray-600 mb-1">رقم المحوِّل</label>
-                              <input type="text" value={omNewSubDraft.referredBy} onChange={e=>setOmNewSubDraft(d=>({...d,referredBy:e.target.value}))}
-                                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200" placeholder="كود أو اسم (اختياري)" />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-bold text-gray-600 mb-1">ملاحظات</label>
-                              <input type="text" value={omNewSubDraft.note} onChange={e=>setOmNewSubDraft(d=>({...d,note:e.target.value}))}
-                                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200" placeholder="أي ملاحظات..." />
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 bg-gray-50">
-                          <button onClick={()=>{setOmNewSubOpen(false);omNewSubReset();}} className="px-4 py-2 text-sm rounded-xl border border-gray-200 hover:bg-gray-100">إلغاء</button>
-                          {/* A client is reached by phone, and money is not recorded against
-                              one without (the server refuses it: PHONE_REQUIRED). */}
-                          <button disabled={omNewSubSaving || !omNewSubDraft.name.trim() || omNewSubDraft.phone.replace(/\D/g, '').length < 9 || !omNewSubDraft.email.trim() || !omNewSubDraft.password.trim() || (Number(omNewSubDraft.amount) > 0 && !omNewSubDraft.paymentMethod)}
-                            onClick={async()=>{
-                              if (!omNewSubDraft.name.trim() || !omNewSubDraft.email.trim() || !omNewSubDraft.password.trim()) return;
-                              setOmNewSubSaving(true);
-                              try {
-                                const validCourses = omNewSubDraft.courses.filter(c=>c.courseId).map(c=>({
-                                  courseId: c.courseId,
-                                  accessType: c.accessType,
-                                  ...(c.accessType==='limited' && c.videoCount ? {videoCount: String(c.videoCount)} : {}),
-                                  ...(c.customPrice ? {customPrice: Number(c.customPrice)} : {}),
-                                  ...(c.discount ? {discount: Number(c.discount)} : {}),
-                                }));
-                                const firstCourse = validCourses[0];
-                                const firstPaymentAmount = Number(omNewSubDraft.amount);
-                                const accountResult = await mysqlAdmin.createAccount({
-                                  name: omNewSubDraft.name.trim(),
-                                  email: omNewSubDraft.email.trim(),
-                                  password: omNewSubDraft.password,
-                                  phone: omNewSubDraft.phone.trim(),
-                                  ...(validCourses.length > 0 ? { courses: validCourses } : {}),
-                                  ...(omNewSubDraft.referredBy.trim() ? { referredBy: omNewSubDraft.referredBy.trim() } : {}),
-                                  ...(firstPaymentAmount > 0 ? {
-                                    firstPayment: {
-                                      amount: firstPaymentAmount,
-                                      currency: omNewSubDraft.currency,
-                                      paymentMethod: omNewSubDraft.paymentMethod || undefined,
-                                      date: omNewSubDraft.date,
-                                      transactionId: omNewSubDraft.transactionId || undefined,
-                                      note: omNewSubDraft.note || undefined,
-                                      courseId: firstCourse?.courseId || undefined,
-                                      courseExpected: firstCourse?.customPrice ? Number(firstCourse.customPrice) : undefined,
-                                    },
-                                  } : {}),
-                                });
-                                setOmNewSubOpen(false);
-                                omNewSubReset();
-                                notify(
-                                  'success',
-                                  accountResult.approvalRequired
-                                    ? `✅ تم إنشاء حساب ${omNewSubDraft.name.trim()} والدفعة بانتظار اعتماد المالية`
-                                    : `✅ تم إنشاء حساب ${omNewSubDraft.name.trim()} بنجاح`
-                                );
-                              } catch (err: unknown) {
-                                notify('error', '❌ فشل إنشاء الحساب: ' + (err instanceof Error ? err.message : String(err)));
-                              } finally {
-                                setOmNewSubSaving(false);
-                              }
-                            }}
-                            className="px-5 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 disabled:opacity-50 transition">
-                            {omNewSubSaving ? '⏳ جاري الإنشاء...' : '✅ إنشاء الحساب'}
-                          </button>
-                        </div>
-                      </Modal>
-                      )} {/* end isDaqqiClientsTab ternary */}
-                    </>
-                    );
-                  })()}
+                  {omNewSubOpen && (
+                    <NewSubscriberModal
+                      variant={isCollectionStaff || isDaqqiClientsTab ? 'booking' : 'account'}
+                      branchLabel={isDaqqiClientsTab ? physicalBranch.label : 'أونلاين'}
+                      draft={omNewSubDraft}
+                      setDraft={setOmNewSubDraft}
+                      courses={courses}
+                      bundles={bundles}
+                      paymentBoxes={paymentBoxes}
+                      saving={omNewSubSaving}
+                      lockPrice={isCollectionStaff && !isDaqqiClientsTab}
+                      onSubmit={() => { void (isCollectionStaff || isDaqqiClientsTab ? submitNewBooking() : submitNewAccount()); }}
+                      onClose={() => { setOmNewSubOpen(false); omNewSubReset(); }}
+                    />
+                  )}
 
                   {/* ===== تحويل popup ===== */}
                   {convertRow && (

@@ -206,8 +206,11 @@ test('no second screen records a customer payment', () => {
     // optional first payment, all in one POST /admin/create-account that
     // inserts the payments row and posts the journal inside one transaction.
     // Its money is recorded correctly; splitting it to reuse PaymentModal
-    // would turn one atomic call into two and drop those fields.
-    'admin/pages/dashboard/tabs/OnlineClientsTab.tsx',
+    // would turn one atomic call into two and drop those fields. The form
+    // is NewSubscriberModal.tsx — one «مشترك جديد» for the management and,
+    // without the login, for the collection accounts and the Dokki desk, whose
+    // submit goes through createClientWithPayment (the same booking endpoint).
+    'admin/pages/dashboard/tabs/NewSubscriberModal.tsx',
     // «إضافة تحويل» in الحسابات: money that arrived, on the transfers ledger
     // (api/lib/incomingTransfers.js), before the payment it confirms. It was
     // an order of type 'transfer', which the orders table cannot hold. Not a
@@ -260,7 +263,6 @@ test('every booking and payment button opens that one screen', () => {
     'admin/pages/unified-client/UnifiedClientModalsHost.tsx',    // صفحة العميل
     'admin/pages/unified-client/UnifiedClientSubscriberPaymentsPanel.tsx',
     'admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx',           // الدقي
-    'admin/pages/dashboard/tabs/OnlineClientsTab.tsx',           // الأونلاين
   ];
   for (const rel of openers) {
     const source = codeOnly(read(rel));
