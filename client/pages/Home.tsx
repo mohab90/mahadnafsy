@@ -134,39 +134,56 @@ const Home: React.FC = () => {
       >
         <div aria-hidden="true" className="absolute -left-36 -top-32 h-[460px] w-[460px] rounded-full bg-primary-600 opacity-20" />
         <div aria-hidden="true" className="absolute -bottom-40 -right-32 h-[420px] w-[420px] rounded-full bg-secondary-500 opacity-10" />
-        <div className="container relative z-10 mx-auto px-4 pb-16 pt-14 text-center sm:pb-20 sm:pt-20 lg:pb-24 lg:pt-24">
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/25 px-4 py-1.5 text-sm font-bold text-amber-200">
-            <span className="h-2 w-2 rounded-full bg-secondary-500" />
-            {content?.['home.hero.badge'] || 'المنصة الرائدة في العالم العربي'}
+        <div className="container relative z-10 mx-auto grid items-center gap-12 px-4 pb-16 pt-14 text-center sm:pb-20 sm:pt-16 lg:grid-cols-[1.12fr_0.88fr] lg:gap-10 lg:pb-24 lg:pt-20 lg:text-right">
+          <div>
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/25 px-4 py-1.5 text-sm font-bold text-amber-200">
+              <span className="h-2 w-2 rounded-full bg-secondary-500" />
+              {content?.['home.hero.badge'] || 'المنصة الرائدة في العالم العربي'}
+            </div>
+            <h1 className="mb-6 text-balance text-[32px] font-black leading-[1.3] sm:text-5xl lg:text-[42px] xl:text-[50px]">
+              ابدأ مسارك المهني في <span className="whitespace-nowrap text-primary-400">الصحة النفسية</span> بتدريب نظري وعملي مع أفضل دكاترة علم النفس وبشهادة معتمدة
+            </h1>
+            <p className="mx-auto mb-9 max-w-xl text-base leading-relaxed text-white/80 sm:text-lg lg:mx-0">
+              {content?.['home.heroSubtitle'] || 'انضم إلى آلاف المتدربين في المنصة الأكاديمية الأولى لتعليم الصحة النفسية. دبلومات معتمدة، وتدريب عملي مع نخبة الخبراء.'}
+            </p>
+            <div className="mx-auto mb-10 flex max-w-xl flex-col gap-3.5 sm:max-w-none sm:flex-row sm:justify-center lg:justify-start">
+              <Link to="/enroll" className="inline-flex min-h-[56px] items-center justify-center gap-3 rounded-2xl bg-primary-600 px-10 text-lg font-extrabold text-white shadow-xl shadow-primary-600/40 transition hover:-translate-y-0.5 hover:bg-primary-500">
+                <span>احجز مكانك الآن</span>
+                <ArrowRight size={22} className="rtl:rotate-180" />
+              </Link>
+              <Link to="/courses" className="inline-flex min-h-[56px] items-center justify-center rounded-2xl border-[1.5px] border-white/40 px-9 text-lg font-bold text-white transition hover:bg-white/10">
+                <span>{content?.['home.hero.primaryCta'] || 'ابدأ رحلتك الآن'}</span>
+              </Link>
+            </div>
+            <div className="mx-auto grid max-w-xl grid-cols-2 gap-3 sm:grid-cols-4 lg:mx-0">
+              {[
+                { value: content['home.stats.programs']  || '50+', label: content['home.stats.programsLabel']  || 'برنامج تدريبي' },
+                { value: content['home.stats.experts']   || '30+', label: content['home.stats.expertsLabel']   || 'خبير ومدرب' },
+                { value: content['home.stats.graduates'] || '12K', label: content['home.stats.graduatesLabel'] || 'خريج' },
+                { value: content['home.stats.rating']    || '4.9', label: 'تقييم الطلاب' },
+              ].map((stat, i) => (
+                <div key={i} className="rounded-2xl border border-white/15 bg-white/[0.07] px-3 py-4">
+                  <div className="text-3xl font-black leading-none tabular-nums">{stat.value}</div>
+                  <div className="mt-1.5 text-sm text-white/70">{stat.label}</div>
+                </div>
+              ))}
+            </div>
           </div>
-          <h1 className="mx-auto mb-6 max-w-5xl text-balance text-[32px] font-black leading-[1.3] sm:text-5xl lg:text-[54px]">
-            ابدأ مسارك المهني في <span className="whitespace-nowrap text-primary-400">الصحة النفسية</span> بتدريب نظري وعملي مع أفضل دكاترة علم النفس وبشهادة معتمدة
-          </h1>
-          <p className="mx-auto mb-9 max-w-2xl text-base leading-relaxed text-white/80 sm:text-lg">
-            {content?.['home.heroSubtitle'] || 'انضم إلى آلاف المتدربين في المنصة الأكاديمية الأولى لتعليم الصحة النفسية. دبلومات معتمدة، وتدريب عملي مع نخبة الخبراء.'}
-          </p>
-          <div className="mx-auto mb-12 flex max-w-xl flex-col gap-3.5 sm:max-w-none sm:flex-row sm:justify-center">
-            <Link to="/enroll" className="inline-flex min-h-[56px] items-center justify-center gap-3 rounded-2xl bg-primary-600 px-10 text-lg font-extrabold text-white shadow-xl shadow-primary-600/40 transition hover:-translate-y-0.5 hover:bg-primary-500">
-              <span>احجز مكانك الآن</span>
-              <ArrowRight size={22} className="rtl:rotate-180" />
-            </Link>
-            <Link to="/courses" className="inline-flex min-h-[56px] items-center justify-center rounded-2xl border-[1.5px] border-white/40 px-9 text-lg font-bold text-white transition hover:bg-white/10">
-              <span>{content?.['home.hero.primaryCta'] || 'ابدأ رحلتك الآن'}</span>
-            </Link>
-          </div>
-          <div className="mx-auto grid max-w-3xl grid-cols-2 gap-3 sm:grid-cols-4">
-            {[
-              { value: content['home.stats.programs']  || '50+', label: content['home.stats.programsLabel']  || 'برنامج تدريبي' },
-              { value: content['home.stats.experts']   || '30+', label: content['home.stats.expertsLabel']   || 'خبير ومدرب' },
-              { value: content['home.stats.graduates'] || '12K', label: content['home.stats.graduatesLabel'] || 'خريج' },
-              { value: content['home.stats.rating']    || '4.9', label: 'تقييم الطلاب' },
-            ].map((stat, i) => (
-              <div key={i} className="rounded-2xl border border-white/15 bg-white/[0.07] px-3 py-4">
-                <div className="text-3xl font-black leading-none tabular-nums sm:text-4xl">{stat.value}</div>
-                <div className="mt-1.5 text-sm text-white/70">{stat.label}</div>
-              </div>
-            ))}
-          </div>
+
+          {/* Three graduates in their gowns, holding the institute's certificate */}
+          <figure className="relative mx-auto w-full max-w-[520px] pb-4 lg:mx-0">
+            <div aria-hidden="true" className="absolute inset-0 translate-x-3 translate-y-4 rotate-[2.2deg] rounded-[30px] bg-secondary-500" />
+            <div aria-hidden="true" className="absolute inset-0 -translate-x-2 translate-y-2 -rotate-[1.8deg] rounded-[30px] bg-primary-600" />
+            <img
+              src={`${import.meta.env.BASE_URL}brand/hero-graduates.jpg`}
+              alt="ثلاثة من خريجي معهد الدراسات النفسية بلبس التخرج ويحملون شهادة المعهد"
+              loading="lazy"
+              className="relative z-10 aspect-[1000/638] w-full rounded-[28px] object-cover shadow-[0_40px_80px_-24px_rgba(0,0,0,.7)]"
+            />
+            <figcaption className="absolute -bottom-1 right-5 z-20 inline-flex items-center gap-2 rounded-full bg-[#1b0a12] px-4 py-2 text-sm font-extrabold text-amber-300 shadow-lg ring-1 ring-white/20">
+              <Award size={16} /> شهادة معتمدة من المعهد
+            </figcaption>
+          </figure>
         </div>
       </section>
 
