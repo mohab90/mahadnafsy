@@ -74,7 +74,7 @@ router.post('/api/auth/whatsapp/verify-otp', otpLimiter, async (req, res) => {
     // be a way around it.
     const activeLock = await getSharingLock(tenantId, user.id);
     if (activeLock.locked) {
-      await logLoginAttempt({ userId: user.id, email: user.email, req, status: 'failed', failureReason: 'sharing_locked' });
+      await logLoginAttempt({ userId: user.id, email: user.email, phone, req, status: 'failed', failureReason: 'sharing_locked' });
       return res.status(423).json({
         error: `الحساب موقوف مؤقتاً (${activeLock.reason || 'مشاركة الحساب'}). حاول لاحقاً أو تواصل مع الدعم.`,
         code: 'ACCOUNT_SHARING_LOCKED',
@@ -113,10 +113,11 @@ router.post('/api/auth/whatsapp/verify-otp', otpLimiter, async (req, res) => {
       [user.id, tenantId]
     ).catch(() => {});
     setAuthCookie(res, token);
-    await logLoginAttempt({ userId: user.id, email: user.email, req, status: 'success' });
+    await logLoginAttempt({ userId: user.id, email: user.email, phone, req, status: 'success' });
 
     const sharing = await enforceSharingLimit({ tenantId, userId: user.id, email: user.email });
     if (sharing.locked) {
+      await logLoginAttempt({ userId: user.id, email: user.email, phone, req, status: 'failed', failureReason: 'sharing_limit_locked' });
       return res.status(423).json({
         error: `تم إيقاف الحساب مؤقتاً بعد تسجيل الدخول من ${sharing.distinctIps} شبكات مختلفة. تواصل مع الدعم.`,
         code: 'ACCOUNT_SHARING_LOCKED',
@@ -147,7 +148,7 @@ router.post('/api/auth/whatsapp/verify-otp', otpLimiter, async (req, res) => {
   } catch (e) {
     if (e.statusCode) {
       const failureReason = e.code === 'DEVICE_LIMIT' ? 'device_limit' : 'wa_otp_invalid';
-      await logLoginAttempt({ email: null, req, status: 'failed', failureReason }).catch(() => {});
+      await logLoginAttempt({ phone: req.body?.phone, req, status: 'failed', failureReason }).catch(() => {});
       return res.status(e.statusCode).json({ error: e.message, ...(e.code ? { code: e.code } : {}) });
     }
     logger.error('[wa-otp] verify failed', e.message);

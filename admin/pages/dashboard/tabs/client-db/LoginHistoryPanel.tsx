@@ -3,24 +3,12 @@ import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { LogIn, RefreshCw, Search, ShieldAlert, Globe, Monitor, Download } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 import { downloadCsv } from '../../../../../shared/csv';
-import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
+import { type LoginEvent, STATE_META, deviceLabel, fmtTime } from './loginUi';
 
-// Sign-in log only. Deliberately separate from the client/lead database above:
-// a login row is an authentication event, not a CRM record — it has no owner, no
-// pipeline stage and no deal value, and mixing it into the client list made both
-// harder to read. Backed by /api/admin/security/* which was already tenant-scoped
-// and admin-gated but had no UI.
-
-interface LoginRow {
-  id: number;
-  user_id: number | null;
-  email: string | null;
-  ip: string | null;
-  user_agent: string | null;
-  status: 'success' | 'failed' | '2fa_pending' | '2fa_success';
-  failure_reason: string | null;
-  created_at: string;
-}
+// Every sign-in attempt, whoever it was for — the second mode of the sign-in page
+// (LoginAccountsPanel). A login row is an authentication event, not a CRM record,
+// so it stays out of the client list; but it shows who it was: the account's name
+// and number, or the number or e-mail that was tried when no account matched.
 
 interface SecurityStats {
   total?: number;
@@ -28,45 +16,13 @@ interface SecurityStats {
   unique_ips?: number;
 }
 
-const STATUS_META: Record<LoginRow['status'], { label: string; cls: string }> = {
-  success: { label: 'نجح', cls: 'bg-green-100 text-green-700' },
-  failed: { label: 'فشل', cls: 'bg-red-100 text-red-700' },
-  '2fa_pending': { label: 'بانتظار التحقق', cls: 'bg-amber-100 text-amber-700' },
-  '2fa_success': { label: 'تحقق ثنائي', cls: 'bg-blue-100 text-blue-700' },
-};
-
-/** Turn a raw user-agent into something a non-technical admin can scan. */
-function deviceLabel(ua: string | null): string {
-  const s = String(ua || '');
-  if (!s) return '—';
-  const os = /Windows/i.test(s) ? 'Windows'
-    : /Android/i.test(s) ? 'Android'
-      : /iPhone|iPad|iOS/i.test(s) ? 'iOS'
-        : /Mac OS X|Macintosh/i.test(s) ? 'macOS'
-          : /Linux/i.test(s) ? 'Linux' : 'غير معروف';
-  const browser = /Edg\//i.test(s) ? 'Edge'
-    : /OPR\//i.test(s) ? 'Opera'
-      : /Chrome\//i.test(s) ? 'Chrome'
-        : /Firefox\//i.test(s) ? 'Firefox'
-          : /Safari\//i.test(s) ? 'Safari' : '';
-  return browser ? `${os} · ${browser}` : os;
-}
-
-const fmtTime = (value: string) => {
-  try {
-    return new Date(value).toLocaleString('ar-EG-u-nu-latn', {
-      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
-      timeZone: CAIRO_TIME_ZONE});
-  } catch { return String(value || ''); }
-};
-
 export function LoginHistoryPanel() {
-  const [rows, setRows] = useState<LoginRow[]>([]);
+  const [rows, setRows] = useState<LoginEvent[]>([]);
   const [stats, setStats] = useState<SecurityStats>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [email, setEmail] = useState('');
-  const [status, setStatus] = useState<'' | LoginRow['status']>('');
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState<'' | LoginEvent['status']>('');
   const [limit, setLimit] = useState(100);
 
   const load = useCallback(async () => {
@@ -74,7 +30,7 @@ export function LoginHistoryPanel() {
     setError('');
     try {
       const qs = new URLSearchParams({ limit: String(limit) });
-      if (email.trim()) qs.set('email', email.trim());
+      if (search.trim()) qs.set('q', search.trim());
       if (status) qs.set('status', status);
       const [logRes, statRes] = await Promise.all([
         fetch(`/api/admin/security/login-history?${qs.toString()}`, { credentials: 'include', headers: adminAuthHeaders() }),
@@ -89,15 +45,15 @@ export function LoginHistoryPanel() {
     } finally {
       setLoading(false);
     }
-  }, [email, status, limit]);
+  }, [search, status, limit]);
 
   useEffect(() => { void load(); }, [load]);
 
   const exportCsv = () => {
-    const header = ['التاريخ', 'البريد', 'IP', 'الجهاز', 'الحالة', 'سبب الفشل'];
+    const header = ['التاريخ', 'العميل', 'الرقم', 'البريد', 'IP', 'الجهاز', 'الحالة', 'السبب'];
     const body = rows.map(r => [
-      fmtTime(r.created_at), r.email || '', r.ip || '', deviceLabel(r.user_agent),
-      STATUS_META[r.status]?.label || r.status, r.failure_reason || '',
+      fmtTime(r.created_at), r.name || '', r.phone || '', r.email || '', r.ip || '', deviceLabel(r.user_agent),
+      STATE_META[r.state]?.label || r.status, r.reason_label || '',
     ]);
     downloadCsv(`login-history-${cairoDateOnly()}`, [header, ...body]);
   };
@@ -107,7 +63,7 @@ export function LoginHistoryPanel() {
   const suspiciousIps = useMemo(() => {
     const counts = new Map<string, number>();
     for (const r of rows) {
-      if (r.status !== 'failed' || !r.ip) continue;
+      if (r.state !== 'failed' || !r.ip) continue;
       counts.set(r.ip, (counts.get(r.ip) || 0) + 1);
     }
     return [...counts.entries()].filter(([, n]) => n >= 3).sort((a, b) => b[1] - a[1]).slice(0, 5);
@@ -147,8 +103,8 @@ export function LoginHistoryPanel() {
         <div className="relative flex-1 min-w-[180px]">
           <Search size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <input
-            type="text" placeholder="بحث بالبريد الإلكتروني…" value={email}
-            onChange={e => setEmail(e.target.value)}
+            type="text" placeholder="بحث بالاسم أو الرقم أو البريد أو الـIP…" value={search}
+            onChange={e => setSearch(e.target.value)}
             className="w-full border border-gray-200 rounded-lg pr-8 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300"
           />
         </div>
@@ -159,8 +115,8 @@ export function LoginHistoryPanel() {
           <option value="">كل الحالات</option>
           <option value="success">ناجحة</option>
           <option value="failed">فاشلة</option>
-          <option value="2fa_pending">بانتظار التحقق</option>
-          <option value="2fa_success">تحقق ثنائي</option>
+          <option value="2fa_pending">خطوة كلمة المرور (تحقق ثنائي)</option>
+          <option value="2fa_success">اكتمل التحقق الثنائي</option>
         </select>
         <select
           value={limit} onChange={e => setLimit(Number(e.target.value))}
@@ -193,7 +149,8 @@ export function LoginHistoryPanel() {
             <thead className="bg-gray-50">
               <tr className="text-gray-500 text-right border-b border-gray-100">
                 <th className="py-2.5 px-3 font-semibold">التاريخ والوقت</th>
-                <th className="py-2.5 px-3 font-semibold">البريد الإلكتروني</th>
+                <th className="py-2.5 px-3 font-semibold">العميل</th>
+                <th className="py-2.5 px-3 font-semibold">الرقم</th>
                 <th className="py-2.5 px-3 font-semibold">IP</th>
                 <th className="py-2.5 px-3 font-semibold">الجهاز</th>
                 <th className="py-2.5 px-3 font-semibold">الحالة</th>
@@ -202,24 +159,28 @@ export function LoginHistoryPanel() {
             </thead>
             <tbody>
               {loading && rows.length === 0 ? (
-                <tr><td colSpan={6} className="py-10 text-center text-gray-400 text-sm">جارٍ التحميل…</td></tr>
+                <tr><td colSpan={7} className="py-10 text-center text-gray-400 text-sm">جارٍ التحميل…</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={6} className="py-10 text-center text-gray-400 text-sm">
+                <tr><td colSpan={7} className="py-10 text-center text-gray-400 text-sm">
                   <Monitor size={30} className="mx-auto mb-2 opacity-40" />
                   لا توجد تسجيلات دخول مطابقة
                 </td></tr>
               ) : rows.map(r => {
-                const meta = STATUS_META[r.status] || { label: r.status, cls: 'bg-gray-100 text-gray-600' };
+                const meta = STATE_META[r.state] || { label: r.status, cls: 'bg-gray-100 text-gray-600' };
                 return (
                   <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50/60 transition">
                     <td className="py-2.5 px-3 text-xs text-gray-600 whitespace-nowrap">{fmtTime(r.created_at)}</td>
-                    <td className="py-2.5 px-3 font-medium text-gray-800">{r.email || '—'}</td>
-                    <td className="py-2.5 px-3 text-xs font-mono text-gray-600">{r.ip || '—'}</td>
+                    <td className="py-2.5 px-3">
+                      <p className="font-medium text-gray-800">{r.name || (r.user_id ? '—' : 'حساب مش معروف')}</p>
+                      <p className="text-[11px] text-gray-400">{r.email || '—'}{r.client_code ? ` · ${r.client_code}` : ''}</p>
+                    </td>
+                    <td className="py-2.5 px-3 text-xs font-mono text-gray-600" dir="ltr">{r.phone || '—'}</td>
+                    <td className="py-2.5 px-3 text-xs font-mono text-gray-600" dir="ltr">{r.ip || '—'}</td>
                     <td className="py-2.5 px-3 text-xs text-gray-600" title={r.user_agent || ''}>{deviceLabel(r.user_agent)}</td>
                     <td className="py-2.5 px-3">
                       <span className={`text-xs px-2 py-0.5 rounded-lg font-medium ${meta.cls}`}>{meta.label}</span>
                     </td>
-                    <td className="py-2.5 px-3 text-xs text-gray-500">{r.failure_reason || '—'}</td>
+                    <td className="py-2.5 px-3 text-xs text-gray-500">{r.reason_label || '—'}</td>
                   </tr>
                 );
               })}

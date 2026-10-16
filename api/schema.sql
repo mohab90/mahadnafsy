@@ -3554,6 +3554,7 @@ CREATE TABLE `login_history` (
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `user_id` varchar(100) DEFAULT NULL,
   `email` varchar(255) DEFAULT NULL,
+  `phone` varchar(32) DEFAULT NULL,
   `ip` varchar(64) DEFAULT NULL,
   `user_agent` varchar(512) DEFAULT NULL,
   `status` enum('success','failed','2fa_pending','2fa_success') DEFAULT 'success',
@@ -3565,7 +3566,8 @@ CREATE TABLE `login_history` (
   KEY `idx_status` (`status`),
   KEY `idx_login_history_tenant_created` (`tenant_id`,`created_at`),
   KEY `idx_login_history_tenant_status` (`tenant_id`,`status`,`created_at`),
-  KEY `idx_login_history_email_created_ip` (`email`,`created_at`,`ip`)
+  KEY `idx_login_history_email_created_ip` (`email`,`created_at`,`ip`),
+  KEY `idx_login_history_user` (`tenant_id`,`user_id`,`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

@@ -59,6 +59,8 @@ router.post('/api/auth/login', loginLimiter, requireDb,
   const email = identifierIsEmail ? rawIdentifier.toLowerCase().trim() : null;
   const phoneIdentity = identifierIsEmail ? null : normalizeWhatsAppNumber(rawIdentifier);
   const logIdentifier = identifierIsEmail ? email : phoneIdentity;
+  // What the log records of the attempt: an e-mail in `email`, a number in `phone` (it used to be filed under e-mail).
+  const tried = identifierIsEmail ? { email: logIdentifier } : { phone: logIdentifier };
   let conn;
   try {
     conn = await pool.getConnection();
@@ -127,7 +129,7 @@ router.post('/api/auth/login', loginLimiter, requireDb,
         const hasEmail = Boolean(String(subExists.email || '').trim());
         logger.info('[login] subscriber exists but no users record — directing to %s:',
           hasEmail ? 'reset' : 'whatsapp code', logIdentifier);
-        await logLoginAttempt({ email: logIdentifier, req, status: 'failed', failureReason: 'password_not_set' });
+        await logLoginAttempt({ ...tried, req, status: 'failed', failureReason: 'password_not_set' });
         return res.status(401).json({
           error: hasEmail
             ? '\u0644\u0645 \u064a\u062a\u0645 \u062a\u0639\u064a\u064a\u0646 \u0643\u0644\u0645\u0629 \u0645\u0631\u0648\u0631 \u0644\u0647\u0630\u0627 \u0627\u0644\u062d\u0633\u0627\u0628 \u0628\u0639\u062f. \u064a\u0631\u062c\u0649 \u0627\u0644\u0636\u063a\u0637 \u0639\u0644\u0649 "\u0646\u0633\u064a\u062a \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631" \u0644\u062a\u0639\u064a\u064a\u0646 \u0643\u0644\u0645\u0629 \u0645\u0631\u0648\u0631 \u062c\u062f\u064a\u062f\u0629.'
@@ -137,7 +139,7 @@ router.post('/api/auth/login', loginLimiter, requireDb,
         });
       }
       logger.info('[login] no active account for:', logIdentifier);
-      await logLoginAttempt({ email: logIdentifier, req, status: 'failed', failureReason: 'account_not_found' });
+      await logLoginAttempt({ ...tried, req, status: 'failed', failureReason: 'account_not_found' });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     const user = rows[0];
@@ -227,6 +229,8 @@ router.post('/api/auth/login', loginLimiter, requireDb,
       tenantId: req.tenantId || 'tenant-default', userId: user.id, email: user.email,
     });
     if (sharing.locked) {
+      // The row above says «نجح» — the password was right — but this sign-in is refused: the log says so too.
+      await logLoginAttempt({ userId: user.id, email: user.email, req, status: 'failed', failureReason: 'sharing_limit_locked' });
       return res.status(423).json({
         error: `تم إيقاف الحساب مؤقتاً بعد تسجيل الدخول من ${sharing.distinctIps} شبكات مختلفة. تواصل مع الدعم.`,
         code: 'ACCOUNT_SHARING_LOCKED',
@@ -236,7 +240,7 @@ router.post('/api/auth/login', loginLimiter, requireDb,
   } catch (err) {
     // A third device (lib/customerDevices.js): refused with the reason.
     if (err?.code === 'DEVICE_LIMIT' && !res.headersSent) {
-      await logLoginAttempt({ email: String(rawIdentifier || '').toLowerCase().trim(), req, status: 'failed', failureReason: 'device_limit' })
+      await logLoginAttempt({ ...(isEmail(rawIdentifier) ? { email: String(rawIdentifier).toLowerCase().trim() } : { phone: rawIdentifier }), req, status: 'failed', failureReason: 'device_limit' })
         .catch(() => {});
       return res.status(403).json({ error: err.message, code: err.code });
     }
