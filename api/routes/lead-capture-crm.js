@@ -1,5 +1,5 @@
 'use strict';
-const { amountDueNow, installmentTotal } = require('../lib/enrollmentPricing');
+const { amountDueNow, installmentTotal, enrollmentRates } = require('../lib/enrollmentPricing');
 
 const express = require('express');
 const router = express.Router();
@@ -403,6 +403,9 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
 
     // Product prices are authoritative on the server. Never trust a price sent
     // by the browser, even on the manually reviewed transfer path.
+    // The cash and instalment discounts marketing set (التسويق ← الخصومات), read when the order is made —
+    // the amount, and the plan an instalment pays towards, are fixed on it from here on.
+    const rates = enrollmentRates(await getTenantSetting('content', { tenantId, fallback: {} }).catch(() => ({})));
     let expectedAmount = 0;
     let basePrice = 0;
     let expectedCurrency = clientContext.currency;
@@ -416,7 +419,7 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       );
       if (!course) return res.status(404).json({ error: 'Course not found' });
       basePrice = Number(course[`price_${expectedCurrency.toLowerCase()}`]) || 0;
-      expectedAmount = basePrice > 0 ? amountDueNow(basePrice, normalizedPayMode) : 0;
+      expectedAmount = basePrice > 0 ? amountDueNow(basePrice, normalizedPayMode, rates) : 0;
       canonicalTitle = course.title_ar || course.title || canonicalTitle;
     } else if (normalizedType === 'bundle') {
       const [[bundle]] = await conn.query(
@@ -425,7 +428,7 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       );
       if (!bundle) return res.status(404).json({ error: 'Bundle not found' });
       basePrice = Number(bundle[`price_${expectedCurrency.toLowerCase()}`]) || 0;
-      expectedAmount = basePrice > 0 ? amountDueNow(basePrice, normalizedPayMode) : 0;
+      expectedAmount = basePrice > 0 ? amountDueNow(basePrice, normalizedPayMode, rates) : 0;
       canonicalTitle = bundle.title || canonicalTitle;
     } else if (normalizedType === 'certificate') {
       const [[certificate]] = await conn.query(
@@ -638,7 +641,7 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       // An instalment's amount is its first payment; the plan is what it pays
       // towards (lib/orderPlan.js reads it when the order is confirmed).
       payMode: normalizedPayMode,
-      planTotal: normalizedPayMode === 'installment' && basePrice ? installmentTotal(basePrice) : null,
+      planTotal: normalizedPayMode === 'installment' && basePrice ? installmentTotal(basePrice, rates) : null,
       // The visitor's ad click, for the Purchase sent when Paymob's callback
       // marks the order paid — that request comes from Paymob, not from them.
       adContext: metaCapi.adContextFromRequest(req),
@@ -695,7 +698,7 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       ok: true, orderId, amount: expectedAmount, currency: expectedCurrency,
       payMode: normalizedPayMode,
       basePrice: basePrice || undefined,
-      planTotal: normalizedPayMode === 'installment' && basePrice ? installmentTotal(basePrice) : undefined,
+      planTotal: normalizedPayMode === 'installment' && basePrice ? installmentTotal(basePrice, rates) : undefined,
     });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});

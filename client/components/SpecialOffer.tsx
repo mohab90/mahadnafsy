@@ -21,7 +21,7 @@ const THEMES: Record<PopupTheme, { bg: string; glow: string; accent: string; ink
   emerald: { bg: 'linear-gradient(135deg,#064e3b 0%,#059669 55%,#14b8a6 100%)', glow: '#6ee7b7', accent: '#fde047', ink: '#064e3b' },
 };
 
-const SEEN_KEY = 'mahad.popup.seen';
+const SEEN_KEY = 'mahad.offer.seen';
 const PATHS_WITHOUT_POPUP = ['/checkout', '/payment', '/auth', '/pay', '/certificate'];
 
 const readSeen = (frequency: string) => {
@@ -36,7 +36,7 @@ const writeSeen = (frequency: string, version: string) => {
   } catch { /* private window: it simply shows again next time */ }
 };
 
-const SitePopup: React.FC = () => {
+const SpecialOffer: React.FC = () => {
   const { content, courses, currency, isAdmin, isStaff } = useSiteData();
   const { pathname, search } = useLocation();
   const [open, setOpen] = useState(false);
@@ -106,9 +106,9 @@ const SitePopup: React.FC = () => {
       aria-label={content['popup.title'] || 'عرض خاص'} dir="rtl">
       <button type="button" aria-label="إغلاق" onClick={close}
         className="absolute inset-0 bg-black/60 backdrop-blur-sm cursor-default" tabIndex={-1} />
-      <div className="relative w-full max-w-md rounded-[28px] overflow-hidden shadow-[0_30px_80px_-10px_rgba(0,0,0,.6)] text-white animate-[popupIn_.45s_cubic-bezier(.2,.9,.3,1.2)]"
+      <div className="relative w-full max-w-md rounded-[28px] overflow-hidden shadow-[0_30px_80px_-10px_rgba(0,0,0,.6)] text-white animate-[offerRise_.45s_cubic-bezier(.2,.9,.3,1.2)]"
         style={{ background: theme.bg }}>
-        <style>{'@keyframes popupIn{from{opacity:0;transform:translateY(24px) scale(.92)}to{opacity:1;transform:none}}@keyframes popupShine{0%{transform:translateX(-120%) skewX(-20deg)}100%{transform:translateX(320%) skewX(-20deg)}}'}</style>
+        <style>{'@keyframes offerRise{from{opacity:0;transform:translateY(24px) scale(.92)}to{opacity:1;transform:none}}@keyframes offerShine{0%{transform:translateX(-120%) skewX(-20deg)}100%{transform:translateX(320%) skewX(-20deg)}}'}</style>
         <div className="absolute -top-20 -left-20 w-64 h-64 rounded-full opacity-30 blur-3xl" style={{ background: theme.glow }} />
         <div className="absolute -bottom-24 -right-16 w-72 h-72 rounded-full opacity-25 blur-3xl" style={{ background: theme.accent }} />
         <button type="button" onClick={close} aria-label="إغلاق العرض" autoFocus
@@ -124,7 +124,7 @@ const SitePopup: React.FC = () => {
           {pct > 0 && (
             <div className="relative mx-auto mb-5 w-36 h-36 rounded-full flex flex-col items-center justify-center overflow-hidden"
               style={{ background: 'radial-gradient(circle at 30% 25%,#fff 0%,' + theme.accent + ' 45%,' + theme.accent + 'cc 100%)', color: theme.ink, boxShadow: '0 0 0 6px rgba(255,255,255,.18),0 0 50px ' + theme.accent + '88' }}>
-              <span className="absolute inset-y-0 w-10 bg-white/50" style={{ animation: 'popupShine 2.8s ease-in-out infinite' }} />
+              <span className="absolute inset-y-0 w-10 bg-white/50" style={{ animation: 'offerShine 2.8s ease-in-out infinite' }} />
               <span className="relative text-5xl font-black leading-none tabular-nums">{pct}%</span>
               <span className="relative text-sm font-extrabold mt-1">خصم</span>
             </div>
@@ -182,4 +182,4 @@ const SitePopup: React.FC = () => {
   );
 };
 
-export default SitePopup;
+export default SpecialOffer;

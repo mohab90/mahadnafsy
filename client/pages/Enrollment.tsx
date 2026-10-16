@@ -9,7 +9,7 @@ import { instituteWhatsApp } from '../lib/whatsappLink';
 // The cash / instalment rates live in shared/enrollmentPricing so the server
 // applies exactly the same ones. They used to be defined here only, which is
 // how a customer could be shown a discount the server had never heard of.
-import { CASH_DISCOUNT, INSTALL_DISCOUNT, INSTALL_FIRST_PCT, amountDueNow, installmentTotal } from '../../shared/enrollmentPricing';
+import { amountDueNow, enrollmentRates, installmentTotal, percentLabel } from '../../shared/enrollmentPricing';
 import { useSeo } from '../lib/useSeo';
 import { trackLead } from '../lib/tracking';
 
@@ -28,6 +28,13 @@ const authAr: Record<string, string> = {
 const Enrollment: React.FC = () => {
   useSeo({ title: 'التسجيل في الكورس | معهد الدراسات النفسية', path: '/enroll' });
   const { courses, bundles, currency, content, authUser } = useSiteData();
+  // The two discounts marketing sets (التسويق ← الخصومات); the server prices with the same ones.
+  const rates = enrollmentRates(content);
+  const cashPct = percentLabel(rates.cash);
+  const installPct = percentLabel(rates.install);
+  const firstPct = percentLabel(rates.first);
+  const cashText = rates.cash > 0 ? `خصم ${cashPct}%` : 'بدون خصم';
+  const installText = rates.install > 0 ? `خصم ${installPct}%` : 'بدون خصم';
   const onlinePayEnabled = usePaymentAvailability();
 
   // Available courses with a price
@@ -100,8 +107,8 @@ const Enrollment: React.FC = () => {
   // apply to one side and not the other — this page had re-derived the same two
   // formulas from the raw constants, which is a second copy of the rule under a
   // different name and the exact thing that module was extracted to prevent.
-  const getInstallPrice = (item: SelItem) => installmentTotal(getBasePrice(item));
-  const getCharged = (item: SelItem) => amountDueNow(getBasePrice(item), payType);
+  const getInstallPrice = (item: SelItem) => installmentTotal(getBasePrice(item), rates);
+  const getCharged = (item: SelItem) => amountDueNow(getBasePrice(item), payType, rates);
 
   // Deduplicated chosen items (ignore empty slots)
   const chosenCourses = useMemo(
@@ -118,7 +125,7 @@ const Enrollment: React.FC = () => {
   const totalOriginal    = chosenCourses.reduce((s, c) => s + getBasePrice(c), 0);
   const totalFinal       = chosenCourses.reduce((s, c) => s + getCharged(c), 0);
   const totalInstallTotal = payType === 'installment' ? chosenCourses.reduce((s, c) => s + getInstallPrice(c), 0) : 0;
-  const totalSaving      = payType === 'cash' ? totalOriginal - totalFinal : Math.round(totalOriginal * INSTALL_DISCOUNT);
+  const totalSaving      = payType === 'cash' ? totalOriginal - totalFinal : Math.round(totalOriginal * rates.install);
   const pricesAvailable = chosenCourses.every(item => getBasePrice(item) > 0);
 
   // Keys already chosen (to prevent duplicates in dropdowns)
@@ -202,7 +209,7 @@ const Enrollment: React.FC = () => {
       // Build WhatsApp message with order details
       const firstItem = chosenCourses[0];
       const itemTitles = chosenCourses.map(c => c.title).join('، ');
-      const waMsg = `مرحباً، أريد الاشتراك في:\n${itemTitles}\n\nالإجمالي: ${totalFinal.toLocaleString('ar-EG-u-nu-latn')} ${currencySymbol} (${payType === 'cash' ? 'كاش - خصم 15%' : 'أول قسط 25%'})\nالاسم: ${fullName.trim()}\nالهاتف: ${phone.trim()}\nالبريد: ${email.trim()}`;
+      const waMsg = `مرحباً، أريد الاشتراك في:\n${itemTitles}\n\nالإجمالي: ${totalFinal.toLocaleString('ar-EG-u-nu-latn')} ${currencySymbol} (${payType === 'cash' ? `كاش - ${cashText}` : `أول قسط ${firstPct}%`})\nالاسم: ${fullName.trim()}\nالهاتف: ${phone.trim()}\nالبريد: ${email.trim()}`;
       setRegisteredWhatsapp(encodeURIComponent(waMsg));
       void uid; void firstItem;
       // Straight to payment for what they chose. The confirmation screen is
@@ -248,7 +255,7 @@ const Enrollment: React.FC = () => {
           </div>
           <h1 className="text-4xl md:text-5xl font-extrabold mb-3 leading-tight">اشتراك مباشر في الكورسات</h1>
           <p className="text-white/60 text-base max-w-lg mx-auto">
-            اختار الكورسات أو المسارات وادفع بطريقتك — <strong className="text-green-400">كاش بخصم 15% ووصول كامل</strong> أو <strong className="text-amber-400">قسط بخصم 7% وأول دفعة 25% فقط</strong>.
+            اختار الكورسات أو المسارات وادفع بطريقتك — <strong className="text-green-400">كاش {rates.cash > 0 ? `بخصم ${cashPct}%` : ''} ووصول كامل</strong> أو <strong className="text-amber-400">قسط {rates.install > 0 ? `بخصم ${installPct}% و` : 'بـ'}أول دفعة {firstPct}% فقط</strong>.
             سيُنشأ حسابك تلقائياً لحظة الدفع.
           </p>
         </div>
@@ -270,7 +277,7 @@ const Enrollment: React.FC = () => {
               }`}
             >
               <Banknote size={17} />
-              كاش — خصم <span className="text-green-600 ml-0.5">15%</span>
+              كاش — {rates.cash > 0 ? <>خصم <span className="text-green-600 ml-0.5">{cashPct}%</span></> : <span className="text-green-600">بدون خصم</span>}
               {payType === 'cash' && <CheckCircle size={14} className="text-green-500" />}
             </button>
             <button
@@ -283,7 +290,7 @@ const Enrollment: React.FC = () => {
               }`}
             >
               <CreditCard size={17} />
-              قسط — <span className="text-amber-600 ml-0.5">خصم 7% + أول قسط 25%</span>
+              قسط — <span className="text-amber-600 ml-0.5">{rates.install > 0 ? `خصم ${installPct}% + ` : ''}أول قسط {firstPct}%</span>
               {payType === 'installment' && <CheckCircle size={14} className="text-amber-500" />}
             </button>
           </div>
@@ -419,11 +426,11 @@ const Enrollment: React.FC = () => {
                             <span className="line-through font-bold">{base.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}</span>
                           </div>
                           <div className="flex justify-between text-xs text-green-700">
-                            <span>بعد خصم 7% <span className="text-[10px] bg-green-100 px-1 rounded">سعر الأقساط</span></span>
+                            <span>{rates.install > 0 ? `بعد خصم ${installPct}%` : 'سعر الأقساط'} <span className="text-[10px] bg-green-100 px-1 rounded">سعر الأقساط</span></span>
                             <span className="font-bold">{installTotal.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}</span>
                           </div>
                           <div className="flex justify-between text-xs text-amber-700">
-                            <span>الدفعة الأولى <span className="text-[10px] bg-amber-100 px-1 rounded">25%</span></span>
+                            <span>الدفعة الأولى <span className="text-[10px] bg-amber-100 px-1 rounded">{firstPct}%</span></span>
                             <span className="font-extrabold">{first.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}</span>
                           </div>
                           <div className="flex justify-between text-xs text-gray-400">
@@ -439,7 +446,7 @@ const Enrollment: React.FC = () => {
                 {/* Cash / installment saving */}
                 {totalSaving > 0 && (
                   <div className={`flex justify-between text-xs mt-1 pt-1 border-t ${payType === 'cash' ? 'text-green-700 border-green-200' : 'text-green-700 border-gray-200'}`}>
-                    <span>{payType === 'cash' ? 'إجمالي الوفورات' : 'وفورات خصم 7%'}</span>
+                    <span>{payType === 'cash' ? 'إجمالي الوفورات' : `وفورات خصم ${installPct}%`}</span>
                     <span className="font-bold">-{totalSaving.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}</span>
                   </div>
                 )}
@@ -447,8 +454,8 @@ const Enrollment: React.FC = () => {
                 {/* Installment warning */}
                 {payType === 'installment' && (
                   <div className="bg-amber-100 border border-amber-300 rounded-lg px-3 py-2 mt-3 text-xs text-amber-800">
-                    <strong>⚠️ تنبيه:</strong> سعر الأقساط بعد خصم 7% = <strong>{totalInstallTotal.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}</strong>.
-                    المبلغ المطلوب الآن هو <strong>القسط الأول (25%)</strong> فقط. تفاصيل الأقساط المتبقية ستُرسل إليك بعد التسجيل.
+                    <strong>⚠️ تنبيه:</strong> سعر الأقساط {rates.install > 0 ? `بعد خصم ${installPct}%` : ''} = <strong>{totalInstallTotal.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}</strong>.
+                    المبلغ المطلوب الآن هو <strong>القسط الأول ({firstPct}%)</strong> فقط. تفاصيل الأقساط المتبقية ستُرسل إليك بعد التسجيل.
                   </div>
                 )}
 
@@ -463,7 +470,7 @@ const Enrollment: React.FC = () => {
                 </div>
                 {payType === 'installment' && (
                   <p className="text-[10px] text-gray-400 text-left mt-1">
-                    السعر قبل الخصم: {totalOriginal.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol} · بعد خصم 7%: {totalInstallTotal.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}
+                    السعر قبل الخصم: {totalOriginal.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol} · بعد خصم {installPct}%: {totalInstallTotal.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}
                   </p>
                 )}
               </div>
@@ -621,7 +628,7 @@ const Enrollment: React.FC = () => {
           <div className="flex items-center gap-1.5"><Shield size={12} className="text-blue-400" /> حساب آمن محمي</div>
           <div className="flex items-center gap-1.5"><Award size={12} className="text-purple-400" /> حساب تلقائي لحظة التسجيل</div>
           <div className="flex items-center gap-1.5"><CheckCircle size={12} className="text-green-400" /> كاش وصول كامل</div>
-          <div className="flex items-center gap-1.5"><Banknote size={12} className="text-amber-400" /> قسط — خصم 7% + أول دفعة 25%</div>
+          <div className="flex items-center gap-1.5"><Banknote size={12} className="text-amber-400" /> قسط — {rates.install > 0 ? `خصم ${installPct}% + ` : ''}أول دفعة {firstPct}%</div>
         </div>
       </div>
     </div>

@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Clock, Eye, Megaphone, Save, Tag, Timer } from 'lucide-react';
+import { Banknote, Clock, Eye, Megaphone, Save, Tag, Timer } from 'lucide-react';
 import { useSiteData } from '../../../../context/SiteDataContext';
+import {
+  CASH_DISCOUNT, INSTALL_DISCOUNT, INSTALL_FIRST_PCT, MAX_DISCOUNT_PERCENT, enrollmentRates, percentLabel,
+} from '../../../../../shared/enrollmentPricing';
 import {
   OFFER_DEFAULT_HOURS, offerEnabled, offerHours, offerIsOver, offerRemainingMs, popupIsLive, POPUP_THEMES,
   type PopupFrequency, type PopupTheme,
@@ -70,6 +73,32 @@ export const SiteOffersPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
     const id = setInterval(() => { if (!document.hidden) setNow(Date.now()); }, 30000);
     return () => clearInterval(id);
   }, []);
+
+  // ── the enrolment page's two discounts ──────────────────────────────────
+  // «محتاجين اقدر اعدل الخصم الكاش وخصم القسط»: what /enroll and checkout show, and what the server charges.
+  const currentRates = enrollmentRates(content);
+  const [cashPct, setCashPct] = useState(String(percentLabel(currentRates.cash)));
+  const [installPct, setInstallPct] = useState(String(percentLabel(currentRates.install)));
+  const ratesSig = `${content['enroll.cashDiscountPercent'] ?? ''}|${content['enroll.installDiscountPercent'] ?? ''}`;
+  useEffect(() => {
+    const fresh = enrollmentRates(content);
+    setCashPct(String(percentLabel(fresh.cash)));
+    setInstallPct(String(percentLabel(fresh.install)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ratesSig]);
+  const saveRates = async () => {
+    const cash = Number(cashPct);
+    const install = Number(installPct);
+    for (const [label, value] of [['خصم الكاش', cash], ['خصم القسط', install]] as const) {
+      if (!Number.isFinite(value) || value < 0 || value > MAX_DISCOUNT_PERCENT) return notify('error', `${label} لازم يكون من 0 لـ ${MAX_DISCOUNT_PERCENT}%.`);
+    }
+    const ok = await setContentValues({ 'enroll.cashDiscountPercent': String(cash), 'enroll.installDiscountPercent': String(install) });
+    notify(ok ? 'success' : 'error', ok ? 'اتحفظ خصم الكاش والقسط — بيظهر في صفحة التسجيل والدفع وبيتحاسب بيه.' : 'تعذر الحفظ.');
+  };
+  const exampleBase = 10000;
+  const exampleCash = Math.round(exampleBase * (1 - (Number(cashPct) || 0) / 100));
+  const exampleInstallTotal = Math.round(exampleBase * (1 - (Number(installPct) || 0) / 100));
+  const exampleFirst = Math.round(exampleInstallTotal * INSTALL_FIRST_PCT);
 
   // ── the timed offer ──────────────────────────────────────────────────────
   const [offerOn, setOfferOn] = useState(offerEnabled(content));
@@ -216,6 +245,28 @@ export const SiteOffersPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
 
   return (
     <div className="space-y-5" dir="rtl">
+      {/* ── the enrolment page's discounts ── */}
+      <section className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 space-y-4">
+        <h3 className="font-bold text-emerald-900 flex items-center gap-2"><Banknote size={16} /> خصم صفحة التسجيل والدفع (كاش / قسط)</h3>
+        <p className="text-xs text-emerald-800 leading-5">
+          النسبتين دول اللي بتظهر للعميل في صفحة «سجّل الآن» وفي الدفع، وهما نفسهم اللي السيرفر بيحاسب بيهم. التغيير بيسري على الطلبات الجديدة
+          (اللي اتعملت قبل كده بتفضل بسعرها). الافتراضي: كاش {percentLabel(CASH_DISCOUNT)}% — قسط {percentLabel(INSTALL_DISCOUNT)}% وأول دفعة {percentLabel(INSTALL_FIRST_PCT)}%.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Label text="خصم الدفع كاش (كامل) %" hint={`من 0 لـ ${MAX_DISCOUNT_PERCENT} — 0 = بدون خصم`}>
+            <input type="number" min="0" max={MAX_DISCOUNT_PERCENT} step="0.5" value={cashPct} onChange={e => setCashPct(e.target.value)} className={inputCls} />
+          </Label>
+          <Label text="خصم التقسيط %" hint={`من 0 لـ ${MAX_DISCOUNT_PERCENT} — بيتخصم من إجمالي الكورس قبل التقسيط`}>
+            <input type="number" min="0" max={MAX_DISCOUNT_PERCENT} step="0.5" value={installPct} onChange={e => setInstallPct(e.target.value)} className={inputCls} />
+          </Label>
+        </div>
+        <p className="text-xs text-emerald-900 bg-white border border-emerald-200 rounded-lg px-3 py-2">
+          مثال على كورس بـ {exampleBase.toLocaleString('ar-EG-u-nu-latn')}: كاش يدفع <strong>{exampleCash.toLocaleString('ar-EG-u-nu-latn')}</strong> —
+          قسط إجماليه <strong>{exampleInstallTotal.toLocaleString('ar-EG-u-nu-latn')}</strong> وأول دفعة <strong>{exampleFirst.toLocaleString('ar-EG-u-nu-latn')}</strong>.
+        </p>
+        <button type="button" onClick={() => void saveRates()} className="flex items-center gap-2 px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold"><Save size={14} /> حفظ الخصمين</button>
+      </section>
+
       {/* ── the timed offer ── */}
       <section className="bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">

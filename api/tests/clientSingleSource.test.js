@@ -69,8 +69,8 @@ test('every WhatsApp link on the site resolves the number through one helper', (
 
 test('the enrolment page charges what shared/enrollmentPricing says', () => {
   const page = codeOnly(read('client/pages/Enrollment.tsx'));
-  assert.match(page, /amountDueNow\(getBasePrice\(item\), payType\)/);
-  assert.match(page, /installmentTotal\(getBasePrice\(item\)\)/);
+  assert.match(page, /amountDueNow\(getBasePrice\(item\), payType, rates\)/);
+  assert.match(page, /installmentTotal\(getBasePrice\(item\), rates\)/);
   // The two formulas it used to re-derive from the raw constants. That module
   // exists precisely so a rate change cannot reach one side and not the other,
   // and a private second copy defeats it.

@@ -35,3 +35,44 @@ test('an unknown mode is treated as paying in full, never as the list price', ()
   // guards the helper against a caller that forgets to.
   assert.equal(amountDueNow(4000, 'anything-else'), amountDueNow(4000, 'cash'));
 });
+
+// «في صفحة الانرول محتاجين اقدر اعدل خصم الكاش وخصم القسط من قسم التسويق».
+// The two rates are content keys; the page and the server charge read the same
+// ones, and a blank / out-of-range value never lowers the price by accident.
+test('marketing can set the cash and instalment rates, and the charge follows', () => {
+  const { enrollmentRates } = require('../lib/enrollmentPricing');
+  const rates = enrollmentRates({ 'enroll.cashDiscountPercent': '20', 'enroll.installDiscountPercent': '10' });
+  assert.equal(rates.cash, 0.2);
+  assert.equal(rates.install, 0.1);
+  assert.equal(amountDueNow(10000, 'cash', rates), 8000);
+  assert.equal(installmentTotal(10000, rates), 9000);
+  assert.equal(amountDueNow(10000, 'installment', rates), 2250);
+});
+
+test('a blank or out-of-range rate keeps the default', () => {
+  const { enrollmentRates, MAX_DISCOUNT_PERCENT } = require('../lib/enrollmentPricing');
+  assert.equal(MAX_DISCOUNT_PERCENT, 60);
+  for (const bad of ['', 'abc', '-5', '61', '100']) {
+    const rates = enrollmentRates({ 'enroll.cashDiscountPercent': bad, 'enroll.installDiscountPercent': bad });
+    assert.equal(rates.cash, CASH_DISCOUNT, `cash ${bad}`);
+    assert.equal(rates.install, INSTALL_DISCOUNT, `install ${bad}`);
+  }
+  assert.equal(enrollmentRates({ 'enroll.cashDiscountPercent': '0' }).cash, 0);
+  assert.equal(enrollmentRates(undefined).cash, CASH_DISCOUNT);
+});
+
+test('the page, the checkout, the server and the admin all use the same rates', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const read = rel => fs.readFileSync(path.resolve(__dirname, '..', '..', rel), 'utf8');
+  assert.match(read('api/routes/lead-capture-crm.js'), /enrollmentRates\(await getTenantSetting\('content'/);
+  assert.match(read('api/routes/lead-capture-crm.js'), /amountDueNow\(basePrice, normalizedPayMode, rates\)/);
+  for (const page of ['client/pages/Enrollment.tsx', 'client/pages/Checkout.tsx']) {
+    const src = read(page);
+    assert.match(src, /enrollmentRates\(content\)/, `${page} reads the rates from the content`);
+    assert.doesNotMatch(src, /\b(15|7)\s*%/, `${page} has no hard-coded rate in its text`);
+  }
+  const admin = read('admin/pages/dashboard/tabs/marketing-hub-sections/SiteOffersPanel.tsx');
+  assert.match(admin, /enroll\.cashDiscountPercent/);
+  assert.match(admin, /enroll\.installDiscountPercent/);
+});
