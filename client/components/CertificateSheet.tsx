@@ -27,6 +27,8 @@ interface CertificateSheetProps {
   certNumber: string;
   issuedAt: string;
   qrUrl: string;
+  /** Below the fold (the course page's picture of it): fetch the template when it is near. */
+  lazy?: boolean;
 }
 
 /** «completed 60 training hours in 2026»: the hours of «60 Hours», the year of the issue date. */
@@ -38,7 +40,7 @@ const trainingLine = (duration: string, issuedAt: string) => {
   return hours ? `completed ${hours[1]} training hours${year ? ` in ${year}` : ''}` : `completed ${text} of training${year ? ` in ${year}` : ''}`;
 };
 
-const CertificateSheet: React.FC<CertificateSheetProps> = ({ certName, certCourse, duration, trainer, certNumber, issuedAt, qrUrl }) => {
+const CertificateSheet: React.FC<CertificateSheetProps> = ({ certName, certCourse, duration, trainer, certNumber, issuedAt, qrUrl, lazy }) => {
   const courseSize = fitSize(certCourse, 480, 29, 15);
   const line = trainingLine(duration, issuedAt);
   return (
@@ -46,10 +48,12 @@ const CertificateSheet: React.FC<CertificateSheetProps> = ({ certName, certCours
     id="psy-cert-printable"
     style={{ width: CERT_W, height: CERT_H, background: '#fff', position: 'relative', overflow: 'hidden', fontFamily: SERIF }}
   >
-    <img src={CERT_TEMPLATE} alt="" style={{ position: 'absolute', left: 0, top: 0, width: CERT_W, height: CERT_H, display: 'block' }} />
+    <img src={CERT_TEMPLATE} alt="" loading={lazy ? 'lazy' : undefined} decoding={lazy ? 'async' : undefined} style={{ position: 'absolute', left: 0, top: 0, width: CERT_W, height: CERT_H, display: 'block' }} />
 
+    {/* The name: centred between «IS PROUDLY PRESENTED TO» (ends at 393) and the dotted line (458).
+        At 373 it sat on «PRESENTED TO»; api/lib/certificateHtml.js uses the same box. */}
     <div style={{
-      position: 'absolute', left: 57, width: 486, top: 373, height: 50,
+      position: 'absolute', left: 57, width: 486, top: 398, height: 50,
       display: 'flex', alignItems: 'flex-end', justifyContent: 'center', textAlign: 'center',
       fontSize: fitSize(certName, 470, 30, 14), fontWeight: 900, color: '#000', letterSpacing: 1,
       lineHeight: 1.2, paddingBottom: 3, whiteSpace: 'nowrap',

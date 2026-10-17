@@ -39,8 +39,6 @@ const NOT_A_DIALOG = {
   // header row — right for a form, wrong for a photo or a certificate. All of
   // these close on Escape through shared/ui/useEscapeKey instead.
   'client/components/CourseCertificate.tsx': 'the certificate, full-bleed',
-  'client/pages/CourseDetails.tsx': 'a certificate preview',
-  'client/pages/BundleDetails.tsx': 'a certificate preview',
   'client/pages/Home.tsx': 'a video lightbox',
   // The home page as it was before the redesign, kept as a design the panel
   // can switch back to (site.design = classic); its lightbox is unchanged.
@@ -86,7 +84,7 @@ function componentFiles() {
   return out.map(f => path.relative(ROOT, f).split(path.sep).join('/'));
 }
 
-test('only the twelve named surfaces build their own overlay', () => {
+test('only the named surfaces build their own overlay', () => {
   const files = componentFiles();
   // Denominator: a walk that stopped matching would report a clean bill.
   assert.ok(files.length > 300, `expected both component trees, saw ${files.length}`);

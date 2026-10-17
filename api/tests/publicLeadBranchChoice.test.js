@@ -65,7 +65,8 @@ test('the registrations route honours the choice and falls back to geo', () => {
 });
 
 test('the public forms really do offer a physical branch', () => {
-  for (const rel of ['client/components/home/OfferSpotlight.tsx', 'client/pages/BundleDetails.tsx']) {
+  // The path page's form is the course page's (LeadFormSection), so that is where its branches are.
+  for (const rel of ['client/components/home/OfferSpotlight.tsx', 'client/pages/course-details-sections/LeadFormSection.tsx']) {
     const page = codeOnly(read(rel));
     assert.match(page, /value="daqqi"/, `${rel} no longer offers a physical branch`);
     assert.match(page, /value="tagamoa"/);

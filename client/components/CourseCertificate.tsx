@@ -18,6 +18,8 @@ interface CourseCertificateProps {
   certNumber: string;       // = clientCode (serial number)
   issuedAt: string;
   onClose: () => void;
+  /** A sample on a course or path page: there is no certificate to print yet. */
+  sample?: boolean;
 }
 
 // The certificate carries the name and the course in English only («مينفعش بالعربي
@@ -30,7 +32,7 @@ const englishOnly = (value?: string | null) => {
 
 const CourseCertificate: React.FC<CourseCertificateProps> = ({
   studentName, studentNameEn, courseName, courseNameEn, instructorName, hours, edits,
-  certNumber, issuedAt, onClose,
+  certNumber, issuedAt, onClose, sample,
 }) => {
   // The certificate itself, full-bleed on a dark ground. A viewer, not a
   // dialog — but Escape closes it now, which it did not.
@@ -38,7 +40,8 @@ const CourseCertificate: React.FC<CourseCertificateProps> = ({
   // Never the Arabic name or title: a certificate lacking either is not shown. The desk's
   // own change on this certificate comes first, as it does on the server's page.
   const certName  = (englishOnly(edits?.nameEn) || englishOnly(studentNameEn)).toUpperCase();
-  const certCourse = englishOnly(edits?.courseEn) || englishOnly(courseNameEn) || englishOnly(courseName);
+  // A sample for a course with no English title yet still shows the sheet, with a stand-in title.
+  const certCourse = englishOnly(edits?.courseEn) || englishOnly(courseNameEn) || englishOnly(courseName) || (sample ? 'Course Title' : '');
   const typedDuration = String(edits?.duration ?? '').replace(/\s+/g, ' ').trim();
   const duration = typedDuration
     ? (/[\u0600-\u06FF]/.test(typedDuration) ? '' : typedDuration)
@@ -46,10 +49,12 @@ const CourseCertificate: React.FC<CourseCertificateProps> = ({
   const trainer = String(edits?.trainer ?? '').replace(/\s+/g, ' ').trim() || String(instructorName || '').trim();
   const incomplete = !certName || !certCourse;
 
-  // The sheet is a fixed 600 px canvas: on a narrower screen it is scaled down to fit.
-  const [fit, setFit] = useState(() => Math.min(1, (window.innerWidth - 24) / CERT_W));
+  // The sheet is a fixed 600 px canvas: on a narrower or shorter screen it is scaled down to
+  // fit whole, toolbar included.
+  const measure = () => Math.max(0.3, Math.min(1, (window.innerWidth - 24) / CERT_W, (window.innerHeight - 92) / CERT_H));
+  const [fit, setFit] = useState(measure);
   useEffect(() => {
-    const onResize = () => setFit(Math.min(1, (window.innerWidth - 24) / CERT_W));
+    const onResize = () => setFit(measure());
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
@@ -78,7 +83,7 @@ const CourseCertificate: React.FC<CourseCertificateProps> = ({
 
   if (incomplete) {
     return (
-      <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-3" onClick={onClose}>
+      <div className="fixed inset-0 z-[90] bg-black/80 flex items-center justify-center p-3" onClick={onClose}>
         <div className="w-full max-w-md rounded-2xl bg-white p-6 text-center" dir="rtl" onClick={event => event.stopPropagation()}>
           <h3 className="mb-2 text-lg font-extrabold text-amber-700">شهادتك لسه محتاجة بيانات</h3>
           <p className="text-sm leading-relaxed text-gray-600">
@@ -93,26 +98,32 @@ const CourseCertificate: React.FC<CourseCertificateProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-3 overflow-y-auto"
+      className="fixed inset-0 z-[90] bg-black/80 flex items-center justify-center p-3 overflow-y-auto"
       onClick={onClose}
     >
       <div className="my-auto" style={{ width: CERT_W * fit }} onClick={e => e.stopPropagation()}>
 
         {/* Toolbar */}
-        <div className="flex justify-between items-center mb-3">
-          <button
-            onClick={handlePrint}
-            className="flex items-center gap-2 bg-white text-gray-800 font-bold px-5 py-2.5 rounded-xl hover:bg-gray-100 transition text-sm shadow"
-          >
-            <Printer size={16} /> Print / Save PDF
-          </button>
-          <button onClick={onClose} className="text-white/70 hover:text-white transition p-1">
-            <X size={26} />
+        <div className="flex justify-between items-center gap-3 mb-3">
+          {sample ? (
+            <p dir="rtl" className="text-sm font-bold text-white">نموذج الشهادة — اسمك بالإنجليزي بيتكتب مكان «STUDENT NAME»</p>
+          ) : (
+            <button
+              onClick={handlePrint}
+              className="flex items-center gap-2 bg-white text-gray-800 font-bold px-5 py-2.5 rounded-xl hover:bg-gray-100 transition text-sm shadow"
+            >
+              <Printer size={16} /> Print / Save PDF
+            </button>
+          )}
+          <button onClick={onClose} aria-label="إغلاق" className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20">
+            <X size={24} />
           </button>
         </div>
 
-        {/* The sheet is a fixed 600 × 849 canvas (A4 portrait); the wrapper only scales it to the screen. */}
-        <div style={{ width: CERT_W * fit, height: CERT_H * fit }}>
+        {/* The sheet is a fixed 600 × 849 canvas (A4 portrait); the wrapper only scales it to the screen.
+            Left to right: on the RTL site a 600 px sheet in a narrower box overflowed to the left, and
+            the scale (from the top left) then pushed most of it off a phone's screen. */}
+        <div dir="ltr" style={{ width: CERT_W * fit, height: CERT_H * fit }}>
           <div style={{ width: CERT_W, height: CERT_H, transform: `scale(${fit})`, transformOrigin: 'top left' }}>
             <CertificateSheet
               certName={certName}
