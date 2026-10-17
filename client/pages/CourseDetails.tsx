@@ -4,15 +4,15 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { LeadItem } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
 import { mysqlClient, mysqlCatalog } from '../lib/mysqlapi';
-import { CourseHeroSection } from './course-details-sections/CourseHeroSection';
+import { CourseBookingCard, CourseHeroSection, scrollToLeadForm } from './course-details-sections/CourseHeroSection';
 import { PromoVideoSection } from './course-details-sections/PromoVideoSection';
-import { PainPointsAndAboutSection } from './course-details-sections/PainPointsAndAboutSection';
+import { AboutSection, PainPointsSection } from './course-details-sections/PainPointsAndAboutSection';
 import { LecturePlayerSection } from './course-details-sections/LecturePlayerSection';
 import { GallerySection } from './course-details-sections/GallerySection';
-import { ReviewsFaqSection } from './course-details-sections/ReviewsFaqSection';
+import { FaqSection } from './course-details-sections/ReviewsFaqSection';
 import { LeadFormSection } from './course-details-sections/LeadFormSection';
 import { CourseRatingSection } from './course-details-sections/CourseRatingSection';
-import { RelatedCoursesSidebar } from './course-details-sections/RelatedCoursesSidebar';
+import { CertificateShowcase, FinalCtaSection, InstructorSection, ProofSection, RelatedCoursesSection, SectionNav, ValueStackSection } from './course-details-sections/CourseSalesSections';
 import { CourseUpsellModal } from './course-details-sections/CourseUpsellModal';
 import { MobileStickyCta } from './course-details-sections/MobileStickyCta';
 import CourseCertificate from '../components/CourseCertificate';
@@ -20,7 +20,7 @@ import { isExpiryActive } from '../../shared/cairoDate';
 import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 
 const CourseDetails: React.FC = () => {
-                const { courses, subscribers, discounts, addPublicLead, getCourseLectures, getCourseChapters, content: globalContent, testimonials, currency, authUser, bundles, mySubscriberId, mySubscriberLoaded, refreshMySubscriber } = useSiteData();
+                const { courses, subscribers, discounts, addPublicLead, getCourseLectures, getCourseChapters, content: globalContent, testimonials, therapists, currency, authUser, bundles, mySubscriberId, mySubscriberLoaded, refreshMySubscriber } = useSiteData();
   const { id, slug } = useParams<{ id: string; slug: string }>();
   const navigate = useNavigate();
     // Support both /course/:id and /c/:slug routes
@@ -38,27 +38,30 @@ const CourseDetails: React.FC = () => {
     setFallbackTried(false);
     const lookup = id ?? slug;
     if (!lookup) { setFallbackTried(true); return; }
-    // Fetch the full course (incl. lectures/chapters) directly when it's not in
-    // the cached catalog, OR when it is but its lectures aren't loaded globally.
-    // The latter is the common anonymous-visitor case: the bulk lectures list is
-    // now login-gated, so the curriculum for a public course page comes from
-    // this on-demand fetch instead.
-    const ctxLecs = courseFromCtx ? getCourseLectures(courseFromCtx.id) : [];
-    if (courseFromCtx && ctxLecs.length > 0) { setApiFallbackCourse(null); setFallbackTried(true); return; }
+    // Always fetch the full course. The cached catalog is the light list — it
+    // carries no description and no promo video — so a course found there drew
+    // an empty «تفاصيل البرنامج» and «سيتوفر قريباً» over a video it has. The
+    // same call brings the curriculum for anonymous visitors, whose bulk
+    // lectures list is login-gated.
+    let cancelled = false;
     mysqlCatalog.getCourse(lookup).then(data => {
-      if (!data?.id) return;
-      if (!courseFromCtx) setApiFallbackCourse(data as unknown as typeof courses[0]);
+      if (cancelled || !data?.id) return;
+      setApiFallbackCourse(data as unknown as typeof courses[0]);
       setApiFallbackLectures(((data.lectures || []) as unknown as ReturnType<typeof getCourseLectures>));
       setApiFallbackChapters(((data.chapters || []) as unknown as ReturnType<typeof getCourseChapters>));
-    }).catch(() => {}).finally(() => setFallbackTried(true));
-    // getCourseLectures is deliberately not a dependency: SiteDataContext builds
-    // it fresh on every provider render, so listing it here would re-run this
-    // course fetch on each of them. It is only read to test whether the cached
-    // catalog already has the curriculum, which id/slug/courseFromCtx cover.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, slug, courseFromCtx]);
-  const course = courseFromCtx ?? apiFallbackCourse;
-  const [, setShowLeadForm] = useState(true);
+    }).catch(() => {}).finally(() => { if (!cancelled) setFallbackTried(true); });
+    return () => { cancelled = true; };
+  }, [id, slug]);
+  // The catalog's entry (prices in the visitor's currency, already loaded) with
+  // the full course laid over it once it arrives.
+  const lookupKey = id ?? slug;
+  const fullCourse = apiFallbackCourse && (courseFromCtx
+    ? apiFallbackCourse.id === courseFromCtx.id
+    : apiFallbackCourse.id === lookupKey || apiFallbackCourse.slug === lookupKey) ? apiFallbackCourse : null;
+  const course = useMemo(
+    () => (courseFromCtx && fullCourse ? { ...fullCourse, ...courseFromCtx, description: fullCourse.description || courseFromCtx.description, promoVideoUrl: fullCourse.promoVideoUrl || courseFromCtx.promoVideoUrl, galleryImages: fullCourse.galleryImages?.length ? fullCourse.galleryImages : courseFromCtx.galleryImages, courseModules: fullCourse.courseModules?.length ? fullCourse.courseModules : courseFromCtx.courseModules, certificateTemplateUrl: fullCourse.certificateTemplateUrl || courseFromCtx.certificateTemplateUrl } : (courseFromCtx ?? fullCourse)),
+    [courseFromCtx, fullCourse],
+  );
     const [selectedLectureId, setSelectedLectureId] = useState('');
     // Resolved playable URL — paid lectures no longer ship their URL publicly; fetched on demand.
     // Stored with its lecture, so the render that switches lectures never hands
@@ -79,7 +82,6 @@ const CourseDetails: React.FC = () => {
         const galleryImages = course?.galleryImages && course.galleryImages.length > 0
             ? course.galleryImages
             : [];
-        const certificateTemplateUrl = course ? (course.certificateTemplateUrl || content['courseDetails.gallery.certificateUrl'] || '') : '';
 
   const currentPrice = course?.price[currency] ?? 0;
   const oldPrice = course?.originalPrice[currency] ?? 0;
@@ -368,36 +370,53 @@ const CourseDetails: React.FC = () => {
     return <div className="bg-paper px-4 py-24 text-center text-lg font-bold text-muted-body">{globalContent['courseDetails.notFound'] || 'الكورس غير موجود'}</div>;
   }
 
+  const goEnroll = () => navigate(`/enroll?course=${encodeURIComponent(course.id)}`);
+
   return (
     <div className="bg-white pb-24 motion-safe:animate-fade-in lg:pb-0">
       <CourseHeroSection
         course={course}
         content={content}
-        currentPrice={currentPrice}
-        oldPrice={oldPrice}
-        discountedPrice={discountedPrice}
-        currencySymbol={currencySymbol}
-        applicableDiscount={applicableDiscount}
+        lectureCount={lectures.length}
+        promoVideoUrl={promoVideoUrl}
+        onPlayPromo={() => setShowPromoModal(true)}
         isSubscribed={isSubscribed}
-        onBuyNow={handleBuyNow}
-        onPreviewCertificate={() => setCertModalOpen(true)}
         rating={ratingData}
       />
+      <PromoVideoSection
+        promoVideoUrl={promoVideoUrl}
+        content={content}
+        showPromoModal={showPromoModal}
+        setShowPromoModal={setShowPromoModal}
+      />
 
-      {/* Main Content */}
-      <div className="container mx-auto px-4 py-12 sm:py-16">
-        <div className="grid grid-cols-1 gap-10 lg:grid-cols-3 xl:gap-12">
-            <div className="min-w-0 space-y-10 sm:space-y-12 lg:col-span-2">
+      <SectionNav showBook={!isSubscribed && currentPrice > 0} courseId={course.id} />
 
-                <PromoVideoSection
-                    thumbnail={course.thumbnail}
-                    promoVideoUrl={promoVideoUrl}
-                    content={content}
-                    showPromoModal={showPromoModal}
-                    setShowPromoModal={setShowPromoModal}
-                />
+      {/* The story on the right, the booking card on the left following it down
+          the page; on a phone the card comes straight after the first screen. */}
+      <div className="container mx-auto px-4 py-10 sm:py-14">
+        <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,1fr)_370px] xl:grid-cols-[minmax(0,1fr)_390px] xl:gap-14">
+            <aside className="lg:col-start-2 lg:row-start-1">
+                <div className="lg:sticky lg:top-[136px]">
+                    <CourseBookingCard
+                        course={course}
+                        content={content}
+                        currentPrice={currentPrice}
+                        oldPrice={oldPrice}
+                        discountedPrice={discountedPrice}
+                        currencySymbol={currencySymbol}
+                        applicableDiscount={applicableDiscount}
+                        isSubscribed={isSubscribed}
+                        onBuyNow={handleBuyNow}
+                        onPreviewCertificate={() => setCertModalOpen(true)}
+                    />
+                </div>
+            </aside>
 
-                <PainPointsAndAboutSection content={content} description={course.description} />
+            <div className="min-w-0 space-y-14 sm:space-y-20 lg:col-start-1 lg:row-start-1">
+                {accessMode !== 'full' && <PainPointsSection content={content} courseId={course.id} isSubscribed={isSubscribed} />}
+
+                <AboutSection content={content} description={course.description} modules={course.courseModules} />
 
                 <LecturePlayerSection
                     content={content}
@@ -418,57 +437,67 @@ const CourseDetails: React.FC = () => {
                     onLockedLectureClick={() => navigate(isEnrolled ? '/my-account?section=payments' : `/checkout?type=course&id=${course.id}`)}
                 />
 
-                <ReviewsFaqSection
-                    content={content}
-                    testimonials={testimonials}
-                    openFaq={openFaq}
-                    setOpenFaq={setOpenFaq}
-                />
+                <InstructorSection course={course} therapists={therapists} content={content} />
+
+                <CertificateShowcase course={course} content={content} onPreview={() => setCertModalOpen(true)} />
+
+                <ProofSection content={content} testimonials={testimonials} rating={ratingData} students={Number(course.students) || 0} />
 
                 <GallerySection
                     content={content}
                     globalContent={globalContent}
                     galleryImages={galleryImages}
-                    certificateTemplateUrl={certificateTemplateUrl}
                     galleryLightboxIdx={galleryLightboxIdx}
                     setGalleryLightboxIdx={setGalleryLightboxIdx}
                 />
 
-                <LeadFormSection
+                <ValueStackSection
+                    course={course}
                     content={content}
-                    leadName={leadName}
-                    setLeadName={setLeadName}
-                    leadPhone={leadPhone}
-                    setLeadPhone={setLeadPhone}
-                    leadBranch={leadBranch}
-                    setLeadBranch={setLeadBranch}
-                    leadNotice={leadNotice}
-                    onSubmit={handleLeadSubmit}
+                    lectureCount={lectures.length}
+                    currentPrice={currentPrice}
+                    oldPrice={oldPrice}
+                    discountedPrice={discountedPrice}
+                    currencySymbol={currencySymbol}
+                    isSubscribed={isSubscribed}
                 />
 
-                <CourseRatingSection
-                    ratingData={ratingData}
-                    isEnrolled={isEnrolled}
-                    hoverStar={hoverStar}
-                    setHoverStar={setHoverStar}
-                    ratingComment={ratingComment}
-                    setRatingComment={setRatingComment}
-                    ratingSubmitting={ratingSubmitting}
-                    ratingNotice={ratingNotice}
-                    onSubmitRating={handleSubmitRating}
-                />
+                <FaqSection content={content} openFaq={openFaq} setOpenFaq={setOpenFaq} />
 
+                {!isSubscribed && (
+                  <LeadFormSection
+                      content={content}
+                      leadName={leadName}
+                      setLeadName={setLeadName}
+                      leadPhone={leadPhone}
+                      setLeadPhone={setLeadPhone}
+                      leadBranch={leadBranch}
+                      setLeadBranch={setLeadBranch}
+                      leadNotice={leadNotice}
+                      onSubmit={handleLeadSubmit}
+                  />
+                )}
+
+                {/* The visitor already sees the average in «خريجينا بيتكلموا»; this is where a student rates. */}
+                {isEnrolled && (
+                  <CourseRatingSection
+                      ratingData={ratingData}
+                      isEnrolled={isEnrolled}
+                      hoverStar={hoverStar}
+                      setHoverStar={setHoverStar}
+                      ratingComment={ratingComment}
+                      setRatingComment={setRatingComment}
+                      ratingSubmitting={ratingSubmitting}
+                      ratingNotice={ratingNotice}
+                      onSubmitRating={handleSubmitRating}
+                  />
+                )}
             </div>
-
-            <RelatedCoursesSidebar
-                content={content}
-                courses={courses}
-                currentCourseId={course.id}
-                currency={currency}
-                currencySymbol={currencySymbol}
-            />
         </div>
       </div>
+
+      <FinalCtaSection course={course} content={content} isSubscribed={isSubscribed} />
+      <RelatedCoursesSection content={content} courses={courses} currentCourseId={course.id} currency={currency} />
 
       {showUpsell && (
         <CourseUpsellModal
@@ -486,32 +515,22 @@ const CourseDetails: React.FC = () => {
         discountedPrice={discountedPrice}
         currencySymbol={currencySymbol}
         isSubscribed={isSubscribed}
-        onBuyNow={handleBuyNow}
-        onRegisterClick={() => { setShowLeadForm(true); setTimeout(() => document.getElementById('lead-form')?.scrollIntoView({ behavior: 'smooth' }), 100); }}
+        onBuyNow={goEnroll}
+        onRegisterClick={scrollToLeadForm}
       />
 
       {certModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setCertModalOpen(false)}>
-          <div onClick={e => e.stopPropagation()} className="relative w-full max-w-4xl">
-            <button
-              onClick={() => setCertModalOpen(false)}
-              aria-label="إغلاق"
-              className="absolute -left-3 -top-3 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white text-xl leading-none text-ink shadow-xl transition hover:text-primary-700"
-            >
-              ×
-            </button>
-            <CourseCertificate
-              studentName={globalContent['courseDetails.cert.sampleName'] || 'اسم الطالب'}
-              studentNameEn={globalContent['courseDetails.cert.sampleNameEn'] || 'Student Name'}
-              courseName={course.title}
-              courseNameEn={course.titleEn}
-              instructorName={course.instructor || globalContent['courseDetails.cert.instructorName'] || 'معهد الدراسات النفسية'}
-              certNumber="SAMPLE-2025"
-              issuedAt={new Date().toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}
-              onClose={() => setCertModalOpen(false)}
-            />
-          </div>
-        </div>
+        <CourseCertificate
+          studentName={globalContent['courseDetails.cert.sampleName'] || 'اسم الطالب'}
+          studentNameEn={globalContent['courseDetails.cert.sampleNameEn'] || 'Student Name'}
+          courseName={course.title}
+          courseNameEn={course.titleEn}
+          instructorName={course.instructor || globalContent['courseDetails.cert.instructorName'] || 'معهد الدراسات النفسية'}
+          certNumber="SAMPLE-2025"
+          issuedAt={new Date().toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}
+          onClose={() => setCertModalOpen(false)}
+          sample
+        />
       )}
     </div>
   );

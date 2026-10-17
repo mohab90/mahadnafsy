@@ -58,7 +58,7 @@ function certificateHtml({ studentName, courseName, duration, trainer, serialNo,
   const line = trainingLine(duration, year);
   const lineSize = Math.max(11, Math.round(courseSize * 0.62));
   const lines = [
-    `<div style="position:absolute;left:57px;width:486px;top:373px;height:50px;display:flex;align-items:flex-end;justify-content:center;text-align:center;font-family:${SERIF};font-size:${nameSize}px;font-weight:900;color:#000;letter-spacing:1px;line-height:1.2;padding-bottom:3px;white-space:nowrap">${escapeHtml(studentName)}</div>`,
+    `<div style="position:absolute;left:57px;width:486px;top:398px;height:50px;display:flex;align-items:flex-end;justify-content:center;text-align:center;font-family:${SERIF};font-size:${nameSize}px;font-weight:900;color:#000;letter-spacing:1px;line-height:1.2;padding-bottom:3px;white-space:nowrap">${escapeHtml(studentName)}</div>`,
     `<div style="position:absolute;left:57px;width:486px;top:604px;height:54px;display:flex;align-items:center;justify-content:center;text-align:center;font-family:${SERIF};font-size:${courseSize}px;font-weight:900;color:#000;line-height:1.15;white-space:nowrap">${escapeHtml(courseName)}</div>`,
     line
       ? `<div style="position:absolute;left:57px;width:486px;top:658px;text-align:center;font-family:${SERIF};font-size:${lineSize}px;font-weight:900;color:#000;line-height:1.2;white-space:nowrap">${line}</div>`

@@ -548,28 +548,17 @@ const BundleDetails: React.FC = () => {
 
       {/* ──────────────── CERTIFICATE PREVIEW MODAL ──────────────── */}
       {certModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setCertModalOpen(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="relative w-full max-w-4xl">
-            <button
-              type="button"
-              aria-label="إغلاق"
-              onClick={() => setCertModalOpen(false)}
-              className="absolute -left-3 -top-3 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white text-muted-strong shadow-xl transition hover:text-primary-700"
-            >
-              <X size={18} />
-            </button>
-            <CourseCertificate
-              studentName={content['bundleDetails.cert.sampleName'] || 'اسم الطالب'}
-              studentNameEn={content['bundleDetails.cert.sampleNameEn'] || 'Student Name'}
-              courseName={bundle.title}
-              courseNameEn={bundle.titleEn}
-              instructorName={content['bundleDetails.cert.instructorName'] || 'معهد الدراسات النفسية'}
-              certNumber="SAMPLE-2025"
-              issuedAt={new Date().toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}
-              onClose={() => setCertModalOpen(false)}
-            />
-          </div>
-        </div>
+        <CourseCertificate
+          studentName={content['bundleDetails.cert.sampleName'] || 'اسم الطالب'}
+          studentNameEn={content['bundleDetails.cert.sampleNameEn'] || 'Student Name'}
+          courseName={bundle.title}
+          courseNameEn={bundle.titleEn}
+          instructorName={content['bundleDetails.cert.instructorName'] || 'معهد الدراسات النفسية'}
+          certNumber="SAMPLE-2025"
+          issuedAt={new Date().toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE })}
+          onClose={() => setCertModalOpen(false)}
+          sample
+        />
       )}
     </div>
   );

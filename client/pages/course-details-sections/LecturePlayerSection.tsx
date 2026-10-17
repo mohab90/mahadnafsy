@@ -74,10 +74,18 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
   );
 
   return (
-    <section className="rounded-[28px] border border-line bg-white p-4 sm:p-7">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-2xl font-black leading-tight text-ink sm:text-3xl">{content['courseDetails.player.title'] || 'تشغيل المحاضرات'}</h2>
-                                    <div className={`rounded-full px-3 py-1 text-xs font-extrabold ${subscriberLoading ? 'bg-paper text-muted-soft ring-1 ring-line' : accessMode === 'full' ? 'bg-green-50 text-green-700 ring-1 ring-green-200' : accessMode === 'limited' ? 'bg-primary-50 text-primary-700 ring-1 ring-primary-100' : 'bg-paper text-gold-deep ring-1 ring-line'}`}>
+    <section id="curriculum" className="scroll-mt-32 rounded-[28px] border border-line bg-white p-4 sm:p-7">
+        <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+            <div>
+                <span className="text-sm font-extrabold text-gold-deep">{accessMode === 'full' ? 'محاضراتك' : 'جرّب قبل ما تحجز'}</span>
+                <h2 className="mt-1 text-[26px] font-black leading-tight text-ink sm:text-[34px]">{content['courseDetails.player.title'] || (accessMode === 'full' ? 'محاضرات البرنامج' : 'المنهج — وشوف أول محاضرة مجاناً')}</h2>
+                {lecturesWithLock.length > 0 && (
+                  <p className="mt-1.5 text-sm font-bold text-muted">
+                    {lecturesWithLock.length} فيديو{chapters.length > 0 ? ` · ${chapters.length} ${chapters.length > 2 && chapters.length < 11 ? 'فصول' : 'فصل'}` : ''}
+                  </p>
+                )}
+            </div>
+                                    <div className={`rounded-full px-3 py-1 text-xs font-extrabold ${subscriberLoading ? 'bg-paper text-muted-soft ring-1 ring-line' : accessMode === 'full' ? 'bg-green-50 text-green-700 ring-1 ring-green-200' : accessMode === 'limited' ? 'bg-primary-50 text-primary-700 ring-1 ring-primary-100' : 'bg-green-50 text-green-700 ring-1 ring-green-200'}`}>
                                             {subscriberLoading
                                                 ? '⏳ جاري التحقق...'
                                                 : accessMode === 'full'
@@ -95,7 +103,7 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
         )}
 
         {lecturesWithLock.length > 0 && (
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_1fr]">
+            <div className="grid grid-cols-1 gap-4">
                 <div
                     className="relative aspect-video overflow-hidden rounded-[20px] bg-ink"
                     onContextMenu={(e) => e.preventDefault()}
@@ -169,19 +177,19 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
                             <div className="relative z-10">
                                 <Lock className="mx-auto mb-2 text-white/90" size={28} />
                                 <p className="font-black text-white">{content['courseDetails.player.lockedTitle'] || 'هذه المحاضرة مقفولة في المعاينة المجانية'}</p>
-                                <p className="mt-1 text-sm text-white/65">{content['courseDetails.player.lockedHint'] || 'للانتقال للمشاهدة الكاملة، قم بالترقية إلى Full.'}</p>
+                                <p className="mt-1 text-sm text-white/65">{content['courseDetails.player.lockedHint'] || 'احجز مكانك وافتح كل محاضرات البرنامج.'}</p>
                                 <button
                                   onClick={onLockedLectureClick}
                                   className="mt-4 inline-flex min-h-[46px] items-center rounded-2xl bg-gold-light px-5 text-sm font-black text-ink shadow-lg transition hover:bg-gold-pale"
                                 >
-                                  🔓 اشترك وافتح جميع المحاضرات
+                                  🔓 احجز وافتح كل المحاضرات
                                 </button>
                             </div>
                         </div>
                     )}
                 </div>
 
-                <div className="max-h-[420px] space-y-2 overflow-auto overscroll-contain pl-1">
+                <div className="max-h-[460px] space-y-2 overflow-auto overscroll-contain pl-1">
                     {chapters.length > 0 ? (() => {
                       const chaptersWithLectures = chapters.map((ch) => ({
                         chapter: ch,
@@ -200,7 +208,7 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
                               {chLectures.map((lecture) => {
                                 const idx = globalIdx++;
                                 return (
-                                  <div key={lecture.id} className="mb-1">{lectureRow(lecture, idx, 'Locked', 'Open')}</div>
+                                  <div key={lecture.id} className="mb-1">{lectureRow(lecture, idx, 'مقفولة', 'شاهد الآن')}</div>
                                 );
                               })}
                             </div>
@@ -208,13 +216,13 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
                           {uncategorized.map((lecture) => {
                             const idx = globalIdx++;
                             return (
-                              <React.Fragment key={lecture.id}>{lectureRow(lecture, idx, 'Locked', 'Open')}</React.Fragment>
+                              <React.Fragment key={lecture.id}>{lectureRow(lecture, idx, 'مقفولة', 'شاهد الآن')}</React.Fragment>
                             );
                           })}
                         </>
                       );
                     })() : lecturesWithLock.map((lecture, index) => (
-                        <React.Fragment key={lecture.id}>{lectureRow(lecture, index, 'مقفل', 'مفتوح')}</React.Fragment>
+                        <React.Fragment key={lecture.id}>{lectureRow(lecture, index, 'مقفولة', 'شاهد الآن')}</React.Fragment>
                     ))}
                 </div>
             </div>

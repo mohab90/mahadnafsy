@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, Send } from 'lucide-react';
+import { ArrowLeft, Check, Phone } from 'lucide-react';
 import { formatAmount, isDiscounted } from '../../../shared/priceFormat';
 
 interface MobileStickyCtaProps {
@@ -44,9 +44,9 @@ export const MobileStickyCta: React.FC<MobileStickyCtaProps> = ({
                <Check size={16} /> أنت مشترك
              </div>
            ) : currentPrice > 0 ? (
-             <button onClick={onBuyNow} className="flex min-h-[48px] min-w-0 flex-1 items-center justify-center gap-1 rounded-2xl bg-primary-700 px-3 text-[13px] font-black leading-tight sm:text-sm text-white shadow-[0_12px_24px_-12px_rgba(159,18,57,.8)] transition hover:bg-primary-800">
-               <Check size={16} className="flex-none" />
-               احجز الآن واستفد بخصم
+             <button onClick={onBuyNow} className="flex min-h-[50px] min-w-0 flex-1 items-center justify-center gap-1.5 rounded-2xl bg-primary-700 px-3 text-[15px] font-black leading-tight text-white shadow-[0_12px_24px_-12px_rgba(159,18,57,.8)] transition hover:bg-primary-800">
+               احجز مكانك الآن
+               <ArrowLeft size={16} className="flex-none" />
              </button>
            ) : (
              <div className="flex min-h-[48px] flex-1 items-center justify-center rounded-2xl bg-paper px-3 text-center text-xs font-bold text-gold-deep ring-1 ring-line">
@@ -57,7 +57,7 @@ export const MobileStickyCta: React.FC<MobileStickyCtaProps> = ({
              onClick={onRegisterClick}
              className="flex min-h-[48px] flex-none items-center justify-center gap-1 whitespace-nowrap rounded-2xl border-[1.5px] border-ink/15 bg-white px-3 text-[13px] font-extrabold text-ink transition hover:border-ink/40"
            >
-             <Send size={15} /> سجل بياناتك
+             <Phone size={15} /> كلّموني
            </button>
        </div>
     </div>
