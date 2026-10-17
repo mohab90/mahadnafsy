@@ -1,4 +1,5 @@
-import { test, expect, request } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { publicApi } from '../helpers/gate';
 
 /**
  * API contract / security-boundary suite. Runs WITHOUT credentials (CI-safe) so
@@ -13,7 +14,7 @@ const API = process.env.API_BASE_URL || 'http://127.0.0.1:3001';
 
 test.describe('Health', () => {
   test('liveness endpoint responds 200', async () => {
-    const ctx = await request.newContext({ ignoreHTTPSErrors: true });
+    const ctx = await publicApi();
     const r = await ctx.get(`${API}/api/health/live`);
     expect(r.status()).toBe(200);
     const body = await r.json();
@@ -39,7 +40,7 @@ test.describe('Auth boundary — protected endpoints reject anonymous access', (
 
   for (const [method, path] of PROTECTED) {
     test(`${method.toUpperCase()} ${path} is not reachable without a token`, async () => {
-      const ctx = await request.newContext({ ignoreHTTPSErrors: true });
+      const ctx = await publicApi();
       const r = await ctx[method](`${API}${path}`, { data: {} });
       expect(r.status(), `${method} ${path} must require auth`).not.toBeLessThan(400);
       expect([401, 403, 404, 429]).toContain(r.status());
@@ -50,14 +51,14 @@ test.describe('Auth boundary — protected endpoints reject anonymous access', (
 
 test.describe('Money endpoints never act without auth', () => {
   test('checkout-intent rejects anonymous calls (no anonymous lead/charge)', async () => {
-    const ctx = await request.newContext({ ignoreHTTPSErrors: true });
+    const ctx = await publicApi();
     const r = await ctx.post(`${API}/api/public/checkout-intent`, { data: { courseId: 'x' } });
     expect([401, 403, 400, 429]).toContain(r.status());
     await ctx.dispose();
   });
 
   test('payment-proof upload requires auth', async () => {
-    const ctx = await request.newContext({ ignoreHTTPSErrors: true });
+    const ctx = await publicApi();
     const r = await ctx.post(`${API}/api/me/payment-proof`, { data: {} });
     expect(r.status()).not.toBeLessThan(400);
     await ctx.dispose();

@@ -1,4 +1,5 @@
-import { test, expect, request } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { publicApi } from '../helpers/gate';
 
 /**
  * Client + payment flow. Defaults to the local UAT seed student account.
@@ -15,7 +16,7 @@ test.describe('Checkout surface', () => {
   });
 
   test('public order intent requires auth (no anonymous charge)', async () => {
-    const ctx = await request.newContext({ ignoreHTTPSErrors: true });
+    const ctx = await publicApi();
     const r = await ctx.post(`${API}/api/public/checkout-intent`, { data: { courseId: 'x' } });
     expect([401, 403, 400, 429]).toContain(r.status()); // never 200 without auth
     await ctx.dispose();

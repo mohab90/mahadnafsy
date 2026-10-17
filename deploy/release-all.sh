@@ -2,8 +2,15 @@
 # The whole release, one command, for the /var/www + systemd server
 # (deploy-release.sh is the half that runs ON the server).
 #
-#   MAHAD_HOST=<ip-or-host> MAHAD_KEY=~/.ssh/<your-key> bash deploy/release-all.sh
+#   bash deploy/release-all.sh
+#
+# The server and key come from api/.env (SSH_HOST, SSH_PRIVATE_KEY_FILE, SSH_USER) and the rest from
+# deploy/release.local.env (git-ignored; copy deploy/release.local.env.example) — nothing is typed.
+# MAHAD_HOST / MAHAD_KEY on the command line still win.
 #   add --prepare-only to stop after the archives are built (nothing is uploaded)
+#   add --resume-gate when staging already runs this commit's release and only the E2E gate
+#       (step 9) stopped it: skips the rebuild, upload and staging deploy and goes on from the
+#       gate — the server itself refuses production unless staging runs exactly this release
 #
 # What it does, in order, and stops at the first thing that is wrong:
 #   1. refuses a worktree that is not clean, a commit that is on no remote
@@ -48,15 +55,34 @@
 set -euo pipefail
 
 PREPARE_ONLY=0
+RESUME_GATE=0
 for arg in "$@"; do
   case "$arg" in
     --prepare-only) PREPARE_ONLY=1 ;;
+    --resume-gate) RESUME_GATE=1 ;;
     *) echo "unknown option: $arg" >&2; exit 64 ;;
   esac
 done
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+
+# Settings that belong to this machine, read once instead of typed on every release: the staging
+# password for the E2E, a GitHub token, the server. deploy/release.local.env is git-ignored (see
+# deploy/release.local.env.example); ~/.mahad-release.env is the same thing kept outside the repo.
+for settings in "$ROOT/deploy/release.local.env" "${MAHAD_RELEASE_ENV:-$HOME/.mahad-release.env}"; do
+  if [[ -f "$settings" ]]; then
+    set -a; . "$settings"; set +a
+    echo "settings read from $settings"
+  fi
+done
+# The server and the key are already named in api/.env (the tunnel uses them), so they need no typing.
+api_env() { grep -m1 "^$1=" api/.env 2>/dev/null | cut -d= -f2- | tr -d '\r"' || true; }
+if [[ "$PREPARE_ONLY" -eq 0 ]]; then
+  : "${MAHAD_HOST:=$(api_env SSH_HOST)}"
+  : "${MAHAD_KEY:=$(api_env SSH_PRIVATE_KEY_FILE)}"
+  : "${MAHAD_USER:=$(api_env SSH_USER)}"
+fi
 
 if [[ "$PREPARE_ONLY" -eq 0 ]]; then
   : "${MAHAD_HOST:?set MAHAD_HOST to the server address}"
@@ -109,6 +135,7 @@ refuse() {
 
 # The staging E2E gate (step 9) and its one way round.
 SKIP_E2E="${MAHAD_SKIP_E2E:-}"
+E2E_URL="${MAHAD_E2E_STAGING_URL:-https://staging.mahadnafsy.com}"
 E2E_SPECS=(tests/public-smoke.spec.ts tests/payment-flow.spec.ts)
 e2e_installed() { [[ -d e2e/node_modules/@playwright/test ]]; }
 skip_e2e_warning() {
@@ -196,9 +223,34 @@ if [[ "$PREPARE_ONLY" -eq 0 ]]; then
     echo "  MAHAD_SKIP_E2E='<why>' — production then goes live without the gate." >&2
     exit 80
   fi
+
+  # Staging sits behind an nginx password, and the E2E answered 401 to everything when it was not
+  # given (17 Oct 2026) — found out at step 9, with staging already switched. Asked here, first.
+  if [[ -z "$SKIP_E2E" ]]; then
+    gate_rc=0
+    node tools/check-staging-gate.mjs "$E2E_URL" || gate_rc=$?
+    if [[ "$gate_rc" -ne 0 ]]; then
+      echo "Nothing was built, backed up or uploaded." >&2
+      echo "(Only if the gate truly cannot be passed: MAHAD_SKIP_E2E='<why>' — production then goes live without it.)" >&2
+      exit "$gate_rc"
+    fi
+  fi
+
+  if [[ "$RESUME_GATE" -eq 1 ]]; then
+    # Staging must already run this commit's release: deploy-release.sh refuses production otherwise,
+    # but that is after the E2E has run for nothing, so it is asked here. Only the APP_RELEASE line is
+    # compared — nothing else of the server's .env is read or shown.
+    if ssh "${SSH_OPTS[@]}" "$TARGET" "grep -qx 'APP_RELEASE=mahad-$SHORT' '${MAHAD_STAGING_API_ENV:-/var/www/mahad-staging/api/.env}'"; then
+      echo "staging runs mahad-$SHORT — resuming at the E2E gate"
+    else
+      echo "REFUSED: staging does not run mahad-$SHORT, so there is nothing to resume — run this without --resume-gate." >&2
+      exit 78
+    fi
+  fi
 fi
 
 # ── 2. dependencies ──────────────────────────────────────────────────────────
+if [[ "$RESUME_GATE" -eq 0 ]]; then
 say "2/10 dependencies"
 # The API's are for the release gate's lint and unit tests only — the server
 # installs its own. --ignore-scripts because its native extras (bcrypt, ssh2's
@@ -232,6 +284,9 @@ until npm run release:prepare; do
   echo "retrying (attempt $attempt of 3)…"
   sleep 5
 done
+else
+  say "2-4/10 skipped (--resume-gate): the archives built for this commit are used"
+fi
 
 # ── 5. they are this commit's ────────────────────────────────────────────────
 say "5/10 checking the archives"
@@ -251,7 +306,6 @@ if [[ "$PREPARE_ONLY" -eq 1 ]]; then
 fi
 
 # ── 6. backup ────────────────────────────────────────────────────────────────
-say "6/10 database backup on the server"
 # Exit 3 is mahad-db-backup.sh saying the dump on the server is good but its
 # off-site copy is missing or failed. The deploy only needs the first to be
 # safe, so it goes on — loudly, because the second means the business has one
@@ -271,6 +325,8 @@ backup() { # <what a failure leaves unchanged>
     *) echo "the backup failed — $1" >&2; exit 75 ;;
   esac
 }
+if [[ "$RESUME_GATE" -eq 0 ]]; then
+say "6/10 database backup on the server"
 backup "nothing was changed on the server"
 
 # ── 7. upload and verify ─────────────────────────────────────────────────────
@@ -291,6 +347,9 @@ echo "checksums verified on the server"
 say "8/10 deploying to STAGING only (migrations before the switch; rolls back by itself)"
 ssh "${SSH_OPTS[@]}" "$TARGET" "MAHAD_DEPLOY_TARGET=staging bash '$STAGING/deploy-release.sh' '$RELEASE'" \
   || { echo "the staging deploy stopped on the server (see above) — production untouched" >&2; exit 76; }
+else
+  say "6-8/10 skipped (--resume-gate): staging already runs $RELEASE"
+fi
 
 # ── 9. the gate: staging end-to-end ──────────────────────────────────────────
 # The specs a visitor's path depends on — the public pages, the API, signing
@@ -300,7 +359,6 @@ ssh "${SSH_OPTS[@]}" "$TARGET" "MAHAD_DEPLOY_TARGET=staging bash '$STAGING/deplo
 # a failure could only be reported, not prevented. One spec at a time, so a
 # failure names its spec and the other still runs.
 say "9/10 staging end-to-end — the gate for production (public smoke + payment flow)"
-E2E_URL="${MAHAD_E2E_STAGING_URL:-https://staging.mahadnafsy.com}"
 if [[ -n "$SKIP_E2E" ]]; then
   skip_e2e_warning
   echo "!!! SKIPPED the staging E2E gate for $RELEASE (MAHAD_SKIP_E2E: $SKIP_E2E)" >&2

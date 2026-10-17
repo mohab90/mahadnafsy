@@ -1,4 +1,5 @@
-import { test, expect, request } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { publicApi } from '../helpers/gate';
 
 const API = process.env.API_BASE_URL || 'http://127.0.0.1:3001';
 
@@ -29,14 +30,14 @@ test.describe('Public site smoke', () => {
 
 test.describe('API health', () => {
   test('liveness probe returns 200', async () => {
-    const ctx = await request.newContext({ ignoreHTTPSErrors: true });
+    const ctx = await publicApi();
     const r = await ctx.get(`${API}/api/health/live`);
     expect(r.status()).toBe(200);
     await ctx.dispose();
   });
 
   test('public courses endpoint responds with an array', async () => {
-    const ctx = await request.newContext({ ignoreHTTPSErrors: true });
+    const ctx = await publicApi();
     const r = await ctx.get(`${API}/api/courses`);
     expect(r.status()).toBeLessThan(400);
     const body = await r.json().catch(() => null);
@@ -45,7 +46,7 @@ test.describe('API health', () => {
   });
 
   test('course student counts are never negative (regression guard)', async () => {
-    const ctx = await request.newContext({ ignoreHTTPSErrors: true });
+    const ctx = await publicApi();
     const r = await ctx.get(`${API}/api/courses`);
     const body = await r.json().catch(() => []);
     const courses = Array.isArray(body) ? body : (body?.courses || body?.data || []);

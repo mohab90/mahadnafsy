@@ -70,3 +70,6 @@ schema.json
 *.sql.gz
 *_backup*.sql
 mahadnafsy_db_*.sql
+
+# Release settings kept on the owner's machine (the staging password for the E2E, a GitHub token)
+deploy/release.local.env
