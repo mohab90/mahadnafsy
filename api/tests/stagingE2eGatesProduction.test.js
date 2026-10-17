@@ -32,13 +32,15 @@ const stub = (bin, name, body) => write(path.join(bin, name), `#!/usr/bin/env ba
 const SHA = 'abcdef1234567890abcdef1234567890abcdef12';
 const RELEASE = `mahad-${SHA.slice(0, 12)}`;
 
-function laptop({ e2eInstalled = true, failSpec = '', env = {} } = {}) {
+function laptop({ e2eInstalled = true, failSpec = '', env = {}, args = [] } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-all-'));
   const root = path.join(dir, 'repo');
   const bin = path.join(dir, 'bin');
   const log = path.join(dir, 'calls.log');
   write(path.join(root, 'deploy', 'release-all.sh'), fs.readFileSync(path.join(repoRoot, 'deploy', 'release-all.sh'), 'utf8'));
   for (const f of ['deploy-release.sh', 'deploy/mahad-db-backup.sh', 'deploy/cron/mahad-restore-rehearsal']) write(path.join(root, f), '# stub\n');
+  // The staging-password check asks the real staging over the network; here it answers with the exit code the test picks.
+  write(path.join(root, 'tools', 'check-staging-gate.mjs'), "console.error('[staging-gate] stub'); process.exit(Number(process.env.GATE_RC || 0));\n");
   write(path.join(root, 'client', 'public', 'brand', 'logo.png'), 'x');
   write(path.join(root, 'client', 'public', 'brand', 'og.jpg'), 'x');
   if (e2eInstalled) fs.mkdirSync(path.join(root, 'e2e', 'node_modules', '@playwright', 'test'), { recursive: true });
@@ -66,6 +68,7 @@ esac`);
   stub(bin, 'ssh', `cmd="\${@: -1}"
 echo "ssh $cmd" >> "$CALLS"
 case "$cmd" in
+  *"grep -qx 'APP_RELEASE="*) exit "\${APP_RC:-0}" ;;
   *"sha256sum '"*) cd "$RELEASES" && sha256sum ${RELEASE}-api.tgz ${RELEASE}-admin.tgz ${RELEASE}-client.tgz | sed "s/^./\${REMOTE_HASH_PREFIX:-&}/" ;;
   *MAHAD_DEPLOY_TARGET=staging*) exit "\${STAGING_RC:-0}" ;;
   *MAHAD_DEPLOY_TARGET=production*) exit "\${PRODUCTION_RC:-0}" ;;
@@ -75,7 +78,7 @@ exit 0`);
 [ -n "$FAIL_SPEC" ] && [[ "$*" == *"$FAIL_SPEC"* ]] && exit 1
 exit 0`);
 
-  const run = spawnSync('bash', [path.join(root, 'deploy', 'release-all.sh')], {
+  const run = spawnSync('bash', [path.join(root, 'deploy', 'release-all.sh'), ...args], {
     cwd: root,
     encoding: 'utf8',
     env: {
@@ -122,6 +125,37 @@ test('a failing spec stops before production and names the spec', { skip }, () =
   assert.match(out, /Staging now runs mahad-[0-9a-f]+\. PRODUCTION IS UNTOUCHED/);
   assert.ok(index(calls, /MAHAD_DEPLOY_TARGET=staging/) > 0);
   assert.equal(index(calls, /MAHAD_DEPLOY_TARGET=production/), -1, 'production must not be deployed');
+});
+
+test('a staging that asks for a password stops everything before anything is built, backed up or uploaded', { skip }, () => {
+  const { status, out, calls } = laptop({ env: { GATE_RC: '81' } });
+  assert.equal(status, 81, out);
+  assert.match(out, /Nothing was built, backed up or uploaded/);
+  assert.equal(index(calls, /^ssh /), -1);
+  assert.equal(index(calls, /^npm /), -1, 'not even the dependencies are installed');
+  assert.equal(index(calls, /^scp/), -1);
+});
+
+test('--resume-gate goes on from the E2E gate: no rebuild, no upload, no second staging deploy', { skip }, () => {
+  const { status, out, calls } = laptop({ args: ['--resume-gate'] });
+  assert.equal(status, 0, out);
+  assert.match(out, /resuming at the E2E gate/);
+  assert.equal(calls.filter(line => /^npm /.test(line)).length, 0, 'nothing is installed, tested or built again');
+  assert.equal(calls.filter(line => line === 'scp').length, 0);
+  assert.equal(index(calls, /MAHAD_DEPLOY_TARGET=staging/), -1);
+  const smoke = index(calls, /^npx playwright test tests\/public-smoke\.spec\.ts/);
+  const hashes = calls.findLastIndex(line => /^ssh cd .*sha256sum '/.test(line));
+  const production = index(calls, /MAHAD_DEPLOY_TARGET=production/);
+  assert.ok(smoke > 0 && hashes > smoke && production > hashes, 'the gate, then the hash check, then production');
+  assert.equal(calls.filter(line => /mahad-db-backup\.sh$/.test(line)).length, 1, 'one fresh backup before production');
+});
+
+test('--resume-gate refuses when staging does not run this commit\'s release', { skip }, () => {
+  const { status, out, calls } = laptop({ args: ['--resume-gate'], env: { APP_RC: '1' } });
+  assert.equal(status, 78, out);
+  assert.match(out, /staging does not run mahad-/);
+  assert.equal(index(calls, /^npx /), -1);
+  assert.equal(index(calls, /MAHAD_DEPLOY_TARGET=production/), -1);
 });
 
 test('without the e2e dependencies it stops before touching the server', { skip }, () => {
