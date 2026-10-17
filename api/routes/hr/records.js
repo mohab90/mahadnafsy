@@ -35,7 +35,8 @@ router.get('/api/admin/hr/advances', requireAuth, requireAdminOrStaff, requirePe
     const params = [req.tenantId];
     if (staff_id) { sql += ' AND a.staff_id=?'; params.push(staff_id); }
     if (status)   { sql += ' AND a.status=?';   params.push(status); }
-    sql += ' ORDER BY a.created_at DESC';
+    // Newest 500: the inbox asks for ?status=PENDING, so what is waiting is never behind a page of history.
+    sql += ' ORDER BY a.created_at DESC LIMIT 500';
     const [rows] = await pool.query(sql, params);
     res.json(rows);
   } catch (e) { hrError(res, e); }
@@ -352,7 +353,7 @@ router.get('/api/admin/hr/disciplinary', requireAuth, requireAdminOrStaff, requi
       WHERE d.tenant_id=?`;
     const params = [req.tenantId];
     if (staff_id) { sql += ' AND d.staff_id=?'; params.push(staff_id); }
-    sql += ' ORDER BY d.created_at DESC';
+    sql += ' ORDER BY d.created_at DESC LIMIT 500';
     const [rows] = await pool.query(sql, params);
     res.json(rows);
   } catch (e) { hrError(res, e); }
@@ -524,7 +525,7 @@ router.get('/api/admin/hr/documents', requireAuth, requireAdminOrStaff, requireP
       WHERE d.tenant_id=? AND d.deleted_at IS NULL`;
     const params = [req.tenantId];
     if (staff_id) { sql += ' AND d.staff_id=?'; params.push(staff_id); }
-    sql += ' ORDER BY d.created_at DESC';
+    sql += ' ORDER BY d.created_at DESC LIMIT 500';
     const [rows] = await pool.query(sql, params);
     res.json(rows);
   } catch (e) { hrError(res, e); }

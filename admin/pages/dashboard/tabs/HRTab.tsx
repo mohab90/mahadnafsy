@@ -6,7 +6,6 @@ import {
   CalendarCheck, CalendarOff, Wallet, UserCheck, UserX, Layers, Inbox, Fingerprint,
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
-import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { StaffMember } from '../../../types';
 import { hasPermission, type PermissionKey, type RoleKey } from '../../../constants/permissions';
@@ -36,6 +35,8 @@ const sectionFor = (param?: string): HrSection =>
 const JobPostingsPanel = React.lazy(() => import('./JobPostingsPanel'));
 const RecruitmentPipelinePanel = React.lazy(() => import('./hr-sections/RecruitmentPipelinePanel'));
 const OnboardingPanel = React.lazy(() => import('./hr-sections/OnboardingPanel'));
+
+const STAFF_PAGE = 50;
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -97,6 +98,8 @@ const HrTab: React.FC<Props> = ({ notify }) => {
     permissions: currentStaff.permissions as PermissionKey[] | undefined,
   }, 'manage_hr'));
   const [search, setSearch] = useState('');
+  // The directory draws STAFF_PAGE cards and the rest on request — a long staff list was drawn whole.
+  const [staffShown, setStaffShown] = useState(STAFF_PAGE);
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [perfMonth, setPerfMonth] = useState(cairoMonthOnly());
@@ -110,12 +113,8 @@ const HrTab: React.FC<Props> = ({ notify }) => {
   const fetchPerformance = useCallback(async () => {
     setLoadingPerformance(true);
     try {
-      const response = await fetch(`/api/admin/hr/reports/performance?month=${encodeURIComponent(perfMonth)}`, {
-        credentials: 'include',
-        headers: adminAuthHeaders(),
-      });
-      const payload = await response.json().catch(() => []);
-      if (!response.ok) throw new Error(payload.error || 'تعذر تحميل تقرير الأداء');
+      // Through the client that shares identical requests in flight, like the other reads here.
+      const payload = await mysqlAdmin.adminGet<PerformanceRow[]>(`/admin/hr/reports/performance?month=${encodeURIComponent(perfMonth)}`);
       setServerPerformance(Array.isArray(payload) ? payload : []);
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر تحميل تقرير الأداء');
@@ -163,6 +162,9 @@ const HrTab: React.FC<Props> = ({ notify }) => {
     if (search) { const q = search.toLowerCase(); return s.name.toLowerCase().includes(q) || (s.email || '').toLowerCase().includes(q) || (s.phone || '').includes(q); }
     return true;
   }), [safeStaff, search, roleFilter, statusFilter]);
+
+  useEffect(() => { setStaffShown(STAFF_PAGE); }, [search, roleFilter, statusFilter]);
+  const shownStaff = useMemo(() => filtered.slice(0, staffShown), [filtered, staffShown]);
 
   const stats = useMemo(() => {
     const active = safeStaff.filter(s => s.status === 'active');
@@ -303,7 +305,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
                   {safeStaff.length === 0 ? 'ابدأ بإضافة أول موظف من الزر أعلى الصفحة' : 'جرّب تغيير البحث أو الفلاتر'}
                 </p>
               </div>
-            ) : filtered.map(member => (
+            ) : shownStaff.map(member => (
               <HrStaffCard key={member.id} member={member}
                 basics={basicsById.get(member.id)} month={monthById.get(member.id)}
                 performance={perfByStaff.get(member.id)} showPay={canManageFinance}
@@ -311,6 +313,14 @@ const HrTab: React.FC<Props> = ({ notify }) => {
                 onEdit={() => navigate(`/staff/${member.id}?tab=settings`)} />
             ))}
           </div>
+          {filtered.length > shownStaff.length && (
+            <div className="flex justify-center">
+              <button type="button" onClick={() => setStaffShown(count => count + STAFF_PAGE)}
+                className="rounded-xl bg-gray-900 px-4 py-2 text-xs font-bold text-white hover:bg-gray-700">
+                عرض {Math.min(STAFF_PAGE, filtered.length - shownStaff.length)} موظف كمان — ظاهر {shownStaff.length} من {filtered.length}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

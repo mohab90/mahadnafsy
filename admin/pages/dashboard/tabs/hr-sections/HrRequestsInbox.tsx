@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Banknote, CalendarDays, CheckCircle, Inbox, RefreshCw, Sunrise, Sunset, XCircle } from 'lucide-react';
 import { cairoDay, cairoMonthStart } from '../../../../../shared/cairoDate';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
+import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import {
   ADVANCE_STATUS_COLORS, ADVANCE_STATUS_LABELS, LEAVE_STATUS_COLORS, LEAVE_STATUS_LABELS,
   LEAVE_TYPE_COLORS, LEAVE_TYPE_LABELS, ROLE_LABELS,
@@ -21,12 +22,9 @@ type Item =
   | { kind: 'leave'; row: LeaveRow; createdAt: string; status: string }
   | { kind: 'advance'; row: AdvanceRow; createdAt: string; status: string };
 
-const getJson = async <T,>(url: string): Promise<T> => {
-  const response = await fetch(url, { credentials: 'include', headers: adminAuthHeaders() });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(payload?.error || 'تعذر تحميل الطلبات');
-  return payload as T;
-};
+// Through the client that shares identical requests in flight: this inbox is mounted with every HR
+// screen, and the leaves screen asks for overlapping lists in the same moment.
+const getJson = <T,>(url: string): Promise<T> => mysqlAdmin.adminGet<T>(url.replace(/^\/api/, ''));
 
 const KIND_FILTERS = [
   ['all', 'كل الطلبات', Inbox], ['leave', 'إجازات', CalendarDays], ['LATE_PERMIT', 'إذن صباحي', Sunrise],
@@ -66,16 +64,19 @@ export default function HrRequestsInbox({ notify, canManage, onCount }: {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // Only what is waiting, unless the whole history was asked for: this used to fetch every
+      // leave and advance ever filed on each visit to الموارد البشرية, to show the pending few.
+      const scope = status === 'PENDING' ? '?status=PENDING' : '';
       const [leaveRows, advanceRows] = await Promise.all([
-        getJson<LeaveRow[]>('/api/admin/hr/leaves'),
-        getJson<AdvanceRow[]>('/api/admin/hr/advances'),
+        getJson<LeaveRow[]>(`/api/admin/hr/leaves${scope}`),
+        getJson<AdvanceRow[]>(`/api/admin/hr/advances${scope}`),
       ]);
       setLeaves(Array.isArray(leaveRows) ? leaveRows : []);
       setAdvances(Array.isArray(advanceRows) ? advanceRows : []);
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر تحميل الطلبات');
     } finally { setLoading(false); }
-  }, [notify]);
+  }, [notify, status]);
   useEffect(() => { void load(); }, [load]);
 
   const items = useMemo<Item[]>(() => [
@@ -84,7 +85,8 @@ export default function HrRequestsInbox({ notify, canManage, onCount }: {
   ].sort((a, b) => (a.status === 'PENDING' ? 0 : 1) - (b.status === 'PENDING' ? 0 : 1)
     || String(b.createdAt).localeCompare(String(a.createdAt))), [leaves, advances]);
   const pending = items.filter(item => item.status === 'PENDING').length;
-  useEffect(() => { onCount?.(pending); }, [pending, onCount]);
+  // The badge counts what the server says is waiting; the «كل الطلبات» view is a page of history.
+  useEffect(() => { if (status === 'PENDING') onCount?.(pending); }, [pending, onCount, status]);
   const shown = items.filter(item => (status === 'all' || item.status === 'PENDING') && matchesKind(item, kind));
 
   const answer = async (item: Item, decision: 'APPROVED' | 'REJECTED') => {

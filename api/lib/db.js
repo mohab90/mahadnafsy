@@ -116,6 +116,8 @@ function requireDb(req, res, next) {
 // ── DB Query Helper with auto-retry on stale-connection errors ────────────────
 // ECONNREFUSED excluded: the endpoint is unavailable, so retrying immediately will not help.
 const RETRYABLE = new Set(['PROTOCOL_CONNECTION_LOST', 'ECONNRESET', 'ETIMEDOUT', 'ER_SERVER_LOST', 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR']);
+// How long each pooled query took, per request and per query shape (lib/performanceMonitor.js).
+const perfMonitor = require('./performanceMonitor');
 const _origQuery   = pool.query.bind(pool);
 const _origExecute = pool.execute.bind(pool);
 
@@ -157,9 +159,11 @@ function _skipSchemaDdl(sql) {
 pool.query = async (...args) => {
   const sql = _firstSqlArg(args);
   if (_isSchemaDdl(sql) && !_schemaDdlAllowed()) return _skipSchemaDdl(sql);
+  const began = Date.now();
   try {
     const result = await _origQuery(...args);
     _markDbUp();
+    perfMonitor.recordQuery(sql, Date.now() - began);
     return result;
   } catch (err) {
     if (RETRYABLE.has(err.code) && _isRead(sql)) { logger.warn('[DB] Stale connection, retrying…', err.code); return await _origQuery(...args); }
@@ -170,9 +174,11 @@ pool.query = async (...args) => {
 pool.execute = async (...args) => {
   const sql = _firstSqlArg(args);
   if (_isSchemaDdl(sql) && !_schemaDdlAllowed()) return _skipSchemaDdl(sql);
+  const began = Date.now();
   try {
     const result = await _origExecute(...args);
     _markDbUp();
+    perfMonitor.recordQuery(sql, Date.now() - began);
     return result;
   } catch (err) {
     if (RETRYABLE.has(err.code) && _isRead(sql)) { logger.warn('[DB] Stale connection, retrying…', err.code); return await _origExecute(...args); }

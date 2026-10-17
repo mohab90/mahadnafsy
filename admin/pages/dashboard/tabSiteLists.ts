@@ -98,8 +98,10 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   service_hub: ['contactMessages', 'subscribers'],
   nps_dashboard: ['subscribers'],
   contacts: ['contactMessages'],
-  join_us: ['joinUsApplications'],
-  lecturer_applications: ['joinUsApplications'],
+  // Both applications pages read their own 50 from the server (join-us/ApplicationsBoard.tsx),
+  // not the shared list — it is what the analytics screens count, and nothing here asks for it.
+  join_us: [],
+  lecturer_applications: [],
   // سجل النظام searches the log on the server; the full backup it offers
   // writes out the loaded lists.
   activity: ['testimonials', 'subscribers', 'leads', 'orders', 'discounts'],

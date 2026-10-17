@@ -8,6 +8,7 @@ import { cairoDateOnly, cairoMonthOnly } from '../../../../../shared/cairoDate';
 import { Modal } from '../../../../../shared/ui/Modal';
 import { X, Plus, Calendar, Clock, Upload } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
+import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { StaffMember } from '../../../../types';
 import HrPolicyPanel from './HrPolicyPanel';
 import HrFingerprintUpload from './HrFingerprintUpload';
@@ -43,8 +44,9 @@ export default function HrAttendancePanel({ notify, staff }: {
     const [y, mo] = attMonth.split('-');
     setLoadingAtt(true);
     try {
-      const res = await fetch(`/api/admin/hr/attendance/summary?month=${parseInt(mo)}&year=${y}`, { credentials: 'include', headers: adminAuthHeaders() });
-      if (res.ok) setAttSummary(await res.json());
+      // Through the client that shares identical requests in flight: the month sheet above asks for
+      // the same summary in the same moment, and each used to cost the database its own query.
+      setAttSummary(await mysqlAdmin.adminGet(`/admin/hr/attendance/summary?month=${parseInt(mo, 10)}&year=${y}`));
     } catch { notify('error', 'تعذر تحميل تقرير الحضور'); } finally { setLoadingAtt(false); }
   }, [attMonth, notify]);
 

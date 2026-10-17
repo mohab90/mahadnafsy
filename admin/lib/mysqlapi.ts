@@ -509,6 +509,10 @@ export type SalesScheduleRound = {
   nextSession: string | null;
 };
 
+/** A query string from the filters that are set; an empty one is left out. */
+const queryOf = (query: Record<string, string | number>): string =>
+  new URLSearchParams(Object.entries(query).filter(([, value]) => value !== '').map(([key, value]) => [key, String(value)])).toString();
+
 /** Every row of a paged admin list (?limit/&offset), a page at a time until one comes back short. */
 async function allPages(path: string, pageSize: number): Promise<AR[]> {
   const all: AR[] = [];
@@ -754,6 +758,19 @@ export const mysqlAdmin = {
   listAllJoinUs:           () => allPages('/admin/join-us', 1000),
   /** How many applications there are — counted in the database over the whole scope, by form and status. */
   joinUsCounts:            () => apiFetch<{ total: number; byForm: { staff: number; teaching: number }; byStatus: Record<string, number>; byFormStatus: Record<'staff' | 'teaching', Record<string, number>> }>('/admin/join-us/counts', {}, A),
+  /**
+   * The page HR works the applications from: one list (form), the filters run in the database, and the
+   * answer is the rows asked for with the total they are part of. `inbox` leaves out the applications
+   * already moved to the interviews.
+   */
+  listJoinUsInbox:         (query: Record<string, string | number>) =>
+    apiFetch<{ rows: AR[]; total: number }>(`/admin/join-us?${queryOf({ paged: '1', inbox: '1', ...query })}`, {}, A),
+  /** The status tallies of one list, over the same scope as listJoinUsInbox. */
+  joinUsInboxCounts:       (form: 'staff' | 'teaching') =>
+    apiFetch<{ total: number; byForm: { staff: number; teaching: number }; byStatus: Record<string, number>; byFormStatus: Record<'staff' | 'teaching', Record<string, number>> }>(`/admin/join-us/counts?inbox=1&form=${form}`, {}, A),
+  /** The postings, branches and programmes that exist in one list, with their tallies. */
+  joinUsInboxFacets:       (form: 'staff' | 'teaching') =>
+    apiFetch<{ jobs: Array<{ id: string; title: string | null; count: number }>; branches: Array<{ key: string; count: number }>; programs: Array<{ title: string; count: number }> }>(`/admin/join-us/facets?inbox=1&form=${form}`, {}, A),
   listAllContactMessages:  ()             => apiFetch<AR[]>('/admin/contact-messages', {}, A),
   listAllCertificateRequests: (limit = 3000) => apiFetch<AR[]>(`/admin/certificate-requests?limit=${limit}`, {}, A),
   // Carnets, books and extra attestations a client paid for («طلبات إضافية»).
@@ -887,6 +904,12 @@ export const mysqlAdmin = {
     post('/staff/me/messages', { body, scope }),
 
   // ── التوظيف / الانترفيوهات (job_applicants pipeline) ──
+  /** One page of the candidates at interview or offer, for the tab (upcoming/past) and filters given. */
+  listHrInterviews: (query: Record<string, string | number>) =>
+    apiFetch<{ rows: AR[]; total: number }>(`/admin/hr/interviews?${queryOf(query)}`, {}, A),
+  /** The tallies and pickers around that list — read once, not with every page. */
+  hrInterviewsSummary: (tab: 'upcoming' | 'past') =>
+    apiFetch<{ tabs: { upcoming: number; past: number }; stages: { interview: number; offer: number }; jobs: Array<{ id: string; title: string | null; count: number }>; branches: Array<{ key: string; count: number }>; grades: Record<string, number> }>(`/admin/hr/interviews/summary?tab=${tab}`, {}, A),
   listHrApplicants: (stage?: string) => apiFetch<AR[]>(`/admin/hr/applicants${stage ? `?stage=${encodeURIComponent(stage)}` : ''}`, {}, A),
   updateHrApplicant: (id: string, o: AR) => put(`/admin/hr/applicants/${encodeURIComponent(id)}`, o),
   hireHrApplicant:  (id: string, o: AR = {}) => post(`/admin/hr/applicants/${encodeURIComponent(id)}/hire`, o),

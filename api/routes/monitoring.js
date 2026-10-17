@@ -82,6 +82,14 @@ router.get('/api/admin/monitoring', requireAuth, requireAdmin, async (req, res) 
   }
 });
 
+// Where the time goes since the server started: the slowest endpoints (95th percentile), the heaviest
+// answers, the ones that make the most queries, and the query shapes that ran slowly. Memory only —
+// lib/performanceMonitor.js. This is what to read before saying a screen is slow, and what to read
+// again after a fix to see that it is not.
+router.get('/api/admin/monitoring/performance', requireAuth, requireAdmin, (req, res) => {
+  res.json(require('../lib/performanceMonitor').snapshot());
+});
+
 router.get('/api/admin/audit-logs', requireAuth, requireAdminOrStaff, requirePermission('view_security'), async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit || 100), 500);

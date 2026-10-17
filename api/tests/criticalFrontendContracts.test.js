@@ -317,13 +317,13 @@ test('subscriber profile and login credentials save in one transaction', () => {
 
 test('context reload functions are stable, so an effect can depend on one', () => {
   const crm = read('admin/context/site-data-hooks/useCrmCoreState.ts');
-  const joinUsTab = read('admin/pages/dashboard/tabs/JoinUsAdminTab.tsx');
-  // JoinUsAdminTab refetches from an effect that depends on the reload function,
-  // which is what the exhaustive-deps rule asks for. When that function was a
-  // plain declaration the provider handed out a new reference every render, so
-  // the effect re-ran on its own result: about 13 requests a second to
-  // /api/admin/join-us for as long as the screen was open.
-  assert.ok(joinUsTab.includes('}, [reloadJoinUsApplications]);'), 'the applications tab refetches from an effect keyed on the reload function');
+  const board = read('admin/pages/dashboard/tabs/join-us/ApplicationsBoard.tsx');
+  // The applications board refetches from an effect keyed on its filters, a version
+  // number and the notify callback — all stable between renders. When the reload
+  // function it once depended on was a plain declaration, the provider handed out a
+  // new reference every render and the effect re-ran on its own result: about 13
+  // requests a second to /api/admin/join-us for as long as the screen was open.
+  assert.ok(board.includes('}, [query, version, notify]);'), 'the board refetches from an effect keyed on its filters and the version');
   for (const fn of ['reloadLeads', 'reloadSubscribers', 'reloadOrders', 'reloadJoinUsApplications']) {
     assert.ok(crm.includes(`const ${fn} = useCallback(async`), `${fn} must be memoised — an effect depending on it would loop`);
   }

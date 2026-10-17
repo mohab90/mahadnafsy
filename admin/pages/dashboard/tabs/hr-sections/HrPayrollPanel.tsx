@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { cairoMonthOnly } from '../../../../../shared/cairoDate';
 import { Award, BarChart3, Wallet } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
+import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { PAYROLL_STATUS_LABELS, PAYROLL_STATUS_COLORS } from './hrLabels';
 import { fmtMoney } from './hrFormat';
 import HrCompensationApprovals from './HrCompensationApprovals';
@@ -64,8 +65,8 @@ export default function HrPayrollPanel({ notify, canManageFinance, canManagePayr
   const fetchPayrollRuns = useCallback(async () => {
     setLoadingPayroll(true);
     try {
-      const res = await fetch('/api/admin/hr/payroll', { credentials: 'include', headers: adminAuthHeaders() });
-      if (res.ok) setPayrollRuns(await res.json());
+      // Shared with the month sheet's identical request (see HrAttendancePanel).
+      setPayrollRuns(await mysqlAdmin.adminGet('/admin/hr/payroll'));
     } catch { notify('error', 'تعذر تحميل مسيرات الرواتب'); } finally { setLoadingPayroll(false); }
   }, [notify]);
 

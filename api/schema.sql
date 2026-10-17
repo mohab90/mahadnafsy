@@ -3004,6 +3004,7 @@ CREATE TABLE `job_applicants` (
   KEY `idx_job_applicants_tenant_stage` (`tenant_id`,`stage`),
   KEY `fk_job_applicants_job_tenant` (`tenant_id`,`job_id`),
   KEY `idx_applicants_interview` (`tenant_id`,`interview_at`),
+  KEY `idx_applicants_tenant_stage_interview` (`tenant_id`,`stage`,`interview_at`),
   KEY `idx_applicants_branch` (`tenant_id`,`branch`),
   KEY `idx_applicants_grade` (`tenant_id`,`interview_grade`),
   CONSTRAINT `fk_job_applicants_job_tenant` FOREIGN KEY (`tenant_id`, `job_id`) REFERENCES `job_postings` (`tenant_id`, `id`) ON UPDATE CASCADE

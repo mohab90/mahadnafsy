@@ -92,8 +92,8 @@ export const InterviewFilters: React.FC<{
   ];
 
   const timelines: Array<{ key: InterviewFilterState['timeline']; label: string; hint: string; count: number }> = [
-    { key: 'upcoming', label: 'القادم', hint: 'مقابلات لسه هتحصل، ومرشحون بدون موعد', count: timelineCounts.upcoming },
-    { key: 'past', label: 'السابق', hint: 'المقابلات اللي اتعملت بالفعل', count: timelineCounts.past },
+    { key: 'upcoming', label: 'واخدين ميعاد ولسه موعدهم', hint: 'مقابلات لسه هتحصل، ومرشحون لسه من غير ميعاد', count: timelineCounts.upcoming },
+    { key: 'past', label: 'حضروا الانترفيو', hint: 'اتقيّموا، أو عدّى يوم ميعادهم', count: timelineCounts.past },
   ];
 
   return (

@@ -63,7 +63,7 @@ export function DashboardCustomerServiceTabs({
     return (
       <Suspense fallback={spinner('border-indigo-500')}>
         <TabErrorBoundary>
-          <JoinUsAdminTab />
+          <JoinUsAdminTab group="staff" />
         </TabErrorBoundary>
       </Suspense>
     );

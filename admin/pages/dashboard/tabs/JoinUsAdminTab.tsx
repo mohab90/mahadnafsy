@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BriefcaseBusiness, Filter, GraduationCap, RefreshCw, RotateCcw, Search } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { BriefcaseBusiness, GraduationCap, RefreshCw } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { useCanDelete } from '../../../hooks/useCanDelete';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -11,14 +11,12 @@ import { hasPermission, type PermissionKey, type RoleKey } from '../../../consta
 const JobPostingsPanel = React.lazy(() => import('./JobPostingsPanel'));
 import type { JoinUsApplication } from '../../../types';
 import PromptModal from '../../../../shared/ui/PromptModal';
-import {
-  EXPERIENCE_ORDER, EXPERIENCE_YEARS, branchLabel, matchesMinExperience,
-} from './hr-sections/applicantLabels';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
-import ApplicationCard, { type CardActions, jobLabel } from './join-us/ApplicationCard';
+import type { CardActions } from './join-us/ApplicationCard';
+import ApplicationsBoard from './join-us/ApplicationsBoard';
 import FirstCallModal from './join-us/FirstCallModal';
 import InterviewTimeModal from './join-us/InterviewTimeModal';
-import { type Group, type Kind, STATUS, type Status, groupOf, kindOf, statusOf } from './join-us/joinUsUi';
+import { type Group, STATUS } from './join-us/joinUsUi';
 
 type Toast = { type: 'success' | 'error' | 'info'; text: string };
 
@@ -28,212 +26,34 @@ type Toast = { type: 'success' | 'error' | 'info'; text: string };
  * للمحاضر غير الموظفين» (12 Oct 2026).
  *
  * Two lists, each its own page with its own filters and search: a lecturer search
- * never reaches an employee, and a filter set on one list is still there when you
- * come back to it. The list an application belongs on is the form it came
- * through (sourceForm), not a type that used to fall back to «محاضر».
+ * never reaches an employee. The list an application belongs on is the form it
+ * came through (sourceForm), not a type that used to fall back to «محاضر».
+ *
+ * «قسم الموارد البشرية تقيل وخصوصا عند صفحه انضمام الموظفين والمحاضرين … خليهم
+ * صفحتين مختلفين مش تاب … الصفحه تفتح 50 فقط ويظهر 2 جمب بعض» (17 Oct 2026).
+ * Only the page being looked at is mounted (both lists used to stay drawn, one of
+ * them hidden), and a list draws 50 cards, the rest on request.
+ *
+ * «لما نحدد انترفيو المفروض يتشال الموظف من صفحه طلبات الانضمام ويروح للانترفيو فقط».
+ * The list is read with ?inbox=1: an application whose applicant is at interview or
+ * offer is on the interviews screen, and not here.
+ *
+ * This page used to load every application into the shared store (up to 20 requests
+ * of 1000 rows, twice on opening) and sift them in the browser. The board now asks
+ * the database for the 50 it draws (join-us/ApplicationsBoard.tsx).
  */
-const GROUPS: Record<Group, { title: string; short: string; Icon: typeof GraduationCap; tab: string; ring: string }> = {
-  teaching: { title: 'طلبات انضمام المحاضرين', short: 'المحاضرين والاستشاريين', Icon: GraduationCap, tab: 'bg-violet-600 text-white shadow-violet-200', ring: 'text-violet-700 hover:bg-violet-50' },
-  staff: { title: 'طلبات انضمام الموظفين', short: 'الموظفين', Icon: BriefcaseBusiness, tab: 'bg-emerald-600 text-white shadow-emerald-200', ring: 'text-emerald-700 hover:bg-emerald-50' },
+const GROUPS: Record<Group, { title: string; short: string; Icon: typeof GraduationCap; header: string }> = {
+  teaching: { title: 'طلبات انضمام المحاضرين', short: 'المحاضرين والاستشاريين', Icon: GraduationCap, header: 'bg-violet-700' },
+  staff: { title: 'طلبات انضمام الموظفين', short: 'الموظفين', Icon: BriefcaseBusiness, header: 'bg-emerald-700' },
 };
 
-type BoardProps = {
-  group: Group;
-  apps: JoinUsApplication[];
-  busyId: string | null;
-  justMoved: Set<string>;
-  actions: CardActions;
-};
-
-/** One list — the lecturers' or the employees' — with filters of its own. */
-function ApplicationsBoard({ group, apps, busyId, justMoved, actions }: BoardProps) {
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<Status | 'all'>('all');
-  const [minExperience, setMinExperience] = useState('');
-  const [branch, setBranch] = useState('');
-  const [kind, setKind] = useState<Kind | 'all'>('all');
-  const [jobFilter, setJobFilter] = useState('');
-  const [program, setProgram] = useState('');
-  const [lectured, setLectured] = useState<'' | 'yes' | 'no'>('');
-  const [sessions, setSessions] = useState<'' | 'yes' | 'no'>('');
-
-  const rows = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    const matchesYesNo = (value: boolean | null | undefined, wanted: '' | 'yes' | 'no') =>
-      !wanted || (wanted === 'yes' ? value === true : value === false);
-    return apps
-      .filter(app => kind === 'all' || kindOf(app) === kind)
-      .filter(app => status === 'all' || statusOf(app.status) === status)
-      .filter(app => matchesMinExperience(app.experienceYears, minExperience))
-      .filter(app => !branch || app.applicantBranch === branch)
-      .filter(app => !jobFilter || app.jobId === jobFilter)
-      .filter(app => !program || (app.programs || []).some(p => p.title === program))
-      .filter(app => matchesYesNo(app.lecturedBefore, lectured) && matchesYesNo(app.sessionsBefore, sessions))
-      .filter(app => !query || [app.name, app.email, app.phone, app.specialty, app.programsOther,
-        ...(app.programs || []).map(p => p.title)].some(value => String(value || '').toLowerCase().includes(query)))
-      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
-    // Every value the filters read is listed: one left out kept the memo from
-    // recomputing, so the dropdown changed and the list did not.
-  }, [apps, kind, status, minExperience, branch, jobFilter, program, lectured, sessions, search]);
-
-  const jobOptions = useMemo(() => {
-    const map = new Map<string, { id: string; title: string; count: number }>();
-    apps.forEach(app => {
-      if (!app.jobId) return;
-      const entry = map.get(app.jobId);
-      if (entry) entry.count += 1;
-      else map.set(app.jobId, { id: app.jobId, title: jobLabel(app), count: 1 });
-    });
-    return [...map.values()].sort((a, b) => b.count - a.count);
-  }, [apps]);
-  const branchOptions = useMemo(
-    () => [...new Set(apps.map(app => app.applicantBranch).filter(Boolean))] as string[], [apps]);
-  const programOptions = useMemo(() => {
-    const counts = new Map<string, number>();
-    apps.forEach(app => (app.programs || []).forEach(p => counts.set(p.title, (counts.get(p.title) || 0) + 1)));
-    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
-  }, [apps]);
-  const statusCounts = useMemo(() => {
-    const counts = {} as Record<Status, number>;
-    (Object.keys(STATUS) as Status[]).forEach(key => { counts[key] = 0; });
-    apps.forEach(app => { counts[statusOf(app.status)] += 1; });
-    return counts;
-  }, [apps]);
-
-  const filtersActive = Boolean(search.trim() || jobFilter || branch || minExperience || program || lectured || sessions)
-    || status !== 'all' || kind !== 'all';
-  const reset = () => {
-    setSearch(''); setStatus('all'); setMinExperience(''); setBranch(''); setJobFilter('');
-    setKind('all'); setProgram(''); setLectured(''); setSessions('');
-  };
-  const field = 'w-full rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-xs';
-  const teaching = group === 'teaching';
-
-  return (
-    <div className="space-y-3">
-      {/* Status at a glance — each chip is also the status filter. */}
-      <div className="flex flex-wrap gap-1.5">
-        <button onClick={() => setStatus('all')}
-          className={`rounded-full px-3 py-1 text-xs font-bold ${status === 'all' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 ring-1 ring-gray-200'}`}>
-          الكل {apps.length}
-        </button>
-        {(Object.keys(STATUS) as Status[]).map(key => (
-          <button key={key} onClick={() => setStatus(status === key ? 'all' : key)}
-            className={`rounded-full px-3 py-1 text-xs font-bold ${status === key ? `${STATUS[key].className} ring-2 ring-gray-300 ring-offset-1` : 'bg-white text-gray-600 ring-1 ring-gray-200'}`}>
-            {STATUS[key].label} {statusCounts[key]}
-          </button>
-        ))}
-      </div>
-
-      <div className="space-y-2 rounded-2xl border border-gray-200 bg-white p-3">
-        <div className="flex items-center gap-1.5 text-xs font-bold text-gray-600">
-          <Filter size={14} className={teaching ? 'text-violet-600' : 'text-emerald-600'} /> فلترة {GROUPS[group].title}
-          {filtersActive && (
-            <button onClick={reset}
-              className="mr-auto flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold text-gray-500 hover:bg-gray-100">
-              <RotateCcw size={11} /> إلغاء الفلاتر
-            </button>
-          )}
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          <label className="block sm:col-span-2">
-            <span className="mb-1 block text-[11px] font-bold text-gray-500">بحث في {GROUPS[group].short}</span>
-            <span className="relative block">
-              <Search size={13} className="absolute right-2.5 top-2 text-gray-400" />
-              <input value={search} onChange={event => setSearch(event.target.value)}
-                placeholder={teaching ? 'اسم، تليفون، تخصص، برنامج' : 'اسم، تليفون، إيميل، تخصص'}
-                className={`${field} pr-8`} />
-            </span>
-          </label>
-          {teaching ? (
-            <>
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-bold text-gray-500">النوع</span>
-                <select value={kind} onChange={event => setKind(event.target.value as Kind | 'all')} className={field}>
-                  <option value="all">محاضرين واستشاريين</option>
-                  <option value="instructor">محاضر</option>
-                  <option value="consultant">استشاري</option>
-                </select>
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-bold text-gray-500">البرنامج</span>
-                <select value={program} onChange={event => setProgram(event.target.value)} className={field}>
-                  <option value="">كل البرامج</option>
-                  {programOptions.map(([title, count]) => <option key={title} value={title}>{title} ({count})</option>)}
-                </select>
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-bold text-gray-500">اشتغل محاضر قبل كده؟</span>
-                <select value={lectured} onChange={event => setLectured(event.target.value as '' | 'yes' | 'no')} className={field}>
-                  <option value="">الكل</option><option value="yes">آه</option><option value="no">لأ</option>
-                </select>
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-bold text-gray-500">جلسات نفسية مع عملاء؟</span>
-                <select value={sessions} onChange={event => setSessions(event.target.value as '' | 'yes' | 'no')} className={field}>
-                  <option value="">الكل</option><option value="yes">آه</option><option value="no">لأ</option>
-                </select>
-              </label>
-            </>
-          ) : (
-            <label className="block">
-              <span className="mb-1 block text-[11px] font-bold text-gray-500">الوظيفة</span>
-              <select value={jobFilter} onChange={event => setJobFilter(event.target.value)} className={field}>
-                <option value="">كل الوظائف</option>
-                {jobOptions.map(j => <option key={j.id} value={j.id}>{j.title} ({j.count})</option>)}
-              </select>
-            </label>
-          )}
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-bold text-gray-500">الفرع</span>
-            <select value={branch} onChange={event => setBranch(event.target.value)} className={field}>
-              <option value="">كل الفروع</option>
-              {branchOptions.map(key => <option key={key} value={key}>{branchLabel(key)}</option>)}
-            </select>
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-bold text-gray-500">الخبرة (حد أدنى)</span>
-            <select value={minExperience} onChange={event => setMinExperience(event.target.value)} className={field}>
-              <option value="">أي خبرة</option>
-              <option value="only_none">بدون خبرة فقط</option>
-              {EXPERIENCE_ORDER.filter(key => key !== 'none').map(key => (
-                <option key={key} value={key}>{EXPERIENCE_YEARS[key]} فأكثر</option>
-              ))}
-            </select>
-          </label>
-        </div>
-        {filtersActive && <p className="text-[11px] font-bold text-gray-500">ظاهر {rows.length} طلب من {apps.length}</p>}
-      </div>
-
-      {rows.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-12 text-center text-sm text-gray-400">
-          {apps.length === 0 ? `مفيش ${GROUPS[group].title} لسه.` : 'مفيش طلبات مطابقة للفلاتر.'}
-        </div>
-      ) : (
-        <div className="grid gap-3 2xl:grid-cols-2">
-          {rows.map(app => (
-            <ApplicationCard key={app.id} app={app} busy={busyId === app.id} moved={justMoved.has(app.id)} actions={actions} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: Kind | 'all' }) {
-  const {
-    joinUsApplications, updateJoinUsApplication, deleteJoinUsApplication, reloadJoinUsApplications,
-    isAdmin, currentStaff,
-  } = useSiteData();
-  // Staff-first by default (the owner asked for الموظفون to be the default group);
-  // the lecturers' entry point opens on its own list.
-  const [group, setGroup] = useState<Group>(
-    initialType === 'instructor' || initialType === 'consultant' ? 'teaching' : 'staff',
-  );
+export default function JoinUsAdminTab({ group }: { group: Group }) {
+  const { updateJoinUsApplication, deleteJoinUsApplication, isAdmin, currentStaff } = useSiteData();
   const [toast, setToast] = useState<Toast | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [justMoved, setJustMoved] = useState<Set<string>>(new Set());
+  // Bumped after anything changed, so the board reads its list again.
+  const [version, setVersion] = useState(0);
   const [firstCallFor, setFirstCallFor] = useState<JoinUsApplication | null>(null);
   const [interviewFor, setInterviewFor] = useState<{ app: JoinUsApplication; mode: 'move' | 'accept' } | null>(null);
   const [prompt, setPrompt] = useState<{
@@ -250,17 +70,17 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
   const mayDelete = useCanDelete();
   const canDelete = mayDelete && (isAdmin || hasPermission(staff, 'manage_join_us'));
 
-  // The tab's own data can be minutes stale — refresh whenever staff actually
-  // open the tab, not just on the wider app's schedule.
-  // How many there are, counted by the server over the whole scope. The tab's own figures are what has
-  // loaded; when the two differ the tab says so rather than presenting a part as the whole.
-  const [serverCounts, setServerCounts] = useState<Awaited<ReturnType<typeof mysqlAdmin.joinUsCounts>> | null>(null);
-  const loadCounts = useCallback(() => { mysqlAdmin.joinUsCounts().then(setServerCounts).catch(() => setServerCounts(null)); }, []);
-  useEffect(() => { void reloadJoinUsApplications(); }, [reloadJoinUsApplications]);
-  useEffect(() => { loadCounts(); }, [loadCounts]);
-  const refresh = async () => {
+  // How many there are, counted by the database over the whole list (this page's scope), by status.
+  const [counts, setCounts] = useState<Awaited<ReturnType<typeof mysqlAdmin.joinUsInboxCounts>> | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    mysqlAdmin.joinUsInboxCounts(group).then(result => { if (!cancelled) setCounts(result); }).catch(() => { if (!cancelled) setCounts(null); });
+    return () => { cancelled = true; };
+  }, [group, version]);
+  const refresh = () => {
     setRefreshing(true);
-    try { await reloadJoinUsApplications(); loadCounts(); } finally { setRefreshing(false); }
+    setVersion(current => current + 1);
+    window.setTimeout(() => setRefreshing(false), 600);
   };
 
   const notify = useMemo(() => (type: Toast['type'], text: string) => {
@@ -268,11 +88,10 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
     window.setTimeout(() => setToast(current => (current?.text === text ? null : current)), 4500);
   }, []);
 
-  const byGroup = useMemo(() => ({
-    teaching: joinUsApplications.filter(app => groupOf(app) === 'teaching'),
-    staff: joinUsApplications.filter(app => groupOf(app) === 'staff'),
-  }), [joinUsApplications]);
-  const fresh = (list: JoinUsApplication[]) => list.filter(app => statusOf(app.status) === 'new').length;
+  const byStatus = counts?.byFormStatus[group] || {};
+  const allCount = Object.values(byStatus).reduce((sum, count) => sum + (Number(count) || 0), 0);
+  const newCount = Number(byStatus.NEW) || 0;
+  const { Icon } = GROUPS[group];
 
   const run = async (app: JoinUsApplication, work: () => Promise<string>, failure: string) => {
     setBusyId(app.id);
@@ -280,13 +99,13 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
       const done = await work();
       notify('success', done);
       setPrompt(null); setFirstCallFor(null); setInterviewFor(null);
-      await reloadJoinUsApplications();
+      setVersion(current => current + 1);
     } catch (error) {
       notify('error', `${failure}${error instanceof Error && error.message ? ` — ${error.message}` : ''}`);
     } finally { setBusyId(null); }
   };
 
-  const actions: CardActions = {
+  const actionsNow: CardActions = {
     onContact: app => setPrompt({
       title: `تسجيل تواصل — ${app.name}`,
       label: 'اتكلمتوا في إيه؟ (اختياري)',
@@ -342,6 +161,21 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
     } : undefined,
   };
 
+  // The cards are memoised, so they get handlers that keep their identity;
+  // these call whatever the current render built.
+  const latest = useRef(actionsNow);
+  latest.current = actionsNow;
+  const actions = useMemo<CardActions>(() => ({
+    onContact: app => latest.current.onContact(app),
+    onFirstCall: app => latest.current.onFirstCall(app),
+    onMoveToInterview: app => latest.current.onMoveToInterview(app),
+    onAccept: app => latest.current.onAccept(app),
+    onReject: app => latest.current.onReject(app),
+    onNote: app => latest.current.onNote(app),
+    onStatus: (app, next) => latest.current.onStatus(app, next),
+    onDelete: canDelete ? app => latest.current.onDelete?.(app) : undefined,
+  }), [canDelete]);
+
   const submitInterview = (interviewAt: string | undefined) => {
     if (!interviewFor) return;
     const { app, mode } = interviewFor;
@@ -351,9 +185,8 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
       } else {
         await mysqlAdmin.moveJoinUsToInterview(app.id, interviewAt);
       }
-      setJustMoved(prev => new Set(prev).add(app.id));
       return interviewAt
-        ? `${app.name} في الانترفيوهات تحت «القادم» — الميعاد ${interviewAt}`
+        ? `${app.name} راح للانترفيوهات تحت «لسه موعده» — الميعاد ${interviewAt}`
         : `${app.name} اتقبل واتنقل للانترفيوهات — من غير ميعاد لسه`;
     }, `تعذّر نقل ${app.name} للانترفيو`);
   };
@@ -385,7 +218,7 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
           title={interviewFor.mode === 'accept' ? `قبول ${interviewFor.app.name}` : `نقل ${interviewFor.app.name} للانترفيو`}
           hint={interviewFor.mode === 'accept'
             ? 'القبول بينقله لصفحة الانترفيوهات — حدد الميعاد لو اتفقتوا عليه'
-            : 'هيظهر في صفحة الانترفيوهات تحت «القادم»'}
+            : 'هيتشال من هنا ويظهر في صفحة الانترفيوهات تحت «لسه موعده»'}
           confirmLabel={interviewFor.mode === 'accept' ? 'قبول وتحديد الميعاد' : 'تحديد ونقل للانترفيو'}
           initialValue={interviewFor.app.interviewAt}
           allowUndated={interviewFor.mode === 'accept'}
@@ -404,11 +237,15 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
         </div>
       )}
 
-      <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-gray-900 px-5 py-4 text-white">
+      <section className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl px-5 py-4 text-white ${GROUPS[group].header}`}>
         <div>
-          <h2 className="text-xl font-black">طلبات الانضمام</h2>
-          <p className="mt-0.5 text-xs text-gray-300">
-            {branchOnly ? 'طلبات فرعك بس — المحاضرين والموظفين كل واحد في صفحة.' : 'المحاضرين والموظفين كل واحد في صفحة، بفلاتره وبحثه.'}
+          <h2 className="flex items-center gap-2 text-xl font-black"><Icon size={22} /> {GROUPS[group].title}</h2>
+          <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-white/80">
+            <span>{branchOnly ? 'طلبات فرعك بس.' : 'بفلاتره وبحثه.'}</span>
+            <span className="rounded-full bg-white/20 px-2 py-0.5 font-bold text-white">
+              {allCount.toLocaleString('ar-EG-u-nu-latn')} طلب
+            </span>
+            {newCount > 0 && <span className="rounded-full bg-white px-2 py-0.5 font-bold text-gray-900">{newCount.toLocaleString('ar-EG-u-nu-latn')} جديد</span>}
           </p>
         </div>
         <button onClick={refresh} disabled={refreshing}
@@ -417,45 +254,13 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
         </button>
       </section>
 
-      {serverCounts && serverCounts.total > joinUsApplications.length && (
-        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
-          ظاهر {joinUsApplications.length.toLocaleString('ar-EG-u-nu-latn')} من {serverCounts.total.toLocaleString('ar-EG-u-nu-latn')} طلب — دوس «تحديث» عشان تحمّلهم كلهم.
-        </p>
+      {/* The postings themselves — publish one, see who applied, close it. */}
+      {group === 'staff' && !branchOnly && (
+        <React.Suspense fallback={<div className="rounded-2xl border border-gray-100 bg-white py-8 text-center text-sm text-gray-400">جاري تحميل الوظائف...</div>}>
+          <JobPostingsPanel notify={notify} />
+        </React.Suspense>
       )}
-      <div role="tablist" className="grid gap-2 sm:grid-cols-2">
-        {(['teaching', 'staff'] as Group[]).map(key => {
-          const { title, Icon, tab, ring } = GROUPS[key];
-          const active = group === key;
-          const newCount = fresh(byGroup[key]);
-          return (
-            <button key={key} role="tab" aria-selected={active} onClick={() => setGroup(key)}
-              className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-right transition ${
-                active ? `${tab} border-transparent shadow-lg` : `border-gray-200 bg-white ${ring}`}`}>
-              <span className="flex items-center gap-2 text-base font-black"><Icon size={20} /> {title}</span>
-              <span className="flex items-center gap-1.5 text-xs font-bold">
-                <span className={`rounded-full px-2 py-0.5 ${active ? 'bg-white/20' : 'bg-gray-100 text-gray-700'}`}
-                  title={serverCounts && serverCounts.byForm[key] !== byGroup[key].length ? `ظاهر ${byGroup[key].length} من ${serverCounts.byForm[key]}` : undefined}>
-                  {serverCounts ? serverCounts.byForm[key] : byGroup[key].length}</span>
-                {newCount > 0 && <span className={`rounded-full px-2 py-0.5 ${active ? 'bg-white text-gray-900' : 'bg-sky-600 text-white'}`}>{newCount} جديد</span>}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Both lists stay mounted, so each keeps its own filters and search. */}
-      <div hidden={group !== 'teaching'}>
-        <ApplicationsBoard group="teaching" apps={byGroup.teaching} busyId={busyId} justMoved={justMoved} actions={actions} />
-      </div>
-      <div hidden={group !== 'staff'} className="space-y-4">
-        {/* The postings themselves — publish one, see who applied, close it. */}
-        {!branchOnly && (
-          <React.Suspense fallback={<div className="rounded-2xl border border-gray-100 bg-white py-8 text-center text-sm text-gray-400">جاري تحميل الوظائف...</div>}>
-            <JobPostingsPanel notify={notify} />
-          </React.Suspense>
-        )}
-        <ApplicationsBoard group="staff" apps={byGroup.staff} busyId={busyId} justMoved={justMoved} actions={actions} />
-      </div>
+      <ApplicationsBoard key={group} group={group} version={version} counts={counts} busyId={busyId} actions={actions} notify={notify} />
     </div>
   );
 }

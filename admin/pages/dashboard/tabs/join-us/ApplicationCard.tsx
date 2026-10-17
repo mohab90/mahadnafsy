@@ -51,9 +51,8 @@ export interface CardActions {
 const ApplicationCard: React.FC<{
   app: JoinUsApplication;
   busy: boolean;
-  moved: boolean;
   actions: CardActions;
-}> = ({ app, busy, moved, actions }) => {
+}> = ({ app, busy, actions }) => {
   const kind = kindOf(app);
   const status = statusOf(app.status);
   const [history, setHistory] = useState<Note[] | null>(null);
@@ -74,7 +73,6 @@ const ApplicationCard: React.FC<{
 
   const wa = waLink(app.phone, `أهلاً ${app.name}، معاك فريق الموارد البشرية في معهد الدراسات النفسية بخصوص طلب الانضمام.`);
   const shownPhone = toDisplay(app.phone) || app.phone;
-  const inInterview = app.applicantStage === 'interview' || app.applicantStage === 'offer' || moved;
   const decided = status === 'accepted' || status === 'rejected';
   const job = jobLabel(app);
   const hasAnswers = (kind !== 'staff' && (app.lecturedBefore != null || app.sessionsBefore != null
@@ -103,9 +101,9 @@ const ApplicationCard: React.FC<{
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <span className={`rounded-full px-3 py-1 text-xs font-black ${STATUS[status].className}`}>{STATUS[status].label}</span>
-          {(app.applicantStage || moved) && (
-            <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${inInterview ? 'bg-violet-100 text-violet-800' : 'bg-gray-100 text-gray-600'}`}>
-              المرحلة: {moved && app.applicantStage !== 'offer' ? STAGE_LABEL.interview : STAGE_LABEL[app.applicantStage || 'applied']}
+          {app.applicantStage && (
+            <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-bold text-gray-600">
+              المرحلة: {STAGE_LABEL[app.applicantStage]}
             </span>
           )}
         </div>
@@ -180,7 +178,7 @@ const ApplicationCard: React.FC<{
       )}
 
       {/* 4. The calls and the plan. */}
-      <div className="mt-2 grid gap-2 px-4 sm:grid-cols-2">
+      <div className="mt-2 grid gap-2 px-4">
         {app.firstCallRating ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
             <div className="flex flex-wrap items-center gap-2 font-black">
@@ -231,10 +229,9 @@ const ApplicationCard: React.FC<{
             <Star size={13} /> {app.firstCallRating ? 'تعديل تقييم أول مكالمة' : 'تقييم أول مكالمة'}
           </button>
           <button disabled={busy} onClick={() => actions.onMoveToInterview(app)}
-            title={inInterview ? 'في الانترفيوهات — اضغط لتعديل الميعاد' : 'تحديد ميعاد ونقل لصفحة الانترفيوهات'}
-            className={`inline-flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold disabled:opacity-40 ${
-              inInterview ? 'border border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100' : 'bg-violet-600 text-white hover:bg-violet-700'}`}>
-            <CalendarCheck size={13} /> {inInterview ? 'تعديل ميعاد الانترفيو' : 'نقل للانترفيو'}
+            title="تحديد ميعاد ونقل لصفحة الانترفيوهات"
+            className="inline-flex items-center gap-1 rounded-xl bg-violet-600 px-3 py-2 text-xs font-bold text-white hover:bg-violet-700 disabled:opacity-40">
+            <CalendarCheck size={13} /> نقل للانترفيو
           </button>
           {!decided && (
             <>
@@ -292,4 +289,6 @@ const ApplicationCard: React.FC<{
   );
 };
 
-export default ApplicationCard;
+// A list draws many of these and any change to the page (a toast, a dialog)
+// re-rendered all of them; with stable `actions` only the card that changed redraws.
+export default React.memo(ApplicationCard);

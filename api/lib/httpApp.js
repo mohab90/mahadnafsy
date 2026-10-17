@@ -8,6 +8,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const logger = require('./logger');
 const errorMonitor = require('./errorMonitor');
+const perfMonitor = require('./performanceMonitor');
 const { uuidv4 } = require('./id');
 const { publishRealtimeEvent } = require('./realtime');
 const { registerRoutes } = require('./registerRoutes');
@@ -174,11 +175,37 @@ function registerHealthRoutes(app, pool) {
   });
 }
 
+// How long each request took, how much of it was the database, how many queries it made and how much it
+// sent — kept per endpoint for «مراقبة السيرفر» (lib/performanceMonitor.js). First in the chain after
+// compression, so the tenant lookup and the body parsing count too.
+function timeRequests(req, res, next) {
+  if (req.path === '/api/health/live' || req.path === '/api/health') return next();
+  const started = Date.now();
+  let bytes = 0;
+  const count = chunk => { if (chunk && typeof chunk !== 'function') bytes += typeof chunk === 'string' ? Buffer.byteLength(chunk) : (chunk.length || 0); };
+  const write = res.write.bind(res);
+  const end = res.end.bind(res);
+  res.write = (chunk, ...rest) => { count(chunk); return write(chunk, ...rest); };
+  res.end = (chunk, ...rest) => { count(chunk); return end(chunk, ...rest); };
+  return perfMonitor.runInRequest(store => {
+    res.on('finish', () => {
+      // The pattern that matched (`/api/admin/join-us/:id`), so ids do not make a route per row.
+      const matched = req.route && req.route.path !== undefined ? `${req.baseUrl || ''}${String(req.route.path)}` : null;
+      perfMonitor.recordRequest({
+        method: req.method, route: matched || (req.path.startsWith('/api/') ? 'unmatched /api' : 'static or other'),
+        status: res.statusCode, ms: Date.now() - started, bytes, store,
+      });
+    });
+    next();
+  });
+}
+
 function createHttpApp({ pool, brandAssetRoot }) {
   const app = express();
   const proxyHops = Number(process.env.TRUST_PROXY_HOPS);
   app.set('trust proxy', Number.isInteger(proxyHops) && proxyHops >= 0 ? proxyHops : 1);
   app.use(compression());
+  app.use(timeRequests);
 
   const corsOptions = corsConfig();
   app.options('*', cors(corsOptions));
@@ -294,4 +321,4 @@ function createHttpApp({ pool, brandAssetRoot }) {
   return app;
 }
 
-module.exports = { createHttpApp, corsConfig, csrfOriginGuard, registerHealthRoutes };
+module.exports = { createHttpApp, corsConfig, csrfOriginGuard, registerHealthRoutes, timeRequests };

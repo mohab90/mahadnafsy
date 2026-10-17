@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
+import PerformancePanel from './server-monitor/PerformancePanel';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -468,6 +469,8 @@ export default function ServerMonitorTab({ notify }: { notify: NotifyFn }) {
           )}
         </div>
       </div>
+
+      <PerformancePanel />
 
       {/* ── WA Alert Config Note ── */}
       <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-800">

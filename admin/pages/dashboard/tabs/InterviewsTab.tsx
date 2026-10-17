@@ -1,90 +1,24 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '../../../../shared/ui/Modal';
-import {
-  Building2, CalendarCheck, CalendarClock, GraduationCap, Briefcase,
-  Phone, Plus, RefreshCw, Trash2, UserCheck, UserPlus, X, XCircle,
-} from 'lucide-react';
+import { CalendarCheck, Plus, RefreshCw, UserPlus } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import PromptModal from '../../../../shared/ui/PromptModal';
 import HireModal from './interviews-sections/HireModal';
-import {
-  PHONE_RESULTS, branchLabel, fmtDateTime, matchesMinExperience, yearsLabel,
-} from './hr-sections/applicantLabels';
+import InterviewCard, {
+  GRADES, GRADE_STYLE, GRADE_TINT, type Grade, type InterviewActions, type JobApplicant,
+} from './interviews-sections/InterviewCard';
+import { EXPERIENCE_ORDER, EXPERIENCE_YEARS, branchLabel } from './hr-sections/applicantLabels';
 import InterviewFilters, {
-  InterviewFilterState, emptyInterviewFilters, interviewFiltersActive, isPastInterview,
+  InterviewFilterState, emptyInterviewFilters, interviewFiltersActive,
 } from './interviews-sections/InterviewFilters';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
-import { KindBadge, YesNoBadge, kindOfApplicant } from './join-us/joinUsUi';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
 
-type Stage = 'applied' | 'screening' | 'interview' | 'offer' | 'hired' | 'rejected';
-const GRADES = ['A+', 'A', 'B+', 'B', 'C+', 'C', 'R', 'W'] as const;
-type Grade = typeof GRADES[number];
+const PAGE_SIZE = 50;
 
-const GRADE_TINT: Record<Grade, string> = {
-  'A+': 'bg-emerald-50 text-emerald-700', A: 'bg-emerald-50 text-emerald-600',
-  'B+': 'bg-sky-50 text-sky-700', B: 'bg-sky-50 text-sky-600',
-  'C+': 'bg-amber-50 text-amber-700', C: 'bg-amber-50 text-amber-600',
-  R: 'bg-red-50 text-red-600', W: 'bg-gray-100 text-gray-500',
-};
-
-const GRADE_STYLE: Record<Grade, string> = {
-  'A+': 'bg-emerald-600 text-white',
-  A: 'bg-emerald-500 text-white',
-  'B+': 'bg-sky-600 text-white',
-  B: 'bg-sky-500 text-white',
-  'C+': 'bg-amber-500 text-white',
-  C: 'bg-amber-400 text-white',
-  R: 'bg-red-600 text-white',
-  W: 'bg-gray-500 text-white',
-};
-
-interface JobApplicant {
-  id: string;
-  job_id: string;
-  name: string;
-  email: string | null;
-  phone: string | null;
-  notes: string | null;
-  stage: Stage;
-  stage_notes: string | null;
-  interview_grade: Grade | null;
-  second_interview_grade: Grade | null;
-  interviewed_by_name: string | null;
-  second_interviewed_by_name: string | null;
-  interviewed_at: string | null;
-  second_interviewed_at: string | null;
-  source: string;
-  specialty: string | null;
-  applicant_type: string | null;
-  job_title: string;
-  job_branch: string | null;
-  hired_staff_id: string | null;
-  created_at: string;
-  updated_at: string;
-  /** From the application form — see migration 204. */
-  applicant_branch: string | null;
-  education: string | null;
-  experience_years: string | null;
-  experience_places: string | null;
-  phone_interview_result: 'passed' | 'failed' | 'no_answer' | null;
-  phone_interview_at: string | null;
-  interview_at: string | null;
-  /** From the website application, when there is one (12 Oct 2026). */
-  source_form: 'teaching' | 'staff' | null;
-  lectured_before: number | null;
-  sessions_before: number | null;
-  first_call_rating: number | null;
-  /** The latest call from either screen, with who made it. */
-  last_contact_note: string | null;
-  last_contact_by: string | null;
-  last_contact_at: string | null;
-}
-
-/** Held = graded: an interview with a grade has happened, whatever its date. */
-const gradedRow = (row: JobApplicant) => Boolean(row.interview_grade || row.second_interview_grade);
+type Summary = Awaited<ReturnType<typeof mysqlAdmin.hrInterviewsSummary>>;
 
 interface JobOption { id: string; title: string; status: string; }
 
@@ -93,13 +27,6 @@ interface JobOption { id: string; title: string; status: string; }
 // shows up correctly under the experience and branch filters.
 const emptyForm = () => ({ jobId: '', name: '', email: '', phone: '', specialty: '',
   education: '', experienceYears: '', experiencePlaces: '', branch: '', notes: '' });
-
-/** Sort key: soonest scheduled interview first, undated candidates after. */
-const scheduleKey = (row: JobApplicant): number => {
-  if (!row.interview_at) return Number.MAX_SAFE_INTEGER;
-  const t = new Date(row.interview_at.replace(' ', 'T')).getTime();
-  return Number.isNaN(t) ? Number.MAX_SAFE_INTEGER : t;
-};
 
 // Standalone entry point into the interview stage — before this, the only
 // way in was طلبات الانضمام's "نقل للمقابلات", which requires a candidate to
@@ -202,15 +129,11 @@ const AddInterviewModal: React.FC<{ notify: NotifyFn; onClose: () => void; onAdd
           </div>
           <div>
             <label className="mb-1 block text-xs font-bold text-gray-600">سنين الخبرة</label>
+            {/* The same six values the application form stores, so the experience filter finds this candidate. */}
             <select value={form.experienceYears} onChange={e => setForm(f => ({ ...f, experienceYears: e.target.value }))}
               className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm">
               <option value="">—</option>
-              <option value="none">بدون خبرة</option>
-              <option value="under_1">أقل من سنة</option>
-              <option value="1_3">1 – 3 سنوات</option>
-              <option value="3_5">3 – 5 سنوات</option>
-              <option value="5_10">5 – 10 سنوات</option>
-              <option value="over_10">أكثر من 10 سنوات</option>
+              {EXPERIENCE_ORDER.map(key => <option key={key} value={key}>{EXPERIENCE_YEARS[key]}</option>)}
             </select>
           </div>
         </div>
@@ -245,100 +168,107 @@ const AddInterviewModal: React.FC<{ notify: NotifyFn; onClose: () => void; onAdd
 // already existed (see hr-sections/RecruitmentPipelinePanel.tsx and
 // api/routes/hr/{recruiting,talent}.js) — this page is a focused view on
 // candidates who have actually reached an interview, with the one thing
-// that pipeline view didn't have: a structured 1-5 rating recorded at the
+// that pipeline view didn't have: a structured grade recorded at the
 // interview stage, not just free-text notes.
+//
+// «الانترفيو تقيل جدا … خلي تصميمه شبه طلب الانضمام … 2 تاب: اللي واخد ميعاد وحضر،
+// واللي واخد ميعاد فقط ولسه موعده» (17 Oct 2026). The tab, the filters and the
+// paging run in the database (GET /api/admin/hr/interviews): the screen draws the
+// 50 it asked for and asks for 50 more on request. It used to download 500
+// candidates of every stage and keep the few at interview or offer here.
 const InterviewsTab: React.FC<Props> = ({ notify }) => {
   const [rows, setRows] = useState<JobApplicant[]>([]);
+  const [total, setTotal] = useState(0);
+  const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [noteDraft, setNoteDraft] = useState<Record<string, string>>({});
   const [showAddModal, setShowAddModal] = useState(false);
   const [filters, setFilters] = useState<InterviewFilterState>(emptyInterviewFilters);
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [gradeFilter, setGradeFilter] = useState<Grade | 'all' | 'none'>('all');
   const [gradeFor, setGradeFor] = useState<{ row: JobApplicant; grade: Grade; round: 1 | 2 } | null>(null);
   const [hireFor, setHireFor] = useState<JobApplicant | null>(null);
+  const [contactFor, setContactFor] = useState<JobApplicant | null>(null);
+  const [rejectFor, setRejectFor] = useState<JobApplicant | null>(null);
+  const [contactNote, setContactNote] = useState('');
+  // Bumped after anything changed: the list and the tallies are read again.
+  const [version, setVersion] = useState(0);
 
-  const load = useCallback(() => {
-    setLoading(true);
-    mysqlAdmin.listHrApplicants()
-      .then(all => setRows((all as unknown as JobApplicant[]).filter(a => a.stage === 'interview' || a.stage === 'offer')))
-      .catch(err => notify('error', err instanceof Error ? err.message : 'تعذر تحميل الانترفيوهات'))
-      .finally(() => setLoading(false));
-  }, [notify]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQuery(filters.query), 300);
+    return () => window.clearTimeout(timer);
+  }, [filters.query]);
 
-  useEffect(() => { load(); }, [load]);
+  const query = useMemo(() => ({
+    tab: filters.timeline,
+    view: filters.view === 'all' ? '' : filters.view,
+    job: filters.jobId, branch: filters.branch, minExp: filters.minExperience,
+    grade: gradeFilter === 'all' ? '' : gradeFilter,
+    q: debouncedQuery.trim(),
+  }), [filters.timeline, filters.view, filters.jobId, filters.branch, filters.minExperience, gradeFilter, debouncedQuery]);
 
-  // Counted against the open tab, so "في المقابلات ٣" describes the three rows
-  // actually on screen rather than three that may all be in the other list.
-  const inTimeline = useMemo(
-    () => rows.filter(r => isPastInterview(r.interview_at, { graded: gradedRow(r) }) === (filters.timeline === 'past')),
-    [rows, filters.timeline]);
+  // The newest request wins, so a slow answer to an old filter never overwrites a newer list.
+  const requestId = useRef(0);
+  const lastKey = useRef('');
+  const loaded = useRef(0);
+  loaded.current = rows.length;
 
-  const counts = useMemo(() => ({
-    all: inTimeline.length,
-    interview: inTimeline.filter(r => r.stage === 'interview').length,
-    offer: inTimeline.filter(r => r.stage === 'offer').length,
-  }), [inTimeline]);
-
-  // The tab tallies are counted over everything, never over the open tab —
-  // otherwise the tab you are not looking at would always read 0.
-  const timelineCounts = useMemo(() => {
-    const past = rows.filter(r => isPastInterview(r.interview_at, { graded: gradedRow(r) })).length;
-    return { upcoming: rows.length - past, past };
-  }, [rows]);
-
-  // The pickers only offer values that exist in the list, with their tallies.
-  // A filter that can be set to something matching nobody is a filter that
-  // wastes a click and then makes you wonder whether the screen is broken.
-  const jobOptions = useMemo(() => {
-    const map = new Map<string, { value: string; label: string; count: number }>();
-    rows.forEach(r => {
-      const entry = map.get(r.job_id);
-      if (entry) entry.count += 1;
-      else map.set(r.job_id, { value: r.job_id, label: r.job_title || 'وظيفة محذوفة', count: 1 });
-    });
-    return [...map.values()].sort((a, b) => b.count - a.count);
-  }, [rows]);
-
-  const branchOptions = useMemo(() => {
-    const map = new Map<string, { value: string; label: string; count: number }>();
-    rows.forEach(r => {
-      const key = r.applicant_branch || r.job_branch;
-      if (!key) return;
-      const entry = map.get(key);
-      if (entry) entry.count += 1;
-      else map.set(key, { value: key, label: branchLabel(key), count: 1 });
-    });
-    return [...map.values()].sort((a, b) => b.count - a.count);
-  }, [rows]);
-
-  const visible = useMemo(() => {
-    const needle = filters.query.trim().toLowerCase();
-    const min = filters.minExperience;
-    return inTimeline
-      .filter(r => {
-        if (filters.view !== 'all' && r.stage !== filters.view) return false;
-        if (filters.jobId && r.job_id !== filters.jobId) return false;
-        if (filters.branch && (r.applicant_branch || r.job_branch) !== filters.branch) return false;
-        if (!matchesMinExperience(r.experience_years, min)) return false;
-        if (needle) {
-          const hay = `${r.name} ${r.phone || ''} ${r.email || ''} ${r.specialty || ''}`.toLowerCase();
-          if (!hay.includes(needle)) return false;
-        }
-        if (gradeFilter === 'none' && (r.interview_grade || r.second_interview_grade)) return false;
-        if (gradeFilter !== 'all' && gradeFilter !== 'none'
-          && r.interview_grade !== gradeFilter && r.second_interview_grade !== gradeFilter) return false;
-        return true;
+  useEffect(() => {
+    const id = ++requestId.current;
+    const key = JSON.stringify(query);
+    // The same filters read again (after an action) keep what is on screen and ask for as many rows as
+    // are already drawn; new filters start over at the first page.
+    const same = lastKey.current === key;
+    lastKey.current = key;
+    if (!same) setLoading(true);
+    const limit = same ? Math.min(200, Math.max(PAGE_SIZE, loaded.current)) : PAGE_SIZE;
+    mysqlAdmin.listHrInterviews({ ...query, limit, offset: 0 })
+      .then(result => {
+        if (id !== requestId.current) return;
+        setRows(result.rows as unknown as JobApplicant[]);
+        setTotal(result.total);
       })
-      // Upcoming reads soonest-first; past reads most-recent-first, because the
-      // interview you want after the fact is the one you just finished, not the
-      // oldest one on file.
-      .sort((a, b) => (filters.timeline === 'past'
-        ? scheduleKey(b) - scheduleKey(a)
-        : scheduleKey(a) - scheduleKey(b)));
-  }, [inTimeline, filters, gradeFilter]);
+      .catch(err => { if (id === requestId.current) notify('error', err instanceof Error ? err.message : 'تعذر تحميل الانترفيوهات'); })
+      .finally(() => { if (id === requestId.current) setLoading(false); });
+  }, [query, version, notify]);
 
-  const openGrade = (row: JobApplicant, grade: Grade, round: 1 | 2) => setGradeFor({ row, grade, round });
+  const more = async () => {
+    const id = requestId.current;
+    setLoadingMore(true);
+    try {
+      const result = await mysqlAdmin.listHrInterviews({ ...query, limit: PAGE_SIZE, offset: rows.length });
+      if (id !== requestId.current) return;
+      setRows(previous => {
+        const seen = new Set(previous.map(row => row.id));
+        return [...previous, ...(result.rows as unknown as JobApplicant[]).filter(row => !seen.has(row.id))];
+      });
+      setTotal(result.total);
+    } catch (err) {
+      notify('error', err instanceof Error ? err.message : 'تعذر تحميل المزيد');
+    } finally { setLoadingMore(false); }
+  };
+
+  // The tallies and the pickers' options, read with the tab open and again after a change.
+  useEffect(() => {
+    let cancelled = false;
+    mysqlAdmin.hrInterviewsSummary(filters.timeline)
+      .then(result => { if (!cancelled) setSummary(result); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [filters.timeline, version]);
+
+  const reload = useCallback(() => setVersion(current => current + 1), []);
+
+  const timelineCounts = summary?.tabs || { upcoming: 0, past: 0 };
+  const counts = {
+    all: (summary?.stages.interview || 0) + (summary?.stages.offer || 0),
+    interview: summary?.stages.interview || 0,
+    offer: summary?.stages.offer || 0,
+  };
+  const jobOptions = (summary?.jobs || []).map(job => ({ value: job.id, label: job.title || 'وظيفة محذوفة', count: job.count }));
+  const branchOptions = (summary?.branches || []).map(item => ({ value: item.key, label: branchLabel(item.key), count: item.count }));
+  const everyone = timelineCounts.upcoming + timelineCounts.past;
 
   const setGrade = async (row: JobApplicant, grade: Grade, round: 1 | 2, reason: string) => {
     setBusyId(row.id);
@@ -346,36 +276,21 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
       const result = await mysqlAdmin.gradeApplicant(row.id, { grade, round, body: reason.trim() || undefined });
       notify('success', `تم تسجيل تقييم ${result.grade} للمقابلة ${round === 2 ? 'الثانية' : 'الأولى'} — ${result.by}`);
       setGradeFor(null);
-      await load();
+      reload();
     } catch (err) {
       notify('error', err instanceof Error ? err.message : 'تعذّر حفظ التقييم');
     } finally { setBusyId(null); }
   };
 
-  const gradeCounts = useMemo(() => {
-    const tally = {} as Record<string, number>;
-    for (const row of rows) {
-      for (const g of [row.interview_grade, row.second_interview_grade]) {
-        if (g) tally[g] = (tally[g] || 0) + 1;
-      }
-    }
-    return tally;
-  }, [rows]);
-
-
-  const saveNote = async (row: JobApplicant) => {
-    const note = noteDraft[row.id];
-    if (note === undefined) return;
+  const saveNote = async (row: JobApplicant, note: string) => {
     setBusyId(row.id);
     try {
       await mysqlAdmin.updateHrApplicant(row.id, { stage_notes: note });
       notify('success', 'تم حفظ ملاحظات المقابلة');
-      await load();
+      reload();
     } catch (err) {
       notify('error', err instanceof Error ? err.message : 'تعذّر حفظ الملاحظات');
-    } finally {
-      setBusyId(null);
-    }
+    } finally { setBusyId(null); }
   };
 
   const advance = async (row: JobApplicant, stage: 'offer' | 'rejected') => {
@@ -383,21 +298,11 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
     try {
       await mysqlAdmin.updateHrApplicant(row.id, { stage });
       notify('success', stage === 'offer' ? `${row.name} → مقبول للتدريب` : `${row.name} → مرفوض`);
-      await load();
+      reload();
     } catch (err) {
       notify('error', err instanceof Error ? err.message : 'تعذّر تحديث المرحلة');
-    } finally {
-      setBusyId(null);
-    }
+    } finally { setBusyId(null); }
   };
-
-
-  const hire = (row: JobApplicant) => setHireFor(row);
-
-  const [contactFor, setContactFor] = useState<JobApplicant | null>(null);
-  const [rejectFor, setRejectFor] = useState<JobApplicant | null>(null);
-
-  const [contactNote, setContactNote] = useState('');
 
   // «ليه التواصل مش بيتجسل صح» (12 Oct 2026): «لا يرد» used to write the result
   // alone — no time, no caller, nothing in the history — and the other two
@@ -414,7 +319,7 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
       notify('success', `${row.name} — اتسجّل: مردّش`);
       setContactFor(null);
       setContactNote('');
-      await load();
+      reload();
     } catch (err) {
       notify('error', err instanceof Error ? err.message : 'تعذّر التسجيل');
     } finally { setBusyId(null); }
@@ -443,7 +348,7 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
       notify('success', `تم رفض ${row.name}`);
       setRejectFor(null);
       setContactFor(null);
-      await load();
+      reload();
     } catch (err) {
       notify('error', err instanceof Error ? err.message : 'تعذّر حفظ الرفض');
     } finally { setBusyId(null); }
@@ -455,44 +360,65 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
     try {
       await mysqlAdmin.deleteHrApplicant(row.id);
       notify('success', `تم حذف ${row.name}`);
-      await load();
+      reload();
     } catch (err) {
       notify('error', err instanceof Error ? err.message : 'تعذّر الحذف');
     } finally { setBusyId(null); }
   };
 
+  // The cards are memoised, so they get handlers that keep their identity;
+  // these call whatever the current render built.
+  const latest = useRef<InterviewActions | null>(null);
+  latest.current = {
+    onGrade: (row, grade, round) => setGradeFor({ row, grade, round }),
+    onSaveNote: saveNote,
+    onContact: row => setContactFor(row),
+    onOffer: row => { void advance(row, 'offer'); },
+    onHire: row => setHireFor(row),
+    onReject: row => { void advance(row, 'rejected'); },
+    onRemove: row => { void removeApplicant(row); },
+  };
+  const actions = useMemo<InterviewActions>(() => ({
+    onGrade: (row, grade, round) => latest.current!.onGrade(row, grade, round),
+    onSaveNote: (row, note) => latest.current!.onSaveNote(row, note),
+    onContact: row => latest.current!.onContact(row),
+    onOffer: row => latest.current!.onOffer(row),
+    onHire: row => latest.current!.onHire(row),
+    onReject: row => latest.current!.onReject(row),
+    onRemove: row => latest.current!.onRemove(row),
+  }), []);
 
   return (
     <div className="space-y-4">
       {/* A letter on its own does not say why, and the reason is what the second
           interviewer actually reads — so it is asked for with the grade. */}
       {contactFor && (
-    <Modal
-      open
-      onClose={() => setContactFor(null)}
-      title={`نتيجة التواصل — ${contactFor.name}`}
-      subtitle="اختار اللي حصل في المكالمة"
-      size="sm"
-    >
-            <p className="text-[11px] text-gray-500">اختار اللي حصل في المكالمة — هتتسجّل باسمك ووقتها في سجل المتقدم.</p>
-            <textarea value={contactNote} onChange={e => setContactNote(e.target.value)} rows={2}
-              placeholder="ملاحظة عن المكالمة (اختياري)"
-              className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" />
-            <button disabled={busyId === contactFor.id} onClick={() => markNoAnswer(contactFor)}
-              className="w-full rounded-xl bg-gray-100 px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-200 disabled:opacity-40">
-              لا يرد
-            </button>
-            <button disabled={busyId === contactFor.id} onClick={() => { void markTraining(contactFor); }}
-              className="w-full rounded-xl bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-700 hover:bg-emerald-100 disabled:opacity-40">
-              هينزل تدريب
-            </button>
-            <button disabled={busyId === contactFor.id} onClick={() => setRejectFor(contactFor)}
-              className="w-full rounded-xl bg-red-50 px-3 py-2 text-sm font-bold text-red-600 hover:bg-red-100 disabled:opacity-40">
-              رفض
-            </button>
-            <button onClick={() => { setContactFor(null); setContactNote(''); }}
-              className="w-full rounded-xl px-3 py-2 text-xs font-bold text-gray-400 hover:bg-gray-50">إلغاء</button>
-    </Modal>
+        <Modal
+          open
+          onClose={() => setContactFor(null)}
+          title={`نتيجة التواصل — ${contactFor.name}`}
+          subtitle="اختار اللي حصل في المكالمة"
+          size="sm"
+        >
+          <p className="text-[11px] text-gray-500">اختار اللي حصل في المكالمة — هتتسجّل باسمك ووقتها في سجل المتقدم.</p>
+          <textarea value={contactNote} onChange={e => setContactNote(e.target.value)} rows={2}
+            placeholder="ملاحظة عن المكالمة (اختياري)"
+            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" />
+          <button disabled={busyId === contactFor.id} onClick={() => markNoAnswer(contactFor)}
+            className="w-full rounded-xl bg-gray-100 px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-200 disabled:opacity-40">
+            لا يرد
+          </button>
+          <button disabled={busyId === contactFor.id} onClick={() => { void markTraining(contactFor); }}
+            className="w-full rounded-xl bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-700 hover:bg-emerald-100 disabled:opacity-40">
+            هينزل تدريب
+          </button>
+          <button disabled={busyId === contactFor.id} onClick={() => setRejectFor(contactFor)}
+            className="w-full rounded-xl bg-red-50 px-3 py-2 text-sm font-bold text-red-600 hover:bg-red-100 disabled:opacity-40">
+            رفض
+          </button>
+          <button onClick={() => { setContactFor(null); setContactNote(''); }}
+            className="w-full rounded-xl px-3 py-2 text-xs font-bold text-gray-400 hover:bg-gray-50">إلغاء</button>
+        </Modal>
       )}
       {rejectFor && (
         <PromptModal
@@ -512,7 +438,7 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
           applicant={hireFor}
           notify={notify}
           onClose={() => setHireFor(null)}
-          onHired={() => { void load(); }}
+          onHired={reload}
         />
       )}
       {gradeFor && (
@@ -527,248 +453,97 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
           onCancel={() => setGradeFor(null)}
         />
       )}
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-violet-700 px-5 py-4 text-white">
         <div>
-          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            <CalendarCheck size={22} className="text-violet-600" />
+          <h2 className="flex items-center gap-2 text-xl font-black">
+            <CalendarCheck size={22} />
             الانترفيوهات
           </h2>
-          <p className="text-sm text-gray-500 mt-0.5">
-            مرشحون وصلوا لمرحلة المقابلة — قيّمهم، سجّل ملاحظاتك، وانقلهم لمقبول للتدريب أو تعيين. النقل من طلبات الانضمام بزرار "نقل للمقابلات" هناك.
+          <p className="mt-0.5 text-xs text-white/80">
+            مرشحون وصلوا لمرحلة المقابلة — قيّمهم، سجّل ملاحظاتك، وانقلهم لمقبول للتدريب أو تعيين. النقل من طلبات الانضمام بزرار "نقل للانترفيو" هناك.
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold bg-violet-600 text-white hover:bg-violet-700 transition"
+            className="flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-sm font-bold text-violet-800 transition hover:bg-violet-50"
           >
             <UserPlus size={14} />
             إضافة انترفيو
           </button>
           <button
-            onClick={load}
+            onClick={reload}
             disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-xl bg-white/15 px-3 py-2 text-sm font-bold transition hover:bg-white/25 disabled:opacity-50"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             تحديث
           </button>
         </div>
-      </div>
+      </section>
 
-      {showAddModal && <AddInterviewModal notify={notify} onClose={() => setShowAddModal(false)} onAdded={load} />}
+      {showAddModal && <AddInterviewModal notify={notify} onClose={() => setShowAddModal(false)} onAdded={reload} />}
 
-      {!loading && rows.length > 0 && (
-        <InterviewFilters
-          value={filters}
-          onChange={setFilters}
-          jobs={jobOptions}
-          branches={branchOptions}
-          counts={counts}
-          timelineCounts={timelineCounts}
-          shown={visible.length}
-          extra={(
-            <div className="flex flex-wrap items-center gap-1">
-              <span className="ml-1 text-xs font-bold text-gray-500">التقييم:</span>
-              <button type="button" onClick={() => setGradeFilter('all')}
-                className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${gradeFilter === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                الكل ({rows.length})
+      <InterviewFilters
+        value={filters}
+        onChange={setFilters}
+        jobs={jobOptions}
+        branches={branchOptions}
+        counts={counts}
+        timelineCounts={timelineCounts}
+        shown={total}
+        extra={(
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="ml-1 text-xs font-bold text-gray-500">التقييم:</span>
+            <button type="button" onClick={() => setGradeFilter('all')}
+              className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${gradeFilter === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+              الكل ({everyone})
+            </button>
+            {GRADES.map(g => (
+              <button type="button" key={g} onClick={() => setGradeFilter(g)}
+                className={`rounded-md px-2 py-0.5 text-[11px] font-black ${gradeFilter === g ? GRADE_STYLE[g] : `${GRADE_TINT[g]} hover:brightness-95`}`}>
+                {g}{summary?.grades[g] ? ` (${summary.grades[g]})` : ''}
               </button>
-              {GRADES.map(g => (
-                <button type="button" key={g} onClick={() => setGradeFilter(g)}
-                  className={`rounded-md px-2 py-0.5 text-[11px] font-black ${gradeFilter === g ? GRADE_STYLE[g] : `${GRADE_TINT[g]} hover:brightness-95`}`}>
-                  {g}{gradeCounts[g] ? ` (${gradeCounts[g]})` : ''}
-                </button>
-              ))}
-              <button type="button" onClick={() => setGradeFilter('none')}
-                className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${gradeFilter === 'none' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                بدون
-              </button>
-            </div>
-          )}
-        />
-      )}
-
+            ))}
+            <button type="button" onClick={() => setGradeFilter('none')}
+              className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${gradeFilter === 'none' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+              بدون
+            </button>
+          </div>
+        )}
+      />
 
       {loading ? (
         <div className="rounded-2xl border border-gray-100 bg-white py-10 text-center text-sm font-bold text-gray-400">
           جاري التحميل...
         </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-2xl border border-gray-100 bg-white py-10 text-center text-sm text-gray-400">
-          لا يوجد مرشحون في مرحلة المقابلة أو العرض الوظيفي حاليًا.
-        </div>
-      ) : visible.length === 0 ? (
         <div className="rounded-2xl border border-gray-100 bg-white py-10 text-center text-sm text-gray-500" dir="rtl">
-          مفيش مرشح مطابق للفلاتر دي.
-          {interviewFiltersActive(filters) && (
-            <button onClick={() => setFilters(emptyInterviewFilters())} className="mr-2 font-bold text-violet-600 hover:underline">
+          {everyone === 0 ? 'لا يوجد مرشحون في مرحلة المقابلة أو العرض الوظيفي حاليًا.' : 'مفيش مرشح مطابق هنا.'}
+          {(interviewFiltersActive(filters) || gradeFilter !== 'all') && (
+            <button onClick={() => { setFilters(f => ({ ...emptyInterviewFilters(), timeline: f.timeline })); setGradeFilter('all'); }}
+              className="mr-2 font-bold text-violet-600 hover:underline">
               اعرض الكل
             </button>
           )}
         </div>
       ) : (
-        <div className="space-y-3">
-          {visible.map(row => {
-            const scheduled = fmtDateTime(row.interview_at);
-            const phone = row.phone_interview_result ? PHONE_RESULTS[row.phone_interview_result] : null;
-            const branch = row.applicant_branch || row.job_branch;
-            return (
-              <article key={row.id} className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                      {/* محاضر or موظف, in the same colours as طلبات الانضمام —
-                          «لازم تفرق بيينهم بشكل كبير» (12 Oct 2026). */}
-                      <KindBadge kind={kindOfApplicant(row.applicant_type, row.source_form)} />
-                      <span className={`rounded-lg px-2 py-0.5 text-xs font-bold ${row.stage === 'offer' ? 'bg-amber-100 text-amber-700' : 'bg-violet-100 text-violet-700'}`}>
-                        {row.stage === 'offer' ? 'مقبول للتدريب' : 'مقابلة'}
-                      </span>
-                      <span className="rounded-lg bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{row.job_title}</span>
-                      {row.source === 'website' && <span className="rounded-lg bg-blue-50 px-2 py-0.5 text-xs text-blue-700">من الموقع</span>}
-                      {phone && <span className={`rounded-lg px-2 py-0.5 text-xs font-bold ${phone.tone}`}>{phone.label}</span>}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-base font-bold text-gray-900">{row.name}</h3>
-                      {([1, 2] as const).map(round => {
-                        const current = round === 1 ? row.interview_grade : row.second_interview_grade;
-                        const by = round === 1 ? row.interviewed_by_name : row.second_interviewed_by_name;
-                        const at = round === 1 ? row.interviewed_at : row.second_interviewed_at;
-                        return (
-                          <span key={round} className="flex items-center gap-1">
-                            <span className="text-[10px] font-bold text-gray-400">{round === 1 ? "م1" : "م2"}</span>
-                            <select
-                              disabled={busyId === row.id}
-                              value={current || ''}
-                              onChange={e => { const g = e.target.value; if (g) openGrade(row, g as Grade, round); }}
-                              title={by ? `${by}${at ? ` · ${String(at).slice(0, 16).replace('T', ' ')}` : ''}` : 'لم يُقيَّم بعد'}
-                              className={`h-6 cursor-pointer rounded-md border-0 px-1 text-[11px] font-black outline-none ${
-                                current ? GRADE_STYLE[current] : 'bg-gray-100 text-gray-500'}`}
-                            >
-                              <option value="">—</option>
-                              {GRADES.map(g => <option key={g} value={g}>{g}</option>)}
-                            </select>
-                          </span>
-                        );
-                      })}
-                    </div>
-                    <p className="text-sm text-gray-600">{row.specialty || row.applicant_type || '—'}</p>
-                    <p className="mt-0.5 text-[10px] text-gray-400">
-                      أُضيف: {fmtDateTime(row.created_at) || '—'}
-                    </p>
-                    <div className="mt-1 flex flex-wrap gap-4 text-sm text-gray-500">
-                      {row.email && <span dir="ltr">{row.email}</span>}
-                      {row.phone && <span dir="ltr">{row.phone}</span>}
-                    </div>
-
-                    {/* What the application actually said. Without it, deciding
-                        between two candidates meant opening the job's applicant
-                        list in another screen to read their form back. */}
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5" dir="rtl">
-                      <span className="flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-0.5 text-[11px] font-bold text-gray-700">
-                        <Briefcase size={11} /> {yearsLabel(row.experience_years)}
-                      </span>
-                      {branch && (
-                        <span className="flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-0.5 text-[11px] font-bold text-gray-700">
-                          <Building2 size={11} /> {branchLabel(branch)}
-                        </span>
-                      )}
-                      {row.education && (
-                        <span className="flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-0.5 text-[11px] font-bold text-gray-700">
-                          <GraduationCap size={11} /> {row.education}
-                        </span>
-                      )}
-                      {scheduled && (
-                        <span className="flex items-center gap-1 rounded-lg bg-indigo-100 px-2 py-0.5 text-[11px] font-bold text-indigo-700">
-                          <CalendarClock size={11} /> {scheduled}
-                        </span>
-                      )}
-                    </div>
-                    {row.experience_places && (
-                      <p className="mt-1.5 text-[11px] text-gray-500" dir="rtl">
-                        اشتغل قبل كده: {row.experience_places}
-                      </p>
-                    )}
-
-                    {(row.lectured_before !== null || row.sessions_before !== null) && (
-                      <div className="mt-1.5 flex flex-wrap gap-1.5">
-                        <YesNoBadge label="اشتغل محاضر قبل كده" value={row.lectured_before} />
-                        <YesNoBadge label="جلسات نفسية مع عملاء" value={row.sessions_before} />
-                        {row.first_call_rating ? <span className="rounded-lg bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">أول مكالمة {row.first_call_rating}/5</span> : null}
-                      </div>
-                    )}
-                    {row.last_contact_at && (
-                      <p className="mt-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] text-sky-900">
-                        <span className="font-bold">آخر تواصل</span>
-                        <span className="mx-1 text-[10px]">{fmtDateTime(row.last_contact_at)}</span>
-                        {row.last_contact_by && <span className="text-sky-700">بواسطة {row.last_contact_by}</span>}
-                        {row.last_contact_note && <span className="block text-sky-800">{row.last_contact_note}</span>}
-                      </p>
-                    )}
-
-                    {(row.interviewed_by_name || row.second_interviewed_by_name) && (
-                      <p className="mt-1 text-[10px] text-gray-400">
-                        {row.interviewed_by_name && `م1: ${row.interviewed_by_name}`}
-                        {row.interviewed_by_name && row.second_interviewed_by_name && ' · '}
-                        {row.second_interviewed_by_name && `م2: ${row.second_interviewed_by_name}`}
-                      </p>
-                    )}
-
-                    {/* Notes */}
-                    <div className="mt-3 flex items-center gap-2">
-                      <input
-                        value={noteDraft[row.id] ?? row.stage_notes ?? ''}
-                        onChange={e => setNoteDraft(d => ({ ...d, [row.id]: e.target.value }))}
-                        placeholder="ملاحظات المقابلة..."
-                        className="flex-1 rounded-xl border border-gray-200 px-3 py-1.5 text-sm"
-                      />
-                      <button
-                        onClick={() => saveNote(row)}
-                        disabled={busyId === row.id || noteDraft[row.id] === undefined}
-                        className="rounded-xl bg-gray-100 px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-200 disabled:opacity-40"
-                      >
-                        حفظ
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex shrink-0 flex-col gap-2">
-                    {/* Interviews get moved. Without this the only way to change
-                        a date was to go back to the job's applicant list, where
-                        this candidate no longer appears. */}
-                    <button disabled={busyId === row.id} onClick={() => setContactFor(row)}
-                      className="flex items-center justify-center gap-1 rounded-lg bg-sky-50 px-2.5 py-1.5 text-xs font-bold text-sky-700 hover:bg-sky-100 disabled:opacity-40">
-                      <Phone size={13} /> تواصل
-                    </button>
-                    {/* stage actions */}
-                    {/* Shown from the interview stage on. It used to appear only while stage was exactly 'interview', so it vanished the moment anyone used it — and every candidate already past it had no visible path to hiring. */}
-                    {(row.stage === 'interview' || row.stage === 'offer') && (
-                      <button disabled={busyId === row.id} onClick={() => advance(row, 'offer')}
-                        className="flex items-center justify-center gap-1 rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-40">
-                        عرض وظيفي
-                      </button>
-                    )}
-                    {row.stage === 'offer' && (
-                      <button disabled={busyId === row.id} onClick={() => hire(row)}
-                        className="flex items-center justify-center gap-1 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-40">
-                        <UserCheck size={13} /> تعيين
-                      </button>
-                    )}
-                    <button disabled={busyId === row.id} onClick={() => removeApplicant(row)}
-                      title="حذف نهائي من الانترفيوهات"
-                      className="flex items-center justify-center gap-1 rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-bold text-gray-600 hover:bg-red-50 hover:text-red-600 disabled:opacity-40">
-                      <Trash2 size={13} /> حذف
-                    </button>
-                    <button disabled={busyId === row.id} onClick={() => advance(row, 'rejected')}
-                      className="flex items-center justify-center gap-1 rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-100 disabled:opacity-40">
-                      <XCircle size={13} /> رفض
-                    </button>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-        </div>
+        <>
+          <div className="grid items-start gap-3 lg:grid-cols-2">
+            {rows.map(row => (
+              <InterviewCard key={row.id} row={row} busy={busyId === row.id} actions={actions} />
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-1 text-xs font-bold text-gray-500">
+            <span>ظاهر {rows.length.toLocaleString('ar-EG-u-nu-latn')} من {total.toLocaleString('ar-EG-u-nu-latn')}</span>
+            {total > rows.length && (
+              <button onClick={() => { void more(); }} disabled={loadingMore}
+                className="rounded-xl bg-gray-900 px-4 py-2 text-white hover:bg-gray-700 disabled:opacity-50">
+                {loadingMore ? 'جاري التحميل...' : `عرض ${Math.min(PAGE_SIZE, total - rows.length).toLocaleString('ar-EG-u-nu-latn')} مرشح كمان`}
+              </button>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

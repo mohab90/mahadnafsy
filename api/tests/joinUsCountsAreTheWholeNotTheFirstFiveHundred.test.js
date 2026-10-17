@@ -28,7 +28,11 @@ test('the admin loads every page and the tab shows the server\'s count, saying s
   assert.match(api, /listAllJoinUs:\s+\(\) => allPages\('\/admin\/join-us', 1000\)/);
   assert.match(api, /async function allPages[\s\S]*?if \(rows\.length < pageSize\) break;/);
   assert.match(api, /joinUsCounts:\s+\(\) => apiFetch<[\s\S]*?'\/admin\/join-us\/counts'/);
+  // The applications page no longer holds the table to count it: the figures are the database's, by form and
+  // status, over the page's own scope (the ones not yet moved to the interviews).
+  assert.match(api, /joinUsInboxCounts:\s+\(form: 'staff' \| 'teaching'\) =>[\s\S]*?`\/admin\/join-us\/counts\?inbox=1&form=\$\{form\}`/);
   const tab = read('admin/pages/dashboard/tabs/JoinUsAdminTab.tsx');
-  assert.match(tab, /serverCounts \? serverCounts\.byForm\[key\] : byGroup\[key\]\.length/);
-  assert.match(tab, /serverCounts\.total > joinUsApplications\.length/);
+  assert.match(tab, /mysqlAdmin\.joinUsInboxCounts\(group\)/);
+  assert.match(tab, /counts\?\.byFormStatus\[group\]/);
+  assert.doesNotMatch(tab, /joinUsApplications|reloadJoinUsApplications/, 'the page does not pull the whole table');
 });

@@ -171,13 +171,13 @@ export function GeneralDashboardTabs({ activeTab, notify }: { activeTab: TabKey;
     );
   }
 
-  // 'staff_applications' rendered this with initialType 'all', which is what
-  // 'join_us' already does. Only the instructor-filtered view is its own screen.
+  // The lecturers' and consultants' applications are their own page; the
+  // employees' are 'join_us' (DashboardCustomerServiceTabs).
   if (activeTab === 'lecturer_applications') {
     return (
       <Suspense fallback={<LoadingSpinner tone="indigo" />}>
         <TabErrorBoundary>
-          <JoinUsAdminTab initialType="instructor" />
+          <JoinUsAdminTab group="teaching" />
         </TabErrorBoundary>
       </Suspense>
     );

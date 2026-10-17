@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { BriefcaseBusiness, Loader2, RefreshCw, UserCheck } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 import StaffOnboardModal, { type OnboardResult } from './StaffOnboardModal';
@@ -33,21 +33,33 @@ const NEXT: Record<Stage, Stage[]> = {
   hired: [],
 };
 
+const PAGE_SIZE = 50;
+
 export default function RecruitmentPipelinePanel({ notify }: { notify: Notify }) {
   const [rows, setRows] = useState<Applicant[]>([]);
   const [filter, setFilter] = useState<Stage | 'all'>('all');
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [hireTarget, setHireTarget] = useState<Applicant | null>(null);
+  // How many candidates there are at each stage, from the database; the table holds a page of them.
+  const [stageCounts, setStageCounts] = useState<Record<string, number>>({});
+  const loaded = useRef(0);
+  loaded.current = rows.length;
 
-  const load = useCallback(async () => {
+  // The first PAGE_SIZE of the stage, or as many as are already on screen when it is read again after
+  // a change. It used to draw up to 500 candidates, each with its last-contact lookup.
+  const load = useCallback(async (keep = false) => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/admin/hr/applicants?stage=${filter}`, {
-        credentials: 'include', headers: adminAuthHeaders(),
-      });
+      const limit = keep ? Math.min(500, Math.max(PAGE_SIZE, loaded.current)) : PAGE_SIZE;
+      const [response, counts] = await Promise.all([
+        fetch(`/api/admin/hr/applicants?stage=${filter}&limit=${limit}&offset=0`, { credentials: 'include', headers: adminAuthHeaders() }),
+        fetch('/api/admin/hr/applicants/counts', { credentials: 'include', headers: adminAuthHeaders() }),
+      ]);
       if (!response.ok) throw new Error((await response.json().catch(() => null))?.error || 'تعذر تحميل المتقدمين');
       setRows(await response.json());
+      if (counts.ok) setStageCounts(await counts.json());
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر تحميل المتقدمين');
     } finally {
@@ -55,11 +67,23 @@ export default function RecruitmentPipelinePanel({ notify }: { notify: Notify })
     }
   }, [filter, notify]);
 
+  const more = async () => {
+    setLoadingMore(true);
+    try {
+      const response = await fetch(`/api/admin/hr/applicants?stage=${filter}&limit=${PAGE_SIZE}&offset=${rows.length}`, { credentials: 'include', headers: adminAuthHeaders() });
+      if (!response.ok) throw new Error((await response.json().catch(() => null))?.error || 'تعذر تحميل المزيد');
+      const next: Applicant[] = await response.json();
+      setRows(previous => {
+        const seen = new Set(previous.map(row => row.id));
+        return [...previous, ...next.filter(row => !seen.has(row.id))];
+      });
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر تحميل المزيد');
+    } finally { setLoadingMore(false); }
+  };
+
   useEffect(() => { void load(); }, [load]);
-  const counts = useMemo(() => rows.reduce<Record<string, number>>((result, row) => {
-    result[row.stage] = (result[row.stage] || 0) + 1;
-    return result;
-  }, {}), [rows]);
+  const total = filter === 'all' ? Object.values(stageCounts).reduce((sum, count) => sum + count, 0) : stageCounts[filter] || 0;
 
   const changeStage = async (applicant: Applicant, stage: Stage) => {
     setBusy(applicant.id);
@@ -70,7 +94,7 @@ export default function RecruitmentPipelinePanel({ notify }: { notify: Notify })
       });
       if (!response.ok) throw new Error((await response.json().catch(() => null))?.error || 'فشل تحديث المرحلة');
       notify('success', `انتقل ${applicant.name} إلى "${LABEL[stage]}"`);
-      await load();
+      await load(true);
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'فشل تحديث المرحلة');
     } finally {
@@ -105,7 +129,7 @@ export default function RecruitmentPipelinePanel({ notify }: { notify: Notify })
         ? `تم تعيين ${hireTarget.name} وتنشيط حسابه — يقدر يدخل بالإيميل وكلمة المرور`
         : `تم إنشاء سجل ${hireTarget.name} — التفعيل خطوة منفصلة`);
       setHireTarget(null);
-      await load();
+      await load(true);
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'فشل التعيين');
     } finally {
@@ -120,13 +144,13 @@ export default function RecruitmentPipelinePanel({ notify }: { notify: Notify })
           <h3 className="flex items-center gap-2 text-sm font-bold text-slate-700"><BriefcaseBusiness size={16} /> مسار المتقدمين</h3>
           <p className="mt-0.5 text-xs text-gray-400">طلب الموقع ← فرز ← مقابلة ← عرض ← سجل موظف غير نشط.</p>
         </div>
-        <button onClick={() => void load()} className="rounded-lg border border-gray-200 p-2 text-gray-500" title="تحديث"><RefreshCw size={14} /></button>
+        <button onClick={() => void load(true)} className="rounded-lg border border-gray-200 p-2 text-gray-500" title="تحديث"><RefreshCw size={14} /></button>
       </div>
       <div className="flex flex-wrap gap-2">
         <button onClick={() => setFilter('all')} className={`rounded-lg px-3 py-1.5 text-xs font-bold ${filter === 'all' ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-600'}`}>الكل</button>
         {(Object.keys(LABEL) as Stage[]).map(stage => (
           <button key={stage} onClick={() => setFilter(stage)} className={`rounded-lg px-3 py-1.5 text-xs font-bold ${filter === stage ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-600'}`}>
-            {LABEL[stage]}{filter === 'all' && counts[stage] ? ` (${counts[stage]})` : ''}
+            {LABEL[stage]}{filter === 'all' && stageCounts[stage] ? ` (${stageCounts[stage]})` : ''}
           </button>
         ))}
       </div>
@@ -156,6 +180,15 @@ export default function RecruitmentPipelinePanel({ notify }: { notify: Notify })
               ))}
             </tbody>
           </table>
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-3 text-xs font-bold text-gray-500">
+            <span>ظاهر {rows.length} من {Math.max(total, rows.length)}</span>
+            {total > rows.length && (
+              <button onClick={() => { void more(); }} disabled={loadingMore}
+                className="rounded-xl bg-gray-900 px-4 py-2 text-white hover:bg-gray-700 disabled:opacity-50">
+                {loadingMore ? 'جاري التحميل...' : `عرض ${Math.min(PAGE_SIZE, total - rows.length)} متقدم كمان`}
+              </button>
+            )}
+          </div>
         </div>
       )}
 

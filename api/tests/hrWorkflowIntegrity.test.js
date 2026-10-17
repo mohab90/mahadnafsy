@@ -173,7 +173,7 @@ test('HR performance and employee KPI cards use server-side canonical monthly da
   assert.match(reports, /SUM\(amount_egp\) revenue/);
   assert.match(reports, /SUM\(commission_amount\) commission/);
   assert.match(reports, /revenue_generated/);
-  assert.match(hrTab, /\/api\/admin\/hr\/reports\/performance\?month=/);
+  assert.match(hrTab, /\/admin\/hr\/reports\/performance\?month=/);
   assert.doesNotMatch(hrTab, /<option value="LEAVE">/);
   assert.doesNotMatch(hrTab, /is_active: updated\.status/);
 });

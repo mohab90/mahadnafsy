@@ -140,7 +140,8 @@ test('every join-us and interview route a branch manager may use checks the row 
 test('the Dokki manager is shown the applications and interviews screens', () => {
   const nav = read('admin/pages/dashboard/DashboardNavigation.tsx');
   const daqqiNav = nav.slice(nav.indexOf('Daqqi Manager horizontal nav'), nav.indexOf('Sales & Collection Manager horizontal nav'));
-  assert.match(daqqiNav, /\{ key: 'join_us', label: 'طلبات الانضمام'/);
+  assert.match(daqqiNav, /\{ key: 'join_us', label: 'انضمام الموظفين'/);
+  assert.match(daqqiNav, /\{ key: 'lecturer_applications', label: 'انضمام المحاضرين'/);
   assert.match(daqqiNav, /\{ key: 'interviews', label: 'الانترفيوهات'/);
   const shared = read('admin/pages/dashboard/dashboardShared.tsx');
   assert.match(shared, /join_us: {12}\['view_join_us', 'branch_hr'\]/);

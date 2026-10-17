@@ -5,6 +5,8 @@ const { hrError, requirePermission, requireAnyPermission, logger, pool, getStaff
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { requireRecruiting, applicantReachSql, applicantInReach, outOfRecruitReach } = require('../../lib/branchHr');
 const { parseInterviewAt } = require('../../lib/joinApplication');
+const { cairoToday } = require('../../lib/dates');
+const { interviewFilterSql, interviewHeldSql, pageOf } = require('../../lib/recruitmentFilters');
 
 const EMPLOYMENT_TYPES = new Set(['full_time', 'part_time', 'contract', 'intern']);
 const JOB_STATUSES = new Set(['draft', 'open', 'closed', 'filled']);
@@ -270,29 +272,15 @@ router.delete('/api/admin/hr/jobs/:jobId', requireAuth, requireAdminOrStaff, req
   }
 });
 
-// List applicants for a job
-// A branch manager sees their branch's applicants (lib/branchHr.js) — «اتاكد ان
-// طلبات الانضمام للدقي والانترفيو للدقي بيظهر لنشوي مدير الدقي» (12 Oct 2026).
-router.get('/api/admin/hr/applicants', requireAuth, requireAdminOrStaff, requireAnyPermission('view_hr', 'branch_hr'), requireRecruiting('view_hr'), async (req, res) => {
-  try {
-    const params = [req.tenantId];
-    let filter = '';
-    if (req.query.stage && req.query.stage !== 'all') {
-      filter = ' AND a.stage=?';
-      params.push(String(req.query.stage));
-    }
-    const reach = applicantReachSql(req.recruitReach, 'a', 'j');
-    filter += reach.sql;
-    params.push(...reach.params);
-    const [rows] = await pool.query(
-      // interview_grade / second_interview_grade (migration 199_v25) were missing
-      // from this SELECT, so POST .../grade wrote the letter and returned 200
-      // while the list never sent it back — the grade reached the database and
-      // the screen kept showing "—" forever. From the desk that is
-      // indistinguishable from the grade not saving, which is how it was
-      // reported. The grader joins come too: a grade nobody can attribute is
-      // barely more useful than none.
-      `SELECT a.id,a.job_id,a.name,a.email,a.phone,a.cv_url,a.notes,a.stage,a.stage_notes,a.interview_rating,
+// The applicant columns both the job list and the interviews screen read.
+// interview_grade / second_interview_grade (migration 199_v25) were missing
+// from this SELECT, so POST .../grade wrote the letter and returned 200
+// while the list never sent it back — the grade reached the database and
+// the screen kept showing "—" forever. From the desk that is
+// indistinguishable from the grade not saving, which is how it was
+// reported. The grader joins come too: a grade nobody can attribute is
+// barely more useful than none.
+const APPLICANT_LIST_SQL = `SELECT a.id,a.job_id,a.name,a.email,a.phone,a.cv_url,a.notes,a.stage,a.stage_notes,a.interview_rating,
               a.interview_grade,a.second_interview_grade,
               a.interviewed_at,a.second_interviewed_at,
               g1.name interviewed_by_name,g2.name second_interviewed_by_name,
@@ -318,12 +306,120 @@ router.get('/api/admin/hr/applicants', requireAuth, requireAdminOrStaff, require
             ORDER BY n.created_at DESC LIMIT 1)
          JOIN job_postings j ON j.id=a.job_id AND j.tenant_id=a.tenant_id
          LEFT JOIN staff g1 ON g1.id=a.interviewed_by AND g1.tenant_id=a.tenant_id
-         LEFT JOIN staff g2 ON g2.id=a.second_interviewed_by AND g2.tenant_id=a.tenant_id
+         LEFT JOIN staff g2 ON g2.id=a.second_interviewed_by AND g2.tenant_id=a.tenant_id`;
+
+// List applicants for a job
+// A branch manager sees their branch's applicants (lib/branchHr.js) — «اتاكد ان
+// طلبات الانضمام للدقي والانترفيو للدقي بيظهر لنشوي مدير الدقي» (12 Oct 2026).
+router.get('/api/admin/hr/applicants', requireAuth, requireAdminOrStaff, requireAnyPermission('view_hr', 'branch_hr'), requireRecruiting('view_hr'), async (req, res) => {
+  try {
+    const params = [req.tenantId];
+    let filter = '';
+    if (req.query.stage && req.query.stage !== 'all') {
+      filter = ' AND a.stage=?';
+      params.push(String(req.query.stage));
+    }
+    const reach = applicantReachSql(req.recruitReach, 'a', 'j');
+    filter += reach.sql;
+    params.push(...reach.params);
+    // ?limit/&offset page it; without them it is the newest 500 as before.
+    const page = pageOf(req.query, { fallback: 500, max: 500 });
+    const [rows] = await pool.query(
+      `${APPLICANT_LIST_SQL}
         WHERE a.tenant_id=?${filter}
-        ORDER BY a.updated_at DESC,a.created_at DESC LIMIT 500`,
+        ORDER BY a.updated_at DESC,a.created_at DESC,a.id LIMIT ${page.limit} OFFSET ${page.offset}`,
       params
     );
     res.json(rows);
+  } catch (e) { hrError(res, e); }
+});
+
+// How many candidates are at each stage, over the same scope as the list above — so a screen that draws a
+// page of them still says how many there are.
+router.get('/api/admin/hr/applicants/counts', requireAuth, requireAdminOrStaff, requireAnyPermission('view_hr', 'branch_hr'), requireRecruiting('view_hr'), async (req, res) => {
+  try {
+    const reach = applicantReachSql(req.recruitReach, 'a', 'j');
+    const [rows] = await pool.query(
+      `SELECT a.stage, COUNT(*) n FROM job_applicants a JOIN job_postings j ON j.id=a.job_id AND j.tenant_id=a.tenant_id
+        WHERE a.tenant_id=?${reach.sql} GROUP BY a.stage`, [req.tenantId, ...reach.params]);
+    res.json(Object.fromEntries(rows.map(row => [row.stage, Number(row.n) || 0])));
+  } catch (e) { hrError(res, e); }
+});
+
+// «الانترفيوهات»: who is at the interview or offer stage, as the 50 the screen draws. It used to read
+// /api/admin/hr/applicants — 500 candidates of every stage, each with its last-contact lookup — and keep
+// the few at interview or offer in the browser. The tab (القادم/السابق) and the filters run here now.
+const INTERVIEW_STAGES_SQL = "a.stage IN ('interview','offer')";
+
+function interviewScope(req) {
+  const reach = applicantReachSql(req.recruitReach, 'a', 'j');
+  return { where: `a.tenant_id=? AND ${INTERVIEW_STAGES_SQL}${reach.sql}`, params: [req.tenantId, ...reach.params] };
+}
+
+const INTERVIEW_ACCESS = [requireAuth, requireAdminOrStaff, requireAnyPermission('view_hr', 'branch_hr'), requireRecruiting('view_hr')];
+
+router.get('/api/admin/hr/interviews', ...INTERVIEW_ACCESS, async (req, res) => {
+  try {
+    const today = cairoToday();
+    const past = req.query.tab === 'past';
+    const scope = interviewScope(req);
+    const filter = interviewFilterSql(req.query);
+    const { limit, offset } = pageOf(req.query);
+    const held = interviewHeldSql('a');
+    const where = `${scope.where} AND ${past ? '' : 'NOT '}${held}${filter.sql}`;
+    const params = [...scope.params, today, ...filter.params];
+    const [rows] = await pool.query(
+      `${APPLICANT_LIST_SQL}
+        WHERE ${where}
+        ORDER BY (a.interview_at IS NULL), a.interview_at ${past ? 'DESC' : 'ASC'}, a.created_at DESC, a.id
+        LIMIT ${limit} OFFSET ${offset}`,
+      params);
+    let total = offset + rows.length;
+    if (rows.length === limit) {
+      const [[count]] = await pool.query(
+        `SELECT COUNT(*) n FROM job_applicants a JOIN job_postings j ON j.id=a.job_id AND j.tenant_id=a.tenant_id WHERE ${where}`, params);
+      total = Number(count.n) || total;
+    }
+    res.json({ rows, total });
+  } catch (e) { hrError(res, e); }
+});
+
+// The tallies and pickers around the list: how many are upcoming and held, per stage in the open tab, and
+// the postings, branches and grades that exist — all over the interview and offer stages, read once.
+router.get('/api/admin/hr/interviews/summary', ...INTERVIEW_ACCESS, async (req, res) => {
+  try {
+    const today = cairoToday();
+    const past = req.query.tab === 'past';
+    const scope = interviewScope(req);
+    const held = interviewHeldSql('a');
+    const from = 'FROM job_applicants a JOIN job_postings j ON j.id=a.job_id AND j.tenant_id=a.tenant_id';
+    const [[tabs]] = await pool.query(
+      `SELECT COUNT(*) total, COALESCE(SUM(${held}),0) past ${from} WHERE ${scope.where}`, [today, ...scope.params]);
+    const [stageRows] = await pool.query(
+      `SELECT a.stage, COUNT(*) n ${from} WHERE ${scope.where} AND ${past ? '' : 'NOT '}${held} GROUP BY a.stage`,
+      [...scope.params, today]);
+    const [jobs] = await pool.query(
+      `SELECT a.job_id id, j.title, COUNT(*) n ${from} WHERE ${scope.where} GROUP BY a.job_id, j.title ORDER BY n DESC LIMIT 100`,
+      scope.params);
+    const [branches] = await pool.query(
+      `SELECT LOWER(COALESCE(NULLIF(a.branch,''), NULLIF(j.branch,''))) branch, COUNT(*) n ${from}
+        WHERE ${scope.where} GROUP BY branch HAVING branch IS NOT NULL ORDER BY n DESC`, scope.params);
+    const [gradeRows] = await pool.query(
+      `SELECT a.interview_grade g1, a.second_interview_grade g2, COUNT(*) n ${from}
+        WHERE ${scope.where} GROUP BY a.interview_grade, a.second_interview_grade`, scope.params);
+    const grades = {};
+    for (const row of gradeRows) {
+      for (const grade of [row.g1, row.g2]) if (grade) grades[grade] = (grades[grade] || 0) + Number(row.n);
+    }
+    const heldCount = Number(tabs.past) || 0;
+    const stage = Object.fromEntries(stageRows.map(row => [row.stage, Number(row.n) || 0]));
+    res.json({
+      tabs: { upcoming: (Number(tabs.total) || 0) - heldCount, past: heldCount },
+      stages: { interview: stage.interview || 0, offer: stage.offer || 0 },
+      jobs: jobs.map(row => ({ id: row.id, title: row.title || null, count: Number(row.n) || 0 })),
+      branches: branches.filter(row => row.branch).map(row => ({ key: row.branch, count: Number(row.n) || 0 })),
+      grades,
+    });
   } catch (e) { hrError(res, e); }
 });
 

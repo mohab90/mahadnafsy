@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Activity, AlarmClock, Banknote, BarChart3, Bell, BookOpen, CalendarDays,
-  CalendarCheck, ChevronDown, CreditCard, FileText, FolderKanban, Headphones, Image, ListOrdered,
+  CalendarCheck, ChevronDown, CreditCard, FileText, FolderKanban, GraduationCap, Headphones, Image, ListOrdered,
   LogOut, Menu, Monitor, RotateCcw, Shield, Star, Tag, TrendingUp,
   UserCheck, UserCog, UserPlus, UserSearch, Users, Video, Wallet, MessageSquareText, MessageCircle, Inbox,
   type LucideIcon,
@@ -611,7 +611,8 @@ export function DashboardNavigation(props: Props) {
                     { key: 'branch_hr', label: `موارد بشرية ${staffBranchLabel}`, icon: Users },
                     // «اتاكد ان طلبات الانضمام للدقي والانترفيو للدقي بيظهر لنشوي مدير
                     // الدقي» (12 Oct 2026) — the branch's applications and interviews.
-                    { key: 'join_us', label: 'طلبات الانضمام', icon: UserPlus },
+                    { key: 'join_us', label: 'انضمام الموظفين', icon: UserPlus },
+                    { key: 'lecturer_applications', label: 'انضمام المحاضرين', icon: GraduationCap },
                     { key: 'interviews', label: 'الانترفيوهات', icon: CalendarCheck },
                   ] },
                 ]}

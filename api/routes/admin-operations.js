@@ -25,6 +25,7 @@ const { advanceToInterview, convertJoinUs } = require('./hr/talent');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requireAnyPermission, requirePermission } = require('../middleware/auth');
 const { requireRecruiting, joinUsReachSql, joinUsInReach, outOfRecruitReach } = require('../lib/branchHr');
 const { readPrograms } = require('../lib/joinApplication');
+const { JOIN_US_INBOX_SQL, joinUsFilterSql, pageOf } = require('../lib/recruitmentFilters');
 
 // expenses.amount and friends are DECIMAL, which mysql2 hands back as strings,
 // and expenses.date is a DATETIME, which it hands back as a Date. The finance
@@ -377,11 +378,20 @@ function joinUsWhere(req) {
     where += " AND COALESCE(j.source_form, IF(j.type='EMPLOYEE','staff','teaching')) = ?";
     params.push(String(req.query.form));
   }
+  // ?inbox=1 — the page HR works from: an application that has been moved to the
+  // interviews (its applicant is at interview or offer) lives there, not here.
+  // The other screens that count applications leave it off and still see them.
+  if (req.query.inbox === '1') where += JOIN_US_INBOX_SQL;
   const reach = joinUsReachSql(req.recruitReach, 'j', 'a', 'jp');
   where += reach.sql;
   params.push(...reach.params);
   return { where, params };
 }
+
+const JOIN_US_FROM = `FROM join_us_applications j
+         LEFT JOIN job_applicants a
+           ON a.id=j.converted_applicant_id AND a.tenant_id=j.tenant_id
+         LEFT JOIN job_postings jp ON jp.id=a.job_id AND jp.tenant_id=a.tenant_id`;
 
 // «عدد طلبات انضمام الموظفين مكتوب 427 وفي مكان تاني 1285»: the list below stopped at 500 rows, newest first,
 // and every screen counted what reached it — so a tab of 1,285 applications showed the staff ones among the
@@ -416,7 +426,12 @@ router.get('/api/admin/join-us/counts', requireAuth, requireAdminOrStaff, requir
 router.get('/api/admin/join-us', requireAuth, requireAdminOrStaff, requireAnyPermission('view_join_us', 'branch_hr'), requireRecruiting('view_join_us'), async (req, res) => {
   try {
     const { where, params } = joinUsWhere(req);
-    const limit = Math.min(1000, Math.max(1, Math.floor(Number(req.query.limit)) || 500));
+    // ?paged=1 is the page HR works from: the filters run here and it answers { rows, total } for
+    // the 50 it was asked for, instead of the whole table for the browser to sift.
+    const paged = req.query.paged === '1';
+    const filter = paged ? joinUsFilterSql(req.query) : { sql: '', params: [] };
+    const scope = { where: where + filter.sql, params: [...params, ...filter.params] };
+    const limit = paged ? pageOf(req.query).limit : Math.min(1000, Math.max(1, Math.floor(Number(req.query.limit)) || 500));
     const offset = Math.max(0, Math.floor(Number(req.query.offset)) || 0);
     // contacted_at, contacted_by and interview_at are selected because the
     // screen needs them and this query never returned them. POST
@@ -460,16 +475,49 @@ router.get('/api/admin/join-us', requireAuth, requireAdminOrStaff, requireAnyPer
               AND ((n.ref_type='join_us' AND n.ref_id=j.id)
                 OR (n.ref_type='applicant' AND n.ref_id=j.converted_applicant_id))
             ORDER BY n.created_at DESC LIMIT 1)
-         ${where}
+         ${scope.where}
         ORDER BY j.created_at DESC, j.id DESC LIMIT ${limit} OFFSET ${offset}`,
-      params);
-    res.json(rows.map(r => ({
+      scope.params);
+    const mapped = rows.map(r => ({
       ...r,
       application_category: r.source_form === 'staff' ? 'HR' : 'ACADEMIC',
       programs: readPrograms(r.programs_json),
       first_call_tags: (() => { try { return JSON.parse(r.first_call_tags || '[]'); } catch { return []; } })(),
       programs_json: undefined,
-    })));
+    }));
+    if (!paged) return res.json(mapped);
+    // A short first page is its own total; only a full one needs the count query.
+    let total = offset + mapped.length;
+    if (mapped.length === limit) {
+      const [[row]] = await pool.query(`SELECT COUNT(*) n ${JOIN_US_FROM} ${scope.where}`, scope.params);
+      total = Number(row.n) || total;
+    }
+    res.json({ rows: mapped, total });
+  } catch (e) { routeError(res, e); }
+});
+
+// What the filter pickers offer for one list — the postings, branches and programmes that exist in it, with
+// how many applications each holds. Read once when the page opens, not worked out from every row in the browser.
+router.get('/api/admin/join-us/facets', requireAuth, requireAdminOrStaff, requireAnyPermission('view_join_us', 'branch_hr'), requireRecruiting('view_join_us'), async (req, res) => {
+  try {
+    const { where, params } = joinUsWhere(req);
+    const [jobs] = await pool.query(
+      `SELECT a.job_id id, jp.title, COUNT(*) n ${JOIN_US_FROM} ${where} AND a.job_id IS NOT NULL
+        GROUP BY a.job_id, jp.title ORDER BY n DESC LIMIT 100`, params);
+    const [branches] = await pool.query(
+      `SELECT LOWER(COALESCE(NULLIF(j.branch,''), NULLIF(a.branch,''), NULLIF(jp.branch,''))) branch, COUNT(*) n
+         ${JOIN_US_FROM} ${where} GROUP BY branch HAVING branch IS NOT NULL ORDER BY n DESC`, params);
+    const [programRows] = await pool.query(
+      `SELECT j.programs_json ${JOIN_US_FROM} ${where} AND j.programs_json IS NOT NULL AND j.programs_json <> '[]' LIMIT 5000`, params);
+    const programs = new Map();
+    for (const row of programRows) {
+      for (const program of readPrograms(row.programs_json)) programs.set(program.title, (programs.get(program.title) || 0) + 1);
+    }
+    res.json({
+      jobs: jobs.map(row => ({ id: row.id, title: row.title || null, count: Number(row.n) || 0 })),
+      branches: branches.filter(row => row.branch).map(row => ({ key: row.branch, count: Number(row.n) || 0 })),
+      programs: [...programs.entries()].sort((x, y) => y[1] - x[1]).map(([title, count]) => ({ title, count })),
+    });
   } catch (e) { routeError(res, e); }
 });
 
