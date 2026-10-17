@@ -327,39 +327,47 @@ export function ClientsTable({
               </div>
             );
             if (layout === 'cards') {
-              const actionList: Array<ClientCardAction | null> = [
-                { key: 'open', label: 'ملف العميل', icon: <ExternalLink size={14} />, onClick: () => navigate(`/client/${clientCode}`) },
-                { key: 'pay', label: 'تسجيل دفعة', icon: <Wallet size={14} />, tone: 'good', onClick: () => {
+              const open = () => navigate(`/client/${clientCode}`);
+              const primary: ClientCardAction[] = [
+                { key: 'open', label: 'ملف العميل', icon: <ExternalLink size={15} />, onClick: open },
+                { key: 'pay', label: 'تسجيل دفعة', icon: <Wallet size={15} />, tone: 'good', onClick: () => {
                   setSubPayRow(row);
                   setSubPayDraft(createClientPaymentDraft({ currency: branchCurrency, courseId: courseRows[0]?.cid || '' }));
                   setSubPayDraft(prev => ({ ...prev, bookingType: (row.enrolledCourseIds || []).length > 0 ? 'installment' : 'new_booking' }));
                 } },
-                { key: 'installments', label: 'الأقساط', icon: <CalendarClock size={14} />, tone: 'info', onClick: () => setInstallmentsRow(row) },
-                { key: 'contact', label: 'تسجيل تواصل', icon: <Phone size={14} />, onClick: () => logContact(row, 'call') },
+                { key: 'installments', label: 'الأقساط', icon: <CalendarClock size={15} />, tone: 'info', onClick: () => setInstallmentsRow(row) },
+              ];
+              const secondaryList: Array<ClientCardAction | null> = [
+                { key: 'contact', label: 'تسجيل تواصل', icon: <Phone size={15} />, onClick: () => logContact(row, 'call') },
                 isDaqqiClientsTab
-                  ? { key: 'housing', label: rowHousing ? 'تسكين في روند تاني' : 'تسكين في روند', icon: <Home size={14} />, onClick: () => { setDaqqiHousingModal(row); setDaqqiHousingRoundId(''); } }
-                  : !isCollection ? { key: 'access', label: 'الكورسات والصلاحية', icon: <Receipt size={14} />, onClick: () => setAccessRow(row) } : null,
-                { key: 'convert', label: 'تحويل', icon: <RefreshCw size={14} />, onClick: () => { setConvertRow(row); setConvertType(''); setConvertAttendedLive(false); setConvertGotCert(false); setConvertPauseReason(''); setConvertRefundReason(''); setConvertRefundAmount(''); setConvertRefundMethod(''); setConvertRefundPaymentId(''); } },
-                canDeleteSubscriber ? { key: 'archive', label: 'أرشفة', icon: <Trash2 size={14} />, tone: 'danger' as const, onClick: async () => {
+                  ? { key: 'housing', label: rowHousing ? 'تسكين في روند تاني' : 'تسكين في روند', icon: <Home size={15} />, onClick: () => { setDaqqiHousingModal(row); setDaqqiHousingRoundId(''); } }
+                  : !isCollection ? { key: 'access', label: 'الكورسات والصلاحية والمدفوعات', icon: <Receipt size={15} />, onClick: () => setAccessRow(row) } : null,
+                { key: 'convert', label: 'تحويل (إنهاء، إيقاف، استرداد)', icon: <RefreshCw size={15} />, onClick: () => { setConvertRow(row); setConvertType(''); setConvertAttendedLive(false); setConvertGotCert(false); setConvertPauseReason(''); setConvertRefundReason(''); setConvertRefundAmount(''); setConvertRefundMethod(''); setConvertRefundPaymentId(''); } },
+                canDeleteSubscriber ? { key: 'archive', label: 'أرشفة العميل', icon: <Trash2 size={15} />, tone: 'danger' as const, onClick: async () => {
                   if (!await confirmDialog(`أرشفة "${row.name}"؟ هيروح «الأرشيف» في قاعدة العملاء وسجله كله محفوظ.`)) return;
                   const ok = await deleteSubscriber(row.id);
                   if (ok && shouldUseScopedSubscribers) setSalesOwnSubscribers(prev => prev.filter(item => item.id !== row.id));
                   notify(ok ? 'success' : 'error', ok ? 'تمت أرشفة العميل.' : 'فشلت أرشفة العميل ولم يُحذف من النظام.');
                 } } : null,
               ];
-              const actions = actionList.filter((action): action is ClientCardAction => action !== null);
+              const secondary = secondaryList.filter((action): action is ClientCardAction => action !== null);
               const issued = row.certificates || [];
+              const instTone = instOverdue ? 'overdue' : instToday ? 'today' : instSoon ? 'soon' : 'later';
+              const contactTone = follow.contactDate ? (statusOfDate(follow.contactDate) === 'overdue' ? 'overdue' : statusOfDate(follow.contactDate) === 'today' ? 'today' : 'later') : 'later';
               return (
                 <ClientCard key={row.id} row={row} clientCode={clientCode}
                   selected={collOnlineSelected.has(row.id)}
                   onToggle={checked => { const next = new Set(collOnlineSelected); if (checked) next.add(row.id); else next.delete(row.id); setCollOnlineSelected(next); }}
-                  onOpen={() => navigate(`/client/${clientCode}`)}
+                  onOpen={open}
                   place={placeLabel(row)} createdAt={cairoDay(row.createdAt) || ''}
                   courses={courseRows.map(course => ({ id: course.cid, label: course.label, expected: course.expected, paid: course.paid, remaining: course.remaining, currency: course.cur }))}
                   statusCell={statusCell} salesCell={salesCell} housingCell={housingCell}
-                  instCell={instCell} hasInstallment={Boolean(nextInst)} contactCell={contactCell}
-                  actions={actions} onCall={() => logContact(row, 'call')} onWhats={() => logContact(row, 'whatsapp')}
-                  certificates={issued.length > 0 ? <div className="mt-2 flex flex-wrap gap-1 border-t border-gray-200 pt-1.5">{issued.slice(0, 3).map((cert, index) => <IssuedCertificateBadge key={index} cert={cert} />)}</div> : null}
+                  nextInstallment={nextInst ? { text: `قسط ${nextInst.dueDate} · ${Math.round(nextInst.amount).toLocaleString('ar-EG-u-nu-latn')} ${currFmt(nextInst.currency)}`, tone: instTone } : null}
+                  followUp={follow.contactDate ? { text: `متابعة ${follow.contactDate}`, tone: contactTone } : null}
+                  lastLine={lastComm ? (lastComm.outcome || lastComm.notes || '') : ''}
+                  primary={primary} secondary={secondary}
+                  onCall={() => logContact(row, 'call')} onWhats={() => logContact(row, 'whatsapp')}
+                  certificates={issued.length > 0 ? <div className="flex flex-wrap gap-1">{issued.slice(0, 3).map((cert, index) => <IssuedCertificateBadge key={index} cert={cert} />)}</div> : null}
                 />
               );
             }
@@ -507,7 +515,7 @@ export function ClientsTable({
   return (
     <div>
       {layout === 'cards' ? (
-        <div className="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-3">{renderRows()}</div>
+        <div className="grid items-start gap-2.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">{renderRows()}</div>
       ) : (
       <div className="overflow-x-auto">
       <table className="w-full border-collapse text-[12px]" dir="rtl">

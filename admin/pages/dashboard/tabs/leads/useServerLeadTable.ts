@@ -53,7 +53,7 @@ export function leadTableQuery(filters: LeadTableFilters, instituteBranches: Bra
 
 export const SERVER_TABLE_PAGE_SIZE = 100;
 
-export function useServerLeadTable(enabled: boolean, filters: LeadTableFilters, instituteBranches: BranchOption[]) {
+export function useServerLeadTable(enabled: boolean, filters: LeadTableFilters, instituteBranches: BranchOption[], pageSize: number = SERVER_TABLE_PAGE_SIZE) {
   const [page, setPage] = useState(0);
   const [rows, setRows] = useState<(LeadItem & { _score?: number })[]>([]);
   const [total, setTotal] = useState(0);
@@ -79,6 +79,8 @@ export function useServerLeadTable(enabled: boolean, filters: LeadTableFilters, 
   useEffect(() => {
     if (lastQuery.current !== query) { lastQuery.current = query; setPage(0); }
   }, [query]);
+  // A different page size (the cards' 48 against the table's 100) is a different set of pages.
+  useEffect(() => { setPage(0); }, [pageSize]);
 
   // The total is counted once per set of filters (and on refresh): counting
   // reads every matching lead, a page turn does not change it, and at 500k
@@ -91,7 +93,7 @@ export function useServerLeadTable(enabled: boolean, filters: LeadTableFilters, 
     setError('');
     const countKey = `${query}#${refreshToken}`;
     const withTotal = countedFor.current !== countKey;
-    const path = `/admin/leads/table?${query}${query ? '&' : ''}page=${page}&pageSize=${SERVER_TABLE_PAGE_SIZE}${withTotal ? '' : '&withTotal=0'}`;
+    const path = `/admin/leads/table?${query}${query ? '&' : ''}page=${page}&pageSize=${pageSize}${withTotal ? '' : '&withTotal=0'}`;
     mysqlAdmin.adminGet<{ rows: LeadItem[]; total: number | null }>(path).then(
       result => {
         if (!alive) return;
@@ -101,8 +103,8 @@ export function useServerLeadTable(enabled: boolean, filters: LeadTableFilters, 
       err => { if (alive) setError(err instanceof Error ? err.message : 'تعذر تحميل الليدز'); },
     ).finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [enabled, query, page, refreshToken]);
+  }, [enabled, query, page, pageSize, refreshToken]);
 
   const refresh = useCallback(() => setRefreshToken(token => token + 1), []);
-  return { rows, total, page, setPage, loading, error, refresh, pageSize: SERVER_TABLE_PAGE_SIZE };
+  return { rows, total, page, setPage, loading, error, refresh, pageSize };
 }

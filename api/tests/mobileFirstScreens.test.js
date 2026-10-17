@@ -31,23 +31,27 @@ test('on a phone the leads open on the pipeline, the clients on cards; a link th
   assert.match(read('admin/pages/dashboard/DashboardClientTabs.tsx'), /daqqi_clients/);
 });
 
-test('the pipeline is three columns across, one stage at a time on a phone', () => {
-  const board = read(`${tabs}/leads/LeadPipelineBoard.tsx`);
-  assert.match(board, /grid items-start gap-3 md:grid-cols-2 lg:grid-cols-3/);
-  assert.match(board, /if \(mobile\) \{/);
-  assert.match(board, /role="tablist"/);
-  assert.doesNotMatch(board, /w-60 flex-shrink-0/, 'the six 240 px columns scrolled sideways are gone');
+test('the pipeline is four calm cards across, in order, not a column per status', () => {
+  const grid = read(`${tabs}/leads/LeadCardsGrid.tsx`);
+  assert.ok(grid.includes('sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'));
+  const leads = read(`${tabs}/LeadsTab.tsx`);
+  assert.ok(leads.includes("useServerLeadTable(subTab === 'table' || subTab === 'pipeline'"));
+  assert.ok(leads.includes('<LeadCardsGrid'));
+  assert.ok(!fs.existsSync(path.join(__dirname, '..', '..', tabs, 'leads', 'LeadPipelineBoard.tsx')), 'the per-status board is gone');
+  // The panel opens for a lead that is not among the 500 held in memory, and the contact log is a dialog.
+  assert.ok(leads.includes('const openLead = activeLead ?? (selectedId && pickedLead?.id === selectedId ? pickedLead : null)'));
+  assert.ok(read(`${tabs}/leads/QuickLogContactPanel.tsx`).includes('<Modal open onClose={() => setShowAddComm(false)}'));
 });
 
-test('a lead\'s call and WhatsApp are real, full-size buttons, and the card writes its details out', () => {
+test('a lead call and WhatsApp are real buttons, icon-only, and every icon has a label', () => {
   const card = read(`${tabs}/leads/LeadCard.tsx`);
-  assert.match(card, /href=\{`tel:\$\{dialable \? `\+\$\{dialable\}` : lead\.phone\}`\}/);
-  assert.match(card, /<WhatsAppLink leadId=\{lead\.id\} phone=\{lead\.phone\}/);
-  assert.match(card, /h-10 flex-1/, 'a thumb wide');
-  for (const detail of ['آخر تواصل', 'المسؤول', 'المصدر', 'أُضيف', 'ملاحظة']) assert.ok(card.includes(detail), detail);
+  assert.ok(card.includes('href={`tel:${dialable ? `+${dialable}` : lead.phone}`}'));
+  assert.ok(card.includes('<WhatsAppLink leadId={lead.id} phone={lead.phone}'));
+  for (const label of ['اتصال', 'تسجيل تواصل', 'تفاصيل وتعديل', 'حجز ودفع']) assert.ok(card.includes(`aria-label="${label}"`), label);
+  assert.ok(read(`${tabs}/leads/WhatsAppLink.tsx`).includes('aria-label={title}'));
   const clientCard = read(`${tabs}/online-clients-sections/ClientCard.tsx`);
-  assert.match(clientCard, /href=\{`tel:\$\{row\.phone\}`\}/);
-  assert.match(clientCard, /href=\{wa\}/);
+  assert.ok(clientCard.includes('href={`tel:${row.phone}`}') && clientCard.includes('href={wa}'));
+  assert.ok(read(`${tabs}/online-clients-sections/ClientsTable.tsx`).includes('sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'));
 });
 
 test('every plain table is a stack of cards on a phone, and no table pushes the page sideways', () => {

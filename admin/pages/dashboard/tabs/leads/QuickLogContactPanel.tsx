@@ -1,5 +1,6 @@
 import type React from 'react';
 import { Plus } from 'lucide-react';
+import { Modal } from '../../../../../shared/ui/Modal';
 import type { CommunicationRecord, LeadItem } from '../../../../types';
 
 /**
@@ -48,11 +49,11 @@ export function QuickLogContactPanel({
 }: QuickLogContactPanelProps) {
   return (
     <>
+  {/* A dialog, not a card at the foot of the page: the button that opens it sits on a card in the middle of a
+      long list, and a form drawn below forty-eight cards looked like a button that did nothing. */}
   {canManageLeads && showAddComm && (
-    <div className="bg-white border border-primary-200 rounded-2xl p-4 shadow-sm space-y-3">
-      <h4 className="font-bold text-primary-700 text-sm flex items-center gap-2">
-        <Plus size={14} /> تسجيل تواصل جديد
-      </h4>
+    <Modal open onClose={() => setShowAddComm(false)} title="تسجيل تواصل جديد" icon={<Plus size={16} className="text-primary-600" />} size="md" align="sheet">
+    <div className="space-y-3">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="relative">
           <label className="text-xs font-bold text-gray-600 mb-1 block">البحث عن عميل</label>
@@ -133,6 +134,7 @@ export function QuickLogContactPanel({
         <button onClick={() => setShowAddComm(false)} className="px-4 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition text-sm">إلغاء</button>
       </div>
     </div>
+    </Modal>
   )}
     </>
   );

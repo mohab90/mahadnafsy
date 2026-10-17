@@ -20,7 +20,6 @@ import type { SubTabKey } from './leads/LeadSubTabs';
 import type { ConvertLeadModalState } from './leads/ConvertLeadModal';
 import { useLeadPerformanceData } from './leads/useLeadPerformanceData';
 import { useServerLeadTable } from './leads/useServerLeadTable';
-import { useServerLeadBoard } from './leads/useServerLeadBoard';
 import { useLeadFilteringData } from './leads/useLeadFilteringData';
 import { useLeadQuickCommunication } from './leads/useLeadQuickCommunication';
 import { useLeadRemindersData } from './leads/useLeadRemindersData';
@@ -30,11 +29,6 @@ import { fullLeadArraySubTabs } from '../dashboardTabGroups';
 import { useLeadAnalyticsData } from './leads/useLeadAnalyticsData';
 import { useLeadEffectiveRecords } from './leads/useLeadEffectiveRecords';
 import { useSalesTargetsStorage } from './leads/useSalesTargetsStorage';
-import {
-  PIPELINE_COLS,
-  STATUS_CFG,
-  // getScoreBreakdown intentionally NOT imported — this file defines a richer local version
-} from './leadUtils';
 
 
 // ── Props interface ────────────────────────────────────────────────────────
@@ -63,7 +57,7 @@ import SectionCustomTabs from './SectionCustomTabs';
 import { LeadEmptyDiagnostics } from './leads/LeadEmptyDiagnostics';
 import { useLeadActions } from './leads/useLeadActions';
 import { useLeadCrmBootstrap } from './leads/useLeadCrmBootstrap';
-import { isLocalNewLead, poolReasonOf, POOL_REASON_LABELS, TERMINAL_LEAD_STATUSES, type PoolReason } from './leads/leadSourceGroups';
+import { isLocalNewLead, poolReasonOf, POOL_REASON_LABELS, type PoolReason } from './leads/leadSourceGroups';
 import { poolViewOf, useLeadPool, useLocalNewCount } from './leads/useLeadPool';
 import type { TabKey } from '../navigation';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -74,7 +68,7 @@ const LeadDuplicateReviewPanel = React.lazy(() => import('./leads/LeadDuplicateR
 const LeadModalsHost = React.lazy(() => import('./leads/LeadModalsHost').then(module => ({ default: module.LeadModalsHost })));
 const LeadPerformancePanel = React.lazy(() => import('./leads/LeadPerformancePanel').then(module => ({ default: module.LeadPerformancePanel })));
 const LeadPerformanceOverview = React.lazy(() => import('./leads/LeadPerformanceOverview').then(module => ({ default: module.LeadPerformanceOverview })));
-const LeadPipelineBoard = React.lazy(() => import('./leads/LeadPipelineBoard').then(module => ({ default: module.LeadPipelineBoard })));
+const LeadCardsGrid = React.lazy(() => import('./leads/LeadCardsGrid').then(module => ({ default: module.LeadCardsGrid })));
 const LeadFollowUpsPage = React.lazy(() => import('./leads/LeadFollowUpsPage').then(module => ({ default: module.LeadFollowUpsPage })));
 const CrmQuotesWorkspace = React.lazy(() => import('./leads/CrmQuotesWorkspace').then(module => ({ default: module.CrmQuotesWorkspace })));
 const LeadPipelineSettings = React.lazy(() => import('./leads/LeadPipelineSettings').then(module => ({ default: module.LeadPipelineSettings })));
@@ -111,10 +105,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     statusDebounceRef.current.forEach(clearTimeout);
     statusDebounceRef.current.clear();
   }, []);
-  // Drag-and-drop between kanban columns
-  const draggedLeadRef = useRef<LeadItem | null>(null);
-  const [dragOverCol, setDragOverCol] = useState<LeadStatus | null>(null);
-
   const { subTab: requestedSubTab, setSubTab } = useLeadSubTab();
   const subTab: SubTabKey = performanceOnly ? 'performance' : requestedSubTab;
   // The whole leads table, fetched only for the sub-tabs that scan it. Opening
@@ -151,6 +141,10 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const [showHiddenLeads, setShowHiddenLeads] = useState(false);
   const [waRepId, setWaRepId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // The lead as the card held it. The panel looked its lead up in the leads held in memory — the newest 500 — so
+  // a lead from the server's page that is older than those opened nothing: «تفاصيل / تعديل» was dead for it.
+  const [pickedLead, setPickedLead] = useState<LeadItem | null>(null);
+  const pickLead = useCallback((lead: LeadItem) => { setPickedLead(lead); setSelectedId(lead.id); }, []);
   const [showAddLead, setShowAddLead] = useState(false);
   // Which section of the CRM settings is open, from the الإعدادات menu.
   const [settingsSection, setSettingsSection] = useState<CrmSettingsSection | null>(null);
@@ -219,10 +213,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     return () => document.removeEventListener('mousedown', handler);
   }, [showActionsMenu]);
 
-  // Pagination: how many cards shown per column (default 15)
-  const [colLimit, setColLimit] = useState<Record<LeadStatus, number>>(
-    Object.fromEntries(Object.keys(STATUS_CFG).map(k => [k, 15])) as Record<LeadStatus, number>
-  );
   const { salesTargets, saveSalesTargets } = useSalesTargetsStorage(targetMonth);
 
 
@@ -357,51 +347,15 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
 
   // The main table pages against the server instead of filtering the whole
   // leads array (leads/useServerLeadTable.ts).
-  const serverTable = useServerLeadTable(subTab === 'table', {
+  // The pipeline's cards read the same page under the same filters, 48 at a time (four across, twelve rows).
+  const serverTable = useServerLeadTable(subTab === 'table' || subTab === 'pipeline', {
     searchTerm, assignFilter, tagFilter, sourceFilter, courseFilter, branchFilter, singleStatus,
     showHiddenLeads, rottenFilter, salesSourceFilter, leadsFollowupFilter,
-  }, instituteBranches);
+  }, instituteBranches, subTab === 'pipeline' ? 48 : undefined);
   const refreshServerTable = serverTable.refresh;
+  // The table and the pipeline's cards are one server page; the counts above them are that page's.
+  const onServerPage = subTab === 'table' || subTab === 'pipeline';
 
-  // The pipeline board reads each column's count and first cards from the
-  // server under the same filters (leads/useServerLeadBoard.ts).
-  const boardColumns = useMemo(() => {
-    const configured = pipelineStages.length
-      ? pipelineStages.filter(stage => stage.showInPipeline).map(stage => stage.status as LeadStatus)
-      : PIPELINE_COLS;
-    return statusFilter.size === 0 ? configured : configured.filter(status => statusFilter.has(status));
-  }, [pipelineStages, statusFilter]);
-  // Open leads whose status is not a configured column — 'contacted',
-  // 'interested', 'follow_up' from before the current stages — get a column of
-  // their own after the configured ones. The board used to drop them without a
-  // word: 11,770 leads on the review data were nowhere on it. They are known
-  // from the counts, so the first load asks once more with their columns.
-  const [boardExtras, setBoardExtras] = useState<string[]>([]);
-  const serverBoard = useServerLeadBoard(subTab === 'pipeline', {
-    searchTerm, assignFilter, tagFilter, sourceFilter, courseFilter, branchFilter, singleStatus,
-    showHiddenLeads, rottenFilter, salesSourceFilter, leadsFollowupFilter,
-  }, instituteBranches, [...boardColumns, ...boardExtras] as LeadStatus[], colLimit);
-  useEffect(() => {
-    const next = statusFilter.size > 0 ? [] : Object.entries(serverBoard.counts)
-      .filter(([status, count]) => count > 0 && !boardColumns.includes(status as LeadStatus) && !TERMINAL_LEAD_STATUSES.has(status))
-      .sort((a, b) => b[1] - a[1])
-      .map(([status]) => status);
-    setBoardExtras(current => (current.join() === next.join() ? current : next));
-  }, [serverBoard.counts, boardColumns, statusFilter]);
-  // A configured column shows when the desk always works it, or when leads are in it.
-  const BOARD_ALWAYS_ON: LeadStatus[] = ['new', 'interested_booking', 'interested_followup', 'no_answer_wa', 'no_answer_nowa', 'not_interested'];
-  const boardStatusCols = [
-    ...boardColumns.filter(status => BOARD_ALWAYS_ON.includes(status) || (serverBoard.counts[status] || 0) > 0),
-    ...boardExtras,
-  ] as LeadStatus[];
-  const refreshServerBoard = serverBoard.refresh;
-  // Closed statuses (archived, wrong number…) stay off the board; the strip
-  // above it counts them and opens them in the table.
-  const LEGACY_STATUS_AR: Record<string, string> = { follow_up: 'متابعة', archived: 'مؤرشف' };
-  const boardHiddenStatuses = Object.entries(serverBoard.counts)
-    .filter(([status, count]) => count > 0 && !boardColumns.includes(status as LeadStatus)
-      && TERMINAL_LEAD_STATUSES.has(status) && statusFilter.size === 0)
-    .sort((a, b) => b[1] - a[1]);
   // An edit made from the table changes the row on the server; the page is
   // re-read so it shows what was saved.
   const tableUpdateLead = useCallback(async (item: LeadItem) => {
@@ -454,6 +408,9 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const { monthlyTrend, funnelData, sourcesData, totalConverted, totalLost } = useLeadAnalyticsData(leads, effectiveLeads, leadStats);
 
 
+  // The lead in memory when there is one (it is the freshest), else the one the card was drawn from.
+  const openLead = activeLead ?? (selectedId && pickedLead?.id === selectedId ? pickedLead : null);
+
   const waActiveRep = waRepId ? salesReps.find(r => r.id === waRepId) ?? null : null;
 
   const {
@@ -470,12 +427,11 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     convertLeadModal, setConvertLeadModal, setSelectedId,
     setDistributing, setMigratingBranches,
   });
-  // A card dragged to another column changes it on the server; the board is re-read.
-  const boardStatusChange = useCallback(async (lead: LeadItem, status: LeadStatus) => {
+  // A status changed on a card is saved on the server and the page is read again.
+  const cardStatusChange = useCallback(async (lead: LeadItem, status: LeadStatus) => {
     await handleStatusChange(lead, status);
-    refreshServerBoard();
-  }, [handleStatusChange, refreshServerBoard]); // eslint-disable-line react-hooks/exhaustive-deps
-
+    refreshServerTable();
+  }, [handleStatusChange, refreshServerTable]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Puts old unassigned data away in "محلي قديم" in one server call — the
   // alternative was editing thousands of leads one at a time. Nothing is
@@ -627,16 +583,16 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         totalLost={totalLost}
         knownSources={Object.keys(leadStats?.bySource || {})}
         sourceCounts={leadStats?.bySource}
-        visibleLeadsCount={subTab === 'table' ? serverTable.total : visibleLeads.length}
+        visibleLeadsCount={onServerPage ? serverTable.total : visibleLeads.length}
       />
 
       <LeadEmptyDiagnostics
-        visible={subTab === 'pipeline' || (subTab === 'table' && !serverTable.loading && !serverTable.error)}
+        visible={onServerPage && !serverTable.loading && !serverTable.error}
         isSalesOnly={isSalesOnly}
         salesDataLoading={salesDataLoading}
         totalLeads={leadStats?.total ?? leads.length}
-        effectiveCount={subTab === 'table' ? (leadStats?.total ?? effectiveLeads.length) : effectiveLeads.length}
-        visibleCount={subTab === 'table' ? serverTable.total : visibleLeads.length}
+        effectiveCount={onServerPage ? (leadStats?.total ?? effectiveLeads.length) : effectiveLeads.length}
+        visibleCount={onServerPage ? serverTable.total : visibleLeads.length}
         filtersActive={leadFiltersActive}
         currentStaffName={currentStaff?.name || selfStaff?.name || authUser?.email || ''}
         onClearFilters={clearLeadFilters}
@@ -647,40 +603,21 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
       {/* ═══════════════ PIPELINE ═══════════════ */}
       {subTab === 'pipeline' && (
         <Suspense fallback={<LeadSectionFallback />}>
-          {serverBoard.error && (
-            <div className="mb-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-              تعذّر تحميل البايبلاين: {serverBoard.error}
-              <button type="button" onClick={refreshServerBoard} className="mr-2 underline">إعادة المحاولة</button>
-            </div>
-          )}
-          {boardHiddenStatuses.length > 0 && (
-            <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900" role="status">
-              <span className="font-bold">عملاء في حالات مقفولة (مش في البايبلاين):</span>
-              {boardHiddenStatuses.map(([status, count]) => (
-                <button key={status} type="button"
-                  onClick={() => { setSingleStatus(status as LeadStatus); setSubTab('table'); }}
-                  className="rounded-full border border-amber-300 bg-white px-2 py-0.5 hover:bg-amber-100">
-                  {STATUS_CFG[status as LeadStatus]?.label || LEGACY_STATUS_AR[status] || status}: {count.toLocaleString('ar-EG-u-nu-latn')}
-                </button>
-              ))}
-              <span className="text-amber-700">— اضغط لعرضهم في الجدول.</span>
-            </div>
-          )}
-          <LeadPipelineBoard
-            activeStatusCols={boardStatusCols}
-            scoredLeads={serverBoard.rows}
-            columnTotals={serverBoard.counts}
-            colLimit={colLimit}
-            setColLimit={setColLimit}
-            dragOverCol={dragOverCol}
-            setDragOverCol={setDragOverCol}
-            draggedLeadRef={draggedLeadRef}
+          <LeadCardsGrid
+            rows={serverTable.rows}
+            loading={serverTable.loading}
+            error={serverTable.error}
+            onRetry={refreshServerTable}
+            page={serverTable.page + 1}
+            pageSize={serverTable.pageSize}
+            total={serverTable.total}
+            onPageChange={next => serverTable.setPage(next - 1)}
             canManageLeads={canManageLeads}
-            setSelectedId={setSelectedId}
-            handleStatusChange={boardStatusChange}
-            onOutcomeRecorded={async () => { await reloadLeads(); refreshServerBoard(); }}
-            openLeadBook={openLeadBook}
-            onLogContact={openContactLog}
+            onSelect={pickLead}
+            onStatusChange={cardStatusChange}
+            onBook={openLeadBook}
+            onContact={openContactLog}
+            onOutcomeRecorded={async () => { await reloadLeads(); refreshServerTable(); }}
             instituteBranches={instituteBranches}
             courses={courses}
             bundles={bundles}
@@ -899,10 +836,10 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
       </Suspense>
 
       {/* Quick Edit Panel */}
-      {activeLead && (
+      {openLead && (
         <Suspense fallback={null}>
           <QuickEditPanel
-            lead={activeLead}
+            lead={openLead}
             onClose={() => setSelectedId(null)}
             onSave={handleSave}
             courses={courses}

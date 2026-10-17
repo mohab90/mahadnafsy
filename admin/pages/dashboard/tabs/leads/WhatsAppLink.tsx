@@ -71,6 +71,7 @@ export default function WhatsAppLink({
       target="_blank"
       rel="noreferrer"
       title={title}
+      aria-label={title}
       className={className}
       onClick={(e) => { e.stopPropagation(); record(); }}
     >

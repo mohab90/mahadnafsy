@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { PhoneIncoming, PhoneMissed, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { LeadItem } from '../../../../types';
 import { cairoDaysAhead } from '../../../../../shared/cairoDate';
@@ -30,6 +31,8 @@ type Outcome = {
   /** Days until the next follow-up, or null to schedule none. */
   followUpInDays: number | null;
   className: string;
+  /** The icon the compact (text-free) card draws instead of the label. */
+  Icon: typeof PhoneIncoming;
 };
 
 const OUTCOMES: Outcome[] = [
@@ -40,6 +43,7 @@ const OUTCOMES: Outcome[] = [
     note: 'رد على الاتصال',
     followUpInDays: 2,
     className: 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100',
+    Icon: PhoneIncoming,
   },
   {
     key: 'no_answer',
@@ -48,6 +52,7 @@ const OUTCOMES: Outcome[] = [
     note: 'لم يرد على الاتصال',
     followUpInDays: 1,
     className: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100',
+    Icon: PhoneMissed,
   },
   {
     key: 'interested',
@@ -56,6 +61,7 @@ const OUTCOMES: Outcome[] = [
     note: 'أبدى اهتمامه',
     followUpInDays: 2,
     className: 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100',
+    Icon: ThumbsUp,
   },
   {
     key: 'not_interested',
@@ -64,6 +70,7 @@ const OUTCOMES: Outcome[] = [
     note: 'غير مهتم',
     followUpInDays: null,
     className: 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100',
+    Icon: ThumbsDown,
   },
 ];
 
@@ -79,8 +86,11 @@ function inDays(days: number): string {
 export default function LeadOutcomeButtons({
   lead,
   onRecorded,
+  compact = false,
 }: {
   lead: LeadItem;
+  /** Icons with a title instead of words — for the small card. */
+  compact?: boolean;
   /** Called once the entry has landed, so the board can refresh. */
   onRecorded?: () => void;
 }) {
@@ -121,9 +131,10 @@ export default function LeadOutcomeButtons({
             title={outcome.followUpInDays == null
               ? outcome.note
               : `${outcome.note} · متابعة بعد ${outcome.followUpInDays} يوم`}
-            className={`h-7 rounded-lg border text-[11px] font-bold transition disabled:opacity-40 ${outcome.className}`}
+            aria-label={outcome.label}
+            className={`${compact ? 'flex h-8 items-center justify-center' : 'h-7'} rounded-lg border text-[11px] font-bold transition disabled:opacity-40 ${outcome.className}`}
           >
-            {busy === outcome.key ? '…' : outcome.label}
+            {busy === outcome.key ? '…' : compact ? <outcome.Icon size={15} /> : outcome.label}
           </button>
         ))}
       </div>

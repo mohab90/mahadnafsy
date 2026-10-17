@@ -119,7 +119,7 @@ export const saasOpsTabs = new Set<string>([
  *  The screen itself is not in `fullCrmDataTabs`; the reminder / performance /
  *  analytics panels read server aggregates instead. The pipeline board reads
  *  each column's count and first cards from GET /admin/leads/board
- *  (leads/useServerLeadBoard.ts), under the same filters as the table.
+ *  (the pipeline now reads the same server page as the table), under the same filters.
  *
  *  Duplicate review reads GET /admin/leads/duplicates itself, and the
  *  reminders' undated queues («محدش كلمهم», «وعدوا بالدفع») now come from
