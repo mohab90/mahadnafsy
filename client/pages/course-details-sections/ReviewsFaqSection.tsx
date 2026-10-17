@@ -18,15 +18,17 @@ interface FaqSectionProps {
   content: Record<string, string>;
   openFaq: number | null;
   setOpenFaq: (idx: number | null) => void;
+  /** Another page's list («السؤال :: الجواب» per line) in place of courseDetails.faqList. */
+  list?: string;
 }
 
 /**
  * Every doubt answered in one list: courseDetails.faqList, then the two
  * questions that used to have their own cards (courseDetails.faq.q1/a1, q2/a2).
  */
-export const FaqSection: React.FC<FaqSectionProps> = ({ content, openFaq, setOpenFaq }) => {
-  const own = [1, 2].map(n => [content[`courseDetails.faq.q${n}`] || '', content[`courseDetails.faq.a${n}`] || '']);
-  const listed = (content['courseDetails.faqList'] || DEFAULT_FAQ).split('\n').map(l => l.split('::'));
+export const FaqSection: React.FC<FaqSectionProps> = ({ content, openFaq, setOpenFaq, list }) => {
+  const own = list ? [] : [1, 2].map(n => [content[`courseDetails.faq.q${n}`] || '', content[`courseDetails.faq.a${n}`] || '']);
+  const listed = (list || content['courseDetails.faqList'] || DEFAULT_FAQ).split('\n').map(l => l.split('::'));
   // «هل الشهادة معتمدة؟» and «هل الشهادة معتمدة وموثّقة؟» are one question: the first three words decide.
   const seen = new Set<string>();
   const key = (q: string) => q.replace(/[؟?]/g, '').trim().split(/\s+/).slice(0, 3).join(' ');
@@ -35,7 +37,7 @@ export const FaqSection: React.FC<FaqSectionProps> = ({ content, openFaq, setOpe
     .filter(p => { const k = key(p[0]); if (seen.has(k)) return false; seen.add(k); return true; });
   return (
     <section id="faq" className="scroll-mt-32">
-      <SectionHead kicker="عندك سؤال؟" title={content['courseDetails.faqTitle'] || content['courseDetails.faq.title'] || 'الأسئلة الشائعة'} />
+      <SectionHead kicker="عندك سؤال؟" title={list ? 'الأسئلة الشائعة' : (content['courseDetails.faqTitle'] || content['courseDetails.faq.title'] || 'الأسئلة الشائعة')} />
       <div className="divide-y divide-line overflow-hidden rounded-[26px] border border-line bg-white">
         {faq.map((p, i) => {
           const on = openFaq === i;

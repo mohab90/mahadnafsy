@@ -164,13 +164,20 @@ export const CourseHeroSection: React.FC<CourseHeroSectionProps> = ({
 };
 
 interface CourseBookingCardProps {
-  course: Course;
+  /** A course, or a path (bundle): anything with an id, a title and a blurb. */
+  course: { id: string; title: string; shortDescription?: string };
   content: Record<string, string>;
+  /** Where «احجز مكانك» goes; a course's enrol link unless given. */
+  enrollHref?: string;
+  /** The three ticks under the buttons; the course page's own unless given. */
+  features?: string[];
+  /** A line under the price (the path page: what it saves against buying the courses one by one). */
+  extra?: React.ReactNode;
   currentPrice: number;
   oldPrice: number;
   discountedPrice: number | null;
   currencySymbol: string;
-  applicableDiscount: { discountPercent: number; label?: string; expiresAt?: string } | undefined;
+  applicableDiscount?: { discountPercent: number; label?: string; expiresAt?: string };
   isSubscribed: boolean;
   onBuyNow: () => void;
   onPreviewCertificate: () => void;
@@ -185,6 +192,9 @@ interface CourseBookingCardProps {
 export const CourseBookingCard: React.FC<CourseBookingCardProps> = ({
   course,
   content,
+  enrollHref,
+  features,
+  extra,
   currentPrice,
   oldPrice,
   discountedPrice,
@@ -194,6 +204,7 @@ export const CourseBookingCard: React.FC<CourseBookingCardProps> = ({
   onBuyNow,
   onPreviewCertificate,
 }) => {
+  const bookHref = enrollHref || `/enroll?course=${encodeURIComponent(course.id)}`;
   // Strike only a price the customer is actually saving against, and badge a
   // discount only when one exists. Rendered unconditionally, this struck out
   // «السعر الرسمي: 0» above the real price and stamped «خصم لفترة محدودة» on
@@ -207,7 +218,7 @@ export const CourseBookingCard: React.FC<CourseBookingCardProps> = ({
   const [shareState, setShareState] = React.useState<'idle' | 'copied'>('idle');
   const shareCourse = async () => {
     const url = window.location.href;
-    const shareData = { title: course.title, text: plain(course.shortDescription) || course.title, url };
+    const shareData = { title: course.title, text: plain(course.shortDescription || '') || course.title, url };
     if (navigator.share) {
       // A user who dismisses the sheet raises AbortError — not a failure.
       try { await navigator.share(shareData); return; } catch { return; }
@@ -254,6 +265,7 @@ export const CourseBookingCard: React.FC<CourseBookingCardProps> = ({
         ) : (
           <p className="text-center font-bold text-gold-deep">السعر غير متاح في دولتك حاليًا</p>
         )}
+        {priced && extra}
 
         {priced && !isSubscribed && (
           <div className="mt-4 grid grid-cols-2 gap-2 text-center">
@@ -276,7 +288,7 @@ export const CourseBookingCard: React.FC<CourseBookingCardProps> = ({
             </div>
           ) : priced ? (
             <Link
-              to={`/enroll?course=${encodeURIComponent(course.id)}`}
+              to={bookHref}
               className="flex min-h-[60px] w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 px-5 text-lg font-black text-white shadow-[0_16px_30px_-12px_rgba(159,18,57,.8)] transition hover:bg-primary-800"
             >
               احجز مكانك الآن <ArrowLeft size={20} />
@@ -304,11 +316,11 @@ export const CourseBookingCard: React.FC<CourseBookingCardProps> = ({
         </div>
 
         <ul className="mt-4 space-y-2.5 border-t border-line pt-4 text-sm font-bold text-muted-strong">
-          {[
+          {(features || [
             content['courseDetails.price.feature1'] || 'وصول لمدة سنة واحدة للمحتوى',
             content['courseDetails.price.feature2'] || 'شهادة إتمام موثقة برقم تسلسلي',
             content['courseDetails.price.feature3'] || 'المادة العلمية + نماذج العمل',
-          ].map((text, i) => (
+          ]).map((text, i) => (
             <li key={i} className="flex items-center gap-2.5">
               <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-green-50 text-green-700"><Check size={14} strokeWidth={3} /></span>
               {text}

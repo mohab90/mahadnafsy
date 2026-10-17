@@ -12,6 +12,10 @@ interface LeadFormSectionProps {
   setLeadBranch: (v: string) => void;
   leadNotice: string;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  /** The path page's own wording (bundleDetails.form.*); the course page's keys otherwise. */
+  title?: string;
+  subtitle?: string;
+  submitLabel?: string;
 }
 
 export const LeadFormSection: React.FC<LeadFormSectionProps> = ({
@@ -24,6 +28,9 @@ export const LeadFormSection: React.FC<LeadFormSectionProps> = ({
   setLeadBranch,
   leadNotice,
   onSubmit,
+  title,
+  subtitle,
+  submitLabel,
 }) => {
   let branchOptions: { id: string; label: string; internal_only?: boolean }[] = [];
   try { branchOptions = JSON.parse(content['institute.branches'] || '[]'); } catch {}
@@ -37,8 +44,8 @@ export const LeadFormSection: React.FC<LeadFormSectionProps> = ({
         <div className="relative grid items-center gap-7 md:grid-cols-[1fr_minmax(0,1.1fr)]">
         <div className="text-center md:text-right">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-extrabold text-gold-pale ring-1 ring-white/15"><PhoneCall size={14} /> استشارة مجانية</span>
-            <h2 className="mt-3 text-balance text-[26px] font-black leading-tight sm:text-[34px]">{content['courseDetails.lead.title'] || 'لسه محتار؟ سيب رقمك ومستشار أكاديمي يكلمك'}</h2>
-            <p className="mt-2 text-sm leading-relaxed text-white/75 sm:text-base">{content['courseDetails.lead.subtitle'] || 'هيجاوبك على كل أسئلتك، ويساعدك تختار نظام الدراسة والدفع الأنسب ليك.'}</p>
+            <h2 className="mt-3 text-balance text-[26px] font-black leading-tight sm:text-[34px]">{title || content['courseDetails.lead.title'] || 'لسه محتار؟ سيب رقمك ومستشار أكاديمي يكلمك'}</h2>
+            <p className="mt-2 text-sm leading-relaxed text-white/75 sm:text-base">{subtitle || content['courseDetails.lead.subtitle'] || 'هيجاوبك على كل أسئلتك، ويساعدك تختار نظام الدراسة والدفع الأنسب ليك.'}</p>
             <ul className="mx-auto mt-5 w-fit space-y-2.5 text-right text-[15px] font-bold text-white/90 md:mx-0">
               {['مكالمة مجانية من غير أي التزام', 'هنتواصل معاك خلال 48 ساعة', 'هنرشحلك الأنسب لهدفك وميزانيتك'].map(t => (
                 <li key={t} className="flex items-center gap-2.5"><span className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-gold-light text-ink"><Check size={14} strokeWidth={3} /></span>{t}</li>
@@ -71,7 +78,7 @@ export const LeadFormSection: React.FC<LeadFormSectionProps> = ({
 
             <button type="submit" className="flex min-h-[54px] w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 text-lg font-black text-white shadow-[0_16px_30px_-12px_rgba(159,18,57,.8)] transition hover:bg-primary-800">
                  <Send size={18} />
-                 {content['courseDetails.lead.submit'] || 'كلّموني'}
+                 {submitLabel || content['courseDetails.lead.submit'] || 'كلّموني'}
             </button>
             <p className="text-center text-xs text-muted">بياناتك في أمان، ومش هنستخدمها غير للتواصل معاك بخصوص البرنامج.</p>
         </form>

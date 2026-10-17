@@ -27,14 +27,14 @@ const NAV = [
 ];
 
 /** The page's chapters, pinned under the site header, marking the one being read. */
-export const SectionNav: React.FC<{ showBook: boolean; courseId: string }> = ({ showBook, courseId }) => {
+export const SectionNav: React.FC<{ showBook: boolean; courseId?: string; enrollHref?: string; sections?: { id: string; label: string }[] }> = ({ showBook, courseId = '', enrollHref, sections = NAV }) => {
   const [top, setTop] = useState(64);
   const [active, setActive] = useState('');
   const [ids, setIds] = useState<string[]>([]);
   useEffect(() => {
     const header = document.querySelector('header');
     if (header) setTop(header.getBoundingClientRect().height);
-    const present = NAV.map(n => n.id).filter(id => document.getElementById(id));
+    const present = sections.map(n => n.id).filter(id => document.getElementById(id));
     setIds(present);
     const seen = new Map<string, boolean>();
     const io = new IntersectionObserver(entries => {
@@ -44,9 +44,11 @@ export const SectionNav: React.FC<{ showBook: boolean; courseId: string }> = ({ 
     }, { rootMargin: '-35% 0px -55% 0px' });
     present.forEach(id => { const el = document.getElementById(id); if (el) io.observe(el); });
     return () => io.disconnect();
+    // The sections are fixed for the page's life; read once after it renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  const items = NAV.filter(n => ids.includes(n.id));
+  const items = sections.filter(n => ids.includes(n.id));
   if (items.length < 3) return null;
   return (
     <div className="sticky z-40 border-b border-line bg-white/95 backdrop-blur" style={{ top }}>
@@ -60,7 +62,7 @@ export const SectionNav: React.FC<{ showBook: boolean; courseId: string }> = ({ 
           ))}
         </nav>
         {showBook && (
-          <Link to={`/enroll?course=${encodeURIComponent(courseId)}`} className="hidden min-h-[42px] flex-none items-center gap-1.5 rounded-xl bg-primary-700 px-4 text-sm font-black text-white transition hover:bg-primary-800 md:inline-flex">
+          <Link to={enrollHref || `/enroll?course=${encodeURIComponent(courseId)}`} className="hidden min-h-[42px] flex-none items-center gap-1.5 rounded-xl bg-primary-700 px-4 text-sm font-black text-white transition hover:bg-primary-800 md:inline-flex">
             احجز مكانك <ArrowLeft size={16} />
           </Link>
         )}
@@ -125,7 +127,7 @@ export const InstructorSection: React.FC<{ course: Course; therapists: Therapist
 };
 
 /** The certificate itself, as the graduate receives it — with this course's name on it. */
-export const CertificateShowcase: React.FC<{ course: Course; content: Content; onPreview: () => void }> = ({ course, content, onPreview }) => {
+export const CertificateShowcase: React.FC<{ course: { titleEn?: string; hours?: number; instructor?: string }; content: Content; onPreview: () => void; subtitle?: string }> = ({ course, content, onPreview, subtitle }) => {
   const english = /[A-Za-z]/.test(course.titleEn || '') && !/[؀-ۿ]/.test(course.titleEn || '') ? course.titleEn!.trim() : 'Course Title';
   const scale = 0.42;
   const points = [
@@ -137,7 +139,7 @@ export const CertificateShowcase: React.FC<{ course: Course; content: Content; o
     <section id="certificate" className="scroll-mt-32 overflow-hidden rounded-[30px] bg-ink p-5 text-white sm:p-8">
       <div className="grid items-center gap-8 md:grid-cols-[1fr_auto]">
         <div>
-          <SectionHead light kicker="الشهادة" title={content['courseDetails.cert.title'] || 'شهادة تفتح لك باب الشغل'} subtitle="في آخر البرنامج بتستلم شهادة المعهد باسمك — ودي شكلها بالظبط." />
+          <SectionHead light kicker="الشهادة" title={content['courseDetails.cert.title'] || 'شهادة تفتح لك باب الشغل'} subtitle={subtitle || 'في آخر البرنامج بتستلم شهادة المعهد باسمك — ودي شكلها بالظبط.'} />
           <ul className="space-y-4">
             {points.map(p => (
               <li key={p.title} className="flex gap-3">
@@ -153,7 +155,7 @@ export const CertificateShowcase: React.FC<{ course: Course; content: Content; o
         <button type="button" onClick={onPreview} aria-label={content['courseDetails.cert.previewBtn'] || 'معاينة الشهادة'} className="group relative mx-auto block rotate-[-2.5deg] rounded-md shadow-[0_40px_70px_-30px_rgba(0,0,0,.8)] ring-4 ring-white/10 transition hover:rotate-0">
           <span dir="ltr" className="block overflow-hidden rounded-md" style={{ width: CERT_W * scale, height: CERT_H * scale }}>
             <span className="block" style={{ width: CERT_W, height: CERT_H, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
-              <CertificateSheet lazy certName="STUDENT NAME" certCourse={english} duration={course.hours ? `${course.hours} Hours` : ''} trainer={course.instructor} certNumber="SAMPLE" issuedAt="" qrUrl="" />
+              <CertificateSheet lazy certName="STUDENT NAME" certCourse={english} duration={course.hours ? `${course.hours} Hours` : ''} trainer={course.instructor || ''} certNumber="SAMPLE" issuedAt="" qrUrl="" />
             </span>
           </span>
           <span className="absolute inset-x-3 bottom-3 rounded-xl bg-ink/85 px-3 py-2 text-center text-xs font-black text-white opacity-0 backdrop-blur transition group-hover:opacity-100 group-focus-visible:opacity-100">اضغط للمعاينة بالحجم الكامل</span>
@@ -287,7 +289,7 @@ export const ValueStackSection: React.FC<ValueStackProps> = ({ course, content, 
 };
 
 /** The last screen before the footer: one more, clear invitation. */
-export const FinalCtaSection: React.FC<{ course: Course; content: Content; isSubscribed: boolean }> = ({ course, content, isSubscribed }) => {
+export const FinalCtaSection: React.FC<{ course: { id: string; title: string }; content: Content; isSubscribed: boolean; enrollHref?: string }> = ({ course, content, isSubscribed, enrollHref }) => {
   if (isSubscribed) return null;
   return (
     <section className="relative overflow-hidden bg-ink py-14 text-white sm:py-20">
@@ -297,7 +299,7 @@ export const FinalCtaSection: React.FC<{ course: Course; content: Content; isSub
         <h2 className="mx-auto mt-4 max-w-3xl text-balance text-3xl font-black leading-tight sm:text-[44px]">{content['courseDetails.final.title'] || 'مكانك في الدفعة الجاية مستنيك'}</h2>
         <p className="mx-auto mt-3 max-w-2xl text-base leading-relaxed text-white/70 sm:text-lg">{content['courseDetails.final.subtitle'] || `ابدأ ${course.title} النهارده، وخلّي الشهادة الجاية في ملفك تكون شهادتك.`}</p>
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-          <Link to={`/enroll?course=${encodeURIComponent(course.id)}`} className="inline-flex min-h-[58px] items-center justify-center gap-2 rounded-2xl bg-primary-600 px-9 text-lg font-black text-white shadow-[0_20px_40px_-14px_rgba(225,29,72,.75)] transition hover:bg-primary-500">
+          <Link to={enrollHref || `/enroll?course=${encodeURIComponent(course.id)}`} className="inline-flex min-h-[58px] items-center justify-center gap-2 rounded-2xl bg-primary-600 px-9 text-lg font-black text-white shadow-[0_20px_40px_-14px_rgba(225,29,72,.75)] transition hover:bg-primary-500">
             احجز مكانك الآن <ArrowLeft size={20} />
           </Link>
           <a href={`https://wa.me/${instituteWhatsApp(content)}`} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[58px] items-center justify-center gap-2 rounded-2xl bg-white/10 px-7 text-base font-extrabold text-white ring-1 ring-white/25 transition hover:bg-white/15">
