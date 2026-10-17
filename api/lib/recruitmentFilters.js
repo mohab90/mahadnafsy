@@ -91,6 +91,21 @@ function interviewHeldSql(a = 'a') {
            OR (${a}.interview_at IS NOT NULL AND DATE(${a}.interview_at) < ?))`;
 }
 
+/** Applicant types that are employees when the website form does not say (the admin's kindOfApplicant). */
+const STAFF_TYPES = ['staff', 'employee', 'hr', 'admin', 'ops', 'support'];
+
+/**
+ * Employee or lecturer. The form the candidate applied through decides (js.source_form); with none —
+ * a candidate added by hand — the applicant type does, as kindOfApplicant does in the admin. a = job_applicants,
+ * js = join_us_applications. A constant list, no function on a column.
+ */
+function interviewFormSql(form) {
+  const staff = `(COALESCE(js.source_form,'') = 'staff' OR (js.source_form IS NULL AND a.applicant_type IN (${STAFF_TYPES.map(type => `'${type}'`).join(',')})))`;
+  if (form === 'staff') return ` AND ${staff}`;
+  if (form === 'teaching') return ` AND NOT ${staff}`;
+  return '';
+}
+
 /** The narrowing for the interviews, before the upcoming/past split. a = job_applicants, j = job_postings. */
 function interviewFilterSql(query = {}) {
   let sql = '';
@@ -130,5 +145,5 @@ function pageOf(query = {}, { fallback = 50, max = 200 } = {}) {
 
 module.exports = {
   EXPERIENCE_ORDER, JOIN_STATUSES, GRADES,
-  JOIN_US_INBOX_SQL, joinUsFilterSql, interviewFilterSql, interviewHeldSql, experienceSql, likeOf, pageOf,
+  JOIN_US_INBOX_SQL, joinUsFilterSql, interviewFilterSql, interviewFormSql, interviewHeldSql, experienceSql, likeOf, pageOf,
 };

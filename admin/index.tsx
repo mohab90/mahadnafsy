@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
+import { installMobileTables } from './lib/mobileTables';
 
 // Fix malformed URLs like /?#/dashboard → /#/dashboard
 // These can appear when Apache redirects clean up empty query strings
@@ -58,6 +59,7 @@ window.addEventListener('error', (event) => {
 // loop.
 setTimeout(() => sessionStorage.removeItem(CHUNK_RELOAD_KEY), 10_000);
 
+installMobileTables();
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Filter, RotateCcw } from 'lucide-react';
+import { RotateCcw, Search } from 'lucide-react';
 
 import { EXPERIENCE_ORDER, EXPERIENCE_YEARS, branchLabel, cairoDayOf } from '../hr-sections/applicantLabels';
 import { cairoDateOnly } from '../../../../../shared/cairoDate';
@@ -96,19 +96,19 @@ export const InterviewFilters: React.FC<{
     { key: 'past', label: 'حضروا الانترفيو', hint: 'اتقيّموا، أو عدّى يوم ميعادهم', count: timelineCounts.past },
   ];
 
+  const select = 'h-7 shrink-0 rounded-lg border border-gray-200 bg-white px-2 text-[11px]';
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-3 space-y-3" dir="rtl">
-      {/* Two tabs, above the filters and styled as tabs rather than chips: this
-          splits the screen into two working lists, where everything below it
-          narrows whichever list is open. */}
-      <div className="flex items-center gap-1 border-b border-gray-200 -mx-3 px-3">
+    <div className="space-y-1.5 rounded-2xl border border-gray-200 bg-white p-2" dir="rtl">
+      {/* Two tabs, styled as tabs rather than chips: this splits the page into two working lists, where
+          everything below narrows whichever list is open. */}
+      <div className="no-scrollbar -mx-2 flex items-center gap-1 overflow-x-auto border-b border-gray-200 px-2">
         {timelines.map(t => (
           <button
             key={t.key}
             onClick={() => set({ timeline: t.key })}
             title={t.hint}
             aria-current={value.timeline === t.key ? 'page' : undefined}
-            className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-bold transition ${
+            className={`-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-1.5 text-xs font-bold transition ${
               value.timeline === t.key
                 ? 'border-violet-600 text-violet-700'
                 : 'border-transparent text-gray-500 hover:text-gray-700'}`}
@@ -121,94 +121,52 @@ export const InterviewFilters: React.FC<{
           </button>
         ))}
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="flex items-center gap-1.5 text-xs font-bold text-gray-600">
-          <Filter size={14} className="text-violet-600" /> فلترة
-        </span>
+
+      {/* Everything that narrows the list, in ONE row (it scrolls sideways on a phone). */}
+      <div className="no-scrollbar flex flex-nowrap items-center gap-1.5 overflow-x-auto">
         {views.map(v => (
           <button
             key={v.key}
             onClick={() => set({ view: v.key })}
-            className={`rounded-full px-3 py-1 text-xs font-bold transition ${
-              value.view === v.key ? v.tone : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-bold transition ${
+              value.view === v.key ? v.tone : 'bg-gray-50 text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100'}`}
           >
-            {v.label} ({v.count})
+            {v.label} {v.count}
           </button>
         ))}
-        {active && (
-          <button
-            onClick={() => onChange(emptyInterviewFilters())}
-            className="mr-auto flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold text-gray-500 hover:bg-gray-100"
-          >
-            <RotateCcw size={12} /> إلغاء الفلاتر
-          </button>
-        )}
-      </div>
-
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        <label className="block">
-          <span className="mb-1 block text-[11px] font-bold text-gray-500">الوظيفة</span>
-          <select
-            value={value.jobId}
-            onChange={e => set({ jobId: e.target.value })}
-            className="w-full rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-xs"
-          >
-            <option value="">كل الوظائف</option>
-            {jobs.map(j => (
-              <option key={j.value} value={j.value}>{j.label} ({j.count})</option>
-            ))}
-          </select>
-        </label>
-
-        <label className="block">
-          <span className="mb-1 block text-[11px] font-bold text-gray-500">الخبرة (حد أدنى)</span>
-          <select
-            value={value.minExperience}
-            onChange={e => set({ minExperience: e.target.value })}
-            className="w-full rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-xs"
-          >
-            <option value="">أي خبرة</option>
-            {/* Fresh graduates are a deliberate search, not the bottom of a
-                range, so they get their own option instead of being the
-                minimum that matches everyone. */}
-            <option value="only_none">بدون خبرة فقط</option>
-            {EXPERIENCE_ORDER.filter(key => key !== 'none').map(key => (
-              <option key={key} value={key}>{EXPERIENCE_YEARS[key]} فأكثر</option>
-            ))}
-          </select>
-        </label>
-
-        <label className="block">
-          <span className="mb-1 block text-[11px] font-bold text-gray-500">الفرع</span>
-          <select
-            value={value.branch}
-            onChange={e => set({ branch: e.target.value })}
-            className="w-full rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-xs"
-          >
-            <option value="">كل الفروع</option>
-            {branches.map(b => (
-              <option key={b.value} value={b.value}>{branchLabel(b.value)} ({b.count})</option>
-            ))}
-          </select>
-        </label>
-
-        <label className="block">
-          <span className="mb-1 block text-[11px] font-bold text-gray-500">بحث بالاسم أو الهاتف</span>
+        <span className="relative min-w-[130px] flex-1">
+          <Search size={12} className="absolute right-2 top-2 text-gray-400" />
           <input
             value={value.query}
             onChange={e => set({ query: e.target.value })}
-            placeholder="اكتب اسم أو رقم..."
-            className="w-full rounded-xl border border-gray-200 px-2.5 py-1.5 text-xs"
+            aria-label="بحث بالاسم أو الهاتف"
+            placeholder="بحث: اسم أو رقم"
+            className="h-7 w-full rounded-lg border border-gray-200 pr-7 text-[11px]"
           />
-        </label>
+        </span>
+        <select value={value.jobId} onChange={e => set({ jobId: e.target.value })} aria-label="الوظيفة" title="الوظيفة" className={`${select} max-w-[150px]`}>
+          <option value="">كل الوظائف</option>
+          {jobs.map(j => <option key={j.value} value={j.value}>{j.label} ({j.count})</option>)}
+        </select>
+        <select value={value.branch} onChange={e => set({ branch: e.target.value })} aria-label="الفرع" title="الفرع" className={select}>
+          <option value="">كل الفروع</option>
+          {branches.map(b => <option key={b.value} value={b.value}>{branchLabel(b.value)} ({b.count})</option>)}
+        </select>
+        {/* Fresh graduates are a deliberate search, not the bottom of a range, so they get their own option. */}
+        <select value={value.minExperience} onChange={e => set({ minExperience: e.target.value })} aria-label="الخبرة (حد أدنى)" title="الخبرة (حد أدنى)" className={select}>
+          <option value="">أي خبرة</option>
+          <option value="only_none">بدون خبرة فقط</option>
+          {EXPERIENCE_ORDER.filter(key => key !== 'none').map(key => (
+            <option key={key} value={key}>{EXPERIENCE_YEARS[key]} فأكثر</option>
+          ))}
+        </select>
         {extra}
+        {active && (
+          <button onClick={() => onChange({ ...emptyInterviewFilters(), timeline: value.timeline })} title="إلغاء الفلاتر" aria-label="إلغاء الفلاتر"
+            className="shrink-0 rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"><RotateCcw size={13} /></button>
+        )}
+        {active && <span className="shrink-0 text-[11px] font-bold text-gray-500">{shown} من {counts.all}</span>}
       </div>
-
-      {active && (
-        <p className="text-[11px] font-bold text-gray-500">
-          ظاهر {shown} من {counts.all} مرشح
-        </p>
-      )}
     </div>
   );
 };

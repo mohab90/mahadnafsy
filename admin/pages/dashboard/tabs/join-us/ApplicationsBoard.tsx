@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Filter, RotateCcw, Search } from 'lucide-react';
+import { RotateCcw, Search } from 'lucide-react';
 import type { JoinUsApplication } from '../../../../types';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { normalizeApplicants } from '../../../../context/site-data-hooks/normalizeApplicants';
@@ -12,9 +12,9 @@ export const PAGE_SIZE = 50;
 type Counts = Awaited<ReturnType<typeof mysqlAdmin.joinUsInboxCounts>>;
 type Facets = Awaited<ReturnType<typeof mysqlAdmin.joinUsInboxFacets>>;
 
-const TITLES: Record<Group, { title: string; short: string }> = {
-  teaching: { title: 'طلبات انضمام المحاضرين', short: 'المحاضرين والاستشاريين' },
-  staff: { title: 'طلبات انضمام الموظفين', short: 'الموظفين' },
+const TITLES: Record<Group, { title: string }> = {
+  teaching: { title: 'طلبات انضمام المحاضرين' },
+  staff: { title: 'طلبات انضمام الموظفين' },
 };
 
 type BoardProps = {
@@ -128,103 +128,75 @@ export default function ApplicationsBoard({ group, version, counts, busyId, acti
     setSearch(''); setDebouncedSearch(''); setStatus('all'); setMinExperience(''); setBranch(''); setJobFilter('');
     setKind('all'); setProgram(''); setLectured(''); setSessions('');
   };
-  const field = 'w-full rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-xs';
+  const field = 'h-7 w-full rounded-lg border border-gray-200 bg-white px-2 text-[11px]';
   const teaching = group === 'teaching';
 
   return (
     <div className="space-y-3">
-      {/* Status at a glance — each chip is also the status filter. */}
-      <div className="flex flex-wrap gap-1.5">
-        <button onClick={() => setStatus('all')}
-          className={`rounded-full px-3 py-1 text-xs font-bold ${status === 'all' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 ring-1 ring-gray-200'}`}>
-          الكل {everything}
-        </button>
-        {(Object.keys(STATUS) as Status[]).map(key => (
-          <button key={key} onClick={() => setStatus(status === key ? 'all' : key)}
-            className={`rounded-full px-3 py-1 text-xs font-bold ${status === key ? `${STATUS[key].className} ring-2 ring-gray-300 ring-offset-1` : 'bg-white text-gray-600 ring-1 ring-gray-200'}`}>
-            {STATUS[key].label} {statusCounts[key]}
+      {/* One compact card, two thin lines: the status at a glance (each chip is also the status filter) and
+          the filters in a single row — «الفلاتر صف واحد … ضد هدر المساحات». On a phone the rows scroll sideways
+          instead of stacking. */}
+      <div className="space-y-1.5 rounded-2xl border border-gray-200 bg-white p-2">
+        <div className="no-scrollbar flex flex-nowrap items-center gap-1 overflow-x-auto">
+          <button onClick={() => setStatus('all')}
+            className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${status === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-600 ring-1 ring-gray-200'}`}>
+            الكل {everything}
           </button>
-        ))}
-      </div>
-
-      <div className="space-y-2 rounded-2xl border border-gray-200 bg-white p-3">
-        <div className="flex items-center gap-1.5 text-xs font-bold text-gray-600">
-          <Filter size={14} className={teaching ? 'text-violet-600' : 'text-emerald-600'} /> فلترة {TITLES[group].title}
-          {filtersActive && (
-            <button onClick={reset}
-              className="mr-auto flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold text-gray-500 hover:bg-gray-100">
-              <RotateCcw size={11} /> إلغاء الفلاتر
+          {(Object.keys(STATUS) as Status[]).map(key => (
+            <button key={key} onClick={() => setStatus(status === key ? 'all' : key)}
+              className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${status === key ? `${STATUS[key].className} ring-2 ring-gray-300` : 'bg-gray-50 text-gray-600 ring-1 ring-gray-200'}`}>
+              {STATUS[key].label} {statusCounts[key]}
             </button>
-          )}
+          ))}
         </div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          <label className="block sm:col-span-2">
-            <span className="mb-1 block text-[11px] font-bold text-gray-500">بحث في {TITLES[group].short}</span>
-            <span className="relative block">
-              <Search size={13} className="absolute right-2.5 top-2 text-gray-400" />
-              <input value={search} onChange={event => setSearch(event.target.value)}
-                placeholder={teaching ? 'اسم، تليفون، تخصص، برنامج' : 'اسم، تليفون، إيميل، تخصص'}
-                className={`${field} pr-8`} />
-            </span>
-          </label>
+        <div className="no-scrollbar flex flex-nowrap items-center gap-1.5 overflow-x-auto">
+          <span className="relative min-w-[150px] flex-1">
+            <Search size={12} className="absolute right-2 top-2 text-gray-400" />
+            <input value={search} onChange={event => setSearch(event.target.value)} aria-label="بحث"
+              placeholder={teaching ? 'بحث: اسم، تليفون، تخصص، برنامج' : 'بحث: اسم، تليفون، إيميل، تخصص'}
+              className={`${field} pr-7`} />
+          </span>
           {teaching ? (
             <>
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-bold text-gray-500">النوع</span>
-                <select value={kind} onChange={event => setKind(event.target.value as Kind | 'all')} className={field}>
-                  <option value="all">محاضرين واستشاريين</option>
-                  <option value="instructor">محاضر</option>
-                  <option value="consultant">استشاري</option>
-                </select>
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-bold text-gray-500">البرنامج</span>
-                <select value={program} onChange={event => setProgram(event.target.value)} className={field}>
-                  <option value="">كل البرامج</option>
-                  {(facets?.programs || []).map(item => <option key={item.title} value={item.title}>{item.title} ({item.count})</option>)}
-                </select>
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-bold text-gray-500">اشتغل محاضر قبل كده؟</span>
-                <select value={lectured} onChange={event => setLectured(event.target.value as '' | 'yes' | 'no')} className={field}>
-                  <option value="">الكل</option><option value="yes">آه</option><option value="no">لأ</option>
-                </select>
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-bold text-gray-500">جلسات نفسية مع عملاء؟</span>
-                <select value={sessions} onChange={event => setSessions(event.target.value as '' | 'yes' | 'no')} className={field}>
-                  <option value="">الكل</option><option value="yes">آه</option><option value="no">لأ</option>
-                </select>
-              </label>
+              <select value={kind} onChange={event => setKind(event.target.value as Kind | 'all')} aria-label="النوع" title="النوع" className={`${field} shrink-0`}>
+                <option value="all">محاضر + استشاري</option>
+                <option value="instructor">محاضر</option>
+                <option value="consultant">استشاري</option>
+              </select>
+              <select value={program} onChange={event => setProgram(event.target.value)} aria-label="البرنامج" title="البرنامج" className={`${field} max-w-[150px] shrink-0`}>
+                <option value="">كل البرامج</option>
+                {(facets?.programs || []).map(item => <option key={item.title} value={item.title}>{item.title} ({item.count})</option>)}
+              </select>
+              <select value={lectured} onChange={event => setLectured(event.target.value as '' | 'yes' | 'no')} aria-label="اشتغل محاضر قبل كده؟" title="اشتغل محاضر قبل كده؟" className={`${field} shrink-0`}>
+                <option value="">محاضر قبل كده؟</option><option value="yes">اشتغل محاضر: آه</option><option value="no">اشتغل محاضر: لأ</option>
+              </select>
+              <select value={sessions} onChange={event => setSessions(event.target.value as '' | 'yes' | 'no')} aria-label="جلسات نفسية مع عملاء؟" title="جلسات نفسية مع عملاء؟" className={`${field} shrink-0`}>
+                <option value="">جلسات مع عملاء؟</option><option value="yes">جلسات: آه</option><option value="no">جلسات: لأ</option>
+              </select>
             </>
           ) : (
-            <label className="block">
-              <span className="mb-1 block text-[11px] font-bold text-gray-500">الوظيفة</span>
-              <select value={jobFilter} onChange={event => setJobFilter(event.target.value)} className={field}>
-                <option value="">كل الوظائف</option>
-                {(facets?.jobs || []).map(job => (
-                  <option key={job.id} value={job.id}>{jobLabel({ jobId: job.id, jobTitle: job.title || undefined } as JoinUsApplication)} ({job.count})</option>
-                ))}
-              </select>
-            </label>
-          )}
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-bold text-gray-500">الفرع</span>
-            <select value={branch} onChange={event => setBranch(event.target.value)} className={field}>
-              <option value="">كل الفروع</option>
-              {(facets?.branches || []).map(item => <option key={item.key} value={item.key}>{branchLabel(item.key)} ({item.count})</option>)}
-            </select>
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-bold text-gray-500">الخبرة (حد أدنى)</span>
-            <select value={minExperience} onChange={event => setMinExperience(event.target.value)} className={field}>
-              <option value="">أي خبرة</option>
-              <option value="only_none">بدون خبرة فقط</option>
-              {EXPERIENCE_ORDER.filter(key => key !== 'none').map(key => (
-                <option key={key} value={key}>{EXPERIENCE_YEARS[key]} فأكثر</option>
+            <select value={jobFilter} onChange={event => setJobFilter(event.target.value)} aria-label="الوظيفة" title="الوظيفة" className={`${field} max-w-[170px] shrink-0`}>
+              <option value="">كل الوظائف</option>
+              {(facets?.jobs || []).map(job => (
+                <option key={job.id} value={job.id}>{jobLabel({ jobId: job.id, jobTitle: job.title || undefined } as JoinUsApplication)} ({job.count})</option>
               ))}
             </select>
-          </label>
+          )}
+          <select value={branch} onChange={event => setBranch(event.target.value)} aria-label="الفرع" title="الفرع" className={`${field} shrink-0`}>
+            <option value="">كل الفروع</option>
+            {(facets?.branches || []).map(item => <option key={item.key} value={item.key}>{branchLabel(item.key)} ({item.count})</option>)}
+          </select>
+          <select value={minExperience} onChange={event => setMinExperience(event.target.value)} aria-label="الخبرة (حد أدنى)" title="الخبرة (حد أدنى)" className={`${field} shrink-0`}>
+            <option value="">أي خبرة</option>
+            <option value="only_none">بدون خبرة فقط</option>
+            {EXPERIENCE_ORDER.filter(key => key !== 'none').map(key => (
+              <option key={key} value={key}>{EXPERIENCE_YEARS[key]} فأكثر</option>
+            ))}
+          </select>
+          {filtersActive && (
+            <button onClick={reset} title="إلغاء الفلاتر" aria-label="إلغاء الفلاتر"
+              className="shrink-0 rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"><RotateCcw size={13} /></button>
+          )}
         </div>
       </div>
 

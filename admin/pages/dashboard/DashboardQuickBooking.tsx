@@ -46,11 +46,12 @@ export function DashboardQuickBooking({
             setOpen(true);
             setSearch('');
           }}
-          className="fixed bottom-6 left-6 z-40 flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl shadow-2xl px-4 py-3 font-bold text-sm transition hover:scale-105 active:scale-95"
+          aria-label="بحث في كل العملاء"
+          className="fixed bottom-4 left-4 z-40 flex h-11 w-11 items-center justify-center gap-2 rounded-full bg-emerald-600 text-white shadow-xl transition hover:bg-emerald-700 active:scale-95 md:bottom-6 md:left-6 md:h-auto md:w-auto md:rounded-2xl md:px-4 md:py-3 md:text-sm md:font-bold md:shadow-2xl md:hover:scale-105"
           title="بحث في كل العملاء — وحجز جديد / تسجيل دفعة"
         >
           <Search size={18} />
-          <span>بحث</span>
+          <span className="hidden md:inline">بحث</span>
         </button>
       )}
 

@@ -163,3 +163,20 @@ test('the interviews summary tallies both tabs, the stages of the open one, and 
   assert.deepEqual(res.body.branches, [{ key: 'daqqi', count: 6 }]);
   everyQueryBalanced();
 });
+
+test('the interviews of one kind: the list, its count and the summary all join the website application and balance', async () => {
+  const list = handlerOf(recruiting.router || recruiting, '/api/admin/hr/interviews');
+  const summary = handlerOf(recruiting.router || recruiting, '/api/admin/hr/interviews/summary');
+  for (const form of ['staff', 'teaching']) {
+    db.reset([[/SELECT COUNT\(\*\) n/, [[{ n: 80 }]]], [/FROM job_applicants a/, [Array.from({ length: 50 }, (_, i) => row(`a${i}`, { stage: 'interview' }))]]]);
+    const res = await call(list, { tab: 'upcoming', form, limit: '50', offset: '0' });
+    assert.equal(res.body.total, 80);
+    everyQueryBalanced();
+    for (const { sql } of db.calls) assert.match(sql, /LEFT JOIN join_us_applications js ON a\.source='website'/, 'the count joins it too, or the kind filter would name a missing table');
+    assert.match(db.calls[0].sql, form === 'staff' ? /AND \(COALESCE\(js\.source_form,''\) = 'staff'/ : /AND NOT \(COALESCE\(js\.source_form,''\) = 'staff'/);
+    db.reset([[/COUNT\(\*\) total, COALESCE\(SUM/, [[{ total: 3, past: 1 }]]]]);
+    await call(summary, { tab: 'past', form });
+    everyQueryBalanced();
+    assert.ok(db.calls.every(({ sql }) => /js ON/.test(sql)), 'every summary query joins it');
+  }
+});

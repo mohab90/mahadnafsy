@@ -116,12 +116,12 @@ const ApplicationCard: React.FC<{
             <Phone size={13} className="text-gray-500" />
             <span dir="ltr">{shownPhone}</span>
             <a href={`tel:${app.phone}`} title="اتصال"
-              className="inline-flex items-center gap-1 rounded-lg bg-sky-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-sky-700">
+              className="inline-flex items-center gap-1 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-sky-700 md:px-2 md:py-1 md:text-[11px]">
               <PhoneCall size={11} /> اتصال
             </a>
             {wa && (
               <a href={wa} target="_blank" rel="noopener noreferrer" title="واتساب"
-                className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-emerald-700">
+                className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 md:px-2 md:py-1 md:text-[11px]">
                 <MessageCircle size={11} /> واتساب
               </a>
             )}

@@ -613,7 +613,7 @@ export function DashboardNavigation(props: Props) {
                     // الدقي» (12 Oct 2026) — the branch's applications and interviews.
                     { key: 'join_us', label: 'انضمام الموظفين', icon: UserPlus },
                     { key: 'lecturer_applications', label: 'انضمام المحاضرين', icon: GraduationCap },
-                    { key: 'interviews', label: 'الانترفيوهات', icon: CalendarCheck },
+                    { key: 'interviews', label: 'انترفيوهات الموظفين', icon: CalendarCheck },
                   ] },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}

@@ -5,7 +5,7 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 import PromptModal from '../../../../shared/ui/PromptModal';
 import HireModal from './interviews-sections/HireModal';
 import InterviewCard, {
-  GRADES, GRADE_STYLE, GRADE_TINT, type Grade, type InterviewActions, type JobApplicant,
+  GRADES, type Grade, type InterviewActions, type JobApplicant,
 } from './interviews-sections/InterviewCard';
 import { EXPERIENCE_ORDER, EXPERIENCE_YEARS, branchLabel } from './hr-sections/applicantLabels';
 import InterviewFilters, {
@@ -14,7 +14,13 @@ import InterviewFilters, {
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
-interface Props { notify: NotifyFn; }
+interface Props {
+  notify: NotifyFn;
+  /** Whose interviews: the employees' (the page) or the lecturers' (a tab of طلبات انضمام المحاضرين). */
+  group?: 'staff' | 'teaching';
+  /** Inside another page: no heading of its own, only the buttons. */
+  embedded?: boolean;
+}
 
 const PAGE_SIZE = 50;
 
@@ -35,7 +41,7 @@ const emptyForm = () => ({ jobId: '', name: '', email: '', phone: '', specialty:
 // directly. Reuses POST .../applicants?stage=interview (added alongside this)
 // so it goes through the exact same applied→screening→interview hops as
 // every other interview candidate, just in one step.
-const AddInterviewModal: React.FC<{ notify: NotifyFn; onClose: () => void; onAdded: () => void }> = ({ notify, onClose, onAdded }) => {
+const AddInterviewModal: React.FC<{ notify: NotifyFn; group: 'staff' | 'teaching'; onClose: () => void; onAdded: () => void }> = ({ notify, group, onClose, onAdded }) => {
   const [jobs, setJobs] = useState<JobOption[]>([]);
   const [loadingJobs, setLoadingJobs] = useState(true);
   const [form, setForm] = useState(emptyForm());
@@ -60,6 +66,8 @@ const AddInterviewModal: React.FC<{ notify: NotifyFn; onClose: () => void; onAdd
         // Sent as real columns rather than glued into the notes text, so the
         // experience and branch filters can actually see a hand-added candidate.
         specialty: form.specialty.trim() || undefined,
+        // Which list the candidate belongs on: the interviews of employees and of lecturers are kept apart.
+        applicant_type: group === 'teaching' ? 'INSTRUCTOR' : 'EMPLOYEE',
         education: form.education.trim() || undefined,
         experience_years: form.experienceYears || undefined,
         experience_places: form.experiencePlaces.trim() || undefined,
@@ -176,7 +184,7 @@ const AddInterviewModal: React.FC<{ notify: NotifyFn; onClose: () => void; onAdd
 // paging run in the database (GET /api/admin/hr/interviews): the screen draws the
 // 50 it asked for and asks for 50 more on request. It used to download 500
 // candidates of every stage and keep the few at interview or offer here.
-const InterviewsTab: React.FC<Props> = ({ notify }) => {
+const InterviewsTab: React.FC<Props> = ({ notify, group = 'staff', embedded = false }) => {
   const [rows, setRows] = useState<JobApplicant[]>([]);
   const [total, setTotal] = useState(0);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -205,8 +213,8 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
     view: filters.view === 'all' ? '' : filters.view,
     job: filters.jobId, branch: filters.branch, minExp: filters.minExperience,
     grade: gradeFilter === 'all' ? '' : gradeFilter,
-    q: debouncedQuery.trim(),
-  }), [filters.timeline, filters.view, filters.jobId, filters.branch, filters.minExperience, gradeFilter, debouncedQuery]);
+    q: debouncedQuery.trim(), form: group,
+  }), [group, filters.timeline, filters.view, filters.jobId, filters.branch, filters.minExperience, gradeFilter, debouncedQuery]);
 
   // The newest request wins, so a slow answer to an old filter never overwrites a newer list.
   const requestId = useRef(0);
@@ -252,11 +260,11 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
   // The tallies and the pickers' options, read with the tab open and again after a change.
   useEffect(() => {
     let cancelled = false;
-    mysqlAdmin.hrInterviewsSummary(filters.timeline)
+    mysqlAdmin.hrInterviewsSummary(filters.timeline, group)
       .then(result => { if (!cancelled) setSummary(result); })
       .catch(() => undefined);
     return () => { cancelled = true; };
-  }, [filters.timeline, version]);
+  }, [group, filters.timeline, version]);
 
   const reload = useCallback(() => setVersion(current => current + 1), []);
 
@@ -453,36 +461,29 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
           onCancel={() => setGradeFor(null)}
         />
       )}
-      <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-violet-700 px-5 py-4 text-white">
-        <div>
-          <h2 className="flex items-center gap-2 text-xl font-black">
-            <CalendarCheck size={22} />
-            الانترفيوهات
-          </h2>
-          <p className="mt-0.5 text-xs text-white/80">
-            مرشحون وصلوا لمرحلة المقابلة — قيّمهم، سجّل ملاحظاتك، وانقلهم لمقبول للتدريب أو تعيين. النقل من طلبات الانضمام بزرار "نقل للانترفيو" هناك.
-          </p>
-        </div>
+      {/* Inside the lecturers' page the heading is that page's; only the buttons are drawn. */}
+      <section className={embedded
+        ? 'flex items-center justify-end gap-2'
+        : 'flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-violet-700 px-4 py-3 text-white'}>
+        {!embedded && (
+          <div className="min-w-0">
+            <h2 className="flex items-center gap-2 text-lg font-black"><CalendarCheck size={20} /> انترفيوهات الموظفين</h2>
+            <p className="mt-0.5 text-[11px] text-white/80">قيّمهم، سجّل ملاحظاتك، وانقلهم لمقبول للتدريب أو تعيين. النقل من طلبات الانضمام بزرار «نقل للانترفيو».</p>
+          </div>
+        )}
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-sm font-bold text-violet-800 transition hover:bg-violet-50"
-          >
-            <UserPlus size={14} />
-            إضافة انترفيو
+          <button onClick={() => setShowAddModal(true)}
+            className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition ${embedded ? 'bg-violet-600 text-white hover:bg-violet-700' : 'bg-white text-violet-800 hover:bg-violet-50'}`}>
+            <UserPlus size={13} /> إضافة انترفيو
           </button>
-          <button
-            onClick={reload}
-            disabled={loading}
-            className="flex items-center gap-1.5 rounded-xl bg-white/15 px-3 py-2 text-sm font-bold transition hover:bg-white/25 disabled:opacity-50"
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            تحديث
+          <button onClick={reload} disabled={loading}
+            className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition disabled:opacity-50 ${embedded ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-white/15 hover:bg-white/25'}`}>
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> تحديث
           </button>
         </div>
       </section>
 
-      {showAddModal && <AddInterviewModal notify={notify} onClose={() => setShowAddModal(false)} onAdded={reload} />}
+      {showAddModal && <AddInterviewModal notify={notify} group={group} onClose={() => setShowAddModal(false)} onAdded={reload} />}
 
       <InterviewFilters
         value={filters}
@@ -493,23 +494,12 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
         timelineCounts={timelineCounts}
         shown={total}
         extra={(
-          <div className="flex flex-wrap items-center gap-1">
-            <span className="ml-1 text-xs font-bold text-gray-500">التقييم:</span>
-            <button type="button" onClick={() => setGradeFilter('all')}
-              className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${gradeFilter === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-              الكل ({everyone})
-            </button>
-            {GRADES.map(g => (
-              <button type="button" key={g} onClick={() => setGradeFilter(g)}
-                className={`rounded-md px-2 py-0.5 text-[11px] font-black ${gradeFilter === g ? GRADE_STYLE[g] : `${GRADE_TINT[g]} hover:brightness-95`}`}>
-                {g}{summary?.grades[g] ? ` (${summary.grades[g]})` : ''}
-              </button>
-            ))}
-            <button type="button" onClick={() => setGradeFilter('none')}
-              className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${gradeFilter === 'none' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-              بدون
-            </button>
-          </div>
+          <select value={gradeFilter} onChange={e => setGradeFilter(e.target.value as Grade | 'all' | 'none')} aria-label="التقييم" title="التقييم"
+            className="h-7 shrink-0 rounded-lg border border-gray-200 bg-white px-2 text-[11px]">
+            <option value="all">كل التقييمات</option>
+            {GRADES.map(g => <option key={g} value={g}>{g}{summary?.grades[g] ? ` (${summary.grades[g]})` : ''}</option>)}
+            <option value="none">بدون تقييم</option>
+          </select>
         )}
       />
 

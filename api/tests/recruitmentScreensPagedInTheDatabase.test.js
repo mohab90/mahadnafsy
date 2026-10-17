@@ -148,3 +148,22 @@ test('both pages draw 50 cards, two to a row, and ask for 50 more', () => {
   const cards = ['join-us/ApplicationCard.tsx', 'interviews-sections/InterviewCard.tsx'].map(file => read(`admin/pages/dashboard/tabs/${file}`));
   for (const card of cards) assert.match(card, /export default React\.memo\(/, 'a change to one card does not redraw the rest');
 });
+
+test('the lecturers\' interviews and the employees\' are kept apart by the form the candidate came through', () => {
+  const { interviewFormSql } = require('../lib/recruitmentFilters');
+  assert.equal(interviewFormSql(''), '');
+  assert.equal(interviewFormSql('whatever'), '');
+  const staff = interviewFormSql('staff');
+  const teaching = interviewFormSql('teaching');
+  assert.match(staff, /COALESCE\(js\.source_form,''\) = 'staff'/);
+  assert.match(staff, /js\.source_form IS NULL AND a\.applicant_type IN \('staff','employee','hr','admin','ops','support'\)/);
+  assert.equal(teaching, staff.replace(' AND (', ' AND NOT ('), 'a lecturer is whoever is not an employee, as kindOfApplicant says');
+  assert.equal(marks(staff), 0, 'constants only, no value from the request reaches the SQL');
+  // The same rule as the admin's.
+  const ui = read('admin/pages/dashboard/tabs/join-us/joinUsUi.tsx');
+  assert.match(ui, /\['staff', 'employee', 'hr', 'admin', 'ops', 'support'\]\.includes\(kind\)/);
+  // The lecturers' page holds the lecturers' interviews as a tab; the interviews page is the employees'.
+  const page = read('admin/pages/dashboard/tabs/JoinUsAdminTab.tsx');
+  assert.match(page, /<InterviewsTab notify=\{notify\} group="teaching" embedded \/>/);
+  assert.match(read('admin/pages/dashboard/tabs/InterviewsTab.tsx'), /group = 'staff', embedded = false/);
+});

@@ -59,3 +59,40 @@ table.table-fixed td {
   overflow-wrap: anywhere;
 }
 
+
+/* A row that scrolls sideways instead of wrapping onto more lines (filter bars) — without a visible scrollbar. */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* ── Phones ────────────────────────────────────────────────────────────────
+ * lib/mobileTables.ts marks a plain table `rt-stack` on a phone and labels its cells from the header: each row
+ * becomes a card, each cell «label: value». Any other table keeps its columns and scrolls inside itself, so
+ * no table pushes the page sideways. Wider than a phone, none of this applies.
+ */
+@media (max-width: 767px) {
+  body { overflow-x: hidden; }
+  table:not(.rt-stack) { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  table.rt-stack, table.rt-stack tbody, table.rt-stack tr, table.rt-stack td { display: block; width: 100% !important; min-width: 0 !important; }
+  table.rt-stack { border: 0 !important; background: transparent; }
+  table.rt-stack thead { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); }
+  table.rt-stack tr { margin: 0 0 0.75rem; padding: 0.35rem 0.75rem; border: 1px solid #e5e7eb; border-radius: 1rem; background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 0.05); }
+  table.rt-stack td {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+    padding: 0.4rem 0 !important; border: 0 !important; border-bottom: 1px dashed #f1f5f9 !important;
+    text-align: right !important; white-space: normal !important; overflow-wrap: anywhere;
+  }
+  table.rt-stack td:last-child { border-bottom: 0 !important; }
+  table.rt-stack td::before { content: attr(data-label); flex: 0 0 34%; max-width: 34%; font-size: 11px; font-weight: 700; color: #6b7280; text-align: right; }
+  table.rt-stack td[data-label=""]::before { display: none; }
+  table.rt-stack td:empty { display: none; }
+  table.rt-stack td > * { max-width: 66%; }
+  table.rt-stack td[data-label=""] > * { max-width: 100%; }
+}
+
+/* A grid that asked for 3 to 6 columns at every width gets two on a phone: a card or a figure cannot be
+   read in a sixth of 375 px. The `sm:` / `md:` / `lg:` versions are other classes and are untouched; a
+   7-column calendar keeps its seven. */
+@media (max-width: 767px) {
+  .grid-cols-3, .grid-cols-4, .grid-cols-5, .grid-cols-6 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}

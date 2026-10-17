@@ -9,6 +9,7 @@ import { hasPermission, type PermissionKey, type RoleKey } from '../../../consta
 // open to run recruitment, and "أضف وظيفة" was two menus away from the list of
 // people applying for one.
 const JobPostingsPanel = React.lazy(() => import('./JobPostingsPanel'));
+const InterviewsTab = React.lazy(() => import('./InterviewsTab'));
 import type { JoinUsApplication } from '../../../types';
 import PromptModal from '../../../../shared/ui/PromptModal';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
@@ -54,6 +55,8 @@ export default function JoinUsAdminTab({ group }: { group: Group }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   // Bumped after anything changed, so the board reads its list again.
   const [version, setVersion] = useState(0);
+  // The lecturers' page has two views: the applications and the lecturers' interviews.
+  const [view, setView] = useState<'applications' | 'interviews'>('applications');
   const [firstCallFor, setFirstCallFor] = useState<JoinUsApplication | null>(null);
   const [interviewFor, setInterviewFor] = useState<{ app: JoinUsApplication; mode: 'move' | 'accept' } | null>(null);
   const [prompt, setPrompt] = useState<{
@@ -186,7 +189,7 @@ export default function JoinUsAdminTab({ group }: { group: Group }) {
         await mysqlAdmin.moveJoinUsToInterview(app.id, interviewAt);
       }
       return interviewAt
-        ? `${app.name} راح للانترفيوهات تحت «لسه موعده» — الميعاد ${interviewAt}`
+        ? `${app.name} راح لتاب الانترفيوهات تحت «لسه موعده» — الميعاد ${interviewAt}`
         : `${app.name} اتقبل واتنقل للانترفيوهات — من غير ميعاد لسه`;
     }, `تعذّر نقل ${app.name} للانترفيو`);
   };
@@ -217,8 +220,8 @@ export default function JoinUsAdminTab({ group }: { group: Group }) {
         <InterviewTimeModal
           title={interviewFor.mode === 'accept' ? `قبول ${interviewFor.app.name}` : `نقل ${interviewFor.app.name} للانترفيو`}
           hint={interviewFor.mode === 'accept'
-            ? 'القبول بينقله لصفحة الانترفيوهات — حدد الميعاد لو اتفقتوا عليه'
-            : 'هيتشال من هنا ويظهر في صفحة الانترفيوهات تحت «لسه موعده»'}
+            ? (group === 'teaching' ? 'القبول بينقله لتاب الانترفيوهات — حدد الميعاد لو اتفقتوا عليه' : 'القبول بينقله لصفحة انترفيوهات الموظفين — حدد الميعاد لو اتفقتوا عليه')
+            : group === 'teaching' ? 'هيتشال من هنا ويظهر في تاب «الانترفيوهات» هنا تحت «لسه موعده»' : 'هيتشال من هنا ويظهر في صفحة انترفيوهات الموظفين تحت «لسه موعده»'}
           confirmLabel={interviewFor.mode === 'accept' ? 'قبول وتحديد الميعاد' : 'تحديد ونقل للانترفيو'}
           initialValue={interviewFor.app.interviewAt}
           allowUndated={interviewFor.mode === 'accept'}
@@ -237,30 +240,53 @@ export default function JoinUsAdminTab({ group }: { group: Group }) {
         </div>
       )}
 
-      <section className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl px-5 py-4 text-white ${GROUPS[group].header}`}>
-        <div>
-          <h2 className="flex items-center gap-2 text-xl font-black"><Icon size={22} /> {GROUPS[group].title}</h2>
-          <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-white/80">
-            <span>{branchOnly ? 'طلبات فرعك بس.' : 'بفلاتره وبحثه.'}</span>
+      <section className={`flex flex-wrap items-center justify-between gap-2 rounded-2xl px-4 py-3 text-white ${GROUPS[group].header}`}>
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-2 text-lg font-black"><Icon size={20} /> {GROUPS[group].title}</h2>
+          <p className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-white/80">
+            {branchOnly && <span>طلبات فرعك بس.</span>}
             <span className="rounded-full bg-white/20 px-2 py-0.5 font-bold text-white">
               {allCount.toLocaleString('ar-EG-u-nu-latn')} طلب
             </span>
             {newCount > 0 && <span className="rounded-full bg-white px-2 py-0.5 font-bold text-gray-900">{newCount.toLocaleString('ar-EG-u-nu-latn')} جديد</span>}
           </p>
         </div>
-        <button onClick={refresh} disabled={refreshing}
-          className="flex items-center gap-1.5 rounded-xl bg-white/15 px-3 py-2 text-xs font-bold hover:bg-white/25 disabled:opacity-60">
-          <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /> تحديث
-        </button>
+        {view === 'applications' && (
+          <button onClick={refresh} disabled={refreshing}
+            className="flex items-center gap-1.5 rounded-xl bg-white/15 px-3 py-1.5 text-xs font-bold hover:bg-white/25 disabled:opacity-60">
+            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /> تحديث
+          </button>
+        )}
       </section>
 
-      {/* The postings themselves — publish one, see who applied, close it. */}
-      {group === 'staff' && !branchOnly && (
-        <React.Suspense fallback={<div className="rounded-2xl border border-gray-100 bg-white py-8 text-center text-sm text-gray-400">جاري تحميل الوظائف...</div>}>
-          <JobPostingsPanel notify={notify} />
-        </React.Suspense>
+      {/* The lecturers' page has the lecturers' interviews as a tab: one who is moved to an interview leaves
+          the applications and is found here. */}
+      {group === 'teaching' && (
+        <div role="tablist" className="flex gap-1 rounded-2xl border border-gray-200 bg-white p-1">
+          {([['applications', 'الطلبات'], ['interviews', 'الانترفيوهات']] as const).map(([key, label]) => (
+            <button key={key} role="tab" aria-selected={view === key} onClick={() => setView(key)}
+              className={`flex-1 rounded-xl px-3 py-1.5 text-sm font-black transition ${view === key ? 'bg-violet-600 text-white' : 'text-gray-600 hover:bg-violet-50'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
       )}
-      <ApplicationsBoard key={group} group={group} version={version} counts={counts} busyId={busyId} actions={actions} notify={notify} />
+
+      {view === 'interviews' && group === 'teaching' ? (
+        <React.Suspense fallback={<div className="rounded-2xl border border-gray-100 bg-white py-8 text-center text-sm text-gray-400">جاري تحميل الانترفيوهات...</div>}>
+          <InterviewsTab notify={notify} group="teaching" embedded />
+        </React.Suspense>
+      ) : (
+        <>
+          {/* The postings themselves — publish one, see who applied, close it. */}
+          {group === 'staff' && !branchOnly && (
+            <React.Suspense fallback={<div className="rounded-2xl border border-gray-100 bg-white py-8 text-center text-sm text-gray-400">جاري تحميل الوظائف...</div>}>
+              <JobPostingsPanel notify={notify} />
+            </React.Suspense>
+          )}
+          <ApplicationsBoard key={group} group={group} version={version} counts={counts} busyId={busyId} actions={actions} notify={notify} />
+        </>
+      )}
     </div>
   );
 }

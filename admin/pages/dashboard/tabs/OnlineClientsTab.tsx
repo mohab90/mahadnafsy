@@ -5,9 +5,9 @@ import { Modal } from '../../../../shared/ui/Modal';
 import { useSearchParams } from 'react-router-dom';
 import { usePaymentBoxes } from '../../../lib/paymentMethods';
 import {
-  
-  Plus, X,
+  LayoutGrid, Plus, Table2, X,
 } from 'lucide-react';
+import { isMobileNow } from '../../../hooks/useIsMobile';
 import type {
   Bundle, Course,
   DaqqiRound, DaqqiRoundAttendee, LeadItem,
@@ -139,6 +139,16 @@ export default function OnlineClientsTab({
   // Collection role — online clients tab state
   const [collOnlineSearch, setCollOnlineSearch] = useState('');
   const [collOnlinePage, setCollOnlinePage] = useState(1);
+  // Cards or the table. A phone gets the cards unless it was told otherwise; a desk keeps the table. The
+  // choice is remembered — «الجدول احتياطي، وعلى الموبايل الكروت هي الأساسي» (17 Oct 2026).
+  const [layout, setLayoutState] = useState<'cards' | 'table'>(() => {
+    try { const saved = localStorage.getItem('clients-layout'); if (saved === 'cards' || saved === 'table') return saved; } catch { /* private window */ }
+    return isMobileNow() ? 'cards' : 'table';
+  });
+  const setLayout = (next: 'cards' | 'table') => {
+    setLayoutState(next); setCollOnlinePage(1);
+    try { localStorage.setItem('clients-layout', next); } catch { /* private window */ }
+  };
   const [collOnlineDateFrom, setCollOnlineDateFrom] = useState('');
   const [collOnlineDateTo, setCollOnlineDateTo] = useState('');
   const [collOnlineRemainingFilter, setCollOnlineRemainingFilter] = useState<'all'|'has_remaining'|'paid'>('all');
@@ -531,7 +541,7 @@ export default function OnlineClientsTab({
               const collMonthRev  = calcPaidEGP(allCombined, cairoMonthOnly()+'-01');
               const collTotalRem  = allCombined.reduce((sum, s) => sum + balanceOf(s).remainingEgp, 0);
               const fmtK = formatCompactNumber;
-              const COLL_PAGE_SIZE = 100;
+              const COLL_PAGE_SIZE = layout === 'cards' ? 24 : 100;
               const totalPages = Math.max(1, Math.ceil(filtered.length / COLL_PAGE_SIZE));
               const safePage = Math.min(collOnlinePage, totalPages);
               const pageRows = filtered.slice((safePage - 1) * COLL_PAGE_SIZE, safePage * COLL_PAGE_SIZE);
@@ -768,7 +778,16 @@ export default function OnlineClientsTab({
                     notify={notify}
                     setSalesOwnSubscribers={setSalesOwnSubscribers}
                   />
+                  <div className="mb-2 flex items-center justify-end gap-1" role="group" aria-label="طريقة العرض">
+                    {([['cards', 'بطاقات', LayoutGrid], ['table', 'جدول', Table2]] as const).map(([key, label, Icon]) => (
+                      <button key={key} type="button" aria-pressed={layout === key} onClick={() => setLayout(key)}
+                        className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold transition ${layout === key ? 'bg-slate-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                        <Icon size={13} /> {label}
+                      </button>
+                    ))}
+                  </div>
                   <ClientsTable
+                    layout={layout}
                     itemVisible={(client, item) => itemShowsIn(client, item, hereTest)}
                     canDeleteSubscriber={canDeleteSubscriber}
                     pageRows={pageRows}

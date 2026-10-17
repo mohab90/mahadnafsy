@@ -297,3 +297,9 @@
   content-visibility: auto;
   contain-intrinsic-size: auto 900px;
 }
+
+/* Footer links are 19 px tall — a fingertip's width is about 44. On a phone each link gets the height to
+   be pressed (the round social icons are already 36 px and are left alone). */
+@media (max-width: 767px) {
+  footer a:not([class*="rounded-full"]) { display: inline-flex; align-items: center; min-height: 36px; }
+}

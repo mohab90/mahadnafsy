@@ -6,7 +6,7 @@ const { writeAuditEvent } = require('../../lib/auditTrail');
 const { requireRecruiting, applicantReachSql, applicantInReach, outOfRecruitReach } = require('../../lib/branchHr');
 const { parseInterviewAt } = require('../../lib/joinApplication');
 const { cairoToday } = require('../../lib/dates');
-const { interviewFilterSql, interviewHeldSql, pageOf } = require('../../lib/recruitmentFilters');
+const { interviewFilterSql, interviewFormSql, interviewHeldSql, pageOf } = require('../../lib/recruitmentFilters');
 
 const EMPLOYMENT_TYPES = new Set(['full_time', 'part_time', 'contract', 'intern']);
 const JOB_STATUSES = new Set(['draft', 'open', 'closed', 'filled']);
@@ -351,9 +351,14 @@ router.get('/api/admin/hr/applicants/counts', requireAuth, requireAdminOrStaff, 
 // the few at interview or offer in the browser. The tab (القادم/السابق) and the filters run here now.
 const INTERVIEW_STAGES_SQL = "a.stage IN ('interview','offer')";
 
+// The website application a candidate came from (to tell a lecturer from an employee) is joined wherever the scope is used.
+const INTERVIEW_FROM = `FROM job_applicants a JOIN job_postings j ON j.id=a.job_id AND j.tenant_id=a.tenant_id
+  LEFT JOIN join_us_applications js ON a.source='website' AND js.id=a.source_id AND js.tenant_id=a.tenant_id`;
+
+// ?form=staff|teaching keeps one kind: the interviews page is the employees', and the lecturers' page has its own tab.
 function interviewScope(req) {
   const reach = applicantReachSql(req.recruitReach, 'a', 'j');
-  return { where: `a.tenant_id=? AND ${INTERVIEW_STAGES_SQL}${reach.sql}`, params: [req.tenantId, ...reach.params] };
+  return { where: `a.tenant_id=? AND ${INTERVIEW_STAGES_SQL}${reach.sql}${interviewFormSql(req.query.form)}`, params: [req.tenantId, ...reach.params] };
 }
 
 const INTERVIEW_ACCESS = [requireAuth, requireAdminOrStaff, requireAnyPermission('view_hr', 'branch_hr'), requireRecruiting('view_hr')];
@@ -377,7 +382,7 @@ router.get('/api/admin/hr/interviews', ...INTERVIEW_ACCESS, async (req, res) => 
     let total = offset + rows.length;
     if (rows.length === limit) {
       const [[count]] = await pool.query(
-        `SELECT COUNT(*) n FROM job_applicants a JOIN job_postings j ON j.id=a.job_id AND j.tenant_id=a.tenant_id WHERE ${where}`, params);
+        `SELECT COUNT(*) n ${INTERVIEW_FROM} WHERE ${where}`, params);
       total = Number(count.n) || total;
     }
     res.json({ rows, total });
@@ -392,7 +397,7 @@ router.get('/api/admin/hr/interviews/summary', ...INTERVIEW_ACCESS, async (req, 
     const past = req.query.tab === 'past';
     const scope = interviewScope(req);
     const held = interviewHeldSql('a');
-    const from = 'FROM job_applicants a JOIN job_postings j ON j.id=a.job_id AND j.tenant_id=a.tenant_id';
+    const from = INTERVIEW_FROM;
     const [[tabs]] = await pool.query(
       `SELECT COUNT(*) total, COALESCE(SUM(${held}),0) past ${from} WHERE ${scope.where}`, [today, ...scope.params]);
     const [stageRows] = await pool.query(

@@ -60,12 +60,12 @@ export function LeadsTabHeader({
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            <FolderKanban size={22} className="text-primary-600" />
+          <h2 className="flex items-center gap-2 text-base font-bold text-gray-900 md:text-xl">
+            <FolderKanban size={20} className="text-primary-600" />
             {isSalesOnly ? 'عملائي المحتملون' : 'CRM — إدارة المبيعات'}
           </h2>
           {(canAdministerCrm || canExportLeads) && (
-            <p className="text-sm text-gray-500 mt-0.5">
+            <p className="mt-0.5 text-xs text-gray-500 md:text-sm">
               {totalOfflineLeads} عميل محتمل ·{' '}
               <span className={overdueCount > 0 ? 'text-red-600 font-bold' : ''}>{overdueCount} يحتاج متابعة عاجلة</span>
             </p>
@@ -75,7 +75,7 @@ export function LeadsTabHeader({
           {canManageLeads && (
             <button
               onClick={onAddLead}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition shadow-sm shadow-emerald-500/30"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs md:text-sm font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition shadow-sm shadow-emerald-500/30"
             >
               <UserPlus size={15} />
               إضافة ليد
@@ -168,7 +168,8 @@ export function LeadsTabHeader({
           )}
         </div>
       </div>
-      <div className="flex items-center gap-2 flex-wrap">
+      {/* One row that scrolls sideways on a phone, instead of wrapping onto three lines. */}
+      <div className="no-scrollbar -mx-1 flex flex-nowrap items-center gap-1.5 overflow-x-auto px-1 md:flex-wrap md:overflow-visible">
         <LeadSubTabs
           subTab={subTab}
           isSalesOnly={isSalesOnly}

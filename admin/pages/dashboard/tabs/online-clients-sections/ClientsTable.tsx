@@ -28,6 +28,7 @@ import { MARKET_LABELS, clientCurrency, isOnlineClient, subscriberMarket } from 
 import { clientItems, itemKeyOf } from '../../../../lib/agreedPrice';
 import { isCollected } from '../../../../lib/money';
 import ClientNameCell from './ClientNameCell';
+import ClientCard, { type ClientCardAction } from './ClientCard';
 import type { OnlineClientConvertType } from '../OnlineClientConvertModal';
 import { waLink } from '../../../../lib/whatsappLink';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
@@ -88,6 +89,8 @@ interface Props {
   setInstallmentsRow: (row: SubscriberItem | null) => void;
   filteredLength: number;
   notify: NotifyFn;
+  /** The table, or one card per client — the phone's layout (ClientCard.tsx). */
+  layout?: 'table' | 'cards';
 }
 
 export function ClientsTable({
@@ -97,7 +100,7 @@ export function ClientsTable({
   updateSubscriber, reloadSubscribers, setSalesOwnSubscribers, deleteSubscriber, setSubPayRow, setSubPayDraft,
   setDaqqiHousingModal, setDaqqiHousingRoundId,
   setConvertRow, setConvertType, setConvertAttendedLive, setConvertGotCert, setConvertPauseReason,
-  setConvertRefundReason, setConvertRefundAmount, setConvertRefundMethod, setConvertRefundPaymentId, setInstallmentsRow, filteredLength, notify,
+  setConvertRefundReason, setConvertRefundAmount, setConvertRefundMethod, setConvertRefundPaymentId, setInstallmentsRow, filteredLength, notify, layout = 'table',
 }: Props) {
   // The permission and the owner's list both: «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
   const canDeleteAnything = useCanDelete();
@@ -118,41 +121,7 @@ export function ClientsTable({
   const in3daysOnlineStr = cairoDaysAhead(3);
   const currFmt = (c: string) => c === 'SAR' ? 'ر.س' : c === 'USD' ? '$' : 'ج.م';
 
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-[12px]" dir="rtl">
-        <thead className="bg-gray-50 text-gray-700 sticky top-0 z-10">
-          <tr>
-            <th className="px-2 py-2 border border-gray-200 text-center w-8">
-              <input type="checkbox" className="accent-blue-600 cursor-pointer"
-                checked={pageRows.length > 0 && pageRows.every(r => collOnlineSelected.has(r.id))}
-                onChange={e => {
-                  const next = new Set(collOnlineSelected);
-                  if (e.target.checked) pageRows.forEach(r => next.add(r.id));
-                  else pageRows.forEach(r => next.delete(r.id));
-                  setCollOnlineSelected(next);
-                }} />
-            </th>
-            <th className="text-right px-2 py-2 border border-gray-200 font-semibold relative select-none" style={cw['name']?{width:cw['name']}:{}}>الاسم<span onMouseDown={e=>startColResize('name',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>
-            {/* عملائي holds every branch now, so which one a client belongs to
-                has to be readable on the row rather than implied by the tab. */}
-            {vc.branch && !isDaqqiClientsTab && <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] whitespace-nowrap relative select-none" style={cw['branch']?{width:cw['branch']}:{}}>{isDaqqiClientsTab ? 'الفرع' : 'السوق'}<span onMouseDown={e=>startColResize('branch',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
-            {vc.createdAt  && <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] whitespace-nowrap relative select-none" style={cw['createdAt']?{width:cw['createdAt']}:{}}>تاريخ الاشتراك<span onMouseDown={e=>startColResize('createdAt',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
-            {vc.courses    && <th className="text-right px-2 py-2 border border-gray-200 font-semibold relative select-none" style={cw['courses']?{width:cw['courses']}:{}}>الكورسات<span onMouseDown={e=>startColResize('courses',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
-            {vc.value      && <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] relative select-none" style={cw['value']?{width:cw['value']}:{}}>القيمة<span onMouseDown={e=>startColResize('value',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
-            {vc.paid       && <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] relative select-none" style={cw['paid']?{width:cw['paid']}:{}}>المدفوع<span onMouseDown={e=>startColResize('paid',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
-            {vc.remaining  && <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] relative select-none" style={cw['remaining']?{width:cw['remaining']}:{}}>المتبقي<span onMouseDown={e=>startColResize('remaining',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
-            {vc.certificates && <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] relative select-none" style={cw['certificates']?{width:cw['certificates']}:{}}>الشهادات<span onMouseDown={e=>startColResize('certificates',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
-            {vc.installments && <th className="text-right px-2 py-2 border border-gray-200 font-semibold whitespace-nowrap relative select-none" style={cw['installments']?{width:cw['installments']}:{}}>الأقساط<span onMouseDown={e=>startColResize('installments',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
-            {vc.status     && <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] relative select-none" style={cw['status']?{width:cw['status']}:{}}>الحالة<span onMouseDown={e=>startColResize('status',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
-            {vc.sales      && <th className="text-right px-2 py-2 border border-gray-200 font-semibold relative select-none" style={cw['sales']?{width:cw['sales']}:{}}>{isDaqqiClientsTab ? 'رسيبشن الدقي' : 'المسئول'}<span onMouseDown={e=>startColResize('sales',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
-            {isDaqqiClientsTab && <th className="text-center px-1 py-2 border border-indigo-200 bg-indigo-50 font-semibold text-[11px] whitespace-nowrap text-indigo-700">التسكين والروند</th>}
-            {vc.contact    && <th className="text-right px-2 py-2 border border-gray-200 font-semibold relative select-none min-w-[210px]" style={cw['contact']?{width:cw['contact']}:{}}>نتيجة التواصل والمتابعة<span onMouseDown={e=>startColResize('contact',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
-            <th className="text-right px-2 py-2 border border-gray-200 font-semibold">إجراءات</th>
-          </tr>
-        </thead>
-        <tbody>
-          {pageRows.map((row) => {
+  const renderRows = () => pageRows.map((row) => {
             const clientCode = row.clientCode || row.id;
             const salesName = row.assignedSalesName || '';
             // Collected money only: a pending or refunded row is not paid.
@@ -357,6 +326,43 @@ export function ClientsTable({
                 </div>
               </div>
             );
+            if (layout === 'cards') {
+              const actionList: Array<ClientCardAction | null> = [
+                { key: 'open', label: 'ملف العميل', icon: <ExternalLink size={14} />, onClick: () => navigate(`/client/${clientCode}`) },
+                { key: 'pay', label: 'تسجيل دفعة', icon: <Wallet size={14} />, tone: 'good', onClick: () => {
+                  setSubPayRow(row);
+                  setSubPayDraft(createClientPaymentDraft({ currency: branchCurrency, courseId: courseRows[0]?.cid || '' }));
+                  setSubPayDraft(prev => ({ ...prev, bookingType: (row.enrolledCourseIds || []).length > 0 ? 'installment' : 'new_booking' }));
+                } },
+                { key: 'installments', label: 'الأقساط', icon: <CalendarClock size={14} />, tone: 'info', onClick: () => setInstallmentsRow(row) },
+                { key: 'contact', label: 'تسجيل تواصل', icon: <Phone size={14} />, onClick: () => logContact(row, 'call') },
+                isDaqqiClientsTab
+                  ? { key: 'housing', label: rowHousing ? 'تسكين في روند تاني' : 'تسكين في روند', icon: <Home size={14} />, onClick: () => { setDaqqiHousingModal(row); setDaqqiHousingRoundId(''); } }
+                  : !isCollection ? { key: 'access', label: 'الكورسات والصلاحية', icon: <Receipt size={14} />, onClick: () => setAccessRow(row) } : null,
+                { key: 'convert', label: 'تحويل', icon: <RefreshCw size={14} />, onClick: () => { setConvertRow(row); setConvertType(''); setConvertAttendedLive(false); setConvertGotCert(false); setConvertPauseReason(''); setConvertRefundReason(''); setConvertRefundAmount(''); setConvertRefundMethod(''); setConvertRefundPaymentId(''); } },
+                canDeleteSubscriber ? { key: 'archive', label: 'أرشفة', icon: <Trash2 size={14} />, tone: 'danger' as const, onClick: async () => {
+                  if (!await confirmDialog(`أرشفة "${row.name}"؟ هيروح «الأرشيف» في قاعدة العملاء وسجله كله محفوظ.`)) return;
+                  const ok = await deleteSubscriber(row.id);
+                  if (ok && shouldUseScopedSubscribers) setSalesOwnSubscribers(prev => prev.filter(item => item.id !== row.id));
+                  notify(ok ? 'success' : 'error', ok ? 'تمت أرشفة العميل.' : 'فشلت أرشفة العميل ولم يُحذف من النظام.');
+                } } : null,
+              ];
+              const actions = actionList.filter((action): action is ClientCardAction => action !== null);
+              const issued = row.certificates || [];
+              return (
+                <ClientCard key={row.id} row={row} clientCode={clientCode}
+                  selected={collOnlineSelected.has(row.id)}
+                  onToggle={checked => { const next = new Set(collOnlineSelected); if (checked) next.add(row.id); else next.delete(row.id); setCollOnlineSelected(next); }}
+                  onOpen={() => navigate(`/client/${clientCode}`)}
+                  place={placeLabel(row)} createdAt={cairoDay(row.createdAt) || ''}
+                  courses={courseRows.map(course => ({ id: course.cid, label: course.label, expected: course.expected, paid: course.paid, remaining: course.remaining, currency: course.cur }))}
+                  statusCell={statusCell} salesCell={salesCell} housingCell={housingCell}
+                  instCell={instCell} hasInstallment={Boolean(nextInst)} contactCell={contactCell}
+                  actions={actions} onCall={() => logContact(row, 'call')} onWhats={() => logContact(row, 'whatsapp')}
+                  certificates={issued.length > 0 ? <div className="mt-2 flex flex-wrap gap-1 border-t border-gray-200 pt-1.5">{issued.slice(0, 3).map((cert, index) => <IssuedCertificateBadge key={index} cert={cert} />)}</div> : null}
+                />
+              );
+            }
             return courseRows.length === 0 ? (
               <tr key={row.id} className={`hover:bg-gray-50/80 ${collOnlineSelected.has(row.id)?'bg-blue-50':''}`}>
                 <td className="px-2 py-2 border border-gray-200 text-center w-8">
@@ -496,9 +502,51 @@ export function ClientsTable({
                 );
               })
             );
-          })}
+          });
+
+  return (
+    <div>
+      {layout === 'cards' ? (
+        <div className="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-3">{renderRows()}</div>
+      ) : (
+      <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-[12px]" dir="rtl">
+        <thead className="bg-gray-50 text-gray-700 sticky top-0 z-10">
+          <tr>
+            <th className="px-2 py-2 border border-gray-200 text-center w-8">
+              <input type="checkbox" className="accent-blue-600 cursor-pointer"
+                checked={pageRows.length > 0 && pageRows.every(r => collOnlineSelected.has(r.id))}
+                onChange={e => {
+                  const next = new Set(collOnlineSelected);
+                  if (e.target.checked) pageRows.forEach(r => next.add(r.id));
+                  else pageRows.forEach(r => next.delete(r.id));
+                  setCollOnlineSelected(next);
+                }} />
+            </th>
+            <th className="text-right px-2 py-2 border border-gray-200 font-semibold relative select-none" style={cw['name']?{width:cw['name']}:{}}>الاسم<span onMouseDown={e=>startColResize('name',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>
+            {/* عملائي holds every branch now, so which one a client belongs to
+                has to be readable on the row rather than implied by the tab. */}
+            {vc.branch && !isDaqqiClientsTab && <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] whitespace-nowrap relative select-none" style={cw['branch']?{width:cw['branch']}:{}}>{isDaqqiClientsTab ? 'الفرع' : 'السوق'}<span onMouseDown={e=>startColResize('branch',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
+            {vc.createdAt  && <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] whitespace-nowrap relative select-none" style={cw['createdAt']?{width:cw['createdAt']}:{}}>تاريخ الاشتراك<span onMouseDown={e=>startColResize('createdAt',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
+            {vc.courses    && <th className="text-right px-2 py-2 border border-gray-200 font-semibold relative select-none" style={cw['courses']?{width:cw['courses']}:{}}>الكورسات<span onMouseDown={e=>startColResize('courses',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
+            {vc.value      && <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] relative select-none" style={cw['value']?{width:cw['value']}:{}}>القيمة<span onMouseDown={e=>startColResize('value',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
+            {vc.paid       && <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] relative select-none" style={cw['paid']?{width:cw['paid']}:{}}>المدفوع<span onMouseDown={e=>startColResize('paid',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
+            {vc.remaining  && <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] relative select-none" style={cw['remaining']?{width:cw['remaining']}:{}}>المتبقي<span onMouseDown={e=>startColResize('remaining',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
+            {vc.certificates && <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] relative select-none" style={cw['certificates']?{width:cw['certificates']}:{}}>الشهادات<span onMouseDown={e=>startColResize('certificates',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
+            {vc.installments && <th className="text-right px-2 py-2 border border-gray-200 font-semibold whitespace-nowrap relative select-none" style={cw['installments']?{width:cw['installments']}:{}}>الأقساط<span onMouseDown={e=>startColResize('installments',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
+            {vc.status     && <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] relative select-none" style={cw['status']?{width:cw['status']}:{}}>الحالة<span onMouseDown={e=>startColResize('status',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
+            {vc.sales      && <th className="text-right px-2 py-2 border border-gray-200 font-semibold relative select-none" style={cw['sales']?{width:cw['sales']}:{}}>{isDaqqiClientsTab ? 'رسيبشن الدقي' : 'المسئول'}<span onMouseDown={e=>startColResize('sales',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
+            {isDaqqiClientsTab && <th className="text-center px-1 py-2 border border-indigo-200 bg-indigo-50 font-semibold text-[11px] whitespace-nowrap text-indigo-700">التسكين والروند</th>}
+            {vc.contact    && <th className="text-right px-2 py-2 border border-gray-200 font-semibold relative select-none min-w-[210px]" style={cw['contact']?{width:cw['contact']}:{}}>نتيجة التواصل والمتابعة<span onMouseDown={e=>startColResize('contact',e)} className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity z-20" /></th>}
+            <th className="text-right px-2 py-2 border border-gray-200 font-semibold">إجراءات</th>
+          </tr>
+        </thead>
+        <tbody>
+          {renderRows()}
         </tbody>
       </table>
+      </div>
+      )}
       {filteredLength === 0 && <p className="text-sm text-gray-500 mt-3">لا يوجد عملاء مطابقين للبحث.</p>}
       {contactRow && (
         <ClientContactDialog

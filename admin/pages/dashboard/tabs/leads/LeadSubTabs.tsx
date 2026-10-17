@@ -54,7 +54,7 @@ export function LeadSubTabs({
         const badge = tab === 'reminders' ? alertCount : tab === 'localNew' ? unassignedCount : 0;
         return (
           <button type="button" key={tab} onClick={() => setSubTab(tab)}
-            className={`relative flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition ${
+            className={`relative flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-bold transition ${
               subTab === tab
                 ? 'bg-primary-600 text-white shadow-sm shadow-primary-500/30'
                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'

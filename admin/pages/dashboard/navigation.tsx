@@ -353,7 +353,7 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       // «خلي صفحه طلبات الانضمام للمحاضر غير الموظفين» (12 Oct 2026).
       { key: 'join_us', label: 'طلبات انضمام الموظفين', icon: Briefcase },
       { key: 'lecturer_applications', label: 'طلبات انضمام المحاضرين', icon: GraduationCap },
-      { key: 'interviews', label: 'الانترفيوهات', icon: CalendarCheck2 },
+      { key: 'interviews', label: 'انترفيوهات الموظفين', icon: CalendarCheck2 },
     ],
   },
   {
