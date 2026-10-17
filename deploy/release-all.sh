@@ -70,9 +70,27 @@ cd "$ROOT"
 # Settings that belong to this machine, read once instead of typed on every release: the staging
 # password for the E2E, a GitHub token, the server. deploy/release.local.env is git-ignored (see
 # deploy/release.local.env.example); ~/.mahad-release.env is the same thing kept outside the repo.
+# Read literally, line by line (KEY=value) and never run as shell code: a password with a $, &, ; or (
+# in it would be cut or executed. One pair of surrounding quotes is tolerated and dropped.
+load_settings() {
+  local line key value
+  local single="'" double='"'
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    key="${line%%=*}"
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    value="${line#*=}"
+    if [[ "${#value}" -ge 2 && ( ( "${value:0:1}" == "$single" && "${value: -1}" == "$single" ) \
+        || ( "${value:0:1}" == "$double" && "${value: -1}" == "$double" ) ) ]]; then
+      value="${value:1:${#value}-2}"
+    fi
+    export "$key=$value"
+  done < "$1"
+}
 for settings in "$ROOT/deploy/release.local.env" "${MAHAD_RELEASE_ENV:-$HOME/.mahad-release.env}"; do
   if [[ -f "$settings" ]]; then
-    set -a; . "$settings"; set +a
+    load_settings "$settings"
     echo "settings read from $settings"
   fi
 done

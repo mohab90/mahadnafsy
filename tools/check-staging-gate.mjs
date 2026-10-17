@@ -16,9 +16,31 @@
  * Exit 81 staging asks for a password and E2E_BASIC_AUTH is not set
  * Exit 82 staging refused the password in E2E_BASIC_AUTH
  */
+import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
-import { pathToFileURL } from 'node:url';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+/** KEY=value lines, read literally — the same rule as load_settings in deploy/release-all.sh. */
+export function readSettings(file) {
+  const out = {};
+  let text;
+  try { text = fs.readFileSync(file, 'utf8'); } catch { return out; }
+  for (const raw of text.split('\n')) {
+    const line = raw.replace(/\r$/, '');
+    if (!line || /^\s*#/.test(line)) continue;
+    const at = line.indexOf('=');
+    const key = at > 0 ? line.slice(0, at) : '';
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+    let value = line.slice(at + 1);
+    if (value.length >= 2 && ((value[0] === "'" && value.at(-1) === "'") || (value[0] === '"' && value.at(-1) === '"'))) value = value.slice(1, -1);
+    out[key] = value;
+  }
+  return out;
+}
+
+const settingsFile = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), 'deploy', 'release.local.env');
 
 /** One GET, answering the status. Certificate errors are ignored, as the E2E's own clients do (ignoreHTTPSErrors). */
 function get(url, headers) {
@@ -57,7 +79,8 @@ export async function checkStagingGate(origin, { credentials = process.env.E2E_B
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const origin = process.argv[2] || 'https://staging.mahadnafsy.com';
-  const result = await checkStagingGate(origin);
+  // From the environment, else from deploy/release.local.env — so this can be run on its own.
+  const result = await checkStagingGate(origin, { credentials: process.env.E2E_BASIC_AUTH || readSettings(settingsFile).E2E_BASIC_AUTH });
   (result.code ? console.error : console.log)(`[staging-gate] ${result.message}`);
   process.exit(result.code);
 }

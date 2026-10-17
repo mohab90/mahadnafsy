@@ -79,6 +79,26 @@ test('the release script asks about the gate first, reads its settings itself an
   if (!bash.error) assert.equal(bash.status, 0, bash.stderr);
 });
 
+test('the settings file is read as text, never run — a password may hold $ & ; ( ) ! # and quotes', async () => {
+  const { readSettings } = await gate();
+  const odd = 'mahad:a$b&c;d(e)!f"g#h`i';
+  const file = path.join(require('node:os').tmpdir(), `release-settings-${process.pid}.env`);
+  fs.writeFileSync(file, ['# a comment', `E2E_BASIC_AUTH=${odd}`, "QUOTED='x y'", 'EMPTY=', 'not a setting'].join('\r\n'));
+  try {
+    const settings = readSettings(file);
+    assert.equal(settings.E2E_BASIC_AUTH, odd);
+    assert.equal(settings.QUOTED, 'x y');
+    assert.equal(settings.EMPTY, '');
+    assert.equal(Object.keys(settings).length, 3, 'comments and lines that are not KEY=value are ignored');
+  } finally { fs.rmSync(file, { force: true }); }
+  assert.deepEqual(readSettings(path.join(ROOT, 'deploy', 'no-such-file.env')), {});
+  const script = read('deploy/release-all.sh');
+  assert.match(script, /load_settings "\$settings"/);
+  assert.doesNotMatch(script, /\. "\$settings"/, 'the file is not sourced');
+  // The standalone check reads the same file when the variable is not set.
+  assert.match(read('tools/check-staging-gate.mjs'), /process\.env\.E2E_BASIC_AUTH \|\| readSettings\(settingsFile\)\.E2E_BASIC_AUTH/);
+});
+
 test('the server refuses production unless staging runs the same release', () => {
   assert.match(read('deploy-release.sh'), /REFUSED - staging does not run \$R/);
 });
