@@ -106,7 +106,7 @@ export function LeadFilterBar({
   const hasActiveFilters = assignFilter.size > 0 || singleStatus || courseFilter || branchFilter || searchTerm || showHiddenLeads || salesSourceFilter || leadsFollowupFilter !== 'all';
 
   return (
-    <div className="flex items-center gap-1.5 bg-gray-50 rounded-xl border border-gray-100 px-2.5 py-1.5 overflow-x-auto flex-nowrap">
+    <div className="flex flex-wrap items-center gap-1.5 bg-gray-50 rounded-xl border border-gray-100 px-2.5 py-1.5">
       <input
         value={searchTerm}
         onChange={e => setSearchTerm(e.target.value)}

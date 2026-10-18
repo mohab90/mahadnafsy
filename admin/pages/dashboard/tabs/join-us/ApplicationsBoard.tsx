@@ -137,7 +137,7 @@ export default function ApplicationsBoard({ group, version, counts, busyId, acti
           the filters in a single row — «الفلاتر صف واحد … ضد هدر المساحات». On a phone the rows scroll sideways
           instead of stacking. */}
       <div className="space-y-1.5 rounded-2xl border border-gray-200 bg-white p-2">
-        <div className="no-scrollbar flex flex-nowrap items-center gap-1 overflow-x-auto">
+        <div className="no-scrollbar flex flex-nowrap items-center gap-1 overflow-x-auto md:flex-wrap md:overflow-visible">
           <button onClick={() => setStatus('all')}
             className={`inline-flex min-h-[32px] shrink-0 items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold md:min-h-0 ${status === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-600 ring-1 ring-gray-200'}`}>
             الكل {everything}
