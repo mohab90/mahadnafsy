@@ -287,13 +287,18 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requi
       // same online sale appears twice in the unified list (once as a payment,
       // once as an order) and inflates any client-side total. Only surface orders
       // that have NO twin payment row (e.g. legacy orders predating the sync).
+      // Two lookups, not one with an OR: an OR between the primary key and transaction_id uses neither index,
+      // so every order read every payment (measured: this list never returned at 40,000 payments).
       oFilters += ` AND NOT EXISTS (
         SELECT 1 FROM payments pp
         WHERE pp.tenant_id=orders.tenant_id AND pp.deleted_at IS NULL
-          AND (pp.id = CONCAT('paymob-', orders.id)
-           OR (orders.transaction_id IS NOT NULL AND orders.transaction_id <> ''
-               AND pp.transaction_id = orders.transaction_id))
-      )`;
+          AND pp.id = CONCAT('paymob-', orders.id)
+      )
+      AND NOT (orders.transaction_id IS NOT NULL AND orders.transaction_id <> '' AND EXISTS (
+        SELECT 1 FROM payments pp
+        WHERE pp.tenant_id=orders.tenant_id AND pp.deleted_at IS NULL
+          AND pp.transaction_id = orders.transaction_id
+      ))`;
       if (dateFrom) { oFilters += ` AND created_at >= ?`; oParams.push(dateFrom); }
       if (dateTo)   { oFilters += ` AND created_at < ?`; oParams.push(addDaysToDateOnly(dateTo, 1)); }
       if (search)   { oFilters += ` AND (customer_name LIKE ? OR customer_email LIKE ?)`; oParams.push(`%${search}%`, `%${search}%`); }

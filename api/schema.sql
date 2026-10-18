@@ -3884,6 +3884,8 @@ CREATE TABLE `orders` (
   KEY `idx_orders_deleted` (`deleted_at`),
   KEY `idx_orders_status_created` (`status`,`created_at`),
   KEY `idx_orders_tenant_branch` (`tenant_id`,`branch_id`),
+  KEY `idx_orders_paid_lookup_phone` (`tenant_id`,`status`,`item_id`,`customer_phone`),
+  KEY `idx_orders_paid_lookup_email` (`tenant_id`,`status`,`item_id`,`customer_email`(100)),
   KEY `idx_orders_tenant_status_created` (`tenant_id`,`status`,`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -5254,6 +5256,7 @@ CREATE TABLE `subscribers` (
   KEY `idx_subscribers_tenant_branch_listing` (`tenant_id`,`branch`,`is_active`,`deleted_at`,`created_at`),
   KEY `idx_subscribers_tenant_active_deleted` (`tenant_id`,`is_active`,`deleted_at`),
   KEY `idx_subscribers_tenant_phone` (`tenant_id`,`phone`),
+  KEY `idx_subscribers_tenant_lead` (`tenant_id`,`lead_id`),
   KEY `idx_subscribers_cs_at` (`tenant_id`,`assigned_cs_id`,`assigned_cs_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;

@@ -24,13 +24,19 @@
 // tables against the migrations beside it. LOWER is unnecessary under
 // utf8mb4_unicode_ci, and stored emails are trimmed (the write paths trim;
 // migration 207 cleaned the rest), so only the lead's side is trimmed.
+//
+// Both readers ask «no live subscriber», i.e. NOT of this. MariaDB cannot turn NOT (A OR B OR C) over three
+// correlated EXISTS into anti-joins, so each lead ran all three probes through a materialised copy of the
+// clients table: the reconciliation screen did not return in 60 s at 11,600 converted leads and 30,000
+// clients. Written as the negation of «none of the three», NOT of it is NOT A AND NOT B AND NOT C, which it
+// does turn into anti-joins on lead_id, uq_subs_tenant_email and uq_subs_tenant_phone (0.19 s).
 const LIVE_SUBSCRIBER_FOR_LEAD = `
-  (EXISTS (SELECT 1 FROM subscribers s
+  (NOT (NOT EXISTS (SELECT 1 FROM subscribers s
             WHERE s.tenant_id=l.tenant_id AND s.deleted_at IS NULL AND s.lead_id=l.id)
-   OR (l.email<>'' AND EXISTS (SELECT 1 FROM subscribers s
+   AND NOT (l.email<>'' AND EXISTS (SELECT 1 FROM subscribers s
             WHERE s.tenant_id=l.tenant_id AND s.deleted_at IS NULL AND s.email=TRIM(l.email)))
-   OR (l.phone<>'' AND EXISTS (SELECT 1 FROM subscribers s
-            WHERE s.tenant_id=l.tenant_id AND s.deleted_at IS NULL AND s.phone=l.phone)))`;
+   AND NOT (l.phone<>'' AND EXISTS (SELECT 1 FROM subscribers s
+            WHERE s.tenant_id=l.tenant_id AND s.deleted_at IS NULL AND s.phone=l.phone))))`;
 
 const CHECKS = [
   {

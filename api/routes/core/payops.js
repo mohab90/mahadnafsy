@@ -252,8 +252,12 @@ router.get('/api/admin/reconciliation-dashboard', requireAuth, requireAdminOrSta
                WHERE o.tenant_id=? AND o.status='paid' AND o.deleted_at IS NULL${orderBranchSql}
                  AND NOT EXISTS (
                     SELECT 1 FROM payments p WHERE p.tenant_id=o.tenant_id AND p.deleted_at IS NULL AND p.status='paid'
-                     AND (p.id=o.id OR (o.transaction_id IS NOT NULL AND p.transaction_id=o.transaction_id))
+                     AND p.id=o.id
                  )
+                 AND NOT (o.transaction_id IS NOT NULL AND EXISTS (
+                    SELECT 1 FROM payments p WHERE p.tenant_id=o.tenant_id AND p.deleted_at IS NULL AND p.status='paid'
+                     AND p.transaction_id=o.transaction_id
+                 ))
                ORDER BY o.paid_at DESC LIMIT 100`,
       },
       {
@@ -264,7 +268,12 @@ router.get('/api/admin/reconciliation-dashboard', requireAuth, requireAdminOrSta
                  AND NOT EXISTS (
                    SELECT 1 FROM payments p
                     WHERE p.tenant_id=pp.tenant_id AND p.deleted_at IS NULL
-                      AND p.status='paid' AND (p.id=CONCAT('proof-',pp.id) OR p.transaction_id=pp.id)
+                      AND p.status='paid' AND p.id=CONCAT('proof-',pp.id)
+                 )
+                 AND NOT EXISTS (
+                   SELECT 1 FROM payments p
+                    WHERE p.tenant_id=pp.tenant_id AND p.deleted_at IS NULL
+                      AND p.status='paid' AND p.transaction_id=pp.id
                  )
                ORDER BY pp.reviewed_at DESC LIMIT 100`,
       },
@@ -347,8 +356,14 @@ router.get('/api/admin/reconciliation-dashboard', requireAuth, requireAdminOrSta
       let countExact = true;
       if (rows.length >= SAMPLE_LIMIT) {
         if (strippable) {
-          const [[total]] = await pool.query(
-            `SELECT COUNT(*) AS n FROM (${population}) AS reconcile_population`, params);
+          // A plain COUNT(*) over the same FROM and WHERE where the check allows it. Wrapped as a derived table
+          // MariaDB planned the converted-leads check differently and it ran past 60 s; counted directly it
+          // takes 0.19 s at 11,600 leads and 30,000 clients. A grouped check still goes through the wrapper.
+          const grouped = /\b(GROUP BY|HAVING|DISTINCT|UNION)\b/i.test(population);
+          const countSql = grouped
+            ? `SELECT COUNT(*) AS n FROM (${population}) AS reconcile_population`
+            : population.replace(/^\s*SELECT[\s\S]*?\sFROM\s/i, 'SELECT COUNT(*) AS n FROM ');
+          const [[total]] = await pool.query(countSql, params);
           count = Number(total.n) || rows.length;
         } else {
           countExact = false;

@@ -301,17 +301,22 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
     // had just signed up with their number, and was not yet a subscriber or a
     // lead, got an empty string back: checkout then asked them to type in the
     // number they had given one screen earlier.
+    //
+    // The bare column, not lower-cased and trimmed in SQL: every page load of every employee runs this, an employee is in
+    // neither table, and a function around the column put both indexes out of reach — each sign-in scanned all
+    // the leads (0.67 s at 150,000, the head of every other request's chain). The column is utf8mb4_unicode_ci,
+    // so case never mattered, and stored emails are trimmed (migration 207; the write paths trim).
     let phone = '';
     try {
       const em = (u.email || '').toLowerCase().trim();
       if (em) {
         const [[subRow]] = await conn.execute(
-          "SELECT phone FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? AND phone IS NOT NULL AND phone<>'' LIMIT 1", [req.tenantId, em]
+          "SELECT phone FROM subscribers WHERE tenant_id=? AND email=? AND phone IS NOT NULL AND phone<>'' LIMIT 1", [req.tenantId, em]
         );
         phone = subRow?.phone || '';
         if (!phone) {
           const [[leadRow]] = await conn.execute(
-            "SELECT phone FROM leads WHERE tenant_id=? AND LOWER(TRIM(email))=? AND phone IS NOT NULL AND phone<>'' ORDER BY created_at DESC LIMIT 1", [req.tenantId, em]
+            "SELECT phone FROM leads WHERE tenant_id=? AND email=? AND phone IS NOT NULL AND phone<>'' ORDER BY created_at DESC LIMIT 1", [req.tenantId, em]
           );
           phone = leadRow?.phone || '';
         }
