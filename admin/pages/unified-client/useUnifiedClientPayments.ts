@@ -261,10 +261,15 @@ export function useUnifiedClientPayments(params: Params) {
       itemTitle: draft.itemTitle || undefined,
       paymentMethod: draft.paymentMethod || undefined,
       fromAccountNumber: draft.fromAccountNumber || undefined,
+      // The number the desk typed in «رقم العملية» is the payment's transaction number, not text in its note: it
+      // used to be joined into the note, so payments.transaction_id stayed empty and the number never appeared
+      // as one — not in the payments lists, not in the search, not in the duplicate check, not in the matching
+      // against incoming transfers. The column is unique, so only this main payment carries it; the rows added
+      // below name it in their notes.
+      transactionId: draft.transactionId || undefined,
       source: 'staff',
       note: [
         draft.note || undefined,
-        draft.transactionId || undefined,
         bundle ? `مسار تعليمي: ${bundle.title}` : undefined,
         draft.certType || undefined,
       ].filter(Boolean).join(' | ') || undefined,
@@ -278,7 +283,7 @@ export function useUnifiedClientPayments(params: Params) {
       // leaving the main payment in and the rest out.
       const extras = extraPaymentEntries(draft, {
         courses, bundles, staff: currentStaff,
-        noteParts: [draft.note, draft.transactionId].filter(Boolean) as string[],
+        noteParts: [draft.note, draft.transactionId ? `رقم العملية: ${draft.transactionId}` : undefined].filter(Boolean) as string[],
       });
       await recordSubscriberPayment(subscriber.id, { ...entry, ...tierFields } as unknown as Record<string, unknown>);
       // The client's page used to record the main payment alone and drop every added row, silently.

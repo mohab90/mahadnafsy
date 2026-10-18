@@ -94,7 +94,10 @@ async function fill(table, n, recipe, { batch = 1500 } = {}) {
 }
 
 const LEAD_STATUS = ['new', 'new', 'new', 'contacted', 'interested_booking', 'interested_followup', 'no_answer_wa', 'no_answer_nowa', 'not_interested', 'postpone_month', 'wrong_number', 'closed', 'converted'];
+let branchOf;
 const BRANCHES = ['ONLINE_EGYPT', 'ONLINE_SAUDI', 'ONLINE_ABROAD', 'DAQQI'];
+// What api/lib/branches.js branchIdForBranch() gives each branch; every real row carries it.
+const BRANCH_ID = { ONLINE_EGYPT: 'branch-online-egypt', ONLINE_SAUDI: 'branch-online-saudi', ONLINE_ABROAD: 'branch-online-abroad', DAQQI: 'branch-daqqi' };
 const SOURCES = ['facebook', 'website', 'whatsapp', 'instagram', 'referral', 'google'];
 
 (async () => {
@@ -145,14 +148,14 @@ const SOURCES = ['facebook', 'website', 'whatsapp', 'instagram', 'referral', 'go
     const rep = salesIds[i % salesIds.length];
     return {
       id: `l-${i}`, tenant_id: T, name: person(), phone: phone(i), email: `lead${i}@perf.test`, source: pick(SOURCES), status: pick(LEAD_STATUS),
-      branch: pick(BRANCHES), interest_level: pick(['LOW', 'MEDIUM', 'HIGH']), lead_score: Math.floor(rnd() * 100), assigned_sales_id: rep, assigned_sales_name: rep.slice(3),
+      branch: (branchOf = pick(BRANCHES)), branch_id: BRANCH_ID[branchOf], interest_level: pick(['LOW', 'MEDIUM', 'HIGH']), lead_score: Math.floor(rnd() * 100), assigned_sales_id: rep, assigned_sales_name: rep.slice(3),
       notes: i % 3 === 0 ? 'تم التواصل' : '', created_at: daysAgo(i / 300, 3), updated_at: daysAgo(i / 400, 2),
       next_follow_up_date: i % 5 === 0 ? daysAgo(-Math.floor(rnd() * 7)) : null, interested_course_ids_json: JSON.stringify([`c-${i % COURSES}`]),
     };
   });
   const SUBS = 30000 * SCALE;
   await fill('subscribers', SUBS, i => ({
-    id: `s-${i}`, tenant_id: T, client_code: `CLT-${1000 + i}`, name: person(), phone: phone(i + 500000), email: `client${i}@perf.test`, branch: pick(BRANCHES),
+    id: `s-${i}`, tenant_id: T, client_code: `CLT-${1000 + i}`, name: person(), phone: phone(i + 500000), email: `client${i}@perf.test`, branch: (branchOf = pick(BRANCHES)), branch_id: BRANCH_ID[branchOf],
     assigned_cs_id: i % 4 === 0 ? 'st-collection1' : 'st-collection2', assigned_cs_name: 'collection', is_active: 1, created_at: daysAgo(i / 60, 2), updated_at: daysAgo(i / 80),
     crm_json: JSON.stringify({ clientStatus: pick(['active', 'active', 'active', 'finished', 'paused']), enrolledCourseIds: [`c-${i % COURSES}`], paymentHistory: [{ id: `p-${i}`, amount: 1000, currency: 'EGP', date: dateAgo(i / 80), status: 'collected' }] }),
     course_access_json: JSON.stringify({ [`c-${i % COURSES}`]: { granted: true } }),

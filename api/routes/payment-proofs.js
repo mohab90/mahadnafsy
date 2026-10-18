@@ -290,7 +290,8 @@ router.get('/api/admin/payment-proofs', requireAuth, requireAdminOrStaff, requir
     const within = financialScopeClause(scope, { branchColumn: 'pp.branch_id', subscriberAlias: 's' });
     sql += within.sql; params.push(...within.params);
     if (normalizedStatus) { sql += ' AND pp.status = ?'; params.push(normalizedStatus); }
-    sql += ' ORDER BY pp.submitted_at DESC LIMIT 500';
+    // Unresolved first: a work queue that is cut at 500 must cut off the finished ones, not the oldest open ones.
+    sql += " ORDER BY (pp.status = 'PENDING') DESC, pp.submitted_at DESC LIMIT 500";
     const [rows] = await pool.query(sql, params);
     res.json(rows);
   } catch (e) {

@@ -776,7 +776,8 @@ router.get('/api/admin/refund-requests', requireAuth, requireAdminOrStaff, requi
     sql += scoped.sql;
     params.push(...scoped.params);
     if (status && status !== 'all') { sql += ' AND r.status = ?'; params.push(status); }
-    sql += ' ORDER BY r.created_at DESC LIMIT 500';
+    // Unresolved first: a work queue that is cut at 500 must cut off the finished ones, not the oldest open ones.
+    sql += " ORDER BY (r.status IN ('PENDING','HANDLING')) DESC, r.created_at DESC LIMIT 500";
     const [rows] = await pool.query(sql, params);
     res.json(rows);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }

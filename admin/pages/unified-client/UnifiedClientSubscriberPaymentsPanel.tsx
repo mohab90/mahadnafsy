@@ -138,16 +138,24 @@ export function UnifiedClientSubscriberPaymentsPanel({
           {bookedCourseIds.map(cId => {
             const course = courses.find(c => c.id === cId);
             const bm = bookingMap[cId] || { paidEGP: 0 };
-            const expected = bm.expectedEGP || 0;
-            const pct = expected > 0 ? Math.min(100, Math.round((bm.paidEGP / expected) * 100)) : 100;
+            // What a sales or collection payment on this course holds until a manager approves it. The card
+            // read only the confirmed ones, so a course whose one payment was still pending had no price and no
+            // payment, and was drawn «✅ مكتمل» (complete).
+            const pending = subHistory.filter(p => p.status === 'pending' && p.courseId === cId && p.currency === settlementCurrency);
+            const pendingAmount = pending.reduce((sum, p) => sum + p.amount, 0);
+            const expected = bm.expectedEGP || pending.find(p => p.isInstallment === false && p.courseExpected)?.courseExpected || 0;
+            const pct = expected > 0 ? Math.min(100, Math.round((bm.paidEGP / expected) * 100)) : (pendingAmount > 0 ? 0 : 100);
             const remaining = expected > 0 ? Math.max(0, expected - bm.paidEGP) : 0;
             return (
               <div key={cId} className="bg-white border border-gray-100 rounded-xl px-3 py-2.5 shadow-sm">
                 <div className="flex items-center justify-between mb-1.5 gap-2">
                   <p className="text-sm font-bold text-gray-800 truncate flex-1">{course?.title || cId}</p>
+                  {pendingAmount > 0 && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 shrink-0">⏳ {pendingAmount.toLocaleString('ar-EG-u-nu-latn')} بانتظار الاعتماد</span>}
                   {remaining > 0
                     ? <span className="text-xs font-bold text-red-600 shrink-0">متبقي {remaining.toLocaleString('ar-EG-u-nu-latn')} {settlementLabel}</span>
-                    : <span className="text-xs font-bold text-emerald-600 shrink-0">✅ مكتمل</span>}
+                    : pendingAmount > 0 && expected === 0
+                      ? null
+                      : <span className="text-xs font-bold text-emerald-600 shrink-0">✅ مكتمل</span>}
                 </div>
                 {expected > 0 && (
                   <>

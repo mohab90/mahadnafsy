@@ -64,7 +64,12 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
     extraItems: draft.extraItems.filter(i => i.type !== 'course'),
   };
   const freshSub = subscribers.find(s => s.id === subPayRow.id) || subPayRow;
-  const noteParts = [subPayDraft.note, subPayDraft.transactionId, subPayDraft.transferRef ? `تحويل: ${subPayDraft.transferRef}` : '', subPayDraft.nationalId ? `ر.ق: ${subPayDraft.nationalId}` : ''].filter(Boolean);
+  // The transaction number and the transferring account are fields of the payment (payments.transaction_id,
+  // payments.from_account), not text in its note: joined into the note they never showed as what they are. The
+  // transaction number is unique, so the first payment of the save carries it and the others name it in their notes.
+  const noteParts = [subPayDraft.note, subPayDraft.nationalId ? `ر.ق: ${subPayDraft.nationalId}` : ''].filter(Boolean);
+  const txnNote = subPayDraft.transactionId ? `رقم العملية: ${subPayDraft.transactionId}` : '';
+  const txnFields = { transactionId: subPayDraft.transactionId || undefined, fromAccountNumber: subPayDraft.transferRef || undefined };
   const isMultiCourse = subPayDraft.paymentType === 'course' && subPayDraft.bookingType === 'new_booking';
 
   let updated = { ...freshSub };
@@ -73,7 +78,7 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
     const validItems = subPayDraft.courseItems.filter(item => item.courseId && item.amount);
     if (validItems.length === 0) return;
     const newEntries: PaymentHistoryEntry[] = [];
-    for (const item of validItems) {
+    for (const [itemIndex, item] of validItems.entries()) {
       const isBundleItem = item.courseId.startsWith('bundle:');
       const bId = isBundleItem ? item.courseId.replace('bundle:', '') : null;
       const bObj = bId ? bundles.find(b => b.id === bId) : null;
@@ -95,7 +100,8 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
         isInstallment: false,
         courseId: isBundleItem ? undefined : (item.courseId || undefined),
         bundleId: isBundleItem ? (bId || undefined) : undefined,
-        note: [noteParts.join(' | '), isBundleItem && bObj ? `مسار تعليمي: ${bObj.title}` : undefined].filter(Boolean).join(' | ') || undefined,
+        note: [noteParts.join(' | '), itemIndex > 0 ? txnNote : '', isBundleItem && bObj ? `مسار تعليمي: ${bObj.title}` : undefined].filter(Boolean).join(' | ') || undefined,
+        ...(itemIndex === 0 ? txnFields : {}),
         paymentMethod: subPayDraft.paymentMethod || undefined,
         at: subPayDraft.date,
         staffId: currentStaff?.id || undefined,
@@ -154,6 +160,7 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
       certType: subPayDraft.certType || undefined,
       itemTitle: subPayDraft.itemTitle || undefined,
       note: [noteParts.join(' | '), isBundleSelection && bundle ? `مسار تعليمي: ${bundle.title}` : undefined].filter(Boolean).join(' | ') || undefined,
+      ...txnFields,
       paymentMethod: subPayDraft.paymentMethod || undefined,
       at: subPayDraft.date,
       staffId: currentStaff?.id || undefined,
@@ -197,7 +204,7 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
           isInstallment: !item.newBooking,
           courseId: isBundleItem ? undefined : item.courseId,
           bundleId: isBundleItem ? item.courseId.replace('bundle:', '') : undefined,
-          note: [noteParts.join(' | '), itemBundle ? `مسار تعليمي: ${itemBundle.title}` : undefined].filter(Boolean).join(' | ') || undefined,
+          note: [noteParts.join(' | '), txnNote, itemBundle ? `مسار تعليمي: ${itemBundle.title}` : undefined].filter(Boolean).join(' | ') || undefined,
           paymentMethod: subPayDraft.paymentMethod || undefined,
           at: subPayDraft.date,
           staffId: currentStaff?.id || undefined,
@@ -246,7 +253,7 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
         paidAmount: Number(subPayDraft.amount),
         currency: subPayDraft.currency,
         requestedAt: subPayDraft.date,
-        note: noteParts.join(' | ') || undefined,
+        note: [noteParts.join(' | '), txnNote].filter(Boolean).join(' | ') || undefined,
       };
       updated = {
         ...updated,

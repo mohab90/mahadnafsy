@@ -364,7 +364,7 @@ router.get('/api/admin/tickets', requireAuth, requireAdminOrStaff, requirePermis
       `SELECT t.*, s.name AS assignee_name,
               (SELECT COUNT(*) FROM ticket_replies tr WHERE tr.ticket_id=t.id AND tr.tenant_id=t.tenant_id) AS reply_count
          FROM support_tickets t LEFT JOIN staff s ON s.id=t.assigned_to AND s.tenant_id=t.tenant_id
-        WHERE ${where.join(' AND ')} ORDER BY t.created_at DESC LIMIT 500`, params);
+        WHERE ${where.join(' AND ')} ORDER BY (t.status IN ('resolved','closed')) ASC, t.created_at DESC LIMIT 500`, params);
     res.json(rows.map(r => ({ ...r, sla: slaFlag(r) })));
   } catch (e) { logger.error('[cs/list]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

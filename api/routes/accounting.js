@@ -49,7 +49,8 @@ router.get('/api/admin/waitlist', requireAuth, requireAdminOrStaff, requirePermi
     const params = [req.tenantId];
     if (branch) { sql += ' AND branch=?'; params.push(branch); }
     if (status) { sql += ' AND status=?'; params.push(status); }
-    sql += ' ORDER BY created_at DESC LIMIT 500';
+    // Unresolved first: a work queue that is cut at 500 must cut off the finished ones, not the oldest open ones.
+    sql += " ORDER BY (status = 'waiting') DESC, created_at DESC LIMIT 500";
     const [rows] = await pool.query(sql, params);
     res.json(rows);
   } catch (e) { logger.error('[waitlist]', e.message); res.status(500).json({ error: 'Internal server error' }); }

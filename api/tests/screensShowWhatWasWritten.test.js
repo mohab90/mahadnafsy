@@ -44,3 +44,23 @@ test('a staff member\'s own lists are refreshed one at a time, and the timer and
   assert.ok(dashboard.includes('void fetchSalesDataIfStale(2 * 60 * 1000)'), 'the return to the tab');
   assert.ok(!/visibilityState === 'visible'\) void fetchSalesData\(\)/.test(dashboard), 'a return to the tab is not a full download');
 });
+
+test('the transaction number typed in the payment dialog is sent as the payment\'s transaction number, not folded into its note', () => {
+  // payments.transaction_id is UNIQUE, so only the main payment of a save carries it.
+  const page = read('admin/pages/unified-client/useUnifiedClientPayments.ts');
+  const entry = page.slice(page.indexOf('const entry: PaymentHistoryEntry = {'), page.indexOf('// The branch tier and the client'));
+  assert.ok(entry.includes('transactionId: draft.transactionId || undefined,'));
+  assert.ok(!/draft\.transactionId \|\| undefined,\n\s*bundle \?/.test(entry), 'it is no longer joined into the note');
+  assert.ok(page.includes("draft.transactionId ? `رقم العملية: ${draft.transactionId}` : undefined"), 'the added rows name it in their notes');
+
+  const handler = read('admin/pages/dashboard/dashboardPaymentHandlers.ts');
+  assert.ok(handler.includes('const txnFields = { transactionId: subPayDraft.transactionId || undefined, fromAccountNumber: subPayDraft.transferRef || undefined };'));
+  assert.ok(!/const noteParts = \[subPayDraft\.note, subPayDraft\.transactionId/.test(handler), 'the number and the transferring account are not note text');
+  assert.ok(handler.includes('...(itemIndex === 0 ? txnFields : {}),'), 'the first of several courses carries it');
+  assert.ok(handler.includes('...txnFields,'), 'a single payment carries it');
+});
+
+test('a reference already used on another payment is refused with its own message', () => {
+  const route = read('api/routes/subscriber-payments.js');
+  assert.ok(route.includes('TRANSACTION_REFERENCE_IN_USE'));
+});

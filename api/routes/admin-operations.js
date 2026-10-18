@@ -665,7 +665,7 @@ router.get('/api/admin/contact-messages', requireAuth, requireAdminOrStaff, requ
       `SELECT id, name, email, phone, subject, message, status, admin_note, created_at
        FROM contact_messages
        WHERE tenant_id=? AND (? IS NULL OR status=?)
-       ORDER BY created_at DESC LIMIT 500`,
+       ORDER BY (status = 'NEW') DESC, created_at DESC LIMIT 500`,
       [scopedTenantId(req), status, status]);
     // The screen reads createdAt and adminNote and compares the status in
     // lower case; the row carries created_at, admin_note and an upper-case
