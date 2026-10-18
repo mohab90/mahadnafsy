@@ -1,45 +1,70 @@
-import type { LeadItem, SubscriberItem } from '../../../../types';
-import { cairoDateOnly, cairoMonthOnly, cairoDay, cairoDaysAgo } from '../../../../../shared/cairoDate';
-import { isCollected } from '../../../../lib/money';
-import { isOpenLeadStatus } from '../../../../../shared/leadStatuses';
+import { useEffect, useRef, useState } from 'react';
+import { mysqlAdmin } from '../../../../lib/mysqlapi';
+import { CRM_CHANGED_EVENT } from '../../../../lib/crmChanged';
 
 type Props = {
   isSalesOnly: boolean;
-  effectiveLeads: LeadItem[];
-  effectiveSubs: SubscriberItem[];
+  /** Bumped after a follow-up action, so the figures are asked for again. */
+  refreshKey?: unknown;
 };
 
-export function LeadSalesKpiStrip({ isSalesOnly, effectiveLeads, effectiveSubs }: Props) {
+/** GET /api/staff/leads-kpis: the figures this strip draws, counted by the database over the rep's own leads. */
+type LeadKpis = {
+  totalLeads: number;
+  converted: number;
+  convertedThisMonth: number;
+  active: number;
+  overdue: number;
+  callsToday: number;
+  callsWeek: number;
+  collectedEgp: number;
+};
+
+/**
+ * The strip summed these over every lead and client of the rep, which the screen downloaded whole (37,000 leads and
+ * 5,000 clients with their payments on the production-scale lab) to print seven numbers. The server counts them
+ * now; they are asked for again after a write (lib/crmChanged.ts).
+ */
+export function LeadSalesKpiStrip({ isSalesOnly, refreshKey }: Props) {
+  const [kpis, setKpis] = useState<LeadKpis | null>(null);
+  const [changes, setChanges] = useState(0);
+  // A slow answer must not overwrite a newer one.
+  const latest = useRef(0);
+
+  useEffect(() => {
+    if (!isSalesOnly) return undefined;
+    const onChanged = () => setChanges(count => count + 1);
+    window.addEventListener(CRM_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(CRM_CHANGED_EVENT, onChanged);
+  }, [isSalesOnly]);
+
+  useEffect(() => {
+    if (!isSalesOnly) return;
+    const ticket = ++latest.current;
+    mysqlAdmin.adminGet<LeadKpis>('/staff/leads-kpis').then(
+      answer => { if (ticket === latest.current) setKpis(answer); },
+      () => { /* the last good figures stay */ },
+    );
+  }, [isSalesOnly, refreshKey, changes]);
+
   if (!isSalesOnly) return null;
 
-  const todayStr = cairoDateOnly();
-  const thisMonthStr = cairoMonthOnly();
-  const weekAgoStr = cairoDaysAgo(7);
-  const todayCalls = effectiveLeads.reduce((n, l) =>
-    n + (l.communications || []).filter(c => cairoDay(c.date) === todayStr).length, 0);
-  const weekCalls = effectiveLeads.reduce((n, l) =>
-    n + (l.communications || []).filter(c => cairoDay(c.date) >= weekAgoStr).length, 0);
-  const monthConverted = effectiveLeads.filter(l =>
-    l.status === 'converted' && cairoDay(l.updatedAt || l.createdAt).slice(0, 7) === thisMonthStr).length;
-  const totalActive = effectiveLeads.filter(l => isOpenLeadStatus(l.status)).length;
-  const overdueCount = effectiveLeads.filter(l =>
-    l.nextFollowUpDate && l.nextFollowUpDate < todayStr && isOpenLeadStatus(l.status)).length;
-  const totalCollected = (effectiveSubs || []).reduce((s, sub) =>
-    s + (sub.paymentHistory || []).reduce((a: number, p) =>
-      a + (isCollected(p) && p.currency === 'EGP' ? (p.amount || 0) : 0), 0)
-  , 0);
-  const totalLeads = effectiveLeads.length;
-  const totalConverted = effectiveLeads.filter(l => l.status === 'converted').length;
+  const dash = '—';
+  const show = (value: number | undefined) => (kpis ? value ?? 0 : dash);
+  const totalLeads = kpis?.totalLeads ?? 0;
+  const totalConverted = kpis?.converted ?? 0;
+  const overdueCount = kpis?.overdue ?? 0;
+  const totalCollected = kpis?.collectedEgp ?? 0;
   const convRate = totalLeads > 0 ? Math.round((totalConverted / totalLeads) * 100) : 0;
 
   const cards = [
-    { label: 'مكالمات اليوم', value: todayCalls, icon: '📞', cls: 'bg-blue-50 border-blue-200 text-blue-800', tip: 'عدد تسجيلات التواصل اليوم' },
-    { label: 'مكالمات الأسبوع', value: weekCalls, icon: '📅', cls: 'bg-indigo-50 border-indigo-200 text-indigo-800', tip: 'عدد التواصلات في آخر 7 أيام' },
-    { label: 'محوّلون / الشهر', value: monthConverted, icon: '🎯', cls: 'bg-emerald-50 border-emerald-200 text-emerald-800', tip: 'عدد العملاء المحولين للتسجيل هذا الشهر' },
-    { label: 'نشط الآن', value: totalActive, icon: '⚡', cls: 'bg-amber-50 border-amber-200 text-amber-800', tip: 'ليدز نشطة لم تُحوَّل أو تُفقد' },
-    { label: 'متابعة متأخرة', value: overdueCount, icon: '⚠️', cls: overdueCount > 0 ? 'bg-red-50 border-red-200 text-red-800' : 'bg-gray-50 border-gray-200 text-gray-500', tip: 'ليدز تجاوزت تاريخ المتابعة' },
-    { label: 'نسبة التحويل', value: `${convRate}%`, icon: '📈', cls: convRate >= 30 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : convRate >= 15 ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-gray-50 border-gray-200 text-gray-600', tip: `${totalConverted} من ${totalLeads} ليد` },
-    { label: 'إجمالي التحصيلات', value: totalCollected > 0 ? `${totalCollected.toLocaleString('ar-EG-u-nu-latn')} ج.م` : '—', icon: '💰', cls: 'bg-teal-50 border-teal-200 text-teal-800', tip: 'إجمالي المبالغ المحصّلة من ليدزك بالجنيه' },
+    { label: 'مكالمات اليوم', value: show(kpis?.callsToday), icon: '📞', cls: 'bg-blue-50 border-blue-200 text-blue-800', tip: 'عدد تسجيلات التواصل اليوم' },
+    { label: 'مكالمات الأسبوع', value: show(kpis?.callsWeek), icon: '📅', cls: 'bg-indigo-50 border-indigo-200 text-indigo-800', tip: 'عدد التواصلات في آخر 7 أيام' },
+    { label: 'محوّلون / الشهر', value: show(kpis?.convertedThisMonth), icon: '🎯', cls: 'bg-emerald-50 border-emerald-200 text-emerald-800', tip: 'عدد العملاء المحولين للتسجيل هذا الشهر' },
+    { label: 'نشط الآن', value: show(kpis?.active), icon: '⚡', cls: 'bg-amber-50 border-amber-200 text-amber-800', tip: 'ليدز نشطة لم تُحوَّل أو تُفقد' },
+    { label: 'متابعة متأخرة', value: show(kpis?.overdue), icon: '⚠️', cls: overdueCount > 0 ? 'bg-red-50 border-red-200 text-red-800' : 'bg-gray-50 border-gray-200 text-gray-500', tip: 'ليدز تجاوزت تاريخ المتابعة' },
+    { label: 'نسبة التحويل', value: kpis ? `${convRate}%` : dash, icon: '📈', cls: convRate >= 30 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : convRate >= 15 ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-gray-50 border-gray-200 text-gray-600', tip: `${totalConverted} من ${totalLeads} ليد` },
+    { label: 'إجمالي التحصيلات', value: totalCollected > 0 ? `${totalCollected.toLocaleString('ar-EG-u-nu-latn')} ج.م` : dash, icon: '💰', cls: 'bg-teal-50 border-teal-200 text-teal-800', tip: 'إجمالي المبالغ المحصّلة من ليدزك بالجنيه' },
   ];
 
   return (

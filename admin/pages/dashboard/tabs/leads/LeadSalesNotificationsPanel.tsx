@@ -1,13 +1,11 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { Modal } from '../../../../../shared/ui/Modal';
 
-import type { LeadItem, LeadStatus, StaffMember } from '../../../../types';
+import type { LeadItem, LeadStatus } from '../../../../types';
 import { LEAD_STATUS_CFG } from './LeadSubcomponents';
 import { toDialable } from '../../../../lib/whatsappLink';
-import { useSiteData } from '../../../../context/SiteDataContext';
-import { isOpenLeadStatus } from '../../../../../shared/leadStatuses';
+import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import LeadOutcomeButtons from './LeadOutcomeButtons';
 import { announceCrmChanged } from '../../../../lib/crmChanged';
 
@@ -19,28 +17,37 @@ import { announceCrmChanged } from '../../../../lib/crmChanged';
  *
  *   the leads tab   scoped on isSalesOnly, so a collection officer, support and
  *                   reception saw every rep's follow-ups
- *   the dashboard   scoped on isNonAdminStaff to salesOwnLeads — the
+ *   the dashboard   scoped on isNonAdminStaff to the staff copy of the leads — the
  *                   server-scoped list — and returned an empty array when
  *                   currentStaff was null, which it was for ten roles of
  *                   sixteen until GET /api/admin/staff stopped being the only
  *                   way a screen could learn who it was talking to
  *
- * The dashboard's rule is the right one: salesOwnLeads is scoped by the server
- * rather than by a role name the browser guessed at. It is the rule here now,
- * for both callers.
+ * Neither scoped it in the browser any more: the drawer asks the server (GET /admin/leads/followups-panel), which
+ * narrows by the same rule as every other lead route (leadScope). It used to filter the person's whole list of
+ * leads — for an employee, every lead in their scope, downloaded at sign-in just so this drawer could count three
+ * groups. The counts are the true ones; the rows are the first hundred of each group.
  */
 type Props = {
   open: boolean;
-  /** Every lead the session can see. Used when the caller is not sales-scoped. */
-  leads: LeadItem[];
-  /** The server-scoped list for a non-admin employee. */
-  salesOwnLeads: LeadItem[];
   isSalesOnly: boolean;
-  currentStaff: StaffMember | null;
   onClose: () => void;
   onShowOverdue: () => void;
   onShowToday: () => void;
 };
+
+/** GET /admin/leads/followups-panel */
+type FollowupsPanel = {
+  openTotal: number;
+  overdueCount: number;
+  todayCount: number;
+  noFollowupCount: number;
+  overdue: LeadItem[];
+  today: LeadItem[];
+  noFollowup: LeadItem[];
+};
+
+const NO_FOLLOWUPS: FollowupsPanel = { openTotal: 0, overdueCount: 0, todayCount: 0, noFollowupCount: 0, overdue: [], today: [], noFollowup: [] };
 
 // Delegates to the shared rule — this used to build country code "2".
 const formatWaPhone = (phone: string) => toDialable(phone);
@@ -110,53 +117,49 @@ function LeadNotificationRow({
 
 export function LeadSalesNotificationsPanel({
   open,
-  leads,
-  salesOwnLeads,
   isSalesOnly,
-  currentStaff,
   onClose,
   onShowOverdue,
   onShowToday,
 }: Props) {
-  const { isAdmin } = useSiteData();
   const navigate = useNavigate();
+  const [panel, setPanel] = useState<FollowupsPanel | null>(null);
+  const [failed, setFailed] = useState(false);
+  // Asked for each time the drawer opens, so it shows what is left after a contact made in the meantime.
+  useEffect(() => {
+    if (!open) return undefined;
+    let alive = true;
+    setFailed(false);
+    mysqlAdmin.adminGet<FollowupsPanel>('/admin/leads/followups-panel').then(
+      answer => { if (alive) setPanel(answer); },
+      () => { if (alive) setFailed(true); },
+    );
+    return () => { alive = false; };
+  }, [open]);
   if (!open) return null;
   const openClient = (lead: LeadItem) => {
     onClose();
     navigate(`/client/${lead.clientCode || lead.id}`);
   };
 
-  const todayStr = cairoDateOnly();
-  // Read from the context rather than taken as a prop: neither caller had it to
-  // hand, and a rule about who you are belongs where that is known.
-  const isNonAdminStaff = !isAdmin && !!currentStaff;
-  const scopedLeads = (isNonAdminStaff ? salesOwnLeads : leads)
-    .filter(lead => isOpenLeadStatus(lead.status));
-  const overdue = scopedLeads
-    .filter(l => l.nextFollowUpDate && l.nextFollowUpDate < todayStr)
-    .sort((a, b) => (a.nextFollowUpDate || '').localeCompare(b.nextFollowUpDate || ''));
-  const todayLeads = scopedLeads
-    .filter(l => l.nextFollowUpDate === todayStr)
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const noFollowup = scopedLeads
-    .filter(l => !l.nextFollowUpDate && ['new', 'contacted', 'interested'].includes(l.status))
-    .sort((a, b) => b.createdAt?.localeCompare(a.createdAt || '') || 0);
+  const { overdue, today: todayLeads, noFollowup } = panel ?? NO_FOLLOWUPS;
+  const { openTotal, overdueCount, todayCount, noFollowupCount } = panel ?? NO_FOLLOWUPS;
 
   return (
     <Modal
       open
       onClose={onClose}
       title="🔔 متابعات السيلز"
-      subtitle={isSalesOnly ? `قائمتك — ${scopedLeads.length} عميل` : `جميع السيلز — ${scopedLeads.length} عميل`}
+      subtitle={isSalesOnly ? `قائمتك — ${openTotal} عميل` : `جميع السيلز — ${openTotal} عميل`}
       align="drawer"
       bodyClassName="p-0"
     >
 
         <div className="grid grid-cols-3 gap-0 border-b border-gray-100">
           {[
-            { label: 'متأخرة', val: overdue.length, color: overdue.length > 0 ? 'text-red-600 bg-red-50' : 'text-gray-400 bg-gray-50' },
-            { label: 'اليوم', val: todayLeads.length, color: todayLeads.length > 0 ? 'text-amber-600 bg-amber-50' : 'text-gray-400 bg-gray-50' },
-            { label: 'بدون موعد', val: noFollowup.length, color: noFollowup.length > 0 ? 'text-violet-600 bg-violet-50' : 'text-gray-400 bg-gray-50' },
+            { label: 'متأخرة', val: overdueCount, color: overdueCount > 0 ? 'text-red-600 bg-red-50' : 'text-gray-400 bg-gray-50' },
+            { label: 'اليوم', val: todayCount, color: todayCount > 0 ? 'text-amber-600 bg-amber-50' : 'text-gray-400 bg-gray-50' },
+            { label: 'بدون موعد', val: noFollowupCount, color: noFollowupCount > 0 ? 'text-violet-600 bg-violet-50' : 'text-gray-400 bg-gray-50' },
           ].map(c => (
             <div key={c.label} className={`${c.color} py-3 text-center`}>
               <div className="text-2xl font-extrabold">{c.val}</div>
@@ -169,7 +172,7 @@ export function LeadSalesNotificationsPanel({
           {overdue.length > 0 && (
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">⚠️ متأخرة ({overdue.length})</span>
+                <span className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">⚠️ متأخرة ({overdueCount})</span>
               </div>
               <div className="space-y-2">
                 {overdue.map(lead => (
@@ -186,7 +189,7 @@ export function LeadSalesNotificationsPanel({
           {todayLeads.length > 0 && (
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">📅 متابعات اليوم ({todayLeads.length})</span>
+                <span className="text-xs font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">📅 متابعات اليوم ({todayCount})</span>
               </div>
               <div className="space-y-2">
                 {todayLeads.map(lead => (
@@ -201,7 +204,7 @@ export function LeadSalesNotificationsPanel({
           {noFollowup.length > 0 && (
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-bold text-violet-600 bg-violet-50 border border-violet-200 px-2 py-0.5 rounded-full">🕐 بدون موعد متابعة ({noFollowup.length})</span>
+                <span className="text-xs font-bold text-violet-600 bg-violet-50 border border-violet-200 px-2 py-0.5 rounded-full">🕐 بدون موعد متابعة ({noFollowupCount})</span>
               </div>
               <div className="space-y-2">
                 {noFollowup.slice(0, 20).map(lead => (
@@ -215,14 +218,22 @@ export function LeadSalesNotificationsPanel({
                     </span>
                   } />
                 ))}
-                {noFollowup.length > 20 && (
-                  <p className="text-xs text-gray-400 text-center pt-1">+{noFollowup.length - 20} عميل آخر</p>
+                {noFollowupCount > 20 && (
+                  <p className="text-xs text-gray-400 text-center pt-1">+{noFollowupCount - 20} عميل آخر</p>
                 )}
               </div>
             </div>
           )}
 
-          {overdue.length === 0 && todayLeads.length === 0 && noFollowup.length === 0 && (
+          {failed && !panel && (
+            <p className="text-center py-20 text-sm font-bold text-red-600">تعذّر تحميل المتابعات — أغلق وافتح تاني.</p>
+          )}
+
+          {!failed && !panel && (
+            <p className="text-center py-20 text-sm font-bold text-gray-400">جاري التحميل…</p>
+          )}
+
+          {panel && overdueCount === 0 && todayCount === 0 && noFollowupCount === 0 && (
             <div className="text-center py-20">
               <div className="text-5xl mb-3">✅</div>
               <p className="text-gray-500 font-bold">كل شيء على ما يرام!</p>
@@ -235,12 +246,12 @@ export function LeadSalesNotificationsPanel({
           <div className="flex gap-2">
             <button
               onClick={onShowOverdue}
-              disabled={overdue.length === 0}
+              disabled={overdueCount === 0}
               className="flex-1 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-bold rounded-xl disabled:opacity-40 transition"
             >عرض المتأخرة في الجدول</button>
             <button
               onClick={onShowToday}
-              disabled={todayLeads.length === 0}
+              disabled={todayCount === 0}
               className="flex-1 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-xl disabled:opacity-40 transition"
             >عرض اليوم</button>
           </div>

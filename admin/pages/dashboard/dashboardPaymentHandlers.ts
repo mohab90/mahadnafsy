@@ -8,6 +8,7 @@ import type { TabKey } from './navigation';
 import { normBranchId } from './dashboardShared';
 import { isCollected } from '../../lib/money';
 import { mysqlAdmin } from '../../lib/mysqlapi';
+import { findLeadClient } from '../../lib/leadClients';
 import { priceForCurrency } from './dashboardHelpers';
 import { announceRoundsChanged, housingOutcome } from '../../lib/daqqiHousing';
 import { bookingTierFields } from '../../lib/bookingIdentity';
@@ -380,8 +381,6 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
 
 interface HandleLeadPaymentDeps {
   leadPayRow: LeadItem | null;
-  leads: LeadItem[];
-  subscribers: SubscriberItem[];
   bundles: Bundle[];
   courses: Course[];
   branchLabelMap: Record<string, string>;
@@ -402,7 +401,7 @@ interface HandleLeadPaymentDeps {
 }
 export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadPaymentDeps): Promise<void> {
   const {
-    leadPayRow, leads, subscribers, bundles, courses,
+    leadPayRow, bundles, courses,
     branchLabelMap, recordSubscriberPayment,
     reloadLeads, reloadSubscribers, notify, currentStaff, isAdmin,
     isSalesOnly, isDaqqiManager, isReceptionDaqqi, fetchSalesData, setActiveTab,
@@ -425,7 +424,7 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
     discountPct: draft.discountPct,
     discountCustom: draft.customExpected,
   };
-  const freshLead = leads.find(l => l.id === leadPayRow.id) || leadPayRow;
+  const freshLead = leadPayRow;
   const noteParts = [
     leadPayDraft.note,
     leadPayDraft.transactionId,
@@ -434,13 +433,9 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
     leadPayDraft.branch ? `فرع: ${branchLabelMap[leadPayDraft.branch] || leadPayDraft.branch}` : '',
   ].filter(Boolean);
 
-  const normPhone = (freshLead.phone || '').replace(/\D/g, '');
-  const normEmail = (freshLead.email || '').toLowerCase().trim();
-  const existingSub = subscribers.find(s =>
-    s.leadId === freshLead.id ||
-    (normPhone.length > 5 && (s.phone || '').replace(/\D/g, '') === normPhone) ||
-    (normEmail.length > 3 && (s.email || '').toLowerCase().trim() === normEmail)
-  );
+  // Whether the lead already is a client is asked of the server, not looked up in a list of every client the
+  // browser holds (admin/lib/leadClients.ts).
+  const existingSub = await findLeadClient(freshLead.id).catch(() => null);
   const now = Date.now();
   const payEntries: Array<Record<string, unknown>> = [];
   if (leadPayDraft.paymentType === 'course') {

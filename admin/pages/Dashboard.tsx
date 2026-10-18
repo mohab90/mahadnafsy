@@ -797,8 +797,6 @@ const Dashboard: React.FC = () => {
     const { handleLeadPaymentFn } = await import('./dashboard/dashboardPaymentHandlers');
     await handleLeadPaymentFn(draft, {
       leadPayRow,
-      leads,
-      subscribers,
       bundles,
       courses,
       branchLabelMap,
@@ -1129,10 +1127,7 @@ const Dashboard: React.FC = () => {
                     disagreed about whose follow-ups you see. */}
                 <LeadSalesNotificationsPanel
                   open={salesNotifOpen}
-                  leads={leads}
-                  salesOwnLeads={salesOwnLeads}
                   isSalesOnly={isSalesOnly}
-                  currentStaff={currentStaff}
                   onClose={() => setSalesNotifOpen(false)}
                   onShowOverdue={() => { setLeadsFollowupFilter('overdue'); setSalesNotifOpen(false); setActiveTab('leads'); }}
                   onShowToday={() => { setLeadsFollowupFilter('today'); setSalesNotifOpen(false); setActiveTab('leads'); }}

@@ -6,7 +6,7 @@ import { currencyForBranch } from '../../../../lib/branchCurrency';
 import { createClientPaymentDraft } from '../../../../lib/clientActionDrafts';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type {
-  Bundle, Course, LeadItem, LeadStatus, NewLeadDraft, StaffMember, SubscriberItem,
+  Bundle, Course, LeadItem, LeadStatus, NewLeadDraft, StaffMember,
 } from '../../../../types';
 import { STATUS_CFG } from '../leadUtils';
 import { EMPTY_LEAD_DRAFT } from '../crmConstants';
@@ -35,9 +35,8 @@ interface LeadActionsParams {
   setActiveDashboardTab?: (tab: TabKey) => void;
   salesReps: StaffMember[];
   leads: LeadItem[];
-  effectiveLeads: LeadItem[];
-  effectiveSubs: SubscriberItem[];
-  visibleLeads: LeadItem[];
+  /** Every lead under the filters on screen, read from the server a page at a time. */
+  fetchVisibleLeads: () => Promise<LeadItem[]>;
   bundles: Bundle[];
   courses: Course[];
   branchLabelMap: Record<string, string>;
@@ -75,7 +74,7 @@ export function useLeadActions(params: LeadActionsParams) {
     notify, updateLead, addLead, reloadLeads, reloadSubscribers,
     bulkRedistributeLeads,
     recordSubscriberPayment, fetchSalesData, setActiveDashboardTab,
-    salesReps, leads, effectiveLeads, effectiveSubs, visibleLeads, bundles,
+    salesReps, leads, fetchVisibleLeads, bundles,
     courses, branchLabelMap, currentStaff, isAdmin, isSalesOnly,
     statusDebounceRef, leadPayRow, setLeadPayRow, setLeadPayDraft,
     convertLeadModal, setConvertLeadModal, setSelectedId,
@@ -196,8 +195,6 @@ export function useLeadActions(params: LeadActionsParams) {
       const { handleLeadPaymentFn } = await import('../../dashboardPaymentHandlers');
       await handleLeadPaymentFn(draft, {
         leadPayRow,
-        leads: effectiveLeads,
-        subscribers: effectiveSubs,
         bundles,
         courses,
         branchLabelMap,
@@ -245,6 +242,12 @@ export function useLeadActions(params: LeadActionsParams) {
     openLeadBook,
     handleLeadPayment,
     convertLeadToSubscriber,
-    handleExportVisibleLeadsCsv: () => downloadLeadsCsv(visibleLeads),
+    handleExportVisibleLeadsCsv: async () => {
+      try {
+        downloadLeadsCsv(await fetchVisibleLeads());
+      } catch (error) {
+        notify('error', error instanceof Error ? error.message : 'تعذر تصدير العملاء');
+      }
+    },
   };
 }

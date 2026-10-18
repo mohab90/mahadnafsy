@@ -43,19 +43,24 @@ test('there is one follow-up drawer, and both screens open it', () => {
     assert.match(codeOnly(read(rel)), /<LeadSalesNotificationsPanel/, `${rel} does not open the shared drawer`);
   }
 
-  // Both hand it the same two lists, so the component can apply one rule.
+  // Neither hands it a list: the drawer asks the server, which applies the one rule.
   for (const rel of ['admin/pages/Dashboard.tsx', 'admin/pages/dashboard/tabs/leads/LeadModalsHost.tsx']) {
     const source = codeOnly(read(rel));
-    assert.match(source, /salesOwnLeads=\{/, `${rel} does not pass the server-scoped list`);
+    const open = source.slice(source.indexOf('<LeadSalesNotificationsPanel'));
+    const props = open.slice(0, open.indexOf('/>'));
+    assert.doesNotMatch(props, /salesOwnLeads=|leads=\{/, `${rel} hands the drawer a list again`);
   }
 });
 
 test('it scopes on what the server narrowed, not on a role name', () => {
   const drawer = codeOnly(read(DRAWER));
 
-  // The surviving rule.
-  assert.match(drawer, /const isNonAdminStaff = !isAdmin && !!currentStaff;/);
-  assert.match(drawer, /const scopedLeads = \(isNonAdminStaff \? salesOwnLeads : leads\)/);
+  // The surviving rule: the server's, for everyone — leadScope in /admin/leads/followups-panel.
+  assert.ok(drawer.includes("mysqlAdmin.adminGet<FollowupsPanel>('/admin/leads/followups-panel')"));
+  assert.ok(!/salesOwnLeads|isNonAdminStaff/.test(drawer), 'the drawer scopes in the browser again');
+  const route = codeOnly(read('api/routes/admin/leads/stats.js'));
+  const handler = route.slice(route.indexOf("'/api/admin/leads/followups-panel'"));
+  assert.ok(handler.includes("leadScope(req, 'l')") && handler.includes("requirePermission('view_leads')"));
 
   // Not the one that only recognised sales.
   assert.ok(!drawer.includes("isSalesOnly && currentStaff"),
@@ -64,8 +69,6 @@ test('it scopes on what the server narrowed, not on a role name', () => {
   assert.ok(!drawer.includes(': [];'),
     'an unrecognised role gets an empty drawer rather than their own list');
 
-  // Who it is comes from the context, which is the one place that knows.
-  assert.match(drawer, /const \{ isAdmin \} = useSiteData\(\);/);
 
   // The premise: view_staff really is a minority, which is why a screen must
   // not depend on the staff list to learn who is using it.

@@ -53,6 +53,10 @@ export function leadTableQuery(filters: LeadTableFilters, instituteBranches: Bra
 
 export const SERVER_TABLE_PAGE_SIZE = 100;
 
+/** The most rows one export reads: a file this long is the whole desk's list, not a day's work. */
+const EXPORT_LIMIT = 20000;
+const EXPORT_PAGE = 500;
+
 export function useServerLeadTable(enabled: boolean, filters: LeadTableFilters, instituteBranches: BranchOption[], pageSize: number = SERVER_TABLE_PAGE_SIZE) {
   const [page, setPage] = useState(0);
   const [rows, setRows] = useState<(LeadItem & { _score?: number })[]>([]);
@@ -106,5 +110,16 @@ export function useServerLeadTable(enabled: boolean, filters: LeadTableFilters, 
   }, [enabled, query, page, pageSize, refreshToken]);
 
   const refresh = useCallback(() => setRefreshToken(token => token + 1), []);
-  return { rows, total, page, setPage, loading, error, refresh, pageSize };
+
+  // Every row under the filters on screen, a page at a time, for «تصدير» — the table holds one page only.
+  const exportAll = useCallback(async (): Promise<LeadItem[]> => {
+    const all: LeadItem[] = [];
+    for (let at = 0; all.length < EXPORT_LIMIT; at += 1) {
+      const result = await mysqlAdmin.adminGet<{ rows: LeadItem[] }>(`/admin/leads/table?${query}${query ? '&' : ''}page=${at}&pageSize=${EXPORT_PAGE}&withTotal=0`);
+      all.push(...result.rows);
+      if (result.rows.length < EXPORT_PAGE) break;
+    }
+    return all;
+  }, [query]);
+  return { rows, total, page, setPage, loading, error, refresh, pageSize, exportAll };
 }

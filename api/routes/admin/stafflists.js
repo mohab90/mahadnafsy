@@ -4,6 +4,7 @@ const { loadPlacements, placeCourse, ownOrPlaced } = require('../../lib/coursePl
 const { certificatePricing } = require('../../lib/certificatePayments');
 const { CONVERTED_SQL, TERMINAL_SQL } = require('../../lib/leadStatuses');
 const { NEXT_FOLLOWUP } = require('../../lib/leadTableFilter');
+const { ARCHIVE_SOURCE_PREFIXES } = require('../../lib/leadArchive');
 const logger = require('../../lib/logger');
 const crypto   = require('crypto');
 const express  = require('express');
@@ -1438,6 +1439,73 @@ router.get('/api/staff/payments', requireAuth, requireAdminOrStaff, requirePermi
     }
     res.json(out);
   } catch (e) { logger.error('[/api/staff/payments]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ────────────────────────────────────────────────────────────
+// GET /api/staff/leads-kpis — the strip above «عملائي المحتملون» (calls today and this week, converted this month,
+// open, overdue, conversion rate, money collected in pounds).
+//
+// The strip summed these over every lead and client of the rep, which the screen downloaded whole (37,000 leads and
+// 5,000 clients with their payments on the production-scale lab) only to print seven numbers. The same figures
+// from the database, over the same set: the person's own leads (leadScope) outside the imported archive, and their
+// own clients' collected payments in EGP. Held 15 s and dropped by the next write like the other counters.
+// ────────────────────────────────────────────────────────────
+router.get('/api/staff/leads-kpis', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
+  try {
+    const staff = req.staffRecord;
+    const may = permission => !!req.isSuperAdmin || (staff && hasPermission(staff, permission));
+    const today = cairoToday();
+    const key = `figures:staff-leads-kpis:${req.tenantId}:${staff?.id || req.user?.uid}:${today}`;
+    const payload = await cached(key, 15 * 1000, async () => {
+      const out = { totalLeads: 0, converted: 0, convertedThisMonth: 0, active: 0, overdue: 0, callsToday: 0, callsWeek: 0, collectedEgp: 0 };
+      const scope = leadScope(req, 'l');
+      if (!scope.none) {
+        const monthStart = cairoDayStartUtc(`${today.slice(0, 7)}-01`);
+        const dayStart = cairoDayStartUtc(today);
+        const tomorrowStart = cairoDayStartUtc(addDaysToDateOnly(today, 1));
+        const weekStart = cairoDayStartUtc(addDaysToDateOnly(today, -7));
+        // The imported archive stays in its own tab, out of the rep's figures (leadSourceGroups.ts isArchiveSource).
+        const live = `l.tenant_id=? AND l.hidden=0${scope.sql} AND NOT (${ARCHIVE_SOURCE_PREFIXES.map(() => "TRIM(COALESCE(l.source, '')) LIKE ?").join(' OR ')})`;
+        const p = [req.tenantId, ...scope.params, ...ARCHIVE_SOURCE_PREFIXES.map(prefix => `${prefix}%`)];
+        const open = `l.status NOT IN ${TERMINAL_SQL}`;
+        const [[[totals]], [[calls]]] = await Promise.all([
+          pool.query(
+            `SELECT COUNT(*) AS total,
+                    COALESCE(SUM(l.status IN ${CONVERTED_SQL}), 0) AS converted,
+                    COALESCE(SUM(l.status IN ${CONVERTED_SQL} AND COALESCE(l.updated_at, l.created_at) >= ?), 0) AS convertedMonth,
+                    COALESCE(SUM(${open}), 0) AS active,
+                    COALESCE(SUM(${open} AND ${NEXT_FOLLOWUP} < ?), 0) AS overdue
+               FROM leads l WHERE ${live}`, [monthStart, today, ...p]),
+          pool.query(
+            `SELECT COALESCE(SUM(c.date >= ? AND c.date < ?), 0) AS today, COUNT(*) AS week
+               FROM communications c JOIN leads l ON l.id=c.lead_id AND l.tenant_id=c.tenant_id
+              WHERE ${live} AND c.date >= ?`, [dayStart, tomorrowStart, ...p, weekStart]),
+        ]);
+        out.totalLeads = Number(totals.total) || 0;
+        out.converted = Number(totals.converted) || 0;
+        out.convertedThisMonth = Number(totals.convertedMonth) || 0;
+        out.active = Number(totals.active) || 0;
+        out.overdue = Number(totals.overdue) || 0;
+        out.callsToday = Number(calls.today) || 0;
+        out.callsWeek = Number(calls.week) || 0;
+      }
+      if (may('view_subscribers')) {
+        const sc = staffSubscriberScope(req);
+        if (!sc.none && !sc.forbidden) {
+          const [[row]] = await pool.query(
+            `SELECT COALESCE(SUM(p.amount), 0) AS collected
+               FROM payments p JOIN subscribers s ON s.id=p.subscriber_id AND s.tenant_id=p.tenant_id
+              WHERE p.tenant_id=? AND p.deleted_at IS NULL AND s.deleted_at IS NULL AND (${sc.where})
+                AND (p.status = 'paid' OR p.status IS NULL OR p.status = '')
+                AND COALESCE(NULLIF(p.currency, ''), 'EGP') = 'EGP'`,
+            [req.tenantId, ...sc.params]);
+          out.collectedEgp = Number(row.collected) || 0;
+        }
+      }
+      return out;
+    });
+    res.json(payload);
+  } catch (e) { logger.error('[/api/staff/leads-kpis]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 module.exports = router;
