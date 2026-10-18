@@ -105,6 +105,11 @@ function onePhone(digits: string): string | null {
   if (/^201[0125]\d{8}$/.test(d)) return `0${d.slice(2)}`;
   if (/^01[0125]\d{8}$/.test(d)) return d;
   if (/^1[0125]\d{8}$/.test(d)) return `0${d}`;
+  // A Saudi mobile as Saudis write it, 5XXXXXXXX (Excel drops the zero) or 05XXXXXXXX: it carries no country code,
+  // so 966 goes in front — «اول ما يكون الرقم بيبدأ بـ 5 معناه سعودي حط جنبه 966». A landline that also begins 05
+  // (Mansoura, Sharkia) is read as a Saudi mobile too: the owner's rule, and a landline cannot be reached on WhatsApp.
+  if (/^5\d{8}$/.test(d)) return `+966${d}`;
+  if (/^05\d{8}$/.test(d)) return `+966${d.slice(1)}`;
   // North America (1 and an area code, never 0 or 1 first), or a country code.
   if (/^1[2-9]\d{9}$/.test(d) || /^[2-9]\d{10,14}$/.test(d)) return `+${d}`;
   // A local number with its trunk zero (a landline, a Gulf mobile): kept as
