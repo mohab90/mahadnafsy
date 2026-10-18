@@ -359,12 +359,12 @@ test('the follow-ups page is one list by kind, and it refreshes after each actio
   assert.match(page, /سجّل التواصل/);
   const tab = read('admin/pages/dashboard/tabs/LeadsTab.tsx');
   assert.match(tab, /useCrmInsights\(smartIdleDays, true, insightsKey\)/);
-  assert.match(tab, /useLeadQuickCommunication\(\{ effectiveLeads, reloadLeads, onSaved: bumpInsights \}\)/);
+  assert.match(tab, /useLeadQuickCommunication\(\{ reloadLeads, onSaved: bumpInsights \}\)/);
   for (const gone of ['LeadRemindersPanel', 'LeadStaleLeadsPanel', 'CrmWorkQueuePanel', 'useLeadRemoteReminders']) {
     assert.ok(!fs.existsSync(path.join(ROOT, 'admin/pages/dashboard/tabs/leads', `${gone}.tsx`)), gone);
   }
   // A lead opened from the list is saved even when it is not among the loaded leads.
-  assert.match(read('admin/pages/dashboard/tabs/leads/useLeadQuickCommunication.ts'), /\|\| \(chosenLead\?\.id === addCommDraft\.selectedLeadId \? chosenLead : null\)/);
+  assert.match(read('admin/pages/dashboard/tabs/leads/useLeadQuickCommunication.ts'), /const lead = chosenLead\?\.id === addCommDraft\.selectedLeadId \? chosenLead : null;/);
 });
 
 test('the 7/15/30/90-day badges are off behind one switch, and the late filter still works', () => {

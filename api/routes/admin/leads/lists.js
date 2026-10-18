@@ -76,6 +76,43 @@ router.get('/api/admin/leads/table', requireAuth, requireAdminOrStaff, requirePe
   } catch (e) { logger.error('[leads-table]', e.message); sendRouteError(res, e); }
 });
 
+// GET /api/admin/leads/clients?ids=a,b,c — the client each of these leads became, if any: the lead's
+// own link first, else the same e-mail, else the same phone (the rule POST /leads/:id/convert applies before it
+// makes a new client). Only for leads the caller may see; up to 100 ids, one page of the table.
+//
+// The table's «✓ مشترك» badge and the booking dialog looked for the client in the list of every client the
+// browser held — for an employee the whole list of their own clients, downloaded at sign-in.
+router.get('/api/admin/leads/clients', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
+  try {
+    const ids = [...new Set(String(req.query.ids || '').split(',').map(id => id.trim()).filter(Boolean))].slice(0, 100);
+    const accessScope = leadScope(req, 'l');
+    if (!ids.length || accessScope.none) return res.json({ clients: {} });
+    const [leads] = await pool.query(
+      `SELECT l.id, l.email, l.phone FROM leads l WHERE l.tenant_id = ? AND l.id IN (${ids.map(() => '?').join(',')})${accessScope.sql}`,
+      [req.tenantId, ...ids, ...accessScope.params]);
+    if (!leads.length) return res.json({ clients: {} });
+    const emails = [...new Set(leads.map(l => String(l.email || '').trim().toLowerCase()).filter(Boolean))];
+    const phones = [...new Set(leads.map(l => String(l.phone || '').trim()).filter(Boolean))];
+    const any = (column, values) => (values.length ? `${column} IN (${values.map(() => '?').join(',')})` : '1=0');
+    const [subs] = await pool.query(
+      `SELECT s.id, s.client_code, s.lead_id, LOWER(TRIM(s.email)) AS email, s.phone
+         FROM subscribers s
+        WHERE s.tenant_id = ? AND s.deleted_at IS NULL
+          AND (${any('s.lead_id', leads.map(l => l.id))} OR ${any('s.email', emails)} OR ${any('s.phone', phones)})`,
+      [req.tenantId, ...leads.map(l => l.id), ...emails, ...phones]);
+    const clients = {};
+    for (const lead of leads) {
+      const email = String(lead.email || '').trim().toLowerCase();
+      const phone = String(lead.phone || '').trim();
+      const sub = subs.find(s => s.lead_id === lead.id)
+        || (email && subs.find(s => s.email === email))
+        || (phone && subs.find(s => s.phone === phone));
+      if (sub) clients[lead.id] = { id: sub.id, clientCode: sub.client_code || null };
+    }
+    res.json({ clients });
+  } catch (e) { logger.error('[leads-clients]', e.message); sendRouteError(res, e); }
+});
+
 // GET /api/admin/leads/board — the pipeline board, filtered like the table
 // (the same query string, lib/leadTableFilter.js), grouped by status: each
 // column's true count and its first cards. The board used to load every lead and

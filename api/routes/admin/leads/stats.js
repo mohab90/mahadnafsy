@@ -12,6 +12,8 @@ const {
   sqlCairoDayStartUtc,
   cairoToday,
   TERMINAL_LIST,
+  communicationsByLead,
+  mapLeadRow,
   logger,
 } = require('./_shared');
 const { NEXT_FOLLOWUP } = require('../../../lib/leadTableFilter');
@@ -257,6 +259,54 @@ router.get('/api/admin/leads/followups-due', requireAuth, requireAdminOrStaff, r
     });
     res.json(payload);
   } catch (e) { logger.error('[leads-followups-due]', e.message); sendRouteError(res, e); }
+});
+
+// GET /api/admin/leads/followups-panel — the follow-ups drawer opened from the header bell and from the leads
+// screen: the open leads overdue, due today and with no date yet, for whoever is asking (leadScope).
+//
+// The drawer filtered the person's whole list of leads — for an employee, the list of every lead in their scope
+// that the panel downloaded at sign-in. Counts are the true ones; the rows are the first 100 of each group
+// (the oldest follow-ups first, the newest undated leads first), which is a day's work, not a backlog.
+const PANEL_ROWS = 100;
+router.get('/api/admin/leads/followups-panel', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
+  try {
+    const empty = { openTotal: 0, overdueCount: 0, todayCount: 0, noFollowupCount: 0, overdue: [], today: [], noFollowup: [] };
+    const accessScope = leadScope(req, 'l');
+    if (accessScope.none) return res.json(empty);
+    const today = cairoToday();
+    const open = `l.status NOT IN (${TERMINAL_LIST.map(() => '?').join(',')})`;
+    const base = `FROM leads l WHERE l.tenant_id = ? AND l.hidden = 0${accessScope.sql} AND ${open}`;
+    const p = [req.tenantId, ...accessScope.params, ...TERMINAL_LIST];
+    const undated = `${NEXT_FOLLOWUP} IS NULL AND l.status IN ('new','contacted','interested')`;
+    const columns = `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.status, l.lead_type, l.branch,
+              l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
+              l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
+              l.assigned_cs_id, COALESCE(cs.name, l.assigned_cs_name) AS assigned_cs_name,
+              l.notes, l.last_follow_up, l.next_follow_up_date, l.crm_json, l.hidden, l.score, l.created_at, l.updated_at,
+              0 AS communication_count
+         FROM leads l
+         LEFT JOIN staff ss ON ss.id = l.assigned_sales_id AND ss.tenant_id = l.tenant_id
+         LEFT JOIN staff cs ON cs.id = l.assigned_cs_id AND cs.tenant_id = l.tenant_id
+        WHERE l.tenant_id = ? AND l.hidden = 0${accessScope.sql} AND ${open}`;
+    const [[[counts]], [overdue], [dueToday], [noDate]] = await Promise.all([
+      pool.query(
+        `SELECT COUNT(*) AS open_total, COALESCE(SUM(${NEXT_FOLLOWUP} < ?), 0) AS overdue, COALESCE(SUM(${NEXT_FOLLOWUP} = ?), 0) AS today,
+                COALESCE(SUM(${undated}), 0) AS no_followup ${base}`, [today, today, ...p]),
+      pool.query(`${columns} AND ${NEXT_FOLLOWUP} < ? ORDER BY ${NEXT_FOLLOWUP} ASC, l.id ASC LIMIT ${PANEL_ROWS}`, [...p, today]),
+      pool.query(`${columns} AND ${NEXT_FOLLOWUP} = ? ORDER BY l.name ASC, l.id ASC LIMIT ${PANEL_ROWS}`, [...p, today]),
+      pool.query(`${columns} AND ${undated} ORDER BY l.created_at DESC, l.id DESC LIMIT ${PANEL_ROWS}`, p),
+    ]);
+    // The cards act on a lead from the row alone; the communications are not drawn here.
+    const none = new Map();
+    const mapRows = rows => rows.map(r => mapLeadRow(r, none));
+    res.json({
+      openTotal: Number(counts.open_total) || 0,
+      overdueCount: Number(counts.overdue) || 0,
+      todayCount: Number(counts.today) || 0,
+      noFollowupCount: Number(counts.no_followup) || 0,
+      overdue: mapRows(overdue), today: mapRows(dueToday), noFollowup: mapRows(noDate),
+    });
+  } catch (e) { logger.error('[leads-followups-panel]', e.message); sendRouteError(res, e); }
 });
 
 module.exports = router;

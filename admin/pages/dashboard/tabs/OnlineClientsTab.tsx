@@ -19,6 +19,8 @@ import { blankPaymentDraft, type PaymentDraft } from '../../../components/Paymen
 import { createClientWithPayment } from '../../../lib/createClientWithPayment';
 import { announceRoundsChanged, housingOutcome } from '../../../lib/daqqiHousing';
 import SectionCustomTabs from './SectionCustomTabs';
+import { staffClientsQuery, useStaffClientsPage } from './useStaffClientsPage';
+import { staffClientsArePaged } from '../staffListTabs';
 
 // Kept beside the component so the URL parser and the tab strip agree on what
 // a valid view is; an unknown ?view= falls back to 'active' rather than
@@ -106,9 +108,9 @@ interface Props {
 }
 
 export default function OnlineClientsTab({
-  activeTab, subscribers, salesOwnSubscribers, setSalesOwnSubscribers,
+  activeTab, subscribers, salesOwnSubscribers, setSalesOwnSubscribers: setOwnSubscribersProp,
   courses, bundles, staffMembers, content, salesOwnDaqqiRounds, setSalesOwnDaqqiRounds,
-  salesOwnLeads, updateSubscriber, addSubscriber, reloadSubscribers, reloadLeads, deleteSubscriber, notify,
+  salesOwnLeads, updateSubscriber: updateSubscriberProp, addSubscriber, reloadSubscribers: reloadSubscribersProp, reloadLeads, deleteSubscriber: deleteSubscriberProp, notify,
   isDaqqiManager, canDeleteSubscriber, isReceptionDaqqi, isAdmin, isOnlineManager, isNonAdminStaff, currentStaff,
   staffSelf, onlineTeamMembers, subCsDistributing, setSubCsDistributing,
   daqqiOldDistribPlan, setDaqqiOldDistribPlan, daqqiOldDistributing, setDaqqiOldDistributing,
@@ -269,6 +271,7 @@ export default function OnlineClientsTab({
       });
       setOmNewSubOpen(false);
       omNewSubReset();
+      if (paged) void serverPage.reload();
       notify(
         'success',
         accountResult.approvalRequired
@@ -347,6 +350,47 @@ export default function OnlineClientsTab({
   const [collectionSettingsOpen, setCollectionSettingsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
+  // A sales rep's or a collection officer's «عملائي» reads a page at a time from the server, which filters and counts
+  // (useStaffClientsPage); everyone else's screen — the administration, the online manager, the Dokki desks — still
+  // holds the whole list and filters it here.
+  const paged = staffClientsArePaged(activeTab, isNonAdminStaff, isOnlineManager);
+  const COLL_PAGE_SIZE = layout === 'cards' ? 24 : 100;
+  const clientsFilters = {
+    view: collOnlineViewTab, q: collOnlineSearch, from: collOnlineDateFrom, to: collOnlineDateTo, course: collOnlineCourseFilter,
+    collector: collOnlineCollectionFilter, status: collOnlineStatusFilter, cert: collOnlineCertFilter, remaining: collOnlineRemainingFilter,
+    follow: collOnlineFollowFilter, branch: branchFilter || '',
+  };
+  const serverPage = useStaffClientsPage({ enabled: paged, filters: clientsFilters, page: collOnlinePage, pageSize: COLL_PAGE_SIZE });
+  const serverData = paged ? serverPage.data : null;
+  // The screen's own writes, as they reach the page: a row changed or removed shows at once, and the server is asked
+  // again. The sections below take these in place of the dashboard's, which reload the whole list.
+  const setSalesOwnSubscribers = paged ? serverPage.patchRows : setOwnSubscribersProp;
+  const reloadSubscribers = paged ? async () => { await serverPage.reload(); } : reloadSubscribersProp;
+  const updateSubscriber = paged ? async (row: SubscriberItem) => {
+    const ok = await updateSubscriberProp(row);
+    if (ok) serverPage.patchRows(rows => rows.map(existing => (existing.id === row.id ? row : existing)));
+    return ok;
+  } : updateSubscriberProp;
+  const deleteSubscriber = paged ? async (id: string) => {
+    const ok = await deleteSubscriberProp(id);
+    if (ok) serverPage.patchRows(rows => rows.filter(existing => existing.id !== id));
+    return ok;
+  } : deleteSubscriberProp;
+  // Every page of the matching clients, for the export (the table shows one).
+  const loadMatchingForExport = async (): Promise<SubscriberItem[]> => {
+    const rows: SubscriberItem[] = [];
+    for (let page = 1; ; page += 1) {
+      const part = await mysqlAdmin.staffClientsPage(staffClientsQuery(clientsFilters, page, 500));
+      rows.push(...(part.rows as unknown as SubscriberItem[]));
+      if (part.rows.length === 0 || rows.length >= part.total) return rows;
+    }
+  };
+  // The tab or the filters left the page past the last one (a client deleted, a search narrowed): back to the last.
+  const serverPages = serverData ? Math.max(1, Math.ceil(serverData.total / COLL_PAGE_SIZE)) : 1;
+  useEffect(() => {
+    if (paged && serverData && collOnlinePage > serverPages) setCollOnlinePage(serverPages);
+  }, [paged, serverData, collOnlinePage, serverPages]);
+
               const isDaqqiClientsTab = activeTab === 'daqqi_clients';
               // Housing map: subscriberId → { roundId, roundCode, receptionId, receptionName }
               // The client follows the round: whoever is the round's reception is the
@@ -422,7 +466,7 @@ export default function OnlineClientsTab({
                 ? scopedOrContextSubscribers
                 : (isAdmin && !isOnlineManager ? subscribers : scopedOrContextSubscribers);
               const shouldUseScopedSubscribers = isOnlineManager || isNonAdminStaff || isDaqqiManager || isReceptionDaqqi;
-              const actionSubscribers = shouldUseScopedSubscribers ? scopedOrContextSubscribers : subscribers;
+              const actionSubscribers = paged ? [...serverPage.seen.current.values()] : shouldUseScopedSubscribers ? scopedOrContextSubscribers : subscribers;
               const branchScopedMasterList = branchFilter
                 ? masterList.filter(s => branchMatchesFilter(s.branch, branchFilter))
                 : masterList;
@@ -526,8 +570,8 @@ export default function OnlineClientsTab({
               };
               const filtered = tabFiltered.filter(s => matchesFilters(s, true));
               // The counts above the table: everything the other filters let through, split by when it is due.
-              const followCounts = { overdue: 0, today: 0, tomorrow: 0 };
-              for (const s of tabFiltered) {
+              const followCounts = serverData?.followCounts ?? { overdue: 0, today: 0, tomorrow: 0 };
+              if (!paged) for (const s of tabFiltered) {
                 if (!matchesFilters(s, false)) continue;
                 const status = followUpOf(s).status;
                 if (status === 'overdue' || status === 'today' || status === 'tomorrow') followCounts[status] += 1;
@@ -536,15 +580,16 @@ export default function OnlineClientsTab({
               // Collection financial stats
               const thisWeekStart = cairoWeekStart();
               const calcPaidEGP = calcSubscribersPaidEGP;
-              const collTodayRev  = calcPaidEGP(allCombined, todayOnlineStr, todayOnlineStr);
-              const collWeekRev   = calcPaidEGP(allCombined, thisWeekStart);
-              const collMonthRev  = calcPaidEGP(allCombined, cairoMonthOnly()+'-01');
-              const collTotalRem  = allCombined.reduce((sum, s) => sum + balanceOf(s).remainingEgp, 0);
+              const figures = serverData?.figures;
+              const collTodayRev  = paged ? figures?.today ?? 0 : calcPaidEGP(allCombined, todayOnlineStr, todayOnlineStr);
+              const collWeekRev   = paged ? figures?.week ?? 0 : calcPaidEGP(allCombined, thisWeekStart);
+              const collMonthRev  = paged ? figures?.month ?? 0 : calcPaidEGP(allCombined, cairoMonthOnly()+'-01');
+              const collTotalRem  = paged ? figures?.remaining ?? 0 : allCombined.reduce((sum, s) => sum + balanceOf(s).remainingEgp, 0);
               const fmtK = formatCompactNumber;
-              const COLL_PAGE_SIZE = layout === 'cards' ? 24 : 100;
-              const totalPages = Math.max(1, Math.ceil(filtered.length / COLL_PAGE_SIZE));
+              const matchingCount = paged ? serverData?.total ?? 0 : filtered.length;
+              const totalPages = paged ? serverPages : Math.max(1, Math.ceil(filtered.length / COLL_PAGE_SIZE));
               const safePage = Math.min(collOnlinePage, totalPages);
-              const pageRows = filtered.slice((safePage - 1) * COLL_PAGE_SIZE, safePage * COLL_PAGE_SIZE);
+              const pageRows = paged ? serverData?.rows ?? [] : filtered.slice((safePage - 1) * COLL_PAGE_SIZE, safePage * COLL_PAGE_SIZE);
               const toggleCol = (col: string) => setCollOnlineVisibleCols(prev => ({ ...prev, [col]: !prev[col] }));
               const vc = collOnlineVisibleCols;
               const cw = collOnlineColWidths;
@@ -584,6 +629,7 @@ export default function OnlineClientsTab({
                     fmtK={fmtK}
                     marketOf={s => (isOnlineClient(s) ? subscriberMarket(s) : null)}
                     serverCount={isDaqqiClientsTab ? daqqiServerCount : null}
+                    counts={paged ? figures : undefined}
                   />
                   {isDaqqiClientsTab && daqqiServerCount && allCombined.length < daqqiServerCount.total && (
                     <div className="mb-2 flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-[11px] font-bold text-indigo-700" role="status">
@@ -609,6 +655,10 @@ export default function OnlineClientsTab({
                     setCollOnlineViewTab={setCollOnlineViewTab}
                     setCollOnlinePage={setCollOnlinePage}
                     filtered={filtered}
+                    tabCounts={paged ? serverData?.tabCounts ?? {} : undefined}
+                    matchingCount={paged ? matchingCount : undefined}
+                    unassignedTotal={paged ? figures?.unassigned ?? 0 : undefined}
+                    loadForExport={paged ? loadMatchingForExport : undefined}
                     isOnlineManager={isOnlineManager}
                     isCollection={isCollectionStaff}
                     isDaqqiManager={isDaqqiManager}
@@ -697,7 +747,7 @@ export default function OnlineClientsTab({
                   />
                   {/* Table (hidden when old_data tab is active) */}
                   {/* ── Distribution panel for محلي قديم / دولي قديم ── */}
-                  {((collOnlineViewTab === 'old_local' || collOnlineViewTab === 'old_intl') || (collOnlineViewTab === 'old_data' && isDaqqiClientsTab)) && (isAdmin || isDaqqiManager) && (
+                  {((collOnlineViewTab === 'old_local' || collOnlineViewTab === 'old_intl') || (collOnlineViewTab === 'old_data' && isDaqqiClientsTab)) && (isAdmin || isDaqqiManager) && !paged && (
                     <div className="mb-4 bg-gradient-to-l from-indigo-50 to-violet-50 border border-indigo-200 rounded-2xl p-4 space-y-3">
                       <div className="flex items-center gap-2">
                         <span className="text-base">📊</span>
@@ -786,6 +836,12 @@ export default function OnlineClientsTab({
                       </button>
                     ))}
                   </div>
+                  {paged && !serverData ? (
+                    <p className="py-10 text-center text-sm text-gray-500" role="status">
+                      {serverPage.failed ? <>تعذر تحميل العملاء. <button type="button" onClick={() => { void serverPage.reload(); }} className="font-bold text-teal-700 underline">إعادة المحاولة</button></> : 'جاري تحميل العملاء…'}
+                    </p>
+                  ) : (
+                  <div className={paged && serverPage.loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
                   <ClientsTable
                     layout={layout}
                     itemVisible={(client, item) => itemShowsIn(client, item, hereTest)}
@@ -825,9 +881,11 @@ export default function OnlineClientsTab({
                     setConvertRefundMethod={setConvertRefundMethod}
                     setConvertRefundPaymentId={setConvertRefundPaymentId}
                     setInstallmentsRow={setInstallmentsRow}
-                    filteredLength={filtered.length}
+                    filteredLength={matchingCount}
                     notify={notify}
                   />
+                  </div>
+                  )}
                   {/* Pagination */}
                   <ClientsPagination totalPages={totalPages} safePage={safePage} setCollOnlinePage={setCollOnlinePage} />
                   </>)}
@@ -973,7 +1031,7 @@ export default function OnlineClientsTab({
                   {collectionSettingsOpen && (
                     <CollectionSettingsModal
                       staffMembers={isOnlineManager ? onlineTeamMembers : staffMembers}
-                      subscribers={scopedOrContextSubscribers}
+                      subscribers={paged ? [] : scopedOrContextSubscribers}
                       notify={notify}
                       onClose={() => setCollectionSettingsOpen(false)}
                       onChanged={reloadSubscribers}

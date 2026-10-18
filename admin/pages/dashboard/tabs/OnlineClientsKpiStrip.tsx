@@ -18,6 +18,8 @@ type OnlineClientsKpiStripProps = {
   /** The branch's real figures from the database (the Dokki tab). Shown while the
    *  rows are still arriving, so the number is right before the table is full. */
   serverCount?: { total: number; byStatus: Record<string, number> } | null;
+  /** The online screen's client figures from the server, when it holds one page of them. */
+  counts?: { total: number; local: number; saudi: number; intl: number };
 };
 
 type Stat = { label: string; value: string | number; icon: ElementType; tone: string };
@@ -37,7 +39,7 @@ const TERMINAL = ['finished', 'paused', 'refunded', 'refund_pending'];
  * clients are, and what came in — instead of nine tall tiles.
  */
 export function OnlineClientsKpiStrip({
-  isDaqqiClientsTab, allCombined, collTodayRev, collWeekRev, collMonthRev, collTotalRem, fmtK, marketOf, serverCount,
+  isDaqqiClientsTab, allCombined, collTodayRev, collWeekRev, collMonthRev, collTotalRem, fmtK, marketOf, serverCount, counts,
 }: OnlineClientsKpiStripProps) {
   const arriving = Boolean(isDaqqiClientsTab && serverCount && allCombined.length < serverCount.total);
   const byStatus = serverCount?.byStatus || {};
@@ -49,10 +51,10 @@ export function OnlineClientsKpiStrip({
     { label: 'منتهين', value: arriving ? (byStatus.finished || 0) : allCombined.filter(s => s.clientStatus === 'finished').length, icon: GraduationCap, tone: 'green' },
     { label: 'متوقفين', value: arriving ? (byStatus.paused || 0) : allCombined.filter(s => s.clientStatus === 'paused').length, icon: CirclePause, tone: 'amber' },
   ] : [
-    { label: 'إجمالي العملاء', value: allCombined.length, icon: Users, tone: 'slate' },
-    { label: 'محلي', value: allCombined.filter(s => marketOf(s) === 'local').length, icon: MapPin, tone: 'violet' },
-    { label: 'سعودي', value: allCombined.filter(s => marketOf(s) === 'saudi').length, icon: MapPin, tone: 'emerald' },
-    { label: 'دولي', value: allCombined.filter(s => marketOf(s) === 'intl').length, icon: Globe2, tone: 'cyan' },
+    { label: 'إجمالي العملاء', value: counts ? counts.total : allCombined.length, icon: Users, tone: 'slate' },
+    { label: 'محلي', value: counts ? counts.local : allCombined.filter(s => marketOf(s) === 'local').length, icon: MapPin, tone: 'violet' },
+    { label: 'سعودي', value: counts ? counts.saudi : allCombined.filter(s => marketOf(s) === 'saudi').length, icon: MapPin, tone: 'emerald' },
+    { label: 'دولي', value: counts ? counts.intl : allCombined.filter(s => marketOf(s) === 'intl').length, icon: Globe2, tone: 'cyan' },
   ];
   const money: Stat[] = [
     { label: 'تحصيل اليوم', value: `${fmtK(collTodayRev)} ج`, icon: CalendarCheck, tone: 'sky' },

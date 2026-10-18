@@ -32,16 +32,30 @@ test('the landing page and the person\'s own pages do not start the download; th
   const lib = bundle('admin/pages/dashboard/staffListTabs.ts');
   if (!lib) return;
   const { staffScreenReadsLists: reads } = lib;
-  for (const tab of ['staff_home', 'staff_settings', 'my_hr']) assert.equal(reads(tab, 'sales', false), false, tab);
+  for (const tab of ['staff_home', 'staff_settings', 'my_hr', 'leads']) assert.equal(reads(tab, 'sales', false), false, tab);
+  assert.equal(reads('leads', 'collection', false), false, 'a collection officer works the same leads screen');
   assert.equal(reads('orders', 'sales', false), false, '«مدفوعاتي» pages from the server');
   assert.equal(reads('orders', 'collection', false), false);
-  for (const tab of ['leads', 'online_clients', 'daqqi_clients', 'client', 'sales_hub', 'refund_requests', 'some_new_screen']) {
+  assert.equal(reads('online_clients', 'sales', false), false, '«عملائي» pages from the server');
+  assert.equal(reads('online_clients', 'collection', false), false);
+  for (const tab of ['daqqi_clients', 'client', 'sales_hub', 'refund_requests', 'some_new_screen']) {
     assert.equal(reads(tab, 'sales', false), true, `${tab} is read through only when it is listed`);
   }
-  // The accounts screen keeps the loaded clients, and so does the online manager's header (installments, new payments).
+  // The accounts screen keeps the loaded clients: the accounts roles' and the online manager's.
   assert.equal(reads('orders', 'accountant', false), true);
   assert.equal(reads('orders', 'support', false), true);
-  assert.equal(reads('staff_home', 'sales', true), true);
+  assert.equal(reads('orders', 'online_manager', true), true);
+  // The online manager's header badges and their panels read the server's own figures (online-manager-summary), so
+  // his landing page and his clients no longer start the download either.
+  assert.equal(reads('staff_home', 'online_manager', true), false);
+  assert.equal(reads('online_clients', 'online_manager', true), false);
+  assert.equal(reads('online_team', 'online_manager', true), true, 'the screens that read the lists still do');
+  const { staffClientsArePaged: paged } = lib;
+  assert.equal(paged('online_clients', true, false), true);
+  assert.equal(paged('online_clients', false, true), true, 'the online manager');
+  assert.equal(paged('online_clients', false, false), false, 'the administration keeps the whole list');
+  assert.equal(paged('leads', true, false), false);
+  assert.equal(reads('leads', 'online_manager', true), false, 'the leads screen pages from the server for him too');
 });
 
 test('the staff lists are downloaded only on a screen that wants them, and the timers leave the others alone', () => {
@@ -79,6 +93,12 @@ test('the pages that wait for the lists read none of them', () => {
     const source = read(rel);
     assert.doesNotMatch(source, /salesOwn(Leads|Subscribers)|useCrmData|subscribers=\{|leads=\{/, rel);
   }
+  // The online manager's badges and panels: the server's figures, no client in the browser's lists.
+  for (const rel of ['admin/pages/dashboard/useDashboardBadges.ts', 'admin/pages/dashboard/DashboardOnlineManagerPanels.tsx', 'admin/pages/dashboard/useOnlineManagerSummary.ts']) {
+    assert.doesNotMatch(read(rel), /salesOwn(Leads|Subscribers)|useCrmData|SubscriberItem/, rel);
+  }
+  assert.match(read('admin/pages/dashboard/useOnlineManagerSummary.ts'), /\/staff\/online-manager-summary/);
+  assert.match(read('admin/pages/Dashboard.tsx'), /<DashboardOnlineManagerPanels[^>]*summary=\{onlineManagerSummary\}/);
   assert.match(read('admin/pages/dashboard/tabs/StaffHomeTab.tsx'), /useStaffHomeSummary\(staff\)/);
   assert.match(read('admin/pages/dashboard/my-profile/MyPerformanceSection.tsx'), /\/staff\/payments\?summary=1&limit=1/);
   const finance = read('admin/pages/dashboard/DashboardFinanceTabs.tsx');
@@ -106,4 +126,61 @@ test('the three staff endpoints answer for the same set of clients, and the list
   assert.match(route, /s\.name LIKE \? OR s\.phone LIKE \? OR s\.client_code LIKE \?/);
   // The week the page counts is the one it draws: Sunday to today, in Cairo.
   assert.match(route, /addDaysToDateOnly\(today, -new Date\(`\$\{today\}T00:00:00Z`\)\.getUTCDay\(\)\)/);
+});
+
+// «الشاشات كلها تقرا من السيرفر بالصفحات» — the leads screen (18 Oct 2026). Its table and board were paged already;
+// the strip above them, the follow-ups drawer, the contact search, the export and the «✓ مشترك» badge read the
+// rep's whole list of leads and clients, and now each asks the server for its own figure.
+const LEADS_SCREEN = [
+  'admin/pages/dashboard/tabs/LeadsTab.tsx',
+  'admin/pages/dashboard/tabs/LeadTable.tsx',
+  'admin/pages/dashboard/tabs/leads/LeadSalesKpiStrip.tsx',
+  'admin/pages/dashboard/tabs/leads/LeadSalesNotificationsPanel.tsx',
+  'admin/pages/dashboard/tabs/leads/LeadModalsHost.tsx',
+  'admin/pages/dashboard/tabs/leads/LeadArchiveViews.tsx',
+  'admin/pages/dashboard/tabs/leads/ArchiveTab.tsx',
+  'admin/pages/dashboard/tabs/leads/CrmQuotesWorkspace.tsx',
+  'admin/pages/dashboard/tabs/leads/useLeadActions.ts',
+  'admin/pages/dashboard/tabs/leads/useLeadEffectiveRecords.ts',
+  'admin/pages/dashboard/tabs/leads/useLeadQuickCommunication.ts',
+  'admin/pages/dashboard/tabs/leads/useLeadClients.ts',
+];
+
+test('the leads screen reads none of the person\'s downloaded lists', () => {
+  for (const rel of LEADS_SCREEN) {
+    const source = read(rel);
+    assert.doesNotMatch(source, /salesOwn(Leads|Subscribers)|effectiveSubs/, rel);
+  }
+  // The only places the screen is handed the staff lists are gone from its container.
+  const growth = read('admin/pages/dashboard/DashboardGrowthOpsTabs.tsx');
+  const leadsTab = growth.slice(growth.indexOf('<LeadsTab'), growth.indexOf('</TabErrorBoundary>', growth.indexOf('<LeadsTab')));
+  assert.doesNotMatch(leadsTab, /salesOwn/);
+  // The booking dialog asks whether the lead already is a client, instead of searching a list of every client.
+  const payments = read('admin/pages/dashboard/dashboardPaymentHandlers.ts');
+  assert.match(payments, /const existingSub = await findLeadClient\(freshLead\.id\)/);
+  assert.doesNotMatch(payments.slice(payments.indexOf('interface HandleLeadPaymentDeps'), payments.indexOf('export async function handleLeadPaymentFn')), /subscribers|leads:/);
+  assert.match(read('admin/lib/leadClients.ts'), /\/admin\/leads\/clients\?ids=/);
+});
+
+test('each figure the leads screen used to count in the browser has an endpoint behind the lead scope', () => {
+  const stafflists = read('api/routes/admin/stafflists.js');
+  const kpis = stafflists.slice(stafflists.indexOf("'/api/staff/leads-kpis'"));
+  assert.match(kpis, /requirePermission\('view_leads'\)/);
+  assert.match(kpis, /leadScope\(req, 'l'\)/, 'the strip counts the leads the list answered with');
+  assert.match(kpis, /staffSubscriberScope\(req\)/, 'and the collected money of the same clients the list answered with');
+  assert.match(kpis, /ARCHIVE_SOURCE_PREFIXES/, 'the imported archive stays out of a rep\'s figures');
+  assert.match(kpis, /figures:staff-leads-kpis:/, 'held 15 s and dropped by the next write like the other counters');
+  assert.match(read('admin/pages/dashboard/tabs/leads/LeadSalesKpiStrip.tsx'), /adminGet<LeadKpis>\('\/staff\/leads-kpis'\)/);
+
+  const stats = read('api/routes/admin/leads/stats.js');
+  assert.match(stats.slice(stats.indexOf("'/api/admin/leads/followups-panel'")), /leadScope\(req, 'l'\)/);
+  const lists = read('api/routes/admin/leads/lists.js');
+  const clients = lists.slice(lists.indexOf("'/api/admin/leads/clients'"), lists.indexOf("'/api/admin/leads/board'"));
+  assert.match(clients, /leadScope\(req, 'l'\)/, 'a client is named only for a lead the caller may see');
+  assert.match(clients, /\.slice\(0, 100\)/);
+
+  // The contact search and the export read the table's own endpoint, under the filters on screen.
+  assert.match(read('admin/pages/dashboard/tabs/leads/useLeadQuickCommunication.ts'), /\/admin\/leads\/table\?q=/);
+  assert.match(read('admin/pages/dashboard/tabs/leads/useServerLeadTable.ts'), /const exportAll = useCallback/);
+  assert.match(read('admin/pages/dashboard/tabs/LeadsTab.tsx'), /fetchVisibleLeads: serverTable\.exportAll/);
 });

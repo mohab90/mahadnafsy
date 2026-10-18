@@ -10,6 +10,16 @@
  */
 export const CRM_CHANGED_EVENT = 'crm-data-changed';
 
+/**
+ * Whether the open screen reads the person's whole lists of leads and clients. A sales rep's or a collection
+ * officer's landing page, payments and «عملائي» read the server a page at a time (dashboard/staffListTabs.ts), so
+ * a write there has no list to reload: reloadSubscribers only announces the change and those screens ask again,
+ * instead of every payment downloading all of the person's clients through /api/admin/subscribers.
+ */
+let listsWanted = true;
+export const setStaffListsWanted = (wanted: boolean) => { listsWanted = wanted; };
+export const staffListsWanted = () => listsWanted;
+
 export const announceCrmChanged = () => {
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(CRM_CHANGED_EVENT));
 };

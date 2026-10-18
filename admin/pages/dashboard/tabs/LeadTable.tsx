@@ -14,6 +14,7 @@ import { isOpenLeadStatus } from '../../../../shared/leadStatuses';
 import { useToast } from '../../../../shared/ui/Toast';
 import { useCanDelete } from '../../../hooks/useCanDelete';
 import { MoveSelectedToLocalNew } from './leads/MoveToLocalNew';
+import { useLeadClients } from './leads/useLeadClients';
 
 const LEAD_STATUS_CFG = STATUS_CFG;
 
@@ -46,7 +47,6 @@ type LeadTableProps = {
   deleteLead: (id: string) => void;
   addSubscriber: (item: SubscriberItem) => Promise<boolean>;
   updateSubscriber: (item: SubscriberItem) => void;
-  subscribers: SubscriberItem[];
   salesStaff: { id: string; name: string }[];
   isSalesOnly: boolean;
   canManageLeads: boolean;
@@ -59,7 +59,7 @@ type LeadTableProps = {
   paging?: { page: number; pageSize: number; total: number; onPageChange: (page: number) => void; loading?: boolean };
 };
 
-export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, courses, bundles, navigate, updateLead, reloadLeads, deleteLead, subscribers, salesStaff, isSalesOnly, canManageLeads, onSalesClick, onBook, branchOptions, sources, paging }) => {
+export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, courses, bundles, navigate, updateLead, reloadLeads, deleteLead, salesStaff, isSalesOnly, canManageLeads, onSalesClick, onBook, branchOptions, sources, paging }) => {
   const toast = useToast();
   // Deleting a lead, or a contact on one, is the owner's list's: «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
   const canDelete = useCanDelete();
@@ -161,6 +161,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
   const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
   const safePage = Math.min(currentPage, totalPages - 1);
   const pageRows = paging ? rows : rows.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+  const clientOf = useLeadClients(pageRows);
 
   const tableBodyRef = React.useRef<HTMLDivElement>(null);
 
@@ -287,11 +288,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                       <a href={`tel:${row.phone}`} className="text-blue-600 hover:underline text-xs font-mono font-semibold">{row.phone}</a>
                     </div>
                     {row.status === 'converted' && (() => {
-                      const sub = subscribers.find((s) =>
-                        s.leadId === row.id ||
-                        (row.phone && row.phone.length > 5 && s.phone === row.phone) ||
-                        (row.email && row.email.length > 3 && s.email === row.email)
-                      );
+                      const sub = clientOf[row.id];
                       return sub ? (
                         <button onClick={() => navigate(`/client/${sub.clientCode || sub.id}`)}
                           className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full mt-1 inline-flex items-center gap-1 hover:bg-emerald-100">

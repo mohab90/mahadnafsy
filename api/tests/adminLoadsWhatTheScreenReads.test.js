@@ -146,7 +146,8 @@ test('the sign-in loads none of the on-demand lists, and every one has a loader'
 
 test('the dashboard asks for the lists of the tab on screen', () => {
   const dashboard = codeOnly(read('admin/pages/Dashboard.tsx'));
-  assert.ok(dashboard.includes('void ensureSiteLists(listsForTab(activeTab));'));
+  assert.ok(dashboard.includes("void ensureSiteLists(clientsArePaged ? listsForTab(activeTab).filter(list => list !== 'subscribers') : listsForTab(activeTab));"),
+    'a screen that pages from the server asks for every list but the full client list');
   assert.ok(dashboard.includes('void ensureSiteLists(overlayLists);'), 'the popups drawn over every screen ask too');
   // The tab on screen is the URL's, through its aliases, from the first render:
   // /dashboard/my_clients mounted as a «my_clients» screen nobody lists, and

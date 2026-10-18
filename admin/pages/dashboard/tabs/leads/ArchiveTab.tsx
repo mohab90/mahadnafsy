@@ -124,7 +124,6 @@ export interface ArchiveTabProps {
   deleteLead: (id: string) => void | Promise<unknown>;
   addSubscriber: (s: SubscriberItem) => Promise<boolean>;
   updateSubscriber: (s: SubscriberItem) => void | Promise<unknown>;
-  subscribers: SubscriberItem[];
   salesReps: StaffMember[];
   isSalesOnly: boolean;
   canManageLeads: boolean;
@@ -162,7 +161,7 @@ export interface ArchiveTabProps {
 // lead-status-subset: what a lead handed out of the pool comes back from — archived by the cold-lead job, or hidden as not interested — as new
 const BACK_IN_PLAY = ['archived', 'not_interested_hidden'];
 
-export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLeads, notify, courses, bundles, navigate, deleteLead, addSubscriber, updateSubscriber, subscribers, salesReps, isSalesOnly, canManageLeads, onBook, branchOptions, sources, title = 'محلي قديم — الاستيراد والتعيين الجماعي', defaultSource = 'محلي قديم', tabLabel, customFilter, hideImport = false, panels, matchesFilters, onShowAll }: ArchiveTabProps) {
+export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLeads, notify, courses, bundles, navigate, deleteLead, addSubscriber, updateSubscriber, salesReps, isSalesOnly, canManageLeads, onBook, branchOptions, sources, title = 'محلي قديم — الاستيراد والتعيين الجماعي', defaultSource = 'محلي قديم', tabLabel, customFilter, hideImport = false, panels, matchesFilters, onShowAll }: ArchiveTabProps) {
   const [archiveSheet, setArchiveSheet] = useState<ImportSheet | null>(null);
   const [archiveParseErr, setArchiveParseErr] = useState('');
   const [archiveImporting, setArchiveImporting] = useState(false);
@@ -718,7 +717,6 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
         deleteLead={deleteLead}
         addSubscriber={addSubscriber}
         updateSubscriber={updateSubscriber}
-        subscribers={subscribers}
         salesStaff={salesReps}
         isSalesOnly={isSalesOnly}
         canManageLeads={canManageLeads}

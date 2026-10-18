@@ -25,6 +25,13 @@ interface Props {
   setCollOnlineViewTab: (v: ViewTabKey) => void;
   setCollOnlinePage: (n: number) => void;
   filtered: SubscriberItem[];
+  /** The server's figures, when the screen holds one page of the clients rather than all of them. */
+  tabCounts?: Record<string, number>;
+  matchingCount?: number;
+  /** How many clients have no collection officer, from the server (the page holds only some). */
+  unassignedTotal?: number;
+  /** Every matching client, fetched when the export asks (the page holds only some). */
+  loadForExport?: () => Promise<SubscriberItem[]>;
   isOnlineManager: boolean;
   /** A collection officer adds a customer as a booking the manager reviews. */
   isCollection?: boolean;
@@ -63,18 +70,21 @@ const pictureColumns = (s: SubscriberItem) => [s.nameEn || '', s.nationalId || '
 
 export function ViewTabsBar({
   isDaqqiClientsTab, allCombined, isIntlSub, marketOf, bookedInYear, collOnlineViewTab, setCollOnlineViewTab,
-  setCollOnlinePage, filtered, isOnlineManager, isCollection = false, isDaqqiManager, isAdmin, setOmNewSubOpen, onOpenSectionTabs,
+  setCollOnlinePage, filtered, tabCounts, matchingCount, unassignedTotal, loadForExport, isOnlineManager, isCollection = false, isDaqqiManager, isAdmin, setOmNewSubOpen, onOpenSectionTabs,
   onOpenCollectionSettings, onOpenImport, customTabsSlot, customTabOpen = false,
   daqqiSettingsOpen, setDaqqiSettingsOpen, collOnlineSelected, courses, bundles, staffMembers, housingMap,
   subCsDistributing, setSubCsDistributing, actionSubscribers, reloadSubscribers, notify,
 }: Props) {
   // The items the table lists — a track as the track.
   const courseTitles = (s: SubscriberItem) => clientItems(s, courses, bundles, clientCurrency(s)).map(item => item.title).join(' | ');
-  const toExport = () => (collOnlineSelected.size > 0 ? filtered.filter(s => collOnlineSelected.has(s.id)) : filtered);
+  const toExport = async () => {
+    const source = loadForExport ? await loadForExport() : filtered;
+    return collOnlineSelected.size > 0 ? source.filter(s => collOnlineSelected.has(s.id)) : source;
+  };
   // One export, in the settings menu on both halves of the screen. The online
   // half had it among the filters and the Dokki half in its menu.
-  const exportCsv = () => {
-    const rows = toExport().map(s => {
+  const exportRows = async () => {
+    const rows = (await toExport()).map(s => {
       // What was collected, and what is left by the same reckoning as the
       // table: it summed refunded and pending rows as paid and took them off
       // a stored total no screen shows.
@@ -95,16 +105,17 @@ export function ViewTabsBar({
     downloadCsv(`${isDaqqiClientsTab ? 'daqqi' : 'online'}-clients-${cairoDateOnly()}`, [header, ...rows]);
     setDaqqiSettingsOpen(false);
   };
+  const exportCsv = () => { void exportRows(); };
 
   const menuItem = 'w-full text-right px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 disabled:opacity-60';
-  const unassignedCount = allCombined.filter(s => !s.assignedCsId).length;
+  const unassignedCount = unassignedTotal ?? allCombined.filter(s => !s.assignedCsId).length;
   const canDistribute = isOnlineManager || isAdmin;
   // «توزيع غير المُسندين», from the settings menu: the collection rules on
   // «التحصيل: التوزيع والشيتات» decide who gets whom.
   const distribute = async () => {
     setDaqqiSettingsOpen(false);
-    const unassigned = actionSubscribers.filter(s => !s.assignedCsId);
-    if (!await confirmDialog(`توزيع ${unassigned.length} مشترك غير مُسند على موظفي التحصيل؟`)) return;
+    const toDistribute = unassignedTotal ?? actionSubscribers.filter(s => !s.assignedCsId).length;
+    if (!await confirmDialog(`توزيع ${toDistribute} مشترك غير مُسند على موظفي التحصيل؟`)) return;
     setSubCsDistributing(true);
     try {
       const result = await mysqlAdmin.bulkAssignCollection();
@@ -143,7 +154,7 @@ export function ViewTabsBar({
           ] as {key:ViewTabKey;label:string;color:string}[]).filter(vt => !isDaqqiClientsTab || !MARKET_TAB[vt.key]).map(vt => {
             const market = MARKET_TAB[vt.key];
             const base = vt.key === 'old_local' ? allCombined.filter(s => !isIntlSub(s)) : vt.key === 'old_intl' ? allCombined.filter(isIntlSub) : allCombined;
-            const cnt = vt.key === 'active'
+            const cnt = tabCounts ? (tabCounts[vt.key] ?? 0) : vt.key === 'active'
               ? allCombined.filter(s => s.isActive !== false && !TERMINAL.includes(s.clientStatus||'')).length
               : market
               ? allCombined.filter(s => marketOf(s) === market && s.isActive !== false && !TERMINAL.includes(s.clientStatus||'') && (s.enrolledCourseIds||[]).length > 0).length
@@ -179,7 +190,7 @@ export function ViewTabsBar({
           <span ref={customTabsSlot} className="contents" />
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          <span className="text-[10px] text-gray-400">{filtered.length} مطابق</span>
+          <span className="text-[10px] text-gray-400">{matchingCount ?? filtered.length} مطابق</span>
           {(isOnlineManager || isDaqqiManager || isAdmin || isCollection) && (
             <button onClick={() => setOmNewSubOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition shadow-sm">
