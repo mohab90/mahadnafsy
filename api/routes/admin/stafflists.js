@@ -1307,7 +1307,7 @@ router.get('/api/staff/online-manager-summary', requireAuth, requireAdminOrStaff
     const today = cairoToday();
     const since = addDaysToDateOnly(today, -7);
     const scopeParams = [tenantId, ...sc.params];
-    const live = `s.tenant_id = ? AND s.deleted_at IS NULL AND (${sc.where})`;
+    const live = `s.deleted_at IS NULL AND (${sc.where})`;
     const [[planRows], [newClients], [[paymentCount]], [newPayments]] = await Promise.all([
       pool.query(
         `SELECT ip.id, ip.course_id, ip.bundle_id, ip.title, ip.total_amount, ip.currency, ip.installments_count,
@@ -1317,17 +1317,17 @@ router.get('/api/staff/online-manager-summary', requireAuth, requireAdminOrStaff
            JOIN subscribers s ON s.id = ip.subscriber_id AND s.tenant_id = ip.tenant_id
            LEFT JOIN courses c ON c.id = ip.course_id AND c.tenant_id = ip.tenant_id
            LEFT JOIN bundles b ON b.id = ip.bundle_id AND b.tenant_id = ip.tenant_id
-          WHERE ${live}`, scopeParams),
+          WHERE s.tenant_id = ? AND ${live}`, scopeParams),
       pool.query(
         `SELECT s.id, s.name, s.email, s.phone, s.created_at FROM subscribers s
-          WHERE ${live} AND s.created_at >= ? ORDER BY s.created_at DESC`, [...scopeParams, cairoDayStartUtc(since)]),
+          WHERE s.tenant_id = ? AND ${live} AND s.created_at >= ? ORDER BY s.created_at DESC`, [...scopeParams, cairoDayStartUtc(since)]),
       pool.query(
         `SELECT COUNT(*) AS n FROM payments p JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
-          WHERE ${live} AND p.deleted_at IS NULL AND p.date >= ?`, [...scopeParams, since]),
+          WHERE s.tenant_id = ? AND ${live} AND p.deleted_at IS NULL AND p.date >= ?`, [...scopeParams, since]),
       pool.query(
         `SELECT s.name, p.amount, p.currency, p.payment_type, p.date FROM payments p
            JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
-          WHERE ${live} AND p.deleted_at IS NULL AND p.date >= ? ORDER BY p.date DESC LIMIT 30`, [...scopeParams, since]),
+          WHERE s.tenant_id = ? AND ${live} AND p.deleted_at IS NULL AND p.date >= ? ORDER BY p.date DESC LIMIT 30`, [...scopeParams, since]),
     ]);
     const due = dueInstallments(
       planRows.map(row => ({ clientId: row.client_id, name: row.name, phone: row.phone, plan: mapInstallmentPlan(row) })),
@@ -1465,7 +1465,7 @@ router.get('/api/staff/leads-kpis', requireAuth, requireAdminOrStaff, requirePer
         const tomorrowStart = cairoDayStartUtc(addDaysToDateOnly(today, 1));
         const weekStart = cairoDayStartUtc(addDaysToDateOnly(today, -7));
         // The imported archive stays in its own tab, out of the rep's figures (leadSourceGroups.ts isArchiveSource).
-        const live = `l.tenant_id=? AND l.hidden=0${scope.sql} AND NOT (${ARCHIVE_SOURCE_PREFIXES.map(() => "TRIM(COALESCE(l.source, '')) LIKE ?").join(' OR ')})`;
+        const live = `l.hidden=0${scope.sql} AND NOT (${ARCHIVE_SOURCE_PREFIXES.map(() => "TRIM(COALESCE(l.source, '')) LIKE ?").join(' OR ')})`;
         const p = [req.tenantId, ...scope.params, ...ARCHIVE_SOURCE_PREFIXES.map(prefix => `${prefix}%`)];
         const open = `l.status NOT IN ${TERMINAL_SQL}`;
         const [[[totals]], [[calls]]] = await Promise.all([
@@ -1475,11 +1475,11 @@ router.get('/api/staff/leads-kpis', requireAuth, requireAdminOrStaff, requirePer
                     COALESCE(SUM(l.status IN ${CONVERTED_SQL} AND COALESCE(l.updated_at, l.created_at) >= ?), 0) AS convertedMonth,
                     COALESCE(SUM(${open}), 0) AS active,
                     COALESCE(SUM(${open} AND ${NEXT_FOLLOWUP} < ?), 0) AS overdue
-               FROM leads l WHERE ${live}`, [monthStart, today, ...p]),
+               FROM leads l WHERE l.tenant_id=? AND ${live}`, [monthStart, today, ...p]),
           pool.query(
             `SELECT COALESCE(SUM(c.date >= ? AND c.date < ?), 0) AS today, COUNT(*) AS week
                FROM communications c JOIN leads l ON l.id=c.lead_id AND l.tenant_id=c.tenant_id
-              WHERE ${live} AND c.date >= ?`, [dayStart, tomorrowStart, ...p, weekStart]),
+              WHERE l.tenant_id=? AND ${live} AND c.date >= ?`, [dayStart, tomorrowStart, ...p, weekStart]),
         ]);
         out.totalLeads = Number(totals.total) || 0;
         out.converted = Number(totals.converted) || 0;
