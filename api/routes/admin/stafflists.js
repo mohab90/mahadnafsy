@@ -1422,38 +1422,38 @@ router.get('/api/admin/online-team-summary', requireAuth, requireAdminOrStaff, r
     const weekFrom = cairoDayStartUtc(addDaysToDateOnly(today, -6));
     const tomorrow = cairoDayStartUtc(addDaysToDateOnly(today, 1));
     const egp = "COALESCE(p.amount_egp, CASE WHEN p.currency='EGP' THEN p.amount ELSE 0 END)";
-    const paidOnline = "p.tenant_id=? AND p.deleted_at IS NULL AND p.status='paid' AND p.branch IN (?)";
-    const clientsOnline = 's.tenant_id=? AND s.deleted_at IS NULL AND s.branch IN (?)';
+    const paidOnline = "p.deleted_at IS NULL AND p.status='paid' AND p.branch IN (?)";
+    const clientsOnline = 's.deleted_at IS NULL AND s.branch IN (?)';
     const [[[paid]], [weekly], [byCollector], [viaClients], [plans], [[active]], [subsCount]] = await Promise.all([
-      pool.query(`SELECT COALESCE(SUM(${egp}), 0) AS total, COUNT(*) AS n FROM payments p WHERE ${paidOnline} AND p.date >= ?`, [tenantId, ONLINE_BRANCHES, from]),
+      pool.query(`SELECT COALESCE(SUM(${egp}), 0) AS total, COUNT(*) AS n FROM payments p WHERE p.tenant_id=? AND ${paidOnline} AND p.date >= ?`, [tenantId, ONLINE_BRANCHES, from]),
       pool.query(
         `SELECT DATE(${sqlCairoWall('p.date')}) AS day, SUM(${egp}) AS total, SUM(CASE WHEN p.is_installment=1 THEN ${egp} ELSE 0 END) AS installments
-           FROM payments p WHERE ${paidOnline} AND p.date >= ? AND p.date < ? GROUP BY day`, [tenantId, ONLINE_BRANCHES, weekFrom, tomorrow]),
-      pool.query(`SELECT p.staff_id AS id, COALESCE(SUM(${egp}), 0) AS total FROM payments p WHERE ${paidOnline} AND p.date >= ? AND p.staff_id IS NOT NULL GROUP BY p.staff_id`, [tenantId, ONLINE_BRANCHES, from]),
+           FROM payments p WHERE p.tenant_id=? AND ${paidOnline} AND p.date >= ? AND p.date < ? GROUP BY day`, [tenantId, ONLINE_BRANCHES, weekFrom, tomorrow]),
+      pool.query(`SELECT p.staff_id AS id, COALESCE(SUM(${egp}), 0) AS total FROM payments p WHERE p.tenant_id=? AND ${paidOnline} AND p.date >= ? AND p.staff_id IS NOT NULL GROUP BY p.staff_id`, [tenantId, ONLINE_BRANCHES, from]),
       // What each employee's clients paid: a payment counts for the employee who sells to its client and the one who collects from it.
       pool.query(
         `SELECT x.id, COUNT(*) AS n, COALESCE(SUM(x.total), 0) AS total FROM (
             SELECT s.assigned_cs_id AS id, p.id AS pid, ${egp} AS total FROM payments p JOIN subscribers s ON s.id=p.subscriber_id AND s.tenant_id=p.tenant_id
-             WHERE ${paidOnline} AND p.date >= ? AND s.assigned_cs_id IS NOT NULL
+             WHERE p.tenant_id=? AND ${paidOnline} AND p.date >= ? AND s.assigned_cs_id IS NOT NULL
             UNION
             SELECT s.assigned_sales_id, p.id, ${egp} FROM payments p JOIN subscribers s ON s.id=p.subscriber_id AND s.tenant_id=p.tenant_id
-             WHERE ${paidOnline} AND p.date >= ? AND s.assigned_sales_id IS NOT NULL
+             WHERE p.tenant_id=? AND ${paidOnline} AND p.date >= ? AND s.assigned_sales_id IS NOT NULL
             UNION
-            SELECT p.staff_id, p.id, ${egp} FROM payments p WHERE ${paidOnline} AND p.date >= ? AND p.subscriber_id IS NULL AND p.staff_id IS NOT NULL
+            SELECT p.staff_id, p.id, ${egp} FROM payments p WHERE p.tenant_id=? AND ${paidOnline} AND p.date >= ? AND p.subscriber_id IS NULL AND p.staff_id IS NOT NULL
           ) x GROUP BY x.id`, [tenantId, ONLINE_BRANCHES, from, tenantId, ONLINE_BRANCHES, from, tenantId, ONLINE_BRANCHES, from]),
       pool.query(
         `SELECT ip.id, ip.course_id, ip.bundle_id, ip.title, ip.total_amount, ip.currency, ip.installments_count, ip.installment_amounts,
                 ip.due_dates, ip.paid_dates, ip.paid_amounts, ip.created_at, s.assigned_cs_id AS cs_id
            FROM installment_plans ip JOIN subscribers s ON s.id=ip.subscriber_id AND s.tenant_id=ip.tenant_id
-          WHERE ${clientsOnline}`, [tenantId, ONLINE_BRANCHES]),
+          WHERE s.tenant_id=? AND ${clientsOnline}`, [tenantId, ONLINE_BRANCHES]),
       pool.query(
-        `SELECT COUNT(*) AS n FROM subscribers s WHERE ${clientsOnline}
+        `SELECT COUNT(*) AS n FROM subscribers s WHERE s.tenant_id=? AND ${clientsOnline}
             AND CASE WHEN JSON_VALID(s.crm_json) THEN COALESCE(JSON_UNQUOTE(JSON_EXTRACT(s.crm_json,'$.status')),'') ELSE '' END = 'active'`, [tenantId, ONLINE_BRANCHES]),
       pool.query(
         `SELECT id, COUNT(DISTINCT cid) AS any_n, COUNT(DISTINCT CASE WHEN via='cs' THEN cid END) AS cs_n FROM (
-            SELECT s.assigned_cs_id AS id, s.id AS cid, 'cs' AS via FROM subscribers s WHERE ${clientsOnline} AND s.assigned_cs_id IS NOT NULL
+            SELECT s.assigned_cs_id AS id, s.id AS cid, 'cs' AS via FROM subscribers s WHERE s.tenant_id=? AND ${clientsOnline} AND s.assigned_cs_id IS NOT NULL
             UNION ALL
-            SELECT s.assigned_sales_id, s.id, 'sales' FROM subscribers s WHERE ${clientsOnline} AND s.assigned_sales_id IS NOT NULL
+            SELECT s.assigned_sales_id, s.id, 'sales' FROM subscribers s WHERE s.tenant_id=? AND ${clientsOnline} AND s.assigned_sales_id IS NOT NULL
           ) y GROUP BY id`, [tenantId, ONLINE_BRANCHES, tenantId, ONLINE_BRANCHES]),
     ]);
     const overdue = { count: 0, byCurrency: { EGP: 0, SAR: 0, USD: 0 } };
