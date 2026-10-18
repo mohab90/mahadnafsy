@@ -15,56 +15,124 @@
     {
       "name": "admin",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["exec", "--no", "--", "vite", "--port", "4000"],
+      "runtimeArgs": [
+        "exec",
+        "--no",
+        "--",
+        "vite",
+        "--port",
+        "4000"
+      ],
       "cwd": "admin",
       "port": 4000
     },
     {
       "name": "client",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["exec", "--no", "--", "vite", "--port", "3000"],
+      "runtimeArgs": [
+        "exec",
+        "--no",
+        "--",
+        "vite",
+        "--port",
+        "3000"
+      ],
       "cwd": "client",
       "port": 3000
     },
     {
       "name": "client-preview",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["exec", "--no", "--", "vite", "--port", "3020", "--strictPort"],
+      "runtimeArgs": [
+        "exec",
+        "--no",
+        "--",
+        "vite",
+        "--port",
+        "3020",
+        "--strictPort"
+      ],
       "cwd": "client",
       "port": 3020
     },
     {
       "name": "client-prod-preview",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["exec", "--no", "--", "vite", "preview", "--port", "3021", "--strictPort"],
+      "runtimeArgs": [
+        "exec",
+        "--no",
+        "--",
+        "vite",
+        "preview",
+        "--port",
+        "3021",
+        "--strictPort"
+      ],
       "cwd": "client",
       "port": 3021
     },
     {
       "name": "admin-prod-preview",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["exec", "--no", "--", "vite", "preview", "--port", "4001", "--strictPort"],
+      "runtimeArgs": [
+        "exec",
+        "--no",
+        "--",
+        "vite",
+        "preview",
+        "--port",
+        "4001",
+        "--strictPort"
+      ],
       "cwd": "admin",
       "port": 4001
     },
     {
       "name": "admin-preview",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["exec", "--no", "--", "vite", "--port", "4020", "--strictPort"],
+      "runtimeArgs": [
+        "exec",
+        "--no",
+        "--",
+        "vite",
+        "--port",
+        "4020",
+        "--strictPort"
+      ],
       "cwd": "admin",
       "port": 4020
     },
     {
       "name": "live-admin",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["exec", "--no", "--", "vite", "--port", "4030", "--strictPort", "--mode", "live"],
+      "runtimeArgs": [
+        "exec",
+        "--no",
+        "--",
+        "vite",
+        "--port",
+        "4030",
+        "--strictPort",
+        "--mode",
+        "live"
+      ],
       "cwd": "admin",
       "port": 4030
     },
     {
       "name": "live-client",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["exec", "--no", "--", "vite", "--port", "3030", "--strictPort", "--mode", "live"],
+      "runtimeArgs": [
+        "exec",
+        "--no",
+        "--",
+        "vite",
+        "--port",
+        "3030",
+        "--strictPort",
+        "--mode",
+        "live"
+      ],
       "cwd": "client",
       "port": 3030
     },
@@ -91,6 +159,23 @@
       ],
       "cwd": "client",
       "port": 3055
+    },
+    {
+      "name": "admin-perf-mine",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "exec",
+        "--no",
+        "--",
+        "vite",
+        "--mode",
+        "perf",
+        "--port",
+        "4022",
+        "--strictPort"
+      ],
+      "cwd": "admin",
+      "port": 4022
     }
   ]
 }

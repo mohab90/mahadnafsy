@@ -71,8 +71,8 @@ test('every origin has a label and a colour', () => {
 test('the screens that list payments show it', () => {
   const orders = codeOnly(ordersScreenSource());
   assert.match(orders, /import \{ paymentOrigin, PAYMENT_ORIGIN, PAYMENT_ORIGIN_CLASS \}/);
-  assert.equal((orders.match(/PAYMENT_ORIGIN\[/g) || []).length >= 4, true, 'both payment tables should render the badge');
-  assert.equal((orders.match(/>المصدر</g) || []).length, 2, 'both payment tables need the column header');
+  assert.equal((orders.match(/PAYMENT_ORIGIN\[/g) || []).length >= 2, true, 'the payments table should render the badge');
+  assert.equal((orders.match(/>المصدر</g) || []).length, 1, 'the payments table needs the column header');
 });
 
 test('the review panel reads the shared rule instead of its own map', () => {

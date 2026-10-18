@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import type { LeadItem, SubscriberItem, OrderItem, DaqqiRound, StaffMember, Bundle, Course } from '../../types';
+import type { LeadItem, SubscriberItem, DaqqiRound, StaffMember } from '../../types';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import { hasPermission } from '../../constants/permissions';
 import { staffStatusFromWire, type StaffWire } from './dashboardHelpers';
@@ -15,8 +15,6 @@ interface StaffOwnDataArgs {
   isOnlineManager: boolean;
   staffSelf: StaffMember | null | undefined;
   currentStaff: StaffMember | null | undefined;
-  bundles: Bundle[];
-  courses: Course[];
   setStaffScopedSubscribers: (s: SubscriberItem[]) => void;
   setStaffScopedLeads: (l: LeadItem[]) => void;
   /** The rounds into the context too, so the schedule and the clients screen read one copy. */
@@ -33,12 +31,11 @@ interface StaffOwnDataArgs {
  * Dashboard at its original position so effect-execution order is unchanged.
  */
 export function useStaffOwnData({
-  wantsLists, isAdmin, isOnlineManager, staffSelf, currentStaff, bundles, courses,
+  wantsLists, isAdmin, isOnlineManager, staffSelf, currentStaff,
   setStaffScopedSubscribers, setStaffScopedLeads, setStaffScopedRounds, mergeContent,
 }: StaffOwnDataArgs) {
   const [salesOwnLeads, setSalesOwnLeads] = useState<LeadItem[]>([]);
   const [salesOwnSubscribers, setSalesOwnSubscribers] = useState<SubscriberItem[]>([]);
-  const [salesOwnOrders, setSalesOwnOrders] = useState<OrderItem[]>([]);
   const [salesOwnDaqqiRounds, setSalesOwnDaqqiRounds] = useState<DaqqiRound[] | null>(null);
   const [onlineTeamMembers, setOnlineTeamMembers] = useState<StaffMember[]>([]);
   const [salesDataLoading, setSalesDataLoading] = useState(false);
@@ -108,29 +105,6 @@ export function useStaffOwnData({
         setStaffScopedSubscribers(mySubs);
         setStaffScopedLeads(myLeads);
 
-        const resolveCourseTitle = (courseId: string | undefined) => {
-          if (!courseId) return '';
-          if (courseId.startsWith('bundle:')) {
-            const bId = courseId.replace('bundle:', '');
-            return bundles.find(b => b.id === bId)?.title || courseId;
-          }
-          return courses.find(c => c.id === courseId)?.title || bundles.find(b => b.id === courseId)?.title || courseId;
-        };
-        const syntheticOrders: OrderItem[] = mySubs.flatMap(sub =>
-          (sub.paymentHistory || []).map(p => ({
-            id: p.id, type: 'course' as const, itemId: p.courseId || '',
-            subscriberId: sub.id,
-            itemTitle: resolveCourseTitle(p.courseId) || p.paymentType || '',
-            amount: Number(p.amount) || 0, currency: (p.currency || 'EGP') as 'EGP' | 'SAR' | 'USD',
-            paymentMethod: (p.paymentMethod || 'other') as OrderItem['paymentMethod'],
-            customerName: sub.name, customerEmail: sub.email,
-            status: 'paid' as const, createdAt: p.at || sub.createdAt || new Date().toISOString(),
-            transactionId: p.id,
-            staffId: (p as { staffId?: string }).staffId || undefined,
-            staffName: (p as { staffName?: string }).staffName || undefined,
-          }))
-        );
-        setSalesOwnOrders(syntheticOrders);
         listsAtRef.current = Date.now();
       }
 
@@ -240,7 +214,6 @@ export function useStaffOwnData({
   return {
     salesOwnLeads, setSalesOwnLeads,
     salesOwnSubscribers, setSalesOwnSubscribers,
-    salesOwnOrders, setSalesOwnOrders,
     salesOwnDaqqiRounds, setSalesOwnDaqqiRounds,
     onlineTeamMembers, setOnlineTeamMembers,
     salesDataLoading, setSalesDataLoading,

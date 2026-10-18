@@ -1380,30 +1380,38 @@ router.get('/api/staff/payments', requireAuth, requireAdminOrStaff, requirePermi
     const params = [];
     if (from) { where.push('p.date >= ?'); params.push(cairoDayStartUtc(from)); }
     if (to) { where.push('p.date < ?'); params.push(cairoDayStartUtc(addDaysToDateOnly(to, 1))); }
-    const status = String(req.query.status || '');
-    if (status === 'paid') where.push("(p.status = 'paid' OR p.status IS NULL)");
-    else if (['pending', 'failed', 'refunded'].includes(status)) { where.push('p.status = ?'); params.push(status); }
     if (String(req.query.mine || '') === '1' && req.staffRecord?.id) { where.push('p.staff_id = ?'); params.push(req.staffRecord.id); }
     const q = String(req.query.q || '').trim().slice(0, 100);
     if (q) {
       where.push('(s.name LIKE ? OR s.client_code LIKE ? OR p.transaction_id LIKE ?)');
       params.push(`%${q}%`, `%${q}%`, `%${q}%`);
     }
-    const filtered = `${base}${where.length ? ` AND ${where.join(' AND ')}` : ''}`;
+    // The three groups the accounts desk sorts payments into: waiting, accepted (paid, or from before the column
+    // had a status) and declined (failed or refunded); `declined` asks for the last two together.
+    const GROUPS = {
+      paid: "(p.status = 'paid' OR p.status IS NULL)",
+      pending: "p.status = 'pending'",
+      declined: "p.status IN ('failed', 'refunded')",
+      failed: "p.status = 'failed'",
+      refunded: "p.status = 'refunded'",
+    };
+    const status = String(req.query.status || '');
+    const withoutStatus = `${base}${where.length ? ` AND ${where.join(' AND ')}` : ''}`;
+    const filtered = GROUPS[status] ? `${withoutStatus} AND ${GROUPS[status]}` : withoutStatus;
     const [[[count]], [payRows]] = await Promise.all([
       pool.query(`SELECT COUNT(*) AS n ${filtered}`, [...baseParams, ...params]),
       pool.query(
         `SELECT p.id, p.subscriber_id, p.course_id, p.bundle_id, p.amount, p.currency, p.payment_type, p.payment_method,
                 p.transaction_id, p.is_installment, p.course_expected, p.\`date\`, p.note, p.status, p.staff_id, p.staff_name,
                 p.from_account, p.source, p.item_title, p.cert_type, p.certificate_request_id, p.branch,
-                s.name AS client_name, s.client_code
+                s.name AS client_name, s.client_code, s.email AS client_email
            ${filtered} ORDER BY p.\`date\` DESC, p.created_at DESC LIMIT ? OFFSET ?`, [...baseParams, ...params, limit, offset]),
     ]);
     const executors = await resolvePaymentExecutors(pool, req.tenantId, payRows);
     const out = {
       total: Number(count.n) || 0,
       rows: payRows.map(p => ({
-        id: p.id, clientId: p.subscriber_id, clientName: p.client_name, clientCode: p.client_code || '',
+        id: p.id, clientId: p.subscriber_id, clientName: p.client_name, clientCode: p.client_code || '', clientEmail: p.client_email || '',
         amount: Number(p.amount) || 0, currency: p.currency || 'EGP',
         paymentType: (p.payment_type || 'other').toLowerCase(), paymentMethod: p.payment_method || null,
         transactionId: p.transaction_id || null, isInstallment: !!p.is_installment,
@@ -1415,6 +1423,27 @@ router.get('/api/staff/payments', requireAuth, requireAdminOrStaff, requirePermi
         certId: p.certificate_request_id || null, branch: p.branch || null,
       })),
     };
+    // tabs=1: how many payments each group holds under the other filters, the money (in pounds) of the group asked
+    // for, and what the accepted ones brought in today and this month — the accounts desk's tabs and figures.
+    if (String(req.query.tabs || '') === '1') {
+      const today = cairoToday();
+      const egp = "COALESCE(p.amount_egp, CASE WHEN p.currency='EGP' THEN p.amount ELSE 0 END)";
+      const dayStart = cairoDayStartUtc(today);
+      const tomorrowStart = cairoDayStartUtc(addDaysToDateOnly(today, 1));
+      const monthStart = cairoDayStartUtc(`${today.slice(0, 7)}-01`);
+      const [[row]] = await pool.query(
+        `SELECT COALESCE(SUM(${GROUPS.pending}), 0) AS pending, COALESCE(SUM(${GROUPS.paid}), 0) AS accepted,
+                COALESCE(SUM(${GROUPS.declined}), 0) AS declined,
+                COALESCE(SUM(CASE WHEN ${GROUPS[status] || '1=1'} THEN ${egp} END), 0) AS groupSum,
+                COALESCE(SUM(CASE WHEN ${GROUPS.paid} AND p.date >= ? AND p.date < ? THEN ${egp} END), 0) AS acceptedToday,
+                COALESCE(SUM(CASE WHEN ${GROUPS.paid} AND p.date >= ? AND p.date < ? THEN ${egp} END), 0) AS acceptedMonth
+           ${withoutStatus}`,
+        [dayStart, tomorrowStart, monthStart, tomorrowStart, ...baseParams, ...params]);
+      out.tabs = {
+        pending: Number(row.pending) || 0, accepted: Number(row.accepted) || 0, declined: Number(row.declined) || 0,
+        groupSumEgp: Number(row.groupSum) || 0, acceptedTodayEgp: Number(row.acceptedToday) || 0, acceptedMonthEgp: Number(row.acceptedMonth) || 0,
+      };
+    }
     if (String(req.query.summary || '') === '1') {
       const today = cairoToday();
       const weekStart = addDaysToDateOnly(today, -new Date(`${today}T00:00:00Z`).getUTCDay());

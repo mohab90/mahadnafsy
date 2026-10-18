@@ -64,9 +64,10 @@ import { isProfileTab } from './dashboard/my-profile/profileTabs';
 import { tabForUrl, urlForTab, urlToTabAlias } from './dashboard/tabUrlAliases';
 import { useDashboardBadges } from './dashboard/useDashboardBadges';
 import { useOnlineManagerSummary } from './dashboard/useOnlineManagerSummary';
+import { useStaffOrders } from './dashboard/useStaffOrders';
 import { useNotificationsBell } from './dashboard/useNotificationsBell';
 import { useStaffOwnData } from './dashboard/useStaffOwnData';
-import { staffClientsArePaged, staffScreenReadsLists } from './dashboard/staffListTabs';
+import { staffClientsArePaged, staffScreenReadsLists, staffSkipsSiteLists } from './dashboard/staffListTabs';
 import { useDashboardDerived } from './dashboard/useDashboardDerived';
 import { useBranches } from '../hooks/useBranches';
 import { useCanDelete } from '../hooks/useCanDelete';
@@ -469,7 +470,7 @@ const Dashboard: React.FC = () => {
   const usesStaffScopedData = isNonAdminStaff || isOnlineManager;
   // The lists of leads and clients are downloaded for the screens that read them, not at sign-in
   // (dashboard/staffListTabs.ts); the landing page and the person's own pages read server summaries.
-  const wantsStaffLists = staffScreenReadsLists(activeTab, (staffSelf || currentStaff)?.role, isOnlineManager);
+  const wantsStaffLists = staffScreenReadsLists(activeTab);
   const wantsStaffListsRef = useRef(wantsStaffLists);
   wantsStaffListsRef.current = wantsStaffLists;
   // A write on a screen that pages from the server reloads no list (lib/crmChanged.ts).
@@ -484,7 +485,6 @@ const Dashboard: React.FC = () => {
   const {
     salesOwnLeads, 
     salesOwnSubscribers, setSalesOwnSubscribers,
-    salesOwnOrders, 
     salesOwnDaqqiRounds, setSalesOwnDaqqiRounds,
     onlineTeamMembers, 
     salesDataLoading, 
@@ -495,8 +495,6 @@ const Dashboard: React.FC = () => {
     isOnlineManager,
     staffSelf,
     currentStaff,
-    bundles,
-    courses,
     setStaffScopedSubscribers,
     setStaffScopedLeads,
     setStaffScopedRounds: bulkSetDaqqiRounds,
@@ -610,7 +608,10 @@ const Dashboard: React.FC = () => {
 
   // Effective arrays: for non-admin roles use own-data; for admin use context
   const effectiveSubs = usesStaffScopedData ? salesOwnSubscribers : subscribers;
-  const effectiveOrders = usesStaffScopedData ? salesOwnOrders : orders;
+  // An employee who keeps the accounts (customer service) reads the 500 newest payments of their clients from the server;
+  // the online manager has his own desk (usePaymentsDesk).
+  const staffOrders = useStaffOrders(usesStaffScopedData && activeTab === 'orders' && !isOnlineManager, courses, bundles);
+  const effectiveOrders = usesStaffScopedData ? staffOrders : orders;
   const branchFilteredEffectiveOrders = useMemo(() => branchQueryFilter
     ? effectiveOrders.filter((row) => {
       const orderPhone = String((row as { customerPhone?: string }).customerPhone || '');
@@ -717,8 +718,10 @@ const Dashboard: React.FC = () => {
     // Then the lists the screen reads that no longer come with the panel —
     // every one of them for a screen nobody has listed yet (tabSiteLists.ts).
     // After the full loads above, so a list a full load is bringing waits for it.
-    void ensureSiteLists(clientsArePaged ? listsForTab(activeTab).filter(list => list !== 'subscribers') : listsForTab(activeTab));
-  }, [activeTab, clientsArePaged, physicalBranch, loadFullCrmData, loadFullLeads, loadFullSubscribers, loadBranchSubscribers, ensureSiteLists]);
+    // An employee's version of a screen that pages from the server does not read the lists the administration's does.
+    const skipped = usesStaffScopedData ? staffSkipsSiteLists(activeTab) : [];
+    void ensureSiteLists(skipped.length ? listsForTab(activeTab).filter(list => !skipped.includes(list)) : listsForTab(activeTab));
+  }, [activeTab, clientsArePaged, usesStaffScopedData, physicalBranch, loadFullCrmData, loadFullLeads, loadFullSubscribers, loadBranchSubscribers, ensureSiteLists]);
 
   // Drawn over every screen, so they ask for their own lists: the follow-up
   // drawer lists the loaded leads' follow-ups (its bell counts on the server —
@@ -892,7 +895,6 @@ const Dashboard: React.FC = () => {
                   currentStaff={currentStaff ?? null}
                   salesOwnLeads={salesOwnLeads ?? []}
                   salesOwnSubscribers={salesOwnSubscribers}
-                  salesOwnOrders={salesOwnOrders}
                   subscribers={subscribers}
                   courses={courses}
                   staffMembers={staffMembers}
@@ -1031,8 +1033,6 @@ const Dashboard: React.FC = () => {
                   isSupport={isSupport}
                   isOnlineManager={isOnlineManager}
                   isAdmin={isAdmin}
-                  salesOwnSubscribers={salesOwnSubscribers}
-                  setSalesOwnSubscribers={setSalesOwnSubscribers}
                   courses={courses}
                   bundles={bundles}
                   updateSubscriber={updateSubscriber}
@@ -1058,7 +1058,6 @@ const Dashboard: React.FC = () => {
                     notify,
                     courses,
                     bundles,
-                    salesOwnSubscribers,
                     daqqiSubSearch,
                     setDaqqiSubSearch,
                     daqqiAccDateFrom,

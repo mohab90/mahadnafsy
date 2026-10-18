@@ -47,7 +47,6 @@ interface Props {
   currentStaff: StaffMember | null;
   salesOwnLeads: LeadItem[];
   salesOwnSubscribers: SubscriberItem[];
-  salesOwnOrders: OrderItem[];
   subscribers: SubscriberItem[];
   courses: Course[];
   staffMembers: StaffMember[];

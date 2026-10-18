@@ -8,12 +8,14 @@ import type { OrdersTabProps } from './ordersTypes';
 import type { OrderActions } from './useOrderActions';
 import { useState } from 'react';
 import { LinkTransferDialog, type TransferLink } from './LinkTransferDialog';
+import { usePaymentsDesk } from './usePaymentsDesk';
 
 type LinkTarget = { id: string; name: string; amount: number; currency: string; method: string; reference: string; at: string };
 
 export function OrdersOnlineManagerView({ props, actions }: { props: OrdersTabProps; actions: OrderActions }) {
-  const { canManageFinancial, notify, courses, bundles, salesOwnSubscribers, daqqiSubSearch, setDaqqiSubSearch, daqqiAccDateFrom, setDaqqiAccDateFrom, daqqiAccDateTo, setDaqqiAccDateTo, omOrdReviewTab, setOmOrdReviewTab, reloadOrders, reloadSubscribers } = props;
+  const { canManageFinancial, notify, courses, bundles, daqqiSubSearch, setDaqqiSubSearch, daqqiAccDateFrom, setDaqqiAccDateFrom, daqqiAccDateTo, setDaqqiAccDateTo, omOrdReviewTab, setOmOrdReviewTab, reloadOrders, reloadSubscribers } = props;
   const { paymentBoxes, navigate, approveMethod, setApproveMethod, canAcceptDirectly } = actions;
+  const desk = usePaymentsDesk({ tab: omOrdReviewTab, search: daqqiSubSearch, from: daqqiAccDateFrom, to: daqqiAccDateTo });
   // Only the manager accepts a payment outright; everybody else ties it to the
   // transfer that brought the money, or rejects it (lib/paymentApprovalPolicy.js).
   const [linkTarget, setLinkTarget] = useState<LinkTarget | null>(null);
@@ -31,42 +33,20 @@ export function OrdersOnlineManagerView({ props, actions }: { props: OrdersTabPr
       notify('error', error instanceof Error ? error.message : 'تعذر الربط');
     } finally { setLinkBusy(false); }
   };
-              const omSubs = salesOwnSubscribers;
-              const omAllPay = omSubs.flatMap(s => (s.paymentHistory||[]).map(p => ({
-                ...p, clientName: s.name, clientCode: s.clientCode||s.id, clientId: s.id, subEmail: s.email,
-              }))).sort((a,b)=>((b.at||'')>(a.at||'')?1:-1));
-              const [omOrdDateFrom2, setOmOrdDateFrom2] = [daqqiAccDateFrom, setDaqqiAccDateFrom];
-              const [omOrdDateTo2, setOmOrdDateTo2] = [daqqiAccDateTo, setDaqqiAccDateTo];
-              const filteredOm = omAllPay.filter(p => {
-                const d=cairoDay(p.at);
-                if(omOrdDateFrom2&&d<omOrdDateFrom2) return false;
-                if(omOrdDateTo2&&d>omOrdDateTo2) return false;
-                if(daqqiSubSearch.trim()){
-                  const q=daqqiSubSearch.toLowerCase();
-                  if(!(p.clientName||'').toLowerCase().includes(q)&&!(p.clientCode||'').toLowerCase().includes(q)) return false;
-                }
-                return true;
-              });
-              const pendingOm   = filteredOm.filter(p=>p.status==='pending');
-              const acceptedOm  = filteredOm.filter(p=>p.status!=='pending'&&p.status!=='failed'&&p.status!=='refunded');
-              const failedOm    = filteredOm.filter(p=>p.status==='failed'||p.status==='refunded');
-              const tabRowsOm = omOrdReviewTab==='review' ? pendingOm : omOrdReviewTab==='accepted' ? acceptedOm : failedOm;
-              const todayOmStr = cairoDateOnly();
-              const thisMonthOmStr = cairoMonthOnly();
-              const toEGP = (p:{amount:unknown;currency?:string}) => {
-                const n=Number(p.amount)||0;
-                return p.currency==='SAR'?n*13:p.currency==='USD'?n*50:n;
-              };
-              const todayAmtOm  = acceptedOm.filter(p=>cairoDay(p.at)===todayOmStr).reduce((s,p)=>s+toEGP(p),0);
-              const monthAmtOm  = acceptedOm.filter(p=>(p.at||'').startsWith(thisMonthOmStr)).reduce((s,p)=>s+toEGP(p),0);
+              // The server filters, groups and adds up (usePaymentsDesk): the three groups' counts, the money of the one
+              // on screen, and what the accepted payments brought in today and this month.
+              const tabRowsOm = desk.rows;
+              const counts = desk.totals ?? { pending: 0, accepted: 0, declined: 0, groupSumEgp: 0, acceptedTodayEgp: 0, acceptedMonthEgp: 0 };
+              const omOrdDateFrom2 = daqqiAccDateFrom; const setOmOrdDateFrom2 = setDaqqiAccDateFrom;
+              const omOrdDateTo2 = daqqiAccDateTo; const setOmOrdDateTo2 = setDaqqiAccDateTo;
               return (
                 <article className="space-y-4" dir="rtl">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {[
-                      {label:'إجمالي الدفعات', value:acceptedOm.length, color:'bg-slate-50 text-slate-700 border-slate-200'},
-                      {label:'انتظار تأكيد',   value:pendingOm.length,  color:'bg-amber-50 text-amber-700 border-amber-200'},
-                      {label:'تحصيل اليوم',    value:`${todayAmtOm.toLocaleString('ar-EG-u-nu-latn')} ج`, color:'bg-emerald-50 text-emerald-700 border-emerald-200'},
-                      {label:'تحصيل الشهر',   value:`${monthAmtOm.toLocaleString('ar-EG-u-nu-latn')} ج`, color:'bg-blue-50 text-blue-700 border-blue-200'},
+                      {label:'إجمالي الدفعات', value:counts.accepted, color:'bg-slate-50 text-slate-700 border-slate-200'},
+                      {label:'انتظار تأكيد',   value:counts.pending,  color:'bg-amber-50 text-amber-700 border-amber-200'},
+                      {label:'تحصيل اليوم',    value:`${Math.round(counts.acceptedTodayEgp).toLocaleString('ar-EG-u-nu-latn')} ج`, color:'bg-emerald-50 text-emerald-700 border-emerald-200'},
+                      {label:'تحصيل الشهر',   value:`${Math.round(counts.acceptedMonthEgp).toLocaleString('ar-EG-u-nu-latn')} ج`, color:'bg-blue-50 text-blue-700 border-blue-200'},
                     ].map(k=>(
                       <div key={k.label} className={`border rounded-xl px-3 py-3 ${k.color}`}>
                         <div className="text-xs font-medium mb-1">{k.label}</div>
@@ -77,9 +57,9 @@ export function OrdersOnlineManagerView({ props, actions }: { props: OrdersTabPr
                   {/* Review tabs */}
                   <div className="flex gap-2">
                     {([
-                      {key:'review' as const,  label:'قيد المراجعة', count:pendingOm.length,  color:'amber'},
-                      {key:'accepted' as const,label:'مقبولة',        count:acceptedOm.length, color:'green'},
-                      {key:'failed' as const,  label:'فاشلة',         count:failedOm.length,   color:'red'},
+                      {key:'review' as const,  label:'قيد المراجعة', count:counts.pending,  color:'amber'},
+                      {key:'accepted' as const,label:'مقبولة',        count:counts.accepted, color:'green'},
+                      {key:'failed' as const,  label:'فاشلة',         count:counts.declined,   color:'red'},
                     ]).map(({key,label,count,color}) => {
                       const active = omOrdReviewTab===key;
                       const cls:{[k:string]:string} = {
@@ -106,7 +86,7 @@ export function OrdersOnlineManagerView({ props, actions }: { props: OrdersTabPr
                       <button onClick={()=>{setDaqqiSubSearch('');setOmOrdDateFrom2('');setOmOrdDateTo2('');}}
                         className="text-xs text-red-500 border border-red-200 rounded-lg px-2 py-1.5 bg-red-50 hover:bg-red-100">مسح</button>
                     )}
-                    <span className="text-xs text-gray-400 ml-auto">{tabRowsOm.length} دفعة — {tabRowsOm.reduce((s,p)=>s+toEGP(p),0).toLocaleString('ar-EG-u-nu-latn')} ج</span>
+                    <span className="text-xs text-gray-400 ml-auto">{desk.total} دفعة — {Math.round(counts.groupSumEgp).toLocaleString('ar-EG-u-nu-latn')} ج</span>
                   </div>
                   {/* Table */}
                   <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
@@ -128,7 +108,7 @@ export function OrdersOnlineManagerView({ props, actions }: { props: OrdersTabPr
                           </tr>
                         </thead>
                         <tbody>
-                          {tabRowsOm.slice(0,200).map((p,i)=>{
+                          {tabRowsOm.map((p,i)=>{
                             const cid = (p as {courseId?:string}).courseId||'';
                             const courseTitle = cid.startsWith('bundle:')?bundles.find(b=>b.id===cid.replace('bundle:',''))?.title||'مسار':courses.find(c=>c.id===cid)?.title||(p as {paymentType?:string}).paymentType||'—';
                             const isPending = p.status==='pending';
@@ -207,11 +187,14 @@ export function OrdersOnlineManagerView({ props, actions }: { props: OrdersTabPr
                               </tr>
                             );
                           })}
-                          {tabRowsOm.length===0&&<tr><td colSpan={11} className="px-3 py-10 text-center text-gray-400">لا توجد مدفوعات مطابقة.</td></tr>}
+                          {tabRowsOm.length===0&&<tr><td colSpan={11} className="px-3 py-10 text-center text-gray-400">{desk.loading ? 'جاري التحميل…' : 'لا توجد مدفوعات مطابقة.'}</td></tr>}
                         </tbody>
                       </table>
                     </div>
                   </div>
+                  {desk.total > tabRowsOm.length && (
+                    <div className="text-center"><button type="button" onClick={() => { void desk.loadMore(); }} className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50">عرض المزيد ({desk.total - tabRowsOm.length})</button></div>
+                  )}
                   {linkTarget && (
                     <LinkTransferDialog title={linkTarget.name} customerName={linkTarget.name} amount={linkTarget.amount} currency={linkTarget.currency}
                       method={linkTarget.method} reference={linkTarget.reference} date={linkTarget.at} busy={linkBusy}
