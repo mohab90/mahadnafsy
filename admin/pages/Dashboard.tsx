@@ -34,7 +34,7 @@ import { branchSubscriberTabs, contentHubRouteTabs, directContentTabs, fullCrmDa
 import { listsForTab } from './dashboard/tabSiteLists';
 import type { SiteList } from '../context/site-data-hooks/siteLists';
 import { useStaffRoleRedirects } from './dashboard/hooks/useStaffRoleRedirects';
-import { CRM_CHANGED_EVENT } from '../lib/crmChanged';
+import { CRM_CHANGED_EVENT, setStaffListsWanted } from '../lib/crmChanged';
 import { useCurrentStaff } from './dashboard/hooks/useCurrentStaff';
 import { useOrdersDerived } from './dashboard/hooks/useOrdersDerived';
 import { useOverviewDerived } from './dashboard/hooks/useOverviewDerived';
@@ -65,7 +65,7 @@ import { tabForUrl, urlForTab, urlToTabAlias } from './dashboard/tabUrlAliases';
 import { useDashboardBadges } from './dashboard/useDashboardBadges';
 import { useNotificationsBell } from './dashboard/useNotificationsBell';
 import { useStaffOwnData } from './dashboard/useStaffOwnData';
-import { staffScreenReadsLists } from './dashboard/staffListTabs';
+import { staffClientsArePaged, staffScreenReadsLists } from './dashboard/staffListTabs';
 import { useDashboardDerived } from './dashboard/useDashboardDerived';
 import { useBranches } from '../hooks/useBranches';
 import { useCanDelete } from '../hooks/useCanDelete';
@@ -471,6 +471,11 @@ const Dashboard: React.FC = () => {
   const wantsStaffLists = staffScreenReadsLists(activeTab, (staffSelf || currentStaff)?.role, isOnlineManager);
   const wantsStaffListsRef = useRef(wantsStaffLists);
   wantsStaffListsRef.current = wantsStaffLists;
+  // A write on a screen that pages from the server reloads no list (lib/crmChanged.ts).
+  useEffect(() => {
+    setStaffListsWanted(!isNonAdminStaff || wantsStaffLists);
+    return () => setStaffListsWanted(true);
+  }, [isNonAdminStaff, wantsStaffLists]);
 
   // -- Own-data subscriptions for non-admin staff -----------------------------
   // SiteDataContext only loads CRM data for admins. Non-admin staff (sales, collection)
@@ -696,10 +701,12 @@ const Dashboard: React.FC = () => {
   // -- Client DB base data: raw mapping + dedup (expensive, only changes when data changes) -
 
   // -- Client DB filtered+sorted list (only recomputes when filter state changes) -
+  const clientsArePaged = staffClientsArePaged(activeTab, isNonAdminStaff, isOnlineManager);
   useEffect(() => {
     if (fullCrmDataTabs.has(activeTab)) void loadFullCrmData();
     else if (fullLeadTabs.has(activeTab)) void loadFullLeads();
-    else if (fullSubscriberTabs.has(activeTab)) void loadFullSubscribers();
+    // «عملائي» for an employee reads a page at a time from the server: no full list, in the context or out of it.
+    else if (fullSubscriberTabs.has(activeTab) && !clientsArePaged) void loadFullSubscribers();
     // A branch screen reads that branch only — see branchSubscriberTabs.
     // The Dokki screens read the branch they are showing — Tagamoa's under tagamoa_*.
     else if (branchSubscriberTabs[activeTab]) {
@@ -709,8 +716,8 @@ const Dashboard: React.FC = () => {
     // Then the lists the screen reads that no longer come with the panel —
     // every one of them for a screen nobody has listed yet (tabSiteLists.ts).
     // After the full loads above, so a list a full load is bringing waits for it.
-    void ensureSiteLists(listsForTab(activeTab));
-  }, [activeTab, physicalBranch, loadFullCrmData, loadFullLeads, loadFullSubscribers, loadBranchSubscribers, ensureSiteLists]);
+    void ensureSiteLists(clientsArePaged ? listsForTab(activeTab).filter(list => list !== 'subscribers') : listsForTab(activeTab));
+  }, [activeTab, clientsArePaged, physicalBranch, loadFullCrmData, loadFullLeads, loadFullSubscribers, loadBranchSubscribers, ensureSiteLists]);
 
   // Drawn over every screen, so they ask for their own lists: the follow-up
   // drawer lists the loaded leads' follow-ups (its bell counts on the server —

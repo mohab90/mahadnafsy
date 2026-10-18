@@ -4,7 +4,7 @@ import type { ConsultationItem, JoinUsApplication, LeadItem, LeadStats, LeadStat
 import { mysqlAdmin, mysqlForms } from '../../lib/mysqlapi';
 import { normalizeApplicants } from './normalizeApplicants';
 import { normalizeOrders } from './normalizeOrders';
-import { announceCrmChanged } from '../../lib/crmChanged';
+import { announceCrmChanged, staffListsWanted } from '../../lib/crmChanged';
 
 type Track = (action: string, entity: string, label: string) => void;
 
@@ -84,6 +84,8 @@ export function useCrmCoreState(
   }, [leadsRef]);
 
   const reloadSubscribers = useCallback(async () => {
+    // A screen that pages from the server has no list to reload (lib/crmChanged.ts staffListsWanted).
+    if (!staffListsWanted()) { announceCrmChanged(); return; }
     try {
       const fresh = await mysqlAdmin.listAllSubscribers();
       const normalized = (fresh as unknown as SubscriberItem[]).map(s => ({

@@ -29,6 +29,7 @@ const { installmentPlansBySubscriber, withInstallmentPlans } = require('../../li
 const { loadCollectionPicker, subscriberMarket } = require('../../lib/collectionDistribution');
 const { requireCollectionLead } = require('../collection-distribution');
 const { BRANCH_ROLES, requestedBranch } = require('../../lib/physicalBranches');
+const { buildView: buildClientsView, readFilters: readClientFilters } = require('../../lib/staffClientsView');
 
 async function loadEnrollmentProjection(tenantId, subscriberIds) {
   if (!subscriberIds.length) return {};
@@ -610,11 +611,174 @@ function staffSubscriberScope(req) {
   return { where: whereClause, params };
 }
 
+/**
+ * The clients of one query as the staff screens read them: payments, enrolments, instalment plans, placements and
+ * certificates. `lite` leaves out what only the row on screen shows (who recorded each payment, the certificate
+ * requests), for the pass that filters a whole scope before one page of it is shaped in full.
+ */
+async function shapeStaffSubscribers(tenantId, rows, { lite = false } = {}) {
+  if (rows.length === 0) return [];
+  const ids = rows.map(r => r.id);
+  const plansBySub = await installmentPlansBySubscriber(tenantId, ids);
+  // A course placed in another branch than the client's (lib/coursePlacement.js).
+  const placementsBySub = await loadPlacements(pool, tenantId, ids);
+  const [payRows] = await pool.query(
+    `SELECT id, subscriber_id, course_id, bundle_id, amount, currency,
+            payment_type, payment_method, transaction_id, is_installment, course_expected, \`date\`, note,
+            status, staff_id, staff_name, from_account, source, item_title, cert_type,
+            certificate_request_id, branch
+     FROM payments
+     WHERE tenant_id=? AND subscriber_id IN (${ids.map(() => '?').join(',')}) AND deleted_at IS NULL
+     ORDER BY \`date\` ASC`,
+    [tenantId, ...ids]
+  );
+  const executors = lite ? new Map() : await resolvePaymentExecutors(pool, tenantId, payRows);
+  const payBySubId = {};
+  payRows.forEach(p => {
+    if (!payBySubId[p.subscriber_id]) payBySubId[p.subscriber_id] = [];
+    const dateStr = safeDateOnly(p.date);
+    payBySubId[p.subscriber_id].push({
+      id: p.id, amount: Number(p.amount)||0, currency: p.currency||'EGP',
+      paymentType: (p.payment_type||'other').toLowerCase(), paymentMethod: p.payment_method||null,
+      transactionId: p.transaction_id||null, isInstallment: !!p.is_installment,
+      courseId: p.course_id||null, bundleId: p.bundle_id||null,
+      courseExpected: p.course_expected != null ? Number(p.course_expected) : undefined,
+      note: p.note||null, at: dateStr,
+      status: p.status||'paid', staffId: p.staff_id||null, staffName: executors.get(String(p.id)) ?? null,
+      fromAccountNumber: p.from_account||null, source: p.source||null, itemTitle: p.item_title||null,
+      certType: p.cert_type || null, certId: p.certificate_request_id || null, branch: p.branch || null,
+    });
+  });
+
+  const enrollmentProjection = await loadEnrollmentProjection(tenantId, ids);
+  const completionProjection = await loadCompletionProjection(tenantId, ids);
+
+  const [staffCertificateRows] = lite ? [[]] : await pool.query(
+    `SELECT id, subscriber_id, course_id, type, custom_name, name_ar, name_en,
+            nationality, id_number, status, price, paid_amount, currency, note,
+            admin_note, requested_at, issued_at
+     FROM certificate_requests
+     WHERE tenant_id=? AND subscriber_id IN (${ids.map(() => '?').join(',')})
+     ORDER BY requested_at DESC`,
+    [tenantId, ...ids]
+  );
+  const certificatePricingConfig = lite ? null : await certificatePricing(pool, tenantId);
+  const staffCertificatesBySub = {};
+  staffCertificateRows.forEach(request => {
+    if (!staffCertificatesBySub[request.subscriber_id]) staffCertificatesBySub[request.subscriber_id] = [];
+    staffCertificatesBySub[request.subscriber_id].push({
+      id: request.id,
+      courseId: request.course_id || undefined,
+      type: String(request.type || 'OTHER').toLowerCase(),
+      customName: request.custom_name || undefined,
+      nameAr: request.name_ar || undefined,
+      nameEn: request.name_en || undefined,
+      nationality: request.nationality ? String(request.nationality).toLowerCase() : undefined,
+      idNumber: request.id_number || undefined,
+      status: String(request.status || 'PENDING').toLowerCase(),
+      price: certificateDue(certificatePricingConfig, request) || undefined,
+      paidAmount: request.paid_amount != null ? Number(request.paid_amount) : 0,
+      currency: request.currency || undefined,
+      requestedAt: safeIsoString(request.requested_at) || null,
+      issuedAt: safeIsoString(request.issued_at) || undefined,
+      note: request.note || undefined,
+      adminNote: request.admin_note || undefined,
+    });
+  });
+
+  return rows.map(r => {
+    const crm = withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id));
+    const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : [];
+    const enrolledCourseIds = enrollmentProjection[r.id]?.ids || [];
+    const rb = r.branch || crm.branch || null;
+    const nb = rb ? rb.toUpperCase().replace(/[-\s]/g,'_') : null;
+    return {
+      id: r.id, name: r.name, email: r.email, phone: r.phone, phone2: r.phone2 || '',
+      firebaseUid: r.firebase_uid, isActive: !!r.is_active,
+      notes: r.notes, createdAt: r.created_at,
+      ...crm, coursePlacements: placementsBySub.get(r.id) || {},
+      enrolledCourseIds,
+      enrolledBundleIds: enrollmentProjection[r.id]?.bundleIds || [],
+      courseAccess: enrollmentProjection[r.id]?.access || {},
+      certificates: completionProjection[r.id] || [],
+      clientCode: r.client_code || crm.clientCode || null,
+      paymentHistory,
+      extraCertificateRequests: staffCertificatesBySub[r.id] || [],
+      branch: (nb && VALID_BRANCHES.has(nb)) ? nb : rb,
+      clientType: r.client_type || null,
+      assignedSalesId:   r.assigned_sales_id || null,
+      assignedSalesName: r.assigned_sales_name || null,
+      assignedCsId:      r.assigned_cs_id || null,
+      assignedCsName:    r.assigned_cs_name || null,
+      updatedAt: safeIsoString(r.updated_at) || null,
+    };
+  });
+}
+
+/**
+ * GET /api/staff/subscribers?paged=1 — «عملائي» a page at a time: { rows, total, tabCounts, followCounts, figures }.
+ *
+ *   view     active | real-local | real-saudi | real-intl | finished | paused | refunded | old_local | old_intl
+ *   q, from, to, course, collector (a staff id, or __none__), status, cert, remaining, follow — the screen's filters
+ *   limit, offset
+ *
+ * The same clients and the same rules the screen applied to its whole downloaded list (lib/staffClientsView.js), so
+ * the page, the total, the tab counts and the figures above the table agree with one another as they did there.
+ */
+async function staffClientsPage(req, sc) {
+  const tenantId = req.tenantId;
+  const filters = readClientFilters(req.query);
+  const limit = parseLimit(req.query.limit, 24, 500);
+  const offset = parseOffset(req.query.offset || 0);
+  const [rows] = await pool.query(
+    `SELECT s.*,
+            COALESCE(ss.name, s.assigned_sales_name) AS assigned_sales_name,
+            COALESCE(cs.name, s.assigned_cs_name)    AS assigned_cs_name
+       FROM subscribers s
+       LEFT JOIN staff ss ON ss.id = s.assigned_sales_id AND ss.tenant_id=s.tenant_id
+       LEFT JOIN staff cs ON cs.id = s.assigned_cs_id AND cs.tenant_id=s.tenant_id
+      WHERE s.tenant_id = ? AND s.deleted_at IS NULL AND (${sc.where})
+      ORDER BY s.created_at DESC, s.id DESC`,
+    [tenantId, ...sc.params]
+  );
+  const clients = [];
+  for (let i = 0; i < rows.length; i += 1000) clients.push(...await shapeStaffSubscribers(tenantId, rows.slice(i, i + 1000), { lite: true }));
+
+  const catalogueRows = await cached(`staff-clients:catalogue:${tenantId}`, 30 * 1000, async () => {
+    const [courses] = await pool.query('SELECT id, price_egp, price_sar, price_usd FROM courses WHERE tenant_id=?', [tenantId]);
+    const [bundles] = await pool.query(
+      `SELECT b.id, b.price_egp, b.price_sar, b.price_usd, GROUP_CONCAT(bc.course_id) AS course_ids
+         FROM bundles b LEFT JOIN bundle_courses bc ON bc.bundle_id = b.id WHERE b.tenant_id=? GROUP BY b.id`, [tenantId]);
+    return { courses, bundles };
+  });
+  const priceOf = row => ({ EGP: Number(row.price_egp) || 0, SAR: Number(row.price_sar) || 0, USD: Number(row.price_usd) || 0 });
+  const catalogue = {
+    courses: new Map(catalogueRows.courses.map(row => [row.id, { price: priceOf(row) }])),
+    bundles: new Map(catalogueRows.bundles.map(row => [row.id, { price: priceOf(row), courseIds: row.course_ids ? String(row.course_ids).split(',') : [] }])),
+  };
+
+  const today = cairoToday();
+  const view = buildClientsView(clients, filters, {
+    today, catalogue,
+    weekStart: addDaysToDateOnly(today, -new Date(`${today}T00:00:00Z`).getUTCDay()),
+    monthStart: `${today.slice(0, 7)}-01`,
+    // A rep's «عملائي» is every client they sold, whichever branch studies (the screen's isSalesStaff).
+    allBranches: String(req.staffRecord?.role || '').toLowerCase() === 'sales',
+  });
+  const rowById = new Map(rows.map(row => [row.id, row]));
+  const pageRows = view.ids.slice(offset, offset + limit).map(id => rowById.get(id));
+  return {
+    rows: await shapeStaffSubscribers(tenantId, pageRows),
+    total: view.ids.length, tabCounts: view.tabCounts, followCounts: view.followCounts, figures: view.figures,
+  };
+}
+
 router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePermission('view_subscribers'), async (req, res) => {
   try {
     const sc = staffSubscriberScope(req);
     if (sc.none) return res.json([]);
     if (sc.forbidden) return res.status(403).json({ error: 'Staff record required' });
+    if (req.query.paged === '1') return res.json(await staffClientsPage(req, sc));
     const whereClause = sc.where;
     const params    = [req.tenantId, ...sc.params];
 
@@ -637,103 +801,7 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePe
        ORDER BY s.created_at DESC, s.id DESC LIMIT ? OFFSET ?`,
       params
     );
-    if (rows.length === 0) return res.json([]);
-
-    const ids = rows.map(r => r.id);
-    const plansBySub = await installmentPlansBySubscriber(req.tenantId, ids);
-    // A course placed in another branch than the client's (lib/coursePlacement.js).
-    const placementsBySub = await loadPlacements(pool, req.tenantId, ids);
-    const [payRows] = await pool.query(
-      `SELECT id, subscriber_id, course_id, bundle_id, amount, currency,
-              payment_type, payment_method, transaction_id, is_installment, course_expected, \`date\`, note,
-              status, staff_id, staff_name, from_account, source, item_title, cert_type,
-              certificate_request_id, branch
-       FROM payments
-       WHERE tenant_id=? AND subscriber_id IN (${ids.map(() => '?').join(',')}) AND deleted_at IS NULL
-       ORDER BY \`date\` ASC`,
-      [req.tenantId, ...ids]
-    );
-    const executors = await resolvePaymentExecutors(pool, req.tenantId, payRows);
-    const payBySubId = {};
-    payRows.forEach(p => {
-      if (!payBySubId[p.subscriber_id]) payBySubId[p.subscriber_id] = [];
-      const dateStr = safeDateOnly(p.date);
-      payBySubId[p.subscriber_id].push({
-        id: p.id, amount: Number(p.amount)||0, currency: p.currency||'EGP',
-        paymentType: (p.payment_type||'other').toLowerCase(), paymentMethod: p.payment_method||null,
-        transactionId: p.transaction_id||null, isInstallment: !!p.is_installment,
-        courseId: p.course_id||null, bundleId: p.bundle_id||null,
-        courseExpected: p.course_expected != null ? Number(p.course_expected) : undefined,
-        note: p.note||null, at: dateStr,
-        status: p.status||'paid', staffId: p.staff_id||null, staffName: executors.get(String(p.id)) ?? null,
-        fromAccountNumber: p.from_account||null, source: p.source||null, itemTitle: p.item_title||null,
-        certType: p.cert_type || null, certId: p.certificate_request_id || null, branch: p.branch || null,
-      });
-    });
-
-    const enrollmentProjection = await loadEnrollmentProjection(req.tenantId, ids);
-    const completionProjection = await loadCompletionProjection(req.tenantId, ids);
-
-    const [staffCertificateRows] = await pool.query(
-      `SELECT id, subscriber_id, course_id, type, custom_name, name_ar, name_en,
-              nationality, id_number, status, price, paid_amount, currency, note,
-              admin_note, requested_at, issued_at
-       FROM certificate_requests
-       WHERE tenant_id=? AND subscriber_id IN (${ids.map(() => '?').join(',')})
-       ORDER BY requested_at DESC`,
-      [req.tenantId, ...ids]
-    );
-    const certificatePricingConfig = await certificatePricing(pool, req.tenantId);
-    const staffCertificatesBySub = {};
-    staffCertificateRows.forEach(request => {
-      if (!staffCertificatesBySub[request.subscriber_id]) staffCertificatesBySub[request.subscriber_id] = [];
-      staffCertificatesBySub[request.subscriber_id].push({
-        id: request.id,
-        courseId: request.course_id || undefined,
-        type: String(request.type || 'OTHER').toLowerCase(),
-        customName: request.custom_name || undefined,
-        nameAr: request.name_ar || undefined,
-        nameEn: request.name_en || undefined,
-        nationality: request.nationality ? String(request.nationality).toLowerCase() : undefined,
-        idNumber: request.id_number || undefined,
-        status: String(request.status || 'PENDING').toLowerCase(),
-        price: certificateDue(certificatePricingConfig, request) || undefined,
-        paidAmount: request.paid_amount != null ? Number(request.paid_amount) : 0,
-        currency: request.currency || undefined,
-        requestedAt: safeIsoString(request.requested_at) || null,
-        issuedAt: safeIsoString(request.issued_at) || undefined,
-        note: request.note || undefined,
-        adminNote: request.admin_note || undefined,
-      });
-    });
-
-    res.json(rows.map(r => {
-      const crm = withInstallmentPlans(parseCrm(r.crm_json), plansBySub.get(r.id));
-      const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : [];
-      const enrolledCourseIds = enrollmentProjection[r.id]?.ids || [];
-      const rb = r.branch || crm.branch || null;
-      const nb = rb ? rb.toUpperCase().replace(/[-\s]/g,'_') : null;
-      return {
-        id: r.id, name: r.name, email: r.email, phone: r.phone, phone2: r.phone2 || '',
-        firebaseUid: r.firebase_uid, isActive: !!r.is_active,
-        notes: r.notes, createdAt: r.created_at,
-        ...crm, coursePlacements: placementsBySub.get(r.id) || {},
-        enrolledCourseIds,
-        enrolledBundleIds: enrollmentProjection[r.id]?.bundleIds || [],
-        courseAccess: enrollmentProjection[r.id]?.access || {},
-        certificates: completionProjection[r.id] || [],
-        clientCode: r.client_code || crm.clientCode || null,
-        paymentHistory,
-        extraCertificateRequests: staffCertificatesBySub[r.id] || [],
-        branch: (nb && VALID_BRANCHES.has(nb)) ? nb : rb,
-        clientType: r.client_type || null,
-        assignedSalesId:   r.assigned_sales_id || null,
-        assignedSalesName: r.assigned_sales_name || null,
-        assignedCsId:      r.assigned_cs_id || null,
-        assignedCsName:    r.assigned_cs_name || null,
-        updatedAt: safeIsoString(r.updated_at) || null,
-      };
-    }));
+    res.json(await shapeStaffSubscribers(req.tenantId, rows));
   } catch (e) { logger.error('[/api/staff/subscribers]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 

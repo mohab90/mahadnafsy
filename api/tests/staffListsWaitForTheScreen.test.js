@@ -35,13 +35,16 @@ test('the landing page and the person\'s own pages do not start the download; th
   for (const tab of ['staff_home', 'staff_settings', 'my_hr']) assert.equal(reads(tab, 'sales', false), false, tab);
   assert.equal(reads('orders', 'sales', false), false, '«مدفوعاتي» pages from the server');
   assert.equal(reads('orders', 'collection', false), false);
-  for (const tab of ['leads', 'online_clients', 'daqqi_clients', 'client', 'sales_hub', 'refund_requests', 'some_new_screen']) {
+  assert.equal(reads('online_clients', 'sales', false), false, '«عملائي» pages from the server');
+  assert.equal(reads('online_clients', 'collection', false), false);
+  for (const tab of ['leads', 'daqqi_clients', 'client', 'sales_hub', 'refund_requests', 'some_new_screen']) {
     assert.equal(reads(tab, 'sales', false), true, `${tab} is read through only when it is listed`);
   }
   // The accounts screen keeps the loaded clients, and so does the online manager's header (installments, new payments).
   assert.equal(reads('orders', 'accountant', false), true);
   assert.equal(reads('orders', 'support', false), true);
   assert.equal(reads('staff_home', 'sales', true), true);
+  assert.equal(reads('online_clients', 'sales', true), true, "the online manager's screen still holds the list");
 });
 
 test('the staff lists are downloaded only on a screen that wants them, and the timers leave the others alone', () => {
