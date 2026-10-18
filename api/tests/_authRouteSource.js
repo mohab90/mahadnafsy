@@ -25,11 +25,11 @@ function checkoutSource() {
 }
 
 // «الطلبات والمدفوعات» is admin/pages/dashboard/tabs/OrdersTab.tsx choosing one
-// of three views under tabs/orders/; read together.
+// of two views under tabs/orders/; read together.
 function ordersScreenSource() {
   const tabs = path.join(__dirname, '..', '..', 'admin', 'pages', 'dashboard', 'tabs');
   return ['OrdersTab.tsx', 'orders/ordersTypes.ts', 'orders/useOrderActions.ts',
-    'orders/OrdersOnlineManagerView.tsx', 'orders/OrdersDaqqiView.tsx', 'orders/OrdersAdminView.tsx']
+    'orders/OrdersOnlineManagerView.tsx', 'orders/OrdersAdminView.tsx', 'orders/usePaymentsDesk.ts']
     .map(rel => fs.readFileSync(path.join(tabs, rel), 'utf8'))
     .join('\n');
 }

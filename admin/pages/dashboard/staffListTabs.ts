@@ -1,36 +1,36 @@
-/**
- * Which screens an employee (not an admin) opens that read the person's own lists of leads and clients.
- *
- * Those lists — every lead and client in the role's scope, with the clients' payments — were downloaded at sign-in
- * for every role, again after every write, every two minutes and at every return to the tab (37,000 leads for one
- * sales rep on the production-scale lab). The screens below read the server's own figures instead
- * (GET /api/staff/home-summary and /api/staff/payments), «عملائي» reads the clients a page at a time with the server
- * filtering and counting them (GET /api/staff/subscribers?paged=1), and the leads screen pages its table and board from
- * the server and asks for its strip, its follow-ups drawer, its contact search, its export and its client lookups one
- * figure at a time (GET /api/staff/leads-kpis and /api/admin/leads/{table,board,followups-panel,clients}), so the
- * download waits for the first screen that is not on this list: the landing page, the person's own pages, their
- * payments, their clients and their leads no longer start it.
- *
- * A screen not named here is assumed to need the lists, so a screen nobody has checked cannot open on an empty
- * array that it takes for "no clients". api/tests/staffListsWaitForTheScreen.test.js holds this list to what the
- * files below really read.
- */
-const OWN_PAGES: ReadonlySet<string> = new Set(['staff_home', 'staff_settings', 'my_hr', 'online_clients', 'leads']);
+import type { SiteList } from '../../context/site-data-hooks/siteLists';
 
-/** Accounts roles keep the accounts screen (OrdersTab), which reads the loaded clients. */
-const KEEPS_THE_ACCOUNTS = ['accountant', 'support'];
+/**
+ * The screens an employee (not an administrator) opens that page, filter and count on the server.
+ *
+ * An employee's panel used to download every lead and client in their scope, with the clients' payments (37,000 leads
+ * and 5,000 clients for one sales rep on the production-scale lab), at sign-in, after every write, every two minutes
+ * and at every return to the tab, and drew most of its screens out of them. Those screens now ask the server for the
+ * page, the figures and the counts they show: the landing page (GET /api/staff/home-summary), «عملائي»
+ * (/api/staff/subscribers?paged=1), the leads (/api/staff/leads-kpis and /api/admin/leads/…), the accounts desks
+ * (/api/staff/payments), «إحصائياتي» (/api/staff/overview-summary) and the online manager's badges
+ * (/api/staff/online-manager-summary). Nothing downloads the lists any more, and
+ * api/tests/staffListsWaitForTheScreen.test.js fails if a file starts reading them again.
+ */
+const SERVER_PAGES: ReadonlySet<string> = new Set(['staff_home', 'staff_settings', 'my_hr', 'online_clients', 'leads', 'orders']);
 
 /**
  * «عملائي» pages from the server for every employee (OnlineClientsTab, useStaffClientsPage), the online manager
- * included — his header badges and their panels read GET /api/staff/online-manager-summary — so for them neither the
- * staff list nor the context's full client list is loaded when it opens.
+ * included, so for them the context's full client list is not loaded when it opens.
  */
 export const staffClientsArePaged = (tab: string, isNonAdminStaff: boolean, isOnlineManager: boolean): boolean =>
   tab === 'online_clients' && (isNonAdminStaff || isOnlineManager);
 
-export function staffScreenReadsLists(tab: string, role: string | undefined, isOnlineManager: boolean): boolean {
-  if (OWN_PAGES.has(tab)) return false;
-  // The accounts screen (OrdersTab) reads the loaded clients: the accounts roles' and the online manager's.
-  if (tab === 'orders') return isOnlineManager || KEEPS_THE_ACCOUNTS.includes(String(role || '').toLowerCase());
-  return true;
-}
+/**
+ * The screens that read nothing from the context's lists either: a write there has no list to reload, so the
+ * dashboard's reloadSubscribers only announces it (lib/crmChanged.ts). The other screens read the context's lists,
+ * and a write there reloads them.
+ */
+export const staffScreenPagesFromServer = (tab: string): boolean => SERVER_PAGES.has(tab);
+
+/**
+ * The context's on-demand lists (siteLists.ts) an employee's session does not ask for on a screen that pages from the
+ * server: the administration's version of the screen reads them, theirs does not.
+ */
+export const staffSkipsSiteLists = (tab: string): readonly SiteList[] =>
+  tab === 'online_clients' ? ['subscribers'] : tab === 'orders' ? ['orders', 'subscribers'] : [];

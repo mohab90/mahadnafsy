@@ -18,10 +18,20 @@ test('both reloads announce the change, and the staff lists are refetched on it'
   const reloadSubs = core.slice(core.indexOf('const reloadSubscribers = useCallback'), core.indexOf('const recordSubscriberPayment'));
   assert.match(reloadLeads, /announceCrmChanged\(\);/);
   assert.match(reloadSubs, /announceCrmChanged\(\);/);
-  const dashboard = read('admin/pages/Dashboard.tsx');
-  assert.match(dashboard, /window\.addEventListener\(CRM_CHANGED_EVENT, onChanged\);/);
-  assert.match(dashboard, /timer = setTimeout\(\(\) => \{ if \(wantsStaffListsRef\.current\) void fetchSalesData\(\); \}, 300\);/,
-    'one refetch for a burst of reloads, and only where the lists are shown');
+  // An employee's screens page from the server (they download no list), and each one asks again on the announcement:
+  // once for a burst of reloads, after a short wait.
+  for (const rel of [
+    'admin/pages/dashboard/tabs/useStaffClientsPage.ts',
+    'admin/pages/dashboard/tabs/orders/usePaymentsDesk.ts',
+    'admin/pages/dashboard/useStaffOrders.ts',
+    'admin/pages/dashboard/useStaffOverview.ts',
+    'admin/pages/dashboard/useOnlineManagerSummary.ts',
+    'admin/pages/dashboard/useStaffHomeSummary.ts',
+  ]) {
+    const source = read(rel);
+    assert.match(source, /window\.addEventListener\(CRM_CHANGED_EVENT, onChanged\);/, rel);
+    assert.match(source, /clearTimeout\(timer\); timer = setTimeout\(/, `${rel}: one refetch for a burst of reloads`);
+  }
   assert.doesNotMatch(read('admin/pages/dashboard/useStaffOwnData.ts'), /reloadLeads|reloadSubscribers|announceCrmChanged/,
     'the refetch must not announce a change itself, or it would loop');
 });

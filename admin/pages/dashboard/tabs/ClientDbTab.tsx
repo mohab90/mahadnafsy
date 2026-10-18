@@ -102,11 +102,11 @@ const SUB_TYPE_COLOR: Record<string, string> = {
 };
 
 export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBook?: (id: string, type: 'subscriber' | 'lead') => void }) {
-  const { subscribers, leads, courses, staffScopedSubscribers, staffScopedLeads, reloadSubscribers, deleteSubscriber, deleteLead, isAdmin, authUser } = useSiteData();
-  // Staff-scoped data is populated from the original DB rows by Dashboard's fetchSalesData.
-  // Prefer it whenever available so full-access staff roles (online manager) do not fall back to a separate admin-only context path.
-  const effectiveSubs = staffScopedSubscribers.length > 0 ? staffScopedSubscribers : subscribers;
-  const effectiveLeads = staffScopedLeads.length > 0 ? staffScopedLeads : leads;
+  const { subscribers, leads, courses, reloadSubscribers, deleteSubscriber, deleteLead, isAdmin, authUser } = useSiteData();
+  // The table draws the loaded page of clients and leads — the same for the administration and for an employee (the
+  // server scopes it to the employee's own) — and «البحث في قاعدة البيانات كاملة» below it searches the rest on the server.
+  const effectiveSubs = subscribers;
+  const effectiveLeads = leads;
   const branches = useBranches();
   const navigate = useNavigate();
   const isMobile = useIsMobile();

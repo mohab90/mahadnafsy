@@ -32,6 +32,7 @@ const { requireCollectionLead } = require('../collection-distribution');
 const { BRANCH_ROLES, requestedBranch } = require('../../lib/physicalBranches');
 const { buildView: buildClientsView, dueInstallments, readFilters: readClientFilters } = require('../../lib/staffClientsView');
 const { mapInstallmentPlan } = require('../../lib/installmentMath');
+const { buildOverview } = require('../../lib/staffOverview');
 
 async function loadEnrollmentProjection(tenantId, subscriberIds) {
   if (!subscriberIds.length) return {};
@@ -708,6 +709,7 @@ async function shapeStaffSubscribers(tenantId, rows, { lite = false } = {}) {
       extraCertificateRequests: staffCertificatesBySub[r.id] || [],
       branch: (nb && VALID_BRANCHES.has(nb)) ? nb : rb,
       clientType: r.client_type || null,
+      leadId: r.lead_id || crm.leadId || undefined,
       assignedSalesId:   r.assigned_sales_id || null,
       assignedSalesName: r.assigned_sales_name || null,
       assignedCsId:      r.assigned_cs_id || null,
@@ -727,11 +729,8 @@ async function shapeStaffSubscribers(tenantId, rows, { lite = false } = {}) {
  * The same clients and the same rules the screen applied to its whole downloaded list (lib/staffClientsView.js), so
  * the page, the total, the tab counts and the figures above the table agree with one another as they did there.
  */
-async function staffClientsPage(req, sc) {
+async function loadScopeClients(req, sc) {
   const tenantId = req.tenantId;
-  const filters = readClientFilters(req.query);
-  const limit = parseLimit(req.query.limit, 24, 500);
-  const offset = parseOffset(req.query.offset || 0);
   const [rows] = await pool.query(
     `SELECT s.*,
             COALESCE(ss.name, s.assigned_sales_name) AS assigned_sales_name,
@@ -758,7 +757,15 @@ async function staffClientsPage(req, sc) {
     courses: new Map(catalogueRows.courses.map(row => [row.id, { price: priceOf(row) }])),
     bundles: new Map(catalogueRows.bundles.map(row => [row.id, { price: priceOf(row), courseIds: row.course_ids ? String(row.course_ids).split(',') : [] }])),
   };
+  return { rows, clients, catalogue };
+}
 
+async function staffClientsPage(req, sc) {
+  const tenantId = req.tenantId;
+  const filters = readClientFilters(req.query);
+  const limit = parseLimit(req.query.limit, 24, 500);
+  const offset = parseOffset(req.query.offset || 0);
+  const { rows, clients, catalogue } = await loadScopeClients(req, sc);
   const today = cairoToday();
   const view = buildClientsView(clients, filters, {
     today, catalogue,
@@ -1350,6 +1357,136 @@ router.get('/api/staff/online-manager-summary', requireAuth, requireAdminOrStaff
 });
 
 // ────────────────────────────────────────────────────────────
+// GET /api/staff/overview-summary[?kind=online_manager] — «إحصائياتي» of the collection officer, the online manager and
+// the Dokki reception: what was collected today, this week and this month, what is still owed, the instalments that are
+// overdue or due, the last thirty days, how many clients hold each course and, for the online manager, how each
+// collection officer is doing (their calls, collections, clients, balance and overdue instalments).
+// They were added up in the browser out of every client the panel had downloaded. Held 15 s.
+// ────────────────────────────────────────────────────────────
+router.get('/api/staff/overview-summary', requireAuth, requireAdminOrStaff, requirePermission('view_subscribers'), async (req, res) => {
+  try {
+    const sc = staffSubscriberScope(req);
+    if (sc.forbidden) return res.status(403).json({ error: 'Staff record required' });
+    const withTeam = String(req.query.kind || '') === 'online_manager';
+    const today = cairoToday();
+    const tenantId = req.tenantId;
+    const key = `figures:staff-overview:${tenantId}:${req.staffRecord?.id || req.user?.uid}:${withTeam ? 'team' : 'own'}:${today}`;
+    const payload = await cached(key, 15 * 1000, async () => {
+      const weekStart = addDaysToDateOnly(today, -new Date(`${today}T00:00:00Z`).getUTCDay());
+      const monthStart = `${today.slice(0, 7)}-01`;
+      const { clients, catalogue } = sc.none ? { clients: [], catalogue: { courses: new Map(), bundles: new Map() } } : await loadScopeClients(req, sc);
+      let team = [];
+      const calls = new Map();
+      if (withTeam) {
+        const [members] = await pool.query(
+          "SELECT id, name, LOWER(role) AS role FROM staff WHERE tenant_id=? AND LOWER(role)='collection' AND is_active=1 AND deleted_at IS NULL ORDER BY name", [tenantId]);
+        const ids = members.map(member => member.id);
+        if (ids.length) {
+          // The leads each officer works, by the sales owner and by the collection owner (two indexed reads, not an OR).
+          const owned = `SELECT id, assigned_sales_id AS staff_id FROM leads WHERE tenant_id=? AND assigned_sales_id IN (?)
+                         UNION SELECT id, assigned_cs_id AS staff_id FROM leads WHERE tenant_id=? AND assigned_cs_id IN (?)`;
+          const ownedParams = [tenantId, ids, tenantId, ids];
+          const lowest = cairoDayStartUtc(weekStart < monthStart ? weekStart : monthStart);
+          const [leadRows] = await pool.query(owned, ownedParams);
+          const [callRows] = await pool.query(
+            `SELECT x.staff_id,
+                    SUM(c.date >= ? AND c.date < ?) AS today, SUM(c.date >= ?) AS week, SUM(c.date >= ?) AS month
+               FROM (${owned}) x JOIN communications c ON c.lead_id = x.id AND c.tenant_id = ? AND c.type = 'CALL' AND c.date >= ?
+              GROUP BY x.staff_id`,
+            [cairoDayStartUtc(today), cairoDayStartUtc(addDaysToDateOnly(today, 1)), cairoDayStartUtc(weekStart), cairoDayStartUtc(monthStart), ...ownedParams, tenantId, lowest]);
+          for (const row of callRows) calls.set(row.staff_id, { today: Number(row.today) || 0, week: Number(row.week) || 0, month: Number(row.month) || 0 });
+          team = members.map(member => ({ ...member, leadIds: new Set(leadRows.filter(lead => lead.staff_id === member.id).map(lead => lead.id)) }));
+        }
+      }
+      return buildOverview(clients, { today, weekStart, monthStart, catalogue, team, calls });
+    });
+    res.json(payload);
+  } catch (e) { logger.error('[/api/staff/overview-summary]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ────────────────────────────────────────────────────────────
+// GET /api/admin/online-team-summary?range=today|7d|30d|month|all — «مركز الأونلاين»: what the online and collection teams
+// collected in the period, the instalments overdue (all, and each collection officer's), the last seven days, the active
+// clients, and per employee how many clients they hold and how much their clients and they paid.
+//
+// The screen filtered every online client and downloaded every payment of the period to work these out.
+// ────────────────────────────────────────────────────────────
+const ONLINE_BRANCHES = ['ONLINE_EGYPT', 'ONLINE_SAUDI', 'ONLINE_ABROAD'];
+router.get('/api/admin/online-team-summary', requireAuth, requireAdminOrStaff, requirePermission('manage_subscribers'), async (req, res) => {
+  try {
+    const tenantId = req.tenantId;
+    const range = ['today', '7d', '30d', 'month', 'all'].includes(String(req.query.range)) ? String(req.query.range) : 'month';
+    const today = cairoToday();
+    const startDay = { today, '7d': addDaysToDateOnly(today, -7), '30d': addDaysToDateOnly(today, -30), month: `${today.slice(0, 7)}-01`, all: '2000-01-01' }[range];
+    const from = cairoDayStartUtc(startDay);
+    const weekFrom = cairoDayStartUtc(addDaysToDateOnly(today, -6));
+    const tomorrow = cairoDayStartUtc(addDaysToDateOnly(today, 1));
+    const egp = "COALESCE(p.amount_egp, CASE WHEN p.currency='EGP' THEN p.amount ELSE 0 END)";
+    const paidOnline = "p.tenant_id=? AND p.deleted_at IS NULL AND p.status='paid' AND p.branch IN (?)";
+    const clientsOnline = 's.tenant_id=? AND s.deleted_at IS NULL AND s.branch IN (?)';
+    const [[[paid]], [weekly], [byCollector], [viaClients], [plans], [[active]], [subsCount]] = await Promise.all([
+      pool.query(`SELECT COALESCE(SUM(${egp}), 0) AS total, COUNT(*) AS n FROM payments p WHERE ${paidOnline} AND p.date >= ?`, [tenantId, ONLINE_BRANCHES, from]),
+      pool.query(
+        `SELECT DATE(${sqlCairoWall('p.date')}) AS day, SUM(${egp}) AS total, SUM(CASE WHEN p.is_installment=1 THEN ${egp} ELSE 0 END) AS installments
+           FROM payments p WHERE ${paidOnline} AND p.date >= ? AND p.date < ? GROUP BY day`, [tenantId, ONLINE_BRANCHES, weekFrom, tomorrow]),
+      pool.query(`SELECT p.staff_id AS id, COALESCE(SUM(${egp}), 0) AS total FROM payments p WHERE ${paidOnline} AND p.date >= ? AND p.staff_id IS NOT NULL GROUP BY p.staff_id`, [tenantId, ONLINE_BRANCHES, from]),
+      // What each employee's clients paid: a payment counts for the employee who sells to its client and the one who collects from it.
+      pool.query(
+        `SELECT x.id, COUNT(*) AS n, COALESCE(SUM(x.total), 0) AS total FROM (
+            SELECT s.assigned_cs_id AS id, p.id AS pid, ${egp} AS total FROM payments p JOIN subscribers s ON s.id=p.subscriber_id AND s.tenant_id=p.tenant_id
+             WHERE ${paidOnline} AND p.date >= ? AND s.assigned_cs_id IS NOT NULL
+            UNION
+            SELECT s.assigned_sales_id, p.id, ${egp} FROM payments p JOIN subscribers s ON s.id=p.subscriber_id AND s.tenant_id=p.tenant_id
+             WHERE ${paidOnline} AND p.date >= ? AND s.assigned_sales_id IS NOT NULL
+            UNION
+            SELECT p.staff_id, p.id, ${egp} FROM payments p WHERE ${paidOnline} AND p.date >= ? AND p.subscriber_id IS NULL AND p.staff_id IS NOT NULL
+          ) x GROUP BY x.id`, [tenantId, ONLINE_BRANCHES, from, tenantId, ONLINE_BRANCHES, from, tenantId, ONLINE_BRANCHES, from]),
+      pool.query(
+        `SELECT ip.id, ip.course_id, ip.bundle_id, ip.title, ip.total_amount, ip.currency, ip.installments_count, ip.installment_amounts,
+                ip.due_dates, ip.paid_dates, ip.paid_amounts, ip.created_at, s.assigned_cs_id AS cs_id
+           FROM installment_plans ip JOIN subscribers s ON s.id=ip.subscriber_id AND s.tenant_id=ip.tenant_id
+          WHERE ${clientsOnline}`, [tenantId, ONLINE_BRANCHES]),
+      pool.query(
+        `SELECT COUNT(*) AS n FROM subscribers s WHERE ${clientsOnline}
+            AND CASE WHEN JSON_VALID(s.crm_json) THEN COALESCE(JSON_UNQUOTE(JSON_EXTRACT(s.crm_json,'$.status')),'') ELSE '' END = 'active'`, [tenantId, ONLINE_BRANCHES]),
+      pool.query(
+        `SELECT id, COUNT(DISTINCT cid) AS any_n, COUNT(DISTINCT CASE WHEN via='cs' THEN cid END) AS cs_n FROM (
+            SELECT s.assigned_cs_id AS id, s.id AS cid, 'cs' AS via FROM subscribers s WHERE ${clientsOnline} AND s.assigned_cs_id IS NOT NULL
+            UNION ALL
+            SELECT s.assigned_sales_id, s.id, 'sales' FROM subscribers s WHERE ${clientsOnline} AND s.assigned_sales_id IS NOT NULL
+          ) y GROUP BY id`, [tenantId, ONLINE_BRANCHES, tenantId, ONLINE_BRANCHES]),
+    ]);
+    const overdue = { count: 0, byCurrency: { EGP: 0, SAR: 0, USD: 0 } };
+    const staff = {};
+    const row = id => (staff[id] ||= { subs: 0, csSubs: 0, paymentsCount: 0, revenue: 0, collected: 0, overdueCount: 0, overdueByCurrency: { EGP: 0, SAR: 0, USD: 0 } });
+    for (const plan of plans) {
+      for (const entry of mapInstallmentPlan(plan).entries) {
+        if (entry.paidAt || !entry.dueDate || entry.dueDate >= today) continue;
+        const code = String(entry.currency || 'EGP').toUpperCase();
+        overdue.count += 1;
+        if (code in overdue.byCurrency) overdue.byCurrency[code] += entry.amount;
+        if (plan.cs_id) {
+          const mine = row(plan.cs_id);
+          mine.overdueCount += 1;
+          if (code in mine.overdueByCurrency) mine.overdueByCurrency[code] += entry.amount;
+        }
+      }
+    }
+    for (const r of subsCount) { const mine = row(r.id); mine.subs = Number(r.any_n) || 0; mine.csSubs = Number(r.cs_n) || 0; }
+    for (const r of viaClients) { const mine = row(r.id); mine.paymentsCount = Number(r.n) || 0; mine.revenue = Number(r.total) || 0; }
+    for (const r of byCollector) row(r.id).collected = Number(r.total) || 0;
+    const days = Array.from({ length: 7 }, (_, i) => addDaysToDateOnly(today, i - 6));
+    const byDay = new Map(weekly.map(r => [safeDateOnly(r.day), r]));
+    res.json({
+      range, paid: { total: Number(paid.total) || 0, count: Number(paid.n) || 0 }, activeClients: Number(active.n) || 0, overdue,
+      weekly: days.map(day => ({ day, value: Number(byDay.get(day)?.total) || 0 })),
+      collectionWeekly: days.map(day => ({ day, value: Number(byDay.get(day)?.installments) || 0 })),
+      staff,
+    });
+  } catch (e) { logger.error('[/api/admin/online-team-summary]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ────────────────────────────────────────────────────────────
 // GET /api/staff/payments — «مدفوعاتي»: the payments of the person's own clients, a page at a time.
 //
 //   from, to   a Cairo day range (inclusive), either may be left out
@@ -1380,30 +1517,38 @@ router.get('/api/staff/payments', requireAuth, requireAdminOrStaff, requirePermi
     const params = [];
     if (from) { where.push('p.date >= ?'); params.push(cairoDayStartUtc(from)); }
     if (to) { where.push('p.date < ?'); params.push(cairoDayStartUtc(addDaysToDateOnly(to, 1))); }
-    const status = String(req.query.status || '');
-    if (status === 'paid') where.push("(p.status = 'paid' OR p.status IS NULL)");
-    else if (['pending', 'failed', 'refunded'].includes(status)) { where.push('p.status = ?'); params.push(status); }
     if (String(req.query.mine || '') === '1' && req.staffRecord?.id) { where.push('p.staff_id = ?'); params.push(req.staffRecord.id); }
     const q = String(req.query.q || '').trim().slice(0, 100);
     if (q) {
       where.push('(s.name LIKE ? OR s.client_code LIKE ? OR p.transaction_id LIKE ?)');
       params.push(`%${q}%`, `%${q}%`, `%${q}%`);
     }
-    const filtered = `${base}${where.length ? ` AND ${where.join(' AND ')}` : ''}`;
+    // The three groups the accounts desk sorts payments into: waiting, accepted (paid, or from before the column
+    // had a status) and declined (failed or refunded); `declined` asks for the last two together.
+    const GROUPS = {
+      paid: "(p.status = 'paid' OR p.status IS NULL)",
+      pending: "p.status = 'pending'",
+      declined: "p.status IN ('failed', 'refunded')",
+      failed: "p.status = 'failed'",
+      refunded: "p.status = 'refunded'",
+    };
+    const status = String(req.query.status || '');
+    const withoutStatus = `${base}${where.length ? ` AND ${where.join(' AND ')}` : ''}`;
+    const filtered = GROUPS[status] ? `${withoutStatus} AND ${GROUPS[status]}` : withoutStatus;
     const [[[count]], [payRows]] = await Promise.all([
       pool.query(`SELECT COUNT(*) AS n ${filtered}`, [...baseParams, ...params]),
       pool.query(
         `SELECT p.id, p.subscriber_id, p.course_id, p.bundle_id, p.amount, p.currency, p.payment_type, p.payment_method,
                 p.transaction_id, p.is_installment, p.course_expected, p.\`date\`, p.note, p.status, p.staff_id, p.staff_name,
                 p.from_account, p.source, p.item_title, p.cert_type, p.certificate_request_id, p.branch,
-                s.name AS client_name, s.client_code
+                s.name AS client_name, s.client_code, s.email AS client_email
            ${filtered} ORDER BY p.\`date\` DESC, p.created_at DESC LIMIT ? OFFSET ?`, [...baseParams, ...params, limit, offset]),
     ]);
     const executors = await resolvePaymentExecutors(pool, req.tenantId, payRows);
     const out = {
       total: Number(count.n) || 0,
       rows: payRows.map(p => ({
-        id: p.id, clientId: p.subscriber_id, clientName: p.client_name, clientCode: p.client_code || '',
+        id: p.id, clientId: p.subscriber_id, clientName: p.client_name, clientCode: p.client_code || '', clientEmail: p.client_email || '',
         amount: Number(p.amount) || 0, currency: p.currency || 'EGP',
         paymentType: (p.payment_type || 'other').toLowerCase(), paymentMethod: p.payment_method || null,
         transactionId: p.transaction_id || null, isInstallment: !!p.is_installment,
@@ -1415,6 +1560,27 @@ router.get('/api/staff/payments', requireAuth, requireAdminOrStaff, requirePermi
         certId: p.certificate_request_id || null, branch: p.branch || null,
       })),
     };
+    // tabs=1: how many payments each group holds under the other filters, the money (in pounds) of the group asked
+    // for, and what the accepted ones brought in today and this month — the accounts desk's tabs and figures.
+    if (String(req.query.tabs || '') === '1') {
+      const today = cairoToday();
+      const egp = "COALESCE(p.amount_egp, CASE WHEN p.currency='EGP' THEN p.amount ELSE 0 END)";
+      const dayStart = cairoDayStartUtc(today);
+      const tomorrowStart = cairoDayStartUtc(addDaysToDateOnly(today, 1));
+      const monthStart = cairoDayStartUtc(`${today.slice(0, 7)}-01`);
+      const [[row]] = await pool.query(
+        `SELECT COALESCE(SUM(${GROUPS.pending}), 0) AS pending, COALESCE(SUM(${GROUPS.paid}), 0) AS accepted,
+                COALESCE(SUM(${GROUPS.declined}), 0) AS declined,
+                COALESCE(SUM(CASE WHEN ${GROUPS[status] || '1=1'} THEN ${egp} END), 0) AS groupSum,
+                COALESCE(SUM(CASE WHEN ${GROUPS.paid} AND p.date >= ? AND p.date < ? THEN ${egp} END), 0) AS acceptedToday,
+                COALESCE(SUM(CASE WHEN ${GROUPS.paid} AND p.date >= ? AND p.date < ? THEN ${egp} END), 0) AS acceptedMonth
+           ${withoutStatus}`,
+        [dayStart, tomorrowStart, monthStart, tomorrowStart, ...baseParams, ...params]);
+      out.tabs = {
+        pending: Number(row.pending) || 0, accepted: Number(row.accepted) || 0, declined: Number(row.declined) || 0,
+        groupSumEgp: Number(row.groupSum) || 0, acceptedTodayEgp: Number(row.acceptedToday) || 0, acceptedMonthEgp: Number(row.acceptedMonth) || 0,
+      };
+    }
     if (String(req.query.summary || '') === '1') {
       const today = cairoToday();
       const weekStart = addDaysToDateOnly(today, -new Date(`${today}T00:00:00Z`).getUTCDay());

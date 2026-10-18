@@ -114,8 +114,10 @@ test('the clients screen reads the context\'s rounds and clients, not the copies
   assert.match(own, /setStaffScopedRounds\?\.\(parsedRounds\);/);
   const growth = read('admin/pages/dashboard/DashboardGrowthOpsTabs.tsx');
   assert.doesNotMatch(growth, /roundsOverride=\{isNonAdminStaff/);
+  // The clients are the context's too: the desk keeps no copy of its own that changes on the next poll.
   const clients = read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx');
-  assert.match(clients, /salesOwnSubscribers\.map\(row => fresh\.get\(row\.id\) \?\? row\)/);
+  assert.match(clients, /const masterList = subscribers;/);
+  assert.doesNotMatch(clients, /salesOwnSubscribers/);
 });
 
 test('the Dokki clients table has no branch column, the online one keeps its market column', () => {

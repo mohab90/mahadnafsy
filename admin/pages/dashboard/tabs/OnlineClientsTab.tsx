@@ -21,6 +21,7 @@ import { announceRoundsChanged, housingOutcome } from '../../../lib/daqqiHousing
 import SectionCustomTabs from './SectionCustomTabs';
 import { staffClientsQuery, useStaffClientsPage } from './useStaffClientsPage';
 import { staffClientsArePaged } from '../staffListTabs';
+import { useSiteData } from '../../../context/SiteDataContext';
 
 // Kept beside the component so the URL parser and the tab strip agree on what
 // a valid view is; an unknown ?view= falls back to 'active' rather than
@@ -72,15 +73,12 @@ type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props {
   activeTab: string;
   subscribers: SubscriberItem[];
-  salesOwnSubscribers: SubscriberItem[];
-  setSalesOwnSubscribers: React.Dispatch<React.SetStateAction<SubscriberItem[]>>;
   courses: Course[];
   bundles: Bundle[];
   staffMembers: StaffMember[];
   content: Record<string, string>;
   salesOwnDaqqiRounds: DaqqiRound[];
   setSalesOwnDaqqiRounds: React.Dispatch<React.SetStateAction<DaqqiRound[] | null>>;
-  salesOwnLeads: LeadItem[];
   updateSubscriber: (s: SubscriberItem) => Promise<boolean>;
   addSubscriber: (s: SubscriberItem) => Promise<boolean>;
   reloadSubscribers: () => Promise<void>;
@@ -108,9 +106,9 @@ interface Props {
 }
 
 export default function OnlineClientsTab({
-  activeTab, subscribers, salesOwnSubscribers, setSalesOwnSubscribers: setOwnSubscribersProp,
+  activeTab, subscribers,
   courses, bundles, staffMembers, content, salesOwnDaqqiRounds, setSalesOwnDaqqiRounds,
-  salesOwnLeads, updateSubscriber: updateSubscriberProp, addSubscriber, reloadSubscribers: reloadSubscribersProp, reloadLeads, deleteSubscriber: deleteSubscriberProp, notify,
+  updateSubscriber: updateSubscriberProp, addSubscriber, reloadSubscribers: reloadSubscribersProp, reloadLeads, deleteSubscriber: deleteSubscriberProp, notify,
   isDaqqiManager, canDeleteSubscriber, isReceptionDaqqi, isAdmin, isOnlineManager, isNonAdminStaff, currentStaff,
   staffSelf, onlineTeamMembers, subCsDistributing, setSubCsDistributing,
   daqqiOldDistribPlan, setDaqqiOldDistribPlan, daqqiOldDistributing, setDaqqiOldDistributing,
@@ -225,8 +223,7 @@ export default function OnlineClientsTab({
   };
   const handleNewDaqqiClient = async (draft: PaymentDraft) => {
     const result = await createClientWithPayment(draft, { branch: draft.branch || physicalBranch.key, source: 'reception' });
-    const fresh = await mysqlAdmin.listAllSubscribers();
-    setSalesOwnSubscribers(fresh as unknown as SubscriberItem[]);
+    await reloadSubscribers();
     const housing = housingOutcome([result]);
     if (housing.changed) announceRoundsChanged();
     notify(result.approvalRequired || housing.warning ? 'info' : 'success',
@@ -362,9 +359,16 @@ export default function OnlineClientsTab({
   };
   const serverPage = useStaffClientsPage({ enabled: paged, filters: clientsFilters, page: collOnlinePage, pageSize: COLL_PAGE_SIZE });
   const serverData = paged ? serverPage.data : null;
+  // The rows the person has on screen are the copy a save is compared against (useCrmCoreState.updateSubscriber sends only
+  // the fields that changed, so a payment or another desk's edit made meanwhile is kept).
+  const { setStaffScopedSubscribers } = useSiteData();
+  useEffect(() => {
+    if (paged && serverData) setStaffScopedSubscribers([...serverPage.seen.current.values()]);
+  }, [paged, serverData, serverPage.seen, setStaffScopedSubscribers]);
   // The screen's own writes, as they reach the page: a row changed or removed shows at once, and the server is asked
   // again. The sections below take these in place of the dashboard's, which reload the whole list.
-  const setSalesOwnSubscribers = paged ? serverPage.patchRows : setOwnSubscribersProp;
+  // Only the paged screen holds rows of its own to patch; the others read the context's list, which the writes update.
+  const setSalesOwnSubscribers: React.Dispatch<React.SetStateAction<SubscriberItem[]>> = paged ? serverPage.patchRows : () => undefined;
   const reloadSubscribers = paged ? async () => { await serverPage.reload(); } : reloadSubscribersProp;
   const updateSubscriber = paged ? async (row: SubscriberItem) => {
     const ok = await updateSubscriberProp(row);
@@ -448,25 +452,10 @@ export default function OnlineClientsTab({
                 return Number(String(s.createdAt || '').slice(0, 4)) === year;
               };
               const isIntlSub = isInternationalSubscriber;
-              // Prefer staff-scoped data when it is present, but fall back to context data.
-              // Production can temporarily return an empty scoped list after API/date issues;
-              // falling back keeps managers from seeing an empty CRM while the full context is loaded.
-              //
-              // A payment or a booking reloads the context's list at once, while the
-              // desk's own copy is rebuilt only on the next poll. Reading the own copy
-              // alone is why an instalment recorded a moment ago did not show on the
-              // client: the row was the one fetched before it.
-              const scopedOrContextSubscribers = salesOwnSubscribers.length > 0
-                ? (() => {
-                  const fresh = new Map(subscribers.map(row => [row.id, row]));
-                  return salesOwnSubscribers.map(row => fresh.get(row.id) ?? row);
-                })()
-                : subscribers;
-              const masterList = isDaqqiClientsTab
-                ? scopedOrContextSubscribers
-                : (isAdmin && !isOnlineManager ? subscribers : scopedOrContextSubscribers);
-              const shouldUseScopedSubscribers = isOnlineManager || isNonAdminStaff || isDaqqiManager || isReceptionDaqqi;
-              const actionSubscribers = paged ? [...serverPage.seen.current.values()] : shouldUseScopedSubscribers ? scopedOrContextSubscribers : subscribers;
+              // The context's list: the server scopes it to the person (the administration's, the Dokki branch's pages for the desk).
+              const masterList = subscribers;
+              const shouldUseScopedSubscribers = paged;
+              const actionSubscribers = paged ? [...serverPage.seen.current.values()] : subscribers;
               const branchScopedMasterList = branchFilter
                 ? masterList.filter(s => branchMatchesFilter(s.branch, branchFilter))
                 : masterList;
@@ -776,7 +765,7 @@ export default function OnlineClientsTab({
                               <select value={entry.staffId} onChange={e => setDaqqiOldDistribPlan(prev => prev.map((p,i) => i===idx ? {...p,staffId:e.target.value} : p))}
                                 className="border border-indigo-200 rounded-xl px-3 py-1.5 text-xs bg-white focus:ring-2 focus:ring-indigo-200 focus:outline-none min-w-[160px]">
                                 <option value="">{isDaqqiClientsTab ? `— اختر من فريق ${physicalBranch.label} —` : '— اختر مسئول تحصيل —'}</option>
-                                {csMembers.map(s => <option key={s.id} value={s.id}>{s.name} ({(salesOwnSubscribers.length>0?salesOwnSubscribers:subscribers).filter(sub=>sub.assignedCsId===s.id).length} موزع)</option>)}
+                                {csMembers.map(s => <option key={s.id} value={s.id}>{s.name} ({subscribers.filter(sub=>sub.assignedCsId===s.id).length} موزع)</option>)}
                               </select>
                               <input type="number" min="1" max={filtered.filter(s=>!s.assignedCsId).length} placeholder="عدد العملاء"
                                 value={entry.count} onChange={e => setDaqqiOldDistribPlan(prev => prev.map((p,i) => i===idx ? {...p,count:e.target.value} : p))}
@@ -1033,7 +1022,7 @@ export default function OnlineClientsTab({
                   {collectionSettingsOpen && (
                     <CollectionSettingsModal
                       staffMembers={isOnlineManager ? onlineTeamMembers : staffMembers}
-                      subscribers={paged ? [] : scopedOrContextSubscribers}
+                      subscribers={paged ? [] : subscribers}
                       notify={notify}
                       onClose={() => setCollectionSettingsOpen(false)}
                       onChanged={reloadSubscribers}

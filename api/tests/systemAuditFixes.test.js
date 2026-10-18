@@ -36,9 +36,10 @@ test('the finance screen hands its panels one notify for the life of the screen'
 });
 
 test('an employee\'s own lists are asked for only where the role may see them', () => {
+  // The panel downloads neither list for anybody now; the pages that show them ask the server, behind these permissions.
   const own = read('admin/pages/dashboard/useStaffOwnData.ts');
-  assert.match(own, /hasPermission\(staffRef, 'view_subscribers'\)\s+\? \(async \(\) => \{[\s\S]{0,200}mysqlAdmin\.streamSubscribers\(\{ staff: true \}/);
-  assert.match(own, /hasPermission\(staffRef, 'view_leads'\)\s+\? mysqlAdmin\.listStaffLeads\(\)/);
+  assert.doesNotMatch(own, /streamSubscribers|listStaffLeads/);
+  assert.match(read('api/routes/admin/stafflists.js'), /router\.get\('\/api\/staff\/subscribers', requireAuth, requireAdminOrStaff, requirePermission\('view_subscribers'\)/);
   assert.match(read('api/routes/admin/stafflists.js'), /router\.get\('\/api\/staff\/leads', requireAuth, requireAdminOrStaff, requirePermission\('view_leads'\)/);
 });
 

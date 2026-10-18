@@ -347,5 +347,6 @@ function dueInstallments(plans, today, soonUntil) {
 }
 
 module.exports = {
-  NO_COLLECTOR, dueInstallments, VIEWS, balanceOf, branchMatchesFilter, buildView, cairoDay, followUpOf, holdsOnline, isInternational, marketOf, matchesSearch, readFilters,
+  NO_COLLECTOR, dueInstallments, VIEWS, balanceOf, branchMatchesFilter, buildView, cairoDay, followUpOf, holdsOnline, isCollected,
+  isInternational, marketOf, matchesSearch, readFilters, toEgp,
 };

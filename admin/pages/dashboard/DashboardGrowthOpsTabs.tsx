@@ -19,8 +19,6 @@ type Props = {
   activeTab: TabKey;
   notify: NotifyFn;
   staffSelf: StaffMember | null;
-  salesOwnLeads: LeadItem[];
-  salesOwnSubscribers: SubscriberItem[];
   salesDataLoading: boolean;
   fetchSalesData: () => void;
   // string, not TabKey: this is passed straight down to panels that build the
@@ -29,7 +27,6 @@ type Props = {
   // than blanking the screen.
   setActiveTab: (tab: string) => void;
   branchFilter: string;
-  isNonAdminStaff: boolean;
   salesOwnDaqqiRounds: DaqqiRound[] | null;
   isReceptionDaqqi: boolean;
   isSupport: boolean;
@@ -46,13 +43,10 @@ export function DashboardGrowthOpsTabs({
   activeTab,
   notify,
   staffSelf,
-  salesOwnLeads,
-  salesOwnSubscribers,
   salesDataLoading,
   fetchSalesData,
   setActiveTab,
   branchFilter,
-  isNonAdminStaff,
   salesOwnDaqqiRounds,
   isReceptionDaqqi,
   isSupport,
@@ -83,7 +77,6 @@ export function DashboardGrowthOpsTabs({
         <TabErrorBoundary>
           <DaqqiScheduleTab
             notify={notify}
-            subscribersOverride={isNonAdminStaff ? salesOwnSubscribers : undefined}
             // Rounds come from the context for everyone: the desk's copy is pushed into it
             // (useStaffOwnData), so a booking made on this screen shows at once instead of
             // after the next two-minute poll.

@@ -69,8 +69,9 @@ test('a screen that counts rows loads the rows, or it reports the bootstrap page
   for (const key of ['sales_reports', 'sales_team']) {
     assert.ok(leadTabs.includes(`'${key}'`), `${key} counts leads and must load them`);
   }
-  // online_team filters both leads and subscribers by branch.
-  assert.ok(crmTabs.includes("'online_team'"), 'online_team reads both tables');
+  // online_team takes its counts from GET /admin/online-performance; the tables are only its fallback.
+  assert.ok(!crmTabs.includes("'online_team'"), 'online_team reads the server figures, not both tables');
+  assert.match(read('admin/pages/dashboard/tabs/OnlineTeamMgmtTab.tsx'), /getOnlinePerformance\(\)/);
 
   // staff_performance is deliberately NOT here: it takes its per-rep counts
   // from GET /admin/leads/staff-performance, which is why it was moved off the

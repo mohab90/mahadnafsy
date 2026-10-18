@@ -6,7 +6,9 @@ import {
   Settings2, TrendingUp, UserCheck, UserPlus, Users, Wallet, X,
 } from 'lucide-react';
 import type { ConsultationItem, Course, LeadItem, OrderItem, StaffMember, SubscriberItem, Therapist } from '../../../types';
+import { Navigate } from 'react-router-dom';
 import { AnalyticsTab } from '../lazyTabs';
+import { useStaffOverview } from '../useStaffOverview';
 import { formatWaPhone } from '../dashboardShared';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { useSubscriberStats } from '../hooks/useSubscriberStats';
@@ -45,9 +47,6 @@ interface Props {
   overviewStats: OverviewStats;
   isSalesOnly: boolean;
   currentStaff: StaffMember | null;
-  salesOwnLeads: LeadItem[];
-  salesOwnSubscribers: SubscriberItem[];
-  salesOwnOrders: OrderItem[];
   subscribers: SubscriberItem[];
   courses: Course[];
   staffMembers: StaffMember[];
@@ -70,13 +69,18 @@ interface Props {
 }
 
 export default function OverviewTab({
-  overviewStats, isSalesOnly, currentStaff, salesOwnLeads, salesOwnSubscribers, 
+  overviewStats, isSalesOnly, currentStaff,
   subscribers, courses, staffMembers, leads, consultations, therapists, communityPosts, 
   isAdmin, isOnlineManager, isCollectionRole, isReceptionDaqqi,
   onlineTeamMembers, onlineUsers, kpiModal, setKpiModal,
   notify, setActiveTab, navigate,
 }: Props) {
   const { bundles } = useStaticData();
+  // The collection officer's, the online manager's and the Dokki reception's own figures come from the server.
+  const staffOverview = useStaffOverview(
+    isOnlineManager ? 'online_manager' : 'own',
+    Boolean(currentStaff) && (isCollectionRole || isOnlineManager || isReceptionDaqqi),
+  );
               // The headline lead figure and the percentages under it describe
               // the whole table, so they come from the database aggregate rather
               // than from however much of the array is loaded. Falls back to the
@@ -138,322 +142,19 @@ export default function OverviewTab({
                   .catch(() => { if (openModalTitle.current === title) setKpiModal({ title, rows: [{ label: 'تعذر التحميل — جرّب تاني' }] }); });
               };
 
-              // ── Sales-only personal overview ───────────────────────────
-              if (isSalesOnly && currentStaff) {
-                const myLeads = salesOwnLeads;
-                const myNew = myLeads.filter(l => l.status === 'new').length;
-                const myContacted = myLeads.filter(l => l.status === 'contacted').length;
-                const myInterested = myLeads.filter(l => l.status === 'interested').length;
-                const myConverted = myLeads.filter(l => l.status === 'converted').length;
-                // lead-status-subset: the losses this card counts, not every finished lead
-                const myLost = myLeads.filter(l => ['lost','not_interested_hidden'].includes(l.status || '')).length;
-                const mySubs = salesOwnSubscribers;
-                const myRevenueSubs = mySubs.flatMap(s => (s.paymentHistory || []).filter(isCollected)).reduce((acc, p) => {
-                  const egp = toEgp(p.amount, p.currency);
-                  const month = cairoDay(p.at).slice(0, 7);
-                  const thisMonth = cairoMonthOnly();
-                  if (month === thisMonth) acc.thisMonth += egp;
-                  acc.total += egp;
-                  return acc;
-                }, { thisMonth: 0, total: 0 });
-                const myCommRate = currentStaff.commissionRate || 0;
-                const myCommission = myCommRate > 0 ? Math.round(myRevenueSubs.thisMonth * myCommRate / 100) : 0;
-
-                // Weekly call trend (last 7 days)
-                const todayStr = cairoDateOnly();
-                const thisMonthStr = cairoMonthOnly();
-                const last7Days = Array.from({ length: 7 }, (_, i) => cairoDaysAgo(6 - i));
-                const callsByDay = last7Days.map(day => ({
-                  day,
-                  label: new Date(day).toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short', timeZone: CAIRO_TIME_ZONE }),
-                  count: myLeads.reduce((n, l) => n + (l.communications || []).filter(c => cairoDay(c.date) === day).length, 0),
-                }));
-                const maxCalls = Math.max(...callsByDay.map(d => d.count), 1);
-                const todayCalls = callsByDay.find(d => d.day === todayStr)?.count ?? 0;
-                const monthlyTarget = Number(currentStaff.monthlyLeadsTarget || 10);
-
-                // Top sources for my leads
-                const mySourceMap = myLeads.reduce((m, l) => { if (l.source) { m[l.source] = (m[l.source] || 0) + 1; } return m; }, {} as Record<string, number>);
-                const mySources = Object.entries(mySourceMap).sort((a, b) => b[1] - a[1]).slice(0, 6);
-                const maxSrc = Math.max(...mySources.map(([,n]) => n), 1);
-
-                // Recent conversions
-                const recentConversions = myLeads.filter(l => l.status === 'converted')
-                  .sort((a, b) => ((b.updatedAt || b.createdAt || '') > (a.updatedAt || a.createdAt || '') ? 1 : -1))
-                  .slice(0, 5);
-
-                const myCards = [
-                  { title: 'عملائي المحتملون', value: myLeads.length, icon: UserPlus, bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200' },
-                  { title: 'محوّلون هذا الشهر', value: myLeads.filter(l => l.status === 'converted' && cairoDay(l.updatedAt || l.createdAt).slice(0, 7) === thisMonthStr).length, icon: TrendingUp, bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-200' },
-                  { title: 'عملائي', value: mySubs.length, icon: UserCheck, bg: 'bg-teal-50', text: 'text-teal-600', border: 'border-teal-200' },
-                  { title: 'مكالمات اليوم', value: todayCalls, icon: Activity, bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-200' },
-                  { title: 'إيراداتي هذا الشهر', value: `${Math.round(myRevenueSubs.thisMonth).toLocaleString('ar-EG-u-nu-latn')} ج`, icon: BarChart3, bg: 'bg-green-50', text: 'text-green-600', border: 'border-green-200' },
-                  { title: 'عمولتي هذا الشهر', value: myCommRate > 0 ? `${myCommission.toLocaleString('ar-EG-u-nu-latn')} ج` : '—', icon: Percent, bg: 'bg-orange-50', text: 'text-orange-600', border: 'border-orange-200' },
-                  { title: 'معدل التحويل', value: `${myLeads.length > 0 ? Math.round((myConverted / myLeads.length) * 100) : 0}%`, icon: TrendingUp, bg: 'bg-pink-50', text: 'text-pink-600', border: 'border-pink-200' },
-                  { title: 'متابعات متأخرة', value: myLeads.filter(l => l.nextFollowUpDate && l.nextFollowUpDate < todayStr && isOpenLeadStatus(l.status)).length, icon: Clock, bg: 'bg-red-50', text: 'text-red-600', border: 'border-red-200' },
-                ];
-                return (
-                  <div className="space-y-6">
-                    {/* Welcome banner */}
-                    <div className="bg-gradient-to-l from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-4 text-amber-800 flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-amber-200 flex items-center justify-center text-amber-800 font-extrabold text-lg flex-shrink-0">
-                        {(currentStaff.name || '?').charAt(0)}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-bold text-sm">مرحباً {currentStaff.name} 👋</p>
-                        <p className="text-xs text-amber-700 mt-0.5">هذه أرقامك الشخصية فقط</p>
-                      </div>
-                      {myCommRate > 0 && <span className="mr-auto text-xs text-orange-700 font-bold bg-orange-100 px-2.5 py-1 rounded-full">نسبة عمولتك: {myCommRate}%</span>}
-                    </div>
-
-                    {/* KPI cards */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      {myCards.map(item => {
-                        const Icon = item.icon;
-                        return (
-                          <article key={item.title} className={`bg-white border ${item.border} rounded-2xl p-4 shadow-sm flex items-center gap-3`}>
-                            <div className={`w-10 h-10 rounded-xl ${item.bg} flex items-center justify-center flex-shrink-0`}>
-                              <Icon size={18} className={item.text} />
-                            </div>
-                            <div>
-                              <p className="text-[11px] text-gray-500 leading-tight">{item.title}</p>
-                              <h3 className="text-xl font-extrabold text-gray-900 mt-0.5">{item.value}</h3>
-                            </div>
-                          </article>
-                        );
-                      })}
-                    </div>
-
-                    {/* Monthly target progress */}
-                    {(() => {
-                      const pct = Math.min(Math.round((myConverted / monthlyTarget) * 100), 100);
-                      const remaining = Math.max(monthlyTarget - myConverted, 0);
-                      return (
-                        <article className="bg-white border border-emerald-200 rounded-2xl p-5 shadow-sm">
-                          <div className="flex items-center justify-between mb-3">
-                            <h3 className="font-bold text-gray-900 flex items-center gap-2"><TrendingUp size={17} className="text-emerald-500" />تقدم الهدف الشهري</h3>
-                            <span className="text-xs text-gray-500">{myConverted} من {monthlyTarget} محوّل</span>
-                          </div>
-                          <div className="h-4 bg-gray-100 rounded-full overflow-hidden mb-2">
-                            <div
-                              className={`h-full rounded-full transition-all ${pct >= 100 ? 'bg-emerald-500' : pct >= 60 ? 'bg-amber-400' : 'bg-red-400'}`}
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                          <div className="flex justify-between text-xs text-gray-500">
-                            <span className={`font-bold ${pct >= 100 ? 'text-emerald-600' : pct >= 60 ? 'text-amber-600' : 'text-red-600'}`}>{pct}%</span>
-                            <span>{remaining > 0 ? `متبقي ${remaining} محوّل للوصول للهدف` : '🎯 تحققت الهدف!'}</span>
-                          </div>
-                        </article>
-                      );
-                    })()}
-
-                    {/* Two columns: Funnel + Weekly calls */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      {/* Conversion Funnel */}
-                      <article className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-                        <h3 className="font-bold text-gray-900 mb-5 flex items-center gap-2"><BarChart3 size={17} className="text-primary-500" />مسار التحويل</h3>
-                        <div className="space-y-3">
-                          {[
-                            { label: 'جديد', count: myNew, color: 'bg-blue-500', pill: 'bg-blue-50 text-blue-700' },
-                            { label: 'تم التواصل', count: myContacted, color: 'bg-violet-500', pill: 'bg-violet-50 text-violet-700' },
-                            { label: 'مهتم', count: myInterested, color: 'bg-amber-500', pill: 'bg-amber-50 text-amber-700' },
-                            { label: 'محوّل', count: myConverted, color: 'bg-emerald-500', pill: 'bg-emerald-50 text-emerald-700' },
-                            { label: 'غير مهتم/ضائع', count: myLost, color: 'bg-red-400', pill: 'bg-red-50 text-red-600' },
-                          ].map(s => (
-                            <div key={s.label}>
-                              <div className="flex items-center justify-between mb-1 text-xs">
-                                <span className={`font-bold px-2 py-0.5 rounded-full ${s.pill}`}>{s.label}</span>
-                                <span className="font-bold text-gray-800">{s.count} ({myLeads.length > 0 ? Math.round((s.count / myLeads.length) * 100) : 0}%)</span>
-                              </div>
-                              <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
-                                <div className={`h-full ${s.color} rounded-full`} style={{ width: `${myLeads.length > 0 ? (s.count / myLeads.length) * 100 : 0}%` }} />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </article>
-
-                      {/* Weekly call trend */}
-                      <article className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-                        <h3 className="font-bold text-gray-900 mb-5 flex items-center gap-2"><Activity size={17} className="text-blue-500" />مكالمات آخر 7 أيام</h3>
-                        <div className="flex items-end gap-2 h-32">
-                          {callsByDay.map(d => (
-                            <div key={d.day} className="flex-1 flex flex-col items-center gap-1">
-                              <span className="text-[10px] text-gray-500 font-bold">{d.count > 0 ? d.count : ''}</span>
-                              <div
-                                className={`w-full rounded-t-lg transition-all ${d.day === todayStr ? 'bg-blue-500' : 'bg-blue-200'}`}
-                                style={{ height: `${Math.max((d.count / maxCalls) * 100, d.count > 0 ? 10 : 4)}%` }}
-                              />
-                              <span className={`text-[9px] ${d.day === todayStr ? 'text-blue-600 font-extrabold' : 'text-gray-400'}`}>{d.label}</span>
-                            </div>
-                          ))}
-                        </div>
-                        <p className="text-xs text-gray-400 mt-2 text-center">
-                          مجموع 7 أيام: {callsByDay.reduce((s, d) => s + d.count, 0)} مكالمة
-                        </p>
-                      </article>
-                    </div>
-
-                    {/* Top sources + Recent conversions */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      {/* Top sources */}
-                      {mySources.length > 0 && (
-                        <article className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-                          <h3 className="font-bold text-gray-900 mb-5 flex items-center gap-2"><UserPlus size={17} className="text-amber-500" />أهم مصادر عملائي</h3>
-                          <div className="space-y-3">
-                            {mySources.map(([src, cnt]) => (
-                              <div key={src}>
-                                <div className="flex justify-between text-xs mb-1">
-                                  <span className="text-gray-700 font-medium truncate">{src}</span>
-                                  <span className="font-bold text-gray-900 ml-2">{cnt}</span>
-                                </div>
-                                <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                                  <div className="h-full bg-amber-400 rounded-full" style={{ width: `${(cnt / maxSrc) * 100}%` }} />
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </article>
-                      )}
-
-                      {/* Recent conversions */}
-                      <article className="bg-white border border-emerald-100 rounded-2xl p-6 shadow-sm">
-                        <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><UserCheck size={17} className="text-emerald-500" />آخر التحويلات</h3>
-                        {recentConversions.length === 0
-                          ? <p className="text-sm text-gray-400 text-center py-4">لا توجد تحويلات بعد</p>
-                          : (
-                            <div className="space-y-2">
-                              {recentConversions.map(l => (
-                                <div key={l.id} className="flex items-center justify-between bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2 gap-2">
-                                  <div className="min-w-0 flex-1">
-                                    <button onClick={() => navigate(`/client/${l.clientCode || l.id}`)}
-                                      className="font-semibold text-gray-800 text-sm hover:text-primary-700 hover:underline truncate text-right block">
-                                      {l.name}
-                                    </button>
-                                    <p className="text-[11px] text-gray-400">{cairoDay(l.updatedAt || l.createdAt)}</p>
-                                  </div>
-                                  <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full flex-shrink-0">محوّل ✓</span>
-                                </div>
-                              ))}
-                            </div>
-                          )
-                        }
-                      </article>
-                    </div>
-
-                    {/* ── Pending installments widget ─────────────────────── */}
-                    {(() => {
-                      // What each client still owes, as their page and the online
-                      // table read it (clientItems). It counted only the first
-                      // payment of a booking — every instalment left out — and
-                      // none of «مدفوع قبل السيستم», so a client paying in
-                      // instalments read as owing all of it (8 Oct 2026).
-                      const pendingSubs = mySubs.map(s => ({
-                        ...s,
-                        _remaining: clientItems(s, courses, bundles, 'EGP')
-                          .filter(item => item.currency === 'EGP')
-                          .reduce((sum, item) => sum + item.remaining, 0),
-                      })).filter(s => s._remaining > 0).sort((a, b) => b._remaining - a._remaining);
-                      if (pendingSubs.length === 0) return null;
-                      return (
-                        <article className="bg-white border border-amber-200 rounded-2xl p-6 shadow-sm">
-                          <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                            <AlertCircle size={17} className="text-amber-500" />
-                            أقساط معلقة
-                            <span className="mr-1 text-xs font-extrabold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{pendingSubs.length} عميل</span>
-                          </h3>
-                          <div className="space-y-2 max-h-64 overflow-y-auto">
-                            {pendingSubs.map(s => (
-                              <div key={s.id} className="flex items-center justify-between bg-amber-50 border border-amber-100 rounded-xl px-3 py-2.5 gap-3">
-                                <div className="min-w-0 flex-1">
-                                  <button onClick={() => navigate(`/client/${s.clientCode || s.id}`)}
-                                    className="font-semibold text-gray-800 text-sm hover:text-primary-700 hover:underline block truncate text-right">
-                                    {s.name}
-                                  </button>
-                                  <p className="text-xs text-gray-500 flex items-center gap-2 mt-0.5">
-                                    <a href={`tel:${s.phone}`} className="text-blue-600 hover:underline">{s.phone}</a>
-                                    {s.phone && (
-                                      <a href={`https://wa.me/${formatWaPhone(s.phone)}`} target="_blank" rel="noopener noreferrer"
-                                        className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-500 text-white text-[9px] font-bold">W</a>
-                                    )}
-                                  </p>
-                                </div>
-                                <div className="text-right flex-shrink-0">
-                                  <p className="text-red-600 font-extrabold text-sm">{s._remaining.toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
-                                  <p className="text-[10px] text-gray-400">متبقي من الإجمالي</p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </article>
-                      );
-                    })()}
-                    {/* ── Today's follow-ups ──────────────────────────────── */}
-                    {(() => {
-                      const dueToday = myLeads.filter(l => l.nextFollowUpDate === todayStr && isOpenLeadStatus(l.status));
-                      const overdue = myLeads.filter(l => l.nextFollowUpDate && l.nextFollowUpDate < todayStr && isOpenLeadStatus(l.status));
-                      if (dueToday.length === 0 && overdue.length === 0) return null;
-                      return (
-                        <article className="bg-white border border-red-200 rounded-2xl p-6 shadow-sm">
-                          <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                            <Clock size={17} className="text-red-500" />
-                            متابعات مطلوبة
-                            {overdue.length > 0 && <span className="text-xs font-extrabold bg-red-100 text-red-700 px-2 py-0.5 rounded-full">{overdue.length} متأخرة</span>}
-                            {dueToday.length > 0 && <span className="text-xs font-extrabold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{dueToday.length} اليوم</span>}
-                          </h3>
-                          <div className="space-y-2 max-h-64 overflow-y-auto">
-                            {[...overdue.map(l => ({ ...l, _urgent: true })), ...dueToday.map(l => ({ ...l, _urgent: false }))].map(l => (
-                              <div key={l.id} className={`flex items-center justify-between border rounded-xl px-3 py-2.5 gap-3 ${l._urgent ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'}`}>
-                                <div className="min-w-0 flex-1">
-                                  <button onClick={() => navigate(`/client/${l.clientCode || l.id}`)}
-                                    className="font-semibold text-gray-800 text-sm hover:text-primary-700 hover:underline block truncate text-right">
-                                    {l.name}
-                                  </button>
-                                  <p className="text-[11px] text-gray-500 mt-0.5">
-                                    {l._urgent ? `⚠️ منذ ${l.nextFollowUpDate}` : `📅 اليوم`}
-                                    {l.lastContactNote && <span className="mr-2 text-gray-400 truncate">· {l.lastContactNote.slice(0, 40)}</span>}
-                                  </p>
-                                </div>
-                                <a href={`https://wa.me/${formatWaPhone(l.phone)}`} target="_blank" rel="noopener noreferrer"
-                                  className="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-full bg-green-500 text-white font-bold text-xs hover:bg-green-600">W</a>
-                              </div>
-                            ))}
-                          </div>
-                        </article>
-                      );
-                    })()}
-                  </div>
-                );
-              }
-              // ── End sales-only overview ─────────────────────────────────
+              // ── A sales rep's own figures are his landing page (StaffHomeTab) ──
+              if (isSalesOnly && currentStaff) return <Navigate to="/dashboard/staff_home" replace />;
 
               // ── Collection personal overview ────────────────────────────
               if (isCollectionRole && currentStaff) {
-                const allSubs = salesOwnSubscribers;
                 const now2 = new Date();
-                const todayStr2 = cairoDateOnly(now2);
-                const thisMonthStr2 = cairoMonthOnly(now2);
-                const thisWeekStartStr = cairoWeekStart(0, now2);
-                const onlineSubs = allSubs; // collection sees all subscribers (branch may be null for many)
-                // ── Financial calculations (EGP equivalent) ──
-                const allPayments = allSubs.flatMap(s => (s.paymentHistory||[]).map(p => ({...p, subId: s.id})));
-                const toEGP = (p: {amount?: number|string; currency?: string}) => {
-                  const n = Number(p.amount)||0;
-                  return p.currency==='SAR' ? n*13 : p.currency==='USD' ? n*50 : n;
-                };
-                const collTodayRevOv  = allPayments.filter(p=>cairoDay(p.at)===todayStr2).reduce((s,p)=>s+toEGP(p),0);
-                const collWeekRevOv   = allPayments.filter(p=>cairoDay(p.at)>=thisWeekStartStr).reduce((s,p)=>s+toEGP(p),0);
-                const collMonthRevOv  = allPayments.filter(p=>cairoDay(p.at).slice(0, 7)===thisMonthStr2).reduce((s,p)=>s+toEGP(p),0);
-                // Total remaining across all subs
-                const collTotalRemOv  = allSubs.reduce((sum,s)=>{
-                  const hist=(s.paymentHistory||[]).filter(isCollected);
-                  const cpMap:Record<string,number>={};
-                  hist.forEach(p=>{ if(p.courseId&&p.courseExpected&&!cpMap[p.courseId]) cpMap[p.courseId]=Number(p.courseExpected)||0; });
-                  const exp=Object.values(cpMap).reduce((a,b)=>a+b,0);
-                  const paid=hist.reduce((a,p)=>a+toEGP(p),0);
-                  return sum+Math.max(0,exp-paid);
-                },0);
+                const ov = staffOverview;
+                const onlineSubs = { length: ov?.clients ?? 0 };
+                // What was collected and what is owed, added up by the server (GET /api/staff/overview-summary).
+                const collTodayRevOv  = ov?.money.today ?? 0;
+                const collWeekRevOv   = ov?.money.week ?? 0;
+                const collMonthRevOv  = ov?.money.month ?? 0;
+                const collTotalRemOv  = ov?.money.remaining ?? 0;
                 // Organization collection target loaded from the tenant sales-target record.
                 const collMonthlyTarget = collectionMonthlyTarget;
                 const collPct = Math.min(100, Math.round((collMonthRevOv / collMonthlyTarget) * 100));
@@ -462,19 +163,16 @@ export default function OverviewTab({
                 const dailyPaceOv = collMonthRevOv / Math.max(1, dayOfMonthOv);
                 const projectedOv = Math.round(dailyPaceOv * daysInMonthOv);
                 // Overdue & due today
-                const overdueInstSubs = allSubs.filter(s =>(s.installmentPlans||[]).some(p=>(p.entries||[]).some(e=>!e.paidAt&&e.dueDate<todayStr2)));
-                const dueTodaySubs = allSubs.filter(s =>(s.installmentPlans||[]).some(p=>(p.entries||[]).some(e=>!e.paidAt&&e.dueDate===todayStr2)));
-                const dueThisWeekSubs = allSubs.filter(s=>(s.installmentPlans||[]).some(p=>(p.entries||[]).some(e=>!e.paidAt&&e.dueDate>todayStr2&&e.dueDate<=cairoDaysAhead(7))));
+                const overdueInstSubs = { length: ov?.installments.overdue.count ?? 0, rows: ov?.installments.overdue.rows ?? [] };
+                const dueTodaySubs = { length: ov?.installments.dueToday.count ?? 0, rows: ov?.installments.dueToday.rows ?? [] };
+                const dueThisWeekSubs = { length: ov?.installments.dueWeek ?? 0 };
                 // Estimate uses the employee's configured commission rate; no browser-local assumption.
                 const commissionRate = Math.max(0, Number(currentStaff.commissionRate || 0)) / 100;
                 const estCommission = Math.round(collMonthRevOv * commissionRate);
                 const commissionTarget = Math.round(collMonthlyTarget * commissionRate);
                 const fmtM = (n:number) => n>=1000000 ? `${(n/1000000).toFixed(1)}M` : n>=1000 ? `${(n/1000).toFixed(0)}K` : String(Math.round(n));
                 // Monthly collection by day (last 30 days)
-                const last30 = Array.from({length:30},(_,i)=>{
-                  const ds=cairoDaysAgo(29-i, now2);
-                  return { day: ds.slice(8), rev: allPayments.filter(p=>cairoDay(p.at)===ds).reduce((s,p)=>s+toEGP(p),0) };
-                });
+                const last30 = (ov?.last30 ?? []).map(d => ({ day: d.day.slice(8), rev: d.rev }));
                 const maxDay = Math.max(...last30.map(d=>d.rev),1);
                 const motivOv =
                   collPct>=100 ? { text:'🏆 حققت الهدف الشهري! أداء استثنائي!', cls:'from-yellow-400 to-amber-500' } :
@@ -601,8 +299,8 @@ export default function OverviewTab({
                           <Clock size={16} className="text-red-600" />🔴 أقساط متأخرة ({overdueInstSubs.length} عميل)
                         </h3>
                         <div className="flex flex-wrap gap-1.5">
-                          {overdueInstSubs.slice(0,20).map(s=>{
-                            const nd=(s.installmentPlans||[]).flatMap(p=>(p.entries||[]).filter(e=>!e.paidAt).map(e=>({date:e.dueDate,amount:e.amount,cur:p.currency}))).sort((a,b)=>a.date.localeCompare(b.date))[0];
+                          {overdueInstSubs.rows.map(s=>{
+                            const nd={date:s.date,amount:s.amount,cur:s.currency};
                             const cf=(c:string)=>c==='SAR'?'ر.س':c==='USD'?'$':'ج';
                             return (
                               <button key={s.id} onClick={()=>navigate(`/client/${s.clientCode||s.id}`)}
@@ -621,8 +319,8 @@ export default function OverviewTab({
                           <Clock size={16} className="text-amber-600" />🟡 أقساط مستحقة اليوم ({dueTodaySubs.length} عميل)
                         </h3>
                         <div className="flex flex-wrap gap-1.5">
-                          {dueTodaySubs.slice(0,20).map(s=>{
-                            const nd=(s.installmentPlans||[]).flatMap(p=>(p.entries||[]).filter(e=>!e.paidAt).map(e=>({date:e.dueDate,amount:e.amount,cur:p.currency}))).sort((a,b)=>a.date.localeCompare(b.date))[0];
+                          {dueTodaySubs.rows.map(s=>{
+                            const nd={date:s.date,amount:s.amount,cur:s.currency};
                             const cf=(c:string)=>c==='SAR'?'ر.س':c==='USD'?'$':'ج';
                             return (
                               <button key={s.id} onClick={()=>navigate(`/client/${s.clientCode||s.id}`)}
@@ -662,53 +360,20 @@ export default function OverviewTab({
 
               // ── Online Manager: collection team stats overview ──────────
               if (isOnlineManager && currentStaff) {
-                const allSubsOm = salesOwnSubscribers;
-                const nowOm = new Date();
-                const todayStrOm = cairoDateOnly(nowOm);
-                const thisMonthStrOm = cairoMonthOnly(nowOm);
-                const toEGPOm = (p: {amount?: number|string; currency?: string}) => {
-                  const n = Number(p.amount)||0;
-                  return p.currency==='SAR' ? n*13 : p.currency==='USD' ? n*50 : n;
-                };
-                const allPaymentsOm = allSubsOm.flatMap(s => (s.paymentHistory||[]).map(p => ({...p, subId: s.id})));
-                const totalMonthRevOm = allPaymentsOm.filter(p=>cairoDay(p.at).slice(0, 7)===thisMonthStrOm).reduce((s,p)=>s+toEGPOm(p),0);
-                const totalTodayRevOm = allPaymentsOm.filter(p=>cairoDay(p.at)===todayStrOm).reduce((s,p)=>s+toEGPOm(p),0);
-                const totalAllRevOm   = allPaymentsOm.reduce((s,p)=>s+toEGPOm(p),0);
-                const totalRemOm = allSubsOm.reduce((sum,s)=>{
-                  const hist=(s.paymentHistory||[]).filter(isCollected);
-                  const cpMap:Record<string,number>={};
-                  hist.forEach(p=>{ if(p.courseId&&p.courseExpected&&!cpMap[p.courseId]) cpMap[p.courseId]=Number(p.courseExpected)||0; });
-                  const exp=Object.values(cpMap).reduce((a,b)=>a+b,0);
-                  const paid=hist.reduce((a,p)=>a+toEGPOm(p),0);
-                  return sum+Math.max(0,exp-paid);
-                },0);
-                const overdueCountOm = allSubsOm.filter(s=>(s.installmentPlans||[]).some(p=>(p.entries||[]).some(e=>!e.paidAt&&e.dueDate<todayStrOm))).length;
+                // The server adds it all up (GET /api/staff/overview-summary?kind=online_manager): the money, the instalments,
+                // the clients and each collection officer's calls, collections, clients, balance and overdue instalments.
+                const ovm = staffOverview;
+                const totalMonthRevOm = ovm?.money.month ?? 0;
+                const totalTodayRevOm = ovm?.money.today ?? 0;
+                const totalAllRevOm   = ovm?.money.total ?? 0;
+                const totalRemOm      = ovm?.money.remaining ?? 0;
+                const overdueCountOm  = ovm?.installments.overdue.count ?? 0;
                 const fmtMOm = (n:number) => n>=1000000 ? `${(n/1000000).toFixed(1)}M` : n>=1000 ? `${(n/1000).toFixed(0)}K` : String(Math.round(n));
-                const collTeamOm = (isOnlineManager ? onlineTeamMembers : staffMembers).filter(s => (s.role||'').toLowerCase() === 'collection');
-                const thisWeekStartOm = cairoWeekStart(0, nowOm);
-                const memberStatsOm = collTeamOm.map(m => {
-                  const mLeads = salesOwnLeads.filter(l => l.assignedSalesId === m.id || l.assignedCsId === m.id || l.assignedSalesName === m.name);
-                  const mSubIds = new Set(mLeads.map(l=>l.id));
-                  const mSubs = allSubsOm.filter(s => s.leadId && mSubIds.has(s.leadId));
-                  const mAllPayments = allSubsOm.flatMap(s=>(s.paymentHistory||[]).filter(p=>p.staffId===m.id||p.staffName===m.name).map(p=>({...p})));
-                  const mMonthRev = mAllPayments.filter(p=>cairoDay(p.at).slice(0, 7)===thisMonthStrOm).reduce((s,p)=>s+toEGPOm(p),0);
-                  const mWeekRev  = mAllPayments.filter(p=>cairoDay(p.at)>=thisWeekStartOm).reduce((s,p)=>s+toEGPOm(p),0);
-                  const mTodayRev = mAllPayments.filter(p=>cairoDay(p.at)===todayStrOm).reduce((s,p)=>s+toEGPOm(p),0);
-                  const mRem = mSubs.reduce((sum,s)=>{
-                    const hist=(s.paymentHistory||[]).filter(isCollected);
-                    const cpMap:Record<string,number>={};
-                    hist.forEach(p=>{ if(p.courseId&&p.courseExpected&&!cpMap[p.courseId]) cpMap[p.courseId]=Number(p.courseExpected)||0; });
-                    const exp=Object.values(cpMap).reduce((a,b)=>a+b,0);
-                    const paid=hist.reduce((a,p)=>a+toEGPOm(p),0);
-                    return sum+Math.max(0,exp-paid);
-                  },0);
-                  const mOverdue = mSubs.filter(s=>(s.installmentPlans||[]).some(p=>(p.entries||[]).some(e=>!e.paidAt&&e.dueDate<todayStrOm))).length;
-                  const allComms = mLeads.flatMap(l=>(l.communications||[]).map(c=>({...c})));
-                  const callsToday  = allComms.filter(c=>c.type==='call'&&cairoDay(c.date)===todayStrOm).length;
-                  const callsWeek   = allComms.filter(c=>c.type==='call'&&cairoDay(c.date)>=thisWeekStartOm).length;
-                  const callsMonth  = allComms.filter(c=>c.type==='call'&&cairoDay(c.date).slice(0, 7)===thisMonthStrOm).length;
-                  return { member: m, subs: mSubs.length, monthRev: mMonthRev, weekRev: mWeekRev, todayRev: mTodayRev, remaining: mRem, overdue: mOverdue, callsToday, callsWeek, callsMonth };
-                });
+                const memberStatsOm = (ovm?.team ?? []).map(m => ({
+                  member: { id: m.id, name: m.name, role: m.role }, subs: m.subs, monthRev: m.monthRev, weekRev: m.weekRev, todayRev: m.todayRev,
+                  remaining: m.remaining, overdue: m.overdue, callsToday: m.callsToday, callsWeek: m.callsWeek, callsMonth: m.callsMonth,
+                }));
+                const collTeamOm = memberStatsOm.map(entry => entry.member);
                 return (
                   <div className="space-y-5 w-full" dir="rtl">
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -717,7 +382,7 @@ export default function OverviewTab({
                         { label: 'إيراد الشهر', value: `${fmtMOm(totalMonthRevOm)} ج`, bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200', icon: BarChart3 },
                         { label: 'إجمالي الإيراد', value: `${fmtMOm(totalAllRevOm)} ج`, bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200', icon: Wallet },
                         { label: 'متأخر السداد', value: overdueCountOm, bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', icon: Clock },
-                        { label: 'عملاء الأونلاين', value: allSubsOm.length, bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', icon: UserCheck },
+                        { label: 'عملاء الأونلاين', value: ovm?.clients ?? 0, bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', icon: UserCheck },
                         { label: 'المتبقي من الأقساط', value: `${fmtMOm(totalRemOm)} ج`, bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200', icon: CreditCard },
                         { label: 'عدد الكورسات', value: courses.length, bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200', icon: BookOpen },
                         { label: 'فريق التحصيل', value: collTeamOm.length, bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200', icon: Users },
@@ -808,10 +473,7 @@ export default function OverviewTab({
 
                     {/* ── Revenue trend: last 30 days ── */}
                     {(() => {
-                      const last30Om = Array.from({length:30},(_,i)=>{
-                        const ds=cairoDaysAgo(29-i, nowOm);
-                        return { day: ds.slice(5), rev: allPaymentsOm.filter(p=>cairoDay(p.at)===ds).reduce((s,p)=>s+toEGPOm(p),0) };
-                      });
+                      const last30Om = (ovm?.last30 ?? []).map(d => ({ day: d.day.slice(5), rev: d.rev }));
                       const maxDayOm = Math.max(...last30Om.map(d=>d.rev),1);
                       return (
                         <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
@@ -839,12 +501,8 @@ export default function OverviewTab({
                     {/* ── Course enrollment distribution ── */}
                     {(() => {
                       const courseCountMap: Record<string, {title:string; count:number}> = {};
-                      allSubsOm.forEach(s => {
-                        (s.enrolledCourseIds||[]).forEach(cid => {
-                          const title = courses.find(c=>c.id===cid)?.title || cid;
-                          if (!courseCountMap[cid]) courseCountMap[cid] = {title, count:0};
-                          courseCountMap[cid].count++;
-                        });
+                      Object.entries(ovm?.courseCounts ?? {}).forEach(([cid, count]) => {
+                        courseCountMap[cid] = { title: courses.find(c=>c.id===cid)?.title || cid, count };
                       });
                       const topCourses = Object.values(courseCountMap).sort((a,b)=>b.count-a.count).slice(0,8);
                       if (topCourses.length === 0) return null;
@@ -876,23 +534,12 @@ export default function OverviewTab({
 
               // ── Reception Daqqi personal overview ───────────────────────
               if (isReceptionDaqqi && currentStaff) {
-                const allSubs = salesOwnSubscribers;
-                const now3 = new Date();
-                const todayStr3 = cairoDateOnly(now3);
-                const thisMonthStr3 = cairoMonthOnly(now3);
-                const thisWeekStart3 = cairoWeekStart(0, now3);
-                const allPayments3 = allSubs.flatMap(s => (s.paymentHistory||[]).filter(isCollected).map(p => ({...p, subId: s.id})));
-                const todayRev3  = allPayments3.filter(p=>cairoDay(p.at)===todayStr3).reduce((s,p)=>s+(Number(p.amount)||0),0);
-                const weekRev3   = allPayments3.filter(p=>cairoDay(p.at)>=thisWeekStart3).reduce((s,p)=>s+(Number(p.amount)||0),0);
-                const monthRev3  = allPayments3.filter(p=>cairoDay(p.at).slice(0, 7)===thisMonthStr3).reduce((s,p)=>s+(Number(p.amount)||0),0);
-                const totalRem3  = allSubs.reduce((sum,s)=>{
-                  const hist=(s.paymentHistory||[]).filter(isCollected);
-                  const cpMap:Record<string,number>={};
-                  hist.forEach(p=>{ if(p.courseId&&p.courseExpected&&!cpMap[p.courseId]) cpMap[p.courseId]=Number(p.courseExpected)||0; });
-                  const exp=Object.values(cpMap).reduce((a,b)=>a+b,0);
-                  const paid=hist.reduce((a,p)=>a+(Number(p.amount)||0),0);
-                  return sum+Math.max(0,exp-paid);
-                },0);
+                const ovr = staffOverview;
+                const allSubs = { length: ovr?.clients ?? 0 };
+                const todayRev3 = ovr?.money.today ?? 0;
+                const weekRev3 = ovr?.money.week ?? 0;
+                const monthRev3 = ovr?.money.month ?? 0;
+                const totalRem3 = ovr?.money.remaining ?? 0;
                 const fmtR = (n: number) => n>=1000 ? `${(n/1000).toFixed(1)}K` : String(Math.round(n));
                 return (
                   <div className="space-y-4">

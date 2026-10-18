@@ -36,8 +36,9 @@ function bundleScreen() {
   return module.exports;
 }
 
-const TODAY = '2026-10-18';
-const addDays = (days) => new Date(Date.UTC(2026, 9, 18 + days)).toISOString().slice(0, 10);
+// The screen's own follow-up code reads «tomorrow» off the real clock, so the day the two are compared on is today's.
+const TODAY = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+const addDays = (days) => new Date(Date.parse(`${TODAY}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
 
 // A small deterministic generator, so a failure names the same client every run.
 function random(seed) {
@@ -207,4 +208,44 @@ test('the online manager\'s badges and panels read one server summary over the s
   assert.match(handler.slice(0, 600), /staffSubscriberScope\(req\)/);
   assert.match(handler.slice(0, 4000), /AND p\.date >= \?/, 'the payments of the last seven days, from midnight of the day the screen showed (safeDateOnly), without a function on the column');
   assert.doesNotMatch(handler.slice(0, 4000), /DATE\(p\.date\)/);
+});
+
+test('the personal overviews add up collected money, what is owed and the instalments that are due', () => {
+  const { buildOverview } = require('../lib/staffOverview');
+  const plan = entries => [{ currency: 'EGP', entries }];
+  const clients = [
+    client('a', { leadId: 'L1', enrolledCourseIds: ['c1'], paymentHistory: [
+      { amount: 1000, currency: 'EGP', courseId: 'c1', at: TODAY, status: 'paid', staffId: 'm1' },
+      { amount: 400, currency: 'EGP', courseId: 'c1', at: TODAY, status: 'refunded', staffId: 'm1' },
+      { amount: 300, currency: 'SAR', courseId: 'c1', at: addDays(-3), status: 'paid', staffId: 'm2' },
+    ], installmentPlans: plan([{ amount: 500, dueDate: addDays(-2) }, { amount: 500, dueDate: addDays(2) }]) }),
+    client('b', { leadId: 'L2', installmentPlans: plan([{ amount: 700, dueDate: TODAY }, { amount: 900, dueDate: addDays(9) }]) }),
+  ];
+  const team = [{ id: 'm1', name: 'م1', role: 'collection', leadIds: new Set(['L1']) }, { id: 'm2', name: 'م2', role: 'collection', leadIds: new Set(['L1', 'L2']) }];
+  const calls = new Map([['m1', { today: 2, week: 5, month: 9 }]]);
+  const out = buildOverview(clients, { today: TODAY, weekStart: addDays(-3), monthStart: '2026-10-01', catalogue: CATALOGUE, team, calls });
+  assert.equal(out.clients, 2);
+  assert.equal(out.money.today, 1000, 'a refunded payment is not money collected');
+  assert.equal(out.money.week, 1000 + 300 * 13, 'the week starts on the day given, in pounds at the fallback rate');
+  assert.equal(out.last30.length, 30);
+  assert.equal(out.last30[29].rev, 1000);
+  assert.equal(out.last30[26].rev, 3900);
+  assert.deepEqual([out.installments.overdue.count, out.installments.dueToday.count, out.installments.dueWeek], [1, 1, 1]);
+  assert.deepEqual(out.installments.overdue.rows.map(row => [row.id, row.date, row.amount]), [['a', addDays(-2), 500]]);
+  assert.deepEqual(out.courseCounts, { c1: 1 });
+  const [m1, m2] = out.team;
+  assert.deepEqual([m1.subs, m1.todayRev, m1.callsToday, m1.callsMonth, m1.overdue], [1, 1000, 2, 9, 1]);
+  assert.deepEqual([m2.subs, m2.weekRev, m2.overdue], [2, 3900, 1], 'a lead worked by two officers counts for both');
+  const route = read('api/routes/admin/stafflists.js');
+  assert.match(route, /router\.get\('\/api\/staff\/overview-summary', requireAuth, requireAdminOrStaff, requirePermission\('view_subscribers'\)/);
+});
+
+test('the online hub asks the server for its figures instead of holding every online client and payment', () => {
+  const route = read('api/routes/admin/stafflists.js');
+  assert.match(route, /router\.get\('\/api\/admin\/online-team-summary', requireAuth, requireAdminOrStaff, requirePermission\('manage_subscribers'\)/);
+  assert.doesNotMatch(route.slice(route.indexOf("'/api/admin/online-team-summary'"), route.indexOf("'/api/staff/payments'")), /DATE\(p\.date\)/);
+  const tab = read('admin/pages/dashboard/tabs/OnlineTeamTab.tsx');
+  assert.match(tab, /\/admin\/online-team-summary\?range=/);
+  assert.doesNotMatch(tab, /getPayments|subscribers\.filter|onlineSubscribers/);
+  assert.doesNotMatch(read('admin/pages/dashboard/dashboardTabGroups.ts'), /export const fullSubscriberTabs = new Set<string>\(\[[\s\S]*?'online_hub',/);
 });

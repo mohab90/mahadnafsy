@@ -33,8 +33,7 @@ export interface OrdersTabProps {
   courses: Course[];
   bundles: Bundle[];
 
-  // OM + Daqqi views
-  salesOwnSubscribers: SubscriberItem[];
+  // OM view
   daqqiSubSearch: string;
   setDaqqiSubSearch: (v: string) => void;
   daqqiAccDateFrom: string;

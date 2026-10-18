@@ -153,7 +153,7 @@ test('a date range starts where the institute\'s day starts', () => {
 
   const screens = [
     'admin/pages/dashboard/tabs/MarketingHubTab.tsx',
-    'admin/pages/dashboard/tabs/OnlineTeamTab.tsx',
+    // OnlineTeamTab asks the server for its period (GET /api/admin/online-team-summary starts it on the institute's day).
     'admin/pages/dashboard/tabs/SalesHubTab.tsx',
     'admin/pages/dashboard/tabs/SalesReportsTab.tsx',
     'admin/pages/dashboard/tabs/StaffPerformanceTab.tsx',
