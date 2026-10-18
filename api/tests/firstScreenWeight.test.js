@@ -109,3 +109,8 @@ test('the inline-picture tool can delete what it finds, after saving it', () => 
   assert.ok(tool.includes("CLEAR ? { url: '', size: 0 }"));
   assert.ok(tool.indexOf('inline-images-backup-') < tool.indexOf('const stored = CLEAR'), 'the backup is written before the first change');
 });
+
+test('the student dashboard text links can be pressed on a phone', () => {
+  const dashboard = read('client/pages/UserDashboard.tsx');
+  assert.equal((dashboard.match(/inline-flex min-h-\[36px\] items-center text-xs/g) || []).length, 3, '«عرض الكل» twice and «عرض سجل المدفوعات»');
+});

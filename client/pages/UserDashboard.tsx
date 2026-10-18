@@ -800,7 +800,7 @@ const UserDashboard: React.FC = () => {
                     {totalPaidUSD > 0 && <p className="text-3xl font-extrabold">{totalPaidUSD.toLocaleString('ar-EG-u-nu-latn')} <span className="text-base font-medium">$</span></p>}
                     {totalPaidEGP + totalPaidSAR + totalPaidUSD === 0 && <p className="text-xl font-bold text-white/60">لا توجد مدفوعات بعد</p>}
                   </div>
-                  <button onClick={() => { setActiveTab('account'); setAccountSection('payments'); }} className="mt-3 text-xs text-white/70 hover:text-white underline transition">عرض سجل المدفوعات كاملاً ←</button>
+                  <button onClick={() => { setActiveTab('account'); setAccountSection('payments'); }} className="mt-3 inline-flex min-h-[36px] items-center text-xs text-white/70 hover:text-white underline transition">عرض سجل المدفوعات كاملاً ←</button>
                 </div>
 
                 {/* Enrolled courses quick view */}
@@ -808,7 +808,7 @@ const UserDashboard: React.FC = () => {
                   <div>
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="font-extrabold text-gray-700 text-sm">كورساتي</h3>
-                      <button onClick={() => { setActiveTab('learning'); setLearningSection('courses'); }} className="text-xs text-primary-600 hover:underline">عرض الكل</button>
+                      <button onClick={() => { setActiveTab('learning'); setLearningSection('courses'); }} className="inline-flex min-h-[36px] items-center text-xs text-primary-600 hover:underline">عرض الكل</button>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       {enrolledCourses.slice(0, 6).map(course => {
@@ -857,7 +857,7 @@ const UserDashboard: React.FC = () => {
                   <div>
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="font-extrabold text-gray-700 text-sm">آخر المدفوعات</h3>
-                      <button onClick={() => { setActiveTab('account'); setAccountSection('payments'); }} className="text-xs text-primary-600 hover:underline">عرض الكل</button>
+                      <button onClick={() => { setActiveTab('account'); setAccountSection('payments'); }} className="inline-flex min-h-[36px] items-center text-xs text-primary-600 hover:underline">عرض الكل</button>
                     </div>
                     <div className="bg-white rounded-2xl border border-gray-100 overflow-x-auto glass-card-premium shadow-xl shadow-gray-200/50 hover:shadow-2xl hover:shadow-primary-500/20 transition-all duration-300 hover:-translate-y-2 border-white/50 backdrop-blur-xl bg-white/70">
                       <table className="w-full text-sm">
