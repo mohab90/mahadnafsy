@@ -1,6 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { rangeStartDate } from '../../../lib/rangeStart';
-import { cairoDateOnly, cairoMonthOnly, cairoDay, cairoDaysAgo } from '../../../../shared/cairoDate';
+import { cairoMonthOnly } from '../../../../shared/cairoDate';
 import {
   Monitor, Users, CreditCard, AlertCircle, TrendingUp,
   BarChart3, Target, Calendar, Phone, 
@@ -18,17 +17,7 @@ type SubTab = 'overview' | 'online' | 'collection' | 'targets';
 
 interface Props { notify: NotifyFn; }
 
-const today = () => cairoDateOnly();
 const month = () => cairoMonthOnly();
-const isOnlineBranch = (branch?: string) => ['ONLINE_EGYPT', 'ONLINE_SAUDI', 'ONLINE_ABROAD'].includes(String(branch || '').toUpperCase());
-
-
-function inRange(dateStr: string | undefined, range: TimeRange): boolean {
-  if (range === 'all') return true;
-  const d = cairoDay(dateStr);
-  return d >= rangeStartDate(range);
-}
-
 function pct(val: number, total: number) {
   return total === 0 ? 0 : Math.min(100, Math.round((val / total) * 100));
 }
@@ -49,10 +38,6 @@ const formatCurrencyAmounts = (amounts: CurrencyAmounts) =>
     .map(([currency, amount]) => `${fmtMoney(amount)} ${currency}`)
     .join(' · ') || '—';
 
-function getLast7Days() {
-  return Array.from({ length: 7 }, (_, i) => cairoDaysAgo(6 - i));
-}
-
 const MOTIVATE_ONLINE = [
   'كل عميل راضٍ هو إنجاز حقيقي 💪',
   'خدمتك للعملاء تبني المعهد حجرة حجرة',
@@ -67,17 +52,18 @@ const MOTIVATE_COLLECTION = [
 ];
 
 interface StaffTargets { [staffId: string]: number }
-type OnlinePayment = {
-  subscriberId?: string | null;
-  amount: number;
-  amountEgp: number;
-  at: string;
-  branch?: string;
-  isInstallment?: boolean;
-  staffId?: string | null;
-  status?: string;
+type OnlineTeamSummary = {
+  range: string;
+  paid: { total: number; count: number };
+  activeClients: number;
+  overdue: { count: number; byCurrency: Record<string, number> };
+  weekly: Array<{ day: string; value: number }>;
+  collectionWeekly: Array<{ day: string; value: number }>;
+  staff: Record<string, {
+    subs: number; csSubs: number; paymentsCount: number; revenue: number; collected: number;
+    overdueCount: number; overdueByCurrency: Record<string, number>;
+  }>;
 };
-
 // ── Progress Bar Component ────────────────────────────────────────────────
 const ProgressBar: React.FC<{
   value: number; max: number; color?: string; height?: string; showPct?: boolean;
@@ -122,7 +108,7 @@ const MiniBarChart: React.FC<{
 
 // ── Main Component ─────────────────────────────────────────────────────────
 const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
-  const { staffMembers, subscribers, authUser, isAdmin, currentStaff } = useSiteData();
+  const { staffMembers, authUser, isAdmin, currentStaff } = useSiteData();
   // POST /api/admin/sales-targets is behind manage_sales_team; this tab's gate
   // is manage_subscribers. support, collection and reception_daqqi all hold the
   // second without the first — and a collection officer is this tab's core
@@ -137,8 +123,9 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
     } : null,
     'manage_sales_team',
   );
-  const onlineSubscribers = useMemo(() => subscribers.filter(subscriber => isOnlineBranch(subscriber.branch)), [subscribers]);
-  const [payments, setPayments] = useState<OnlinePayment[]>([]);
+  // What the teams collected, what is overdue and who holds how many clients, added up by the server for the period
+  // (GET /api/admin/online-team-summary) instead of out of every online client and every payment of the period.
+  const [summary, setSummary] = useState<OnlineTeamSummary | null>(null);
 
   const [timeRange, setTimeRange] = useState<TimeRange>('month');
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('overview');
@@ -164,103 +151,45 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
     }).catch(() => notify('error', 'تعذر تحميل أهداف فريق الأونلاين والتحصيل'));
   }, [staffMembers, notify]);
   useEffect(() => {
-    const start = timeRange === 'all' ? undefined : rangeStartDate(timeRange);
-    // No upper bound: it is applied as `date <= ?` against a datetime, so
-    // passing today's date excluded everything recorded after midnight — which
-    // is every payment taken today. There is nothing later than now to exclude.
-    mysqlAdmin.getPayments(start, undefined).then(rows => {
-      setPayments(rows.map(row => ({
-        subscriberId: row.subscriberId ? String(row.subscriberId) : row.subscriber_id ? String(row.subscriber_id) : null,
-        amount: Number(row.amount || 0),
-        amountEgp: Number(row.amountEgp ?? row.amount_egp ?? 0),
-        at: String(row.at || ''),
-        branch: String(row.branch || ''),
-        isInstallment: Boolean(row.isInstallment ?? row.is_installment),
-        staffId: row.staffId ? String(row.staffId) : row.staff_id ? String(row.staff_id) : null,
-        status: String(row.status || 'paid'),
-      })));
-    }).catch(() => notify('error', 'تعذر تحميل حركة التحصيل الموحّدة'));
+    let live = true;
+    mysqlAdmin.adminGet<OnlineTeamSummary>(`/admin/online-team-summary?range=${timeRange}`)
+      .then(answer => { if (live) setSummary(answer); })
+      .catch(() => { if (live) notify('error', 'تعذر تحميل حركة التحصيل الموحّدة'); });
+    return () => { live = false; };
   }, [notify, timeRange]);
 
-  // ── Filtered data ──────────────────────────────────────────────────────
-  const filteredPayments = useMemo(() =>
-    payments.filter(payment =>
-      payment.status === 'paid' && isOnlineBranch(payment.branch) && inRange(payment.at, timeRange)
-    ),
-    [payments, timeRange]);
-
-  const paidThisPeriod = filteredPayments.reduce((sum, payment) => sum + payment.amountEgp, 0);
-
-  // ── Overdue installments ───────────────────────────────────────────────
-  const { overdueInstallments, overdueByCurrency } = useMemo(() => {
-    let overdueCount = 0;
-    const overdue = emptyCurrencyAmounts();
-    onlineSubscribers.forEach(s => {
-      (s.installmentPlans || []).forEach(p => {
-        (p.entries || []).forEach(e => {
-          if (!e.paidAt && e.dueDate < today()) {
-            overdueCount++;
-            addCurrencyAmount(overdue, e.currency || p.currency, e.amount);
-          }
-        });
-      });
-    });
-    return { overdueInstallments: overdueCount, overdueByCurrency: overdue };
-  }, [onlineSubscribers]);
+  const paidThisPeriod = summary?.paid.total ?? 0;
+  const paymentsInPeriod = summary?.paid.count ?? 0;
+  const overdueInstallments = summary?.overdue.count ?? 0;
+  const overdueByCurrency: CurrencyAmounts = summary ? { ...emptyCurrencyAmounts(), ...summary.overdue.byCurrency } : emptyCurrencyAmounts();
+  const activeClients = summary?.activeClients ?? 0;
 
   // ── Weekly revenue chart ───────────────────────────────────────────────
-  const last7Days = useMemo(() => getLast7Days(), []);
-  const weeklyChartData = useMemo(() => last7Days.map(day => ({
-    label: day.slice(5),
-    value: payments.filter(payment =>
-      payment.status === 'paid' && isOnlineBranch(payment.branch) && cairoDay(payment.at) === day
-    ).reduce((sum, payment) => sum + payment.amountEgp, 0),
-  })), [payments, last7Days]);
-
-  const collectionChartData = useMemo(() => last7Days.map(day => ({
-    label: day.slice(5),
-    value: payments.filter(payment =>
-      payment.status === 'paid' && payment.isInstallment && isOnlineBranch(payment.branch)
-      && cairoDay(payment.at) === day
-    ).reduce((sum, payment) => sum + payment.amountEgp, 0),
-  })), [payments, last7Days]);
+  const weeklyChartData = useMemo(() => (summary?.weekly ?? []).map(d => ({ label: d.day.slice(5), value: d.value })), [summary]);
+  const collectionChartData = useMemo(() => (summary?.collectionWeekly ?? []).map(d => ({ label: d.day.slice(5), value: d.value })), [summary]);
 
   // ── Per-online-staff stats ─────────────────────────────────────────────
   const onlineStats = useMemo(() =>
     onlineTeam.map(s => {
-      const mySubs = onlineSubscribers.filter(sub => sub.assignedCsId === s.id || sub.assignedSalesId === s.id);
-      const mySubscriberIds = new Set(mySubs.map(sub => sub.id));
-      const myPayments = filteredPayments.filter(payment =>
-        payment.subscriberId ? mySubscriberIds.has(payment.subscriberId) : payment.staffId === s.id
-      );
-      const revenue = myPayments.reduce((sum, payment) => sum + payment.amountEgp, 0);
-      const myTarget = targets[s.id] || 0;
-      return { staff: s, paymentsCount: myPayments.length, revenue, subsCount: mySubs.length, target: myTarget };
+      const mine = summary?.staff[s.id];
+      return { staff: s, paymentsCount: mine?.paymentsCount ?? 0, revenue: mine?.revenue ?? 0, subsCount: mine?.subs ?? 0, target: targets[s.id] || 0 };
     }).sort((a, b) => b.subsCount - a.subsCount),
-    [onlineTeam, filteredPayments, onlineSubscribers, targets]);
+    [onlineTeam, summary, targets]);
 
   // ── Per-collection-staff stats ────────────────────────────────────────
   const collectionStats = useMemo(() =>
     collectionTeam.map(s => {
-      const mySubs = onlineSubscribers.filter(sub => sub.assignedCsId === s.id);
-      const myOverdueEntries = mySubs.flatMap(sub =>
-        (sub.installmentPlans || []).flatMap(p =>
-          (p.entries || [])
-            .filter(e => !e.paidAt && e.dueDate < today())
-            .map(entry => ({ entry, currency: entry.currency || p.currency }))));
-      const myOverdueByCurrency = emptyCurrencyAmounts();
-      myOverdueEntries.forEach(({ entry, currency }) => addCurrencyAmount(myOverdueByCurrency, currency, entry.amount));
-      const myCollected = filteredPayments.filter(payment => payment.staffId === s.id)
-        .reduce((sum, payment) => sum + payment.amountEgp, 0);
+      const mine = summary?.staff[s.id];
+      const myCollected = mine?.collected ?? 0;
       const myTarget = targets[s.id] || 0;
       const commissionEarned = myTarget > 0 ? Math.round(myCollected * ((s.commissionRate || 0) / 100)) : 0;
       return {
-        staff: s, subsCount: mySubs.length,
-        overdueCount: myOverdueEntries.length, overdueByCurrency: myOverdueByCurrency,
+        staff: s, subsCount: mine?.csSubs ?? 0,
+        overdueCount: mine?.overdueCount ?? 0, overdueByCurrency: { ...emptyCurrencyAmounts(), ...mine?.overdueByCurrency },
         collected: myCollected, target: myTarget, commissionEarned,
       };
     }).sort((a, b) => b.collected - a.collected),
-    [collectionTeam, onlineSubscribers, filteredPayments, targets]);
+    [collectionTeam, summary, targets]);
 
   // ── Handlers ───────────────────────────────────────────────────────────
   const startEdit = () => {
@@ -383,8 +312,8 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
             {[
               { label: 'إجمالي محصل', value: fmtMoney(paidThisPeriod), sub: 'ج.م مكافئ — هذه الفترة', icon: Receipt, color: 'text-green-600', bg: 'bg-green-50' },
               { label: 'أقساط متأخرة', value: overdueInstallments, sub: formatCurrencyAmounts(overdueByCurrency), icon: AlertCircle, color: 'text-red-600', bg: 'bg-red-50' },
-              { label: 'حركات تحصيل', value: filteredPayments.length, sub: 'دفعات مؤكدة', icon: CreditCard, color: 'text-cyan-600', bg: 'bg-cyan-50' },
-              { label: 'عملاء نشطون', value: onlineSubscribers.filter(s => s.status === 'active').length, sub: 'أونلاين', icon: Users, color: 'text-teal-600', bg: 'bg-teal-50' },
+              { label: 'حركات تحصيل', value: paymentsInPeriod, sub: 'دفعات مؤكدة', icon: CreditCard, color: 'text-cyan-600', bg: 'bg-cyan-50' },
+              { label: 'عملاء نشطون', value: activeClients, sub: 'أونلاين', icon: Users, color: 'text-teal-600', bg: 'bg-teal-50' },
             ].map(c => (
               <div key={c.label} className={`${c.bg} rounded-2xl p-4`}>
                 <div className="flex items-start justify-between mb-1">

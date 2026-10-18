@@ -215,13 +215,8 @@ export const fullSubscriberTabs = new Set<string>([
   // Named as the tab rather than as 'retention', because retention is a section
   // of تبويب التحليلات now and this set is keyed on what the URL says.
   'analytics_hub',
-  // فريق الأونلاين builds each collection officer's overdue-instalment list by
-  // filtering the subscribers array, and the أقساط متأخرة KPI from the same
-  // filter. It was in no loading set, so it worked from the 500-row bootstrap
-  // page — and that page is ordered newest first, so the rows it omitted were
-  // the oldest clients, who are precisely the ones carrying arrears. A
-  // collection officer was working a list missing the debts it exists to chase.
-  'online_hub',
+  // online_hub is not here any more: each collection officer's overdue instalments, the team's collections and the
+  // client counts come from GET /api/admin/online-team-summary, over every online client, whatever page is loaded.
   // These two read every client's installment plans / subscription rows out of the
   // subscribers array. Absent from every set they were counting the 500 newest
   // clients — and plans and renewals owed by the older ones are exactly the ones a
@@ -248,10 +243,8 @@ export const fullCrmDataTabs = new Set<string>([
   // keyed on the tab the URL names, so it has to name the tab.
   'campaigns',
   'ask_ai',
-  // Assignment and workload rather than money: who carries which leads and which
-  // subscribers. It reads both tables and filters each by branch, so both have
-  // to be the real ones.
-  'online_team',
+  // online_team is not here: who carries which leads and clients comes from GET /admin/online-performance, and the
+  // first pages of both tables are only the fallback while that answers.
 ]);
 
 /**

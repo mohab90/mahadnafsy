@@ -1405,6 +1405,88 @@ router.get('/api/staff/overview-summary', requireAuth, requireAdminOrStaff, requ
 });
 
 // ────────────────────────────────────────────────────────────
+// GET /api/admin/online-team-summary?range=today|7d|30d|month|all — «مركز الأونلاين»: what the online and collection teams
+// collected in the period, the instalments overdue (all, and each collection officer's), the last seven days, the active
+// clients, and per employee how many clients they hold and how much their clients and they paid.
+//
+// The screen filtered every online client and downloaded every payment of the period to work these out.
+// ────────────────────────────────────────────────────────────
+const ONLINE_BRANCHES = ['ONLINE_EGYPT', 'ONLINE_SAUDI', 'ONLINE_ABROAD'];
+router.get('/api/admin/online-team-summary', requireAuth, requireAdminOrStaff, requirePermission('manage_subscribers'), async (req, res) => {
+  try {
+    const tenantId = req.tenantId;
+    const range = ['today', '7d', '30d', 'month', 'all'].includes(String(req.query.range)) ? String(req.query.range) : 'month';
+    const today = cairoToday();
+    const startDay = { today, '7d': addDaysToDateOnly(today, -7), '30d': addDaysToDateOnly(today, -30), month: `${today.slice(0, 7)}-01`, all: '2000-01-01' }[range];
+    const from = cairoDayStartUtc(startDay);
+    const weekFrom = cairoDayStartUtc(addDaysToDateOnly(today, -6));
+    const tomorrow = cairoDayStartUtc(addDaysToDateOnly(today, 1));
+    const egp = "COALESCE(p.amount_egp, CASE WHEN p.currency='EGP' THEN p.amount ELSE 0 END)";
+    const paidOnline = "p.tenant_id=? AND p.deleted_at IS NULL AND p.status='paid' AND p.branch IN (?)";
+    const clientsOnline = 's.tenant_id=? AND s.deleted_at IS NULL AND s.branch IN (?)';
+    const [[[paid]], [weekly], [byCollector], [viaClients], [plans], [[active]], [subsCount]] = await Promise.all([
+      pool.query(`SELECT COALESCE(SUM(${egp}), 0) AS total, COUNT(*) AS n FROM payments p WHERE ${paidOnline} AND p.date >= ?`, [tenantId, ONLINE_BRANCHES, from]),
+      pool.query(
+        `SELECT DATE(${sqlCairoWall('p.date')}) AS day, SUM(${egp}) AS total, SUM(CASE WHEN p.is_installment=1 THEN ${egp} ELSE 0 END) AS installments
+           FROM payments p WHERE ${paidOnline} AND p.date >= ? AND p.date < ? GROUP BY day`, [tenantId, ONLINE_BRANCHES, weekFrom, tomorrow]),
+      pool.query(`SELECT p.staff_id AS id, COALESCE(SUM(${egp}), 0) AS total FROM payments p WHERE ${paidOnline} AND p.date >= ? AND p.staff_id IS NOT NULL GROUP BY p.staff_id`, [tenantId, ONLINE_BRANCHES, from]),
+      // What each employee's clients paid: a payment counts for the employee who sells to its client and the one who collects from it.
+      pool.query(
+        `SELECT x.id, COUNT(*) AS n, COALESCE(SUM(x.total), 0) AS total FROM (
+            SELECT s.assigned_cs_id AS id, p.id AS pid, ${egp} AS total FROM payments p JOIN subscribers s ON s.id=p.subscriber_id AND s.tenant_id=p.tenant_id
+             WHERE ${paidOnline} AND p.date >= ? AND s.assigned_cs_id IS NOT NULL
+            UNION
+            SELECT s.assigned_sales_id, p.id, ${egp} FROM payments p JOIN subscribers s ON s.id=p.subscriber_id AND s.tenant_id=p.tenant_id
+             WHERE ${paidOnline} AND p.date >= ? AND s.assigned_sales_id IS NOT NULL
+            UNION
+            SELECT p.staff_id, p.id, ${egp} FROM payments p WHERE ${paidOnline} AND p.date >= ? AND p.subscriber_id IS NULL AND p.staff_id IS NOT NULL
+          ) x GROUP BY x.id`, [tenantId, ONLINE_BRANCHES, from, tenantId, ONLINE_BRANCHES, from, tenantId, ONLINE_BRANCHES, from]),
+      pool.query(
+        `SELECT ip.id, ip.course_id, ip.bundle_id, ip.title, ip.total_amount, ip.currency, ip.installments_count, ip.installment_amounts,
+                ip.due_dates, ip.paid_dates, ip.paid_amounts, ip.created_at, s.assigned_cs_id AS cs_id
+           FROM installment_plans ip JOIN subscribers s ON s.id=ip.subscriber_id AND s.tenant_id=ip.tenant_id
+          WHERE ${clientsOnline}`, [tenantId, ONLINE_BRANCHES]),
+      pool.query(
+        `SELECT COUNT(*) AS n FROM subscribers s WHERE ${clientsOnline}
+            AND CASE WHEN JSON_VALID(s.crm_json) THEN COALESCE(JSON_UNQUOTE(JSON_EXTRACT(s.crm_json,'$.status')),'') ELSE '' END = 'active'`, [tenantId, ONLINE_BRANCHES]),
+      pool.query(
+        `SELECT id, COUNT(DISTINCT cid) AS any_n, COUNT(DISTINCT CASE WHEN via='cs' THEN cid END) AS cs_n FROM (
+            SELECT s.assigned_cs_id AS id, s.id AS cid, 'cs' AS via FROM subscribers s WHERE ${clientsOnline} AND s.assigned_cs_id IS NOT NULL
+            UNION ALL
+            SELECT s.assigned_sales_id, s.id, 'sales' FROM subscribers s WHERE ${clientsOnline} AND s.assigned_sales_id IS NOT NULL
+          ) y GROUP BY id`, [tenantId, ONLINE_BRANCHES, tenantId, ONLINE_BRANCHES]),
+    ]);
+    const overdue = { count: 0, byCurrency: { EGP: 0, SAR: 0, USD: 0 } };
+    const staff = {};
+    const row = id => (staff[id] ||= { subs: 0, csSubs: 0, paymentsCount: 0, revenue: 0, collected: 0, overdueCount: 0, overdueByCurrency: { EGP: 0, SAR: 0, USD: 0 } });
+    for (const plan of plans) {
+      for (const entry of mapInstallmentPlan(plan).entries) {
+        if (entry.paidAt || !entry.dueDate || entry.dueDate >= today) continue;
+        const code = String(entry.currency || 'EGP').toUpperCase();
+        overdue.count += 1;
+        if (code in overdue.byCurrency) overdue.byCurrency[code] += entry.amount;
+        if (plan.cs_id) {
+          const mine = row(plan.cs_id);
+          mine.overdueCount += 1;
+          if (code in mine.overdueByCurrency) mine.overdueByCurrency[code] += entry.amount;
+        }
+      }
+    }
+    for (const r of subsCount) { const mine = row(r.id); mine.subs = Number(r.any_n) || 0; mine.csSubs = Number(r.cs_n) || 0; }
+    for (const r of viaClients) { const mine = row(r.id); mine.paymentsCount = Number(r.n) || 0; mine.revenue = Number(r.total) || 0; }
+    for (const r of byCollector) row(r.id).collected = Number(r.total) || 0;
+    const days = Array.from({ length: 7 }, (_, i) => addDaysToDateOnly(today, i - 6));
+    const byDay = new Map(weekly.map(r => [safeDateOnly(r.day), r]));
+    res.json({
+      range, paid: { total: Number(paid.total) || 0, count: Number(paid.n) || 0 }, activeClients: Number(active.n) || 0, overdue,
+      weekly: days.map(day => ({ day, value: Number(byDay.get(day)?.total) || 0 })),
+      collectionWeekly: days.map(day => ({ day, value: Number(byDay.get(day)?.installments) || 0 })),
+      staff,
+    });
+  } catch (e) { logger.error('[/api/admin/online-team-summary]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ────────────────────────────────────────────────────────────
 // GET /api/staff/payments — «مدفوعاتي»: the payments of the person's own clients, a page at a time.
 //
 //   from, to   a Cairo day range (inclusive), either may be left out

@@ -239,3 +239,13 @@ test('the personal overviews add up collected money, what is owed and the instal
   const route = read('api/routes/admin/stafflists.js');
   assert.match(route, /router\.get\('\/api\/staff\/overview-summary', requireAuth, requireAdminOrStaff, requirePermission\('view_subscribers'\)/);
 });
+
+test('the online hub asks the server for its figures instead of holding every online client and payment', () => {
+  const route = read('api/routes/admin/stafflists.js');
+  assert.match(route, /router\.get\('\/api\/admin\/online-team-summary', requireAuth, requireAdminOrStaff, requirePermission\('manage_subscribers'\)/);
+  assert.doesNotMatch(route.slice(route.indexOf("'/api/admin/online-team-summary'"), route.indexOf("'/api/staff/payments'")), /DATE\(p\.date\)/);
+  const tab = read('admin/pages/dashboard/tabs/OnlineTeamTab.tsx');
+  assert.match(tab, /\/admin\/online-team-summary\?range=/);
+  assert.doesNotMatch(tab, /getPayments|subscribers\.filter|onlineSubscribers/);
+  assert.doesNotMatch(read('admin/pages/dashboard/dashboardTabGroups.ts'), /export const fullSubscriberTabs = new Set<string>\(\[[\s\S]*?'online_hub',/);
+});

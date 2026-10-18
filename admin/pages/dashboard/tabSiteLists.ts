@@ -63,7 +63,7 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   marketing_hub: ['leads', 'subscribers', 'orders', 'discounts', 'joinUsApplications'],
   campaigns: ['leads', 'subscribers'],
   online_team: ['leads', 'subscribers'],
-  online_hub: ['subscribers'],
+  online_hub: [],
   analytics_hub: ['expenses', 'orders', 'subscribers'],
   // AnalyticsTab, drawn whole here, with the branch's weekly panel.
   daqqi_stats: ['orders', 'leads', 'subscribers', 'discounts', 'joinUsApplications', 'contactMessages'],
