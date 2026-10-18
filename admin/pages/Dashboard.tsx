@@ -67,7 +67,7 @@ import { useOnlineManagerSummary } from './dashboard/useOnlineManagerSummary';
 import { useStaffOrders } from './dashboard/useStaffOrders';
 import { useNotificationsBell } from './dashboard/useNotificationsBell';
 import { useStaffOwnData } from './dashboard/useStaffOwnData';
-import { staffClientsArePaged, staffScreenReadsLists, staffSkipsSiteLists } from './dashboard/staffListTabs';
+import { staffClientsArePaged, staffScreenPagesFromServer, staffSkipsSiteLists } from './dashboard/staffListTabs';
 import { useDashboardDerived } from './dashboard/useDashboardDerived';
 import { useBranches } from '../hooks/useBranches';
 import { useCanDelete } from '../hooks/useCanDelete';
@@ -157,8 +157,6 @@ const Dashboard: React.FC = () => {
     currentStaff,
     staffSelf,
     staffSelfLoading,
-    setStaffScopedSubscribers,
-    setStaffScopedLeads,
   } = useSiteData();
   const [searchParams] = useSearchParams();
   const branchQueryFilter = branchSlugToFilter(searchParams.get('branch'));
@@ -468,35 +466,23 @@ const Dashboard: React.FC = () => {
   // Server handles scoping via DATA_SCOPE — no need to enumerate roles here
   const isNonAdminStaff = !isAdmin && !!staffSelf;
   const usesStaffScopedData = isNonAdminStaff || isOnlineManager;
-  // The lists of leads and clients are downloaded for the screens that read them, not at sign-in
-  // (dashboard/staffListTabs.ts); the landing page and the person's own pages read server summaries.
-  const wantsStaffLists = staffScreenReadsLists(activeTab);
-  const wantsStaffListsRef = useRef(wantsStaffLists);
-  wantsStaffListsRef.current = wantsStaffLists;
   // A write on a screen that pages from the server reloads no list (lib/crmChanged.ts).
   useEffect(() => {
-    setStaffListsWanted(!isNonAdminStaff || wantsStaffLists);
+    setStaffListsWanted(!isNonAdminStaff || !staffScreenPagesFromServer(activeTab));
     return () => setStaffListsWanted(true);
-  }, [isNonAdminStaff, wantsStaffLists]);
+  }, [isNonAdminStaff, activeTab]);
 
-  // -- Own-data subscriptions for non-admin staff -----------------------------
-  // SiteDataContext only loads CRM data for admins. Non-admin staff (sales, collection)
-  // query MySQL directly.
+  // -- Own-data for non-admin staff: the Dokki rounds, the team and the content (no lists of clients or leads) ----
   const {
-    salesOwnLeads, 
-    salesOwnSubscribers, setSalesOwnSubscribers,
     salesOwnDaqqiRounds, setSalesOwnDaqqiRounds,
     onlineTeamMembers, 
     salesDataLoading, 
     fetchSalesData, fetchSalesDataIfStale,
   } = useStaffOwnData({
-    wantsLists: wantsStaffLists,
     isAdmin,
     isOnlineManager,
     staffSelf,
     currentStaff,
-    setStaffScopedSubscribers,
-    setStaffScopedLeads,
     setStaffScopedRounds: bulkSetDaqqiRounds,
     mergeContent,
   });
@@ -533,10 +519,11 @@ const Dashboard: React.FC = () => {
     onlineManagerSummary,
   });
 
-  // -- ClientDbTab booking callback — opens subPayRow or leadPayRow modal ----
+  // -- ClientDbTab booking callback — opens subPayRow or leadPayRow modal. The row it books was drawn from the
+  // loaded clients and leads (the first page, as for the administration), so it is found there. ----
   const handleClientDbBook = useCallback((clientId: string, type: 'subscriber' | 'lead') => {
     if (type === 'subscriber') {
-      const sub = (usesStaffScopedData ? salesOwnSubscribers : subscribers).find(s => s.id === clientId);
+      const sub = subscribers.find(s => s.id === clientId);
       if (sub) {
         setSubPayRow(sub);
         const currency = currencyForBranch(sub.branch);
@@ -545,7 +532,7 @@ const Dashboard: React.FC = () => {
         setSubPayDraft(prev => ({ ...prev, bookingType: defaultBookingType as 'new_booking'|'installment' }));
       }
     } else {
-      const lead = (usesStaffScopedData ? salesOwnLeads : leads).find(l => l.id === clientId);
+      const lead = leads.find(l => l.id === clientId);
       if (lead) {
         // realCourseIds() drops imported free-text course names (`raw:` entries),
         // which are display-only and would otherwise be pre-filled as a courseId.
@@ -564,36 +551,17 @@ const Dashboard: React.FC = () => {
     // the rule can see, so it cannot tell they are stable; listing them would
     // rebuild this callback on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [usesStaffScopedData, salesOwnSubscribers, subscribers, salesOwnLeads, leads]);
+  }, [subscribers, leads]);
 
   useEffect(() => {
     void fetchSalesData();
   }, [fetchSalesData]);
 
-  // The first screen that reads the lists starts their download; coming back to one within two minutes does not.
-  useEffect(() => {
-    if (wantsStaffLists) void fetchSalesDataIfStale(2 * 60 * 1000);
-  }, [wantsStaffLists, fetchSalesDataIfStale]);
-
-  // A write anywhere refetches the staff's own lists, once for a burst of reloads
-  // (lib/crmChanged.ts) — they were refetched every two minutes otherwise.
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    // A screen that does not read the lists has nothing to refresh: it asks the server for its own figures.
-    const onChanged = () => { clearTimeout(timer); timer = setTimeout(() => { if (wantsStaffListsRef.current) void fetchSalesData(); }, 300); };
-    window.addEventListener(CRM_CHANGED_EVENT, onChanged);
-    return () => { clearTimeout(timer); window.removeEventListener(CRM_CHANGED_EVENT, onChanged); };
-  }, [fetchSalesData]);
-
-  // Background polling for non-admin staff (sales/collection/daqqi/online-manager) —
-  // fetchSalesData no-ops for real admins internally, so this mirrors the admin-only
-  // polling in SiteDataContext.tsx (leads/subscribers every 2 min + on tab-focus) for
-  // the roles that context effect explicitly skips (CRM-04). Without this, a sales
-  // rep's dashboard only ever reflects data as of page load / their last manual action.
+  // Background refresh of what an employee's panel holds (the Dokki rounds, the team, the content) every two minutes
+  // and on return to the tab; fetchSalesData no-ops for real admins.
   useEffect(() => {
     let cancelled = false;
-    // Both are passive: they ask only when the lists are older than the timer, so a rep switching between tabs
-    // does not start a full download at every return.
+    // Both are passive: they ask only when the last refresh is older than the timer.
     const pollId = setInterval(() => { if (document.visibilityState !== 'visible') return; if (!cancelled) void fetchSalesDataIfStale(110 * 1000); }, 2 * 60 * 1000);
     const onVisible = () => {
       if (!cancelled && document.visibilityState === 'visible') void fetchSalesDataIfStale(2 * 60 * 1000);
@@ -607,7 +575,7 @@ const Dashboard: React.FC = () => {
   }, [fetchSalesData, fetchSalesDataIfStale]);
 
   // Effective arrays: for non-admin roles use own-data; for admin use context
-  const effectiveSubs = usesStaffScopedData ? salesOwnSubscribers : subscribers;
+  const effectiveSubs = subscribers;
   // An employee who keeps the accounts (customer service) reads the 500 newest payments of their clients from the server;
   // the online manager has his own desk (usePaymentsDesk).
   const staffOrders = useStaffOrders(usesStaffScopedData && activeTab === 'orders' && !isOnlineManager, courses, bundles);
@@ -983,8 +951,6 @@ const Dashboard: React.FC = () => {
                     canDeleteSubscriber: hasPermission('delete_subscribers'),
                     activeTab,
                     subscribers,
-                    salesOwnSubscribers,
-                    setSalesOwnSubscribers,
                     courses,
                     bundles,
                     staffMembers,
@@ -994,7 +960,6 @@ const Dashboard: React.FC = () => {
                     // next poll — a client housed a moment ago did not show as housed.
                     salesOwnDaqqiRounds: siteDaqqiRounds,
                     setSalesOwnDaqqiRounds,
-                    salesOwnLeads: salesOwnLeads ?? [],
                     updateSubscriber,
                     addSubscriber,
                     reloadSubscribers,
@@ -1175,13 +1140,10 @@ const Dashboard: React.FC = () => {
                   activeTab={activeTab}
                   notify={notify}
                   staffSelf={staffSelf}
-                  salesOwnLeads={salesOwnLeads}
-                  salesOwnSubscribers={salesOwnSubscribers}
                   salesDataLoading={salesDataLoading}
                   fetchSalesData={fetchSalesData}
                   setActiveTab={navigateToTab}
                   branchFilter={branchQueryFilter}
-                  isNonAdminStaff={isNonAdminStaff}
                   salesOwnDaqqiRounds={salesOwnDaqqiRounds}
                   isReceptionDaqqi={isReceptionDaqqi}
                   isSupport={isSupport}

@@ -28,38 +28,29 @@ function bundle(entry) {
   return module.exports;
 }
 
-test('the landing page and the person\'s own pages do not start the download; the screens that read the lists do', () => {
+test('the screens that page from the server are named, and an employee\'s panel downloads no list of clients or leads', () => {
   const lib = bundle('admin/pages/dashboard/staffListTabs.ts');
-  if (!lib) return;
-  const { staffScreenReadsLists: reads } = lib;
-  // The landing page, the own pages, «عملائي», the leads and the accounts desk (the online manager's own and the customer
-  // service's) read the server's figures and pages: none of them starts the download, whoever opens them.
-  for (const tab of ['staff_home', 'staff_settings', 'my_hr', 'leads', 'online_clients', 'orders']) assert.equal(reads(tab), false, tab);
-  // The screens that read the lists still do, and so does a screen nobody has listed.
-  for (const tab of ['daqqi_clients', 'client', 'daqqi_schedule', 'some_new_screen']) {
-    assert.equal(reads(tab), true, `${tab} is read through only when it is listed`);
+  if (lib) {
+    const { staffScreenPagesFromServer: pages, staffClientsArePaged: paged, staffSkipsSiteLists: skips } = lib;
+    for (const tab of ['staff_home', 'staff_settings', 'my_hr', 'leads', 'online_clients', 'orders']) assert.equal(pages(tab), true, tab);
+    // The screens that read the context's lists keep their reload after a write.
+    for (const tab of ['client', 'refund_requests', 'daqqi_clients', 'daqqi_schedule', 'financial']) assert.equal(pages(tab), false, tab);
+    assert.equal(paged('online_clients', true, false), true);
+    assert.equal(paged('online_clients', false, true), true, 'the online manager');
+    assert.equal(paged('online_clients', false, false), false, 'the administration keeps the whole list');
+    assert.equal(paged('leads', true, false), false);
+    assert.deepEqual([...skips('orders')], ['orders', 'subscribers']);
+    assert.deepEqual([...skips('online_clients')], ['subscribers']);
+    assert.deepEqual([...skips('financial')], []);
   }
-  const { staffClientsArePaged: paged } = lib;
-  assert.equal(paged('online_clients', true, false), true);
-  assert.equal(paged('online_clients', false, true), true, 'the online manager');
-  assert.equal(paged('online_clients', false, false), false, 'the administration keeps the whole list');
-  assert.equal(paged('leads', true, false), false);
-});
-
-test('the staff lists are downloaded only on a screen that wants them, and the timers leave the others alone', () => {
+  // What is left of the hook is the Dokki rounds, the team and the content.
   const hook = read('admin/pages/dashboard/useStaffOwnData.ts');
-  assert.match(hook, /const withLists = wantsListsRef\.current;/);
-  assert.match(hook, /if \(withLists\) \{/, 'the clients and leads are read inside this branch only');
-  // «Fresh» on a screen that reads the lists means the lists were read, not the bootstrap a list-less screen runs.
-  assert.match(hook, /listsAtRef\.current = Date\.now\(\);/);
-  assert.match(hook, /if \(\(runningRef\.current && runWithListsRef\.current\) \|\| Date\.now\(\) - listsAtRef\.current < maxAgeMs\)/);
-
+  assert.doesNotMatch(hook, /streamSubscribers|listStaffLeads|salesOwn(Leads|Subscribers)|wantsLists/);
+  assert.match(hook, /listAllDaqqiRounds/);
   const dashboard = read('admin/pages/Dashboard.tsx');
-  assert.match(dashboard, /const wantsStaffLists = staffScreenReadsLists\(activeTab\);/);
-  assert.match(dashboard, /useStaffOwnData\(\{\s*wantsLists: wantsStaffLists,/);
-  assert.match(dashboard, /if \(wantsStaffLists\) void fetchSalesDataIfStale\(2 \* 60 \* 1000\);/,
-    'the first screen that reads the lists starts them, a return within two minutes does not');
-  assert.match(dashboard, /if \(wantsStaffListsRef\.current\) void fetchSalesData\(\);/, 'a write refreshes them only where they are shown');
+  assert.doesNotMatch(dashboard, /salesOwn(Leads|Subscribers|Orders)|setStaffScoped(Subscribers|Leads)|staffScreenReadsLists|wantsStaffLists/);
+  assert.match(dashboard, /setStaffListsWanted\(!isNonAdminStaff \|\| !staffScreenPagesFromServer\(activeTab\)\);/,
+    'a write on a screen that pages from the server reloads no list');
 });
 
 test('the bell counts on the server for every employee, so it needs no list', () => {
@@ -185,30 +176,16 @@ function adminSources(dir, out = []) {
   return out;
 }
 
-test('only the named screens touch the person\'s own lists', () => {
+test('no file reads the downloaded lists of clients and leads any more', () => {
   const readers = adminSources(path.join(ROOT, 'admin'))
     .filter(file => /salesOwn(Leads|Subscribers|Orders)|staffScoped(Subscribers|Leads)/.test(fs.readFileSync(file, 'utf8')))
     .map(file => path.relative(ROOT, file).split(path.sep).join('/'))
     .sort();
+  // What is left is the context's slot for «the rows on screen» that a save is compared against
+  // (useCrmCoreState.updateSubscriber), which the paged clients screen fills (setStaffScopedSubscribers in OnlineClientsTab).
   assert.deepEqual(readers, [
-    // The plumbing: where the lists are loaded and handed down.
     'admin/context/SiteDataContext.tsx',
     'admin/context/site-data-hooks/useCrmCoreState.ts',
     'admin/context/siteDataSlices.tsx',
-    'admin/pages/Dashboard.tsx',
-    'admin/pages/dashboard/useStaffOwnData.ts',
-    // The screens: overview (the collection, online manager and reception dashboards), the clients database, the
-    // Dokki schedule and clients, the accounts desk.
-    'admin/pages/ClientProfile.tsx',
-    'admin/pages/dashboard/DashboardGrowthOpsTabs.tsx',
-    'admin/pages/dashboard/tabs/ClientDbTab.tsx',
-    'admin/pages/dashboard/tabs/OnlineClientsTab.tsx',
   ].sort());
-  const lib = bundle('admin/pages/dashboard/staffListTabs.ts');
-  if (!lib) return;
-  const { staffScreenReadsLists: reads } = lib;
-  for (const tab of ['refund_requests', 'service_hub', 'sales_hub', 'team_inbox', 'whatsapp_web', 'customer_inbox', 'cert_requests', 'consultations', 'join_us', 'staff_performance', 'overview']) {
-    assert.equal(reads(tab), false, `${tab} reads none of the person's own lists`);
-  }
-  for (const tab of ['client', 'daqqi_schedule', 'daqqi_clients']) assert.equal(reads(tab), true, tab);
 });

@@ -66,6 +66,7 @@ test('«تواصل» on a client row opens that client\'s contact form', () => {
 test('a role that may not see clients is not sent to fetch them', () => {
   // HR, the accountant and the instructors were refused /staff/subscribers on
   // every page load.
-  assert.match(read('admin/pages/dashboard/useStaffOwnData.ts'),
-    /hasPermission\(staffRef, 'view_subscribers'\)\s*\?\s*\(async \(\) => \{[\s\S]{0,200}mysqlAdmin\.streamSubscribers\(\{ staff: true \}/);
+  // Nothing sends them any more: the panel downloads no list, and the clients screen is behind the tab's permission.
+  assert.doesNotMatch(read('admin/pages/dashboard/useStaffOwnData.ts'), /streamSubscribers/);
+  assert.match(read('admin/pages/dashboard/dashboardShared.tsx'), /online_clients: +'view_subscribers'/);
 });

@@ -33,13 +33,13 @@ const UnifiedClientView: React.FC<{ subscriber?: SubscriberItem; lead?: LeadItem
 const ClientProfile: React.FC = () => {
   const { code } = useParams<{ code: string }>();
   const goBack = useGoBack();
-  const { subscribers, leads, daqqiRounds, consultations, staffScopedSubscribers, staffScopedLeads } = useCrmData();
+  const { subscribers, leads, daqqiRounds, consultations } = useCrmData();
   // A page of its own, outside the dashboard's tabs: it asks for what it looks the client up in.
   useEnsureSiteLists(['subscribers', 'leads', 'daqqiRounds']);
 
-  // Merge context + scoped data so non-admin staff can navigate to clients
-  const allSubs = subscribers.length > 0 ? subscribers : staffScopedSubscribers;
-  const allLeads = leads.length > 0 ? leads : staffScopedLeads;
+  // The loaded clients and leads; a client outside them (an employee opens one by link) is fetched below.
+  const allSubs = subscribers;
+  const allLeads = leads;
 
   // Remote fetch state — used when global context doesn't have the client (non-admin staff)
   const [remoteLoading, setRemoteLoading] = useState(false);

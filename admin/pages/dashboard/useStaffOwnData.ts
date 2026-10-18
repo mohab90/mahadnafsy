@@ -1,56 +1,31 @@
 import { useCallback, useRef, useState } from 'react';
-import type { LeadItem, SubscriberItem, DaqqiRound, StaffMember } from '../../types';
+import type { DaqqiRound, StaffMember } from '../../types';
 import { mysqlAdmin } from '../../lib/mysqlapi';
-import { hasPermission } from '../../constants/permissions';
 import { staffStatusFromWire, type StaffWire } from './dashboardHelpers';
 
 interface StaffOwnDataArgs {
-  /**
-   * Whether the open screen reads the person's lists of leads and clients. Those are downloaded in full (every lead
-   * and client in the role's scope, with their payments), so they wait for the first screen that draws them: the
-   * landing page and the person's own pages read small server summaries instead (GET /api/staff/home-summary).
-   */
-  wantsLists: boolean;
   isAdmin: boolean;
   isOnlineManager: boolean;
   staffSelf: StaffMember | null | undefined;
   currentStaff: StaffMember | null | undefined;
-  setStaffScopedSubscribers: (s: SubscriberItem[]) => void;
-  setStaffScopedLeads: (l: LeadItem[]) => void;
   /** The rounds into the context too, so the schedule and the clients screen read one copy. */
   setStaffScopedRounds?: (r: DaqqiRound[]) => void;
   mergeContent: (c: Record<string, string>) => void;
 }
 
 /**
- * Own-data subscriptions for non-admin staff (sales/collection/daqqi/online-manager).
- * SiteDataContext only loads CRM data for admins, so these roles query MySQL directly.
- *
- * Extracted verbatim from Dashboard.tsx. It owns the 6 scoped-data state slices and
- * the fetchSalesData callback; the `useEffect` that *runs* fetchSalesData stays in
- * Dashboard at its original position so effect-execution order is unchanged.
+ * What an employee's panel needs beyond the context's: the Dokki rounds (for the Dokki roles), the team (for the
+ * managers) and the public content. The employee's clients and leads are no longer downloaded — every screen that
+ * showed them pages, filters and counts on the server (GET /api/staff/subscribers?paged=1, /api/staff/leads-kpis,
+ * /api/staff/payments, /api/staff/overview-summary, …).
  */
 export function useStaffOwnData({
-  wantsLists, isAdmin, isOnlineManager, staffSelf, currentStaff,
-  setStaffScopedSubscribers, setStaffScopedLeads, setStaffScopedRounds, mergeContent,
+  isAdmin, isOnlineManager, staffSelf, currentStaff, setStaffScopedRounds, mergeContent,
 }: StaffOwnDataArgs) {
-  const [salesOwnLeads, setSalesOwnLeads] = useState<LeadItem[]>([]);
-  const [salesOwnSubscribers, setSalesOwnSubscribers] = useState<SubscriberItem[]>([]);
   const [salesOwnDaqqiRounds, setSalesOwnDaqqiRounds] = useState<DaqqiRound[] | null>(null);
   const [onlineTeamMembers, setOnlineTeamMembers] = useState<StaffMember[]>([]);
   const [salesDataLoading, setSalesDataLoading] = useState(false);
-  // True once a first full list has been shown. Until then the list is published
-  // page by page as it arrives; afterwards a refresh builds the new list quietly and
-  // swaps it in, so a two-minute refresh never shrinks the table back to one page.
-  const loadedOnceRef = useRef(false);
-  const wantsListsRef = useRef(wantsLists);
-  wantsListsRef.current = wantsLists;
-  // When the lists, and when anything at all, were last read.
-  const listsAtRef = useRef(0);
-  const runWithListsRef = useRef(false);
-
   const loadSalesData = useCallback(async () => {
-    runWithListsRef.current = wantsListsRef.current;
     // Staff only. The online manager counted as an admin here once, from a list
     // /api/auth/me kept apart from requireAdmin; it follows requireAdmin now.
     const staffRef = staffSelf || (isOnlineManager ? currentStaff : null);
@@ -58,56 +33,6 @@ export function useStaffOwnData({
     if (isAdmin) return; // admins have the full context data
     setSalesDataLoading(true);
     try {
-      // mysqlAdmin: static import (top of file)
-      const withLists = wantsListsRef.current;
-      let mySubs: SubscriberItem[] = [];
-
-      // ONE unified call — server scopes data automatically based on role
-      if (withLists) {
-        const [subsRaw, leadsRaw] = await Promise.allSettled([
-          // Only for a role that may see clients. HR, the accountant and the
-          // instructors were refused this on every page load (403) for a list the
-          // screen then dropped.
-          //
-          // Streamed. This was one request for every client in the role's scope —
-          // 2,000 rows per page, all pages awaited, with each client's payments,
-          // enrolments and certificates — and nothing showed until the last page
-          // was in. The first page now paints the table and the rest fills in.
-          hasPermission(staffRef, 'view_subscribers')
-            ? (async () => {
-              const collected: SubscriberItem[] = [];
-              await mysqlAdmin.streamSubscribers({ staff: true }, page => {
-                collected.push(...(page as unknown as SubscriberItem[]));
-                if (!loadedOnceRef.current) {
-                  const partial = [...collected];
-                  setSalesOwnSubscribers(partial);
-                  setStaffScopedSubscribers(partial);
-                }
-              });
-              loadedOnceRef.current = true;
-              // Newest first, as the server orders them (pages can land out of order).
-              return collected.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))) as unknown;
-            })()
-            : Promise.resolve([] as unknown),
-          // And only for a role that may see leads: one that may not was refused
-          // this on every page load (403, 76 times in two days of the log).
-          hasPermission(staffRef, 'view_leads')
-            ? mysqlAdmin.listStaffLeads() as Promise<unknown>
-            : Promise.resolve([] as unknown),
-        ]);
-
-        mySubs = subsRaw.status === 'fulfilled' ? subsRaw.value as SubscriberItem[] : [];
-        const myLeads: LeadItem[] = leadsRaw.status === 'fulfilled' ? leadsRaw.value as LeadItem[] : [];
-
-        setSalesOwnSubscribers(mySubs);
-        setSalesOwnLeads(myLeads);
-        // Sync to context so ClientDbTab (and any other tab) can access scoped data
-        setStaffScopedSubscribers(mySubs);
-        setStaffScopedLeads(myLeads);
-
-        listsAtRef.current = Date.now();
-      }
-
       // Daqqi rounds — only for daqqi roles
       const isDaqqiRole = staffRef.role === 'daqqi_manager' || staffRef.role === 'reception_daqqi'
         || staffRef.role === 'tagamoa_manager' || staffRef.role === 'reception_tagamoa' || staffRef.role === 'manager';
@@ -178,11 +103,8 @@ export function useStaffOwnData({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, isOnlineManager, staffSelf?.id, staffSelf?.role, currentStaff?.id, currentStaff?.role]);
 
-  // One refresh at a time. Every trigger used to start a full download of all the leads and all the clients in the
-  // role's scope — the first render, the staff record arriving, every write (lib/crmChanged.ts), every two minutes
-  // and every return to the tab — and nothing stopped them overlapping: a sales rep's «مدفوعاتي» sent over a
-  // thousand requests for the same pages. A call made while one is running joins it, and asks for one more run
-  // afterwards (the running one may have read before the write that asked), however many asked meanwhile.
+  // One refresh at a time. A call made while one is running joins it, and asks for one more run afterwards (the
+  // running one may have read before the change that asked), however many asked meanwhile.
   const runningRef = useRef<Promise<void> | null>(null);
   const queuedRef = useRef(false);
   const lastDoneRef = useRef(0);
@@ -199,21 +121,13 @@ export function useStaffOwnData({
     };
     return run();
   }, [loadSalesData]);
-  /** For the timer and the return to the tab: skipped when the lists were read less than `maxAgeMs` ago. */
+  /** For the timer and the return to the tab: skipped when a refresh ran less than `maxAgeMs` ago. */
   const fetchSalesDataIfStale = useCallback((maxAgeMs: number): Promise<void> => {
-    if (wantsListsRef.current) {
-      // On a screen that reads the lists, "fresh" means the lists were read — not just the bootstrap that a screen
-      // without them runs — and a run already reading them counts.
-      if ((runningRef.current && runWithListsRef.current) || Date.now() - listsAtRef.current < maxAgeMs) return runningRef.current ?? Promise.resolve();
-      return fetchSalesData();
-    }
     if (runningRef.current || Date.now() - lastDoneRef.current < maxAgeMs) return runningRef.current ?? Promise.resolve();
     return fetchSalesData();
   }, [fetchSalesData]);
 
   return {
-    salesOwnLeads, setSalesOwnLeads,
-    salesOwnSubscribers, setSalesOwnSubscribers,
     salesOwnDaqqiRounds, setSalesOwnDaqqiRounds,
     onlineTeamMembers, setOnlineTeamMembers,
     salesDataLoading, setSalesDataLoading,

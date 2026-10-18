@@ -56,7 +56,6 @@ const DaqqiTransferRoundModal = React.lazy(() => import('./daqqi/DaqqiRoundActio
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props {
   notify: NotifyFn;
-  subscribersOverride?: SubscriberItem[];
   roundsOverride?: DaqqiRound[];
   hideCreateRound?: boolean;
   requirePaymentApproval?: boolean;  // true for reception_daqqi: payments go to pending
@@ -65,7 +64,7 @@ interface Props {
   createRoundRef?: React.MutableRefObject<(() => void) | null>;
   branchFilter?: string;
 }
-const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, roundsOverride, hideCreateRound, requirePaymentApproval, onRoundUpdate, onRoundCreate, createRoundRef, branchFilter }) => {
+const DaqqiScheduleTab: React.FC<Props> = ({ notify, roundsOverride, hideCreateRound, requirePaymentApproval, onRoundUpdate, onRoundCreate, createRoundRef, branchFilter }) => {
   const navigate = useNavigate();
   const {
     courses, bundles, therapists, staffMembers, subscribers: ctxSubscribers, updateSubscriber, addSubscriber, recordSubscriberPayment, reloadSubscribers,
@@ -95,19 +94,8 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
     }
   };
 
-  // Track IDs of subscribers that this staff member is allowed to see.
-  // When subscribersOverride is given, we use those IDs as the filter against ctxSubscribers
-  // so that any updates (updateSubscriber/addSubscriber) are immediately reflected in the view.
-  const [locallyAddedSubIds, setLocallyAddedSubIds] = useState<Set<string>>(new Set());
-  const subscribers = React.useMemo(() => {
-    if (!subscribersOverride) return ctxSubscribers;
-    const ctxMap = new Map(ctxSubscribers.map(s => [s.id, s]));
-    const overrideIds = new Set(subscribersOverride.map(s => s.id));
-    const allVisibleIds = new Set([...overrideIds, ...locallyAddedSubIds]);
-    return [...allVisibleIds]
-      .map(id => ctxMap.get(id) ?? subscribersOverride.find(s => s.id === id))
-      .filter(Boolean) as SubscriberItem[];
-  }, [subscribersOverride, ctxSubscribers, locallyAddedSubIds]);
+  // The clients the context holds: the server scopes them to the person (the Dokki branch's pages for the desk).
+  const subscribers = ctxSubscribers;
 
   // The rounds of the branch this screen shows (lib/physicalBranch.tsx).
   const sourceDaqqiRounds = React.useMemo(

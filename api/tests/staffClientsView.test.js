@@ -36,8 +36,9 @@ function bundleScreen() {
   return module.exports;
 }
 
-const TODAY = '2026-10-18';
-const addDays = (days) => new Date(Date.UTC(2026, 9, 18 + days)).toISOString().slice(0, 10);
+// The screen's own follow-up code reads «tomorrow» off the real clock, so the day the two are compared on is today's.
+const TODAY = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+const addDays = (days) => new Date(Date.parse(`${TODAY}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
 
 // A small deterministic generator, so a failure names the same client every run.
 function random(seed) {
