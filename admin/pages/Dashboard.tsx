@@ -476,7 +476,7 @@ const Dashboard: React.FC = () => {
     salesOwnDaqqiRounds, setSalesOwnDaqqiRounds,
     onlineTeamMembers, 
     salesDataLoading, 
-    fetchSalesData,
+    fetchSalesData, fetchSalesDataIfStale,
   } = useStaffOwnData({
     isAdmin,
     isOnlineManager,
@@ -573,9 +573,11 @@ const Dashboard: React.FC = () => {
   // rep's dashboard only ever reflects data as of page load / their last manual action.
   useEffect(() => {
     let cancelled = false;
-    const pollId = setInterval(() => { if (document.visibilityState !== 'visible') return; if (!cancelled) void fetchSalesData(); }, 2 * 60 * 1000);
+    // Both are passive: they ask only when the lists are older than the timer, so a rep switching between tabs
+    // does not start a full download at every return.
+    const pollId = setInterval(() => { if (document.visibilityState !== 'visible') return; if (!cancelled) void fetchSalesDataIfStale(110 * 1000); }, 2 * 60 * 1000);
     const onVisible = () => {
-      if (!cancelled && document.visibilityState === 'visible') void fetchSalesData();
+      if (!cancelled && document.visibilityState === 'visible') void fetchSalesDataIfStale(2 * 60 * 1000);
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
@@ -583,7 +585,7 @@ const Dashboard: React.FC = () => {
       clearInterval(pollId);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [fetchSalesData]);
+  }, [fetchSalesData, fetchSalesDataIfStale]);
 
   // Effective arrays: for non-admin roles use own-data; for admin use context
   const effectiveSubs = usesStaffScopedData ? salesOwnSubscribers : subscribers;

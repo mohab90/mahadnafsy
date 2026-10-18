@@ -55,6 +55,14 @@ type UnifiedClientSubscriberPaymentsPanelProps = {
   onPaymentsChanged?: () => void | Promise<void>;
 };
 
+/** Money counts only once confirmed; a request awaiting approval, a failure or a refund is listed but marked. */
+const isConfirmed = (payment: PaymentHistoryEntry) => !payment.status || payment.status === 'paid';
+const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
+  pending: { label: '⏳ بانتظار الاعتماد', cls: 'bg-amber-100 text-amber-800' },
+  failed: { label: '❌ فشلت', cls: 'bg-red-100 text-red-700' },
+  refunded: { label: '↩ مستردة', cls: 'bg-gray-200 text-gray-700' },
+};
+
 export function UnifiedClientSubscriberPaymentsPanel({
   subscriber,
   courses,
@@ -89,6 +97,7 @@ export function UnifiedClientSubscriberPaymentsPanel({
   canCorrectPayments = false,
   onPaymentsChanged = () => {},
 }: UnifiedClientSubscriberPaymentsPanelProps) {
+  const awaitingCount = subHistory.filter(payment => payment.status === 'pending').length;
   const [correcting, setCorrecting] = React.useState<{ payment: PaymentHistoryEntry; mode: 'edit' | 'void' } | null>(null);
   // This dialog opened with an empty branch dropdown: it was the one caller that
   // never passed branchOptions at all.
@@ -154,20 +163,27 @@ export function UnifiedClientSubscriberPaymentsPanel({
         </div>
       )}
 
-      {/* ── Transaction History ── */}
-      {confirmedHistory.length > 0 && (
+      {/* ── Transaction History ──
+          Every recorded payment, not only the confirmed ones. A sales or collection payment is stored «pending»
+          until a manager approves it (api/routes/subscriber-payments.js), and this list was built from the
+          confirmed ones alone: the tab said «٣ معاملات» and the log showed two, so the rep who had just typed
+          the transfer number could not find it. The totals above still count only confirmed money. */}
+      {subHistory.length > 0 && (
         <div className="mb-3">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">سجل المعاملات ({confirmedHistory.length})</p>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">
+            سجل المعاملات ({subHistory.length}){awaitingCount > 0 && <span className="mr-2 rounded-full bg-amber-100 px-2 py-0.5 text-amber-700">{awaitingCount} بانتظار الاعتماد</span>}
+          </p>
           <div className="space-y-2">
-            {[...confirmedHistory].sort((a, b) => {
+            {[...subHistory].sort((a, b) => {
               const dc = b.at.localeCompare(a.at);
               if (dc !== 0) return dc;
-              return confirmedHistory.indexOf(b) - confirmedHistory.indexOf(a);
+              return subHistory.indexOf(b) - subHistory.indexOf(a);
             }).map(p => (
-              <div key={p.id} className="group flex items-start justify-between bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 hover:border-gray-200 transition-colors">
+              <div key={p.id} className={`group flex items-start justify-between rounded-xl border px-4 py-3 transition-colors ${isConfirmed(p) ? 'bg-gray-50 border-gray-100 hover:border-gray-200' : 'bg-amber-50/50 border-amber-200'}`}>
                 <div className="space-y-1 min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-extrabold text-emerald-700 text-base">{Number(p.amount).toLocaleString('ar-EG-u-nu-latn')} {p.currency === 'EGP' ? 'ج.م' : p.currency === 'SAR' ? 'ر.س' : '$'}</span>
+                    {!isConfirmed(p) && <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_BADGE[p.status || '']?.cls || 'bg-gray-100 text-gray-600'}`}>{STATUS_BADGE[p.status || '']?.label || p.status}</span>}
+                    <span className={`font-extrabold text-base ${isConfirmed(p) ? 'text-emerald-700' : 'text-amber-700'}`}>{Number(p.amount).toLocaleString('ar-EG-u-nu-latn')} {p.currency === 'EGP' ? 'ج.م' : p.currency === 'SAR' ? 'ر.س' : '$'}</span>
                     {p.paymentType && <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{ptLabels[p.paymentType] || p.paymentType}</span>}
                     {p.isInstallment === true && <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">💳 قسط</span>}
                     {p.isInstallment === false && <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">🆕 حجز</span>}
@@ -177,14 +193,14 @@ export function UnifiedClientSubscriberPaymentsPanel({
                     {p.paymentMethod && <span className="bg-gray-100 px-1.5 py-0.5 rounded">{p.paymentMethod}</span>}
                     {p.staffName && <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">بواسطة: {p.staffName}</span>}
                     <span>{cairoDay(p.at)}</span>
-                    {p.transactionId && <span className="italic">#{p.transactionId}</span>}
+                    {p.transactionId && <span className="italic">رقم العملية: #{p.transactionId}</span>}
                     {p.note && !p.transactionId && <span className="italic">{p.note}</span>}
                   </div>
                 </div>
                 {/* Action buttons */}
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity mt-1 shrink-0 mr-2">
-                  {/* Print receipt */}
-                  <button
+                  {/* Print receipt — only for money that was confirmed */}
+                  {isConfirmed(p) && <button
                     title="طباعة إيصال"
                     onClick={() => {
                       const w = window.open('', '_blank', 'width=700,height=900');
@@ -195,7 +211,7 @@ export function UnifiedClientSubscriberPaymentsPanel({
                     }}
                     className="text-amber-500 hover:text-amber-700 hover:bg-amber-50 p-1 rounded-lg transition">
                     <Printer size={14} />
-                  </button>
+                  </button>}
                   {canCorrectPayments && (
                     <>
                       {/* Words, not bare icons: «اقدر امسح دفعه او اعدل مبلغ دفعه» (8 Oct
@@ -219,7 +235,7 @@ export function UnifiedClientSubscriberPaymentsPanel({
         </div>
       )}
 
-      {confirmedHistory.length === 0 && !showSubPayForm && (
+      {subHistory.length === 0 && !showSubPayForm && (
         <div className="text-center py-10 text-gray-400"><CreditCard size={40} className="mx-auto mb-2 text-gray-200" /><p>لا توجد مدفوعات</p></div>
       )}
 

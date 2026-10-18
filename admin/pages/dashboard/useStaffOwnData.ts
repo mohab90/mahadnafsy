@@ -41,7 +41,7 @@ export function useStaffOwnData({
   // swaps it in, so a two-minute refresh never shrinks the table back to one page.
   const loadedOnceRef = useRef(false);
 
-  const fetchSalesData = useCallback(async () => {
+  const loadSalesData = useCallback(async () => {
     // Staff only. The online manager counted as an admin here once, from a list
     // /api/auth/me kept apart from requireAdmin; it follows requireAdmin now.
     const staffRef = staffSelf || (isOnlineManager ? currentStaff : null);
@@ -187,6 +187,33 @@ export function useStaffOwnData({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, isOnlineManager, staffSelf?.id, staffSelf?.role, currentStaff?.id, currentStaff?.role]);
 
+  // One refresh at a time. Every trigger used to start a full download of all the leads and all the clients in the
+  // role's scope — the first render, the staff record arriving, every write (lib/crmChanged.ts), every two minutes
+  // and every return to the tab — and nothing stopped them overlapping: a sales rep's «مدفوعاتي» sent over a
+  // thousand requests for the same pages. A call made while one is running joins it, and asks for one more run
+  // afterwards (the running one may have read before the write that asked), however many asked meanwhile.
+  const runningRef = useRef<Promise<void> | null>(null);
+  const queuedRef = useRef(false);
+  const lastDoneRef = useRef(0);
+  const fetchSalesData = useCallback((): Promise<void> => {
+    if (runningRef.current) { queuedRef.current = true; return runningRef.current; }
+    const run = (): Promise<void> => {
+      const promise = loadSalesData().finally(() => {
+        lastDoneRef.current = Date.now();
+        runningRef.current = null;
+        if (queuedRef.current) { queuedRef.current = false; runningRef.current = run(); }
+      });
+      runningRef.current = promise;
+      return promise;
+    };
+    return run();
+  }, [loadSalesData]);
+  /** For the timer and the return to the tab: skipped when the lists were read less than `maxAgeMs` ago. */
+  const fetchSalesDataIfStale = useCallback((maxAgeMs: number): Promise<void> => {
+    if (runningRef.current || Date.now() - lastDoneRef.current < maxAgeMs) return runningRef.current ?? Promise.resolve();
+    return fetchSalesData();
+  }, [fetchSalesData]);
+
   return {
     salesOwnLeads, setSalesOwnLeads,
     salesOwnSubscribers, setSalesOwnSubscribers,
@@ -194,6 +221,6 @@ export function useStaffOwnData({
     salesOwnDaqqiRounds, setSalesOwnDaqqiRounds,
     onlineTeamMembers, setOnlineTeamMembers,
     salesDataLoading, setSalesDataLoading,
-    fetchSalesData,
+    fetchSalesData, fetchSalesDataIfStale,
   };
 }
