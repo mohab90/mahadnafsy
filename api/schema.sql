@@ -3886,6 +3886,8 @@ CREATE TABLE `orders` (
   KEY `idx_orders_tenant_branch` (`tenant_id`,`branch_id`),
   KEY `idx_orders_paid_lookup_phone` (`tenant_id`,`status`,`item_id`,`customer_phone`),
   KEY `idx_orders_paid_lookup_email` (`tenant_id`,`status`,`item_id`,`customer_email`(100)),
+  KEY `idx_orders_tenant_subscriber` (`tenant_id`,`subscriber_id`,`created_at`),
+  KEY `idx_orders_tenant_email` (`tenant_id`,`customer_email`(100),`created_at`),
   KEY `idx_orders_tenant_status_created` (`tenant_id`,`status`,`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;

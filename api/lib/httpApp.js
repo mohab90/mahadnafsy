@@ -201,12 +201,12 @@ function timeRequests(req, res, next) {
   });
 }
 
-// The lead counters are held for a few seconds (routes/admin/leads/stats.js). Any write that succeeded after
-// they were computed may have changed them — a status moved, a lead assigned or captured by the website
+// The panel's counters (lead statistics, the follow-up bell, today's revenue) are held for a few seconds under
+// «figures:». Any write that succeeded after they were computed may have changed them — a status moved, a lead assigned or captured by the website
 // form — so the first one drops them, and the next read counts again.
-function dropStatsAfterWrites(req, res, next) {
+function dropFiguresAfterWrites(req, res, next) {
   if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
-    res.on('finish', () => { if (res.statusCode < 400) cacheInvalidate('leads-stats:'); });
+    res.on('finish', () => { if (res.statusCode < 400) cacheInvalidate('figures:'); });
   }
   next();
 }
@@ -217,7 +217,7 @@ function createHttpApp({ pool, brandAssetRoot }) {
   app.set('trust proxy', Number.isInteger(proxyHops) && proxyHops >= 0 ? proxyHops : 1);
   app.use(compression());
   app.use(timeRequests);
-  app.use(dropStatsAfterWrites);
+  app.use(dropFiguresAfterWrites);
 
   const corsOptions = corsConfig();
   app.options('*', cors(corsOptions));
@@ -333,4 +333,4 @@ function createHttpApp({ pool, brandAssetRoot }) {
   return app;
 }
 
-module.exports = { createHttpApp, corsConfig, csrfOriginGuard, registerHealthRoutes, timeRequests, dropStatsAfterWrites };
+module.exports = { createHttpApp, corsConfig, csrfOriginGuard, registerHealthRoutes, timeRequests, dropFiguresAfterWrites };

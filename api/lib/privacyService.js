@@ -34,14 +34,25 @@ async function findSubscriberForIdentity(tenantId, user, db = pool, lock = false
   const uid = String(user?.uid || '').trim();
   const email = String(user?.email || '').trim().toLowerCase();
   if (!uid && !email) return null;
-  const [[subscriber]] = await db.query(
-    `SELECT * FROM subscribers
-     WHERE tenant_id=? AND deleted_at IS NULL
-       AND ((?<>'' AND firebase_uid=?) OR (?<>'' AND LOWER(TRIM(email))=?))
-     LIMIT 1${lock ? ' FOR UPDATE' : ''}`,
-    [tenantId, uid, uid, email, email]
-  );
-  return subscriber || null;
+  // Two indexed lookups, the linked account first. One query with «uid OR email» (the email trimmed and
+  // lower-cased in SQL) could use neither index, so every call from a signed-in client — their tickets, their
+  // privacy requests — scanned all the clients. The column is utf8mb4_unicode_ci and emails are stored trimmed.
+  const suffix = lock ? ' FOR UPDATE' : '';
+  if (uid) {
+    const [[linked]] = await db.query(
+      `SELECT * FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND firebase_uid=? LIMIT 1${suffix}`,
+      [tenantId, uid]
+    );
+    if (linked) return linked;
+  }
+  if (email) {
+    const [[byEmail]] = await db.query(
+      `SELECT * FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND email=? LIMIT 1${suffix}`,
+      [tenantId, email]
+    );
+    if (byEmail) return byEmail;
+  }
+  return null;
 }
 
 async function buildSubscriberExport({ tenantId, subscriberId, db = pool }) {

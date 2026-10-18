@@ -445,18 +445,22 @@ router.get('/api/me/orders', requireAuth, async (req, res) => {
     if (!subscriber && !email) return res.json([]);
     // Two independent ownership proofs, either of which is sufficient. Both are
     // guarded so a null identity can never widen into "every unowned order".
-    const clauses = [];
-    const params = [req.tenantId];
-    if (subscriber?.id) { clauses.push('o.subscriber_id=?'); params.push(subscriber.id); }
-    if (email) { clauses.push("(o.subscriber_id IS NULL AND LOWER(TRIM(o.customer_email))=?)"); params.push(email); }
-    const [rows] = await pool.query(
-      `SELECT o.id, o.item_id, o.item_title, o.type, o.status, o.amount, o.currency,
-              o.payment_method, o.created_at, o.paid_at
-       FROM orders o
-       WHERE o.tenant_id=? AND o.deleted_at IS NULL AND (${clauses.join(' OR ')})
-       ORDER BY o.created_at DESC LIMIT 100`,
-      params
-    );
+    //
+    // One select per proof, joined with UNION ALL (they cannot overlap: one has a subscriber, the other has
+    // none), each on its own index. «subscriber OR lower-cased email» in one WHERE read every order of the
+    // tenant for every client who opened their payments.
+    const columns = 'o.id, o.item_id, o.item_title, o.type, o.status, o.amount, o.currency, o.payment_method, o.created_at, o.paid_at';
+    const parts = [];
+    const params = [];
+    if (subscriber?.id) {
+      parts.push(`(SELECT ${columns} FROM orders o WHERE o.tenant_id=? AND o.deleted_at IS NULL AND o.subscriber_id=?)`);
+      params.push(req.tenantId, subscriber.id);
+    }
+    if (email) {
+      parts.push(`(SELECT ${columns} FROM orders o WHERE o.tenant_id=? AND o.deleted_at IS NULL AND o.subscriber_id IS NULL AND o.customer_email=?)`);
+      params.push(req.tenantId, email);
+    }
+    const [rows] = await pool.query(`${parts.join(' UNION ALL ')} ORDER BY created_at DESC LIMIT 100`, params);
     res.json(rows);
   } catch (error) {
     logger.error('[me/orders]', error.message);

@@ -42,9 +42,9 @@ router.get('/api/admin/leads/stats', requireAuth, requireAdminOrStaff, requirePe
     // Seven scans of the leads table, on every page load of every employee: 0.3-0.5 s at 150,000 leads
     // and about three times that at the 520,000 production holds. Held for 15 s and shared by everyone
     // who asks for the same scope meanwhile (cached() also joins a call already running), and dropped
-    // by the first successful write after it (dropStatsAfterWrites in httpApp.js), so a status changed
+    // by the first successful write after it (dropFiguresAfterWrites in httpApp.js), so a status changed
     // on screen is counted on the next read, not 15 s later.
-    const key = `leads-stats:${req.tenantId}:${scopeClause}:${JSON.stringify(params)}`;
+    const key = `figures:leads-stats:${req.tenantId}:${scopeClause}:${JSON.stringify(params)}`;
     const payload = await cached(key, 15 * 1000, async () => {
       // Six independent reads of the same scoped set, issued together: they
       // took 3.3 s one after another at 500k leads and take the slowest one's
@@ -241,17 +241,21 @@ router.get('/api/admin/leads/followups-due', requireAuth, requireAdminOrStaff, r
     const accessScope = leadScope(req, 'l');
     if (accessScope.none) return res.json({ due: 0, overdue: 0, today: 0 });
     const today = cairoToday();
-    const [[row]] = await pool.query(
-      `SELECT SUM(${NEXT_FOLLOWUP} < ?) AS overdue, SUM(${NEXT_FOLLOWUP} = ?) AS today
-         FROM leads l
-        WHERE l.tenant_id = ? AND l.hidden = 0${accessScope.sql}
-          AND COALESCE(l.status, '') NOT IN (${TERMINAL_LIST.map(() => '?').join(',')})
-          AND ${NEXT_FOLLOWUP} <= ?`,
-      [today, today, req.tenantId, ...accessScope.params, ...TERMINAL_LIST, today],
-    );
-    const overdue = Number(row?.overdue || 0);
-    const dueToday = Number(row?.today || 0);
-    res.json({ due: overdue + dueToday, overdue, today: dueToday });
+    // The header bell, on every page: held like the counters above (15 s, dropped by the next write).
+    const payload = await cached(`figures:followups-due:${req.tenantId}:${today}:${accessScope.sql}:${JSON.stringify(accessScope.params)}`, 15 * 1000, async () => {
+      const [[row]] = await pool.query(
+        `SELECT SUM(${NEXT_FOLLOWUP} < ?) AS overdue, SUM(${NEXT_FOLLOWUP} = ?) AS today
+           FROM leads l
+          WHERE l.tenant_id = ? AND l.hidden = 0${accessScope.sql}
+            AND COALESCE(l.status, '') NOT IN (${TERMINAL_LIST.map(() => '?').join(',')})
+            AND ${NEXT_FOLLOWUP} <= ?`,
+        [today, today, req.tenantId, ...accessScope.params, ...TERMINAL_LIST, today],
+      );
+      const overdue = Number(row?.overdue || 0);
+      const dueToday = Number(row?.today || 0);
+      return { due: overdue + dueToday, overdue, today: dueToday };
+    });
+    res.json(payload);
   } catch (e) { logger.error('[leads-followups-due]', e.message); sendRouteError(res, e); }
 });
 

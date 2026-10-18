@@ -39,10 +39,24 @@ test('the lookups the reports made without an index have one, in the migration a
     ['subscribers', 'idx_subscribers_tenant_lead', '`tenant_id`,`lead_id`'],
     ['orders', 'idx_orders_paid_lookup_phone', '`tenant_id`,`status`,`item_id`,`customer_phone`'],
     ['orders', 'idx_orders_paid_lookup_email', '`tenant_id`,`status`,`item_id`,`customer_email`(100)'],
+    ['orders', 'idx_orders_tenant_subscriber', '`tenant_id`,`subscriber_id`,`created_at`'],
+    ['orders', 'idx_orders_tenant_email', '`tenant_id`,`customer_email`(100),`created_at`'],
   ]) {
     assert.ok(migration.includes(`ALTER TABLE ${table} ADD INDEX IF NOT EXISTS ${name}`), `${name} in the migration`);
     assert.ok(schema.includes(`KEY \`${name}\` (${columns})`), `${name} in schema.sql`);
   }
+});
+
+test('the lookups a client makes for their own data are indexed and split, not ORed through a function', () => {
+  const me = read('api/routes/orders.js');
+  const route = me.slice(me.indexOf("router.get('/api/me/orders'"));
+  assert.ok(route.includes('UNION ALL'));
+  assert.ok(route.includes('o.subscriber_id IS NULL AND o.customer_email=?'));
+  assert.ok(!/LOWER\(TRIM\(o\.customer_email\)\)/.test(route), 'a function around the column reads every order');
+  const privacy = read('api/lib/privacyService.js');
+  const find = privacy.slice(privacy.indexOf('async function findSubscriberForIdentity'), privacy.indexOf('async function buildSubscriberExport'));
+  assert.ok(find.includes('AND firebase_uid=? LIMIT 1') && find.includes('AND email=? LIMIT 1'));
+  assert.ok(!/LOWER\(TRIM\(email\)\)/.test(find), 'uid OR a wrapped email used neither index');
 });
 
 test('«paid, or phone, or email» is asked as separate lookups, so each can use its own index', () => {
@@ -73,17 +87,19 @@ test('«converted lead without a client» is NOT A AND NOT B AND NOT C, and the 
   assert.ok(payops.includes('/\\b(GROUP BY|HAVING|DISTINCT|UNION)\\b/i.test(population)'), 'a grouped check still goes through the wrapper');
 });
 
-test('the lead counters are held for 15 s and dropped by the first successful write', () => {
+test('the panel counters are held for 15 s and dropped by the first successful write', () => {
   const stats = read('api/routes/admin/leads/stats.js');
   assert.ok(stats.includes("const { cached } = require('../../../lib/db');"));
-  assert.ok(stats.includes('const key = `leads-stats:${req.tenantId}:${scopeClause}:${JSON.stringify(params)}`;'), 'one entry per tenant and scope');
+  assert.ok(stats.includes('const key = `figures:leads-stats:${req.tenantId}:${scopeClause}:${JSON.stringify(params)}`;'), 'one entry per tenant and scope');
   assert.ok(stats.includes('await cached(key, 15 * 1000, async () => {'));
   assert.ok(stats.includes('res.json(payload);'));
+  assert.ok(stats.includes('cached(`figures:followups-due:'), 'the header bell, on every page, is held too');
+  assert.ok(read('api/routes/analytics/dashboard.js').includes('cached(`figures:revenue:'), 'the first figure of the landing screen is held too');
   const app = read('api/lib/httpApp.js');
-  assert.ok(app.includes("cacheInvalidate('leads-stats:')"));
-  assert.ok(app.includes("res.statusCode < 400"), 'a failed write changed nothing');
+  assert.ok(app.includes("cacheInvalidate('figures:')"));
+  assert.ok(app.includes('res.statusCode < 400'), 'a failed write changed nothing');
   assert.ok(app.includes("req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS'"));
-  assert.ok(/app\.use\(timeRequests\);\n\s*app\.use\(dropStatsAfterWrites\);/.test(app), 'registered before any route can answer');
+  assert.ok(/app\.use\(timeRequests\);\n\s*app\.use\(dropFiguresAfterWrites\);/.test(app), 'registered before any route can answer');
 });
 
 test('the synthetic-data tool refuses anything but a local mahad_perf database', () => {

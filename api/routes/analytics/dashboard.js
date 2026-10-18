@@ -334,7 +334,9 @@ router.get('/api/admin/overview/revenue', requireAuth, requireAdminOrStaff, requ
     const today = cairoToday();
     const monthStart = cairoDayStartUtc(`${today.slice(0, 7)}-01`);
     const dayStart = cairoDayStartUtc(today);
-    const [[row]] = await pool.query(
+    // The first figure of the landing screen: an all-time sum over every payment, 0.13 s at 40,000 and growing.
+    // Held for 15 s, dropped by the next successful write (dropFiguresAfterWrites in lib/httpApp.js).
+    const [[row]] = await cached(`figures:revenue:${req.tenantId}:${today}:${clause.sql}:${JSON.stringify(clause.params)}`, 15 * 1000, () => pool.query(
       `SELECT COALESCE(SUM(p.amount_egp),0) AS total,
               COALESCE(SUM(CASE WHEN p.date >= ? THEN p.amount_egp END),0) AS this_month,
               COALESCE(SUM(CASE WHEN p.date >= ? THEN p.amount_egp END),0) AS today,
@@ -343,7 +345,7 @@ router.get('/api/admin/overview/revenue', requireAuth, requireAdminOrStaff, requ
          LEFT JOIN subscribers s ON s.id=p.subscriber_id AND s.tenant_id=p.tenant_id
         WHERE p.tenant_id=? AND p.status IN ('paid','confirmed') AND p.deleted_at IS NULL${clause.sql}`,
       [monthStart, dayStart, req.tenantId, ...clause.params]
-    );
+    ));
     res.json({
       totalEgp: Number(row.total) || 0,
       monthEgp: Number(row.this_month) || 0,

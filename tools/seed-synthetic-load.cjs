@@ -126,6 +126,12 @@ const SOURCES = ['facebook', 'website', 'whatsapp', 'instagram', 'referral', 'go
   }));
   const salesIds = staffRows.map(([name, role]) => role === 'SALES' ? `st-${name}` : null).filter(Boolean);
 
+  // A student: a customer sign-in, the client record behind it, three enrolments and a few lectures, for the portal.
+  await fill('users', 1, () => ({ id: 'u-student1', tenant_id: T, email: 'student1@perf.test', password_hash: hash, name: 'طالب تجريبي', role: 'user', is_active: 1, phone: '201000000099' }));
+  await fill('subscribers', 1, () => ({ id: 's-student1', tenant_id: T, firebase_uid: 'u-student1', client_code: 'CLT-STUDENT', name: 'طالب تجريبي', phone: '201000000099', email: 'student1@perf.test', branch: 'ONLINE_EGYPT', is_active: 1, created_at: daysAgo(40), updated_at: daysAgo(1) }));
+  await fill('enrollments', 3, i => ({ id: `en-student-${i}`, tenant_id: T, subscriber_id: 's-student1', course_id: `c-${i}`, status: 'active', enrolled_at: daysAgo(30), access_type: 'FULL', progress_percent: 10 * (i + 1) }));
+  await fill('course_lectures', 15, i => ({ id: `lec-${i}`, course_id: `c-${i % 3}`, title: `محاضرة ${i + 1}`, lecture_type: 'RECORDED', video_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', duration: '00:20:00', duration_seconds: 1200, sort_order: i, is_published: 1 }));
+
   // ── the catalogue ──────────────────────────────────────────────────────────────────────────────────
   const COURSES = 25;
   await fill('courses', COURSES, i => ({ id: `c-${i}`, tenant_id: T, title: `دبلومة ${pick(FIRST)} ${i}`, description: 'وصف', short_description: 'وصف قصير', instructor: person(), thumbnail: 'https://h.top4top.io/p_3734xfq501.png', category: 'psychology', type: 'RECORDED', price_egp: 3000 + i * 100, price_sar: 400, price_usd: 100, is_published: 1, hours: 40, duration: '3 months' }));
