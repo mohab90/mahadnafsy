@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react';
 
-import type { Bundle, Course, LeadItem, LeadStatus, StaffMember } from '../../../../types';
+import type { Bundle, Course, LeadStatus, StaffMember } from '../../../../types';
 import { BRANCH_ENUM_LABELS, STATUS_CFG } from '../leadUtils';
 import { normBranchId } from './leadBranchUtils';
 import { DEFAULT_SOURCES } from '../crmConstants';
@@ -41,7 +41,6 @@ type Props = {
   branchFilter: string | null;
   setBranchFilter: Dispatch<SetStateAction<string | null>>;
   instituteBranches: BranchOption[];
-  effectiveLeads: LeadItem[];
   salesSourceFilter: string;
   setSalesSourceFilter: Dispatch<SetStateAction<string>>;
   leadsFollowupFilter: FollowupFilter;
@@ -75,7 +74,6 @@ export function LeadFilterBar({
   branchFilter,
   setBranchFilter,
   instituteBranches,
-  effectiveLeads,
   salesSourceFilter,
   setSalesSourceFilter,
   leadsFollowupFilter,
@@ -102,11 +100,7 @@ export function LeadFilterBar({
   const sourceGroups = groupSources(
     sourceCounts && Object.keys(sourceCounts).length
       ? sourceCounts
-      : effectiveLeads.reduce<Record<string, number>>((counts, lead) => {
-        const name = lead.source?.trim();
-        if (name) counts[name] = (counts[name] || 0) + 1;
-        return counts;
-      }, Object.fromEntries(knownSources.filter(Boolean).map(source => [source.trim(), 0]))),
+      : Object.fromEntries(knownSources.filter(Boolean).map(source => [source.trim(), 0])),
     DEFAULT_SOURCES,
   );
   const hasActiveFilters = assignFilter.size > 0 || singleStatus || courseFilter || branchFilter || searchTerm || showHiddenLeads || salesSourceFilter || leadsFollowupFilter !== 'all';

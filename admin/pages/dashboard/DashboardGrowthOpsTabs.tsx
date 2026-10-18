@@ -67,8 +67,6 @@ export function DashboardGrowthOpsTabs({
           <LeadsTab
             notify={notify}
             staffSelf={staffSelf}
-            salesOwnLeads={salesOwnLeads}
-            salesOwnSubscribers={salesOwnSubscribers}
             salesDataLoading={salesDataLoading}
             fetchSalesData={fetchSalesData}
             setActiveTab={setActiveTab}
@@ -109,7 +107,7 @@ export function DashboardGrowthOpsTabs({
             salesTargets={leadsSalesTargets}
             onOpenStaffProfile={(staffId: string) => navigate(`/staff/${staffId}`)}
             leadsTabProps={{
-              staffSelf, salesOwnLeads, salesOwnSubscribers, salesDataLoading, fetchSalesData, setActiveTab, branchFilter,
+              staffSelf, salesDataLoading, fetchSalesData, setActiveTab, branchFilter,
             }}
           />
         </TabErrorBoundary>

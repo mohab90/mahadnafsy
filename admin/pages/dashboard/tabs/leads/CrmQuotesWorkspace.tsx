@@ -37,13 +37,65 @@ const newDraft = () => ({
   valid_until: cairoDaysAhead(14), notes: '', items: [emptyItem()],
 });
 
+type Found = { id: string; label: string };
+
+/**
+ * A search box over a list the server holds (the lead table's own search, the person's own clients), six to
+ * twenty names at a time. The two pickers listed the first thousand of every lead and client the screen had
+ * downloaded, which for an employee was their whole list at sign-in.
+ */
+function ServerPicker({ label, placeholder, className, search, onPick }: {
+  label: string;
+  placeholder: string;
+  className?: string;
+  search: (term: string) => Promise<Found[]>;
+  onPick: (id: string) => void;
+}) {
+  const [term, setTerm] = useState('');
+  const [found, setFound] = useState<Found[]>([]);
+  const [picked, setPicked] = useState('');
+  useEffect(() => {
+    const text = term.trim();
+    if (picked || text.length < 2) { setFound([]); return undefined; }
+    let alive = true;
+    const timer = setTimeout(() => {
+      search(text).then(list => { if (alive) setFound(list); }, () => { if (alive) setFound([]); });
+    }, 300);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [term, picked, search]);
+  return (
+    <div className={`relative ${className || ''}`}>
+      <input aria-label={label} value={term} placeholder={placeholder}
+        onChange={event => { setTerm(event.target.value); setPicked(''); onPick(''); }}
+        className="w-full rounded-xl border px-3 py-2 text-sm" />
+      {found.length > 0 && (
+        <ul className="absolute inset-x-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-xl border bg-white text-sm shadow-lg">
+          {found.map(row => (
+            <li key={row.id}>
+              <button type="button" className="block w-full px-3 py-2 text-right hover:bg-gray-50"
+                onClick={() => { setPicked(row.id); setTerm(row.label); setFound([]); onPick(row.id); }}>{row.label}</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+const searchLeads = async (term: string): Promise<Found[]> => {
+  const result = await mysqlAdmin.adminGet<{ rows: LeadItem[] }>(`/admin/leads/table?q=${encodeURIComponent(term)}&page=0&pageSize=20&withTotal=0`);
+  return result.rows.map(lead => ({ id: lead.id, label: `${lead.name} — ${lead.phone}` }));
+};
+const searchClients = async (term: string): Promise<Found[]> => {
+  const rows = await mysqlAdmin.adminGet<SubscriberItem[]>(`/staff/subscribers?limit=20&q=${encodeURIComponent(term)}`);
+  return rows.map(row => ({ id: row.id, label: row.name }));
+};
+
 export function CrmQuotesWorkspace({
-  leads, courses, bundles, subscribers, notify,
+  courses, bundles, notify,
 }: {
-  leads: LeadItem[];
   courses: CourseItem[];
   bundles: BundleItem[];
-  subscribers: SubscriberItem[];
   notify: Notify;
 }) {
   const [quotes, setQuotes] = useState<Quote[]>([]);
@@ -112,9 +164,8 @@ export function CrmQuotesWorkspace({
       {showCreate && (
         <section className="space-y-3 rounded-2xl border border-blue-200 bg-white p-4">
           <div className="grid gap-2 md:grid-cols-4">
-            <select aria-label="Lead" value={draft.lead_id} onChange={event => setDraft(value => ({ ...value, lead_id: event.target.value }))}
-              className="rounded-xl border px-3 py-2 text-sm md:col-span-2"><option value="">اختر Lead</option>
-              {leads.slice(0, 1000).map(lead => <option key={lead.id} value={lead.id}>{lead.name} — {lead.phone}</option>)}</select>
+            <ServerPicker label="Lead" placeholder="ابحث عن العميل المحتمل بالاسم أو الهاتف" className="md:col-span-2" search={searchLeads}
+              onPick={id => setDraft(value => ({ ...value, lead_id: id }))} />
             <select aria-label="العملة" value={draft.currency} onChange={event => setDraft(value => ({ ...value, currency: event.target.value as typeof value.currency }))}
               className="rounded-xl border px-3 py-2 text-sm"><option>EGP</option><option>SAR</option><option>USD</option></select>
             <input aria-label="صالح حتى" type="date" value={draft.valid_until} onChange={event => setDraft(value => ({ ...value, valid_until: event.target.value }))}
@@ -171,9 +222,8 @@ export function CrmQuotesWorkspace({
                 <button type="button" title="رفض" onClick={() => { void action(quote, 'reject'); }} className="rounded-lg bg-red-50 p-2 text-red-700"><X size={13} /></button></>}
               {['draft', 'approved'].includes(quote.status) && <button type="button" title="إرسال" onClick={() => { void action(quote, 'send'); }} className="rounded-lg bg-blue-50 p-2 text-blue-700"><Send size={13} /></button>}
               {['sent', 'approved'].includes(quote.status) && <button type="button" onClick={() => { void action(quote, 'accept'); }} className="rounded-lg bg-emerald-50 px-2 py-1.5 text-[11px] font-bold text-emerald-700">تسجيل قبول</button>}
-              {quote.status === 'accepted' && <>{!quote.subscriber_id && <select aria-label="المشترك" value={subscriberByQuote[quote.id] || ''}
-                onChange={event => setSubscriberByQuote(value => ({ ...value, [quote.id]: event.target.value }))} className="max-w-40 rounded-lg border px-1 py-1 text-[10px]">
-                <option value="">اختر المشترك</option>{subscribers.slice(0, 1000).map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select>}
+              {quote.status === 'accepted' && <>{!quote.subscriber_id && <ServerPicker label="المشترك" placeholder="ابحث عن المشترك" className="w-40" search={searchClients}
+                onPick={id => setSubscriberByQuote(value => ({ ...value, [quote.id]: id }))} />}
                 <button type="button" title="تحويل إلى Orders" onClick={() => { void convert(quote); }} className="rounded-lg bg-violet-50 p-2 text-violet-700"><ShoppingCart size={13} /></button></>}
             </div></td>
           </tr>

@@ -35,8 +35,6 @@ import { useSalesTargetsStorage } from './leads/useSalesTargetsStorage';
 interface LeadsTabProps {
   notify: NotifyFn;
   staffSelf?: StaffMember | null;
-  salesOwnLeads?: LeadItem[];
-  salesOwnSubscribers?: SubscriberItem[];
   salesDataLoading?: boolean;
   fetchSalesData?: () => void;
   setActiveTab?: (tab: TabKey) => void;
@@ -83,7 +81,7 @@ const LeadSectionFallback = () => (
 );
 
 // ── Main Component ────────────────────────────────────────────────────────────
-export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLeads, salesOwnSubscribers, salesDataLoading, fetchSalesData, setActiveTab: setActiveDashboardTab, branchFilter: workspaceBranchFilter, performanceOnly = false }: LeadsTabProps) {
+export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesDataLoading, fetchSalesData, setActiveTab: setActiveDashboardTab, branchFilter: workspaceBranchFilter, performanceOnly = false }: LeadsTabProps) {
   const {
     leads, leadStats, loadFullCrmData, loadFullLeads, staffMembers, subscribers, courses, bundles, updateLead, addLead,
     reloadLeads, reloadSubscribers, deleteLead, addSubscriber, updateSubscriber,
@@ -190,16 +188,13 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   // the same manager-level gate as sales targets — not `manage_leads`, which
   // every rep holds.
   const canViewReports = isAdmin || hasStaffPermission(permissionSubject, 'view_reports');
-  const { effectiveLeads, effectiveSubs } = useLeadEffectiveRecords({
+  const { effectiveLeads } = useLeadEffectiveRecords({
     leads,
-    subscribers,
     isSalesOnly,
     selfStaff,
     staffSelfProp,
-    salesOwnLeads,
-    salesOwnSubscribers,
   });
-  // Sales users: do NOT auto-set assignFilter — salesOwnLeads is already pre-filtered server-side
+  // Sales users: do NOT auto-set assignFilter — the table, the board and every other figure are scoped by the server
 
   // Close actions menu on outside click
   useEffect(() => {
@@ -246,7 +241,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     handleLeadSearchChange,
     selectLeadForCommunication,
     saveQuickCommunication,
-  } = useLeadQuickCommunication({ effectiveLeads, reloadLeads, onSaved: bumpInsights });
+  } = useLeadQuickCommunication({ reloadLeads, onSaved: bumpInsights });
   // Contact button on a kanban lead card → open the quick-communication modal
   // already targeting that lead, instead of the dead state it used to set.
   const openContactLog = useCallback((lead: LeadItem) => {
@@ -421,7 +416,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     notify, updateLead, addLead, reloadLeads, reloadSubscribers,
     bulkRedistributeLeads,
     recordSubscriberPayment, fetchSalesData, setActiveDashboardTab,
-    salesReps, leads, effectiveLeads, effectiveSubs, visibleLeads, bundles,
+    salesReps, leads, fetchVisibleLeads: serverTable.exportAll, bundles,
     courses, branchLabelMap, currentStaff, isAdmin, isSalesOnly: Boolean(isSalesOnly),
     statusDebounceRef, leadPayRow, setLeadPayRow, setLeadPayDraft,
     convertLeadModal, setConvertLeadModal, setSelectedId,
@@ -532,11 +527,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         onSettingsOpenChange={setShowSectionTabs}
       />
 
-      <LeadSalesKpiStrip
-        isSalesOnly={isSalesOnly}
-        effectiveLeads={effectiveLeads}
-        effectiveSubs={effectiveSubs}
-      />
+      <LeadSalesKpiStrip isSalesOnly={isSalesOnly} refreshKey={insightsKey} />
 
       {/* ─── border separator under the top row ─── */}
       <div className="border-b border-gray-100 -mt-1" />
@@ -572,7 +563,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         branchFilter={branchFilter}
         setBranchFilter={setBranchFilter}
         instituteBranches={instituteBranches}
-        effectiveLeads={effectiveLeads}
         salesSourceFilter={salesSourceFilter}
         setSalesSourceFilter={setSalesSourceFilter}
         leadsFollowupFilter={leadsFollowupFilter}
@@ -591,7 +581,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         isSalesOnly={isSalesOnly}
         salesDataLoading={salesDataLoading}
         totalLeads={leadStats?.total ?? leads.length}
-        effectiveCount={onServerPage ? (leadStats?.total ?? effectiveLeads.length) : effectiveLeads.length}
+        effectiveCount={leadStats?.total ?? serverTable.total}
         visibleCount={onServerPage ? serverTable.total : visibleLeads.length}
         filtersActive={leadFiltersActive}
         currentStaffName={currentStaff?.name || selfStaff?.name || authUser?.email || ''}
@@ -648,7 +638,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
             deleteLead={tableDeleteLead}
             addSubscriber={addSubscriber ?? ((_: SubscriberItem) => Promise.resolve(false))}
             updateSubscriber={updateSubscriber ?? (() => Promise.resolve())}
-            subscribers={effectiveSubs}
             salesStaff={salesReps}
             isSalesOnly={isSalesOnly}
             canManageLeads={canManageLeads}
@@ -779,10 +768,8 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
             />
             <div className="border-t border-gray-100 pt-5">
               <CrmQuotesWorkspace
-                leads={effectiveLeads}
                 courses={courses}
                 bundles={bundles}
-                subscribers={salesOwnSubscribers || subscribers}
                 notify={notify}
               />
             </div>
@@ -822,7 +809,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
           deleteLead={async id => { await (deleteLead ?? (() => Promise.resolve()))(id); leadPool.drop(id); }}
           addSubscriber={addSubscriber ?? ((_: SubscriberItem) => Promise.resolve(false))}
           updateSubscriber={updateSubscriber ?? (() => Promise.resolve())}
-          subscribers={effectiveSubs}
           salesReps={salesReps}
           isSalesOnly={isSalesOnly}
           canManageLeads={canManageLeads}
@@ -865,9 +851,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
           instituteBranches={instituteBranches}
           salesNotifOpen={salesNotifOpen}
           leads={leads}
-          salesOwnLeads={salesOwnLeads}
           isSalesOnly={isSalesOnly}
-          currentStaff={currentStaff}
           setSalesNotifOpen={setSalesNotifOpen}
           setLeadsFollowupFilter={setLeadsFollowupFilter}
           setActiveDashboardTab={setActiveDashboardTab}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CommunicationRecord, LeadItem } from '../../../../types';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 
@@ -19,13 +19,12 @@ const blankQuickCommunicationDraft = {
 };
 
 interface UseLeadQuickCommunicationArgs {
-  effectiveLeads: LeadItem[];
   reloadLeads: () => Promise<void>;
   /** After a contact is saved — the follow-ups lists are asked for again. */
   onSaved?: () => void;
 }
 
-export function useLeadQuickCommunication({ effectiveLeads, reloadLeads, onSaved }: UseLeadQuickCommunicationArgs) {
+export function useLeadQuickCommunication({ reloadLeads, onSaved }: UseLeadQuickCommunicationArgs) {
   const [showAddComm, setShowAddComm] = useState(false);
   // The lead chosen, as it was handed over. One opened from the follow-ups list
   // comes from the server's queue and is often not among the leads loaded, and
@@ -34,16 +33,26 @@ export function useLeadQuickCommunication({ effectiveLeads, reloadLeads, onSaved
   const [addCommDraft, setAddCommDraft] = useState(blankQuickCommunicationDraft);
   const [addCommSearchResults, setAddCommSearchResults] = useState<LeadItem[]>([]);
 
+  // The lead is searched on the server while the person types (GET /admin/leads/table?q=, the table's own search),
+  // six at a time — not in a list of every lead the browser holds. A slow answer never replaces a newer one.
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchSeq = useRef(0);
+  useEffect(() => () => { if (searchTimer.current) clearTimeout(searchTimer.current); }, []);
   const handleLeadSearchChange = (value: string) => {
     setAddCommDraft((draft) => ({ ...draft, leadSearch: value, selectedLeadId: '' }));
-    const query = value.toLowerCase();
-    setAddCommSearchResults(
-      query.length >= 2
-        ? effectiveLeads.filter((lead) =>
-            lead.name.toLowerCase().includes(query) || lead.phone.includes(query)
-          ).slice(0, 6)
-        : [],
-    );
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    const term = value.trim();
+    const ticket = ++searchSeq.current;
+    if (term.length < 2) {
+      setAddCommSearchResults([]);
+      return;
+    }
+    searchTimer.current = setTimeout(() => {
+      mysqlAdmin.adminGet<{ rows: LeadItem[] }>(`/admin/leads/table?q=${encodeURIComponent(term)}&page=0&pageSize=6&withTotal=0`).then(
+        result => { if (ticket === searchSeq.current) setAddCommSearchResults(result.rows); },
+        () => { if (ticket === searchSeq.current) setAddCommSearchResults([]); },
+      );
+    }, 300);
   };
 
   const selectLeadForCommunication = (lead: LeadItem) => {
@@ -58,8 +67,7 @@ export function useLeadQuickCommunication({ effectiveLeads, reloadLeads, onSaved
   };
 
   const saveQuickCommunication = async () => {
-    const lead = effectiveLeads.find((item) => item.id === addCommDraft.selectedLeadId)
-      || (chosenLead?.id === addCommDraft.selectedLeadId ? chosenLead : null);
+    const lead = chosenLead?.id === addCommDraft.selectedLeadId ? chosenLead : null;
     if (!lead || !addCommDraft.notes.trim()) return;
     try {
       // Sending goes through the inbox reply path, which delivers from the rep's

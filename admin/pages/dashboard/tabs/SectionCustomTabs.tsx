@@ -59,7 +59,7 @@ export default function SectionCustomTabs({
   const navigate = useNavigate();
   const branchOptions = useBranches();
   const {
-    leads, staffMembers, subscribers, courses, bundles, isAdmin,
+    leads, staffMembers, courses, bundles, isAdmin,
     addLead, updateLead, reloadLeads, deleteLead, addSubscriber, updateSubscriber,
   } = useSiteData();
 
@@ -96,7 +96,7 @@ export default function SectionCustomTabs({
   // An open tab lists the loaded leads and matches them to clients. The pages
   // this row sits on (العملاء, العملاء المحتملين) do not load the leads for it,
   // so the tab asks when it is opened.
-  useEnsureSiteLists(['leads', 'subscribers'], Boolean(active));
+  useEnsureSiteLists(['leads'], Boolean(active));
 
   const salesReps = useMemo(
     () => staffMembers.filter(member => String(member.role || '').toLowerCase() === 'sales'),
@@ -150,7 +150,6 @@ export default function SectionCustomTabs({
         <ArchiveTab
           leads={leads}
           staffMembers={staffMembers}
-          subscribers={subscribers}
           courses={courses}
           bundles={bundles}
           salesReps={salesReps}
