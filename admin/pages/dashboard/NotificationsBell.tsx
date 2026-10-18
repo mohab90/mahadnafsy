@@ -20,7 +20,15 @@ export type NotifRow = {
   created_at: string;
 };
 
-type Severity = 'critical' | 'repeated' | 'followup' | 'normal';
+type Severity = 'critical' | 'repeated' | 'important' | 'followup' | 'normal';
+
+/** How loud a row is: its type's, or the one the server set on it (a payment accepted, rejected or booked on your client). */
+const severityOf = (row: NotifRow): Severity | undefined => {
+  const set = dataOf(row).importance;
+  if (set === 'critical') return 'critical';
+  if (set === 'high') return 'important';
+  return metaFor(row.type).severity;
+};
 
 /** Each kind of notification: what it is, how loud, and where it goes. The two escalations and the
  *  day's follow-ups are told apart at a glance — «زر الاشعارات لازم يكون اقوى». */
@@ -46,7 +54,7 @@ const FALLBACK = { label: 'عام', icon: Info, tone: 'text-gray-500 bg-gray-100
 const metaFor = (type: string) => TYPES[type] || FALLBACK;
 
 const STRIPE: Record<Severity, string> = {
-  critical: 'border-red-500 bg-red-50/70', repeated: 'border-violet-500 bg-violet-50/70',
+  critical: 'border-red-500 bg-red-50/70', repeated: 'border-violet-500 bg-violet-50/70', important: 'border-emerald-500 bg-emerald-50/60',
   followup: 'border-amber-400 bg-amber-50/60', normal: 'border-transparent',
 };
 const SECTION_LABEL: Record<string, { icon: string; label: string; path: string }> = {
@@ -55,7 +63,7 @@ const SECTION_LABEL: Record<string, { icon: string; label: string; path: string 
   dokki: { icon: '🏫', label: 'عملاء الدقي والتجمع', path: '/dashboard/daqqi_clients?follow=due' },
 };
 
-type Data = { ticketId?: string; kind?: string; repeats?: number; total?: number; overdue?: number; sections?: Record<string, { overdue: number; today: number }> };
+type Data = { ticketId?: string; clientCode?: string; importance?: string; kind?: string; repeats?: number; total?: number; overdue?: number; sections?: Record<string, { overdue: number; today: number }> };
 const dataOf = (row: NotifRow): Data => { try { return JSON.parse(row.data_json || '{}') || {}; } catch { return {}; } };
 
 type Destination = { label: string; path: string };
@@ -70,6 +78,10 @@ function destinationsOf(row: NotifRow): Destination[] {
     }).filter((d): d is Destination => Boolean(d));
   }
   if (row.type === 'followup_team') return [{ label: 'عملاء الأونلاين', path: '/dashboard/my_clients?follow=overdue' }, { label: 'الليدز', path: '/dashboard/leads' }];
+  // Money moving on a client: the client first, then the page where it is dealt with.
+  if (row.type === 'payment' && data.clientCode) {
+    return [{ label: 'افتح العميل', path: `/client/${encodeURIComponent(data.clientCode)}` }, { label: 'المدفوعات', path: '/dashboard/orders' }];
+  }
   const tab = metaFor(row.type).tab;
   return tab ? [{ label: 'افتح', path: `/dashboard/${tab === 'online_clients' ? 'my_clients' : tab}` }] : [];
 }
@@ -149,8 +161,8 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({
     return undefined;
   }, [unread]);
 
-  const isImportant = (row: NotifRow) => ['critical', 'repeated'].includes(metaFor(row.type).severity || '');
-  const isFollowUp = (row: NotifRow) => metaFor(row.type).severity === 'followup';
+  const isImportant = (row: NotifRow) => ['critical', 'repeated', 'important'].includes(severityOf(row) || '');
+  const isFollowUp = (row: NotifRow) => severityOf(row) === 'followup';
   const counts = useMemo(() => ({
     important: rows.filter(isImportant).length,
     importantUnread: rows.filter(row => isImportant(row) && !row.read_at).length,
@@ -272,7 +284,7 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({
                     const data = dataOf(row);
                     const destinations = destinationsOf(row);
                     return (
-                      <div key={row.id} className={`border-r-4 ${STRIPE[meta.severity || 'normal']} ${!row.read_at && !meta.severity ? 'bg-blue-50/60' : ''}`}>
+                      <div key={row.id} className={`border-r-4 ${STRIPE[severityOf(row) || 'normal']} ${!row.read_at && !severityOf(row) ? 'bg-blue-50/60' : ''}`}>
                         <button onClick={() => toggleRow(row)} className="w-full text-right flex gap-3 px-4 py-3 hover:bg-black/[0.02] transition" aria-expanded={isOpen}>
                           <span className={`w-9 h-9 rounded-xl grid place-items-center shrink-0 ${meta.tone}`}><Icon size={16} /></span>
                           <span className="min-w-0 flex-1">

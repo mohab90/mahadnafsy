@@ -465,6 +465,8 @@ export interface PaymentHistoryEntry {
   staffId?: string;             // Staff who recorded this payment
   staffName?: string;           // Display name of staff who recorded it
   status?: 'pending' | 'paid' | 'failed' | 'refunded'; // undefined/missing = paid (backward compat)
+  /** Where the money was taken (ONLINE_EGYPT, DAQQI …), which is not always the client's own branch. */
+  branch?: string | null;
 }
 
 export interface SubscriberItem {

@@ -20,6 +20,7 @@ const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../../lib/p
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { deleteTransfer, importTransfers, isCashMethod, linkTransfer, recordTransfer, updateTransfer } = require('../../lib/incomingTransfers');
 const { hasReason, notifyPaymentRejected, reasonOf, REASON_REQUIRED } = require('../../lib/paymentRejection');
+const { notifyPaymentOutcome } = require('../../lib/paymentNotices');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { getTenantSetting, setTenantSetting } = require('../../lib/tenantSettings');
 const { groupAccounts, loadAccounts, mergeAccounts } = require('../../lib/transferAccounts');
@@ -266,8 +267,12 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
     transactionStarted = false;
 
     if (becomingPaid && payment.subscriber_id) {
-      // Recorded pending and approved now: the client heard nothing before.
+      // Recorded pending and approved now: the client heard nothing before, and neither did whoever took it.
       queuePaymentReceipt(tenantId, id);
+      void notifyPaymentOutcome({
+        outcome: 'approved', tenantId, subscriberId: payment.subscriber_id, amount: payment.amount, currency: payment.currency,
+        recordedBy: payment.staff_id, actorId: req.staffRecord?.id, actorName: req.staffRecord?.name || signerName(req),
+      });
       setImmediate(async () => {
         try {
           const [[subscriber]] = await pool.query(

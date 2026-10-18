@@ -9,6 +9,7 @@ const { pool } = require('../lib/db');
 const { queuePaymentReceipt } = require('../lib/paymentReceipt');
 const { sanitize } = require('../lib/helpers');
 const { createNotification } = require('../lib/notification');
+const { notifyPaymentOutcome } = require('../lib/paymentNotices');
 const { recordPaymentCompensation } = require('../lib/paymentCompensation');
 const { logPaymentAudit, postPaymentJournal } = require('../lib/finance');
 const { ensureFreshFx, fxStaleError } = require('../lib/fxRefresh');
@@ -1056,7 +1057,7 @@ async function recordSubscriberPayment(req, res) {
 
     if (approvingRequest) {
       createNotification('payment', '✅ اتعتمد العميل الجديد', `${subRow.name || 'عميل'} · ${paymentAmount} ${paymentCurrency}`,
-        { subscriberId: subscriber_id, tab: 'online_clients' }, req.tenantId, approvingRequest.requested_by).catch(() => {});
+        { subscriberId: subscriber_id, importance: 'high', tab: 'online_clients' }, req.tenantId, approvingRequest.requested_by).catch(() => {});
     }
     // A collection officer's payment waits for the manager — say so where they look.
     if (!isPaid && reviewedByManager(req)) {
@@ -1121,6 +1122,14 @@ async function recordSubscriberPayment(req, res) {
           logger.warn('[subscriber-payment] seating after the booking failed', { error: error.message });
           return 'failed';
         });
+    }
+    // A booking taken on someone else's client tells that client's rep and collector (lib/paymentNotices.js). The
+    // officer whose request was just approved has their own line above; a correction is not a booking.
+    if (!approvingRequest && !req.isPaymentCorrection) {
+      void notifyPaymentOutcome({
+        outcome: 'booked', tenantId: paymentTenantId, subscriberId: subscriber_id, amount: paymentAmount, currency: paymentCurrency,
+        actorId: req.staffRecord?.id, actorName: req.staffRecord?.name, pending: storedStatus === 'pending',
+      });
     }
     res.json({
       ok: true,
@@ -1258,7 +1267,7 @@ router.post('/api/admin/subscriber-requests/:id/reject', requireAuth, requireAdm
       [note, req.staffRecord?.id || null, req.staffRecord?.name || req.user?.email || null, req.tenantId, request.id]);
     if (!result.affectedRows) return res.status(409).json({ error: 'الطلب ده اتراجع بالفعل' });
     createNotification('payment', 'اترفض حجز عميل جديد', `${request.name}${note ? ` — ${note}` : ''}`,
-      { tab: 'orders' }, req.tenantId, request.requested_by).catch(() => {});
+      { importance: 'critical', tab: 'orders' }, req.tenantId, request.requested_by).catch(() => {});
     res.json({ ok: true });
   } catch (e) { logger.error('[subscriber-requests/reject]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

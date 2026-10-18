@@ -6,6 +6,7 @@
 
 import type { SubscriberItem } from '../../../../types';
 import { waLink } from '../../../../lib/whatsappLink';
+import { rejectedPaymentOf, rejectedPaymentTitle } from '../../../../lib/rejectedPayment';
 
 export default function ClientNameCell({ row, clientCode, navigate, onCall }: {
   row: SubscriberItem;
@@ -27,6 +28,13 @@ export default function ClientNameCell({ row, clientCode, navigate, onCall }: {
       {!waLink(row.phone) && (
         <span className="block text-[9px] font-bold text-red-600" title="عدّل الرقم قبل تسجيل أي دفعة">⚠ بدون رقم صالح</span>
       )}
+      {/* The client is here; their payment was turned down and nothing has been paid since. */}
+      {(() => {
+        const rejected = rejectedPaymentOf(row);
+        return rejected && (
+          <span className="block text-[9px] font-bold text-red-700" title={rejectedPaymentTitle(rejected)}>❌ دفعته اترفضت</span>
+        );
+      })()}
       {row.clientStatus && row.clientStatus !== 'active' && (() => {
         const csBadge: Record<string,string> = {finished:'bg-green-100 text-green-700',paused:'bg-amber-100 text-amber-700',refunded:'bg-red-100 text-red-700',refund_pending:'bg-orange-100 text-orange-700',leads:'bg-purple-100 text-purple-700'};
         const csLabel: Record<string,string> = {finished:'✅ منتهي',paused:'⏸ متوقف',refunded:'↩️ مسترد',refund_pending:'⏳ استرداد معلق',leads:'👥 محتمل'};

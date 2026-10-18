@@ -20,6 +20,7 @@ const { resolveLectureAccess } = require('../lib/learningAccess');
 const { grantCourseSelections } = require('../lib/entitlements');
 const { financialRecordMatches, financialScopeClause, resolveFinancialScope } = require('../lib/financialScope');
 const { hasReason, notifyPaymentRejected, reasonOf, REASON_REQUIRED } = require('../lib/paymentRejection');
+const { notifyPaymentOutcome } = require('../lib/paymentNotices');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { inspectProofImageDataUrl } = require('../lib/uploadSafety');
 const { isJourneyState } = require('../lib/journeyStates');
@@ -586,6 +587,12 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
       logger.warn('[payment-proof] WhatsApp notify failed:', notifyErr.message);
     }
 
+    if (action === 'approve') {
+      void notifyPaymentOutcome({
+        outcome: 'approved', tenantId, subscriberId: proof.subscriber_id, amount: proof.amount, currency: proof.currency,
+        actorId: req.staffRecord?.id, actorName: req.staffRecord?.name, kind: 'payment_proof',
+      });
+    }
     if (action === 'reject') {
       const [[client]] = await pool.query('SELECT name, client_code, assigned_cs_id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [proof.subscriber_id, tenantId]).catch(() => [[null]]);
       await notifyPaymentRejected({

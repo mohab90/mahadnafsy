@@ -21,7 +21,7 @@ type OldDataImportPanelProps = {
   initialSheetLink?: string;
 };
 
-type ImportResult = { created: number; dupes: number; errors: number; assigned?: number; others?: number };
+type ImportResult = { created: number; dupes: number; errors: number; assigned?: number; others?: number; flagged?: number };
 type LoadedTab = { tab: SheetTab; layout: TabLayout; include: boolean };
 
 // A tab of certificate payments names a course and an amount too; it is not a
@@ -29,7 +29,9 @@ type LoadedTab = { tab: SheetTab; layout: TabLayout; include: boolean };
 const looksLikeClients = (layout: TabLayout) => layout.columns.cert === undefined
   && layout.columns.name !== undefined && layout.columns.phone !== undefined;
 
-const usable = (row: SheetClientRow) => Boolean(row._name && row._phone);
+// Every row with anything in it is imported, whatever is wrong with it (a short number, no number, a course the
+// catalogue lacks): the client is created and the problem is written on their notes. Only a repeat is left out.
+const usable = (row: SheetClientRow) => Boolean(row._name || row._phone || row._email);
 
 const BATCH = 200;
 
@@ -149,7 +151,7 @@ export default function OldDataImportPanel({
     setConfirming(false);
     setImporting(true);
     const rows = parsed.filter(row => selected.has(row._id) && usable(row));
-    const total: ImportResult = { created: 0, dupes: 0, errors: 0, assigned: 0, others: 0 };
+    const total: ImportResult = { created: 0, dupes: 0, errors: 0, assigned: 0, others: 0, flagged: 0 };
     try {
       for (let start = 0; start < rows.length; start += BATCH) {
         setProgress(`${start} / ${rows.length}`);
@@ -159,6 +161,7 @@ export default function OldDataImportPanel({
         total.errors += outcome.errors;
         total.assigned = (total.assigned || 0) + (outcome.assigned || 0);
         total.others = (total.others || 0) + (outcome.others || 0);
+        total.flagged = (total.flagged || 0) + (outcome.flagged || 0);
       }
     } catch (error) {
       setParseError(`${error instanceof Error ? error.message : 'تعذّر الرفع'} — اللي اترفع قبل كده اتسجل، وإعادة الرفع مش هتكرره`);
@@ -316,9 +319,9 @@ export default function OldDataImportPanel({
                       </td>
                       <td className="py-1.5 px-3 text-gray-400 whitespace-nowrap">{tabs.length > 1 ? `${row._tab} · ` : ''}{row._row}</td>
                       <td className="py-1.5 px-3 text-gray-500 whitespace-nowrap">{row._date || <span className="text-gray-300">-</span>}</td>
-                      <td className="py-1.5 px-3 font-bold text-gray-900">{row._name || <span className="text-red-400">مطلوب</span>}</td>
+                      <td className="py-1.5 px-3 font-bold text-gray-900">{row._name || <span className="text-amber-700">⚠ بدون اسم</span>}</td>
                       <td className="py-1.5 px-3 font-mono text-gray-600" dir="ltr">
-                        {row._phone || <span className="text-red-400">مطلوب</span>}
+                        {row._phone || <span className="text-amber-700">⚠ بدون رقم صالح</span>}
                         {row._otherPhones && <span className="block text-[10px] text-gray-400">{row._otherPhones}</span>}
                       </td>
                       <td className="py-1.5 px-3 text-gray-500 max-w-[140px] truncate">{row._course || <span className="text-gray-300">-</span>}</td>
@@ -377,6 +380,7 @@ export default function OldDataImportPanel({
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-sm space-y-1">
           <p className="font-bold text-emerald-800">انتهى الاستيراد</p>
           <p className="text-emerald-700">تم إنشاء: <strong>{result.created}</strong> عميل جديد</p>
+          {!!result.flagged && <p className="text-amber-700">اتعملوا وفيهم غلط مكتوب في ملاحظاتهم (رقم أو كورس أو اسم): <strong>{result.flagged}</strong></p>}
           {!!result.assigned && <p className="text-emerald-700">موجودين من غير مسئول واتسجلوا باسمه: <strong>{result.assigned}</strong></p>}
           {result.dupes > 0 && <p className="text-amber-700">مكرر أو موجود على السيستم (متسجلش تاني): <strong>{result.dupes}</strong></p>}
           {!!result.others && <p className="text-amber-700">موجودين مع مسئول تحصيل تاني (متنقلوش): <strong>{result.others}</strong></p>}

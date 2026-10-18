@@ -51,7 +51,8 @@ async function notifyPaymentRejected({
     const money = amount != null ? `${Number(amount).toLocaleString('en-US')} ${currency || 'EGP'}` : '';
     const title = '❌ دفعة اترفضت';
     const message = `${clientName || 'عميل'}${money ? ` — ${money}` : ''}${rejectedByName ? ` · رفضها ${rejectedByName}` : ''}\nالسبب: ${reason}`;
-    const data = { kind, reason, subscriberId: subscriberId || null, clientCode: clientCode || null, tab: 'orders' };
+    // importance: the bell shows it in «مهم», in red (lib/paymentNotices.js says who else is told what).
+    const data = { kind, reason, importance: 'critical', subscriberId: subscriberId || null, clientCode: clientCode || null, tab: 'orders' };
     // Nobody to tell by name: the managers' bell (no recipient) carries it.
     const targets = recipients.length ? recipients : [null];
     await Promise.all(targets.map(recipientStaffId => notify('payment', title, message, data, tenantId, recipientStaffId)));

@@ -9,7 +9,7 @@ import { parseSheetLink } from './CollectionSettingsModal';
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 type Destination = 'active' | 'old_local' | 'old_intl';
 type Market = 'local' | 'saudi' | 'intl';
-type ImportResult = { created: number; assigned: number; skipped: number; others: number; failed: number };
+type ImportResult = { created: number; assigned: number; skipped: number; others: number; failed: number; flagged?: number };
 
 const DESTINATIONS: [Destination, string][] = [['active', 'النشطين'], ['old_local', '🏠 محلي قديم'], ['old_intl', '🌐 دولي قديم']];
 const MARKETS: [Market, string][] = [['local', '🇪🇬 محلي'], ['saudi', '🇸🇦 سعودي'], ['intl', '🌍 دولي']];
@@ -74,7 +74,7 @@ export function OnlineImportModal({ staffMembers, notify, onClose, onImported }:
           importRows={async (rows, source) => {
             const result = await mysqlAdmin.adminPost<ImportResult>('/admin/online-clients/import',
               { destination, market, staffId: staffId || undefined, source, rows });
-            return { created: result.created, assigned: result.assigned, dupes: result.skipped, others: result.others, errors: result.failed };
+            return { created: result.created, assigned: result.assigned, dupes: result.skipped, others: result.others, errors: result.failed, flagged: result.flagged };
           }}
           onImported={async created => {
             notify('success', `تم استيراد ${created} عميل جديد`);

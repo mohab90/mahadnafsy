@@ -164,8 +164,8 @@ test('a CSV saved as Windows-1256 or UTF-16 reads as Arabic, not boxes', { skip:
 });
 
 test('an international sheet keeps its phones; the strict reader\'s «no phone» no longer drops the row', { skip: !sheets }, () => {
-  // Saudi mobile with no country code, as a Gulf sheet writes it.
-  assert.equal(sheets.leadPhone('501234567').phone, '501234567');
+  // Saudi mobile with no country code, as a Gulf sheet writes it: 966 goes in front («اوله 5 يبقى سعودي»).
+  assert.equal(sheets.leadPhone('501234567').phone, '+966501234567');
   // The ones the strict reader vouches for are still normalised.
   assert.equal(sheets.leadPhone('+20 101 234 5678').phone, '01012345678');
   assert.equal(sheets.leadPhone(1012345678).phone, '01012345678', 'Excel dropped the zero');

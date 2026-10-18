@@ -16,6 +16,7 @@ import type { BranchType, LeadItem, SubscriberItem } from '../../types';
 import { branchLabels, normBranchKey, statusLabels } from './constants';
 import { toDialable } from '../../lib/whatsappLink';
 import { useCanDelete } from '../../hooks/useCanDelete';
+import { rejectedPaymentOf, rejectedPaymentTitle } from '../../lib/rejectedPayment';
 
 type Props = {
   lead?: LeadItem;
@@ -118,6 +119,14 @@ export function UnifiedClientHeroHeader({
                   {statusLabels[lead.status] || lead.status}
                 </span>
               )}
+              {(() => {
+                const rejected = isSub ? rejectedPaymentOf(subscriber) : null;
+                return rejected && (
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold border bg-red-500/20 text-red-300 border-red-500/40" title={rejectedPaymentTitle(rejected)}>
+                    ❌ دفعته اترفضت
+                  </span>
+                );
+              })()}
               <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-medium border ${isSub ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/30' : 'bg-blue-900/40 text-blue-300 border-blue-700/30'}`}>
                 {isSub ? 'مشترك' : 'عميل محتمل'}
               </span>

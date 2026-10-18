@@ -168,7 +168,28 @@ function isRealPhone(input) {
   return !/^(\d)\1+$/.test(dialable.slice(-9));
 }
 
+/**
+ * A number from an imported file, in the one shape the system keeps, and what is wrong with it.
+ *
+ * «وقت استيراد داتا … لو الرقم غلط او مش كامل بيرفض يرفع العميل … لما العميل يكون اوله 5 دا معناه انه سعودي حط انت
+ * اتوماتك جمبه 966 … ولو في غلط اكتب ان الرقم فيه غلط». An import takes every row: a Saudi mobile written 5XXXXXXXX
+ * or 05XXXXXXXX gets 966 in front, and a number that cannot be dialled (a digit short, a filler like 01000000000,
+ * nothing at all) is kept as typed with a problem to write on the record, never a reason to leave the client out.
+ * { phone, problem, saudi }: phone is '' only when the file had none.
+ */
+function cleanImportedPhone(input) {
+  const typed = String(input == null ? '' : input).trim();
+  if (!typed) return { phone: '', problem: 'مفيش رقم تليفون', saudi: false };
+  const digits = latinDigits(typed).replace(/\D/g, '').replace(/^00/, '');
+  const national = digits.replace(/^0(?=5\d{8}$)/, '');
+  if (SA_MOBILE_NATIONAL.test(national)) return { phone: `966${national}`, problem: '', saudi: true };
+  const phone = tidyTyped(typed);
+  const usable = isDialable(phone) && isRealPhone(phone);
+  return { phone, problem: usable ? '' : `الرقم فيه غلط أو ناقص: ${typed}`, saudi: false };
+}
+
 module.exports = {
+  cleanImportedPhone,
   completeForBranch,
   DEFAULT_COUNTRY_CODE,
   latinDigits,

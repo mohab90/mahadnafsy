@@ -4,7 +4,7 @@
  *
  *   DELETE /api/admin/payments/:id   { reason }
  *   PATCH  /api/admin/payments/:id   { reason, amount?, currency?, courseId?, courseExpected?,
- *                                      paymentMethod?, date?, note?, transactionId? }
+ *                                      paymentMethod?, date?, note?, transactionId?, branch? }
  *
  * A new amount, currency or course is recorded as the corrected payment
  * through the ordinary path, then the old one is voided; a changed currency
@@ -17,6 +17,7 @@ const router = express.Router();
 const logger = require('../lib/logger').child({ module: 'payment-corrections' });
 const { pool } = require('../lib/db');
 const { canCorrectPayments, voidPayment, editPaymentDetails } = require('../lib/paymentCorrections');
+const { normalizeBranch } = require('../lib/branches');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 
 const actorOf = req => signerName(req);
@@ -99,7 +100,7 @@ router.patch('/api/admin/payments/:id', requireAuth, requireAdminOrStaff, requir
     if (!moneyChanged) {
       const result = await inTransaction(conn => editPaymentDetails(conn, {
         tenantId: req.tenantId, paymentId: pay.id, actor: actorOf(req), reason,
-        changes: { paymentMethod: body.paymentMethod, date: body.date, note: body.note, transactionId: body.transactionId },
+        changes: { paymentMethod: body.paymentMethod, date: body.date, note: body.note, transactionId: body.transactionId, branch: body.branch },
       }));
       return res.json({ ok: true, mode: 'edited', ...result });
     }
@@ -123,7 +124,7 @@ router.patch('/api/admin/payments/:id', requireAuth, requireAdminOrStaff, requir
       ...(expected !== undefined ? { courseExpected: expected } : {}),
       staffId: pay.staff_id || undefined,
       status: String(pay.status || 'paid').toLowerCase() === 'pending' ? 'pending' : 'paid',
-      branch: pay.branch || undefined,
+      branch: body.branch ? (normalizeBranch(body.branch) || pay.branch || undefined) : (pay.branch || undefined),
       certType: pay.cert_type || undefined,
       itemTitle: pay.item_title || undefined,
     };
@@ -137,6 +138,8 @@ router.patch('/api/admin/payments/:id', requireAuth, requireAdminOrStaff, requir
     // Inherits the request (auth, tenant, staff, req.get) with the corrected payment as its body.
     const asRecording = Object.create(req);
     asRecording.body = { subscriber_id: pay.subscriber_id, payment };
+    // A correction is not a new booking: nobody is told of it as one.
+    asRecording.isPaymentCorrection = true;
     await recorder(asRecording, fakeRes);
     if (captured.statusCode >= 400 || !captured.body) {
       return res.status(captured.statusCode || 500).json(captured.body || { error: 'تعذر تسجيل الدفعة المصححة' });

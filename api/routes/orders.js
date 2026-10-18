@@ -10,6 +10,7 @@ const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { parseLimit } = require('../lib/helpers');
 const { logPaymentAudit } = require('../lib/finance');
 const { hasReason, notifyPaymentRejected, reasonOf, REASON_REQUIRED } = require('../lib/paymentRejection');
+const { notifyPaymentOutcome } = require('../lib/paymentNotices');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { safeIsoString, cairoToday } = require('../lib/dates');
 const { resolvePaymentExecutors } = require('../lib/paymentExecutor');
@@ -285,6 +286,10 @@ router.post('/api/admin/orders/:id/confirm-payment', requireAuth, requireAdminOr
 
     await conn.commit();
     queuePaymentReceipt(req.tenantId, paymentId);
+    void notifyPaymentOutcome({
+      outcome: 'approved', tenantId: req.tenantId, subscriberId: order.subscriber_id, amount: order.amount, currency: order.currency,
+      recordedBy: order.staff_id, actorId: req.staffRecord?.id, actorName: req.staffRecord?.name, kind: 'order',
+    });
     res.json({ ok: true, paymentId });
   } catch (e) {
     await conn.rollback().catch(() => {});

@@ -46,7 +46,7 @@ function fakeDb(existing) {
   let code = 100;
   const conn = {
     async query(sql, params) {
-      if (/SELECT id, phone, email, assigned_cs_id FROM subscribers/.test(sql)) return [existing];
+      if (/SELECT id, name, phone, email, assigned_cs_id FROM subscribers/.test(sql)) return [existing];
       if (/FROM courses/.test(sql)) return [[{ id: 'c-life', title: 'دبلومة اللايف كوتش' }]];
       if (/FROM bundles/.test(sql)) return [[]];
       if (/UPDATE client_code_counter/.test(sql)) { code += 1; return [{}]; }
@@ -99,7 +99,14 @@ test('every row lands under the officer, once, and nobody else\'s client moves',
         { _name: 'من غير رقم ولا إيميل', _phone: '' },
       ],
     }, db);
-    assert.deepEqual(result, { created: 1, assigned: 1, skipped: 3, others: 1, failed: 0 });
+    // The row with no number and no email is a client too, with the problem written on it; only the repeats are left out.
+    const { problems, ...counts } = result;
+    assert.deepEqual(counts, { created: 2, assigned: 1, skipped: 2, others: 1, failed: 0, flagged: 1 });
+    assert.deepEqual(problems.map(entry => [entry.name, entry.issues]), [['من غير رقم ولا إيميل', ['مفيش رقم تليفون']]]);
+    const [, bare] = inserted;
+    assert.equal(bare[3], 'من غير رقم ولا إيميل');
+    assert.equal(bare[5], null, 'no number stored');
+    assert.match(bare[8], /^⚠ مشاكل في الاستيراد: مفيش رقم تليفون/);
 
     const [row] = inserted;
     const columns = ['id', 'tenant_id', 'client_code', 'name', 'email', 'phone', 'branch', 'branch_id', 'notes',
@@ -129,7 +136,8 @@ test('a course the sheet names that is not in the catalogue stays readable', asy
       tenantId: 't1', staff: officer, rows: [{ _name: 'س', _phone: '01044444444', _course: 'كورس قديم', _paid: '500', _expected: '900', _refund: '100' }],
     }, db);
     const notes = inserted[0][8];
-    assert.match(notes, /الكورس: كورس قديم/);
+    assert.match(notes, /الكورس «كورس قديم» مش موجود في السيستم/, 'a course the catalogue lacks is said, not dropped');
+    assert.match(notes, /^⚠ مشاكل في الاستيراد/, 'and the problem leads the notes');
     assert.match(notes, /المحصل: 500/);
     assert.match(notes, /قيمة الكورس: 900/);
     assert.match(notes, /استرداد سابق: 100/);
@@ -177,7 +185,7 @@ test('a row lands with the sheet\'s remaining, its date, its numbers cleaned, an
         { _name: 'بكرة', _phone: '01011119999', _date: '2999-01-01' },
       ],
     }, db);
-    assert.deepEqual(result, { created: 2, assigned: 0, skipped: 1, others: 0, failed: 0 });
+    assert.deepEqual({ ...result, problems: result.problems.length }, { created: 2, assigned: 0, skipped: 1, others: 0, failed: 0, flagged: 1, problems: 1 });
     const columns = ['id', 'tenant_id', 'client_code', 'name', 'email', 'phone', 'branch', 'branch_id', 'notes',
       'assigned_cs_id', 'assigned_cs_name', 'crm_json', 'source', 'created_at'];
     const [first, second] = inserted.map(row => Object.fromEntries(columns.map((column, index) => [column, row[index]])));
@@ -235,7 +243,7 @@ test('the online import lands where the desk says, unassigned unless an officer 
       tenantId: 't1', staff: null, kind: 'active', branch: 'ONLINE_SAUDI', source: 'استيراد الأونلاين',
       rows: [{ _name: 'جديد', _phone: '0555000111' }, { _name: 'موجود', _phone: '+201011111111' }],
     }, db);
-    assert.deepEqual(result, { created: 1, assigned: 0, skipped: 1, others: 0, failed: 0 });
+    assert.deepEqual(result, { created: 1, assigned: 0, skipped: 1, others: 0, failed: 0, flagged: 0, problems: [] });
     assert.equal(assigned.length, 0, 'nobody already on the system is handed to anyone');
     assert.equal(inserted[0][6], 'ONLINE_SAUDI');
     assert.equal(inserted[0][9], null, 'no officer');

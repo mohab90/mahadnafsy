@@ -1170,7 +1170,7 @@ export const mysqlAdmin = {
 
   // ── Leads: bulk CSV import ──
   importLeads: (leads: AR[]) =>
-    apiFetch<{ ok: boolean; imported: number; skipped: number; errors: string[] }>(
+    apiFetch<{ ok: boolean; imported: number; skipped: number; flagged?: number; errors: string[] }>(
       '/admin/leads/import', { method: 'POST', body: JSON.stringify({ leads }) }, A
     ),
 

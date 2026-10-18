@@ -18,7 +18,7 @@ const {
   assertWritable,
   logger,
 } = require('./_shared');
-const { toIdentity } = require('../../../lib/phoneNumber');
+const { toIdentity, cleanImportedPhone } = require('../../../lib/phoneNumber');
 const { spellingsOf } = require('../../../lib/phoneDuplicates');
 
 const router = Router();
@@ -68,21 +68,32 @@ router.post('/api/admin/import/daqqi', requireAuth, requireAdminOrStaff, require
     try {
       if (!dryRun) { await conn.beginTransaction(); transactionStarted = true; }
       for (const r of rows) {
-        const name  = sanitize(String(r.name  || '').trim(), 255);
-        const email = String(r.email || '').toLowerCase().trim().substring(0,255);
-        const phone = String(r.phone || '').replace(/[^\d+]/g,'').substring(0,30) || null;
-
-        if (!name || !email || !phone || !email.includes('@')) {
-          stats.errors.push(`سطر "${r.name || '?'}": بيانات ناقصة أو غير صحيحة`);
-          results.push({ ...r, _status: 'error', _msg: 'بيانات ناقصة' });
+        // Every row with anything in it comes in; what is wrong with it is written on the client's notes
+        // («لازم ترفع كل العملاء ماعدا المكرر ولو في غلط اكتب»). Only an empty row is left out.
+        const typedName = sanitize(String(r.name || '').trim(), 255);
+        const typedEmail = String(r.email || '').toLowerCase().trim().substring(0,255);
+        const cleanedPhone = cleanImportedPhone(String(r.phone || '').trim());
+        if (!typedName && !typedEmail && !cleanedPhone.phone) {
+          stats.errors.push('سطر فاضي');
+          results.push({ ...r, _status: 'error', _msg: 'سطر فاضي' });
           continue;
         }
+        const problems = [
+          cleanedPhone.problem,
+          !typedName ? 'الاسم ناقص' : '',
+          !typedEmail ? 'مفيش إيميل' : (!typedEmail.includes('@') ? `الإيميل غلط: ${typedEmail}` : ''),
+        ].filter(Boolean);
+        const name = typedName || 'بدون اسم';
+        const email = typedEmail.includes('@') ? typedEmail : '';
+        const phone = cleanedPhone.phone.substring(0,30) || null;
+        if (problems.length) stats.errors.push(`سطر "${name}": ${problems.join(' ، ')}`);
 
         const nationalId  = r.national_id ? String(r.national_id).substring(0,50) : null;
-        const whatsapp    = r.whatsapp ? String(r.whatsapp).replace(/[^\d+]/g,'').substring(0,30) : phone;
+        const whatsapp    = r.whatsapp ? cleanImportedPhone(String(r.whatsapp)).phone.substring(0,30) || null : phone;
         const natRaw      = String(r.nationality || '').toUpperCase();
         const nationality = VALID_NATIONALITY.includes(natRaw) ? natRaw : 'EGYPTIAN';
-        const notes       = r.notes ? sanitize(String(r.notes),1000) : null;
+        const notes       = [problems.length ? `⚠ مشاكل في الاستيراد: ${problems.join(' ، ')}` : '', r.notes ? sanitize(String(r.notes),1000) : '']
+          .filter(Boolean).join(' | ').slice(0, 1000) || null;
         const discount    = r.discount ? parseFloat(r.discount) : null;
         const createdAt   = r.enrollment_date || r.created_at || cairoToday();
 
@@ -101,8 +112,8 @@ router.post('/api/admin/import/daqqi', requireAuth, requireAdminOrStaff, require
         // Find or create subscriber
         let subscriberId, clientCode, isNew = false;
         const [[existing]] = await conn.query(
-          'SELECT id, client_code, tenant_id, branch, branch_id FROM subscribers WHERE tenant_id=? AND (email=? OR phone IN (?) OR phone2 IN (?)) LIMIT 1',
-          [req.tenantId, email, spellingsOf(phone).length ? spellingsOf(phone) : [''], spellingsOf(phone).length ? spellingsOf(phone) : ['']]
+          'SELECT id, client_code, tenant_id, branch, branch_id FROM subscribers WHERE tenant_id=? AND ((? <> \'\' AND email=?) OR phone IN (?) OR phone2 IN (?)) LIMIT 1',
+          [req.tenantId, email, email, spellingsOf(phone).length ? spellingsOf(phone) : [''], spellingsOf(phone).length ? spellingsOf(phone) : ['']]
         );
 
         let subscriberTenantId = req.tenantId || 'tenant-default';
@@ -123,7 +134,7 @@ router.post('/api/admin/import/daqqi', requireAuth, requireAdminOrStaff, require
             await conn.query(
               `INSERT INTO subscribers (id,client_code,name,email,phone,national_id,whatsapp,nationality,branch,branch_id,discount,is_active,notes,created_at,tenant_id)
                VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`,
-              [subscriberId,clientCode,name,email,toIdentity(phone) || null,nationalId,whatsapp,nationality,subscriberBranch,subscriberBranchId,discount,notes,createdAt,subscriberTenantId]
+              [subscriberId,clientCode,name,email || null,toIdentity(phone) || null,nationalId,whatsapp,nationality,subscriberBranch,subscriberBranchId,discount,notes,createdAt,subscriberTenantId]
             );
           }
           stats.newSubscribers++;
@@ -135,6 +146,12 @@ router.post('/api/admin/import/daqqi', requireAuth, requireAdminOrStaff, require
           const [[courseExists]] = await conn.query('SELECT id FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',[courseId, subscriberTenantId]);
           if (!courseExists) {
             stats.errors.push(`سطر "${name}": course_id="${courseId}" غير موجود`);
+            // The client is in; the course that was asked for is written on them for someone to give.
+            if (!dryRun) {
+              await conn.query(
+                "UPDATE subscribers SET notes=CONCAT(COALESCE(notes,''), IF(COALESCE(notes,'')='','',' | '), ?) WHERE id=? AND tenant_id=?",
+                [`⚠ الكورس ${courseId} مش موجود في السيستم`, subscriberId, subscriberTenantId]);
+            }
           } else {
             if (!dryRun) {
               await grantCourseEntitlement({

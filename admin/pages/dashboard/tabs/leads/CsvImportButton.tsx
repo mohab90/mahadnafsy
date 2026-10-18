@@ -23,6 +23,7 @@ export function CsvImportButton({ notify, onImported }: {
       const [headerRow, ...body] = parseCsvRows(text, detectCsvDelimiter(text.split(/\r?\n/)[0] || ''));
       if (!headerRow || body.length === 0) throw new Error('الملف فارغ أو لا يحتوي بيانات');
       const headers = headerRow.map(header => header.trim().toLowerCase().replace(/'/g, ''));
+      // Every row with anything in it goes to the server, which keeps it and writes down what is wrong with it.
       const leads = body.map(values => {
         const row = Object.fromEntries(headers.map((header, index) => [header, values[index] || '']));
         return {
@@ -32,19 +33,21 @@ export function CsvImportButton({ notify, onImported }: {
           source: row.source || row['المصدر'] || 'استيراد CSV',
           notes: row.notes || row['ملاحظات'] || '',
         };
-      }).filter(lead => lead.name && lead.phone);
+      }).filter(lead => lead.name || lead.phone || lead.email);
       if (!leads.length) throw new Error('لم يتم العثور على أعمدة name/phone');
       // The server takes 500 rows a request; a longer file goes in batches and the
       // answers are added up, instead of the whole file being refused.
       const BATCH = 500;
       let imported = 0;
       let skipped = 0;
+      let flagged = 0;
       for (let start = 0; start < leads.length; start += BATCH) {
         const part = await mysqlAdmin.importLeads(leads.slice(start, start + BATCH));
         imported += Number(part.imported) || 0;
         skipped += Number(part.skipped) || 0;
+        flagged += Number(part.flagged) || 0;
       }
-      notify('success', `تم استيراد ${imported} ليد · تخطي: ${skipped} (من ${leads.length} صف)`);
+      notify('success', `تم استيراد ${imported} ليد · تخطي المكرر: ${skipped} (من ${leads.length} صف)${flagged ? ` · ${flagged} فيهم غلط (رقم أو اسم) مكتوب في ملاحظاتهم` : ''}`);
       onImported();
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'فشل الاستيراد');

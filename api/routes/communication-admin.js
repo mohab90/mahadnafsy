@@ -8,7 +8,7 @@ const { pool } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
 const { getWaCfg, invalidateWaCfg, resolveProvider, sendWhatsApp } = require('../lib/whatsapp');
 const { branchIdForBranch, defaultDigitalBranch } = require('../lib/branches');
-const { toIdentity, identitySpellings } = require('../lib/phoneNumber');
+const { toIdentity, identitySpellings, cleanImportedPhone } = require('../lib/phoneNumber');
 const { getFbLeadConfig } = require('../lib/facebookLeadAds');
 const { DEFAULT_TENANT_ID, platformFallback, resolveTenantId } = require('../lib/tenantScope');
 const { setTenantSetting } = require('../lib/tenantSettings');
@@ -161,11 +161,19 @@ router.post('/api/admin/leads/import', requireAuth, requireAdmin, async (req, re
     if (!Array.isArray(leads) || leads.length === 0) return res.status(400).json({ error: 'leads array required' });
     if (leads.length > 500) return res.status(413).json({ error: 'الاستيراد محدود بـ 500 ليد في المرة الواحدة — قسّم الملف على دفعات.', code: 'IMPORT_BATCH_TOO_LARGE', maxRows: 500 });
 
-    // Pre-filter invalid rows
+    // Every row with anything in it comes in, whatever is wrong with it (a short or filler number, no number, no
+    // name): the lead is created and the problem is written on its notes, for someone to fix. Only an empty row and
+    // a repeat of someone already there are left out — «لازم ترفع كل العملاء ماعدا المكرر ولو في غلط اكتب».
+    // A Saudi mobile (5XXXXXXXX / 05XXXXXXXX) gets 966 in front and lands in the Saudi branch.
     const valid = [], errors = [];
+    let flagged = 0;
     for (const l of leads) {
-      if (!l.name || !l.phone) { errors.push(`سطر مفقود الاسم أو الهاتف: ${JSON.stringify(l)}`); continue; }
-      valid.push({ ...l, phone: String(l.phone).trim() });
+      const name = String(l.name || '').trim();
+      const email = String(l.email || '').trim();
+      if (!name && !String(l.phone || '').trim() && !email) { errors.push(`سطر فاضي: ${JSON.stringify(l)}`); continue; }
+      const cleaned = cleanImportedPhone(l.phone);
+      const problems = [cleaned.problem, !name ? 'الاسم ناقص' : ''].filter(Boolean);
+      valid.push({ ...l, name: name || 'بدون اسم', email, phone: cleaned.phone, saudi: cleaned.saudi, problems });
     }
 
     let imported = 0, skipped = 0;
@@ -176,28 +184,45 @@ router.post('/api/admin/leads/import', requireAuth, requireAdmin, async (req, re
       // client in again under a different spelling (the unique key is on the raw
       // text), and a sheet's own repeats were counted as imported while
       // INSERT IGNORE quietly dropped them.
-      const spellings = [...new Set(valid.flatMap(l => [l.phone, ...identitySpellings(l.phone)]))];
-      const ph = spellings.map(() => '?').join(',');
-      const [subRows] = await pool.query(`SELECT phone FROM subscribers WHERE phone IN (${ph}) AND tenant_id=?`, [...spellings, tenantId]);
-      const [leadRows] = await pool.query(`SELECT phone FROM leads WHERE phone IN (${ph}) AND hidden=0 AND tenant_id=?`, [...spellings, tenantId]);
-      const existIdentities = new Set([...subRows, ...leadRows].map(r => toIdentity(r.phone)).filter(Boolean));
+      const spellings = [...new Set(valid.filter(l => l.phone).flatMap(l => [l.phone, ...identitySpellings(l.phone)]))];
+      const existIdentities = new Set();
+      if (spellings.length) {
+        const ph = spellings.map(() => '?').join(',');
+        const [subRows] = await pool.query(`SELECT phone FROM subscribers WHERE phone IN (${ph}) AND tenant_id=?`, [...spellings, tenantId]);
+        const [leadRows] = await pool.query(`SELECT phone FROM leads WHERE phone IN (${ph}) AND hidden=0 AND tenant_id=?`, [...spellings, tenantId]);
+        [...subRows, ...leadRows].map(r => toIdentity(r.phone)).filter(Boolean).forEach(identity => existIdentities.add(identity));
+      }
+      // A row with no number is told apart by its name (a lead already kept with no number, by that name, is the same one).
+      const bareNames = valid.filter(l => !l.phone).map(l => l.name);
+      const knownBare = new Set();
+      if (bareNames.length) {
+        const [bareRows] = await pool.query(
+          `SELECT name FROM leads WHERE tenant_id=? AND (phone IS NULL OR phone='') AND name IN (${bareNames.map(() => '?').join(',')})`,
+          [tenantId, ...bareNames]);
+        bareRows.forEach(r => knownBare.add(String(r.name).trim().toLowerCase()));
+      }
       const seenInFile = new Set();
 
       const insertRows = [], insertParams = [];
       for (const l of valid) {
         const identity = toIdentity(l.phone);
-        if (identity && (existIdentities.has(identity) || seenInFile.has(identity))) {
+        const bareKey = !l.phone ? `name:${l.name.toLowerCase()}` : '';
+        if ((identity && (existIdentities.has(identity) || seenInFile.has(identity)))
+          || (bareKey && (knownBare.has(l.name.toLowerCase()) || seenInFile.has(bareKey)))) {
           skipped++;
-          errors.push(`${l.phone} موجود بالفعل`);
+          errors.push(`${l.phone || l.name} موجود بالفعل`);
           continue;
         }
         if (identity) seenInFile.add(identity);
-        const importBranch = defaultDigitalBranch(l.branch);
+        if (bareKey) seenInFile.add(bareKey);
+        const importBranch = l.branch ? defaultDigitalBranch(l.branch) : (l.saudi ? 'ONLINE_SAUDI' : defaultDigitalBranch(l.branch));
+        const notes = [l.problems.length ? `⚠ مشاكل في الاستيراد: ${l.problems.join(' ، ')}` : '', l.notes?.trim() || ''].filter(Boolean).join(' | ').slice(0, 2000) || null;
+        if (l.problems.length) { flagged++; if (errors.length < 20) errors.push(`${l.name}: ${l.problems.join(' ، ')}`); }
         insertRows.push('(?,?,?,?,?,?,?,?,?,?,?)');
         insertParams.push(
-          uuidv4(), tenantId, String(l.name).trim(), l.email?.trim() || null, l.phone,
+          uuidv4(), tenantId, l.name, l.email || null, l.phone || null,
           l.source?.trim() || 'استيراد CSV', l.status || 'new',
-          l.notes?.trim() || null, JSON.stringify({ branch: importBranch }), importBranch, branchIdForBranch(importBranch)
+          notes, JSON.stringify({ branch: importBranch }), importBranch, branchIdForBranch(importBranch)
         );
         imported++;
       }
@@ -208,7 +233,7 @@ router.post('/api/admin/leads/import', requireAuth, requireAdmin, async (req, re
         );
       }
     }
-    res.json({ ok: true, imported, skipped, errors: errors.slice(0, 20) });
+    res.json({ ok: true, imported, skipped, flagged, errors: errors.slice(0, 20) });
   } catch (e) { routeError(res, e); }
 });
 

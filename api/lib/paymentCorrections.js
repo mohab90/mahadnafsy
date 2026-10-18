@@ -29,6 +29,7 @@ const { pool } = require('./db');
 const { insertNotification } = require('./notification');
 const { postJournalEntry, logPaymentAudit, logFinancialAudit } = require('./finance');
 const { assertWritable } = require('./periodLock');
+const { normalizeBranch, branchIdForBranch } = require('./branches');
 const { dateOnlyInTimeZone } = require('./dates');
 const { clawBackPaidCommission, rejectRetentionBonus, revokeAccessWithoutOtherGrant } = require('./refunds');
 
@@ -137,7 +138,7 @@ async function voidPayment(conn, { tenantId, paymentId, actor, reason }) {
 /** Method, date, note, transaction number — the parts of a payment that are not its money. */
 async function editPaymentDetails(conn, { tenantId, paymentId, actor, reason, changes }) {
   const [[pay]] = await conn.query(
-    `SELECT id, subscriber_id, payment_method, date, note, transaction_id, status, amount
+    `SELECT id, subscriber_id, payment_method, date, note, transaction_id, status, amount, branch, branch_id, receipt_no
        FROM payments WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`, [paymentId, tenantId]);
   if (!pay) throw refuse(404, 'الدفعة مش موجودة', 'NOT_FOUND');
   const sets = []; const params = []; const before = {}; const after = {};
@@ -145,6 +146,20 @@ async function editPaymentDetails(conn, { tenantId, paymentId, actor, reason, ch
   if (changes.paymentMethod !== undefined) put('payment_method', String(changes.paymentMethod || '').slice(0, 100) || null);
   if (changes.transactionId !== undefined) put('transaction_id', String(changes.transactionId || '').slice(0, 191) || null);
   if (changes.note !== undefined) put('note', String(changes.note || '').slice(0, 2000) || null);
+  // «محتاجين نعدل الفرع لانه بيحصل غلط»: the branch the money was taken at. The vault, the branch P&L and the
+  // branch's accounts read this column, and so does the journal entry the payment posted.
+  let newBranch = null;
+  if (changes.branch !== undefined) {
+    const wanted = normalizeBranch(changes.branch);
+    if (!wanted) throw refuse(400, 'الفرع مش معروف', 'BAD_BRANCH');
+    if (wanted !== normalizeBranch(pay.branch)) {
+      // A numbered receipt belongs to its branch's sequence: moving it would leave a hole in one and a clash in the other.
+      if (pay.receipt_no) throw refuse(400, 'الدفعة دي ليها إيصال مرقّم من فرعها — امسحها وسجّلها تاني في الفرع الصح', 'RECEIPT_BRANCH');
+      newBranch = { branch: wanted, branchId: branchIdForBranch(wanted) };
+      put('branch', newBranch.branch);
+      put('branch_id', newBranch.branchId);
+    }
+  }
   let newDate = null;
   if (changes.date !== undefined) {
     newDate = String(changes.date || '').slice(0, 10);
@@ -161,6 +176,10 @@ async function editPaymentDetails(conn, { tenantId, paymentId, actor, reason, ch
   await conn.query(`UPDATE payments SET ${sets.join(', ')} WHERE id=? AND tenant_id=?`, [...params, paymentId, tenantId]);
   if (newDate) {
     await conn.query("UPDATE journal_entries SET entry_date=? WHERE tenant_id=? AND ref_type='payment' AND ref_id=?", [newDate, tenantId, paymentId]);
+  }
+  if (newBranch) {
+    await conn.query("UPDATE journal_entries SET branch=?, branch_id=? WHERE tenant_id=? AND ref_type='payment' AND ref_id=?",
+      [newBranch.branch, newBranch.branchId, tenantId, paymentId]);
   }
   await logFinancialAudit({
     entityType: 'payment', entityId: paymentId, action: 'edit', oldData: before, newData: { ...after, reason: String(reason || '').slice(0, 300) },

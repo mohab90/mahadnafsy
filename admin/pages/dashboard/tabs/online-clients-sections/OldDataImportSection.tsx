@@ -6,7 +6,7 @@ import type { SheetClientRow } from '../../../../../shared/sheetImport';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type ViewTabKey = 'active'|'real-local'|'real-saudi'|'real-intl'|'finished'|'paused'|'refunded'|'old_data'|'old_local'|'old_intl'|'booked2024'|'booked2025';
-type ImportResult = { created: number; assigned: number; skipped: number; others: number; failed: number };
+type ImportResult = { created: number; assigned: number; skipped: number; others: number; failed: number; flagged?: number };
 
 interface Props {
   collOnlineViewTab: ViewTabKey;
@@ -30,7 +30,7 @@ const mergeFreshSubscribers = (fresh: SubscriberItem[], setSalesOwnSubscribers: 
  */
 const importOldData = (destination: 'daqqi' | 'old_local' | 'old_intl') => async (rows: SheetClientRow[], source: string) => {
   const result = await mysqlAdmin.adminPost<ImportResult>('/admin/old-data/import', { destination, source, rows });
-  return { created: result.created, assigned: result.assigned, dupes: result.skipped, others: result.others, errors: result.failed };
+  return { created: result.created, assigned: result.assigned, dupes: result.skipped, others: result.others, errors: result.failed, flagged: result.flagged };
 };
 
 export function OldDataImportSection({

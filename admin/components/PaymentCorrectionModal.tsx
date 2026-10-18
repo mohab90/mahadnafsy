@@ -10,6 +10,7 @@ import { cairoDay } from '../../shared/cairoDate';
 import { mysqlAdmin } from '../lib/mysqlapi';
 import { usePaymentBoxes } from '../lib/paymentMethods';
 import { useStaticData } from '../context/siteDataSlices';
+import { BRANCH_LABELS_AR, normalizeBranch } from '../constants/branches';
 
 export type CorrectablePayment = {
   id: string;
@@ -18,6 +19,8 @@ export type CorrectablePayment = {
   courseId?: string;
   bundleId?: string;
   paymentMethod?: string;
+  /** Where the money was taken (ONLINE_EGYPT, DAQQI …), or the branch id (branch-daqqi) as the order row carries it. */
+  branch?: string | null;
   transactionId?: string;
   note?: string;
   at?: string;
@@ -51,6 +54,8 @@ export function PaymentCorrectionModal({ payment, mode, courses = [], bundles = 
   const [item, setItem] = useState(originalItem);
   const [method, setMethod] = useState(payment.paymentMethod || '');
   const [date, setDate] = useState(cairoDay(payment.at) || '');
+  const originalBranch = normalizeBranch(String(payment.branch || '').replace(/^branch-/i, '')) || '';
+  const [branch, setBranch] = useState<string>(originalBranch);
   const [note, setNote] = useState(payment.note || '');
   const [transactionId, setTransactionId] = useState(payment.transactionId || '');
   const [busy, setBusy] = useState(false);
@@ -79,6 +84,7 @@ export function PaymentCorrectionModal({ payment, mode, courses = [], bundles = 
         if (item !== originalItem) body.courseId = item;
         if (method !== (payment.paymentMethod || '')) body.paymentMethod = method;
         if (date && date !== (cairoDay(payment.at) || '')) body.date = date;
+        if (branch && branch !== originalBranch) body.branch = branch;
         if (note !== (payment.note || '')) body.note = note;
         if (transactionId !== (payment.transactionId || '')) body.transactionId = transactionId;
         const result = await mysqlAdmin.correctPayment(payment.id, body);
@@ -144,6 +150,12 @@ export function PaymentCorrectionModal({ payment, mode, courses = [], bundles = 
                 <input type="date" value={date} onChange={e => setDate(e.target.value)} className={input} />
               </label>
             </div>
+            <label className="block space-y-1 text-xs font-bold text-gray-600">الفرع اللي اتدفعت فيه
+              <select value={branch} onChange={e => setBranch(e.target.value)} className={input}>
+                {!originalBranch && <option value="">— مش متحدد —</option>}
+                {Object.entries(BRANCH_LABELS_AR).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+              </select>
+            </label>
             <div className="grid grid-cols-2 gap-2">
               <label className="space-y-1 text-xs font-bold text-gray-600">رقم العملية
                 <input value={transactionId} onChange={e => setTransactionId(e.target.value)} className={input} dir="ltr" />

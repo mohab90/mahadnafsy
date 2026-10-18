@@ -8,6 +8,10 @@
 //   - someone already on the system (same phone or email) is not created
 //     again. If nobody holds them they are handed to this officer; if another
 //     officer holds them they stay, and the run says how many;
+//   - every row comes in, whatever is wrong with it: a number that is short or a placeholder, no number at all, a
+//     course the catalogue does not have, no name. The client is created and the problem is written on their notes
+//     («⚠ …») for someone to fix — «لازم ترفع كل العملاء ماعدا المكرر ولو في غلط اكتب ان الرقم فيه غلط او الكورس».
+//     Only a row with nothing in it, and one that repeats someone already there, is left out;
 //   - a new person is created with the officer set, in «محلي قديم» or «دولي
 //     قديم» as the sheet says, enrolled in the course the sheet names;
 //   - the sheet's course price lands as the client's price for the course, and
@@ -73,16 +77,20 @@ async function createClient(conn, { tenantId, staff, kind, branch: chosenBranch,
   const refund = amount(row._refund);
   const stated = parseAmount(row._remaining);
   const course = cell(row._course);
-  const notes = [cell(row._notes),
+  const problems = [
+    ...(Array.isArray(row._issues) ? row._issues.map(cell).filter(Boolean) : []),
+    ...(!phone && !(Array.isArray(row._issues) && row._issues.length) ? ['مفيش رقم تليفون'] : []),
+    ...(!cell(row._name) ? ['الاسم ناقص'] : []),
+    ...(!courseId && course ? [`الكورس «${course}» مش موجود في السيستم`] : []),
+  ];
+  const notes = [problems.length ? `⚠ مشاكل في الاستيراد: ${problems.join(' ، ')}` : '', cell(row._notes),
     refund > 0 ? `استرداد سابق: ${refund}` : '',
     stated !== null && paid > 0 && expected - paid !== stated ? `المحصل في الملف ${paid} والمتبقي ${stated} — اتحسب المتبقي` : '',
     otherPhones.length ? `أرقام تانية: ${otherPhones.join(' ، ')}` : '',
-    ...(Array.isArray(row._issues) ? row._issues.map(cell) : []),
     cell(row._officer) && !staff ? `مسئول التحصيل في الشيت: ${cell(row._officer)}` : '',
     cell(row._sales) ? `المبيعات في الشيت: ${cell(row._sales)}` : '',
     cell(row._cert) ? `شهادة: ${cell(row._cert)}` : '',
     cell(row._attendance) ? `حضور: ${cell(row._attendance)}` : '',
-    !courseId && course ? `الكورس: ${course}` : '',
     !courseId && paid > 0 ? `المحصل: ${paid}` : '',
     !courseId && expected > 0 ? `قيمة الكورس: ${expected}` : '',
     !courseId && stated !== null && course ? `المتبقي: ${stated}` : '']
@@ -95,7 +103,7 @@ async function createClient(conn, { tenantId, staff, kind, branch: chosenBranch,
          (id, tenant_id, client_code, name, email, phone, branch, branch_id, is_active, notes,
           assigned_cs_id, assigned_cs_name, crm_json, source, created_at)
        VALUES (?,?,?,?,?,?,?,?,1,?,?,?,?,?,COALESCE(?, NOW()))`,
-      [id, tenantId, await getNextClientCode(conn), (cell(row._name) || phone || '').slice(0, 255), email || null,
+      [id, tenantId, await getNextClientCode(conn), (cell(row._name) || phone || 'بدون اسم').slice(0, 255), email || null,
         toIdentity(phone) || null, branch, branchId, notes, staff?.id || null, staff?.name || null, JSON.stringify(crm),
         String(source).slice(0, 100), sheetDate(row._date)]);
     if (courseId) {
@@ -116,7 +124,7 @@ async function createClient(conn, { tenantId, staff, kind, branch: chosenBranch,
     await conn.rollback().catch(() => {});
     throw error;
   }
-  return id;
+  return { id, problems };
 }
 
 /**
@@ -133,18 +141,23 @@ async function importCollectionRows({ tenantId, staff = null, kind = 'old_local'
   const conn = await db.getConnection();
   try {
     const [existing] = await conn.query(
-      'SELECT id, phone, email, assigned_cs_id FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL', [tenantId]);
+      'SELECT id, name, phone, email, assigned_cs_id FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL', [tenantId]);
     const byPhone = new Map();
     const byEmail = new Map();
+    // Clients kept with no number and no email (a row that had neither): the only thing that tells them apart is the
+    // name, so a sheet synced again does not create them again.
+    const byBareName = new Map();
     for (const row of existing) {
       const identity = toIdentity(row.phone);
       if (identity) byPhone.set(identity, row);
       if (row.email) byEmail.set(String(row.email).trim().toLowerCase(), row);
+      if (!identity && !row.email && cell(row.name)) byBareName.set(cell(row.name).toLowerCase(), row);
     }
     const [courses] = await conn.query('SELECT id, title FROM courses WHERE tenant_id=? AND deleted_at IS NULL', [tenantId]);
     const [bundles] = await conn.query('SELECT id, title FROM bundles WHERE tenant_id=? AND deleted_at IS NULL', [tenantId]);
 
-    const result = { created: 0, assigned: 0, skipped: 0, others: 0, failed: 0 };
+    // flagged: created with something wrong written on their notes; problems: the first of them, for the screen to list.
+    const result = { created: 0, assigned: 0, skipped: 0, others: 0, failed: 0, flagged: 0, problems: [] };
     const seen = new Set();
     // One picker for the whole sheet, turning by itself. Loaded per row, it read
     // «who waited longest» from assigned_cs_at — whole seconds — and once every
@@ -164,14 +177,15 @@ async function importCollectionRows({ tenantId, staff = null, kind = 'old_local'
       const identities = phonesAll.map(toIdentity).filter(Boolean);
       const identity = identities[0] || '';
       const email = cell(row._email).toLowerCase();
-      // A row with neither a phone nor an email cannot be told apart from
-      // anyone, so it is not created at all.
-      const key = identity || email;
+      // A row with neither a phone nor an email is told apart by its name; one with nothing at all is empty.
+      const rowName = cell(row._name).toLowerCase();
+      const bare = !identity && !email;
+      const key = identity || email || (rowName ? `name:${rowName}` : '');
       if (!key || seen.has(key)) { result.skipped += 1; continue; }
       identities.forEach(each => seen.add(each));
       seen.add(key);
 
-      const found = identities.map(id => byPhone.get(id)).find(Boolean) || (email && byEmail.get(email)) || null;
+      const found = identities.map(id => byPhone.get(id)).find(Boolean) || (email && byEmail.get(email)) || (bare && byBareName.get(rowName)) || null;
       if (found) {
         if (!staff) {
           result.skipped += 1;
@@ -195,13 +209,18 @@ async function importCollectionRows({ tenantId, staff = null, kind = 'old_local'
         const officer = staff || (autoAssign
           ? await nextOfficer(subscriberMarket({ branch: branch || (kind === 'old_intl' ? 'ONLINE_ABROAD' : 'ONLINE_EGYPT') }))
           : null);
-        const id = await createClient(conn, {
+        const { id, problems } = await createClient(conn, {
           tenantId, staff: officer, kind, branch, source, row, email, phone: phonesAll[0] || null, otherPhones: phonesAll.slice(1), courseId, actor,
         });
         const created = { id, assigned_cs_id: officer?.id || null };
         identities.forEach(each => byPhone.set(each, created));
         if (email) byEmail.set(email, created);
+        if (bare && rowName) byBareName.set(rowName, created);
         result.created += 1;
+        if (problems.length) {
+          result.flagged += 1;
+          if (result.problems.length < 100) result.problems.push({ row: row._row || null, name: cell(row._name), issues: problems });
+        }
       } catch (error) {
         result.failed += 1;
         logger.warn('[collection-sheets] row not imported', { error: error.message });

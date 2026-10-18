@@ -16,7 +16,7 @@ const { parseCsv } = require('../lib/csv');
 const { withJobLock } = require('../lib/jobLock');
 const { matchCourseId } = require('../lib/courseMatch');
 const { createRepRotation, listDistributableReps } = require('../lib/leadAssignment');
-const { toIdentity } = require('../lib/phoneNumber');
+const { toIdentity, cleanImportedPhone } = require('../lib/phoneNumber');
 
 const validSheetId = (value) => /^[A-Za-z0-9_-]{20,120}$/.test(String(value || ''));
 const validGid = (value) => value == null || value === '' || /^\d{1,20}$/.test(String(value));
@@ -124,7 +124,9 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
       // number, so the unique index sees one spelling per person. Matched on
       // identity — "p:+201227155562" and "1227155562" are one person, and
       // comparing the text imported the same lead twice.
-      const identity = toIdentity(phone);
+      // A Saudi mobile written 5XXXXXXXX gets 966; a number that is wrong is kept and said on the lead's notes.
+      const cleaned = cleanImportedPhone(phone);
+      const identity = toIdentity(cleaned.phone);
 
       // A row with no phone is stored with phone NULL, not ''. As '' it collided
       // with the one blank already in leads and INSERT IGNORE dropped it in
@@ -172,7 +174,8 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
         // one argument along, so this was never adding information — it was
         // only making a missing name look like a filled-in one, which is worse,
         // because nobody goes looking for a name that appears to be there.
-        [leadId, req.tenantId, code, name || null, email || '', identity || phone || null, source || 'Google Sheet', notes || null, salesId, salesName, crmJson]
+        [leadId, req.tenantId, code, name || null, email || '', identity || cleaned.phone || null, source || 'Google Sheet',
+          [cleaned.problem && phone ? `⚠ ${cleaned.problem}` : '', notes].filter(Boolean).join(' | ') || null, salesId, salesName, crmJson]
       );
       if (insertResult.affectedRows) imported++; else skipped++;
     }

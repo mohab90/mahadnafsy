@@ -125,7 +125,7 @@ test('no write to subscribers, leads or users can store a blank phone', () => {
   // silently drops the row.
   const pins = [
     ['api/lib/sheets.js', "normPhone||phone||null, source||'Facebook Lead Ads'"],
-    ['api/routes/gsheets.js', "identity || phone || null"],
+    ['api/routes/gsheets.js', "identity || cleaned.phone || null"],
     // The registration insert moved into the routine the signup shares.
     ['api/lib/registrationLead.js', 'email, phone, resolvedBranch'],
   ];

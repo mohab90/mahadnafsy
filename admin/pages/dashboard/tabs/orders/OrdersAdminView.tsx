@@ -640,7 +640,7 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                       payment={{ id: correcting.row.id, amount: Number(correcting.row.amount) || 0, currency: correcting.row.currency,
                         courseId: correcting.row.type === 'course' ? (correcting.row.courseId || correcting.row.itemId) : undefined,
                         bundleId: correcting.row.type === 'bundle' ? (correcting.row.bundleId || correcting.row.itemId) : undefined,
-                        paymentMethod: storedMethodOf(correcting.row), transactionId: correcting.row.transactionId, note: correcting.row.note,
+                        paymentMethod: storedMethodOf(correcting.row), branch: correcting.row.branchId, transactionId: correcting.row.transactionId, note: correcting.row.note,
                         at: correcting.row.createdAt, clientName: correcting.row.customerName }}
                       courses={courses} bundles={bundles} notify={notify}
                       onClose={() => setCorrecting(null)}
