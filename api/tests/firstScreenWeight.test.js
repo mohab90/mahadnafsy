@@ -69,5 +69,5 @@ test('the inline-picture tool writes nothing unless told to, and keeps what it r
   assert.ok(tool.includes("process.argv.includes('--apply')"));
   assert.ok(tool.includes('if (!found.length || !APPLY)'), 'a dry run returns before any write');
   assert.ok(tool.indexOf('inline-images-backup-') < tool.indexOf('storeMediaImage({'), 'the old values are saved before the first store');
-  assert.ok(tool.includes('WHERE id = ? AND `${f.column}` = ?'), 'a row edited meanwhile is left alone');
+  assert.ok(tool.includes('WHERE id = ? AND \\`${f.column}\\` = ?'), 'a row edited meanwhile is left alone');
 });
