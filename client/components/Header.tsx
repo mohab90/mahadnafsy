@@ -4,6 +4,7 @@ import { Menu, X, Globe, LogIn, LogOut, User } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import GlobalSearch from './GlobalSearch';
 import { BRAND_LOGO, logoFallback, useLogoUrl } from '../lib/brand';
+import { cdnImg } from '../lib/img';
 
 const Header: React.FC = () => {
   const { currency, authUser, logout, content } = useSiteData();
@@ -34,7 +35,7 @@ const Header: React.FC = () => {
         <div className="flex items-center justify-between gap-4">
           {/* Logo */}
           <Link to="/" className="flex flex-none items-center">
-            <img src={logoUrl} onError={logoFallback} alt="معهد الدراسات النفسية" width={160} height={48} className="h-11 w-auto object-contain sm:h-12" />
+            <img src={cdnImg(logoUrl, 320)} onError={logoFallback} alt="معهد الدراسات النفسية" width={160} height={48} className="h-11 w-auto object-contain sm:h-12" />
           </Link>
 
           {/* Desktop Nav */}

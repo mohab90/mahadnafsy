@@ -56,3 +56,18 @@ test('on a phone the client tabs get the whole row and the follow-up chips are o
   assert.ok(read('admin/pages/dashboard/tabs/online-clients-sections/ViewTabsBar.tsx').includes('flex flex-wrap items-start gap-2 md:flex-nowrap'));
   assert.ok(read('admin/pages/dashboard/tabs/online-clients-sections/FiltersToolbar.tsx').includes('flex-nowrap items-center gap-2 overflow-x-auto whitespace-nowrap md:flex-wrap'));
 });
+
+test('the logo is the resized one, from our own address, and a breadcrumb link can be pressed', () => {
+  assert.ok(read('client/components/Header.tsx').includes('<img src={cdnImg(logoUrl, 320)}'));
+  assert.ok(read('client/components/Footer.tsx').includes('<img src={cdnImg(logoUrl, 320)}'));
+  for (const file of ['client/pages/course-details-sections/CourseHeroSection.tsx', 'client/pages/bundle-details-sections/BundleSections.tsx'])
+    assert.ok(read(file).includes('className="inline-flex min-h-[36px] items-center hover:text-white">الرئيسية</Link>'), file);
+});
+
+test('the inline-picture tool writes nothing unless told to, and keeps what it replaces', () => {
+  const tool = read('tools/externalize-inline-images.cjs');
+  assert.ok(tool.includes("process.argv.includes('--apply')"));
+  assert.ok(tool.includes('if (!found.length || !APPLY)'), 'a dry run returns before any write');
+  assert.ok(tool.indexOf('inline-images-backup-') < tool.indexOf('storeMediaImage({'), 'the old values are saved before the first store');
+  assert.ok(tool.includes('WHERE id = ? AND `${f.column}` = ?'), 'a row edited meanwhile is left alone');
+});

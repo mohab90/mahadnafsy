@@ -55,9 +55,9 @@ export const CourseHeroSection: React.FC<CourseHeroSectionProps> = ({
 
       <div className="container relative mx-auto px-4 pb-10 pt-6 sm:pb-14 sm:pt-8 lg:pb-16">
         <nav aria-label="مسار الصفحة" className="mb-6 flex flex-wrap items-center gap-1 text-[13px] font-bold text-white/55">
-          <Link to="/" className="hover:text-white">الرئيسية</Link>
+          <Link to="/" className="inline-flex min-h-[36px] items-center hover:text-white">الرئيسية</Link>
           <ChevronLeft size={14} />
-          <Link to="/courses" className="hover:text-white">الدبلومات</Link>
+          <Link to="/courses" className="inline-flex min-h-[36px] items-center hover:text-white">الدبلومات</Link>
           <ChevronLeft size={14} />
           <span className="truncate text-white/80">{course.title}</span>
         </nav>

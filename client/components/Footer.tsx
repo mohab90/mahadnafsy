@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useSiteData } from '../context/SiteDataContext';
 import { instituteWhatsApp } from '../lib/whatsappLink';
 import { BRAND_LOGO, logoFallback, useLogoUrl } from '../lib/brand';
+import { cdnImg } from '../lib/img';
 
 // «ايقونة البحث عن شهادة يكتب كود الشهادة تفتح توثيقها للعميل»: the code is typed here and the verification
 // page opens (pages/CertificateVerify.tsx) — for every certificate the institute issues.
@@ -83,7 +84,7 @@ const Footer: React.FC<{ mini?: boolean }> = ({ mini }) => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
           <div>
             <Link to="/">
-              <img src={logoUrl} onError={logoFallback} alt="معهد الدراسات النفسية" className="h-14 w-auto object-contain mb-4 rounded-xl bg-white px-3 py-1.5" />
+              <img src={cdnImg(logoUrl, 320)} loading="lazy" decoding="async" onError={logoFallback} alt="معهد الدراسات النفسية" className="h-14 w-auto object-contain mb-4 rounded-xl bg-white px-3 py-1.5" />
             </Link>
             <p className="text-sm leading-relaxed mb-4 text-white/60">{description}</p>
             <div className="flex gap-3">

@@ -49,9 +49,9 @@ export const BundleHero: React.FC<{
       <div aria-hidden="true" className="pointer-events-none absolute -bottom-56 -left-40 h-[460px] w-[460px] rounded-full bg-[radial-gradient(closest-side,rgba(200,150,46,.22),transparent)]" />
       <div className="container relative mx-auto px-4 pb-10 pt-6 sm:pb-14 sm:pt-8 lg:pb-16">
         <nav aria-label="مسار الصفحة" className="mb-6 flex flex-wrap items-center gap-1 text-[13px] font-bold text-white/55">
-          <Link to="/" className="hover:text-white">الرئيسية</Link>
+          <Link to="/" className="inline-flex min-h-[36px] items-center hover:text-white">الرئيسية</Link>
           <ChevronLeft size={14} />
-          <Link to="/bundles" className="hover:text-white">المسارات</Link>
+          <Link to="/bundles" className="inline-flex min-h-[36px] items-center hover:text-white">المسارات</Link>
           <ChevronLeft size={14} />
           <span className="truncate text-white/80">{bundle.title}</span>
         </nav>
