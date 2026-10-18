@@ -266,7 +266,9 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
       id: `inc-${Date.now()}`,
       amount: Number(draft.amount) || 0,
       currency: draft.currency,
-      note: [draft.note, draft.transactionId].filter(Boolean).join(' | ') || undefined,
+      note: draft.note || undefined,
+      // The transaction number is a field of the payment (unique), not note text.
+      transactionId: draft.transactionId || undefined,
       paymentMethod: draft.paymentMethod || undefined,
       fromAccountNumber: draft.fromAccountNumber || undefined,
       source: 'staff' as const,

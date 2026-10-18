@@ -403,7 +403,10 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
         paymentType: daqqiPayDraft.paymentType,
         isInstallment: daqqiPayDraft.bookingType === 'installment',
         courseId: daqqiPayDraft.courseId || undefined,
-        note: [daqqiPayDraft.note, daqqiPayDraft.transactionId, _discNote].filter(Boolean).join(' | ') || undefined,
+        note: [daqqiPayDraft.note, _discNote].filter(Boolean).join(' | ') || undefined,
+        // The typed «رقم العملية» is the payment's transaction number (unique), not note text: in the note it
+        // never appeared as a transaction number anywhere. Only this main payment carries it.
+        transactionId: daqqiPayDraft.transactionId || undefined,
         paymentMethod: daqqiPayDraft.paymentMethod || undefined,
         fromAccountNumber: daqqiPayDraft.fromAccountNumber || undefined,
         source: 'daqqi' as const,

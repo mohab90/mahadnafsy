@@ -64,3 +64,12 @@ test('a reference already used on another payment is refused with its own messag
   const route = read('api/routes/subscriber-payments.js');
   assert.ok(route.includes('TRANSACTION_REFERENCE_IN_USE'));
 });
+
+test('the Dokki desk and the finance tab also send the transaction number as a field', () => {
+  const dokki = read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx');
+  assert.ok(dokki.includes('transactionId: daqqiPayDraft.transactionId || undefined,'));
+  assert.ok(!/note: \[daqqiPayDraft\.note, daqqiPayDraft\.transactionId/.test(dokki));
+  const finance = read('admin/pages/dashboard/tabs/FinancialTab.tsx');
+  assert.ok(finance.includes('transactionId: draft.transactionId || undefined,'));
+  assert.ok(!/note: \[draft\.note, draft\.transactionId\]/.test(finance));
+});
