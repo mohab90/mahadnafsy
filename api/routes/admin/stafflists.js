@@ -2,14 +2,15 @@
 const { certificateDue } = require('../../lib/certificatePricing');
 const { loadPlacements, placeCourse, ownOrPlaced } = require('../../lib/coursePlacement');
 const { certificatePricing } = require('../../lib/certificatePayments');
-const { CONVERTED_SQL } = require('../../lib/leadStatuses');
+const { CONVERTED_SQL, TERMINAL_SQL } = require('../../lib/leadStatuses');
+const { NEXT_FOLLOWUP } = require('../../lib/leadTableFilter');
 const logger = require('../../lib/logger');
 const crypto   = require('crypto');
 const express  = require('express');
 const router   = express.Router();
 const { uuidv4 } = require('../../lib/id');
 
-const { pool, cacheInvalidate } = require('../../lib/db');
+const { pool, cacheInvalidate, cached } = require('../../lib/db');
 const { resolvePaymentExecutors } = require('../../lib/paymentExecutor');
 const { mailer } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
@@ -21,7 +22,7 @@ const { branchesFromScope, leadScope } = require('../../lib/leadAccess');
 const { enqueueEmailSequence } = require('../../lib/emailSequence');
 const { ADMIN_EMAILS, requireAuth, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../../middleware/auth');
 const { VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES, normalizeDataScope, resolveDataScope, hasPermission, PERMISSIONS } = require('../../constants/permissions');
-const { safeIsoString, safeDateOnly, sqlCairoDayStartUtc, sqlCairoDayEndUtc, sqlCairoWall } = require('../../lib/dates');
+const { safeIsoString, safeDateOnly, sqlCairoDayStartUtc, sqlCairoDayEndUtc, sqlCairoWall, cairoToday, cairoDayStartUtc, addDaysToDateOnly } = require('../../lib/dates');
 const { bulkOperationLimiter } = require('../../middleware/rateLimits');
 const { keyset } = require('../../lib/pagination');
 const { installmentPlansBySubscriber, withInstallmentPlans } = require('../../lib/installmentPlansBySubscriber');
@@ -544,45 +545,86 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
 // All staff roles call this ONE endpoint. The server decides what they see.
 // Scoping rules are defined in api/constants/permissions.js → DATA_SCOPE.
 // ─────────────────────────────────────────────────────────────────────────────
+/** One leads row as the staff screens read it (the list and the home summary share it). */
+function mapStaffLeadRow(r) {
+  const crm = parseCrm(r.crm_json);
+  return {
+    ...crm,
+    id: r.id, name: r.name, email: r.email, phone: r.phone, phone2: r.phone2 || '',
+    status: r.status, source: r.source, notes: r.notes,
+    leadType: r.lead_type || crm.leadType || 'course',
+    enrolledCourseId: r.enrolled_course_id || crm.enrolledCourseId || '',
+    interestLevel: r.interest_level || crm.interestLevel || 'medium',
+    assignedSalesId: r.assigned_sales_id || null,
+    assignedSalesName: r.assigned_sales_name || null,
+    assignedCsId: r.assigned_cs_id || null,
+    assignedCsName: r.assigned_cs_name || null,
+    interestedCourseIds: tryJson(r.interested_course_ids_json, crm.interestedCourseIds || []),
+    createdAt: r.created_at, updatedAt: r.updated_at,
+    communications: Array.isArray(crm.communications) ? crm.communications : [],
+    nextFollowUpDate: r.next_follow_up_date || crm.nextFollowUpDate || null,
+    paidAmount: r.paid_amount, clientCode: r.client_code,
+    hidden: !!r.hidden, branch: r.branch, clientType: r.client_type || null,
+  };
+}
+
+/**
+ * Whose clients this staff member may see, as an SQL condition on `subscribers s`: the one rule behind the list
+ * (/api/staff/subscribers), the home summary and the payments page, so they can never disagree about the set.
+ * `{ none: true }` for a role that sees no clients, `{ forbidden: true }` for a scope that needs a staff record
+ * the account does not have; otherwise `{ where, params }` (params follow the tenant id).
+ */
+function staffSubscriberScope(req) {
+  const staffId  = req.staffRecord?.id;
+  const isSuper  = !!req.isSuperAdmin;
+  const scope    = resolveDataScope(req.staffRecord, { isSuperAdmin: isSuper, fallback: 'assigned_sales' });
+  if (scope === 'none') return { none: true };
+
+  let whereClause = '1=1';
+  const params    = [];
+
+  if (scope === 'all') {
+    // Full access — return everything (excluding staff/admin emails)
+    const adminExclusions = ADMIN_EMAILS.length > 0
+      ? ` AND (s.email IS NULL OR s.email NOT IN (${ADMIN_EMAILS.map(() => '?').join(',')}))`
+      : '';
+    whereClause = `NOT EXISTS (
+      SELECT 1 FROM staff st WHERE st.tenant_id=s.tenant_id AND st.email = s.email AND st.is_active = 1
+    )${adminExclusions}`;
+    params.push(...ADMIN_EMAILS.map(e => e.toLowerCase()));
+  } else if (scope === 'assigned_sales') {
+    if (!staffId) return { forbidden: true };
+    // See the matching comment on /api/admin/subscribers above — crm_json is a
+    // stale creation-time snapshot, not a live mirror of the column.
+    whereClause = `(s.assigned_sales_id = ? OR (s.lead_id IS NOT NULL AND EXISTS (SELECT 1 FROM leads l WHERE l.id = s.lead_id AND l.tenant_id=s.tenant_id AND l.assigned_sales_id = ?)))`;
+    params.push(staffId, staffId);
+  } else if (scope === 'assigned_cs') {
+    if (!staffId) return { forbidden: true };
+    whereClause = `s.assigned_cs_id = ?`;
+    params.push(staffId);
+  } else if (scope.startsWith('branch:')) {
+    const branches = branchesFromScope(scope); // e.g. 'DAQQI' or 'ONLINE_EGYPT,ONLINE_SAUDI'
+    whereClause = branches.length ? ownOrPlaced(branches) : '1=0';
+    params.push(...branches, ...branches);
+  }
+  return { where: whereClause, params };
+}
+
 router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePermission('view_subscribers'), async (req, res) => {
   try {
-    const staffId  = req.staffRecord?.id;
-    const isSuper  = !!req.isSuperAdmin;
-    const scope    = resolveDataScope(req.staffRecord, { isSuperAdmin: isSuper, fallback: 'assigned_sales' });
-    if (scope === 'none') return res.json([]);
-
-    let whereClause = '1=1';
-    const params    = [req.tenantId];
-
-    if (scope === 'all') {
-      // Full access — return everything (excluding staff/admin emails)
-      const adminExclusions = ADMIN_EMAILS.length > 0
-        ? ` AND (s.email IS NULL OR s.email NOT IN (${ADMIN_EMAILS.map(() => '?').join(',')}))`
-        : '';
-      whereClause = `NOT EXISTS (
-        SELECT 1 FROM staff st WHERE st.tenant_id=s.tenant_id AND st.email = s.email AND st.is_active = 1
-      )${adminExclusions}`;
-      params.push(...ADMIN_EMAILS.map(e => e.toLowerCase()));
-    } else if (scope === 'assigned_sales') {
-      if (!staffId) return res.status(403).json({ error: 'Staff record required' });
-      // See the matching comment on /api/admin/subscribers above — crm_json is a
-      // stale creation-time snapshot, not a live mirror of the column.
-      whereClause = `(s.assigned_sales_id = ? OR (s.lead_id IS NOT NULL AND EXISTS (SELECT 1 FROM leads l WHERE l.id = s.lead_id AND l.tenant_id=s.tenant_id AND l.assigned_sales_id = ?)))`;
-      params.push(staffId, staffId);
-    } else if (scope === 'assigned_cs') {
-      if (!staffId) return res.status(403).json({ error: 'Staff record required' });
-      whereClause = `s.assigned_cs_id = ?`;
-      params.push(staffId);
-    } else if (scope.startsWith('branch:')) {
-      const branches = branchesFromScope(scope); // e.g. 'DAQQI' or 'ONLINE_EGYPT,ONLINE_SAUDI'
-      whereClause = branches.length ? ownOrPlaced(branches) : '1=0';
-      params.push(...branches, ...branches);
-    }
+    const sc = staffSubscriberScope(req);
+    if (sc.none) return res.json([]);
+    if (sc.forbidden) return res.status(403).json({ error: 'Staff record required' });
+    const whereClause = sc.where;
+    const params    = [req.tenantId, ...sc.params];
 
     const limit  = parseLimit(req.query.limit, 5000, 10000);
     const offset = parseOffset(req.query.offset || 0);
     const byBranch = branchFilter(req);
-    params.push(...byBranch.params, limit, offset);
+    // q: a name, phone or client code (the pickers that search while the person types, as the refund form does).
+    const term = String(req.query.q || '').trim().slice(0, 100);
+    const byTerm = term ? { sql: ' AND (s.name LIKE ? OR s.phone LIKE ? OR s.client_code LIKE ?)', params: [`%${term}%`, `%${term}%`, `%${term}%`] } : { sql: '', params: [] };
+    params.push(...byBranch.params, ...byTerm.params, limit, offset);
 
     const [rows] = await pool.query(
       `SELECT s.*,
@@ -591,7 +633,7 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePe
        FROM subscribers s
        LEFT JOIN staff ss ON ss.id = s.assigned_sales_id AND ss.tenant_id=s.tenant_id
        LEFT JOIN staff cs ON cs.id = s.assigned_cs_id AND cs.tenant_id=s.tenant_id
-       WHERE s.tenant_id = ? AND s.deleted_at IS NULL AND (${whereClause})${byBranch.sql}
+       WHERE s.tenant_id = ? AND s.deleted_at IS NULL AND (${whereClause})${byBranch.sql}${byTerm.sql}
        ORDER BY s.created_at DESC, s.id DESC LIMIT ? OFFSET ?`,
       params
     );
@@ -748,27 +790,7 @@ router.get('/api/staff/leads', requireAuth, requireAdminOrStaff, requirePermissi
       `SELECT * FROM leads WHERE tenant_id = ? AND (${whereClause}) ORDER BY created_at DESC LIMIT ? OFFSET ?`,
       [req.tenantId, ...params]
     );
-    res.json(rows.map(r => {
-      const crm = parseCrm(r.crm_json);
-      return {
-        ...crm,
-        id: r.id, name: r.name, email: r.email, phone: r.phone, phone2: r.phone2 || '',
-        status: r.status, source: r.source, notes: r.notes,
-        leadType: r.lead_type || crm.leadType || 'course',
-        enrolledCourseId: r.enrolled_course_id || crm.enrolledCourseId || '',
-        interestLevel: r.interest_level || crm.interestLevel || 'medium',
-        assignedSalesId: r.assigned_sales_id || null,
-        assignedSalesName: r.assigned_sales_name || null,
-        assignedCsId: r.assigned_cs_id || null,
-        assignedCsName: r.assigned_cs_name || null,
-        interestedCourseIds: tryJson(r.interested_course_ids_json, crm.interestedCourseIds || []),
-        createdAt: r.created_at, updatedAt: r.updated_at,
-        communications: Array.isArray(crm.communications) ? crm.communications : [],
-        nextFollowUpDate: r.next_follow_up_date || crm.nextFollowUpDate || null,
-        paidAmount: r.paid_amount, clientCode: r.client_code,
-        hidden: !!r.hidden, branch: r.branch, clientType: r.client_type || null,
-      };
-    }));
+    res.json(rows.map(mapStaffLeadRow));
   } catch (e) { logger.error('[/api/staff/leads]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -1112,4 +1134,185 @@ router.post('/api/admin/bulk-assign-collection', requireAuth, requireAdminOrStaf
 
 // GET /api/staff/client/:code — fetch ONE subscriber or lead by clientCode/id (staff-accessible)
 // Sales staff can only see their own clients; admin sees any.
+
+// ────────────────────────────────────────────────────────────
+// GET /api/staff/home-summary — «شغل النهاردة» for the staff landing page.
+//
+// The page counted its figures in the browser out of every lead and every client in the person's scope (all of
+// them were downloaded at sign-in, again after every write, every two minutes and at every return to the tab —
+// 37,000 leads for one rep on the production-scale lab). The same figures from the database, with the few rows
+// the page actually draws; held 15 s and dropped by the next write like the other counters (httpApp.js).
+// ────────────────────────────────────────────────────────────
+router.get('/api/staff/home-summary', requireAuth, requireAdminOrStaff, requireAnyPermission('view_leads', 'view_subscribers'), async (req, res) => {
+  try {
+    const staff = req.staffRecord;
+    const isSuper = !!req.isSuperAdmin;
+    const may = permission => isSuper || (staff && hasPermission(staff, permission));
+    const today = cairoToday();
+    const key = `figures:staff-home:${req.tenantId}:${staff?.id || req.user?.uid}:${today}`;
+    const payload = await cached(key, 15 * 1000, async () => {
+      const out = {
+        totalLeads: 0, converted: 0, convertedThisMonth: 0, newThisMonth: 0, callsThisMonth: 0, last7: [],
+        overdue: [], today: [], recent: [], urgent: [], clients: 0,
+        // This month's new clients, by the week the monthly target ring draws (days 1-7, 8-14, 15-21, 22-28), and all of them.
+        signups: { month: 0, weeks: [0, 0, 0, 0] },
+      };
+      const monthStart = cairoDayStartUtc(`${today.slice(0, 7)}-01`);
+      const days = Array.from({ length: 7 }, (_, i) => addDaysToDateOnly(today, i - 6));
+      const sevenAgo = cairoDayStartUtc(days[0]);
+      const sinceUtc = sevenAgo < monthStart ? sevenAgo : monthStart;
+
+      if (may('view_leads')) {
+        const scope = leadScope(req, 'l');
+        if (!scope.none) {
+          const base = `FROM leads l WHERE l.tenant_id=? AND l.hidden=0${scope.sql}`;
+          const p = [req.tenantId, ...scope.params];
+          const openSql = `l.status NOT IN ${TERMINAL_SQL}`;
+          const [[[totals]], [[month]], [overdue], [dueToday], [recent], [urgent], [calls], [convDays]] = await Promise.all([
+            pool.query(`SELECT COUNT(*) AS total, COALESCE(SUM(l.status IN ${CONVERTED_SQL}), 0) AS converted,
+                                COALESCE(SUM(l.status IN ${CONVERTED_SQL} AND l.updated_at >= ?), 0) AS convertedMonth ${base}`, [monthStart, ...p]),
+            pool.query(`SELECT COUNT(*) AS n ${base} AND l.created_at >= ?`, [...p, monthStart]),
+            pool.query(`SELECT l.* ${base} AND ${openSql} AND ${NEXT_FOLLOWUP} < ? ORDER BY ${NEXT_FOLLOWUP} ASC LIMIT 30`, [...p, today]),
+            pool.query(`SELECT l.* ${base} AND ${openSql} AND ${NEXT_FOLLOWUP} = ? LIMIT 30`, [...p, today]),
+            pool.query(`SELECT l.* ${base} ORDER BY l.updated_at DESC LIMIT 8`, p),
+            pool.query(`SELECT l.* ${base} AND l.status IN ('new','interested','contacted') AND ${NEXT_FOLLOWUP} IS NULL ORDER BY l.created_at DESC LIMIT 5`, p),
+            pool.query(
+              `SELECT DATE(${sqlCairoWall('c.date')}) AS day, COUNT(*) AS n
+                 FROM communications c JOIN leads l ON l.id=c.lead_id AND l.tenant_id=c.tenant_id
+                WHERE l.tenant_id=? AND l.hidden=0${scope.sql} AND c.date >= ? GROUP BY day`, [...p, sinceUtc]),
+            pool.query(
+              `SELECT DATE(${sqlCairoWall('l.updated_at')}) AS day, COUNT(*) AS n ${base}
+                 AND l.status IN ${CONVERTED_SQL} AND l.updated_at >= ? GROUP BY day`, [...p, sevenAgo]),
+          ]);
+          out.totalLeads = Number(totals.total) || 0;
+          out.converted = Number(totals.converted) || 0;
+          out.convertedThisMonth = Number(totals.convertedMonth) || 0;
+          out.newThisMonth = Number(month.n) || 0;
+          out.overdue = overdue.map(mapStaffLeadRow);
+          out.today = dueToday.map(mapStaffLeadRow);
+          out.recent = recent.map(mapStaffLeadRow);
+          out.urgent = urgent.map(mapStaffLeadRow);
+          const callsByDay = Object.fromEntries(calls.map(row => [String(row.day).slice(0, 10), Number(row.n) || 0]));
+          const convByDay = Object.fromEntries(convDays.map(row => [String(row.day).slice(0, 10), Number(row.n) || 0]));
+          out.callsThisMonth = Object.entries(callsByDay).filter(([day]) => day >= `${today.slice(0, 7)}-01`).reduce((sum, [, n]) => sum + n, 0);
+          out.last7 = days.map(day => ({ day, calls: callsByDay[day] || 0, converted: convByDay[day] || 0 }));
+        }
+      }
+      if (may('view_subscribers')) {
+        const sc = staffSubscriberScope(req);
+        if (!sc.none && !sc.forbidden) {
+          const [[row]] = await pool.query(
+            `SELECT COUNT(*) AS n FROM subscribers s WHERE s.tenant_id=? AND s.deleted_at IS NULL AND (${sc.where})`,
+            [req.tenantId, ...sc.params]);
+          out.clients = Number(row.n) || 0;
+          const [signups] = await pool.query(
+            `SELECT DAY(${sqlCairoWall('s.created_at')}) AS d, COUNT(*) AS n FROM subscribers s
+              WHERE s.tenant_id=? AND s.deleted_at IS NULL AND (${sc.where}) AND s.created_at >= ? GROUP BY d`,
+            [req.tenantId, ...sc.params, monthStart]);
+          for (const row of signups) {
+            const day = Number(row.d) || 0;
+            const n = Number(row.n) || 0;
+            out.signups.month += n;
+            if (day >= 1 && day <= 28) out.signups.weeks[Math.floor((day - 1) / 7)] += n;
+          }
+        }
+      }
+      return out;
+    });
+    res.json(payload);
+  } catch (e) { logger.error('[/api/staff/home-summary]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ────────────────────────────────────────────────────────────
+// GET /api/staff/payments — «مدفوعاتي»: the payments of the person's own clients, a page at a time.
+//
+//   from, to   a Cairo day range (inclusive), either may be left out
+//   status     paid | pending | failed | refunded   (paid also takes the rows with no status)
+//   mine=1     only what this staff member recorded
+//   q          client name, client code or transaction number
+//   limit, offset
+//   summary=1  also the headline figures, whatever the filters: confirmed money today / this week / this month
+//              and how much is waiting for the manager
+//
+// The page built all of this in the browser from every client's payment history.
+// ────────────────────────────────────────────────────────────
+router.get('/api/staff/payments', requireAuth, requireAdminOrStaff, requirePermission('view_subscribers'), async (req, res) => {
+  try {
+    const sc = staffSubscriberScope(req);
+    if (sc.none) return res.json({ rows: [], total: 0 });
+    if (sc.forbidden) return res.status(403).json({ error: 'Staff record required' });
+    const dateOnly = value => (/^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) ? String(value) : null);
+    const from = dateOnly(req.query.from);
+    const to = dateOnly(req.query.to);
+    const limit = Math.min(300, Math.max(1, parseInt(req.query.limit, 10) || 100));
+    const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+
+    const base = `FROM payments p JOIN subscribers s ON s.id=p.subscriber_id AND s.tenant_id=p.tenant_id
+       WHERE p.tenant_id=? AND p.deleted_at IS NULL AND s.deleted_at IS NULL AND (${sc.where})`;
+    const baseParams = [req.tenantId, ...sc.params];
+    const where = [];
+    const params = [];
+    if (from) { where.push('p.date >= ?'); params.push(cairoDayStartUtc(from)); }
+    if (to) { where.push('p.date < ?'); params.push(cairoDayStartUtc(addDaysToDateOnly(to, 1))); }
+    const status = String(req.query.status || '');
+    if (status === 'paid') where.push("(p.status = 'paid' OR p.status IS NULL)");
+    else if (['pending', 'failed', 'refunded'].includes(status)) { where.push('p.status = ?'); params.push(status); }
+    if (String(req.query.mine || '') === '1' && req.staffRecord?.id) { where.push('p.staff_id = ?'); params.push(req.staffRecord.id); }
+    const q = String(req.query.q || '').trim().slice(0, 100);
+    if (q) {
+      where.push('(s.name LIKE ? OR s.client_code LIKE ? OR p.transaction_id LIKE ?)');
+      params.push(`%${q}%`, `%${q}%`, `%${q}%`);
+    }
+    const filtered = `${base}${where.length ? ` AND ${where.join(' AND ')}` : ''}`;
+    const [[[count]], [payRows]] = await Promise.all([
+      pool.query(`SELECT COUNT(*) AS n ${filtered}`, [...baseParams, ...params]),
+      pool.query(
+        `SELECT p.id, p.subscriber_id, p.course_id, p.bundle_id, p.amount, p.currency, p.payment_type, p.payment_method,
+                p.transaction_id, p.is_installment, p.course_expected, p.\`date\`, p.note, p.status, p.staff_id, p.staff_name,
+                p.from_account, p.source, p.item_title, p.cert_type, p.certificate_request_id, p.branch,
+                s.name AS client_name, s.client_code
+           ${filtered} ORDER BY p.\`date\` DESC, p.created_at DESC LIMIT ? OFFSET ?`, [...baseParams, ...params, limit, offset]),
+    ]);
+    const executors = await resolvePaymentExecutors(pool, req.tenantId, payRows);
+    const out = {
+      total: Number(count.n) || 0,
+      rows: payRows.map(p => ({
+        id: p.id, clientId: p.subscriber_id, clientName: p.client_name, clientCode: p.client_code || '',
+        amount: Number(p.amount) || 0, currency: p.currency || 'EGP',
+        paymentType: (p.payment_type || 'other').toLowerCase(), paymentMethod: p.payment_method || null,
+        transactionId: p.transaction_id || null, isInstallment: !!p.is_installment,
+        courseId: p.course_id || null, bundleId: p.bundle_id || null,
+        courseExpected: p.course_expected != null ? Number(p.course_expected) : undefined,
+        note: p.note || null, at: safeDateOnly(p.date), status: p.status || 'paid', staffId: p.staff_id || null,
+        staffName: executors.get(String(p.id)) ?? p.staff_name ?? null, fromAccountNumber: p.from_account || null,
+        source: p.source || null, itemTitle: p.item_title || null, certType: p.cert_type || null,
+        certId: p.certificate_request_id || null, branch: p.branch || null,
+      })),
+    };
+    if (String(req.query.summary || '') === '1') {
+      const today = cairoToday();
+      const weekStart = addDaysToDateOnly(today, -new Date(`${today}T00:00:00Z`).getUTCDay());
+      const egp = "COALESCE(p.amount_egp, CASE WHEN p.currency='EGP' THEN p.amount ELSE 0 END)";
+      const paid = "(p.status = 'paid' OR p.status IS NULL)";
+      const [[row]] = await pool.query(
+        `SELECT COALESCE(SUM(CASE WHEN ${paid} AND p.date >= ? AND p.date < ? THEN ${egp} END), 0) AS today,
+                COALESCE(SUM(CASE WHEN ${paid} AND p.date >= ? AND p.date < ? THEN ${egp} END), 0) AS week,
+                COALESCE(SUM(CASE WHEN ${paid} AND p.date >= ? AND p.date < ? THEN ${egp} END), 0) AS month,
+                COUNT(DISTINCT CASE WHEN ${paid} AND p.date >= ? AND p.date < ? THEN p.subscriber_id END) AS paying,
+                COALESCE(SUM(p.status = 'pending'), 0) AS pendingCount,
+                COALESCE(SUM(CASE WHEN p.status = 'pending' THEN ${egp} END), 0) AS pendingSum
+           ${base}`,
+        [cairoDayStartUtc(today), cairoDayStartUtc(addDaysToDateOnly(today, 1)),
+         cairoDayStartUtc(weekStart), cairoDayStartUtc(addDaysToDateOnly(today, 1)),
+         cairoDayStartUtc(`${today.slice(0, 7)}-01`), cairoDayStartUtc(addDaysToDateOnly(today, 1)),
+         cairoDayStartUtc(`${today.slice(0, 7)}-01`), cairoDayStartUtc(addDaysToDateOnly(today, 1)), ...baseParams]);
+      out.summary = {
+        today: Number(row.today) || 0, week: Number(row.week) || 0, month: Number(row.month) || 0, paying: Number(row.paying) || 0,
+        pendingCount: Number(row.pendingCount) || 0, pendingSum: Number(row.pendingSum) || 0,
+      };
+    }
+    res.json(out);
+  } catch (e) { logger.error('[/api/staff/payments]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 module.exports = router;

@@ -1,4 +1,4 @@
-import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { arabicReason } from '../lib/apiErrorText';
 const LeadSalesNotificationsPanel = React.lazy(() => import('./dashboard/tabs/leads/LeadSalesNotificationsPanel').then(m => ({ default: m.LeadSalesNotificationsPanel })));
 import { adminAuthHeaders } from '../lib/adminAuthHeaders';
@@ -65,6 +65,7 @@ import { tabForUrl, urlForTab, urlToTabAlias } from './dashboard/tabUrlAliases';
 import { useDashboardBadges } from './dashboard/useDashboardBadges';
 import { useNotificationsBell } from './dashboard/useNotificationsBell';
 import { useStaffOwnData } from './dashboard/useStaffOwnData';
+import { staffScreenReadsLists } from './dashboard/staffListTabs';
 import { useDashboardDerived } from './dashboard/useDashboardDerived';
 import { useBranches } from '../hooks/useBranches';
 import { useCanDelete } from '../hooks/useCanDelete';
@@ -465,6 +466,11 @@ const Dashboard: React.FC = () => {
   // Server handles scoping via DATA_SCOPE — no need to enumerate roles here
   const isNonAdminStaff = !isAdmin && !!staffSelf;
   const usesStaffScopedData = isNonAdminStaff || isOnlineManager;
+  // The lists of leads and clients are downloaded for the screens that read them, not at sign-in
+  // (dashboard/staffListTabs.ts); the landing page and the person's own pages read server summaries.
+  const wantsStaffLists = staffScreenReadsLists(activeTab, (staffSelf || currentStaff)?.role, isOnlineManager);
+  const wantsStaffListsRef = useRef(wantsStaffLists);
+  wantsStaffListsRef.current = wantsStaffLists;
 
   // -- Own-data subscriptions for non-admin staff -----------------------------
   // SiteDataContext only loads CRM data for admins. Non-admin staff (sales, collection)
@@ -478,6 +484,7 @@ const Dashboard: React.FC = () => {
     salesDataLoading, 
     fetchSalesData, fetchSalesDataIfStale,
   } = useStaffOwnData({
+    wantsLists: wantsStaffLists,
     isAdmin,
     isOnlineManager,
     staffSelf,
@@ -489,11 +496,14 @@ const Dashboard: React.FC = () => {
     setStaffScopedRounds: bulkSetDaqqiRounds,
     mergeContent,
   });
-  // The bell's count for an admin who also has a staff record: one COUNT from
-  // the server, in the session's own scope, where it used to be the 500 newest
-  // leads loaded on every screen to count their follow-ups. Refreshed on the
-  // same two minutes the lists were, and after a write anywhere (crmChanged).
-  const countsOwnFollowups = Boolean(currentStaff) && !usesStaffScopedData;
+  // The bell's count, for every employee: one COUNT from the server, in the session's own scope, where it used
+  // to be the leads loaded on every screen (the 500 newest for an admin, all of them for an employee) to count
+  // their follow-ups. Refreshed every two minutes and after a write anywhere (crmChanged).
+  // Only for a role that may see leads: the count is refused (403) to the others.
+  const countsOwnFollowups = !!currentStaff && masterHasPermission(
+    { role: currentStaff.role as RoleKey, permissions: currentStaff.permissions as PermissionKey[] | undefined },
+    'view_leads',
+  );
   const [dueFollowups, setDueFollowups] = useState<number | null>(null);
   const refreshDueFollowups = useCallback(() => {
     mysqlAdmin.getDueFollowups().then(res => setDueFollowups(Number(res?.due) || 0)).catch(() => { /* keep the last count */ });
@@ -515,7 +525,6 @@ const Dashboard: React.FC = () => {
     isNonAdminStaff: usesStaffScopedData,
     isOnlineManager,
     dueFollowups,
-    salesOwnLeads,
     subscribers,
     salesOwnSubscribers,
   });
@@ -557,11 +566,17 @@ const Dashboard: React.FC = () => {
     void fetchSalesData();
   }, [fetchSalesData]);
 
+  // The first screen that reads the lists starts their download; coming back to one within two minutes does not.
+  useEffect(() => {
+    if (wantsStaffLists) void fetchSalesDataIfStale(2 * 60 * 1000);
+  }, [wantsStaffLists, fetchSalesDataIfStale]);
+
   // A write anywhere refetches the staff's own lists, once for a burst of reloads
   // (lib/crmChanged.ts) — they were refetched every two minutes otherwise.
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const onChanged = () => { clearTimeout(timer); timer = setTimeout(() => { void fetchSalesData(); }, 300); };
+    // A screen that does not read the lists has nothing to refresh: it asks the server for its own figures.
+    const onChanged = () => { clearTimeout(timer); timer = setTimeout(() => { if (wantsStaffListsRef.current) void fetchSalesData(); }, 300); };
     window.addEventListener(CRM_CHANGED_EVENT, onChanged);
     return () => { clearTimeout(timer); window.removeEventListener(CRM_CHANGED_EVENT, onChanged); };
   }, [fetchSalesData]);
@@ -1216,8 +1231,6 @@ const Dashboard: React.FC = () => {
                 <MyProfilePage
                   activeTab={activeTab}
                   staff={currentStaff}
-                  leads={usesStaffScopedData ? salesOwnLeads : leads}
-                  subscribers={usesStaffScopedData ? salesOwnSubscribers : subscribers}
                   notify={notify}
                   onNavigate={setActiveTabState}
                 />

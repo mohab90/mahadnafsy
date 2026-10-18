@@ -142,10 +142,10 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   integrations: ['settings'],
   // The security log; the database move asks for every list itself (PgMigrateTab).
   security_center: ['activityLogs'],
-  // ملفي: the desk's «اليوم» and «أدائي» count the loaded leads and clients.
-  staff_home: ['leads', 'subscribers'],
-  staff_settings: ['leads', 'subscribers'],
-  my_hr: ['leads', 'subscribers'],
+  // ملفي: the desk's «اليوم» and «أدائي» read the server's own figures (GET /api/staff/home-summary).
+  staff_home: [],
+  staff_settings: [],
+  my_hr: [],
 };
 
 /** The lists to load when `tab` opens: its own, or all of them for a screen nobody has listed. */

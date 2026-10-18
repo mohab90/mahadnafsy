@@ -1,9 +1,9 @@
-import { useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { CalendarRange, HandCoins, Target, Users } from 'lucide-react';
-import type { StaffMember, SubscriberItem } from '../../../types';
-import { isCollected, toEgp } from '../../../lib/money';
-import { cairoDateOnly, cairoDay, cairoMonthOnly, cairoWeekStart, CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
-import { buildStaffSettingsMetrics } from '../dashboardHelpers';
+import type { StaffMember } from '../../../types';
+import { cairoMonthProgress, CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { useStaffHomeSummary } from '../useStaffHomeSummary';
 import MyWorkRecordPanel from '../staff-settings/MyWorkRecordPanel';
 
 type Notify = (kind: 'success' | 'error' | 'warning' | 'info', message: string) => void;
@@ -11,8 +11,21 @@ type Notify = (kind: 'success' | 'error' | 'warning' | 'info', message: string) 
 const egp = (value: number) => `${Math.round(value).toLocaleString('ar-EG-u-nu-latn')} ج.م`;
 
 /** A booking desk counts people it signed up; a collection officer counts money. */
-function ConversionTarget({ staff, subscribers }: { staff: StaffMember; subscribers: SubscriberItem[] }) {
-  const m = buildStaffSettingsMetrics(subscribers, String(staff.monthlyLeadsTarget || 10));
+function ConversionTarget({ staff }: { staff: StaffMember }) {
+  // This month's signups, counted by the database (GET /api/staff/home-summary): the ring and the four weeks.
+  const { summary } = useStaffHomeSummary(staff);
+  const monthlyTarget = Math.max(1, Number(staff.monthlyLeadsTarget || 10) || 10);
+  const achieved = summary?.signups.month ?? 0;
+  const { dayOfMonth, daysInMonth } = cairoMonthProgress();
+  const dailyTargetPace = achieved / Math.max(1, dayOfMonth);
+  const weeksData = (summary?.signups.weeks ?? [0, 0, 0, 0]).map((count, index) => ({ label: `أسبوع ${index + 1}`, count }));
+  const m = {
+    monthlyTarget, achieved, dailyTargetPace, weeksData,
+    pct: Math.min(100, Math.round((achieved / monthlyTarget) * 100)),
+    daysLeft: daysInMonth - dayOfMonth,
+    projectedEnd: Math.round(dailyTargetPace * daysInMonth),
+    maxWeekCount: Math.max(...weeksData.map(week => week.count), 1),
+  };
   const radius = 54;
   const circumference = 2 * Math.PI * radius;
   return (
@@ -68,32 +81,26 @@ function ConversionTarget({ staff, subscribers }: { staff: StaffMember; subscrib
   );
 }
 
-function CollectionFigures({ subscribers }: { subscribers: SubscriberItem[] }) {
-  const figures = useMemo(() => {
-    const today = cairoDateOnly();
-    const weekStart = cairoWeekStart();
-    const month = cairoMonthOnly();
-    let todaySum = 0; let weekSum = 0; let monthSum = 0;
-    const payingThisMonth = new Set<string>();
-    for (const subscriber of subscribers) {
-      for (const payment of subscriber.paymentHistory || []) {
-        if (!isCollected(payment)) continue;
-        const day = cairoDay(payment.at);
-        const amount = toEgp(payment.amount, payment.currency);
-        if (day === today) todaySum += amount;
-        if (day >= weekStart) weekSum += amount;
-        if (day.slice(0, 7) === month) { monthSum += amount; payingThisMonth.add(subscriber.id); }
-      }
-    }
-    return { todaySum, weekSum, monthSum, paying: payingThisMonth.size };
-  }, [subscribers]);
+type PaymentFigures = { today: number; week: number; month: number; paying: number };
+
+function CollectionFigures({ staff }: { staff: StaffMember }) {
+  // The money of the person's own clients, summed by the database (GET /api/staff/payments?summary=1).
+  const { summary } = useStaffHomeSummary(staff);
+  const [figures, setFigures] = useState<PaymentFigures>({ today: 0, week: 0, month: 0, paying: 0 });
+  useEffect(() => {
+    let cancelled = false;
+    mysqlAdmin.adminGet<{ summary?: PaymentFigures }>('/staff/payments?summary=1&limit=1')
+      .then(answer => { if (!cancelled && answer.summary) setFigures(answer.summary); })
+      .catch(() => { /* the cards stay at zero */ });
+    return () => { cancelled = true; };
+  }, []);
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       {[
-        { label: 'اتحصّل النهارده', value: egp(figures.todaySum), icon: HandCoins, tone: 'from-emerald-500 to-teal-600' },
-        { label: 'الأسبوع ده', value: egp(figures.weekSum), icon: HandCoins, tone: 'from-sky-500 to-blue-600' },
-        { label: 'الشهر ده', value: egp(figures.monthSum), icon: HandCoins, tone: 'from-indigo-500 to-violet-600' },
-        { label: 'عملاء دفعوا الشهر ده', value: `${figures.paying} من ${subscribers.length}`, icon: Users, tone: 'from-amber-400 to-orange-500' },
+        { label: 'اتحصّل النهارده', value: egp(figures.today), icon: HandCoins, tone: 'from-emerald-500 to-teal-600' },
+        { label: 'الأسبوع ده', value: egp(figures.week), icon: HandCoins, tone: 'from-sky-500 to-blue-600' },
+        { label: 'الشهر ده', value: egp(figures.month), icon: HandCoins, tone: 'from-indigo-500 to-violet-600' },
+        { label: 'عملاء دفعوا الشهر ده', value: `${figures.paying} من ${summary?.clients ?? 0}`, icon: Users, tone: 'from-amber-400 to-orange-500' },
       ].map(({ label, value, icon: Icon, tone }) => (
         <div key={label} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
           <span className={`mb-2 grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br ${tone} text-white`}><Icon size={17} /></span>
@@ -109,15 +116,15 @@ function CollectionFigures({ subscribers }: { subscribers: SubscriberItem[] }) {
  * أدائي — the numbers of the job, whichever job it is, then the server's record
  * of achievements and targets month by month.
  */
-export function MyPerformanceSection({ staff, subscribers, notify }: {
-  staff: StaffMember; subscribers: SubscriberItem[]; notify: Notify;
+export function MyPerformanceSection({ staff, notify }: {
+  staff: StaffMember; notify: Notify;
 }) {
   const role = String(staff.role || '').toLowerCase();
   return (
     <div className="space-y-5">
       {role === 'collection'
-        ? <CollectionFigures subscribers={subscribers} />
-        : <ConversionTarget staff={staff} subscribers={subscribers} />}
+        ? <CollectionFigures staff={staff} />
+        : <ConversionTarget staff={staff} />}
       <MyWorkRecordPanel notify={notify} part="record" />
     </div>
   );

@@ -55,8 +55,6 @@ export function DashboardFinanceTabs({
         ) : (
           <TabErrorBoundary>
             <StaffPaymentsTab
-              staff={staff}
-              subscribers={ordersProps.salesOwnSubscribers}
               notify={notify}
               canReview={ordersProps.canManageFinancial && String(staff?.role || '').toLowerCase() !== 'collection'}
               canSeeRefunds={may('view_financial')}

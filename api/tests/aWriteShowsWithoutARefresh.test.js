@@ -20,7 +20,8 @@ test('both reloads announce the change, and the staff lists are refetched on it'
   assert.match(reloadSubs, /announceCrmChanged\(\);/);
   const dashboard = read('admin/pages/Dashboard.tsx');
   assert.match(dashboard, /window\.addEventListener\(CRM_CHANGED_EVENT, onChanged\);/);
-  assert.match(dashboard, /timer = setTimeout\(\(\) => \{ void fetchSalesData\(\); \}, 300\);/, 'one refetch for a burst of reloads');
+  assert.match(dashboard, /timer = setTimeout\(\(\) => \{ if \(wantsStaffListsRef\.current\) void fetchSalesData\(\); \}, 300\);/,
+    'one refetch for a burst of reloads, and only where the lists are shown');
   assert.doesNotMatch(read('admin/pages/dashboard/useStaffOwnData.ts'), /reloadLeads|reloadSubscribers|announceCrmChanged/,
     'the refetch must not announce a change itself, or it would loop');
 });

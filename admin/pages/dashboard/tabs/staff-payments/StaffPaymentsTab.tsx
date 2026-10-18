@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CalendarDays, CheckCircle2, Clock, CreditCard, Hourglass, ReceiptText, RotateCcw, Search, UserPlus, Wallet, XCircle,
 } from 'lucide-react';
@@ -8,7 +8,8 @@ import { useStaticData } from '../../../../context/siteDataSlices';
 import { itemKeyOf } from '../../../../lib/agreedPrice';
 import { toEgp } from '../../../../lib/money';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
-import type { PaymentHistoryEntry, StaffMember, SubscriberItem } from '../../../../types';
+import { CRM_CHANGED_EVENT } from '../../../../lib/crmChanged';
+import type { PaymentHistoryEntry, SubscriberItem } from '../../../../types';
 import { CollectionBookingsReview } from '../orders/CollectionBookingsReview';
 import { StaffRefundsSection } from './StaffRefundsSection';
 
@@ -16,6 +17,8 @@ type Notify = (type: 'success' | 'error' | 'info', message: string) => void;
 type Section = 'payments' | 'review' | 'refunds';
 type Period = 'today' | 'week' | 'month' | 'all';
 type Row = PaymentHistoryEntry & { clientId: string; clientName: string; clientCode: string };
+type Figures = { today: number; week: number; month: number; pendingCount: number; pendingSum: number };
+const PAGE_SIZE = 100;
 type MyRequest = {
   id: string; status: string; name: string; phone: string | null; amount: number; currency: string;
   reviewNote: string | null; reviewedByName: string | null; createdAt: string;
@@ -53,9 +56,7 @@ const PAYMENT_KIND: Record<string, string> = {
  * refunds, in the same cards. The administration, the accountant and the
  * online manager keep the accounts screen (OrdersTab).
  */
-export default function StaffPaymentsTab({ staff, subscribers, notify, canReview, canSeeRefunds }: {
-  staff: StaffMember | null | undefined;
-  subscribers: SubscriberItem[];
+export default function StaffPaymentsTab({ notify, canReview, canSeeRefunds }: {
   notify: Notify;
   /** Holds manage_financial (the Daqqi manager): the review queue sits on top. */
   canReview: boolean;
@@ -67,14 +68,34 @@ export default function StaffPaymentsTab({ staff, subscribers, notify, canReview
   const [status, setStatus] = useState<'all' | keyof typeof STATUS>('all');
   const [mineOnly, setMineOnly] = useState(false);
   const [search, setSearch] = useState('');
+  const [typed, setTyped] = useState('');
   const [requests, setRequests] = useState<MyRequest[]>([]);
+  const [rows, setRows] = useState<Row[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [paymentFigures, setPaymentFigures] = useState<Figures>({ today: 0, week: 0, month: 0, pendingCount: 0, pendingSum: 0 });
+  const [pendingRows, setPendingRows] = useState<Row[]>([]);
+  // Bumped after a write anywhere (lib/crmChanged.ts): the page asks the server again.
+  const [version, setVersion] = useState(0);
 
   const loadRequests = useCallback(() => {
     mysqlAdmin.adminGet<MyRequest[]>('/staff/subscriber-requests')
-      .then(rows => setRequests(Array.isArray(rows) ? rows : []))
+      .then(list => setRequests(Array.isArray(list) ? list : []))
       .catch(() => setRequests([]));
   }, []);
-  useEffect(loadRequests, [loadRequests]);
+  useEffect(loadRequests, [loadRequests, version]);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onChanged = () => { clearTimeout(timer); timer = setTimeout(() => setVersion(n => n + 1), 300); };
+    window.addEventListener(CRM_CHANGED_EVENT, onChanged);
+    return () => { clearTimeout(timer); window.removeEventListener(CRM_CHANGED_EVENT, onChanged); };
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(typed.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [typed]);
 
   // A payment's item by its own key — a track is the track, not «course».
   const titleOf = useCallback((payment: PaymentHistoryEntry) => {
@@ -84,52 +105,86 @@ export default function StaffPaymentsTab({ staff, subscribers, notify, canReview
     return payment.itemTitle || PAYMENT_KIND[String(payment.paymentType || 'other')] || 'دفعة';
   }, [courses, bundles]);
 
-  const rows = useMemo<Row[]>(() => subscribers.flatMap(subscriber => (subscriber.paymentHistory || []).map(payment => ({
-    ...payment, clientId: subscriber.id, clientName: subscriber.name, clientCode: subscriber.clientCode || '',
-  }))).sort((a, b) => String(b.at || '').localeCompare(String(a.at || ''))), [subscribers]);
-
   const today = cairoDateOnly();
   const weekStart = cairoWeekStart();
   const month = cairoMonthOnly();
-  const inPeriod = useCallback((payment: PaymentHistoryEntry) => {
-    const day = cairoDay(payment.at);
-    return period === 'all' || (period === 'today' && day === today) || (period === 'week' && day >= weekStart)
-      || (period === 'month' && day.slice(0, 7) === month);
-  }, [period, today, weekStart, month]);
 
-  const shown = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return rows.filter(row => inPeriod(row)
-      && (status === 'all' || statusOf(row) === status)
-      && (!mineOnly || row.staffId === staff?.id)
-      && (!q || row.clientName.toLowerCase().includes(q) || row.clientCode.toLowerCase().includes(q)
-        || String(row.transactionId || '').toLowerCase().includes(q)));
-  }, [rows, inPeriod, status, mineOnly, staff?.id, search]);
+  // The period, the status, «mine» and the search are asked of the database, which hands back a page at a time:
+  // the page used to be built out of every client's payment history, downloaded at sign-in.
+  const query = useMemo(() => {
+    const params = new URLSearchParams();
+    if (period === 'today') params.set('from', today);
+    else if (period === 'week') params.set('from', weekStart);
+    else if (period === 'month') params.set('from', `${month}-01`);
+    if (status !== 'all') params.set('status', status);
+    if (mineOnly) params.set('mine', '1');
+    if (search) params.set('q', search);
+    return params.toString();
+  }, [period, status, mineOnly, search, today, weekStart, month]);
 
+  const ticket = useRef(0);
+  useEffect(() => {
+    const mine = ++ticket.current;
+    setLoading(true);
+    mysqlAdmin.adminGet<{ rows: Row[]; total: number }>(`/staff/payments?${query}&limit=${PAGE_SIZE}`)
+      .then(answer => { if (mine === ticket.current) { setRows(answer.rows || []); setTotal(answer.total || 0); } })
+      .catch(error => { if (mine === ticket.current) { setRows([]); setTotal(0); notify('error', error instanceof Error ? error.message : 'تعذر تحميل المدفوعات'); } })
+      .finally(() => { if (mine === ticket.current) setLoading(false); });
+  }, [query, version, notify]);
+
+  const loadMore = () => {
+    const mine = ticket.current;
+    setLoading(true);
+    mysqlAdmin.adminGet<{ rows: Row[] }>(`/staff/payments?${query}&limit=${PAGE_SIZE}&offset=${rows.length}`)
+      .then(answer => { if (mine === ticket.current) setRows(current => [...current, ...(answer.rows || [])]); })
+      .catch(error => notify('error', error instanceof Error ? error.message : 'تعذر تحميل المزيد'))
+      .finally(() => setLoading(false));
+  };
+
+  // The headline figures never follow the filters.
+  useEffect(() => {
+    let cancelled = false;
+    mysqlAdmin.adminGet<{ summary?: Figures }>('/staff/payments?summary=1&limit=1')
+      .then(answer => { if (!cancelled && answer.summary) setPaymentFigures(answer.summary); })
+      .catch(() => { /* the cards stay as they were */ });
+    return () => { cancelled = true; };
+  }, [version]);
+  useEffect(() => {
+    if (section !== 'review') return undefined;
+    let cancelled = false;
+    mysqlAdmin.adminGet<{ rows: Row[] }>('/staff/payments?status=pending&limit=100')
+      .then(answer => { if (!cancelled) setPendingRows(answer.rows || []); })
+      .catch(() => { if (!cancelled) setPendingRows([]); });
+    return () => { cancelled = true; };
+  }, [section, version]);
+
+  // A new customer's booking waits as a request, not as a payment: the count and the sum take both.
   const totals = useMemo(() => {
-    const sum = (list: Row[]) => list.reduce((total, row) => total + toEgp(row.amount, row.currency), 0);
-    const paid = rows.filter(row => statusOf(row) === 'paid');
+    const waiting = requests.filter(r => r.status === 'pending');
     return {
-      today: sum(paid.filter(row => cairoDay(row.at) === today)),
-      week: sum(paid.filter(row => cairoDay(row.at) >= weekStart)),
-      month: sum(paid.filter(row => cairoDay(row.at).slice(0, 7) === month)),
-      pendingCount: rows.filter(row => statusOf(row) === 'pending').length + requests.filter(r => r.status === 'pending').length,
-      pendingSum: sum(rows.filter(row => statusOf(row) === 'pending'))
-        + requests.filter(r => r.status === 'pending').reduce((total, r) => total + toEgp(r.amount, r.currency), 0),
+      ...paymentFigures,
+      pendingCount: paymentFigures.pendingCount + waiting.length,
+      pendingSum: paymentFigures.pendingSum + waiting.reduce((sum, r) => sum + toEgp(r.amount, r.currency), 0),
     };
-  }, [rows, requests, today, weekStart, month]);
+  }, [paymentFigures, requests]);
+
+  // Looks the person's own clients up on the server while the refund form is searched.
+  const lookupClients = useCallback(
+    (term: string) => mysqlAdmin.adminGet<SubscriberItem[]>(`/staff/subscribers?limit=50&q=${encodeURIComponent(term)}`)
+      .then(list => (Array.isArray(list) ? list : [])),
+    [],
+  );
 
   // By day, newest first: the desk reads its money a day at a time.
   const byDay = useMemo(() => {
     const groups = new Map<string, Row[]>();
-    for (const row of shown) {
+    for (const row of rows) {
       const day = cairoDay(row.at) || '—';
       groups.set(day, [...(groups.get(day) || []), row]);
     }
     return [...groups.entries()];
-  }, [shown]);
+  }, [rows]);
 
-  const pendingRows = rows.filter(row => statusOf(row) === 'pending');
   const tabs: { key: Section; label: string; icon: typeof Wallet; badge?: number }[] = [
     { key: 'payments', label: 'الدفعات', icon: ReceiptText },
     { key: 'review', label: 'بانتظار المسئول', icon: Hourglass, badge: totals.pendingCount },
@@ -191,14 +246,14 @@ export default function StaffPaymentsTab({ staff, subscribers, notify, canReview
             </label>
             <div className="relative mr-auto min-w-[180px] flex-1 sm:flex-none">
               <Search size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="اسم / كود / رقم عملية"
+              <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="اسم / كود / رقم عملية"
                 className="w-full rounded-xl border border-gray-200 py-1.5 pl-3 pr-8 text-xs" />
             </div>
           </div>
 
           {byDay.length === 0 ? (
             <div className="rounded-2xl border border-gray-200 bg-white py-14 text-center text-sm text-gray-400">
-              <CreditCard size={32} className="mx-auto mb-2 text-gray-300" /> مفيش دفعات في الفترة دي.
+              <CreditCard size={32} className="mx-auto mb-2 text-gray-300" /> {loading ? 'بنحمّل الدفعات…' : 'مفيش دفعات في الفترة دي.'}
             </div>
           ) : byDay.map(([day, list]) => (
             <div key={day} className="rounded-2xl border border-gray-200 bg-white shadow-sm">
@@ -233,6 +288,12 @@ export default function StaffPaymentsTab({ staff, subscribers, notify, canReview
               </ul>
             </div>
           ))}
+          {rows.length < total && (
+            <button type="button" onClick={loadMore} disabled={loading}
+              className="w-full rounded-2xl border border-gray-200 bg-white py-2.5 text-xs font-bold text-teal-700 shadow-sm hover:bg-gray-50 disabled:opacity-60">
+              {loading ? 'بنحمّل…' : `عرض المزيد (${rows.length} من ${total})`}
+            </button>
+          )}
         </div>
       )}
 
@@ -287,7 +348,7 @@ export default function StaffPaymentsTab({ staff, subscribers, notify, canReview
         </div>
       )}
 
-      {section === 'refunds' && canSeeRefunds && <StaffRefundsSection clients={subscribers} notify={notify} />}
+      {section === 'refunds' && canSeeRefunds && <StaffRefundsSection lookup={lookupClients} notify={notify} />}
     </div>
   );
 }

@@ -1,7 +1,6 @@
 import React from 'react';
 import { cairoDateOnly, cairoDay, cairoDaysAgo } from '../../../shared/cairoDate';
-import type { LeadItem, SubscriberItem, StaffMember } from '../../types';
-import { isOpenLeadStatus } from '../../../shared/leadStatuses';
+import type { SubscriberItem, StaffMember } from '../../types';
 
 interface DashboardBadgesArgs {
   currentStaff: StaffMember | null | undefined;
@@ -9,7 +8,6 @@ interface DashboardBadgesArgs {
   isOnlineManager: boolean;
   /** The server's count of the session's due follow-ups (GET /admin/leads/followups-due), or null until it answers. */
   dueFollowups: number | null;
-  salesOwnLeads: LeadItem[];
   subscribers: SubscriberItem[];
   salesOwnSubscribers: SubscriberItem[];
 }
@@ -21,19 +19,14 @@ interface DashboardBadgesArgs {
  * point in the render as before (the hook is called where the inline code was).
  */
 export function useDashboardBadges({
-  currentStaff, isNonAdminStaff, isOnlineManager, dueFollowups, salesOwnLeads, subscribers, salesOwnSubscribers,
+  currentStaff, isNonAdminStaff, isOnlineManager, dueFollowups, subscribers, salesOwnSubscribers,
 }: DashboardBadgesArgs) {
-  // Badge count for staff notification bell (overdue + today followup leads).
-  // A non-admin employee counts the scoped list their screens already hold. An
-  // admin with a staff record asks the server (dueFollowups): counting the
-  // context's leads meant loading the 500 newest of them on every screen for
-  // this one number, and missed every follow-up on an older lead.
-  const _staffNotifTodayStr = cairoDateOnly();
-  const staffNotifBadge = !currentStaff ? 0 : isNonAdminStaff
-    ? salesOwnLeads.filter(l =>
-      isOpenLeadStatus(l.status) && l.nextFollowUpDate && l.nextFollowUpDate <= _staffNotifTodayStr
-    ).length
-    : (dueFollowups ?? 0);
+  // Badge count for staff notification bell (overdue + today followup leads): the
+  // server's count, in the session's own scope. Counting the leads in the browser
+  // meant loading them on every screen for this one number — the 500 newest for an
+  // admin, every lead in the scope for an employee — and missed every follow-up on
+  // an older lead.
+  const staffNotifBadge = !currentStaff ? 0 : (dueFollowups ?? 0);
 
   // Online manager: collection/installment follow-up badge
   const onlineMgrFollowupBadge = React.useMemo(() => {

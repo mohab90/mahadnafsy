@@ -45,8 +45,6 @@ const tenure = (from: string | null | undefined) => {
 interface MyProfilePageProps {
   activeTab: TabKey;
   staff: StaffMember;
-  leads: LeadItem[];
-  subscribers: SubscriberItem[];
   notify: Notify;
   onNavigate: (tab: TabKey) => void;
 }
@@ -60,7 +58,7 @@ interface MyProfilePageProps {
  * today's work, your requests to HR, your job file, your numbers, your messages
  * and your settings. Every bar opens it from the same small icon.
  */
-export function MyProfilePage({ activeTab, staff, leads, subscribers, notify, onNavigate }: MyProfilePageProps) {
+export function MyProfilePage({ activeTab, staff, notify, onNavigate }: MyProfilePageProps) {
   const role = String(staff.role || '').toLowerCase() as RoleKey;
   const isDesk = DESK_ROLES.includes(role);
   const { hr, leaves, advances, disciplinary, setDisciplinary, reload, pendingCount } = useMyHr(notify);
@@ -140,12 +138,12 @@ export function MyProfilePage({ activeTab, staff, leads, subscribers, notify, on
       <TabErrorBoundary>
         {showing === 'today' && (
           <Suspense fallback={<Spinner />}>
-            <StaffHomeTab staff={staff} leads={leads} subscribers={subscribers} notify={notify} onNavigate={tab => onNavigate(tab as TabKey)} hideHeader />
+            <StaffHomeTab staff={staff} notify={notify} onNavigate={tab => onNavigate(tab as TabKey)} hideHeader />
           </Suspense>
         )}
         {showing === 'requests' && <MyRequestsSection hr={hr} leaves={leaves} advances={advances} reload={reload} notify={notify} />}
         {showing === 'job' && <MyJobFileSection hr={hr} disciplinary={disciplinary} setDisciplinary={setDisciplinary} notify={notify} />}
-        {showing === 'performance' && <MyPerformanceSection staff={staff} subscribers={subscribers} notify={notify} />}
+        {showing === 'performance' && <MyPerformanceSection staff={staff} notify={notify} />}
         {showing === 'messages' && <MyWorkRecordPanel notify={notify} part="thread" />}
         {showing === 'settings' && <MySettingsSection staff={staff} notify={notify} />}
       </TabErrorBoundary>

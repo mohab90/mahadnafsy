@@ -32,7 +32,7 @@ const money = (value: unknown, currency = 'EGP') => `${num(value).toLocaleString
  * stays on their screen (FinancialRefundsPanel). The employee asks, says they
  * are handling it, or raises it to the administration.
  */
-export function StaffRefundsSection({ clients, notify }: { clients: SubscriberItem[]; notify: Notify }) {
+export function StaffRefundsSection({ lookup, notify }: { lookup: (term: string) => Promise<SubscriberItem[]>; notify: Notify }) {
   const [rows, setRows] = useState<Refund[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -137,7 +137,7 @@ export function StaffRefundsSection({ clients, notify }: { clients: SubscriberIt
           })}
         </div>
       )}
-      {adding && <AddRefundModal clients={clients} notify={notify} onClose={() => setAdding(false)} onCreated={() => void load()} />}
+      {adding && <AddRefundModal lookup={lookup} notify={notify} onClose={() => setAdding(false)} onCreated={() => void load()} />}
     </div>
   );
 }

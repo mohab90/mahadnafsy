@@ -5,6 +5,12 @@ import { hasPermission } from '../../constants/permissions';
 import { staffStatusFromWire, type StaffWire } from './dashboardHelpers';
 
 interface StaffOwnDataArgs {
+  /**
+   * Whether the open screen reads the person's lists of leads and clients. Those are downloaded in full (every lead
+   * and client in the role's scope, with their payments), so they wait for the first screen that draws them: the
+   * landing page and the person's own pages read small server summaries instead (GET /api/staff/home-summary).
+   */
+  wantsLists: boolean;
   isAdmin: boolean;
   isOnlineManager: boolean;
   staffSelf: StaffMember | null | undefined;
@@ -27,7 +33,7 @@ interface StaffOwnDataArgs {
  * Dashboard at its original position so effect-execution order is unchanged.
  */
 export function useStaffOwnData({
-  isAdmin, isOnlineManager, staffSelf, currentStaff, bundles, courses,
+  wantsLists, isAdmin, isOnlineManager, staffSelf, currentStaff, bundles, courses,
   setStaffScopedSubscribers, setStaffScopedLeads, setStaffScopedRounds, mergeContent,
 }: StaffOwnDataArgs) {
   const [salesOwnLeads, setSalesOwnLeads] = useState<LeadItem[]>([]);
@@ -40,8 +46,14 @@ export function useStaffOwnData({
   // page by page as it arrives; afterwards a refresh builds the new list quietly and
   // swaps it in, so a two-minute refresh never shrinks the table back to one page.
   const loadedOnceRef = useRef(false);
+  const wantsListsRef = useRef(wantsLists);
+  wantsListsRef.current = wantsLists;
+  // When the lists, and when anything at all, were last read.
+  const listsAtRef = useRef(0);
+  const runWithListsRef = useRef(false);
 
   const loadSalesData = useCallback(async () => {
+    runWithListsRef.current = wantsListsRef.current;
     // Staff only. The online manager counted as an admin here once, from a list
     // /api/auth/me kept apart from requireAdmin; it follows requireAdmin now.
     const staffRef = staffSelf || (isOnlineManager ? currentStaff : null);
@@ -50,72 +62,77 @@ export function useStaffOwnData({
     setSalesDataLoading(true);
     try {
       // mysqlAdmin: static import (top of file)
+      const withLists = wantsListsRef.current;
+      let mySubs: SubscriberItem[] = [];
 
       // ONE unified call — server scopes data automatically based on role
-      const [subsRaw, leadsRaw] = await Promise.allSettled([
-        // Only for a role that may see clients. HR, the accountant and the
-        // instructors were refused this on every page load (403) for a list the
-        // screen then dropped.
-        //
-        // Streamed. This was one request for every client in the role's scope —
-        // 2,000 rows per page, all pages awaited, with each client's payments,
-        // enrolments and certificates — and nothing showed until the last page
-        // was in. The first page now paints the table and the rest fills in.
-        hasPermission(staffRef, 'view_subscribers')
-          ? (async () => {
-            const collected: SubscriberItem[] = [];
-            await mysqlAdmin.streamSubscribers({ staff: true }, page => {
-              collected.push(...(page as unknown as SubscriberItem[]));
-              if (!loadedOnceRef.current) {
-                const partial = [...collected];
-                setSalesOwnSubscribers(partial);
-                setStaffScopedSubscribers(partial);
-              }
-            });
-            loadedOnceRef.current = true;
-            // Newest first, as the server orders them (pages can land out of order).
-            return collected.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))) as unknown;
-          })()
-          : Promise.resolve([] as unknown),
-        // And only for a role that may see leads: one that may not was refused
-        // this on every page load (403, 76 times in two days of the log).
-        hasPermission(staffRef, 'view_leads')
-          ? mysqlAdmin.listStaffLeads() as Promise<unknown>
-          : Promise.resolve([] as unknown),
-      ]);
+      if (withLists) {
+        const [subsRaw, leadsRaw] = await Promise.allSettled([
+          // Only for a role that may see clients. HR, the accountant and the
+          // instructors were refused this on every page load (403) for a list the
+          // screen then dropped.
+          //
+          // Streamed. This was one request for every client in the role's scope —
+          // 2,000 rows per page, all pages awaited, with each client's payments,
+          // enrolments and certificates — and nothing showed until the last page
+          // was in. The first page now paints the table and the rest fills in.
+          hasPermission(staffRef, 'view_subscribers')
+            ? (async () => {
+              const collected: SubscriberItem[] = [];
+              await mysqlAdmin.streamSubscribers({ staff: true }, page => {
+                collected.push(...(page as unknown as SubscriberItem[]));
+                if (!loadedOnceRef.current) {
+                  const partial = [...collected];
+                  setSalesOwnSubscribers(partial);
+                  setStaffScopedSubscribers(partial);
+                }
+              });
+              loadedOnceRef.current = true;
+              // Newest first, as the server orders them (pages can land out of order).
+              return collected.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))) as unknown;
+            })()
+            : Promise.resolve([] as unknown),
+          // And only for a role that may see leads: one that may not was refused
+          // this on every page load (403, 76 times in two days of the log).
+          hasPermission(staffRef, 'view_leads')
+            ? mysqlAdmin.listStaffLeads() as Promise<unknown>
+            : Promise.resolve([] as unknown),
+        ]);
 
-      const mySubs:  SubscriberItem[] = subsRaw.status  === 'fulfilled' ? subsRaw.value  as SubscriberItem[]  : [];
-      const myLeads: LeadItem[]       = leadsRaw.status === 'fulfilled' ? leadsRaw.value as LeadItem[] : [];
+        mySubs = subsRaw.status === 'fulfilled' ? subsRaw.value as SubscriberItem[] : [];
+        const myLeads: LeadItem[] = leadsRaw.status === 'fulfilled' ? leadsRaw.value as LeadItem[] : [];
 
-      setSalesOwnSubscribers(mySubs);
-      setSalesOwnLeads(myLeads);
-      // Sync to context so ClientDbTab (and any other tab) can access scoped data
-      setStaffScopedSubscribers(mySubs);
-      setStaffScopedLeads(myLeads);
+        setSalesOwnSubscribers(mySubs);
+        setSalesOwnLeads(myLeads);
+        // Sync to context so ClientDbTab (and any other tab) can access scoped data
+        setStaffScopedSubscribers(mySubs);
+        setStaffScopedLeads(myLeads);
 
-      const resolveCourseTitle = (courseId: string | undefined) => {
-        if (!courseId) return '';
-        if (courseId.startsWith('bundle:')) {
-          const bId = courseId.replace('bundle:', '');
-          return bundles.find(b => b.id === bId)?.title || courseId;
-        }
-        return courses.find(c => c.id === courseId)?.title || bundles.find(b => b.id === courseId)?.title || courseId;
-      };
-      const syntheticOrders: OrderItem[] = mySubs.flatMap(sub =>
-        (sub.paymentHistory || []).map(p => ({
-          id: p.id, type: 'course' as const, itemId: p.courseId || '',
-          subscriberId: sub.id,
-          itemTitle: resolveCourseTitle(p.courseId) || p.paymentType || '',
-          amount: Number(p.amount) || 0, currency: (p.currency || 'EGP') as 'EGP' | 'SAR' | 'USD',
-          paymentMethod: (p.paymentMethod || 'other') as OrderItem['paymentMethod'],
-          customerName: sub.name, customerEmail: sub.email,
-          status: 'paid' as const, createdAt: p.at || sub.createdAt || new Date().toISOString(),
-          transactionId: p.id,
-          staffId: (p as { staffId?: string }).staffId || undefined,
-          staffName: (p as { staffName?: string }).staffName || undefined,
-        }))
-      );
-      setSalesOwnOrders(syntheticOrders);
+        const resolveCourseTitle = (courseId: string | undefined) => {
+          if (!courseId) return '';
+          if (courseId.startsWith('bundle:')) {
+            const bId = courseId.replace('bundle:', '');
+            return bundles.find(b => b.id === bId)?.title || courseId;
+          }
+          return courses.find(c => c.id === courseId)?.title || bundles.find(b => b.id === courseId)?.title || courseId;
+        };
+        const syntheticOrders: OrderItem[] = mySubs.flatMap(sub =>
+          (sub.paymentHistory || []).map(p => ({
+            id: p.id, type: 'course' as const, itemId: p.courseId || '',
+            subscriberId: sub.id,
+            itemTitle: resolveCourseTitle(p.courseId) || p.paymentType || '',
+            amount: Number(p.amount) || 0, currency: (p.currency || 'EGP') as 'EGP' | 'SAR' | 'USD',
+            paymentMethod: (p.paymentMethod || 'other') as OrderItem['paymentMethod'],
+            customerName: sub.name, customerEmail: sub.email,
+            status: 'paid' as const, createdAt: p.at || sub.createdAt || new Date().toISOString(),
+            transactionId: p.id,
+            staffId: (p as { staffId?: string }).staffId || undefined,
+            staffName: (p as { staffName?: string }).staffName || undefined,
+          }))
+        );
+        setSalesOwnOrders(syntheticOrders);
+        listsAtRef.current = Date.now();
+      }
 
       // Daqqi rounds — only for daqqi roles
       const isDaqqiRole = staffRef.role === 'daqqi_manager' || staffRef.role === 'reception_daqqi'
@@ -210,6 +227,12 @@ export function useStaffOwnData({
   }, [loadSalesData]);
   /** For the timer and the return to the tab: skipped when the lists were read less than `maxAgeMs` ago. */
   const fetchSalesDataIfStale = useCallback((maxAgeMs: number): Promise<void> => {
+    if (wantsListsRef.current) {
+      // On a screen that reads the lists, "fresh" means the lists were read — not just the bootstrap that a screen
+      // without them runs — and a run already reading them counts.
+      if ((runningRef.current && runWithListsRef.current) || Date.now() - listsAtRef.current < maxAgeMs) return runningRef.current ?? Promise.resolve();
+      return fetchSalesData();
+    }
     if (runningRef.current || Date.now() - lastDoneRef.current < maxAgeMs) return runningRef.current ?? Promise.resolve();
     return fetchSalesData();
   }, [fetchSalesData]);

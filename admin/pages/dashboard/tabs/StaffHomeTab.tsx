@@ -15,10 +15,10 @@ import { hasPermission, type PermissionKey, type RoleKey } from '../../../consta
 import SalesMotivationCard from './staff-home/SalesMotivationCard';
 import { SalesOffersStrip, type SalesOffer } from './leads/SalesOffersPanel';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
-import { isOpenLeadStatus } from '../../../../shared/leadStatuses';
 import { useNavigate } from 'react-router-dom';
 import LeadOutcomeButtons from './leads/LeadOutcomeButtons';
 import { announceCrmChanged } from '../../../lib/crmChanged';
+import { useStaffHomeSummary } from '../useStaffHomeSummary';
 
 type TabKey = string;
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -33,8 +33,6 @@ type StaffHrSnapshot = {
 
 interface StaffHomeTabProps {
   staff: StaffMember;
-  leads: LeadItem[];
-  subscribers: SubscriberItem[];
   notify: NotifyFn;
   onNavigate: (tab: TabKey) => void;
   /** The page draws the greeting and the person's name once, above the tabs. */
@@ -72,7 +70,7 @@ const STATUS_COLOR: Record<string, string> = {
   no_answer: 'bg-gray-100 text-gray-600',
 };
 
-export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavigate, hideHeader = false }: StaffHomeTabProps) {
+export default function StaffHomeTab({ staff, notify, onNavigate, hideHeader = false }: StaffHomeTabProps) {
   const [leaveBalance, setLeaveBalance] = useState<number | null>(null);
   const [pendingLeaves, setPendingLeaves] = useState<number>(0);
   const [hrSnapshot, setHrSnapshot] = useState<StaffHrSnapshot | null>(null);
@@ -89,79 +87,38 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
   const today = cairoDateOnly();
   const thisMonth = cairoMonthOnly();
 
-  // ── Derived stats ───────────────────────────────────────────────────────
+  // ── Figures ─────────────────────────────────────────────────────────────
+  // From the database (GET /api/staff/home-summary), not counted out of every lead in the person's scope: those
+  // were all downloaded at sign-in, and again after every write, for this page's eight numbers.
+  const { summary, refresh: refreshSummary } = useStaffHomeSummary(staff);
   const stats = useMemo(() => {
-    const myLeads = leads;
-    const totalLeads = myLeads.length;
-    const converted = myLeads.filter(l => l.status === 'converted');
-    const convertedThisMonth = converted.filter(
-      l => cairoDay((l as TimestampedLead).updatedAt || l.createdAt).slice(0, 7) === thisMonth,
-    );
-    const convRate = totalLeads > 0 ? Math.round((converted.length / totalLeads) * 100) : 0;
+    const totalLeads = summary?.totalLeads ?? 0;
+    const converted = summary?.converted ?? 0;
+    const convRate = totalLeads > 0 ? Math.round((converted / totalLeads) * 100) : 0;
 
-    // Overdue follow-ups (past date, still active)
-    const overdueFollowups = myLeads.filter(
-      l => isOpenLeadStatus(l.status)
-        && l.nextFollowUpDate && l.nextFollowUpDate < today,
-    );
-
-    // Today's follow-ups
-    const todayFollowups = myLeads.filter(
-      l => isOpenLeadStatus(l.status)
-        && l.nextFollowUpDate === today,
-    );
-
-    // This month new leads
-    const newThisMonth = myLeads.filter(l => cairoDay(l.createdAt).slice(0, 7) === thisMonth);
-
-    // This month calls/communications
-    const callsThisMonth = myLeads.reduce((n, l) =>
-      n + (l.communications || []).filter(c => cairoDay(c.date).slice(0, 7) === thisMonth).length, 0,
-    );
+    const last7 = (summary?.last7 ?? []).map(entry => ({
+      day: entry.day,
+      label: new Date(entry.day).toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short', timeZone: CAIRO_TIME_ZONE }),
+      calls: entry.calls,
+      converted: entry.converted,
+    }));
 
     // Financial and conversion KPIs come from the server-side canonical ledger.
     const revenueThisMonth = Number(hrSnapshot?.kpi?.revenue_generated || 0);
-
-    // 7-day communications chart
-    const last7 = Array.from({ length: 7 }, (_, i) => {
-      const dateStr = cairoDaysAgo(6 - i);
-      return {
-        day: dateStr,
-        label: new Date(dateStr).toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short', timeZone: CAIRO_TIME_ZONE }),
-        calls: myLeads.reduce((n, l) =>
-          n + (l.communications || []).filter(c => cairoDay(c.date) === dateStr).length, 0,
-        ),
-        converted: converted.filter(c =>
-          cairoDay((c as TimestampedLead).updatedAt || c.createdAt) === dateStr,
-        ).length,
-      };
-    });
-
-
-    // Recent activity — leads updated in last 3 days
-    const recentActivity = [...myLeads]
-      .sort((a, b) => ((b as TimestampedLead).updatedAt || b.createdAt || '') > ((a as TimestampedLead).updatedAt || a.createdAt || '') ? 1 : -1)
-      .slice(0, 8);
-
-    // Urgent leads: new + interested with no follow-up set
-    const urgentLeads = myLeads
-      .filter(l => ['new', 'interested', 'contacted'].includes(l.status || '') && !l.nextFollowUpDate)
-      .slice(0, 5);
-
     const commissionRate = (staff as StaffWithCommission).commissionRate || 0;
     const commission = Number(hrSnapshot?.commission?.thisMonth?.total || 0);
 
     return {
-      totalLeads, converted: converted.length,
-      convertedThisMonth: Number(hrSnapshot?.kpi?.leads_converted ?? convertedThisMonth.length),
+      totalLeads, converted,
+      convertedThisMonth: Number(hrSnapshot?.kpi?.leads_converted ?? summary?.convertedThisMonth ?? 0),
       convRate: Number(hrSnapshot?.kpi?.leads_assigned || 0) > 0
         ? Math.round(Number(hrSnapshot?.kpi?.leads_converted || 0) / Number(hrSnapshot?.kpi?.leads_assigned || 1) * 100)
         : convRate,
-      overdueFollowups, todayFollowups, newThisMonth: newThisMonth.length,
-      callsThisMonth, revenueThisMonth, last7, recentActivity,
-      urgentLeads, commission, commissionRate,
+      overdueFollowups: summary?.overdue ?? [], todayFollowups: summary?.today ?? [], newThisMonth: summary?.newThisMonth ?? 0,
+      callsThisMonth: summary?.callsThisMonth ?? 0, revenueThisMonth, last7, recentActivity: summary?.recent ?? [],
+      urgentLeads: summary?.urgent ?? [], commission, commissionRate,
     };
-  }, [leads, today, thisMonth, staff, hrSnapshot]);
+  }, [summary, staff, hrSnapshot]);
 
   // ── Load leaves + tasks ─────────────────────────────────────────────────
   const loadHrData = useCallback(async () => {
@@ -216,9 +173,9 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    await Promise.allSettled([loadHrData(), loadTasks()]);
+    await Promise.allSettled([loadHrData(), loadTasks(), refreshSummary()]);
     setTimeout(() => setIsRefreshing(false), 600);
-  }, [loadHrData, loadTasks]);
+  }, [loadHrData, loadTasks, refreshSummary]);
 
   // ── Quick actions by role ────────────────────────────────────────────────
   const quickActions = useMemo(() => {
@@ -410,7 +367,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
           </>)}
           {isCollectionRole && (<>
             <KpiCard
-              title="عملائي المسندون" value={subscribers.length}
+              title="عملائي المسندون" value={summary?.clients ?? 0}
               icon={UserCheck} bg="bg-teal-50" text="text-teal-600" border="border-teal-200"
             />
             <KpiCard

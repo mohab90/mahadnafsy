@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Loader2, RotateCcw, Search } from 'lucide-react';
 import { useCrmData, useStaticData } from '../../../../context/siteDataSlices';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
@@ -25,7 +25,7 @@ const isRefundable = (payment: { status?: string }) =>
 const paymentItem = (payment: PaymentHistoryEntry) =>
   payment.bundleId ? `bundle:${payment.bundleId}` : payment.courseId || '';
 
-export function AddRefundModal({ onClose, onCreated, notify, clients, subscriber: presetSubscriber, item: presetItem, itemTitle: presetTitle }: {
+export function AddRefundModal({ onClose, onCreated, notify, clients, lookup, subscriber: presetSubscriber, item: presetItem, itemTitle: presetTitle }: {
   onClose: () => void;
   onCreated: () => void;
   notify: NotifyFn;
@@ -35,6 +35,11 @@ export function AddRefundModal({ onClose, onCreated, notify, clients, subscriber
    * staff account the picker was empty.
    */
   clients?: SubscriberItem[];
+  /**
+   * Looks clients up on the server while the person types, for an employee whose own clients are too many to hold in
+   * the browser. Given, it replaces `clients`.
+   */
+  lookup?: (term: string) => Promise<SubscriberItem[]>;
   /** Opened from a client's course: the client and the course are given. */
   subscriber?: SubscriberItem;
   item?: string;
@@ -45,7 +50,10 @@ export function AddRefundModal({ onClose, onCreated, notify, clients, subscriber
   // With no payment behind it, the money leaves a box the institute keeps —
   // named, so the boxes report takes it out of that box.
   const boxes = usePaymentBoxes(content['finance.payment_methods']);
-  const subscribers = clients ?? allSubscribers;
+  const [found, setFound] = useState<SubscriberItem[]>([]);
+  // The client the person picked stays even when the next search no longer lists them.
+  const [picked, setPicked] = useState<SubscriberItem | null>(null);
+  const subscribers = lookup ? found : (clients ?? allSubscribers);
   const [branch, setBranch] = useState<'DAQQI' | 'ONLINE' | ''>('');
   const [search, setSearch] = useState('');
   const [subscriberId, setSubscriberId] = useState(presetSubscriber?.id || '');
@@ -60,19 +68,28 @@ export function AddRefundModal({ onClose, onCreated, notify, clients, subscriber
   const branchOf = (item: SubscriberItem) =>
     String(item.branch || '').toUpperCase().replace(/[-\s]/g, '_').includes('DAQQI') ? 'DAQQI' : 'ONLINE';
 
+  useEffect(() => {
+    if (!lookup || !branch) return undefined;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      lookup(search.trim()).then(list => { if (!cancelled) setFound(list); }).catch(() => { if (!cancelled) setFound([]); });
+    }, 250);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [lookup, branch, search]);
+
   const candidates = useMemo(() => {
     if (!branch) return [];
     const term = search.trim().toLowerCase();
-    return subscribers
+    return (picked && !subscribers.some(item => item.id === picked.id) ? [picked, ...subscribers] : subscribers)
       .filter(item => branchOf(item) === branch)
       .filter(item => !term
         || item.name.toLowerCase().includes(term)
         || (item.phone || '').includes(term)
         || (item.clientCode || '').toLowerCase().includes(term))
       .slice(0, 50);
-  }, [subscribers, branch, search]);
+  }, [subscribers, picked, branch, search]);
 
-  const subscriber = presetSubscriber || subscribers.find(item => item.id === subscriberId) || null;
+  const subscriber = presetSubscriber || subscribers.find(item => item.id === subscriberId) || (picked?.id === subscriberId ? picked : null);
   const titleOf = (key: string) => key === presetItem && presetTitle ? presetTitle : key.startsWith('bundle:')
     ? bundles.find(bundle => bundle.id === key.slice(7))?.title || 'مسار'
     : (() => { const course = courses.find(entry => entry.id === key); return course?.titleAr || course?.title || 'كورس'; })();
@@ -158,7 +175,7 @@ export function AddRefundModal({ onClose, onCreated, notify, clients, subscriber
                 <input value={search} onChange={event => setSearch(event.target.value)} placeholder="ابحث بالاسم أو الهاتف أو الكود..."
                   className="w-full pr-7 pl-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-rose-400" />
               </div>
-              <select value={subscriberId} onChange={event => { setSubscriberId(event.target.value); setPaymentId(''); setCourseItem(''); }} className={field}>
+              <select value={subscriberId} onChange={event => { setSubscriberId(event.target.value); setPicked(subscribers.find(item => item.id === event.target.value) || null); setPaymentId(''); setCourseItem(''); }} className={field}>
                 <option value="">اختر العميل...</option>
                 {candidates.map(item => (
                   <option key={item.id} value={item.id}>{item.name} — {item.phone}{item.clientCode ? ` (${item.clientCode})` : ''}</option>
