@@ -271,6 +271,7 @@ export default function OnlineClientsTab({
       });
       setOmNewSubOpen(false);
       omNewSubReset();
+      if (paged) void serverPage.reload();
       notify(
         'success',
         accountResult.approvalRequired
@@ -656,6 +657,7 @@ export default function OnlineClientsTab({
                     filtered={filtered}
                     tabCounts={paged ? serverData?.tabCounts ?? {} : undefined}
                     matchingCount={paged ? matchingCount : undefined}
+                    unassignedTotal={paged ? figures?.unassigned ?? 0 : undefined}
                     loadForExport={paged ? loadMatchingForExport : undefined}
                     isOnlineManager={isOnlineManager}
                     isCollection={isCollectionStaff}
@@ -1029,7 +1031,7 @@ export default function OnlineClientsTab({
                   {collectionSettingsOpen && (
                     <CollectionSettingsModal
                       staffMembers={isOnlineManager ? onlineTeamMembers : staffMembers}
-                      subscribers={scopedOrContextSubscribers}
+                      subscribers={paged ? [] : scopedOrContextSubscribers}
                       notify={notify}
                       onClose={() => setCollectionSettingsOpen(false)}
                       onChanged={reloadSubscribers}

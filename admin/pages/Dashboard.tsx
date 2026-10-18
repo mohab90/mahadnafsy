@@ -63,6 +63,7 @@ import {
 import { isProfileTab } from './dashboard/my-profile/profileTabs';
 import { tabForUrl, urlForTab, urlToTabAlias } from './dashboard/tabUrlAliases';
 import { useDashboardBadges } from './dashboard/useDashboardBadges';
+import { useOnlineManagerSummary } from './dashboard/useOnlineManagerSummary';
 import { useNotificationsBell } from './dashboard/useNotificationsBell';
 import { useStaffOwnData } from './dashboard/useStaffOwnData';
 import { staffClientsArePaged, staffScreenReadsLists } from './dashboard/staffListTabs';
@@ -521,17 +522,17 @@ const Dashboard: React.FC = () => {
     window.addEventListener(CRM_CHANGED_EVENT, onChanged);
     return () => { clearTimeout(timer); window.removeEventListener(CRM_CHANGED_EVENT, onChanged); };
   }, [countsOwnFollowups, refreshDueFollowups]);
+  // The online manager's badges and panels: the server counts and lists them (useOnlineManagerSummary).
+  const onlineManagerSummary = useOnlineManagerSummary(isOnlineManager);
   const {
     staffNotifBadge,
     onlineMgrFollowupBadge,
     onlineMgrNewEventsBadge,
   } = useDashboardBadges({
     currentStaff,
-    isNonAdminStaff: usesStaffScopedData,
     isOnlineManager,
     dueFollowups,
-    subscribers,
-    salesOwnSubscribers,
+    onlineManagerSummary,
   });
 
   // -- ClientDbTab booking callback — opens subPayRow or leadPayRow modal ----
@@ -726,8 +727,7 @@ const Dashboard: React.FC = () => {
   const overlayLists = useMemo<SiteList[]>(() => [
     ...(salesNotifOpen ? ['leads' as const] : []),
     ...(quickBookOpen ? ['leads' as const, 'subscribers' as const] : []),
-    ...(onlineMgrFollowupOpen || onlineMgrNewEventsOpen ? ['subscribers' as const] : []),
-  ], [salesNotifOpen, quickBookOpen, onlineMgrFollowupOpen, onlineMgrNewEventsOpen]);
+  ], [salesNotifOpen, quickBookOpen]);
   useEffect(() => {
     if (overlayLists.length) void ensureSiteLists(overlayLists);
   }, [overlayLists, ensureSiteLists]);
@@ -1116,9 +1116,7 @@ const Dashboard: React.FC = () => {
                 <DashboardOnlineManagerPanels
                   followupOpen={onlineMgrFollowupOpen}
                   newEventsOpen={onlineMgrNewEventsOpen}
-                  isNonAdminStaff={isNonAdminStaff}
-                  subscribers={subscribers}
-                  salesOwnSubscribers={salesOwnSubscribers}
+                  summary={onlineManagerSummary}
                   setFollowupOpen={setOnlineMgrFollowupOpen}
                   setNewEventsOpen={setOnlineMgrNewEventsOpen}
                   setActiveTab={setActiveTab}

@@ -29,7 +29,8 @@ const { installmentPlansBySubscriber, withInstallmentPlans } = require('../../li
 const { loadCollectionPicker, subscriberMarket } = require('../../lib/collectionDistribution');
 const { requireCollectionLead } = require('../collection-distribution');
 const { BRANCH_ROLES, requestedBranch } = require('../../lib/physicalBranches');
-const { buildView: buildClientsView, readFilters: readClientFilters } = require('../../lib/staffClientsView');
+const { buildView: buildClientsView, dueInstallments, readFilters: readClientFilters } = require('../../lib/staffClientsView');
+const { mapInstallmentPlan } = require('../../lib/installmentMath');
 
 async function loadEnrollmentProjection(tenantId, subscriberIds) {
   if (!subscriberIds.length) return {};
@@ -1289,6 +1290,62 @@ router.get('/api/staff/home-summary', requireAuth, requireAdminOrStaff, requireA
     });
     res.json(payload);
   } catch (e) { logger.error('[/api/staff/home-summary]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ────────────────────────────────────────────────────────────
+// GET /api/staff/online-manager-summary — the online manager's two header badges and their panels
+// («متابعات التحصيل والأقساط»: the instalments due and coming; «مشتركين جدد ومدفوعات»: the last seven days), over the
+// manager's own clients. They were counted and listed in the browser out of every loaded client.
+// ────────────────────────────────────────────────────────────
+router.get('/api/staff/online-manager-summary', requireAuth, requireAdminOrStaff, requirePermission('view_subscribers'), async (req, res) => {
+  try {
+    const sc = staffSubscriberScope(req);
+    if (sc.none) return res.json({ installments: { overdue: 0, upcoming: 0, overdueRows: [], upcomingRows: [] }, newClients: { count: 0, rows: [] }, newPayments: { count: 0, rows: [] } });
+    if (sc.forbidden) return res.status(403).json({ error: 'Staff record required' });
+    const tenantId = req.tenantId;
+    const today = cairoToday();
+    const since = addDaysToDateOnly(today, -7);
+    const scopeParams = [tenantId, ...sc.params];
+    const live = `s.tenant_id = ? AND s.deleted_at IS NULL AND (${sc.where})`;
+    const [[planRows], [newClients], [[paymentCount]], [newPayments]] = await Promise.all([
+      pool.query(
+        `SELECT ip.id, ip.course_id, ip.bundle_id, ip.title, ip.total_amount, ip.currency, ip.installments_count,
+                ip.installment_amounts, ip.due_dates, ip.paid_dates, ip.paid_amounts, ip.notes, ip.created_at,
+                COALESCE(c.title, b.title) AS course_title, s.id AS client_id, s.name, s.phone
+           FROM installment_plans ip
+           JOIN subscribers s ON s.id = ip.subscriber_id AND s.tenant_id = ip.tenant_id
+           LEFT JOIN courses c ON c.id = ip.course_id AND c.tenant_id = ip.tenant_id
+           LEFT JOIN bundles b ON b.id = ip.bundle_id AND b.tenant_id = ip.tenant_id
+          WHERE ${live}`, scopeParams),
+      pool.query(
+        `SELECT s.id, s.name, s.email, s.phone, s.created_at FROM subscribers s
+          WHERE ${live} AND s.created_at >= ? ORDER BY s.created_at DESC`, [...scopeParams, cairoDayStartUtc(since)]),
+      pool.query(
+        `SELECT COUNT(*) AS n FROM payments p JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
+          WHERE ${live} AND p.deleted_at IS NULL AND p.date >= ?`, [...scopeParams, since]),
+      pool.query(
+        `SELECT s.name, p.amount, p.currency, p.payment_type, p.date FROM payments p
+           JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
+          WHERE ${live} AND p.deleted_at IS NULL AND p.date >= ? ORDER BY p.date DESC LIMIT 30`, [...scopeParams, since]),
+    ]);
+    const due = dueInstallments(
+      planRows.map(row => ({ clientId: row.client_id, name: row.name, phone: row.phone, plan: mapInstallmentPlan(row) })),
+      today, addDaysToDateOnly(today, 7));
+    res.json({
+      installments: { overdue: due.overdue.length, upcoming: due.upcoming.length, overdueRows: due.overdue.slice(0, 200), upcomingRows: due.upcoming.slice(0, 200) },
+      newClients: {
+        count: newClients.length,
+        rows: newClients.slice(0, 200).map(row => ({ id: row.id, name: row.name, email: row.email, phone: row.phone, createdAt: safeIsoString(row.created_at) })),
+      },
+      newPayments: {
+        count: Number(paymentCount.n) || 0,
+        rows: newPayments.map(row => ({
+          name: row.name, amount: Number(row.amount) || 0, currency: row.currency || 'EGP',
+          paymentType: (row.payment_type || 'other').toLowerCase(), at: safeDateOnly(row.date),
+        })),
+      },
+    });
+  } catch (e) { logger.error('[/api/staff/online-manager-summary]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ────────────────────────────────────────────────────────────

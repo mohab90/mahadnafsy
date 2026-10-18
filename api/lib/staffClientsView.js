@@ -304,12 +304,13 @@ function buildView(clients, filters, { today, weekStart, monthStart, catalogue, 
     if (matchesFollow(follow, filters.follow)) matching.push(client.id);
   }
 
-  let collectedToday = 0; let collectedWeek = 0; let collectedMonth = 0; let remaining = 0;
+  let collectedToday = 0; let collectedWeek = 0; let collectedMonth = 0; let remaining = 0; let unassigned = 0;
   const markets = { local: 0, saudi: 0, intl: 0 };
   for (const client of all) {
     const { online, market, balance } = factsOf(client);
     if (online) markets[market] += 1;
     remaining += balance.remainingEgp;
+    if (!client.assignedCsId) unassigned += 1;
     for (const payment of client.paymentHistory || []) {
       if (!isCollected(payment)) continue;
       const day = cairoDay(payment.at);
@@ -321,10 +322,30 @@ function buildView(clients, filters, { today, weekStart, monthStart, catalogue, 
   }
   return {
     ids: matching, tabCounts, followCounts,
-    figures: { total: all.length, ...markets, today: collectedToday, week: collectedWeek, month: collectedMonth, remaining },
+    figures: { total: all.length, ...markets, today: collectedToday, week: collectedWeek, month: collectedMonth, remaining, unassigned },
   };
 }
 
+/**
+ * The unpaid instalments that are due (on or before `today`) and the ones coming within `soonUntil`, over the
+ * clients' plans — the online manager's badge and «متابعات التحصيل والأقساط» panel (admin/pages/dashboard/
+ * DashboardOnlineManagerPanels.tsx). `plans`: [{ clientId, name, phone, plan }] with the plan as mapInstallmentPlan shapes it.
+ */
+function dueInstallments(plans, today, soonUntil) {
+  const overdue = [];
+  const upcoming = [];
+  for (const { clientId, name, phone, plan } of plans) {
+    for (const entry of plan.entries || []) {
+      if (entry.paidAt || !entry.dueDate) continue;
+      const row = { clientId, name, phone: phone || '', courseTitle: plan.courseTitle || '', amount: entry.amount, currency: entry.currency, dueDate: entry.dueDate };
+      if (entry.dueDate <= today) overdue.push(row);
+      else if (entry.dueDate <= soonUntil) upcoming.push(row);
+    }
+  }
+  const byDate = (a, b) => a.dueDate.localeCompare(b.dueDate);
+  return { overdue: overdue.sort(byDate), upcoming: upcoming.sort(byDate) };
+}
+
 module.exports = {
-  NO_COLLECTOR, VIEWS, balanceOf, branchMatchesFilter, buildView, cairoDay, followUpOf, holdsOnline, isInternational, marketOf, matchesSearch, readFilters,
+  NO_COLLECTOR, dueInstallments, VIEWS, balanceOf, branchMatchesFilter, buildView, cairoDay, followUpOf, holdsOnline, isInternational, marketOf, matchesSearch, readFilters,
 };

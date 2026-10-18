@@ -28,6 +28,8 @@ interface Props {
   /** The server's figures, when the screen holds one page of the clients rather than all of them. */
   tabCounts?: Record<string, number>;
   matchingCount?: number;
+  /** How many clients have no collection officer, from the server (the page holds only some). */
+  unassignedTotal?: number;
   /** Every matching client, fetched when the export asks (the page holds only some). */
   loadForExport?: () => Promise<SubscriberItem[]>;
   isOnlineManager: boolean;
@@ -68,7 +70,7 @@ const pictureColumns = (s: SubscriberItem) => [s.nameEn || '', s.nationalId || '
 
 export function ViewTabsBar({
   isDaqqiClientsTab, allCombined, isIntlSub, marketOf, bookedInYear, collOnlineViewTab, setCollOnlineViewTab,
-  setCollOnlinePage, filtered, tabCounts, matchingCount, loadForExport, isOnlineManager, isCollection = false, isDaqqiManager, isAdmin, setOmNewSubOpen, onOpenSectionTabs,
+  setCollOnlinePage, filtered, tabCounts, matchingCount, unassignedTotal, loadForExport, isOnlineManager, isCollection = false, isDaqqiManager, isAdmin, setOmNewSubOpen, onOpenSectionTabs,
   onOpenCollectionSettings, onOpenImport, customTabsSlot, customTabOpen = false,
   daqqiSettingsOpen, setDaqqiSettingsOpen, collOnlineSelected, courses, bundles, staffMembers, housingMap,
   subCsDistributing, setSubCsDistributing, actionSubscribers, reloadSubscribers, notify,
@@ -106,14 +108,14 @@ export function ViewTabsBar({
   const exportCsv = () => { void exportRows(); };
 
   const menuItem = 'w-full text-right px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 disabled:opacity-60';
-  const unassignedCount = allCombined.filter(s => !s.assignedCsId).length;
+  const unassignedCount = unassignedTotal ?? allCombined.filter(s => !s.assignedCsId).length;
   const canDistribute = isOnlineManager || isAdmin;
   // «توزيع غير المُسندين», from the settings menu: the collection rules on
   // «التحصيل: التوزيع والشيتات» decide who gets whom.
   const distribute = async () => {
     setDaqqiSettingsOpen(false);
-    const unassigned = actionSubscribers.filter(s => !s.assignedCsId);
-    if (!await confirmDialog(`توزيع ${unassigned.length} مشترك غير مُسند على موظفي التحصيل؟`)) return;
+    const toDistribute = unassignedTotal ?? actionSubscribers.filter(s => !s.assignedCsId).length;
+    if (!await confirmDialog(`توزيع ${toDistribute} مشترك غير مُسند على موظفي التحصيل؟`)) return;
     setSubCsDistributing(true);
     try {
       const result = await mysqlAdmin.bulkAssignCollection();

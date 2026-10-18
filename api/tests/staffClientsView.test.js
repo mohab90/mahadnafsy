@@ -180,3 +180,31 @@ test('the endpoint answers for the same scope as the list, a page at a time', ()
   // The unpaged list still answers the refund form and every other caller as before.
   assert.match(route, /res\.json\(await shapeStaffSubscribers\(req\.tenantId, rows\)\);/);
 });
+
+test('the online manager\'s instalments: what is due, what is coming this week, what is paid is neither', () => {
+  const plan = (entries, courseTitle = 'دورة') => ({ courseTitle, entries });
+  const due = view.dueInstallments([
+    { clientId: 'a', name: 'أ', phone: '0100', plan: plan([
+      { amount: 500, currency: 'EGP', dueDate: addDays(-3) },
+      { amount: 500, currency: 'EGP', dueDate: addDays(-9), paidAt: addDays(-8) },
+      { amount: 500, currency: 'EGP', dueDate: addDays(3) },
+    ]) },
+    { clientId: 'b', name: 'ب', plan: plan([
+      { amount: 200, currency: 'SAR', dueDate: TODAY },
+      { amount: 200, currency: 'SAR', dueDate: addDays(7) },
+      { amount: 200, currency: 'SAR', dueDate: addDays(8) },
+    ]) },
+  ], TODAY, addDays(7));
+  assert.deepEqual(due.overdue.map(row => [row.clientId, row.dueDate]), [['a', addDays(-3)], ['b', TODAY]]);
+  assert.deepEqual(due.upcoming.map(row => [row.clientId, row.dueDate]), [['a', addDays(3)], ['b', addDays(7)]]);
+  assert.equal(due.overdue[1].phone, '');
+});
+
+test('the online manager\'s badges and panels read one server summary over the same scope', () => {
+  const route = read('api/routes/admin/stafflists.js');
+  assert.match(route, /router\.get\('\/api\/staff\/online-manager-summary', requireAuth, requireAdminOrStaff, requirePermission\('view_subscribers'\)/);
+  const handler = route.slice(route.indexOf("'/api/staff/online-manager-summary'"));
+  assert.match(handler.slice(0, 600), /staffSubscriberScope\(req\)/);
+  assert.match(handler.slice(0, 4000), /AND p\.date >= \?/, 'the payments of the last seven days, from midnight of the day the screen showed (safeDateOnly), without a function on the column');
+  assert.doesNotMatch(handler.slice(0, 4000), /DATE\(p\.date\)/);
+});

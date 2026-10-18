@@ -576,7 +576,7 @@ export const mysqlAdmin = {
   staffClientsPage:        (query: string): Promise<{
     rows: AR[]; total: number; tabCounts: Record<string, number>;
     followCounts: { overdue: number; today: number; tomorrow: number };
-    figures: { total: number; local: number; saudi: number; intl: number; today: number; week: number; month: number; remaining: number };
+    figures: { total: number; local: number; saudi: number; intl: number; today: number; week: number; month: number; remaining: number; unassigned: number };
   }> => apiFetch(`/staff/subscribers?paged=1&${query}`, {}, A),
   /** A branch's clients, page by page as they arrive (admin endpoint, scoped by the caller's role). */
   streamSubscribers:       (opts: { branch?: string; staff?: boolean; pageSize?: number }, onPage: (rows: AR[]) => void) => {

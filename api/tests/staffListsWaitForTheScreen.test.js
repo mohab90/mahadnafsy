@@ -40,11 +40,20 @@ test('the landing page and the person\'s own pages do not start the download; th
   for (const tab of ['leads', 'daqqi_clients', 'client', 'sales_hub', 'refund_requests', 'some_new_screen']) {
     assert.equal(reads(tab, 'sales', false), true, `${tab} is read through only when it is listed`);
   }
-  // The accounts screen keeps the loaded clients, and so does the online manager's header (installments, new payments).
+  // The accounts screen keeps the loaded clients: the accounts roles' and the online manager's.
   assert.equal(reads('orders', 'accountant', false), true);
   assert.equal(reads('orders', 'support', false), true);
-  assert.equal(reads('staff_home', 'sales', true), true);
-  assert.equal(reads('online_clients', 'sales', true), true, "the online manager's screen still holds the list");
+  assert.equal(reads('orders', 'online_manager', true), true);
+  // The online manager's header badges and their panels read the server's own figures (online-manager-summary), so
+  // his landing page and his clients no longer start the download either.
+  assert.equal(reads('staff_home', 'online_manager', true), false);
+  assert.equal(reads('online_clients', 'online_manager', true), false);
+  assert.equal(reads('online_team', 'online_manager', true), true, 'the screens that read the lists still do');
+  const { staffClientsArePaged: paged } = lib;
+  assert.equal(paged('online_clients', true, false), true);
+  assert.equal(paged('online_clients', false, true), true, 'the online manager');
+  assert.equal(paged('online_clients', false, false), false, 'the administration keeps the whole list');
+  assert.equal(paged('leads', true, false), false);
 });
 
 test('the staff lists are downloaded only on a screen that wants them, and the timers leave the others alone', () => {
@@ -82,6 +91,12 @@ test('the pages that wait for the lists read none of them', () => {
     const source = read(rel);
     assert.doesNotMatch(source, /salesOwn(Leads|Subscribers)|useCrmData|subscribers=\{|leads=\{/, rel);
   }
+  // The online manager's badges and panels: the server's figures, no client in the browser's lists.
+  for (const rel of ['admin/pages/dashboard/useDashboardBadges.ts', 'admin/pages/dashboard/DashboardOnlineManagerPanels.tsx', 'admin/pages/dashboard/useOnlineManagerSummary.ts']) {
+    assert.doesNotMatch(read(rel), /salesOwn(Leads|Subscribers)|useCrmData|SubscriberItem/, rel);
+  }
+  assert.match(read('admin/pages/dashboard/useOnlineManagerSummary.ts'), /\/staff\/online-manager-summary/);
+  assert.match(read('admin/pages/Dashboard.tsx'), /<DashboardOnlineManagerPanels[^>]*summary=\{onlineManagerSummary\}/);
   assert.match(read('admin/pages/dashboard/tabs/StaffHomeTab.tsx'), /useStaffHomeSummary\(staff\)/);
   assert.match(read('admin/pages/dashboard/my-profile/MyPerformanceSection.tsx'), /\/staff\/payments\?summary=1&limit=1/);
   const finance = read('admin/pages/dashboard/DashboardFinanceTabs.tsx');

@@ -19,16 +19,16 @@ const OWN_PAGES: ReadonlySet<string> = new Set(['staff_home', 'staff_settings', 
 const KEEPS_THE_ACCOUNTS = ['accountant', 'support'];
 
 /**
- * «عملائي» pages from the server for an employee other than the online manager (OnlineClientsTab, useStaffClientsPage),
- * so for them neither the staff list nor the context's full client list is loaded when it opens.
+ * «عملائي» pages from the server for every employee (OnlineClientsTab, useStaffClientsPage), the online manager
+ * included — his header badges and their panels read GET /api/staff/online-manager-summary — so for them neither the
+ * staff list nor the context's full client list is loaded when it opens.
  */
 export const staffClientsArePaged = (tab: string, isNonAdminStaff: boolean, isOnlineManager: boolean): boolean =>
-  tab === 'online_clients' && isNonAdminStaff && !isOnlineManager;
+  tab === 'online_clients' && (isNonAdminStaff || isOnlineManager);
 
 export function staffScreenReadsLists(tab: string, role: string | undefined, isOnlineManager: boolean): boolean {
-  // The online manager's header badges count installments and new payments out of the clients.
-  if (isOnlineManager) return true;
   if (OWN_PAGES.has(tab)) return false;
-  if (tab === 'orders') return KEEPS_THE_ACCOUNTS.includes(String(role || '').toLowerCase());
+  // The accounts screen (OrdersTab) reads the loaded clients: the accounts roles' and the online manager's.
+  if (tab === 'orders') return isOnlineManager || KEEPS_THE_ACCOUNTS.includes(String(role || '').toLowerCase());
   return true;
 }
