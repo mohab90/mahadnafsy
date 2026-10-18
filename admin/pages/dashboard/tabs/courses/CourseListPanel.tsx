@@ -1,6 +1,7 @@
 import React from 'react';
 import { BarChart3, BookOpen, Eye, Radio, Search, TrendingUp, Users, Video } from 'lucide-react';
 import type { Course, CourseLectureItem, SubscriberItem } from '../../../../types';
+import { cdnImg } from '../../../../../shared/img';
 
 type AccessStats = {
   full: number;
@@ -132,7 +133,7 @@ export function CourseListPanel({
               <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
                 <div className="flex gap-3">
                   {thumbnailSrc ? (
-                    <img src={thumbnailSrc} alt={course.title} className="w-20 h-20 rounded-xl object-cover border border-gray-200" />
+                    <img src={cdnImg(thumbnailSrc, 160)} loading="lazy" decoding="async" alt={course.title} className="w-20 h-20 rounded-xl object-cover border border-gray-200" />
                   ) : (
                     <div className="w-20 h-20 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center">
                       <BookOpen size={24} className="text-gray-300" />

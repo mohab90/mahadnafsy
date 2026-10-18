@@ -25,6 +25,7 @@ import { cairoDateOnly } from '../../shared/cairoDate';
 import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 import { useSeo } from '../lib/useSeo';
 import { balancesByCourse, moneySuffix, type InstallmentModalState } from '../lib/itemBalance';
+import { cdnImg } from '../../shared/img';
 
 const CourseCertificate = React.lazy(() => import('../components/CourseCertificate'));
 const StudentCoursesTab = React.lazy(() => import('../components/student-dashboard/StudentCoursesTab').then((module) => ({ default: module.StudentCoursesTab })));
@@ -825,7 +826,7 @@ const UserDashboard: React.FC = () => {
                             <div className="relative flex-shrink-0">
                               {/* A course with no image showed a broken-image box here. */}
                               {course.thumbnail
-                                ? <img src={course.thumbnail} alt={course.title} className="w-14 h-14 rounded-xl object-cover" />
+                                ? <img src={cdnImg(course.thumbnail, 120)} loading="lazy" decoding="async" alt={course.title} className="w-14 h-14 rounded-xl object-cover" />
                                 : <div className="w-14 h-14 rounded-xl bg-primary-50 text-primary-500 flex items-center justify-center"><BookOpen size={22} /></div>}
                               <div className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
                                 <Play size={18} className="text-white" />

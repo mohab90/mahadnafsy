@@ -8,6 +8,7 @@ import { uploadImage } from '../../lib/uploadImage';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import { waLink } from '../../lib/whatsappLink';
 import type { CommunityEventItem, Therapist } from '../../types';
+import { cdnImg } from '../../../shared/img';
 
 const SITE = 'https://mahadnafsy.com';
 const EVENT_TYPES = ['ندوة', 'ورشة عمل', 'محاضرة', 'لقاء مفتوح', 'مؤتمر', 'دورة قصيرة'];
@@ -133,7 +134,7 @@ export function CommunityEventsAdmin({ events, therapists, addEvent, updateEvent
           {sorted.map(event => (
             <div key={event.id} className="flex gap-3 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
               {event.imageUrl
-                ? <img src={event.imageUrl} alt="" className="h-24 w-32 shrink-0 rounded-xl object-cover" />
+                ? <img src={cdnImg(event.imageUrl, 320)} loading="lazy" decoding="async" alt="" className="h-24 w-32 shrink-0 rounded-xl object-cover" />
                 : <div className="flex h-24 w-32 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-3xl">📅</div>}
               <div className="min-w-0 flex-1 space-y-1">
                 <div className="flex flex-wrap items-center gap-1.5 text-xs">
@@ -201,7 +202,7 @@ export function CommunityEventsAdmin({ events, therapists, addEvent, updateEvent
               <label className={label}>صورة الفعالية</label>
               <div className="flex items-center gap-3">
                 {draft.imageUrl
-                  ? <img src={draft.imageUrl} alt="" className="h-20 w-32 rounded-xl object-cover" />
+                  ? <img src={cdnImg(draft.imageUrl, 320)} loading="lazy" decoding="async" alt="" className="h-20 w-32 rounded-xl object-cover" />
                   : <div className="flex h-20 w-32 items-center justify-center rounded-xl border border-dashed border-gray-300 text-gray-400"><ImagePlus size={22} /></div>}
                 <div className="space-y-1">
                   <input type="file" accept="image/*" onChange={e => { void onImage(e.target.files); e.target.value = ''; }} className="text-xs" />
@@ -226,7 +227,7 @@ export function CommunityEventsAdmin({ events, therapists, addEvent, updateEvent
                     <button key={person.id} type="button"
                       onClick={() => set({ speakerIds: on ? draft.speakerIds.filter(id => id !== person.id) : [...draft.speakerIds, person.id] })}
                       className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold transition ${on ? 'border-teal-600 bg-teal-600 text-white' : 'border-gray-200 bg-white text-gray-700'}`}>
-                      {person.image && <img src={person.image} alt="" className="h-5 w-5 rounded-full object-cover" />}
+                      {person.image && <img src={cdnImg(person.image, 80)} loading="lazy" decoding="async" alt="" className="h-5 w-5 rounded-full object-cover" />}
                       {person.name}
                     </button>
                   );

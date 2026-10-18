@@ -286,9 +286,9 @@ test('the walk follows a screen into its lazy sections, and a registry by name o
   // OverviewTab imports AnalyticsTab from lazyTabs.tsx: that screen, not all eighty.
   assert.ok(overview.includes('admin/pages/dashboard/tabs/AnalyticsTab.tsx'));
   assert.ok(!overview.includes('admin/pages/dashboard/tabs/HRTab.tsx'));
-  // LeadsTab draws its board, follow-ups and modals with lazy(() => import(...)).
+  // LeadsTab draws its cards, follow-ups and modals with lazy(() => import(...)).
   const leads = closure(TAB_ENTRIES.leads);
-  for (const lazySection of ['LeadPipelineBoard.tsx', 'LeadModalsHost.tsx', 'LeadFollowUpsPage.tsx']) {
+  for (const lazySection of ['LeadCardsGrid.tsx', 'LeadModalsHost.tsx', 'LeadFollowUpsPage.tsx']) {
     assert.ok(leads.includes(`admin/pages/dashboard/tabs/leads/${lazySection}`), `the walk skipped ${lazySection}`);
   }
 });

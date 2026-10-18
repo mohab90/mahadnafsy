@@ -790,7 +790,7 @@ test('a missing image renders no src rather than an empty one', () => {
   // src="" makes the browser re-request the current page URL as an image — a
   // whole extra page download for every card without a picture, on the public
   // pages that get the most traffic. React warns about it for that reason.
-  const img = read('client/lib/img.ts');
+  const img = read('shared/img.ts');
   assert.match(img, /string \| undefined/, 'cdnImg must be able to return undefined');
   assert.match(img, /if \(!url\) return undefined;/);
   assert.ok(!/if \(!url\) return '';/.test(img), 'the empty-string return must be gone');

@@ -17,6 +17,7 @@ import CatalogPricingPanel from './courses/CatalogPricingPanel';
 import SeoScorePanel from './courses/SeoScorePanel';
 import type { SeoInput } from '../../../lib/seoScore';
 import LecturesPanel from './courses/LecturesPanel';
+import { cdnImg } from '../../../../shared/img';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type RichField = 'shortDescription' | 'description';
@@ -597,7 +598,7 @@ const saveCourse = async () => {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
                 {(courseDraft.galleryImages || []).map((img, index) => (
                   <div key={`${img}-${index}`} className="relative border border-gray-200 rounded-lg overflow-hidden bg-white">
-                    <img src={img} alt="gallery" className="w-full h-20 object-cover" />
+                    <img src={cdnImg(img, 240)} loading="lazy" decoding="async" alt="gallery" className="w-full h-20 object-cover" />
                     <button
                       type="button"
                       onClick={() => setCourseDraft((prev) => ({ ...prev, galleryImages: (prev.galleryImages || []).filter((_, i) => i !== index) }))}
@@ -624,7 +625,7 @@ const saveCourse = async () => {
                           onClick={() => setCourseDraft((prev) => ({ ...prev, galleryImages: Array.from(new Set([...(prev.galleryImages || []), img])).slice(0, 10) }))}
                           className={`relative border-2 rounded-lg overflow-hidden transition ${alreadyAdded ? 'border-green-400 opacity-60 cursor-default' : 'border-gray-200 hover:border-primary-500 cursor-pointer'}`}
                         >
-                          <img src={img} alt="institute" className="w-full h-14 object-cover" />
+                          <img src={cdnImg(img, 240)} loading="lazy" decoding="async" alt="institute" className="w-full h-14 object-cover" />
                           {alreadyAdded && (
                             <div className="absolute inset-0 bg-green-500/20 flex items-center justify-center">
                               <span className="text-green-700 font-bold text-lg">✓</span>

@@ -51,7 +51,7 @@ test('the tabs: محلي، سعودي، دولي, custom tabs in the same row, o
   assert.doesNotMatch(bar, /فعلي محلي|فعلي دولي/);
   assert.match(bar, /<span ref=\{customTabsSlot\} className="contents" \/>/);
   // «صغر حجم التابات بحيث ميكونش في سكرول»: small, and wrapping rather than scrolling.
-  assert.match(bar, /<div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">/);
+  assert.match(bar, /<div className="flex min-w-0 basis-full flex-wrap items-center gap-1 md:flex-1 md:basis-0">/);
   assert.doesNotMatch(bar, /overflow-x-auto/);
   assert.match(bar, /<button onClick=\{exportCsv\} className=\{menuItem\}>/);
   const filters = read('admin/pages/dashboard/tabs/online-clients-sections/FiltersToolbar.tsx');

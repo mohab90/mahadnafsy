@@ -1,5 +1,6 @@
 import type { ChangeEvent, ComponentType, Dispatch, RefObject, SetStateAction } from 'react';
 import { Upload, X } from 'lucide-react';
+import { cdnImg } from '../../../shared/img';
 
 type BranchEntry = { id: string; label: string; rooms?: { name: string; capacity: number }[] };
 type ContentMap = Record<string, string>;
@@ -119,7 +120,7 @@ export function DashboardInstituteGalleryPanel({
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {instituteGalleryImages.map((imageUrl, index) => (
           <div key={`${imageUrl}-${index}`} className="relative border border-gray-200 rounded-xl overflow-hidden bg-gray-50">
-            <img src={imageUrl} alt={`gallery-${index}`} className="w-full h-28 object-cover" />
+            <img src={cdnImg(imageUrl, 320)} loading="lazy" decoding="async" alt={`gallery-${index}`} className="w-full h-28 object-cover" />
             <button
               type="button"
               onClick={() => saveInstituteGalleryImages(instituteGalleryImages.filter((_, i) => i !== index))}

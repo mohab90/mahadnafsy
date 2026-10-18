@@ -23,6 +23,7 @@ import {
   STATUS_CFG,
   getLeadBranchRaw,
   getRottenLevel,
+  interestLevelLabel,
 } from '../leadUtils';
 import { ScoreBadge } from './LeadScoreAndTimeline';
 import LeadOutcomeButtons from './LeadOutcomeButtons';
@@ -113,6 +114,7 @@ function LeadCardView({ lead, score, onSelect, onStatusChange, onBook, onContact
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-gray-400">
           <span className="tabular-nums" dir="ltr">{lead.phone || '—'}</span>
           {cfg && <span className={`rounded-full px-1.5 py-px text-[10px] font-bold ${cfg.color}`}>{cfg.label}</span>}
+          {interestLevelLabel(lead.interestLevel) && <span className="rounded-full bg-gray-50 px-1.5 py-px text-[10px] font-bold text-gray-500">{interestLevelLabel(lead.interestLevel)}</span>}
           {rotLevel > 0 && <span className={`rounded-full px-1.5 py-px text-[10px] font-bold ${ROTTEN_CFG[rotLevel].badge}`}>{ROTTEN_CFG[rotLevel].label}</span>}
         </div>
       </header>

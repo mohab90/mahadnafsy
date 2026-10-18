@@ -2,6 +2,7 @@ import React from 'react';
 import { ChevronRight, ExternalLink, MessageSquare, Star, ThumbsUp, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { CommunityPostItem } from '../../types';
+import { cdnImg } from '../../../shared/img';
 
 interface StudentCommunityTabProps {
   approvedPosts: CommunityPostItem[];
@@ -36,7 +37,7 @@ export const StudentCommunityTab: React.FC<StudentCommunityTabProps> = ({ approv
             )}
             <div className="flex items-center gap-3 mb-3">
               {post.authorImage ? (
-                <img src={post.authorImage} alt={post.authorName} className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
+                <img src={cdnImg(post.authorImage, 80)} loading="lazy" decoding="async" alt={post.authorName} className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
               ) : (
                 <div className="w-10 h-10 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-sm flex-shrink-0">
                   {post.authorName.charAt(0)}

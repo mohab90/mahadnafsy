@@ -7,6 +7,7 @@ import { useCommunityDrafts } from './hooks/useCommunityDrafts';
 import { confirmDialog } from '../../../shared/ui/confirmDialog';
 import { CommunityEventsAdmin } from './CommunityEventsAdmin';
 import { useSiteData } from '../../context/SiteDataContext';
+import { cdnImg } from '../../../shared/img';
 
 type CommunityAdminTab = 'pending' | 'posts' | 'library' | 'videos' | 'events' | 'comments';
 
@@ -275,7 +276,7 @@ export function DashboardCommunityAdminPanel({
                         <div className="sm:col-span-2 bg-white border border-gray-200 rounded-2xl p-10 text-center text-gray-400"><p className="text-4xl mb-2">🎬</p><p>لا توجد فيديوهات</p></div>
                       ) : communityVideos.map(v => (
                         <div key={v.id} className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm flex items-start gap-3">
-                          {v.thumbnail ? <img src={v.thumbnail} alt="" className="w-16 h-12 rounded-lg object-cover flex-shrink-0" /> : <div className="w-16 h-12 rounded-lg bg-gray-100 flex items-center justify-center text-2xl flex-shrink-0">??</div>}
+                          {v.thumbnail ? <img src={cdnImg(v.thumbnail, 160)} loading="lazy" decoding="async" alt="" className="w-16 h-12 rounded-lg object-cover flex-shrink-0" /> : <div className="w-16 h-12 rounded-lg bg-gray-100 flex items-center justify-center text-2xl flex-shrink-0">??</div>}
                           <div className="flex-1 min-w-0">
                             <p className="font-bold text-gray-800 truncate">{v.title}</p>
                             <p className="text-xs text-gray-500 mt-0.5">{v.duration} · {v.viewsLabel}</p>

@@ -207,9 +207,12 @@ export function useAdminDataRuntime(state: RuntimeState): {
         // leads and orders came here too — 1.47 MB of the 1.56 MB a sign-in
         // pulled — for a landing screen that counts them from the database.
         // They are on-demand lists now (siteLists.ts, ensureSiteLists below).
-        const [staffRes, consultsRes, contentRes] = await Promise.allSettled([
+        //
+        // The consultations (up to 500 rows) are the second wave's now: the first screen waited
+        // for them, and the only things that read them before their own screen asks are the
+        // menu's badges, which fill in a moment later.
+        const [staffRes, contentRes] = await Promise.allSettled([
           withTimeout(permitted('view_staff') ? mysqlAdmin.listAllStaff() : refused('view_staff')),
-          withTimeout(permitted('view_consultations') ? mysqlAdmin.listAllConsultations() : refused('view_consultations')),
           withTimeout(mysqlAdmin.getContent(isAdmin)),
         ]);
         if (disposed) return;
@@ -223,7 +226,6 @@ export function useAdminDataRuntime(state: RuntimeState): {
           staffMembersRef.current = staff;
           setStaffMembers(staff);
         }
-        if (consultsRes.status === 'fulfilled') setConsultations(consultsRes.value as unknown as ConsultationItem[]);
         if (contentRes.status === 'fulfilled' && contentRes.value && Object.keys(contentRes.value).length > 0) {
           const remoteContent = contentRes.value as Record<string, string>;
           setContent(previous => ({ ...previous, ...remoteContent }));
@@ -247,7 +249,8 @@ export function useAdminDataRuntime(state: RuntimeState): {
         // half a megabyte, for every account on every page load. Five screens
         // read them. Those five call ensureLectures() now; see
         // useLecturesChaptersState.
-        const [coursesRes, bundlesRes, therapistsRes, notificationsRes] = await Promise.allSettled([
+        const [consultsRes, coursesRes, bundlesRes, therapistsRes, notificationsRes] = await Promise.allSettled([
+          withTimeout(permitted('view_consultations') ? mysqlAdmin.listAllConsultations() : refused('view_consultations')),
           permitted('view_courses') ? mysqlAdmin.listAllCourses() : refused('view_courses'),
           permitted('view_courses') ? mysqlAdmin.listAllBundles(500) : refused('view_courses'),
           permitted('view_consultations') ? mysqlAdmin.listAllTherapists() : refused('view_consultations'),
@@ -255,6 +258,7 @@ export function useAdminDataRuntime(state: RuntimeState): {
           permitted('manage_notifications') ? mysqlAdmin.getNotificationSettings() : refused('manage_notifications'),
         ]);
         if (disposed) return;
+        if (consultsRes.status === 'fulfilled') setConsultations(consultsRes.value as unknown as ConsultationItem[]);
         if (coursesRes.status === 'fulfilled' && coursesRes.value.length > 0) {
           setCourses((coursesRes.value as unknown as Course[])
             .sort((a, b) => (b.createdAt || b.id || '').localeCompare(a.createdAt || a.id || '')));

@@ -90,7 +90,7 @@ export function FiltersToolbar({
   return (
     <>
       {/* «المتابعات»: who must be called today, one click away, with how many. */}
-      <div className="mb-2 flex flex-wrap items-center gap-2" role="group" aria-label="المتابعات">
+      <div className="no-scrollbar mb-2 flex flex-nowrap items-center gap-2 overflow-x-auto whitespace-nowrap md:flex-wrap md:overflow-visible [&>*]:shrink-0" role="group" aria-label="المتابعات">
         {chips.map(([key, label, count, tone]) => (
           <button key={key} type="button" aria-pressed={collOnlineFollowFilter === key}
             onClick={() => { setCollOnlineFollowFilter(collOnlineFollowFilter === key ? '' : key); setCollOnlinePage(1); }}

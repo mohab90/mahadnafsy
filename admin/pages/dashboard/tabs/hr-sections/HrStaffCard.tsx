@@ -7,6 +7,7 @@ import type { StaffMember } from '../../../../types';
 import { BRANCH_LABELS_AR, normalizeBranch } from '../../../../constants/branches';
 import { ROLE_LABELS, ROLE_COLORS } from './hrLabels';
 import { fmtMoney } from './hrFormat';
+import { cdnImg } from '../../../../../shared/img';
 
 export type StaffBasics = { id: string; branchId?: string | null; baseSalary?: number | null; biometricNo?: string };
 export type StaffMonth = {
@@ -58,7 +59,7 @@ export default function HrStaffCard({ member, basics, month, performance, showPa
     <article className={`flex flex-col overflow-hidden rounded-2xl border bg-white transition-shadow hover:shadow-lg hover:shadow-slate-200/60 ${active ? 'border-gray-200' : 'border-amber-200'}`}>
       <header className="flex items-start gap-3 p-4 pb-3">
         {member.image ? (
-          <img src={member.image} alt="" className={`h-12 w-12 shrink-0 rounded-full object-cover ring-2 ${active ? 'ring-emerald-200' : 'ring-gray-200 grayscale'}`} />
+          <img src={cdnImg(member.image, 120)} loading="lazy" decoding="async" alt="" className={`h-12 w-12 shrink-0 rounded-full object-cover ring-2 ${active ? 'ring-emerald-200' : 'ring-gray-200 grayscale'}`} />
         ) : (
           <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-lg font-black text-white ring-2 ${active ? 'bg-slate-600 ring-emerald-200' : 'bg-gray-400 ring-gray-200'}`}>{member.name.charAt(0)}</span>
         )}

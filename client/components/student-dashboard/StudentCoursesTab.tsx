@@ -7,6 +7,7 @@ const COURSE_TYPE_AR: Record<string, string> = { Recorded: 'مسجل', Live: 'ب
 import type { Course, CourseLectureItem, SubscriberItem } from '../../types';
 import { toDialable } from '../../lib/whatsappLink';
 import { moneySuffix, type CourseBalance, type InstallmentModalState } from '../../lib/itemBalance';
+import { cdnImg } from '../../../shared/img';
 
 type Props = {
   enrolledCourses: Course[];
@@ -81,7 +82,7 @@ export function StudentCoursesTab({
           <div key={course.id} className="group overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition hover:shadow-md">
             <div className="relative h-44 overflow-hidden">
               {course.thumbnail
-                ? <img src={course.thumbnail} alt={course.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+                ? <img src={cdnImg(course.thumbnail, 640)} loading="lazy" decoding="async" alt={course.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
                 : <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary-100 to-primary-50 text-primary-400"><BookOpen size={48} /></div>}
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
               <span className={`absolute right-3 top-3 rounded-full px-2.5 py-1 text-xs font-bold ${isFull ? 'bg-green-500 text-white' : 'bg-yellow-400 text-gray-900'}`}>

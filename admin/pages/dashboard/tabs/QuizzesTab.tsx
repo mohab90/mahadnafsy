@@ -5,6 +5,7 @@ import { SafeHtml } from '../../../../shared/ui/SafeHtml';
 import type { Course, CourseLectureItem, CourseQuiz, QuizAttempt, QuizQuestion } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
+import { cdnImg } from '../../../../shared/img';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -237,7 +238,7 @@ ${lectureList}
             onClick={() => { setSelectedCourseId(String(course.id)); setQuizDraft(null); setQuizEditIdx(null); setQuizMaterial(''); setSelectedLectureId(''); }}
             className={['w-full text-right p-2.5 rounded-xl border transition', isSel ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-gray-100 hover:border-gray-200'].join(' ')}>
             <div className="flex items-center gap-2">
-              {thumbnailSrc ? <img src={thumbnailSrc} alt="" className="w-7 h-7 rounded-lg object-cover flex-shrink-0" /> : <BookOpen size={18} className="text-gray-300 flex-shrink-0" />}
+              {thumbnailSrc ? <img src={cdnImg(thumbnailSrc, 80)} loading="lazy" decoding="async" alt="" className="w-7 h-7 rounded-lg object-cover flex-shrink-0" /> : <BookOpen size={18} className="text-gray-300 flex-shrink-0" />}
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-gray-800 text-xs leading-snug line-clamp-1">{course.title}</p>
                 <div className="flex gap-1 mt-0.5">

@@ -15,6 +15,7 @@ import { uploadImage } from '../../../../lib/uploadImage';
 import type { SeoInput } from '../../../../lib/seoScore';
 import CatalogPricingPanel from './CatalogPricingPanel';
 import SeoScorePanel from './SeoScorePanel';
+import { cdnImg } from '../../../../../shared/img';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -191,7 +192,7 @@ export default function BundlesPanel({ notify }: { notify: NotifyFn }) {
           <input className="border border-gray-300 rounded-xl px-4 py-2.5 md:col-span-1" placeholder="رابط فيديو تعريفي (YouTube embed)" value={bundleVideoUrl} onChange={(e) => setBundleVideoUrl(e.target.value)} />
           <div className="md:col-span-2 flex flex-wrap items-center gap-3 border border-gray-200 rounded-xl bg-white p-3">
             {bundleThumbnail
-              ? <img src={bundleThumbnail} alt="" className="w-24 h-16 object-cover rounded-lg border border-gray-200" />
+              ? <img src={cdnImg(bundleThumbnail, 240)} loading="lazy" decoding="async" alt="" className="w-24 h-16 object-cover rounded-lg border border-gray-200" />
               : <div className="w-24 h-16 rounded-lg bg-gray-100 grid place-items-center text-[11px] text-gray-400">بدون غلاف</div>}
             <div className="flex-1 min-w-0 space-y-1.5">
               <p className="text-xs font-bold text-gray-600">صورة غلاف المسار</p>

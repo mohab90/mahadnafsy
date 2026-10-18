@@ -118,9 +118,10 @@ export function ViewTabsBar({
   return (
     <div className="mb-3 border border-gray-200 rounded-2xl bg-gray-50 p-2">
       {/* Small enough to sit on one line without scrolling; on a narrow
-          screen they wrap rather than slide out of sight. */}
-      <div className="flex items-start gap-2">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+          screen they wrap rather than slide out of sight. On a phone the buttons go under them: beside
+          them the tabs were squeezed into a column one tab wide. */}
+      <div className="flex flex-wrap items-start gap-2 md:flex-nowrap">
+        <div className="flex min-w-0 basis-full flex-wrap items-center gap-1 md:flex-1 md:basis-0">
           {([
             // Everyone not finished, paused or refunded — what it always showed.
             { key: 'active'     as const, label: 'النشطين',       color: 'blue'   },
