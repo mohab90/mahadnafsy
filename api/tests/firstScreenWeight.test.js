@@ -71,3 +71,41 @@ test('the inline-picture tool writes nothing unless told to, and keeps what it r
   assert.ok(tool.indexOf('inline-images-backup-') < tool.indexOf('storeMediaImage({'), 'the old values are saved before the first store');
   assert.ok(tool.includes('WHERE id = ? AND \\`${f.column}\\` = ?'), 'a row edited meanwhile is left alone');
 });
+
+test('the panel carries its own font: nothing in front of the first paint waits for Google', () => {
+  const html = read('admin/index.html');
+  assert.ok(!/fonts\.googleapis|fonts\.gstatic/.test(html), 'no stylesheet or preconnect to another company before the panel paints');
+  const css = read('admin/index.css');
+  for (const weight of [400, 500, 700, 800]) for (const subset of ['arabic', 'latin']) {
+    assert.ok(css.includes(`url('./assets/fonts/tajawal-${weight}-${subset}.woff2')`), `${weight} ${subset} is declared`);
+    assert.ok(fs.existsSync(path.join(__dirname, '..', '..', 'admin', 'assets', 'fonts', `tajawal-${weight}-${subset}.woff2`)), `${weight} ${subset} is shipped`);
+  }
+});
+
+test('on a phone a row action, an interview card control and a filter pill are finger-sized', () => {
+  const css = read('admin/index.css');
+  assert.match(css, /table\.rt-stack td button, table\.rt-stack td a\[href\] \{ min-width: 36px; min-height: 36px;/);
+  assert.match(css, /\[data-touch\] button, \[data-touch\] a\[href\], \[data-touch\] select \{ min-height: 36px; \}/);
+  for (const card of ['interviews-sections/InterviewCard.tsx', 'join-us/ApplicationCard.tsx', 'hr-sections/HrStaffCard.tsx'])
+    assert.ok(read(`admin/pages/dashboard/tabs/${card}`).includes('data-touch'), card);
+  for (const bar of ['join-us/ApplicationsBoard.tsx', 'interviews-sections/InterviewFilters.tsx'])
+    assert.ok(read(`admin/pages/dashboard/tabs/${bar}`).includes('inline-flex min-h-[32px] shrink-0 items-center rounded-full'), bar);
+});
+
+test('the client database is a stack of small cards on a phone and the same table elsewhere', () => {
+  const tab = read('admin/pages/dashboard/tabs/ClientDbTab.tsx');
+  assert.ok(tab.includes('const isMobile = useIsMobile();'));
+  assert.ok(tab.includes('{isMobile ? ('));
+  assert.ok(tab.includes('<ClientDbCard key={rowKey}'));
+  assert.ok(tab.includes('<table className="w-full text-sm" dir="rtl">'), 'the table is still there for a desk');
+  const card = read('admin/pages/dashboard/tabs/client-db/ClientDbCard.tsx');
+  for (const label of ['اتصال', 'واتس أب', 'فتح ملف العميل', 'حجز / دفعة', 'حذف (أرشفة)']) assert.ok(card.includes(`aria-label="${label}"`), label);
+  assert.ok(card.includes('href={`tel:${row.phone}`}'));
+});
+
+test('the inline-picture tool can delete what it finds, after saving it', () => {
+  const tool = read('tools/externalize-inline-images.cjs');
+  assert.ok(tool.includes("process.argv.includes('--clear')"));
+  assert.ok(tool.includes("CLEAR ? { url: '', size: 0 }"));
+  assert.ok(tool.indexOf('inline-images-backup-') < tool.indexOf('const stored = CLEAR'), 'the backup is written before the first change');
+});

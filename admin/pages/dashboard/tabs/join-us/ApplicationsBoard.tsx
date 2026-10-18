@@ -139,12 +139,12 @@ export default function ApplicationsBoard({ group, version, counts, busyId, acti
       <div className="space-y-1.5 rounded-2xl border border-gray-200 bg-white p-2">
         <div className="no-scrollbar flex flex-nowrap items-center gap-1 overflow-x-auto">
           <button onClick={() => setStatus('all')}
-            className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${status === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-600 ring-1 ring-gray-200'}`}>
+            className={`inline-flex min-h-[32px] shrink-0 items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold md:min-h-0 ${status === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-600 ring-1 ring-gray-200'}`}>
             الكل {everything}
           </button>
           {(Object.keys(STATUS) as Status[]).map(key => (
             <button key={key} onClick={() => setStatus(status === key ? 'all' : key)}
-              className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${status === key ? `${STATUS[key].className} ring-2 ring-gray-300` : 'bg-gray-50 text-gray-600 ring-1 ring-gray-200'}`}>
+              className={`inline-flex min-h-[32px] shrink-0 items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold md:min-h-0 ${status === key ? `${STATUS[key].className} ring-2 ring-gray-300` : 'bg-gray-50 text-gray-600 ring-1 ring-gray-200'}`}>
               {STATUS[key].label} {statusCounts[key]}
             </button>
           ))}

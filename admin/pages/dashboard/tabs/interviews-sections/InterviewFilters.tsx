@@ -128,7 +128,7 @@ export const InterviewFilters: React.FC<{
           <button
             key={v.key}
             onClick={() => set({ view: v.key })}
-            className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-bold transition ${
+            className={`inline-flex min-h-[32px] shrink-0 items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold md:min-h-0 transition ${
               value.view === v.key ? v.tone : 'bg-gray-50 text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100'}`}
           >
             {v.label} {v.count}

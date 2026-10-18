@@ -56,7 +56,7 @@ export default function HrStaffCard({ member, basics, month, performance, showPa
   const salary = basics?.baseSalary ?? member.salary ?? null;
 
   return (
-    <article className={`flex flex-col overflow-hidden rounded-2xl border bg-white transition-shadow hover:shadow-lg hover:shadow-slate-200/60 ${active ? 'border-gray-200' : 'border-amber-200'}`}>
+    <article data-touch className={`flex flex-col overflow-hidden rounded-2xl border bg-white transition-shadow hover:shadow-lg hover:shadow-slate-200/60 ${active ? 'border-gray-200' : 'border-amber-200'}`}>
       <header className="flex items-start gap-3 p-4 pb-3">
         {member.image ? (
           <img src={cdnImg(member.image, 120)} loading="lazy" decoding="async" alt="" className={`h-12 w-12 shrink-0 rounded-full object-cover ring-2 ${active ? 'ring-emerald-200' : 'ring-gray-200 grayscale'}`} />

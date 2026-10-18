@@ -8,6 +8,8 @@ import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin, type RegistrationItem } from '../../../lib/mysqlapi';
 import { useBranches } from '../../../hooks/useBranches';
 import { useNavigate } from 'react-router-dom';
+import { useIsMobile } from '../../../hooks/useIsMobile';
+import { ClientDbCard } from './client-db/ClientDbCard';
 import { LoginAccountsPanel } from './client-db/LoginAccountsPanel';
 import { WholeDatabaseSearch } from './client-db/WholeDatabaseSearch';
 import ArchivedClientsTab from './ArchivedClientsTab';
@@ -107,6 +109,38 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
   const effectiveLeads = staffScopedLeads.length > 0 ? staffScopedLeads : leads;
   const branches = useBranches();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
+
+  /** What a row is called and coloured, for the table and the phone's card alike. */
+  const describeRow = (c: ClientRow) => {
+    const isRegistration = c.type === 'registration';
+    const typeInfo = c.clientType ? CLIENT_TYPE_INFO[c.clientType] : null;
+    const typeLabel = isRegistration
+      ? 'تسجيل موقع'
+      : typeInfo
+        ? typeInfo.label
+        : (c.subType ? SUB_TYPE_LABEL[c.subType] : 'عميل محتمل');
+    const typeColor = isRegistration
+      ? 'bg-slate-100 text-slate-700'
+      : typeInfo
+        ? typeInfo.color
+        : (c.subType ? SUB_TYPE_COLOR[c.subType] : 'bg-amber-100 text-amber-700');
+    const entityLabel = isRegistration
+      ? 'لم يُصنَّف بعد'
+      : typeInfo
+        ? typeInfo.entity
+        : (c.type === 'subscriber' ? 'مشترك' : 'عميل محتمل');
+    return { isRegistration, typeLabel, typeColor, entityLabel };
+  };
+  const bookRow = (c: ClientRow) => {
+    // A site registration used to be turned away here with "convert it from the registrations page first",
+    // which meant leaving this screen, finding the same person again, and coming back — for a step the button
+    // can simply take. Converting is also what issues the client code, which is why a self-registered visitor
+    // appeared to have none.
+    if (c.type === 'registration') { void convertThenBook(c); return; }
+    if (onBook) onBook(c.id, c.type);
+    else navigate(`/client/${c.clientCode || c.id}`, { state: { openTab: 'payments' } });
+  };
 
   // Registrations are their own pool server-side (they are neither leads nor
   // subscribers), so they need their own fetch to appear in this combined view.
@@ -624,7 +658,24 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
       )}
 
       {/* Table */}
-      <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+      <div className={isMobile ? '' : 'bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden'}>
+        {isMobile ? (
+          <div className="space-y-2.5">
+            {pageRows.length === 0 && <p className="rounded-2xl border border-dashed border-gray-200 bg-white py-12 text-center text-sm text-gray-400">لا توجد نتائج</p>}
+            {pageRows.map(c => {
+              const rowKey = `${c.type}-${c.id}`;
+              const { isRegistration, typeLabel, typeColor } = describeRow(c);
+              return (
+                <ClientDbCard key={rowKey} row={c} selected={selectedIds.has(rowKey)} onToggle={() => toggleSelect(rowKey)}
+                  typeLabel={typeLabel} typeColor={typeColor} branch={branchLabel(c.branch)} wa={waLink(c.phone)}
+                  isRegistration={isRegistration} canArchive={isAdmin} busy={regBusy === c.id}
+                  onOpen={() => navigate(`/client/${c.clientCode || c.id}`)}
+                  onConvert={() => void convertRegistration(c.id, 'lead', c.name)}
+                  onBook={() => bookRow(c)} onArchive={() => void removeClient(c)} />
+              );
+            })}
+          </div>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm" dir="rtl">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -662,23 +713,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
                 const isSelected = selectedIds.has(rowKey);
                 const wa = waLink(c.phone);
                 const profilePath = `/client/${c.clientCode || c.id}`;
-                const isRegistration = c.type === 'registration';
-                const typeInfo = c.clientType ? CLIENT_TYPE_INFO[c.clientType] : null;
-                const typeLabel = isRegistration
-                  ? 'تسجيل موقع'
-                  : typeInfo
-                    ? typeInfo.label
-                    : (c.subType ? SUB_TYPE_LABEL[c.subType] : 'عميل محتمل');
-                const typeColor = isRegistration
-                  ? 'bg-slate-100 text-slate-700'
-                  : typeInfo
-                    ? typeInfo.color
-                    : (c.subType ? SUB_TYPE_COLOR[c.subType] : 'bg-amber-100 text-amber-700');
-                const entityLabel = isRegistration
-                  ? 'لم يُصنَّف بعد'
-                  : typeInfo
-                    ? typeInfo.entity
-                    : (c.type === 'subscriber' ? 'مشترك' : 'عميل محتمل');
+                const { isRegistration, typeLabel, typeColor, entityLabel } = describeRow(c);
                 return (
                   <tr key={rowKey} className={`transition ${isSelected ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
                     {/* Checkbox */}
@@ -778,18 +813,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
                         )}
                         {/* Booking/payment — all client types */}
                         <button
-                          onClick={() => {
-                            // A site registration used to be turned away here
-                            // with "convert it from the registrations page
-                            // first", which meant leaving this screen, finding
-                            // the same person again, and coming back — for a
-                            // step the button can simply take. Converting is
-                            // also what issues the client code, which is why a
-                            // self-registered visitor appeared to have none.
-                            if (c.type === 'registration') { void convertThenBook(c); return; }
-                            if (onBook) onBook(c.id, c.type);
-                            else navigate(profilePath, { state: { openTab: 'payments' } });
-                          }}
+                          onClick={() => bookRow(c)}
                           className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 transition"
                           title="حجز / دفعة"
                         >
@@ -817,6 +841,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
             </tbody>
           </table>
         </div>
+        )}
 
         {/* Pagination */}
         {totalPages > 1 && (

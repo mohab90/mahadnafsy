@@ -14,6 +14,7 @@
 //
 //   node tools/externalize-inline-images.cjs           # dry run: what would change, and by how much
 //   node tools/externalize-inline-images.cjs --apply
+//   node tools/externalize-inline-images.cjs --apply --clear   # delete them instead of keeping them as files
 //
 // Run it on the VPS, where api/uploads/media is the directory the site serves (MEDIA_IMAGE_DIR if set).
 require('dotenv').config({ path: process.env.ENV_FILE || '/var/www/mahad-api/.env' });
@@ -23,6 +24,9 @@ const mysql = require('mysql2/promise');
 const { storeMediaImage } = require('../api/lib/mediaImages');
 
 const APPLY = process.argv.includes('--apply');
+// --clear keeps nothing: the column is emptied ('' — therapists.image is NOT NULL) and a new picture is
+// uploaded by hand. The old values still go to the backup file first.
+const CLEAR = process.argv.includes('--clear');
 
 // [table, column, kind]. A table or column the database does not have is skipped, not an error.
 const WATCHED = [
@@ -71,11 +75,11 @@ const DATA_URL = /^data:image\/(jpeg|jpg|png|webp|gif);base64,/i;
   let failed = 0;
   for (const f of found) {
     try {
-      const stored = await storeMediaImage({ tenantId: f.tenant_id, dataUrl: f.value, kind: f.kind });
+      const stored = CLEAR ? { url: '', size: 0 } : await storeMediaImage({ tenantId: f.tenant_id, dataUrl: f.value, kind: f.kind });
       const [result] = await db.query(
         `UPDATE \`${f.table}\` SET \`${f.column}\` = ? WHERE id = ? AND \`${f.column}\` = ?`, [stored.url, f.id, f.value]);
       // affectedRows counts matches, not changes, so recount below.
-      console.log(`${f.table}.${f.column} ${f.id}: ${Math.round(f.value.length / 1024)} KB -> ${Math.round(stored.size / 1024)} KB file (${result.affectedRows ? 'updated' : 'edited meanwhile, left alone'})`);
+      console.log(`${f.table}.${f.column} ${f.id}: ${Math.round(f.value.length / 1024)} KB -> ${CLEAR ? "emptied" : Math.round(stored.size / 1024) + " KB file"} (${result.affectedRows ? 'updated' : 'edited meanwhile, left alone'})`);
     } catch (error) {
       failed++;
       console.error(`${f.table}.${f.column} ${f.id}: ${error.message}`);

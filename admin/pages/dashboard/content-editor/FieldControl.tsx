@@ -34,7 +34,7 @@ function KeyChip({ name }: { name: string }) {
           window.setTimeout(() => setCopied(false), 1200);
         }
       }}
-      className="inline-flex max-w-full items-center gap-1 truncate rounded-md px-1 font-mono text-[10px] text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+      className="inline-flex min-h-[32px] max-w-full items-center gap-1 truncate rounded-md px-1 font-mono text-[10px] md:min-h-0 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
     >
       {copied ? <Check size={10} className="flex-none text-emerald-500" /> : <Copy size={10} className="flex-none" />}
       <span className="truncate">{name}</span>

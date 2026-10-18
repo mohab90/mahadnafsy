@@ -80,7 +80,7 @@ const ApplicationCard: React.FC<{
     || Boolean(app.experienceYears || app.education || app.experiencePlaces || app.message);
 
   return (
-    <article className={`overflow-hidden rounded-2xl border border-gray-200 border-r-[6px] ${KIND[kind].accent} bg-white shadow-sm`} data-kind={kind}>
+    <article className={`overflow-hidden rounded-2xl border border-gray-200 border-r-[6px] ${KIND[kind].accent} bg-white shadow-sm`} data-kind={kind} data-touch>
       {/* 1. Who, as what, where — and where they stand. */}
       <header className="flex flex-wrap items-start justify-between gap-3 px-4 pt-4">
         <div className="min-w-0 flex-1">
