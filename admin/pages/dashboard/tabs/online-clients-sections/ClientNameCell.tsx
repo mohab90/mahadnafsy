@@ -22,11 +22,14 @@ export default function ClientNameCell({ row, clientCode, navigate, onCall }: {
         const displayName = isEnglish ? row.name.trim().split(/\s+/).slice(0,2).join(' ') : row.name;
         return <button onClick={()=>navigate(`/client/${clientCode}`)} className="font-bold text-gray-800 hover:text-primary-700 text-[11px] block truncate max-w-[110px]" dir={isEnglish?'ltr':'rtl'}>{displayName}</button>;
       })()}
-      <a href={`tel:${row.phone}`} onClick={onCall} className="text-xs font-semibold text-blue-600">{row.phone}</a>
+      {/* A client with no number has an empty cell and a small red dash, not a sentence. */}
+      {row.phone
+        ? <a href={`tel:${row.phone}`} onClick={onCall} className="text-xs font-semibold text-blue-600">{row.phone}</a>
+        : <span className="block text-xs font-bold leading-none text-red-400" title="مفيش رقم — ضيفه قبل تسجيل أي دفعة" aria-label="مفيش رقم">—</span>}
       {/* No payment is taken for a client who cannot be reached (the server
-          refuses it), so the number to fix is shown before anyone tries. */}
-      {!waLink(row.phone) && (
-        <span className="block text-[9px] font-bold text-red-600" title="عدّل الرقم قبل تسجيل أي دفعة">⚠ بدون رقم صالح</span>
+          refuses it), so a number that is there but cannot be dialled is shown before anyone tries. */}
+      {row.phone && !waLink(row.phone) && (
+        <span className="block text-[9px] font-bold text-red-600" title="عدّل الرقم قبل تسجيل أي دفعة">⚠ الرقم مش صالح</span>
       )}
       {/* The client is here; their payment was turned down and nothing has been paid since. */}
       {(() => {

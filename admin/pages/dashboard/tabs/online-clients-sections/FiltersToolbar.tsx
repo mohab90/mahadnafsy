@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Eye, Search } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { ChevronDown, Eye, Search } from 'lucide-react';
 import { cairoDateOnly, cairoDaysAgo } from '../../../../../shared/cairoDate';
 import type { Bundle, Course, DaqqiRound, StaffMember } from '../../../../types';
 import { SUB_STATUS_CFG } from '../../dashboardShared';
@@ -53,6 +53,47 @@ interface Props {
   setCollOnlineDateTo: (v: string) => void;
   vc: Record<string, boolean>;
   toggleCol: (col: string) => void;
+  /** The cards / table switch, drawn in the same row as the column control. */
+  viewToggle?: ReactNode;
+}
+
+const COLUMNS: [string, string][] = [
+  ['courses', 'الكورسات'], ['value', 'القيمة'], ['paid', 'المدفوع'], ['remaining', 'المتبقي'],
+  ['installments', 'الأقساط'], ['status', 'الحالة'], ['sales', 'المسئول'],
+  ['contact', 'التواصل والمتابعة'], ['createdAt', 'تاريخ الاشتراك'], ['certificates', 'الشهادات'],
+];
+
+/** «تحكم في الأعمدة» as a menu: it opens over the page instead of pushing the table down. */
+function ColumnsMenu({ vc, toggleCol }: { vc: Record<string, boolean>; toggleCol: (col: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (event: MouseEvent) => { if (box.current && !box.current.contains(event.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+  const hidden = COLUMNS.filter(([col]) => vc[col] === false).length;
+  return (
+    <div ref={box} className="relative">
+      <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)}
+        className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-600 transition hover:bg-gray-50">
+        <Eye size={13} /> الأعمدة
+        {hidden > 0 && <span className="rounded-full bg-amber-100 px-1.5 text-[10px] text-amber-700">{hidden} مخفي</span>}
+        <ChevronDown size={12} className={`text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-30 mt-1 grid w-56 gap-1.5 rounded-xl border border-gray-200 bg-white p-3 shadow-lg">
+          {COLUMNS.map(([col, label]) => (
+            <label key={col} className="flex cursor-pointer select-none items-center gap-2 text-xs">
+              <input type="checkbox" checked={vc[col] !== false} onChange={() => toggleCol(col)} className="accent-teal-500" />
+              {label}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function FiltersToolbar({
@@ -66,7 +107,7 @@ export function FiltersToolbar({
   collOnlineFollowFilter, setCollOnlineFollowFilter, followCounts,
   collOnlineCourseFilter, setCollOnlineCourseFilter, courses, bundles,
   collOnlineDateFrom, setCollOnlineDateFrom, collOnlineDateTo, setCollOnlineDateTo,
-  vc, toggleCol,
+  vc, toggleCol, viewToggle,
 }: Props) {
   const [datePreset, setDatePreset] = useState(collOnlineDateFrom || collOnlineDateTo ? 'custom' : '');
   const pickDate = (preset: string) => {
@@ -89,8 +130,11 @@ export function FiltersToolbar({
   ];
   return (
     <>
-      {/* «المتابعات»: who must be called today, one click away, with how many. */}
-      <div className="no-scrollbar mb-2 flex flex-nowrap items-center gap-2 overflow-x-auto whitespace-nowrap md:flex-wrap md:overflow-visible [&>*]:shrink-0" role="group" aria-label="المتابعات">
+      {/* One filters row, wrapping rather than scrolling sideways: the follow-ups first (who must be called today, one
+          click away, with how many), then the search and the filters. */}
+      {/* On a phone the dropdowns sit two to a line instead of one each. */}
+      <div className="mb-2 flex flex-wrap items-center gap-2 [&_select]:min-w-0 [&_select]:flex-1 [&_select]:basis-[calc(50%-0.25rem)] md:[&_select]:flex-none md:[&_select]:basis-auto">
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="المتابعات">
         {chips.map(([key, label, count, tone]) => (
           <button key={key} type="button" aria-pressed={collOnlineFollowFilter === key}
             onClick={() => { setCollOnlineFollowFilter(collOnlineFollowFilter === key ? '' : key); setCollOnlinePage(1); }}
@@ -98,11 +142,10 @@ export function FiltersToolbar({
             {label} <span className="mr-1 rounded-full bg-white/70 px-1.5 font-extrabold">{count}</span>
           </button>
         ))}
-        {collOnlineFollowFilter && <button type="button" onClick={() => { setCollOnlineFollowFilter(''); setCollOnlinePage(1); }} className="text-xs font-bold text-gray-500 hover:text-gray-700">✕ إلغاء فلتر المتابعات</button>}
-      </div>
-      {/* One line: the filters scroll sideways rather than wrapping into three. */}
-      <div className="flex flex-nowrap gap-2 mb-3 items-center overflow-x-auto whitespace-nowrap pb-1 [&>*]:shrink-0">
-        <div className="relative min-w-0 w-[140px]">
+        {collOnlineFollowFilter && <button type="button" onClick={() => { setCollOnlineFollowFilter(''); setCollOnlinePage(1); }} className="text-xs font-bold text-gray-500 hover:text-gray-700">✕ إلغاء</button>}
+        </div>
+        <span className="hidden h-5 w-px bg-gray-200 md:block" aria-hidden="true" />
+        <div className="relative w-full min-w-0 md:w-[140px]">
           <Search size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input value={collOnlineSearch} onChange={e=>{setCollOnlineSearch(e.target.value);setCollOnlinePage(1);}}
             placeholder="بحث اسم / هاتف..."
@@ -199,24 +242,11 @@ export function FiltersToolbar({
         {/* Export lives in ⚙️ الإعدادات now, on both halves of the screen. */}
       </div>
 
-      {/* Column visibility toggles */}
-      <details className="mb-3 group">
-        <summary className="cursor-pointer text-xs text-gray-500 flex items-center gap-1 select-none w-fit">
-          <Eye size={12} />تحكم في الأعمدة <span className="text-gray-300 group-open:rotate-180 inline-block transition-transform">▼</span>
-        </summary>
-        <div className="flex flex-wrap gap-2 mt-2 pr-1">
-          {([
-            ['courses','الكورسات'],['value','القيمة'],['paid','المدفوع'],['remaining','المتبقي'],
-            ['installments','الأقساط'],['status','الحالة'],['sales','المسئول'],
-            ['contact','التواصل والمتابعة'],['createdAt','تاريخ الاشتراك'],['certificates','الشهادات'],
-          ] as [string,string][]).map(([col,label]) => (
-            <label key={col} className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
-              <input type="checkbox" checked={vc[col]!==false} onChange={()=>toggleCol(col)} className="accent-teal-500" />
-              {label}
-            </label>
-          ))}
-        </div>
-      </details>
+      {/* Everything else on one row: how the list is drawn (cards or table) beside which columns it shows. */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        {viewToggle}
+        <ColumnsMenu vc={vc} toggleCol={toggleCol} />
+      </div>
     </>
   );
 }

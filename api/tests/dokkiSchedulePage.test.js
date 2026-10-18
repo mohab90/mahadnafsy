@@ -85,8 +85,8 @@ test('a client with no number of their own is seated like any other', () => {
   assert.ok(route.includes("SELECT ?,s.id,?,s.name,COALESCE(NULLIF(s.phone,''), NULLIF(s.whatsapp,''), ''),?,"));
   assert.doesNotMatch(route, /SELECT \?,s\.id,\?,s\.name,s\.phone,\?,/);
   const row = read('admin/pages/dashboard/tabs/daqqi/DaqqiRoundRow.tsx');
-  // The number sits under the name; a client with none says so, and has no WhatsApp to press.
-  assert.match(row, /: <span className="text-\[11px\] text-gray-400">من غير رقم<\/span>/);
+  // The number sits under the name; a client with none gets a small red dash, not a sentence, and has no WhatsApp to press.
+  assert.match(row, /: <span className="text-\[11px\] font-bold leading-none text-red-400" title="العميل من غير رقم" aria-label="من غير رقم">—<\/span>/);
   assert.match(row, /const waHref = waLink\(a\.phone\);/);
   assert.match(row, /\{waHref \? \(\s*<a title="واتساب" href=\{waHref\}/);
   assert.match(row, /<span title="العميل من غير رقم"/);
@@ -102,7 +102,8 @@ test('the save seats exactly whom the dialog offered, and says so', () => {
 test('the table is eleven columns at the page\'s width, not thirteen over 1,050px', () => {
   const page = read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx');
   const table = page.slice(page.indexOf('<table className="w-full table-fixed'), page.indexOf('</thead>', page.indexOf('<table className="w-full table-fixed')));
-  assert.match(table, /^<table className="w-full table-fixed text-sm min-w-\[920px\] lg:min-w-0">/);
+  // The last column holds the round's icons and the week's two answers on ONE line, so it is the widest.
+  assert.match(table, /^<table className="w-full table-fixed text-sm min-w-\[1100px\] xl:min-w-0">/);
   assert.doesNotMatch(page, /min-w-\[1050px\]/);
   const shares = [...table.matchAll(/<col className="w-\[(\d+)%\]" \/>/g)].map(match => Number(match[1]));
   // Eleven since the hall got a column of its own («خلي عمود القاعه عمود لوحده»).

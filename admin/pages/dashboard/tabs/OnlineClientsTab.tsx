@@ -727,6 +727,16 @@ export default function OnlineClientsTab({
                     setCollOnlineDateTo={setCollOnlineDateTo}
                     vc={vc}
                     toggleCol={toggleCol}
+                    viewToggle={(
+                      <div className="flex items-center gap-0.5 rounded-xl bg-gray-100 p-0.5" role="group" aria-label="طريقة العرض">
+                        {([['cards', 'بطاقات', LayoutGrid], ['table', 'جدول', Table2]] as const).map(([key, label, Icon]) => (
+                          <button key={key} type="button" aria-pressed={layout === key} onClick={() => setLayout(key)}
+                            className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold transition ${layout === key ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-200'}`}>
+                            <Icon size={13} /> {label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   />
                   {/* Bulk action bar + confirm dialog */}
                   <BulkActionBar
@@ -828,14 +838,6 @@ export default function OnlineClientsTab({
                     notify={notify}
                     setSalesOwnSubscribers={setSalesOwnSubscribers}
                   />
-                  <div className="mb-2 flex items-center justify-end gap-1" role="group" aria-label="طريقة العرض">
-                    {([['cards', 'بطاقات', LayoutGrid], ['table', 'جدول', Table2]] as const).map(([key, label, Icon]) => (
-                      <button key={key} type="button" aria-pressed={layout === key} onClick={() => setLayout(key)}
-                        className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold transition ${layout === key ? 'bg-slate-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                        <Icon size={13} /> {label}
-                      </button>
-                    ))}
-                  </div>
                   {paged && !serverData ? (
                     <p className="py-10 text-center text-sm text-gray-500" role="status">
                       {serverPage.failed ? <>تعذر تحميل العملاء. <button type="button" onClick={() => { void serverPage.reload(); }} className="font-bold text-teal-700 underline">إعادة المحاولة</button></> : 'جاري تحميل العملاء…'}

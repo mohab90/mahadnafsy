@@ -56,7 +56,9 @@ test('the tabs: محلي، سعودي، دولي, custom tabs in the same row, o
   assert.match(bar, /<button onClick=\{exportCsv\} className=\{menuItem\}>/);
   const filters = read('admin/pages/dashboard/tabs/online-clients-sections/FiltersToolbar.tsx');
   assert.doesNotMatch(filters, /downloadCsv/);
-  assert.match(filters, /flex-nowrap/);
+  // «خلي الفلاتر بدون سكرول عرضي»: the filters wrap rather than scroll.
+  assert.match(filters, /flex flex-wrap items-center gap-2/);
+  assert.doesNotMatch(filters, /overflow-x-auto/);
   for (const label of ['النهارده', 'أمس', 'آخر 7 أيام', 'آخر 15 يوم', 'آخر 30 يوم', 'من — إلى']) assert.ok(filters.includes(label), label);
   const custom = read('admin/pages/dashboard/tabs/SectionCustomTabs.tsx');
   assert.match(custom, /\{stripSlot && createPortal\(buttons, stripSlot\)\}/);

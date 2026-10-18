@@ -52,8 +52,9 @@ export function statusOfDate(date: string | null, today = cairoDateOnly()): Foll
   if (!date) return 'none';
   if (date < today) return 'overdue';
   if (date === today) return 'today';
-  if (date === cairoDaysAhead(1)) return 'tomorrow';
-  if (date <= cairoDaysAhead(7)) return 'week';
+  // Counted from the day it is asked about, not from the clock: the same answer for the same `today`.
+  if (date === cairoDaysAhead(1, today)) return 'tomorrow';
+  if (date <= cairoDaysAhead(7, today)) return 'week';
   return 'later';
 }
 

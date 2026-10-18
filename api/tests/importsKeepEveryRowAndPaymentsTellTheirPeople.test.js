@@ -158,7 +158,7 @@ test('the lead file, the sheet and the Dokki file keep every row that has anythi
   // The screens let a row without a usable number through, and say what is missing.
   const panel = read('admin/pages/dashboard/tabs/online/OldDataImportPanel.tsx');
   assert.match(panel, /const usable = \(row: SheetClientRow\) => Boolean\(row\._name \|\| row\._phone \|\| row\._email\);/);
-  assert.match(panel, /⚠ بدون رقم صالح/);
+  assert.match(panel, /مفيش رقم صالح — العميل هيتعمل والمشكلة هتتكتب في ملاحظاته/);
 });
 
 test('a sheet row with no number and no email is a client, once', async () => {

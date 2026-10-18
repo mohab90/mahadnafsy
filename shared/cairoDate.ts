@@ -176,6 +176,20 @@ function cairoParts(date: Date) {
   return { date: wall.slice(0, 10), time: wall.slice(11, 16) };
 }
 
+/**
+ * A value that names a day, not a moment: «2026-10-18», or midnight UTC exactly.
+ *
+ * A payment's date is a DATE kept in a DATETIME (`payments.date` is 2026-10-18 00:00:00), and a screen that formatted
+ * it as an instant printed «03:00 ص» — Cairo's clock at UTC midnight — as if the money had come in at three in the
+ * morning (the payments page, 18 Oct 2026). A stamp for people drops the time of such a value.
+ */
+export function isDateOnly(value?: Date | string | number | null): boolean {
+  if (value === undefined || value === null || value === '') return false;
+  if (typeof value === 'string' && /^d{4}-d{2}-d{2}$/.test(value.trim())) return true;
+  const instant = toInstant(value);
+  return !Number.isNaN(instant.getTime()) && instant.getTime() % (24 * 60 * 60 * 1000) === 0;
+}
+
 /** A stored instant on the institute's clock, `YYYY-MM-DD HH:MM`. Blank or unreadable → ''. */
 export function cairoDateTime(value?: Date | string | number | null): string {
   if (value === undefined || value === null || value === '') return '';
@@ -183,6 +197,26 @@ export function cairoDateTime(value?: Date | string | number | null): string {
   if (Number.isNaN(instant.getTime())) return typeof value === 'string' ? value : '';
   const { date, time } = cairoParts(instant);
   return `${date} ${time}`;
+}
+
+/** The day as people write it, `18/10/2026`. Blank or unreadable → ''. */
+export function cairoDateLabel(value?: Date | string | number | null): string {
+  const day = value === undefined || value === null || value === '' ? '' : cairoDateOnly(isDateOnly(value) && typeof value === 'string' ? `${value.trim().slice(0, 10)}T12:00:00Z` : toInstant(value));
+  if (!day) return '';
+  const [year, month, date] = day.split('-');
+  return `${date}/${month}/${year}`;
+}
+
+/**
+ * A moment for a table or a card: `18/10/2026 · 8:07 م`, Cairo's clock, Latin digits, no direction marks (the Intl
+ * form printed «18‏/10‏/2026، 03:00 ص»). A value that names only a day shows the day alone.
+ */
+export function cairoStamp(value?: Date | string | number | null): string {
+  const label = cairoDateLabel(value);
+  if (!label || isDateOnly(value)) return label;
+  const [hour24, minute] = cairoParts(toInstant(value as Date | string | number)).time.split(':').map(Number);
+  const hour = hour24 % 12 || 12;
+  return `${label} · ${hour}:${String(minute).padStart(2, '0')} ${hour24 < 12 ? 'ص' : 'م'}`;
 }
 
 /** The value for an `<input type="datetime-local">`: Cairo wall clock, `YYYY-MM-DDTHH:MM`. */

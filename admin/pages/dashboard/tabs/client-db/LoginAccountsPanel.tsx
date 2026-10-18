@@ -187,7 +187,7 @@ export function LoginAccountsPanel({ onOpenProfile, onBookAndPay, busyId, notify
             <input type="text" placeholder="بحث بالاسم أو الرقم أو الكود أو البريد…" value={q} onChange={e => setQ(e.target.value)}
               className="w-full border border-gray-200 rounded-lg pr-8 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300" />
           </div>
-          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs flex-wrap">
+          <div className="flex shrink-0 flex-nowrap whitespace-nowrap rounded-lg border border-gray-200 overflow-hidden text-xs">
             {FILTERS.map(([key, label]) => (
               <button key={key || 'all'} onClick={() => setFilter(key)}
                 className={`px-3 py-1.5 font-bold transition ${filter === key ? 'bg-emerald-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>{label}</button>
@@ -242,7 +242,7 @@ export function LoginAccountsPanel({ onOpenProfile, onBookAndPay, busyId, notify
                         </td>
                         <td className="py-2.5 px-3">
                           {r.phone ? <span className="font-mono text-xs" dir="ltr">{r.phone}</span>
-                            : <span className="text-xs text-red-600 font-bold flex items-center gap-1"><PhoneOff size={12} /> لا يوجد</span>}
+                            : <span className="text-xs font-bold leading-none text-red-400" title="مفيش رقم" aria-label="مفيش رقم">—</span>}
                         </td>
                         <td className="py-2.5 px-3 text-xs text-gray-700">
                           <span className="font-bold">{num(r.login_count ?? 0)}</span>
@@ -258,7 +258,7 @@ export function LoginAccountsPanel({ onOpenProfile, onBookAndPay, busyId, notify
                         </td>
                         <td className="py-2.5 px-3 text-xs text-gray-500 max-w-[240px]">{state.reason}</td>
                         <td className="py-2.5 px-3">
-                          <div className="flex flex-wrap items-center gap-1.5">
+                          <div className="flex flex-nowrap items-center gap-1.5 whitespace-nowrap">
                             {onOpenProfile && (
                               <button type="button" onClick={() => onOpenProfile({ id: r.id, subscriberId: r.subscriber_id, clientCode: r.client_code, name: r.name })}
                                 className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-bold text-gray-700 transition hover:bg-gray-50"

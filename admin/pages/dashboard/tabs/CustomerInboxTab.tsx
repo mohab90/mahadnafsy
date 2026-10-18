@@ -11,7 +11,7 @@ import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
 import { promptDialog } from '../../../../shared/ui/promptDialog';
-import { CAIRO_TIME_ZONE } from '../../../../shared/cairoDate';
+import { cairoStamp } from '../../../../shared/cairoDate';
 import { TicketContactButtons } from './TicketContact';
 import { TicketEscalateDialog } from './TicketEscalateDialog';
 
@@ -90,9 +90,7 @@ function mapStatus(raw?: string): InboxStatus {
 
 function fmtDate(value?: string) {
   if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value).slice(0, 16);
-  return date.toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'short', timeStyle: 'short', timeZone: CAIRO_TIME_ZONE });
+  return cairoStamp(value) || String(value).slice(0, 16);
 }
 
 const ageHours = (item: InboxItem) =>

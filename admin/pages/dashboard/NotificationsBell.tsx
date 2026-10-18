@@ -8,7 +8,7 @@ import {
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import { devicePushState, enableDevicePush, type DevicePushState } from '../../lib/devicePush';
 import type { TabKey } from './navigation';
-import { CAIRO_TIME_ZONE, cairoDateOnly, cairoDaysAgo, cairoDay } from '../../../shared/cairoDate';
+import { CAIRO_TIME_ZONE, cairoDateOnly, cairoDaysAgo, cairoDay, cairoStamp } from '../../../shared/cairoDate';
 
 export type NotifRow = {
   id: string;
@@ -99,7 +99,7 @@ function timeAgo(iso: string): string {
   if (days < 30) return `منذ ${days} يوم`;
   return new Date(iso).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE });
 }
-const exactTime = (iso: string) => new Date(iso).toLocaleString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE, dateStyle: 'medium', timeStyle: 'short' });
+const exactTime = (iso: string) => cairoStamp(iso);
 
 const dayLabel = (iso: string): string => {
   const day = cairoDay(iso);

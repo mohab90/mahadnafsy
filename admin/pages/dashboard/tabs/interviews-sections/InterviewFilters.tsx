@@ -123,7 +123,7 @@ export const InterviewFilters: React.FC<{
       </div>
 
       {/* Everything that narrows the list, in ONE row (it scrolls sideways on a phone). */}
-      <div className="no-scrollbar flex flex-nowrap items-center gap-1.5 overflow-x-auto">
+      <div className="no-scrollbar flex flex-nowrap items-center gap-1.5 overflow-x-auto md:flex-wrap md:overflow-visible">
         {views.map(v => (
           <button
             key={v.key}

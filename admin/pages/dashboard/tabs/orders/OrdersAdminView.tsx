@@ -1,5 +1,5 @@
 // The full orders and payments desk: review, accepted, failed, transfers.
-import { cairoDateOnly, cairoMonthOnly, cairoDay, cairoDaysAgo, cairoWeekStart } from '../../../../../shared/cairoDate';
+import { cairoDateOnly, cairoMonthOnly, cairoDay, cairoDaysAgo, cairoStamp, cairoWeekStart } from '../../../../../shared/cairoDate';
 import { CheckCircle, Clock, CreditCard, Download, Pencil, Plus, Search, TrendingUp, Trash2, Wallet, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { PaymentCorrectionModal } from '../../../../components/PaymentCorrectionModal';
@@ -322,11 +322,8 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                             const isPending  = row.status === 'pending';
                             const isFailed   = row.status === 'failed' || row.status === 'refunded';
                             const rowBg = isPending ? 'bg-amber-50/40 hover:bg-amber-50/70' : isFailed ? 'bg-red-50/30 hover:bg-red-50/60' : 'hover:bg-emerald-50/20';
-                            const fmtDate = (() => {
-                              if (!row.createdAt) return '—';
-                              const d = new Date(row.createdAt.replace(' ', 'T'));
-                              return isNaN(d.getTime()) ? row.createdAt : d.toLocaleString('ar-EG-u-nu-latn', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: CAIRO_TIME_ZONE });
-                            })();
+                            // A payment's date names a day (UTC midnight) and shows as the day alone; a recorded moment shows its time.
+                            const fmtDate = cairoStamp(row.createdAt) || row.createdAt || '—';
                             const productTitle = (() => {
                               const t = (row.itemTitle || '').toLowerCase().trim();
                               if (t === 'course') return 'كورس'; if (t === 'certificate') return 'شهادة';

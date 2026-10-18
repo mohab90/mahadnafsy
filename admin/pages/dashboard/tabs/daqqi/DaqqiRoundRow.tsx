@@ -210,7 +210,7 @@ export function DaqqiRoundRow({
                           {/* Small icon buttons on one line; the week's two answers sit in the
                               same line as tiny ✓ / ✗ instead of a second full-width row. */}
                           <td className="px-1 py-2" onClick={e => e.stopPropagation()}>
-                            <div className="flex flex-wrap items-center justify-center gap-0.5">
+                            <div className="flex flex-nowrap items-center justify-center gap-0.5 whitespace-nowrap">
                               <button onClick={() => { setDaqqiAddClientsRoundId(round.id); setDaqqiAddClientsSel(new Set()); }} className="h-6 w-6 shrink-0 rounded bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition" title="+ عملاء"><UserPlus size={11} /></button>
                               <button onClick={() => { setDaqqiEditRoundId(round.id); setDaqqiEditDraft({ courseId: round.courseId, instructorId: round.instructorId, receptionId: round.receptionId, roomId: round.room || round.roomName || round.roomId || '', dayOfWeek: round.dayOfWeek, startDate: round.startDate, timeSlot: round.timeSlot }); }} className="h-6 w-6 shrink-0 rounded bg-gray-50 text-gray-500 hover:bg-amber-50 hover:text-amber-600 flex items-center justify-center transition" title="تعديل"><Pencil size={11} /></button>
                               <button onClick={() => setDaqqiPostponeModal({ roundId: round.id, newDate: round.startDate })} className="h-6 w-6 shrink-0 rounded bg-gray-50 text-gray-500 hover:bg-orange-50 hover:text-orange-600 flex items-center justify-center transition" title="تأجيل موعد"><CalendarDays size={11} /></button>
@@ -294,7 +294,7 @@ export function DaqqiRoundRow({
                                               <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
                                                 {a.phone
                                                   ? <a href={`tel:${a.phone}`} dir="ltr" className="text-[11px] text-blue-600 hover:underline">{a.phone}</a>
-                                                  : <span className="text-[11px] text-gray-400">من غير رقم</span>}
+                                                  : <span className="text-[11px] font-bold leading-none text-red-400" title="العميل من غير رقم" aria-label="من غير رقم">—</span>}
                                                 {attSub?.clientCode && (
                                                   <button onClick={e => { e.stopPropagation(); navigate(`/client/${attSub.clientCode}`); }} className="text-[10px] font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded hover:bg-indigo-100 inline-block">#{attSub.clientCode}</button>
                                                 )}

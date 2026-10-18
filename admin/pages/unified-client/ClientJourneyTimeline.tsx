@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Activity, BookOpen, CreditCard, FileBadge, Headphones, MessageCircle, PhoneCall, ShieldCheck, ShoppingBag, Star, UserPlus } from 'lucide-react';
 import type { CustomerTimelineEvent } from '../../types';
 import { RATING_QUESTIONS, ratingAverage, satisfactionOf, type RatingScores } from '../../lib/clientRatings';
-import { CAIRO_TIME_ZONE } from '../../../shared/cairoDate';
+import { CAIRO_TIME_ZONE, isDateOnly } from '../../../shared/cairoDate';
 
 /**
  * «رحلة العميل» (8 Oct 2026: «محتاجه اشبه بالتايم لاين ويبقي فيه تفاصيل اكتر»):
@@ -68,7 +68,8 @@ const dayTitle = (key: string) => {
   return new Intl.DateTimeFormat('ar-EG-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
     .format(new Date(`${key}T00:00:00Z`));
 };
-const timeOf = (at: string) => new Date(at).toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit', timeZone: CAIRO_TIME_ZONE });
+// An event that names a day only (a payment's date) has no time to show.
+const timeOf = (at: string) => isDateOnly(at) ? '' : new Date(at).toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit', timeZone: CAIRO_TIME_ZONE });
 
 /** The headline and the line under it, from the event and its detail. */
 function describe(event: CustomerTimelineEvent): { head: string; sub: string[] } {

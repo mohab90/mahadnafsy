@@ -12,7 +12,7 @@ const { logPaymentAudit } = require('../lib/finance');
 const { hasReason, notifyPaymentRejected, reasonOf, REASON_REQUIRED } = require('../lib/paymentRejection');
 const { notifyPaymentOutcome } = require('../lib/paymentNotices');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
-const { safeIsoString, cairoToday } = require('../lib/dates');
+const { safeIsoString, cairoToday, dateOnlyInTimeZone } = require('../lib/dates');
 const { resolvePaymentExecutors } = require('../lib/paymentExecutor');
 const { assertWritable } = require('../lib/periodLock');
 const { confirmOrderPayment } = require('../lib/orderPaymentConfirmation');
@@ -72,7 +72,7 @@ router.get('/api/admin/orders', requireAuth, requireAdminOrStaff, requirePermiss
     [paymentWhere, paymentParams] = appendScope(paymentWhere, paymentParams, scope, 'p');
     const [payRows] = await pool.query(
       `SELECT p.id, p.subscriber_id, p.course_id, p.bundle_id, p.amount, p.currency,
-               p.payment_type, p.payment_method, p.transaction_id, p.is_installment, p.date, p.note,
+               p.payment_type, p.payment_method, p.transaction_id, p.is_installment, p.date, p.created_at, p.note,
                p.staff_id, p.staff_name, p.status, p.branch_id,
                s.name AS customer_name, s.email AS customer_email, s.phone AS customer_phone
        FROM payments p
@@ -112,7 +112,15 @@ router.get('/api/admin/orders', requireAuth, requireAdminOrStaff, requirePermiss
         branch_id: p.branch_id || null,
         notes: p.note || null,
         is_installment: Boolean(p.is_installment),
-        created_at: safeIsoString(p.date) || new Date().toISOString(),
+        // A payment's date names a day (midnight UTC), which a screen printed as «03:00 ص». Recorded on that same Cairo
+        // day, the moment it was recorded is the honest time to show; a backdated one stays the day alone.
+        created_at: (() => {
+          const day = safeIsoString(p.date);
+          const recorded = safeIsoString(p.created_at);
+          // The date a payment carries (midnight, or the noon a correction writes) is sent as the day alone.
+          const dayOnly = /T(00|12):00:00\.000Z$/.test(day) ? day.slice(0, 10) : day;
+          return (recorded && day && dateOnlyInTimeZone(new Date(recorded)) === day.slice(0, 10) ? recorded : dayOnly) || new Date().toISOString();
+        })(),
         linked_transfer_id: null,
         source: 'crm',
       }));

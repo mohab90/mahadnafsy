@@ -149,7 +149,7 @@ export default function ApplicationsBoard({ group, version, counts, busyId, acti
             </button>
           ))}
         </div>
-        <div className="no-scrollbar flex flex-nowrap items-center gap-1.5 overflow-x-auto">
+        <div className="no-scrollbar flex flex-nowrap items-center gap-1.5 overflow-x-auto md:flex-wrap md:overflow-visible">
           <span className="relative min-w-[150px] flex-1">
             <Search size={12} className="absolute right-2 top-2 text-gray-400" />
             <input value={search} onChange={event => setSearch(event.target.value)} aria-label="بحث"

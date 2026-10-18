@@ -678,12 +678,13 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
               ten columns at fixed shares of the page in place of thirteen
               spread over 1,050px — day, slot, date and hall share a cell, as
               do the lecturer and the reception. «المحصّل» and «المتبقي» stay
-              apart, as asked on 30 Sep. Only a screen under 1,024px, too narrow for nine, still scrolls. */}
-          <div className="overflow-x-auto rounded-xl border border-gray-200 lg:overflow-x-visible">
-            <table className="w-full table-fixed text-sm min-w-[920px] lg:min-w-0">
+              apart, as asked on 30 Sep. Only a screen under 1,280px, too narrow for eleven, still scrolls. */}
+          <div className="overflow-x-auto rounded-xl border border-gray-200 xl:overflow-x-visible">
+            <table className="w-full table-fixed text-sm min-w-[1100px] xl:min-w-0">
               <colgroup>
-                <col className="w-[5%]" /><col className="w-[15%]" /><col className="w-[12%]" /><col className="w-[5%]" /><col className="w-[11%]" /><col className="w-[8%]" />
-                <col className="w-[6%]" /><col className="w-[9%]" /><col className="w-[8%]" /><col className="w-[7%]" /><col className="w-[14%]" />
+                {/* The last column is the widest: its icons and the week's two answers sit on one line. */}
+                <col className="w-[4%]" /><col className="w-[11%]" /><col className="w-[10%]" /><col className="w-[5%]" /><col className="w-[10%]" /><col className="w-[8%]" />
+                <col className="w-[6%]" /><col className="w-[9%]" /><col className="w-[7%]" /><col className="w-[6%]" /><col className="w-[24%]" />
               </colgroup>
               <thead>
                 <tr className="bg-gray-50 text-gray-700 text-xs">

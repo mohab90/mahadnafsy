@@ -93,7 +93,7 @@ export function SectionedTab({
   return (
     <div className="space-y-4">
       {allowed.length > 1 && (
-        <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-3">
+        <div className="no-scrollbar flex flex-nowrap gap-2 overflow-x-auto border-b border-gray-200 pb-3 [&>*]:shrink-0 [&>*]:whitespace-nowrap">
           {allowed.map(section => {
             const Icon = section.icon;
             const isActive = section.id === active.id;

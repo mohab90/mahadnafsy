@@ -52,9 +52,14 @@ test('the student dashboard draws course pictures resized too', () => {
   ]) assert.ok(read(file).includes('<img src={cdnImg(course.thumbnail, '), file);
 });
 
-test('on a phone the client tabs get the whole row and the follow-up chips are one scrolling row', () => {
+test('on a phone the client tabs get the whole row and the filters wrap, never scroll sideways', () => {
   assert.ok(read('admin/pages/dashboard/tabs/online-clients-sections/ViewTabsBar.tsx').includes('flex flex-wrap items-start gap-2 md:flex-nowrap'));
-  assert.ok(read('admin/pages/dashboard/tabs/online-clients-sections/FiltersToolbar.tsx').includes('flex-nowrap items-center gap-2 overflow-x-auto whitespace-nowrap md:flex-wrap'));
+  const filters = read('admin/pages/dashboard/tabs/online-clients-sections/FiltersToolbar.tsx');
+  // «خلي الفلاتر بدون سكرول عرضي»: the follow-up chips and the filters are one wrapping row.
+  assert.ok(filters.includes('<div className="mb-2 flex flex-wrap items-center gap-2 [&_select]:min-w-0 [&_select]:flex-1 [&_select]:basis-[calc(50%-0.25rem)] md:[&_select]:flex-none md:[&_select]:basis-auto">'));
+  assert.doesNotMatch(filters, /overflow-x-auto/);
+  // The cards / table switch and the columns menu share one row.
+  assert.ok(filters.includes('<div className="mb-3 flex flex-wrap items-center justify-between gap-2">'));
 });
 
 test('the logo is the resized one, from our own address, and a breadcrumb link can be pressed', () => {

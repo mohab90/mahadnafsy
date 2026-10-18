@@ -1,4 +1,4 @@
-import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
+import { cairoStamp } from '../../../../../shared/cairoDate';
 
 /** How one sign-in attempt ended (api/routes/misc/analytics.js attemptState). */
 export type AttemptState = 'ok' | 'failed' | 'pending' | 'done';
@@ -31,12 +31,7 @@ export function deviceLabel(ua: string | null | undefined): string {
 /** A moment in Cairo's own clock; a dash for nothing. */
 export function fmtTime(value: string | null | undefined): string {
   if (!value) return '—';
-  try {
-    return new Date(value).toLocaleString('ar-EG-u-nu-latn', {
-      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
-      timeZone: CAIRO_TIME_ZONE,
-    });
-  } catch { return String(value); }
+  return cairoStamp(value) || String(value);
 }
 
 /** One attempt as the log returns it. */

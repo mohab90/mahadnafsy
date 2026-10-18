@@ -321,7 +321,7 @@ export default function OldDataImportPanel({
                       <td className="py-1.5 px-3 text-gray-500 whitespace-nowrap">{row._date || <span className="text-gray-300">-</span>}</td>
                       <td className="py-1.5 px-3 font-bold text-gray-900">{row._name || <span className="text-amber-700">⚠ بدون اسم</span>}</td>
                       <td className="py-1.5 px-3 font-mono text-gray-600" dir="ltr">
-                        {row._phone || <span className="text-amber-700">⚠ بدون رقم صالح</span>}
+                        {row._phone || <span className="font-bold text-red-400" title="مفيش رقم صالح — العميل هيتعمل والمشكلة هتتكتب في ملاحظاته" aria-label="مفيش رقم صالح">—</span>}
                         {row._otherPhones && <span className="block text-[10px] text-gray-400">{row._otherPhones}</span>}
                       </td>
                       <td className="py-1.5 px-3 text-gray-500 max-w-[140px] truncate">{row._course || <span className="text-gray-300">-</span>}</td>
