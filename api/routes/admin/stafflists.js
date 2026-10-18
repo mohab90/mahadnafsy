@@ -32,6 +32,7 @@ const { requireCollectionLead } = require('../collection-distribution');
 const { BRANCH_ROLES, requestedBranch } = require('../../lib/physicalBranches');
 const { buildView: buildClientsView, dueInstallments, readFilters: readClientFilters } = require('../../lib/staffClientsView');
 const { mapInstallmentPlan } = require('../../lib/installmentMath');
+const { buildOverview } = require('../../lib/staffOverview');
 
 async function loadEnrollmentProjection(tenantId, subscriberIds) {
   if (!subscriberIds.length) return {};
@@ -708,6 +709,7 @@ async function shapeStaffSubscribers(tenantId, rows, { lite = false } = {}) {
       extraCertificateRequests: staffCertificatesBySub[r.id] || [],
       branch: (nb && VALID_BRANCHES.has(nb)) ? nb : rb,
       clientType: r.client_type || null,
+      leadId: r.lead_id || crm.leadId || undefined,
       assignedSalesId:   r.assigned_sales_id || null,
       assignedSalesName: r.assigned_sales_name || null,
       assignedCsId:      r.assigned_cs_id || null,
@@ -727,11 +729,8 @@ async function shapeStaffSubscribers(tenantId, rows, { lite = false } = {}) {
  * The same clients and the same rules the screen applied to its whole downloaded list (lib/staffClientsView.js), so
  * the page, the total, the tab counts and the figures above the table agree with one another as they did there.
  */
-async function staffClientsPage(req, sc) {
+async function loadScopeClients(req, sc) {
   const tenantId = req.tenantId;
-  const filters = readClientFilters(req.query);
-  const limit = parseLimit(req.query.limit, 24, 500);
-  const offset = parseOffset(req.query.offset || 0);
   const [rows] = await pool.query(
     `SELECT s.*,
             COALESCE(ss.name, s.assigned_sales_name) AS assigned_sales_name,
@@ -758,7 +757,15 @@ async function staffClientsPage(req, sc) {
     courses: new Map(catalogueRows.courses.map(row => [row.id, { price: priceOf(row) }])),
     bundles: new Map(catalogueRows.bundles.map(row => [row.id, { price: priceOf(row), courseIds: row.course_ids ? String(row.course_ids).split(',') : [] }])),
   };
+  return { rows, clients, catalogue };
+}
 
+async function staffClientsPage(req, sc) {
+  const tenantId = req.tenantId;
+  const filters = readClientFilters(req.query);
+  const limit = parseLimit(req.query.limit, 24, 500);
+  const offset = parseOffset(req.query.offset || 0);
+  const { rows, clients, catalogue } = await loadScopeClients(req, sc);
   const today = cairoToday();
   const view = buildClientsView(clients, filters, {
     today, catalogue,
@@ -1347,6 +1354,54 @@ router.get('/api/staff/online-manager-summary', requireAuth, requireAdminOrStaff
       },
     });
   } catch (e) { logger.error('[/api/staff/online-manager-summary]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ────────────────────────────────────────────────────────────
+// GET /api/staff/overview-summary[?kind=online_manager] — «إحصائياتي» of the collection officer, the online manager and
+// the Dokki reception: what was collected today, this week and this month, what is still owed, the instalments that are
+// overdue or due, the last thirty days, how many clients hold each course and, for the online manager, how each
+// collection officer is doing (their calls, collections, clients, balance and overdue instalments).
+// They were added up in the browser out of every client the panel had downloaded. Held 15 s.
+// ────────────────────────────────────────────────────────────
+router.get('/api/staff/overview-summary', requireAuth, requireAdminOrStaff, requirePermission('view_subscribers'), async (req, res) => {
+  try {
+    const sc = staffSubscriberScope(req);
+    if (sc.forbidden) return res.status(403).json({ error: 'Staff record required' });
+    const withTeam = String(req.query.kind || '') === 'online_manager';
+    const today = cairoToday();
+    const tenantId = req.tenantId;
+    const key = `figures:staff-overview:${tenantId}:${req.staffRecord?.id || req.user?.uid}:${withTeam ? 'team' : 'own'}:${today}`;
+    const payload = await cached(key, 15 * 1000, async () => {
+      const weekStart = addDaysToDateOnly(today, -new Date(`${today}T00:00:00Z`).getUTCDay());
+      const monthStart = `${today.slice(0, 7)}-01`;
+      const { clients, catalogue } = sc.none ? { clients: [], catalogue: { courses: new Map(), bundles: new Map() } } : await loadScopeClients(req, sc);
+      let team = [];
+      const calls = new Map();
+      if (withTeam) {
+        const [members] = await pool.query(
+          "SELECT id, name, LOWER(role) AS role FROM staff WHERE tenant_id=? AND LOWER(role)='collection' AND is_active=1 AND deleted_at IS NULL ORDER BY name", [tenantId]);
+        const ids = members.map(member => member.id);
+        if (ids.length) {
+          // The leads each officer works, by the sales owner and by the collection owner (two indexed reads, not an OR).
+          const owned = `SELECT id, assigned_sales_id AS staff_id FROM leads WHERE tenant_id=? AND assigned_sales_id IN (?)
+                         UNION SELECT id, assigned_cs_id AS staff_id FROM leads WHERE tenant_id=? AND assigned_cs_id IN (?)`;
+          const ownedParams = [tenantId, ids, tenantId, ids];
+          const lowest = cairoDayStartUtc(weekStart < monthStart ? weekStart : monthStart);
+          const [leadRows] = await pool.query(owned, ownedParams);
+          const [callRows] = await pool.query(
+            `SELECT x.staff_id,
+                    SUM(c.date >= ? AND c.date < ?) AS today, SUM(c.date >= ?) AS week, SUM(c.date >= ?) AS month
+               FROM (${owned}) x JOIN communications c ON c.lead_id = x.id AND c.tenant_id = ? AND c.type = 'CALL' AND c.date >= ?
+              GROUP BY x.staff_id`,
+            [cairoDayStartUtc(today), cairoDayStartUtc(addDaysToDateOnly(today, 1)), cairoDayStartUtc(weekStart), cairoDayStartUtc(monthStart), ...ownedParams, tenantId, lowest]);
+          for (const row of callRows) calls.set(row.staff_id, { today: Number(row.today) || 0, week: Number(row.week) || 0, month: Number(row.month) || 0 });
+          team = members.map(member => ({ ...member, leadIds: new Set(leadRows.filter(lead => lead.staff_id === member.id).map(lead => lead.id)) }));
+        }
+      }
+      return buildOverview(clients, { today, weekStart, monthStart, catalogue, team, calls });
+    });
+    res.json(payload);
+  } catch (e) { logger.error('[/api/staff/overview-summary]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ────────────────────────────────────────────────────────────

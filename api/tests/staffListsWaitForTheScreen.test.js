@@ -36,7 +36,7 @@ test('the landing page and the person\'s own pages do not start the download; th
   // service's) read the server's figures and pages: none of them starts the download, whoever opens them.
   for (const tab of ['staff_home', 'staff_settings', 'my_hr', 'leads', 'online_clients', 'orders']) assert.equal(reads(tab), false, tab);
   // The screens that read the lists still do, and so does a screen nobody has listed.
-  for (const tab of ['daqqi_clients', 'client', 'overview', 'daqqi_schedule', 'some_new_screen']) {
+  for (const tab of ['daqqi_clients', 'client', 'daqqi_schedule', 'some_new_screen']) {
     assert.equal(reads(tab), true, `${tab} is read through only when it is listed`);
   }
   const { staffClientsArePaged: paged } = lib;
@@ -203,13 +203,12 @@ test('only the named screens touch the person\'s own lists', () => {
     'admin/pages/dashboard/DashboardGrowthOpsTabs.tsx',
     'admin/pages/dashboard/tabs/ClientDbTab.tsx',
     'admin/pages/dashboard/tabs/OnlineClientsTab.tsx',
-    'admin/pages/dashboard/tabs/OverviewTab.tsx',
   ].sort());
   const lib = bundle('admin/pages/dashboard/staffListTabs.ts');
   if (!lib) return;
   const { staffScreenReadsLists: reads } = lib;
-  for (const tab of ['refund_requests', 'service_hub', 'sales_hub', 'team_inbox', 'whatsapp_web', 'customer_inbox', 'cert_requests', 'consultations', 'join_us', 'staff_performance']) {
+  for (const tab of ['refund_requests', 'service_hub', 'sales_hub', 'team_inbox', 'whatsapp_web', 'customer_inbox', 'cert_requests', 'consultations', 'join_us', 'staff_performance', 'overview']) {
     assert.equal(reads(tab), false, `${tab} reads none of the person's own lists`);
   }
-  for (const tab of ['overview', 'client', 'daqqi_schedule', 'daqqi_clients']) assert.equal(reads(tab), true, tab);
+  for (const tab of ['client', 'daqqi_schedule', 'daqqi_clients']) assert.equal(reads(tab), true, tab);
 });

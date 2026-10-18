@@ -893,8 +893,6 @@ const Dashboard: React.FC = () => {
                   overviewStats={overviewStats}
                   isSalesOnly={isSalesOnly}
                   currentStaff={currentStaff ?? null}
-                  salesOwnLeads={salesOwnLeads ?? []}
-                  salesOwnSubscribers={salesOwnSubscribers}
                   subscribers={subscribers}
                   courses={courses}
                   staffMembers={staffMembers}

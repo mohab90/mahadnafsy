@@ -22,7 +22,7 @@ const OWN_PAGES: ReadonlySet<string> = new Set(['staff_home', 'staff_settings', 
 
 /** The screens that still read the person's own lists (the files are listed in the test). */
 const READS_OWN_LISTS: ReadonlySet<string> = new Set([
-  'overview', 'client', 'daqqi_schedule', 'daqqi_clients',
+  'client', 'daqqi_schedule', 'daqqi_clients',
 ]);
 
 /**

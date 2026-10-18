@@ -70,7 +70,9 @@ test('a refunded payment is never counted as money collected', () => {
   // reported as a clean bill.
   // 15 since 8 Oct 2026: the Dokki pickers and «أقساط معلقة» read a client's
   // money through clientItems (lib/agreedPrice.ts) instead of summing rows.
-  assert.ok(paymentSums >= 15, `expected the admin's payment sums, found ${paymentSums}`);
+  // 12 since 18 Oct 2026: the collection, online-manager and reception overviews and the online manager's accounts
+  // desk are added up by the server (api/lib/staffOverview.js, GET /api/staff/payments?tabs=1) over collected money only.
+  assert.ok(paymentSums >= 12, `expected the admin's payment sums, found ${paymentSums}`);
   assert.deepEqual(unguarded, [],
     'these sum payments without asking whether the money was collected: ' + unguarded.join(', '));
 
