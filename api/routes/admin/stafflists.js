@@ -1723,4 +1723,4 @@ async function loadShapedByIds(tenantId, ids) {
 
 module.exports = router;
 // What the other routers of the admin module read clients with.
-module.exports.staffClientTools = { loadShapedByIds, subscriberScope };
+module.exports.staffClientTools = { loadShapedByIds, loadScopeClients, shapeStaffSubscribers, subscriberScope };

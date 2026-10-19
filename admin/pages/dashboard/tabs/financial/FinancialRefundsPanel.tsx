@@ -85,7 +85,7 @@ const STATUS_FILTERS: Array<[string, string]> = [
 // `branch` scopes both the list and the decision: the finance tab renders this
 // per branch, and the server checks the caller may act on that branch.
 export default function FinancialRefundsPanel({ notify, branch }: { notify: Notify; branch?: string }) {
-  const { staffMembers, isAdmin, authUser } = useSiteData();
+  const { staffMembers, isAdmin, authUser, subscribers } = useSiteData();
   const navigate = useNavigate();
   // The callers pass notify inline, so it is a new function every render; read
   // through a ref, it no longer reloads the list each time the page renders.
@@ -479,6 +479,7 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
 
       {addOpen && (
         <AddRefundModal
+          clients={subscribers}
           notify={(type, text) => notify(text, type === 'error' ? 'error' : 'success')}
           onClose={() => setAddOpen(false)}
           onCreated={() => void load()}

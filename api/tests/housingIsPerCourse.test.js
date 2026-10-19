@@ -79,7 +79,9 @@ test('the schedule, both modals and the clients tab read housing per course', ()
   assert.match(read('admin/pages/dashboard/tabs/daqqi/DaqqiAddClientsModal.tsx'), /housedFor: wantedCourse === 'all' \? '' : wantedCourse/);
   const tab = read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx');
   assert.match(tab, /housingNeeds\.set\(subscriber\.id, housingNeedOf\(/);
-  assert.match(tab, /daqqiHousingFilter === 'unhoused' && _need && !needsHousing\(_need\)/);
+  // The «مسكن / غير مسكن» filter is the server's (buildView with `dokki`, pinned against the screen's rule in
+  // dokkiClientsView.test.js): seated for every course of theirs that has a round, not merely in some round.
+  assert.match(read('api/lib/staffClientsView.js'), /const fully = housed\.size > 0 && missing\.length === 0;/);
   assert.doesNotMatch(tab, /daqqiHousingFilter === 'unhoused' && housingMap\.has/);
   assert.match(read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx'), /🏠 جزئي/);
 });

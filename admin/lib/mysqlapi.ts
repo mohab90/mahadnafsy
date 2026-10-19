@@ -578,6 +578,14 @@ export const mysqlAdmin = {
     followCounts: { overdue: number; today: number; tomorrow: number };
     figures: { total: number; local: number; saudi: number; intl: number; today: number; week: number; month: number; remaining: number; unassigned: number };
   }> => apiFetch(`/staff/subscribers?paged=1&${query}`, {}, A),
+  /** «عملاء الدقي» a page at a time, filtered and counted by the server (api/routes/admin/dokkiclients.js). */
+  dokkiClientsPage:        (query: string): Promise<{
+    rows: AR[]; total: number; tabCounts: Record<string, number>;
+    followCounts: { overdue: number; today: number; tomorrow: number };
+    figures: { total: number; local: number; saudi: number; intl: number; today: number; week: number; month: number; remaining: number; unassigned: number; active?: number; finished?: number; paused?: number };
+    /** How many of the matching clients nobody holds, and how many each person holds (the old-data distribution panel). */
+    unassignedMatching?: number; assignedCounts?: Record<string, number>;
+  }> => apiFetch(`/admin/dokki/clients?${query}`, {}, A),
   /** A branch's clients, page by page as they arrive (admin endpoint, scoped by the caller's role). */
   streamSubscribers:       (opts: { branch?: string; staff?: boolean; pageSize?: number }, onPage: (rows: AR[]) => void) => {
     const pageSize = opts.pageSize ?? 300;

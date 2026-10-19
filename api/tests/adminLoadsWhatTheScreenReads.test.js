@@ -416,6 +416,9 @@ const NOT_READ = {
   // (overviewFigures.ts); the arrays are the staff path's, and the fallback
   // before those answer.
   overview: new Set(['subscribers', 'leads', 'orders']),
+  // «عملاء الدقي» pages from the server (GET /api/admin/dokki/clients); the shared clients screen is handed the
+  // context's clients for its online half and holds none on this one.
+  daqqi_clients: new Set(['subscribers']),
 };
 
 test('every list Dashboard.tsx hands a screen is one the screen loads', () => {

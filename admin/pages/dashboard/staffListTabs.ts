@@ -12,14 +12,15 @@ import type { SiteList } from '../../context/site-data-hooks/siteLists';
  * (/api/staff/online-manager-summary). Nothing downloads the lists any more, and
  * api/tests/staffListsWaitForTheScreen.test.js fails if a file starts reading them again.
  */
-const SERVER_PAGES: ReadonlySet<string> = new Set(['staff_home', 'staff_settings', 'my_hr', 'online_clients', 'leads', 'orders', 'daqqi_schedule']);
+const SERVER_PAGES: ReadonlySet<string> = new Set(['staff_home', 'staff_settings', 'my_hr', 'online_clients', 'leads', 'orders', 'daqqi_schedule', 'daqqi_clients']);
 
 /**
  * «عملائي» pages from the server for every employee (OnlineClientsTab, useStaffClientsPage), the online manager
- * included, so for them the context's full client list is not loaded when it opens.
+ * included, so for them the context's full client list is not loaded when it opens. «عملاء الدقي» pages from the
+ * server for everyone, the administration too (GET /api/admin/dokki/clients).
  */
 export const staffClientsArePaged = (tab: string, isNonAdminStaff: boolean, isOnlineManager: boolean): boolean =>
-  tab === 'online_clients' && (isNonAdminStaff || isOnlineManager);
+  tab === 'daqqi_clients' || (tab === 'online_clients' && (isNonAdminStaff || isOnlineManager));
 
 /**
  * The screens that read nothing from the context's lists either: a write there has no list to reload, so the

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Loader2, RotateCcw, Search } from 'lucide-react';
-import { useCrmData, useStaticData } from '../../../../context/siteDataSlices';
+import { useStaticData } from '../../../../context/siteDataSlices';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { PaymentHistoryEntry, SubscriberItem } from '../../../../types';
 import { Modal } from '../../../../../shared/ui/Modal';
@@ -30,9 +30,9 @@ export function AddRefundModal({ onClose, onCreated, notify, clients, lookup, su
   onCreated: () => void;
   notify: NotifyFn;
   /**
-   * Whom the refund can be for. An employee's own clients come from their
-   * scoped list; the context holds the whole book only for an admin, so from a
-   * staff account the picker was empty.
+   * Whom the refund can be for, when the caller holds a list of clients (the refund requests screen loads them). An
+   * employee's own clients come from their scoped list. The modal reads no list of its own: opened from a client's
+   * course it is given the client, and the clients screens hold none.
    */
   clients?: SubscriberItem[];
   /**
@@ -45,7 +45,6 @@ export function AddRefundModal({ onClose, onCreated, notify, clients, lookup, su
   item?: string;
   itemTitle?: string;
 }) {
-  const { subscribers: allSubscribers } = useCrmData();
   const { courses, bundles, content } = useStaticData();
   // With no payment behind it, the money leaves a box the institute keeps —
   // named, so the boxes report takes it out of that box.
@@ -53,7 +52,7 @@ export function AddRefundModal({ onClose, onCreated, notify, clients, lookup, su
   const [found, setFound] = useState<SubscriberItem[]>([]);
   // The client the person picked stays even when the next search no longer lists them.
   const [picked, setPicked] = useState<SubscriberItem | null>(null);
-  const subscribers = lookup ? found : (clients ?? allSubscribers);
+  const subscribers = lookup ? found : (clients ?? []);
   const [branch, setBranch] = useState<'DAQQI' | 'ONLINE' | ''>('');
   const [search, setSearch] = useState('');
   const [subscriberId, setSubscriberId] = useState(presetSubscriber?.id || '');

@@ -19,7 +19,7 @@ import { blankPaymentDraft, type PaymentDraft } from '../../../components/Paymen
 import { createClientWithPayment } from '../../../lib/createClientWithPayment';
 import { announceRoundsChanged, housingOutcome } from '../../../lib/daqqiHousing';
 import SectionCustomTabs from './SectionCustomTabs';
-import { staffClientsQuery, useStaffClientsPage } from './useStaffClientsPage';
+import { staffClientsPageOf, staffClientsQuery, useStaffClientsPage } from './useStaffClientsPage';
 import { staffClientsArePaged } from '../staffListTabs';
 import { useSiteData } from '../../../context/SiteDataContext';
 
@@ -30,9 +30,6 @@ type OnlineViewTab = 'active' | 'real-local' | 'real-saudi' | 'real-intl' | 'fin
 const ONLINE_VIEW_TABS: OnlineViewTab[] = ['active', 'real-local', 'real-saudi', 'real-intl', 'finished', 'paused', 'refunded', 'old_data', 'old_local', 'old_intl', 'booked2024', 'booked2025'];
 // «محلي / سعودي / دولي» — by what the client pays in (onlineClientsUtils).
 const MARKET_TABS: Partial<Record<OnlineViewTab, ClientMarket>> = { 'real-local': 'local', 'real-saudi': 'saudi', 'real-intl': 'intl' };
-// The Dokki cohort tabs. Keyed rather than parsed out of the tab name so adding
-// عملاء 26 next year is one entry here plus one in ViewTabsBar.
-const BOOKING_YEAR_TABS: Partial<Record<OnlineViewTab, number>> = { booked2024: 2024, booked2025: 2025 };
 import { branchMatchesFilter } from '../branchWorkspaceFilters';
 import { OnlineClientConvertModal, type OnlineClientConvertType } from './OnlineClientConvertModal';
 import { DaqqiHousingModal } from './DaqqiHousingModal';
@@ -120,21 +117,13 @@ export default function OnlineClientsTab({
   // the dropdowns below sit inside conditional blocks and callbacks.
   const paymentBoxes = usePaymentBoxes(content['finance.payment_methods']);
 
-  // The Dokki branch's real client count, from the database, the moment the tab
-  // opens. The rows arrive in pages behind it (SiteData.loadBranchSubscribers), so
-  // the figure above the table is right long before the table is full — it used to
-  // be however many of the 500 newest clients of all branches were Dokki's.
   // Dokki's clients, or Tagamoa's when shown in its section (lib/physicalBranch.tsx).
   const physicalBranch = usePhysicalBranch();
-  const [daqqiServerCount, setDaqqiServerCount] = useState<{ total: number; byStatus: Record<string, number> } | null>(null);
-  React.useEffect(() => {
-    if (activeTab !== 'daqqi_clients') return undefined;
-    let cancelled = false;
-    mysqlAdmin.countSubscribers(physicalBranch.key)
-      .then(result => { if (!cancelled) setDaqqiServerCount(result); })
-      .catch(() => { /* the loaded rows are counted instead */ });
-    return () => { cancelled = true; };
-  }, [activeTab, physicalBranch.key]);
+  const isDaqqiClientsTab = activeTab === 'daqqi_clients';
+  // «عملاء الدقي» (for everyone), a sales rep's and a collection officer's «عملائي» read a page at a time from the
+  // server, which filters and counts (useStaffClientsPage); the administration's and the online manager's online screen
+  // still holds the whole list and filters it here.
+  const paged = staffClientsArePaged(activeTab, isNonAdminStaff, isOnlineManager);
 
   // Collection role — online clients tab state
   const [collOnlineSearch, setCollOnlineSearch] = useState('');
@@ -347,17 +336,16 @@ export default function OnlineClientsTab({
   const [collectionSettingsOpen, setCollectionSettingsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
-  // A sales rep's or a collection officer's «عملائي» reads a page at a time from the server, which filters and counts
-  // (useStaffClientsPage); everyone else's screen — the administration, the online manager, the Dokki desks — still
-  // holds the whole list and filters it here.
-  const paged = staffClientsArePaged(activeTab, isNonAdminStaff, isOnlineManager);
   const COLL_PAGE_SIZE = layout === 'cards' ? 24 : 100;
   const clientsFilters = {
     view: collOnlineViewTab, q: collOnlineSearch, from: collOnlineDateFrom, to: collOnlineDateTo, course: collOnlineCourseFilter,
     collector: collOnlineCollectionFilter, status: collOnlineStatusFilter, cert: collOnlineCertFilter, remaining: collOnlineRemainingFilter,
-    follow: collOnlineFollowFilter, branch: branchFilter || '',
+    // The Dokki screen asks for its own physical branch (the schedule's), not a workspace link's.
+    follow: collOnlineFollowFilter, branch: isDaqqiClientsTab ? physicalBranch.key : (branchFilter || ''),
+    housing: daqqiHousingFilter, round: daqqiRoundFilter, reception: daqqiReceptionFilter,
   };
-  const serverPage = useStaffClientsPage({ enabled: paged, filters: clientsFilters, page: collOnlinePage, pageSize: COLL_PAGE_SIZE });
+  const clientsSource = isDaqqiClientsTab ? 'dokki' : 'staff';
+  const serverPage = useStaffClientsPage({ enabled: paged, filters: clientsFilters, page: collOnlinePage, pageSize: COLL_PAGE_SIZE, source: clientsSource });
   const serverData = paged ? serverPage.data : null;
   // The rows the person has on screen are the copy a save is compared against (useCrmCoreState.updateSubscriber sends only
   // the fields that changed, so a payment or another desk's edit made meanwhile is kept).
@@ -381,10 +369,10 @@ export default function OnlineClientsTab({
     return ok;
   } : deleteSubscriberProp;
   // Every page of the matching clients, for the export (the table shows one).
-  const loadMatchingForExport = async (): Promise<SubscriberItem[]> => {
+  const loadMatchingForExport = async (only: Partial<typeof clientsFilters> = {}): Promise<SubscriberItem[]> => {
     const rows: SubscriberItem[] = [];
     for (let page = 1; ; page += 1) {
-      const part = await mysqlAdmin.staffClientsPage(staffClientsQuery(clientsFilters, page, 500));
+      const part = await staffClientsPageOf(clientsSource, staffClientsQuery({ ...clientsFilters, ...only }, page, 500, clientsSource));
       rows.push(...(part.rows as unknown as SubscriberItem[]));
       if (part.rows.length === 0 || rows.length >= part.total) return rows;
     }
@@ -395,7 +383,6 @@ export default function OnlineClientsTab({
     if (paged && serverData && collOnlinePage > serverPages) setCollOnlinePage(serverPages);
   }, [paged, serverData, collOnlinePage, serverPages]);
 
-              const isDaqqiClientsTab = activeTab === 'daqqi_clients';
               // Housing map: subscriberId → { roundId, roundCode, receptionId, receptionName }
               // The client follows the round: whoever is the round's reception is the
               // person responsible for the client in it. A client in several rounds
@@ -424,36 +411,14 @@ export default function OnlineClientsTab({
               // round still needs the others they hold. The map above keeps the one round the
               // client follows (the reception); this says which of their courses are seated.
               const housingNeeds = new Map<string, HousingNeed>();
+              // For the rows on screen. Which clients the housing and round filters keep, the booking-year tabs and
+              // their counts are the server's (api/lib/staffClientsView.js, buildView with `dokki`).
               if (isDaqqiClientsTab) {
-                for (const subscriber of subscribers) housingNeeds.set(subscriber.id, housingNeedOf(salesOwnDaqqiRounds ?? [], bundles, subscriber));
+                for (const subscriber of serverData?.rows ?? []) housingNeeds.set(subscriber.id, housingNeedOf(salesOwnDaqqiRounds ?? [], bundles, subscriber));
               }
-              // سنة الحجز — the year a client was booked into a round, off
-              // attendee.bookedAt. A client can be booked into more than one
-              // round, so a cohort tab shows everyone booked that year rather
-              // than only first-timers.
-              const bookingYearsById = new Map<string, Set<number>>();
-              if (isDaqqiClientsTab) {
-                (salesOwnDaqqiRounds ?? []).forEach((round: DaqqiRound) => {
-                  (round.attendees ?? []).forEach((att: DaqqiRoundAttendee) => {
-                    const year = Number(String(att.bookedAt || '').slice(0, 4));
-                    if (!Number.isInteger(year) || year < 1900) return;
-                    const years = bookingYearsById.get(att.subscriberId) || new Set<number>();
-                    years.add(year);
-                    bookingYearsById.set(att.subscriberId, years);
-                  });
-                });
-              }
-              // A client not yet placed in any round has no booking date at all,
-              // so their registration year stands in — otherwise every unhoused
-              // client would be missing from both cohorts.
-              const bookedInYear = (s: SubscriberItem, year: number) => {
-                const booked = bookingYearsById.get(s.id);
-                if (booked?.size) return booked.has(year);
-                return Number(String(s.createdAt || '').slice(0, 4)) === year;
-              };
               const isIntlSub = isInternationalSubscriber;
-              // The context's list: the server scopes it to the person (the administration's, the Dokki branch's pages for the desk).
-              const masterList = subscribers;
+              // The context's list: the administration's online screen holds it; a screen that pages from the server holds none.
+              const masterList = paged ? [] : subscribers;
               const shouldUseScopedSubscribers = paged;
               const actionSubscribers = paged ? [...serverPage.seen.current.values()] : subscribers;
               const branchScopedMasterList = branchFilter
@@ -469,9 +434,7 @@ export default function OnlineClientsTab({
               const isDokkiHere: BranchTest = branch => normBranchId(branch) === physicalBranch.key;
               const isOnlineHere: BranchTest = branch => !['DAQQI', 'TAGAMOA'].includes(normBranchId(branch) || '');
               const hereTest = isDaqqiClientsTab ? isDokkiHere : isOnlineHere;
-              const allCombined = isDaqqiClientsTab
-                ? branchScopedMasterList.filter(s => holdsIn(s, isDokkiHere))
-                : isSalesStaff ? branchScopedMasterList : branchScopedMasterList.filter(s => holdsIn(s, isOnlineHere));
+              const allCombined = isSalesStaff ? branchScopedMasterList : branchScopedMasterList.filter(s => holdsIn(s, isOnlineHere));
               const hasBooking = (s: SubscriberItem) => (s.paymentHistory || [])
                 .some(payment => Boolean(payment.courseId || payment.bundleId) && payment.status !== 'refunded' && payment.status !== 'failed');
               const holdsItem = (s: SubscriberItem, item: string) => (item.startsWith('bundle:')
@@ -489,7 +452,6 @@ export default function OnlineClientsTab({
               const viewMarket = MARKET_TABS[collOnlineViewTab];
               const tabFiltered =
                 viewMarket ? allCombined.filter(s => isOnlineClient(s) && subscriberMarket(s) === viewMarket) :
-                collOnlineViewTab === 'old_data'  ? allCombined :
                 collOnlineViewTab === 'old_local' ? allCombined.filter(s => !isIntlSub(s)) :
                 collOnlineViewTab === 'old_intl'  ? allCombined.filter(isIntlSub) :
                 // The collOnlineSubTab branches that used to sit here (local /
@@ -511,15 +473,9 @@ export default function OnlineClientsTab({
                   // A booking still waiting for the accounts' approval opens no
                   // course yet, and the client it made vanished from the tab.
                   if ((s.enrolledCourseIds||[]).length === 0 && !hasBooking(s)) return false;
-                } else if (BOOKING_YEAR_TABS[collOnlineViewTab]) {
-                  // A cohort, not a lifecycle state: everyone booked that year,
-                  // whatever their status happens to be now.
-                  if (!bookedInYear(s, BOOKING_YEAR_TABS[collOnlineViewTab] as number)) return false;
                 } else {
                   if (collOnlineViewTab === 'refunded') {
                     if (clientSt !== 'refunded' && clientSt !== 'refund_pending') return false;
-                  } else if (collOnlineViewTab === 'old_data') {
-                    if (!['old_data','daqqi_old_local','daqqi_old_intl'].includes(clientSt)) return false;
                   } else {
                     if (clientSt !== collOnlineViewTab) return false;
                   }
@@ -535,19 +491,6 @@ export default function OnlineClientsTab({
                 // «بدون مسئول تحصيل»: the clients nobody collects from yet.
                 if (collOnlineCollectionFilter === NO_COLLECTOR) { if (s.assignedCsId) return false; }
                 else if (collOnlineCollectionFilter && s.assignedCsId !== collOnlineCollectionFilter) return false;
-                // فلتر التسكين (لتب عملاء الدقي فقط)
-                // «مسكن» is seated for every course of theirs that has a round; «غير مسكن» is none, or one still missing.
-                const _need = housingNeeds.get(s.id);
-                if (isDaqqiClientsTab && daqqiHousingFilter === 'housed'   && !(_need && isFullyHoused(_need))) return false;
-                if (isDaqqiClientsTab && daqqiHousingFilter === 'unhoused' && _need && !needsHousing(_need))   return false;
-                if (isDaqqiClientsTab && daqqiRoundFilter) {
-                  const _h = housingMap.get(s.id);
-                  if (!_h || _h.roundId !== daqqiRoundFilter) return false;
-                }
-                if (isDaqqiClientsTab && daqqiReceptionFilter) {
-                  const _h = housingMap.get(s.id);
-                  if (!_h || _h.receptionId !== daqqiReceptionFilter) return false;
-                }
                 if (collOnlineStatusFilter && (s.status || 'active') !== collOnlineStatusFilter) return false;
                 // فلتر الشهادات
                 if (collOnlineCertFilter === 'has_cert' && (s.certificates||[]).length === 0) return false;
@@ -558,6 +501,8 @@ export default function OnlineClientsTab({
                 return true;
               };
               const filtered = tabFiltered.filter(s => matchesFilters(s, true));
+              // The old-data distribution panel's: how many of the matching clients nobody holds.
+              const unassignedMatching = paged ? serverData?.unassignedMatching ?? 0 : filtered.filter(s => !s.assignedCsId).length;
               // The counts above the table: everything the other filters let through, split by when it is due.
               const followCounts = serverData?.followCounts ?? { overdue: 0, today: 0, tomorrow: 0 };
               if (!paged) for (const s of tabFiltered) {
@@ -617,15 +562,8 @@ export default function OnlineClientsTab({
                     collTotalRem={collTotalRem}
                     fmtK={fmtK}
                     marketOf={s => (isOnlineClient(s) ? subscriberMarket(s) : null)}
-                    serverCount={isDaqqiClientsTab ? daqqiServerCount : null}
                     counts={paged ? figures : undefined}
                   />
-                  {isDaqqiClientsTab && daqqiServerCount && allCombined.length < daqqiServerCount.total && (
-                    <div className="mb-2 flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-[11px] font-bold text-indigo-700" role="status">
-                      <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-600" />
-                      جاري تحميل باقي العملاء… {allCombined.length.toLocaleString('ar-EG-u-nu-latn')} من {daqqiServerCount.total.toLocaleString('ar-EG-u-nu-latn')}
-                    </div>
-                  )}
 
                   {/* === Tabs row === */}
                   <ViewTabsBar
@@ -638,7 +576,6 @@ export default function OnlineClientsTab({
                     isDaqqiClientsTab={isDaqqiClientsTab}
                     allCombined={allCombined}
                     isIntlSub={isIntlSub}
-                    bookedInYear={bookedInYear}
                     marketOf={s => (isOnlineClient(s) ? subscriberMarket(s) : null)}
                     collOnlineViewTab={collOnlineViewTab}
                     setCollOnlineViewTab={setCollOnlineViewTab}
@@ -647,7 +584,7 @@ export default function OnlineClientsTab({
                     tabCounts={paged ? serverData?.tabCounts ?? {} : undefined}
                     matchingCount={paged ? matchingCount : undefined}
                     unassignedTotal={paged ? figures?.unassigned ?? 0 : undefined}
-                    loadForExport={paged ? loadMatchingForExport : undefined}
+                    loadForExport={paged ? () => loadMatchingForExport() : undefined}
                     isOnlineManager={isOnlineManager}
                     isCollection={isCollectionStaff}
                     isDaqqiManager={isDaqqiManager}
@@ -746,12 +683,12 @@ export default function OnlineClientsTab({
                   />
                   {/* Table (hidden when old_data tab is active) */}
                   {/* ── Distribution panel for محلي قديم / دولي قديم ── */}
-                  {((collOnlineViewTab === 'old_local' || collOnlineViewTab === 'old_intl') || (collOnlineViewTab === 'old_data' && isDaqqiClientsTab)) && (isAdmin || isDaqqiManager) && !paged && (
+                  {((collOnlineViewTab === 'old_local' || collOnlineViewTab === 'old_intl') || (collOnlineViewTab === 'old_data' && isDaqqiClientsTab)) && (isAdmin || isDaqqiManager) && (!paged || isDaqqiClientsTab) && (
                     <div className="mb-4 bg-gradient-to-l from-indigo-50 to-violet-50 border border-indigo-200 rounded-2xl p-4 space-y-3">
                       <div className="flex items-center gap-2">
                         <span className="text-base">📊</span>
                         <h4 className="font-extrabold text-indigo-800 text-sm">{isDaqqiClientsTab ? `توزيع العملاء على فريق ${physicalBranch.label}` : 'توزيع العملاء على مسئولي التحصيل'}</h4>
-                        <span className="text-xs text-indigo-500">({filtered.filter(s => !s.assignedCsId).length} غير موزع من أصل {filtered.length})</span>
+                        <span className="text-xs text-indigo-500">({unassignedMatching} غير موزع من أصل {matchingCount})</span>
                       </div>
                       <div className="space-y-2">
                         {daqqiOldDistribPlan.map((entry, idx) => {
@@ -765,9 +702,9 @@ export default function OnlineClientsTab({
                               <select value={entry.staffId} onChange={e => setDaqqiOldDistribPlan(prev => prev.map((p,i) => i===idx ? {...p,staffId:e.target.value} : p))}
                                 className="border border-indigo-200 rounded-xl px-3 py-1.5 text-xs bg-white focus:ring-2 focus:ring-indigo-200 focus:outline-none min-w-[160px]">
                                 <option value="">{isDaqqiClientsTab ? `— اختر من فريق ${physicalBranch.label} —` : '— اختر مسئول تحصيل —'}</option>
-                                {csMembers.map(s => <option key={s.id} value={s.id}>{s.name} ({subscribers.filter(sub=>sub.assignedCsId===s.id).length} موزع)</option>)}
+                                {csMembers.map(s => <option key={s.id} value={s.id}>{s.name} ({paged ? serverData?.assignedCounts?.[s.id] ?? 0 : subscribers.filter(sub=>sub.assignedCsId===s.id).length} موزع)</option>)}
                               </select>
-                              <input type="number" min="1" max={filtered.filter(s=>!s.assignedCsId).length} placeholder="عدد العملاء"
+                              <input type="number" min="1" max={unassignedMatching} placeholder="عدد العملاء"
                                 value={entry.count} onChange={e => setDaqqiOldDistribPlan(prev => prev.map((p,i) => i===idx ? {...p,count:e.target.value} : p))}
                                 className="border border-indigo-200 rounded-xl px-3 py-1.5 text-xs w-28 focus:ring-2 focus:ring-indigo-200 focus:outline-none" />
                               {daqqiOldDistribPlan.length > 1 && (
@@ -784,10 +721,11 @@ export default function OnlineClientsTab({
                           </button>
                           <button disabled={daqqiOldDistributing || daqqiOldDistribPlan.every(e=>!e.staffId||!e.count)}
                             onClick={async () => {
-                              const unassigned = filtered.filter(s => !s.assignedCsId);
                               let offset = 0; let totalDone = 0; let totalFailed = 0;
                               setDaqqiOldDistributing(true);
                               try {
+                                // The matching clients nobody holds: on the server's pages, the ones the person's filters keep.
+                                const unassigned = paged ? await loadMatchingForExport({ collector: NO_COLLECTOR }) : filtered.filter(s => !s.assignedCsId);
                                 for (const entry of daqqiOldDistribPlan) {
                                   if (!entry.staffId || !entry.count) continue;
                                   const n = Math.min(Number(entry.count)||0, unassigned.length - offset);

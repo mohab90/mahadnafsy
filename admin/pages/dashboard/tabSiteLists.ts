@@ -36,7 +36,8 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   // column reads the rounds. A staff-built tab asks for the leads it lists
   // (SectionCustomTabs), the refund popup reads the clients.
   online_clients: ['subscribers', 'daqqiRounds'],
-  daqqi_clients: ['subscribers', 'daqqiRounds'],
+  // The Dokki clients page from the server (GET /api/admin/dokki/clients) for everyone.
+  daqqi_clients: ['daqqiRounds'],
   // The accounts: the orders, and the clients the ?branch= filter and the
   // refund popup match them against. The finance screens add the expenses.
   orders: ['orders', 'subscribers'],

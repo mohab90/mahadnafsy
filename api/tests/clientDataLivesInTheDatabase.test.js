@@ -42,7 +42,9 @@ test('the browser keeps no client data: the persisted cache is the public catalo
 
 test('the Dokki screens read their clients from the API, by branch', () => {
   const groups = read('admin/pages/dashboard/dashboardTabGroups.ts');
-  assert.match(groups, /export const branchSubscriberTabs[\s\S]*daqqi_clients: 'DAQQI'/);
+  assert.match(groups, /export const branchSubscriberTabs[\s\S]*daqqi_accounting: 'DAQQI'/);
+  // «عملاء الدقي» and the schedule page from the server instead (api/routes/admin/dokkiclients.js).
+  assert.doesNotMatch(groups.slice(groups.indexOf('export const branchSubscriberTabs')), /daqqi_clients|daqqi_schedule/);
   const runtime = read('admin/context/site-data-hooks/useAdminDataRuntime.ts');
   assert.match(runtime, /mysqlAdmin\.streamSubscribers\(\{ branch \}/);
   // every tab key named there is a screen
