@@ -1702,6 +1702,26 @@ router.get('/api/staff/leads-kpis', requireAuth, requireAdminOrStaff, requirePer
 });
 
 /**
+ * The population GET /api/admin/subscribers lists, as a condition on `subscribers s`: active clients, not staff, inside
+ * the caller's data scope. null for a role that sees no clients. The screens that count them on the server (the Dokki
+ * ones, the analytics) read the same set the lists did.
+ */
+function activeClientsBase(req) {
+  const scope = subscriberScope(req);
+  if (scope.none) return null;
+  if (scope.forbidden) throw Object.assign(new Error('Staff record required'), { statusCode: 403 });
+  const adminExclusions = ADMIN_EMAILS.length > 0
+    ? ` AND (s.email IS NULL OR s.email NOT IN (${ADMIN_EMAILS.map(() => '?').join(',')}))`
+    : '';
+  return {
+    where: `s.deleted_at IS NULL AND s.is_active = 1 AND (${scope.clause}) AND NOT EXISTS (
+      SELECT 1 FROM staff st WHERE st.tenant_id = s.tenant_id AND st.email = s.email AND st.is_active = 1
+    )${adminExclusions}`,
+    params: [...scope.params, ...ADMIN_EMAILS.map(email => email.toLowerCase())],
+  };
+}
+
+/**
  * These clients (already known to be the person's), shaped in full, in the order asked — for the Dokki screens, which
  * choose the clients on the server (routes/admin/dokkiclients.js) and show them a page at a time.
  */
@@ -1723,4 +1743,4 @@ async function loadShapedByIds(tenantId, ids) {
 
 module.exports = router;
 // What the other routers of the admin module read clients with.
-module.exports.staffClientTools = { loadShapedByIds, loadScopeClients, shapeStaffSubscribers, subscriberScope };
+module.exports.staffClientTools = { activeClientsBase, loadShapedByIds, loadScopeClients, shapeStaffSubscribers, subscriberScope };

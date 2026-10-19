@@ -69,7 +69,8 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   online_hub: [],
   analytics_hub: ['expenses', 'orders', 'subscribers'],
   // AnalyticsTab, drawn whole here, with the branch's weekly panel.
-  daqqi_stats: ['orders', 'leads', 'subscribers', 'discounts', 'joinUsApplications', 'contactMessages'],
+  // The orders, leads and clients are counted by the server (GET /api/admin/analytics-summary).
+  daqqi_stats: ['discounts', 'contactMessages'],
   ask_ai: ['leads', 'subscribers', 'orders', 'settings'],
   automation: ['automationWorkflows'],
   // The Dokki screens: the rounds and their attendees. The clients a round's

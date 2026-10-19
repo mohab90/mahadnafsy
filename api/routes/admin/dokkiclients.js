@@ -13,7 +13,7 @@ const router = express.Router();
 const { pool, cached } = require('../../lib/db');
 const logger = require('../../lib/logger');
 const { parseLimit, parseOffset, sendRouteError, ymd } = require('../../lib/helpers');
-const { ADMIN_EMAILS, requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
+const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { requireDaqqiAccess } = require('../../lib/daqqiAccess');
 const { requestedBranch, roundsScopeSql } = require('../../lib/physicalBranches');
 const { ownOrPlaced } = require('../../lib/coursePlacement');
@@ -24,29 +24,9 @@ const { staffClientTools } = require('./stafflists');
 
 const guards = [requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess];
 
-/**
- * The branch's clients this person may see, as a condition on `subscribers s`: the same population the schedule's
- * branch list held (active clients, not staff, inside the person's data scope — GET /api/admin/subscribers?branch=).
- * null for a role that sees no clients.
- */
-function branchClients(req) {
-  const scope = staffClientTools.subscriberScope(req);
-  if (scope.none) return null;
-  if (scope.forbidden) throw Object.assign(new Error('Staff record required'), { statusCode: 403 });
-  const adminExclusions = ADMIN_EMAILS.length > 0
-    ? ` AND (s.email IS NULL OR s.email NOT IN (${ADMIN_EMAILS.map(() => '?').join(',')}))`
-    : '';
-  return {
-    where: `s.deleted_at IS NULL AND s.is_active = 1 AND (${scope.clause}) AND NOT EXISTS (
-      SELECT 1 FROM staff st WHERE st.tenant_id = s.tenant_id AND st.email = s.email AND st.is_active = 1
-    )${adminExclusions}`,
-    params: [...scope.params, ...ADMIN_EMAILS.map(email => email.toLowerCase())],
-  };
-}
-
 // The facts both answers read, held 15 s and dropped by the next write (the `figures:` family, lib/httpApp.js).
 async function branchFacts(req, branch) {
-  const base = branchClients(req);
+  const base = staffClientTools.activeClientsBase(req);
   if (!base) return { clients: [], courses: new Map(), rounds: [] };
   const who = req.staffRecord?.id || req.user?.uid || 'admin';
   return cached(`figures:dokki-facts:${req.tenantId}:${branch}:${who}`, 15 * 1000, () => readBranchFacts(pool, req.tenantId, base, branch));
@@ -104,7 +84,7 @@ async function dokkiRounds(req) {
 router.get('/api/admin/dokki/clients', ...guards, async (req, res) => {
   try {
     const branch = requestedBranch(req);
-    const base = branchClients(req);
+    const base = staffClientTools.activeClientsBase(req);
     const filters = { ...readFilters(req.query, { dokki: true }), branch: '' };
     const limit = parseLimit(req.query.limit, 24, 500);
     const offset = parseOffset(req.query.offset || 0);
@@ -135,7 +115,7 @@ router.get('/api/admin/dokki/clients', ...guards, async (req, res) => {
 router.get('/api/admin/dokki/installment-clients', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const branch = requestedBranch(req);
-    const base = branchClients(req);
+    const base = staffClientTools.activeClientsBase(req);
     if (!base) return res.json([]);
     const [rows] = await pool.query(
       `SELECT s.id FROM subscribers s

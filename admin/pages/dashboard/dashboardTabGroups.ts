@@ -236,7 +236,6 @@ export const fullCrmDataTabs = new Set<string>([
   // "500 ليدات جديدة" against 27,000. 'analytics' and 'crm_settings' name
   // nothing at all: AnalyticsTab renders under 'daqqi_stats', and no screen
   // answers to crm_settings.
-  'daqqi_stats',        // renders AnalyticsTab, which filters both tables by date
   'marketing_hub',      // segmentation builds audiences from both tables
   // Was 'drip_campaigns', whose enrolment picker lists real people and needs
   // the rows. That screen is a section of تبويب الحملات now, and this set is
@@ -247,16 +246,4 @@ export const fullCrmDataTabs = new Set<string>([
   // first pages of both tables are only the fallback while that answers.
 ]);
 
-/**
- * Screens about ONE branch's clients, and the branch they read.
- *
- * They used to read the bootstrap page — the 500 newest clients of every branch —
- * and count their own branch out of it, so «عملاء الدقي» said 140 for a branch
- * with many more. The full table fixed the count and cost the wait: every client
- * of every branch, with payments, enrolments and certificates, before the first
- * row could paint. A screen listed here asks the database for its branch alone, in
- * pages, and opens on the first one (SiteData: loadBranchSubscribers).
- */
-export const branchSubscriberTabs: Readonly<Record<string, string>> = Object.freeze({
-  daqqi_stats: 'DAQQI',
-});
+

@@ -6,8 +6,11 @@ import {
 } from 'lucide-react';
 import { useSiteData, useEnsureSiteLists } from '../../../context/SiteDataContext';
 import { fxRates } from '../../../lib/money';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { normalizeOrders } from '../../../context/site-data-hooks/normalizeOrders';
+import { useAnalyticsSummary, type Money } from '../hooks/useAnalyticsSummary';
 import { toCsv, downloadCsvText, type CsvValue } from '../../../../shared/csv';
-import { CAIRO_TIME_ZONE, cairoDateOnly, cairoDaysAgo, cairoDay, cairoMonthStart } from '../../../../shared/cairoDate';
+import { CAIRO_TIME_ZONE, cairoDateOnly, cairoDaysAgo, cairoDay } from '../../../../shared/cairoDate';
 
 type Section   = 'all' | 'sales' | 'consultations' | 'courses' | 'bundles';
 type TimeRange = 'all' | 'today' | 'yesterday' | '7d' | '30d';
@@ -19,12 +22,14 @@ const AnalyticsTab: React.FC<Props> = () => {
   const [timeRange, setTimeRange] = useState<TimeRange>('all');
 
   const {
-    orders, leads, courses, bundles, subscribers, therapists, consultations,
+    courses, bundles, therapists, consultations,
     communityPosts, communityVideos, communityLibraryItems, communityEvents,
-    discounts, joinUsApplications, contactMessages, content,
+    discounts, contactMessages, content,
   } = useSiteData();
-  // Drawn under الرئيسية too, which loads none of these (siteLists.ts): it asks.
-  useEnsureSiteLists(['orders', 'leads', 'subscribers', 'discounts', 'joinUsApplications', 'contactMessages']);
+  // Drawn under الرئيسية too, which loads none of these (siteLists.ts): it asks. The orders, the leads and the clients
+  // are counted by the server (GET /api/admin/analytics-summary) — this screen holds none of them.
+  useEnsureSiteLists(['discounts', 'contactMessages']);
+  const { summary, joins } = useAnalyticsSummary(timeRange);
 
   // ── Exchange rates ────────────────────────────────────────────
   // This screen carried its own fallbacks and its USD one was 50, where the
@@ -60,104 +65,99 @@ const AnalyticsTab: React.FC<Props> = () => {
     return true;
   };
 
-  // ── Filtered slices ──────────────────────────────────────────
-  const allPaid        = useMemo(() => orders.filter(o => o.status === 'paid'), [orders]);
-  const filteredOrders = allPaid.filter(o  => inRange(o.paidAt || o.createdAt));
-  const filteredLeads  = leads.filter(l    => inRange(l.createdAt));
-  const filteredSubs   = subscribers.filter(s => inRange(s.createdAt));
+  // ── The server's figures, converted at the institute's rates ──
+  const sumEgp = useCallback((amounts: Money[]) => amounts.reduce((total, money) => total + toEGP(money.amount, money.currency), 0), [toEGP]);
+  const orderFigures = summary?.orders ?? null;
+  const leadRows = summary?.leads?.rows ?? [];
+  const clientFigures = summary?.subscribers ?? null;
   const filteredConsts = consultations.filter(c => inRange((c as { createdAt?: string }).createdAt));
-  const pendingOrders  = orders.filter(o => o.status === 'pending');
+  const pendingCount = orderFigures?.pending ?? 0;
+  const subsInRange = clientFigures?.inRange ?? 0;
+  const subsTotal = clientFigures?.total ?? 0;
+  const monthLabel = (month: string, withYear: boolean) => new Date(`${month}-15T12:00:00Z`)
+    .toLocaleString('ar-EG-u-nu-latn', withYear ? { month: 'short', year: '2-digit', timeZone: CAIRO_TIME_ZONE } : { month: 'short', timeZone: CAIRO_TIME_ZONE });
 
   // ── KPIs (filtered) ──────────────────────────────────────────
-  const totalRevEGP = filteredOrders.reduce((s, o) => s + toEGP(o.amount, o.currency), 0);
-  const avgOrderAmt = filteredOrders.length > 0 ? totalRevEGP / filteredOrders.length : 0;
-  const convRate    = filteredLeads.length > 0
-    ? ((filteredLeads.filter(l => l.status === 'converted').length / filteredLeads.length) * 100).toFixed(1)
-    : '0';
-  const revByCourse  = filteredOrders.filter(o => o.type === 'course').reduce((s, o) => s + toEGP(o.amount, o.currency), 0);
-  const revByBundle  = filteredOrders.filter(o => o.type === 'bundle').reduce((s, o) => s + toEGP(o.amount, o.currency), 0);
-  const revByConsult = filteredOrders.filter(o => o.type === 'consultation').reduce((s, o) => s + toEGP(o.amount, o.currency), 0);
+  const paidInRange = orderFigures?.inRange ?? [];
+  const paidCount = paidInRange.reduce((total, row) => total + row.count, 0);
+  const totalRevEGP = sumEgp(paidInRange);
+  const avgOrderAmt = paidCount > 0 ? totalRevEGP / paidCount : 0;
+  const filteredLeadCount = leadRows.reduce((total, row) => total + row.n, 0);
+  const leadsWith = (status: string) => leadRows.filter(row => row.status === status).reduce((total, row) => total + row.n, 0);
+  const convRate    = filteredLeadCount > 0 ? ((leadsWith('converted') / filteredLeadCount) * 100).toFixed(1) : '0';
+  const revByType = (type: string) => sumEgp(paidInRange.filter(row => row.type === type));
+  const revByCourse  = revByType('course');
+  const revByBundle  = revByType('bundle');
+  const revByConsult = revByType('consultation');
 
   // ── Monthly revenue (6 months, always full) ──────────────────
-  const monthlyRevenue = useMemo(() => {
-    const rows: { label: string; rev: number; orders: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const ms = cairoMonthStart(i, now).slice(0, 7);
-      const d  = new Date(`${ms}-15T12:00:00Z`);
-      const mo = allPaid.filter(o => cairoDay(o.paidAt || o.createdAt).startsWith(ms));
-      rows.push({ label: d.toLocaleString('ar-EG-u-nu-latn', { month: 'short', year: '2-digit', timeZone: CAIRO_TIME_ZONE }), rev: mo.reduce((s, o) => s + toEGP(o.amount, o.currency), 0), orders: mo.length });
-    }
-    return rows;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orders, rates]);
+  const monthlyRevenue = useMemo(
+    () => (orderFigures?.monthly ?? []).map(month => ({ label: monthLabel(month.month, true), rev: sumEgp(month.amounts), orders: month.orders })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [orderFigures, sumEgp],
+  );
   const maxMonthRev = Math.max(...monthlyRevenue.map(m => m.rev), 1);
 
   // ── Lead funnel (filtered) ────────────────────────────────────
   const funnelStats = [
-    { label: 'عملاء جدد',        count: filteredLeads.filter(l => l.status === 'new').length,       color: 'bg-blue-500',    light: 'bg-blue-50 text-blue-700' },
-    { label: 'تم التواصل',       count: filteredLeads.filter(l => l.status === 'contacted').length,  color: 'bg-amber-500',   light: 'bg-amber-50 text-amber-700' },
-    { label: 'تحولوا لمشتركين',  count: filteredLeads.filter(l => l.status === 'converted').length,  color: 'bg-emerald-500', light: 'bg-emerald-50 text-emerald-700' },
-    { label: 'ضائعون',           count: filteredLeads.filter(l => l.status === 'lost').length,       color: 'bg-red-400',     light: 'bg-red-50 text-red-700' },
+    { label: 'عملاء جدد',        count: leadsWith('new'),       color: 'bg-blue-500',    light: 'bg-blue-50 text-blue-700' },
+    { label: 'تم التواصل',       count: leadsWith('contacted'),  color: 'bg-amber-500',   light: 'bg-amber-50 text-amber-700' },
+    { label: 'تحولوا لمشتركين',  count: leadsWith('converted'),  color: 'bg-emerald-500', light: 'bg-emerald-50 text-emerald-700' },
+    { label: 'ضائعون',           count: leadsWith('lost'),       color: 'bg-red-400',     light: 'bg-red-50 text-red-700' },
   ];
   const leadsBySource: [string, number][] = (
-    Object.entries(filteredLeads.reduce((acc: Record<string, number>, l) => { const src = l.source || 'غير محدد'; acc[src] = (acc[src] || 0) + 1; return acc; }, {})) as [string, number][]
+    Object.entries(leadRows.reduce((acc: Record<string, number>, row) => { acc[row.source] = (acc[row.source] || 0) + row.n; return acc; }, {})) as [string, number][]
   ).sort((a, b) => b[1] - a[1]).slice(0, 8);
   const maxSrc = Math.max(...leadsBySource.map(([, n]) => n), 1);
 
   // ── Subscriber growth ─────────────────────────────────────────
-  const subsByMonth = useMemo(() => {
-    const rows: { label: string; count: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const ms = cairoMonthStart(i, now).slice(0, 7);
-      const d = new Date(`${ms}-15T12:00:00Z`);
-      rows.push({ label: d.toLocaleString('ar-EG-u-nu-latn', { month: 'short', timeZone: CAIRO_TIME_ZONE }), count: subscribers.filter(s => cairoDay(s.createdAt).startsWith(ms)).length });
-    }
-    return rows;
-  }, [subscribers, now]);
+  const subsByMonth = (clientFigures?.monthly ?? []).map(month => ({ label: monthLabel(month.month, false), count: month.n }));
   const maxSubMonth = Math.max(...subsByMonth.map(m => m.count), 1);
-  const subsByBranch = subscribers.reduce((acc: Record<string, number>, s) => {
-    const b = s.branch || 'غير محدد'; acc[b] = (acc[b] || 0) + 1; return acc;
-  }, {});
+  const subsByBranch = clientFigures?.byBranch ?? {};
 
   // ── Course stats ──────────────────────────────────────────────
-  const courseStats = useMemo(() => courses.map(c => {
-    const subs = subscribers.filter(s => s.enrolledCourseIds.includes(c.id));
-    const rev  = allPaid.filter(o => o.type === 'course' && o.itemId === c.id).reduce((s, o) => s + toEGP(o.amount, o.currency), 0);
-    return { id: c.id, title: c.title.length > 32 ? c.title.slice(0, 32) + '…' : c.title, subs: subs.length, rev, type: c.type };
-  }).sort((a, b) => b.subs - a.subs),
-  [courses, subscribers, allPaid, toEGP]);
+  const itemRevenue = useCallback((type: string, itemId: string) =>
+    sumEgp((orderFigures?.items ?? []).filter(item => item.type === type && item.itemId === itemId)), [orderFigures, sumEgp]);
+  const courseStats = useMemo(() => courses.map(c => ({
+    id: c.id, title: c.title.length > 32 ? c.title.slice(0, 32) + '…' : c.title,
+    subs: clientFigures?.perCourse[c.id] ?? 0, rev: itemRevenue('course', c.id), type: c.type,
+  })).sort((a, b) => b.subs - a.subs),
+  [courses, clientFigures, itemRevenue]);
   const maxSubs = Math.max(...courseStats.map(c => c.subs), 1);
 
   // ── Bundle stats ──────────────────────────────────────────────
-  const bundleStats = useMemo(() => bundles.map(b => {
-    const enrolled = subscribers.filter(s => b.courses.some(co => s.enrolledCourseIds.includes(co.id))).length;
-    const rev      = allPaid.filter(o => o.type === 'bundle' && o.itemId === b.id).reduce((s, o) => s + toEGP(o.amount, o.currency), 0);
-    return { id: b.id, title: b.title.length > 32 ? b.title.slice(0, 32) + '…' : b.title, enrolled, rev, courseCount: b.courses.length };
-  }).sort((a, b) => b.enrolled - a.enrolled),
-  [bundles, subscribers, allPaid, toEGP]);
+  const bundleStats = useMemo(() => bundles.map(b => ({
+    id: b.id, title: b.title.length > 32 ? b.title.slice(0, 32) + '…' : b.title,
+    enrolled: clientFigures?.perBundle[b.id] ?? 0, rev: itemRevenue('bundle', b.id), courseCount: b.courses.length,
+  })).sort((a, b) => b.enrolled - a.enrolled),
+  [bundles, clientFigures, itemRevenue]);
 
   // ── Therapist stats ───────────────────────────────────────────
   const therapistStats = therapists.map(t => {
     const count = consultations.filter(c => c.therapistId === t.id).length;
-    const rev   = allPaid.filter(o => o.type === 'consultation' && o.itemId === t.id).reduce((s, o) => s + toEGP(o.amount, o.currency), 0);
+    const rev   = itemRevenue('consultation', t.id);
     return { name: t.name.length > 22 ? t.name.slice(0, 22) + '…' : t.name, count, rev, rating: t.rating || 0 };
   }).sort((a, b) => b.count - a.count).slice(0, 8);
 
   // ── Community, discounts, contacts ───────────────────────────
   const topTags = (Object.entries(communityPosts.reduce((acc: Record<string, number>, p) => { const tag = p.tag || 'بدون تصنيف'; acc[tag] = (acc[tag] || 0) + 1; return acc; }, {})) as [string, number][]).sort((a, b) => b[1] - a[1]).slice(0, 6);
-  const discountUsage = discounts.map(d => ({ code: d.promoCode, used: orders.filter(o => o.couponCode === d.promoCode).length, type: d.type, value: d.discountPercent })).filter(d => d.used > 0).sort((a, b) => b.used - a.used).slice(0, 6);
-  const joinNew      = joinUsApplications.filter(j => j.status === 'new').length;
-  const joinReviewed = joinUsApplications.filter(j => j.status === 'reviewed').length;
-  const joinAccepted = joinUsApplications.filter(j => j.status === 'accepted').length;
+  const discountUsage = discounts.map(d => ({ code: d.promoCode, used: d.promoCode ? orderFigures?.coupons[d.promoCode] ?? 0 : 0, type: d.type, value: d.discountPercent })).filter(d => d.used > 0).sort((a, b) => b.used - a.used).slice(0, 6);
+  const joinNew      = joins?.byStatus.NEW ?? 0;
+  const joinReviewed = joins?.byStatus.REVIEWED ?? 0;
+  const joinAccepted = joins?.byStatus.ACCEPTED ?? 0;
+  const joinTotal    = joins?.total ?? 0;
   const contactNew   = contactMessages.filter(c => c.status === 'new').length;
   const contactRead  = contactMessages.filter(c => c.status === 'read').length;
   const contactRep   = contactMessages.filter(c => c.status === 'replied').length;
 
   // ── Download ──────────────────────────────────────────────────
   const timeLabel = { all: 'الكل', today: 'اليوم', yesterday: 'أمس', '7d': '7أيام', '30d': '30يوم' }[timeRange];
-  const downloadReport = () => {
+  const downloadReport = async () => {
     let csv = ''; let filename = `تقرير-${timeLabel}-${todayStr}`;
     if (section === 'all' || section === 'sales') {
+      // The rows are read when the file is asked for — the newest 2,000 orders and payments — not held on the screen.
+      const rows = normalizeOrders(await mysqlAdmin.listAllOrders(2000).catch(() => []));
+      const filteredOrders = rows.filter(o => o.status === 'paid' && inRange(o.paidAt || o.createdAt));
       const h = ['رقم الطلب', 'العميل', 'المبلغ', 'العملة', 'بالجنيه', 'النوع', 'البند', 'التاريخ'];
       const r = filteredOrders.map(o => [o.id?.slice(-8) || '', o.customerName || '', o.amount, o.currency, Math.round(toEGP(o.amount, o.currency)), o.type || '', o.itemTitle || '', cairoDay(o.paidAt || o.createdAt)]);
       csv += toCsv([h, ...r] as CsvValue[][]);
@@ -197,7 +197,7 @@ const AnalyticsTab: React.FC<Props> = () => {
       <div className="bg-gradient-to-r from-primary-600 to-violet-600 rounded-2xl p-6 text-white">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
           <h2 className="text-2xl font-extrabold flex items-center gap-2"><BarChart3 size={22} />تقارير وإحصاءات تفصيلية</h2>
-          <button onClick={downloadReport} className="border border-white/30 bg-white/10 hover:bg-white/20 text-white rounded-xl px-4 py-2 text-sm font-bold flex items-center gap-2 transition">
+          <button onClick={() => { void downloadReport(); }} className="border border-white/30 bg-white/10 hover:bg-white/20 text-white rounded-xl px-4 py-2 text-sm font-bold flex items-center gap-2 transition">
             <Download size={15} />تحميل التقرير CSV
           </button>
         </div>
@@ -223,7 +223,7 @@ const AnalyticsTab: React.FC<Props> = () => {
             { label: `الإيراد — ${timeLabel}`,  value: Math.round(totalRevEGP).toLocaleString('ar-EG-u-nu-latn') + ' ج.م', icon: Wallet },
             { label: 'متوسط قيمة الطلب',        value: Math.round(avgOrderAmt).toLocaleString('ar-EG-u-nu-latn') + ' ج.م', icon: Receipt },
             { label: 'معدل تحويل العملاء',       value: convRate + '%',                                             icon: TrendingUp },
-            { label: 'طلبات معلقة (كل الوقت)', value: pendingOrders.length,                                        icon: Clock },
+            { label: 'طلبات معلقة (كل الوقت)', value: pendingCount,                                        icon: Clock },
           ].map(k => (
             <div key={k.label} className="bg-white/10 backdrop-blur-sm rounded-xl p-3">
               <k.icon size={16} className="text-white/70 mb-1" />
@@ -271,16 +271,16 @@ const AnalyticsTab: React.FC<Props> = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <article className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
             <h3 className="font-bold text-gray-900 mb-1 flex items-center gap-2"><Layers size={17} className="text-amber-500" />قمع المبيعات</h3>
-            <p className="text-xs text-gray-400 mb-4">{timeLabel} · {filteredLeads.length} عميل</p>
+            <p className="text-xs text-gray-400 mb-4">{timeLabel} · {filteredLeadCount} عميل</p>
             <div className="space-y-3">
               {funnelStats.map(s => (
                 <div key={s.label}>
                   <div className="flex justify-between text-xs mb-1">
                     <span className={`px-2 py-0.5 rounded-full font-bold ${s.light}`}>{s.label}</span>
-                    <span className="font-bold text-gray-700">{s.count} ({filteredLeads.length > 0 ? ((s.count / filteredLeads.length) * 100).toFixed(0) : 0}%)</span>
+                    <span className="font-bold text-gray-700">{s.count} ({filteredLeadCount > 0 ? ((s.count / filteredLeadCount) * 100).toFixed(0) : 0}%)</span>
                   </div>
                   <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
-                    <div className={`h-full ${s.color} rounded-full transition-all`} style={{ width: `${filteredLeads.length > 0 ? (s.count / filteredLeads.length) * 100 : 0}%` }} />
+                    <div className={`h-full ${s.color} rounded-full transition-all`} style={{ width: `${filteredLeadCount > 0 ? (s.count / filteredLeadCount) * 100 : 0}%` }} />
                   </div>
                 </div>
               ))}
@@ -298,7 +298,7 @@ const AnalyticsTab: React.FC<Props> = () => {
                   <div key={src}>
                     <div className="flex justify-between text-xs mb-0.5">
                       <span className="text-gray-700 font-medium truncate">{src}</span>
-                      <span className="font-bold ml-2">{cnt} ({filteredLeads.length > 0 ? ((cnt / filteredLeads.length) * 100).toFixed(0) : 0}%)</span>
+                      <span className="font-bold ml-2">{cnt} ({filteredLeadCount > 0 ? ((cnt / filteredLeadCount) * 100).toFixed(0) : 0}%)</span>
                     </div>
                     <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                       <div className="h-full bg-amber-400 rounded-full" style={{ width: `${(cnt / maxSrc) * 100}%` }} />
@@ -315,7 +315,7 @@ const AnalyticsTab: React.FC<Props> = () => {
       {show('sales') && (
         <article className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
           <h3 className="font-bold text-gray-900 mb-1 flex items-center gap-2"><UserCheck size={17} className="text-emerald-500" />المشتركون الجدد شهرياً</h3>
-          <p className="text-xs text-gray-400 mb-4">جديد في {timeLabel}: {filteredSubs.length} · إجمالي: {subscribers.length}</p>
+          <p className="text-xs text-gray-400 mb-4">جديد في {timeLabel}: {subsInRange} · إجمالي: {subsTotal}</p>
           <div className="flex items-end gap-3 h-28 mb-4">
             {subsByMonth.map((m, i) => (
               <div key={i} className="flex-1 flex flex-col items-center gap-1">
@@ -441,7 +441,7 @@ const AnalyticsTab: React.FC<Props> = () => {
           <article className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
             <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2 text-sm"><GraduationCap size={15} className="text-violet-500" />طلبات الانضمام</h3>
             <div className="space-y-3">
-              {[{l:'جديدة',c:joinNew,cl:'bg-blue-50 text-blue-700'},{l:'قيد المراجعة',c:joinReviewed,cl:'bg-amber-50 text-amber-700'},{l:'مقبولة',c:joinAccepted,cl:'bg-emerald-50 text-emerald-700'},{l:'إجمالي',c:joinUsApplications.length,cl:'bg-gray-100 text-gray-700'}].map(s => (
+              {[{l:'جديدة',c:joinNew,cl:'bg-blue-50 text-blue-700'},{l:'قيد المراجعة',c:joinReviewed,cl:'bg-amber-50 text-amber-700'},{l:'مقبولة',c:joinAccepted,cl:'bg-emerald-50 text-emerald-700'},{l:'إجمالي',c:joinTotal,cl:'bg-gray-100 text-gray-700'}].map(s => (
                 <div key={s.l} className="flex justify-between items-center"><span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.cl}`}>{s.l}</span><span className="font-extrabold text-gray-900">{s.c}</span></div>
               ))}
             </div>

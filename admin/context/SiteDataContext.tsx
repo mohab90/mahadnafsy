@@ -71,7 +71,6 @@ export interface SiteDataShape {
   loadFullSubscribers: () => Promise<void>;
   /** One branch's clients only ('DAQQI'), page by page — for the screens about a
    *  single branch, which otherwise read the 500 newest clients of every branch. */
-  loadBranchSubscribers: (branch: string) => Promise<void>;
   /** The lists that come when a screen asks (site-data-hooks/siteLists.ts); see useEnsureSiteLists. */
   ensureSiteLists: (lists: readonly SiteList[]) => Promise<void>;
   staffMembers: StaffMember[];
@@ -482,7 +481,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.uid, isAdmin]);
 
-  const { loadFullCrmData, loadFullLeads, loadFullSubscribers, loadBranchSubscribers, ensureSiteLists } = useAdminDataRuntime({
+  const { loadFullCrmData, loadFullLeads, loadFullSubscribers, ensureSiteLists } = useAdminDataRuntime({
     authUser, isHydratingRef, dbContentLoadedRef, lastCRMWriteRef,
     subscribersRef, leadsRef, staffMembersRef, contentRef,
     setRemoteReady, setSubscribers, setLeads, setStaffMembers, setConsultations,
@@ -657,7 +656,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     loadFullCrmData,
     loadFullLeads,
     loadFullSubscribers,
-    loadBranchSubscribers,
     ensureSiteLists,
     staffMembers,
     consultations,

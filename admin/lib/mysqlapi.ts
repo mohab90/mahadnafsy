@@ -154,39 +154,6 @@ async function fetchAllPages(
   return all.slice(0, maxRows);
 }
 
-/**
- * Walk a paginated list and hand each page over as it lands.
- *
- * fetchAllPages above returns only when the last page is in, so a screen that
- * needs a table waits for all of it before it can paint one row. This gives the
- * first page to the caller as soon as it arrives and carries on behind it — the
- * table opens on the newest rows and fills in. The first request goes alone (it is
- * the one the person is waiting for); the rest overlap, two at a time (see
- * fetchAllPages for why not more). `onPage` is called once per page, in no
- * particular order; callers merge by id.
- */
-async function streamPages(
-  buildPath: (offset: number) => string,
-  pageSize: number,
-  onPage: (rows: AR[]) => void,
-  concurrency = 2,
-): Promise<void> {
-  const first = await apiFetch<AR[]>(buildPath(0), {}, true);
-  onPage(first);
-  if (first.length < pageSize) return;
-  let offset = pageSize;
-  let reachedEnd = false;
-  while (!reachedEnd) {
-    const offsets = Array.from({ length: concurrency }, (_, index) => offset + index * pageSize);
-    const pages = await Promise.all(offsets.map(o => apiFetch<AR[]>(buildPath(o), {}, true)));
-    for (const page of pages) {
-      if (page.length) onPage(page);
-      if (page.length < pageSize) { reachedEnd = true; break; }
-    }
-    offset += offsets.length * pageSize;
-  }
-}
-
 async function apiFetchInner<T>(path: string, options: RequestInit = {}, auth = false, _retry = 0): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -568,10 +535,6 @@ export const mysqlAdmin = {
   listAllTherapists:       ()             => apiFetch<AR[]>('/admin/therapists', {}, A),
   listSubscribersPage:     (limit = 500, offset = 0, opts?: { q?: string; status?: string; branch?: string }) =>
     apiFetch<AR[]>(`/admin/subscribers?limit=${limit}&offset=${offset}${opts?.q ? `&q=${encodeURIComponent(opts.q)}` : ''}${opts?.status ? `&status=${encodeURIComponent(opts.status)}` : ''}${opts?.branch ? `&branch=${encodeURIComponent(opts.branch)}` : ''}`, {}, A),
-  /** How many clients a branch has, and in which status — one small query. The
-   *  figure above a table, true before the table has finished loading. */
-  countSubscribers:        (branch?: string): Promise<{ total: number; byStatus: Record<string, number> }> =>
-    apiFetch(`/admin/subscribers/count${branch ? `?branch=${encodeURIComponent(branch)}` : ''}`, {}, A),
   /** «عملائي» a page at a time, filtered and counted by the server (api/lib/staffClientsView.js). */
   staffClientsPage:        (query: string): Promise<{
     rows: AR[]; total: number; tabCounts: Record<string, number>;
@@ -586,15 +549,6 @@ export const mysqlAdmin = {
     /** How many of the matching clients nobody holds, and how many each person holds (the old-data distribution panel). */
     unassignedMatching?: number; assignedCounts?: Record<string, number>;
   }> => apiFetch(`/admin/dokki/clients?${query}`, {}, A),
-  /** A branch's clients, page by page as they arrive (admin endpoint, scoped by the caller's role). */
-  streamSubscribers:       (opts: { branch?: string; staff?: boolean; pageSize?: number }, onPage: (rows: AR[]) => void) => {
-    const pageSize = opts.pageSize ?? 300;
-    const base = opts.staff ? '/staff/subscribers' : '/admin/subscribers';
-    return streamPages(
-      offset => `${base}?limit=${pageSize}&offset=${offset}${opts.branch ? `&branch=${encodeURIComponent(opts.branch)}` : ''}`,
-      pageSize, onPage,
-    );
-  },
   listLeadsPage:           (limit = 500, offset = 0, opts?: { q?: string; status?: string }) =>
     apiFetch<AR[]>(`/admin/leads?limit=${limit}&offset=${offset}${opts?.q ? `&q=${encodeURIComponent(opts.q)}` : ''}${opts?.status ? `&status=${encodeURIComponent(opts.status)}` : ''}`, {}, A),
   // pageSize=5000 matches the server's parseLimit(...,500,5000) hard cap on both

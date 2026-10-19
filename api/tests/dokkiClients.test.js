@@ -163,7 +163,8 @@ test('the endpoints are the schedule\'s own: its permission, its branch, its dat
   const route = fs.readFileSync(path.join(ROOT, 'api/routes/admin/dokkiclients.js'), 'utf8');
   assert.match(route, /requirePermission\('manage_daqqi'\), requireDaqqiAccess\]/, 'the schedule\'s own gate');
   assert.match(route, /requestedBranch\(req\)/, 'a branch desk is confined to its branch');
-  assert.match(route, /s\.is_active = 1 AND \(\$\{scope\.clause\}\)/, 'the population of the branch list, inside the data scope');
+  assert.match(route, /staffClientTools\.activeClientsBase\(req\)/, 'the population of the branch list, inside the data scope');
+  assert.match(fs.readFileSync(path.join(ROOT, 'api/routes/admin/stafflists.js'), 'utf8'), /s\.deleted_at IS NULL AND s\.is_active = 1 AND \(\$\{scope\.clause\}\)/);
   assert.match(route, /figures:dokki-facts:/, 'held 15 s and dropped by the next write');
   const registered = fs.readFileSync(path.join(ROOT, 'api/routes/admin.js'), 'utf8');
   assert.match(registered, /require\('\.\/admin\/dokkiclients'\)/);
