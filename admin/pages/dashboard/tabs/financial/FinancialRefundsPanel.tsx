@@ -2,8 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom';
 import {
   CheckCircle2, Clock, RefreshCw, Plus, XCircle, Wrench, ArrowUpCircle,
-  UserX, Trash2, BadgeCheck, Search, Phone, ExternalLink, ChevronDown, X,
+  UserX, Trash2, BadgeCheck, Search, Phone, ExternalLink, MessageSquareText, X,
 } from 'lucide-react';
+import { Modal } from '../../../../../shared/ui/Modal';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../../context/SiteDataContext';
 import { AddRefundModal } from './AddRefundModal';
@@ -56,6 +57,10 @@ interface RefundRow {
   /** The last contact about it since it was asked for, from the client's contact log. */
   last_contact?: { outcome?: string | null; notes?: string | null; at?: string; by?: string | null; type?: string } | null;
   contacts_count?: number;
+  /** Set when the request was opened from a customer-service problem («تحويل لاسترداد»). */
+  ticket_id?: string | null;
+  ticket_code?: string | null;
+  has_ticket_history?: boolean;
 }
 
 // Matches the narrower notifier FinancialTab passes; every call here is a
@@ -107,8 +112,22 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
   const [branchFilter, setBranchFilter] = useState('');
   const [ownerFilter, setOwnerFilter] = useState('');
   const [salesFilter, setSalesFilter] = useState('');
-  const [menuFor, setMenuFor] = useState('');
+  const [menuAt, setMenuAt] = useState<{ id: string; top: number; left: number } | null>(null);
   const [contactRow, setContactRow] = useState<RefundRow | null>(null);
+  const [history, setHistory] = useState<{ code: string; text: string; loading: boolean } | null>(null);
+
+  const openHistory = async (row: RefundRow) => {
+    setHistory({ code: row.ticket_code || '', text: '', loading: true });
+    try {
+      const res = await fetch(`/api/admin/refund-requests/${encodeURIComponent(row.id)}/ticket-history`, { credentials: 'include', headers: adminAuthHeaders() });
+      if (!res.ok) throw new Error('history');
+      const body = await res.json();
+      setHistory({ code: body.ticketCode || row.ticket_code || '', text: String(body.history || ''), loading: false });
+    } catch {
+      setHistory(null);
+      notifyRef.current('تعذر تحميل تفاصيل المشكلة', 'error');
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -126,7 +145,7 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
   useEffect(() => { void load(); }, [load]);
 
   const call = async (path: string, init: RequestInit, okMessage: string, id: string) => {
-    setMenuFor('');
+    setMenuAt(null);
     setBusy(id);
     try {
       const res = await fetch(path, {
@@ -272,10 +291,90 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
   const th = 'px-3 py-2.5 text-right font-bold whitespace-nowrap';
   const td = 'px-3 py-2.5 align-top';
 
+  // The compact action buttons: icons only (the label is the tooltip), so the row never needs a horizontal
+  // scroll to reach them. «خلي الايقونات صغيره لان في سكرول القايمة مش بتبان زر النتيجة».
+  const iconBtn = 'inline-flex h-7 w-7 items-center justify-center rounded-lg border text-[0px] transition disabled:opacity-50';
+
+  // The «النتيجة» menu opens at the button, in the page's own layer: inside the table's scrolling box it was clipped.
+  const openMenu = (event: React.MouseEvent<HTMLButtonElement>, id: string) => {
+    if (menuAt?.id === id) { setMenuAt(null); return; }
+    const rect = event.currentTarget.getBoundingClientRect();
+    const width = 176;
+    setMenuAt({ id, top: Math.min(rect.bottom + 4, window.innerHeight - 190), left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)) });
+  };
+
+  const actions = (row: RefundRow) => {
+    const status = normalizeStatus(row.status);
+    const working = busy === row.id;
+    return (
+      <div className="flex flex-nowrap items-center gap-1">
+        <button disabled={working} onClick={() => setContactRow(row)} title="تواصل وسجّل اللي حصل" aria-label="تواصل"
+          className={`${iconBtn} border-blue-600 bg-blue-600 text-white hover:bg-blue-700`}><Phone size={14} /></button>
+        <button onClick={() => navigate(`/client/${row.client_code || row.subscriber_id}`)} title="ملف العميل" aria-label="ملف العميل"
+          className={`${iconBtn} border-gray-200 bg-white text-gray-600 hover:bg-gray-100`}><ExternalLink size={14} /></button>
+        {(canDecide || isAdmin) && (
+          <button disabled={working} onClick={event => openMenu(event, row.id)} title="النتيجة — قبول أو رفض أو معالجة" aria-label="النتيجة" aria-haspopup="menu"
+            className={`${iconBtn} border-slate-800 bg-slate-800 text-white hover:bg-slate-900`}><CheckCircle2 size={14} /></button>
+        )}
+        {!row.escalated_at && status !== 'REFUNDED' && (
+          <button disabled={working} onClick={() => escalate(row)} title="رفع للإدارة" aria-label="رفع للإدارة"
+            className={`${iconBtn} border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100`}><ArrowUpCircle size={14} /></button>
+        )}
+        {isAdmin && (
+          <button disabled={working} onClick={() => void remove(row)} title="حذف الطلب" aria-label="حذف الطلب"
+            className={`${iconBtn} border-red-200 bg-red-50 text-red-700 hover:bg-red-100`}><Trash2 size={14} /></button>
+        )}
+      </div>
+    );
+  };
+
+  const statusBlock = (row: RefundRow) => {
+    const status = normalizeStatus(row.status);
+    const badge = STATUS_MAP[status] || STATUS_MAP.PENDING;
+    return (
+      <div className="space-y-0.5">
+        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-bold ${badge.bg} ${badge.text}`}>{badge.icon} {badge.label}</span>
+        {(status === 'APPROVED' || status === 'REFUNDED') && (
+          <div className="font-bold text-emerald-700">رُدّ {money(row.refunded_amount ?? row.amount, row.currency)}</div>
+        )}
+        {row.decision_note && status !== 'APPROVED' && status !== 'REFUNDED' && <div className="line-clamp-2 text-gray-600" title={row.decision_note}>{row.decision_note}</div>}
+        {row.refunded_at && <div className="text-[10px] text-teal-600">وصل العميل {day(row.refunded_at)}</div>}
+        {row.escalated_at && <div className="text-[10px] font-bold text-purple-600">⚠ مرفوع للإدارة</div>}
+        {row.blamed_staff_name && <div className="text-[10px] font-bold text-rose-600">خطأ: {row.blamed_staff_name}</div>}
+      </div>
+    );
+  };
+
+  const reasonBlock = (row: RefundRow) => (
+    <div className="space-y-1">
+      <div className="line-clamp-3 text-gray-700" title={row.reason}>{row.reason || '—'}</div>
+      {row.has_ticket_history && (
+        <button type="button" onClick={() => void openHistory(row)}
+          className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 hover:bg-rose-100">
+          <MessageSquareText size={11} /> من مشكلة{row.ticket_code ? ` #${row.ticket_code}` : ''} — التفاصيل
+        </button>
+      )}
+    </div>
+  );
+
+  const contactBlock = (row: RefundRow) => row.last_contact ? (
+    <div>
+      {row.last_contact.outcome && <div className="font-bold text-emerald-700">{row.last_contact.outcome}</div>}
+      {row.last_contact.notes && <div className="line-clamp-2 text-gray-600" title={row.last_contact.notes}>{row.last_contact.notes}</div>}
+      <div className="text-[10px] text-gray-400">
+        {row.last_contact.by || '—'} · {cairoDateTime(row.last_contact.at)}
+        {(row.contacts_count || 0) > 1 && <> · {row.contacts_count} تواصل</>}
+      </div>
+    </div>
+  ) : <span className="text-gray-300">لسه متواصلش</span>;
+
+  const menuRow = menuAt ? rows.find(row => row.id === menuAt.id) : null;
+  const menuStatus = normalizeStatus(menuRow?.status);
+
   return (
-    <div className="space-y-4" dir="rtl">
+    <div className="space-y-3" dir="rtl">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[200px]">
+        <div className="relative min-w-[200px] flex-1">
           <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="ابحث بالاسم أو الكود أو الكورس"
@@ -302,12 +401,12 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
         </select>
         {hasFilters && (
           <button onClick={() => { setStatusFilter('ALL'); setCourseFilter(''); setBranchFilter(''); setOwnerFilter(''); setSalesFilter(''); setSearch(''); }}
-            className="rounded-xl bg-gray-100 px-3 py-2 text-xs font-bold text-gray-600 flex items-center gap-1"><X size={12} /> مسح</button>
+            className="flex items-center gap-1 rounded-xl bg-gray-100 px-3 py-2 text-xs font-bold text-gray-600"><X size={12} /> مسح</button>
         )}
-        <button onClick={() => void load()} className="rounded-xl border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-50 flex items-center gap-1">
+        <button onClick={() => void load()} className="flex items-center gap-1 rounded-xl border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-50">
           <RefreshCw size={12} /> تحديث
         </button>
-        {canDecide && <button onClick={() => setAddOpen(true)} className="rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700 transition flex items-center gap-1">
+        {canDecide && <button onClick={() => setAddOpen(true)} className="flex items-center gap-1 rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-rose-700">
           <Plus size={12} /> إضافة استرداد
         </button>}
       </div>
@@ -321,149 +420,124 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
           لا توجد طلبات استرداد{statusFilter !== 'ALL' ? ' بهذه الحالة' : ''}.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
-          <table className="w-full text-xs">
-            <thead className="bg-gray-50 text-gray-500">
-              <tr>
-                <th className={th}>العميل</th>
-                <th className={th}>الكورس</th>
-                <th className={th}>الفرع</th>
-                <th className={th}>دفع / الإجمالي</th>
-                <th className={th}>طلب استرداد</th>
-                <th className={th}>الحجز / الطلب</th>
-                <th className={th}>السبب</th>
-                <th className={th}>المتابعة</th>
-                <th className={th}>السيلز</th>
-                <th className={th}>الحضور</th>
-                <th className={th}>الحالة</th>
-                <th className={th}>النتيجة</th>
-                <th className={th}>آخر تواصل</th>
-                <th className={th}>إجراءات</th>
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map(row => {
-                const status = normalizeStatus(row.status);
-                const badge = STATUS_MAP[status] || STATUS_MAP.PENDING;
-                const isPending = status === 'PENDING';
-                const working = busy === row.id;
-                return (
-                  <tr key={row.id} className="border-t border-gray-100 hover:bg-gray-50/60">
+        <>
+          {/* Phone: one card per request. */}
+          <div className="space-y-2 md:hidden">
+            {shown.map(row => (
+              <div key={row.id} className="space-y-2 rounded-2xl border border-gray-200 bg-white p-3 text-xs">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate font-extrabold text-gray-900">{row.subscriber_name || '—'}</div>
+                    {row.subscriber_phone && <div className="text-[11px] text-gray-500" dir="ltr">{row.subscriber_phone}</div>}
+                    <div className="text-[10px] text-gray-400">{[row.client_code, branchName(row.subscriber_branch)].filter(Boolean).join(' · ')}</div>
+                  </div>
+                  {statusBlock(row)}
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-gray-50 px-2.5 py-1.5">
+                  <span className="font-bold text-indigo-700">{row.course_title || 'كورس غير محدد'}</span>
+                  <span className="font-extrabold text-amber-700">{money(row.amount, row.currency)}</span>
+                </div>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-500">
+                  <span>دفع {num(row.paid_total).toLocaleString('ar-EG-u-nu-latn')} / {num(row.course_total).toLocaleString('ar-EG-u-nu-latn')}</span>
+                  <span>حضر {num(row.attended_count)} محاضرة</span>
+                  <span>طُلب {day(row.created_at)}</span>
+                  {ownerOf(row) && <span>المتابعة: {ownerOf(row)}</span>}
+                  {row.assigned_sales_name && <span>السيلز: {row.assigned_sales_name}</span>}
+                </div>
+                {reasonBlock(row)}
+                {row.last_contact && contactBlock(row)}
+                {actions(row)}
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop: seven columns carry the fourteen facts, so the actions are always in view. */}
+          <div className="hidden overflow-x-auto rounded-2xl border border-gray-200 bg-white md:block">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 text-gray-500">
+                <tr>
+                  <th className={th}>العميل</th>
+                  <th className={th}>الكورس والدفع</th>
+                  <th className={th}>المطلوب</th>
+                  <th className={th}>السبب</th>
+                  <th className={th}>الحالة والنتيجة</th>
+                  <th className={th}>المتابعة وآخر تواصل</th>
+                  <th className={`${th} sticky left-0 bg-gray-50`}>إجراءات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map(row => (
+                  <tr key={row.id} className="group border-t border-gray-100 hover:bg-gray-50/60">
                     <td className={td}>
                       {/* «لازم يكون في عمود اسم الكورس ويكون رقم الهاتف تحت اسم العميل». */}
-                      <div className="font-bold text-gray-800 whitespace-nowrap">{row.subscriber_name || '—'}</div>
-                      {row.subscriber_phone && <div className="text-[11px] text-gray-500 text-right" dir="ltr">{row.subscriber_phone}</div>}
-                      {row.client_code && <div className="text-[10px] text-gray-400">{row.client_code}</div>}
+                      <div className="whitespace-nowrap font-bold text-gray-800">{row.subscriber_name || '—'}</div>
+                      {row.subscriber_phone && <div className="text-right text-[11px] text-gray-500" dir="ltr">{row.subscriber_phone}</div>}
+                      <div className="text-[10px] text-gray-400">{[row.client_code, branchName(row.subscriber_branch)].filter(s => s && s !== '—').join(' · ')}</div>
                     </td>
-                    <td className={`${td} font-bold text-indigo-700 min-w-[120px]`}>{row.course_title || 'كورس غير محدد'}</td>
-                    <td className={`${td} text-gray-600 whitespace-nowrap`}>{branchName(row.subscriber_branch)}</td>
-                    <td className={td}>
-                      <span className="font-bold text-gray-800">{num(row.paid_total).toLocaleString('ar-EG-u-nu-latn')}</span>
-                      <span className="text-gray-400"> / {num(row.course_total).toLocaleString('ar-EG-u-nu-latn')}</span>
-                    </td>
-                    <td className={`${td} font-bold text-amber-700`}>{money(row.amount, row.currency)}</td>
-                    <td className={`${td} text-gray-500 whitespace-nowrap`}>
-                      <div>{day(row.booking_date)}</div>
-                      <div className="text-[11px]">↩ {day(row.created_at)}</div>
-                    </td>
-                    <td className={`${td} max-w-[180px] text-gray-600`}>{row.reason || '—'}</td>
-                    <td className={`${td} text-gray-600`}>{row.handler_name || row.assigned_cs_name || '—'}</td>
-                    <td className={`${td} text-gray-600`}>{row.assigned_sales_name || '—'}</td>
-                    <td className={`${td} text-gray-600`}>{num(row.attended_count)} محاضرة</td>
-                    <td className={td}>
-                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-bold ${badge.bg} ${badge.text}`}>
-                        {badge.icon} {badge.label}
-                      </span>
-                      {row.escalated_at && (
-                        <div className="mt-1 text-[10px] font-bold text-purple-600">⚠ مرفوع للإدارة</div>
-                      )}
-                      {row.blamed_staff_name && (
-                        <div className="mt-1 text-[10px] font-bold text-rose-600">خطأ: {row.blamed_staff_name}</div>
-                      )}
-                    </td>
-                    <td className={td}>
-                      {status === 'APPROVED' || status === 'REFUNDED' ? (
-                        <span className="font-bold text-emerald-700">{money(row.refunded_amount ?? row.amount, row.currency)}</span>
-                      ) : row.decision_note ? (
-                        <span className="text-gray-600">{row.decision_note}</span>
-                      ) : <span className="text-gray-300">—</span>}
-                      {row.refunded_at && <div className="text-[10px] text-teal-600">رُدّ {day(row.refunded_at)}</div>}
-                    </td>
-                    <td className={`${td} min-w-[160px]`}>
-                      {row.last_contact ? (
-                        <div>
-                          {row.last_contact.outcome && <div className="font-bold text-emerald-700">{row.last_contact.outcome}</div>}
-                          {row.last_contact.notes && <div className="text-gray-600 line-clamp-2" title={row.last_contact.notes}>{row.last_contact.notes}</div>}
-                          <div className="text-[10px] text-gray-400">
-                            {row.last_contact.by || '—'} · {cairoDateTime(row.last_contact.at)}
-                            {(row.contacts_count || 0) > 1 && <> · {row.contacts_count} تواصل</>}
-                          </div>
-                        </div>
-                      ) : <span className="text-gray-300">لسه متواصلش</span>}
-                    </td>
-                    <td className={td}>
-                      {/* «تواصل» and the client's file first; every decision
-                          under «النتيجة»; raising to management on its own. */}
-                      <div className="flex flex-nowrap items-center gap-1">
-                        <button disabled={working} onClick={() => setContactRow(row)} title="تواصل وسجّل اللي حصل"
-                          className="rounded-md px-1.5 py-0.5 text-[10px] font-bold disabled:opacity-50 inline-flex items-center gap-0.5 whitespace-nowrap bg-blue-600 text-white hover:bg-blue-700">
-                          <Phone size={10} /> تواصل
-                        </button>
-                        <button onClick={() => navigate(`/client/${row.client_code || row.subscriber_id}`)} title="ملف العميل"
-                          className="rounded-md px-1.5 py-0.5 text-[10px] font-bold disabled:opacity-50 inline-flex items-center gap-0.5 whitespace-nowrap border border-gray-200 bg-white text-gray-600 hover:bg-gray-100">
-                          <ExternalLink size={10} /> الملف
-                        </button>
-                        {(canDecide || isAdmin) && (
-                          <div className="relative">
-                            <button disabled={working} onClick={() => setMenuFor(menuFor === row.id ? '' : row.id)}
-                              className="rounded-md px-1.5 py-0.5 text-[10px] font-bold disabled:opacity-50 inline-flex items-center gap-0.5 whitespace-nowrap bg-slate-800 text-white hover:bg-slate-900">
-                              النتيجة <ChevronDown size={10} />
-                            </button>
-                            {menuFor === row.id && (
-                              <>
-                                <div className="fixed inset-0 z-10" onClick={() => setMenuFor('')} />
-                                <div className="absolute left-0 z-20 mt-1 w-40 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
-                                  {isPending && canDecide && (
-                                    <>
-                                      <button onClick={() => { setMenuFor(''); void decide(row, 'APPROVED'); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-right font-bold text-emerald-700 hover:bg-emerald-50"><CheckCircle2 size={12} /> مقبول</button>
-                                      <button onClick={() => { setMenuFor(''); void decide(row, 'REJECTED'); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-right font-bold text-red-700 hover:bg-red-50"><XCircle size={12} /> مرفوض</button>
-                                      <button onClick={() => { setMenuFor(''); void decide(row, 'HANDLING'); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-right font-bold text-blue-700 hover:bg-blue-50"><Wrench size={12} /> هنعالجه</button>
-                                    </>
-                                  )}
-                                  {status === 'APPROVED' && canDecide && (
-                                    <button onClick={() => { setMenuFor(''); void markRefunded(row); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-right font-bold text-teal-700 hover:bg-teal-50"><BadgeCheck size={12} /> تم رد المبلغ</button>
-                                  )}
-                                  {isAdmin && (
-                                    <button onClick={() => { setMenuFor(''); void blame(row); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-right font-bold text-rose-700 hover:bg-rose-50"><UserX size={12} /> خطأ موظف</button>
-                                  )}
-                                  {!isPending && status !== 'APPROVED' && !isAdmin && (
-                                    <p className="px-3 py-1.5 text-gray-400">اتاخد فيه قرار</p>
-                                  )}
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        )}
-                        {!row.escalated_at && status !== 'REFUNDED' && (
-                          <button disabled={working} onClick={() => escalate(row)}
-                            title="رفع للإدارة" className="rounded-md px-1.5 py-0.5 text-[10px] font-bold disabled:opacity-50 inline-flex items-center gap-0.5 whitespace-nowrap border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100">
-                            <ArrowUpCircle size={10} /> رفع للإدارة
-                          </button>
-                        )}
-                        {isAdmin && (
-                          <button disabled={working} onClick={() => void remove(row)} title="حذف الطلب"
-                            className="rounded-md px-1.5 py-0.5 text-[10px] font-bold disabled:opacity-50 inline-flex items-center gap-0.5 whitespace-nowrap border border-red-200 bg-red-50 text-red-700 hover:bg-red-100">
-                            <Trash2 size={10} /> حذف
-                          </button>
-                        )}
+                    <td className={`${td} min-w-[150px]`}>
+                      <div className="font-bold text-indigo-700">{row.course_title || 'كورس غير محدد'}</div>
+                      <div className="text-gray-600">
+                        دفع <b className="text-gray-800">{num(row.paid_total).toLocaleString('ar-EG-u-nu-latn')}</b>
+                        <span className="text-gray-400"> / {num(row.course_total).toLocaleString('ar-EG-u-nu-latn')}</span>
                       </div>
+                      <div className="text-[11px] text-gray-500">حضر {num(row.attended_count)} محاضرة</div>
                     </td>
+                    <td className={`${td} whitespace-nowrap`}>
+                      <div className="font-extrabold text-amber-700">{money(row.amount, row.currency)}</div>
+                      <div className="text-[11px] text-gray-500">حجز {day(row.booking_date)}</div>
+                      <div className="text-[11px] text-gray-500">طُلب {day(row.created_at)}</div>
+                    </td>
+                    <td className={`${td} min-w-[170px] max-w-[240px]`}>{reasonBlock(row)}</td>
+                    <td className={`${td} min-w-[130px]`}>{statusBlock(row)}</td>
+                    <td className={`${td} min-w-[170px]`}>
+                      <div className="mb-1 text-[11px] text-gray-600">
+                        {ownerOf(row) ? <>المتابعة: <b>{ownerOf(row)}</b></> : <span className="text-gray-300">من غير متابع</span>}
+                        {row.assigned_sales_name && <> · السيلز: <b>{row.assigned_sales_name}</b></>}
+                      </div>
+                      {contactBlock(row)}
+                    </td>
+                    <td className={`${td} sticky left-0 bg-white group-hover:bg-gray-50`}>{actions(row)}</td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {menuAt && menuRow && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setMenuAt(null)} />
+          <div role="menu" style={{ top: menuAt.top, left: menuAt.left }}
+            className="fixed z-50 w-44 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 text-xs shadow-lg">
+            {menuStatus === 'PENDING' && canDecide && (
+              <>
+                <button role="menuitem" onClick={() => { setMenuAt(null); void decide(menuRow, 'APPROVED'); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-right font-bold text-emerald-700 hover:bg-emerald-50"><CheckCircle2 size={12} /> مقبول</button>
+                <button role="menuitem" onClick={() => { setMenuAt(null); void decide(menuRow, 'REJECTED'); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-right font-bold text-red-700 hover:bg-red-50"><XCircle size={12} /> مرفوض</button>
+                <button role="menuitem" onClick={() => { setMenuAt(null); void decide(menuRow, 'HANDLING'); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-right font-bold text-blue-700 hover:bg-blue-50"><Wrench size={12} /> هنعالجه</button>
+              </>
+            )}
+            {menuStatus === 'APPROVED' && canDecide && (
+              <button role="menuitem" onClick={() => { setMenuAt(null); void markRefunded(menuRow); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-right font-bold text-teal-700 hover:bg-teal-50"><BadgeCheck size={12} /> تم رد المبلغ</button>
+            )}
+            {isAdmin && (
+              <button role="menuitem" onClick={() => { setMenuAt(null); void blame(menuRow); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-right font-bold text-rose-700 hover:bg-rose-50"><UserX size={12} /> خطأ موظف</button>
+            )}
+            {menuStatus !== 'PENDING' && menuStatus !== 'APPROVED' && !isAdmin && (
+              <p className="px-3 py-1.5 text-gray-400">اتاخد فيه قرار</p>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* The history of the customer-service problem this request came from. */}
+      {history && (
+        <Modal open onClose={() => setHistory(null)} title={`تفاصيل المشكلة${history.code ? ` #${history.code}` : ''}`} subtitle="اللي حصل في المشكلة قبل ما تتحول لاسترداد" size="md" layer="over">
+          <div dir="rtl">
+            {history.loading ? <p className="py-8 text-center text-sm text-gray-400">جاري التحميل…</p>
+              : <pre className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap rounded-xl border border-gray-200 bg-gray-50 p-3 font-sans text-xs leading-relaxed text-gray-800">{history.text || 'مفيش تفاصيل محفوظة.'}</pre>}
+          </div>
+        </Modal>
       )}
 
       {/* This panel's notify takes (message, tone); the modal uses the

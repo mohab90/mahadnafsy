@@ -3,7 +3,7 @@ import { useVisibleInterval } from '../../../../shared/useVisibleInterval';
 import { Modal } from '../../../../shared/ui/Modal';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  AlertCircle, ArrowUpCircle, CheckCircle2, Clock, ExternalLink, Inbox, Mail, MessageSquare,
+  AlertCircle, Archive, ArrowUpCircle, Banknote, CheckCircle2, Clock, ExternalLink, Inbox, Mail, MessageSquare,
   Plus, RefreshCw, RotateCcw, Search, Send, Star, Ticket, Trash2, UserCheck, X,
 } from 'lucide-react';
 
@@ -14,6 +14,7 @@ import { promptDialog } from '../../../../shared/ui/promptDialog';
 import { cairoStamp } from '../../../../shared/cairoDate';
 import { TicketContactButtons } from './TicketContact';
 import { TicketEscalateDialog } from './TicketEscalateDialog';
+import { TicketToRefundModal } from './TicketToRefundModal';
 
 // «محتاجين نطور صفحه تذاكر الدعم … تكون بخلاص صفحه الانبوكس اللى بتيجي المشاكل
 // من الموقع لان نفس المشاكل كدا بتتعرض مرتين … ازرار اجراءات لكل مشكله وللادارة
@@ -49,6 +50,8 @@ type InboxItem = {
   fromWebsite?: boolean;
   sla?: string;
   escalated: boolean;
+  /** The refund request this problem was handed to, once «تحويل لاسترداد» was used. */
+  refundRequestId?: string;
   /** «مهم جدا» or «متكررة» — what the administration was told it is. */
   escalationKind?: string;
   replies: number;
@@ -162,18 +165,49 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
     try { await mysqlAdmin.adminDelete(`/admin/support/canned-responses/${id}`); loadCanned(); } catch { notify('error', 'تعذر الحذف'); }
   };
 
+  // «اي مشكله قديمه بتتحل المفروض بتتمسح من الشاشه الرئيسية لكن لازم يكون في تاب داخلي لكل المشاكل القديمه ومتتمسحش»:
+  // the screen is the work in hand; every solved or closed problem is in the archive tab, paged and searchable.
+  const ARCHIVE_PAGE = 50;
+  const [mode, setMode] = useState<'active' | 'archive'>('active');
+  const [archivePage, setArchivePage] = useState(0);
+  const [archiveCount, setArchiveCount] = useState(0);
+  // What was waiting when the active list was last read, so the tab's badge is still right while the archive is open.
+  const [activeCount, setActiveCount] = useState(0);
+  const [archiveSearch, setArchiveSearch] = useState('');
+  useEffect(() => {
+    const timer = window.setTimeout(() => { setArchiveSearch(query.trim()); setArchivePage(0); }, 400);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+  const archived = mode === 'archive';
+  // Typing in the active list searches it in the browser; only the archive asks the server, and only the archive pages.
+  const archiveQ = archived ? archiveSearch : '';
+  const pageNo = archived ? archivePage : 0;
+
   const loadRemote = useCallback(async () => {
     setLoading(true);
     try {
-      const inbox = await mysqlAdmin.adminGet<{ tickets: any[]; contacts: any[] }>(`/admin/cs/inbox${department ? `?department=${department}` : ''}`);
+      const params = new URLSearchParams();
+      if (department) params.set('department', department);
+      if (archived) {
+        params.set('archive', '1');
+        params.set('limit', String(ARCHIVE_PAGE));
+        params.set('offset', String(pageNo * ARCHIVE_PAGE));
+        if (archiveQ) params.set('q', archiveQ);
+      }
+      const text = params.toString();
+      const inbox = await mysqlAdmin.adminGet<{ tickets: any[]; contacts: any[]; archiveCount?: number }>(`/admin/cs/inbox${text ? `?${text}` : ''}`);
       setTickets(Array.isArray(inbox?.tickets) ? inbox.tickets : []);
-      setContacts(Array.isArray(inbox?.contacts) ? inbox.contacts : []);
+      // The website's answered messages are one list, not a paged one: only on the first page.
+      setContacts(Array.isArray(inbox?.contacts) && (!archived || pageNo === 0) ? inbox.contacts : []);
+      setArchiveCount(Number(inbox?.archiveCount) || 0);
+      if (!archived) setActiveCount((Array.isArray(inbox?.tickets) ? inbox.tickets.length : 0) + (Array.isArray(inbox?.contacts) ? inbox.contacts.length : 0));
+      if (!archived) setActiveCount((Array.isArray(inbox?.tickets) ? inbox.tickets.length : 0) + (Array.isArray(inbox?.contacts) ? inbox.contacts.length : 0));
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر تحميل المشاكل');
     } finally {
       setLoading(false);
     }
-  }, [notify, department]);
+  }, [notify, department, archived, pageNo, archiveQ]);
   useEffect(() => { loadRemote(); }, [loadRemote]);
 
   const items = useMemo<InboxItem[]>(() => [
@@ -202,6 +236,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
       sla: row.sla,
       escalated: !!row.escalated_at,
       escalationKind: row.escalation_kind || '',
+      refundRequestId: row.refund_request_id || '',
       replies: Number(row.reply_count || 0),
       resolution: row.resolution_note || '',
       createdAt: row.created_at,
@@ -237,8 +272,9 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const mine = currentStaff?.id ? String(currentStaff.id) : '';
-    return items.filter(item => {
-      if (view === 'waiting' ? !isWaiting(item) : view === 'overdue' ? !isOverdue(item) : view !== 'all' && item.status !== view) return false;
+    const kept = items.filter(item => {
+      // The archive is every solved or closed problem, as the server ordered it (latest solved first).
+      if (!archived && (view === 'waiting' ? !isWaiting(item) : view === 'overdue' ? !isOverdue(item) : view !== 'all' && item.status !== view)) return false;
       if (sourceFilter !== 'all' && item.source !== sourceFilter) return false;
       if (categoryFilter && item.category !== categoryFilter) return false;
       if (priorityFilter && item.priority !== priorityFilter) return false;
@@ -246,10 +282,11 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
       if (!q) return true;
       return [item.title, item.person, item.phone, item.email, item.clientCode, item.detail]
         .some(value => String(value || '').toLowerCase().includes(q));
-    })
-      // Waiting first, the longest-waiting at the top: reading down is the order to work in.
-      .sort((a, b) => (Number(isWaiting(b)) - Number(isWaiting(a))) || (ageHours(b) - ageHours(a)));
-  }, [items, view, sourceFilter, categoryFilter, priorityFilter, ownerFilter, query, currentStaff]);
+    });
+    if (archived) return kept;
+    // Waiting first, the longest-waiting at the top: reading down is the order to work in.
+    return kept.sort((a, b) => (Number(isWaiting(b)) - Number(isWaiting(a))) || (ageHours(b) - ageHours(a)));
+  }, [items, view, archived, sourceFilter, categoryFilter, priorityFilter, ownerFilter, query, currentStaff]);
 
   const owners = useMemo(() => {
     const seen = new Map<string, string>();
@@ -429,6 +466,9 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
             {!closed && !item.escalated && (
               <button disabled={working} onClick={() => void escalate(item)} className={`${btn} border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100`}><ArrowUpCircle size={10} /> تصعيد</button>
             )}
+            {!closed && item.subscriberId && (
+              <button disabled={working} onClick={() => setRefunding(item)} title="تحويل المشكلة لطلب استرداد" className={`${btn} border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100`}><Banknote size={10} /> استرداد</button>
+            )}
             {closed && (
               <button disabled={working} onClick={() => void reopen(item)} className={`${btn} border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100`}><RotateCcw size={10} /> فتح تاني</button>
             )}
@@ -450,13 +490,17 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   };
 
   const selectCls = 'rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-bold text-slate-700';
+  // What is still to be done. The solved ones are not a tile here any more: they are the archive tab.
   const views: Array<[typeof view, string, number, string]> = [
     ['waiting', 'مستنية رد', counts.waiting, 'border-amber-200 bg-amber-50 text-amber-800'],
     ['overdue', 'عدّت الوقت', counts.overdue, 'border-rose-200 bg-rose-50 text-rose-800'],
     ['pending', 'تحت المتابعة', counts.pending, 'border-blue-200 bg-blue-50 text-blue-800'],
-    ['done', 'اتحلت', counts.done, 'border-emerald-200 bg-emerald-50 text-emerald-800'],
-    ['all', 'الكل', counts.all, 'border-slate-200 bg-slate-50 text-slate-700'],
   ];
+  const switchMode = (next: 'active' | 'archive') => {
+    if (next === mode) return;
+    setTickets([]); setContacts([]); setArchivePage(0); setMode(next);
+  };
+  const [refunding, setRefunding] = useState<InboxItem | null>(null);
 
   return (
     <div className="space-y-4" dir="rtl">
@@ -478,29 +522,51 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
           </div>
         </div>
 
-        {counts.overdue > 0 ? (
-          <div className="mt-2 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-800">
-            <AlertCircle size={15} /> {counts.overdue} مشكلة عدّت وقت الرد — أقدم واحدة مستنية {counts.oldestHours} ساعة.
-          </div>
-        ) : counts.waiting > 0 ? (
-          <div className="mt-2 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
-            <Clock size={15} /> {counts.waiting} مشكلة مستنية رد — كلها في وقتها.
-          </div>
-        ) : (
-          <div className="mt-2 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
-            <CheckCircle2 size={15} /> مفيش مشكلة مستنية رد.
-          </div>
-        )}
-
-        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
-          {views.map(([key, label, count, cls]) => (
-            <button key={key} type="button" onClick={() => setView(key)}
-              className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-1.5 text-right transition ${cls} ${view === key ? 'ring-2 ring-indigo-300' : 'opacity-80 hover:opacity-100'}`}>
-              <p className="text-[11px] font-bold">{label}</p>
-              <p className="text-lg font-black leading-none">{count}</p>
-            </button>
-          ))}
+        {/* Two tabs: the work in hand, and every old problem (solved or closed) — never deleted, only out of the way. */}
+        <div className="mt-2 flex gap-1 border-b border-slate-200" role="tablist">
+          <button type="button" role="tab" aria-selected={!archived} onClick={() => switchMode('active')}
+            className={`-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-1.5 text-xs font-extrabold ${!archived ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+            <Inbox size={13} /> الشغل الحالي
+            <span className="rounded-full bg-amber-100 px-1.5 text-[10px] text-amber-800">{archived ? activeCount : counts.waiting}</span>
+          </button>
+          <button type="button" role="tab" aria-selected={archived} onClick={() => switchMode('archive')}
+            className={`-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-1.5 text-xs font-extrabold ${archived ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+            <Archive size={13} /> أرشيف المشاكل
+            <span className="rounded-full bg-slate-100 px-1.5 text-[10px] text-slate-600">{archiveCount}</span>
+          </button>
         </div>
+
+        {archived ? (
+          <p className="mt-2 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">
+            <Archive size={15} /> كل المشاكل القديمة (اتحلت أو اتقفلت) — محفوظة بالكامل، وتقدر تفتح أي واحدة تاني.
+          </p>
+        ) : (
+          <>
+            {counts.overdue > 0 ? (
+              <div className="mt-2 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-800">
+                <AlertCircle size={15} /> {counts.overdue} مشكلة عدّت وقت الرد — أقدم واحدة مستنية {counts.oldestHours} ساعة.
+              </div>
+            ) : counts.waiting > 0 ? (
+              <div className="mt-2 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+                <Clock size={15} /> {counts.waiting} مشكلة مستنية رد — كلها في وقتها.
+              </div>
+            ) : (
+              <div className="mt-2 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
+                <CheckCircle2 size={15} /> مفيش مشكلة مستنية رد.
+              </div>
+            )}
+
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {views.map(([key, label, count, cls]) => (
+                <button key={key} type="button" onClick={() => setView(key)}
+                  className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-1.5 text-right transition ${cls} ${view === key ? 'ring-2 ring-indigo-300' : 'opacity-80 hover:opacity-100'}`}>
+                  <p className="text-[11px] font-bold">{label}</p>
+                  <p className="text-lg font-black leading-none">{count}</p>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Every filter, small, on one row. */}
@@ -569,6 +635,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                       <span className={`text-[10px] font-bold ${PRIORITY_META[item.priority]?.cls || ''}`}>{PRIORITY_META[item.priority]?.label || item.priority}</span>
                       {item.escalated && <span className={`text-[10px] font-bold ${item.escalationKind === 'repeated' ? 'text-violet-700' : item.escalationKind === 'critical' ? 'text-red-700' : 'text-purple-600'}`}>{item.escalationKind === 'repeated' ? '🔁 مصعّدة — متكررة' : item.escalationKind === 'critical' ? '🚨 مصعّدة — مهم جدا' : '⚠ مصعّدة'}</span>}
                       {item.replies > 0 && <span className="text-[10px] text-slate-400">{item.replies} رد</span>}
+                      {item.refundRequestId && <span className="rounded bg-rose-50 px-1.5 text-[10px] font-bold text-rose-700">اتحوّلت لاسترداد</span>}
                     </div>
                     {item.detail && <p className="mt-0.5 line-clamp-2 text-[11px] text-slate-500">{item.detail}</p>}
                     {item.resolution && <p className="mt-0.5 line-clamp-2 text-[11px] font-bold text-emerald-700">الحل: {item.resolution}</p>}
@@ -597,6 +664,18 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {archived && archiveCount > ARCHIVE_PAGE && (
+        <div className="flex items-center justify-between gap-2 text-xs font-bold text-slate-600">
+          <span>{archivePage * ARCHIVE_PAGE + 1}–{Math.min(archiveCount, (archivePage + 1) * ARCHIVE_PAGE)} من {archiveCount}</span>
+          <span className="flex gap-1">
+            <button type="button" disabled={loading || archivePage === 0} onClick={() => setArchivePage(page => Math.max(0, page - 1))}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1 hover:bg-slate-50 disabled:opacity-40">السابق</button>
+            <button type="button" disabled={loading || (archivePage + 1) * ARCHIVE_PAGE >= archiveCount} onClick={() => setArchivePage(page => page + 1)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1 hover:bg-slate-50 disabled:opacity-40">التالي</button>
+          </span>
         </div>
       )}
 
@@ -712,6 +791,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                     {!closed && <button disabled={working} onClick={() => void resolve(item, 'closed')} className="inline-flex items-center gap-1 rounded-xl bg-slate-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-50"><X size={13} /> قفل</button>}
                     {closed && <button disabled={working} onClick={() => void reopen(item)} className="inline-flex items-center gap-1 rounded-xl border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700 disabled:opacity-50"><RotateCcw size={13} /> فتح تاني</button>}
                     {!closed && !item.escalated && <button disabled={working} onClick={() => void escalate(item)} className="inline-flex items-center gap-1 rounded-xl border border-purple-300 bg-purple-50 px-3 py-1.5 text-xs font-bold text-purple-700 disabled:opacity-50"><ArrowUpCircle size={13} /> تصعيد للإدارة</button>}
+                    {!closed && item.subscriberId && <button disabled={working} onClick={() => setRefunding(item)} className="inline-flex items-center gap-1 rounded-xl border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 disabled:opacity-50"><Banknote size={13} /> تحويل لاسترداد</button>}
                     <select disabled={working} value={item.assignedTo || ''} onChange={event => void assign(item, event.target.value)} className={selectCls} aria-label="تحويل لزميل">
                       <option value="">— تحويل لزميل —</option>
                       {staffMembers.filter(member => member.status === 'active').map(member => <option key={member.id} value={member.id}>{member.name}</option>)}
@@ -744,6 +824,18 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
           onDone={(kind, repeats) => {
             setEscalating(null);
             notify('success', kind === 'repeated' ? `اتصعدت للإدارة كمشكلة متكررة${repeats ? ` (رجعت ${repeats} مرة)` : ''}` : 'اتصعدت للإدارة — مهم جدا');
+            closeDetail();
+            void loadRemote();
+          }} />
+      )}
+
+      {refunding && (
+        <TicketToRefundModal ticketId={refunding.id} title={refunding.title} subject={refunding.title}
+          onClose={() => setRefunding(null)}
+          onError={text => notify('error', text)}
+          onDone={() => {
+            setRefunding(null);
+            notify('success', 'اتحوّلت لقسم الاسترداد ومعاها كل تفاصيلها');
             closeDetail();
             void loadRemote();
           }} />

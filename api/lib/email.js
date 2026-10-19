@@ -68,10 +68,21 @@ function invalidateEmailConfig(tenantId) {
   else configCache.clear();
 }
 
+// A transactional relay (Brevo) signs and authenticates the sender itself: it refuses an address its owner has
+// not verified in the relay. The sender-domain rule in routes/config.js compares the address with the SMTP
+// login's domain, which for a relay is the relay's own (xxxx@smtp-brevo.com) and never the institute's.
+const MANAGED_RELAY_HOST = /(^|\.)(brevo\.com|sendinblue\.com)$/i;
+const isManagedRelay = host => MANAGED_RELAY_HOST.test(String(host || '').trim());
+
 async function getTransport(tenantId = DEFAULT_TENANT) {
   const c = await getEmailConfig(tenantId);
+  const port = Number(c.smtpPort);
   return nodemailer.createTransport({
-    host: c.smtpHost, port: c.smtpPort, secure: c.smtpPort === 465,
+    host: c.smtpHost, port: c.smtpPort, secure: port === 465,
+    // 587 is STARTTLS: never fall back to sending the login in clear text if the upgrade is not offered.
+    requireTLS: port === 587,
+    // Without these a half-open connection holds the request (a receipt, a reset link) for minutes.
+    connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 25_000,
     auth: { user: c.smtpUser, pass: c.smtpPass },
   });
 }
@@ -285,5 +296,5 @@ const mailer = {
 
 module.exports = {
   mailer, sendEmail, htmlEmail, getEmailConfig, invalidateEmailConfig, assertRecipientAccepted,
-  getDeliveryHealth,
+  getDeliveryHealth, isManagedRelay,
 };

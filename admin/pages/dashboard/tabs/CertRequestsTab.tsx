@@ -256,8 +256,8 @@ export default function CertRequestsTab({
   const hasFilters = certSearch || certTypeFilter !== 'all' || certStatusFilter !== 'all' || branchFilter || ownerFilter || partyFilter;
   // «صغر كل الفلاتر تكون علي صف واحد».
   const select = 'border border-gray-300 rounded-lg px-2 py-1.5 text-xs max-w-[150px] focus:outline-none focus:ring-2 focus:ring-primary-400';
-  const th = 'text-right px-3 py-2.5 border border-gray-200 font-semibold text-xs whitespace-nowrap';
-  const td = 'px-3 py-2 border border-gray-100 text-xs align-top';
+
+
   const input = 'mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm';
 
   return (
@@ -336,149 +336,141 @@ export default function CertRequestsTab({
             <p>{rows.length === 0 ? 'لا توجد طلبات شهادات بعد' : 'لا توجد نتائج مطابقة للفلتر'}</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="bg-gray-50 border border-gray-200">
-                  <th className={`${th} w-8`}>
-                    <input type="checkbox" checked={picker.allSelected} onChange={picker.toggleAll} aria-label="تحديد كل الشهادات المعروضة" />
-                  </th>
-                  <th className={th}>العميل</th>
-                  <th className={th}>التليفون</th>
-                  <th className={th}>الفرع</th>
-                  <th className={th}>نوع الشهادة</th>
-                  <th className={th}>الكورس</th>
-                  <th className={th}>الاسم على الشهادة</th>
-                  <th className={th}>بيانات الشهادة</th>
-                  <th className={th}>السعر</th>
-                  <th className={th}>المدفوع</th>
-                  <th className={th}>المتبقي</th>
-                  <th className={th}>جهة التحصيل</th>
-                  <th className={th}>المسئول</th>
-                  <th className={th}>الحالة</th>
-                  <th className={th}>ملاحظات</th>
-                  <th className={th}>تاريخ الطلب</th>
-                  <th className={th}>إجراءات</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row, index) => {
-                  const meta = STATUS_META[row.status] || STATUS_META.pending;
-                  const busy = busyId === row.id;
-                  return (
-                    <tr key={row.id} className={`${picker.isSelected(row.id) ? 'bg-amber-50' : index % 2 ? 'bg-gray-50/60' : 'bg-white'} hover:bg-amber-50/40 border border-gray-100`}>
-                      <td className={td}>
-                        <input type="checkbox" checked={picker.isSelected(row.id)} onChange={() => picker.toggle(row.id)} aria-label={`تحديد شهادة ${row.subscriberName}`} />
-                      </td>
-                      <td className={td}>
-                        <div className="font-bold text-gray-900">{row.subscriberName || '—'}</div>
-                        {row.clientCode && <div className="text-[11px] text-gray-400" dir="ltr">{row.clientCode}</div>}
-                      </td>
-                      <td className={`${td} whitespace-nowrap`} dir="ltr">
-                        {row.subscriberPhone ? <a href={`tel:${row.subscriberPhone}`} className="text-blue-600 hover:underline">{row.subscriberPhone}</a> : <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className={`${td} whitespace-nowrap text-gray-600`}>{branchName(row.branch)}</td>
-                      <td className={`${td} font-medium`}>
-                        {certCatalog.label(row.type, row.customName)}
-                        {row.nationality && <div className="text-[10px] text-gray-400">{NATIONALITIES[row.nationality] || row.nationality}</div>}
-                      </td>
-                      <td className={`${td} text-gray-600`}>{row.courseTitle || <span className="text-gray-300">—</span>}</td>
-                      <td className={td}>
-                        {!row.nameAr && !row.nameEn && row.nameSuggested ? (
-                          <>
-                            <div>{row.nameSuggested}</div>
-                            <div className="text-[10px] text-gray-400">من اسم العميل</div>
-                          </>
-                        ) : !row.nameAr && !row.nameEn ? (
-                          <span className="text-[11px] bg-red-100 text-red-600 font-bold px-2 py-0.5 rounded-full">⚠️ اسم فارغ — محتاج الاسم ثلاثي</span>
-                        ) : (
-                          <>
-                            <div>{row.nameAr || '—'}</div>
-                            <div className="text-gray-400" dir="ltr">{row.nameEn || ''}</div>
-                          </>
+          <div className="space-y-2">
+            {/* One card per request: the client, the certificate, the money and the stage, side by side on a
+                wide screen and stacked on a phone — nothing hidden behind a sideways scroll. */}
+            <label className="flex items-center gap-2 px-1 text-[11px] font-bold text-gray-500">
+              <input type="checkbox" checked={picker.allSelected} onChange={picker.toggleAll} aria-label="تحديد كل الشهادات المعروضة" />
+              تحديد كل المعروض
+            </label>
+            {filtered.map(row => {
+              const meta = STATUS_META[row.status] || STATUS_META.pending;
+              const busy = busyId === row.id;
+              const missing = missingCertData(row);
+              const start = row.courseStartDate || row.suggestedStart;
+              const end = row.courseEndDate || row.suggestedEnd;
+              const price = row.systemPrice ?? row.price;
+              const share = price ? Math.min(100, Math.round((Number(row.paid) / Number(price)) * 100)) : 0;
+              const chosen = picker.isSelected(row.id);
+              return (
+                <div key={row.id} className={`rounded-2xl border p-3 text-xs ${chosen ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white'} hover:border-amber-200`}>
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.1fr_1.7fr_1.1fr_1.3fr]">
+                    {/* Client */}
+                    <div className="flex min-w-0 items-start gap-2">
+                      <input type="checkbox" className="mt-1" checked={chosen} onChange={() => picker.toggle(row.id)} aria-label={`تحديد شهادة ${row.subscriberName}`} />
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-extrabold text-gray-900">{row.subscriberName || '—'}</div>
+                        {row.subscriberPhone && <a href={`tel:${row.subscriberPhone}`} dir="ltr" className="block text-right font-bold text-blue-600 hover:underline">{row.subscriberPhone}</a>}
+                        <div className="mt-0.5 flex flex-wrap gap-1 text-[10px]">
+                          {row.clientCode && <span className="rounded bg-gray-100 px-1.5 font-bold text-gray-500" dir="ltr">{row.clientCode}</span>}
+                          <span className="rounded bg-teal-50 px-1.5 font-bold text-teal-700">{branchName(row.branch)}</span>
+                          {row.ownerName && <span className="rounded bg-indigo-50 px-1.5 font-bold text-indigo-700">{row.ownerName}</span>}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* The certificate */}
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="rounded-lg bg-amber-100 px-2 py-0.5 font-extrabold text-amber-800">{certCatalog.label(row.type, row.customName)}</span>
+                        {row.nationality && <span className="text-[10px] text-gray-500">{NATIONALITIES[row.nationality] || row.nationality}</span>}
+                        {row.courseTitle && <span className="truncate font-bold text-gray-600">{row.courseTitle}</span>}
+                      </div>
+                      {!row.nameAr && !row.nameEn && row.nameSuggested ? (
+                        <div className="text-gray-800">{row.nameSuggested} <span className="text-[10px] text-gray-400">(من اسم العميل)</span></div>
+                      ) : !row.nameAr && !row.nameEn ? (
+                        <span className="inline-block rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-600">⚠️ اسم فارغ — محتاج الاسم ثلاثي</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-x-3 text-gray-800">
+                          <span>{row.nameAr || '—'}</span>
+                          {row.nameEn && <span className="text-gray-500" dir="ltr">{row.nameEn}</span>}
+                        </div>
+                      )}
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">
+                        {row.idNumber && <span className="font-mono text-gray-600" dir="ltr">{row.idNumber}</span>}
+                        {(start || end) && (
+                          <span className={row.courseStartDate || row.courseEndDate ? 'text-gray-600' : 'text-gray-400'} title={row.courseStartDate ? '' : 'من السيستم — اتأكد منه'}>
+                            {start || '؟'} ← {end || '؟'}
+                          </span>
                         )}
-                      </td>
-                      <td className={`${td} min-w-[150px]`}>
-                        {(() => {
-                          const missing = missingCertData(row);
-                          const start = row.courseStartDate || row.suggestedStart;
-                          const end = row.courseEndDate || row.suggestedEnd;
-                          return (
-                            <div className="space-y-0.5 text-[11px]">
-                              {row.idNumber && <div className="font-mono text-gray-600" dir="ltr">{row.idNumber}</div>}
-                              {(start || end) && (
-                                <div className={row.courseStartDate || row.courseEndDate ? 'text-gray-600' : 'text-gray-400'} title={row.courseStartDate ? '' : 'من السيستم — اتأكد منه'}>
-                                  {start || '؟'} ← {end || '؟'}
-                                </div>
-                              )}
-                              {missing.length > 0 && <div className="font-bold text-red-600">ناقص: {missing.join('، ')}</div>}
-                              <button disabled={busy} onClick={() => setCompleting(row)}
-                                className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-40">
-                                {missing.length ? 'تكملة البيانات' : 'تعديل البيانات'}
-                              </button>
-                            </div>
-                          );
-                        })()}
-                      </td>
-                      <td className={`${td} whitespace-nowrap font-bold text-primary-700`}>
-                        {num(row.systemPrice ?? row.price)} {(row.systemPrice ?? row.price) != null ? row.currency : ''}
-                        {row.systemPrice != null && row.price != null && Number(row.price) !== Number(row.systemPrice) && (
-                          <div className="text-[10px] font-normal text-amber-700">مكتوب على الطلب {num(row.price)}</div>
-                        )}
-                      </td>
-                      <td className={`${td} whitespace-nowrap font-bold text-emerald-700`}>{num(row.paid)}</td>
-                      <td className={`${td} whitespace-nowrap`}>
+                        {row.personalPhotoUrl && <a href={row.personalPhotoUrl} target="_blank" rel="noreferrer" className="font-bold text-blue-600 hover:underline">الصورة الشخصية</a>}
+                        {row.idPhotoUrl && <a href={row.idPhotoUrl} target="_blank" rel="noreferrer" className="font-bold text-blue-600 hover:underline">صورة الهوية</a>}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {missing.length > 0 && <span className="font-bold text-red-600">ناقص: {missing.join('، ')}</span>}
+                        <button disabled={busy} onClick={() => setCompleting(row)}
+                          className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-40">
+                          {missing.length ? 'تكملة البيانات' : 'تعديل البيانات'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* The money */}
+                    <div className="space-y-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-gray-500">السعر</span>
+                        <span className="font-extrabold text-primary-700">{num(price)} {price != null ? row.currency : ''}</span>
+                      </div>
+                      {row.systemPrice != null && row.price != null && Number(row.price) !== Number(row.systemPrice) && (
+                        <div className="text-[10px] text-amber-700">مكتوب على الطلب {num(row.price)}</div>
+                      )}
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-gray-500">المدفوع</span>
+                        <span className="font-extrabold text-emerald-700">{num(row.paid)}</span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-gray-100"><div className={`h-full ${row.complete ? 'bg-emerald-500' : 'bg-amber-400'}`} style={{ width: `${share}%` }} /></div>
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-gray-500">المتبقي</span>
                         {row.remaining == null ? <span className="text-[11px] text-amber-700">مفيش سعر في السيستم</span> : !row.complete
-                          ? <span className="font-bold text-red-600">{num(row.remaining)}</span>
-                          : <span className="text-[11px] font-bold text-green-600">مكتمل ✓</span>}
-                      </td>
-                      <td className={`${td} max-w-[160px] text-gray-600`}>{row.collectionParty || <span className="text-gray-300">—</span>}</td>
-                      <td className={`${td} whitespace-nowrap text-gray-600`}>{row.ownerName || '—'}</td>
-                      <td className={`${td} min-w-[150px]`}>
-                        {UNPAID.includes(row.status) ? (
-                          <div className="flex flex-col items-start gap-1">
-                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${meta.badge}`}>{meta.label}</span>
-                            {/* A certificate is not taken forward on money not paid. */}
-                            {row.subscriberId && (
-                              <button disabled={busy} onClick={() => navigate(`/client/${row.clientCode || row.subscriberId}?pay=cert:${row.id}`)}
-                                className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-700 disabled:opacity-40">
-                                <CreditCard size={10} /> دفع{row.remaining ? ` ${num(row.remaining)}` : ''}
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <select value={row.status === 'not_sent' ? 'paid' : row.status} disabled={busy}
-                            onChange={event => void changeStatus(row, event.target.value as CertStatus)}
-                            className={`rounded-lg border-0 px-2 py-1 text-[11px] font-bold ${meta.badge} disabled:opacity-50`} aria-label="حالة الشهادة">
-                            {PAID_STAGES.map(stage => <option key={stage} value={stage}>{STATUS_META[stage].label}</option>)}
-                          </select>
-                        )}
-                      </td>
-                      <td className={`${td} max-w-[200px] text-gray-600`}>
-                        <span className="line-clamp-3" title={row.adminNote || ''}>{row.adminNote || <span className="text-gray-300">—</span>}</span>
-                      </td>
-                      <td className={`${td} whitespace-nowrap text-gray-400`}>{row.requestedAt ? cairoDay(row.requestedAt) : '—'}</td>
-                      <td className={td}>
-                        <div className="flex items-center gap-1">
-                          {canManage && (
-                            <button onClick={() => setEditing({ row, draft: draftOf(row) })} disabled={busy} title="تعديل الشهادة (للمديرين)"
-                              className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition"><Pencil size={14} /></button>
-                          )}
+                          ? <span className="font-extrabold text-red-600">{num(row.remaining)}</span>
+                          : <span className="text-[11px] font-extrabold text-green-600">مكتمل ✓</span>}
+                      </div>
+                      {row.collectionParty && <div className="line-clamp-2 text-[10px] text-gray-500" title={row.collectionParty}>التحصيل: {row.collectionParty}</div>}
+                    </div>
+
+                    {/* Where it is, and what can be done */}
+                    <div className="space-y-1.5">
+                      {UNPAID.includes(row.status) ? (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${meta.badge}`}>{meta.label}</span>
+                          {/* A certificate is not taken forward on money not paid. */}
                           {row.subscriberId && (
-                            <button onClick={() => navigate(`/client/${row.clientCode || row.subscriberId}`)} title="ملف العميل"
-                              className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg transition"><ExternalLink size={14} /></button>
-                          )}
-                          {canManage && canDelete && (
-                            <button onClick={() => void remove(row)} disabled={busy} title="حذف الشهادة (للمديرين)"
-                              className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"><Trash2 size={14} /></button>
+                            <button disabled={busy} onClick={() => navigate(`/client/${row.clientCode || row.subscriberId}?pay=cert:${row.id}`)}
+                              className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-700 disabled:opacity-40">
+                              <CreditCard size={10} /> دفع{row.remaining ? ` ${num(row.remaining)}` : ''}
+                            </button>
                           )}
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      ) : (
+                        <select value={row.status === 'not_sent' ? 'paid' : row.status} disabled={busy}
+                          onChange={event => void changeStatus(row, event.target.value as CertStatus)}
+                          className={`max-w-full rounded-lg border-0 px-2 py-1 text-[11px] font-bold ${meta.badge} disabled:opacity-50`} aria-label="حالة الشهادة">
+                          {PAID_STAGES.map(stage => <option key={stage} value={stage}>{STATUS_META[stage].label}</option>)}
+                        </select>
+                      )}
+                      <div className="flex items-center gap-1">
+                        {canManage && (
+                          <button onClick={() => setEditing({ row, draft: draftOf(row) })} disabled={busy} title="تعديل الشهادة (للمديرين)" aria-label="تعديل الشهادة"
+                            className="rounded-lg p-1.5 text-indigo-600 transition hover:bg-indigo-50"><Pencil size={14} /></button>
+                        )}
+                        {row.subscriberId && (
+                          <button onClick={() => navigate(`/client/${row.clientCode || row.subscriberId}`)} title="ملف العميل" aria-label="ملف العميل"
+                            className="rounded-lg p-1.5 text-gray-500 transition hover:bg-gray-100"><ExternalLink size={14} /></button>
+                        )}
+                        {canManage && canDelete && (
+                          <button onClick={() => void remove(row)} disabled={busy} title="حذف الشهادة (للمديرين)" aria-label="حذف الشهادة"
+                            className="rounded-lg p-1.5 text-red-500 transition hover:bg-red-50 hover:text-red-700"><Trash2 size={14} /></button>
+                        )}
+                        <span className="ms-auto text-[10px] text-gray-400">{row.requestedAt ? `طُلبت ${cairoDay(row.requestedAt)}` : ''}</span>
+                      </div>
+                    </div>
+                  </div>
+                  {row.adminNote && (
+                    <p className="mt-2 rounded-lg bg-gray-50 px-2.5 py-1.5 text-[11px] leading-relaxed text-gray-600"><b className="text-gray-500">ملاحظات: </b>{row.adminNote}</p>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </>)}

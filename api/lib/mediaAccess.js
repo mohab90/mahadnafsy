@@ -111,7 +111,7 @@ function playableRedirect(value, { start = 0, autoplay = false } = {}) {
     let id = '';
     if (parsed.hostname.includes('youtu.be')) id = parsed.pathname.split('/').filter(Boolean)[0] || '';
     if (parsed.hostname.includes('youtube.com')) {
-      id = parsed.searchParams.get('v') || parsed.pathname.split('/embed/')[1]?.split('/')[0] || '';
+      id = parsed.searchParams.get('v') || /^\/(?:embed|shorts|live|v)\/([\w-]{11})/.exec(parsed.pathname)?.[1] || '';
     }
     if (id) {
       const params = [

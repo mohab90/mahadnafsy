@@ -200,9 +200,11 @@ test('certificates: paid before the system is paid, and the courier has a way ba
   const tab = read('admin/pages/dashboard/tabs/CertRequestsTab.tsx');
   assert.match(tab, /shipped: +\{ label: 'اتشحنت'/);
   assert.match(tab, /returned: +\{ label: 'مرتجع'/);
-  for (const header of ['التليفون', 'الفرع', 'المدفوع', 'المتبقي', 'جهة التحصيل', 'المسئول', 'ملاحظات']) {
-    assert.ok(tab.includes(`<th className={th}>${header}</th>`), header);
+  // 19 Oct 2026: one card per request (client, certificate, money, stage) instead of a seventeen-column table.
+  for (const label of ['السعر', 'المدفوع', 'المتبقي', 'التحصيل:', 'ملاحظات: ', 'تحديد كل المعروض']) {
+    assert.ok(tab.includes(label), label);
   }
+  assert.ok(!tab.includes('<table'), 'no sideways-scrolling table');
   assert.match(tab, /mysqlAdmin\.updateCertificateDetails/);
   assert.match(tab, /mysqlAdmin\.listAllCertificateRequests\(\)/, 'read from the server, not the loaded clients');
 });
@@ -221,13 +223,13 @@ test('refunds: the course under the client, contact and its result, organised ac
   assert.match(panel, /row\.course_title \|\| 'كورس غير محدد'/);
   assert.match(panel, /<ClientContactDialog/);
   assert.match(panel, /navigate\(`\/client\/\$\{row\.client_code \|\| row\.subscriber_id\}`\)/);
-  assert.match(panel, /النتيجة <ChevronDown/);
+  assert.match(panel, /aria-label="النتيجة"/, 'the result button is an icon with its name as the tooltip');
   assert.match(panel, /\['ESCALATED', 'مرفوع للإدارة'\]/);
   for (const label of ['الكورس', 'الفرع', 'المسئول', 'السيلز']) assert.ok(panel.includes(`aria-label="${label}"`), label);
   assert.match(panel, /const notifyRef = useRef\(notify\);/, 'an inline notify no longer reloads the list');
   // 8 Oct 2026: the course its own column, the phone under the name, the
   // actions one small row, and delete the admin's own button.
-  assert.match(panel, /<th className=\{th\}>الكورس<\/th>/);
+  assert.match(panel, /<th className=\{th\}>الكورس والدفع<\/th>/);
   assert.match(panel, /\{row\.subscriber_phone && <div/);
   assert.match(panel, /flex flex-nowrap items-center gap-1/);
   assert.match(panel, /\{isAdmin && \(\s*<button disabled=\{working\} onClick=\{\(\) => void remove\(row\)\}/);

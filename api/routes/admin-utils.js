@@ -8,7 +8,7 @@ const { pool } = require('../lib/db');
 const { tryJson } = require('../lib/helpers');
 const { sendEmail } = require('../lib/email');
 const { sendWhatsApp } = require('../lib/whatsapp');
-const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAdminOrOnlineManagerOrCollection, requireAdminOrOnlineManager } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAnyPermission, requireAdminOrOnlineManagerOrCollection, requireAdminOrOnlineManager } = require('../middleware/auth');
 const { financialScopeClause, resolveFinancialScope } = require('../lib/financialScope');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
@@ -654,7 +654,9 @@ router.post('/api/me/refund-request', requireAuth, async (req, res) => {
 // for (course_item: a course id, or 'bundle:<id>') — or both, the course then
 // being the payment's. Without a payment the amount is held to what the client
 // paid for that course here and before the system, when anything is recorded.
-router.post('/api/admin/refund-requests/by-admin', requireAuth, requireAdminOrStaff, requirePermission('approve_refunds'), async (req, res) => {
+// A function of its own so the ticket screen can open a refund from a problem (routes/support.js, convert-to-refund)
+// through the very same checks, without holding the permission to decide refunds.
+async function createRefundByAdmin(req, res) {
   try {
     const { subscriber_id, payment_id, amount, currency = 'EGP', reason, refund_method, course_item } = req.body;
     const requestedAmount = Number(amount);
@@ -753,7 +755,10 @@ router.post('/api/admin/refund-requests/by-admin', requireAuth, requireAdminOrSt
     });
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
-});
+}
+
+router.post('/api/admin/refund-requests/by-admin', requireAuth, requireAdminOrStaff, requirePermission('approve_refunds'), createRefundByAdmin);
+router.createRefundByAdmin = createRefundByAdmin;
 
 // GET /api/admin/refund-requests — list all refund requests
 router.get('/api/admin/refund-requests', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
@@ -761,7 +766,11 @@ router.get('/api/admin/refund-requests', requireAuth, requireAdminOrStaff, requi
     const { status } = req.query;
     const tenantId = req.tenantId || resolveTenantId(req) || DEFAULT_TENANT_ID;
     let sql = `
-      SELECT r.*, s.name AS subscriber_name, s.email AS subscriber_email, s.phone AS subscriber_phone,
+      SELECT r.id, r.tenant_id, r.branch_id, r.subscriber_id, r.payment_id, r.amount, r.currency, r.reason, r.status, r.admin_note,
+             r.refund_method, r.created_at, r.resolved_at, r.resolved_by, r.refunded_amount, r.decision_note, r.escalated_at, r.escalated_by,
+             r.blamed_staff_id, r.blame_note, r.deleted_at, r.refunded_at, r.course_item, r.ticket_id, r.ticket_code,
+             (r.ticket_history IS NOT NULL) AS has_ticket_history,
+             s.name AS subscriber_name, s.email AS subscriber_email, s.phone AS subscriber_phone,
              p.payment_type, p.payment_method, p.date AS payment_date
       FROM refund_requests r
       JOIN subscribers s ON s.id = r.subscriber_id
@@ -781,6 +790,20 @@ router.get('/api/admin/refund-requests', requireAuth, requireAdminOrStaff, requi
     const [rows] = await pool.query(sql, params);
     res.json(rows);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// The history of the problem a refund came from (the list carries only a flag: it can be long).
+router.get('/api/admin/refund-requests/:id/ticket-history', requireAuth, requireAdminOrStaff, requireAnyPermission('view_financial', 'manage_inbox'), async (req, res) => {
+  try {
+    const tenantId = req.tenantId || resolveTenantId(req) || DEFAULT_TENANT_ID;
+    const refundScope = resolveFinancialScope(req, { allowAssigned: true });
+    const scoped = financialScopeClause(refundScope, { branchColumn: 's.branch_id', subscriberAlias: 's' });
+    const [[row]] = await pool.query(
+      `SELECT r.ticket_id, r.ticket_code, r.ticket_history FROM refund_requests r JOIN subscribers s ON s.id = r.subscriber_id AND s.tenant_id=r.tenant_id
+        WHERE r.tenant_id=? AND r.id=?${scoped.sql} LIMIT 1`, [tenantId, req.params.id, ...scoped.params]);
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    res.json({ ticketId: row.ticket_id, ticketCode: row.ticket_code, history: row.ticket_history || '' });
+  } catch (e) { logger.error('[refund ticket-history]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // NOTE: refund approval/rejection is handled by PUT /api/admin/finance/refunds/:id

@@ -243,6 +243,12 @@ router.get('/api/admin/cx-performance', requireAuth, requireAdminOrStaff,
 router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
   try {
     const { department, category, status, sla, assignee, q } = req.query;
+    // «اي مشكله قديمه بتتحل المفروض بتتمسح من الشاشه الرئيسية لكن لازم يكون في تاب داخلي لكل المشاكل القديمه ومتتمسحش»:
+    // the screen shows the work in hand (open, under follow-up); every solved or closed problem is in the archive,
+    // paged and searchable, with no cap of 300 — nothing is deleted, only moved out of the way.
+    const archive = String(req.query.archive || '') === '1';
+    const archiveLimit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const archiveOffset = Math.max(0, parseInt(req.query.offset, 10) || 0);
     const where = ['t.tenant_id = ?', 't.deleted_at IS NULL'];
     const params = [req.tenantId];
     const scope = ticketScope(req);
@@ -262,8 +268,9 @@ router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermi
     // العملاء من السايت بيسمع في الصفحه دي» (10 Oct 2026).
     else if (!department && unscoped) where.push(`(t.department IN ('support','management') OR t.escalated_at IS NOT NULL OR t.channel IN (${WEBSITE_CHANNELS.map(() => '?').join(',')}))`), params.push(...WEBSITE_CHANNELS);
     if (category) { where.push('t.category = ?'); params.push(category); }
-    if (status === 'open') where.push(`t.status IN ('open','in_progress')`);
-    else if (status) { where.push('t.status = ?'); params.push(status); }
+    if (archive) where.push(`t.status IN ('resolved','closed')`);
+    else if (status === 'open' || !status) where.push(`t.status IN ('open','in_progress')`);
+    else { where.push('t.status = ?'); params.push(status); }
     if (assignee) { where.push('t.assigned_to = ?'); params.push(assignee); }
     if (q) {
       // A complete email address is unambiguous, so match it exactly and let the
@@ -281,7 +288,7 @@ router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermi
       `SELECT t.id, t.subject, t.subscriber_name, t.subscriber_email, t.status, t.priority,
               t.category, t.department, t.channel, t.assigned_to, t.sla_due_at,
               t.first_response_at, t.escalated_at, t.escalation_kind, t.root_cause, t.next_contact_at, t.created_at, t.resolved_at,
-              LEFT(t.body, 400) AS body, t.resolution_note, t.subscriber_id,
+              LEFT(t.body, 400) AS body, t.resolution_note, t.subscriber_id, t.refund_request_id,
               sb.phone AS subscriber_phone, sb.client_code,
               s.name AS assignee_name,
               COALESCE(t.branch, sb.branch) AS branch,
@@ -294,9 +301,26 @@ router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermi
          LEFT JOIN staff s ON s.id = t.assigned_to AND s.tenant_id=t.tenant_id
          LEFT JOIN subscribers sb ON sb.id = t.subscriber_id AND sb.tenant_id=t.tenant_id
         WHERE ${where.join(' AND ')}
-        ORDER BY FIELD(t.status,'open','in_progress','resolved','closed'), t.created_at DESC
-        LIMIT 300`, params);
+        ORDER BY ${archive ? 'COALESCE(t.resolved_at, t.updated_at) DESC' : "FIELD(t.status,'open','in_progress'), t.created_at DESC"}
+        LIMIT ${archive ? archiveLimit : 300} OFFSET ${archive ? archiveOffset : 0}`, params);
     let tickets = rows.map(r => ({ ...r, kind: 'ticket', sla: slaFlag(r) }));
+    // How many solved problems there are in all (the archive tab's badge, and its paging), in the same scope and search.
+    let archiveCount = 0;
+    {
+      // where[0] is the tenant clause (its one parameter is the first); the rest are the scope and the filters.
+      const rest = where.slice(1).filter(clause => !/t\.status/.test(clause));
+      const countParams = [req.tenantId];
+      // The same filters, re-collected: the status clause is the only one that differs.
+      let index = 1;
+      for (const clause of where.slice(1)) {
+        const marks = (clause.match(/\?/g) || []).length;
+        if (!/t\.status/.test(clause)) countParams.push(...params.slice(index, index + marks));
+        index += marks;
+      }
+      const [[counted]] = await pool.query(
+        `SELECT COUNT(*) AS n FROM support_tickets t WHERE t.tenant_id = ?${rest.map(clause => ` AND ${clause}`).join('')} AND t.status IN ('resolved','closed')`, countParams);
+      archiveCount = Number(counted?.n) || 0;
+    }
     if (sla) tickets = tickets.filter(t => t.sla === sla);
 
     // Every un-triaged website contact message (not converted to a ticket yet).
@@ -309,8 +333,8 @@ router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermi
         `SELECT id, name, email, phone, subject, message, status, priority, created_at
            FROM contact_messages
           WHERE tenant_id = ? AND converted_ticket_id IS NULL
-            AND LOWER(COALESCE(status,'new')) IN ('new','read','pending','unread')
-          ORDER BY created_at DESC LIMIT 100`, [req.tenantId]);
+            AND LOWER(COALESCE(status,'new')) ${archive ? "IN ('replied','done','closed','resolved')" : "IN ('new','read','pending','unread')"}
+          ORDER BY created_at DESC LIMIT ${archive ? 200 : 100}`, [req.tenantId]);
       contacts = crows.map(r => ({
         id: r.id, kind: 'contact', subject: r.subject || 'رسالة تواصل',
         subscriber_name: r.name, subscriber_email: r.email, phone: r.phone,
@@ -318,8 +342,75 @@ router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermi
         priority: r.priority || 'medium', created_at: r.created_at, sla: 'untriaged',
       }));
     }
-    res.json({ tickets, contacts, categories: CATEGORY_META, departments: DEPARTMENT_LABEL });
+    res.json({ tickets, contacts, archiveCount, categories: CATEGORY_META, departments: DEPARTMENT_LABEL });
   } catch (e) { logger.error('[cs/inbox]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── CONVERT TO A REFUND ─────────────────────────────────────────────────────
+//
+// POST /api/admin/tickets/:id/convert-to-refund   { payment_id? | course_item?, amount, currency?, refund_method?, reason? }
+//
+// «لازم يكون في زر تحويل لاسترداد لو العميل مشكلته متحلتش وهنا بيتشال خالص بيروح قسم الاسترداد ولكن بيروح معاه كل
+// التفاصيل اللي حصلت قبل كدا في المشكلة». The refund request is opened by the same code and checks as any other
+// (routes/admin-utils.js createRefundByAdmin) — without the permission to decide refunds, since only a request is made
+// and its approval stays with the refunds desk — then it takes the ticket's history with it, and the ticket is closed
+// and points at the refund. Nothing is deleted: the ticket sits in the archive, the refund shows where it came from.
+router.post('/api/admin/tickets/:id/convert-to-refund', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
+  try {
+    const [[ticket]] = await pool.query('SELECT * FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1', [req.params.id, req.tenantId]);
+    if (!ticket || !canAccessTicket(req, ticket)) return res.status(404).json({ error: 'Not found' });
+    if (ticket.refund_request_id) return res.status(409).json({ error: 'المشكلة دي اتحوّلت لاسترداد قبل كده', code: 'ALREADY_REFUND', refundId: ticket.refund_request_id });
+    if (CLOSED_STATUSES.includes(String(ticket.status || '').toLowerCase())) {
+      return res.status(409).json({ error: 'المشكلة دي اتقفلت — افتحها الأول لو لسه عايز تحوّلها لاسترداد', code: 'TICKET_CLOSED' });
+    }
+    if (!ticket.subscriber_id) return res.status(400).json({ error: 'المشكلة دي مش مربوطة بعميل — اربطها بملف العميل الأول', code: 'NO_CLIENT' });
+
+    const [replies] = await pool.query('SELECT id, ticket_id, author_type, author_name, body, created_at FROM ticket_replies WHERE ticket_id=? AND tenant_id=? ORDER BY created_at ASC', [ticket.id, req.tenantId]);
+    const [timeline] = await pool.query('SELECT event_type, actor_name, from_value, to_value, detail, created_at FROM ticket_events WHERE ticket_id=? AND tenant_id=? ORDER BY created_at ASC', [ticket.id, req.tenantId]);
+    const history = require('../lib/ticketHistory').buildTicketHistory({ ticket, replies, timeline });
+
+    const body = req.body || {};
+    const reason = cleanText(body.reason, 600) || cleanText(ticket.subject, 300) || 'مشكلة متحلتش';
+    const createRefund = require('./admin-utils').createRefundByAdmin;
+    const captured = { statusCode: 200, body: null };
+    const fakeRes = { status(code) { captured.statusCode = code; return this; }, json(payload) { captured.body = payload; return this; }, set() { return this; } };
+    const asRefund = Object.create(req);
+    asRefund.body = {
+      subscriber_id: ticket.subscriber_id, payment_id: body.payment_id || null, course_item: body.course_item || null,
+      amount: body.amount, currency: body.currency || 'EGP', refund_method: body.refund_method || null,
+      reason: `من مشكلة #${ticket.ticket_code || ticket.id.slice(0, 8)}: ${reason}`,
+    };
+    await createRefund(asRefund, fakeRes);
+    if (captured.statusCode >= 400 || !captured.body?.id) {
+      return res.status(captured.statusCode >= 400 ? captured.statusCode : 500).json(captured.body || { error: 'تعذر فتح طلب الاسترداد' });
+    }
+    const refundId = captured.body.id;
+    const actor = await actorOf(req);
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      // The history rides on the refund (unless an older request for the same payment was reused and already has one).
+      await conn.query(
+        'UPDATE refund_requests SET ticket_id=?, ticket_code=?, ticket_history=? WHERE id=? AND tenant_id=? AND ticket_id IS NULL',
+        [ticket.id, ticket.ticket_code || null, history, refundId, req.tenantId]);
+      await conn.query(
+        `UPDATE support_tickets SET status='closed', closed_reason=?, refund_request_id=?, resolved_at=COALESCE(resolved_at, NOW()), updated_at=NOW()
+          WHERE id=? AND tenant_id=?`, ['اتحوّلت لطلب استرداد', refundId, ticket.id, req.tenantId]);
+      await logTicketEvent(conn, {
+        tenantId: req.tenantId, ticketId: ticket.id, type: 'status_changed', actorId: actor.id, actorName: actor.name,
+        from: ticket.status, to: 'closed', detail: `اتحوّلت لطلب استرداد #${String(refundId).slice(0, 8)}`,
+      });
+      await conn.commit();
+    } catch (error) {
+      await conn.rollback().catch(() => {});
+      throw error;
+    } finally { conn.release(); }
+    await logClientEvent(pool, {
+      tenantId: req.tenantId, subscriberId: ticket.subscriber_id, action: 'ticket_to_refund', actor: actor.name,
+      label: `المشكلة «${String(ticket.subject || '').slice(0, 120)}» اتحوّلت لطلب استرداد`,
+    }).catch(() => {});
+    res.json({ ok: true, refundId, skipped: Boolean(captured.body.skipped) });
+  } catch (e) { logger.error('[cs/convert-to-refund]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── STATS + AGENT WORKLOAD ───────────────────────────────────────────────────
@@ -391,7 +482,20 @@ router.get('/api/admin/tickets/:id', requireAuth, requireAdminOrStaff, requirePe
     }
     // Whether the client has the chat open right now: staff write in it only then (lib/ticketChat.js).
     const chat = await clientChatState(pool, req.tenantId, t).catch(() => ({ open: false, lastSeen: null }));
-    res.json({ ...t, sla: slaFlag(t), replies, timeline, linked, chat });
+    // What a refund could come out of, for «تحويل لاسترداد»: the client's paid payments, newest first.
+    let refundablePayments = [];
+    if (t.subscriber_id) {
+      const [paid] = await pool.query(
+        `SELECT p.id, p.amount, p.currency, p.payment_method, p.\`date\`, p.course_id, p.bundle_id, COALESCE(c.title, b.title, p.item_title) AS title
+           FROM payments p LEFT JOIN courses c ON c.id=p.course_id AND c.tenant_id=p.tenant_id LEFT JOIN bundles b ON b.id=p.bundle_id AND b.tenant_id=p.tenant_id
+          WHERE p.tenant_id=? AND p.subscriber_id=? AND p.status='paid' AND p.deleted_at IS NULL AND p.amount > 0
+          ORDER BY p.\`date\` DESC LIMIT 30`, [req.tenantId, t.subscriber_id]).catch(() => [[]]);
+      refundablePayments = (paid || []).map(row => ({
+        id: row.id, amount: Number(row.amount) || 0, currency: row.currency || 'EGP', method: row.payment_method || null,
+        title: row.title || '', date: row.date, courseItem: row.bundle_id ? `bundle:${row.bundle_id}` : (row.course_id || ''),
+      }));
+    }
+    res.json({ ...t, sla: slaFlag(t), replies, timeline, linked, chat, refundablePayments });
   } catch (e) { logger.error('[cs/detail]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 

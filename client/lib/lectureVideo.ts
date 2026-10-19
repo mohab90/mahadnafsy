@@ -41,7 +41,9 @@ export function revealVideoUrl(raw: string): string {
 function youtubeId(url: string): string {
   return url.match(/[?&]v=([\w-]{11})/)?.[1]
     || url.match(/youtu\.be\/([\w-]{11})/)?.[1]
-    || url.match(/youtube(?:-nocookie)?\.com\/embed\/([\w-]{11})/)?.[1]
+    // A link copied from a Short or a live (youtube.com/shorts/<id>, /live/<id>) carries no v=: the home page's tour
+    // video was one, so its frame pointed at the Shorts page — which YouTube refuses to frame — and stayed blank.
+    || url.match(/youtube(?:-nocookie)?\.com\/(?:embed|shorts|live|v)\/([\w-]{11})/)?.[1]
     || '';
 }
 

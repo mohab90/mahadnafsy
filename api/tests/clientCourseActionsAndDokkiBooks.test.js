@@ -167,7 +167,8 @@ test('the routes: managers delete, managers and accounts transfer, with a reason
 
 test('a refund names a course, and the payment behind it is optional', () => {
   const route = read('api/routes/admin-utils.js');
-  const byAdmin = route.slice(route.indexOf("'/api/admin/refund-requests/by-admin'"), route.indexOf("'/api/admin/refund-requests', requireAuth"));
+  // The handler is a named function (the customer-service «تحويل لاسترداد» calls it too).
+  const byAdmin = route.slice(route.indexOf('async function createRefundByAdmin'), route.indexOf('router.createRefundByAdmin = createRefundByAdmin;'));
   assert.match(byAdmin, /if \(!payment_id && !course_item\)/);
   assert.match(byAdmin, /if \(payment_id\) \{/, 'the payment checks run only when there is one');
   assert.match(byAdmin, /paidForItem > 0 && requestedAmount - paidForItem > 0\.01/, 'held to what was paid for the course');

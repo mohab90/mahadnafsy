@@ -83,8 +83,9 @@ test('customer service reads and escalates refunds; deciding them stays with acc
   assert.equal(hasPermission({ role: 'support' }, 'approve_refunds'), false);
 
   const panel = read('admin/pages/dashboard/tabs/financial/FinancialRefundsPanel.tsx');
-  assert.match(panel, /\{isPending && canDecide && \(/);
-  assert.match(panel, /\{status === 'APPROVED' && canDecide && \(/);
+  // The result menu is built from the row it was opened for (menuStatus), and only the deciders get its choices.
+  assert.match(panel, /\{menuStatus === 'PENDING' && canDecide && \(/);
+  assert.match(panel, /\{menuStatus === 'APPROVED' && canDecide && \(/);
   assert.match(panel, /\{canDecide && <button onClick=\{\(\) => setAddOpen\(true\)\}/);
 });
 

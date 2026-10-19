@@ -139,6 +139,15 @@ export default function EmailSettingsTab({ notify }: { notify: NotifyFn }) {
       )}
 
       <Card title="خادم البريد (SMTP)">
+        {/* Brevo is an SMTP relay: the same four fields, with its own host and a key instead of a mailbox password. */}
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-sky-100 bg-sky-50 p-2.5 text-[12px] text-sky-900">
+          <button type="button" onClick={() => { set('smtpHost', 'smtp-relay.brevo.com'); set('smtpPort', '587'); }}
+            className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-sky-700">املا بيانات Brevo</button>
+          <span className="min-w-0 flex-1">
+            المضيف والمنفذ بيتملوا لوحدهم. اسم المستخدم = «SMTP login» من Brevo، وكلمة السر = «SMTP key» (مش كلمة سر الحساب)،
+            وعنوان المرسِل لازم يكون متسجل ومتأكد منه في Brevo.
+          </span>
+        </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="المضيف">
             <Input value={config.smtpHost} onChange={value => set('smtpHost', value)} placeholder="smtp.hostinger.com" />
@@ -146,7 +155,7 @@ export default function EmailSettingsTab({ notify }: { notify: NotifyFn }) {
           <Field label="المنفذ — 465 لـSSL · 587 لـSTARTTLS">
             <Input type="number" value={config.smtpPort} onChange={value => set('smtpPort', value)} placeholder="465" />
           </Field>
-          <Field label="اسم المستخدم — عنوان البريد كاملاً">
+          <Field label="اسم المستخدم — عنوان البريد كاملاً (أو SMTP login في Brevo)">
             <Input value={config.smtpUser} onChange={value => set('smtpUser', value)} placeholder="otp@mahadnafsy.com" />
           </Field>
           <Field label="كلمة السر">
@@ -160,7 +169,7 @@ export default function EmailSettingsTab({ notify }: { notify: NotifyFn }) {
           <Field label="اسم المرسِل الظاهر">
             <Input value={config.senderName} onChange={value => set('senderName', value)} placeholder="معهد الدراسات النفسية" />
           </Field>
-          <Field label="عنوان المرسِل — لازم يكون على نفس نطاق المستخدم">
+          <Field label="عنوان المرسِل — على نطاق المستخدم، أو عنوان متأكد منه في Brevo">
             <Input value={config.senderAddress} onChange={value => set('senderAddress', value)} placeholder="otp@mahadnafsy.com" />
           </Field>
         </div>

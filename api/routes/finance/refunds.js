@@ -57,6 +57,10 @@ router.get('/api/admin/finance/refunds', requireAuth, requireAdminOrStaff, requi
              -- from the payment, else from what the request was opened for.
              COALESCE(NULLIF(c.title_ar, ''), c.title, b.title) AS course_title,
              s.assigned_cs_id,
+             -- A refund that began as a customer-service problem carries that
+             -- problem's history; the list only says it exists, the history
+             -- itself is fetched when someone opens it.
+             (rr.ticket_history IS NOT NULL AND rr.ticket_history <> '') AS has_ticket_history,
              -- The last contact about it, since it was asked for (the client's
              -- contact log — «ويتسجل في سجل التواصل … النتيجه والحاله»).
              (SELECT JSON_OBJECT('outcome', cm.outcome, 'notes', LEFT(cm.notes, 300), 'at', cm.date, 'by', cst.name, 'type', cm.type)
@@ -119,7 +123,8 @@ router.get('/api/admin/finance/refunds', requireAuth, requireAdminOrStaff, requi
     res.json(rows.map(row => {
       let lastContact = null;
       try { lastContact = row.last_contact ? JSON.parse(row.last_contact) : null; } catch { lastContact = null; }
-      return { ...row, last_contact: lastContact, contacts_count: Number(row.contacts_count) || 0 };
+      const { ticket_history: _history, ...rest } = row;
+      return { ...rest, last_contact: lastContact, contacts_count: Number(row.contacts_count) || 0, has_ticket_history: Boolean(Number(row.has_ticket_history)) };
     }));
   } catch (e) {
     logger.error('[finance/refunds]', e.message);

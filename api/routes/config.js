@@ -175,7 +175,7 @@ router.put('/api/admin/settings/email', requireAuth, requireAdmin, async (req, r
         "SELECT domain FROM tenant_domains WHERE tenant_id=? AND status='verified' LIMIT 1",
         [req.tenantId]
       ).catch(() => [[null]]);
-      if (senderDomain !== smtpDomain && senderDomain !== verifiedDomain?.domain) {
+      if (senderDomain !== smtpDomain && senderDomain !== verifiedDomain?.domain && !require('../lib/email').isManagedRelay(next.smtpHost)) {
         return res.status(400).json({
           error: 'Sender address must use the SMTP account domain or the verified tenant domain',
           code: 'UNVERIFIED_SENDER_DOMAIN',
