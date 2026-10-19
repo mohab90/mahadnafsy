@@ -197,7 +197,27 @@ async function logToCrm(tenantId, staffId, row, { leadId, subscriberId }) {
       `waweb:${staffId}:${row.waId}`.slice(0, 128), row.sentAt, row.body.slice(0, 4000), staffId]);
 }
 
+/**
+ * A conversation that was matched to a lead or a client AFTER some of it was stored (the history a phone syncs when it is
+ * linked, a message that came before the lead was registered) is written to their timeline now: the last 150 messages,
+ * once each (the same key logToCrm uses, so nothing is doubled). «تسجيل المحادثات تلقائيًا على خط العميل الزمني».
+ * @returns {Promise<number>} how many were added
+ */
+async function backfillChatToCrm(tenantId, staffId, jid, { leadId, subscriberId }) {
+  if (!leadId && !subscriberId) return 0;
+  const [result] = await pool.query(
+    `INSERT IGNORE INTO communications
+       (id, tenant_id, lead_id, subscriber_id, type, direction, provider_message_id, date, notes, staff_id, created_at)
+     SELECT UUID(), m.tenant_id, ?, ?, 'WHATSAPP', IF(m.from_me = 1, 'OUT', 'IN'), LEFT(CONCAT('waweb:', m.staff_id, ':', m.wa_id), 128),
+            m.sent_at, LEFT(COALESCE(m.body, ''), 4000), m.staff_id, NOW()
+       FROM wa_web_messages m
+      WHERE m.tenant_id=? AND m.staff_id=? AND m.jid=? AND COALESCE(m.body, '') <> ''
+      ORDER BY m.sent_at DESC, m.id DESC LIMIT 150`,
+    [leadId || null, subscriberId || null, tenantId, staffId, jid]);
+  return result.affectedRows || 0;
+}
+
 module.exports = {
-  chatJid, jidForPhone, parseWaMessage, phoneOfJid, recordMessages, recordContactNames, matchChat, logToCrm,
+  chatJid, jidForPhone, parseWaMessage, phoneOfJid, recordMessages, recordContactNames, matchChat, logToCrm, backfillChatToCrm,
   recordReceipts, refreshInterest,
 };

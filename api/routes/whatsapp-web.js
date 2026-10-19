@@ -106,8 +106,10 @@ router.get('/api/staff/whatsapp-web/messages', ...guard, async (req, res) => {
         ORDER BY sent_at DESC, id DESC LIMIT 80`, params);
     // Opening a chat reads it, and is when its number is matched to the CRM.
     await pool.query('UPDATE wa_web_chats SET unread=0 WHERE tenant_id=? AND staff_id=? AND jid=?', [tenant(req), me(req), jid]);
-    const { matchChat, refreshInterest } = require('../lib/whatsappWebStore');
+    const { matchChat, refreshInterest, backfillChatToCrm } = require('../lib/whatsappWebStore');
     const match = await matchChat(tenant(req), me(req), jid, { fresh: req.query.rematch === '1' });
+    // Whatever was said before this number was matched joins the customer's timeline now (idempotent).
+    if (!before) await backfillChatToCrm(tenant(req), me(req), jid, match).catch(error => logger.warn('[wa-web timeline backfill]', error.message));
     const interest = before ? undefined : await refreshInterest(tenant(req), me(req), jid);
     res.json({
       messages: rows.reverse().map(r => ({ ...r, fromMe: Boolean(r.fromMe), sentBySystem: Boolean(r.sentBySystem) })),

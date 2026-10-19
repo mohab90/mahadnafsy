@@ -5893,6 +5893,35 @@ CREATE TABLE `wa_web_messages` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `wa_web_scheduled`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `wa_web_scheduled` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `staff_id` varchar(64) NOT NULL,
+  `jid` varchar(128) DEFAULT NULL,
+  `phone` varchar(32) DEFAULT NULL,
+  `name` varchar(255) DEFAULT NULL,
+  `body` text NOT NULL,
+  `send_at` datetime NOT NULL,
+  `status` enum('pending','sending','sent','failed','canceled') NOT NULL DEFAULT 'pending',
+  `attempts` tinyint(4) NOT NULL DEFAULT 0,
+  `error` varchar(255) DEFAULT NULL,
+  `batch_id` varchar(36) DEFAULT NULL,
+  `batch_label` varchar(160) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `sent_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_wa_sched_due` (`status`,`send_at`),
+  KEY `idx_wa_sched_staff` (`tenant_id`,`staff_id`,`status`,`send_at`),
+  KEY `idx_wa_sched_batch` (`tenant_id`,`batch_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `wa_web_sessions`
 --
 

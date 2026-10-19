@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { BarChart3, BookmarkPlus, Flame, Loader2, LogOut, MessageCircle, Plus, Search, Send, Smartphone, UserPlus, UserRound, X } from 'lucide-react';
+import { BarChart3, BookmarkPlus, Clock, Flame, Loader2, LogOut, Megaphone, MessageCircle, Plus, Search, Send, Smartphone, UserCheck, UserPlus, UserRound, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { NotifyFn } from '../../../../types';
 import { useVisibleInterval } from '../../../../../shared/useVisibleInterval';
@@ -10,6 +10,9 @@ import { promptDialog } from '../../../../../shared/ui/promptDialog';
 import { useBranches } from '../../../../hooks/useBranches';
 import { WhatsAppContextCard, type WaContext } from '../../../../components/WhatsAppContextCard';
 import { toDialable } from '../../../../lib/whatsappLink';
+import {
+  CampaignDialog, HandOverDialog, LeadStatusControl, ScheduleDialog, ScheduledList, SuggestReplyButton,
+} from '../../../../components/WhatsAppChatTools';
 
 /**
  * «واتساب»: the rep's own WhatsApp inside the system (api/lib/whatsappWeb.js).
@@ -197,6 +200,13 @@ function ChatsView({ notify, onSent, disabled }: { notify: NotifyFn; onSent: () 
   // What the system knows about the number on screen: who, which course, what they paid.
   const [context, setContext] = useState<WaContext | null>(null);
   const [params, setParams] = useSearchParams();
+  // The CRM tools: schedule, hand the chat over, a campaign to the chats ticked in the list.
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [showHandOver, setShowHandOver] = useState(false);
+  const [showCampaign, setShowCampaign] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [scheduledVersion, setScheduledVersion] = useState(0);
   const bottom = useRef<HTMLDivElement>(null);
   const lastCount = useRef(0);
 
@@ -349,7 +359,16 @@ function ChatsView({ notify, onSent, disabled }: { notify: NotifyFn; onSent: () 
           </div>
           <button type="button" title="محادثة جديدة" onClick={() => { setActive(null); setMessages([]); setNewPhone(''); }}
             className="rounded-xl bg-green-600 px-3 text-white hover:bg-green-700"><Plus size={18} /></button>
+          <button type="button" title="حملة — اختار محادثات وابعتلهم رسالة" aria-pressed={picking} onClick={() => { setPicking(value => !value); setPicked(new Set()); }}
+            className={`rounded-xl border px-2.5 ${picking ? 'border-green-600 bg-green-600 text-white' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}><Megaphone size={17} /></button>
         </div>
+        {picking && (
+          <div className="flex items-center gap-2 border-b border-green-100 bg-green-50 px-3 py-2 text-[11px] font-bold text-green-800">
+            <button type="button" onClick={() => setPicked(current => (current.size === chats.length ? new Set() : new Set(chats.map(chat => chat.jid))))} className="underline">{picked.size === chats.length && chats.length ? 'إلغاء الكل' : 'اختار كل المعروض'}</button>
+            <span className="flex-1">{picked.size} مختارة</span>
+            <button type="button" disabled={!picked.size} onClick={() => setShowCampaign(true)} className="flex items-center gap-1 rounded-lg bg-green-600 px-2.5 py-1 text-white disabled:opacity-40"><Megaphone size={12} /> حملة</button>
+          </div>
+        )}
         <div className="flex gap-1 overflow-x-auto border-b border-gray-100 px-2 py-2" role="tablist" aria-label="فلتر المحادثات">
           {FILTERS.map(item => (
             <button key={item.key || 'all'} type="button" role="tab" aria-selected={filter === item.key} onClick={() => setFilter(item.key)}
@@ -361,8 +380,13 @@ function ChatsView({ notify, onSent, disabled }: { notify: NotifyFn; onSent: () 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {chats.length === 0 && <p className="p-6 text-center text-sm text-gray-400">{filter ? 'مفيش محادثات بالفلتر ده.' : 'مفيش محادثات لسه — الرسايل الجديدة هتظهر هنا.'}</p>}
           {chats.map(chat => (
-            <button key={chat.jid} type="button" onClick={() => { setNewPhone(null); setActive(chat); }}
-              className={`flex w-full items-start gap-3 border-b border-gray-50 px-3 py-2.5 text-right hover:bg-gray-50 ${active?.jid === chat.jid ? 'bg-green-50' : ''}`}>
+            <button key={chat.jid} type="button"
+              onClick={() => {
+                if (picking) { setPicked(current => { const next = new Set(current); if (next.has(chat.jid)) next.delete(chat.jid); else next.add(chat.jid); return next; }); return; }
+                setNewPhone(null); setActive(chat);
+              }}
+              className={`flex w-full items-start gap-3 border-b border-gray-50 px-3 py-2.5 text-right hover:bg-gray-50 ${active?.jid === chat.jid && !picking ? 'bg-green-50' : ''} ${picking && picked.has(chat.jid) ? 'bg-green-50' : ''}`}>
+              {picking && <input type="checkbox" readOnly checked={picked.has(chat.jid)} className="mt-2 h-4 w-4 shrink-0 accent-green-600" aria-label={`اختيار ${chatTitle(chat)}`} />}
               <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-500"><UserRound size={18} /></div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
@@ -407,6 +431,14 @@ function ChatsView({ notify, onSent, disabled }: { notify: NotifyFn; onSent: () 
                     <Flame size={12} /> {interest.label}
                   </span>
                 )}
+                {context?.lead && context.lead.status !== 'converted' && !context.subscriber && (
+                  <LeadStatusControl leadId={context.lead.id} status={context.lead.status} notify={notify}
+                    onChanged={next => setContext(current => (current && current.lead ? { ...current, lead: { ...current.lead, status: next } } : current))} />
+                )}
+                <button type="button" onClick={() => setShowHandOver(true)} title="حوّل المحادثة لزميل"
+                  className="flex items-center gap-1 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100">
+                  <UserCheck size={13} /> حوّل لزميل
+                </button>
                 {!active.leadId && !active.subscriberId && !registering && (
                   <button type="button" onClick={() => setRegistering({ name: active.crmName || active.name || '', branch: '' })}
                     className="flex items-center gap-1 rounded-xl border border-primary-200 bg-primary-50 px-3 py-1.5 text-xs font-bold text-primary-700 hover:bg-primary-100">
@@ -472,7 +504,9 @@ function ChatsView({ notify, onSent, disabled }: { notify: NotifyFn; onSent: () 
                 )}
               </div>
             )}
+            {active && <ScheduledList jid={active.jid} version={scheduledVersion} notify={notify} onChanged={() => setScheduledVersion(value => value + 1)} />}
             <footer className="flex items-end gap-2 border-t border-gray-100 p-3">
+              {active && <SuggestReplyButton jid={active.jid} disabled={disabled} notify={notify} onReply={reply => setDraft(reply)} />}
               <button type="button" onClick={() => setShowTemplates(value => !value)} title="قوالب جاهزة" aria-expanded={showTemplates}
                 className={`flex h-[42px] items-center rounded-xl border px-3 text-xs font-bold ${showTemplates ? 'border-green-600 bg-green-600 text-white' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
                 قوالب
@@ -481,6 +515,8 @@ function ChatsView({ notify, onSent, disabled }: { notify: NotifyFn; onSent: () 
                 disabled={disabled}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
                 className="max-h-32 min-h-[42px] flex-1 resize-y rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-green-400 focus:outline-none disabled:bg-gray-50" />
+              <button type="button" onClick={() => setShowSchedule(true)} disabled={!draft.trim() || (!active && !toDialable(newPhone || ''))} title="جدولة الرسالة لوقت لاحق" aria-label="جدولة"
+                className="flex h-[42px] w-[42px] items-center justify-center rounded-xl border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 disabled:opacity-40"><Clock size={17} /></button>
               <button type="button" onClick={send} disabled={disabled || sending || !draft.trim() || (!active && !(newPhone || '').trim())}
                 className="flex h-[42px] w-[42px] items-center justify-center rounded-xl bg-green-600 text-white hover:bg-green-700 disabled:opacity-40">
                 {sending ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} className="rotate-180" />}
@@ -491,6 +527,12 @@ function ChatsView({ notify, onSent, disabled }: { notify: NotifyFn; onSent: () 
           <div className="flex flex-1 items-center justify-center text-sm text-gray-400">اختار محادثة أو ابدأ واحدة جديدة</div>
         )}
       </section>
+      {showSchedule && (active || toDialable(newPhone || '')) && (
+        <ScheduleDialog jid={active ? active.jid : `${toDialable(newPhone || '')}@s.whatsapp.net`} text={draft} notify={notify}
+          onClose={() => setShowSchedule(false)} onScheduled={() => { setDraft(''); setScheduledVersion(value => value + 1); }} />
+      )}
+      {showHandOver && active && <HandOverDialog jid={active.jid} leadId={active.leadId} notify={notify} onClose={() => setShowHandOver(false)} onDone={() => { void loadChats(); }} />}
+      {showCampaign && <CampaignDialog jids={[...picked]} notify={notify} onClose={() => setShowCampaign(false)} onDone={() => { setScheduledVersion(value => value + 1); }} />}
     </div>
   );
 }

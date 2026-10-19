@@ -136,6 +136,9 @@ function startWhatsappWeb() {
   attempt();
   ownerTimer = setInterval(attempt, 30000);
   ownerTimer.unref?.();
+  // Messages a rep scheduled, and campaign messages, go out from the process that holds the sessions (lib/whatsappScheduled.js).
+  const scheduler = setInterval(() => { require('./whatsappScheduled').runDue(module.exports).catch(error => baseLogger.warn('[wa-web] scheduled run failed', error.message)); }, 20000);
+  scheduler.unref?.();
 }
 
 function requireOwner() {
