@@ -258,6 +258,5 @@ export const fullCrmDataTabs = new Set<string>([
  * pages, and opens on the first one (SiteData: loadBranchSubscribers).
  */
 export const branchSubscriberTabs: Readonly<Record<string, string>> = Object.freeze({
-  daqqi_accounting: 'DAQQI',
   daqqi_stats: 'DAQQI',
 });

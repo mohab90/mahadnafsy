@@ -238,13 +238,15 @@ test('no second screen records a customer payment', () => {
   // today as the date, for a payment that by definition was not made today.
   const financial = codeOnly(read('admin/pages/dashboard/tabs/FinancialTab.tsx'));
   assert.match(financial, /<PaymentModal/);
-  assert.match(financial, /subjectOptions=\{incomeSubjectOptions\}/);
+  // The main books pick from the context's clients; a branch's books search the server (subjectSearch).
+  assert.match(financial, /subjectOptions=\{branchFilter \? undefined : incomeSubjectOptions\}/);
+  assert.match(financial, /subjectSearch=\{branchFilter \? searchIncomeClients : undefined\}/);
   const clientPayments = codeOnly(read('admin/pages/unified-client/useUnifiedClientPayments.ts'));
   assert.match(clientPayments, /openLegacyPaymentForm = \(\) => openSubscriberPaymentForm\(\{ note:/);
 
   // Nothing is valid until the screen knows whose payment it is.
   const modal = codeOnly(read('admin/components/PaymentModal.tsx'));
-  assert.ok(modal.includes('const subjectChosen = !subjectOptions || !!subject.id;'));
+  assert.ok(modal.includes('const subjectChosen = (!subjectOptions && !subjectSearch) || !!subject.id;'));
   assert.match(modal, /const isValid = !subjectChosen \|\| !certificatesTyped \|\| photoMissing \|\| photoBusy !== null \? false/);
 });
 

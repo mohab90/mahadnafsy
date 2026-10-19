@@ -51,7 +51,7 @@ test('the two keys that share a component are kept, because they are not duplica
   assert.ok(tabs.includes("activeTab === 'lecturer_applications'"));
   assert.ok(tabs.includes('group="teaching"'));
   // And one scopes the finance screen to a branch.
-  assert.ok(tabs.includes("{ key: 'daqqi_accounting', Component: FinancialTab, branchFilter: 'daqqi'"));
+  assert.ok(tabs.includes("{ key: 'daqqi_accounting', Component: FinancialBranchTab, branchFilter: 'daqqi'"));
   // Both are real menu entries, unlike the two that were removed.
   const nav = read('admin/pages/dashboard/DashboardNavigation.tsx');
   assert.ok(nav.includes("key: 'daqqi_accounting'"));

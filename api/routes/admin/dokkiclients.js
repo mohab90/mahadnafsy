@@ -4,6 +4,7 @@
 //   GET /api/admin/dokki/overview    { clients, waiting } — the strip above «جدول الدقي»
 //   GET /api/admin/dokki/candidates  the clients a round's pickers offer, a page at a time, with every matching id
 //   GET /api/admin/dokki/clients     «عملاء الدقي» a page at a time: { rows, total, tabCounts, followCounts, figures }
+//   GET /api/admin/dokki/installment-clients  «حسابات الدقي» ← الأقساط: the branch's clients who hold an instalment plan
 // The schedule and «عملاء الدقي» used to stream the branch's whole client list with payments into the browser.
 
 const express = require('express');
@@ -127,6 +128,24 @@ router.get('/api/admin/dokki/clients', ...guards, async (req, res) => {
       unassignedMatching: view.unassignedMatching, assignedCounts: view.assignedCounts,
     });
   } catch (e) { if (!e.statusCode) logger.error('[/api/admin/dokki/clients]', e.message); sendRouteError(res, e); }
+});
+
+// «حسابات الدقي» ← «الأقساط»: the branch's clients with an instalment plan, in full (the plans, the payments), for the
+// screen's lists and its due-date exports. The accounts screen held the branch's whole client list to find them.
+router.get('/api/admin/dokki/installment-clients', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
+  try {
+    const branch = requestedBranch(req);
+    const base = branchClients(req);
+    if (!base) return res.json([]);
+    const [rows] = await pool.query(
+      `SELECT s.id FROM subscribers s
+        WHERE s.tenant_id = ? AND (${base.where}) AND s.branch = ?
+          AND EXISTS (SELECT 1 FROM installment_plans ip WHERE ip.tenant_id = s.tenant_id AND ip.subscriber_id = s.id)
+        ORDER BY s.created_at DESC, s.id DESC LIMIT 1000`,
+      [req.tenantId, ...base.params, branch]
+    );
+    res.json(await staffClientTools.loadShapedByIds(req.tenantId, rows.map(row => row.id)));
+  } catch (e) { if (!e.statusCode) logger.error('[/api/admin/dokki/installment-clients]', e.message); sendRouteError(res, e); }
 });
 
 module.exports = router;

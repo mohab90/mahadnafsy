@@ -42,7 +42,9 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   // refund popup match them against. The finance screens add the expenses.
   orders: ['orders', 'subscribers'],
   financial: ['orders', 'subscribers', 'expenses'],
-  daqqi_accounting: ['orders', 'subscribers', 'expenses'],
+  // The branch's books: the expenses; its clients' plans, the payments waiting for review and the person a payment is for
+  // come from the server (FinancialBranchTab).
+  daqqi_accounting: ['expenses'],
   financial_reports: ['orders'],
   recurring_expenses: [],
   // قاعدة العملاء searches the server; «حجز» finds the row it booked among the

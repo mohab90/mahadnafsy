@@ -17,7 +17,9 @@ import { hasPermission } from '../../../constants/permissions';
 import type { PermissionKey, RoleKey } from '../../../constants/permissions';
 import { useSubscriberStats } from '../hooks/useSubscriberStats';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import type { PaymentHistoryEntry, ExpenseItem } from '../../../types';
+import type { PaymentHistoryEntry, ExpenseItem, OrderItem, SubscriberItem } from '../../../types';
+import { useBranchAccounting } from './financial/useBranchAccounting';
+import { fetchClientsByIds } from '../useClientsByIds';
 import { BRANCH_SUB_TABS, branchMatches, type FinancialSubTab } from './financial/financialTabUtils';
 import { blankPaymentDraft, type PaymentDraft } from '../../../components/PaymentModal';
 import { usePaymentBoxesWithHistory } from '../../../lib/paymentMethods';
@@ -47,12 +49,21 @@ const FinanceAdvancesPanel = React.lazy(() => import('./hr-sections/HrAdvancesPa
 const FinanceOperationsPanel = React.lazy(() => import('./financial/FinanceOperationsPanel'));
 const FinancialStatementPanel = React.lazy(() => import('./financial/FinancialStatementPanel'));
 
-export default function FinancialTab({ notify, branchFilter }: { notify: NotifyFn; branchFilter?: string }) {
+/**
+ * The books. The lists it reads — the orders, the clients, the expenses — are handed in: «الحسابات» (FinancialMainTab)
+ * reads the context's, «حسابات الدقي» (FinancialBranchTab) holds no list of clients at all and asks the server for
+ * what it shows of them (useBranchAccounting, the payment search).
+ */
+export default function FinancialTab({ notify, branchFilter, orders: _allOrders, subscribers: _allSubscribers, expenses: _allExpenses }: {
+  notify: NotifyFn; branchFilter?: string; orders: OrderItem[]; subscribers: SubscriberItem[]; expenses: ExpenseItem[];
+}) {
   const {
-    orders: _allOrders, subscribers: _allSubscribers, recordSubscriberPayment, reloadSubscribers, staffMembers,
-    expenses: _allExpenses, addExpense, updateExpense, deleteExpense, content, setContentValue, courses,
+    recordSubscriberPayment, reloadSubscribers, staffMembers,
+    addExpense, updateExpense, deleteExpense, content, setContentValue, courses,
     authUser, isAdmin, currentStaff,
   } = useSiteData();
+  // The branch's books ask the server for the few clients they show: the plans, the payments waiting for review.
+  const branchAccounting = useBranchAccounting(branchFilter);
 
   // POST /api/admin/fx-rates/refresh is requirePermission('manage_financial'),
   // and محاسبة الدقي opens on manage_daqqi — so reception_daqqi was shown a
@@ -208,8 +219,9 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   };
   const exportExpensesPDF = () => exportExpensesPdfReport(expenses);
 
-  const allPaymentHistoryEarly = subscribers.flatMap(s => s.paymentHistory ?? []);
-  const pendingReviewCount = allPaymentHistoryEarly.filter(p => p.status === 'pending').length;
+  const pendingReviewCount = branchFilter
+    ? branchAccounting.pendingReview
+    : subscribers.flatMap(s => s.paymentHistory ?? []).filter(p => p.status === 'pending').length;
   const [orderMethodFilter, setOrderMethodFilter] = useState('');
   const [isIncomeFormOpen, setIsIncomeFormOpen] = useState(false);
   const [commissionMonth, setCommissionMonth] = useState(cairoMonthOnly());
@@ -247,9 +259,22 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   // Who the money is for. The picker lives inside the shared screen now, so
   // this is just the chosen row.
   const incomeSubjectOptions = subscribers.map(sub => ({ id: sub.id, name: sub.name, clientCode: sub.clientCode }));
+  // The branch's books search the server for the client while the person types, and read the one picked.
+  const [incomeClient, setIncomeClient] = useState<SubscriberItem | null>(null);
+  const searchIncomeClients = useCallback(async (term: string) => {
+    const query = new URLSearchParams({ limit: '30', branch: branchFilter || '' });
+    if (term) query.set('q', term);
+    const rows = await mysqlAdmin.adminGet<SubscriberItem[]>(`/staff/subscribers?${query.toString()}`);
+    return rows.map(row => ({ id: row.id, name: row.name, clientCode: row.clientCode }));
+  }, [branchFilter]);
+  const pickIncomeClient = (id: string) => {
+    setIncomeSubjectId(id);
+    setIncomeClient(null);
+    if (id) fetchClientsByIds([id]).then(rows => setIncomeClient(rows[0] ?? null)).catch(() => setIncomeClient(null));
+  };
   const incomeSubject = (() => {
-    const sub = subscribers.find(candidate => candidate.id === incomeSubjectId);
-    if (!sub) return { id: '', name: '' };
+    const sub = branchFilter ? incomeClient : subscribers.find(candidate => candidate.id === incomeSubjectId);
+    if (!sub) return { id: branchFilter ? incomeSubjectId : '', name: '' };
     return {
       id: sub.id, name: sub.name, phone: sub.phone, email: sub.email, branch: sub.branch,
       enrolledCourseIds: sub.enrolledCourseIds,
@@ -260,7 +285,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
 
   // PaymentModal owns closing and the receipt; this only saves.
   const handleAddIncome = async (draft: PaymentDraft) => {
-    const sub = subscribers.find(candidate => candidate.id === incomeSubjectId);
+    const sub = branchFilter ? incomeClient : subscribers.find(candidate => candidate.id === incomeSubjectId);
     if (!sub) throw new Error('اختر العميل أولاً');
     const entry: PaymentHistoryEntry = {
       id: `inc-${Date.now()}`,
@@ -291,7 +316,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   };
 
   const today = cairoDateOnly();
-  const subscribersWithPlans = subscribers.filter(s => (s.installmentPlans?.length ?? 0) > 0);
+  const subscribersWithPlans = branchFilter ? branchAccounting.clientsWithPlans : subscribers.filter(s => (s.installmentPlans?.length ?? 0) > 0);
 
   const fxUpdatedAt = new Date(content['exchange.updated_at'] || '').getTime();
   const fxFresh = Number.isFinite(fxUpdatedAt)
@@ -502,7 +527,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
             </button>}
           </div>}
           <button
-            onClick={() => { setIsIncomeFormOpen(true); setIncomeSubjectId(''); setIncomeDraft(blankPaymentDraft()); }}
+            onClick={() => { setIsIncomeFormOpen(true); setIncomeSubjectId(''); setIncomeClient(null); setIncomeDraft(blankPaymentDraft()); }}
             className="flex items-center gap-1.5 bg-emerald-600 text-white px-3 py-2 rounded-xl text-sm font-bold hover:bg-emerald-700 transition">
             <Plus size={14} /> إضافة دخل
           </button>
@@ -530,8 +555,9 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
         <PaymentModal
           mode="subscriber"
           subject={incomeSubject}
-          subjectOptions={incomeSubjectOptions}
-          onSubjectChange={(id) => setIncomeSubjectId(id)}
+          subjectOptions={branchFilter ? undefined : incomeSubjectOptions}
+          subjectSearch={branchFilter ? searchIncomeClients : undefined}
+          onSubjectChange={(id) => (branchFilter ? pickIncomeClient(id) : setIncomeSubjectId(id))}
           draft={incomeDraft}
           setDraft={setIncomeDraft}
           onSubmit={handleAddIncome}
