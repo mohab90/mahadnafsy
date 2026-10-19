@@ -15,11 +15,8 @@ type OnlineClientsKpiStripProps = {
   fmtK: (value: number) => string;
   /** «محلي / سعودي / دولي» for an online client, null for a branch one. */
   marketOf: (subscriber: SubscriberItem) => 'local' | 'saudi' | 'intl' | null;
-  /** The branch's real figures from the database (the Dokki tab). Shown while the
-   *  rows are still arriving, so the number is right before the table is full. */
-  serverCount?: { total: number; byStatus: Record<string, number> } | null;
-  /** The online screen's client figures from the server, when it holds one page of them. */
-  counts?: { total: number; local: number; saudi: number; intl: number };
+  /** The client figures from the server, when the screen holds one page of the clients (always, on the Dokki tab). */
+  counts?: { total: number; local: number; saudi: number; intl: number; active?: number; finished?: number; paused?: number };
 };
 
 type Stat = { label: string; value: string | number; icon: ElementType; tone: string };
@@ -32,24 +29,18 @@ const TONES: Record<string, string> = {
   green: 'bg-green-100 text-green-700',
 };
 
-const TERMINAL = ['finished', 'paused', 'refunded', 'refund_pending'];
-
 /**
  * The numbers above the table, as one compact card in two groups — who the
  * clients are, and what came in — instead of nine tall tiles.
  */
 export function OnlineClientsKpiStrip({
-  isDaqqiClientsTab, allCombined, collTodayRev, collWeekRev, collMonthRev, collTotalRem, fmtK, marketOf, serverCount, counts,
+  isDaqqiClientsTab, allCombined, collTodayRev, collWeekRev, collMonthRev, collTotalRem, fmtK, marketOf, counts,
 }: OnlineClientsKpiStripProps) {
-  const arriving = Boolean(isDaqqiClientsTab && serverCount && allCombined.length < serverCount.total);
-  const byStatus = serverCount?.byStatus || {};
   const clients: Stat[] = isDaqqiClientsTab ? [
-    { label: 'عملاء الدقي', value: arriving ? serverCount!.total : allCombined.length, icon: Users, tone: 'indigo' },
-    { label: 'نشطين', value: arriving
-      ? serverCount!.total - TERMINAL.reduce((sum, status) => sum + (byStatus[status] || 0), 0)
-      : allCombined.filter(s => !TERMINAL.includes(s.clientStatus || '')).length, icon: CheckCircle2, tone: 'emerald' },
-    { label: 'منتهين', value: arriving ? (byStatus.finished || 0) : allCombined.filter(s => s.clientStatus === 'finished').length, icon: GraduationCap, tone: 'green' },
-    { label: 'متوقفين', value: arriving ? (byStatus.paused || 0) : allCombined.filter(s => s.clientStatus === 'paused').length, icon: CirclePause, tone: 'amber' },
+    { label: 'عملاء الدقي', value: counts?.total ?? '…', icon: Users, tone: 'indigo' },
+    { label: 'نشطين', value: counts?.active ?? '…', icon: CheckCircle2, tone: 'emerald' },
+    { label: 'منتهين', value: counts?.finished ?? '…', icon: GraduationCap, tone: 'green' },
+    { label: 'متوقفين', value: counts?.paused ?? '…', icon: CirclePause, tone: 'amber' },
   ] : [
     { label: 'إجمالي العملاء', value: counts ? counts.total : allCombined.length, icon: Users, tone: 'slate' },
     { label: 'محلي', value: counts ? counts.local : allCombined.filter(s => marketOf(s) === 'local').length, icon: MapPin, tone: 'violet' },

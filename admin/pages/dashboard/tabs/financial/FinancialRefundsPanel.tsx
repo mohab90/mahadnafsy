@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { Modal } from '../../../../../shared/ui/Modal';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
+import { mysqlAdmin } from '../../../../lib/mysqlapi';
+import type { SubscriberItem } from '../../../../types';
 import { useSiteData } from '../../../../context/SiteDataContext';
 import { AddRefundModal } from './AddRefundModal';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
@@ -92,6 +94,12 @@ const STATUS_FILTERS: Array<[string, string]> = [
 export default function FinancialRefundsPanel({ notify, branch }: { notify: Notify; branch?: string }) {
   const { staffMembers, isAdmin, authUser } = useSiteData();
   const navigate = useNavigate();
+  // The refund form searches the clients on the server while the person types (the branch's own, in a branch's books).
+  const lookupClients = useCallback(
+    (term: string) => mysqlAdmin.adminGet<SubscriberItem[]>(`/staff/subscribers?limit=50&q=${encodeURIComponent(term)}${branch ? `&branch=${encodeURIComponent(branch)}` : ''}`)
+      .then(list => (Array.isArray(list) ? list : [])),
+    [branch],
+  );
   // The callers pass notify inline, so it is a new function every render; read
   // through a ref, it no longer reloads the list each time the page renders.
   const notifyRef = useRef(notify);
@@ -553,6 +561,7 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
 
       {addOpen && (
         <AddRefundModal
+          lookup={lookupClients}
           notify={(type, text) => notify(text, type === 'error' ? 'error' : 'success')}
           onClose={() => setAddOpen(false)}
           onCreated={() => void load()}

@@ -173,8 +173,8 @@ const TAB_ENTRIES = {
   online_clients: `${D}/DashboardClientTabs.tsx`,
   daqqi_clients: `${D}/DashboardClientTabs.tsx`,
   orders: [`${T}/OrdersTab.tsx`, `${T}/orders/CollectionBookingsReview.tsx`, `${T}/staff-payments/StaffPaymentsTab.tsx`],
-  financial: `${T}/FinancialTab.tsx`,
-  daqqi_accounting: `${T}/FinancialTab.tsx`,
+  financial: `${T}/FinancialMainTab.tsx`,
+  daqqi_accounting: `${T}/FinancialBranchTab.tsx`,
   financial_reports: `${D}/FinancialReportsHub.tsx`,
   recurring_expenses: `${T}/RecurringExpensesTab.tsx`,
   client: `${T}/ClientDbTab.tsx`,
@@ -416,6 +416,9 @@ const NOT_READ = {
   // (overviewFigures.ts); the arrays are the staff path's, and the fallback
   // before those answer.
   overview: new Set(['subscribers', 'leads', 'orders']),
+  // «عملاء الدقي» pages from the server (GET /api/admin/dokki/clients); the shared clients screen is handed the
+  // context's clients for its online half and holds none on this one.
+  daqqi_clients: new Set(['subscribers']),
 };
 
 test('every list Dashboard.tsx hands a screen is one the screen loads', () => {

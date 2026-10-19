@@ -21,6 +21,10 @@ const NO_COLLECTOR = '__none__';
 const FOLLOW_FILTERS = ['due', 'overdue', 'today', 'tomorrow', 'week', 'none'];
 const VIEWS = ['active', 'real-local', 'real-saudi', 'real-intl', 'finished', 'paused', 'refunded', 'old_local', 'old_intl'];
 const MARKET_VIEWS = { 'real-local': 'local', 'real-saudi': 'saudi', 'real-intl': 'intl' };
+// «عملاء الدقي» has its own tabs (OnlineClientsTab / ViewTabsBar): the lifecycle ones, the two booking years and the imports.
+const DOKKI_VIEWS = ['active', 'finished', 'paused', 'refunded', 'booked2024', 'booked2025', 'old_data'];
+const BOOKING_YEAR_VIEWS = { booked2024: 2024, booked2025: 2025 };
+const OLD_DATA_STATUSES = ['old_data', 'daqqi_old_local', 'daqqi_old_intl'];
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
 const normBranch = value => (value ? String(value).toUpperCase().replace(/[-\s]/g, '_') : '');
@@ -210,9 +214,9 @@ const holdsItem = (client, item) => (item.startsWith('bundle:')
   : (client.enrolledCourseIds || []).includes(item))
   || (client.paymentHistory || []).some(payment => itemKeyOf(payment) === item);
 
-function readFilters(query) {
+function readFilters(query, { dokki = false } = {}) {
   const text = key => String(query[key] ?? '').trim();
-  const view = VIEWS.includes(text('view')) ? text('view') : 'active';
+  const view = (dokki ? DOKKI_VIEWS : VIEWS).includes(text('view')) ? text('view') : 'active';
   const follow = FOLLOW_FILTERS.includes(text('follow')) ? text('follow') : '';
   return {
     view, follow,
@@ -225,7 +229,41 @@ function readFilters(query) {
     status: text('status').slice(0, 40),
     cert: ['has_cert', 'no_cert'].includes(text('cert')) ? text('cert') : '',
     remaining: ['has_remaining', 'paid'].includes(text('remaining')) ? text('remaining') : '',
+    // The Dokki screen's three: seated or not, in a round, with a reception's rounds.
+    housing: dokki && ['housed', 'unhoused'].includes(text('housing')) ? text('housing') : '',
+    round: dokki ? text('round').slice(0, 80) : '',
+    reception: dokki ? text('reception').slice(0, 80) : '',
   };
+}
+
+/**
+ * What the Dokki screen reads of the rounds, per client (OnlineClientsTab housingMap / housingNeeds / bookingYearsById,
+ * daqqi/daqqiHousingNeeds.ts). `rounds`: [{ id, courseId, receptionId, finished, attendees: [{ subscriberId, bookedAt }] }]
+ * in the order the schedule lists them (newest first).
+ */
+function dokkiRoundFacts(rounds) {
+  // The round a client follows: the latest booking, a running round over a finished one (the first in the list on a tie).
+  const chosen = new Map();
+  const years = new Map();
+  const seats = new Map();
+  for (const round of rounds) {
+    const live = !round.finished;
+    for (const attendee of round.attendees || []) {
+      const bookedAt = String(attendee.bookedAt || '');
+      const held = chosen.get(attendee.subscriberId);
+      if (!(held && ((held.live && !live) || (held.live === live && held.bookedAt >= bookedAt)))) {
+        chosen.set(attendee.subscriberId, { roundId: round.id, receptionId: round.receptionId, bookedAt, live });
+      }
+      const year = Number(bookedAt.slice(0, 4));
+      if (Number.isInteger(year) && year >= 1900) {
+        if (!years.has(attendee.subscriberId)) years.set(attendee.subscriberId, new Set());
+        years.get(attendee.subscriberId).add(year);
+      }
+      if (!seats.has(attendee.subscriberId)) seats.set(attendee.subscriberId, new Set());
+      seats.get(attendee.subscriberId).add(round.courseId);
+    }
+  }
+  return { chosen, years, seats, withRounds: [...new Set(rounds.map(round => round.courseId))] };
 }
 
 /**
@@ -233,9 +271,25 @@ function readFilters(query) {
  * Returns `ids` of the clients matching, newest first as given, with the tab counts, the follow-up chips and the
  * figures above the table — all over the same clients, as the screen worked them out of its loaded list.
  */
-function buildView(clients, filters, { today, weekStart, monthStart, catalogue, allBranches }) {
+function buildView(clients, filters, { today, weekStart, monthStart, catalogue, allBranches, dokki }) {
   const inBranch = filters.branch ? clients.filter(client => branchMatchesFilter(client.branch, filters.branch)) : clients;
-  const all = allBranches ? inBranch : inBranch.filter(holdsOnline);
+  // The Dokki screen holds the clients the branch owns and the ones with a course placed in it (holdsIn on the branch).
+  const dokkiHere = dokki ? branch => normBranch(branch) === dokki.branch : null;
+  const all = dokki
+    ? inBranch.filter(client => dokkiHere(client.branch) || Object.values(client.coursePlacements || {}).some(dokkiHere))
+    : (allBranches ? inBranch : inBranch.filter(holdsOnline));
+  const rounds = dokki ? dokkiRoundFacts(dokki.rounds) : null;
+  const bookedIn = (client, year) => {
+    const booked = rounds.years.get(client.id);
+    // A client in no round has no booking date: the year they registered stands in.
+    return booked?.size ? booked.has(year) : Number(String(client.createdAt || '').slice(0, 4)) === year;
+  };
+  // Seated for every course of theirs that has a round (daqqiHousingNeeds.ts): { housed, missing } as sets of courses.
+  const needOf = client => {
+    const housed = rounds.seats.get(client.id) || new Set();
+    const held = new Set(client.enrolledCourseIds || []);
+    return { housed, missing: rounds.withRounds.filter(courseId => !housed.has(courseId) && held.has(courseId)) };
+  };
   const facts = new Map();
   const factsOf = client => {
     if (!facts.has(client.id)) {
@@ -250,7 +304,15 @@ function buildView(clients, filters, { today, weekStart, monthStart, catalogue, 
 
   const live = client => client.isActive !== false && !factsOf(client).terminal;
   const marketTab = (client, market) => factsOf(client).online && factsOf(client).market === market;
-  const tabCounts = {
+  const tabCounts = dokki ? {
+    active: all.filter(live).length,
+    finished: all.filter(client => factsOf(client).status === 'finished').length,
+    paused: all.filter(client => factsOf(client).status === 'paused').length,
+    refunded: all.filter(client => ['refunded', 'refund_pending'].includes(factsOf(client).status)).length,
+    booked2024: all.filter(client => bookedIn(client, 2024)).length,
+    booked2025: all.filter(client => bookedIn(client, 2025)).length,
+    old_data: all.filter(client => OLD_DATA_STATUSES.includes(factsOf(client).status)).length,
+  } : {
     active: all.filter(live).length,
     'real-local': 0, 'real-saudi': 0, 'real-intl': 0,
     finished: all.filter(client => factsOf(client).status === 'finished').length,
@@ -259,13 +321,22 @@ function buildView(clients, filters, { today, weekStart, monthStart, catalogue, 
     old_local: all.filter(client => !factsOf(client).international && factsOf(client).status === 'old_local').length,
     old_intl: all.filter(client => factsOf(client).international && factsOf(client).status === 'old_intl').length,
   };
-  for (const [tab, market] of Object.entries(MARKET_VIEWS)) {
+  if (!dokki) for (const [tab, market] of Object.entries(MARKET_VIEWS)) {
     // The count on the tab asks for an open course; the list below also takes a booking that waits for approval.
     tabCounts[tab] = all.filter(client => marketTab(client, market) && live(client) && (client.enrolledCourseIds || []).length > 0).length;
   }
 
   const inView = client => {
     const { status, terminal } = factsOf(client);
+    if (dokki) {
+      switch (filters.view) {
+        case 'active': return client.isActive !== false && !terminal;
+        case 'booked2024': case 'booked2025': return bookedIn(client, BOOKING_YEAR_VIEWS[filters.view]);
+        case 'refunded': return status === 'refunded' || status === 'refund_pending';
+        case 'old_data': return OLD_DATA_STATUSES.includes(status);
+        default: return status === filters.view;
+      }
+    }
     switch (filters.view) {
       case 'active': return client.isActive !== false && !terminal;
       case 'real-local': case 'real-saudi': case 'real-intl':
@@ -285,6 +356,17 @@ function buildView(clients, filters, { today, weekStart, monthStart, catalogue, 
     if (filters.collector === NO_COLLECTOR) { if (client.assignedCsId) return false; }
     else if (filters.collector && client.assignedCsId !== filters.collector) return false;
     if (filters.status && (client.status || 'active') !== filters.status) return false;
+    if (dokki) {
+      // «مسكن» is seated for every course of theirs that has a round; «غير مسكن» is none, or one still missing.
+      if (filters.housing) {
+        const { housed, missing } = needOf(client);
+        const fully = housed.size > 0 && missing.length === 0;
+        if (filters.housing === 'housed' && !fully) return false;
+        if (filters.housing === 'unhoused' && fully) return false;
+      }
+      if (filters.round && rounds.chosen.get(client.id)?.roundId !== filters.round) return false;
+      if (filters.reception && rounds.chosen.get(client.id)?.receptionId !== filters.reception) return false;
+    }
     if (filters.cert === 'has_cert' && (client.certificates || []).length === 0) return false;
     if (filters.cert === 'no_cert' && (client.certificates || []).length > 0) return false;
     if (filters.remaining === 'has_remaining' && factsOf(client).balance.remainingEgp <= 0) return false;
@@ -297,20 +379,31 @@ function buildView(clients, filters, { today, weekStart, monthStart, catalogue, 
 
   const followCounts = { overdue: 0, today: 0, tomorrow: 0 };
   const matching = [];
+  let unassignedMatching = 0;
   for (const client of all) {
     if (!inView(client) || !matchesOthers(client)) continue;
     const follow = factsOf(client).follow;
     if (follow in followCounts) followCounts[follow] += 1;
-    if (matchesFollow(follow, filters.follow)) matching.push(client.id);
+    if (matchesFollow(follow, filters.follow)) {
+      matching.push(client.id);
+      if (!client.assignedCsId) unassignedMatching += 1;
+    }
   }
 
   let collectedToday = 0; let collectedWeek = 0; let collectedMonth = 0; let remaining = 0; let unassigned = 0;
   const markets = { local: 0, saudi: 0, intl: 0 };
+  // The Dokki strip: how many, how many not finished, paused or refunded, the finished and the paused.
+  const dokkiCounts = { active: 0, finished: 0, paused: 0 };
+  const assignedCounts = {};
   for (const client of all) {
-    const { online, market, balance } = factsOf(client);
+    const { online, market, balance, status, terminal } = factsOf(client);
     if (online) markets[market] += 1;
+    if (!terminal) dokkiCounts.active += 1;
+    if (status === 'finished') dokkiCounts.finished += 1;
+    if (status === 'paused') dokkiCounts.paused += 1;
     remaining += balance.remainingEgp;
     if (!client.assignedCsId) unassigned += 1;
+    else assignedCounts[client.assignedCsId] = (assignedCounts[client.assignedCsId] || 0) + 1;
     for (const payment of client.paymentHistory || []) {
       if (!isCollected(payment)) continue;
       const day = cairoDay(payment.at);
@@ -322,7 +415,9 @@ function buildView(clients, filters, { today, weekStart, monthStart, catalogue, 
   }
   return {
     ids: matching, tabCounts, followCounts,
-    figures: { total: all.length, ...markets, today: collectedToday, week: collectedWeek, month: collectedMonth, remaining, unassigned },
+    figures: { total: all.length, ...markets, ...(dokki ? dokkiCounts : {}), today: collectedToday, week: collectedWeek, month: collectedMonth, remaining, unassigned },
+    // The old-data distribution panel's: how many of the matching clients nobody holds, and how many each person holds.
+    ...(dokki ? { unassignedMatching, assignedCounts } : {}),
   };
 }
 

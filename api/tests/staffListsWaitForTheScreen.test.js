@@ -32,12 +32,14 @@ test('the screens that page from the server are named, and an employee\'s panel 
   const lib = bundle('admin/pages/dashboard/staffListTabs.ts');
   if (lib) {
     const { staffScreenPagesFromServer: pages, staffClientsArePaged: paged, staffSkipsSiteLists: skips } = lib;
-    for (const tab of ['staff_home', 'staff_settings', 'my_hr', 'leads', 'online_clients', 'orders']) assert.equal(pages(tab), true, tab);
+    for (const tab of ['staff_home', 'staff_settings', 'my_hr', 'leads', 'online_clients', 'orders', 'daqqi_schedule', 'daqqi_clients']) assert.equal(pages(tab), true, tab);
     // The screens that read the context's lists keep their reload after a write.
-    for (const tab of ['client', 'refund_requests', 'daqqi_clients', 'daqqi_schedule', 'financial']) assert.equal(pages(tab), false, tab);
+    for (const tab of ['client', 'refund_requests', 'financial']) assert.equal(pages(tab), false, tab);
     assert.equal(paged('online_clients', true, false), true);
     assert.equal(paged('online_clients', false, true), true, 'the online manager');
     assert.equal(paged('online_clients', false, false), false, 'the administration keeps the whole list');
+    assert.equal(paged('daqqi_clients', false, false), true, '«عملاء الدقي» pages from the server for the administration too');
+    assert.deepEqual([...skips('daqqi_clients')], []);
     assert.equal(paged('leads', true, false), false);
     assert.deepEqual([...skips('orders')], ['orders', 'subscribers']);
     assert.deepEqual([...skips('online_clients')], ['subscribers']);
@@ -93,7 +95,7 @@ test('«مدفوعاتي» asks the database for the period, the status, «mine�
   assert.match(tab, /\/staff\/payments\?status=pending&limit=100/);
   // The refund form searches the person's own clients on the server while they type.
   assert.match(tab, /\/staff\/subscribers\?limit=50&q=\$\{encodeURIComponent\(term\)\}/);
-  assert.match(read('admin/pages/dashboard/tabs/financial/AddRefundModal.tsx'), /const subscribers = lookup \? found : \(clients \?\? allSubscribers\);/);
+  assert.match(read('admin/pages/dashboard/tabs/financial/AddRefundModal.tsx'), /const subscribers = lookup \? found : \(clients \?\? NO_CLIENTS\);/);
 });
 
 test('the three staff endpoints answer for the same set of clients, and the list takes a search', () => {

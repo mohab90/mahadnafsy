@@ -40,15 +40,17 @@ test('the browser keeps no client data: the persisted cache is the public catalo
   }
 });
 
-test('the Dokki screens read their clients from the API, by branch', () => {
+test('the Dokki screens ask the server for their clients; none streams the branch list', () => {
+  // The branch's whole client list used to be streamed into the browser 300 at a time for the schedule, the clients,
+  // the accounts and the statistics. Each of them asks the server for what it shows now.
   const groups = read('admin/pages/dashboard/dashboardTabGroups.ts');
-  assert.match(groups, /export const branchSubscriberTabs[\s\S]*daqqi_clients: 'DAQQI'/);
+  assert.doesNotMatch(groups, /branchSubscriberTabs/);
   const runtime = read('admin/context/site-data-hooks/useAdminDataRuntime.ts');
-  assert.match(runtime, /mysqlAdmin\.streamSubscribers\(\{ branch \}/);
-  // every tab key named there is a screen
-  const nav = read('admin/pages/dashboard/navigation.tsx');
-  const block = groups.slice(groups.indexOf('export const branchSubscriberTabs'));
-  for (const key of block.match(/^\s+(daqqi_\w+):/gm).map(line => line.trim().replace(':', ''))) {
-    assert.ok(nav.includes(`'${key}'`), `${key} is not a TabKey`);
+  assert.doesNotMatch(runtime, /loadBranchSubscribers|streamSubscribers/);
+  assert.doesNotMatch(read('admin/lib/mysqlapi.ts'), /streamSubscribers|streamPages|countSubscribers/);
+  const routes = read('api/routes/admin/dokkiclients.js');
+  for (const path of ['overview', 'candidates', 'clients', 'installment-clients']) {
+    assert.ok(routes.includes(`/api/admin/dokki/${path}'`), path);
   }
+  assert.ok(read('api/routes/admin/analyticssummary.js').includes("'/api/admin/analytics-summary'"));
 });

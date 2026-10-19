@@ -30,7 +30,7 @@ import type { PaymentDraft } from '../components/PaymentModal';
 import { createClientPaymentDraft } from '../lib/clientActionDrafts';
 import { currencyForBranch } from '../lib/branchCurrency';
 import { CONTENT_HUB_TABS } from './dashboard/contentHubConfig';
-import { branchSubscriberTabs, contentHubRouteTabs, directContentTabs, fullCrmDataTabs, fullLeadTabs, fullSubscriberTabs, growthOpsTabs, saasOpsTabs } from './dashboard/dashboardTabGroups';
+import { contentHubRouteTabs, directContentTabs, fullCrmDataTabs, fullLeadTabs, fullSubscriberTabs, growthOpsTabs, saasOpsTabs } from './dashboard/dashboardTabGroups';
 import { listsForTab } from './dashboard/tabSiteLists';
 import type { SiteList } from '../context/site-data-hooks/siteLists';
 import { useStaffRoleRedirects } from './dashboard/hooks/useStaffRoleRedirects';
@@ -112,7 +112,6 @@ const Dashboard: React.FC = () => {
     loadFullCrmData,
     loadFullLeads,
     loadFullSubscribers,
-    loadBranchSubscribers,
     ensureSiteLists,
     daqqiRounds: siteDaqqiRounds,
     bulkSetDaqqiRounds,
@@ -677,19 +676,13 @@ const Dashboard: React.FC = () => {
     else if (fullLeadTabs.has(activeTab)) void loadFullLeads();
     // «عملائي» for an employee reads a page at a time from the server: no full list, in the context or out of it.
     else if (fullSubscriberTabs.has(activeTab) && !clientsArePaged) void loadFullSubscribers();
-    // A branch screen reads that branch only — see branchSubscriberTabs.
-    // The Dokki screens read the branch they are showing — Tagamoa's under tagamoa_*.
-    else if (branchSubscriberTabs[activeTab]) {
-      const branch = branchSubscriberTabs[activeTab] === 'DAQQI' ? physicalBranch : branchSubscriberTabs[activeTab];
-      loadBranchSubscribers(branch).catch(() => { /* retried on the next visit */ });
-    }
     // Then the lists the screen reads that no longer come with the panel —
     // every one of them for a screen nobody has listed yet (tabSiteLists.ts).
     // After the full loads above, so a list a full load is bringing waits for it.
     // An employee's version of a screen that pages from the server does not read the lists the administration's does.
     const skipped = usesStaffScopedData ? staffSkipsSiteLists(activeTab) : [];
     void ensureSiteLists(skipped.length ? listsForTab(activeTab).filter(list => !skipped.includes(list)) : listsForTab(activeTab));
-  }, [activeTab, clientsArePaged, usesStaffScopedData, physicalBranch, loadFullCrmData, loadFullLeads, loadFullSubscribers, loadBranchSubscribers, ensureSiteLists]);
+  }, [activeTab, clientsArePaged, usesStaffScopedData, loadFullCrmData, loadFullLeads, loadFullSubscribers, ensureSiteLists]);
 
   // Drawn over every screen, so they ask for their own lists: the follow-up
   // drawer lists the loaded leads' follow-ups (its bell counts on the server —

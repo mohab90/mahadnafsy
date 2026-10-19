@@ -21,7 +21,9 @@ test('every client list reaches a branch by its own clients and by the courses p
 
 test('the table lists a split client in both branches, each with its own courses; the modal offers the partial transfer', () => {
   const tab = read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx');
-  assert.match(tab, /holdsIn\(s, isDokkiHere\)/);
+  // The Dokki list holds the clients the branch owns and the ones with a course placed in it — on the server now.
+  assert.match(read('api/lib/staffClientsView.js'), /dokkiHere\(client\.branch\) \|\| Object\.values\(client\.coursePlacements \|\| \{\}\)\.some\(dokkiHere\)/);
+  assert.match(read('api/routes/admin/dokkiclients.js'), /ownOrPlaced\(\[branch\]\)/);
   assert.match(tab, /itemShowsIn\(client, item, hereTest\)/);
   assert.match(read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx'), /itemVisible\(row, item\.item\)/);
   assert.match(read('admin/pages/dashboard/tabs/OnlineClientConvertModal.tsx'), /تحويل كورس معيّن لفرع تاني \(جزئي\)/);

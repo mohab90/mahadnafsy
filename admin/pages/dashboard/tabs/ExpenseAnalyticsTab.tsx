@@ -1,20 +1,16 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { DollarSign, TrendingDown, TrendingUp, PieChart as PieIcon, BarChart3 } from 'lucide-react';
-import { useFinanceData } from '../../../context/siteDataSlices';
+import { useSiteData } from '../../../context/SiteDataContext';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { numericTooltip } from '../../../lib/chartFormat';
-import { cairoDay, cairoMonthStart } from '../../../../shared/cairoDate';
+import { cairoMonthStart } from '../../../../shared/cairoDate';
+import { fxRates, toEgp } from '../../../lib/money';
+import { useExpenseAnalysis } from '../hooks/useAnalyticsHubFigures';
+import { expenseFigures } from '../analyticsHubFigures';
 
 type Range = 'month' | '3months' | '6months' | 'all';
 
 const COLORS = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#84cc16'];
-
-// setDate(1) kept the time of day, so from midnight to 02:00 or 03:00 Cairo the
-// 1st formatted in UTC as the last day of the month before, and every month in
-// the chart slid back by one.
-function getLast6Months() {
-  return Array.from({ length: 6 }, (_, i) => cairoMonthStart(5 - i).slice(0, 7));
-}
 
 // Takes `range` instead of closing over it, matching MarketingHubTab and
 // OnlineTeamTab. As a closure it was rebuilt every render, so the memos below
@@ -27,42 +23,18 @@ function getRangeStart(range: Range): string {
 }
 
 export default function ExpenseAnalyticsTab() {
-  const { expenses, orders } = useFinanceData();
+  const { content } = useSiteData();
   const [range, setRange] = useState<Range>('month');
-  const months = getLast6Months();
 
-  const filtered = useMemo(() => {
-    const start = getRangeStart(range);
-    return expenses.filter(e => (e.date || e.createdAt || '') >= start);
-  }, [expenses, range]);
-
-  const totalExpenses = useMemo(() => filtered.reduce((acc, e) => acc + (Number(e.amount) || 0), 0), [filtered]);
-  const totalRevenue = useMemo(() => {
-    const start = getRangeStart(range);
-    return orders.filter(o => o.status === 'paid' && (o.createdAt || '') >= start)
-                 .reduce((acc, o) => acc + (Number(o.amount) || 0), 0);
-  }, [orders, range]);
-  const netProfit = totalRevenue - totalExpenses;
-  const profitMargin = totalRevenue > 0 ? Math.round((netProfit / totalRevenue) * 100) : 0;
-
-  // By category
-  const byCategory = useMemo(() => {
-    const map: Record<string, number> = {};
-    filtered.forEach(e => { const cat = e.category || 'أخرى'; map[cat] = (map[cat] || 0) + (Number(e.amount) || 0); });
-    return Object.entries(map).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-  }, [filtered]);
-
-  // Monthly trend
-  const monthlyData = useMemo(() =>
-    months.map(m => ({
-      month: m.slice(5),
-      مصروفات: expenses.filter(e => cairoDay(e.date || e.createdAt).slice(0, 7) === m)
-                       .reduce((acc, e) => acc + (Number(e.amount) || 0), 0),
-      إيراد: orders.filter(o => o.status === 'paid' && cairoDay(o.createdAt).slice(0, 7) === m)
-                   .reduce((acc, o) => acc + (Number(o.amount) || 0), 0),
-    })),
-    [expenses, orders, months]
-  );
+  // The expenses and the orders are added up by the server (GET /api/admin/analytics-hub/expense-analysis) — all of them,
+  // not the lists the context held — and converted here at the institute's rates.
+  const rates = useMemo(() => fxRates(content), [content]);
+  const toEGP = useCallback((amount: number, currency: string) => toEgp(amount, currency, rates), [rates]);
+  const data = useExpenseAnalysis(getRangeStart(range));
+  const { totalExpenses, totalRevenue, netProfit, profitMargin, byCategory, monthlyData } =
+    useMemo(() => expenseFigures(data, toEGP), [data, toEGP]);
+  const listed = data?.list ?? [];
+  const count = data?.expenses.count ?? 0;
 
   const fmtMoney = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}ك` : n.toLocaleString('ar-EG-u-nu-latn');
 
@@ -153,7 +125,7 @@ export default function ExpenseAnalyticsTab() {
       <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
         <div className="p-4 border-b border-gray-100 flex items-center justify-between">
           <h3 className="font-bold text-gray-800">سجل المصروفات</h3>
-          <span className="text-xs text-gray-400">{filtered.length} عنصر</span>
+          <span className="text-xs text-gray-400">{count} عنصر</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -166,21 +138,21 @@ export default function ExpenseAnalyticsTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filtered.slice(0, 30).map((e, i) => (
+              {listed.map((e, i) => (
                 <tr key={e.id || i} className="hover:bg-gray-50 transition">
-                  <td className="px-4 py-3 font-semibold text-gray-800">{e.description || e.title || '—'}</td>
-                  <td className="px-4 py-3"><span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-lg text-xs">{e.category || 'أخرى'}</span></td>
-                  <td className="px-4 py-3 font-bold text-red-600">{Number(e.amount).toLocaleString('ar-EG-u-nu-latn')} ج</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">{cairoDay(e.date || e.createdAt)}</td>
+                  <td className="px-4 py-3 font-semibold text-gray-800">{e.description || '—'}</td>
+                  <td className="px-4 py-3"><span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-lg text-xs">{e.category}</span></td>
+                  <td className="px-4 py-3 font-bold text-red-600">{e.amount.toLocaleString('ar-EG-u-nu-latn')} {e.currency === 'EGP' ? 'ج' : e.currency}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs">{e.date}</td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
+              {count === 0 && (
                 <tr><td colSpan={4} className="px-4 py-10 text-center text-gray-400">لا توجد مصروفات في هذه الفترة</td></tr>
               )}
             </tbody>
           </table>
-          {filtered.length > 30 && (
-            <div className="p-3 text-center text-xs text-gray-400">عرض أول 30 سجل من {filtered.length}</div>
+          {count > listed.length && (
+            <div className="p-3 text-center text-xs text-gray-400">عرض أول {listed.length} سجل من {count}</div>
           )}
         </div>
       </div>

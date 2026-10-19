@@ -20,7 +20,6 @@ interface Props {
   isIntlSub: (s: SubscriberItem) => boolean;
   /** «محلي / سعودي / دولي» for an online client, null for a branch one. */
   marketOf: (s: SubscriberItem) => Market | null;
-  bookedInYear: (s: SubscriberItem, year: number) => boolean;
   collOnlineViewTab: ViewTabKey;
   setCollOnlineViewTab: (v: ViewTabKey) => void;
   setCollOnlinePage: (n: number) => void;
@@ -69,7 +68,7 @@ const PICTURE_HEADERS = ['الاسم بالإنجليزي','الرقم القو�
 const pictureColumns = (s: SubscriberItem) => [s.nameEn || '', s.nationalId || '', s.personalPhotoUrl || '', s.idPhotoUrl || ''];
 
 export function ViewTabsBar({
-  isDaqqiClientsTab, allCombined, isIntlSub, marketOf, bookedInYear, collOnlineViewTab, setCollOnlineViewTab,
+  isDaqqiClientsTab, allCombined, isIntlSub, marketOf, collOnlineViewTab, setCollOnlineViewTab,
   setCollOnlinePage, filtered, tabCounts, matchingCount, unassignedTotal, loadForExport, isOnlineManager, isCollection = false, isDaqqiManager, isAdmin, setOmNewSubOpen, onOpenSectionTabs,
   onOpenCollectionSettings, onOpenImport, customTabsSlot, customTabOpen = false,
   daqqiSettingsOpen, setDaqqiSettingsOpen, collOnlineSelected, courses, bundles, staffMembers, housingMap,
@@ -158,9 +157,6 @@ export function ViewTabsBar({
               ? allCombined.filter(s => s.isActive !== false && !TERMINAL.includes(s.clientStatus||'')).length
               : market
               ? allCombined.filter(s => marketOf(s) === market && s.isActive !== false && !TERMINAL.includes(s.clientStatus||'') && (s.enrolledCourseIds||[]).length > 0).length
-              : vt.key === 'booked2024' ? allCombined.filter(s => bookedInYear(s, 2024)).length
-              : vt.key === 'booked2025' ? allCombined.filter(s => bookedInYear(s, 2025)).length
-              : vt.key === 'old_data' ? allCombined.filter(s => ['old_data','daqqi_old_local','daqqi_old_intl'].includes(s.clientStatus||'')).length
               : (vt.key === 'old_local' || vt.key === 'old_intl') ? base.filter(s => s.clientStatus === vt.key).length
               : vt.key === 'refunded' ? allCombined.filter(s => s.clientStatus === 'refunded' || s.clientStatus === 'refund_pending').length
               : allCombined.filter(s => s.clientStatus === vt.key).length;

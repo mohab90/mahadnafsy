@@ -1,20 +1,16 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { DollarSign, Tag, PieChart as PieIcon, BarChart3 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { numericTooltip } from '../../../lib/chartFormat';
-import { cairoDay, cairoMonthStart } from '../../../../shared/cairoDate';
+import { cairoMonthStart } from '../../../../shared/cairoDate';
+import { fxRates, toEgp } from '../../../lib/money';
+import { useRevenueSources } from '../hooks/useAnalyticsHubFigures';
+import { revenueSourceFigures } from '../analyticsHubFigures';
 
 type Range = 'month' | '3months' | '6months' | 'all';
 
 const COLORS = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#84cc16','#ec4899'];
-
-// setDate(1) kept the time of day, so from midnight to 02:00 or 03:00 Cairo the
-// 1st formatted in UTC as the last day of the month before, and every month in
-// the chart slid back by one.
-function getLast6Months() {
-  return Array.from({ length: 6 }, (_, i) => cairoMonthStart(5 - i).slice(0, 7));
-}
 
 // Takes `range` instead of closing over it, matching MarketingHubTab and
 // OnlineTeamTab. As a closure it was rebuilt every render, so the memos below
@@ -27,74 +23,21 @@ function getRangeStart(range: Range): string {
 }
 
 export default function RevenueSourcesTab() {
-  const { orders, courses, bundles } = useSiteData();
+  const { courses, bundles, content } = useSiteData();
   const [range, setRange] = useState<Range>('month');
-  const months = getLast6Months();
 
-  const filteredOrders = useMemo(() => {
-    const start = getRangeStart(range);
-    return orders.filter(o => o.status === 'paid' && (o.createdAt || '') >= start);
-  }, [orders, range]);
+  // The orders are added up by the server (GET /api/admin/analytics-hub/revenue-sources) — every paid order and desk
+  // payment, not the 500 newest the context held — and converted here at the institute's rates.
+  const rates = useMemo(() => fxRates(content), [content]);
+  const toEGP = useCallback((amount: number, currency: string) => toEgp(amount, currency, rates), [rates]);
+  const data = useRevenueSources(getRangeStart(range));
+  const {
+    totalRevenue, orderCount, byLeadSource, byProductType, byCourse, topSources, monthlyBySource,
+  } = useMemo(() => revenueSourceFigures(data, toEGP, ({ courseId, bundleId, type }) =>
+    courses.find(c => c.id === courseId)?.title || bundles?.find((b: any) => b.id === bundleId)?.title || type || 'أخرى',
+  ), [data, toEGP, courses, bundles]);
 
-  const totalRevenue = useMemo(() => filteredOrders.reduce((acc, o) => acc + (Number(o.amount) || 0), 0), [filteredOrders]);
-
-  // By lead source
-  const byLeadSource = useMemo(() => {
-    const map: Record<string, number> = {};
-    filteredOrders.forEach(o => {
-      // leadSource comes from the server now. The lookup it replaces could never
-      // succeed — o.leadId was never populated — so every order used to land in
-      // 'مباشر' regardless of where it actually came from.
-      const source = o.leadSource || o.source || 'مباشر';
-      map[source] = (map[source] || 0) + (Number(o.amount) || 0);
-    });
-    return Object.entries(map).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-  }, [filteredOrders]);
-
-  // By product type (course vs bundle vs consultation)
-  const byProductType = useMemo(() => {
-    const map: Record<string, number> = { 'كورس': 0, 'باندل': 0, 'استشارة': 0, 'أخرى': 0 };
-    filteredOrders.forEach(o => {
-      if (o.bundleId) map['باندل'] += Number(o.amount) || 0;
-      else if (o.courseId) map['كورس'] += Number(o.amount) || 0;
-      else if (o.type === 'consultation') map['استشارة'] += Number(o.amount) || 0;
-      else map['أخرى'] += Number(o.amount) || 0;
-    });
-    return Object.entries(map).filter(([, v]) => v > 0).map(([name, value]) => ({ name, value }));
-  }, [filteredOrders]);
-
-  // By course
-  const byCourse = useMemo(() => {
-    const map: Record<string, { name: string; revenue: number; count: number }> = {};
-    filteredOrders.forEach(o => {
-      const key = o.courseId || o.bundleId || o.type || 'other';
-      const c = courses.find(c => c.id === o.courseId);
-      const b = bundles?.find((b: any) => b.id === o.bundleId);
-      const name = c?.title || b?.title || o.courseName || o.type || 'أخرى';
-      if (!map[key]) map[key] = { name, revenue: 0, count: 0 };
-      map[key].revenue += Number(o.amount) || 0;
-      map[key].count++;
-    });
-    return Object.values(map).sort((a, b) => b.revenue - a.revenue).slice(0, 8);
-  }, [filteredOrders, courses, bundles]);
-
-  // Monthly trend by source
-  const monthlyBySource = useMemo(() => {
-    const topSources = byLeadSource.slice(0, 3).map(s => s.name);
-    return months.map(m => {
-      const mo = orders.filter(o => o.status === 'paid' && cairoDay(o.createdAt).slice(0, 7) === m);
-      const entry: Record<string, any> = { month: m.slice(5) };
-      topSources.forEach(src => {
-        entry[src] = mo
-          .filter(o => (o.leadSource || o.source || 'مباشر') === src)
-          .reduce((acc, o) => acc + (Number(o.amount) || 0), 0);
-      });
-      return entry;
-    });
-  }, [orders, months, byLeadSource]);
-
-  const topSources = byLeadSource.slice(0, 3).map(s => s.name);
-  const fmtMoney = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}ك` : String(n);
+  const fmtMoney = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}ك` : String(Math.round(n));
 
   return (
     <div className="space-y-5" dir="rtl">
@@ -120,7 +63,7 @@ export default function RevenueSourcesTab() {
           <div className="text-xs text-gray-500 mt-1">إجمالي الإيراد</div>
         </div>
         <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 text-center">
-          <div className="text-2xl font-extrabold text-blue-700">{filteredOrders.length}</div>
+          <div className="text-2xl font-extrabold text-blue-700">{orderCount}</div>
           <div className="text-xs text-gray-500 mt-1">إجمالي الطلبات</div>
         </div>
         <div className="bg-violet-50 border border-violet-100 rounded-2xl p-4 text-center">

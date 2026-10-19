@@ -84,8 +84,10 @@ export function useCrmCoreState(
   }, [leadsRef]);
 
   const reloadSubscribers = useCallback(async () => {
-    // A screen that pages from the server has no list to reload (lib/crmChanged.ts staffListsWanted).
-    if (!staffListsWanted()) { announceCrmChanged(); return; }
+    // A screen that pages from the server has no list to reload (lib/crmChanged.ts staffListsWanted), and neither has a
+    // session where no screen has asked for the clients yet: the first one that does reads them fresh. Without this a
+    // payment taken on the Dokki schedule (which holds no list) downloaded the whole client table to refresh nothing.
+    if (!staffListsWanted() || subscribersRef.current.length === 0) { announceCrmChanged(); return; }
     try {
       const fresh = await mysqlAdmin.listAllSubscribers();
       const normalized = (fresh as unknown as SubscriberItem[]).map(s => ({

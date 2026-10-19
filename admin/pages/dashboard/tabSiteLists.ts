@@ -36,13 +36,18 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   // column reads the rounds. A staff-built tab asks for the leads it lists
   // (SectionCustomTabs), the refund popup reads the clients.
   online_clients: ['subscribers', 'daqqiRounds'],
-  daqqi_clients: ['subscribers', 'daqqiRounds'],
+  // The Dokki clients page from the server (GET /api/admin/dokki/clients) for everyone.
+  daqqi_clients: ['daqqiRounds'],
   // The accounts: the orders, and the clients the ?branch= filter and the
   // refund popup match them against. The finance screens add the expenses.
   orders: ['orders', 'subscribers'],
   financial: ['orders', 'subscribers', 'expenses'],
-  daqqi_accounting: ['orders', 'subscribers', 'expenses'],
-  financial_reports: ['orders'],
+  // The branch's books: the expenses; its clients' plans, the payments waiting for review and the person a payment is for
+  // come from the server (FinancialBranchTab).
+  daqqi_accounting: ['expenses'],
+  // The books and statements read their own endpoints; «الميزانية مقابل الفعلي» takes the month's revenue from the server
+  // (GET /api/admin/analytics-hub/month-revenue).
+  financial_reports: [],
   recurring_expenses: [],
   // قاعدة العملاء searches the server; «حجز» finds the row it booked among the
   // loaded clients and leads (Dashboard.tsx handleClientDbBook).
@@ -64,14 +69,17 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   campaigns: ['leads', 'subscribers'],
   online_team: ['leads', 'subscribers'],
   online_hub: [],
-  analytics_hub: ['expenses', 'orders', 'subscribers'],
+  // The four analyses (retention, cohort, revenue sources, expenses) are counted by the server (GET /api/admin/analytics-hub/*).
+  analytics_hub: [],
   // AnalyticsTab, drawn whole here, with the branch's weekly panel.
-  daqqi_stats: ['orders', 'leads', 'subscribers', 'discounts', 'joinUsApplications', 'contactMessages'],
+  // The orders, leads and clients are counted by the server (GET /api/admin/analytics-summary).
+  daqqi_stats: ['discounts', 'contactMessages'],
   ask_ai: ['leads', 'subscribers', 'orders', 'settings'],
   automation: ['automationWorkflows'],
-  // The Dokki screens: the rounds and their attendees, who may be clients of
-  // any branch, not only the branch's own pages.
-  daqqi_schedule: ['daqqiRounds', 'subscribers'],
+  // The Dokki screens: the rounds and their attendees. The clients a round's
+  // pickers offer, and the few it looks up, come from the server
+  // (api/lib/dokkiClients.js), not from the context's list.
+  daqqi_schedule: ['daqqiRounds'],
   daqqi_team: ['daqqiRounds'],
   daqqi_attendance: [],
   // HR, the inboxes and the service desks read their own endpoints.

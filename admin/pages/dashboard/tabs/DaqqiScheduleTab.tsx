@@ -33,11 +33,10 @@ import {
   enrolledLabels,
   daqqiOverview,
   getCurrentWeekKey,
-  normalizeDaqqiBranchId,
-  parseDaqqiBranchIds,
   type DaqqiDraftType,
 } from './daqqi/daqqiScheduleUtils';
-import { branchMatchesFilter } from '../branchWorkspaceFilters';
+import { fetchClientsByIds, useClientsByIds } from '../useClientsByIds';
+import { useDokkiOverview } from './daqqi/useDokkiClients';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
@@ -67,7 +66,7 @@ interface Props {
 const DaqqiScheduleTab: React.FC<Props> = ({ notify, roundsOverride, hideCreateRound, requirePaymentApproval, onRoundUpdate, onRoundCreate, createRoundRef, branchFilter }) => {
   const navigate = useNavigate();
   const {
-    courses, bundles, therapists, staffMembers, subscribers: ctxSubscribers, updateSubscriber, addSubscriber, recordSubscriberPayment, reloadSubscribers,
+    courses, bundles, therapists, staffMembers, updateSubscriber, addSubscriber, recordSubscriberPayment, reloadSubscribers,
     daqqiRounds: ctxRounds, addDaqqiRound: ctxAddDaqqiRound, updateDaqqiRound: ctxUpdateDaqqiRound,
     deleteDaqqiRound, transferDaqqiAttendee, bookDaqqiAttendee, bulkSetDaqqiRounds, content, authUser, isAdmin, currentStaff,
   } = useSiteData();
@@ -93,9 +92,6 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, roundsOverride, hideCreateR
       notify('error', error instanceof Error ? error.message : 'تعذر حفظ المسار');
     }
   };
-
-  // The clients the context holds: the server scopes them to the person (the Dokki branch's pages for the desk).
-  const subscribers = ctxSubscribers;
 
   // The rounds of the branch this screen shows (lib/physicalBranch.tsx).
   const sourceDaqqiRounds = React.useMemo(
@@ -175,14 +171,15 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, roundsOverride, hideCreateR
   const [daqqiAddClientModal, setDaqqiAddClientModal] = useState(false);
   const [newClientDraft, setNewClientDraft] = useState<PaymentDraft>(blankPaymentDraft({ branch: physicalBranch.key }));
 
-  const daqqiBranchIds = parseDaqqiBranchIds(content);
-  const daqqiSubs = subscribers.filter(s => {
-    const rawBranch = s.branch || '';
-    if (branchFilter) return branchMatchesFilter(rawBranch, branchFilter);
-    // This branch's clients: Dokki's (with its legacy spellings), or Tagamoa's.
-    if (physicalBranch.key !== 'DAQQI') return normalizeDaqqiBranchId(rawBranch) === physicalBranch.key;
-    return normalizeDaqqiBranchId(rawBranch) === 'DAQQI' || daqqiBranchIds.has(rawBranch);
-  });
+  // The clients this screen shows are looked up when they are on it — an open round's attendees, the client a payment,
+  // a seating or a transfer is for — and chosen by the server for the two pickers (api/lib/dokkiClients.js). The
+  // branch's whole client list is not in the browser.
+  const lookedUp = useClientsByIds([
+    ...(daqqiRounds.find(round => round.id === daqqiExpandedId)?.attendees.map(attendee => attendee.subscriberId) ?? []),
+    ...(daqqiPayModal ? [daqqiPayModal.subscriberId] : []),
+    ...(daqqiToskeenSubId ? [daqqiToskeenSubId] : []),
+    ...(daqqiTransferModal ? [daqqiTransferModal.subscriberId] : []),
+  ]);
 
   // physical_classrooms is where rooms live. GET /api/admin/dokki/classrooms
   // is behind manage_daqqi, which is this screen's own gate.
@@ -219,8 +216,10 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, roundsOverride, hideCreateR
   // The branch in numbers, above the schedule. (A list of «سكّن N» per round sat
   // here for a day: the same people counted once for every round of their
   // course, sixteen lines of it — one figure says it.)
+  // The two figures that count clients come from the server; the rest is the rounds'.
+  const seats = useDokkiOverview(physicalBranch.key, daqqiRounds.map(round => `${round.id}:${round.status}:${round.attendees.length}`).join('|'));
   const overview = daqqiOverview({
-    rounds: daqqiRounds, clients: daqqiSubs, bundles, weekKey: getCurrentWeekKey(),
+    rounds: daqqiRounds, weekKey: getCurrentWeekKey(),
     priceOf: courseId => courses.find(course => course.id === courseId)?.price?.EGP ?? 0,
   });
 
@@ -251,7 +250,13 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, roundsOverride, hideCreateR
 
   const handleSaveNewRound = async () => {
     if (!daqqiPendingRound) return;
-    const selSubs = daqqiSubs.filter(s => daqqiSelectedAttendees.has(s.id));
+    let selSubs: SubscriberItem[];
+    try {
+      selSubs = await fetchClientsByIds([...daqqiSelectedAttendees]);
+    } catch {
+      notify('error', 'تعذر تحميل العملاء المختارين.');
+      return;
+    }
     const attendees = selSubs.map(s => {
       // A refunded payment keeps its row and its positive amount, and a pending
       // one is a receipt nobody has approved yet. Counting either as collected
@@ -279,9 +284,14 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, roundsOverride, hideCreateR
     if (!round) return;
     // The same list the dialog offers: filtered on the branch id alone, a client
     // whose branch is spelt another way was ticked and silently left out.
-    const newSubs = daqqiSubs.filter(
-      s => daqqiAddClientsSel.has(s.id) && !round.attendees.find(a => a.subscriberId === s.id)
-    );
+    const alreadyIn = new Set(round.attendees.map(attendee => attendee.subscriberId));
+    let newSubs: SubscriberItem[];
+    try {
+      newSubs = await fetchClientsByIds([...daqqiAddClientsSel].filter(id => !alreadyIn.has(id)));
+    } catch {
+      notify('error', 'تعذر تحميل العملاء المختارين.');
+      return;
+    }
     if (!newSubs.length) { notify('info', 'اختار عميل واحد على الأقل مش موجود في الروند.'); return; }
     const newAttendees = [
       ...round.attendees,
@@ -364,8 +374,6 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, roundsOverride, hideCreateR
     const daqqiPayDraft = submitted;
     const amount = Number(daqqiPayDraft.amount);
     if (!amount || amount <= 0) return;
-    const sub = subscribers.find(s => s.id === daqqiPayModal.subscriberId);
-    if (!sub) return;
     const courses_ref = (window as Window & { __courses?: Course[] }).__courses || [];
     const bundles_ref = (window as Window & { __bundles?: Bundle[] }).__bundles || [];
     const _sysPx = (() => {
@@ -458,7 +466,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, roundsOverride, hideCreateR
 
   const handleDaqqiToskeen = async (daqqiToskeenTargetRoundId: string) => {
     if (!daqqiToskeenSubId || !daqqiToskeenTargetRoundId) { notify('error', 'اختر العميل والروند أولاً.'); return; }
-    const sub = subscribers.find(s => s.id === daqqiToskeenSubId);
+    const sub = lookedUp.find(s => s.id === daqqiToskeenSubId);
     const round = daqqiRounds.find(r => r.id === daqqiToskeenTargetRoundId);
     if (!sub || !round) { notify('error', 'تعذر العثور على العميل أو الروند.'); return; }
     // Previously a silent no-op — clicking "تسكين" on someone already in the round did
@@ -610,7 +618,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, roundsOverride, hideCreateR
       />
 
 
-      <DaqqiOverviewStrip overview={overview} />
+      <DaqqiOverviewStrip overview={overview} clients={seats?.clients ?? null} waiting={seats?.waiting ?? null} />
 
       {/* The clients table that sat here was removed by request — this page is
           the schedule. Adding a client moved to the header. */}
@@ -719,7 +727,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, roundsOverride, hideCreateR
                         attendanceCounts={attendanceCounts}
                         navigate={navigate}
                         courses={courses}
-                        subscribers={subscribers}
+                        subscribers={lookedUp}
                         bundles={bundles}
                         daqqiRounds={daqqiRounds}
                         daqqiExpandedId={daqqiExpandedId}
@@ -836,7 +844,6 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, roundsOverride, hideCreateR
         <DaqqiNewRoundModal
           daqqiDraft={daqqiDraft}
           enrolledLabels={enrolledLabels}
-          daqqiRounds={daqqiRounds}
           bundles={bundles}
           daqqiShowAllClients={daqqiShowAllClients}
           setDaqqiShowAllClients={setDaqqiShowAllClients}
@@ -852,7 +859,6 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, roundsOverride, hideCreateR
           setDaqqiSelectedAttendees={setDaqqiSelectedAttendees}
           setDaqqiFormOpen={setDaqqiFormOpen}
           courses={courses}
-          daqqiSubs={daqqiSubs}
           handleSaveNewRound={handleSaveNewRound}
         />
       )}
@@ -865,7 +871,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, roundsOverride, hideCreateR
         daqqiRounds={daqqiRounds}
         courses={courses}
         bundles={bundles}
-        daqqiSubs={daqqiSubs}
+        branch={physicalBranch.key}
         daqqiAddClientsSel={daqqiAddClientsSel}
         setDaqqiAddClientsSel={setDaqqiAddClientsSel}
         daqqiAddClientsCourseSel={daqqiAddClientsCourseSel}
@@ -903,7 +909,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, roundsOverride, hideCreateR
 
       {/* Pay Modal */}
       {daqqiPayModal && (() => {
-        const paySubject = subscribers.find(s => s.id === daqqiPayModal.subscriberId);
+        const paySubject = lookedUp.find(s => s.id === daqqiPayModal.subscriberId);
         return (
           <PaymentModal
             mode="subscriber"
@@ -937,7 +943,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, roundsOverride, hideCreateR
       <DaqqiTransferRoundModal
         modal={daqqiTransferModal}
         rounds={daqqiRounds}
-        subscribers={subscribers}
+        subscribers={lookedUp}
         courses={courses}
         onClose={() => setDaqqiTransferModal(null)}
         onConfirm={handleDaqqiTransfer}
@@ -946,7 +952,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, roundsOverride, hideCreateR
       <DaqqiToskeenRoundModal
         subscriberId={daqqiToskeenSubId}
         rounds={daqqiRounds}
-        subscribers={subscribers}
+        subscribers={lookedUp}
         courses={courses}
         onClose={() => setDaqqiToskeenSubId(null)}
         onConfirm={handleDaqqiToskeen}

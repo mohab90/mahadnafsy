@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Target, Edit2, Save, X, AlertTriangle, CheckCircle } from 'lucide-react';
-import { useFinanceData } from '../../../context/siteDataSlices';
+import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { cairoMonthOnly, cairoMonthStart } from '../../../../shared/cairoDate';
+import { fxRates, toEgp } from '../../../lib/money';
+import { useMonthRevenue } from '../hooks/useAnalyticsHubFigures';
+import { monthRevenueEgp } from '../analyticsHubFigures';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -31,7 +34,7 @@ const CAT_COLORS: Record<string, string> = {
 // by FinancialBudgetPanel.tsx elsewhere in the dashboard). Rewired onto that
 // backend instead of building a second one.
 const BudgetTrackerTab: React.FC<Props> = ({ notify }) => {
-  const { orders } = useFinanceData();
+  const { content } = useSiteData();
   const [selectedMonth, setSelectedMonth] = useState(cairoMonthOnly());
   const [rows, setRows] = useState<BudgetRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,13 +57,11 @@ const BudgetTrackerTab: React.FC<Props> = ({ notify }) => {
 
   useEffect(() => { load(); }, [load]);
 
-  const { revenue } = useMemo(() => {
-    const [year, month] = selectedMonth.split('-').map(Number);
-    const start = new Date(year, month - 1, 1).toISOString();
-    const end = new Date(year, month, 0, 23, 59, 59).toISOString();
-    const monthOrders = orders.filter(o => o.status === 'paid' && (o.paidAt || o.createdAt) >= start && (o.paidAt || o.createdAt) <= end);
-    return { revenue: monthOrders.reduce((s, o) => s + o.amount, 0) };
-  }, [orders, selectedMonth]);
+  // What was paid in the month is added up by the server (GET /api/admin/analytics-hub/month-revenue) — every paid order and
+  // desk payment on its Cairo day — and converted here at the institute's rates.
+  const rates = useMemo(() => fxRates(content), [content]);
+  const monthRevenue = useMonthRevenue(selectedMonth);
+  const revenue = monthRevenueEgp(monthRevenue?.month === selectedMonth ? monthRevenue.amounts : [], (amount, currency) => toEgp(amount, currency, rates));
 
   const totalBudget = rows.reduce((s, r) => s + r.limit, 0);
   const totalActual = rows.reduce((s, r) => s + r.spent, 0);

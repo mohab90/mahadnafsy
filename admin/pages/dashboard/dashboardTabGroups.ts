@@ -206,15 +206,9 @@ export const fullLeadTabs = new Set<string>([
 /** Reads every subscriber, no leads. */
 export const fullSubscriberTabs = new Set<string>([
   'online_clients',
-  // retention buckets every subscriber into the month they joined and the month
-  // they finished, twelve months at a time, then averages across all of them.
-  // That genuinely needs the table — unlike the dashboard tile, a count would
-  // not do. It was in no loading set at all, so it read the 500-row bootstrap
-  // page and reported "500 إجمالي المشتركين" against 1,371.
-  //
-  // Named as the tab rather than as 'retention', because retention is a section
-  // of تبويب التحليلات now and this set is keyed on what the URL says.
-  'analytics_hub',
+  // analytics_hub is not here any more: retention buckets the clients by the month they joined and finished and averages
+  // what they paid, and the server does it over every client (GET /api/admin/analytics-hub/retention), whatever page is
+  // loaded. It was in no loading set at all once, and read the 500-row bootstrap page: "500 إجمالي المشتركين" against 1,371.
   // online_hub is not here any more: each collection officer's overdue instalments, the team's collections and the
   // client counts come from GET /api/admin/online-team-summary, over every online client, whatever page is loaded.
   // These two read every client's installment plans / subscription rows out of the
@@ -236,7 +230,6 @@ export const fullCrmDataTabs = new Set<string>([
   // "500 ليدات جديدة" against 27,000. 'analytics' and 'crm_settings' name
   // nothing at all: AnalyticsTab renders under 'daqqi_stats', and no screen
   // answers to crm_settings.
-  'daqqi_stats',        // renders AnalyticsTab, which filters both tables by date
   'marketing_hub',      // segmentation builds audiences from both tables
   // Was 'drip_campaigns', whose enrolment picker lists real people and needs
   // the rows. That screen is a section of تبويب الحملات now, and this set is
@@ -247,20 +240,4 @@ export const fullCrmDataTabs = new Set<string>([
   // first pages of both tables are only the fallback while that answers.
 ]);
 
-/**
- * Screens about ONE branch's clients, and the branch they read.
- *
- * They used to read the bootstrap page — the 500 newest clients of every branch —
- * and count their own branch out of it, so «عملاء الدقي» said 140 for a branch
- * with many more. The full table fixed the count and cost the wait: every client
- * of every branch, with payments, enrolments and certificates, before the first
- * row could paint. A screen listed here asks the database for its branch alone, in
- * pages, and opens on the first one (SiteData: loadBranchSubscribers).
- */
-export const branchSubscriberTabs: Readonly<Record<string, string>> = Object.freeze({
-  daqqi_clients: 'DAQQI',
-  daqqi_schedule: 'DAQQI',
-  daqqi_accounting: 'DAQQI',
-  daqqi_stats: 'DAQQI',
-  daqqi_attendance: 'DAQQI',
-});
+

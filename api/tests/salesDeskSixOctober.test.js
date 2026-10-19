@@ -229,7 +229,7 @@ test('hiding a lead is one small request that says why when it cannot', async ()
 
 test('a rep\'s «عملائي» holds every client they sold, a booking awaiting the accounts included', () => {
   const tab = read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx');
-  assert.match(tab, /: isSalesStaff \? branchScopedMasterList : branchScopedMasterList\.filter\(s => holdsIn\(s, isOnlineHere\)\);/);
+  assert.match(tab, /const allCombined = isSalesStaff \? branchScopedMasterList : branchScopedMasterList\.filter\(s => holdsIn\(s, isOnlineHere\)\);/);
   assert.match(tab, /if \(\(s\.enrolledCourseIds\|\|\[\]\)\.length === 0 && !hasBooking\(s\)\) return false;/);
 });
 
