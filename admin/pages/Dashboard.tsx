@@ -1224,6 +1224,7 @@ const Dashboard: React.FC = () => {
           setSubPayRow={setSubPayRow}
           setSubPayDraft={setSubPayDraft}
           navigate={navigate}
+          notify={notify}
         />
       </Suspense>
 

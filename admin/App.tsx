@@ -1,4 +1,5 @@
 import React, { Suspense } from 'react';
+import { InSystemWhatsAppLinks } from './components/InSystemWhatsApp';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigationType } from 'react-router-dom';
 import { SiteDataProvider, useSiteData } from './context/SiteDataContext';
 import { AuthProvider } from './context/AuthContext';
@@ -142,6 +143,8 @@ const AppShell: React.FC = () => {
     <>
       <ScrollToTop />
       <ServerKeepalive />
+      {/* A click on any WhatsApp link opens that chat in the system's own WhatsApp (components/InSystemWhatsApp.tsx). */}
+      <InSystemWhatsAppLinks />
       <ErrorBoundary key={location.pathname}>
         <Suspense fallback={<PageSpinner />}>
           <Routes>

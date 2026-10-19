@@ -12,7 +12,8 @@ const logger = require('../lib/logger').child({ module: 'whatsapp-web-route' });
 const { pool } = require('../lib/db');
 const wa = require('../lib/whatsappWeb');
 const { requireAuth, requireAdminOrStaff, requireChannel } = require('../middleware/auth');
-const { resolveDataScope } = require('../constants/permissions');
+const { resolveDataScope, hasPermission } = require('../constants/permissions');
+const { canBookAnyClient } = require('../lib/bookingAccess');
 const { cairoToday, addDaysToDateOnly, cairoDayStartUtc } = require('../lib/dates');
 
 const guard = [requireAuth, requireAdminOrStaff, requireChannel('whatsapp')];
@@ -79,8 +80,14 @@ router.get('/api/staff/whatsapp-web/chats', ...guard, async (req, res) => {
          LEFT JOIN subscribers s ON s.tenant_id = c.tenant_id AND s.id = c.subscriber_id
         WHERE c.tenant_id=? AND c.staff_id=?${where}${having}
         ORDER BY c.last_at DESC LIMIT ${limit}`, params);
+    // The course each person is about, for the list: two queries for the whole page, not one per chat.
+    const labels = await require('../lib/whatsappContext').courseLabelsFor(tenant(req), {
+      leadIds: [...new Set(rows.map(row => row.lead_id).filter(Boolean))],
+      subscriberIds: [...new Set(rows.map(row => row.subscriber_id).filter(Boolean))],
+    }).catch(() => ({ byLead: new Map(), bySubscriber: new Map() }));
     res.json({ chats: rows.map(({ lead_id: _l, subscriber_id: _s, ...row }) => ({
       ...row, lastFromMe: row.lastFromMe == null ? null : Boolean(row.lastFromMe),
+      courseLabel: labels.bySubscriber.get(String(_s)) || labels.byLead.get(String(_l)) || null,
     })) });
   } catch (error) { fail(res, error, '[wa-web chats]'); }
 });
@@ -108,6 +115,19 @@ router.get('/api/staff/whatsapp-web/messages', ...guard, async (req, res) => {
       ...(interest !== undefined ? { interest } : {}),
     });
   } catch (error) { fail(res, error, '[wa-web messages]'); }
+});
+
+// What the system knows about a number — the card above a chat, and under the quick-send box. By number, so it works
+// before there is any chat with them.
+router.get('/api/staff/whatsapp-web/context', ...guard, async (req, res) => {
+  try {
+    const jid = String(req.query.jid || '');
+    const phone = String(req.query.phone || '') || (/@s\.whatsapp\.net$/.test(jid) ? jid.split('@')[0] : '');
+    if (!phone.replace(/\D/g, '')) return res.json({ phone: '', subscriber: null, lead: null });
+    const staff = req.staffRecord;
+    const canSeeMoney = Boolean(req.isSuperAdmin || canBookAnyClient(req) || (staff && hasPermission(staff, 'view_financial')));
+    res.json(await require('../lib/whatsappContext').contextForPhone(tenant(req), phone, { canSeeMoney, viewerId: staff?.id || '' }));
+  } catch (error) { fail(res, error, '[wa-web context]'); }
 });
 
 router.post('/api/staff/whatsapp-web/send', ...guard, async (req, res) => {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { BarChart3, BookmarkPlus, Flame, Loader2, LogOut, MessageCircle, Plus, Search, Send, Smartphone, UserPlus, UserRound, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { NotifyFn } from '../../../../types';
@@ -8,6 +8,8 @@ import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
 import { promptDialog } from '../../../../../shared/ui/promptDialog';
 import { useBranches } from '../../../../hooks/useBranches';
+import { WhatsAppContextCard, type WaContext } from '../../../../components/WhatsAppContextCard';
+import { toDialable } from '../../../../lib/whatsappLink';
 
 /**
  * «واتساب»: the rep's own WhatsApp inside the system (api/lib/whatsappWeb.js).
@@ -27,6 +29,8 @@ type Chat = {
   /** Who wrote last, and how far the rep's last message got (api/routes/whatsapp-web.js). */
   lastFromMe?: boolean | null; lastStatus?: string | null;
   interestLevel?: Interest['level'] | null; interestScore?: number | null;
+  /** The course the person is about: a lead's first interest, or a client's course (api/lib/whatsappContext.js). */
+  courseLabel?: string | null;
 };
 type Message = { id: number; waId: string; fromMe: boolean; sentBySystem: boolean; body: string; kind: string; status?: string | null; sentAt: string };
 type Template = { id: string; title: string; body: string };
@@ -190,6 +194,9 @@ function ChatsView({ notify, onSent, disabled }: { notify: NotifyFn; onSent: () 
   const [me, setMe] = useState('');
   const [registering, setRegistering] = useState<{ name: string; branch: string } | null>(null);
   const branches = useBranches();
+  // What the system knows about the number on screen: who, which course, what they paid.
+  const [context, setContext] = useState<WaContext | null>(null);
+  const [params, setParams] = useSearchParams();
   const bottom = useRef<HTMLDivElement>(null);
   const lastCount = useRef(0);
 
@@ -255,6 +262,41 @@ function ChatsView({ notify, onSent, disabled }: { notify: NotifyFn; onSent: () 
       await loadChats();
     } catch (error) { notify('error', errorText(error)); }
   };
+
+  // «واتساب» buttons elsewhere in the system open this page with the number (and a message to start from):
+  // /dashboard/whatsapp_web?phone=…&name=…&text=… — the chat with them if there is one, a new one if there is not.
+  const wantedPhone = params.get('phone');
+  useEffect(() => {
+    if (!wantedPhone) return undefined;
+    let alive = true;
+    const text = params.get('text') || '';
+    const dialable = toDialable(wantedPhone) || wantedPhone.replace(/\D/g, '');
+    (async () => {
+      try {
+        const { chats: found } = await mysqlAdmin.adminGet<{ chats: Chat[] }>(`${API}/chats?q=${encodeURIComponent(dialable.slice(-9))}&limit=5`);
+        if (!alive) return;
+        const chat = found.find(row => row.phone && row.phone.replace(/\D/g, '').endsWith(dialable.slice(-9))) || null;
+        if (chat) { setNewPhone(null); setActive(chat); }
+        else { setActive(null); setMessages([]); setNewPhone(dialable); }
+        if (text) setDraft(current => current || text);
+      } catch (error) { notify('error', errorText(error)); }
+      finally {
+        if (alive) setParams(previous => { const next = new URLSearchParams(previous); ['phone', 'name', 'text'].forEach(key => next.delete(key)); return next; }, { replace: true });
+      }
+    })();
+    return () => { alive = false; };
+    // The link is read once per arrival; the params are cleared as soon as it has been used.
+  }, [wantedPhone]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The card above the chat follows the number: the chat's own, or the one being typed for a new chat.
+  const contextPhone = active ? (active.phone || '') : (newPhone && toDialable(newPhone) ? toDialable(newPhone) : '');
+  useEffect(() => {
+    if (!contextPhone) { setContext(null); return undefined; }
+    let alive = true;
+    mysqlAdmin.adminGet<WaContext>(`${API}/context?phone=${encodeURIComponent(contextPhone)}`)
+      .then(result => { if (alive) setContext(result); }, () => { if (alive) setContext(null); });
+    return () => { alive = false; };
+  }, [contextPhone, active?.leadId, active?.subscriberId]);
 
   // Typing in the search box asks once the typing pauses; the list refreshes on its own.
   useEffect(() => {
@@ -336,6 +378,7 @@ function ChatsView({ notify, onSent, disabled }: { notify: NotifyFn; onSent: () 
                 <div className="mt-0.5 flex flex-wrap items-center gap-1">
                   {chat.lastFromMe === false && <span className="rounded-full bg-amber-50 px-1.5 text-[10px] font-bold text-amber-700">مستني ردك</span>}
                   {chat.interestLevel && <span className={`rounded-full px-1.5 text-[10px] font-bold ${INTEREST_STYLE[chat.interestLevel]}`}>{INTEREST_LABEL[chat.interestLevel]}</span>}
+                  {chat.courseLabel && <span title={chat.courseLabel} className="max-w-[140px] truncate rounded-full bg-rose-50 px-1.5 text-[10px] font-bold text-rose-700">📚 {chat.courseLabel}</span>}
                   {chat.leadId || chat.subscriberId
                     ? <span className="text-[10px] text-primary-600">{chat.subscriberId ? 'عميل' : 'عميل محتمل'}{chat.clientCode ? ` · ${chat.clientCode}` : ''}</span>
                     : <span className="text-[10px] text-gray-400">مش في الداتا</span>}
@@ -375,7 +418,10 @@ function ChatsView({ notify, onSent, disabled }: { notify: NotifyFn; onSent: () 
                   dir="ltr" className="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-green-400 focus:outline-none" />
               )}
             </header>
-            {active && !active.leadId && !active.subscriberId && (
+            {context && (context.subscriber || context.lead) && (
+              <div className="border-b border-green-100 bg-green-50/40 px-3 py-2"><WhatsAppContextCard context={context} /></div>
+            )}
+            {active && !active.leadId && !active.subscriberId && !(context && (context.subscriber || context.lead)) && (
               <div className="flex flex-wrap items-center gap-2 border-b border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-900">
                 <span className="font-bold">الرقم ده مش في الداتا.</span>
                 {registering ? (<>
