@@ -281,6 +281,7 @@ router.delete('/api/admin/hr/jobs/:jobId', requireAuth, requireAdminOrStaff, req
 // reported. The grader joins come too: a grade nobody can attribute is
 // barely more useful than none.
 const APPLICANT_LIST_SQL = `SELECT a.id,a.job_id,a.name,a.email,a.phone,a.cv_url,a.notes,a.stage,a.stage_notes,a.interview_rating,
+              a.no_show_at,a.rejected_from_interview,
               a.interview_grade,a.second_interview_grade,
               a.interviewed_at,a.second_interviewed_at,
               g1.name interviewed_by_name,g2.name second_interviewed_by_name,
@@ -356,9 +357,11 @@ const INTERVIEW_FROM = `FROM job_applicants a JOIN job_postings j ON j.id=a.job_
   LEFT JOIN join_us_applications js ON a.source='website' AND js.id=a.source_id AND js.tenant_id=a.tenant_id`;
 
 // ?form=staff|teaching keeps one kind: the interviews page is the employees', and the lecturers' page has its own tab.
-function interviewScope(req) {
+// `rejected`: the people turned down from the interviews screen (the «المرفوضون» tab) instead of those still in play.
+function interviewScope(req, { rejected = false } = {}) {
   const reach = applicantReachSql(req.recruitReach, 'a', 'j');
-  return { where: `a.tenant_id=? AND ${INTERVIEW_STAGES_SQL}${reach.sql}${interviewFormSql(req.query.form)}`, params: [req.tenantId, ...reach.params] };
+  const stages = rejected ? "a.stage='rejected' AND a.rejected_from_interview=1" : INTERVIEW_STAGES_SQL;
+  return { where: `a.tenant_id=? AND ${stages}${reach.sql}${interviewFormSql(req.query.form)}`, params: [req.tenantId, ...reach.params] };
 }
 
 const INTERVIEW_ACCESS = [requireAuth, requireAdminOrStaff, requireAnyPermission('view_hr', 'branch_hr'), requireRecruiting('view_hr')];
@@ -366,17 +369,34 @@ const INTERVIEW_ACCESS = [requireAuth, requireAdminOrStaff, requireAnyPermission
 router.get('/api/admin/hr/interviews', ...INTERVIEW_ACCESS, async (req, res) => {
   try {
     const today = cairoToday();
-    const past = req.query.tab === 'past';
-    const scope = interviewScope(req);
+    // Four lists: waiting for their appointment, held, did not come («لم يحضر»), and turned down («المرفوضون»).
+    const rejectedList = req.query.view === 'rejected';
+    const noShowList = !rejectedList && req.query.tab === 'no_show';
+    const past = !rejectedList && !noShowList && req.query.tab === 'past';
+    const scope = interviewScope(req, { rejected: rejectedList });
     const filter = interviewFilterSql(req.query);
     const { limit, offset } = pageOf(req.query);
     const held = interviewHeldSql('a');
-    const where = `${scope.where} AND ${past ? '' : 'NOT '}${held}${filter.sql}`;
-    const params = [...scope.params, today, ...filter.params];
+    let where;
+    let params;
+    let order;
+    if (rejectedList) {
+      where = `${scope.where}${filter.sql}`;
+      params = [...scope.params, ...filter.params];
+      order = 'a.decided_at DESC, a.updated_at DESC, a.id';
+    } else if (noShowList) {
+      where = `${scope.where} AND a.stage='interview' AND a.no_show_at IS NOT NULL${filter.sql}`;
+      params = [...scope.params, ...filter.params];
+      order = 'a.no_show_at DESC, a.id';
+    } else {
+      where = `${scope.where} AND a.no_show_at IS NULL AND ${past ? '' : 'NOT '}${held}${filter.sql}`;
+      params = [...scope.params, today, ...filter.params];
+      order = `(a.interview_at IS NULL), a.interview_at ${past ? 'DESC' : 'ASC'}, a.created_at DESC, a.id`;
+    }
     const [rows] = await pool.query(
       `${APPLICANT_LIST_SQL}
         WHERE ${where}
-        ORDER BY (a.interview_at IS NULL), a.interview_at ${past ? 'DESC' : 'ASC'}, a.created_at DESC, a.id
+        ORDER BY ${order}
         LIMIT ${limit} OFFSET ${offset}`,
       params);
     let total = offset + rows.length;
@@ -398,10 +418,15 @@ router.get('/api/admin/hr/interviews/summary', ...INTERVIEW_ACCESS, async (req, 
     const scope = interviewScope(req);
     const held = interviewHeldSql('a');
     const from = INTERVIEW_FROM;
+    // The people who did not come are their own tab; the upcoming and held counts leave them out.
     const [[tabs]] = await pool.query(
-      `SELECT COUNT(*) total, COALESCE(SUM(${held}),0) past ${from} WHERE ${scope.where}`, [today, ...scope.params]);
+      `SELECT COUNT(*) total, COALESCE(SUM(${held}),0) past ${from} WHERE ${scope.where} AND a.no_show_at IS NULL`, [today, ...scope.params]);
+    const [[noShow]] = await pool.query(
+      `SELECT COUNT(*) n ${from} WHERE ${scope.where} AND a.stage='interview' AND a.no_show_at IS NOT NULL`, scope.params);
+    const rejectedScope = interviewScope(req, { rejected: true });
+    const [[rejected]] = await pool.query(`SELECT COUNT(*) n ${from} WHERE ${rejectedScope.where}`, rejectedScope.params);
     const [stageRows] = await pool.query(
-      `SELECT a.stage, COUNT(*) n ${from} WHERE ${scope.where} AND ${past ? '' : 'NOT '}${held} GROUP BY a.stage`,
+      `SELECT a.stage, COUNT(*) n ${from} WHERE ${scope.where} AND a.no_show_at IS NULL AND ${past ? '' : 'NOT '}${held} GROUP BY a.stage`,
       [...scope.params, today]);
     const [jobs] = await pool.query(
       `SELECT a.job_id id, j.title, COUNT(*) n ${from} WHERE ${scope.where} GROUP BY a.job_id, j.title ORDER BY n DESC LIMIT 100`,
@@ -419,7 +444,8 @@ router.get('/api/admin/hr/interviews/summary', ...INTERVIEW_ACCESS, async (req, 
     const heldCount = Number(tabs.past) || 0;
     const stage = Object.fromEntries(stageRows.map(row => [row.stage, Number(row.n) || 0]));
     res.json({
-      tabs: { upcoming: (Number(tabs.total) || 0) - heldCount, past: heldCount },
+      tabs: { upcoming: (Number(tabs.total) || 0) - heldCount, past: heldCount, no_show: Number(noShow.n) || 0 },
+      rejected: Number(rejected.n) || 0,
       stages: { interview: stage.interview || 0, offer: stage.offer || 0 },
       jobs: jobs.map(row => ({ id: row.id, title: row.title || null, count: Number(row.n) || 0 })),
       branches: branches.filter(row => row.branch).map(row => ({ key: row.branch, count: Number(row.n) || 0 })),
@@ -543,6 +569,13 @@ router.put('/api/admin/hr/applicants/:appId', requireAuth, requireAdminOrStaff, 
     const stageGuard = current.stage;
     // Accepting or rejecting is a decision; record when and by whom rather
     // than inferring it from updated_at, which any later note-edit destroys.
+    // «لم يحضر»: took an appointment and did not come. They stay at the interview stage and move to their own tab; a new
+    // appointment brings them back to «القادم».
+    const noShow = req.body.no_show;
+    if (noShow !== undefined && current.stage !== 'interview') {
+      await conn.rollback(); transactionStarted = false;
+      return res.status(409).json({ error: 'لم يحضر بتتسجل لمرشح في مرحلة المقابلة بس', code: 'NO_SHOW_NEEDS_INTERVIEW_STAGE' });
+    }
     if (req.body.stage === 'offer' || req.body.stage === 'rejected') {
       req.body.decided_at = new Date().toISOString().slice(0, 19).replace('T', ' ');
       req.body.decided_by = req.staffRecord?.id || null;
@@ -584,6 +617,10 @@ router.put('/api/admin/hr/applicants/:appId', requireAuth, requireAdminOrStaff, 
     const sets = []; const vals = [];
     for (const f of fields) { if (req.body[f] !== undefined) { sets.push(`${f}=?`); vals.push(req.body[f]); } }
     if (req.body.phone_interview_result !== undefined) sets.push('phone_interview_at=NOW()');
+    if (noShow === true) sets.push('no_show_at=NOW()');
+    else if (noShow === false || req.body.interview_at) sets.push('no_show_at=NULL');
+    // A candidate turned down from the interviews screen is listed under «المرفوضون».
+    if (req.body.stage === 'rejected' && ['interview', 'offer'].includes(current.stage)) sets.push('rejected_from_interview=1');
     if (!sets.length) {
       await conn.rollback(); transactionStarted = false;
       return res.status(400).json({ error: 'nothing to update' });

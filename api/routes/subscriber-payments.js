@@ -33,6 +33,7 @@ const { grantCourseSelections } = require('../lib/entitlements');
 const { getNextClientCode } = require('../lib/mappers');
 const { leadScope } = require('../lib/leadAccess');
 const { canBookAnyClient } = require('../lib/bookingAccess');
+const { cleanReference } = require('../lib/transactionReference');
 const { completeForBranch, identitySpellings, isRealPhone, toIdentity } = require('../lib/phoneNumber');
 const { clientHoldingPhone, phoneInUse, sharedPhoneSlot, recordSharedPhone } = require('../lib/phoneDuplicates');
 const { VALID_BRANCHES } = require('../constants/permissions');
@@ -658,7 +659,7 @@ async function recordSubscriberPayment(req, res) {
             // what will actually be written rather than what was sent.
             [paymentTenantId, subscriber_id, paymentAmount, resolvedDate,
              sanitize(payment.paymentMethod || payment.payment_method || '', 100) || null,
-             sanitize(payment.transactionId || payment.transaction_id || '', 191) || null,
+             cleanReference(sanitize(payment.transactionId || payment.transaction_id || '', 191)),
              courseId || null, bundleId || null,
              sanitize(payment.note || payment.notes || '', 2000) || null]
           );
@@ -875,7 +876,7 @@ async function recordSubscriberPayment(req, res) {
         paymentCurrency,
         safeType,
         resolvedMethod,
-        sanitize(payment.transactionId || payment.transaction_id || '', 191) || null,
+        cleanReference(sanitize(payment.transactionId || payment.transaction_id || '', 191)),
         payment.isInstallment ? 1 : 0,
         resolvedExpected,
         resolvedDate,
@@ -1159,7 +1160,7 @@ async function recordSubscriberPayment(req, res) {
     // number nor which payment, in a language the desk does not read — so say
     // what is already there, and let them change it or clear it.
     if (e?.code === 'ER_DUP_ENTRY') {
-      const reference = sanitize(req.body?.payment?.transactionId || req.body?.payment?.transaction_id || '', 191);
+      const reference = cleanReference(sanitize(req.body?.payment?.transactionId || req.body?.payment?.transaction_id || '', 191));
       if (reference) {
         const [[owner]] = await pool.query(
           `SELECT p.date, p.amount, p.currency, s.name

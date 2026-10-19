@@ -868,8 +868,14 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
         sharing = { ...verdict, reason: String(sharedAsked.reason).trim().slice(0, 300), relation: String(sharedAsked.relation) };
       }
     }
-    const heldBy = (safePhone || safePhone2)
-      ? await clientHoldingPhone(conn, { tenantId, phones: (sharing ? [safePhone2] : [safePhone, safePhone2]).filter(Boolean), exceptId: id })
+    // «لما بنعمل تعديل بيانات عميل بيقول الرقم مسجل قبل كدا … دا تعديل بيانات عميل»: only a number that is NEW to this file is
+    // checked. A client whose number is already on their file — one of two accounts sharing a number on purpose, or an older
+    // duplicate — is edited without being refused for the number they already hold.
+    const [[storedNumbers]] = await conn.query('SELECT phone, phone2 FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [id, tenantId]);
+    const alreadyHeld = new Set([storedNumbers?.phone, storedNumbers?.phone2].filter(Boolean).map(String));
+    const numbersToCheck = (sharing ? [safePhone2] : [safePhone, safePhone2]).filter(number => number && !alreadyHeld.has(String(number)));
+    const heldBy = numbersToCheck.length
+      ? await clientHoldingPhone(conn, { tenantId, phones: numbersToCheck, exceptId: id })
       : null;
     if (heldBy) {
       const refusal = phoneInUse(heldBy);

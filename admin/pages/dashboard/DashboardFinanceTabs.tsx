@@ -48,8 +48,9 @@ export function DashboardFinanceTabs({
       <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="h-6 w-6 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" /></div>}>
         {keepsTheAccounts(ordersProps) ? (
           <div className="space-y-4">
-            {/* Whoever confirms money sees, first, what is waiting to be confirmed. */}
-            {ordersProps.canManageFinancial && <CollectionBookingsReview notify={notify} onChanged={() => { void ordersProps.reloadSubscribers(); }} />}
+            {/* The payments waiting to be confirmed are in the table below, with the transfer's number, sender and phone. Here
+                only the new clients a collection officer sent, which are not payments yet. */}
+            {ordersProps.canManageFinancial && <CollectionBookingsReview requestsOnly notify={notify} onChanged={() => { void ordersProps.reloadSubscribers(); }} />}
             <OrdersTab {...ordersProps} />
           </div>
         ) : (

@@ -876,8 +876,8 @@ export const mysqlAdmin = {
   listHrInterviews: (query: Record<string, string | number>) =>
     apiFetch<{ rows: AR[]; total: number }>(`/admin/hr/interviews?${queryOf(query)}`, {}, A),
   /** The tallies and pickers around that list — read once, not with every page. */
-  hrInterviewsSummary: (tab: 'upcoming' | 'past', form: '' | 'staff' | 'teaching' = '') =>
-    apiFetch<{ tabs: { upcoming: number; past: number }; stages: { interview: number; offer: number }; jobs: Array<{ id: string; title: string | null; count: number }>; branches: Array<{ key: string; count: number }>; grades: Record<string, number> }>(`/admin/hr/interviews/summary?${queryOf({ tab, form })}`, {}, A),
+  hrInterviewsSummary: (tab: 'upcoming' | 'past' | 'no_show', form: '' | 'staff' | 'teaching' = '') =>
+    apiFetch<{ tabs: { upcoming: number; past: number; no_show: number }; rejected: number; stages: { interview: number; offer: number }; jobs: Array<{ id: string; title: string | null; count: number }>; branches: Array<{ key: string; count: number }>; grades: Record<string, number> }>(`/admin/hr/interviews/summary?${queryOf({ tab, form })}`, {}, A),
   listHrApplicants: (stage?: string) => apiFetch<AR[]>(`/admin/hr/applicants${stage ? `?stage=${encodeURIComponent(stage)}` : ''}`, {}, A),
   updateHrApplicant: (id: string, o: AR) => put(`/admin/hr/applicants/${encodeURIComponent(id)}`, o),
   hireHrApplicant:  (id: string, o: AR = {}) => post(`/admin/hr/applicants/${encodeURIComponent(id)}/hire`, o),

@@ -708,6 +708,10 @@ export interface OrderItem {
   paymentMethod: 'card' | 'wallet' | 'cash' | 'transfer' | 'vodafone_cash' | 'instapay' | 'online_paymob' | 'other' | string;
   customerName: string;
   customerEmail?: string;
+  customerPhone?: string;
+  /** The transfer behind a desk payment: who sent it, and from which number or account. */
+  senderName?: string;
+  fromAccountNumber?: string;
   status: 'paid' | 'failed' | 'refunded' | 'pending';
   createdAt: string;
   transactionId?: string;

@@ -20,6 +20,7 @@ const { linkTransfer } = require('../lib/incomingTransfers');
 const { queuePaymentReceipt } = require('../lib/paymentReceipt');
 const { financialRecordMatches, financialScopeClause, resolveFinancialScope } = require('../lib/financialScope');
 const { normalizeJourneyState } = require('../lib/journeyStates');
+const { cleanReference } = require('../lib/transactionReference');
 
 // The rule financialScopeClause holds, which this file had its own copy of.
 //
@@ -66,6 +67,20 @@ router.get('/api/admin/orders', requireAuth, requireAdminOrStaff, requirePermiss
        LEFT JOIN subscribers s ON s.id=o.subscriber_id AND s.tenant_id=o.tenant_id
        LEFT JOIN leads ol ON ol.id=s.lead_id AND ol.tenant_id=o.tenant_id
        WHERE ${orderWhere} ORDER BY o.created_at DESC LIMIT ?`, [...orderParams, limit]);
+    // «ليه الدفعات السعودية بتظهر فوق ومش بتظهر تحت»: the list holds the newest `limit` rows, so a request still waiting
+    // for review, older than the newest 500, was missing from the screen that confirms it. Every pending order and
+    // payment is added, however old.
+    const seenOrders = new Set(rows.map(row => row.id));
+    const [pendingOrderRows] = await pool.query(
+      `SELECT o.id, o.type, o.item_id, o.item_title, o.amount, o.currency, o.payment_method, o.customer_name,
+       o.customer_email, o.customer_phone, o.status, o.transaction_id, o.coupon_code, o.subscriber_id,
+       o.course_id, o.bundle_id, o.notes, o.staff_id, o.staff_name, o.branch_id, o.created_at, o.paid_at, o.linked_transfer_id,
+       COALESCE(NULLIF(ol.source, ''), '') AS lead_source
+       FROM orders o
+       LEFT JOIN subscribers s ON s.id=o.subscriber_id AND s.tenant_id=o.tenant_id
+       LEFT JOIN leads ol ON ol.id=s.lead_id AND ol.tenant_id=o.tenant_id
+       WHERE ${orderWhere} AND o.status='PENDING' ORDER BY o.created_at DESC LIMIT 500`, orderParams);
+    for (const row of pendingOrderRows) if (!seenOrders.has(row.id)) { rows.push(row); seenOrders.add(row.id); }
 
     let paymentWhere = 'p.tenant_id=? AND p.deleted_at IS NULL AND p.amount > 0';
     let paymentParams = [req.tenantId];
@@ -73,7 +88,7 @@ router.get('/api/admin/orders', requireAuth, requireAdminOrStaff, requirePermiss
     const [payRows] = await pool.query(
       `SELECT p.id, p.subscriber_id, p.course_id, p.bundle_id, p.amount, p.currency,
                p.payment_type, p.payment_method, p.transaction_id, p.is_installment, p.date, p.created_at, p.note,
-               p.staff_id, p.staff_name, p.status, p.branch_id,
+               p.staff_id, p.staff_name, p.status, p.branch_id, p.from_account, p.sender_name,
                s.name AS customer_name, s.email AS customer_email, s.phone AS customer_phone
        FROM payments p
        LEFT JOIN subscribers s ON s.id=p.subscriber_id AND s.tenant_id=p.tenant_id
@@ -81,6 +96,19 @@ router.get('/api/admin/orders', requireAuth, requireAdminOrStaff, requirePermiss
        ORDER BY p.date DESC LIMIT ?`,
       [...paymentParams, limit]
     );
+    const seenPayments = new Set(payRows.map(row => row.id));
+    const [pendingPayRows] = await pool.query(
+      `SELECT p.id, p.subscriber_id, p.course_id, p.bundle_id, p.amount, p.currency,
+               p.payment_type, p.payment_method, p.transaction_id, p.is_installment, p.date, p.created_at, p.note,
+               p.staff_id, p.staff_name, p.status, p.branch_id, p.from_account, p.sender_name,
+               s.name AS customer_name, s.email AS customer_email, s.phone AS customer_phone
+       FROM payments p
+       LEFT JOIN subscribers s ON s.id=p.subscriber_id AND s.tenant_id=p.tenant_id
+       WHERE p.deleted_at IS NULL AND ${paymentWhere} AND p.status='pending'
+       ORDER BY p.date DESC LIMIT 2000`,
+      paymentParams
+    );
+    for (const row of pendingPayRows) if (!seenPayments.has(row.id)) { payRows.push(row); seenPayments.add(row.id); }
 
     const existingTxnIds = new Set(rows.map(r => r.transaction_id).filter(Boolean));
     const existingIds = new Set(rows.map(r => r.id));
@@ -90,7 +118,7 @@ router.get('/api/admin/orders', requireAuth, requireAdminOrStaff, requirePermiss
     // payments that carry one. See lib/paymentExecutor.js for the rest.
     const executors = await resolvePaymentExecutors(pool, req.tenantId, payRows);
     const crmOrders = payRows
-      .filter(p => !existingIds.has(p.id) && !(p.transaction_id && existingTxnIds.has(p.transaction_id)))
+      .filter(p => !existingIds.has(p.id) && (p.status === 'pending' || !(cleanReference(p.transaction_id) && existingTxnIds.has(p.transaction_id))))
       .map(p => ({
         id: p.id,
         subscriber_id: p.subscriber_id,
@@ -107,6 +135,9 @@ router.get('/api/admin/orders', requireAuth, requireAdminOrStaff, requirePermiss
         customer_email: p.customer_email || '',
         customer_phone: p.customer_phone || '',
         transaction_id: p.transaction_id || null,
+        // The transfer as the desk typed it, shown where the payment is confirmed.
+        from_account: p.from_account || null,
+        sender_name: p.sender_name || null,
         staff_id: p.staff_id || null,
         staff_name: executors.get(p.id) ?? null,
         branch_id: p.branch_id || null,

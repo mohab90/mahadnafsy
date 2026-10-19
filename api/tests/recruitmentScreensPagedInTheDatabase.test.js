@@ -127,7 +127,8 @@ test('the interviews come from their own endpoint, split by tab and paged', () =
   const recruiting = read('api/routes/hr/recruiting.js');
   const route = recruiting.slice(recruiting.indexOf("router.get('/api/admin/hr/interviews', "), recruiting.indexOf("router.get('/api/admin/hr/interviews/summary'"));
   assert.match(route, /\$\{past \? '' : 'NOT '\}\$\{held\}/, 'upcoming is the negation of held');
-  assert.match(route, /ORDER BY \(a\.interview_at IS NULL\), a\.interview_at \$\{past \? 'DESC' : 'ASC'\}/);
+  assert.match(route, /order = `\(a\.interview_at IS NULL\), a\.interview_at \$\{past \? 'DESC' : 'ASC'\}/);
+  assert.match(route, /ORDER BY \$\{order\}/);
   assert.match(route, /LIMIT \$\{limit\} OFFSET \$\{offset\}/);
   assert.match(recruiting, /INTERVIEW_STAGES_SQL = "a\.stage IN \('interview','offer'\)"/);
   assert.match(recruiting, /requireRecruiting\('view_hr'\)\]/, 'a branch manager still sees only their branch');

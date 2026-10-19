@@ -2970,6 +2970,8 @@ CREATE TABLE `job_applicants` (
   `cv_url` text DEFAULT NULL,
   `notes` text DEFAULT NULL,
   `stage` enum('applied','screening','interview','offer','hired','rejected') DEFAULT 'applied',
+  `no_show_at` datetime DEFAULT NULL,
+  `rejected_from_interview` tinyint(1) NOT NULL DEFAULT 0,
   `stage_notes` text DEFAULT NULL,
   `updated_by` varchar(36) DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT current_timestamp(),

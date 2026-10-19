@@ -268,15 +268,16 @@ const InterviewsTab: React.FC<Props> = ({ notify, group = 'staff', embedded = fa
 
   const reload = useCallback(() => setVersion(current => current + 1), []);
 
-  const timelineCounts = summary?.tabs || { upcoming: 0, past: 0 };
+  const timelineCounts = summary?.tabs || { upcoming: 0, past: 0, no_show: 0 };
   const counts = {
     all: (summary?.stages.interview || 0) + (summary?.stages.offer || 0),
     interview: summary?.stages.interview || 0,
     offer: summary?.stages.offer || 0,
+    rejected: summary?.rejected || 0,
   };
   const jobOptions = (summary?.jobs || []).map(job => ({ value: job.id, label: job.title || 'وظيفة محذوفة', count: job.count }));
   const branchOptions = (summary?.branches || []).map(item => ({ value: item.key, label: branchLabel(item.key), count: item.count }));
-  const everyone = timelineCounts.upcoming + timelineCounts.past;
+  const everyone = timelineCounts.upcoming + timelineCounts.past + timelineCounts.no_show + counts.rejected;
 
   const setGrade = async (row: JobApplicant, grade: Grade, round: 1 | 2, reason: string) => {
     setBusyId(row.id);
@@ -309,6 +310,19 @@ const InterviewsTab: React.FC<Props> = ({ notify, group = 'staff', embedded = fa
       reload();
     } catch (err) {
       notify('error', err instanceof Error ? err.message : 'تعذّر تحديث المرحلة');
+    } finally { setBusyId(null); }
+  };
+
+  // «لم يحضر»: took an appointment and did not come. The candidate moves to the «محضروش الانترفيو» tab, and comes back
+  // with «رجّعه للمقابلات» or with a new appointment.
+  const markNoShow = async (row: JobApplicant, no_show: boolean) => {
+    setBusyId(row.id);
+    try {
+      await mysqlAdmin.updateHrApplicant(row.id, { no_show });
+      notify('success', no_show ? `${row.name} → اتنقل لـ«محضروش الانترفيو»` : `${row.name} → رجع للمقابلات`);
+      reload();
+    } catch (err) {
+      notify('error', err instanceof Error ? err.message : 'تعذّر التحديث');
     } finally { setBusyId(null); }
   };
 
@@ -384,6 +398,8 @@ const InterviewsTab: React.FC<Props> = ({ notify, group = 'staff', embedded = fa
     onOffer: row => { void advance(row, 'offer'); },
     onHire: row => setHireFor(row),
     onReject: row => { void advance(row, 'rejected'); },
+    onNoShow: row => { void markNoShow(row, true); },
+    onRestore: row => { void markNoShow(row, false); },
     onRemove: row => { void removeApplicant(row); },
   };
   const actions = useMemo<InterviewActions>(() => ({
@@ -393,6 +409,8 @@ const InterviewsTab: React.FC<Props> = ({ notify, group = 'staff', embedded = fa
     onOffer: row => latest.current!.onOffer(row),
     onHire: row => latest.current!.onHire(row),
     onReject: row => latest.current!.onReject(row),
+    onNoShow: row => latest.current!.onNoShow(row),
+    onRestore: row => latest.current!.onRestore(row),
     onRemove: row => latest.current!.onRemove(row),
   }), []);
 

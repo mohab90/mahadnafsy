@@ -8,7 +8,7 @@ export type InterviewFilterState = {
   jobId: string;
   minExperience: string;
   branch: string;
-  view: 'all' | 'interview' | 'offer';
+  view: 'all' | 'interview' | 'offer' | 'rejected';
   /**
    * Before or after the appointment — a different question from `view`.
    *
@@ -22,7 +22,7 @@ export type InterviewFilterState = {
    * putting them under السابق — "اللى اتعملت بالفعل" — would be a lie about
    * work that has not been done.
    */
-  timeline: 'upcoming' | 'past';
+  timeline: 'upcoming' | 'past' | 'no_show';
   query: string;
 };
 
@@ -75,9 +75,9 @@ export const InterviewFilters: React.FC<{
   onChange: (next: InterviewFilterState) => void;
   jobs: Option[];
   branches: Option[];
-  counts: { all: number; interview: number; offer: number };
-  /** Tallies for the القادم / السابق tabs, counted before the other filters. */
-  timelineCounts: { upcoming: number; past: number };
+  counts: { all: number; interview: number; offer: number; rejected: number };
+  /** Tallies for the القادم / السابق / لم يحضروا tabs, counted before the other filters. */
+  timelineCounts: { upcoming: number; past: number; no_show: number };
   shown: number;
   /** Rendered inline with the other filters — keeps the grade filter in the same bar. */
   extra?: React.ReactNode;
@@ -89,12 +89,17 @@ export const InterviewFilters: React.FC<{
     { key: 'all', label: 'الكل', count: counts.all, tone: 'bg-gray-800 text-white' },
     { key: 'interview', label: 'في المقابلات', count: counts.interview, tone: 'bg-indigo-600 text-white' },
     { key: 'offer', label: 'المقبولون', count: counts.offer, tone: 'bg-emerald-600 text-white' },
+    // Turned down from the interviews screen — its own list, whatever the tab above says.
+    { key: 'rejected', label: 'المرفوضون', count: counts.rejected, tone: 'bg-rose-600 text-white' },
   ];
 
   const timelines: Array<{ key: InterviewFilterState['timeline']; label: string; hint: string; count: number }> = [
     { key: 'upcoming', label: 'واخدين ميعاد ولسه موعدهم', hint: 'مقابلات لسه هتحصل، ومرشحون لسه من غير ميعاد', count: timelineCounts.upcoming },
     { key: 'past', label: 'حضروا الانترفيو', hint: 'اتقيّموا، أو عدّى يوم ميعادهم', count: timelineCounts.past },
+    { key: 'no_show', label: 'محضروش الانترفيو', hint: 'أخدوا ميعاد ومجوش — بيتنقلوا هنا بزر «لم يحضر»', count: timelineCounts.no_show },
   ];
+  // «المرفوضون» is a list of its own: while it is open no appointment tab is the current one.
+  const openTab = value.view === 'rejected' ? '' : value.timeline;
 
   const select = 'h-7 shrink-0 rounded-lg border border-gray-200 bg-white px-2 text-[11px]';
   return (
@@ -105,17 +110,17 @@ export const InterviewFilters: React.FC<{
         {timelines.map(t => (
           <button
             key={t.key}
-            onClick={() => set({ timeline: t.key })}
+            onClick={() => set({ timeline: t.key, ...(value.view === 'rejected' ? { view: 'all' as const } : {}) })}
             title={t.hint}
-            aria-current={value.timeline === t.key ? 'page' : undefined}
+            aria-current={openTab === t.key ? 'page' : undefined}
             className={`-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-1.5 text-xs font-bold transition ${
-              value.timeline === t.key
+              openTab === t.key
                 ? 'border-violet-600 text-violet-700'
                 : 'border-transparent text-gray-500 hover:text-gray-700'}`}
           >
             {t.label}
             <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-extrabold ${
-              value.timeline === t.key ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500'}`}>
+              openTab === t.key ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500'}`}>
               {t.count}
             </span>
           </button>

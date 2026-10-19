@@ -59,8 +59,11 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
               // unique staff names for filter
               const staffNames = Array.from(new Set(effectiveOrders.map(r => r.staffName).filter(Boolean))) as string[];
 
+              // Waiting for review: the payments the desk recorded come first (they are what the accounts desk confirms by
+              // the transfer), then the website's unpaid orders — so a long tail of abandoned checkouts never buries them.
               const tabRows = orderReviewTab === 'review'
                 ? filteredOrders.filter(r => r.status === 'pending' && r.type !== 'transfer')
+                    .sort((a, b) => Number(b.source === 'crm') - Number(a.source === 'crm'))
                 : orderReviewTab === 'accepted'
                   ? filteredOrders.filter(r => (r.status === 'paid' || !r.status) && r.type !== 'transfer')
                   : orderReviewTab === 'transfers'
@@ -308,6 +311,7 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                             <th className="px-3 py-3 font-bold text-right border-l border-gray-100">العميل</th>
                             <th className="px-3 py-3 font-bold text-center border-l border-gray-100">الفرع</th>
                             <th className="px-3 py-3 font-bold text-right border-l border-gray-100">الدفعة خاصة بإيه</th>
+                            <th className="px-3 py-3 font-bold text-right border-l border-gray-100">بيانات التحويل</th>
                             <th className="px-3 py-3 font-bold text-center border-l border-gray-100">النوع</th>
                             <th className="px-3 py-3 font-bold text-center border-l border-gray-100">المبلغ</th>
                             <th className="px-3 py-3 font-bold text-center border-l border-gray-100">وسيلة الدفع</th>
@@ -347,6 +351,7 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                                     ? <button onClick={() => navigate(`/client/${row.subscriberId}`)}
                                         className="font-semibold text-gray-800 hover:text-emerald-700 text-[11px] text-right block hover:underline underline-offset-2">{row.customerName || '—'}</button>
                                     : <span className="text-gray-600 text-[11px]">{row.customerName || '—'}</span>}
+                                  {row.customerPhone && <div className="text-[10px] text-gray-400" dir="ltr">{String(row.customerPhone)}</div>}
                                 </td>
                                 <td className="px-3 py-2.5 border-l border-gray-100 text-center text-[10px] whitespace-nowrap">
                                   <span className="rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">{branchText}</span>
@@ -362,6 +367,13 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                                       {row.note && <span className="line-clamp-1" title={String(row.note)}>{String(row.note)}</span>}
                                     </div>
                                   )}
+                                </td>
+                                {/* What the accounts desk confirms the money by: the operation number, who sent it, and from which number. */}
+                                <td className="px-3 py-2.5 border-l border-gray-100 min-w-[150px] text-[11px]">
+                                  {row.transactionId && <div className="font-mono font-bold text-gray-800" dir="ltr">#{row.transactionId}</div>}
+                                  {row.senderName && <div className="font-bold text-gray-700">{String(row.senderName)}</div>}
+                                  {row.fromAccountNumber && <div className="font-mono text-gray-500" dir="ltr">{String(row.fromAccountNumber)}</div>}
+                                  {!row.transactionId && !row.senderName && !row.fromAccountNumber && <span className="text-gray-300">—</span>}
                                 </td>
                                 <td className="px-3 py-2.5 border-l border-gray-100 text-center">
                                   {typeBadge(row.type)}
@@ -440,7 +452,7 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                           })}
                           {tabRows.length === 0 && (
                             <tr>
-                              <td colSpan={11} className="py-12 text-center text-gray-400">
+                              <td colSpan={12} className="py-12 text-center text-gray-400">
                                 <div className="flex flex-col items-center gap-2">
                                   <CreditCard size={28} className="text-gray-200" />
                                   <span className="text-sm">لا توجد طلبات في هذا التصنيف</span>
@@ -452,7 +464,7 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                         {tabRows.length > 0 && (
                           <tfoot>
                             <tr className="bg-gradient-to-l from-emerald-50 to-white border-t-2 border-emerald-100">
-                              <td colSpan={5} className="px-3 py-2.5 font-bold text-gray-600 text-xs">الإجمالي ({tabRows.length} طلب)</td>
+                              <td colSpan={6} className="px-3 py-2.5 font-bold text-gray-600 text-xs">الإجمالي ({tabRows.length} طلب)</td>
                               <td className="px-3 py-2.5 text-center font-extrabold text-emerald-700 text-[12px]">{tabTotal.toLocaleString('ar-EG-u-nu-latn')} ج</td>
                               <td colSpan={5} />
                             </tr>

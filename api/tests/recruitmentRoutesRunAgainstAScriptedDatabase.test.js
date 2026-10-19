@@ -150,13 +150,16 @@ test('the interviews summary tallies both tabs, the stages of the open one, and 
   const summary = handlerOf(recruiting.router || recruiting, '/api/admin/hr/interviews/summary');
   db.reset([
     [/COUNT\(\*\) total, COALESCE\(SUM/, [[{ total: 10, past: 4 }]]],
+    [/a\.no_show_at IS NOT NULL/, [[{ n: 2 }]]],
+    [/a\.rejected_from_interview=1/, [[{ n: 3 }]]],
     [/GROUP BY a\.stage/, [[{ stage: 'interview', n: 5 }, { stage: 'offer', n: 1 }]]],
     [/GROUP BY a\.job_id, j\.title/, [[{ id: 'job-1', title: 'محاسب', n: 6 }]]],
     [/GROUP BY branch/, [[{ branch: 'daqqi', n: 6 }]]],
     [/GROUP BY a\.interview_grade, a\.second_interview_grade/, [[{ g1: 'A', g2: 'B', n: 2 }, { g1: 'A', g2: null, n: 1 }, { g1: null, g2: null, n: 7 }]]],
   ]);
   const res = await call(summary, { tab: 'upcoming' });
-  assert.deepEqual(res.body.tabs, { upcoming: 6, past: 4 });
+  assert.deepEqual(res.body.tabs, { upcoming: 6, past: 4, no_show: 2 });
+  assert.equal(res.body.rejected, 3);
   assert.deepEqual(res.body.stages, { interview: 5, offer: 1 });
   assert.deepEqual(res.body.grades, { A: 3, B: 2 });
   assert.deepEqual(res.body.jobs, [{ id: 'job-1', title: 'محاسب', count: 6 }]);

@@ -144,7 +144,7 @@ async function editPaymentDetails(conn, { tenantId, paymentId, actor, reason, ch
   const sets = []; const params = []; const before = {}; const after = {};
   const put = (column, value) => { sets.push(`${column}=?`); params.push(value); before[column] = pay[column]; after[column] = value; };
   if (changes.paymentMethod !== undefined) put('payment_method', String(changes.paymentMethod || '').slice(0, 100) || null);
-  if (changes.transactionId !== undefined) put('transaction_id', String(changes.transactionId || '').slice(0, 191) || null);
+  if (changes.transactionId !== undefined) put('transaction_id', require('./transactionReference').cleanReference(changes.transactionId));
   if (changes.note !== undefined) put('note', String(changes.note || '').slice(0, 2000) || null);
   // «محتاجين نعدل الفرع لانه بيحصل غلط»: the branch the money was taken at. The vault, the branch P&L and the
   // branch's accounts read this column, and so does the journal entry the payment posted.

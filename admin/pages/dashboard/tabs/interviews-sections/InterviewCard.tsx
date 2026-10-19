@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Briefcase, Building2, CalendarClock, Clock, GraduationCap, Mail, MessageCircle, Phone, PhoneCall,
-  Trash2, UserCheck, XCircle,
+  RotateCcw, Trash2, UserCheck, UserX, XCircle,
 } from 'lucide-react';
 import { waLink, toDisplay } from '../../../../lib/whatsappLink';
 import { PHONE_RESULTS, branchLabel, fmtDateTime, yearsLabel } from '../hr-sections/applicantLabels';
@@ -70,6 +70,10 @@ export interface JobApplicant {
   last_contact_note: string | null;
   last_contact_by: string | null;
   last_contact_at: string | null;
+  /** «لم يحضر»: took an appointment and did not come (migration 297). */
+  no_show_at?: string | null;
+  /** Turned down from the interviews screen: listed under «المرفوضون». */
+  rejected_from_interview?: number | null;
 }
 
 /** Held = graded: an interview with a grade has happened, whatever its date. */
@@ -82,6 +86,10 @@ export interface InterviewActions {
   onOffer: (row: JobApplicant) => void;
   onHire: (row: JobApplicant) => void;
   onReject: (row: JobApplicant) => void;
+  /** «لم يحضر»: moves the candidate to the did-not-come tab. */
+  onNoShow: (row: JobApplicant) => void;
+  /** Back from «لم يحضر» to the interviews (a new appointment does the same). */
+  onRestore: (row: JobApplicant) => void;
   onRemove: (row: JobApplicant) => void;
 }
 
@@ -98,6 +106,8 @@ const InterviewCard: React.FC<{ row: JobApplicant; busy: boolean; actions: Inter
   const phoneResult = row.phone_interview_result ? PHONE_RESULTS[row.phone_interview_result] : null;
   const branch = row.applicant_branch || row.job_branch;
   const offer = row.stage === 'offer';
+  const rejected = row.stage === 'rejected';
+  const noShow = Boolean(row.no_show_at) && row.stage === 'interview';
   const graded = gradedRow(row);
   const dayGone = !graded && isPastInterview(row.interview_at);
   const [note, setNote] = useState<string | null>(null);
@@ -126,8 +136,8 @@ const InterviewCard: React.FC<{ row: JobApplicant; busy: boolean; actions: Inter
           <p className="mt-0.5 flex items-center gap-1 text-[11px] text-gray-400"><Clock size={11} /> أُضيف {fmtDateTime(row.created_at) || '—'}</p>
         </div>
         <div className="flex flex-col items-end gap-1.5">
-          <span className={`rounded-full px-3 py-1 text-xs font-black ${offer ? 'bg-amber-100 text-amber-800' : 'bg-violet-100 text-violet-800'}`}>
-            {offer ? 'مقبول للتدريب' : 'مقابلة'}
+          <span className={`rounded-full px-3 py-1 text-xs font-black ${rejected ? 'bg-rose-100 text-rose-800' : noShow ? 'bg-orange-100 text-orange-800' : offer ? 'bg-amber-100 text-amber-800' : 'bg-violet-100 text-violet-800'}`}>
+            {rejected ? 'مرفوض' : noShow ? 'لم يحضر' : offer ? 'مقبول للتدريب' : 'مقابلة'}
           </span>
           {phoneResult && <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${phoneResult.tone}`}>{phoneResult.label}</span>}
           {row.source === 'website' && <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-bold text-blue-700">من الموقع</span>}
@@ -244,10 +254,23 @@ const InterviewCard: React.FC<{ row: JobApplicant; busy: boolean; actions: Inter
           className="inline-flex items-center gap-1 rounded-xl bg-sky-600 px-3 py-2 text-xs font-bold text-white hover:bg-sky-700 disabled:opacity-40">
           <Phone size={13} /> تواصل
         </button>
-        {!offer && (
+        {!offer && !rejected && !noShow && (
           <button disabled={busy} onClick={() => actions.onOffer(row)}
             className="inline-flex items-center gap-1 rounded-xl bg-amber-500 px-3 py-2 text-xs font-bold text-white hover:bg-amber-600 disabled:opacity-40">
             عرض وظيفي
+          </button>
+        )}
+        {/* Took an appointment and did not come: moved to its own tab, where they can be brought back. */}
+        {row.stage === 'interview' && !noShow && (
+          <button disabled={busy} onClick={() => actions.onNoShow(row)} title="أخد ميعاد ومجاش — بينتقل لتاب «محضروش الانترفيو»"
+            className="inline-flex items-center gap-1 rounded-xl border border-orange-200 bg-white px-3 py-2 text-xs font-bold text-orange-700 hover:bg-orange-50 disabled:opacity-40">
+            <UserX size={13} /> لم يحضر
+          </button>
+        )}
+        {noShow && (
+          <button disabled={busy} onClick={() => actions.onRestore(row)}
+            className="inline-flex items-center gap-1 rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-bold text-violet-700 hover:bg-violet-50 disabled:opacity-40">
+            <RotateCcw size={13} /> رجّعه للمقابلات
           </button>
         )}
         {offer && (
@@ -256,10 +279,12 @@ const InterviewCard: React.FC<{ row: JobApplicant; busy: boolean; actions: Inter
             <UserCheck size={13} /> تعيين
           </button>
         )}
-        <button disabled={busy} onClick={() => actions.onReject(row)}
-          className="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-40">
-          <XCircle size={13} /> رفض
-        </button>
+        {!rejected && (
+          <button disabled={busy} onClick={() => actions.onReject(row)}
+            className="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-40">
+            <XCircle size={13} /> رفض
+          </button>
+        )}
         <button disabled={busy} onClick={() => actions.onRemove(row)} title="حذف نهائي من الانترفيوهات"
           className="mr-auto inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-bold text-gray-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40">
           <Trash2 size={12} /> حذف

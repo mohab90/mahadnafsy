@@ -466,7 +466,7 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
              tenant_id, branch, branch_id, course_expected)
          VALUES (?, ?, ?, ?, ?, ?, 'COURSE', ?, ?, 0, ?, ?, ?, 'staff', ?, ?, ?, ?, ?, ?)`,
         [paymentId, paySub.id, paymentCourseId, paymentBundleId, amount, currency,
-         paymentMethod, firstPayment.transactionId ? String(firstPayment.transactionId).slice(0, 191) : null, paymentDate,
+         paymentMethod, require('../../lib/transactionReference').cleanReference(firstPayment.transactionId), paymentDate,
          firstPayment.note ? String(firstPayment.note).slice(0, 2000) : null, firstPaymentStatus, req.staffRecord?.id || null,
          signerName(req), tenantId, paymentBranch, paymentBranchId, courseExpected]
       );
