@@ -45,7 +45,7 @@ test('a transfer cannot be booked without its operation number, sender and numbe
 
 test('a client being registered by the booking belongs to nobody, so the ownership rule cannot refuse it', () => {
   const booking = read('api/routes/subscriber-payments.js');
-  assert.match(booking, /if \(!createFromDraft && !financialRecordMatches\(scope, subRow\)\)/);
+  assert.match(booking, /if \(!createFromDraft && !bookAny && !financialRecordMatches\(scope, subRow\)\)/);
 });
 
 test('every consultation booking, old or new, has its controls', () => {

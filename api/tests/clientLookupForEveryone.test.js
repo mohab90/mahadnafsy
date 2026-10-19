@@ -97,7 +97,12 @@ test('a manager opens every file, and a converted lead is not listed twice', asy
   const answer = await call({ query: { q: 'سارة' }, staffRecord: { id: 'm1', role: 'daqqi_manager' } });
   assert.deepEqual(answer.rows.map(r => r.id), ['l2', 's1'], 'a lead before a subscriber on a tie; the converted one once, as the client');
   assert.equal(answer.rows.find(r => r.id === 's1').canOpen, true, 'a branch manager opens any client');
-  assert.equal(answer.rows.find(r => r.id === 'l2').canOpen, false, "a lead outside the caller's lead scope stays closed");
+  // The Dokki desk and customer service open any lead too (lib/bookingAccess.js, 19 Oct 2026): a rep sends a client to Dokki.
+  assert.equal(answer.rows.find(r => r.id === 'l2').canOpen, true, 'the Dokki manager opens any lead');
+  // Anyone else — a sales rep, a collection officer — stays on their own.
+  const rep = await call({ query: { q: 'سارة' }, staffRecord: { id: 'rep1', role: 'sales' } });
+  assert.equal(rep.rows.find(r => r.id === 'l2').canOpen, false, "a lead outside a rep's lead scope stays closed");
+  assert.equal(rep.rows.find(r => r.id === 's1').canOpen, false, "a client that is not the rep's stays closed");
 });
 
 test('the lead scope is asked of the same SQL the lists use, and never hides the row', async () => {

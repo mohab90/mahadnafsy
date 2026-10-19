@@ -117,7 +117,8 @@ test('every road that accepts, rejects or books money tells the people behind th
   const bookings = read('api/routes/subscriber-payments.js');
   assert.match(bookings, /if \(!approvingRequest && !req\.isPaymentCorrection\) \{/, 'a correction and an approved request are not a new booking');
   assert.match(bookings, /importance: 'high', tab: 'online_clients' \}, req\.tenantId, approvingRequest\.requested_by/);
-  assert.match(bookings, /importance: 'critical', tab: 'orders' \}, req\.tenantId, request\.requested_by/);
+  // A refusal is a message to the officer, with the reason (19 Oct 2026), not a bell notification.
+  assert.match(bookings, /staffId: request\.requested_by, authorId: req\.staffRecord\?\.id \|\| null/);
   assert.match(read('api/routes/payment-corrections.js'), /asRecording\.isPaymentCorrection = true;/);
   const bell = read('admin/pages/dashboard/NotificationsBell.tsx');
   assert.match(bell, /if \(set === 'critical'\) return 'critical';\s*if \(set === 'high'\) return 'important';/);

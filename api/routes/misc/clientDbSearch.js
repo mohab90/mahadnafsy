@@ -22,6 +22,7 @@ const { SEARCH_MIN_CHARS, foldText } = require('../../lib/searchText');
 const { personMatch } = require('../../lib/systemSearch');
 const { isArchiveSource } = require('../../lib/leadArchive');
 const { resolveDataScope } = require('../../constants/permissions');
+const { canBookAnyClient } = require('../../lib/bookingAccess');
 
 const router = express.Router();
 const PER_KIND = 50;
@@ -134,7 +135,7 @@ const FULL_ACCESS_ROLES = ['online_manager', 'daqqi_manager', 'tagamoa_manager',
 
 // Mirrors the opening rule of GET /api/staff/client/:code for a subscriber.
 function canOpenSubscriber(req, row, linkedLead) {
-  if (req.isSuperAdmin) return true;
+  if (req.isSuperAdmin || canBookAnyClient(req)) return true;
   const staff = req.staffRecord;
   if (!staff) return false;
   const role = String(staff.role || '').toLowerCase();
@@ -217,7 +218,8 @@ router.get('/api/admin/client-lookup', requireAuth, requireAdminOrStaff, require
         place: Number(l.hidden) === 1 ? 'ليد مخفي' : leadPlace(l), branch: l.branch || null, owner: l.owner_name || null,
         mine: Boolean(req.staffRecord && l.assigned_sales_id === req.staffRecord.id),
         // A hidden lead is shown so nobody registers the person twice, but has no file page to open.
-        canOpen: Number(l.hidden) === 1 ? false : req.isSuperAdmin ? true : Number(l.can_open) === 1,
+        // Customer service and the Dokki desk open any lead (lib/bookingAccess.js); the rest only their own.
+        canOpen: Number(l.hidden) === 1 ? false : (req.isSuperAdmin || canBookAnyClient(req)) ? true : Number(l.can_open) === 1,
       })),
     ].sort((a, b) => rankOf(a, q) - rankOf(b, q));
     res.json({ rows, capped: subscribers.length === LOOKUP_PER_KIND || leads.length === LOOKUP_PER_KIND });

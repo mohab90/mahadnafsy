@@ -32,6 +32,7 @@ const { financialRecordMatches, resolveFinancialScope } = require('../lib/financ
 const { grantCourseSelections } = require('../lib/entitlements');
 const { getNextClientCode } = require('../lib/mappers');
 const { leadScope } = require('../lib/leadAccess');
+const { canBookAnyClient } = require('../lib/bookingAccess');
 const { completeForBranch, identitySpellings, isRealPhone, toIdentity } = require('../lib/phoneNumber');
 const { clientHoldingPhone, phoneInUse, sharedPhoneSlot, recordSharedPhone } = require('../lib/phoneDuplicates');
 const { VALID_BRANCHES } = require('../constants/permissions');
@@ -161,6 +162,8 @@ async function recordSubscriberPayment(req, res) {
       requestedBranch: payment.branch || req.body.branch || null,
       allowAssigned: true,
     });
+    // Customer service and the Dokki desk book any client they find (lib/bookingAccess.js); everyone else books their own.
+    const bookAny = canBookAnyClient(req);
     // Validate subscriber exists — also fetch assigned_sales_id for commission lookup
     let createFromLead = false;
     let createFromDraft = false;
@@ -175,7 +178,7 @@ async function recordSubscriberPayment(req, res) {
       );
       if (!subRow) return res.status(404).json({ error: 'العميل ده مش موجود أو اتشال من قاعدة العملاء — حدّث الصفحة.', code: 'SUBSCRIBER_NOT_FOUND' });
     } else if (leadId) {
-      const accessScope = leadScope(req, 'l');
+      const accessScope = bookAny ? { none: false, sql: '', params: [] } : leadScope(req, 'l');
       if (accessScope.none) return res.status(404).json({ error: 'مش متاح لك تسجّل دفعة على عملاء محتملين.', code: 'LEAD_OUT_OF_SCOPE' });
       const [[lead]] = await pool.query(
         `SELECT l.id,l.client_code,l.name,l.email,l.phone,l.branch,l.branch_id,
@@ -307,7 +310,7 @@ async function recordSubscriberPayment(req, res) {
     // A client being registered by this very booking belongs to nobody yet (assigned_* are null), so the
     // ownership rule can only refuse it — «مسئول تحصيل بيضيف مشترك جديد في الأونلاين بيقوله العميل مع موظف تاني
     // وهو أصلاً مش موجود». The branch the desk may book into is still enforced by resolveFinancialScope above.
-    if (!createFromDraft && !financialRecordMatches(scope, subRow)) {
+    if (!createFromDraft && !bookAny && !financialRecordMatches(scope, subRow)) {
       return res.status(403).json({ error: 'العميل ده خارج نطاق صلاحياتك في الدفع — ده عميل مسئول عنه موظف أو فرع تاني.', code: 'SUBSCRIBER_OUT_OF_SCOPE' });
     }
     // «متخليش السيستم يقبل عميل دفع بدون رقم تليفون حقيقي»: money is recorded
@@ -719,7 +722,7 @@ async function recordSubscriberPayment(req, res) {
       }
     }
     if (createFromLead) {
-      const accessScope = leadScope(req, 'l');
+      const accessScope = bookAny ? { none: false, sql: '', params: [] } : leadScope(req, 'l');
       const [[lockedLead]] = await conn.query(
         `SELECT l.id,l.client_code,l.name,l.email,l.phone,l.branch,l.branch_id,
                 l.assigned_sales_id,l.assigned_sales_name,l.assigned_cs_id,l.assigned_cs_name,
@@ -749,7 +752,7 @@ async function recordSubscriberPayment(req, res) {
         ]
       );
       if (racedSubscriber) {
-        if (!financialRecordMatches(scope, racedSubscriber)) {
+        if (!bookAny && !financialRecordMatches(scope, racedSubscriber)) {
           const error = new Error('Subscriber is outside your payment scope');
           error.statusCode = 403;
           throw error;
@@ -1270,8 +1273,14 @@ router.post('/api/admin/subscriber-requests/:id/reject', requireAuth, requireAdm
         WHERE tenant_id=? AND id=? AND status='pending'`,
       [note, req.staffRecord?.id || null, req.staffRecord?.name || req.user?.email || null, req.tenantId, request.id]);
     if (!result.affectedRows) return res.status(409).json({ error: 'الطلب ده اتراجع بالفعل' });
-    createNotification('payment', 'اترفض حجز عميل جديد', `${request.name}${note ? ` — ${note}` : ''}`,
-      { importance: 'critical', tab: 'orders' }, req.tenantId, request.requested_by).catch(() => {});
+    // A message to the officer who sent it, with the reason (not a bell notification).
+    if (request.requested_by) {
+      require('../lib/staffMessages').sendStaffMessage(pool, {
+        tenantId: req.tenantId, staffId: request.requested_by, authorId: req.staffRecord?.id || null,
+        authorName: req.staffRecord?.name || 'المحاسبة',
+        body: `❌ حجز عميل جديد اترفض\n${request.name || 'عميل'}${note ? `\nالسبب: ${note}` : ''}`,
+      }).catch(error => logger.warn('[subscriber-requests/reject] message failed:', error.message));
+    }
     res.json({ ok: true });
   } catch (e) { logger.error('[subscriber-requests/reject]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

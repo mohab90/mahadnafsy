@@ -31,6 +31,7 @@ const {
 const { requireDeleteRight } = require('../../lib/deleteRights');
 const { DATA_SCOPE, VALID_BRANCHES, FULL_ACCESS_ROLES, hasPermission, resolveDataScope } = require('../../constants/permissions');
 const { safeIsoString, safeDateOnly } = require('../../lib/dates');
+const { canBookAnyClient } = require('../../lib/bookingAccess');
 const { keyset } = require('../../lib/pagination');
 const { branchIdForBranch } = require('../../lib/branches');
 const { syncCourseEntitlements } = require('../../lib/entitlements');
@@ -189,7 +190,9 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
     // the role whose work is any caller — so every client it opened, from the
     // client database or a payment, read «ليس لديك صلاحية» and showed as
     // «العميل غير موجود».
-    const seesEveryClient = resolveDataScope(req.staffRecord, { isSuperAdmin: req.isSuperAdmin }) === 'all';
+    // Customer service and the Dokki desk also open any client's file — the one they were sent, to book it
+    // (lib/bookingAccess.js). Every other role stays on its own clients, below.
+    const seesEveryClient = resolveDataScope(req.staffRecord, { isSuperAdmin: req.isSuperAdmin }) === 'all' || canBookAnyClient(req);
 
     // ── 1. Try subscriber (by id or client_code) ────────────────────────────
     const [subRows] = await pool.query(

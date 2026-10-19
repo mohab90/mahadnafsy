@@ -45,18 +45,28 @@ function recipientsOf({ recordedBy, assignedSalesId, assignedCsId, rejectedBy })
 async function notifyPaymentRejected({
   tenantId, reason, amount, currency, clientName, clientCode, subscriberId,
   recordedBy, assignedSalesId, assignedCsId, rejectedBy, rejectedByName, kind = 'payment',
-}, { notify = require('./notification').createNotification } = {}) {
+}, {
+  notify = require('./notification').createNotification,
+  message: sendMessage = (input) => require('./staffMessages').sendStaffMessage(require('./db').pool, input),
+} = {}) {
   try {
     const recipients = recipientsOf({ recordedBy, assignedSalesId, assignedCsId, rejectedBy });
     const money = amount != null ? `${Number(amount).toLocaleString('en-US')} ${currency || 'EGP'}` : '';
     const title = '❌ دفعة اترفضت';
-    const message = `${clientName || 'عميل'}${money ? ` — ${money}` : ''}${rejectedByName ? ` · رفضها ${rejectedByName}` : ''}\nالسبب: ${reason}`;
+    const text = `${clientName || 'عميل'}${clientCode ? ` (${clientCode})` : ''}${money ? ` — ${money}` : ''}${rejectedByName ? ` · رفضها ${rejectedByName}` : ''}\nالسبب: ${reason}`;
+    if (recipients.length) {
+      // «خليها في رسالة مش اشعار» (19 Oct 2026): whoever took the payment, and the client's rep and collector, get it as a
+      // message in their inbox, with the reason, and it stays there until it is read.
+      await Promise.all(recipients.map(staffId => sendMessage({
+        tenantId, staffId, authorId: rejectedBy || null, authorName: rejectedByName || 'المحاسبة', body: `${title}\n${text}`,
+      })));
+      return recipients.length;
+    }
+    // Nobody to tell by name: the managers' bell (no recipient) carries it.
     // importance: the bell shows it in «مهم», in red (lib/paymentNotices.js says who else is told what).
     const data = { kind, reason, importance: 'critical', subscriberId: subscriberId || null, clientCode: clientCode || null, tab: 'orders' };
-    // Nobody to tell by name: the managers' bell (no recipient) carries it.
-    const targets = recipients.length ? recipients : [null];
-    await Promise.all(targets.map(recipientStaffId => notify('payment', title, message, data, tenantId, recipientStaffId)));
-    return targets.length;
+    await notify('payment', title, text, data, tenantId, null);
+    return 1;
   } catch (error) {
     logger.warn('[payment-rejection] notify failed:', error.message);
     return 0;
