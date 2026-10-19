@@ -85,7 +85,7 @@ export function OnlineClientsKpiStrip({
   );
 
   return (
-    <div className="mb-3 flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-2.5 xl:flex-row">
+    <div className="mb-3 hidden flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-2.5 md:flex xl:flex-row">
       {group('العملاء', Users, clients)}
       <div className="hidden w-px bg-gray-100 xl:block" />
       {group('التحصيل', Wallet, money)}

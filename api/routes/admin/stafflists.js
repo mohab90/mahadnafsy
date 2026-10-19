@@ -729,8 +729,16 @@ async function shapeStaffSubscribers(tenantId, rows, { lite = false } = {}) {
  * The same clients and the same rules the screen applied to its whole downloaded list (lib/staffClientsView.js), so
  * the page, the total, the tab counts and the figures above the table agree with one another as they did there.
  */
+// The clients of one scope, shaped (lite), held 15 s and dropped by the next write like the other figures: a screen that pages
+// or sums them asks for them again and again — at 30,000 clients each ask read and shaped them all (4.4 s for the
+// manager's «إحصائياتي»), and several asks at once now share one read.
 async function loadScopeClients(req, sc) {
   const tenantId = req.tenantId;
+  const { rows, clients } = await cached(`figures:staff-scope:${tenantId}:${sc.where}:${JSON.stringify(sc.params)}`, 15 * 1000, () => readScopeClients(tenantId, sc));
+  return { rows, clients, catalogue: await scopeCatalogue(tenantId) };
+}
+
+async function readScopeClients(tenantId, sc) {
   const [rows] = await pool.query(
     `SELECT s.*,
             COALESCE(ss.name, s.assigned_sales_name) AS assigned_sales_name,
@@ -742,9 +750,21 @@ async function loadScopeClients(req, sc) {
       ORDER BY s.created_at DESC, s.id DESC`,
     [tenantId, ...sc.params]
   );
-  const clients = [];
-  for (let i = 0; i < rows.length; i += 1000) clients.push(...await shapeStaffSubscribers(tenantId, rows.slice(i, i + 1000), { lite: true }));
+  // A thousand at a time, four thousands at once: thirty of them one after another were 3 s of the manager's 4.
+  const chunks = [];
+  for (let i = 0; i < rows.length; i += 1000) chunks.push(rows.slice(i, i + 1000));
+  const shaped = new Array(chunks.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(4, chunks.length) }, async () => {
+    while (next < chunks.length) {
+      const index = next++;
+      shaped[index] = await shapeStaffSubscribers(tenantId, chunks[index], { lite: true });
+    }
+  }));
+  return { rows, clients: shaped.flat() };
+}
 
+async function scopeCatalogue(tenantId) {
   const catalogueRows = await cached(`staff-clients:catalogue:${tenantId}`, 30 * 1000, async () => {
     const [courses] = await pool.query('SELECT id, price_egp, price_sar, price_usd FROM courses WHERE tenant_id=?', [tenantId]);
     const [bundles] = await pool.query(
@@ -757,7 +777,7 @@ async function loadScopeClients(req, sc) {
     courses: new Map(catalogueRows.courses.map(row => [row.id, { price: priceOf(row) }])),
     bundles: new Map(catalogueRows.bundles.map(row => [row.id, { price: priceOf(row), courseIds: row.course_ids ? String(row.course_ids).split(',') : [] }])),
   };
-  return { rows, clients, catalogue };
+  return catalogue;
 }
 
 async function staffClientsPage(req, sc) {

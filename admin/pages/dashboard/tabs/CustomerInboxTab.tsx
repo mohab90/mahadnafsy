@@ -460,16 +460,13 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
 
   return (
     <div className="space-y-4" dir="rtl">
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="flex items-center gap-2 text-lg font-extrabold text-slate-900">
               <Inbox size={20} className="text-indigo-600" /> مشاكل العملاء والتذاكر
             </h2>
-            <p className="mt-0.5 text-xs text-slate-500">
-              كل مشكلة مرة واحدة: تذاكر الموقع والتليفون، والمشاكل اللي اتفتحت من صف العميل في الدقي والأونلاين، ورسائل «مشكلة تقنية» من صفحة التواصل.
-              الحل بيتسجل في ملف العميل.
-            </p>
+            <p className="mt-0.5 hidden text-xs text-slate-500 md:block">كل مشكلة مرة واحدة، والحل بيتسجل في ملف العميل.</p>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => setCreating(true)} className="inline-flex items-center gap-1 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700">
@@ -482,25 +479,25 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
         </div>
 
         {counts.overdue > 0 ? (
-          <div className="mt-3 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-800">
+          <div className="mt-2 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-800">
             <AlertCircle size={15} /> {counts.overdue} مشكلة عدّت وقت الرد — أقدم واحدة مستنية {counts.oldestHours} ساعة.
           </div>
         ) : counts.waiting > 0 ? (
-          <div className="mt-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+          <div className="mt-2 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
             <Clock size={15} /> {counts.waiting} مشكلة مستنية رد — كلها في وقتها.
           </div>
         ) : (
-          <div className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
+          <div className="mt-2 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
             <CheckCircle2 size={15} /> مفيش مشكلة مستنية رد.
           </div>
         )}
 
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
           {views.map(([key, label, count, cls]) => (
             <button key={key} type="button" onClick={() => setView(key)}
-              className={`rounded-xl border px-3 py-2 text-right transition ${cls} ${view === key ? 'ring-2 ring-indigo-300' : 'opacity-80 hover:opacity-100'}`}>
+              className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-1.5 text-right transition ${cls} ${view === key ? 'ring-2 ring-indigo-300' : 'opacity-80 hover:opacity-100'}`}>
               <p className="text-[11px] font-bold">{label}</p>
-              <p className="text-xl font-black">{count}</p>
+              <p className="text-lg font-black leading-none">{count}</p>
             </button>
           ))}
         </div>

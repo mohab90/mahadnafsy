@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, Eye, Search } from 'lucide-react';
+import { ChevronDown, Eye, Search, SlidersHorizontal } from 'lucide-react';
 import { cairoDateOnly, cairoDaysAgo } from '../../../../../shared/cairoDate';
 import type { Bundle, Course, DaqqiRound, StaffMember } from '../../../../types';
 import { SUB_STATUS_CFG } from '../../dashboardShared';
@@ -109,6 +109,12 @@ export function FiltersToolbar({
   collOnlineDateFrom, setCollOnlineDateFrom, collOnlineDateTo, setCollOnlineDateTo,
   vc, toggleCol, viewToggle,
 }: Props) {
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  // How many of the dropdown filters are set, for the phone's «فلاتر» button.
+  const activeFilters = [
+    collOnlineRemainingFilter !== 'all', collOnlineCourseFilter, collOnlineDateFrom || collOnlineDateTo, collOnlineCollectionFilter,
+    collOnlineCertFilter !== 'all', collOnlineStatusFilter, collOnlineFollowFilter, daqqiHousingFilter !== 'all', daqqiRoundFilter, daqqiReceptionFilter,
+  ].filter(Boolean).length;
   const [datePreset, setDatePreset] = useState(collOnlineDateFrom || collOnlineDateTo ? 'custom' : '');
   const pickDate = (preset: string) => {
     setDatePreset(preset);
@@ -123,34 +129,33 @@ export function FiltersToolbar({
       setCollOnlineDateTo('');
     }
   };
-  const chips: Array<[FollowFilter, string, number, string]> = [
-    ['overdue', '🔴 متابعات متأخرة', followCounts.overdue, 'border-red-200 bg-red-50 text-red-700'],
-    ['today', '🟡 متابعات النهاردة', followCounts.today, 'border-amber-200 bg-amber-50 text-amber-800'],
+  // The word «متابعات» is dropped on a phone, where three chips must share one line.
+  const chips: Array<[FollowFilter, ReactNode, number, string]> = [
+    ['overdue', <>🔴 <span className="hidden md:inline">متابعات </span>متأخرة</>, followCounts.overdue, 'border-red-200 bg-red-50 text-red-700'],
+    ['today', <>🟡 <span className="hidden md:inline">متابعات </span>النهاردة</>, followCounts.today, 'border-amber-200 bg-amber-50 text-amber-800'],
     ['tomorrow', '📅 بكرة', followCounts.tomorrow, 'border-indigo-200 bg-indigo-50 text-indigo-700'],
   ];
   return (
     <>
-      {/* One filters row, wrapping rather than scrolling sideways: the follow-ups first (who must be called today, one
-          click away, with how many), then the search and the filters. */}
-      {/* On a phone the dropdowns sit two to a line instead of one each. */}
-      <div className="mb-2 flex flex-wrap items-center gap-2 [&_select]:min-w-0 [&_select]:flex-1 [&_select]:basis-[calc(50%-0.25rem)] md:[&_select]:flex-none md:[&_select]:basis-auto">
-        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="المتابعات">
-        {chips.map(([key, label, count, tone]) => (
-          <button key={key} type="button" aria-pressed={collOnlineFollowFilter === key}
-            onClick={() => { setCollOnlineFollowFilter(collOnlineFollowFilter === key ? '' : key); setCollOnlinePage(1); }}
-            className={`rounded-xl border px-3 py-1.5 text-xs font-bold transition ${tone} ${collOnlineFollowFilter === key ? 'ring-2 ring-offset-1 ring-teal-400' : 'opacity-90 hover:opacity-100'}`}>
-            {label} <span className="mr-1 rounded-full bg-white/70 px-1.5 font-extrabold">{count}</span>
-          </button>
-        ))}
-        {collOnlineFollowFilter && <button type="button" onClick={() => { setCollOnlineFollowFilter(''); setCollOnlinePage(1); }} className="text-xs font-bold text-gray-500 hover:text-gray-700">✕ إلغاء</button>}
-        </div>
-        <span className="hidden h-5 w-px bg-gray-200 md:block" aria-hidden="true" />
-        <div className="relative w-full min-w-0 md:w-[140px]">
+      {/* One row, wrapping rather than scrolling sideways: the search and the filters, then the follow-ups (who must be
+          called today, one click away, with how many), then — after a gap, at the far end — the cards / table switch
+          and the columns menu side by side. */}
+      {/* On a phone: the search and one «فلاتر» button on a line, the dropdowns two to a line behind it, then the
+          follow-ups and the view switch. From a tablet up everything is the one row. */}
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <div className="flex w-full items-center gap-2 md:contents">
+        <div className="relative min-w-0 flex-1 md:w-[140px] md:flex-none">
           <Search size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input value={collOnlineSearch} onChange={e=>{setCollOnlineSearch(e.target.value);setCollOnlinePage(1);}}
             placeholder="بحث اسم / هاتف..."
             className="w-full border border-gray-200 rounded-lg pr-7 pl-3 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-teal-200" />
         </div>
+        <button type="button" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(value => !value)}
+          className={`flex shrink-0 items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-bold md:hidden ${activeFilters ? 'border-teal-400 bg-teal-50 text-teal-700' : 'border-gray-200 bg-white text-gray-600'}`}>
+          <SlidersHorizontal size={13} /> فلاتر{activeFilters > 0 && <span className="rounded-full bg-teal-600 px-1.5 text-[10px] text-white">{activeFilters}</span>}
+        </button>
+        </div>
+        <div className={`${filtersOpen ? 'grid' : 'hidden'} w-full grid-cols-2 gap-2 md:contents [&_select]:w-full [&_select]:min-w-0 md:[&_select]:w-auto`}>
         {isDaqqiClientsTab && (
           <>
             <select value={daqqiHousingFilter} onChange={e=>{setDaqqiHousingFilter(e.target.value as 'all'|'housed'|'unhoused');setCollOnlinePage(1);}}
@@ -240,12 +245,22 @@ export function FiltersToolbar({
             className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-gray-50 text-gray-500 hover:bg-gray-100">مسح الفلاتر</button>
         )}
         {/* Export lives in ⚙️ الإعدادات now, on both halves of the screen. */}
-      </div>
-
-      {/* Everything else on one row: how the list is drawn (cards or table) beside which columns it shows. */}
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        {viewToggle}
-        <ColumnsMenu vc={vc} toggleCol={toggleCol} />
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5 md:gap-2" role="group" aria-label="المتابعات">
+        {chips.map(([key, label, count, tone]) => (
+          <button key={key} type="button" aria-pressed={collOnlineFollowFilter === key}
+            onClick={() => { setCollOnlineFollowFilter(collOnlineFollowFilter === key ? '' : key); setCollOnlinePage(1); }}
+            className={`rounded-xl border px-2.5 py-1.5 text-xs font-bold transition md:px-3 ${tone} ${collOnlineFollowFilter === key ? 'ring-2 ring-offset-1 ring-teal-400' : 'opacity-90 hover:opacity-100'}`}>
+            {label} <span className="mr-1 rounded-full bg-white/70 px-1.5 font-extrabold">{count}</span>
+          </button>
+        ))}
+        {collOnlineFollowFilter && <button type="button" onClick={() => { setCollOnlineFollowFilter(''); setCollOnlinePage(1); }} className="text-xs font-bold text-gray-500 hover:text-gray-700">✕ إلغاء</button>}
+        </div>
+        {/* After a gap, at the far end of the same row: how the list is drawn, and which columns it shows. */}
+        <div className="ms-auto flex flex-wrap items-center gap-1.5">
+          {viewToggle}
+          <ColumnsMenu vc={vc} toggleCol={toggleCol} />
+        </div>
       </div>
     </>
   );

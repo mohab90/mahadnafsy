@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Briefcase, Plus, Trash2, Pencil, X, Loader2, ExternalLink, Users } from 'lucide-react';
+import { Briefcase, ChevronDown, Plus, Trash2, Pencil, X, Loader2, ExternalLink, Users } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { JobApplicantsPanel } from './JobApplicantsPanel';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
@@ -20,6 +20,9 @@ const FALLBACK_BRANCH_LABELS: Record<string, string> = {
 export default function JobPostingsPanel({ notify }: { notify: Notify }) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
+  // Folded to one line by default: three job cards are 210 px that the applicants below are waiting for. The choice is remembered.
+  const [open, setOpen] = useState(() => { try { return localStorage.getItem('joinus.jobsOpen') === '1'; } catch { return false; } });
+  const toggleOpen = () => setOpen(value => { const next = !value; try { localStorage.setItem('joinus.jobsOpen', next ? '1' : '0'); } catch { /* not remembered */ } return next; });
   const [editing, setEditing] = useState<Partial<Job> | null>(null);
   const [busy, setBusy] = useState(false);
   // The real `branches` table — includes internal-only ones (e.g. an
@@ -154,12 +157,16 @@ export default function JobPostingsPanel({ notify }: { notify: Notify }) {
   };
 
   return (
-    <div className="bg-white border border-gray-100 rounded-2xl p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2"><Briefcase size={16} /> الوظائف المتاحة (تظهر في صفحة التوظيف بالموقع)</h3>
+    <div className={`bg-white border border-gray-100 rounded-2xl px-4 ${open ? 'py-3 space-y-3' : 'py-2'}`}>
+      <div className="flex items-center justify-between gap-2">
+        <button type="button" aria-expanded={open} onClick={toggleOpen} className="flex min-w-0 items-center gap-2 text-right text-sm font-bold text-slate-700">
+          <Briefcase size={16} className="shrink-0" /> الوظائف المتاحة
+          {!loading && <span className="truncate text-[11px] font-semibold text-gray-400">{openJobs.length} مفتوحة{waiting > 0 ? ` · ${waiting.toLocaleString('ar-EG-u-nu-latn')} متقدم مستني مراجعة` : ''}</span>}
+          <ChevronDown size={14} className={`shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
         <button onClick={() => setEditing(blank())} className="text-xs px-3 py-1.5 rounded-lg bg-slate-700 text-white font-bold flex items-center gap-1"><Plus size={13} /> وظيفة جديدة</button>
       </div>
-      {loading ? <div className="text-center py-6 text-gray-400"><Loader2 size={18} className="animate-spin mx-auto" /></div>
+      {open && (loading ? <div className="text-center py-6 text-gray-400"><Loader2 size={18} className="animate-spin mx-auto" /></div>
         : jobs.length === 0 ? (
           <div className="text-center py-8 text-sm text-gray-400 border border-dashed border-gray-200 rounded-xl">
             لا توجد وظائف منشورة — اضغط "وظيفة جديدة" وهتظهر على صفحة التوظيف بالموقع فورًا.
@@ -188,7 +195,7 @@ export default function JobPostingsPanel({ notify }: { notify: Notify }) {
               </details>
             )}
           </div>
-        )}
+        ))}
 
       {reviewing && (
         <JobApplicantsPanel

@@ -29,7 +29,7 @@ export function DaqqiOverviewStrip({ overview }: { overview: ReturnType<typeof d
     { label: 'محصّل الروندات المفتوحة', value: `${num(overview.collected)} ج.م`, note: `المتبقي ${num(overview.remaining)} ج.م${overview.prior > 0 ? ` · قبل السيستم ${num(overview.prior)}` : ''}` },
   ];
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+    <div className="hidden grid-cols-2 gap-2 md:grid sm:grid-cols-3 xl:grid-cols-6">
       {tiles.map(tile => (
         <div key={tile.label}
           className={`min-w-0 rounded-xl border px-3 py-2.5 ${tile.tone === 'attention' ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50'}`}>

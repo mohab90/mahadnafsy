@@ -51,7 +51,7 @@ test('a lead call and WhatsApp are real buttons, icon-only, and every icon has a
   assert.ok(read(`${tabs}/leads/WhatsAppLink.tsx`).includes('aria-label={title}'));
   const clientCard = read(`${tabs}/online-clients-sections/ClientCard.tsx`);
   assert.ok(clientCard.includes('href={`tel:${row.phone}`}') && clientCard.includes('href={wa}'));
-  assert.ok(read(`${tabs}/online-clients-sections/ClientsTable.tsx`).includes('sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'));
+  assert.ok(read(`${tabs}/online-clients-sections/ClientsTable.tsx`).includes('sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4'));
 });
 
 test('every plain table is a stack of cards on a phone, and no table pushes the page sideways', () => {

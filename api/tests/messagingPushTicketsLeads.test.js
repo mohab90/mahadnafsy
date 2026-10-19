@@ -297,7 +297,9 @@ test('the hourly pass runs in the working day only, and is scheduled', async () 
 test('a call or a WhatsApp opened from the clients table opens its log', () => {
   const table = read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx');
   assert.match(table, /onClick=\{\(\) => logContact\(row, 'whatsapp'\)\}/);
-  assert.match(table, /onCall=\{\(\) => logContact\(row, 'call'\)\}/);
+  // A call is a plain call: it no longer opens the log by itself («زر اتصال بيفتح تواصل اتوماتك دا غلط»); the log is its own button.
+  assert.doesNotMatch(table, /onCall=/);
+  assert.match(table, /key: 'contact', label: 'تسجيل تواصل'/);
   assert.match(table, /initialType=\{contactType\}/);
   assert.match(read('admin/pages/dashboard/tabs/online-clients-sections/ClientNameCell.tsx'), /href=\{`tel:\$\{row\.phone\}`\} onClick=\{onCall\}/);
   assert.match(read('admin/pages/unified-client/ClientContactLog.tsx'), /\{ type: initialType, date: cairoDateTimeInput\(\)/);

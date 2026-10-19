@@ -56,10 +56,13 @@ test('on a phone the client tabs get the whole row and the filters wrap, never s
   assert.ok(read('admin/pages/dashboard/tabs/online-clients-sections/ViewTabsBar.tsx').includes('flex flex-wrap items-start gap-2 md:flex-nowrap'));
   const filters = read('admin/pages/dashboard/tabs/online-clients-sections/FiltersToolbar.tsx');
   // «خلي الفلاتر بدون سكرول عرضي»: the follow-up chips and the filters are one wrapping row.
-  assert.ok(filters.includes('<div className="mb-2 flex flex-wrap items-center gap-2 [&_select]:min-w-0 [&_select]:flex-1 [&_select]:basis-[calc(50%-0.25rem)] md:[&_select]:flex-none md:[&_select]:basis-auto">'));
+  assert.ok(filters.includes('<div className="mb-2 flex flex-wrap items-center gap-2">'));
+  // On a phone the dropdowns sit behind one «فلاتر» button, two to a line.
+  assert.ok(filters.includes('w-full grid-cols-2 gap-2 md:contents'));
+  assert.ok(filters.includes('md:hidden'));
   assert.doesNotMatch(filters, /overflow-x-auto/);
-  // The cards / table switch and the columns menu share one row.
-  assert.ok(filters.includes('<div className="mb-3 flex flex-wrap items-center justify-between gap-2">'));
+  // The cards / table switch and the columns menu sit side by side at the far end of that same row.
+  assert.ok(filters.includes('<div className="ms-auto flex flex-wrap items-center gap-1.5">'));
 });
 
 test('the logo is the resized one, from our own address, and a breadcrumb link can be pressed', () => {

@@ -362,11 +362,12 @@ export function ClientsTable({
                   place={placeLabel(row)} createdAt={cairoDay(row.createdAt) || ''}
                   courses={courseRows.map(course => ({ id: course.cid, label: course.label, expected: course.expected, paid: course.paid, remaining: course.remaining, currency: course.cur }))}
                   statusCell={statusCell} salesCell={salesCell} housingCell={housingCell}
+                  housing={isDaqqiClientsTab ? (rowHousing ? { text: `روند ${rowNeed?.roundCodes.length ? rowNeed.roundCodes.join('، ') : rowHousing.roundCode}${missingTitles.length ? ' · لسه: ' + missingTitles.join('، ') : ''}`, housed: missingTitles.length === 0 } : { text: 'غير مسكّن', housed: false }) : null}
                   nextInstallment={nextInst ? { text: `قسط ${nextInst.dueDate} · ${Math.round(nextInst.amount).toLocaleString('ar-EG-u-nu-latn')} ${currFmt(nextInst.currency)}`, tone: instTone } : null}
                   followUp={follow.contactDate ? { text: `متابعة ${follow.contactDate}`, tone: contactTone } : null}
                   lastLine={lastComm ? (lastComm.outcome || lastComm.notes || '') : ''}
                   primary={primary} secondary={secondary}
-                  onCall={() => logContact(row, 'call')} onWhats={() => logContact(row, 'whatsapp')}
+                  onWhats={() => logContact(row, 'whatsapp')}
                   certificates={issued.length > 0 ? <div className="flex flex-wrap gap-1">{issued.slice(0, 3).map((cert, index) => <IssuedCertificateBadge key={index} cert={cert} />)}</div> : null}
                 />
               );
@@ -381,7 +382,7 @@ export function ClientsTable({
                   }} />
                 </td>
                 <td className="px-2 py-2 border border-gray-200">
-                  <ClientNameCell row={row} clientCode={clientCode} navigate={navigate} onCall={() => logContact(row, 'call')} />
+                  <ClientNameCell row={row} clientCode={clientCode} navigate={navigate} />
                 </td>
                 {vc.branch && !isDaqqiClientsTab && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] whitespace-nowrap"><span className="rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">{placeLabel(row)}</span></td>}
                 {vc.createdAt  && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{cairoDay(row.createdAt)||'—'}</td>}
@@ -451,7 +452,7 @@ export function ClientsTable({
                   )}
                   {ci === 0 && (
                     <td rowSpan={rowSpan} className="px-2 py-2 border border-gray-200 align-top">
-                      <ClientNameCell row={row} clientCode={clientCode} navigate={navigate} onCall={() => logContact(row, 'call')} />
+                      <ClientNameCell row={row} clientCode={clientCode} navigate={navigate} />
                     </td>
                   )}
                   {vc.branch && !isDaqqiClientsTab && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] whitespace-nowrap"><span className="rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">{placeLabel(row)}</span></td>}
@@ -515,7 +516,7 @@ export function ClientsTable({
   return (
     <div>
       {layout === 'cards' ? (
-        <div className="grid items-start gap-2.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">{renderRows()}</div>
+        <div className="grid items-start gap-2.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">{renderRows()}</div>
       ) : (
       <div className="overflow-x-auto">
       <table className="w-full border-collapse text-[12px]" dir="rtl">

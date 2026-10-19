@@ -55,5 +55,5 @@ test('the online clients table filters by follow-up with the rule the row shows'
   const helper = read('admin/lib/clientFollowUp.ts');
   assert.match(helper, /installmentDate/);
   const bar = read('admin/pages/dashboard/tabs/online-clients-sections/FiltersToolbar.tsx');
-  assert.match(bar, /متابعات النهاردة/);
+  assert.match(bar, /متابعات <\/span>النهاردة/);
 });
