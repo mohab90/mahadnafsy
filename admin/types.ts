@@ -447,6 +447,7 @@ export interface PaymentHistoryEntry {
   paymentType?: PaymentItemType;
   paymentMethod?: string;       // e.g. خزنة الفرع، فودافون كاش، انستا باي …
   fromAccountNumber?: string;   // Bank account / wallet number the transfer was made FROM
+  senderName?: string;          // Name of whoever sent the transfer
   transactionId?: string;       // Payment transaction / operation reference number
   isInstallment?: boolean;      // false/undefined = new booking, true = installment
   courseId?: string;            // Which course this payment applies to

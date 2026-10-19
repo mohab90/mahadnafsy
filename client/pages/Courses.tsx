@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Filter, Search, BookOpen, Users, Play, Award } from 'lucide-react';
+import { Search, BookOpen, Users, Play, Award } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import CourseCard from '../components/CourseCard';
 import PageHeader from '../components/PageHeader';
@@ -14,28 +14,27 @@ const Pill: React.FC<{ value: string; current: string; onPick: (value: string) =
       value={value}
       aria-pressed={on}
       onClick={() => onPick(value)}
-      className={`min-h-[44px] flex-none whitespace-nowrap rounded-full border px-5 text-[15px] font-extrabold transition ${on ? 'border-ink bg-ink text-white shadow-lg' : 'border-line bg-paper text-muted-strong hover:border-ink/30'}`}
+      className={`min-h-[44px] flex-none whitespace-nowrap rounded-full border px-4 text-[14px] font-extrabold transition ${on ? 'border-ink bg-ink text-white shadow-lg' : 'border-line bg-paper text-muted-strong hover:border-ink/30'}`}
     >
       {children}
     </button>
   );
 };
 
-const pillRow = '-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0';
+// One line on a desktop; on a phone the pills slide sideways instead of wrapping into rows.
+const pillRow = '-mx-1 flex gap-2 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] lg:mx-0 lg:flex-nowrap lg:justify-center lg:overflow-visible lg:px-0';
 
 const Courses: React.FC = () => {
   const { courses, content, currency } = useSiteData();
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedType, setSelectedType] = useState<string>('All');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
 
   useSeo({ title: 'الدبلومات والكورسات | معهد الدراسات النفسية', path: '/courses', description: 'دبلومات معتمدة في الصحة النفسية والعلاج النفسي — برامج تدريبية بشهادات موثقة من معهد الدراسات النفسية.' });
 
   const filteredCourses = courses.filter(course => {
     const matchesSearch = (course.title || '').includes(searchTerm) || (course.description || '').includes(searchTerm);
-    const matchesType = selectedType === 'All' || course.type === selectedType;
     const matchesCategory = selectedCategory === 'All' || course.category === selectedCategory;
-    return matchesSearch && matchesType && matchesCategory;
+    return matchesSearch && matchesCategory;
   });
 
   return (
@@ -65,40 +64,27 @@ const Courses: React.FC = () => {
 
       <section className="py-10 sm:py-14">
         <div className="container mx-auto px-4">
-          {/* Search and filters */}
-          <div className="mb-8 space-y-4 sm:mb-10">
-            <div className="relative lg:max-w-md">
-              <Search className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-muted-soft" size={20} />
+          {/* Search and the fields (التخصصات), on one centred row. The study-system filter («كل الأنظمة / مسجل / بث / مختلط»)
+              is gone: it split a short catalogue into groups of one or two. */}
+          <div className="mb-8 flex flex-col items-stretch gap-3 rounded-[28px] border border-line bg-paper p-3 shadow-sm sm:mb-10 lg:mx-auto lg:max-w-5xl lg:flex-row lg:items-center lg:justify-center lg:gap-4 lg:rounded-full lg:py-2.5 lg:pl-3 lg:pr-5">
+            <div className="relative lg:w-72 lg:flex-none">
+              <Search className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-muted-soft" size={19} />
               <input
                 type="text"
                 placeholder={content['courses.searchPlaceholder'] || 'ابحث عن دبلومة...'}
                 aria-label={content['courses.searchPlaceholder'] || 'ابحث عن دبلومة...'}
-                className="min-h-[52px] w-full rounded-2xl border border-line-strong bg-paper pl-4 pr-12 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-600/10"
+                className="min-h-[46px] w-full rounded-full border border-line-strong bg-white pl-4 pr-11 text-[15px] text-ink outline-none transition placeholder:text-muted-faint focus:border-primary-600 focus:ring-4 focus:ring-primary-600/10"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-
-            <p className="flex items-center gap-1.5 text-[13px] font-bold text-muted-strong">
-              <Filter size={15} className="text-gold-deep" />
-              {content['courses.filterLabel'] || 'تصفية حسب:'}
-            </p>
-
-            <div role="group" aria-label="نظام الدراسة" className={pillRow}>
-              <Pill value="All" current={selectedType} onPick={setSelectedType}>{content['courses.types.all'] || 'كل الأنظمة'}</Pill>
-              <Pill value="Recorded" current={selectedType} onPick={setSelectedType}>{content['courses.types.recorded'] || 'مسجل'}</Pill>
-              <Pill value="Live" current={selectedType} onPick={setSelectedType}>{content['courses.types.live'] || 'بث مباشر'}</Pill>
-              <Pill value="Mix" current={selectedType} onPick={setSelectedType}>{content['courses.types.mix'] || 'مختلط'}</Pill>
-            </div>
-
-            <div role="group" aria-label="التخصص" className={pillRow}>
-              <Pill value="All" current={selectedCategory} onPick={setSelectedCategory}>{content['courses.categories.all'] || 'كل التخصصات'}</Pill>
+            <span aria-hidden="true" className="hidden h-7 w-px flex-none bg-line lg:block" />
+            <div role="group" aria-label="المجال" className={pillRow}>
+              <Pill value="All" current={selectedCategory} onPick={setSelectedCategory}>{content['courses.categories.all'] || 'كل المجالات'}</Pill>
               <Pill value="Therapy" current={selectedCategory} onPick={setSelectedCategory}>{content['courses.categories.therapy'] || 'علاج نفسي'}</Pill>
               <Pill value="Child" current={selectedCategory} onPick={setSelectedCategory}>{content['courses.categories.child'] || 'أطفال ومراهقين'}</Pill>
               <Pill value="Diagnosis" current={selectedCategory} onPick={setSelectedCategory}>{content['courses.categories.diagnosis'] || 'تشخيص'}</Pill>
-              {/* 'General' is the default the API writes and the largest group
-                  on the site, and it was the one category with no way to
-                  filter to it. */}
+              {/* 'General' is the default the API writes and the largest group on the site. */}
               <Pill value="General" current={selectedCategory} onPick={setSelectedCategory}>{content['courses.categories.general'] || 'عام'}</Pill>
             </div>
           </div>

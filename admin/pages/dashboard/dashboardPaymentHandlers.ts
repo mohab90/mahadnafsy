@@ -70,7 +70,7 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
   // transaction number is unique, so the first payment of the save carries it and the others name it in their notes.
   const noteParts = [subPayDraft.note, subPayDraft.nationalId ? `ر.ق: ${subPayDraft.nationalId}` : ''].filter(Boolean);
   const txnNote = subPayDraft.transactionId ? `رقم العملية: ${subPayDraft.transactionId}` : '';
-  const txnFields = { transactionId: subPayDraft.transactionId || undefined, fromAccountNumber: subPayDraft.transferRef || undefined };
+  const txnFields = { transactionId: subPayDraft.transactionId || undefined, fromAccountNumber: subPayDraft.transferRef || undefined, senderName: subPayDraft.senderName || undefined };
   const isMultiCourse = subPayDraft.paymentType === 'course' && subPayDraft.bookingType === 'new_booking';
 
   let updated = { ...freshSub };
@@ -102,7 +102,9 @@ export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPay
         courseId: isBundleItem ? undefined : (item.courseId || undefined),
         bundleId: isBundleItem ? (bId || undefined) : undefined,
         note: [noteParts.join(' | '), itemIndex > 0 ? txnNote : '', isBundleItem && bObj ? `مسار تعليمي: ${bObj.title}` : undefined].filter(Boolean).join(' | ') || undefined,
-        ...(itemIndex === 0 ? txnFields : {}),
+        // The operation number is unique, so only the first payment carries it; who sent the money and from where
+        // is true of every one of them.
+        ...(itemIndex === 0 ? txnFields : { fromAccountNumber: txnFields.fromAccountNumber, senderName: txnFields.senderName }),
         paymentMethod: subPayDraft.paymentMethod || undefined,
         at: subPayDraft.date,
         staffId: currentStaff?.id || undefined,
@@ -473,6 +475,7 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
         paymentMethod: leadPayDraft.paymentMethod || undefined,
         transactionId: leadPayDraft.transactionId || undefined,
         fromAccountNumber: leadPayDraft.transferRef || undefined,
+        senderName: leadPayDraft.senderName || undefined,
         at: leadPayDraft.date,
         status: 'paid',
         source: isReceptionDaqqi ? 'reception' : 'staff',
@@ -497,6 +500,7 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
       paymentMethod: leadPayDraft.paymentMethod || undefined,
       transactionId: leadPayDraft.transactionId || undefined,
       fromAccountNumber: leadPayDraft.transferRef || undefined,
+      senderName: leadPayDraft.senderName || undefined,
       at: leadPayDraft.date,
       status: 'paid',
       source: isReceptionDaqqi ? 'reception' : 'staff',
@@ -517,6 +521,7 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
       paymentMethod: leadPayDraft.paymentMethod || undefined,
       transactionId: leadPayDraft.transactionId || undefined,
       fromAccountNumber: leadPayDraft.transferRef || undefined,
+      senderName: leadPayDraft.senderName || undefined,
       at: leadPayDraft.date,
       status: 'paid',
       source: isReceptionDaqqi ? 'reception' : 'staff',

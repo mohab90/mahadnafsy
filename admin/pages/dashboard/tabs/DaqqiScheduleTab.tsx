@@ -405,6 +405,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, roundsOverride, hideCreateR
         transactionId: daqqiPayDraft.transactionId || undefined,
         paymentMethod: daqqiPayDraft.paymentMethod || undefined,
         fromAccountNumber: daqqiPayDraft.fromAccountNumber || undefined,
+        senderName: daqqiPayDraft.senderName || undefined,
         source: 'daqqi' as const,
         // Taken at the Dokki desk, so it is the Dokki branch's money — the vault, the branch
         // P&L and the owner's daily report read this column, and a client filed under another

@@ -277,7 +277,7 @@ export default function StaffPaymentsTab({ notify, canReview, canSeeRefunds }: {
                         </div>
                         <div className="truncate text-[11px] text-gray-500">
                           {titleOf(row)} · {paymentMethodLabel(row.paymentMethod) || '—'}
-                          {row.transactionId ? ` · #${row.transactionId}` : ''}{row.staffName ? ` · سجّلها ${row.staffName}` : ''}
+                          {row.transactionId ? ` · #${row.transactionId}` : ''}{row.senderName ? ` · المحوّل: ${row.senderName}` : ''}{row.fromAccountNumber ? ` · ${row.fromAccountNumber}` : ''}{row.staffName ? ` · سجّلها ${row.staffName}` : ''}
                         </div>
                       </div>
                       <span className="text-sm font-black text-gray-900">{inCurrency(row.amount, row.currency)}</span>

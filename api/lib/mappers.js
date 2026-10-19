@@ -340,6 +340,7 @@ function mapSubscriber(r) {
       staffId: p.staff_id || p.staffId || null,
       staffName: p.staff_name || p.staffName || null,
       fromAccountNumber: p.from_account || p.fromAccountNumber || null,
+      senderName: p.sender_name || p.senderName || null,
       source: p.source || null,
       itemTitle: p.item_title || p.itemTitle || null,
       certType: p.cert_type || p.certType || null,

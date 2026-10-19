@@ -304,7 +304,10 @@ async function recordSubscriberPayment(req, res) {
         client_code: null,
       };
     }
-    if (!financialRecordMatches(scope, subRow)) {
+    // A client being registered by this very booking belongs to nobody yet (assigned_* are null), so the
+    // ownership rule can only refuse it — «مسئول تحصيل بيضيف مشترك جديد في الأونلاين بيقوله العميل مع موظف تاني
+    // وهو أصلاً مش موجود». The branch the desk may book into is still enforced by resolveFinancialScope above.
+    if (!createFromDraft && !financialRecordMatches(scope, subRow)) {
       return res.status(403).json({ error: 'العميل ده خارج نطاق صلاحياتك في الدفع — ده عميل مسئول عنه موظف أو فرع تاني.', code: 'SUBSCRIBER_OUT_OF_SCOPE' });
     }
     // «متخليش السيستم يقبل عميل دفع بدون رقم تليفون حقيقي»: money is recorded
@@ -860,8 +863,8 @@ async function recordSubscriberPayment(req, res) {
       `INSERT INTO payments
          (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method,
           transaction_id, is_installment, course_expected, date, note, status, staff_id, staff_name,
-           from_account, source, item_title, cert_type, certificate_request_id, tenant_id, branch, branch_id, receipt_no)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+           from_account, sender_name, source, item_title, cert_type, certificate_request_id, tenant_id, branch, branch_id, receipt_no)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         id, subscriber_id,
         courseId, bundleId,
@@ -878,6 +881,7 @@ async function recordSubscriberPayment(req, res) {
         resolvedStaffId,
         resolvedStaffName,
         sanitize(payment.fromAccountNumber || payment.from_account || '', 100) || null,
+        sanitize(payment.senderName || payment.sender_name || '', 255) || null,
         resolvedSource,
         sanitize(payment.itemTitle || payment.item_title || '', 255) || null,
         certType,
@@ -1188,7 +1192,7 @@ const requestRow = row => {
     payment: {
       courseId: body.payment?.courseId || null, bundleId: body.payment?.bundleId || null,
       paymentMethod: body.payment?.paymentMethod || null, transactionId: body.payment?.transactionId || null,
-      fromAccountNumber: body.payment?.fromAccountNumber || null, date: body.payment?.date || body.payment?.at || null,
+      fromAccountNumber: body.payment?.fromAccountNumber || null, senderName: body.payment?.senderName || null, date: body.payment?.date || body.payment?.at || null,
       isInstallment: !!body.payment?.isInstallment, courseExpected: body.payment?.courseExpected ?? null,
       note: body.payment?.note || null, paymentType: body.payment?.paymentType || null,
     },

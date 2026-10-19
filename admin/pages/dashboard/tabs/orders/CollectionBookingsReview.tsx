@@ -12,11 +12,11 @@ type Notify = (type: 'success' | 'error' | 'info', message: string) => void;
 type BookingRequest = {
   id: string; name: string; phone: string | null; email: string | null; amount: number; currency: string;
   requestedByName: string | null; createdAt: string;
-  payment: { courseId: string | null; bundleId: string | null; paymentMethod: string | null; transactionId: string | null; date: string | null; isInstallment: boolean; courseExpected: number | null; note: string | null };
+  payment: { courseId: string | null; bundleId: string | null; paymentMethod: string | null; transactionId: string | null; senderName?: string | null; fromAccountNumber?: string | null; date: string | null; isInstallment: boolean; courseExpected: number | null; note: string | null };
 };
 type PendingPayment = {
   id: string; subscriberName: string; subscriberClientCode: string | null; amount: number; currency: string;
-  paymentMethod: string | null; transactionId: string | null; at: string; staffName: string | null; staffRole: string | null;
+  paymentMethod: string | null; transactionId: string | null; senderName?: string | null; fromAccountNumber?: string | null; at: string; staffName: string | null; staffRole: string | null;
   itemTitle: string | null; courseTitleAr: string | null; courseTitle: string | null; paymentType: string;
 };
 type Target =
@@ -118,7 +118,7 @@ export function CollectionBookingsReview({ notify, onChanged }: { notify: Notify
               </div>
               <div className="text-[11px] text-gray-500">
                 {itemTitle(row.payment.courseId, row.payment.bundleId)} · {row.payment.paymentMethod || 'بدون وسيلة'}
-                {row.payment.transactionId ? ` · #${row.payment.transactionId}` : ''} · سجّله {row.requestedByName || '—'} · {cairoDay(row.createdAt)}
+                {row.payment.transactionId ? ` · #${row.payment.transactionId}` : ''}{row.payment.senderName ? ` · المحوّل: ${row.payment.senderName}` : ''}{row.payment.fromAccountNumber ? ` · ${row.payment.fromAccountNumber}` : ''} · سجّله {row.requestedByName || '—'} · {cairoDay(row.createdAt)}
               </div>
             </div>
             <span className="font-black text-gray-900">{row.amount.toLocaleString('ar-EG-u-nu-latn')} <span className="text-[10px] font-bold text-gray-400">{row.currency}</span></span>
@@ -139,7 +139,8 @@ export function CollectionBookingsReview({ notify, onChanged }: { notify: Notify
               </div>
               <div className="text-[11px] text-gray-500">
                 {row.itemTitle || row.courseTitleAr || row.courseTitle || row.paymentType} · {row.paymentMethod || 'بدون وسيلة'}
-                {row.transactionId ? ` · #${row.transactionId}` : ''} · سجّلها {row.staffName || '—'} · {cairoDay(row.at)}
+                {row.transactionId ? ` · #${row.transactionId}` : ''}
+                {row.senderName ? ` · المحوّل: ${row.senderName}` : ''}{row.fromAccountNumber ? ` · ${row.fromAccountNumber}` : ''} · سجّلها {row.staffName || '—'} · {cairoDay(row.at)}
               </div>
             </div>
             <span className="font-black text-gray-900">{row.amount.toLocaleString('ar-EG-u-nu-latn')} <span className="text-[10px] font-bold text-gray-400">{row.currency}</span></span>

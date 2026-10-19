@@ -21,6 +21,9 @@ type RegisterRow = {
   service: string;
   channel: string;
   transactionId: string | null;
+  /** The transfer as the desk typed it: who sent it, and from which number or account. */
+  senderName?: string | null;
+  fromAccount?: string | null;
   status: string;
   installment: boolean;
   note: string | null;
@@ -114,9 +117,9 @@ export function PaymentsRegister({ branch, initialMethod }: { branch?: string; i
         rows.push(...chunk.rows);
       }
       downloadCsv('payments', [
-        ['رقم العملية', 'التاريخ', 'العميل', 'كود العميل', 'الخدمة', 'النوع', 'القناة', 'المبلغ', 'العملة', 'القائم بالعملية', 'رقم التحويل', 'الحالة'],
+        ['رقم العملية', 'التاريخ', 'العميل', 'كود العميل', 'الخدمة', 'النوع', 'القناة', 'المبلغ', 'العملة', 'القائم بالعملية', 'رقم العملية (تحويل)', 'اسم المحوّل', 'تليفون / حساب المحوّل', 'الحالة'],
         ...rows.map(r => [paymentNumber(r.number, r.receiptBranch), cairoDay(r.date), r.client.name || '', r.client.code || '', r.service, r.typeLabel, r.channel,
-          String(r.amount), r.currency, r.recordedBy || '', r.transactionId || '', STATUS_LABEL[r.status] || r.status]),
+          String(r.amount), r.currency, r.recordedBy || '', r.transactionId || '', r.senderName || '', r.fromAccount || '', STATUS_LABEL[r.status] || r.status]),
       ]);
     } finally { setExporting(false); }
   }, [data, query]);
@@ -206,7 +209,8 @@ export function PaymentsRegister({ branch, initialMethod }: { branch?: string; i
                 <th className="px-3 py-3">القناة</th>
                 <th className="px-3 py-3 text-left">المبلغ</th>
                 <th className="px-3 py-3">القائم بالعملية</th>
-                <th className="px-3 py-3">رقم التحويل / ملاحظة</th>
+                <th className="px-3 py-3">بيانات التحويل</th>
+                <th className="px-3 py-3">ملاحظة</th>
                 <th className="px-3 py-3 w-12">إيصال</th>
               </tr>
             </thead>
@@ -234,7 +238,13 @@ export function PaymentsRegister({ branch, initialMethod }: { branch?: string; i
                     {row.status !== 'paid' && <p className="text-[10px] text-amber-600">{STATUS_LABEL[row.status] || row.status}</p>}
                   </td>
                   <td className="px-3 py-2.5 text-xs text-gray-700">{row.recordedBy || <span className="text-gray-400">—</span>}</td>
-                  <td className="px-3 py-2.5 text-xs text-gray-400 max-w-[180px] truncate" title={row.note || ''}>{row.transactionId || row.note || ''}</td>
+                  <td className="px-3 py-2.5 text-xs min-w-[150px]">
+                    {row.transactionId && <div className="font-mono font-bold text-gray-700" dir="ltr">#{row.transactionId}</div>}
+                    {row.senderName && <div className="font-bold text-gray-600">{row.senderName}</div>}
+                    {row.fromAccount && <div className="font-mono text-gray-500" dir="ltr">{row.fromAccount}</div>}
+                    {!row.transactionId && !row.senderName && !row.fromAccount && <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="px-3 py-2.5 text-xs text-gray-400 max-w-[180px] truncate" title={row.note || ''}>{row.note || ''}</td>
                   <td className="px-3 py-2.5">
                     <button type="button" onClick={() => printReceipt(row)} title="طباعة إيصال"
                       className="text-[11px] bg-gray-100 hover:bg-emerald-50 hover:text-emerald-700 text-gray-600 px-2 py-1 rounded-lg"><Receipt size={11} /></button>
@@ -242,9 +252,9 @@ export function PaymentsRegister({ branch, initialMethod }: { branch?: string; i
                 </tr>
               ))}
               {data && data.rows.length === 0 && (
-                <tr><td colSpan={10} className="py-12 text-center text-gray-400 text-sm">{loading ? 'جاري التحميل…' : 'لا توجد مدفوعات مطابقة للفلتر'}</td></tr>
+                <tr><td colSpan={11} className="py-12 text-center text-gray-400 text-sm">{loading ? 'جاري التحميل…' : 'لا توجد مدفوعات مطابقة للفلتر'}</td></tr>
               )}
-              {!data && <tr><td colSpan={10} className="py-12 text-center text-gray-400 text-sm">جاري التحميل…</td></tr>}
+              {!data && <tr><td colSpan={11} className="py-12 text-center text-gray-400 text-sm">جاري التحميل…</td></tr>}
             </tbody>
           </table>
         </div>

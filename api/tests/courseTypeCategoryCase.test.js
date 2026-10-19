@@ -47,7 +47,8 @@ test('the spellings the mapper emits are the ones the screens compare', () => {
     assert.match(types, /category: 'Therapy' \| 'Diagnosis' \| 'Child' \| 'General';/);
   }
   const courses = codeOnly(read('client/pages/Courses.tsx'));
-  for (const value of ['Recorded', 'Live', 'Mix', 'Therapy', 'Child', 'Diagnosis']) {
+  // The study-system filter (Recorded / Live / Mix) was dropped on 19 Oct 2026: the page filters by field only.
+  for (const value of ['Therapy', 'Child', 'Diagnosis']) {
     assert.match(courses, new RegExp(`value="${value}"`), `the filter no longer offers ${value}`);
   }
   // 'General' is the write path's default and the largest group on the site,

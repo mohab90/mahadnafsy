@@ -110,6 +110,7 @@ export async function createClientWithPayment(
       paymentMethod: draft.paymentMethod,
       transactionId: draft.transactionId || undefined,
       fromAccountNumber: draft.fromAccountNumber || undefined,
+      senderName: draft.senderName || undefined,
       at: draft.date,
       note: draft.note || undefined,
       source: options.source,

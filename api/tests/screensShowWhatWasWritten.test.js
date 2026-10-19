@@ -54,9 +54,9 @@ test('the transaction number typed in the payment dialog is sent as the payment\
   assert.ok(page.includes("draft.transactionId ? `رقم العملية: ${draft.transactionId}` : undefined"), 'the added rows name it in their notes');
 
   const handler = read('admin/pages/dashboard/dashboardPaymentHandlers.ts');
-  assert.ok(handler.includes('const txnFields = { transactionId: subPayDraft.transactionId || undefined, fromAccountNumber: subPayDraft.transferRef || undefined };'));
+  assert.ok(handler.includes('const txnFields = { transactionId: subPayDraft.transactionId || undefined, fromAccountNumber: subPayDraft.transferRef || undefined, senderName: subPayDraft.senderName || undefined };'));
   assert.ok(!/const noteParts = \[subPayDraft\.note, subPayDraft\.transactionId/.test(handler), 'the number and the transferring account are not note text');
-  assert.ok(handler.includes('...(itemIndex === 0 ? txnFields : {}),'), 'the first of several courses carries it');
+  assert.ok(handler.includes('...(itemIndex === 0 ? txnFields : { fromAccountNumber: txnFields.fromAccountNumber, senderName: txnFields.senderName }),'), 'the first of several courses carries it');
   assert.ok(handler.includes('...txnFields,'), 'a single payment carries it');
 });
 

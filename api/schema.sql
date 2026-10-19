@@ -4132,6 +4132,7 @@ CREATE TABLE `payments` (
   `deleted_at` timestamp NULL DEFAULT NULL,
   `staff_name` varchar(255) DEFAULT NULL,
   `from_account` varchar(255) DEFAULT NULL,
+  `sender_name` varchar(255) DEFAULT NULL,
   `source` varchar(50) DEFAULT NULL,
   `item_title` varchar(255) DEFAULT NULL,
   `cert_type` varchar(100) DEFAULT NULL,

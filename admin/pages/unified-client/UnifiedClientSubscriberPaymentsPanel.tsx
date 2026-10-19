@@ -202,6 +202,8 @@ export function UnifiedClientSubscriberPaymentsPanel({
                     {p.staffName && <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">بواسطة: {p.staffName}</span>}
                     <span>{cairoDay(p.at)}</span>
                     {p.transactionId && <span className="italic">رقم العملية: #{p.transactionId}</span>}
+                    {p.senderName && <span className="italic">المحوّل: {p.senderName}</span>}
+                    {p.fromAccountNumber && <span className="italic" dir="ltr">{p.fromAccountNumber}</span>}
                     {p.note && !p.transactionId && <span className="italic">{p.note}</span>}
                   </div>
                 </div>

@@ -431,7 +431,7 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
     const [payRows] = await pool.query(
       `SELECT id, subscriber_id, course_id, bundle_id, amount, currency,
               payment_type, payment_method, transaction_id, is_installment, course_expected, \`date\`, note,
-              status, staff_id, staff_name, from_account, source, item_title, cert_type,
+              status, staff_id, staff_name, from_account, sender_name, source, item_title, cert_type,
               certificate_request_id, branch
        FROM payments
        WHERE tenant_id=? AND subscriber_id IN (${placeholders}) AND deleted_at IS NULL
@@ -459,7 +459,7 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
         status: p.status || 'paid',
         staffId: p.staff_id || null,
         staffName: executors.get(String(p.id)) ?? null,
-        fromAccountNumber: p.from_account || null,
+        fromAccountNumber: p.from_account || null, senderName: p.sender_name || null,
         source: p.source || null,
         itemTitle: p.item_title || null,
         certType: p.cert_type || null,
@@ -629,7 +629,7 @@ async function shapeStaffSubscribers(tenantId, rows, { lite = false } = {}) {
   const [payRows] = await pool.query(
     `SELECT id, subscriber_id, course_id, bundle_id, amount, currency,
             payment_type, payment_method, transaction_id, is_installment, course_expected, \`date\`, note,
-            status, staff_id, staff_name, from_account, source, item_title, cert_type,
+            status, staff_id, staff_name, from_account, sender_name, source, item_title, cert_type,
             certificate_request_id, branch
      FROM payments
      WHERE tenant_id=? AND subscriber_id IN (${ids.map(() => '?').join(',')}) AND deleted_at IS NULL
@@ -649,7 +649,7 @@ async function shapeStaffSubscribers(tenantId, rows, { lite = false } = {}) {
       courseExpected: p.course_expected != null ? Number(p.course_expected) : undefined,
       note: p.note||null, at: dateStr,
       status: p.status||'paid', staffId: p.staff_id||null, staffName: executors.get(String(p.id)) ?? null,
-      fromAccountNumber: p.from_account||null, source: p.source||null, itemTitle: p.item_title||null,
+      fromAccountNumber: p.from_account||null, senderName: p.sender_name||null, source: p.source||null, itemTitle: p.item_title||null,
       certType: p.cert_type || null, certId: p.certificate_request_id || null, branch: p.branch || null,
     });
   });
@@ -933,7 +933,7 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, requir
     const [payRows] = await pool.query(
       `SELECT id, subscriber_id, course_id, bundle_id, amount, currency,
               payment_type, payment_method, transaction_id, is_installment, \`date\`, note,
-              status, staff_id, staff_name, from_account, source, item_title
+              status, staff_id, staff_name, from_account, sender_name, source, item_title
        FROM payments
        WHERE tenant_id=? AND subscriber_id IN (${ids.map(() => '?').join(',')}) AND deleted_at IS NULL
        ORDER BY \`date\` ASC`,
@@ -950,7 +950,7 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, requir
         transactionId: p.transaction_id || null, isInstallment: !!p.is_installment,
         courseId: p.course_id || null, bundleId: p.bundle_id || null, note: p.note || null, at: dateStr,
         status: p.status || 'paid', staffId: p.staff_id || null,
-        staffName: executors.get(String(p.id)) ?? null, fromAccountNumber: p.from_account || null,
+        staffName: executors.get(String(p.id)) ?? null, fromAccountNumber: p.from_account || null, senderName: p.sender_name || null,
         source: p.source || null, itemTitle: p.item_title || null,
       });
     });
@@ -1006,7 +1006,7 @@ router.get('/api/staff/my-collection-clients', requireAuth, requireAdminOrStaff,
     const [payRows] = await pool.query(
       `SELECT id, subscriber_id, course_id, bundle_id, amount, currency,
               payment_type, payment_method, transaction_id, is_installment, \`date\`, note,
-              status, staff_id, staff_name, from_account, source, item_title
+              status, staff_id, staff_name, from_account, sender_name, source, item_title
        FROM payments
        WHERE tenant_id=? AND subscriber_id IN (${ids.map(() => '?').join(',')}) AND deleted_at IS NULL
        ORDER BY \`date\` ASC`,
@@ -1023,7 +1023,7 @@ router.get('/api/staff/my-collection-clients', requireAuth, requireAdminOrStaff,
         transactionId: p.transaction_id || null, isInstallment: !!p.is_installment,
         courseId: p.course_id || null, bundleId: p.bundle_id || null, note: p.note || null, at: dateStr,
         status: p.status || 'paid', staffId: p.staff_id || null,
-        staffName: executors.get(String(p.id)) ?? null, fromAccountNumber: p.from_account || null,
+        staffName: executors.get(String(p.id)) ?? null, fromAccountNumber: p.from_account || null, senderName: p.sender_name || null,
         source: p.source || null, itemTitle: p.item_title || null,
       });
     });
@@ -1082,7 +1082,7 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, requ
     const [payRows] = await pool.query(
       `SELECT id, subscriber_id, course_id, bundle_id, amount, currency,
               payment_type, payment_method, transaction_id, is_installment, \`date\`, note,
-              status, staff_id, staff_name, from_account, source, item_title
+              status, staff_id, staff_name, from_account, sender_name, source, item_title
        FROM payments
        WHERE tenant_id=? AND subscriber_id IN (${ids.map(() => '?').join(',')}) AND deleted_at IS NULL
        ORDER BY \`date\` ASC`,
@@ -1099,7 +1099,7 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, requ
         transactionId: p.transaction_id || null, isInstallment: !!p.is_installment,
         courseId: p.course_id || null, bundleId: p.bundle_id || null, note: p.note || null, at: dateStr,
         status: p.status || 'paid', staffId: p.staff_id || null, staffName: executors.get(String(p.id)) ?? null,
-        fromAccountNumber: p.from_account || null, source: p.source || null, itemTitle: p.item_title || null,
+        fromAccountNumber: p.from_account || null, senderName: p.sender_name || null, source: p.source || null, itemTitle: p.item_title || null,
       });
     });
 
@@ -1567,7 +1567,7 @@ router.get('/api/staff/payments', requireAuth, requireAdminOrStaff, requirePermi
       pool.query(
         `SELECT p.id, p.subscriber_id, p.course_id, p.bundle_id, p.amount, p.currency, p.payment_type, p.payment_method,
                 p.transaction_id, p.is_installment, p.course_expected, p.\`date\`, p.note, p.status, p.staff_id, p.staff_name,
-                p.from_account, p.source, p.item_title, p.cert_type, p.certificate_request_id, p.branch,
+                p.from_account, p.sender_name, p.source, p.item_title, p.cert_type, p.certificate_request_id, p.branch,
                 s.name AS client_name, s.client_code, s.email AS client_email
            ${filtered} ORDER BY p.\`date\` DESC, p.created_at DESC LIMIT ? OFFSET ?`, [...baseParams, ...params, limit, offset]),
     ]);
@@ -1582,7 +1582,7 @@ router.get('/api/staff/payments', requireAuth, requireAdminOrStaff, requirePermi
         courseId: p.course_id || null, bundleId: p.bundle_id || null,
         courseExpected: p.course_expected != null ? Number(p.course_expected) : undefined,
         note: p.note || null, at: safeDateOnly(p.date), status: p.status || 'paid', staffId: p.staff_id || null,
-        staffName: executors.get(String(p.id)) ?? p.staff_name ?? null, fromAccountNumber: p.from_account || null,
+        staffName: executors.get(String(p.id)) ?? p.staff_name ?? null, fromAccountNumber: p.from_account || null, senderName: p.sender_name || null,
         source: p.source || null, itemTitle: p.item_title || null, certType: p.cert_type || null,
         certId: p.certificate_request_id || null, branch: p.branch || null,
       })),

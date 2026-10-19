@@ -948,6 +948,9 @@ export const mysqlAdmin = {
   saveConsultation:          (o: AR) => post('/admin/consultations', o),
   updateConsultationStatus:  (id: string, status: string, notes?: string, link?: string) =>
     patch(`/admin/consultations/${id}`, { status, notes, meeting_link: link }),
+  // Any of the three, alone: the desk changes a booking's status, its notes or its session link independently.
+  updateConsultation: (id: string, fields: { status?: string; notes?: string; meeting_link?: string | null }) =>
+    patch(`/admin/consultations/${id}`, fields),
   deleteConsultation: (id: string) => del(`/admin/consultations/${id}`),
 
   // Staff-created refund. The route has existed since refunds were built but

@@ -88,6 +88,7 @@ export function PaymentReviewPanel({ notify, branchFilter, subscribers, reloadSu
           staffId: p.staffId ? String(p.staffId) : undefined,
           staffName: p.staffName ? String(p.staffName) : undefined,
           fromAccountNumber: p.fromAccountNumber ? String(p.fromAccountNumber) : undefined,
+          senderName: p.senderName ? String(p.senderName) : undefined,
           source: p.source ? String(p.source) : undefined,
           itemTitle: String(p.itemTitle || p.courseTitleAr || p.courseTitle || ''),
         } as ReviewPayment));
@@ -280,7 +281,10 @@ export function PaymentReviewPanel({ notify, branchFilter, subscribers, reloadSu
                   </td>
                   <td className="px-4 py-3">
                     <div className="text-xs text-gray-700">{paymentMethodLabel(p.paymentMethod) || '—'}</div>
-                    {p.fromAccountNumber && <div className="text-[11px] text-gray-400 font-mono">{p.fromAccountNumber}</div>}
+                    {/* What the accounts desk matches the payment to the money that arrived by. */}
+                    {p.senderName && <div className="text-[11px] font-bold text-gray-600">المحوّل: {p.senderName}</div>}
+                    {p.fromAccountNumber && <div className="text-[11px] text-gray-500 font-mono" dir="ltr">{p.fromAccountNumber}</div>}
+                    {p.transactionId && <div className="text-[11px] text-gray-500 font-mono" dir="ltr">#{p.transactionId}</div>}
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-600">{p.staffName || '—'}</td>
                   <td className="px-4 py-3">{sourceBadgeEl(p.source, p.paymentMethod)}</td>

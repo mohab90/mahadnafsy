@@ -150,6 +150,7 @@ router.get('/api/admin/payments', requireAuth, requireAdminOrStaff, requirePermi
         staffId: p.staff_id || null,
         staffName: executors.get(String(p.id)) ?? null,
         fromAccountNumber: p.from_account || null,
+        senderName: p.sender_name || null,
         source: p.source || null,
         itemTitle: p.item_title || null,
         certType: p.cert_type || null,
@@ -350,6 +351,7 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requi
         // the review screen has to know whose it is.
         staffRole: p.staff_role || null, linkedTransferId: p.linked_transfer_id || null,
         fromAccountNumber: p.from_account || null,
+        senderName: p.sender_name || null,
         source: p.source || null,
         itemTitle: p.item_title || null, certType: p.cert_type || null,
         certId: p.certificate_request_id || null,

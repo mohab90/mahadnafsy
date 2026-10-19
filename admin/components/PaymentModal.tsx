@@ -50,6 +50,8 @@ export interface PaymentDraft {
   paymentMethod: string;
   transactionId: string;
   fromAccountNumber: string;
+  /** Who sent the transfer (payments.sender_name). */
+  senderName: string;
   date: string;
   note: string;
   extraItems: ExtraPayItem[];
@@ -127,6 +129,7 @@ export const blankPaymentDraft = (opts?: {
   paymentMethod: '',
   transactionId: '',
   fromAccountNumber: '',
+  senderName: '',
   date: cairoDateOnly(),
   note: '',
   extraItems: [],
@@ -803,7 +806,12 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       setPhotoBusy(null);
     }
   };
-  const isValid = !subjectChosen || !certificatesTyped || photoMissing || photoBusy !== null ? false : tierProblem || identityProblem ? false : mode === 'new'
+  // «ويترفضوا»: a transfer is checked against the money that arrived, by its operation number, the sender's name and the
+  // number it came from. A booking taken without them cannot be matched, and the accounts desk rejects it. Cash
+  // (a branch box — «خزنة …») has no sender to name.
+  const transferNeedsDetails = _amtPaid > 0 && !!d.paymentMethod && !/^\s*خزنة/.test(d.paymentMethod);
+  const transferProblem = transferNeedsDetails && (!d.transactionId.trim() || !d.senderName.trim() || !d.fromAccountNumber.trim());
+  const isValid = transferProblem ? false : !subjectChosen || !certificatesTyped || photoMissing || photoBusy !== null ? false : tierProblem || identityProblem ? false : mode === 'new'
     ? hasIdentity && (_amtPaid === 0 || (!!d.paymentMethod && (d.paymentType !== 'course' || !!d.courseId)))
     : _amtPaid > 0 && !!d.paymentMethod && (mode === 'lead' ? !!d.branch : true)
       && (!upgrading || (!!upgradeFrom && d.courseId.startsWith('bundle:')));
@@ -1828,26 +1836,30 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1.5">رقم العملية <span className="text-gray-400 font-normal">(اختياري)</span></label>
-              <input
-                type="text" dir="ltr" placeholder="اختياري"
-                value={d.transactionId}
-                onChange={e => set({ transactionId: e.target.value })}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1.5">رقم المحوّل <span className="text-gray-400 font-normal">(اختياري)</span></label>
-              <input
-                type="text" dir="ltr" placeholder="اختياري"
-                value={d.fromAccountNumber}
-                onChange={e => set({ fromAccountNumber: e.target.value })}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono"
-              />
-            </div>
+          {/* The transfer: its operation number, who sent it and from which number — all three for anything that is not
+              a branch box, since the accounts desk matches the payment to the money that arrived by exactly these. */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {([
+              { key: 'transactionId', label: 'رقم العملية', dir: 'ltr', mono: true },
+              { key: 'senderName', label: 'اسم المحوّل', dir: 'rtl', mono: false },
+              { key: 'fromAccountNumber', label: 'تليفون / حساب المحوّل', dir: 'ltr', mono: true },
+            ] as const).map(field => {
+              const missing = transferNeedsDetails && !d[field.key].trim();
+              return (
+                <div key={field.key}>
+                  <label className="block text-xs font-bold text-gray-600 mb-1.5">
+                    {field.label} {transferNeedsDetails ? <span className="text-red-500">*</span> : <span className="text-gray-400 font-normal">(للتحويلات)</span>}
+                  </label>
+                  <input
+                    type="text" dir={field.dir} value={d[field.key]}
+                    onChange={e => set({ [field.key]: e.target.value } as Partial<PaymentDraft>)}
+                    className={`w-full border rounded-xl px-3 py-2 text-sm ${field.mono ? 'font-mono' : ''} ${missing ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
+                  />
+                </div>
+              );
+            })}
           </div>
+          {transferProblem && <p className="-mt-1 text-[11px] font-bold text-red-600">التحويل لازم يتسجل برقم العملية واسم المحوّل وتليفونه — من غيرهم المحاسب مش بيقدر يطابقه ويترفض.</p>}
           {/* Lead-only: email + national ID */}
           {mode === 'lead' && (
             <div className="grid grid-cols-2 gap-3">

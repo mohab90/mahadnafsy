@@ -239,7 +239,7 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
       const [payRows] = await pool.query(
         `SELECT id, subscriber_id, course_id, bundle_id, amount, currency,
                 payment_type, payment_method, transaction_id, is_installment, course_expected, \`date\`, note,
-                status, staff_id, staff_name, from_account, source, item_title, cert_type,
+                status, staff_id, staff_name, from_account, sender_name, source, item_title, cert_type,
                 certificate_request_id, branch
          FROM payments
          WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL
@@ -254,7 +254,7 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
           courseExpected: p.course_expected != null ? Number(p.course_expected) : undefined,
           note: p.note||null, at: dateStr,
           status: p.status || 'paid', staffId: p.staff_id || null, staffName: p.staff_name || null,
-          fromAccountNumber: p.from_account || null, source: p.source || null, itemTitle: p.item_title || null,
+          fromAccountNumber: p.from_account || null, senderName: p.sender_name || null, source: p.source || null, itemTitle: p.item_title || null,
           certType: p.cert_type || null, certId: p.certificate_request_id || null, branch: p.branch || null };
       });
       const [enrollmentRows] = await pool.query(

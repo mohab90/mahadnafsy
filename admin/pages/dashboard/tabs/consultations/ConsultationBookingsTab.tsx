@@ -1,10 +1,12 @@
 import { useCallback, useMemo, useState } from 'react';
 import { cairoDateOnly } from '../../../../../shared/cairoDate';
-import { CalendarDays, Check, Link2, Phone, Search, Trash2, X } from 'lucide-react';
+import { CalendarDays, Check, ExternalLink, Link2, MessageCircle, Phone, RotateCcw, Search, StickyNote, Trash2, X } from 'lucide-react';
 import { useSiteData } from '../../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { ConsultationItem } from '../../../../types';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
+import { promptDialog } from '../../../../../shared/ui/promptDialog';
+import { waLink } from '../../../../lib/whatsappLink';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -94,6 +96,40 @@ export function ConsultationBookingsTab({ notify }: { notify: NotifyFn }) {
     } finally { setBusyId(''); }
   };
 
+  // The notes and the session link can be written on a booking of any age, not only a new one.
+  const [localNotes, setLocalNotes] = useState<Record<string, string>>({});
+  const [localLinks, setLocalLinks] = useState<Record<string, string>>({});
+  const editNotes = async (item: ConsultationItem) => {
+    const answer = await promptDialog({
+      title: 'ملاحظات الجلسة', message: item.clientName || item.name || '', defaultValue: localNotes[item.id] ?? item.notes ?? '', placeholder: 'اكتب ملاحظاتك', confirmLabel: 'حفظ',
+    });
+    if (answer === null) return;
+    setBusyId(item.id);
+    try {
+      await mysqlAdmin.updateConsultation(item.id, { notes: answer.trim() });
+      setLocalNotes(prev => ({ ...prev, [item.id]: answer.trim() }));
+      notify('success', 'اتحفظت الملاحظات');
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر حفظ الملاحظات');
+    } finally { setBusyId(''); }
+  };
+  const editLink = async (item: ConsultationItem) => {
+    const answer = await promptDialog({
+      title: 'رابط الجلسة', message: item.clientName || item.name || '', defaultValue: localLinks[item.id] ?? item.meetingLink ?? '', placeholder: 'https://…', confirmLabel: 'حفظ',
+    });
+    if (answer === null) return;
+    const link = answer.trim();
+    if (link && !/^https?:\/\//i.test(link)) { notify('error', 'الرابط لازم يبدأ بـ https://'); return; }
+    setBusyId(item.id);
+    try {
+      await mysqlAdmin.updateConsultation(item.id, { meeting_link: link || null });
+      setLocalLinks(prev => ({ ...prev, [item.id]: link }));
+      notify('success', link ? 'اتحفظ رابط الجلسة' : 'اتشال رابط الجلسة');
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر حفظ الرابط');
+    } finally { setBusyId(''); }
+  };
+
   const remove = async (item: ConsultationItem) => {
     if (!await confirmDialog(`حذف حجز «${item.clientName || item.name || ''}»؟`)) return;
     setBusyId(item.id);
@@ -147,95 +183,97 @@ export function ConsultationBookingsTab({ notify }: { notify: NotifyFn }) {
           مفيش حجوزات في العرض ده.
         </div>
       ) : (
-        <div className="overflow-x-auto border border-gray-200 rounded-2xl bg-white">
-          <table className="w-full text-xs min-w-[900px] border-collapse">
-            <thead className="bg-gray-50 text-gray-600">
-              <tr>{['العميل', 'الدكتور', 'الموعد', 'النوع', 'المبلغ', 'الحالة', 'إجراءات'].map(label =>
-                <th key={label} className="text-right px-3 py-2.5 border-b border-gray-200 font-semibold">{label}</th>)}</tr>
-            </thead>
-            <tbody>
-              {rows.map(item => {
-                const status = statusOf(item);
-                const busy = busyId === item.id;
-                return (
-                  <tr key={item.id} className="hover:bg-gray-50/70 align-top border-b border-gray-100">
-                    <td className="px-3 py-2.5">
-                      <div className="font-bold text-gray-800">{item.clientName || item.name || '—'}</div>
-                      {(item.clientPhone || item.phone) && (
-                        <a href={`tel:${item.clientPhone || item.phone}`} className="text-blue-600 font-semibold flex items-center gap-1">
-                          <Phone size={10} />{item.clientPhone || item.phone}
-                        </a>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5 text-gray-700">{item.therapistName || '—'}</td>
-                    <td className="px-3 py-2.5 whitespace-nowrap">
-                      <div className="text-gray-800 font-semibold">
-                        {item.source === 'site_express' ? 'يتحدد بالتواصل' : (bookingDate(item) || 'بدون تاريخ')}
-                        {item.sessionTime ? ` · ${item.sessionTime}` : ''}
-                      </div>
-                      {item.slotLabel && <div className="text-gray-400 text-[10px]">{item.slotLabel}</div>}
-                      {item.createdAt && <div className="text-gray-400 text-[10px]">وصل {String(item.createdAt).slice(0, 10)}</div>}
-                    </td>
-                    <td className="px-3 py-2.5 text-gray-600">
-                      {item.source === 'site_express' ? 'جلسة سريعة'
-                        : ({ individual: 'فردية', couple: 'زوجية', family: 'أسرية' }[item.sessionType] || item.sessionType || '—')}
-                    </td>
-                    <td className="px-3 py-2.5 font-bold text-gray-800">
+        <div className="space-y-2">
+          {rows.map(item => {
+            const status = statusOf(item);
+            const busy = busyId === item.id;
+            const phone = item.clientPhone || item.phone || '';
+            const wa = waLink(phone);
+            const notes = localNotes[item.id] ?? item.notes;
+            const meetingLink = localLinks[item.id] ?? item.meetingLink;
+            const kind = item.source === 'site_express' ? 'جلسة سريعة'
+              : ({ individual: 'فردية', couple: 'زوجية', family: 'أسرية' }[item.sessionType] || item.sessionType || '');
+            const iconBtn = 'inline-flex h-8 w-8 items-center justify-center rounded-lg border transition disabled:opacity-50';
+            return (
+              <div key={item.id} className="rounded-2xl border border-gray-200 bg-white p-3 text-xs hover:border-blue-200">
+                <div className="grid gap-3 md:grid-cols-[1.3fr_1.4fr_0.9fr_auto] md:items-start">
+                  {/* The client */}
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-extrabold text-gray-900">{item.clientName || item.name || '—'}</div>
+                    {phone && <a href={`tel:${phone}`} dir="ltr" className="flex items-center justify-end gap-1 font-bold text-blue-600 hover:underline"><Phone size={11} />{phone}</a>}
+                    {item.clientEmail && <div className="truncate text-[11px] text-gray-400" dir="ltr">{item.clientEmail}</div>}
+                  </div>
+
+                  {/* The session */}
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="font-bold text-gray-800">
+                      {item.source === 'site_express' ? 'يتحدد بالتواصل' : (bookingDate(item) || 'بدون تاريخ')}
+                      {item.sessionTime ? ` · ${item.sessionTime}` : ''}
+                    </div>
+                    <div className="text-gray-600">{[item.therapistName, kind].filter(Boolean).join(' · ') || '—'}</div>
+                    {item.slotLabel && <div className="text-[10px] text-gray-400">{item.slotLabel}</div>}
+                    {item.createdAt && <div className="text-[10px] text-gray-400">وصل {String(item.createdAt).slice(0, 10)}</div>}
+                  </div>
+
+                  {/* The money */}
+                  <div>
+                    <div className="font-extrabold text-gray-800">
                       {item.amount ? `${Number(item.amount).toLocaleString('ar-EG-u-nu-latn')} ${item.currency || 'ج.م'}` : '—'}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span className={`px-2 py-0.5 rounded-lg border font-bold ${STATUS_STYLE[status] || 'bg-gray-50 text-gray-600 border-gray-200'}`}>
-                        {STATUS_LABEL[status] || status}
-                      </span>
-                      {item.orderId && (
-                        <div className={`mt-1 text-[10px] font-bold ${item.awaitingPayment ? 'text-amber-600' : 'text-emerald-600'}`}>
-                          {item.awaitingPayment ? 'لم يُدفع بعد' : 'مدفوع'}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-2 py-2">
-                      {item.orderOnly ? (
-                        <span className="text-[10px] text-gray-500 leading-4 block max-w-[160px]">
-                          طلب من الموقع قبل التحديث — كلّم العميل، والدفع من «الطلبات والمدفوعات».
-                        </span>
-                      ) : (
-                      <div className="flex items-center gap-1">
-                        {status === 'pending' && (
-                          <button disabled={busy} onClick={() => void setStatus(item, 'confirmed', 'مؤكدة')}
-                            className="h-7 px-2 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold disabled:opacity-50" title="تأكيد الحجز">
-                            <Check size={12} />
-                          </button>
-                        )}
-                        {BOOKED.includes(status) && (
-                          <button disabled={busy} onClick={() => void setStatus(item, 'completed', 'مكتملة')}
-                            className="h-7 px-2 rounded bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold disabled:opacity-50" title="تمت الجلسة">
-                            <Check size={12} />
-                          </button>
-                        )}
-                        {status !== 'cancelled' && (
-                          <button disabled={busy} onClick={() => void setStatus(item, 'cancelled', 'ملغاة')}
-                            className="h-7 px-2 rounded bg-amber-50 text-amber-700 hover:bg-amber-100 font-bold disabled:opacity-50" title="إلغاء">
-                            <X size={12} />
-                          </button>
-                        )}
-                        {item.meetingLink && (
-                          <a href={item.meetingLink} target="_blank" rel="noopener noreferrer"
-                            className="h-7 px-2 rounded bg-gray-50 text-gray-600 hover:bg-gray-100 flex items-center" title="رابط الجلسة">
-                            <Link2 size={12} />
-                          </a>
-                        )}
-                        <button disabled={busy} onClick={() => void remove(item)}
-                          className="h-7 px-2 rounded bg-red-50 text-red-500 hover:bg-red-100 disabled:opacity-50" title="حذف">
-                          <Trash2 size={12} />
-                        </button>
+                    </div>
+                    {item.orderId && (
+                      <div className={`text-[10px] font-bold ${item.awaitingPayment ? 'text-amber-600' : 'text-emerald-600'}`}>
+                        {item.awaitingPayment ? 'لم يُدفع بعد' : 'مدفوع'}
                       </div>
+                    )}
+                  </div>
+
+                  {/* Status and controls: the same on every booking, new or old — an old one can be reopened, noted, called. */}
+                  <div className="space-y-1.5 md:min-w-[220px]">
+                    {item.orderOnly ? (
+                      <span className="block text-[10px] leading-4 text-gray-500">
+                        طلب من الموقع قبل التحديث — كلّم العميل، والدفع من «الطلبات والمدفوعات».
+                      </span>
+                    ) : (
+                      <select value={status} disabled={busy} onChange={event => void setStatus(item, event.target.value, STATUS_LABEL[event.target.value])}
+                        aria-label="حالة الحجز"
+                        className={`w-full rounded-lg border px-2 py-1.5 text-xs font-bold ${STATUS_STYLE[status] || 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                        {Object.entries(STATUS_LABEL).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                      </select>
+                    )}
+                    <div className="flex flex-wrap items-center gap-1">
+                      {phone && <a href={`tel:${phone}`} title="اتصال" aria-label="اتصال" className={`${iconBtn} border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100`}><Phone size={14} /></a>}
+                      {wa && <a href={wa} target="_blank" rel="noopener noreferrer" title="واتساب" aria-label="واتساب" className={`${iconBtn} border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100`}><MessageCircle size={14} /></a>}
+                      {!item.orderOnly && status === 'pending' && (
+                        <button disabled={busy} onClick={() => void setStatus(item, 'confirmed', 'مؤكدة')} title="تأكيد الحجز" aria-label="تأكيد الحجز" className={`${iconBtn} border-blue-200 bg-white text-blue-700 hover:bg-blue-50`}><Check size={14} /></button>
                       )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      {!item.orderOnly && BOOKED.includes(status) && (
+                        <button disabled={busy} onClick={() => void setStatus(item, 'completed', 'مكتملة')} title="تمت الجلسة" aria-label="تمت الجلسة" className={`${iconBtn} border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50`}><Check size={14} /></button>
+                      )}
+                      {!item.orderOnly && (status === 'completed' || status === 'cancelled') && (
+                        <button disabled={busy} onClick={() => void setStatus(item, 'pending', 'في الانتظار')} title="إعادة فتح الحجز" aria-label="إعادة فتح الحجز" className={`${iconBtn} border-amber-200 bg-white text-amber-700 hover:bg-amber-50`}><RotateCcw size={14} /></button>
+                      )}
+                      {!item.orderOnly && status !== 'cancelled' && (
+                        <button disabled={busy} onClick={() => void setStatus(item, 'cancelled', 'ملغاة')} title="إلغاء" aria-label="إلغاء" className={`${iconBtn} border-amber-200 bg-white text-amber-700 hover:bg-amber-50`}><X size={14} /></button>
+                      )}
+                      {!item.orderOnly && (
+                        <button disabled={busy} onClick={() => void editNotes(item)} title="ملاحظات الجلسة" aria-label="ملاحظات الجلسة" className={`${iconBtn} border-gray-200 bg-white text-gray-600 hover:bg-gray-50`}><StickyNote size={14} /></button>
+                      )}
+                      {!item.orderOnly && (
+                        <button disabled={busy} onClick={() => void editLink(item)} title={meetingLink ? 'تعديل رابط الجلسة' : 'إضافة رابط الجلسة'} aria-label="رابط الجلسة" className={`${iconBtn} border-gray-200 bg-white text-gray-600 hover:bg-gray-50`}><Link2 size={14} /></button>
+                      )}
+                      {meetingLink && (
+                        <a href={meetingLink} target="_blank" rel="noopener noreferrer" title="فتح رابط الجلسة" aria-label="فتح رابط الجلسة" className={`${iconBtn} border-gray-200 bg-white text-gray-600 hover:bg-gray-50`}><ExternalLink size={14} /></a>
+                      )}
+                      <button disabled={busy} onClick={() => void remove(item)} title="حذف" aria-label="حذف" className={`${iconBtn} border-red-200 bg-red-50 text-red-500 hover:bg-red-100`}><Trash2 size={14} /></button>
+                    </div>
+                  </div>
+                </div>
+                {notes && (
+                  <p className="mt-2 rounded-lg bg-gray-50 px-2.5 py-1.5 text-[11px] leading-relaxed text-gray-600"><b className="text-gray-500">ملاحظات: </b>{notes}</p>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

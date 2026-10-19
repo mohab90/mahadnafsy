@@ -261,6 +261,7 @@ export function useUnifiedClientPayments(params: Params) {
       itemTitle: draft.itemTitle || undefined,
       paymentMethod: draft.paymentMethod || undefined,
       fromAccountNumber: draft.fromAccountNumber || undefined,
+      senderName: draft.senderName || undefined,
       // The number the desk typed in «رقم العملية» is the payment's transaction number, not text in its note: it
       // used to be joined into the note, so payments.transaction_id stayed empty and the number never appeared
       // as one — not in the payments lists, not in the search, not in the duplicate check, not in the matching
