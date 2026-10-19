@@ -95,7 +95,7 @@ test('«مدفوعاتي» asks the database for the period, the status, «mine�
   assert.match(tab, /\/staff\/payments\?status=pending&limit=100/);
   // The refund form searches the person's own clients on the server while they type.
   assert.match(tab, /\/staff\/subscribers\?limit=50&q=\$\{encodeURIComponent\(term\)\}/);
-  assert.match(read('admin/pages/dashboard/tabs/financial/AddRefundModal.tsx'), /const subscribers = lookup \? found : \(clients \?\? \[\]\);/);
+  assert.match(read('admin/pages/dashboard/tabs/financial/AddRefundModal.tsx'), /const subscribers = lookup \? found : \(clients \?\? NO_CLIENTS\);/);
 });
 
 test('the three staff endpoints answer for the same set of clients, and the list takes a search', () => {
