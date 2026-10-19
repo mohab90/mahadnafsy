@@ -206,15 +206,9 @@ export const fullLeadTabs = new Set<string>([
 /** Reads every subscriber, no leads. */
 export const fullSubscriberTabs = new Set<string>([
   'online_clients',
-  // retention buckets every subscriber into the month they joined and the month
-  // they finished, twelve months at a time, then averages across all of them.
-  // That genuinely needs the table — unlike the dashboard tile, a count would
-  // not do. It was in no loading set at all, so it read the 500-row bootstrap
-  // page and reported "500 إجمالي المشتركين" against 1,371.
-  //
-  // Named as the tab rather than as 'retention', because retention is a section
-  // of تبويب التحليلات now and this set is keyed on what the URL says.
-  'analytics_hub',
+  // analytics_hub is not here any more: retention buckets the clients by the month they joined and finished and averages
+  // what they paid, and the server does it over every client (GET /api/admin/analytics-hub/retention), whatever page is
+  // loaded. It was in no loading set at all once, and read the 500-row bootstrap page: "500 إجمالي المشتركين" against 1,371.
   // online_hub is not here any more: each collection officer's overdue instalments, the team's collections and the
   // client counts come from GET /api/admin/online-team-summary, over every online client, whatever page is loaded.
   // These two read every client's installment plans / subscription rows out of the

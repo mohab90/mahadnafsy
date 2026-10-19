@@ -2,76 +2,21 @@ import { useMemo } from 'react';
 import { Users, UserCheck, BarChart3, RefreshCw, Star } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar, Legend, PieChart, Pie, Cell } from 'recharts';
-import { cairoDay, cairoMonthStart } from '../../../../shared/cairoDate';
-import { usePaidBySubscriber } from '../../../hooks/usePaidBySubscriber';
+import { useRetention } from '../hooks/useAnalyticsHubFigures';
+import { retentionView } from '../analyticsHubFigures';
 
 
 const COLORS = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4'];
 
-function getLast12Months() {
-  return Array.from({ length: 12 }, (_, i) => cairoMonthStart(11 - i).slice(0, 7));
-}
-
 export default function RetentionTab() {
-  const { subscribers, courses } = useSiteData();
-  const paid = usePaidBySubscriber();
-  const months = getLast12Months();
-
-  const activeSubs = useMemo(() =>
-    subscribers.filter(s => !['finished','paused','refunded','leads'].includes(s.clientStatus || '')),
-    [subscribers]
+  const { courses } = useSiteData();
+  // The clients are counted by the server (GET /api/admin/analytics-hub/retention) — all of the person's clients, not the
+  // list the context held — and what they paid in all, in EGP, comes with it.
+  const data = useRetention();
+  const { total, active, retentionRate, avgRevenue, monthlyNew, statusBreakdown, courseStats } = useMemo(
+    () => retentionView(data, id => courses.find(c => c.id === id)?.title || id),
+    [data, courses],
   );
-
-  // Monthly new subscribers
-  const monthlyNew = useMemo(() =>
-    months.map(m => ({
-      month: m.slice(5),
-      'جديد': subscribers.filter(s => cairoDay(s.createdAt).slice(0, 7) === m).length,
-      'منتهي': subscribers.filter(s => s.clientStatus === 'finished' && cairoDay(s.updatedAt || s.createdAt).slice(0, 7) === m).length,
-    })),
-    [subscribers, months]
-  );
-
-  // Course popularity
-  const courseStats = useMemo(() => {
-    const map: Record<string, { name: string; count: number; revenue: number }> = {};
-    subscribers.forEach(s => {
-      const ids = s.enrolledCourseIds || (s.enrolledCourseId ? [s.enrolledCourseId] : []);
-      ids.forEach((cid: string) => {
-        if (!map[cid]) {
-          const course = courses.find(c => c.id === cid);
-          map[cid] = { name: course?.title || cid, count: 0, revenue: 0 };
-        }
-        map[cid].count++;
-        map[cid].revenue += paid?.[s.id] || 0;
-      });
-    });
-    return Object.values(map).sort((a, b) => b.count - a.count).slice(0, 8);
-  }, [subscribers, courses, paid]);
-
-  // Status breakdown
-  const statusBreakdown = useMemo(() => {
-    const labels: Record<string, string> = {
-      active: 'نشط', finished: 'منتهي', paused: 'متوقف', refunded: 'مسترد', leads: 'محول لليدات'
-    };
-    const map: Record<string, number> = {};
-    subscribers.forEach(s => { const st = s.clientStatus || 'active'; map[st] = (map[st] || 0) + 1; });
-    return Object.entries(map).map(([k, v]) => ({ name: labels[k] || k, value: v }));
-  }, [subscribers]);
-
-  // Retention rate (active / total who ever enrolled)
-  const retentionRate = useMemo(() => {
-    const total = subscribers.length;
-    const active = activeSubs.length;
-    return total > 0 ? Math.round((active / total) * 100) : 0;
-  }, [subscribers, activeSubs]);
-
-  // Avg revenue per subscriber, from what each one actually paid.
-  const avgRevenue = useMemo(() => {
-    if (!paid || !subscribers.length) return 0;
-    const total = subscribers.reduce((acc, s) => acc + (paid[s.id] || 0), 0);
-    return Math.round(total / subscribers.length);
-  }, [subscribers, paid]);
 
   return (
     <div className="space-y-5" dir="rtl">
@@ -84,8 +29,8 @@ export default function RetentionTab() {
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'إجمالي المشتركين', val: subscribers.length, icon: Users, color: 'blue' },
-          { label: 'النشطون', val: activeSubs.length, icon: UserCheck, color: 'emerald' },
+          { label: 'إجمالي المشتركين', val: total, icon: Users, color: 'blue' },
+          { label: 'النشطون', val: active, icon: UserCheck, color: 'emerald' },
           { label: 'معدل الاحتفاظ', val: `${retentionRate}%`, icon: Star, color: 'violet' },
           { label: 'متوسط الإيراد/عميل', val: `${avgRevenue.toLocaleString('ar-EG-u-nu-latn')} ج`, icon: BarChart3, color: 'amber' },
         ].map(k => {

@@ -7,6 +7,7 @@ router.use(require('./admin/catalog'));
 router.use(require('./admin/stafflists'));
 router.use(require('./admin/dokkiclients'));
 router.use(require('./admin/analyticssummary'));
+router.use(require('./admin/analyticsscreens'));
 router.use(require('./admin/subscribers'));
 router.use(require('./admin/leads'));
 router.use(require('./admin/offers'));
