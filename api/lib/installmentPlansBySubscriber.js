@@ -9,10 +9,12 @@
 const { pool } = require('./db');
 const { mapInstallmentPlan } = require('./installmentMath');
 
+// `subscriberIds` null: every plan of the tenant (a screen that sums over thousands of clients reads the small table
+// once instead of asking for thousands of ids).
 async function installmentPlansBySubscriber(tenantId, subscriberIds, db = pool) {
   const byId = new Map();
-  const ids = [...new Set((subscriberIds || []).filter(Boolean))];
-  if (!ids.length) return byId;
+  const ids = subscriberIds === null ? null : [...new Set((subscriberIds || []).filter(Boolean))];
+  if (ids && !ids.length) return byId;
   const [rows] = await db.query(
     `SELECT ip.id, ip.subscriber_id, ip.course_id, ip.bundle_id, ip.title, ip.total_amount, ip.currency,
             ip.installments_count, ip.installment_amounts, ip.due_dates, ip.paid_dates, ip.paid_amounts,
@@ -20,9 +22,9 @@ async function installmentPlansBySubscriber(tenantId, subscriberIds, db = pool) 
        FROM installment_plans ip
        LEFT JOIN courses c ON c.id=ip.course_id AND c.tenant_id=ip.tenant_id
        LEFT JOIN bundles b ON b.id=ip.bundle_id AND b.tenant_id=ip.tenant_id
-      WHERE ip.tenant_id=? AND ip.subscriber_id IN (${ids.map(() => '?').join(',')})
+      WHERE ip.tenant_id=?${ids ? ` AND ip.subscriber_id IN (${ids.map(() => '?').join(',')})` : ''}
       ORDER BY ip.created_at`,
-    [tenantId, ...ids]
+    ids ? [tenantId, ...ids] : [tenantId]
   );
   for (const row of rows) {
     const plan = { ...mapInstallmentPlan(row), courseId: row.course_id || (row.bundle_id ? `bundle:${row.bundle_id}` : undefined) };

@@ -1,13 +1,14 @@
 // Adds existing clients to a round, one course choice per client.
 //
 // The selection stays in DaqqiScheduleTab because handleAddClientsToRound
-// reads it and writes through the parent.
+// reads it and writes through the parent. The clients on offer come from the
+// server a page at a time (api/lib/dokkiClients.js candidatesOf), so the branch's
+// whole client list is not in the browser.
 
 import { useState } from 'react';
 import { Search } from 'lucide-react';
-import type { Course, Bundle, SubscriberItem, DaqqiRound } from '../../../../types';
-import { isEnrolledInCourse } from './daqqiScheduleUtils';
-import { housingNeedOf, isFullyHoused, isHousedForCourse } from './daqqiHousingNeeds';
+import type { Course, Bundle, DaqqiRound } from '../../../../types';
+import { useDokkiCandidates } from './useDokkiClients';
 import { courseMoneyFor } from '../../../../lib/agreedPrice';
 import { Modal } from '../../../../../shared/ui/Modal';
 
@@ -20,7 +21,7 @@ export function DaqqiAddClientsModal({
   daqqiRounds,
   courses,
   bundles,
-  daqqiSubs,
+  branch,
   daqqiAddClientsSel,
   setDaqqiAddClientsSel,
   daqqiAddClientsCourseSel,
@@ -33,7 +34,8 @@ export function DaqqiAddClientsModal({
   daqqiRounds: DaqqiRound[];
   courses: Course[];
   bundles: Bundle[];
-  daqqiSubs: SubscriberItem[];
+  /** The physical branch whose clients are offered (DAQQI or TAGAMOA). */
+  branch: string;
   daqqiAddClientsSel: Set<string>;
   setDaqqiAddClientsSel: React.Dispatch<React.SetStateAction<Set<string>>>;
   daqqiAddClientsCourseSel: Record<string, string>;
@@ -46,29 +48,20 @@ export function DaqqiAddClientsModal({
   const [search, setSearch] = useState('');
   const [courseFilter, setCourseFilter] = useState('');
   const [housing, setHousing] = useState<'all' | 'unhoused' | 'housed'>('unhoused');
+  const addRound = daqqiRounds.find(r => r.id === daqqiAddClientsRoundId);
+  const wantedCourse = courseFilter === '' ? addRound?.courseId || '' : courseFilter;
+  // Not already in the round; holding the course wanted ('all': any); housed FOR THE COURSE being filled — a client
+  // seated in another course's round still needs this one ('all': every course of theirs is seated).
+  const offered = useDokkiCandidates(branch, {
+    enrolled: wantedCourse === 'all' ? '' : wantedCourse,
+    housing: housing === 'all' ? 'any' : housing,
+    housedFor: wantedCourse === 'all' ? '' : wantedCourse,
+    roundId: daqqiAddClientsRoundId,
+    q: search,
+  }, Boolean(daqqiAddClientsRoundId));
   if (!daqqiAddClientsRoundId) return null;
-      const addRound = daqqiRounds.find(r => r.id === daqqiAddClientsRoundId);
       const addCourse = addRound ? courses.find(c => c.id === addRound.courseId) : null;
-      const alreadyIn = new Set(addRound?.attendees.map(a => a.subscriberId) ?? []);
-      const term = search.trim().toLowerCase();
-      const digits = term.replace(/\D/g, '');
-      const wantedCourse = courseFilter === '' ? addRound?.courseId || '' : courseFilter;
-      const available = daqqiSubs.filter(s => {
-        if (alreadyIn.has(s.id)) return false;
-        if (wantedCourse !== 'all' && !isEnrolledInCourse(bundles, s.enrolledCourseIds || [], wantedCourse)) return false;
-        // Housed FOR THE COURSE being filled — a client seated in another course's round still needs this one.
-        const housedHere = wantedCourse !== 'all'
-          ? isHousedForCourse(daqqiRounds, s.id, wantedCourse)
-          : isFullyHoused(housingNeedOf(daqqiRounds, bundles, s));
-        if (housing === 'housed' && !housedHere) return false;
-        if (housing === 'unhoused' && housedHere) return false;
-        if (term) {
-          const byName = String(s.name || '').toLowerCase().includes(term) || String(s.clientCode || '').toLowerCase().includes(term);
-          const byPhone = digits.length >= 3 && String(s.phone || '').replace(/\D/g, '').includes(digits);
-          if (!byName && !byPhone) return false;
-        }
-        return true;
-      });
+      const available = offered.rows;
       const closeModal = () => {
         setDaqqiAddClientsRoundId(''); setDaqqiAddClientsSel(new Set()); setDaqqiAddClientsCourseSel({});
         setSearch(''); setCourseFilter(''); setHousing('unhoused');
@@ -108,13 +101,13 @@ export function DaqqiAddClientsModal({
             </div>
             <div className="flex items-center justify-between mb-3">
               <label className="flex items-center gap-2 text-xs font-bold text-gray-600 cursor-pointer">
-                <input type="checkbox" checked={daqqiAddClientsSel.size === available.length && available.length > 0} onChange={e => setDaqqiAddClientsSel(e.target.checked ? new Set(available.map(s => s.id)) : new Set())} />
-                تحديد الكل ({available.length})
+                <input type="checkbox" checked={daqqiAddClientsSel.size === offered.ids.length && offered.ids.length > 0} onChange={e => setDaqqiAddClientsSel(e.target.checked ? new Set(offered.ids) : new Set())} />
+                تحديد الكل ({offered.total.toLocaleString('ar-EG-u-nu-latn')})
               </label>
             </div>
             {available.length === 0 ? (
               <div className="border border-dashed border-gray-300 rounded-xl p-8 text-center text-gray-400 text-sm">
-                مفيش عملاء بالبحث والفلاتر دي.
+                {offered.loading ? 'جاري تحميل العملاء…' : 'مفيش عملاء بالبحث والفلاتر دي.'}
               </div>
             ) : (
               <div className="border border-gray-200 rounded-xl overflow-hidden mb-4 max-h-[55vh] overflow-y-auto">
@@ -172,6 +165,12 @@ export function DaqqiAddClientsModal({
                     </div>
                   );
                 })}
+                {offered.hasMore && (
+                  <button type="button" onClick={offered.loadMore} disabled={offered.loading}
+                    className="w-full border-t border-gray-100 py-2 text-xs font-bold text-primary-700 hover:bg-gray-50 disabled:opacity-50">
+                    {offered.loading ? 'جاري التحميل…' : `عرض المزيد (${(offered.total - available.length).toLocaleString('ar-EG-u-nu-latn')} متبقي)`}
+                  </button>
+                )}
               </div>
             )}
         </Modal>

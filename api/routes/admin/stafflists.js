@@ -32,7 +32,7 @@ const { requireCollectionLead } = require('../collection-distribution');
 const { BRANCH_ROLES, requestedBranch } = require('../../lib/physicalBranches');
 const { buildView: buildClientsView, dueInstallments, readFilters: readClientFilters } = require('../../lib/staffClientsView');
 const { mapInstallmentPlan } = require('../../lib/installmentMath');
-const { buildOverview } = require('../../lib/staffOverview');
+const { buildOverview, readOverviewClients } = require('../../lib/staffOverview');
 
 async function loadEnrollmentProjection(tenantId, subscriberIds) {
   if (!subscriberIds.length) return {};
@@ -611,7 +611,8 @@ function staffSubscriberScope(req) {
     whereClause = branches.length ? ownOrPlaced(branches) : '1=0';
     params.push(...branches, ...branches);
   }
-  return { where: whereClause, params };
+  // everyone: the scope is every client of the tenant (bar staff), so a screen that sums over it can read whole tables.
+  return { where: whereClause, params, everyone: scope === 'all' };
 }
 
 /**
@@ -817,7 +818,11 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePe
     // q: a name, phone or client code (the pickers that search while the person types, as the refund form does).
     const term = String(req.query.q || '').trim().slice(0, 100);
     const byTerm = term ? { sql: ' AND (s.name LIKE ? OR s.phone LIKE ? OR s.client_code LIKE ?)', params: [`%${term}%`, `%${term}%`, `%${term}%`] } : { sql: '', params: [] };
-    params.push(...byBranch.params, ...byTerm.params, limit, offset);
+    // ids: these clients, if the person may see them (a Dokki round's attendees, the client a payment is for) — a screen
+    // that shows a handful of clients asks for them instead of holding the branch's whole list.
+    const wanted = [...new Set(String(req.query.ids || '').split(',').map(id => id.trim()).filter(Boolean))].slice(0, 200);
+    const byIds = req.query.ids !== undefined ? { sql: wanted.length ? ` AND s.id IN (${wanted.map(() => '?').join(',')})` : ' AND 1=0', params: wanted } : { sql: '', params: [] };
+    params.push(...byBranch.params, ...byTerm.params, ...byIds.params, limit, offset);
 
     const [rows] = await pool.query(
       `SELECT s.*,
@@ -826,7 +831,7 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePe
        FROM subscribers s
        LEFT JOIN staff ss ON ss.id = s.assigned_sales_id AND ss.tenant_id=s.tenant_id
        LEFT JOIN staff cs ON cs.id = s.assigned_cs_id AND cs.tenant_id=s.tenant_id
-       WHERE s.tenant_id = ? AND s.deleted_at IS NULL AND (${whereClause})${byBranch.sql}${byTerm.sql}
+       WHERE s.tenant_id = ? AND s.deleted_at IS NULL AND (${whereClause})${byBranch.sql}${byTerm.sql}${byIds.sql}
        ORDER BY s.created_at DESC, s.id DESC LIMIT ? OFFSET ?`,
       params
     );
@@ -1394,7 +1399,9 @@ router.get('/api/staff/overview-summary', requireAuth, requireAdminOrStaff, requ
     const payload = await cached(key, 15 * 1000, async () => {
       const weekStart = addDaysToDateOnly(today, -new Date(`${today}T00:00:00Z`).getUTCDay());
       const monthStart = `${today.slice(0, 7)}-01`;
-      const { clients, catalogue } = sc.none ? { clients: [], catalogue: { courses: new Map(), bundles: new Map() } } : await loadScopeClients(req, sc);
+      // Only what the overview reads of each client, not the clients screen's whole shape (lib/staffOverview.js).
+      const [clients, catalogue] = sc.none ? [[], { courses: new Map(), bundles: new Map() }]
+        : await Promise.all([readOverviewClients(pool, tenantId, sc), scopeCatalogue(tenantId)]);
       let team = [];
       const calls = new Map();
       if (withTeam) {
@@ -1694,4 +1701,26 @@ router.get('/api/staff/leads-kpis', requireAuth, requireAdminOrStaff, requirePer
   } catch (e) { logger.error('[/api/staff/leads-kpis]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+/**
+ * These clients (already known to be the person's), shaped in full, in the order asked — for the Dokki screens, which
+ * choose the clients on the server (routes/admin/dokkiclients.js) and show them a page at a time.
+ */
+async function loadShapedByIds(tenantId, ids) {
+  if (!ids.length) return [];
+  const [rows] = await pool.query(
+    `SELECT s.*,
+            COALESCE(ss.name, s.assigned_sales_name) AS assigned_sales_name,
+            COALESCE(cs.name, s.assigned_cs_name)    AS assigned_cs_name
+       FROM subscribers s
+       LEFT JOIN staff ss ON ss.id = s.assigned_sales_id AND ss.tenant_id=s.tenant_id
+       LEFT JOIN staff cs ON cs.id = s.assigned_cs_id AND cs.tenant_id=s.tenant_id
+      WHERE s.tenant_id = ? AND s.deleted_at IS NULL AND s.id IN (${ids.map(() => '?').join(',')})`,
+    [tenantId, ...ids]
+  );
+  const byId = new Map(rows.map(row => [row.id, row]));
+  return shapeStaffSubscribers(tenantId, ids.map(id => byId.get(id)).filter(Boolean));
+}
+
 module.exports = router;
+// What the other routers of the admin module read clients with.
+module.exports.staffClientTools = { loadShapedByIds, subscriberScope };

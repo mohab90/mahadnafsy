@@ -161,19 +161,18 @@ export function roundMoney(round: Pick<DaqqiRound, 'attendees'>, catalogue: numb
 }
 
 type OverviewRound = Pick<DaqqiRound, 'courseId' | 'status' | 'attendees' | 'postponedWeeks' | 'heldWeeks'>;
-type OverviewClient = { id: string; enrolledCourseIds?: string[] };
 
 /**
- * The branch in numbers, for the strip above the schedule: who is placed, who
- * has booked a course with an open round and sits in none — each person once,
- * however many rounds their course runs in — what this week's lectures did,
- * and the money the open rounds hold. «المتبقي» is counted as each row counts
- * it: the course's price for everyone in the round, less what they paid.
+ * The branch in numbers, for the strip above the schedule: who is placed, what
+ * this week's lectures did, and the money the open rounds hold. «المتبقي» is
+ * counted as each row counts it: the course's price for everyone in the round,
+ * less what they paid. The two figures that count clients — how many the branch
+ * has and how many booked a course with an open round and sit in none — come
+ * from the server (api/lib/dokkiClients.js overviewOf): the branch's client
+ * list is not in the browser.
  */
-export function daqqiOverview({ rounds, clients, bundles, priceOf, weekKey }: {
+export function daqqiOverview({ rounds, priceOf, weekKey }: {
   rounds: OverviewRound[];
-  clients: OverviewClient[];
-  bundles: Bundle[];
   priceOf: (courseId: string) => number;
   weekKey: string;
 }) {
@@ -181,17 +180,6 @@ export function daqqiOverview({ rounds, clients, bundles, priceOf, weekKey }: {
   const open = rounds.filter(round => statusOf(round) !== 'finished');
   const active = rounds.filter(round => statusOf(round) === 'active');
   const placed = new Set(open.flatMap(round => round.attendees.map(a => a.subscriberId)));
-  // Per course: a client who sat a finished round of a course is not waiting
-  // for it, and one placed in another course's round may still be waiting for this one.
-  const seatedIn = new Map<string, Set<string>>();
-  for (const round of rounds) {
-    const seated = seatedIn.get(round.courseId) || new Set<string>();
-    round.attendees.forEach(a => seated.add(a.subscriberId));
-    seatedIn.set(round.courseId, seated);
-  }
-  const openCourses = [...new Set(open.map(round => round.courseId))];
-  const waiting = clients.filter(client => openCourses.some(courseId => !seatedIn.get(courseId)?.has(client.id)
-    && isEnrolledInCourse(bundles, client.enrolledCourseIds || [], courseId))).length;
   const held = active.filter(round => (round.heldWeeks || []).includes(weekKey)).length;
   const postponed = active.filter(round => (round.postponedWeeks || []).includes(weekKey)).length;
   let collected = 0, prior = 0, remaining = 0;
@@ -211,9 +199,7 @@ export function daqqiOverview({ rounds, clients, bundles, priceOf, weekKey }: {
     }
   }
   return {
-    clients: clients.length,
     placed: placed.size,
-    waiting,
     rounds: { active: active.length, fresh: open.length - active.length, finished: rounds.length - open.length },
     week: { held, postponed, unanswered: active.length - held - postponed },
     collected,

@@ -259,8 +259,6 @@ export const fullCrmDataTabs = new Set<string>([
  */
 export const branchSubscriberTabs: Readonly<Record<string, string>> = Object.freeze({
   daqqi_clients: 'DAQQI',
-  daqqi_schedule: 'DAQQI',
   daqqi_accounting: 'DAQQI',
   daqqi_stats: 'DAQQI',
-  daqqi_attendance: 'DAQQI',
 });

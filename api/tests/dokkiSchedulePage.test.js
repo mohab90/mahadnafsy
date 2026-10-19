@@ -34,20 +34,10 @@ const utils = loadScheduleUtils();
 const seat = (subscriberId, amountPaid = 0) => ({ subscriberId, name: subscriberId, phone: '', bookedAt: '2026-09-21', amountPaid });
 const round = (courseId, status, attendees, extra = {}) => ({ courseId, status, attendees, postponedWeeks: [], heldWeeks: [], ...extra });
 
-test('the branch in numbers: each waiting client once, the week\'s lectures, the open rounds\' money', { skip: !utils }, () => {
+// The two figures that count clients — how many the branch has and how many wait for a seat — are the server's
+// (api/lib/dokkiClients.js overviewOf, pinned in dokkiClients.test.js); what is left of the strip is the rounds'.
+test('the branch in numbers: who is placed, the week\'s lectures, the open rounds\' money', { skip: !utils }, () => {
   const WEEK = '2026-09-28';
-  const bundles = [{ id: 'b1', title: 'مسار', courses: [{ id: 'c1' }, { id: 'c2' }] }];
-  const clients = [
-    { id: 'placed', enrolledCourseIds: ['c1'] },
-    // Booked on c1, which runs in three open rounds: waiting once, not three times.
-    { id: 'waiting', enrolledCourseIds: ['c1'] },
-    // Holds the track; seated for c1, still waiting for c2.
-    { id: 'half', enrolledCourseIds: ['bundle:b1'] },
-    // Sat c3's finished round and c3 has an open one: not waiting for it again.
-    { id: 'done', enrolledCourseIds: ['c3'] },
-    // Booked on a course with no open round.
-    { id: 'no-round', enrolledCourseIds: ['c9'] },
-  ];
   const rounds = [
     round('c1', 'active', [seat('placed', 1500), seat('half', 500)], { heldWeeks: [WEEK] }),
     round('c1', 'active', [], { postponedWeeks: [WEEK] }),
@@ -56,10 +46,8 @@ test('the branch in numbers: each waiting client once, the week\'s lectures, the
     round('c3', 'finished', [seat('done', 3000)]),
     round('c3', undefined, []),
   ];
-  const overview = utils.daqqiOverview({ rounds, clients, bundles, weekKey: WEEK, priceOf: id => ({ c1: 2000, c2: 1000, c3: 3000 }[id] || 0) });
-  assert.equal(overview.clients, 5);
+  const overview = utils.daqqiOverview({ rounds, weekKey: WEEK, priceOf: id => ({ c1: 2000, c2: 1000, c3: 3000 }[id] || 0) });
   assert.equal(overview.placed, 2);
-  assert.equal(overview.waiting, 2, 'the one booked on c1 and the track holder waiting for c2');
   assert.deepEqual(overview.rounds, { active: 3, fresh: 2, finished: 1 });
   assert.deepEqual(overview.week, { held: 1, postponed: 1, unanswered: 1 });
   // Open rounds only: the finished round's 3,000 is not «محصّل الروندات المفتوحة».
@@ -69,7 +57,7 @@ test('the branch in numbers: each waiting client once, the week\'s lectures, the
 
 test('the strip stands where the «سكّن N» list stood', () => {
   const page = read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx');
-  assert.match(page, /<DaqqiOverviewStrip overview=\{overview\} \/>/);
+  assert.match(page, /<DaqqiOverviewStrip overview=\{overview\} clients=\{seats\?\.clients \?\? null\} waiting=\{seats\?\.waiting \?\? null\} \/>/);
   assert.doesNotMatch(page, /unplacedByRound/);
   assert.doesNotMatch(page, /عملاء حاجزين ومش مسكّنين في روند/);
   const strip = read('admin/pages/dashboard/tabs/daqqi/DaqqiOverviewStrip.tsx');
@@ -94,8 +82,9 @@ test('a client with no number of their own is seated like any other', () => {
 
 test('the save seats exactly whom the dialog offered, and says so', () => {
   const page = read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx');
-  assert.match(page, /const newSubs = daqqiSubs\.filter\(\s+s => daqqiAddClientsSel\.has\(s\.id\) && !round\.attendees\.find\(a => a\.subscriberId === s\.id\)\s+\);/);
-  assert.doesNotMatch(page, /daqqiBranchIds\.has\(s\.branch \|\| ''\) && daqqiAddClientsSel/);
+  // The ids ticked, less whoever already sits in the round, read from the server by id: the branch's list is not here.
+  assert.match(page, /const alreadyIn = new Set\(round\.attendees\.map\(attendee => attendee\.subscriberId\)\);\s+let newSubs: SubscriberItem\[\];\s+try \{\s+newSubs = await fetchClientsByIds\(\[\.\.\.daqqiAddClientsSel\]\.filter\(id => !alreadyIn\.has\(id\)\)\);/);
+  assert.doesNotMatch(page, /daqqiSubs|ctxSubscribers/);
   assert.match(page, /notify\('success', `اتسكّن \$\{newSubs\.length\.toLocaleString\('ar-EG-u-nu-latn'\)\} عميل في روند/);
 });
 

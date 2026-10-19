@@ -1,21 +1,28 @@
 // «اعملي بعض الارقام التحليله في اعلي الصفحه عن الدقي»: the branch at a glance,
-// above the schedule. The figures come from daqqiOverview(); this only lays
-// them out.
+// above the schedule. The figures come from daqqiOverview() and, for the two
+// that count clients, from the server; this only lays them out.
 
 import type { daqqiOverview } from './daqqiScheduleUtils';
 import { usePhysicalBranch } from '../../../../lib/physicalBranch';
 
 const num = (value: number) => value.toLocaleString('ar-EG-u-nu-latn');
+/** A figure the server has not answered yet reads as a dash, not as a zero. */
+const numOrDash = (value: number | null) => (value === null ? '—' : num(value));
 
-export function DaqqiOverviewStrip({ overview }: { overview: ReturnType<typeof daqqiOverview> }) {
+export function DaqqiOverviewStrip({ overview, clients, waiting }: {
+  overview: ReturnType<typeof daqqiOverview>;
+  /** How many clients the branch has, and how many wait for a seat — null until the server answers. */
+  clients: number | null;
+  waiting: number | null;
+}) {
   const physicalBranch = usePhysicalBranch();
-  const share = overview.clients ? Math.round((overview.placed / overview.clients) * 100) : 0;
+  const share = clients ? Math.round((overview.placed / clients) * 100) : 0;
   const tiles: { label: string; value: string; note: string; tone?: 'attention' }[] = [
-    { label: `عملاء ${physicalBranch.label}`, value: num(overview.clients), note: 'كل عملاء الفرع' },
-    { label: 'مسكّنين في روندات', value: num(overview.placed), note: `${num(share)}% من العملاء` },
+    { label: `عملاء ${physicalBranch.label}`, value: numOrDash(clients), note: 'كل عملاء الفرع' },
+    { label: 'مسكّنين في روندات', value: num(overview.placed), note: clients === null ? '' : `${num(share)}% من العملاء` },
     {
-      label: 'حاجزين ومش مسكّنين', value: num(overview.waiting), note: 'كورسهم له روند مفتوح',
-      tone: overview.waiting > 0 ? 'attention' : undefined,
+      label: 'حاجزين ومش مسكّنين', value: numOrDash(waiting), note: 'كورسهم له روند مفتوح',
+      tone: waiting && waiting > 0 ? 'attention' : undefined,
     },
     {
       label: 'روندات شغالة', value: num(overview.rounds.active),

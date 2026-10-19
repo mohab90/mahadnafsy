@@ -73,8 +73,10 @@ test('the schedule, both modals and the clients tab read housing per course', ()
   assert.doesNotMatch(schedule, /assignedSubIds/, 'no more «anyone in any round»');
   assert.doesNotMatch(read('admin/pages/dashboard/tabs/daqqi/DaqqiAddClientsModal.tsx'), /assignedSubIds/);
   assert.doesNotMatch(read('admin/pages/dashboard/tabs/daqqi/DaqqiNewRoundModal.tsx'), /assignedSubIds/);
-  assert.match(read('admin/pages/dashboard/tabs/daqqi/DaqqiNewRoundModal.tsx'), /!isHousedForCourse\(daqqiRounds, s\.id, roundCourseId\)/);
-  assert.match(read('admin/pages/dashboard/tabs/daqqi/DaqqiAddClientsModal.tsx'), /isHousedForCourse\(daqqiRounds, s\.id, wantedCourse\)/);
+  // Both pickers ask the server for the clients not housed FOR the round's course
+  // (api/lib/dokkiClients.js candidatesOf, pinned in dokkiClients.test.js).
+  assert.match(read('admin/pages/dashboard/tabs/daqqi/DaqqiNewRoundModal.tsx'), /housing: 'unhoused', housedFor: round\.courseId/);
+  assert.match(read('admin/pages/dashboard/tabs/daqqi/DaqqiAddClientsModal.tsx'), /housedFor: wantedCourse === 'all' \? '' : wantedCourse/);
   const tab = read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx');
   assert.match(tab, /housingNeeds\.set\(subscriber\.id, housingNeedOf\(/);
   assert.match(tab, /daqqiHousingFilter === 'unhoused' && _need && !needsHousing\(_need\)/);

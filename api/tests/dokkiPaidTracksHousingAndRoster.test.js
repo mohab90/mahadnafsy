@@ -168,7 +168,7 @@ test('«في الكورس نفسه قاري 0»: the round\'s paid is its client
 test('a track holder sitting in three of its rounds is counted once in the strip', { skip: !utils }, () => {
   const holder = { amountPaid: 0, amountPrior: 3000, agreedPrice: 3500, trackId: 'bT' };
   const rounds = ['cA', 'cB', 'cC'].map(courseId => ({ courseId, status: 'active', attendees: [seat('holder', holder)], postponedWeeks: [], heldWeeks: [] }));
-  const overview = utils.daqqiOverview({ rounds, clients: [{ id: 'holder', enrolledCourseIds: ['bundle:bT'] }], bundles: [], weekKey: '2026-09-28', priceOf: () => 900 });
+  const overview = utils.daqqiOverview({ rounds, weekKey: '2026-09-28', priceOf: () => 900 });
   assert.equal(overview.prior, 3000, 'not 9,000');
   assert.equal(overview.remaining, 500, 'not 1,500');
 });

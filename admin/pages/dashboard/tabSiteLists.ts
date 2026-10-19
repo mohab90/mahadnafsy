@@ -69,9 +69,10 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   daqqi_stats: ['orders', 'leads', 'subscribers', 'discounts', 'joinUsApplications', 'contactMessages'],
   ask_ai: ['leads', 'subscribers', 'orders', 'settings'],
   automation: ['automationWorkflows'],
-  // The Dokki screens: the rounds and their attendees, who may be clients of
-  // any branch, not only the branch's own pages.
-  daqqi_schedule: ['daqqiRounds', 'subscribers'],
+  // The Dokki screens: the rounds and their attendees. The clients a round's
+  // pickers offer, and the few it looks up, come from the server
+  // (api/lib/dokkiClients.js), not from the context's list.
+  daqqi_schedule: ['daqqiRounds'],
   daqqi_team: ['daqqiRounds'],
   daqqi_attendance: [],
   // HR, the inboxes and the service desks read their own endpoints.

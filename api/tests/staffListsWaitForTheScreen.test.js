@@ -32,9 +32,9 @@ test('the screens that page from the server are named, and an employee\'s panel 
   const lib = bundle('admin/pages/dashboard/staffListTabs.ts');
   if (lib) {
     const { staffScreenPagesFromServer: pages, staffClientsArePaged: paged, staffSkipsSiteLists: skips } = lib;
-    for (const tab of ['staff_home', 'staff_settings', 'my_hr', 'leads', 'online_clients', 'orders']) assert.equal(pages(tab), true, tab);
+    for (const tab of ['staff_home', 'staff_settings', 'my_hr', 'leads', 'online_clients', 'orders', 'daqqi_schedule']) assert.equal(pages(tab), true, tab);
     // The screens that read the context's lists keep their reload after a write.
-    for (const tab of ['client', 'refund_requests', 'daqqi_clients', 'daqqi_schedule', 'financial']) assert.equal(pages(tab), false, tab);
+    for (const tab of ['client', 'refund_requests', 'daqqi_clients', 'financial']) assert.equal(pages(tab), false, tab);
     assert.equal(paged('online_clients', true, false), true);
     assert.equal(paged('online_clients', false, true), true, 'the online manager');
     assert.equal(paged('online_clients', false, false), false, 'the administration keeps the whole list');

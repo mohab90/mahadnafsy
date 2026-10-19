@@ -12,7 +12,7 @@ import type { SiteList } from '../../context/site-data-hooks/siteLists';
  * (/api/staff/online-manager-summary). Nothing downloads the lists any more, and
  * api/tests/staffListsWaitForTheScreen.test.js fails if a file starts reading them again.
  */
-const SERVER_PAGES: ReadonlySet<string> = new Set(['staff_home', 'staff_settings', 'my_hr', 'online_clients', 'leads', 'orders']);
+const SERVER_PAGES: ReadonlySet<string> = new Set(['staff_home', 'staff_settings', 'my_hr', 'online_clients', 'leads', 'orders', 'daqqi_schedule']);
 
 /**
  * «عملائي» pages from the server for every employee (OnlineClientsTab, useStaffClientsPage), the online manager
