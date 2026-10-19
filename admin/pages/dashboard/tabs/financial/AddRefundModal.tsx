@@ -25,6 +25,8 @@ const isRefundable = (payment: { status?: string }) =>
 const paymentItem = (payment: PaymentHistoryEntry) =>
   payment.bundleId ? `bundle:${payment.bundleId}` : payment.courseId || '';
 
+const NO_CLIENTS: SubscriberItem[] = [];
+
 export function AddRefundModal({ onClose, onCreated, notify, clients, lookup, subscriber: presetSubscriber, item: presetItem, itemTitle: presetTitle }: {
   onClose: () => void;
   onCreated: () => void;
@@ -52,7 +54,7 @@ export function AddRefundModal({ onClose, onCreated, notify, clients, lookup, su
   const [found, setFound] = useState<SubscriberItem[]>([]);
   // The client the person picked stays even when the next search no longer lists them.
   const [picked, setPicked] = useState<SubscriberItem | null>(null);
-  const subscribers = lookup ? found : (clients ?? []);
+  const subscribers = lookup ? found : (clients ?? NO_CLIENTS);
   const [branch, setBranch] = useState<'DAQQI' | 'ONLINE' | ''>('');
   const [search, setSearch] = useState('');
   const [subscriberId, setSubscriberId] = useState(presetSubscriber?.id || '');

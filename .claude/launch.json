@@ -176,6 +176,23 @@
       ],
       "cwd": "admin",
       "port": 4022
+    },
+    {
+      "name": "admin-perf-brave2",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "exec",
+        "--no",
+        "--",
+        "vite",
+        "--mode",
+        "perf",
+        "--port",
+        "4024",
+        "--strictPort"
+      ],
+      "cwd": "admin",
+      "port": 4024
     }
   ]
 }
