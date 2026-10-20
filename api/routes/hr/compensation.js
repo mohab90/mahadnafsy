@@ -6,6 +6,7 @@ const { createLeaveRequest, getEffectiveHrPolicy, LEAVE_LABELS_AR } = require('.
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { toNumbers } = require('../../lib/mappers');
 const { cairoToday, cairoYearMonth } = require('../../lib/dates');
+const { notifyBranchManagers } = require('../../lib/branchHr');
 
 router.get('/api/admin/hr/compensation/pending', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
@@ -595,6 +596,10 @@ router.post('/api/staff/me/leaves', requireAuth, async (req, res) => {
       `${staff.name || 'موظف'} — ${when}`,
       { leave_id: id, staff_id: staff.id, tab: 'hr' }, req.tenantId
     );
+    await notifyBranchManagers(pool, {
+      tenantId: req.tenantId, staffId: staff.id, title: `طلب ${LEAVE_LABELS_AR[type] || 'إجازة'}`,
+      message: `${staff.name || 'موظف'} — ${when}`, data: { leave_id: id, staff_id: staff.id, tab: 'hr' },
+    });
     const [[row]] = await pool.query(
       'SELECT id, staff_id, type, start_date, end_date, start_time, end_time, total_days, reason, status FROM leaves WHERE tenant_id=? AND id=?',
       [req.tenantId, id]

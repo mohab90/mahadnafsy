@@ -6,7 +6,7 @@ import { cairoDay } from '../../../../shared/cairoDate';
 import { ProblemTicketForm } from './ProblemTicketForm';
 import { CoursePlacementForm } from './CoursePlacementForm';
 
-export type OnlineClientConvertType = 'finished' | 'paused' | 'refunded' | 'daqqi' | 'leads' | 'online' | 'local' | 'saudi' | 'intl' | 'ticket' | 'course' | '';
+export type OnlineClientConvertType = 'active' | 'finished' | 'paused' | 'refunded' | 'daqqi' | 'leads' | 'online' | 'local' | 'saudi' | 'intl' | 'ticket' | 'course' | '';
 const MARKET_OPTIONS = [
   { key: 'local' as const, label: '🇪🇬 محلي (جنيه)', cls: 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100' },
   { key: 'saudi' as const, label: '🇸🇦 سعودي (ريال)', cls: 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100' },
@@ -87,8 +87,12 @@ export function OnlineClientConvertModal({
                 { key: 'course' as const, label: '🧩 تحويل كورس معيّن لفرع تاني (جزئي) — العميل يفضل في الاتنين', cls: 'bg-teal-50 border-teal-300 text-teal-800 hover:bg-teal-100' },
                 // «محلي / سعودي / دولي» — every market but the one they are in.
                 ...(isDaqqiClientsTab ? [] : MARKET_OPTIONS.filter(option => option.key !== currentMarket)),
-                { key: 'finished' as const, label: '✅ منتهي', cls: 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100' },
-                { key: 'paused' as const, label: '⏸ متوقف', cls: 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100' },
+                // «لما بحول عميل لمنتهي وعاوز ارجعه نشط»: a client who is finished, paused or refunded is offered «نشط» — and not
+                // the status they already are (the button used to read «منتهي» on a client who was already finished).
+                ...(['finished', 'paused', 'refunded', 'refund_pending'].includes(String(row.clientStatus || ''))
+                  ? [{ key: 'active' as const, label: '🔄 رجوع لنشط', cls: 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100' }] : []),
+                ...(row.clientStatus === 'finished' ? [] : [{ key: 'finished' as const, label: '✅ منتهي', cls: 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100' }]),
+                ...(row.clientStatus === 'paused' ? [] : [{ key: 'paused' as const, label: '⏸ متوقف', cls: 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100' }]),
                 { key: 'refunded' as const, label: '↩️ استرداد', cls: 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100' },
                 { key: 'leads' as const, label: '👥 عملاء محتملين', cls: 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100' },
                 isDaqqiClientsTab
@@ -168,6 +172,11 @@ export function OnlineClientConvertModal({
                     ))}
                   </select>
                 </>
+              )}
+              {convertType === 'active' && (
+                <p className="text-sm text-gray-600 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">
+                  هيرجع العميل «نشط» ويظهر في تاب «النشطين» تاني. هل أنت متأكد؟
+                </p>
               )}
               {convertType === 'leads' && (
                 <p className="text-sm text-gray-600 bg-purple-50 border border-purple-200 rounded-xl px-3 py-2">

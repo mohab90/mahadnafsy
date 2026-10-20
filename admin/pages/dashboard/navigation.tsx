@@ -155,6 +155,7 @@ export type TabKey =
   | 'branch_workspaces'
   | 'branches_settings'
   | 'notif_inbox'
+  | 'staff_announcements'
   | 'content_hub'
   | 'hub_advanced'
   // «تصميم الموقع» — a page of صفحات الموقع (content_hub/site_design), like hub_advanced.
@@ -201,6 +202,8 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       // an "الإدارة" heading now appears carrying this single item — the menu
       // renders a group whenever any of its items is permitted.
       { key: 'ask_ai', label: 'مساعد AI', icon: Zap },
+      // «في قسم الإدارة أبعت رسالة فيديو أو صور أو كلام بشكل مميز يظهر بوب أب للموظفين».
+      { key: 'staff_announcements', label: 'رسالة للموظفين', icon: Megaphone },
     ],
   },
   {

@@ -946,7 +946,7 @@ export default function OnlineClientsTab({
                                       if (!await updateSubscriber(updated)) throw new Error('فشل حفظ حالة العميل');
                                       setSalesOwnSubscribers(prev => prev.map(s => s.id === updated.id ? updated : s));
                                        setConvertRow(null);
-                                       const typeLabel = convertType === 'finished' ? 'منتهي' : convertType === 'paused' ? 'متوقف' : `فرع ${physicalBranch.label}`;
+                                       const typeLabel = convertType === 'active' ? 'نشط' : convertType === 'finished' ? 'منتهي' : convertType === 'paused' ? 'متوقف' : `فرع ${physicalBranch.label}`;
                                       notify('success', `✅ تم تحويل العميل إلى ${typeLabel}`);
                                     } catch (err: unknown) {
                                       notify('error', '❌ فشل التحويل: ' + (err instanceof Error ? err.message : String(err)));

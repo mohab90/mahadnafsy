@@ -613,8 +613,19 @@ router.patch('/api/admin/consultations/:id', requireAuth, requireAdminOrStaff, r
 });
 router.delete('/api/admin/consultations/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_consultations'), async (req, res) => {
   try {
-    const [r] = await pool.query('DELETE FROM consultations WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
-    if (!r.affectedRows) return res.status(404).json({ error: 'Consultation not found' });
+    // «لما بحاول أمسح استشارة بيعمل الايرور Consultation not found»: the list also shows a request that exists only as an
+    // unpaid order (id «order:<id>», no consultations row yet) with the same delete button. Deleting it removes that order
+    // from the waiting list — it is hidden, not erased, like every order — and only while nothing was paid on it.
+    const orderId = /^order:(.+)$/.exec(String(req.params.id))?.[1];
+    if (orderId) {
+      await pool.query(
+        "UPDATE orders SET deleted_at=NOW() WHERE id=? AND tenant_id=? AND type='CONSULTATION' AND status='pending' AND deleted_at IS NULL",
+        [orderId, req.tenantId]
+      );
+      return res.json({ ok: true });
+    }
+    // A booking that is already gone (deleted in another tab, by a colleague) is the state the person asked for.
+    await pool.query('DELETE FROM consultations WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
     res.json({ ok: true });
   }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }

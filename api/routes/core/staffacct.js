@@ -77,7 +77,7 @@ router.get('/api/admin/consultations', requireAuth, requireAdminOrStaff, require
       `SELECT o.id, o.customer_name, o.customer_email, o.customer_phone, o.amount, o.currency,
               o.notes, o.item_title, o.branch_id, o.subscriber_id, o.created_at
          FROM orders o
-        WHERE o.tenant_id=? AND o.type='CONSULTATION' AND o.status='pending'
+        WHERE o.tenant_id=? AND o.type='CONSULTATION' AND o.status='pending' AND o.deleted_at IS NULL
           AND NOT EXISTS (SELECT 1 FROM consultations c WHERE c.tenant_id=o.tenant_id AND c.order_id=o.id)
           AND o.item_title NOT LIKE '%اختبار%'
         ORDER BY o.created_at DESC LIMIT 200`,

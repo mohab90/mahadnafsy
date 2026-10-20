@@ -1,10 +1,11 @@
 'use strict';
 const { Router } = require('express');
 const router = Router();
-const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
+const { hrError, requirePermission, requireAnyPermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { financialRecordMatches, resolveFinancialScope } = require('../../lib/financialScope');
 const { dateOnlyInTimeZone } = require('../../lib/dates');
+const { requireHr, staffInReach, staffReachSql, outOfReach, notifyBranchManagers } = require('../../lib/branchHr');
 
 const CURRENCIES = new Set(['EGP', 'SAR', 'USD']);
 const DISCIPLINARY_TYPES = new Set(['warning', 'verbal_warning', 'written_warning', 'suspension', 'termination', 'other']);
@@ -23,7 +24,8 @@ const safeDocumentUrl = value => {
   return (/^https:\/\//i.test(url) || /^\/uploads\/[A-Za-z0-9._~!$&'()*+,;=:@%/-]+$/.test(url)) ? url : false;
 };
 
-router.get('/api/admin/hr/advances', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
+// A branch manager reaches the advances of their branch's staff, as they reach its leaves (lib/branchHr.js).
+router.get('/api/admin/hr/advances', requireAuth, requireAdminOrStaff, requireAnyPermission('view_hr', 'branch_hr'), requireHr('view'), async (req, res) => {
   try {
     const { staff_id, status } = req.query;
     let sql = `SELECT a.*, s.name AS staff_name, s.role, s.image,
@@ -33,6 +35,8 @@ router.get('/api/admin/hr/advances', requireAuth, requireAdminOrStaff, requirePe
       LEFT JOIN staff ap ON ap.id=a.approved_by AND ap.tenant_id=a.tenant_id
       WHERE a.tenant_id=?`;
     const params = [req.tenantId];
+    const reach = staffReachSql(req.hrReach, 's');
+    sql += reach.sql; params.push(...reach.params);
     if (staff_id) { sql += ' AND a.staff_id=?'; params.push(staff_id); }
     if (status)   { sql += ' AND a.status=?';   params.push(status); }
     // Newest 500: the inbox asks for ?status=PENDING, so what is waiting is never behind a page of history.
@@ -128,7 +132,7 @@ router.get('/api/admin/finance/salary-advances', requireAuth, requireAdminOrStaf
 });
 
 // Approve / reject advance
-router.put('/api/admin/hr/advances/:advId/status', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
+router.put('/api/admin/hr/advances/:advId/status', requireAuth, requireAdminOrStaff, requireAnyPermission('manage_hr', 'branch_hr'), requireHr('manage'), async (req, res) => {
   const conn = await pool.getConnection();
   let transactionStarted = false;
   try {
@@ -150,6 +154,10 @@ router.put('/api/admin/hr/advances/:advId/status', requireAuth, requireAdminOrSt
     if (!advance) {
       await conn.rollback(); transactionStarted = false;
       return res.status(404).json({ error: 'Advance not found' });
+    }
+    if (!(await staffInReach(conn, req, advance.staff_id))) {
+      await conn.rollback(); transactionStarted = false;
+      return outOfReach(res);
     }
     const transitions = { PENDING: ['APPROVED', 'REJECTED'] };
     if (!transitions[advance.status]?.includes(status)) {
@@ -670,6 +678,11 @@ router.post('/api/staff/me/advances', requireAuth, async (req, res) => {
     createNotification('hr', 'طلب سلفة',
       `${staff.name || 'موظف'} — ${Number(amount).toLocaleString('en-US')} ${normalizedCurrency}`,
       { advance_id: id, staff_id: staff.id, tab: 'hr' }, req.tenantId).catch(() => {});
+    void notifyBranchManagers(pool, {
+      tenantId: req.tenantId, staffId: staff.id, title: 'طلب سلفة',
+      message: `${staff.name || 'موظف'} — ${Number(amount).toLocaleString('en-US')} ${normalizedCurrency}`,
+      data: { advance_id: id, staff_id: staff.id, tab: 'hr' },
+    });
     res.json(row);
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});

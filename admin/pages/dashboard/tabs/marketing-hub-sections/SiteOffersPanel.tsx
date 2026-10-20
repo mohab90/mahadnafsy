@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Banknote, Clock, Eye, Megaphone, Save, Tag, Timer } from 'lucide-react';
+import { uploadImage } from '../../../../lib/uploadImage';
 import { useSiteData } from '../../../../context/SiteDataContext';
 import {
   CASH_DISCOUNT, INSTALL_DISCOUNT, INSTALL_FIRST_PCT, MAX_DISCOUNT_PERCENT, enrollmentRates, percentLabel,
 } from '../../../../../shared/enrollmentPricing';
 import {
-  OFFER_DEFAULT_HOURS, offerEnabled, offerHours, offerIsOver, offerRemainingMs, popupIsLive, POPUP_THEMES,
+  OFFER_DEFAULT_HOURS, offerEnabled, offerHours, offerIsOver, offerRemainingMs, popupHasContent, popupImage, popupIsLive, popupVideo, POPUP_THEMES,
   type PopupFrequency, type PopupTheme,
 } from '../../../../../shared/siteOffers';
 
@@ -175,6 +176,8 @@ export const SiteOffersPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
     courseId: content['popup.courseId'] || '',
     ctaText: content['popup.ctaText'] || '',
     ctaLink: content['popup.ctaLink'] || '',
+    videoUrl: content['popup.videoUrl'] || '',
+    imageUrl: content['popup.imageUrl'] || '',
     endsAt: toLocalInput(content['popup.endsAt']),
     frequency: (content['popup.frequency'] || 'daily') as PopupFrequency,
     delaySeconds: content['popup.delaySeconds'] || '3',
@@ -191,6 +194,8 @@ export const SiteOffersPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
       courseId: content['popup.courseId'] || '',
       ctaText: content['popup.ctaText'] || '',
       ctaLink: content['popup.ctaLink'] || '',
+      videoUrl: content['popup.videoUrl'] || '',
+      imageUrl: content['popup.imageUrl'] || '',
       endsAt: toLocalInput(content['popup.endsAt']),
       frequency: (content['popup.frequency'] || 'daily') as PopupFrequency,
       delaySeconds: content['popup.delaySeconds'] || '3',
@@ -219,7 +224,13 @@ export const SiteOffersPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
     const delay = Number(popup.delaySeconds);
     if (!Number.isFinite(pct) || pct < 0 || pct > 99) return notify('error', 'خصم البوب أب لازم يكون من 0 لـ 99.');
     if (!Number.isFinite(delay) || delay < 0 || delay > 60) return notify('error', 'التأخير قبل الظهور من 0 لـ 60 ثانية.');
-    if (popup.enabled && !popup.title.trim() && !pct) return notify('error', 'اكتب عنوان أو حط نسبة خصم قبل ما تشغّل البوب أب.');
+    const videoUrl = popup.videoUrl.trim();
+    const imageUrl = popup.imageUrl.trim();
+    if (videoUrl && !popupVideo(videoUrl)) return notify('error', 'رابط الفيديو لازم يكون يوتيوب أو فيميو أو ملف فيديو مباشر (mp4 / webm) على https.');
+    if (imageUrl && !popupImage(imageUrl)) return notify('error', 'رابط الصورة لازم يبدأ بـ https://.');
+    if (popup.enabled && !popup.title.trim() && !pct && !videoUrl && !imageUrl) return notify('error', 'اكتب عنوان أو حط نسبة خصم أو فيديو قبل ما تشغّل البوب أب.');
+    const endsMs = popup.endsAt ? new Date(fromLocalInput(popup.endsAt)).getTime() : NaN;
+    if (popup.enabled && Number.isFinite(endsMs) && endsMs <= Date.now()) return notify('error', 'تاريخ الانتهاء عدّى — البوب أب مش هيظهر. غيّر التاريخ أو امسحه.');
     if (popup.ctaLink && !/^(https?:\/\/|\/)/i.test(popup.ctaLink.trim())) return notify('error', 'الرابط لازم يبدأ بـ https:// أو بـ / (صفحة داخل الموقع).');
     if (popup.endsAt && !fromLocalInput(popup.endsAt)) return notify('error', 'تاريخ الانتهاء مش مفهوم.');
     const ok = await setContentValues({
@@ -231,6 +242,8 @@ export const SiteOffersPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
       'popup.courseId': popup.courseId,
       'popup.ctaText': popup.ctaText.trim(),
       'popup.ctaLink': popup.ctaLink.trim(),
+      'popup.videoUrl': videoUrl,
+      'popup.imageUrl': imageUrl,
       'popup.endsAt': fromLocalInput(popup.endsAt),
       'popup.frequency': popup.frequency,
       'popup.delaySeconds': String(delay),
@@ -328,13 +341,31 @@ export const SiteOffersPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
         </div>
         <p className="text-xs text-violet-800">
           الحالة دلوقتي: <strong>{popupLive ? 'ظاهر لكل الزوار' : 'غير ظاهر'}</strong>
-          {content['popup.enabled'] === '1' && !popupLive && ' (راجع العنوان أو تاريخ الانتهاء)'}
+          {content['popup.enabled'] !== '1' && ' — البوب أب مقفول: شغّل المفتاح اللي فوق واضغط «حفظ البوب أب»'}
+          {content['popup.enabled'] === '1' && !popupHasContent(content) && ' (مفيش عنوان ولا خصم ولا فيديو يتعرض)'}
+          {content['popup.enabled'] === '1' && popupHasContent(content) && !popupLive && ' (تاريخ الانتهاء عدّى)'}
         </p>
 
         <div className="grid gap-3 md:grid-cols-4">
           <Label text="العنوان" className="md:col-span-3"><input value={popup.title} onChange={e => setP('title', e.target.value)} className={inputCls} placeholder="مثال: خصم نهاية الأسبوع على كل الدبلومات" /></Label>
           <Label text="نسبة الخصم %"><input type="number" min="0" max="99" value={popup.discountPercent} onChange={e => setP('discountPercent', e.target.value)} className={inputCls} /></Label>
           <Label text="النص" className="md:col-span-4"><textarea value={popup.body} onChange={e => setP('body', e.target.value)} rows={2} className={inputCls} placeholder="جملتين عن العرض وشروطه" /></Label>
+          <Label text="فيديو (اختياري)" className="md:col-span-2" hint="رابط يوتيوب أو فيميو، أو ملف mp4 مباشر — بيظهر فوق في البوب أب">
+            <input value={popup.videoUrl} onChange={e => setP('videoUrl', e.target.value)} className={inputCls} dir="ltr" placeholder="https://www.youtube.com/watch?v=…" />
+            {popup.videoUrl.trim() && !popupVideo(popup.videoUrl) && <span className="block text-[11px] text-red-600 mt-1">الرابط ده مش مدعوم — يوتيوب أو فيميو أو ملف mp4/webm على https.</span>}
+          </Label>
+          <Label text="صورة (اختياري)" className="md:col-span-2" hint="بتظهر لو مفيش فيديو">
+            <div className="flex gap-2">
+              <input value={popup.imageUrl} onChange={e => setP('imageUrl', e.target.value)} className={inputCls} dir="ltr" placeholder="https://…" />
+              <label className="shrink-0 px-3 py-2 rounded-lg bg-violet-100 text-violet-800 text-xs font-bold cursor-pointer">
+                رفع
+                <input type="file" accept="image/*" className="hidden" onChange={e => {
+                  const file = e.target.files?.[0]; e.target.value = '';
+                  if (file) void uploadImage(file, 'cover').then(url => setP('imageUrl', url)).catch(() => notify('error', 'تعذر رفع الصورة — جرّب صورة أصغر.'));
+                }} />
+              </label>
+            </div>
+          </Label>
           <Label text="كود الخصم (اختياري)" hint={coupons.length ? 'اختار من الكوبونات اللي عندك أو اكتب كود' : 'اكتب الكود اللي هيظهر للعميل'}>
             <input value={popup.code} onChange={e => setP('code', e.target.value)} className={`${inputCls} font-mono uppercase`} list="popup-coupons" />
             <datalist id="popup-coupons">{coupons.map(d => <option key={d.id} value={d.code || d.promoCode} />)}</datalist>

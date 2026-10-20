@@ -55,6 +55,7 @@ export const OffboardingTab = lazy(() => import('./tabs/OffboardingTab'));
 export const FaqManagerTab = lazy(() => import('./tabs/FaqManagerTab'));
 export const NpsDashboardTab = lazy(() => import('./tabs/NpsDashboardTab'));
 export const NotifInboxMgmtTab = lazy(() => import('./tabs/NotifInboxMgmtTab'));
+export const StaffAnnouncementsTab = lazy(() => import('./tabs/StaffAnnouncementsTab'));
 export const NotificationsAdminTab = lazy(() => import('./tabs/NotificationsAdminTab'));
 export const OnlineTeamMgmtTab = lazy(() => import('./tabs/OnlineTeamMgmtTab'));
 export const OnlineTeamTab = lazy(() => import('./tabs/OnlineTeamTab'));

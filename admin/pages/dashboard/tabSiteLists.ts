@@ -100,6 +100,7 @@ export const tabSiteLists: Readonly<Record<string, readonly SiteList[]>> = {
   course_waitlist: [],
   faq_manager: [],
   notif_inbox: [],
+  staff_announcements: [],
   notifications: [],
   cx_team: [],
   consultation_calendar: [],

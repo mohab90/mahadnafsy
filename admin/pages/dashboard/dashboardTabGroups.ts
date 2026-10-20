@@ -65,6 +65,7 @@ export const contentHubRouteTabs = new Set<string>([
   'lead_sources_settings',
   'branch_workspaces',
   'notif_inbox',
+  'staff_announcements',
   'waitlist',
   'system_settings',
   'lecturer_applications',

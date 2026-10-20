@@ -4,7 +4,7 @@ import { Check, Clock, Copy, Sparkles, X } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import { useEscapeKey } from '../../shared/ui/useEscapeKey';
 import {
-  popupFrequency, popupIsLive, popupTheme, popupWasSeen, type PopupTheme,
+  popupFrequency, popupHasContent, popupImage, popupIsLive, popupTheme, popupVideo, popupWasSeen, type PopupTheme,
 } from '../../shared/siteOffers';
 
 /**
@@ -13,7 +13,9 @@ import {
  * course it points to, how long it runs and how often a visitor sees it are
  * all theirs (see shared/siteOffers). Staff never see it on the live site —
  * `?previewPopup=1` shows it to them on purpose, which is what the
- * «معاينة» button in the admin opens.
+ * «معاينة» button in the admin opens — even while the pop-up is switched off or
+ * has ended, with a ribbon saying so: «البوب أب مش بيظهر» was a preview of a
+ * switched-off pop-up showing nothing at all.
  */
 const THEMES: Record<PopupTheme, { bg: string; glow: string; accent: string; ink: string }> = {
   royal:   { bg: 'linear-gradient(135deg,#1e1b4b 0%,#4338ca 55%,#7c3aed 100%)', glow: '#a78bfa', accent: '#fbbf24', ink: '#1e1b4b' },
@@ -48,7 +50,7 @@ const SpecialOffer: React.FC = () => {
   const version = String(content['popup.version'] || '');
   const live = popupIsLive(content);
   const blockedPath = PATHS_WITHOUT_POPUP.some(prefix => pathname.startsWith(prefix));
-  const allowed = live && !blockedPath && (preview || (!isAdmin && !isStaff));
+  const allowed = !blockedPath && (preview ? popupHasContent(content) : live && !isAdmin && !isStaff);
   const delayMs = Math.min(60, Math.max(0, Number(content['popup.delaySeconds']) || 3)) * 1000;
 
   useEffect(() => {
@@ -76,6 +78,8 @@ const SpecialOffer: React.FC = () => {
   if (!open || !allowed) return null;
 
   const theme = THEMES[popupTheme(content)];
+  const video = popupVideo(content['popup.videoUrl']);
+  const image = video ? '' : popupImage(content['popup.imageUrl']);
   const pct = Math.min(99, Math.max(0, Number(content['popup.discountPercent']) || 0));
   const code = String(content['popup.code'] || '').trim();
   const sym = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
@@ -116,7 +120,20 @@ const SpecialOffer: React.FC = () => {
           <X size={18} />
         </button>
 
-        <div className="relative px-5 pb-6 pt-10 text-center sm:px-7 sm:pb-7">
+        {video && (
+          <div className="relative aspect-video w-full bg-black">
+            {video.kind === 'frame'
+              ? <iframe src={video.src} title={content['popup.title'] || 'فيديو'} className="absolute inset-0 h-full w-full border-0"
+                  allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" />
+              : <video src={video.src} controls playsInline preload="metadata" className="absolute inset-0 h-full w-full bg-black object-contain" />}
+          </div>
+        )}
+        {image && <img src={image} alt={content['popup.title'] || ''} className="block max-h-64 w-full object-cover" loading="eager" />}
+
+        <div className={`relative px-5 pb-6 text-center sm:px-7 sm:pb-7 ${video || image ? 'pt-6' : 'pt-10'}`}>
+          {preview && !live && (
+            <p className="mb-3 rounded-xl bg-black/35 px-3 py-1.5 text-xs font-bold text-amber-200">معاينة فقط — البوب أب مقفول أو انتهى، فمش بيظهر للزوار</p>
+          )}
           <div className="mb-5 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/15 px-3.5 py-1 text-xs font-extrabold">
             <Sparkles size={13} style={{ color: theme.accent }} /> عرض خاص لزوار الموقع
           </div>

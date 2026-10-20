@@ -61,7 +61,7 @@ const SCREENS = [
   'customer_inbox', 'whatsapp_web', 'team_inbox', 'cx_team', 'ratings', 'branch_hr', 'service_hub', 'refund_requests', 'consultations', 'cert_requests',
   'financial', 'orders', 'financial_reports', 'recurring_expenses',
   'hr', 'staff_performance', 'hr_analytics', 'enps_dashboard', 'offboarding', 'instructors', 'join_us', 'lecturer_applications', 'interviews',
-  'marketing_hub', 'campaigns', 'notif_inbox',
+  'marketing_hub', 'campaigns', 'notif_inbox', 'staff_announcements',
   'content_hub', 'courses', 'lectures', 'bundles', 'quizzes', 'course_waitlist',
   'live_streams', 'community',
   'settings_hub', 'system_settings', 'integrations', 'lead_sources_settings',

@@ -27,6 +27,7 @@ import {
 } from '../constants/permissions';
 import { useToast } from '../../shared/ui/Toast';
 import type { PaymentDraft } from '../components/PaymentModal';
+import StaffAnnouncementPopup from '../components/StaffAnnouncementPopup';
 import { createClientPaymentDraft } from '../lib/clientActionDrafts';
 import { currencyForBranch } from '../lib/branchCurrency';
 import { CONTENT_HUB_TABS } from './dashboard/contentHubConfig';
@@ -1224,10 +1225,11 @@ const Dashboard: React.FC = () => {
           setSubPayRow={setSubPayRow}
           setSubPayDraft={setSubPayDraft}
           navigate={navigate}
-          notify={notify}
         />
       </Suspense>
 
+      {/* A message from the administration, over whatever the employee is doing (components/StaffAnnouncementPopup.tsx). */}
+      <StaffAnnouncementPopup />
     </div>
     <DashboardPaymentOverlays
       lead={leadPayRow}

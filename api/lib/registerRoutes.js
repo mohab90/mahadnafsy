@@ -61,6 +61,7 @@ const routeModules = [
   ['/', '../routes/messaging-inbox'],
   ['/', '../routes/whatsapp-web'],
   ['/', '../routes/whatsapp-web-crm'],
+  ['/', '../routes/staff-announcements'],
   ['/', '../routes/team-inbox'],
   ['/', '../routes/inbox-bot'],
   ['/', '../routes/page-audience'],

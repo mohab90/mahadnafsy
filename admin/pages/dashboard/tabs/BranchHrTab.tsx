@@ -3,7 +3,7 @@ import { CalendarX, Check, UserPlus, Users, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { Modal } from '../../../../shared/ui/Modal';
 import { usePhysicalBranch } from '../../../lib/physicalBranch';
-import { cairoDay } from '../../../../shared/cairoDate';
+import { cairoDay, cairoMonthOnly } from '../../../../shared/cairoDate';
 
 // «نضيف لحساب مدير الدقي نظام الموارد البشريه ولكن فقط علي موظفين الدقي يقدر
 // ينشأ حساب ويقدر يشوف الاذونات والغيابات» (9 Oct 2026). The branch's staff, a new
@@ -12,6 +12,7 @@ import { cairoDay } from '../../../../shared/cairoDate';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type Employee = { id: string; name: string; email: string; phone: string; role: string; is_active: number | boolean };
 type Leave = { id: string; staff_name: string; type: string; start_date: string; end_date: string; total_days: number; reason: string | null; status: string };
+type Advance = { id: string; staff_name: string; amount: number; currency: string; reason: string | null; status: string; deduct_month: number | null; deduct_year: number | null; created_at: string };
 type Summary = { id: string; name: string; present_days: number; absent_days: number; late_days: number; total_late_minutes: number; leave_days: number };
 
 const LEAVE_TYPE: Record<string, string> = {
@@ -27,12 +28,14 @@ export default function BranchHrTab({ notify }: { notify: NotifyFn }) {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [leaves, setLeaves] = useState<Leave[]>([]);
   const [summary, setSummary] = useState<Summary[]>([]);
+  const [advances, setAdvances] = useState<Advance[]>([]);
   const [busy, setBusy] = useState('');
   const [adding, setAdding] = useState(false);
 
   const load = useCallback(() => {
     mysqlAdmin.adminGet<Employee[]>('/admin/hr/employees').then(rows => setEmployees(Array.isArray(rows) ? rows : [])).catch(() => setEmployees([]));
     mysqlAdmin.adminGet<Leave[]>('/admin/hr/leaves').then(rows => setLeaves(Array.isArray(rows) ? rows : [])).catch(() => setLeaves([]));
+    mysqlAdmin.adminGet<Advance[]>('/admin/hr/advances').then(rows => setAdvances(Array.isArray(rows) ? rows : [])).catch(() => setAdvances([]));
     mysqlAdmin.adminGet<Summary[]>('/admin/hr/attendance/summary').then(rows => setSummary(Array.isArray(rows) ? rows : [])).catch(() => setSummary([]));
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -46,7 +49,22 @@ export default function BranchHrTab({ notify }: { notify: NotifyFn }) {
     } catch (error) { notify('error', error instanceof Error ? error.message : 'تعذر الحفظ'); } finally { setBusy(''); }
   };
 
+  // «مدير الدقي ليه مش بيوصله أي إذن أو إجازة أو سلفة»: an advance is approved against a month's salary; one the
+  // employee asked for without naming a month comes out of this month's.
+  const decideAdvance = async (advance: Advance, status: 'APPROVED' | 'REJECTED') => {
+    setBusy(advance.id);
+    try {
+      const [year, month] = cairoMonthOnly().split('-').map(Number);
+      await mysqlAdmin.adminPut(`/admin/hr/advances/${encodeURIComponent(advance.id)}/status`, {
+        status, deduct_month: advance.deduct_month || month, deduct_year: advance.deduct_year || year,
+      });
+      notify('success', status === 'APPROVED' ? 'اتوافق على السلفة' : 'اترفضت السلفة');
+      load();
+    } catch (error) { notify('error', error instanceof Error ? error.message : 'تعذر الحفظ'); } finally { setBusy(''); }
+  };
+
   const pending = leaves.filter(leave => leave.status === 'PENDING');
+  const pendingAdvances = advances.filter(advance => advance.status === 'PENDING');
   const card = 'rounded-2xl border border-gray-200 bg-white p-4 shadow-sm';
   return (
     <div className="space-y-4" dir="rtl">
@@ -114,6 +132,36 @@ export default function BranchHrTab({ notify }: { notify: NotifyFn }) {
                         <div className="flex flex-nowrap gap-1">
                           <button disabled={busy === leave.id} onClick={() => void decide(leave, 'APPROVED')} className="inline-flex items-center gap-0.5 rounded-md bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold text-white disabled:opacity-50"><Check size={10} /> موافقة</button>
                           <button disabled={busy === leave.id} onClick={() => void decide(leave, 'REJECTED')} className="inline-flex items-center gap-0.5 rounded-md border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-bold text-red-700 disabled:opacity-50"><X size={10} /> رفض</button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className={card}>
+        <h3 className="mb-2 text-sm font-bold text-gray-800">طلبات السلف {pendingAdvances.length ? <span className="rounded-full bg-amber-100 px-2 text-amber-800">{pendingAdvances.length} مستني</span> : null}</h3>
+        {advances.length === 0 ? <p className="text-xs text-gray-400">مفيش طلبات سلف.</p> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="text-gray-500"><tr>{['الموظف', 'المبلغ', 'السبب', 'الطلب', 'الحالة', ''].map(title => <th key={title} className="px-2 py-1.5 text-right">{title}</th>)}</tr></thead>
+              <tbody>
+                {advances.slice(0, 60).map(advance => (
+                  <tr key={advance.id} className="border-t border-gray-100">
+                    <td className="px-2 py-1.5 font-bold">{advance.staff_name}</td>
+                    <td className="px-2 py-1.5">{Number(advance.amount).toLocaleString('ar-EG-u-nu-latn')} {advance.currency}</td>
+                    <td className="max-w-[200px] px-2 py-1.5 text-gray-600">{advance.reason || '—'}</td>
+                    <td className="px-2 py-1.5">{cairoDay(advance.created_at)}</td>
+                    <td className="px-2 py-1.5">{advance.status === 'PENDING' ? 'مستني' : advance.status === 'REJECTED' ? 'اترفضت' : advance.status === 'DEDUCTED' ? 'اتخصمت' : 'اتوافق'}</td>
+                    <td className="px-2 py-1.5">
+                      {advance.status === 'PENDING' && (
+                        <div className="flex flex-nowrap gap-1">
+                          <button disabled={busy === advance.id} onClick={() => void decideAdvance(advance, 'APPROVED')} className="inline-flex items-center gap-0.5 rounded-md bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold text-white disabled:opacity-50"><Check size={10} /> موافقة</button>
+                          <button disabled={busy === advance.id} onClick={() => void decideAdvance(advance, 'REJECTED')} className="inline-flex items-center gap-0.5 rounded-md border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-bold text-red-700 disabled:opacity-50"><X size={10} /> رفض</button>
                         </div>
                       )}
                     </td>

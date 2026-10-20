@@ -8,8 +8,6 @@ import { createClientPaymentDraft } from '../../lib/clientActionDrafts';
 import { currencyForBranch } from '../../lib/branchCurrency';
 import { realCourseIds } from './tabs/leads/leadCourseLabel';
 import { ClientLookupList, type LookupRow } from './ClientLookupResults';
-import { WhatsAppFab } from '../../components/InSystemWhatsApp';
-import type { NotifyFn } from '../../types';
 
 type DashboardQuickBookingProps = {
   open: boolean;
@@ -23,7 +21,6 @@ type DashboardQuickBookingProps = {
   setSubPayRow: (subscriber: SubscriberItem) => void;
   setSubPayDraft: React.Dispatch<React.SetStateAction<PaymentDraft>>;
   navigate: NavigateFunction;
-  notify: NotifyFn;
 };
 
 export function DashboardQuickBooking({
@@ -38,29 +35,24 @@ export function DashboardQuickBooking({
   setSubPayRow,
   setSubPayDraft,
   navigate,
-  notify,
 }: DashboardQuickBookingProps) {
   const close = () => setOpen(false);
 
   return (
     <>
-      {/* «بحث» and, beside it, «واتساب»: the quick sender of the system's own WhatsApp (only for an account that has one). */}
+      {/* A small round button with only the magnifier («خلي زر البحث أصغر وفقط علامه البحث»). */}
       {!open && (
-        <div className="fixed bottom-4 left-4 z-40 flex items-center gap-2 md:bottom-6 md:left-6">
-          <button
-            onClick={() => {
-              setOpen(true);
-              setSearch('');
-            }}
-            aria-label="بحث في كل العملاء"
-            className="flex h-11 w-11 items-center justify-center gap-2 rounded-full bg-emerald-600 text-white shadow-xl transition hover:bg-emerald-700 active:scale-95 md:h-auto md:w-auto md:rounded-2xl md:px-4 md:py-3 md:text-sm md:font-bold md:shadow-2xl md:hover:scale-105"
-            title="بحث في كل العملاء — وحجز جديد / تسجيل دفعة"
-          >
-            <Search size={18} />
-            <span className="hidden md:inline">بحث</span>
-          </button>
-          <WhatsAppFab notify={notify} />
-        </div>
+        <button
+          onClick={() => {
+            setOpen(true);
+            setSearch('');
+          }}
+          aria-label="بحث في كل العملاء"
+          className="fixed bottom-4 left-4 z-40 flex h-10 w-10 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg transition hover:bg-emerald-700 active:scale-95 md:bottom-6 md:left-6"
+          title="بحث في كل العملاء — وحجز جديد / تسجيل دفعة"
+        >
+          <Search size={17} />
+        </button>
       )}
 
       {open && (
@@ -92,7 +84,7 @@ function QuickBookingModal({
   setSubPayRow,
   setSubPayDraft,
   navigate,
-}: Omit<DashboardQuickBookingProps, 'open' | 'setOpen' | 'notify'> & { onClose: () => void }) {
+}: Omit<DashboardQuickBookingProps, 'open' | 'setOpen'> & { onClose: () => void }) {
   // «بحث»: one list for everyone in the system, from the second letter, whoever owns them
   // (ClientLookupList). «حجز / دفع» books in place when the person is one of the caller's own
   // loaded clients; for anyone else it opens their file on the payment screen (?pay=now).

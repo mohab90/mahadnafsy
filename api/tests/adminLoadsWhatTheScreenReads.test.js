@@ -217,6 +217,7 @@ const TAB_ENTRIES = {
   course_waitlist: `${T}/CourseWaitlistTab.tsx`,
   faq_manager: `${T}/FaqManagerTab.tsx`,
   notif_inbox: `${T}/NotifInboxMgmtTab.tsx`,
+  staff_announcements: `${T}/StaffAnnouncementsTab.tsx`,
   notifications: `${T}/NotificationsAdminTab.tsx`,
   cx_team: [`${T}/reports/TeamReportPanel.tsx`, `${T}/CxTeamTab.tsx`],
   consultation_calendar: `${T}/ConsultationCalendarTab.tsx`,

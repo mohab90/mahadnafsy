@@ -48,6 +48,33 @@ function staffReachSql(reach, alias = 's') {
   return { sql: ` AND (${alias}.role IN (${reach.roles.map(() => '?').join(',')}) OR ${alias}.branch_id = ?)`, params: [...reach.roles, reach.branchId] };
 }
 
+/**
+ * «مدير الدقي ليه مش بيوصله أي إذن أو إجازة أو سلفة؟»: a request from a branch's employee is told to that branch's manager by
+ * name. It used to go to «HR» alone (a bell the branch manager does not see: it needs view_hr), so the manager learned of an
+ * absence request when the employee mentioned it. Never throws: a notice that fails must not undo the request.
+ * @returns {Promise<number>} how many managers were told
+ */
+async function notifyBranchManagers(db, { tenantId, staffId, title, message, data = {} }) {
+  try {
+    const [[person]] = await db.query('SELECT id, role, branch_id FROM staff WHERE id=? AND tenant_id=? LIMIT 1', [staffId, tenantId]);
+    if (!person) return 0;
+    const role = String(person.role || '').toUpperCase();
+    const managerRoles = Object.entries(BRANCH_HR)
+      .filter(([, reach]) => reach.roles.includes(role) || reach.branchId === person.branch_id)
+      .map(([managerRole]) => managerRole);
+    if (!managerRoles.length) return 0;
+    const [managers] = await db.query(
+      `SELECT id FROM staff WHERE tenant_id=? AND UPPER(role) IN (${managerRoles.map(() => '?').join(',')}) AND is_active=1 AND deleted_at IS NULL AND id<>?`,
+      [tenantId, ...managerRoles, staffId]);
+    const { createNotification } = require('./notification');
+    await Promise.all(managers.map(manager => createNotification('hr', title, message, data, tenantId, manager.id)));
+    return managers.length;
+  } catch (error) {
+    require('./logger').warn('[branch-hr] manager notice failed:', error.message);
+    return 0;
+  }
+}
+
 /** Is this employee within the caller's reach? */
 async function staffInReach(db, req, staffId) {
   const reach = req.hrReach || hrReach(req);
@@ -134,6 +161,6 @@ async function applicantInReach(db, req, id) {
 const outOfRecruitReach = res => res.status(404).json({ error: 'الطلب ده مش على فرعك' });
 
 module.exports = {
-  BRANCH_HR, hrReach, outOfReach, requireHr, staffInReach, staffReachSql,
+  BRANCH_HR, hrReach, outOfReach, requireHr, staffInReach, staffReachSql, notifyBranchManagers,
   requireRecruiting, joinUsReachSql, applicantReachSql, joinUsInReach, applicantInReach, outOfRecruitReach,
 };

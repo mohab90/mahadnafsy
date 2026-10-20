@@ -41,7 +41,7 @@ test('every way of linking to WhatsApp outside the system is recognised, and not
   delete global.window;
 });
 
-test('the buttons open the system\'s own WhatsApp, and the floating one sends from it', () => {
+test('the buttons open the system\'s own WhatsApp; the floating sender is gone and the search button is only an icon', () => {
   const app = read('admin/App.tsx');
   assert.match(app, /<InSystemWhatsAppLinks \/>/);
   const links = read('admin/components/InSystemWhatsApp.tsx');
@@ -49,12 +49,15 @@ test('the buttons open the system\'s own WhatsApp, and the floating one sends fr
   assert.match(links, /event\.metaKey \|\| event\.ctrlKey \|\| event\.shiftKey/, 'a Ctrl-click keeps the browser\'s own behaviour');
   assert.doesNotMatch(links, /stopPropagation/, 'a button\'s own handler (a logged contact) still runs');
   assert.match(links, /canUseChannel\(/, 'only an account that has WhatsApp in the system is rerouted');
-  assert.match(links, /adminPost\('\/staff\/whatsapp-web\/send', \{ phone, text: text\.trim\(\) \}\)/);
+  // «الغي زر واتس اللى تحت»: the floating sender (20 Oct 2026) is withdrawn; the chat opens through the links alone.
+  assert.doesNotMatch(links, /WhatsAppFab|WhatsAppQuickSend|whatsapp-web\/send/);
 
   const booking = read('admin/pages/dashboard/DashboardQuickBooking.tsx');
-  assert.match(booking, /<WhatsAppFab notify=\{notify\} \/>/);
-  assert.ok(booking.indexOf('aria-label="بحث في كل العملاء"') < booking.indexOf('<WhatsAppFab'), 'beside the search button');
-  assert.match(read('admin/pages/Dashboard.tsx'), /navigate=\{navigate\}\s+notify=\{notify\}/);
+  assert.doesNotMatch(booking, /WhatsAppFab/);
+  assert.match(booking, /aria-label="بحث في كل العملاء"/);
+  assert.match(booking, /h-10 w-10 items-center justify-center rounded-full/, 'a small round button');
+  assert.match(booking, /<Search size=\{17\} \/>/, 'the search mark only');
+  assert.doesNotMatch(read('admin/pages/Dashboard.tsx'), /navigate=\{navigate\}\s+notify=\{notify\}/);
 
   const page = read('admin/pages/dashboard/tabs/whatsapp/WhatsAppWebTab.tsx');
   assert.match(page, /const wantedPhone = params\.get\('phone'\)/);

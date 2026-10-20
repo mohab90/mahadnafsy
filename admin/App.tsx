@@ -40,17 +40,29 @@ const StaffRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     // Fast path: already in loaded staffMembers list
     const inContext = staffMembers.some(s => s.email.toLowerCase() === (authUser.email || '').toLowerCase());
     if (inContext) { setAllowed(true); return; }
-    // Verify via /staff/me API (works for all staff roles)
-    Promise.resolve().then(() => {
-      const api = mysqlClient;
-      api.getStaffSelf()
-        .then((r: unknown) => setAllowed(r !== null && r !== undefined))
-        .catch(() => {
-          // Fallback: accept if found in staffMembers (may have loaded by now)
-          const fallback = staffMembers.some(s => s.email.toLowerCase() === (authUser.email || '').toLowerCase());
-          setAllowed(fallback);
-        });
-    });
+    // Verify via /staff/me API (works for all staff roles).
+    //
+    // «في موظفين بيظهر عند تسجيل الدخول ريفريش سريع جدا لصفحة تسجيل الدخول ومش بيقدر يدخل»: the staff list is no longer
+    // downloaded for every employee, so this one call is what lets them in — and a single failure of it (a slow mobile
+    // connection, a server moment, the rate limiter) sent them straight back to the login page, where signing in
+    // again hit the same race. It is asked up to three times before the answer is taken to be «no».
+    let cancelled = false;
+    const ask = async () => {
+      for (let attempt = 0; attempt < 3 && !cancelled; attempt += 1) {
+        try {
+          const r: unknown = await mysqlClient.getStaffSelf();
+          if (!cancelled) setAllowed(r !== null && r !== undefined);
+          return;
+        } catch {
+          // The list may have loaded by now.
+          if (staffMembers.some(s => s.email.toLowerCase() === (authUser.email || '').toLowerCase())) { if (!cancelled) setAllowed(true); return; }
+          if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 700 * (attempt + 1)));
+        }
+      }
+      if (!cancelled) setAllowed(false);
+    };
+    void ask();
+    return () => { cancelled = true; };
     // authUser and staffMembers are read but deliberately not listed. The gate
     // re-checks per signed-in identity (authGateKey), not per object: authUser is
     // replaced on every token refresh, and staffMembers is re-fetched by the

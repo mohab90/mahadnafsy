@@ -746,6 +746,8 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   // held by sales reps and support, which would have put the whole التسويق group
   // in their sidebar the moment this became a menu item.
   notif_inbox:        'manage_channel_settings',
+  // Writing to the employees is the right to manage the team (api/routes/staff-announcements.js).
+  staff_announcements: 'manage_staff',
   hub_advanced:       'manage_settings',
   // Staff personal portal — accessible by any authenticated staff, which is
   // what these three now say. They asked for view_dashboard, and an employee

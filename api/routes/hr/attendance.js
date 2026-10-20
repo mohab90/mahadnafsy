@@ -5,7 +5,7 @@ const router = Router();
 const { hrError, requirePermission, requireAnyPermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit } = require('./_shared');
 const { createLeaveRequest, getEffectiveHrPolicy, leaveAllowance, HOUR_PERMITS, LEAVE_LABELS_AR, ATTENDANCE_POLICY_COLUMNS, DEFAULT_POLICY } = require('../../lib/hrPolicy');
 const { writeAuditEvent } = require('../../lib/auditTrail');
-const { outOfReach, requireHr, staffInReach, staffReachSql } = require('../../lib/branchHr');
+const { outOfReach, requireHr, staffInReach, staffReachSql, notifyBranchManagers } = require('../../lib/branchHr');
 const { toNumbers } = require('../../lib/mappers');
 const { sqlCairoToday, cairoToday, cairoYearMonth } = require('../../lib/dates');
 const dateOnly = value => value instanceof Date
@@ -246,6 +246,10 @@ router.post('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, requireAny
       `اتسجل طلب من ${start_date} إلى ${end_date}`,
       { leave_id: id, staff_id, tab: 'hr' }, req.tenantId
     );
+    await notifyBranchManagers(pool, {
+      tenantId: req.tenantId, staffId: staff_id, title: `طلب ${LEAVE_LABELS_AR[type] || 'إجازة'}`,
+      message: `اتسجل طلب من ${start_date} إلى ${end_date}`, data: { leave_id: id, staff_id, tab: 'hr' },
+    });
 
     res.json({ ok: true, id, total_days: totalDays });
   } catch (e) {

@@ -97,14 +97,16 @@ export function useCatalogData({
     // Load catalog for non-admin users in 2 sequential batches to avoid overwhelming DB connection pool.
     // Batch A (immediate): catalog data needed for home/courses pages.
     // Batch B (500ms later): lectures & chapters needed for course detail pages (lighter limit).
-    if (!isAdmin) {
-      // Load dynamic site content from API (hero text, page texts, etc.) — merge over defaults
-      mysqlCatalog.getSiteContent().then((remote) => {
-        if (remote && typeof remote === 'object' && Object.keys(remote).length > 0) {
-          mergeContent(remote);
-        }
-      }).catch(() => { /* graceful — defaults remain */ });
+    // The site's own words and the marketing pop-up come with the content, for everyone. They were fetched inside the
+    // non-admin branch below, so an owner or a staff member looking at the live site — to check the pop-up they had just
+    // switched on, through «معاينة» — saw the built-in defaults and no pop-up at all: «مش شغال ومش بيظهر».
+    mysqlCatalog.getSiteContent().then((remote) => {
+      if (remote && typeof remote === 'object' && Object.keys(remote).length > 0) {
+        mergeContent(remote);
+      }
+    }).catch(() => { /* graceful — defaults remain */ });
 
+    if (!isAdmin) {
       (async () => {
         try {
           // ── Batch A: courses/bundles/testimonials/therapists ──────────────────

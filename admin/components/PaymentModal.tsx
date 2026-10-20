@@ -818,12 +818,16 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
   // ── Build print data ───────────────────────────────────────────────────
   const buildPrintData = (): PrintData => {
-    const prevPaid = payHistory.filter(p => p.currency === d.currency && (!p.courseId || p.courseId === d.courseId)).reduce((s, p) => s + Number(p.amount), 0);
+    // A carnet or a book is its own service: the receipt carries its price and its balance, not the linked course's.
+    const itemService = d.paymentType === 'carneh' || d.paymentType === 'book';
+    const chosenService = itemService ? extraOptions.find(option => option.label === d.itemTitle) : undefined;
+    const servicePrice = itemService ? (chosenService ? priceIn(chosenService, d.currency) : 0) || _amtPaid : 0;
+    const prevPaid = itemService ? 0 : payHistory.filter(p => p.currency === d.currency && (!p.courseId || p.courseId === d.courseId)).reduce((s, p) => s + Number(p.amount), 0);
     const extraTotalForPrint = (d.extraItems || []).filter(i => i.amount && Number(i.amount) > 0).reduce((s, i) => s + Number(i.amount), 0);
     const newTotal = prevPaid + _amtPaid + extraTotalForPrint;
-    const remaining = _effPx > 0 ? Math.max(0, _effPx - newTotal) : 0;
+    const remaining = itemService ? Math.max(0, servicePrice - newTotal) : (_effPx > 0 ? Math.max(0, _effPx - newTotal) : 0);
     const staffName = authUser?.displayName || authUser?.email?.split('@')[0] || 'موظف';
-    const label = courseLabel(d.courseId) || d.paymentType;
+    const label = itemService ? (d.itemTitle || (d.paymentType === 'carneh' ? 'كارنيه' : 'كتاب')) : (courseLabel(d.courseId) || d.paymentType);
     return {
       subName: personName,
       phone: personPhone,
@@ -842,7 +846,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       date: d.date,
       note: d.note || undefined,
       bookingType: d.bookingType,
-      courseExpected: _effPx,
+      courseExpected: itemService ? servicePrice : _effPx,
       prevPaid,
       remaining,
       staffName,
@@ -1895,17 +1899,24 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           {_amtPaid > 0 && (() => {
             const typeLabel: Record<string, string> = { course: 'كورس', certificate: 'شهادة', consultation: 'استشارة', book: 'كتاب', carneh: 'كارنيه', other: 'أخرى' };
             const cLabel = d.courseId ? (d.courseId.startsWith('bundle:') ? '📌 ' : '🎓 ') + courseLabel(d.courseId) : '';
+            // A carnet or a book is its own service: its own price and its own balance. The course it is linked to is only
+            // named — its price and what is left on it are not this payment's («ليه دخل فلوس الكارنيه في فلوس الكورس؟»).
+            const isItem = d.paymentType === 'carneh' || d.paymentType === 'book';
+            const chosenItem = isItem ? extraOptions.find(option => option.label === d.itemTitle) : undefined;
+            const itemPrice = isItem ? (chosenItem ? priceIn(chosenItem, d.currency) : 0) || _amtPaid : 0;
             return (
               <div className="bg-gradient-to-l from-gray-50 to-blue-50/60 border border-blue-200 rounded-xl p-3 space-y-1.5">
                 <p className="font-extrabold text-gray-800 text-sm">📋 ملخص الدفعة</p>
                 <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
-                  <span className="text-gray-500">نوع الخدمة:</span><span className="font-semibold">{typeLabel[d.paymentType] || d.paymentType}</span>
-                  {cLabel && <><span className="text-gray-500">الكورس:</span><span className="font-semibold">{cLabel}</span></>}
-                  {_effPx > 0 && <><span className="text-gray-500">السعر:</span><span className="font-semibold">{_effPx.toLocaleString('ar-EG-u-nu-latn')} {d.currency}{_hasDiscount ? ' (بعد الخصم)' : ''}</span></>}
+                  <span className="text-gray-500">نوع الخدمة:</span><span className="font-semibold">{typeLabel[d.paymentType] || d.paymentType}{isItem && d.itemTitle ? ` — ${d.itemTitle}` : ''}</span>
+                  {cLabel && <><span className="text-gray-500">{isItem ? 'مرتبط بكورس:' : 'الكورس:'}</span><span className="font-semibold">{cLabel}</span></>}
+                  {isItem && <><span className="text-gray-500">السعر:</span><span className="font-semibold">{itemPrice.toLocaleString('ar-EG-u-nu-latn')} {d.currency}</span></>}
+                  {!isItem && _effPx > 0 && <><span className="text-gray-500">السعر:</span><span className="font-semibold">{_effPx.toLocaleString('ar-EG-u-nu-latn')} {d.currency}{_hasDiscount ? ' (بعد الخصم)' : ''}</span></>}
                   <span className="text-gray-500">المدفوع الآن:</span><span className="font-bold text-green-700">{_amtPaid.toLocaleString('ar-EG-u-nu-latn')} {d.currency}</span>
                   {_extraTotal > 0 && <><span className="text-gray-500">إضافات:</span><span className="font-semibold">+{_extraTotal.toLocaleString('ar-EG-u-nu-latn')} {d.currency}</span></>}
                   {_grandTotal > 0 && _extraTotal > 0 && <><span className="text-gray-500">الإجمالي:</span><span className="font-extrabold text-red-700">{_grandTotal.toLocaleString('ar-EG-u-nu-latn')} {d.currency}</span></>}
-                  {_remaining > 0 && d.bookingType === 'new_booking' && <><span className="text-gray-500">المتبقي:</span><span className="font-bold text-amber-600">{_remaining.toLocaleString('ar-EG-u-nu-latn')} {d.currency}</span></>}
+                  {isItem && <><span className="text-gray-500">المتبقي:</span><span className={`font-bold ${itemPrice - _amtPaid > 0 ? 'text-amber-600' : 'text-green-700'}`}>{Math.max(0, itemPrice - _amtPaid).toLocaleString('ar-EG-u-nu-latn')} {d.currency}</span></>}
+                  {!isItem && _remaining > 0 && d.bookingType === 'new_booking' && <><span className="text-gray-500">المتبقي:</span><span className="font-bold text-amber-600">{_remaining.toLocaleString('ar-EG-u-nu-latn')} {d.currency}</span></>}
                   {requirePaymentApproval && <><span className="text-gray-500">الحالة:</span><span className="font-bold text-amber-600">⏳ بانتظار الموافقة</span></>}
                 </div>
               </div>

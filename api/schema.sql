@@ -5024,6 +5024,47 @@ CREATE TABLE `staff_absences` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `staff_announcement_seen`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `staff_announcement_seen` (
+  `tenant_id` varchar(64) NOT NULL,
+  `announcement_id` varchar(36) NOT NULL,
+  `staff_id` varchar(64) NOT NULL,
+  `seen_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`tenant_id`,`announcement_id`,`staff_id`),
+  KEY `idx_staff_ann_seen_staff` (`tenant_id`,`staff_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `staff_announcements`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `staff_announcements` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `title` varchar(200) NOT NULL,
+  `body` text DEFAULT NULL,
+  `image_urls` text DEFAULT NULL,
+  `video_url` varchar(500) DEFAULT NULL,
+  `style` enum('info','urgent','celebrate') NOT NULL DEFAULT 'info',
+  `audience_roles` varchar(1000) DEFAULT NULL,
+  `expires_at` datetime DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `created_by` varchar(64) DEFAULT NULL,
+  `created_by_name` varchar(255) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_staff_ann_live` (`tenant_id`,`is_active`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `staff_documents`
 --
 
