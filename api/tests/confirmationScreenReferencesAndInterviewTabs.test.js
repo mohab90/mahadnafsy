@@ -47,11 +47,12 @@ test('the confirmation list carries every payment waiting, with the transfer the
   assert.match(table, /row\.fromAccountNumber && /);
 });
 
-test('payments waiting for confirmation are in one place: the table, not the box above it', () => {
+test('payments waiting for confirmation are in one place: the table — the new clients too, none in a box above it', () => {
   const finance = read('admin/pages/dashboard/DashboardFinanceTabs.tsx');
-  assert.match(finance, /<CollectionBookingsReview requestsOnly /);
+  assert.doesNotMatch(finance, /<CollectionBookingsReview/);
   const review = read('admin/pages/dashboard/tabs/orders/CollectionBookingsReview.tsx');
-  assert.match(review, /requestsOnly \? Promise\.resolve\(\{ rows: \[\] as PendingPayment\[\] \}\)/);
+  assert.doesNotMatch(review, /requestsOnly/);
+  assert.match(read('admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx'), /clientRequests.rows/);
 });
 
 test('editing a client is not refused for the number the client already holds', () => {

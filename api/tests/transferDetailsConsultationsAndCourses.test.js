@@ -31,11 +31,11 @@ test('the sender of a transfer is stored on the payment and read back by every p
   ]) assert.match(read(screen), /senderName/, screen);
 });
 
-test('a transfer cannot be booked without its operation number, sender and number — a branch box needs none', () => {
+test('the operation number, sender and number are optional — typed, they travel with the payment', () => {
   const modal = read('admin/components/PaymentModal.tsx');
-  assert.match(modal, /const transferNeedsDetails = _amtPaid > 0 && !!d\.paymentMethod && !\/\^\\s\*خزنة\/\.test\(d\.paymentMethod\)/);
-  assert.match(modal, /const transferProblem = transferNeedsDetails && \(!d\.transactionId\.trim\(\) \|\| !d\.senderName\.trim\(\) \|\| !d\.fromAccountNumber\.trim\(\)\)/);
-  assert.match(modal, /const isValid = transferProblem \? false/);
+  assert.doesNotMatch(modal, /transferNeedsDetails|transferProblem/, 'never a reason to refuse a booking');
+  assert.match(modal, /const isValid = !subjectChosen/);
+  assert.match(modal, /field\.label\} <span className="text-gray-400 font-normal">\(اختياري\)<\/span>/);
   // The three fields reach the server from every booking path.
   for (const file of [
     'admin/pages/dashboard/dashboardPaymentHandlers.ts', 'admin/lib/createClientWithPayment.ts', 'admin/pages/dashboard/tabs/FinancialTab.tsx',

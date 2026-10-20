@@ -53,7 +53,7 @@ const CERT_TRANSITIONS = new Map([
 // شهاده واقدر اعدل شهاده»); changing its status is the desk's.
 const CERT_MANAGERS = new Set(['admin', 'manager', 'online_manager', 'daqqi_manager', 'tagamoa_manager', 'sales_collection_manager']);
 // The price list's figure for a request's type in its currency (as the payment dialog reads it).
-const systemPriceOfRow = (pricing, row) => basePriceForCurrency(pricing, row.type, row.currency || 'EGP') || 0;
+const systemPriceOfRow = (pricing, row) => basePriceForCurrency(pricing, row.type, row.currency || 'EGP', row.nationality) || 0;
 const isCertManager = req => Boolean(req.isSuperAdmin || CERT_MANAGERS.has(String(req.staffRecord?.role || '').toLowerCase()));
 
 // «عمود اسمه جهه التحصيل»: the box the money went into. Set on the request, or
@@ -96,7 +96,7 @@ const AUDIT_PROBLEMS = Object.freeze({
 async function auditRequests(tenantId) {
   const pricing = await loadPricing(tenantId);
   const [rows] = await pool.query(
-    `SELECT cr.id, cr.type, cr.custom_name, cr.status, cr.price, cr.paid_amount, cr.currency, cr.course_id, cr.requested_at,
+    `SELECT cr.id, cr.type, cr.custom_name, cr.status, cr.price, cr.paid_amount, cr.currency, cr.nationality, cr.course_id, cr.requested_at,
             s.name AS subscriber_name, s.client_code,
             (SELECT COUNT(*) FROM payments p WHERE p.certificate_request_id=cr.id AND p.tenant_id=cr.tenant_id) AS payment_rows,
             (SELECT COALESCE(SUM(p.amount),0) FROM payments p WHERE p.certificate_request_id=cr.id AND p.tenant_id=cr.tenant_id
@@ -109,9 +109,9 @@ async function auditRequests(tenantId) {
   const issues = [];
   for (const row of rows) {
     const currency = String(row.currency || 'EGP').toUpperCase();
-    const listed = basePriceForCurrency(pricing, row.type, currency) || 0;
+    const listed = basePriceForCurrency(pricing, row.type, currency, row.nationality) || 0;
     const stored = Number(row.price) || 0;
-    const due = certificateDue(pricing, { type: row.type, currency, price: stored });
+    const due = certificateDue(pricing, { type: row.type, currency, price: stored, nationality: row.nationality });
     const paid = Number(row.paid_amount) || 0;
     const linkedPaid = Number(row.linked_paid) || 0;
     const problems = [];
@@ -566,7 +566,7 @@ router.patch('/api/admin/certificate-requests/:id',
         LIMIT 1`,
       [request.id, request.subscriber_id, req.tenantId]
     );
-    const systemPrice = await certificatePrice(conn, req.tenantId, { type: String(request.type || '').toUpperCase(), currency: String(request.currency || 'EGP').toUpperCase() });
+    const systemPrice = await certificatePrice(conn, req.tenantId, { nationality: request.nationality, type: String(request.type || '').toUpperCase(), currency: String(request.currency || 'EGP').toUpperCase() });
     // A certificate already past payment that holds the whole of its own price
     // was paid in full when it got there: a later rise in the price list must
     // not lock its delivery steps — or a note saved on it.

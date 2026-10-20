@@ -46,7 +46,11 @@ function resolveCertificatePrice({ type, nationality, countryCode, pricingConfig
 // The price list's figure for a type in the payment's currency — the reading
 // the payment dialog uses (admin PaymentModal certBasePrice), so the desk and
 // the server agree on what a certificate costs.
-function basePriceForCurrency(pricingConfig, type, currency) {
+//
+// «سعر العميل الغير مصري مختلف … ليه بيظهر للموظفين كأنه مصري»: in pounds there are two lists, the Egyptian's and the resident
+// non-Egyptian's. This read took the Egyptian one for every client paying in EGP, so a non-Egyptian living in Egypt was shown (and
+// held to) the Egyptian price. The client's nationality chooses between them; riyals and dollars have one list each.
+function basePriceForCurrency(pricingConfig, type, currency, nationality) {
   const typeKey = String(type || '').toLowerCase();
   const savedKey = Object.keys(pricingConfig || {}).find(key => key.toLowerCase() === typeKey);
   const tiers = (savedKey && pricingConfig[savedKey]) || null;
@@ -54,6 +58,7 @@ function basePriceForCurrency(pricingConfig, type, currency) {
   const code = String(currency || 'EGP').toUpperCase();
   if (code === 'SAR') return Number(tiers.residentSAR) || 0;
   if (code === 'USD') return Number(tiers.foreignUSD) || 0;
+  if (String(nationality || '').toUpperCase() === 'NON_EGYPTIAN_EGYPT') return Number(tiers.residentEGP) || Number(tiers.egyptianEGP) || 0;
   return Number(tiers.egyptianEGP) || Number(tiers.residentEGP) || 0;
 }
 
@@ -69,7 +74,7 @@ function certificateTypeCodes(pricingConfig) {
  * (8 Oct 2026) — else the price on the request itself.
  */
 function certificateDue(pricingConfig, request) {
-  const listed = basePriceForCurrency(pricingConfig, request.type, request.currency || 'EGP');
+  const listed = basePriceForCurrency(pricingConfig, request.type, request.currency || 'EGP', request.nationality);
   return listed > 0 ? listed : (Number(request.price) || 0);
 }
 

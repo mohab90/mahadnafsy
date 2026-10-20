@@ -752,11 +752,17 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   // pay against and the amount had to be typed from memory. The settings hold
   // four tiers per type; the tier follows the payment currency, since that is
   // what the rest of this dialog is already denominated in.
+  //
+  // In pounds the list has two prices, the Egyptian's and the resident non-Egyptian's: «سعر العميل الغير مصري مختلف ليه بيظهر
+  // للموظفين كأنه مصري». A request already open carries its client's nationality, which picks between them (the server
+  // reads the list the same way: api/lib/certificatePricing.js basePriceForCurrency).
   const certBasePrice = (type: string, currency: string): number => {
     const tiers = certCatalog.map[type];
     if (!tiers) return 0;
     if (currency === 'SAR') return Number(tiers.residentSAR) || 0;
     if (currency === 'USD') return Number(tiers.foreignUSD) || 0;
+    const nationality = certRequests.find(request => request.id === d.certReqId)?.nationality;
+    if (nationality === 'non_egyptian_egypt') return Number(tiers.residentEGP) || Number(tiers.egyptianEGP) || 0;
     return Number(tiers.egyptianEGP) || Number(tiers.residentEGP) || 0;
   };
 
@@ -806,12 +812,9 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       setPhotoBusy(null);
     }
   };
-  // «ويترفضوا»: a transfer is checked against the money that arrived, by its operation number, the sender's name and the
-  // number it came from. A booking taken without them cannot be matched, and the accounts desk rejects it. Cash
-  // (a branch box — «خزنة …») has no sender to name.
-  const transferNeedsDetails = _amtPaid > 0 && !!d.paymentMethod && !/^\s*خزنة/.test(d.paymentMethod);
-  const transferProblem = transferNeedsDetails && (!d.transactionId.trim() || !d.senderName.trim() || !d.fromAccountNumber.trim());
-  const isValid = transferProblem ? false : !subjectChosen || !certificatesTyped || photoMissing || photoBusy !== null ? false : tierProblem || identityProblem ? false : mode === 'new'
+  // «رقم العملية واسم المحوّل ورقم المحوّل مينفعش يكونوا إجباري — سيبهم اختياري لكن لما الموظف يدخلهم يظهروا في صفحة المدفوعات»
+  // (20 Oct 2026): they never stop a booking; when typed, they travel with the payment to the payments page.
+  const isValid = !subjectChosen || !certificatesTyped || photoMissing || photoBusy !== null ? false : tierProblem || identityProblem ? false : mode === 'new'
     ? hasIdentity && (_amtPaid === 0 || (!!d.paymentMethod && (d.paymentType !== 'course' || !!d.courseId)))
     : _amtPaid > 0 && !!d.paymentMethod && (mode === 'lead' ? !!d.branch : true)
       && (!upgrading || (!!upgradeFrom && d.courseId.startsWith('bundle:')));
@@ -1840,30 +1843,28 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
               />
             </div>
           </div>
-          {/* The transfer: its operation number, who sent it and from which number — all three for anything that is not
-              a branch box, since the accounts desk matches the payment to the money that arrived by exactly these. */}
+          {/* The transfer: its operation number, who sent it and from which number — optional; when typed, the accounts desk
+              sees them on the payments page and matches the money by them. */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {([
               { key: 'transactionId', label: 'رقم العملية', dir: 'ltr', mono: true },
               { key: 'senderName', label: 'اسم المحوّل', dir: 'rtl', mono: false },
               { key: 'fromAccountNumber', label: 'تليفون / حساب المحوّل', dir: 'ltr', mono: true },
             ] as const).map(field => {
-              const missing = transferNeedsDetails && !d[field.key].trim();
               return (
                 <div key={field.key}>
                   <label className="block text-xs font-bold text-gray-600 mb-1.5">
-                    {field.label} {transferNeedsDetails ? <span className="text-red-500">*</span> : <span className="text-gray-400 font-normal">(للتحويلات)</span>}
+                    {field.label} <span className="text-gray-400 font-normal">(اختياري)</span>
                   </label>
                   <input
                     type="text" dir={field.dir} value={d[field.key]}
                     onChange={e => set({ [field.key]: e.target.value } as Partial<PaymentDraft>)}
-                    className={`w-full border rounded-xl px-3 py-2 text-sm ${field.mono ? 'font-mono' : ''} ${missing ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
+                    className={`w-full border rounded-xl px-3 py-2 text-sm ${field.mono ? 'font-mono' : ''} border-gray-200`}
                   />
                 </div>
               );
             })}
           </div>
-          {transferProblem && <p className="-mt-1 text-[11px] font-bold text-red-600">التحويل لازم يتسجل برقم العملية واسم المحوّل وتليفونه — من غيرهم المحاسب مش بيقدر يطابقه ويترفض.</p>}
           {/* Lead-only: email + national ID */}
           {mode === 'lead' && (
             <div className="grid grid-cols-2 gap-3">

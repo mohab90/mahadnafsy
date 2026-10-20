@@ -4,7 +4,6 @@ import { TabErrorBoundary } from '../../../shared/ui/TabErrorBoundary';
 import type { TabKey } from './navigation';
 import { ClientDbTab, FinancialTab } from './lazyTabs';
 import type OrdersTabComponent from './tabs/OrdersTab';
-import { CollectionBookingsReview } from './tabs/orders/CollectionBookingsReview';
 import { hasPermission } from '../../constants/permissions';
 import type { PermissionKey, RoleKey } from '../../constants/permissions';
 
@@ -48,9 +47,8 @@ export function DashboardFinanceTabs({
       <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="h-6 w-6 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" /></div>}>
         {keepsTheAccounts(ordersProps) ? (
           <div className="space-y-4">
-            {/* The payments waiting to be confirmed are in the table below, with the transfer's number, sender and phone. Here
-                only the new clients a collection officer sent, which are not payments yet. */}
-            {ordersProps.canManageFinancial && <CollectionBookingsReview requestsOnly notify={notify} onChanged={() => { void ordersProps.reloadSubscribers(); }} />}
+            {/* Everything waiting to be confirmed — the payments and the new clients a collection officer sent — is in the table
+                below, with the transfer's number, sender and phone. */}
             <OrdersTab {...ordersProps} />
           </div>
         ) : (

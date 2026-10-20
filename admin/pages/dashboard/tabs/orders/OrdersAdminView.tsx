@@ -8,6 +8,7 @@ import { paymentMethodLabel, normalizePaymentMethod } from '../../../../../share
 import { CAIRO_TIME_ZONE } from '../../../../../shared/cairoDate';
 import { BRANCH_LABELS_AR, normalizeBranch } from '../../../../constants/branches';
 import { AddTransferModal, IncomingTransfersTable, type IncomingTransfer } from './IncomingTransfers';
+import { useClientRequests } from './ClientRequestRows';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { useCanDelete } from '../../../../hooks/useCanDelete';
 import { confirmDialog } from '../../../../../shared/ui/confirmDialog';
@@ -25,6 +26,11 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
   const [correcting, setCorrecting] = useState<{ row: OrderItem; mode: 'edit' | 'void' } | null>(null);
   // Wiping a payment or an order is the owner's list's: «شيل من صلاحيات اي شخص غير المدير وليد وحازم ومهاب الحذف اي ما كان» (12 Oct 2026).
   const canDelete = useCanDelete();
+  // The new clients a collection officer sent wait in this table's «قيد المراجعة» rows, not in a block above it.
+  const clientRequests = useClientRequests({
+    enabled: canManageFinancial, notify, onChanged: () => { void reloadSubscribers(); },
+    titleOf: (courseId, bundleId) => (bundleId ? bundles.find(bundle => bundle.id === bundleId)?.title : courses.find(course => course.id === courseId)?.title) || '—',
+  });
   // A transfer a manager corrects (canAcceptDirectly is the manager's line).
   const [editingTransfer, setEditingTransfer] = useState<IncomingTransfer | null>(null);
   const deleteTransfer = async (transfer: IncomingTransfer) => {
@@ -195,7 +201,7 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                   {/* ── Status Tabs + Add Transfer Button ── */}
                   <div className="flex flex-wrap items-center gap-2">
                     {([
-                      { key: 'review'    as const, label: 'قيد المراجعة',   count: filteredOrders.filter(r => r.status === 'pending' && r.type !== 'transfer').length,   color: 'amber' },
+                      { key: 'review'    as const, label: 'قيد المراجعة',   count: filteredOrders.filter(r => r.status === 'pending' && r.type !== 'transfer').length + clientRequests.count,   color: 'amber' },
                       { key: 'accepted'  as const, label: 'مدفوعات مؤكدة', count: filteredOrders.filter(r => (r.status === 'paid' || !r.status) && r.type !== 'transfer').length, color: 'green' },
                       { key: 'failed'    as const, label: 'فاشلة / مرتجع', count: filteredOrders.filter(r => (r.status === 'failed' || r.status === 'refunded') && r.type !== 'transfer').length, color: 'red' },
                       { key: 'transfers' as const, label: 'التحويلات',      count: ledger.transfers.length, color: 'blue' },
@@ -322,6 +328,7 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                           </tr>
                         </thead>
                         <tbody>
+                          {orderReviewTab === 'review' && clientRequests.rows}
                           {tabRows.slice(0, 300).map((row, i) => {
                             const isPending  = row.status === 'pending';
                             const isFailed   = row.status === 'failed' || row.status === 'refunded';
@@ -450,7 +457,7 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                               </tr>
                             );
                           })}
-                          {tabRows.length === 0 && (
+                          {tabRows.length === 0 && !(orderReviewTab === 'review' && clientRequests.count > 0) && (
                             <tr>
                               <td colSpan={12} className="py-12 text-center text-gray-400">
                                 <div className="flex flex-col items-center gap-2">
@@ -479,6 +486,7 @@ export function OrdersAdminView({ props, actions }: { props: OrdersTabProps; act
                     )}
                   </div>
                   )} {/* end transfers ternary */}
+                  {clientRequests.dialog}
 
                   {/* ══════════════════════════════════════════
                       LINK TRANSFER → PENDING ORDER MODAL

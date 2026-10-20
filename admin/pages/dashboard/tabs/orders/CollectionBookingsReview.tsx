@@ -32,9 +32,7 @@ type Target =
  * «يتاكد من المدفوعات ويربطه بتحويل» — or rejected, and the officer hears
  * which on their own bell.
  */
-// `requestsOnly`: only the new clients waiting for their first booking to be approved. The payments waiting for review are
-// confirmed in the payments table below (OrdersAdminView) — «طلبات التأكيد بتظهر فوق وتحت … خلي اللي تحت فقط» (19 Oct 2026).
-export function CollectionBookingsReview({ notify, onChanged, requestsOnly = false }: { notify: Notify; onChanged?: () => void; requestsOnly?: boolean }) {
+export function CollectionBookingsReview({ notify, onChanged }: { notify: Notify; onChanged?: () => void }) {
   const { courses, bundles } = useStaticData();
   const [requests, setRequests] = useState<BookingRequest[]>([]);
   const [payments, setPayments] = useState<PendingPayment[]>([]);
@@ -46,12 +44,12 @@ export function CollectionBookingsReview({ notify, onChanged, requestsOnly = fal
     setLoading(true);
     const [requestRows, review] = await Promise.allSettled([
       mysqlAdmin.adminGet<BookingRequest[]>('/admin/subscriber-requests?status=pending'),
-      requestsOnly ? Promise.resolve({ rows: [] as PendingPayment[] }) : mysqlAdmin.adminGet<{ rows: PendingPayment[] }>('/admin/payments/review?status=pending&limit=200'),
+      mysqlAdmin.adminGet<{ rows: PendingPayment[] }>('/admin/payments/review?status=pending&limit=200'),
     ]);
     setRequests(requestRows.status === 'fulfilled' && Array.isArray(requestRows.value) ? requestRows.value : []);
     setPayments(review.status === 'fulfilled' ? (review.value.rows || []) : []);
     setLoading(false);
-  }, [requestsOnly]);
+  }, []);
   useEffect(() => { void load(); }, [load]);
 
   const itemTitle = (courseId: string | null, bundleId: string | null) =>
@@ -101,7 +99,7 @@ export function CollectionBookingsReview({ notify, onChanged, requestsOnly = fal
       <div className="mb-3 flex items-center gap-2">
         <span className="grid h-9 w-9 place-items-center rounded-xl bg-violet-600 text-white"><Clock size={17} /></span>
         <div className="flex-1">
-          <h3 className="font-extrabold text-gray-900">{requestsOnly ? 'عملاء جدد بانتظار اعتمادك' : 'حجوزات ومدفوعات بانتظار مراجعتك'} <span className="text-violet-700">({total})</span></h3>
+          <h3 className="font-extrabold text-gray-900">حجوزات ومدفوعات بانتظار مراجعتك <span className="text-violet-700">({total})</span></h3>
           <p className="text-[11px] text-gray-500">مفيش حاجة من دول بتتحسب ولا بتفتح كورس لحد ما تربطها بالتحويل وتعتمدها.</p>
         </div>
         <button type="button" onClick={() => void load()} className="rounded-lg p-2 text-gray-500 hover:bg-white" aria-label="تحديث">

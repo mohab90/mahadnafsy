@@ -152,3 +152,36 @@ test('deleting a request that exists only as an order hides the order instead of
   assert.doesNotMatch(handler.slice(0, handler.indexOf('catch')), /404/, 'a booking that is already gone is the state the person asked for');
   assert.match(read('api/routes/core/staffacct.js'), /o\.status='pending' AND o\.deleted_at IS NULL/);
 });
+
+// 20 Oct 2026 (second batch): certificate prices by nationality, optional transfer details, one payments table.
+test('in pounds a resident non-Egyptian is priced from their own list, not the Egyptian one', () => {
+  const { basePriceForCurrency, certificateDue } = require('../lib/certificatePricing');
+  const config = { institute: { egyptianEGP: 1000, residentEGP: 2500, residentSAR: 700, foreignUSD: 300 } };
+  assert.equal(basePriceForCurrency(config, 'INSTITUTE', 'EGP'), 1000);
+  assert.equal(basePriceForCurrency(config, 'INSTITUTE', 'EGP', 'EGYPTIAN'), 1000);
+  assert.equal(basePriceForCurrency(config, 'INSTITUTE', 'EGP', 'NON_EGYPTIAN_EGYPT'), 2500);
+  assert.equal(basePriceForCurrency(config, 'INSTITUTE', 'EGP', 'non_egyptian_egypt'), 2500);
+  assert.equal(basePriceForCurrency({ institute: { egyptianEGP: 1000 } }, 'INSTITUTE', 'EGP', 'NON_EGYPTIAN_EGYPT'), 1000, 'no resident price: the Egyptian one rather than nothing');
+  assert.equal(basePriceForCurrency(config, 'INSTITUTE', 'SAR', 'SAUDI_RESIDENT'), 700);
+  assert.equal(basePriceForCurrency(config, 'INSTITUTE', 'USD', 'INTERNATIONAL'), 300);
+  assert.equal(certificateDue(config, { type: 'INSTITUTE', currency: 'EGP', nationality: 'NON_EGYPTIAN_EGYPT', price: 0 }), 2500);
+  assert.equal(certificateDue(config, { type: 'INSTITUTE', currency: 'EGP', price: 0 }), 1000);
+  const route = read('api/routes/certificates.js');
+  assert.match(route, /basePriceForCurrency\(pricing, row\.type, row\.currency \|\| 'EGP', row\.nationality\)/);
+  assert.match(read('api/lib/certificatePayments.js'), /SELECT name, nationality FROM subscribers/);
+  assert.match(read('admin/components/PaymentModal.tsx'), /nationality === 'non_egyptian_egypt'\) return Number\(tiers\.residentEGP\)/);
+});
+
+test('the operation number, sender and number never block a booking; the new clients are rows of the payments table', () => {
+  const modal = read('admin/components/PaymentModal.tsx');
+  assert.doesNotMatch(modal, /transferNeedsDetails|transferProblem/);
+  const finance = read('admin/pages/dashboard/DashboardFinanceTabs.tsx');
+  assert.doesNotMatch(finance, /<CollectionBookingsReview/, 'no block above the payments table');
+  const view = read('admin/pages/dashboard/tabs/orders/OrdersAdminView.tsx');
+  assert.match(view, /useClientRequests\(\{/);
+  assert.match(view, /orderReviewTab === 'review' && clientRequests\.rows/);
+  assert.match(view, /\{clientRequests\.dialog\}/);
+  const rows = read('admin/pages/dashboard/tabs/orders/ClientRequestRows.tsx');
+  assert.match(rows, /\/admin\/subscriber-requests\/\$\{encodeURIComponent\(target\.id\)\}\/approve/);
+  assert.match(rows, /row\.payment\.transactionId[\s\S]*row\.payment\.senderName[\s\S]*row\.payment\.fromAccountNumber/, 'the transfer data shows on the row');
+});

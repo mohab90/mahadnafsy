@@ -14,9 +14,9 @@ async function certificatePricing(db, tenantId) {
   try { return JSON.parse(content?.extra_cert_pricing || '{}') || {}; } catch { return {}; }
 }
 
-async function certificatePrice(db, tenantId, { stated, type, currency }) {
+async function certificatePrice(db, tenantId, { stated, type, currency, nationality }) {
   if (Number(stated) > 0) return Number(stated);
-  return basePriceForCurrency(await certificatePricing(db, tenantId), type, currency) || null;
+  return basePriceForCurrency(await certificatePricing(db, tenantId), type, currency, nationality) || null;
 }
 
 function conflict(message) {
@@ -31,7 +31,7 @@ async function applyCertificatePayment(payment, db, tenantId, options = {}) {
   if (!requestId) return null;
 
   const [[request]] = await db.query(
-    `SELECT id, subscriber_id, course_id, type, status, price, paid_amount, currency
+    `SELECT id, subscriber_id, course_id, type, status, price, paid_amount, currency, nationality
      FROM certificate_requests
      WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE`,
     [requestId, tenantId]
@@ -51,7 +51,7 @@ async function applyCertificatePayment(payment, db, tenantId, options = {}) {
     // A request still without a price takes the certificate's, not "whatever
     // was paid is the price".
     const price = Number(request.price) > 0 ? Number(request.price)
-      : await certificatePrice(db, tenantId, { stated: payment.price, type: request.type, currency });
+      : await certificatePrice(db, tenantId, { stated: payment.price, type: request.type, currency, nationality: request.nationality });
     if (price > 0 && previousPaid >= price) throw conflict('Certificate request is already fully paid');
     const paidAmount = previousPaid + amount;
     await db.query(
@@ -73,12 +73,14 @@ async function applyCertificatePayment(payment, db, tenantId, options = {}) {
     // price list, a part payment leaves the request without a price, and it is not «PAID» until the desk gives
     // it one. A payment not marked as an instalment is the whole of it, and is its price.
     const isInstallment = Boolean(Number(payment.is_installment) || payment.isInstallment === true);
-    const price = await certificatePrice(db, tenantId, { stated: payment.price, type: requestedType, currency }) || (isInstallment ? null : amount);
-    const [[client]] = await db.query('SELECT name FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [payment.subscriber_id, tenantId]).catch(() => [[]]);
+    // The client's own nationality prices it and is kept on the request, so the price list is read the same way afterwards.
+    const [[client]] = await db.query('SELECT name, nationality FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [payment.subscriber_id, tenantId]).catch(() => [[]]);
+    const nationality = client?.nationality || null;
+    const price = await certificatePrice(db, tenantId, { stated: payment.price, type: requestedType, currency, nationality }) || (isInstallment ? null : amount);
     await withFreshCode(code => db.query(
       `INSERT INTO certificate_requests
-         (id, certificate_code, subscriber_id, course_id, type, status, price, paid_amount, currency, note, tenant_id, requested_at, name_ar)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         (id, certificate_code, subscriber_id, course_id, type, status, price, paid_amount, currency, note, tenant_id, requested_at, name_ar, nationality)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         requestId, code, payment.subscriber_id, payment.course_id || null, requestedType,
         settle && price > 0 && amount >= price ? 'PAID' : 'PRICED', price || null, settle ? amount : 0, currency,
@@ -87,6 +89,7 @@ async function applyCertificatePayment(payment, db, tenantId, options = {}) {
         // row, and String(Date).slice(0, 10) is «Mon Oct 12», not a date.
         cairoDayOf(payment.date) || cairoToday(),
         certificateNameOf(client?.name),
+        nationality,
       ]
     ));
   }
@@ -114,7 +117,7 @@ async function syncCertificateRequest(db, tenantId, requestId) {
   const id = String(requestId || '').trim();
   if (!id) return null;
   const [[request]] = await db.query(
-    'SELECT id, type, status, price, paid_amount, currency FROM certificate_requests WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE', [id, tenantId]);
+    'SELECT id, type, status, price, paid_amount, currency, nationality FROM certificate_requests WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE', [id, tenantId]);
   if (!request) return null;
   const [[any]] = await db.query('SELECT COUNT(*) AS n FROM payments WHERE certificate_request_id=? AND tenant_id=?', [id, tenantId]);
   if (!Number(any.n)) return { id, changed: false, paid: Number(request.paid_amount) || 0 };
@@ -125,7 +128,7 @@ async function syncCertificateRequest(db, tenantId, requestId) {
   const paid = Number(sum.paid) || 0;
   const due = Number(request.price) > 0
     ? Number(request.price)
-    : basePriceForCurrency(await certificatePricing(db, tenantId), request.type, currency);
+    : basePriceForCurrency(await certificatePricing(db, tenantId), request.type, currency, request.nationality);
   // Only the unpaid/paid pair is moved here: a certificate already on its way keeps its stage.
   const movable = ['PENDING', 'PRICED', 'PAID'].includes(request.status);
   const status = !movable ? request.status : (due > 0 && paid >= due ? 'PAID' : (request.status === 'PENDING' && paid === 0 ? 'PENDING' : 'PRICED'));
