@@ -76,7 +76,8 @@ test('admin conversion uses one server transaction and the UI waits for persiste
   assert.match(route, /transitionLead\(\{[\s\S]*toStatus: 'converted'/);
   assert.match(route, /await conn\.commit\(\)/);
   assert.match(ui, /await mysqlAdmin\.convertLead\(lead\.id, \{ courseId, accessMode \}\)/);
-  assert.match(ui, /await Promise\.all\(\[reloadLeads\(\), reloadSubscribers\(\)\]\)/);
+  // Waits for both lists; of the leads only the converted one is fetched again.
+  assert.match(ui, /await Promise\.all\(\[reloadLeads\(\{ only: \[lead\.id\] \}\), reloadSubscribers\(\)\]\)/);
 });
 
 test('lead assignments validate tenant staff and persist audit in the same transaction', () => {

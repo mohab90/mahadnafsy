@@ -299,7 +299,9 @@ function createHttpApp({ pool, brandAssetRoot }) {
   // lib/deleteRights.js.
   app.use('/api/admin', deleteRightsGuard);
   app.use('/api/staff', deleteRightsGuard);
-  setInterval(() => cleanupMemoryPresence(), 60 * 1000);
+  // Unref'd like every timer here: the listening server keeps the process up,
+  // and an app built without one (a test) must be able to exit.
+  setInterval(() => cleanupMemoryPresence(), 60 * 1000).unref?.();
   app.use(enforceAdminIpWhitelist);
   app.use('/uploads/branding', express.static(brandAssetRoot, {
     dotfiles: 'deny', etag: true, immutable: true, maxAge: '365d', fallthrough: true,

@@ -15,7 +15,7 @@ function startBackgroundScheduler({ pool, logger, port }) {
   require('./errorMonitor').initErrorMonitor();
 
   if (process.env.ARCHIVE_ACTIVITY_LOGS === 'true') {
-    const archive = () => require('./archiveJob').archiveActivityLogs(pool);
+    const archive = () => require('./archiveJob').archiveActivityLogs(pool).catch(() => {});
     setTimeout(archive, 10 * 60 * 1000).unref?.();
     const interval = setInterval(archive, 24 * 60 * 60 * 1000);
     interval.unref?.();
@@ -30,6 +30,7 @@ function startBackgroundScheduler({ pool, logger, port }) {
   const queue = require('./jobQueue');
   const scheduledJobs = require('./scheduledJobHandlers').createScheduledJobHandlers({ pool, logger });
   const subscriptionBilling = require('./subscriptionBilling');
+  const { lockedJob } = require('./jobLock');
   const intervals = [];
   const timeouts = [];
   const later = (fn, delay) => {
@@ -50,12 +51,18 @@ function startBackgroundScheduler({ pool, logger, port }) {
   };
 
   require('./hrAuditRetentionJob').scheduleHrAuditRetention({ pool, logger });
+  // Daily trim of the tables that only grew (lib/dataRetention.js), half an
+  // hour after boot so a deploy is long settled.
+  later(() => {
+    const trim = lockedJob('data_retention', () => require('./dataRetention').runDataRetention({ pool, logger }));
+    trim();
+    repeat(trim, 24 * 60 * 60 * 1000);
+  }, 30 * 60 * 1000);
 
   // Yesterday's unmarked working days, for tenants that switched automatic
   // absence on (lib/autoAbsence.js — off by default). Hourly and idempotent: the
   // insert ignores a day that already has a row, so repeats and a second instance
   // change nothing.
-  const { lockedJob } = require('./jobLock');
   later(() => {
     const run = lockedJob('auto_absence', async () => {
       try {

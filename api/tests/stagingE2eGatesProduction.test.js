@@ -192,7 +192,7 @@ test('a failed staging deploy, or archives changed on the server, never reach pr
 // ── deploy-release.sh, on the server's side ─────────────────────────────────
 // The script's absolute paths are moved under a temporary folder; systemctl,
 // curl and npm are stubs, tar and sha256sum are real.
-function server({ target, stagingRelease, env = {} }) {
+function server({ target, stagingRelease, env = {}, npm, curl, before, after } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deploy-release-'));
   const bin = path.join(dir, 'bin');
   const log = path.join(dir, 'calls.log');
@@ -217,12 +217,13 @@ function server({ target, stagingRelease, env = {} }) {
     'mahad-api', 'admin.mahadnafsy.com', 'mahadnafsy.com']) fs.mkdirSync(path.join(dir, 'www', d), { recursive: true });
   write(path.join(dir, 'www', 'mahad-staging', 'api', '.env'), `APP_RELEASE=${stagingRelease || 'mahad-000000000001'}\n`);
   write(path.join(dir, 'www', 'mahad-api', '.env'), 'APP_RELEASE=mahad-000000000001\n');
+  if (before) before(dir);
 
-  stub(bin, 'systemctl', 'echo "systemctl $*" >> "$CALLS"; [ "$1" = is-active ] && echo active; exit 0');
+  stub(bin, 'systemctl', 'echo "systemctl $*" >> "$CALLS"; [ "$1" = is-active ] && echo active; [ "$1" = is-enabled ] && [ -z "$WORKER_ENABLED" ] && exit 1; exit 0');
   stub(bin, 'journalctl', 'exit 0');
   stub(bin, 'sleep', 'exit 0');
-  stub(bin, 'npm', 'echo "npm $* in $PWD" >> "$CALLS"; exit 0');
-  stub(bin, 'curl', 'echo \'{"status":"ok","migration":"001_first.sql"}\'');
+  stub(bin, 'npm', npm || 'echo "npm $* in $PWD" >> "$CALLS"; exit 0');
+  stub(bin, 'curl', curl || 'echo \'{"status":"ok","migration":"001_first.sql"}\'');
 
   const run = spawnSync('bash', [path.join(dir, 'deploy-release.sh'), R], {
     encoding: 'utf8',
@@ -231,6 +232,7 @@ function server({ target, stagingRelease, env = {} }) {
   const calls = fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '';
   const stagingEnv = fs.readFileSync(path.join(dir, 'www', 'mahad-staging', 'api', '.env'), 'utf8');
   const productionEnv = fs.readFileSync(path.join(dir, 'www', 'mahad-api', '.env'), 'utf8');
+  if (after) after(dir);
   fs.rmSync(dir, { recursive: true, force: true });
   return { R, status: run.status, out: run.stdout + run.stderr, calls, stagingEnv, productionEnv };
 }
@@ -275,4 +277,84 @@ test('run by hand with no target, it still does staging and then production', { 
   assert.match(s.stagingEnv, new RegExp(`APP_RELEASE=${s.R}`));
   assert.match(s.productionEnv, new RegExp(`APP_RELEASE=${s.R}`));
   assert.ok(s.calls.indexOf('restart mahad-api-staging') < s.calls.indexOf('restart mahad-api\n'));
+});
+
+// 21 Oct 2026: the API release is assembled and installed beside the running
+// one and swapped in by rename, so the live folder's node_modules are never
+// wiped while it serves, and a failed install or migration changes nothing.
+test('dependencies are installed in a separate folder and swapped in with the uploads', { skip }, () => {
+  let live, prev, next;
+  const s = server({
+    target: 'staging',
+    before: dir => {
+      const api = path.join(dir, 'www', 'mahad-staging', 'api');
+      write(path.join(api, 'uploads', 'videos', 'lecture.mp4'), 'video');
+      write(path.join(api, 'node_modules', 'old', 'index.js'), 'old');
+      write(path.join(api, 'server-kept.txt'), 'kept by the server');
+    },
+    after: dir => {
+      const api = path.join(dir, 'www', 'mahad-staging', 'api');
+      const has = f => fs.existsSync(path.join(api, f));
+      live = { upload: has('uploads/videos/lecture.mp4'), kept: has('server-kept.txt'), migration: has('migrations/001_first.sql'), oldModules: has('node_modules/old/index.js') };
+      prev = fs.existsSync(path.join(`${api}.prev`, 'node_modules', 'old', 'index.js')) && !fs.existsSync(path.join(`${api}.prev`, 'uploads'));
+      next = fs.existsSync(`${api}.next`);
+    },
+  });
+  assert.equal(s.status, 0, s.out);
+  assert.match(s.calls, /npm ci --omit=dev .* in .*mahad-staging\/api\.next\n/, 'installed in the new folder');
+  assert.doesNotMatch(s.calls, /npm ci .* in .*mahad-staging\/api\n/, 'never in the live folder');
+  assert.match(s.calls, /npm run -s migrate in .*mahad-staging\/api\.next\n/);
+  assert.deepEqual(live, { upload: true, kept: true, migration: true, oldModules: false });
+  assert.equal(prev, true, 'the previous release is kept whole, without the uploads');
+  assert.equal(next, false);
+  assert.equal((s.calls.match(/systemctl restart mahad-api-staging/g) || []).length, 1, 'one restart');
+});
+
+test('a failed install or migration leaves the running release untouched and unrestarted', { skip }, () => {
+  for (const failing of ['ci', 'run']) {
+    let liveRelease, next;
+    const s = server({
+      target: 'staging',
+      npm: `echo "npm $* in $PWD" >> "$CALLS"; [ "$1" = ${failing} ] && exit 1; [ "$1" = install ] && [ ${failing} = ci ] && exit 1; exit 0`,
+      after: dir => {
+        const api = path.join(dir, 'www', 'mahad-staging', 'api');
+        liveRelease = fs.existsSync(path.join(api, 'migrations'));
+        next = fs.existsSync(`${api}.next`);
+      },
+    });
+    assert.equal(s.status, 1, s.out);
+    assert.match(s.out, failing === 'ci' ? /npm could not install/ : /MIGRATION FAILED/);
+    assert.match(s.stagingEnv, /APP_RELEASE=mahad-000000000001/, 'the live .env is unchanged');
+    assert.equal(liveRelease, false, 'the live folder never received the new release');
+    assert.equal(next, false, 'the half-built folder is removed');
+    assert.doesNotMatch(s.calls, /systemctl restart/, 'nothing was restarted');
+  }
+});
+
+test('an unhealthy release is swapped back with the uploads made meanwhile', { skip }, () => {
+  let upload, liveRelease;
+  const s = server({
+    target: 'staging',
+    curl: 'echo \'{"status":"down"}\'',
+    before: dir => write(path.join(dir, 'www', 'mahad-staging', 'api', 'uploads', 'a.jpg'), 'img'),
+    after: dir => {
+      const api = path.join(dir, 'www', 'mahad-staging', 'api');
+      upload = fs.existsSync(path.join(api, 'uploads', 'a.jpg'));
+      liveRelease = fs.existsSync(path.join(api, 'migrations'));
+    },
+  });
+  assert.equal(s.status, 1, s.out);
+  assert.match(s.out, /rolling back/);
+  assert.match(s.stagingEnv, /APP_RELEASE=mahad-000000000001/);
+  assert.equal(upload, true);
+  assert.equal(liveRelease, false);
+});
+
+test('an enabled background worker follows the API onto the new release', { skip }, () => {
+  const without = server({ target: 'staging' });
+  assert.equal(without.status, 0, without.out);
+  assert.doesNotMatch(without.calls, /restart mahad-api-staging-worker/, 'no worker unless its unit was enabled');
+  const s = server({ target: 'staging', env: { WORKER_ENABLED: '1' } });
+  assert.equal(s.status, 0, s.out);
+  assert.ok(s.calls.indexOf('restart mahad-api-staging\n') < s.calls.indexOf('restart mahad-api-staging-worker'));
 });

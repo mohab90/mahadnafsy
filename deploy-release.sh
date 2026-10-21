@@ -15,6 +15,27 @@
 #
 # Each half migrates its own database before switching its code, checks the
 # API reports the newest migration the release ships, and rolls back by itself.
+#
+# The API is built beside the running one, not over it (21 Oct 2026). The
+# release used to be extracted over <apidir> and `npm ci` then wiped its
+# node_modules while that process was still serving, so every deploy answered
+# 502s (and half-loaded modules) for as long as the install took. Now:
+#   1. <apidir>.next = a copy of <apidir> (without uploads and node_modules,
+#      so files the server keeps there survive as before) + the release
+#      extracted over it + the same .env; its dependencies are installed there
+#      while the old process keeps answering;
+#   2. migrations run from <apidir>.next — a failure deletes it and the
+#      running code was never touched, so nothing needs restarting;
+#   3. two renames swap the folders (<apidir> -> <apidir>.prev,
+#      <apidir>.next -> <apidir>), uploads move across, one restart.
+# The path systemd starts from never changes, so the units on the server
+# (WorkingDirectory=/var/www/...) need nothing. <apidir>.prev is kept after a
+# good deploy for an instant manual rollback (until the next deploy):
+#   mv <apidir>/uploads <apidir>.prev/ && mv <apidir> <apidir>.bad \
+#     && mv <apidir>.prev <apidir> && systemctl restart <service>
+# A rollback never un-migrates the database: migrations are additive, so the
+# previous code runs on the newer schema; the backup release-all.sh takes just
+# before each half is the way back from a migration itself.
 set -uo pipefail
 # The release to deploy. Passing one as $1 wins; the value here is only the
 # fallback. It used to be this line alone, which meant the script accepted an
@@ -83,13 +104,17 @@ deploy() { # <label> <apidir> <admindir> <clientdir> <service> <port>
   grep -q '^VIDEO_UPLOAD_DIR=' "$apidir/.env" 2>/dev/null \
     || echo "  note: VIDEO_UPLOAD_DIR is not set - uploaded videos live inside $apidir/uploads"
 
-  local envcopy
-  envcopy=$(mktemp) || { echo "  FAILED - cannot create a temp file; nothing changed"; return 1; }
-  cp "$apidir/.env" "$envcopy"
-  rm -rf "$apidir.prev"; mkdir -p "$apidir.prev"
-  tar -C "$apidir" --exclude=./uploads -cf - . | tar -C "$apidir.prev" -xpf -
-  tar -xzf "/staging/$R-api.tgz" --strip-components=1 -C "$apidir"
-  cp "$envcopy" "$apidir/.env"; rm -f "$envcopy"
+  # The new release is assembled in its own folder; see the header. The
+  # previous deploy's kept folder goes first, so the disk never holds more
+  # than two installed releases — the same as when <apidir>.prev was a copy.
+  local next="$apidir.next"
+  rm -rf "$apidir.prev" "$next"; mkdir -p "$next"
+  if ! { tar -C "$apidir" --exclude=./uploads --exclude=./node_modules -cf - . | tar -C "$next" -xpf -; } \
+     || ! tar -xzf "/staging/$R-api.tgz" --strip-components=1 -C "$next"; then
+    echo "  FAILED - cannot assemble the new release in $next (disk full?); nothing changed"
+    rm -rf "$next"; return 1
+  fi
+  cp -p "$apidir/.env" "$next/.env"
 
   # Stamp the build into its own environment.
   #
@@ -101,11 +126,17 @@ deploy() { # <label> <apidir> <admindir> <clientdir> <service> <port>
   #
   # Rewritten rather than appended, because .env is carried across deploys and
   # appending would stack one line per release.
-  sed -i '/^APP_RELEASE=/d' "$apidir/.env"
-  echo "APP_RELEASE=$R" >> "$apidir/.env"
+  sed -i '/^APP_RELEASE=/d' "$next/.env"
+  echo "APP_RELEASE=$R" >> "$next/.env"
 
-  ( cd "$apidir" && npm ci --omit=dev --no-audit --no-fund >/dev/null 2>&1 \
-      || npm install --omit=dev --no-audit --no-fund >/dev/null 2>&1 )
+  # Installed into the new folder only: the running process keeps its own
+  # node_modules until the swap. A failed install now stops here instead of
+  # restarting onto half a dependency tree.
+  if ! ( cd "$next" && { npm ci --omit=dev --no-audit --no-fund >/dev/null 2>&1 \
+      || npm install --omit=dev --no-audit --no-fund >/dev/null 2>&1; } ); then
+    echo "  FAILED - npm could not install the release's dependencies; nothing changed"
+    rm -rf "$next"; return 1
+  fi
 
   # The schema first, then the code — on staging's database, then production's.
   #
@@ -116,12 +147,13 @@ deploy() { # <label> <apidir> <admindir> <clientdir> <service> <port>
   # is still the one answering, and a failure stops this deploy before the
   # service, the admin or the site is switched.
   local want
-  want=$(shipped_migration "$apidir")
+  want=$(shipped_migration "$next")
   echo "  migrating the $label database (release ships up to ${want:-none})"
-  if ! ( cd "$apidir" && { echo "--- $(date -Iseconds) $label $R"; npm run -s migrate; } >> "$MIGRATION_LOG" 2>&1 ); then
+  if ! ( cd "$next" && { echo "--- $(date -Iseconds) $label $R"; npm run -s migrate; } >> "$MIGRATION_LOG" 2>&1 ); then
     echo "  MIGRATION FAILED - the $label code, admin and site were not switched"
     tail -n 12 "$MIGRATION_LOG" | sed 's/^/    /'
-    rollback_api "$apidir" "$svc" "$port"
+    # The old process never stopped and its folder was never touched.
+    rm -rf "$next"
     return 1
   fi
   tail -n 1 "$MIGRATION_LOG" | sed 's/^/    /'
@@ -130,7 +162,26 @@ deploy() { # <label> <apidir> <admindir> <clientdir> <service> <port>
   tar -xzf "/staging/$R-client.tgz" -C "$clientdir"
   echo -n "  admin entry: "; grep -oE 'index-[A-Za-z0-9_-]+\.js' "$admindir/index.html" | head -1
 
+  # The swap: two renames on one filesystem, then the single restart. The old
+  # process keeps its open files across the rename until it is restarted.
+  # Git does not ship uploads/, so the release has none to merge; this only
+  # guards against an archive that someday does.
+  if [ -d "$next/uploads" ]; then
+    mkdir -p "$apidir/uploads"
+    cp -an "$next/uploads/." "$apidir/uploads/" 2>/dev/null
+    rm -rf "$next/uploads"
+  fi
+  if ! mv "$apidir" "$apidir.prev"; then
+    echo "  FAILED - cannot move $apidir aside; the running code is unchanged"
+    rm -rf "$next"; restore_static "$label" "$admindir" "$clientdir"; return 1
+  fi
+  if ! mv "$next" "$apidir"; then
+    echo "  FAILED - cannot move the new release into place; putting the old one back"
+    mv "$apidir.prev" "$apidir"; rm -rf "$next"; restore_static "$label" "$admindir" "$clientdir"; return 1
+  fi
+  { [ -e "$apidir.prev/uploads" ] || [ -L "$apidir.prev/uploads" ]; } && mv "$apidir.prev/uploads" "$apidir/uploads"
   systemctl restart "$svc"
+  restart_worker "$svc"
   sleep 9
   if ok "$port"; then
     local got
@@ -139,7 +190,7 @@ deploy() { # <label> <apidir> <admindir> <clientdir> <service> <port>
       echo "  FAILED - the database reports migration '${got:-none}', the release ships '$want'"
     else
       echo "  OK - $(h "$port")"
-      rm -rf "$apidir.prev"
+      echo "  previous release kept at $apidir.prev (removed by the next deploy)"
       return 0
     fi
   else
@@ -148,17 +199,32 @@ deploy() { # <label> <apidir> <admindir> <clientdir> <service> <port>
   echo "  rolling back"
   journalctl -u "$svc" -n 15 --no-pager | tail -10
   rollback_api "$apidir" "$svc" "$port"
-  tar -xzf "/staging/rb-$label-admin-$TS.tgz"  -C "$admindir"
-  tar -xzf "/staging/rb-$label-client-$TS.tgz" -C "$clientdir"
+  restore_static "$label" "$admindir" "$clientdir"
   return 1
+}
+
+# The optional background-jobs process (api/worker.js) runs from the same
+# folder, so it follows every switch. Only when someone enabled its unit
+# (deploy/systemd/<service>-worker.service); otherwise there is none.
+restart_worker() { # <service>
+  if systemctl is-enabled --quiet "$1-worker" 2>/dev/null; then
+    systemctl restart "$1-worker" && echo "  restarted $1-worker"
+  fi
+  return 0
+}
+
+restore_static() { # <label> <admindir> <clientdir>
+  tar -xzf "/staging/rb-$1-admin-$TS.tgz"  -C "$2"
+  tar -xzf "/staging/rb-$1-client-$TS.tgz" -C "$3"
 }
 
 rollback_api() { # <apidir> <service> <port>
   local apidir=$1 svc=$2 port=$3
-  # Whatever was uploaded meanwhile moves back with the old code.
-  [ -d "$apidir/uploads" ] && mv "$apidir/uploads" "$apidir.prev/uploads"
+  # Whatever was uploaded meanwhile moves back with the old code. The database
+  # stays migrated (see the header).
+  { [ -e "$apidir/uploads" ] || [ -L "$apidir/uploads" ]; } && mv "$apidir/uploads" "$apidir.prev/uploads"
   rm -rf "$apidir"; mv "$apidir.prev" "$apidir"
-  systemctl restart "$svc"; sleep 9
+  systemctl restart "$svc"; restart_worker "$svc"; sleep 9
   echo "  restored - $(h "$port")"
 }
 

@@ -112,6 +112,12 @@ ProtectHome=true
 ReadWritePaths=/var/lib/mahad /var/cache/mahad
 UMask=0027
 LimitNOFILE=65535
+# A ceiling, so a leak in the API cannot push MariaDB on the same 8GB box into
+# the kernel's OOM killer. Above MEMORY_HEAL_LIMIT_MB (1536 by default,
+# lib/productionRuntimeGuard.js), so the app's own drain-and-restart comes
+# first; MemoryHigh makes the kernel reclaim hard before MemoryMax kills.
+MemoryHigh=1800M
+MemoryMax=2G
 
 [Install]
 WantedBy=multi-user.target

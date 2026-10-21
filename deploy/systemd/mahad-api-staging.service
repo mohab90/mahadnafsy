@@ -14,6 +14,11 @@ Restart=always
 RestartSec=3
 User=root
 LimitNOFILE=65536
+# Staging shares the box (and its MariaDB) with production, so it gets less;
+# its own drain-and-restart (lib/productionRuntimeGuard.js) is set under the cap.
+Environment=MEMORY_HEAL_LIMIT_MB=900
+MemoryHigh=1000M
+MemoryMax=1200M
 
 # Staging keeps its own log. It used to append to /var/log/mahad-api.log, the
 # production log, which made a staging crash loop look like a production one.

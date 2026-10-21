@@ -277,8 +277,8 @@ function scheduleSlaBreachSweep() {
   // would report a breach up to a day after it mattered.
   setTimeout(() => {
     forEachActiveTenant(runSlaBreachSweep);
-    setInterval(() => forEachActiveTenant(runSlaBreachSweep), 60 * 60 * 1000);
-  }, 5 * 60 * 1000);
+    setInterval(() => forEachActiveTenant(runSlaBreachSweep), 60 * 60 * 1000).unref?.();
+  }, 5 * 60 * 1000).unref?.();
   logger.info('[sla-sweep] scheduled — hourly, first run in 5m');
 }
 scheduleSlaBreachSweep();
@@ -293,8 +293,8 @@ function scheduleAutoCertificateSweep() {
   const sweep = tenantId => runAutoCertificateSweep(tenantId).then(() => sweepInstituteCertificates(tenantId));
   setTimeout(() => {
     forEachActiveTenant(sweep);
-    setInterval(() => forEachActiveTenant(sweep), 60 * 60 * 1000);
-  }, 7 * 60 * 1000);
+    setInterval(() => forEachActiveTenant(sweep), 60 * 60 * 1000).unref?.();
+  }, 7 * 60 * 1000).unref?.();
   logger.info('[auto-certificate] scheduled — hourly, first run in 7m');
 }
 scheduleAutoCertificateSweep();
@@ -314,8 +314,8 @@ function scheduleDokkiAutomation() {
   ]);
   setTimeout(() => {
     forEachActiveTenant(tick);
-    setInterval(() => forEachActiveTenant(tick), 60 * 60 * 1000);
-  }, 11 * 60 * 1000);
+    setInterval(() => forEachActiveTenant(tick), 60 * 60 * 1000).unref?.();
+  }, 11 * 60 * 1000).unref?.();
 }
 scheduleDokkiAutomation();
 
@@ -327,8 +327,8 @@ function scheduleWeeklyBranchReport() {
     .catch(error => logger.warn('[weekly-branch-report]', error.message));
   setTimeout(() => {
     forEachActiveTenant(tick);
-    setInterval(() => forEachActiveTenant(tick), 60 * 60 * 1000);
-  }, 13 * 60 * 1000);
+    setInterval(() => forEachActiveTenant(tick), 60 * 60 * 1000).unref?.();
+  }, 13 * 60 * 1000).unref?.();
 }
 scheduleWeeklyBranchReport();
 
@@ -368,8 +368,8 @@ async function runPaymentReviewSweep(tenantId = DEFAULT_TENANT) {
 function schedulePaymentReviewSweep() {
   setTimeout(() => {
     forEachActiveTenant(runPaymentReviewSweep);
-    setInterval(() => forEachActiveTenant(runPaymentReviewSweep), 60 * 60 * 1000);
-  }, 9 * 60 * 1000);
+    setInterval(() => forEachActiveTenant(runPaymentReviewSweep), 60 * 60 * 1000).unref?.();
+  }, 9 * 60 * 1000).unref?.();
   logger.info('[payment-review] scheduled — hourly, first run in 9m');
 }
 schedulePaymentReviewSweep();

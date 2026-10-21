@@ -24,7 +24,7 @@ interface LeadActionsParams {
   notify: NotifyFn;
   updateLead: (lead: LeadItem) => Promise<boolean>;
   addLead: (lead: NewLeadDraft) => Promise<unknown>;
-  reloadLeads: AsyncReload;
+  reloadLeads: (opts?: { only?: string[] }) => Promise<void>;
   reloadSubscribers: AsyncReload;
   bulkRedistributeLeads: (scope: 'unassigned', dailyCap?: number) => Promise<number>;
   recordSubscriberPayment: (
@@ -225,7 +225,8 @@ export function useLeadActions(params: LeadActionsParams) {
     if (!lead || !courseId) return;
     try {
       await mysqlAdmin.convertLead(lead.id, { courseId, accessMode });
-      await Promise.all([reloadLeads(), reloadSubscribers()]);
+      // Only this lead changed; a wrapper that takes no options reloads them all.
+      await Promise.all([reloadLeads({ only: [lead.id] }), reloadSubscribers()]);
       notify('success', 'تم تحويل العميل وربط الكورس داخل النظام بنجاح');
       setConvertLeadModal({ lead: null, courseId: '', accessMode: 'full' });
     } catch (error) {

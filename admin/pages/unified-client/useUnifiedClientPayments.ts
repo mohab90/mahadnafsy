@@ -31,7 +31,7 @@ interface Params {
     subscriberId: string,
     payment: Record<string, unknown>,
   ) => Promise<unknown>;
-  reloadLeads: () => Promise<unknown>;
+  reloadLeads: (opts?: { only?: string[] }) => Promise<unknown>;
   reloadSubscribers: () => Promise<unknown>;
 }
 
@@ -57,7 +57,7 @@ export function useUnifiedClientPayments(params: Params) {
   const {
     lead, subscriber, subscribers, staffMembers, currentStaff, authUser, courses, bundles,
     isSaving, setIsSaving, addSubscriber, recordSubscriberPayment,
-    reloadLeads, reloadSubscribers,
+    reloadLeads,
   } = params;
   const settlementCurrency = currencyForBranch(subscriber?.branch || lead?.branch);
   const settlementLabel = currencyLabel(settlementCurrency);
@@ -210,7 +210,9 @@ export function useUnifiedClientPayments(params: Params) {
         staffId: recorder?.id,
         staffName: recorder?.name,
       });
-      await Promise.all([reloadLeads(), reloadSubscribers()]);
+      // recordSubscriberPayment already reloaded the clients; of the leads only
+      // this one changed (the payment converts it).
+      await reloadLeads({ only: [lead.id] });
       setShowLeadPayForm(false);
       setLeadPayDraft(createClientPaymentDraft({
         courseId: lead.enrolledCourseId || '',

@@ -200,6 +200,9 @@ CREATE TABLE `activity_logs_archive` (
   `label` text NOT NULL,
   `actor` varchar(255) DEFAULT NULL,
   `at` datetime NOT NULL DEFAULT current_timestamp(),
+  `actor_name` varchar(255) DEFAULT NULL,
+  `department` varchar(80) DEFAULT NULL,
+  `details` text DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_logs_at` (`at`),
   KEY `idx_logs_entity` (`entity`,`entity_id`),
@@ -1082,7 +1085,8 @@ CREATE TABLE `connector_events` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_connector_external_event` (`tenant_id`,`provider`,`external_event_id`),
   KEY `idx_connector_event_due` (`status`,`next_attempt_at`),
-  KEY `idx_connector_event_health` (`tenant_id`,`provider`,`status`,`received_at`)
+  KEY `idx_connector_event_health` (`tenant_id`,`provider`,`status`,`received_at`),
+  KEY `idx_connector_event_prune` (`status`,`received_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -3065,7 +3069,8 @@ CREATE TABLE `job_queue` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_job_queue_dedupe` (`tenant_id`,`job_type`,`dedupe_key`),
   KEY `idx_job_claim` (`status`,`run_at`),
-  KEY `idx_job_stale` (`status`,`locked_at`)
+  KEY `idx_job_stale` (`status`,`locked_at`),
+  KEY `idx_job_queue_prune` (`status`,`done_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -3673,6 +3678,7 @@ CREATE TABLE `message_outbox` (
   `ref_type` varchar(80) DEFAULT NULL,
   `ref_id` varchar(100) DEFAULT NULL,
   `channel_id` varchar(36) DEFAULT NULL COMMENT 'messaging_channels.id this was sent from — NULL means the tenant default',
+  `payload_pruned_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_message_outbox_tenant_dedupe` (`tenant_id`,`dedupe_key`),
   UNIQUE KEY `uq_outbox_provider_message` (`provider`,`provider_message_id`),
@@ -3680,7 +3686,8 @@ CREATE TABLE `message_outbox` (
   KEY `idx_message_outbox_tenant_due` (`tenant_id`,`status`,`next_attempt_at`),
   KEY `idx_message_outbox_ref` (`tenant_id`,`ref_type`,`ref_id`),
   KEY `idx_outbox_delivery_status` (`tenant_id`,`channel`,`delivery_status`,`provider_status_at`),
-  KEY `idx_outbox_channel_id` (`tenant_id`,`channel_id`,`status`)
+  KEY `idx_outbox_channel_id` (`tenant_id`,`channel_id`,`status`),
+  KEY `idx_outbox_prune` (`status`,`payload_pruned_at`,`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

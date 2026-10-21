@@ -327,6 +327,13 @@ router.get('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermissi
         }
       }
     }
+    // ?ids=a,b — just these rows, in the list's own shape and scope, so a screen
+    // can refresh the lead a payment converted instead of the whole table.
+    const ids = String(req.query.ids || '').split(',').map(id => id.trim()).filter(Boolean).slice(0, 100);
+    if (ids.length) {
+      sql += ' AND l.id IN (?)';
+      params.push(ids);
+    }
     const statusFilter = (req.query.status || '').trim().toLowerCase();
     if (statusFilter && statusFilter !== 'all') {
       // leads.status uses the default utf8mb4 case-insensitive collation (like every

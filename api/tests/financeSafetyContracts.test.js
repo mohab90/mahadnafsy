@@ -87,7 +87,10 @@ test('lead payments use the transactional payment API before enrollment or conve
   assert.match(paymentRoute, /if \(createFromLead\)[\s\S]*LIMIT 1 FOR UPDATE/);
   assert.match(paymentRoute, /INSERT INTO subscribers[\s\S]*INSERT INTO payments[\s\S]*postPaymentJournal[\s\S]*await conn\.commit/);
   assert.match(paymentRoute, /subscriberCreated: createFromLead/);
-  assert.match(sharedHandler, /await Promise\.all\(\[reloadSubscribers\(\),\s*reloadLeads\(\)\]\)/);
+  // The booking waits for the lists before it reports success; the clients only
+  // when a new one was made (recordSubscriberPayment reloads them itself), and
+  // of the leads only the one the payment converted.
+  assert.match(sharedHandler, /await Promise\.all\(\[existingSub \? Promise\.resolve\(\) : reloadSubscribers\(\), reloadLeads\(\{ only: \[freshLead\.id\] \}\)\]\)/);
   assert.match(leadsTab, /await handleLeadPaymentFn\(draft/);
   assert.match(unifiedClient, /useUnifiedClientPayments\(/);
   assert.match(unifiedClient, /useUnifiedClientLifecycleActions\(/);

@@ -210,7 +210,8 @@ export interface SiteDataShape {
   reloadLectures: () => Promise<void>;
   /** Fetch lectures+chapters once, for a screen that reads them. See useEnsureLectures. */
   ensureLectures: () => Promise<void>;
-  reloadLeads: () => Promise<void>;
+  /** The whole lead table, or with { only } just those leads (see useCrmCoreState). */
+  reloadLeads: (opts?: { only?: string[] }) => Promise<void>;
   reloadSubscribers: () => Promise<void>;
   reloadStaffMembers: () => Promise<void>;
   reloadOrders: () => Promise<void>;
