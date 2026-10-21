@@ -18,6 +18,8 @@ interface LecturePlayerSectionProps {
   selectedLectureId: string;
   setSelectedLectureId: (id: string) => void;
   resolvedLectureUrl: string;
+  /** Why the access endpoint refused the selected lecture, if it did. */
+  lectureAccessError: string;
   lectureGateNotice: string;
   setLectureGateNotice: (notice: string) => void;
   authUserEmail: string | undefined;
@@ -35,6 +37,7 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
   selectedLectureId,
   setSelectedLectureId,
   resolvedLectureUrl,
+  lectureAccessError,
   lectureGateNotice,
   setLectureGateNotice,
   authUserEmail,
@@ -109,7 +112,12 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
                     onContextMenu={(e) => e.preventDefault()}
                 >
                     {selectedLecture && !selectedLecture.locked ? (
-                        !resolvedLectureUrl ? (
+                        lectureAccessError ? (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center text-amber-300">
+                                <Lock size={40} className="mb-3 text-amber-400" />
+                                <p className="text-sm font-bold">{lectureAccessError}</p>
+                            </div>
+                        ) : !resolvedLectureUrl ? (
                             <div className="absolute inset-0 flex flex-col items-center justify-center text-center text-white/70">
                                 <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin mb-3"></div>
                                 <p className="text-sm">جاري تحميل الفيديو...</p>

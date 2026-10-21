@@ -1,3 +1,5 @@
+import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
+
 /**
  * One answer to "how does this site show a video".
  *
@@ -202,3 +204,18 @@ export function lectureEmbedUrl(raw: string): string {
   } catch { /* a relative URL such as /uploads/… — use it as it is */ }
   return plain;
 }
+
+/**
+ * What to tell the learner when the access endpoint refuses a lecture. Both
+ * players show this in place of the video; the course page used to drop the
+ * refusal and spin on «جاري تحميل الفيديو» for good.
+ */
+export function lectureAccessRefusal(answer: { reason?: string; unlocks_at?: string }): string {
+  if (answer.reason === 'drip_locked') {
+    const when = answer.unlocks_at ? new Date(answer.unlocks_at).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE }) : '';
+    return `المحاضرة هتفتح في موعدها${when ? ` يوم ${when}` : ''}`;
+  }
+  return 'المحاضرة غير متاحة ضمن صلاحية اشتراكك الحالية';
+}
+
+export const LECTURE_ACCESS_CHECK_FAILED = 'تعذر التحقق من صلاحية المحاضرة؛ حاول مرة أخرى';

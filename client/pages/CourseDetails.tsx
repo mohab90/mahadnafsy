@@ -18,6 +18,7 @@ import { MobileStickyCta } from './course-details-sections/MobileStickyCta';
 import CourseCertificate from '../components/CourseCertificate';
 import { isExpiryActive } from '../../shared/cairoDate';
 import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
+import { LECTURE_ACCESS_CHECK_FAILED, lectureAccessRefusal } from '../lib/lectureVideo';
 
 const CourseDetails: React.FC = () => {
                 const { courses, subscribers, discounts, addPublicLead, getCourseLectures, getCourseChapters, content: globalContent, testimonials, therapists, currency, authUser, bundles, mySubscriberId, mySubscriberLoaded, refreshMySubscriber } = useSiteData();
@@ -67,8 +68,10 @@ const CourseDetails: React.FC = () => {
     // Stored with its lecture, so the render that switches lectures never hands
     // the new player the previous lecture's ticket (UserDashboardVideoPlayer has
     // the whole story).
-    const [resolvedLecture, setResolvedLecture] = useState({ lectureId: '', url: '' });
+    // A refusal is kept with it, so the player says why instead of spinning.
+    const [resolvedLecture, setResolvedLecture] = useState({ lectureId: '', url: '', error: '' });
     const resolvedLectureUrl = resolvedLecture.lectureId === selectedLectureId ? resolvedLecture.url : '';
+    const lectureAccessError = resolvedLecture.lectureId === selectedLectureId ? resolvedLecture.error : '';
     const [lectureGateNotice, setLectureGateNotice] = useState('');
     const [leadName, setLeadName] = useState('');
     const [leadPhone, setLeadPhone] = useState('');
@@ -172,10 +175,14 @@ const CourseDetails: React.FC = () => {
         let cancelled = false;
         if (!selectedLecture || selectedLecture.locked) return;
         const lectureId = selectedLecture.id;
-        if (selectedLecture.videoUrl) { setResolvedLecture({ lectureId, url: selectedLecture.videoUrl }); return; }
+        if (selectedLecture.videoUrl) { setResolvedLecture({ lectureId, url: selectedLecture.videoUrl, error: '' }); return; }
         mysqlClient.getLectureAccess(lectureId)
-            .then(r => { if (!cancelled && r.accessible && r.video_url) setResolvedLecture({ lectureId, url: r.video_url }); })
-            .catch(() => {});
+            .then(r => {
+                if (cancelled) return;
+                if (r.accessible && r.video_url) setResolvedLecture({ lectureId, url: r.video_url, error: '' });
+                else setResolvedLecture({ lectureId, url: '', error: lectureAccessRefusal(r) });
+            })
+            .catch(() => { if (!cancelled) setResolvedLecture({ lectureId, url: '', error: LECTURE_ACCESS_CHECK_FAILED }); });
         return () => { cancelled = true; };
         // Keyed on the fields that decide the answer rather than the
         // selectedLecture object, which is re-derived on every render — listing
@@ -429,6 +436,7 @@ const CourseDetails: React.FC = () => {
                     selectedLectureId={selectedLectureId}
                     setSelectedLectureId={setSelectedLectureId}
                     resolvedLectureUrl={resolvedLectureUrl}
+                    lectureAccessError={lectureAccessError}
                     lectureGateNotice={lectureGateNotice}
                     setLectureGateNotice={setLectureGateNotice}
                     authUserEmail={authUser?.email}

@@ -58,23 +58,19 @@ const Enrollment: React.FC = () => {
 
   const [searchParams] = useSearchParams();
 
-  // Selected item keys (multi-select via dropdowns)
-  const [selectedIds, setSelectedIds] = useState<string[]>(['']);  // start with one empty slot
-  const [payType, setPayType] = useState<PayType>('cash');
-  const [branch, setBranch] = useState('');
-
-  // Pre-select from URL params: ?course=ID or ?bundle=ID
-  useEffect(() => {
+  // Selected item keys (multi-select via dropdowns). Seeded from ?course=/?bundle=
+  // once, at mount: keys resolve against the catalogue whenever it arrives. It
+  // was re-seeded each time the catalogue refreshed (it does on tab refocus),
+  // which threw away whatever the visitor had since picked in the form.
+  const [selectedIds, setSelectedIds] = useState<string[]>(() => {
     const courseId = searchParams.get('course');
     const bundleId = searchParams.get('bundle');
-    if (courseId) setSelectedIds([`course:${courseId}`]);
-    else if (bundleId) setSelectedIds([`bundle:${bundleId}`]);
-    // Seeds the selection from ?course=/?bundle= once the catalogue is loaded,
-    // which is why allOptions is the trigger. searchParams is a new object on
-    // every render of this route; depending on it would overwrite whatever the
-    // visitor had since picked in the form.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allOptions]);
+    if (courseId) return [`course:${courseId}`];
+    if (bundleId) return [`bundle:${bundleId}`];
+    return [''];  // start with one empty slot
+  });
+  const [payType, setPayType] = useState<PayType>('cash');
+  const [branch, setBranch] = useState('');
 
   // Form fields
   const [fullName, setFullName] = useState('');

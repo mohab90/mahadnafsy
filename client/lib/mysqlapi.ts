@@ -401,11 +401,11 @@ export const mysqlAuth = {
    * returning customer can never be renamed by a stale form value.
    * `created` says which of the two just happened.
    */
-  verifyWaOtp: (phone: string, code: string, name?: string) =>
+  verifyWaOtp: (phone: string, code: string, name?: string, ref?: string) =>
     apiFetch<{
       ok: boolean; created: boolean;
       user: { uid: string; email: string; displayName: string; phone: string };
-    }>('/auth/whatsapp/verify-otp', { method: 'POST', body: JSON.stringify({ phone, code, name }) }),
+    }>('/auth/whatsapp/verify-otp', { method: 'POST', body: JSON.stringify({ phone, code, name, ...(ref ? { ref } : {}) }) }),
   verify2fa: (pendingToken: string, token: string) =>
     apiFetch<{ ok: boolean }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, token }) }),
   // The phone is gone: one of the ten one-time codes stands in, and is burned.

@@ -53,6 +53,8 @@ type Props = {
   setNotifRows: React.Dispatch<React.SetStateAction<NotifRow[]>>;
   notifUnread: number;
   setNotifUnread: React.Dispatch<React.SetStateAction<number>>;
+  notifError: boolean;
+  refreshNotifs: () => void;
   pendingProofsCount: number;
   inboxUnreadCount: number;
   currentStaff: StaffMember | null | undefined;
@@ -291,7 +293,7 @@ export function DashboardNavigation(props: Props) {
     isSalesCollectionManager, isAdmin, visibleMenuGroups, activeTab, setActiveTab,
     activeDropdownGroup, setActiveDropdownGroup, dropdownRect, setDropdownRect,
     notifRef,
-    notifOpen, setNotifOpen, notifRows, setNotifRows, notifUnread, setNotifUnread,
+    notifOpen, setNotifOpen, notifRows, setNotifRows, notifUnread, setNotifUnread, notifError, refreshNotifs,
     pendingProofsCount, inboxUnreadCount, currentStaff, salesDataLoading, staffNotifBadge,
     setSalesNotifOpen, onlineMgrAcademyOpen, setOnlineMgrAcademyOpen, setOnlineMgrFollowupOpen,
     onlineMgrFollowupBadge, setOnlineMgrNewEventsOpen, onlineMgrNewEventsBadge, notify,
@@ -353,7 +355,7 @@ export function DashboardNavigation(props: Props) {
     );
   };
 
-  const bellProps: NotificationsBellProps = { rows: notifRows, setRows: setNotifRows, unread: notifUnread, setUnread: setNotifUnread, open: notifOpen, setOpen: setNotifOpen, panelRef: notifRef, onNavigate: setActiveTab };
+  const bellProps: NotificationsBellProps = { rows: notifRows, setRows: setNotifRows, unread: notifUnread, setUnread: setNotifUnread, open: notifOpen, setOpen: setNotifOpen, panelRef: notifRef, onNavigate: setActiveTab, loadFailed: notifError, onRetry: refreshNotifs };
   return (
 <BellContext.Provider value={bellProps}>
         {/* ── Main nav bar ── */}
@@ -451,6 +453,8 @@ export function DashboardNavigation(props: Props) {
                   setOpen={setNotifOpen}
                   panelRef={notifRef}
                   onNavigate={setActiveTab}
+                  loadFailed={notifError}
+                  onRetry={refreshNotifs}
                 />
                 <button onClick={signOut}
                   className="w-8 h-8 rounded-xl bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 grid place-items-center transition"

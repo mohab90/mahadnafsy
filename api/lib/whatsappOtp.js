@@ -300,7 +300,7 @@ async function requestLoginCode({ tenantId, phone }) {
  * Verify a code. Returns the matching user id, or throws 400/429.
  * Consumes the code on success so it can never be replayed.
  */
-async function verifyLoginCode({ tenantId, phone, code, name = null }) {
+async function verifyLoginCode({ tenantId, phone, code, name = null, ref = null }) {
   const normalized = normalizeWhatsAppNumber(phone);
   const digits = String(code || '').replace(/\D/g, '');
   if (!isPlausibleNumber(normalized) || digits.length !== 6) {
@@ -395,6 +395,14 @@ async function verifyLoginCode({ tenantId, phone, code, name = null }) {
         });
       } catch (leadError) {
         logger.warn('[wa-otp] could not add the signup to the client base', { error: leadError.message });
+      }
+      // The referral link (/auth?ref=CODE) credits a signup the way the email
+      // form's does (routes/auth/registration.js). Signing up by WhatsApp from
+      // that same link used to drop the code. Best-effort, but awaited: this is
+      // the transaction's connection.
+      const refCode = String(ref || '').trim().toUpperCase().slice(0, 32);
+      if (refCode) {
+        await conn.query('UPDATE referral_codes SET uses = uses + 1 WHERE tenant_id=? AND code=?', [tenantId, refCode]).catch(() => {});
       }
     } else {
       await conn.query(
