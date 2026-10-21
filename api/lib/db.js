@@ -239,6 +239,11 @@ function releaseDb() {
   else { _dbActive--; }
 }
 const _origGetConn = pool.getConnection.bind(pool);
+function poolSaturated() {
+  const core = pool.pool;
+  if (!core?._allConnections || !core._freeConnections) return true;
+  return core._freeConnections.length === 0 && core._allConnections.length >= core.config.connectionLimit;
+}
 const CONN_TIMEOUT_MS = 4000;
 pool.getConnection = async () => {
   if (isDbDown()) throw Object.assign(new Error('Database unavailable'), { code: 'ECONNREFUSED' });
@@ -259,7 +264,10 @@ pool.getConnection = async () => {
     const conn = await Promise.race([
       turn.then(() => { pending = _origGetConn(); return pending; }),
       new Promise((_, reject) => {
-        timer = setTimeout(() => reject(Object.assign(new Error('DB getConnection timeout'), { code: 'ETIMEDOUT', poolBusy: true })), CONN_TIMEOUT_MS);
+        // Busy only while still queued for a turn or with every pool connection
+        // checked out; a turn with a free slot that still waits is the database
+        // not answering, and is marked down below.
+        timer = setTimeout(() => reject(Object.assign(new Error('DB getConnection timeout'), { code: 'ETIMEDOUT', poolBusy: !gotTurn || poolSaturated() })), CONN_TIMEOUT_MS);
       }),
     ]);
     clearTimeout(timer);

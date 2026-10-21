@@ -100,8 +100,12 @@ async function signup(req, res) {
         [tenantId, normalizedEmail]
       );
       if (client && !samePhone(client.phone, phone)) {
+        // A client on file with no number cannot prove the address is theirs
+        // here either; customer service adds the number, then they sign in by it.
         return res.status(409).json({
-          error: 'البريد ده مسجّل لعميل عندنا برقم تاني. ادخل برقم الواتساب المسجّل عندنا، أو كلّم خدمة العملاء.',
+          error: phoneKey(client.phone)
+            ? 'البريد ده مسجّل لعميل عندنا برقم تاني. ادخل برقم الواتساب المسجّل عندنا، أو كلّم خدمة العملاء.'
+            : 'البريد ده مسجّل لعميل عندنا من غير رقم واتساب. كلّم خدمة العملاء يضيفوا رقمك، وبعدها ادخل بيه.',
           code: 'EMAIL_BELONGS_TO_CLIENT',
         });
       }

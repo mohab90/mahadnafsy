@@ -186,11 +186,12 @@ async function rejectRetentionBonus(conn, { tenantId, paymentId }) {
 async function cancelBookingBonusesWithoutOtherPayment(conn, { tenantId, pay }) {
   const itemId = pay.course_id || pay.bundle_id;
   if (!itemId || !pay.subscriber_id) return;
+  const itemColumn = pay.course_id ? 'course_id' : 'bundle_id';
   const [[left]] = await conn.query(
     `SELECT COALESCE(SUM(amount), 0) AS net FROM payments
       WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND status IN ('paid','confirmed')
-        AND (course_id=? OR bundle_id=?)`,
-    [tenantId, pay.subscriber_id, itemId, itemId]);
+        AND ${itemColumn}=?`,
+    [tenantId, pay.subscriber_id, itemId]);
   if (Number(left?.net) > 0.01) return;
   await conn.query(
     `UPDATE crm_commissions SET status='CANCELLED', note=CONCAT(COALESCE(note,''),' | اتلغت مع استرداد الحجز')
