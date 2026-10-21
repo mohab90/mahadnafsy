@@ -158,8 +158,13 @@ deploy() { # <label> <apidir> <admindir> <clientdir> <service> <port>
   fi
   tail -n 1 "$MIGRATION_LOG" | sed 's/^/    /'
 
-  tar -xzf "/staging/$R-admin.tgz"  -C "$admindir"
-  tar -xzf "/staging/$R-client.tgz" -C "$clientdir"
+  # --touch: every file of the release is dated now, not when it was built.
+  # Asset names are content hashes, so an unchanged chunk keeps its name from
+  # release to release; the -mtime pruning below must see it as current. With
+  # the archive's dates, a release built (or held on staging) over a week
+  # before production would have had its own live chunks pruned.
+  tar -xzf "/staging/$R-admin.tgz" --touch -C "$admindir"
+  tar -xzf "/staging/$R-client.tgz" --touch -C "$clientdir"
   echo -n "  admin entry: "; grep -oE 'index-[A-Za-z0-9_-]+\.js' "$admindir/index.html" | head -1
 
   # The swap: two renames on one filesystem, then the single restart. The old
@@ -214,8 +219,8 @@ restart_worker() { # <service>
 }
 
 restore_static() { # <label> <admindir> <clientdir>
-  tar -xzf "/staging/rb-$1-admin-$TS.tgz"  -C "$2"
-  tar -xzf "/staging/rb-$1-client-$TS.tgz" -C "$3"
+  tar -xzf "/staging/rb-$1-admin-$TS.tgz" --touch -C "$2"
+  tar -xzf "/staging/rb-$1-client-$TS.tgz" --touch -C "$3"
 }
 
 rollback_api() { # <apidir> <service> <port>
@@ -311,7 +316,9 @@ echo
 echo "=== prune old assets ==="
 # Each release writes new hashed files and leaves the previous ones behind.
 # Seven days is well past any cached index.html still asking for an older
-# chunk, and comfortably past the window a rollback would need.
+# chunk, and comfortably past the window a rollback would need. Files the
+# current release still uses were re-dated when it was extracted (--touch
+# above), so a chunk whose content never changed is never pruned.
 for web in /var/www/mahadnafsy.com/assets /var/www/admin.mahadnafsy.com/assets; do
   [ -d "$web" ] || continue
   before=$(find "$web" -type f | wc -l)
