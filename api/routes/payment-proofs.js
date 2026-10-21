@@ -447,18 +447,22 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
       const payId = `proof-${proof.id}`;
       // An instalment pays towards its plan, not its own amount (lib/orderPlan.js).
       const plan = orderPlan(proof.order_notes, proof.amount);
-      await assertWritable(dateOnlyInTimeZone(), conn, tenantId);
+      // The Cairo day the money is approved on, written as a day — the way the desk
+      // writes payments.date. NOW() is a UTC instant: approved at 01:30 on 1 October
+      // it read 30 September in every report, a month already closed.
+      const paidDay = dateOnlyInTimeZone();
+      await assertWritable(paidDay, conn, tenantId);
       await conn.query(
         `INSERT INTO payments
            (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method,
             transaction_id, is_installment, course_expected, note, date, status, staff_id, staff_name,
             source, item_title, branch, branch_id, tenant_id, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW(),'paid',?,?,?,?,?,?,?,NOW())`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'paid',?,?,?,?,?,?,?,NOW())`,
         [payId, proof.subscriber_id, proof.course_id || null, proof.bundle_id || null,
          proof.amount, proof.currency || 'EGP', paymentType, proof.payment_method || 'تحويل', proof.id,
          plan.installment ? 1 : 0, plan.expected,
          `تم اعتماد الإيصال${reviewer_note ? ' — ' + reviewer_note : ''}${proof.note ? ' | ملاحظة العميل: ' + proof.note : ''}`,
-         reviewer?.id || null, reviewerName, 'manual_transfer', proof.item_title,
+         paidDay, reviewer?.id || null, reviewerName, 'manual_transfer', proof.item_title,
          proof.branch || branchForId(proof.branch_id), proof.branch_id || 'branch-other', tenantId]
       );
       const journalId = await postPaymentJournal({
@@ -466,6 +470,7 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
         amount: proof.amount,
         currency: proof.currency || 'EGP',
         payType: paymentType,
+        date: paidDay,
         actor: req.user?.email || 'system',
         tenantId,
       }, conn);

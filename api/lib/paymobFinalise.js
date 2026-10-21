@@ -158,7 +158,11 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
   let sub;
   try {
     await conn.beginTransaction();
-    await assertWritable(cairoToday(), conn, tenantId);
+    // The Cairo day it was paid, written as a day on the payment and its entry
+    // (the desk's shape for payments.date). The row took NOW(), a UTC instant,
+    // so a card paid at 01:30 on the 1st counted in the month before.
+    const paidDay = cairoToday();
+    await assertWritable(paidDay, conn, tenantId);
 
     // Registration alone never creates a subscribers row (only users + leads —
     // see auth.js), so a customer paying for the first time has no subscriber
@@ -272,7 +276,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
       `INSERT INTO payments
          (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method,
           transaction_id, is_installment, course_expected, branch, branch_id, tenant_id, note, source, date, status, created_at)
-       VALUES (?,?,?,?,?,?,'COURSE','online_paymob',?,?,?,?,?,?,?,'paymob',NOW(),'paid',NOW())`,
+       VALUES (?,?,?,?,?,?,'COURSE','online_paymob',?,?,?,?,?,?,?,'paymob',?,'paid',NOW())`,
       [
         payId,
         sub?.id || null,
@@ -286,7 +290,8 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
         paymentBranch,
         branchIdForBranch(paymentBranch),
         tenantId,
-        `دفع إلكتروني Paymob — طلب ${merchantOrderId}${transactionId ? ' | معاملة ' + transactionId : ''}`
+        `دفع إلكتروني Paymob — طلب ${merchantOrderId}${transactionId ? ' | معاملة ' + transactionId : ''}`,
+        paidDay,
       ]
     );
     const journalId = await postPaymentJournal({
@@ -294,6 +299,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
       amount: order.amount,
       currency: order.currency || 'EGP',
       payType: 'COURSE',
+      date: paidDay,
       actor: 'paymob',
       tenantId,
     }, conn);
