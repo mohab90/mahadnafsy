@@ -67,7 +67,7 @@ async function fileLead({ tenantId, name, phone, notes, source, branch }, db) {
     }
     const id = `lead-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     let code = null;
-    try { code = await getNextClientCode(conn); } catch (_) { /* a lead without a code is still a lead */ }
+    try { code = await getNextClientCode(conn, tenantId); } catch (_) { /* a lead without a code is still a lead */ }
     const normalizedBranch = normalizeBranch(branch, 'OTHER');
     const rep = await getNextSalesRep(tenantId, conn, { branch: normalizedBranch, lead: { source: origin, courseIds: [] } });
     await conn.execute(

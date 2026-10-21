@@ -177,7 +177,7 @@ async function processFacebookLeadEvent({ event, payload }, dependencies = {}) {
           const branch = String(config.defaultBranch || '').toUpperCase() || null;
           const representative = await pickRepresentative(conn, { tenantId, config, dependencies, branch });
           const leadType = String(config.defaultLeadType || 'GENERAL').toUpperCase();
-          const clientCode = await getNextClientCode(conn);
+          const clientCode = await getNextClientCode(conn, tenantId);
           const courseIds = config.defaultInterestedCourseId
             ? JSON.stringify([config.defaultInterestedCourseId])
             : null;

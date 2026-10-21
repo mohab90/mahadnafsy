@@ -79,8 +79,11 @@ test('production readiness requires the distributed Redis store', () => {
 
 test('successful staff logins do not exhaust a shared branch IP limit', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'middleware', 'rateLimits.js'), 'utf8');
-  const loginWindow = source.slice(source.indexOf('const loginLimiter'), source.indexOf('const otpLimiter'));
-  assert.equal((loginWindow.match(/skipSuccessfulRequests: true/g) || []).length, 2);
+  const loginWindow = source.slice(source.indexOf('const loginLimiter'), source.indexOf('const resetPasswordLimiter'));
+  // Every login bucket counts failures only (four since the account-wide and
+  // known-browser buckets were added).
+  assert.equal((loginWindow.match(/limiter\('login-/g) || []).length, (loginWindow.match(/skipSuccessfulRequests: true/g) || []).length);
+  assert.ok((loginWindow.match(/skipSuccessfulRequests: true/g) || []).length >= 2);
   assert.match(loginWindow, /login-ip/);
   assert.match(loginWindow, /login-account/);
 });

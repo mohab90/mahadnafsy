@@ -21,6 +21,7 @@ const { SCORES, averageOf, saveRating, scoreOf } = require('../lib/clientRatings
 const { validRating } = require('../lib/selfRating');
 const { clientsAtRisk } = require('../lib/clientsAtRisk');
 const { publicLimiter } = require('../middleware/rateLimits');
+const { scalarFields } = require('../lib/inputFields');
 
 const readers = [requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess];
 
@@ -166,7 +167,7 @@ router.get('/api/public/rate/:roundId', publicLimiter, async (req, res) => {
   } catch (e) { logger.error('[self-rating/read]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.post('/api/public/rate/:roundId', publicLimiter, async (req, res) => {
+router.post('/api/public/rate/:roundId', publicLimiter, scalarFields('note'), async (req, res) => {
   const found = await selfRatingRound(req).catch(() => null);
   if (!found) return res.status(404).json({ error: 'اللينك ده مش شغال' });
   const scores = SCORES.map(({ key }) => scoreOf(req.body?.[key]));

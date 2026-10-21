@@ -36,6 +36,7 @@ const {
 const CLOSED_STATUSES = ['resolved', 'closed'];
 const OPEN_STATUSES = ['open', 'in_progress'];
 const { escapeHtml } = require('../lib/html');
+const { scalarFields } = require('../lib/inputFields');
 const hashCsatToken = token => createHash('sha256').update(String(token || '')).digest('hex');
 const TEXT_LIMITS = Object.freeze({ subject: 500, body: 20000, reason: 1000 });
 const VALID_PRIORITIES = new Set(['urgent', 'high', 'medium', 'low']);
@@ -928,7 +929,7 @@ router.get('/api/public/enquiry/:token', publicLimiter, async (req, res) => {
 });
 
 // POST /api/public/enquiry/:token/reply — the visitor adds to their own thread.
-router.post('/api/public/enquiry/:token/reply', publicLimiter, async (req, res) => {
+router.post('/api/public/enquiry/:token/reply', publicLimiter, scalarFields('body'), async (req, res) => {
   let conn;
   try {
     const ticketId = readEnquiryToken(req.params.token);
@@ -968,7 +969,7 @@ router.post('/api/public/enquiry/:token/reply', publicLimiter, async (req, res) 
   }
 });
 
-router.post('/api/public/enquiry', publicLimiter, async (req, res) => {
+router.post('/api/public/enquiry', publicLimiter, scalarFields('name', 'phone', 'email', 'message', 'department'), async (req, res) => {
   let conn;
   try {
     const name = cleanText(req.body?.name, 200);
@@ -1054,7 +1055,7 @@ router.get('/api/ticket-csat/:id', publicLimiter, async (req, res) => {
     res.json({ subject: t.subject, rated: t.csat_score != null });
   } catch (e) { logger.error('[cs/csat]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
-router.post('/api/ticket-csat/:id', publicLimiter, async (req, res) => {
+router.post('/api/ticket-csat/:id', publicLimiter, scalarFields('score', 'comment'), async (req, res) => {
   try {
     const token = String(req.query.token || '');
     if (!/^[a-f0-9]{64}$/i.test(token)) return res.status(404).json({ error: 'Not found' });

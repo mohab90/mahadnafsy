@@ -9,6 +9,7 @@ const { uuidv4 } = require('../lib/id');
 const { toNumbers } = require('../lib/mappers');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { publicLimiter } = require('../middleware/rateLimits');
+const { scalarFields } = require('../lib/inputFields');
 
 function routeError(res, error, message = 'promo codes route failed') {
   logger.error(message, error);
@@ -16,7 +17,7 @@ function routeError(res, error, message = 'promo codes route failed') {
 }
 
 // Every code is one tenant's (HIGH-09; migration 255): each query names it.
-router.post('/api/promo/validate', publicLimiter, async (req, res) => {
+router.post('/api/promo/validate', publicLimiter, scalarFields('code', 'amount'), async (req, res) => {
   const { code, amount } = req.body || {};
   if (!code) return res.status(400).json({ error: 'الكود مطلوب' });
   try {

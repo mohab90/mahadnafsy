@@ -113,12 +113,18 @@ async function paymobIntention({ paymob, amountCents, currency, orderId, itemTit
       notification_url: notification,
       redirection_url: redirection,
     }),
+    // Same bound as postPaymobJson: a stalled gateway must not hold checkout.
+    signal: AbortSignal.timeout(15000),
   });
   const text = await res.text();
   let body = null; try { body = JSON.parse(text); } catch { /* non-JSON error page */ }
   const key = body?.payment_keys?.[0]?.key;
   if (!key) throw new Error(`Paymob intention failed (${res.status}): ${JSON.stringify(body?.detail || text).slice(0, 200)}`);
-  return { key, clientSecret: body.client_secret, intentionId: body.id };
+  return {
+    key, clientSecret: body.client_secret, intentionId: body.id,
+    // The Paymob order behind the intention: the id its callbacks sign.
+    paymobOrderId: body.intention_order_id ?? body.payment_keys?.[0]?.order_id ?? null,
+  };
 }
 
 // Paymob Egypt charges in EGP only: a SAR order sent as SAR never reached its

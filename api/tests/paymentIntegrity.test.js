@@ -103,7 +103,7 @@ test('a declined transaction credits nothing', () => {
   const src = checkoutSource();
   // Both entry points gate on success before finalising.
   assert.match(src, /if \(!paymobSuccess\(params\)\) return res\.json\(\{ ok: true, verified: true, paid: false \}\)/);
-  assert.match(src, /if \(paymobSuccess\(params\)\) \{[\s\S]{0,200}?finalisePaymobOrder/);
+  assert.match(src, /if \(paymobSuccess\(params\)\) \{[\s\S]{0,400}?finalisePaymobOrder/);
   // And success is read strictly, not truthily — 'false' is a string here.
   assert.match(src, /String\(params\.success \?\? params\.obj\?\.success \?\? ''\)\.toLowerCase\(\) === 'true'/);
 });

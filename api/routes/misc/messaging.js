@@ -56,12 +56,11 @@ router.post('/api/admin/sms/send', requireAuth, requireAdmin, async (req, res) =
 
     let result;
     if (cfg.provider === 'vonage') {
-      const fetch = (...a) => import('node-fetch').then(m => m.default(...a)).catch(() => null);
-      if (!fetch) return res.status(500).json({ error: 'node-fetch not available' });
       const r = await fetch('https://rest.nexmo.com/sms/json', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ api_key: cfg.api_key, api_secret: cfg.api_secret, to, from: cfg.sender_id, text: message }),
+        signal: AbortSignal.timeout(8000),
       });
       result = await r.json();
     } else if (cfg.provider === 'infobip') {
@@ -88,6 +87,7 @@ router.post('/api/admin/sms/send', requireAuth, requireAdmin, async (req, res) =
           });
         });
         req2.on('error', e => resolve({ error: e.message }));
+        req2.setTimeout(8000, () => req2.destroy(new Error('provider timeout')));
         req2.write(body); req2.end();
       });
     } else {
@@ -162,7 +162,9 @@ router.post('/api/admin/sms/bulk', requireAuth, requireAdmin, bulkOperationLimit
             await new Promise(resolve => {
               const req2 = https.request({ hostname: 'rest.nexmo.com', path: '/sms/json', method: 'POST',
                 headers: { 'Content-Type': 'application/json' } }, r2 => { r2.resume(); resolve(); });
-              req2.on('error', resolve); req2.write(body); req2.end();
+              req2.on('error', resolve);
+              req2.setTimeout(8000, () => req2.destroy(new Error('provider timeout')));
+              req2.write(body); req2.end();
             });
           }
         } catch (_) {}

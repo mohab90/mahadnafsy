@@ -3,6 +3,11 @@
 const { toDialable } = require('./phoneNumber');
 const { getOtpProviderSettings } = require('./saasSettings');
 
+// A provider that never answers must not hold a sign-in (or the request that
+// sent the code) open forever.
+const PROVIDER_TIMEOUT_MS = Number(process.env.OTP_PROVIDER_TIMEOUT_MS || 8000);
+const providerSignal = () => AbortSignal.timeout(PROVIDER_TIMEOUT_MS);
+
 async function sendGreenApiWhatsApp({ phone, message, instanceId, apiToken }) {
   if (!phone || !instanceId || !apiToken) return { ok: false, reason: 'not_configured' };
   const dialable = toDialable(phone);
@@ -12,6 +17,7 @@ async function sendGreenApiWhatsApp({ phone, message, instanceId, apiToken }) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chatId, message }),
+    signal: providerSignal(),
   });
   const data = await response.json().catch(() => ({}));
   return response.ok && data.idMessage ? { ok: true, idMessage: data.idMessage } : { ok: false, reason: data };
@@ -34,7 +40,7 @@ async function sendSmsOtp({ phone, message, settings }) {
       from: String(cfg.sender_id || 'MAHAD').slice(0, 11),
       text: message,
     });
-    const response = await fetch('https://rest.nexmo.com/sms/json', { method: 'POST', body });
+    const response = await fetch('https://rest.nexmo.com/sms/json', { method: 'POST', body, signal: providerSignal() });
     const data = await response.json().catch(() => ({}));
     const first = Array.isArray(data.messages) ? data.messages[0] : null;
     return response.ok && first?.status === '0' ? { ok: true, provider } : { ok: false, provider, reason: data };
@@ -48,6 +54,7 @@ async function sendSmsOtp({ phone, message, settings }) {
       method: 'POST',
       headers: { Authorization: `Basic ${auth}` },
       body,
+      signal: providerSignal(),
     });
     const data = await response.json().catch(() => ({}));
     return response.ok && data.sid ? { ok: true, provider, sid: data.sid } : { ok: false, provider, reason: data };
@@ -62,6 +69,7 @@ async function sendSmsOtp({ phone, message, settings }) {
         ...(cfg.api_key ? { Authorization: `Bearer ${cfg.api_key}` } : {}),
       },
       body: JSON.stringify({ to: `+${dialable}`, from: cfg.sender_id || 'MAHAD', text: message }),
+      signal: providerSignal(),
     });
     const data = await response.json().catch(() => ({}));
     return response.ok ? { ok: true, provider: 'webhook', response: data } : { ok: false, provider: 'webhook', reason: data };

@@ -52,7 +52,7 @@ async function ensureLeadForUser(conn, { tenantId, user, branch } = {}) {
 
   const resolvedBranch = defaultDigitalBranch(branch);
   const leadId = uuidv4();
-  const clientCode = await getNextClientCode(conn);
+  const clientCode = await getNextClientCode(conn, tenantId);
   const salesRep = await getNextSalesRep(tenantId, conn, {
     branch: resolvedBranch, lead: { source: 'تسجيل دخول', courseIds: [] },
   }).catch(() => null);

@@ -20,6 +20,7 @@ const { listOnlineUsers } = require('../../lib/onlineUsers');
 const { safeIsoString, safeDateOnly } = require('../../lib/dates');
 const { keyset } = require('../../lib/pagination');
 const { requireTenantQuota } = require('../../middleware/tenantQuota');
+const { textValue, numberValue, sendFieldError } = require('../../lib/inputFields');
 
 
 // GET /api/admin/online-users — العملاء المتصلون الآن (آخر دقيقتين)
@@ -59,21 +60,29 @@ router.get('/api/admin/courses', requireAuth, requireAdminOrStaff, requirePermis
 // POST /api/admin/courses
 router.post('/api/admin/courses', requireAuth, requireAdminOrStaff, requirePermission('manage_courses'), requireTenantQuota('courses'), async (req, res) => {
   try {
-    const c = req.body;
-    const id = c.id || uuidv4();
+    const c = req.body || {};
+    const id = textValue(c.id, { field: 'id', label: 'المعرف', max: 36 }) || uuidv4();
     // Support both camelCase (admin UI) and snake_case payloads
     const courseCode      = c.course_code      ?? c.courseCode      ?? null;
-    const slug            = c.slug             || id;
+    const slug            = textValue(c.slug, { field: 'slug', label: 'رابط الكورس (slug)', max: 255 }) || id;
+    const title           = textValue(c.title, { field: 'title', label: 'عنوان الكورس', max: 500, required: true });
     const titleEn         = c.title_en         ?? c.titleEn         ?? null;
     const titleAr         = c.title_ar         ?? c.titleAr         ?? null;
     const shortDesc       = c.short_description ?? c.shortDescription ?? '';
     const instructorId    = c.instructor_id    ?? c.instructorId    ?? null;
-    const priceEGP        = c.price_egp        ?? c.price?.EGP      ?? 0;
-    const priceSAR        = c.price_sar        ?? c.price?.SAR      ?? 0;
-    const priceUSD        = c.price_usd        ?? c.price?.USD      ?? 0;
-    const origEGP         = c.orig_price_egp   ?? c.originalPrice?.EGP ?? 0;
-    const origSAR         = c.orig_price_sar   ?? c.originalPrice?.SAR ?? 0;
-    const origUSD         = c.orig_price_usd   ?? c.originalPrice?.USD ?? 0;
+    // A price, rating or student count the site shows: no negatives, no text,
+    // and a rating out of five. These used to reach MySQL as typed — -500 was
+    // saved and shown, and «abc» came back as a 500.
+    const money = (value, field, label) => numberValue(value, { field, label, min: 0, max: 1e9, fallback: 0 });
+    const priceEGP        = money(c.price_egp      ?? c.price?.EGP,         'price_egp', 'السعر بالجنيه');
+    const priceSAR        = money(c.price_sar      ?? c.price?.SAR,         'price_sar', 'السعر بالريال');
+    const priceUSD        = money(c.price_usd      ?? c.price?.USD,         'price_usd', 'السعر بالدولار');
+    const origEGP         = money(c.orig_price_egp ?? c.originalPrice?.EGP, 'orig_price_egp', 'السعر قبل الخصم بالجنيه');
+    const origSAR         = money(c.orig_price_sar ?? c.originalPrice?.SAR, 'orig_price_sar', 'السعر قبل الخصم بالريال');
+    const origUSD         = money(c.orig_price_usd ?? c.originalPrice?.USD, 'orig_price_usd', 'السعر قبل الخصم بالدولار');
+    const rating          = numberValue(c.rating, { field: 'rating', label: 'التقييم', min: 0, max: 5, fallback: 0 });
+    const students        = numberValue(c.students, { field: 'students', label: 'عدد الطلاب', min: 0, max: 1e7, integer: true, fallback: 0 });
+    const hours           = numberValue(c.hours, { field: 'hours', label: 'عدد الساعات', min: 0, max: 100000, fallback: null }) || null;
     const promoUrl        = c.promo_video_url  ?? c.promoVideoUrl   ?? null;
     const liveUrl         = c.live_session_url ?? c.liveSessionUrl  ?? null;
     const certUrl         = c.certificate_template_url  ?? c.certificateTemplateUrl  ?? null;
@@ -84,7 +93,7 @@ router.post('/api/admin/courses', requireAuth, requireAdminOrStaff, requirePermi
     const category        = c.category || 'GENERAL';
     const courseType      = c.type || 'RECORDED';
     const isPublished     = c.is_published     ?? c.isPublished     ?? false;
-    const sortOrder       = c.sort_order       ?? c.sortOrder       ?? 0;
+    const sortOrder       = numberValue(c.sort_order ?? c.sortOrder, { field: 'sort_order', label: 'الترتيب', min: -1e6, max: 1e6, integer: true, fallback: 0 });
     const modulesJson     = c.modules_json     ?? (c.modules        != null ? JSON.stringify(c.modules)        : null);
     const galleryJson     = c.gallery_images_json ?? (c.galleryImages != null ? JSON.stringify(c.galleryImages) : null);
     const detailsJson     = c.details_content_json ?? (c.detailsContent != null ? JSON.stringify(c.detailsContent) : null);
@@ -94,6 +103,11 @@ router.post('/api/admin/courses', requireAuth, requireAdminOrStaff, requirePermi
       const [[anyRow]] = await pool.query('SELECT id, (tenant_id = ?) AS owned FROM courses WHERE id=? LIMIT 1', [req.tenantId, c.id]);
       if (anyRow && !anyRow.owned) return res.status(404).json({ error: 'Course not found' });
     }
+    // The slug is unique per tenant, and the upsert below matches on it too: a
+    // new course with another course's slug «saved» by overwriting that
+    // course's name and price, and created nothing.
+    const [[slugOwner]] = await pool.query('SELECT id FROM courses WHERE tenant_id=? AND slug=? AND id<>? LIMIT 1', [req.tenantId, slug, id]);
+    if (slugOwner) return res.status(409).json({ error: 'رابط الكورس (slug) مستخدم لكورس تاني — اختار رابط مختلف.', code: 'SLUG_TAKEN', field: 'slug' });
     if (instructorId) {
       // Tenant + active check only, deliberately NOT a role check. This used to
       // also require LOWER(role) IN ('instructor','trainer'), which blocked
@@ -156,14 +170,14 @@ router.post('/api/admin/courses', requireAuth, requireAdminOrStaff, requirePermi
          seo_title=VALUES(seo_title), seo_description=VALUES(seo_description), seo_keywords=VALUES(seo_keywords),
          updated_at=CURRENT_TIMESTAMP`,
       [
-        id, req.tenantId, courseCode, slug, c.title, titleEn, titleAr,
+        id, req.tenantId, courseCode, slug, title, titleEn, titleAr,
         c.description||'', shortDesc, c.instructor||'', instructorId, c.thumbnail||'',
         category, courseType,
         priceEGP, priceSAR, priceUSD,
         origEGP, origSAR, origUSD,
         // How many months a new enrolment keeps the course. 0 / blank means
         // unlimited, which is every course until someone sets a number.
-        c.rating||0, c.students||0, c.duration||'', c.level||'', c.hours||null, Number(c.accessMonths ?? c.access_months) > 0 ? Number(c.accessMonths ?? c.access_months) : null,
+        rating, students, c.duration||'', c.level||'', hours, Number(c.accessMonths ?? c.access_months) > 0 ? Number(c.accessMonths ?? c.access_months) : null,
         promoUrl, liveUrl, certUrl, certName,
         isPublished?1:0, sortOrder,
         modulesJson, galleryJson, detailsJson, courseModJson,
@@ -177,7 +191,10 @@ router.post('/api/admin/courses', requireAuth, requireAdminOrStaff, requirePermi
     await syncOnlineTiersFromColumns(pool, { tenantId: req.tenantId, type: 'course', itemId: id });
     cacheInvalidate('courses', 'bundles');
     res.json({ ok: true, id });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    if (sendFieldError(res, e)) return;
+    logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // DELETE /api/admin/courses/:id

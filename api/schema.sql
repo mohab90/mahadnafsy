@@ -808,9 +808,11 @@ CREATE TABLE `classroom_bookings` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `client_code_counter` (
-  `id` int(11) NOT NULL DEFAULT 1,
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `tenant_id` varchar(64) DEFAULT NULL,
   `next_value` int(11) DEFAULT 10001,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_client_code_counter_tenant` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -4165,6 +4167,22 @@ CREATE TABLE `payments` (
   CONSTRAINT `fk_payments_certificate_request` FOREIGN KEY (`certificate_request_id`) REFERENCES `certificate_requests` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_payments_course` FOREIGN KEY (`course_id`) REFERENCES `courses` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_payments_subscriber` FOREIGN KEY (`subscriber_id`) REFERENCES `subscribers` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `paymob_order_links`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `paymob_order_links` (
+  `tenant_id` varchar(64) NOT NULL,
+  `paymob_order_id` varchar(64) NOT NULL,
+  `order_id` varchar(36) NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`tenant_id`,`paymob_order_id`),
+  KEY `idx_paymob_order_links_order` (`tenant_id`,`order_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

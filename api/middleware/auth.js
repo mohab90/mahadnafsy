@@ -169,6 +169,27 @@ async function findActiveStaff(req, email, includePermissions = false) {
   });
 }
 
+/**
+ * True when the request carries a token this server signed and has not revoked.
+ * Signature only — no tenant or session lookup — so it is cheap enough to run
+ * before the body is read (lib/httpApp.js picks the body limit with it). The
+ * mere presence of an authToken cookie used to be enough for the larger limit.
+ */
+function hasSignedToken(req) {
+  const cookieMatch = (req.headers.cookie || '').match(/(?:^|;\s*)authToken=([^;]+)/);
+  const header = req.headers.authorization || '';
+  let token = null;
+  try { token = cookieMatch ? decodeURIComponent(cookieMatch[1]) : null; } catch { token = null; }
+  if (!token && header.startsWith('Bearer ')) token = header.slice(7);
+  if (!token) return false;
+  try {
+    const payload = jwt.verify(token, JWT_SECRET, JWT_VERIFY_OPTIONS);
+    return Boolean(payload?.uid) && !(payload.jti && tokenBlacklist.has(payload.jti));
+  } catch {
+    return false;
+  }
+}
+
 // Optional auth — populates req.user if a valid token is present, but never rejects
 async function optionalAuth(req, res, next) {
   let token = null;
@@ -505,7 +526,7 @@ function requireAnyPermission(...permissions) {
 module.exports = {
   ADMIN_EMAILS, ADMIN_UIDS, PLATFORM_ADMIN_EMAILS, PLATFORM_ADMIN_UIDS,
   ROLE_DEFAULT_PERMISSIONS_BE, isInstituteOwner, isPlatformAdminIdentity,
-  optionalAuth, requireAuth, requireAdmin, requireSuperAdmin, requirePlatformAdmin,
+  hasSignedToken, optionalAuth, requireAuth, requireAdmin, requireSuperAdmin, requirePlatformAdmin,
   requireAdminOrOnlineManager, requireAdminOrOnlineManagerOrCollection,
   requireAdminOrStaff, requirePermission, requirePermissionOrSelf, requirePermissionOrOwnRows, requireChannel,
   requireAnyPermission, enforceMfa, invalidateIdentity,

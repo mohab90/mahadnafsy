@@ -243,7 +243,7 @@ router.post('/api/admin/whatsapp-proxy/chats', requireAuth, requireAdmin, async 
     const cfg = await greenApiConfig(req);
     if (!cfg) return res.status(409).json({ error: 'Green API WhatsApp is not configured' });
     const { instanceId, apiToken } = cfg;
-    const r = await fetch(`https://api.green-api.com/waInstance${instanceId}/getChats/${apiToken}`);
+    const r = await fetch(`https://api.green-api.com/waInstance${instanceId}/getChats/${apiToken}`, { signal: AbortSignal.timeout(8000) });
     const data = await r.json();
     res.json(data);
   } catch (e) { routeError(res, e); }
@@ -261,6 +261,7 @@ router.post('/api/admin/whatsapp-proxy/history', requireAuth, requireAdmin, asyn
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chatId, count: Math.min(Number(count), 100) }),
+      signal: AbortSignal.timeout(8000),
     });
     const data = await r.json();
     res.json(data);

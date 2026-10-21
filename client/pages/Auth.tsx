@@ -308,7 +308,10 @@ const Auth: React.FC = () => {
                 // 211 failed sign-ins in a week were addresses with no account,
                 // about seven tries each — mostly clients who joined by phone.
                 // One wording for both failures, so it says nothing of which.
-                'Invalid credentials': 'البريد الإلكتروني أو كلمة المرور غير صحيحة. لو اشتركت برقم موبايلك، ادخل من «💬 الدخول برقم الواتساب» تحت.',
+                // The server gives this one answer for an unknown account, a wrong
+                // password and an account with no password yet, so it names every
+                // way in.
+                'Invalid credentials': 'البريد الإلكتروني أو كلمة المرور غير صحيحة. لو اشتركت برقم موبايلك، ادخل من «💬 الدخول برقم الواتساب» تحت، ولو لسه معندكش كلمة مرور اضغط «نسيت كلمة المرور».',
                 'Email and password required': 'يرجى إدخال البريد الإلكتروني وكلمة المرور.',
                 'Password must be at least 8 characters': 'يجب أن تكون كلمة المرور 8 أحرف على الأقل.',
                 'Login failed': 'حدث خطأ في الخادم، حاول مرة أخرى.',

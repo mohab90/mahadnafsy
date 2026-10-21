@@ -13,6 +13,7 @@ const router = express.Router();
 const { logLogin, sendDailyReport, scheduleDailyReport, pushAdminNotif, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
 
 const { escapeHtml } = require('../../lib/html');
+const { resolveFinancialScope } = require('../../lib/financialScope');
 const { cairoToday } = require('../../lib/dates');
 
 router.get('/api/admin/subscription-plans', requireAuth, requireAdmin, async (req, res) => {
@@ -147,6 +148,19 @@ router.post('/api/admin/subscriptions', requireAuth, requireAdmin, async (req, r
 // ── FEATURE: PDF Invoice Generation (Server-side HTML) ────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 
+function paymentInScope(scope, payment) {
+  if (scope.branchId) {
+    // A branch's own clients only, as in the payments list.
+    return String(payment.branch_id || '') === String(scope.branchId)
+      && (!payment.scope_subscriber_id || String(payment.scope_client_branch_id || '') === String(scope.branchId));
+  }
+  if (scope.kind === 'assigned_cs' || scope.kind === 'assigned_sales') {
+    const assigned = scope.kind === 'assigned_cs' ? payment.scope_assigned_cs_id : payment.scope_assigned_sales_id;
+    return String(payment.staff_id || '') === String(scope.staffId) || String(assigned || '') === String(scope.staffId);
+  }
+  return scope.kind === 'all';
+}
+
 // GET /api/admin/payments/:id/invoice-html  — returns a printable HTML invoice
 // The token is read from the Authorization header only. A ?token= query
 // parameter used to be copied into that header so a bare browser link would
@@ -156,13 +170,17 @@ router.post('/api/admin/subscriptions', requireAuth, requireAdmin, async (req, r
 router.get('/api/admin/payments/:id/invoice-html',
   requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
+    // The same rows the payments list shows this account (routes/payments.js):
+    // a branch accountant printed any branch's invoice by its id.
+    const scope = resolveFinancialScope(req, { allowAssigned: true });
     const [[payment]] = await pool.query(
       `SELECT p.*, s.name AS client_name, s.phone AS client_phone, s.email AS client_email,
-              s.client_code, s.branch
+              s.client_code, s.branch, s.id AS scope_subscriber_id, s.branch_id AS scope_client_branch_id,
+              s.assigned_cs_id AS scope_assigned_cs_id, s.assigned_sales_id AS scope_assigned_sales_id
        FROM payments p
        LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
        WHERE p.id = ? AND p.tenant_id = ? AND p.deleted_at IS NULL`, [req.params.id, req.tenantId]);
-    if (!payment) return res.status(404).json({ error: 'Payment not found' });
+    if (!payment || !paymentInScope(scope, payment)) return res.status(404).json({ error: 'Payment not found' });
 
     const settings = await getTenantSetting('sys_general', { tenantId: req.tenantId, fallback: {} });
     const siteName = escapeHtml(settings.site_name || settings.siteName || 'المعهد النفسي');
@@ -280,7 +298,10 @@ router.get('/api/admin/payments/:id/invoice-html',
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
-  } catch (e) { logger.error(e); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    if (e?.code && e.status) return res.status(e.status).json({ error: e.message, code: e.code });
+    logger.error(e); res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

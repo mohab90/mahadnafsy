@@ -31,6 +31,7 @@ const { capturePublicLead } = require('../lib/publicLead');
 const { bookingRuleError, consultationSettings, expressPrice, findSlot, openConsultationRequest } = require('../lib/consultationRequests');
 const { createNotification } = require('../lib/notification');
 const metaCapi = require('../lib/metaCapi');
+const { scalarFields } = require('../lib/inputFields');
 
 function routeError(res, error, message = 'lead capture crm route failed') {
   logger.error(message, error);
@@ -66,7 +67,7 @@ function publicCrmFields(item) {
   return out;
 }
 
-router.post('/api/registrations', publicLimiter, async (req, res) => {
+router.post('/api/registrations', publicLimiter, scalarFields('name', 'phone', 'email', 'source', 'notes', 'branch', 'enrolledCourseId', 'leadType', 'preferredPaymentType'), async (req, res) => {
   let conn;
   let transactionStarted = false;
   let registrationLock = null;
@@ -108,7 +109,7 @@ router.post('/api/registrations', publicLimiter, async (req, res) => {
       if (existing) id = existing.id;
     }
     let code = existing?.client_code || null;
-    if (!code) code = await getNextClientCode(conn);
+    if (!code) code = await getNextClientCode(conn, tenantId);
     const email = text(item.email, 160).toLowerCase() || null;
     const source = text(item.source, 50) || null;
     const notes = text(item.notes, 1000) || null;
@@ -198,7 +199,7 @@ router.post('/api/registrations', publicLimiter, async (req, res) => {
   if (created) await require('../lib/lifecycle').trigger('lead_created', created);
 });
 
-router.post('/api/leads-public', publicLimiter, async (req, res) => {
+router.post('/api/leads-public', publicLimiter, scalarFields('name', 'phone', 'notes', 'source', 'branch'), async (req, res) => {
   try {
     const body = req.body || {};
     const name = text(body.name, 120);
@@ -369,7 +370,7 @@ router.post('/api/admin/leads/distribute', requireAuth, requireAdmin, async (req
   }
 });
 
-router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (req, res) => {
+router.post('/api/public/checkout-intent', requireAuth, publicLimiter, scalarFields('itemId', 'itemType', 'itemTitle', 'customerName', 'customerEmail', 'customerPhone', 'paymentLinkToken', 'payMode'), async (req, res) => {
   let conn;
   let transactionStarted = false;
   let checkoutLock = null;
@@ -656,7 +657,7 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
          ON DUPLICATE KEY UPDATE id=id`,
         // NULL rather than '' — leads.email is unique per tenant, so a blank string
         // would make the second email-less checkout collide with the first.
-        [uuidv4(), tenantId, await getNextClientCode(conn),
+        [uuidv4(), tenantId, await getNextClientCode(conn, tenantId),
          String(customerName || normalizedEmail.split('@')[0] || 'عميل').trim().slice(0, 255),
          normalizedEmail || null,
          contactPhone.slice(0, 50), branch, branchId, crmJson, rep?.id || null, rep?.name || null]

@@ -20,7 +20,7 @@ const { legacyTenantContainment } = require('../middleware/legacyTenantContainme
 const { enforceAdminIpWhitelist } = require('../middleware/ipWhitelist');
 const { adminLimiter } = require('../middleware/rateLimits');
 const { adminFeatureGate, isPublicAdminPath } = require('./adminFeatureGate');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, hasSignedToken } = require('../middleware/auth');
 const { deleteRightsGuard } = require('./deleteRights');
 const { cleanupMemoryPresence } = require('./onlineUsers');
 
@@ -235,14 +235,12 @@ function createHttpApp({ pool, brandAssetRoot }) {
   // no session — every public form, webhook and scan — gets 1 MB. The body used
   // to be read in full up to 10 MB for anyone, before any rate limit could look at
   // it, so a stranger could make the server buffer and parse ten megabytes a call.
+  // The token is verified, not just looked for: `Cookie: authToken=anything`
+  // used to be enough for the 10 MB limit.
   const keepRaw = (req, _res, buffer) => { req.rawBody = buffer; };
   const signedInParser = express.json({ limit: '10mb', verify: keepRaw });
   const anonymousParser = express.json({ limit: '1mb', verify: keepRaw });
-  app.use((req, res, next) => {
-    const hasSession = /(?:^|;\s*)authToken=/.test(req.headers.cookie || '')
-      || /^Bearer\s+\S+/i.test(req.headers.authorization || '');
-    return (hasSession ? signedInParser : anonymousParser)(req, res, next);
-  });
+  app.use((req, res, next) => (hasSignedToken(req) ? signedInParser : anonymousParser)(req, res, next));
   app.use(sanitizeBody);
   app.use(securityHeaders);
   app.use((req, res, next) => {
@@ -320,14 +318,24 @@ function createHttpApp({ pool, brandAssetRoot }) {
     app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
   }
   app.use((error, req, res, _next) => {
+    // The body parser's own refusals (too large, bad encoding) are the client's
+    // doing: answer with their status rather than a 500 that also pages us.
+    if (error?.type === 'entity.too.large' || error?.status === 413) {
+      if (res.headersSent) return;
+      return res.status(413).json({ error: 'حجم الطلب أكبر من المسموح.', code: 'PAYLOAD_TOO_LARGE' });
+    }
+    if (error instanceof SyntaxError && error.status === 400 && 'body' in error) {
+      if (res.headersSent) return;
+      return res.status(400).json({ error: 'Invalid JSON body' });
+    }
+    if (error?.type && error.expose && error.status >= 400 && error.status < 500 && !res.headersSent) {
+      return res.status(error.status).json({ error: 'Invalid request body' });
+    }
     logger.error('unhandled route error', {
       reqId: req.reqId, method: req.method, path: req.path, msg: error.message, stack: error.stack,
     });
     errorMonitor.captureException(error, { reqId: req.reqId, method: req.method, path: req.path });
     if (res.headersSent) return;
-    if (error instanceof SyntaxError && error.status === 400 && 'body' in error) {
-      return res.status(400).json({ error: 'Invalid JSON body' });
-    }
     res.status(500).json({ error: 'Internal server error' });
   });
   return app;
