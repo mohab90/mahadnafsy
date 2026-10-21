@@ -20,6 +20,9 @@ const {
   mapLeadRow,
 } = require('./_shared');
 
+const { FOLLOW_UP_DATE, FOLLOW_UP_OPEN, dueOn } = require('../../../lib/leadFollowUps');
+const { addDaysToDateOnly, cairoToday } = require('../../../lib/dates');
+
 const router = Router();
 
 // GET /api/admin/leads/staff-performance?from=YYYY-MM-DD
@@ -66,7 +69,7 @@ router.get('/api/admin/leads/staff-performance', requireAuth, requireAdminOrStaf
       // slices of the same grouping — one needs lost and active, the other only
       // converted — and adding a column each time they differ is how a response
       // grows fields nobody reads.
-      if (!byStaff[key]) byStaff[key] = { leads: 0, converted: 0, contacted: 0, byStatus: {} };
+      if (!byStaff[key]) byStaff[key] = { leads: 0, converted: 0, contacted: 0, followUpsToday: 0, byStatus: {} };
       return byStaff[key];
     };
 
@@ -102,6 +105,22 @@ router.get('/api/admin/leads/staff-performance', requireAuth, requireAdminOrStaf
     for (const r of contactedRows) {
       const entry = entryFor(r.staff_id);
       if (entry) entry.contacted = Number(r.cnt);
+    }
+
+    // Each rep's follow-ups due today — not bounded by the range: today is today.
+    // The sales hub counted them in the browser out of the page of leads it had.
+    const due = dueOn(cairoToday());
+    const [dueRows] = await pool.query(
+      `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
+         FROM leads l
+        WHERE l.tenant_id = ?${scopeClause}${due.sql}
+          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
+        GROUP BY l.assigned_sales_id`,
+      [...base, ...due.params],
+    );
+    for (const r of dueRows) {
+      const entry = entryFor(r.staff_id);
+      if (entry) entry.followUpsToday = Number(r.cnt);
     }
 
     res.json({ from, byStaff });
@@ -271,6 +290,8 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
     const redistSql = REDIST_EXCLUDED.map(() => '?').join(',');
 
     // ── 1. Reminders ────────────────────────────────────────────────────────
+    // Open and dated as every screen counts them (lib/leadFollowUps.js): the
+    // column alone missed a date kept only in crm_json, which the bell counted.
     // Whole rows, because the panel lists them by name and acts on them. Bounded
     // by the same window the browser applied: anything overdue, plus the next
     // seven days. LIMIT is a backstop, not a filter — a database holding more
@@ -287,13 +308,11 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
          FROM leads l
          LEFT JOIN staff ss ON ss.id = l.assigned_sales_id AND ss.tenant_id = l.tenant_id
          LEFT JOIN staff cs ON cs.id = l.assigned_cs_id AND cs.tenant_id = l.tenant_id
-        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
-          AND l.next_follow_up_date IS NOT NULL
-          AND l.status NOT IN (${closedSql})
-          AND l.next_follow_up_date <= ${sqlCairoToday()} + INTERVAL 7 DAY
-        ORDER BY l.next_follow_up_date ASC, l.id ASC
+        WHERE l.tenant_id = ?${scopeClause} AND ${FOLLOW_UP_OPEN}
+          AND ${FOLLOW_UP_DATE} <= ?
+        ORDER BY ${FOLLOW_UP_DATE} ASC, l.id ASC
         LIMIT 500`,
-      [req.tenantId, ...scopeParams, ...CLOSED],
+      [req.tenantId, ...scopeParams, addDaysToDateOnly(cairoToday(), 7)],
     );
 
     // ── 1b. The two undated queues beside them ──────────────────────────────

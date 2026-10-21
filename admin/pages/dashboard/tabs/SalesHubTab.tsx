@@ -147,8 +147,9 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
       const targetAmt = target?.targetEGP || 0;
       const targetPct = percent(revenue, targetAmt);
 
-      // Follow-ups due today
-      const followUpsToday = leads.filter(l =>
+      // Follow-ups due today: the server's count (api/lib/leadFollowUps.js), the
+      // loaded page of leads only until it answers.
+      const followUpsToday = agg?.followUpsToday ?? leads.filter(l =>
         !l.hidden &&
         l.assignedSalesId === s.id &&
         l.nextFollowUpDate === TODAY &&

@@ -32,7 +32,13 @@ const TYPE_AUDIENCE = Object.freeze({
   escalation_repeated: { perms: MANAGEMENT },
   lead: { perms: MANAGEMENT },
   info: { perms: MANAGEMENT },
-  sales: { perms: MANAGEMENT },
+  // A new sales offer is announced to the people who sell it: with management
+  // alone as the audience, the reps the offer is for never heard of it.
+  sales: { perms: MANAGEMENT, roles: ['sales'] },
+  // The inbox bot handing a conversation over with nobody assigned: the team
+  // that answers the inbox (lib/inboxBot.js), not every employee. A type missing
+  // here goes to everyone — the accountant and HR read «البوت محتاج حد».
+  inbox: { perms: MANAGEMENT, roles: ['sales'] },
   subscriber: { perms: MANAGEMENT },
   whatsapp: { perms: ['manage_leads'] },
   messenger: { perms: ['manage_leads'] },

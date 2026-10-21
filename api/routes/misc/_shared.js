@@ -1,5 +1,5 @@
 'use strict';
-const { TERMINAL_SQL } = require('../../lib/leadStatuses');
+const { dueOn } = require('../../lib/leadFollowUps');
 const logger = require('../../lib/logger');
 const { escapeHtml } = require('../../lib/html');
 const { uuidv4 } = require('../../lib/id');
@@ -149,16 +149,18 @@ function queueReminderWhatsApp({ tenantId, phone, message, category, dedupeKey }
 async function runFollowUpReminders(tenantId = DEFAULT_TENANT) {
   try {
     const today = cairoToday();
-    // Leads due for follow-up today
+    // Leads due for follow-up today, as every screen counts them
+    // (lib/leadFollowUps.js) — this read the column alone and took archived
+    // leads with it, so the 08:00 message and the bell disagreed.
+    const due = dueOn(today);
     const [leads] = await pool.query(`
       SELECT l.id, l.name, l.phone, l.email,
              l.next_follow_up_date, l.status, l.source, l.assigned_sales_id,
              st.name AS staff_name, st.phone AS staff_phone, st.email AS staff_email
       FROM leads l
       LEFT JOIN staff st ON st.id = l.assigned_sales_id AND st.tenant_id = l.tenant_id
-      WHERE l.tenant_id = ? AND l.next_follow_up_date >= ? AND l.next_follow_up_date < DATE_ADD(?, INTERVAL 1 DAY)
-        AND l.status NOT IN ${TERMINAL_SQL}
-      LIMIT 100`, [tenantId, today, today]);
+      WHERE l.tenant_id = ?${due.sql}
+      LIMIT 100`, [tenantId, ...due.params]);
 
     let sent = 0;
     // Batch-check which leads were already reminded today (1 query instead of N)
