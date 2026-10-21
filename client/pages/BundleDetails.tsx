@@ -6,6 +6,7 @@ import CourseCertificate from '../components/CourseCertificate';
 import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 import { discountPercent, formatAmount } from '../../shared/priceFormat';
 import { useSeo, seoSummary } from '../lib/useSeo';
+import { effectivePrice, usePriceList, wasPrice } from '../lib/usePrices';
 import { CourseBookingCard, scrollToLeadForm } from './course-details-sections/CourseHeroSection';
 import { AboutSection } from './course-details-sections/PainPointsAndAboutSection';
 import { CertificateShowcase, FinalCtaSection, ProofSection, SectionNav } from './course-details-sections/CourseSalesSections';
@@ -41,6 +42,7 @@ const asHtml = (text: string) => (/<[a-z][\s\S]*>/i.test(text) ? text : text
 
 const BundleDetails: React.FC = () => {
   const { bundles, courses, addPublicLead, content: globalContent, currency, testimonials, remoteReady } = useSiteData();
+  const priceList = usePriceList();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
@@ -85,8 +87,10 @@ const BundleDetails: React.FC = () => {
   }
 
   const content = { ...globalContent, ...(bundle.detailsContent || {}) };
-  const currentPrice = bundle.price?.[currency] ?? 0;
-  const oldPrice = bundle.originalPrice?.[currency] ?? 0;
+  // The price checkout charges for the path, discount included (lib/usePrices).
+  const effective = effectivePrice(priceList, 'bundle', bundle.id, currency, bundle.price?.[currency] ?? 0);
+  const currentPrice = effective.price;
+  const oldPrice = wasPrice(effective, bundle.originalPrice?.[currency] ?? 0);
   const currencySymbol = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
   const savePct = discountPercent(oldPrice, currentPrice);
   const students = stations.reduce((sum, s) => sum + (Number(s.full?.students) || 0), 0);

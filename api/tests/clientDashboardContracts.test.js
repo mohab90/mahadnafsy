@@ -93,7 +93,9 @@ test("a bundle with no price in the viewer's currency does not offer itself for 
 test('an empty bundle catalogue reports itself empty instead of loading forever', () => {
   const page = codeOnly(read('client', 'pages', 'Bundles.tsx'));
   assert.ok(page.includes('remoteReady ? ('));
-  assert.ok(page.includes('const { bundles, content, currency, remoteReady } = useSiteData();'));
+  assert.ok(page.includes('const { bundles: catalogBundles, content, currency, remoteReady } = useSiteData();'));
+  // The paths at the price checkout charges (lib/usePrices).
+  assert.ok(page.includes("withEffectivePrices(priceList, 'bundle', b)"));
 });
 
 test('a failed support rating tells the customer instead of doing nothing', () => {

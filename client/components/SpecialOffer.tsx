@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Check, Clock, Copy, Sparkles, X } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import { useEscapeKey } from '../../shared/ui/useEscapeKey';
+import { effectivePrice, usePriceList } from '../lib/usePrices';
 import {
   popupFrequency, popupHasContent, popupImage, popupIsLive, popupTheme, popupVideo, popupWasSeen, type PopupTheme,
 } from '../../shared/siteOffers';
@@ -75,6 +76,7 @@ const SpecialOffer: React.FC = () => {
   useEscapeKey(() => setOpen(false), open);
 
   const course = useMemo(() => courses.find(c => c.id === content['popup.courseId']) || null, [courses, content]);
+  const priceList = usePriceList();
   if (!open || !allowed) return null;
 
   const theme = THEMES[popupTheme(content)];
@@ -84,7 +86,13 @@ const SpecialOffer: React.FC = () => {
   const code = String(content['popup.code'] || '').trim();
   const sym = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
   const coursePrice = course ? Number(course.price?.[currency]) || 0 : 0;
-  const prices = course && pct && coursePrice > 0 ? { oldPrice: coursePrice, newPrice: Math.round(coursePrice * (1 - pct / 100)) } : null;
+  // What checkout charges (api/lib/effectivePrice.js): the pop-up's discount —
+  // automatic, or through its code typed at checkout — or the discount already
+  // running on the course, whichever is lower; the server takes the better one.
+  const running = course ? effectivePrice(priceList, 'course', course.id, currency, coursePrice).price : 0;
+  const prices = course && pct && coursePrice > 0
+    ? { oldPrice: coursePrice, newPrice: Math.min(running, Math.round(coursePrice * (1 - pct / 100))) }
+    : null;
   const cta = String(content['popup.ctaText'] || '').trim() || (course ? 'احجز الآن بالخصم' : 'استفد بالعرض');
   const link = String(content['popup.ctaLink'] || '').trim();
   const to = course ? `/course/${course.id}` : link || '/courses';

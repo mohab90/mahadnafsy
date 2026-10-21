@@ -237,8 +237,9 @@ export const CourseBookingCard: React.FC<CourseBookingCardProps> = ({
   const off = onSale ? discountPercent(strikePrice, payPrice) : 0;
   const saving = onSale ? toAmount(strikePrice) - toAmount(payPrice) : 0;
   const rates = enrollmentRates(content);
-  const cashToday = amountDueNow(toAmount(currentPrice), 'cash', rates);
-  const firstInstalment = amountDueNow(toAmount(currentPrice), 'installment', rates);
+  // On the price being charged (the discounted one when there is one), as checkout applies the rates.
+  const cashToday = amountDueNow(toAmount(payPrice), 'cash', rates);
+  const firstInstalment = amountDueNow(toAmount(payPrice), 'installment', rates);
   const until = applicableDiscount?.expiresAt
     ? new Date(`${String(applicableDiscount.expiresAt).slice(0, 10)}T12:00:00`).toLocaleDateString('ar-EG-u-nu-latn', { day: 'numeric', month: 'long', timeZone: CAIRO_TIME_ZONE })
     : '';

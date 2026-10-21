@@ -1,5 +1,5 @@
 'use strict';
-const { amountDueNow, installmentTotal, enrollmentRates } = require('../lib/enrollmentPricing');
+const { resolveEffectivePrice, loadPricingContext, cleanCode } = require('../lib/effectivePrice');
 
 const express = require('express');
 const router = express.Router();
@@ -376,7 +376,7 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
   try {
     const {
       itemId, itemType, itemTitle, customerName, customerEmail, customerPhone,
-      paymentLinkToken, payMode,
+      paymentLinkToken, payMode, promoCode,
     } = req.body || {};
     // 'cash' or 'installment'. The rate is applied here and never taken from
     // the client: /enroll showed a discounted price and sent none of it, so a
@@ -454,7 +454,12 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
     // by the browser, even on the manually reviewed transfer path.
     // The cash and instalment discounts marketing set (التسويق ← الخصومات), read when the order is made —
     // the amount, and the plan an instalment pays towards, are fixed on it from here on.
-    const rates = enrollmentRates(await getTenantSetting('content', { tenantId, fallback: {} }).catch(() => ({})));
+    // A course or path is priced by lib/effectivePrice.js — the marketing discount the site shows,
+    // the customer's code, then the pay mode — the same rule GET /api/public/prices showed them.
+    const pricingContext = await loadPricingContext(conn, tenantId);
+    // A payment link carries its own agreed amount; a code has nothing to take off it.
+    const wantedCode = paymentLinkToken ? '' : cleanCode(promoCode).slice(0, 50);
+    let quote = null;
     let expectedAmount = 0;
     let basePrice = 0;
     let expectedCurrency = clientContext.currency;
@@ -468,7 +473,11 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       );
       if (!course) return res.status(404).json({ error: 'Course not found' });
       basePrice = Number(course[`price_${expectedCurrency.toLowerCase()}`]) || 0;
-      expectedAmount = basePrice > 0 ? amountDueNow(basePrice, normalizedPayMode, rates) : 0;
+      quote = basePrice > 0 ? await resolveEffectivePrice(conn, {
+        type: 'course', itemId, currency: expectedCurrency, tenantId, payMode: normalizedPayMode,
+        promoCode: wantedCode, base: basePrice, context: pricingContext,
+      }) : null;
+      expectedAmount = quote ? quote.dueNow : 0;
       canonicalTitle = course.title_ar || course.title || canonicalTitle;
     } else if (normalizedType === 'bundle') {
       const [[bundle]] = await conn.query(
@@ -477,7 +486,11 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       );
       if (!bundle) return res.status(404).json({ error: 'Bundle not found' });
       basePrice = Number(bundle[`price_${expectedCurrency.toLowerCase()}`]) || 0;
-      expectedAmount = basePrice > 0 ? amountDueNow(basePrice, normalizedPayMode, rates) : 0;
+      quote = basePrice > 0 ? await resolveEffectivePrice(conn, {
+        type: 'bundle', itemId, currency: expectedCurrency, tenantId, payMode: normalizedPayMode,
+        promoCode: wantedCode, base: basePrice, context: pricingContext,
+      }) : null;
+      expectedAmount = quote ? quote.dueNow : 0;
       canonicalTitle = bundle.title || canonicalTitle;
     } else if (normalizedType === 'certificate') {
       const [[certificate]] = await conn.query(
@@ -567,6 +580,12 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       } else {
         return res.status(400).json({ error: 'therapistId required' });
       }
+    }
+    // A code the customer typed and cannot have is said, not dropped: paying
+    // without the discount they were expecting is its own complaint. A code
+    // beaten by the price already running is no reason to refuse — they pay the lower.
+    if (quote?.promoError && quote.promoError.code !== 'PROMO_NOT_BETTER') {
+      return res.status(400).json({ error: quote.promoError.message, code: quote.promoError.code });
     }
     if (!Number.isFinite(expectedAmount) || expectedAmount <= 0) return res.status(400).json({ error: 'A positive server-verifiable amount is required' });
     if (paymentLink) {
@@ -699,7 +718,9 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       // An instalment's amount is its first payment; the plan is what it pays
       // towards (lib/orderPlan.js reads it when the order is confirmed).
       payMode: normalizedPayMode,
-      planTotal: normalizedPayMode === 'installment' && basePrice ? installmentTotal(basePrice, rates) : null,
+      planTotal: quote?.planTotal || null,
+      // How the price was made, for whoever reads the order later.
+      pricing: quote ? { base: quote.base, price: quote.price, discount: quote.discount } : null,
       // The visitor's ad click, for the Purchase sent when Paymob's callback
       // marks the order paid — that request comes from Paymob, not from them.
       adContext: metaCapi.adContextFromRequest(req),
@@ -707,16 +728,16 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
     await conn.query(
       `INSERT INTO orders
          (id, subscriber_id, item_id, item_title, type, status, amount, currency, payment_method,
-          customer_name, customer_email, customer_phone, course_id, bundle_id, notes, tenant_id, branch_id, created_at)
-       VALUES (?,?,?,?,?,'pending',?,?, 'TRANSFER',?,?,?,?,?,?,?,?,NOW())
-       ON DUPLICATE KEY UPDATE amount=VALUES(amount), currency=VALUES(currency),
+          customer_name, customer_email, customer_phone, course_id, bundle_id, notes, coupon_code, tenant_id, branch_id, created_at)
+       VALUES (?,?,?,?,?,'pending',?,?, 'TRANSFER',?,?,?,?,?,?,?,?,?,NOW())
+       ON DUPLICATE KEY UPDATE amount=VALUES(amount), currency=VALUES(currency), coupon_code=VALUES(coupon_code),
          item_title=VALUES(item_title), customer_name=VALUES(customer_name),
          customer_phone=VALUES(customer_phone), notes=VALUES(notes), tenant_id=VALUES(tenant_id), branch_id=VALUES(branch_id)`,
       [orderId, subscriber?.id || null, itemId || normalizedType, canonicalTitle || normalizedType,
        normalizedType.toUpperCase(), expectedAmount, expectedCurrency,
        String(customerName || '').trim().slice(0, 255), normalizedEmail || null, contactPhone.slice(0, 50),
        normalizedType === 'course' ? itemId : null, normalizedType === 'bundle' ? itemId : null,
-       notes, tenantId, branchId]
+       notes, quote?.discount?.code || null, tenantId, branchId]
     );
     if (paymentLink) {
       const [consumed] = await conn.query(
@@ -756,7 +777,9 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       ok: true, orderId, amount: expectedAmount, currency: expectedCurrency,
       payMode: normalizedPayMode,
       basePrice: basePrice || undefined,
-      planTotal: normalizedPayMode === 'installment' && basePrice ? installmentTotal(basePrice, rates) : undefined,
+      listPrice: quote && !paymentLink ? quote.price : undefined,
+      discount: quote && !paymentLink ? quote.discount : undefined,
+      planTotal: quote?.planTotal || undefined,
     });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});

@@ -157,9 +157,10 @@ test('the goal finder offers the categories that have courses, and the course mo
 });
 
 test('the home page still honours what marketing controls', () => {
-  assert.match(offer, /offerPrices\(content, offerCourse, currency\)/);
+  assert.match(offer, /offerPrices\(content, offerCourse \? \{ price: \{ \[currency\]: coursePrice \} \} : null, currency\)/);
   assert.match(home, /offerShown && <OfferSpotlight/);
-  assert.match(home, /isExpiryActive\(/);
+  // The featured strip at the server's price, which judges a rule's expiry in Cairo.
+  assert.match(home, /effectivePrice\(priceList, 'course', featuredId/);
   assert.match(home, /content\['home\.video\.url'\]/);
   assert.match(read('client/components/home/WhyChooseSection.tsx'), /content\['home\.video\.url'\]/);
   assert.match(offer, /value="daqqi"/);
