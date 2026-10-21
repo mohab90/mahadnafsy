@@ -42,6 +42,17 @@ const { trackPurchase } = require('./metaCapi');
 // volume is low; correctness here is worth one connection.
 const _paymobProcessingOrders = new Set();
 
+// What the payment row and its journal entry say was bought — the same
+// vocabulary as a transfer the desk approves (routes/payment-proofs.js). Every
+// card payment used to be booked as COURSE: a consultation paid online was
+// course revenue (4100, not 4200), counted towards course balances, booking
+// bonuses and commissions, and missing from the consultations' figures.
+const PAYMOB_PAYMENT_TYPES = new Set(['COURSE', 'BUNDLE', 'CONSULTATION', 'CERTIFICATE']);
+function paymobPaymentType(orderType) {
+  const key = String(orderType || '').trim().toUpperCase();
+  return PAYMOB_PAYMENT_TYPES.has(key) ? key : 'OTHER';
+}
+
 /**
  * @param {string} tenantId  the institute whose Paymob secret verified the
  *   callback. Only its own orders are credited: the order is looked up by id,
@@ -148,6 +159,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
   const extra = (() => { try { return JSON.parse(order.notes || '{}'); } catch { return {}; } })();
 
   const payId = `paymob-${merchantOrderId}`;
+  const paymentType = paymobPaymentType(order.type);
   const payCourseId = orderType === 'course' ? (order.item_id || null) : null;
   const payBundleId = orderType === 'bundle' ? (order.item_id || null) : null;
   // An instalment pays towards its plan, not its own amount (lib/orderPlan.js).
@@ -276,7 +288,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
       `INSERT INTO payments
          (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method,
           transaction_id, is_installment, course_expected, branch, branch_id, tenant_id, note, source, date, status, created_at)
-       VALUES (?,?,?,?,?,?,'COURSE','online_paymob',?,?,?,?,?,?,?,'paymob',?,'paid',NOW())`,
+       VALUES (?,?,?,?,?,?,?,'online_paymob',?,?,?,?,?,?,?,'paymob',?,'paid',NOW())`,
       [
         payId,
         sub?.id || null,
@@ -284,6 +296,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
         payBundleId,
         order.amount,
         order.currency || 'EGP',
+        paymentType,
         transactionId || null,
         plan.installment ? 1 : 0,
         plan.expected,  // course_expected: the plan's total for an instalment, else the order's amount
@@ -298,7 +311,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
       paymentId: payId,
       amount: order.amount,
       currency: order.currency || 'EGP',
-      payType: 'COURSE',
+      payType: paymentType,
       date: paidDay,
       actor: 'paymob',
       tenantId,
@@ -544,4 +557,4 @@ async function resolvePaymobMerchantOrder({ merchantOrderId, signedOrderId, tena
   return merchantOrderId;
 }
 
-module.exports = { finalisePaymobOrder, linkPaymobOrder, resolvePaymobMerchantOrder, syncLeadDealValue };
+module.exports = { finalisePaymobOrder, linkPaymobOrder, paymobPaymentType, resolvePaymobMerchantOrder, syncLeadDealValue };
