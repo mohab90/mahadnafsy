@@ -1,14 +1,18 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Layers, Map as MapIcon, ArrowLeft, Check, Send, Award, Clock } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSiteData } from '../context/SiteDataContext';
 import { cdnImg, cdnSrcSet } from '../lib/img';
 import { discountPercent, formatPrice, isDiscounted } from '../../shared/priceFormat';
 import { useSeo } from '../lib/useSeo';
+import { usePriceList, withEffectivePrices } from '../lib/usePrices';
 import PageHeader from '../components/PageHeader';
 
 const Bundles: React.FC = () => {
-  const { bundles, content, currency, remoteReady, catalogFailed, retryCatalog } = useSiteData();
+  const { bundles: catalogBundles, content, currency, remoteReady, catalogFailed, retryCatalog } = useSiteData();
+  // Each path at the price checkout charges for it, discount included (lib/usePrices).
+  const priceList = usePriceList();
+  const bundles = useMemo(() => catalogBundles.map(b => withEffectivePrices(priceList, 'bundle', b)), [catalogBundles, priceList]);
   const navigate = useNavigate();
 
   useSeo({ title: 'المسارات والباقات | معهد الدراسات النفسية', path: '/bundles', description: 'مسارات تعليمية متكاملة وباقات مجمعة بخصومات تصل إلى 40% — من المبتدئ إلى المحترف.' });

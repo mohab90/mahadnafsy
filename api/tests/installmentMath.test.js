@@ -92,3 +92,21 @@ test('removeInstallmentEntry: rejects an out-of-range index', () => {
   const plan = samplePlan();
   assert.throws(() => removeInstallmentEntry(plan, { index: 9 }), { statusCode: 400 });
 });
+
+// Collections, 20 Oct 2026 review: 500 paid against a 1,000 instalment closed it,
+// and the plan read paid while half was still owed.
+test('applyInstallmentPayment: less than the instalment is a part of it, and the parts add up', () => {
+  let plan = samplePlan();
+  const part = applyInstallmentPayment(plan, { index: 0, paidAmount: 400, paidDate: '2026-01-05', paymentId: 'pay-1' });
+  assert.equal(part.partial, true);
+  assert.equal(part.remaining, 600);
+  assert.equal(part.paidDates[0], null, 'still due');
+  assert.equal(part.paymentIds[0], null, 'the readers that list what is due still list it');
+  assert.equal(part.paidAmounts[0], 400);
+  assert.equal(part.paidCount, 0);
+  assert.equal(part.status, 'active');
+  plan = { ...plan, paid_dates: JSON.stringify(part.paidDates), payment_ids: JSON.stringify(part.paymentIds), paid_amounts: JSON.stringify(part.paidAmounts) };
+  assert.throws(() => removeInstallmentEntry(plan, { index: 0 }), { statusCode: 409 }, 'a part-paid entry is not removed');
+  const rest = applyInstallmentPayment(plan, { index: 0, paidAmount: 600, paidDate: '2026-01-20', paymentId: 'pay-2' });
+  assert.deepEqual([rest.partial, rest.paidDates[0], rest.paymentIds[0], rest.paidAmounts[0], rest.paidCount], [false, '2026-01-20', 'pay-2', 1000, 1]);
+});

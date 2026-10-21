@@ -13,6 +13,7 @@ import { instituteWhatsApp } from '../lib/whatsappLink';
 import { amountDueNow, enrollmentRates, installmentTotal, percentLabel } from '../../shared/enrollmentPricing';
 import { useSeo } from '../lib/useSeo';
 import { trackLead } from '../lib/tracking';
+import { effectivePrice, usePriceList } from '../lib/usePrices';
 
 // ── Payment type ──────────────────────────────────────────────────────────────
 type PayType = 'cash' | 'installment';
@@ -29,6 +30,7 @@ const authAr: Record<string, string> = {
 const Enrollment: React.FC = () => {
   useSeo({ title: 'التسجيل في الكورس | معهد الدراسات النفسية', path: '/enroll' });
   const { courses, bundles, currency, content, authUser } = useSiteData();
+  const priceList = usePriceList();
   // The two discounts marketing sets (التسويق ← الخصومات); the server prices with the same ones.
   const rates = enrollmentRates(content);
   const cashPct = percentLabel(rates.cash);
@@ -99,7 +101,10 @@ const Enrollment: React.FC = () => {
   const getItem = (key: string) => allOptions.find(x => x.key === key) ?? null;
   // Never fall back to Egypt pricing for a Saudi/international visitor.
   // The server independently resolves and validates the same location currency.
-  const getBasePrice = (item: SelItem) => Number(item.price[currency]) || 0;
+  // The list price checkout starts from: the catalogue price less the discount
+  // running on the item (lib/usePrices) — the rates below go on top of it there.
+  const getBasePrice = (item: SelItem) =>
+    effectivePrice(priceList, item.kind, item.key.replace(/^(course|bundle):/, ''), currency, Number(item.price[currency]) || 0).price;
   // Both from shared/enrollmentPricing, which exists so a rate change cannot
   // apply to one side and not the other — this page had re-derived the same two
   // formulas from the raw constants, which is a second copy of the rule under a

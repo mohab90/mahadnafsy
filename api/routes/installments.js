@@ -206,7 +206,7 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
        // was never chased again. MAX over the plan total is stable across
        // every instalment row, which is why recording it on each is correct
        // rather than double-counting.
-       courseExpected, `قسط رقم ${index + 1} من ${update.installmentAmounts.length} — خطة ${plan.title || planId}`,
+       courseExpected, `${update.partial ? `جزء من القسط (الباقي ${update.remaining}) — ` : ''}قسط رقم ${index + 1} من ${update.installmentAmounts.length} — خطة ${plan.title || planId}`,
        effectiveDate,
        plan.title || null, branch, plan.branch_id || branchIdForBranch(branch),
        req.tenantId, req.user?.email || req.staffRecord?.name || 'system', receiptNo]
@@ -275,7 +275,7 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
 
     await conn.commit();
     queuePaymentReceipt(req.tenantId, payId);
-    res.json({ ok: true, paymentId: payId, status: update.status, paidCount: update.paidCount });
+    res.json({ ok: true, paymentId: payId, status: update.status, paidCount: update.paidCount, partial: update.partial, remaining: update.remaining });
   } catch (e) {
     await conn.rollback().catch(() => {});
     // A closed period (lib/periodLock, 409) is the desk's to know, in words.

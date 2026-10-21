@@ -68,9 +68,18 @@ test('the public discounts route compares the Cairo day, not an instant', () => 
 });
 
 test('all four screens judge the expiry the same way', () => {
+  // The course page and the home page no longer judge a rule themselves: they
+  // show the server's price (lib/usePrices), and api/lib/effectivePrice.js
+  // judges the expiry as a Cairo day — the same rule as the admin's list.
+  for (const rel of ['client/pages/CourseDetails.tsx', 'client/pages/Home.tsx']) {
+    const source = codeOnly(read(rel));
+    assert.match(source, /effectivePrice\(priceList, 'course'/, `${rel} does not show the server's price`);
+    assert.doesNotMatch(source, /discounts\.find\(/, `${rel} still applies a rule of its own`);
+  }
+  const server = codeOnly(read('api/lib/effectivePrice.js'));
+  assert.match(server, /const today = cairoToday\(new Date\(now\)\)/);
+  assert.match(server, /String\(rule\.expiresAt\)\.slice\(0, 10\) < today/);
   for (const rel of [
-    'client/pages/CourseDetails.tsx',
-    'client/pages/Home.tsx',
     'admin/pages/dashboard/tabs/courses/DiscountsView.tsx',
   ]) {
     const source = codeOnly(read(rel));

@@ -4,6 +4,7 @@ import { ArrowLeft, BookOpen, Flame, Users } from 'lucide-react';
 import { Course, Currency } from '../types';
 import { cdnImg, cdnSrcSet } from '../lib/img';
 import { discountPercent, formatPrice, isDiscounted } from '../../shared/priceFormat';
+import { effectivePrice, usePriceList, wasPrice } from '../lib/usePrices';
 
 interface CourseCardProps {
   course: Course;
@@ -19,8 +20,11 @@ interface CourseCardProps {
  * took it, its price against the old one, and a button straight to booking.
  */
 const CourseCard: React.FC<CourseCardProps> = ({ course, currency, topSeller, className = '' }) => {
-  const price = course.price?.[currency] ?? 0;
-  const was = course.originalPrice?.[currency] ?? 0;
+  // The price checkout charges, discount included — the card showed the bare
+  // catalogue price while the course page showed the discounted one.
+  const effective = effectivePrice(usePriceList(), 'course', course.id, currency, course.price?.[currency] ?? 0);
+  const price = effective.price;
+  const was = wasPrice(effective, course.originalPrice?.[currency] ?? 0);
   const off = price > 0 && isDiscounted(was, price) ? discountPercent(was, price) : 0;
   const students = Math.max(0, Number(course.students) || 0);
   const blurb = (course.shortDescription || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();

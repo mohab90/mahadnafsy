@@ -5,7 +5,8 @@
 // the order's branch and type spellings are lib/orderFields.js.
 const express = require('express');
 const router = express.Router();
-const { resolveCatalogPrice, priceMatches } = require('../lib/catalogPrice');
+const { priceMatches } = require('../lib/catalogPrice');
+const { resolveEffectivePrice, cleanCode } = require('../lib/effectivePrice');
 const logger = require('../lib/logger').child({ module: 'public-orders-route' });
 const { pool } = require('../lib/db');
 const { getPaymentGatewaySettings, isPaymobActive } = require('../lib/saasSettings');
@@ -226,7 +227,7 @@ router.post('/api/payments/paymob-init', paymobLimiter, scalarFields('orderId', 
 // about to be created for. StandalonePayment.tsx calls this immediately before
 // /api/payments/paymob-init, so the gateway check below is deliberate: without
 // it, a disabled gateway would leave behind a pending order nobody can ever pay.
-router.post('/api/orders/reserve', publicLimiter, scalarFields('orderId', 'type', 'itemId', 'itemTitle', 'amount', 'currency', 'paymentMethod', 'customerEmail', 'customerName', 'customerPhone', 'subscriberEmail', 'isInstallment', 'installmentLimit', 'branch'), async (req, res) => {
+router.post('/api/orders/reserve', publicLimiter, scalarFields('orderId', 'type', 'itemId', 'itemTitle', 'amount', 'currency', 'paymentMethod', 'customerEmail', 'customerName', 'customerPhone', 'subscriberEmail', 'isInstallment', 'installmentLimit', 'branch', 'promoCode'), async (req, res) => {
   let conn;
   try {
     const config = await getPaymentGatewaySettings(req.tenantId);
@@ -234,7 +235,7 @@ router.post('/api/orders/reserve', publicLimiter, scalarFields('orderId', 'type'
     const {
       orderId, type, itemId, itemTitle, amount, currency, paymentMethod,
       customerEmail, customerName, customerPhone, bundleCourseIds,
-      subscriberEmail, isInstallment, installmentLimit,
+      subscriberEmail, isInstallment, installmentLimit, promoCode,
     } = req.body || {};
     if (!orderId || !type || !amount) return res.status(400).json({ error: 'Missing orderId, type, or amount' });
     // What the catalogue prices, and the standalone page, where the customer
@@ -267,13 +268,25 @@ router.post('/api/orders/reserve', publicLimiter, scalarFields('orderId', 'type'
     // Refused rather than silently corrected: a mismatch means the page is
     // showing a price the catalogue no longer has, and quietly charging a
     // different one is its own kind of wrong.
+    //
+    // The figure is what the site shows and checkout-intent charges for paying
+    // in full (lib/effectivePrice.js): the marketing discount running on the
+    // item, the customer's code, then the cash rate. Compared with the bare
+    // catalogue price, a discounted page could never be paid through here.
     const orderTypeForPrice = normalizedOrderType(type);
-    const catalogPrice = await resolveCatalogPrice(pool, {
+    const wantedCode = cleanCode(promoCode).slice(0, 50);
+    const quote = await resolveEffectivePrice(pool, {
       type: orderTypeForPrice,
       itemId,
       currency: orderCurrency,
       tenantId: req.tenantId || DEFAULT_TENANT_ID,
+      payMode: 'cash',
+      promoCode: wantedCode,
     });
+    if (quote?.promoError && quote.promoError.code !== 'PROMO_NOT_BETTER') {
+      return res.status(400).json({ error: quote.promoError.message, code: quote.promoError.code });
+    }
+    const catalogPrice = quote ? quote.dueNow : null;
     // A course or path with no price in this currency is not for sale in it.
     // Taking that as «no check» let a course with no SAR or USD price be
     // ordered for 1 SAR — and a paid order grants the course.
@@ -319,14 +332,15 @@ router.post('/api/orders/reserve', publicLimiter, scalarFields('orderId', 'type'
 
     await conn.query(
       `INSERT INTO orders (id, item_id, item_title, type, status, amount, currency,
-         payment_method, customer_name, customer_email, customer_phone, notes, tenant_id, branch_id, created_at)
-       VALUES (?,?,?,?,'pending',?,?,?,?,?,?,?,?,?,NOW())
+         payment_method, customer_name, customer_email, customer_phone, notes, coupon_code, tenant_id, branch_id, created_at)
+       VALUES (?,?,?,?,'pending',?,?,?,?,?,?,?,?,?,?,NOW())
        ON DUPLICATE KEY UPDATE
          notes      = IF(status='paid', notes,      VALUES(notes)),
          branch_id  = IF(status='paid', branch_id,  VALUES(branch_id)),
          status     = IF(status='paid', status,     'pending')`,
       [orderId, itemId||'', itemTitle||'', orderType, figure, orderCurrency,
-       paymentMethod||'', customerName||'', customerEmail||'', customerPhone||'', extra, req.tenantId || DEFAULT_TENANT_ID, orderBranchId]
+       paymentMethod||'', customerName||'', customerEmail||'', customerPhone||'', extra, quote?.discount?.code || null,
+       req.tenantId || DEFAULT_TENANT_ID, orderBranchId]
     );
     await conn.commit();
     res.json({ ok: true });

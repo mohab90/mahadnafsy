@@ -10,6 +10,7 @@ const { toNumbers } = require('../lib/mappers');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { publicLimiter } = require('../middleware/rateLimits');
 const { scalarFields } = require('../lib/inputFields');
+const { findPromoRow } = require('../lib/effectivePrice');
 
 function routeError(res, error, message = 'promo codes route failed') {
   logger.error(message, error);
@@ -21,11 +22,8 @@ router.post('/api/promo/validate', publicLimiter, scalarFields('code', 'amount')
   const { code, amount } = req.body || {};
   if (!code) return res.status(400).json({ error: 'الكود مطلوب' });
   try {
-    const [[promo]] = await pool.query(
-      `SELECT id, code, description, discount_type, discount_value, min_order_amount, max_uses, used_count, expires_at, active
-       FROM promo_codes WHERE tenant_id=? AND code=? AND active=1 AND (expires_at IS NULL OR expires_at > NOW()) AND (max_uses IS NULL OR used_count < max_uses) LIMIT 1`,
-      [req.tenantId, String(code).toUpperCase().trim()]
-    );
+    // Usable by the same rule checkout applies it with (lib/effectivePrice.js).
+    const promo = await findPromoRow(pool, { tenantId: req.tenantId, code });
     if (!promo) return res.status(404).json({ error: 'الكود غير صالح أو منتهي الصلاحية' });
     if (promo.min_order_amount > 0 && (amount || 0) < promo.min_order_amount) {
       return res.status(400).json({ error: `الحد الأدنى للطلب ${promo.min_order_amount} ج.م` });
@@ -41,9 +39,12 @@ router.post('/api/promo/validate', publicLimiter, scalarFields('code', 'amount')
 router.get('/api/admin/promo-codes', requireAuth, requireAdminOrStaff, requirePermission('manage_discounts'), async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT id, code, description, discount_type, discount_value, min_order_amount, max_uses,
-       used_count, expires_at, active, created_by, created_at
-       FROM promo_codes WHERE tenant_id=? ORDER BY created_at DESC`, [req.tenantId]);
+      // A use is a paid order carrying the code; nothing incremented used_count, so it read 0 forever.
+      `SELECT pc.id, pc.code, pc.description, pc.discount_type, pc.discount_value, pc.min_order_amount, pc.max_uses,
+       GREATEST(pc.used_count, (SELECT COUNT(*) FROM orders o WHERE o.tenant_id=pc.tenant_id AND o.coupon_code=pc.code
+                                  AND o.status='paid' AND o.deleted_at IS NULL)) AS used_count,
+       pc.expires_at, pc.active, pc.created_by, pc.created_at
+       FROM promo_codes pc WHERE pc.tenant_id=? ORDER BY pc.created_at DESC`, [req.tenantId]);
     res.json(rows.map(row => toNumbers(row, ["discount_value","min_order_amount"])));
   } catch (e) { routeError(res, e); }
 });

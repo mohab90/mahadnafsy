@@ -3,6 +3,7 @@ import { CheckCircle2, Lock, Send, Timer } from 'lucide-react';
 import type { Course, Currency, LeadItem } from '../../types';
 import { cdnImg } from '../../lib/img';
 import { offerDiscountPercent, offerPrices } from '../../../shared/siteOffers';
+import { effectivePrice, usePriceList } from '../../lib/usePrices';
 
 type Content = Record<string, string | undefined>;
 type Clock = { h: number; m: number; s: number } | null;
@@ -30,8 +31,10 @@ const OfferSpotlight: React.FC<{
   const offerCid = content['offer.courseId'];
   const offerCourse = offerCid ? courses.find(c => c.id === offerCid) || null : null;
   const sym = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
-  // The offer's own price (typed by marketing) or the course's, in the visitor's currency.
-  const prices = offerPrices(content, offerCourse, currency);
+  // The offer's own price (typed by marketing) or the course's as checkout charges it, in the visitor's currency.
+  const priceList = usePriceList();
+  const coursePrice = offerCourse ? effectivePrice(priceList, 'course', offerCourse.id, currency, offerCourse.price?.[currency] ?? 0).price : 0;
+  const prices = offerPrices(content, offerCourse ? { price: { [currency]: coursePrice } } : null, currency);
   const oldPrice = prices ? `${prices.oldPrice} ${sym}` : content[`home.offer.oldPrice.${currency}`] || content['home.offer.oldPrice'] || `4500 ${sym}`;
   const newPrice = prices ? `${prices.newPrice} ${sym}` : content[`home.offer.newPrice.${currency}`] || content['home.offer.newPrice'] || `2500 ${sym}`;
   const pct = offerDiscountPercent(content);
