@@ -44,7 +44,14 @@ mkdir -p "$DIR"
 log()  { echo "$(date -Iseconds) $*" >> "$LOG"; }
 fail() { log "BACKUP FAILED: $*"; rm -f "$OUT"; exit 1; }
 
-if ! mysqldump -u root --single-transaction --routines --triggers --events "$DB" 2>>"$LOG" | gzip > "$OUT"; then
+# With binary logging on (deploy/mariadb/60-mahad-binlog.cnf) the dump records
+# the binlog position it was taken at, as a comment — the point a
+# point-in-time restore replays from (mahad-offsite fetch-pitr). MariaDB takes
+# it from the same snapshot, without a global read lock. With it off the flag
+# would make mysqldump fail, so it is only added when the server says so.
+POSITION=()
+[ "$(mysql -u root -N -B -e 'SELECT @@log_bin' 2>/dev/null)" = "1" ] && POSITION=(--master-data=2)
+if ! mysqldump -u root --single-transaction --routines --triggers --events "${POSITION[@]+"${POSITION[@]}"}" "$DB" 2>>"$LOG" | gzip > "$OUT"; then
   fail "mysqldump/gzip returned non-zero"
 fi
 
@@ -95,7 +102,9 @@ find "$DIR" -name "${DB}_*.sql.gz" ! -name "${DB}_????????_03????.sql.gz" \
 # Settings — in the environment, or in $MAHAD_BACKUP_ENV_FILE
 # (/etc/mahad/backup.env by default, root-owned, not group/world-writable):
 #
-#   MAHAD_BACKUP_REMOTE            rclone destination, "remote:bucket/path". Required.
+#   MAHAD_BACKUP_REMOTE            rclone destination, "remote:bucket/path" (a remote
+#                                  made with `rclone config`). This or the
+#                                  offsite.env below is required.
 #   MAHAD_BACKUP_AGE_RECIPIENTS    file of age public keys (age1…). Preferred: the
 #                                  server can encrypt but never decrypt, so a
 #                                  compromised box cannot read the off-site copies.
@@ -103,6 +112,11 @@ find "$DIR" -name "${DB}_*.sql.gz" ! -name "${DB}_????????_03????.sql.gz" \
 #                                  file holding a gpg symmetric passphrase (chmod 400).
 #   MAHAD_BACKUP_GPG_PASSPHRASE    the same passphrase from the environment instead.
 #                                  One of the three key settings is required.
+#   MAHAD_OFFSITE_ENV_FILE         /etc/mahad/offsite.env by default. When it
+#                                  exists and MAHAD_BACKUP_REMOTE is not set, the
+#                                  copy goes through mahad-offsite (any
+#                                  S3-compatible bucket described in that file,
+#                                  no `rclone config`; deploy/OFFSITE_BACKUPS.md).
 #   MAHAD_BACKUP_ALLOW_LOCAL_ONLY  =1 for a developer machine or a throwaway VM:
 #                                  no off-site copy, a WARNING instead of a failure.
 #                                  Never set it on the production server.
@@ -162,8 +176,25 @@ encrypt_dump() {
   [ -s "$ENCRYPTED" ] || return 12
 }
 
+# The bucket described in /etc/mahad/offsite.env: mahad-offsite encrypts,
+# uploads and asks the bucket for the size, and alerts with its own reason; a
+# failure here is the same exit 3 as below. An rclone remote named in
+# MAHAD_BACKUP_REMOTE keeps working exactly as before and wins when both exist.
+OFFSITE_ENV="${MAHAD_OFFSITE_ENV_FILE:-/etc/mahad/offsite.env}"
+OFFSITE_BIN="${MAHAD_OFFSITE_BIN:-/usr/local/bin/mahad-offsite}"
+if [ -z "$REMOTE" ] && [ -f "$OFFSITE_ENV" ]; then
+  if [ ! -f "$OFFSITE_BIN" ]; then
+    offsite_fail "$OFFSITE_ENV exists but $OFFSITE_BIN is not installed (deploy-release.sh installs it)"
+  elif MAHAD_OFFSITE_ENV_FILE="$OFFSITE_ENV" bash "$OFFSITE_BIN" push-dump "$OUT" >>"$LOG" 2>&1; then
+    log "off-site ok via mahad-offsite: $(basename "$OUT").gpg"
+    exit 0
+  else
+    offsite_fail "mahad-offsite push-dump failed (see /var/log/mahad-offsite.log)"
+  fi
+fi
+
 if [ -z "$REMOTE" ]; then
-  offsite_fail "MAHAD_BACKUP_REMOTE is not set"
+  offsite_fail "no off-site destination: neither $OFFSITE_ENV nor MAHAD_BACKUP_REMOTE is set"
 elif ! command -v rclone >/dev/null 2>&1; then
   offsite_fail "rclone is not installed"
 fi

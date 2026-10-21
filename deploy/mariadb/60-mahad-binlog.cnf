@@ -1,0 +1,24 @@
+# Binary logs for point-in-time recovery — NOT enabled by any deploy.
+#
+# The hourly dump (mahad-db-backup.sh) can lose up to an hour of payments.
+# With binary logs on, every change is also written to a log that
+# `mahad-offsite ship-binlogs` sends off-site every 15 minutes, and a restore is
+# "the last dump + the logs up to a minute" (deploy/OFFSITE_BACKUPS.md).
+#
+# Switching it on needs a MariaDB restart (a few seconds), so it is a person's
+# step, at a quiet hour:
+#   install -m 0644 /usr/local/share/mahad/60-mahad-binlog.cnf /etc/mysql/mariadb.conf.d/60-mahad-binlog.cnf
+#   mkdir -p /var/log/mysql && chown mysql:mysql /var/log/mysql
+#   systemctl restart mariadb
+#   mysql -u root -N -e 'SELECT @@log_bin'      # 1 = on
+[mysqld]
+server_id         = 1
+log_bin           = /var/log/mysql/mariadb-bin
+log_bin_index     = /var/log/mysql/mariadb-bin.index
+# ROW: a replay reproduces the rows exactly, whatever NOW() or RAND() said.
+binlog_format     = ROW
+# Local copies for 10 days; the off-site ones are kept 35 (mahad-offsite prune).
+expire_logs_days  = 10
+max_binlog_size   = 100M
+# A crash cannot lose a committed transaction from the log.
+sync_binlog       = 1

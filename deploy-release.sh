@@ -344,4 +344,30 @@ if [ -s /staging/mahad-restore-rehearsal ] && [ -d /etc/cron.d ]; then
   install -m 0644 /staging/mahad-restore-rehearsal /etc/cron.d/mahad-restore-rehearsal
   echo "  installed /etc/cron.d/mahad-restore-rehearsal (weekly restore rehearsal)"
 fi
+# Off-site copies (deploy/OFFSITE_BACKUPS.md). Installed everywhere and idle
+# until /etc/mahad/offsite.env exists, so a server without a bucket is
+# unchanged. Binary logging needs a MariaDB restart, so it is never switched on
+# here — only reported, every deploy, until someone does.
+if [ -s /staging/mahad-offsite.sh ] && bash -n /staging/mahad-offsite.sh; then
+  install -m 0755 /staging/mahad-offsite.sh /usr/local/bin/mahad-offsite
+  echo "  installed /usr/local/bin/mahad-offsite"
+  if [ -s /staging/mahad-offsite ] && [ -d /etc/cron.d ]; then
+    install -m 0644 /staging/mahad-offsite /etc/cron.d/mahad-offsite
+    echo "  installed /etc/cron.d/mahad-offsite (binlogs every 15 min, uploads nightly, retention, monthly rehearsal)"
+  fi
+  if [ -s /staging/60-mahad-binlog.cnf ]; then
+    mkdir -p /usr/local/share/mahad
+    install -m 0644 /staging/60-mahad-binlog.cnf /usr/local/share/mahad/60-mahad-binlog.cnf
+  fi
+  if [ -f /etc/mahad/offsite.env ]; then
+    echo "  off-site copies: ON - last dump upload: $(/usr/local/bin/mahad-offsite status 2>/dev/null | sed -n 's/^push-dump *: //p')"
+  else
+    echo "  NOTE: off-site copies are OFF - /etc/mahad/offsite.env does not exist (deploy/OFFSITE_BACKUPS.md)"
+  fi
+  if [ "$(timeout 10 mysql -u root -N -B -e 'SELECT @@log_bin' 2>/dev/null)" != "1" ]; then
+    echo "  NOTE: MariaDB binary logs are OFF - a restore can only go back to the last hourly dump, not to a minute."
+    echo "        Switching on needs one MariaDB restart: deploy/OFFSITE_BACKUPS.md, or the steps at the top of"
+    echo "        /usr/local/share/mahad/60-mahad-binlog.cnf"
+  fi
+fi
 echo "DONE - release $R live on staging and production."
