@@ -19,6 +19,11 @@ const { startProductionRuntimeGuard } = require('./lib/productionRuntimeGuard');
 const { startBackgroundScheduler } = require('./lib/backgroundScheduler');
 
 const PORT = Number.parseInt(process.env.PORT || '3001', 10);
+const role = require('./lib/processRole').processRole();
+if (role === 'worker') {
+  logger.error('[FATAL] MAHAD_ROLE=worker is started with worker.js; server.js serves HTTP');
+  process.exit(1);
+}
 const criticalConfig = require('./lib/productionConfig').criticalProductionPolicy();
 if (!criticalConfig.ok) {
   logger.error('[FATAL] Production secret policy failed', { errors: criticalConfig.errors });
@@ -68,10 +73,13 @@ migrationReady.then(migrationResult => {
     }).catch(() => {});
     require('./lib/rbacOverrides').startRbacRefresh();
     require('./lib/messageTemplates').startTemplatesRefresh();
-    startBackgroundScheduler({ pool, logger, port: PORT });
-    // After the migrations, not beside them: its whole-table checks held the
-    // tables a migration's CREATE INDEX was waiting for.
-    require('./lib/reconcileJob').startReconcileMonitor(pool);
+    // MAHAD_ROLE=web leaves the jobs to worker.js (lib/processRole.js).
+    if (role === 'all') {
+      startBackgroundScheduler({ pool, logger, port: PORT });
+      // After the migrations, not beside them: its whole-table checks held the
+      // tables a migration's CREATE INDEX was waiting for.
+      require('./lib/reconcileJob').startReconcileMonitor(pool);
+    } else logger.info('[jobs] MAHAD_ROLE=web: background jobs run in worker.js');
     // Reps' linked WhatsApp sessions (the «واتساب» tab).
     require('./lib/whatsappWeb').startWhatsappWeb();
   });
