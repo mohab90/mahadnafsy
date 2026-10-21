@@ -148,7 +148,7 @@ export function ViewTabsBar({
               { key: 'old_data'  as const, label: '📥 استيراد',    color: 'slate'  },
             ] : [
               { key: 'old_local' as const, label: '🏠 محلي قديم',  color: 'indigo' },
-              { key: 'old_intl'  as const, label: '🌐 دولي قديم',  color: 'violet' },
+              { key: 'old_intl'  as const, label: '🇸🇦 سعودي قديم',  color: 'violet' },
             ]),
           ] as {key:ViewTabKey;label:string;color:string}[]).filter(vt => !isDaqqiClientsTab || !MARKET_TAB[vt.key]).map(vt => {
             const market = MARKET_TAB[vt.key];

@@ -70,7 +70,7 @@ export function OldDataImportSection({
       <details className="mb-4 group">
         <summary className="cursor-pointer flex items-center gap-2 bg-violet-50 border border-violet-200 rounded-2xl px-4 py-2.5 text-sm font-bold text-violet-800 hover:bg-violet-100 transition select-none list-none">
           <span>⬆️</span>
-          <span>استيراد بيانات {collOnlineViewTab === 'old_local' ? 'محلي قديم' : 'دولي قديم'}</span>
+          <span>استيراد بيانات {collOnlineViewTab === 'old_local' ? 'محلي قديم' : 'سعودي قديم'}</span>
           <span className="text-xs font-normal text-violet-500 mr-auto group-open:hidden">انقر للفتح</span>
           <span className="text-xs font-normal text-violet-500 mr-auto hidden group-open:inline">إخفاء</span>
         </summary>
