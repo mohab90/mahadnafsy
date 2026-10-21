@@ -564,6 +564,10 @@ export const mysqlAdmin = {
     fetchAllPages(offset => `/admin/subscribers?limit=${pageSize}&offset=${offset}`, pageSize, maxRows),
   listAllLeads:            (pageSize = 5000, maxRows = 50000): Promise<AR[]> =>
     fetchAllPages(offset => `/admin/leads?limit=${pageSize}&offset=${offset}`, pageSize, maxRows),
+  // A few leads by id, in the list's own shape — what a payment or a single
+  // edit changed — instead of downloading the whole table again.
+  listLeadsByIds:          (ids: string[]): Promise<AR[]> =>
+    apiFetch(`/admin/leads?limit=100&ids=${ids.slice(0, 100).map(encodeURIComponent).join(',')}`, {}, A),
   // Server-side pipeline/KPI aggregates — the whole leads table summarised in one
   // query, so the CRM shows correct counts without loading every row.
   // Revenue from the books (payments.amount_egp, refunds netted) — the overview

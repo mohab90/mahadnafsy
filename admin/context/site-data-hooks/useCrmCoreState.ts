@@ -1,12 +1,18 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { ConsultationItem, JoinUsApplication, LeadItem, LeadStats, LeadStatus, NewLeadDraft, OrderItem, SubscriberItem } from '../../types';
 import { mysqlAdmin, mysqlForms } from '../../lib/mysqlapi';
 import { normalizeApplicants } from './normalizeApplicants';
 import { normalizeOrders } from './normalizeOrders';
 import { announceCrmChanged, staffListsWanted } from '../../lib/crmChanged';
+import { coalesce, patchRowsById } from '../../lib/reloadCoalescing';
 
 type Track = (action: string, entity: string, label: string) => void;
+
+const normalizeLeads = (rows: unknown[]): LeadItem[] => (rows as LeadItem[]).map(l => ({
+  ...l,
+  status: (l.status || 'new').toLowerCase() as LeadStatus,
+}));
 
 // subscribers/leads/staffScoped*/consultations/orders/joinUsApplications are kept
 // together as one "CRM core" domain rather than split further — they're read and
@@ -69,19 +75,45 @@ export function useCrmCoreState(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const persistPaymentHistoryToCollection = (_subscriberId: string, _entries: SubscriberItem['paymentHistory']) => { /* PG-only */ };
 
-  const reloadLeads = useCallback(async () => {
+  const fetchAllLeads = useCallback(async () => {
     try {
-      const fresh = await mysqlAdmin.listAllLeads();
-      const normalized = (fresh as unknown as LeadItem[]).map(l => ({
-        ...l,
-        status: (l.status || 'new').toLowerCase() as LeadStatus,
-      }));
+      const normalized = normalizeLeads(await mysqlAdmin.listAllLeads());
       leadsRef.current = normalized;
       setLeads(normalized);
     } catch { /* silent */ }
     // The staff's own lists follow (lib/crmChanged.ts).
     announceCrmChanged();
   }, [leadsRef]);
+
+  // reloadLeads() downloads the whole table (27k rows, six pages) and is called
+  // from dozens of places — several at once after one save (a payment reloaded
+  // it from the dialog, the handler and the client page together). Callers now
+  // share the download (lib/reloadCoalescing.ts).
+  const reloadAllLeads = useMemo(() => coalesce(fetchAllLeads), [fetchAllLeads]);
+
+  /**
+   * reloadLeads({ only: [id] }) refreshes just those leads in place: what a
+   * payment converts is the client's own lead, not the table. Rows the server
+   * no longer returns (hidden by a merge, out of scope) leave the list. With no
+   * list loaded yet there is nothing to patch, and an API that ignored the
+   * filter (answered other rows) gets the whole reload instead.
+   */
+  const reloadLeads = useCallback(async (opts?: { only?: string[] }): Promise<void> => {
+    // Handlers wired straight to onClick pass an event here; only a real list counts.
+    const only = Array.isArray(opts?.only) ? opts.only.filter(Boolean) : null;
+    if (!only) return reloadAllLeads();
+    if (!only.length || leadsRef.current.length === 0) { announceCrmChanged(); return; }
+    let fresh: LeadItem[];
+    try {
+      fresh = normalizeLeads(await mysqlAdmin.listLeadsByIds(only));
+    } catch { return reloadAllLeads(); }
+    const wanted = new Set(only);
+    if (fresh.some(row => !wanted.has(row.id))) return reloadAllLeads();
+    const next = patchRowsById(leadsRef.current, fresh, only);
+    leadsRef.current = next;
+    setLeads(next);
+    announceCrmChanged();
+  }, [leadsRef, reloadAllLeads]);
 
   const reloadSubscribers = useCallback(async () => {
     // A screen that pages from the server has no list to reload (lib/crmChanged.ts staffListsWanted), and neither has a
