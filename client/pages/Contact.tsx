@@ -87,8 +87,10 @@ const Contact: React.FC = () => {
                 <form onSubmit={handleSubmit} className="mt-7 space-y-4">
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
-                      <label className={labelCls}>الاسم الكامل *</label>
+                      <label htmlFor="contact-name" className={labelCls}>الاسم الكامل *</label>
                       <input
+                        id="contact-name"
+                        autoComplete="name"
                         required
                         type="text"
                         value={form.name}
@@ -98,8 +100,10 @@ const Contact: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className={labelCls}>رقم الهاتف *</label>
+                      <label htmlFor="contact-phone" className={labelCls}>رقم الهاتف *</label>
                       <input
+                        id="contact-phone"
+                        autoComplete="tel"
                         required
                         type="tel"
                         value={form.phone}
@@ -110,8 +114,10 @@ const Contact: React.FC = () => {
                     </div>
                   </div>
                   <div>
-                    <label className={labelCls}>البريد الإلكتروني</label>
+                    <label htmlFor="contact-email" className={labelCls}>البريد الإلكتروني</label>
                     <input
+                      id="contact-email"
+                      autoComplete="email"
                       type="email"
                       value={form.email}
                       onChange={(e) => setForm({ ...form, email: e.target.value })}
@@ -120,8 +126,9 @@ const Contact: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className={labelCls}>موضوع الرسالة</label>
+                    <label htmlFor="contact-subject" className={labelCls}>موضوع الرسالة</label>
                     <select
+                      id="contact-subject"
                       value={form.subject}
                       onChange={(e) => setForm({ ...form, subject: e.target.value })}
                       className={inputCls}
@@ -137,8 +144,9 @@ const Contact: React.FC = () => {
                     </select>
                   </div>
                   <div>
-                    <label className={labelCls}>رسالتك *</label>
+                    <label htmlFor="contact-message" className={labelCls}>رسالتك *</label>
                     <textarea
+                      id="contact-message"
                       required
                       rows={5}
                       value={form.message}

@@ -40,7 +40,7 @@ const asHtml = (text: string) => (/<[a-z][\s\S]*>/i.test(text) ? text : text
   .split(/\n{2,}/).map(p => `<p>${p.replace(/\n/g, '<br/>')}</p>`).join(''));
 
 const BundleDetails: React.FC = () => {
-  const { bundles, courses, addPublicLead, content: globalContent, currency, testimonials, remoteReady } = useSiteData();
+  const { bundles, courses, addPublicLead, content: globalContent, currency, testimonials, remoteReady, catalogFailed, retryCatalog } = useSiteData();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
@@ -78,6 +78,15 @@ const BundleDetails: React.FC = () => {
       return (
         <div className="flex min-h-[70vh] items-center justify-center bg-paper">
           <div className="h-10 w-10 rounded-full border-4 border-line border-t-primary-700 motion-safe:animate-spin" />
+        </div>
+      );
+    }
+    // Nor is a list that never arrived.
+    if (catalogFailed) {
+      return (
+        <div className="flex flex-col items-center gap-4 bg-paper px-4 py-24 text-center">
+          <p className="text-lg font-bold text-ink">تعذر تحميل المسار. تحقق من اتصالك وحاول مرة أخرى.</p>
+          <button type="button" onClick={retryCatalog} className="rounded-xl bg-primary-700 px-6 py-2.5 font-bold text-white hover:bg-primary-800">إعادة المحاولة</button>
         </div>
       );
     }
