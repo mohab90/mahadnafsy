@@ -87,6 +87,9 @@ const AutomationTab: React.FC<Props> = ({ notify, setActiveTab }) => {
   const [fbDefaultCourseId, setFbDefaultCourseId] = useState('');
   const [fbDefaultSalesId, setFbDefaultSalesId] = useState('');
   const [fbSaving, setFbSaving] = useState(false);
+  // null once the saved config has been read. Saving the form's defaults over a
+  // config that failed to load would replace the real verify token.
+  const [fbLoadError, setFbLoadError] = useState<string | null>('');
   const [fbCopied, setFbCopied] = useState(false);
   const FB_WEBHOOK_URL = 'https://mahadnafsy.com/api/webhooks/facebook-leads';
   const copyWebhookUrl = () => {
@@ -99,7 +102,8 @@ const AutomationTab: React.FC<Props> = ({ notify, setActiveTab }) => {
       if (cfg.defaultBranch) setFbDefaultBranch(cfg.defaultBranch);
       if (cfg.defaultInterestedCourseId) setFbDefaultCourseId(cfg.defaultInterestedCourseId);
       if (cfg.defaultAssignedSalesId) setFbDefaultSalesId(cfg.defaultAssignedSalesId);
-    }).catch(() => {});
+      setFbLoadError(null);
+    }).catch(() => setFbLoadError('تعذر تحميل إعدادات Facebook المحفوظة — الحفظ متوقف حتى تُحمَّل. أعد فتح الصفحة.'));
   }, []);
   const saveFbConfig = async () => {
     setFbSaving(true);
@@ -632,7 +636,8 @@ const AutomationTab: React.FC<Props> = ({ notify, setActiveTab }) => {
             </select>
           </div>
 
-          <button onClick={saveFbConfig} disabled={fbSaving}
+          {fbLoadError && <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{fbLoadError}</p>}
+          <button onClick={saveFbConfig} disabled={fbSaving || fbLoadError !== null}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold bg-blue-600 text-white hover:bg-blue-700 transition disabled:opacity-60">
             <Save size={14} /> {fbSaving ? 'جاري الحفظ...' : 'حفظ إعدادات Facebook'}
           </button>

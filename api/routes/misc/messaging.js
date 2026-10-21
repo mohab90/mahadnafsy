@@ -29,8 +29,10 @@ router.put('/api/admin/sms-settings', requireAuth, requireAdmin, async (req, res
     const { provider, api_key, api_secret, sender_id, is_active } = req.body;
     const [exist] = await pool.query('SELECT id FROM sms_settings WHERE tenant_id=? LIMIT 1', [req.tenantId]);
     if (exist.length > 0) {
-      await pool.query('UPDATE sms_settings SET provider=?, api_key=?, api_secret=?, sender_id=?, is_active=? WHERE id=? AND tenant_id=?',
-        [provider, api_key, api_secret, sender_id, is_active ? 1 : 0, exist[0].id, req.tenantId]);
+      // The panel never shows the stored key, and sends one only when it is
+      // retyped; saving the sender or the switch must not blank the key.
+      await pool.query('UPDATE sms_settings SET provider=?, api_key=COALESCE(?, api_key), api_secret=COALESCE(?, api_secret), sender_id=?, is_active=? WHERE id=? AND tenant_id=?',
+        [provider, api_key || null, api_secret || null, sender_id, is_active ? 1 : 0, exist[0].id, req.tenantId]);
     } else {
       await pool.query('INSERT INTO sms_settings (tenant_id, provider, api_key, api_secret, sender_id, is_active) VALUES (?,?,?,?,?,?)',
         [req.tenantId, provider, api_key, api_secret, sender_id, is_active ? 1 : 0]);

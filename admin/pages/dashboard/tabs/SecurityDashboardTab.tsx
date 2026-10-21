@@ -47,6 +47,9 @@ const SecurityDashboardTab: React.FC<Props> = ({ notify }) => {
   const { activityLogs, staffMembers } = useCrmData();
   const [subTab, setSubTab] = useState<'overview' | 'activity' | 'ip' | 'access' | 'mfa' | 'privacy'>('overview');
   const [mfaPolicy, setMfaPolicy] = useState<MfaPolicy>(DEFAULT_MFA_POLICY);
+  // Until the saved policy is read the form shows the defaults; saving them
+  // would replace the real policy, so save waits for a successful load.
+  const [mfaLoadError, setMfaLoadError] = useState<string | null>('');
   const [mfaSaving, setMfaSaving] = useState(false);
   const [auditExporting, setAuditExporting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -59,8 +62,8 @@ const SecurityDashboardTab: React.FC<Props> = ({ notify }) => {
         if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || 'فشل تحميل سياسة MFA');
         return response.json();
       })
-      .then(policy => setMfaPolicy({ ...DEFAULT_MFA_POLICY, ...policy }))
-      .catch(() => {});
+      .then(policy => { setMfaPolicy({ ...DEFAULT_MFA_POLICY, ...policy }); setMfaLoadError(null); })
+      .catch((error: unknown) => setMfaLoadError(error instanceof Error && error.message ? error.message : 'فشل تحميل سياسة MFA'));
   }, []);
 
   const securityLogs = useMemo(() =>
@@ -422,7 +425,12 @@ const SecurityDashboardTab: React.FC<Props> = ({ notify }) => {
               ))}
             </div>
           </div>
-          <button onClick={saveMfaPolicy} disabled={mfaSaving}
+          {mfaLoadError && (
+            <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
+              {mfaLoadError} — الحفظ متوقف حتى لا تُستبدل السياسة الحالية بالقيم الافتراضية. أعد فتح الصفحة.
+            </p>
+          )}
+          <button onClick={saveMfaPolicy} disabled={mfaSaving || mfaLoadError !== null}
             className="flex items-center gap-2 bg-slate-800 text-white px-5 py-2.5 rounded-xl font-bold text-sm disabled:opacity-50">
             <Save size={15} /> {mfaSaving ? 'جاري الحفظ...' : 'حفظ وتطبيق السياسة'}
           </button>
