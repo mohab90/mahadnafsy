@@ -46,9 +46,11 @@ async function call(method, path, body, headers = {}) {
   return { status: res.status, body: json, text };
 }
 
+// What the reservation below charged: Paymob reports it back in cents.
+let chargedAmount = 1500;
 function signedCallback(overrides = {}, secret = HMAC_SECRET) {
   const obj = {
-    id: 9900001, amount_cents: 150000, created_at: '2026-10-21T10:00:00', currency: 'EGP', error_occured: false,
+    id: 9900001, amount_cents: Math.round(chargedAmount * 100), created_at: '2026-10-21T10:00:00', currency: 'EGP', error_occured: false,
     has_parent_transaction: false, integration_id: 1, is_3d_secure: true, is_auth: false, is_capture: false,
     is_refunded: false, is_standalone_payment: true, is_voided: false, owner: 1, pending: false, success: true,
     order: { id: 77001, merchant_order_id: `${ORDER}~1729500000000` },
@@ -137,8 +139,12 @@ test('a reservation with a bad amount, currency or type is a 400', { skip }, asy
 });
 
 test('reserve, a signed Paymob callback, and the course is open — once', { skip }, async () => {
+  // Paying in full is the catalogue price less the cash rate: the figure the site quotes.
+  const quote = await call('POST', '/api/public/price-quote', { itemType: 'course', itemId: COURSE, payMode: 'cash', currency: 'EGP' });
+  assert.equal(quote.status, 200, quote.text);
+  chargedAmount = quote.body.dueNow;
   const reserved = await call('POST', '/api/orders/reserve', {
-    orderId: ORDER, type: 'course', itemId: COURSE, itemTitle: 'كورس', amount: 1500, currency: 'EGP',
+    orderId: ORDER, type: 'course', itemId: COURSE, itemTitle: 'كورس', amount: quote.body.dueNow, currency: 'EGP',
     customerName: 'طالبة', customerEmail: EMAIL, customerPhone: '01011112222',
   });
   assert.equal(reserved.status, 200, reserved.text);
