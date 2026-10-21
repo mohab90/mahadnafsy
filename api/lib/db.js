@@ -242,15 +242,25 @@ const _origGetConn = pool.getConnection.bind(pool);
 const CONN_TIMEOUT_MS = 4000;
 pool.getConnection = async () => {
   if (isDbDown()) throw Object.assign(new Error('Database unavailable'), { code: 'ECONNREFUSED' });
-  await acquireDb();
+  // The wait for a turn is inside the timeout too. It used to come first and
+  // had no limit, so a request queued behind a busy pool waited for good.
   let timer;
+  let gotTurn = false;
+  let waiter = null;
+  const turn = new Promise(resolve => {
+    if (_dbActive < DB_MAX_CONCURRENT) { _dbActive++; gotTurn = true; return resolve(); }
+    waiter = () => { gotTurn = true; resolve(); };
+    _dbQueue.push(waiter);
+  });
   // A connection that arrives after the timeout is handed back, not kept: the
   // race used to leave it checked out for good, one pool slot per timeout.
-  const pending = _origGetConn();
+  let pending = null;
   try {
     const conn = await Promise.race([
-      pending,
-      new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error('DB getConnection timeout'), { code: 'ETIMEDOUT' })), CONN_TIMEOUT_MS); }),
+      turn.then(() => { pending = _origGetConn(); return pending; }),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(Object.assign(new Error('DB getConnection timeout'), { code: 'ETIMEDOUT', poolBusy: true })), CONN_TIMEOUT_MS);
+      }),
     ]);
     clearTimeout(timer);
     _markDbUp();
@@ -271,9 +281,20 @@ pool.getConnection = async () => {
     return conn;
   } catch (err) {
     clearTimeout(timer);
-    pending.then(late => late.release(), () => {});
-    releaseDb();
-    if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT') _markDbDown();
+    if (gotTurn) {
+      if (pending) pending.then(late => late.release(), () => {});
+      releaseDb();
+    } else if (waiter) {
+      // Still queued: leave the queue, and take the turn back if it was handed
+      // over in the same tick.
+      const at = _dbQueue.indexOf(waiter);
+      if (at >= 0) _dbQueue.splice(at, 1);
+      turn.then(() => releaseDb());
+    }
+    // Only a database that refuses connections is «down». A busy pool is not:
+    // marking it down answered 503 to every request for five seconds, so one
+    // slow report took the whole site with it.
+    if (err.code === 'ECONNREFUSED' || (err.code === 'ETIMEDOUT' && !err.poolBusy)) _markDbDown();
     throw err;
   }
 };

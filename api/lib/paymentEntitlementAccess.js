@@ -1,5 +1,7 @@
 'use strict';
 
+const { itemKey } = require('./agreedPrice');
+
 // Determines whether a paid installment may unlock full learning access.
 // Installment aggregation is intentionally single-currency: mixing nominal
 // amounts or changing the expected total would grant access incorrectly.
@@ -55,7 +57,14 @@ async function resolvePaymentAccess({
   )) {
     throw financialConflict('Installment expected total changed', 'INSTALLMENT_EXPECTED_MISMATCH');
   }
-  const paid = Number(prior?.total_paid || 0) + amount;
+  // «مدفوع قبل السيستم» (crm_json.priorPaid, lib/agreedPrice.js) counts here as
+  // it does in every balance. Without it a Dokki client who paid 3,000 before
+  // the system and the last 2,000 at the desk showed a balance of 0 and was
+  // given 40% of the lectures. Sheet money is pounds, so it adds to an EGP grant.
+  const beforeSystem = normalizedCurrency === 'EGP'
+    ? await priorPaidFor(db, { tenantId, subscriberId, courseId, bundleId })
+    : 0;
+  const paid = Number(prior?.total_paid || 0) + beforeSystem + amount;
   if (paid >= expected) return 'full';
   // How much of the price has been paid, for callers that can turn it into a
   // proportional grant. Bounded below 1 because paid >= expected already
@@ -77,6 +86,15 @@ function accessModeOf(result) {
 }
 function paidRatioOf(result) {
   return typeof result === 'string' ? null : result.paidRatio;
+}
+
+async function priorPaidFor(db, { tenantId, subscriberId, courseId, bundleId }) {
+  const [[row]] = await db.query(
+    'SELECT crm_json FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriberId, tenantId]);
+  let crm = {};
+  try { crm = typeof row?.crm_json === 'object' && row?.crm_json ? row.crm_json : JSON.parse(row?.crm_json || '{}') || {}; } catch { crm = {}; }
+  const value = Number(crm.priorPaid?.[itemKey({ courseId, bundleId })]);
+  return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
 function financialConflict(message, code) {

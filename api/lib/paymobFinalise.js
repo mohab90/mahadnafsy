@@ -23,7 +23,7 @@ const { getTenantSetting } = require('./tenantSettings');
 const { consultationSettings, settleConsultationForOrder } = require('./consultationRequests');
 const { normalizePaymentBranch, normalizedOrderType, appendTenantScope } = require('./orderFields');
 const { orderPlan, planAccess } = require('./orderPlan');
-const { paymobCharge } = require('./paymobGateway');
+const { paymobCharge, chargeStillMatches } = require('./paymobGateway');
 const { trackPurchase } = require('./metaCapi');
 
 // ── Paymob: shared helper — finalises an order after verified payment ─────────
@@ -82,7 +82,7 @@ async function finalisePaymobOrder(merchantOrderId, transactionId, capture = nul
 
 async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture = null, verifiedTenantId = DEFAULT_TENANT_ID) {
   const [[order]] = await pool.query(
-    `SELECT id, type, item_id, item_title, amount, currency, charge_amount, charge_currency, payment_method, customer_name,
+    `SELECT id, type, item_id, item_title, amount, currency, charge_amount, charge_currency, charge_fx_rate, payment_method, customer_name,
      customer_email, customer_phone, status, transaction_id, coupon_code, subscriber_id,
      course_id, bundle_id, notes, staff_id, staff_name, tenant_id, branch_id, created_at, paid_at
      FROM orders WHERE id = ? AND COALESCE(tenant_id, ?) = ? LIMIT 1`,
@@ -110,6 +110,18 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
   // capture, and about a partial capture being booked as a full one.
   // A foreign-currency order was charged in EGP (paymobCharge); that is what
   // Paymob captured, so that is what the capture is checked against.
+  // A fixed EGP charge that no longer matches the order (its amount changed
+  // after the charge was fixed) is not proof of payment for the order as it
+  // stands: what was captured paid the old figure.
+  if (Number(order.charge_amount) > 0 && order.charge_currency
+      && String(order.currency || 'EGP').toUpperCase() !== String(order.charge_currency).toUpperCase()
+      && !chargeStillMatches(order)) {
+    logger.error('[paymob] the order changed after its EGP charge was fixed — not crediting', {
+      merchantOrderId, transactionId, orderAmount: order.amount, orderCurrency: order.currency,
+      chargeAmount: order.charge_amount, chargeFxRate: order.charge_fx_rate,
+    });
+    return { found: true, amountMismatch: true };
+  }
   const charged = Number(order.charge_amount) > 0 && order.charge_currency
     ? { amount: order.charge_amount, currency: order.charge_currency }
     : { amount: order.amount, currency: order.currency };

@@ -159,7 +159,11 @@ describe('the 7 Oct 2026 audit stays fixed', () => {
 
   test('MED-10: a connection that arrives after the timeout is handed back', () => {
     const src = read('api', 'lib', 'db.js');
-    assert.match(region(src, 'const pending = _origGetConn();', '\n};\n'), /pending\.then\(late => late\.release\(\)/);
+    const handler = region(src, 'pool.getConnection = async', '\n};\n');
+    assert.match(handler, /pending = _origGetConn\(\)/);
+    assert.match(handler, /pending\.then\(late => late\.release\(\)/);
+    // A busy pool is not a database that is down (21 Oct 2026 review).
+    assert.match(handler, /err\.code === 'ETIMEDOUT' && !err\.poolBusy/);
   });
 
   test('MED-11: a lost connection repeats reads only (aLostConnectionRepeatsOnlyReads)', () => {

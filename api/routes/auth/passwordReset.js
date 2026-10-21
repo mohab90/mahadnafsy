@@ -225,6 +225,9 @@ router.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res)
   } catch (e) { logger.error('[forgot-password]', e); res.status(500).json({ error: 'فشل الإرسال' }); }
 });
 
+// Wrong codes allowed against one live reset code before it is burnt.
+const MAX_RESET_ATTEMPTS = 5;
+
 // POST /api/auth/verify-otp — verify OTP and return a short-lived reset token
 router.post('/api/auth/verify-otp', otpLimiter, async (req, res) => {
   const { email: rawIdentifier, code, type = 'password_reset' } = req.body || {};
@@ -262,7 +265,7 @@ router.post('/api/auth/verify-otp', otpLimiter, async (req, res) => {
     await conn.beginTransaction();
     const [[row]] = await conn.query(
       `SELECT id, user_id FROM otp_codes
-        WHERE tenant_id=? AND user_id=? AND code=? AND type=? AND used=0
+        WHERE tenant_id=? AND user_id=? AND code=? AND type=? AND used=0 AND attempts < ${MAX_RESET_ATTEMPTS}
           AND delivery_status IN ('accepted','sent','delivered','read') AND expires_at > NOW()
         ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
       [req.tenantId, account.id, hashOtp({
@@ -270,7 +273,17 @@ router.post('/api/auth/verify-otp', otpLimiter, async (req, res) => {
       }), type]
     );
     if (!row) {
-      await conn.rollback();
+      // A wrong guess counts against the account's live code, and the fifth
+      // burns it: six digits for fifteen minutes is otherwise a million tries
+      // for anyone who can change IP address.
+      if (account.id) {
+        await conn.query(
+          `UPDATE otp_codes SET attempts = attempts + 1, used = IF(attempts >= ?, 1, used)
+            WHERE tenant_id=? AND user_id=? AND type=? AND used=0 AND expires_at > NOW()`,
+          [MAX_RESET_ATTEMPTS, req.tenantId, account.id, type]
+        );
+      }
+      await conn.commit();
       conn.release();
       conn = null;
       return res.status(400).json({ error: 'الرمز غير صحيح أو منتهي الصلاحية' });

@@ -114,7 +114,7 @@ router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
     // a second call here could ask Paymob for a different figure — and the
     // webhook would still credit the order in full.
     const [[reserved]] = await pool.query(
-      'SELECT amount, currency, charge_amount, charge_currency FROM orders WHERE id=? AND tenant_id=? LIMIT 1',
+      'SELECT amount, currency, charge_amount, charge_currency, charge_fx_rate FROM orders WHERE id=? AND tenant_id=? LIMIT 1',
       [orderId, req.tenantId || DEFAULT_TENANT_ID]);
     if (!reserved) return res.status(404).json({ error: 'الطلب مش موجود — احجز الأول' });
     const orderAmount = Number(reserved.amount);

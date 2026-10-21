@@ -127,10 +127,24 @@ async function paymobIntention({ paymob, amountCents, currency, orderId, itemTit
 // the same amount and the webhook can check the capture against it.
 // Returns null when no fresh exchange rate is available — guessing one would
 // charge the customer a wrong price.
+/** Does the fixed EGP charge still equal the order's amount at the rate it was fixed at (within a piastre per unit)? */
+function chargeStillMatches(order) {
+  const rate = Number(order.charge_fx_rate);
+  const amount = Number(order.amount);
+  const charge = Number(order.charge_amount);
+  if (!(rate > 0) || !(amount > 0) || !(charge > 0)) return false;
+  return Math.abs(amount * rate - charge) <= Math.max(0.05, charge * 0.001);
+}
+
 async function paymobCharge(orderId, tenantId, order) {
   const currency = String(order.currency || 'EGP').toUpperCase();
   if (currency === 'EGP') return { amount: Number(order.amount), currency: 'EGP' };
-  if (Number(order.charge_amount) > 0 && String(order.charge_currency || '').toUpperCase() === 'EGP') {
+  // The fixed figure is reused only while it is still this order's price at
+  // that rate. An order whose amount changed after the figure was fixed (465 SAR
+  // instalment → 1,700 SAR cash) kept charging the old EGP figure, and the
+  // webhook, checking against it, booked the new amount as paid.
+  if (Number(order.charge_amount) > 0 && String(order.charge_currency || '').toUpperCase() === 'EGP'
+      && chargeStillMatches(order)) {
     return { amount: Number(order.charge_amount), currency: 'EGP' };
   }
   let egp;
@@ -162,4 +176,4 @@ function paymobSuccess(params) {
   return String(params.success ?? params.obj?.success ?? '').toLowerCase() === 'true';
 }
 
-module.exports = { paymobReady, postPaymobJson, buildBillingData, paymobCallbackUrls, paymobPaymentMethods, paymobIntention, paymobCharge, paymobIntentionReady, paymobCapture, paymobSuccess };
+module.exports = { paymobReady, postPaymobJson, buildBillingData, paymobCallbackUrls, paymobPaymentMethods, paymobIntention, paymobCharge, chargeStillMatches, paymobIntentionReady, paymobCapture, paymobSuccess };

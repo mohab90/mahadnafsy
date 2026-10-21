@@ -177,6 +177,31 @@ async function rejectRetentionBonus(conn, { tenantId, paymentId }) {
 // Refund rows are negative 'paid' rows on the same course; they cover nothing
 // (`p.amount > 0`) — counted as a grant they kept access open after partial
 // refunds had returned the whole payment.
+// The booking bonuses (lib/bookingBonuses.js) are keyed on the client and the
+// item, not on a payment, so the refund paths — which cancel by payment_id —
+// never reached them: a course refunded in full still paid its sales, service
+// and instructor booking bonuses at the next payroll. When nothing is left paid
+// for the item, the booking did not happen; as when a payment is voided
+// (lib/paymentCorrections.js).
+async function cancelBookingBonusesWithoutOtherPayment(conn, { tenantId, pay }) {
+  const itemId = pay.course_id || pay.bundle_id;
+  if (!itemId || !pay.subscriber_id) return;
+  const [[left]] = await conn.query(
+    `SELECT COALESCE(SUM(amount), 0) AS net FROM payments
+      WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND status IN ('paid','confirmed')
+        AND (course_id=? OR bundle_id=?)`,
+    [tenantId, pay.subscriber_id, itemId, itemId]);
+  if (Number(left?.net) > 0.01) return;
+  await conn.query(
+    `UPDATE crm_commissions SET status='CANCELLED', note=CONCAT(COALESCE(note,''),' | اتلغت مع استرداد الحجز')
+      WHERE tenant_id=? AND payment_id IN (?, ?) AND status IN ('PENDING','INCLUDED_IN_PAYROLL')`,
+    [tenantId, `booking:sales:${pay.subscriber_id}:${itemId}`.slice(0, 100), `booking:service:${pay.subscriber_id}:${itemId}`.slice(0, 100)]);
+  await conn.query(
+    `UPDATE instructor_fees SET status='rejected', note=CONCAT(COALESCE(note,''),' | اترفضت مع استرداد الحجز')
+      WHERE tenant_id=? AND source_key=? AND status IN ('pending','approved')`,
+    [tenantId, `booking:${pay.subscriber_id}:${itemId}`]);
+}
+
 async function revokeAccessWithoutOtherGrant(conn, { tenantId, pay, actor }) {
   if (!pay.course_id && !pay.bundle_id) return;
   let courseIds = pay.course_id ? [pay.course_id] : [];
@@ -331,6 +356,7 @@ async function applyRefundReversal({ paymentId, subscriberId, refundAmount, refu
     if (refundable - refundedAmount <= 0.01) {
       await revokeAccessWithoutOtherGrant(conn, { tenantId, pay, actor });
       await rejectRetentionBonus(conn, { tenantId, paymentId: pay.id });
+      await cancelBookingBonusesWithoutOtherPayment(conn, { tenantId, pay });
     }
 
     return {
@@ -374,6 +400,7 @@ async function applyRefundReversal({ paymentId, subscriberId, refundAmount, refu
   await rejectRetentionBonus(conn, { tenantId, paymentId: pay.id });
 
   await revokeAccessWithoutOtherGrant(conn, { tenantId, pay, actor });
+  await cancelBookingBonusesWithoutOtherPayment(conn, { tenantId, pay });
 
   // orders is the "online twin" of payments — a refund must flip it too, or
   // the order stays "paid" forever and every order-facing view (list, CSV
