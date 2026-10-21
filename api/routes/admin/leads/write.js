@@ -157,7 +157,7 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
     }
     // Auto-generate client_code for new leads
     if (isNew && !code) {
-      try { code = await getNextClientCode(conn); } catch { /* ignore */ }
+      try { code = await getNextClientCode(conn, tenantId); } catch { /* ignore */ }
     }
     const branchRaw = crmData.branch || null;
     let branchVal = branchRaw ? String(branchRaw).trim().toUpperCase().replace(/[-\s]/g, '_') : null;

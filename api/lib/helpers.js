@@ -39,6 +39,9 @@ function validate(body, schema) {
     const [type, maxStr] = rule.split('|');
     const max = maxStr ? Number(maxStr) : undefined;
     const val = body[field];
+    // Text and numbers only: an object passed every check below ('[object
+    // Object]' has a length) and failed in MySQL with a 500.
+    if (val !== undefined && val !== null && typeof val === 'object') return `${field} must be text`;
     if (type === 'required' || type === 'string') {
       if (!val || typeof val !== 'string' || !val.trim()) return `${field} is required`;
       if (max && val.length > max) return `${field} exceeds max length ${max}`;

@@ -152,7 +152,7 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
       let code = null;
       try {
         const conn2 = await pool.getConnection();
-        try { code = await getNextClientCode(conn2); } finally { conn2.release(); }
+        try { code = await getNextClientCode(conn2, req.tenantId); } finally { conn2.release(); }
       } catch (_) {}
 
       const crmJson = JSON.stringify({

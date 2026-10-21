@@ -493,4 +493,49 @@ async function syncLeadDealValue(subscriberId, db = pool, expectedTenantId = nul
   }
 }
 
-module.exports = { finalisePaymobOrder, syncLeadDealValue };
+/** Remember which Paymob order a checkout attempt opened for our order. */
+async function linkPaymobOrder({ tenantId, orderId, paymobOrderId }, db = pool) {
+  if (!paymobOrderId) return;
+  await db.query(
+    'INSERT IGNORE INTO paymob_order_links (tenant_id, paymob_order_id, order_id) VALUES (?,?,?)',
+    [tenantId || DEFAULT_TENANT_ID, String(paymobOrderId).slice(0, 64), orderId]
+  );
+}
+
+/**
+ * The order a verified callback pays for. The signed Paymob order id decides
+ * when a checkout recorded it; the unsigned merchant_order_id is believed only
+ * for an order that never recorded one (opened before the links existed).
+ * Returns null when the two disagree — a signed payment replayed with another
+ * order's id.
+ */
+async function resolvePaymobMerchantOrder({ merchantOrderId, signedOrderId, tenantId }, db = pool) {
+  const tenant = tenantId || DEFAULT_TENANT_ID;
+  if (signedOrderId) {
+    const [[link]] = await db.query(
+      'SELECT order_id FROM paymob_order_links WHERE tenant_id=? AND paymob_order_id=? LIMIT 1',
+      [tenant, String(signedOrderId).slice(0, 64)]
+    );
+    if (link) {
+      if (merchantOrderId && String(merchantOrderId) !== String(link.order_id)) {
+        logger.error('[paymob] callback names another order than the one its signed Paymob order was opened for', {
+          merchantOrderId, signedOrderId, linkedOrderId: link.order_id,
+        });
+        return null;
+      }
+      return link.order_id;
+    }
+  }
+  if (!merchantOrderId) return null;
+  const [[linked]] = await db.query(
+    'SELECT paymob_order_id FROM paymob_order_links WHERE tenant_id=? AND order_id=? LIMIT 1',
+    [tenant, merchantOrderId]
+  );
+  if (linked) {
+    logger.error('[paymob] signed Paymob order is not one opened for this order — not crediting', { merchantOrderId, signedOrderId });
+    return null;
+  }
+  return merchantOrderId;
+}
+
+module.exports = { finalisePaymobOrder, linkPaymobOrder, resolvePaymobMerchantOrder, syncLeadDealValue };

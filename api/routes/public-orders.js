@@ -17,12 +17,14 @@ const {
   buildPaymobHmacPayload,
   verifyPaymobHmac,
   paymobMerchantOrderId,
+  paymobSignedOrderId,
   paymobTransactionId,
 } = require('../lib/paymobHmac');
 const { normalizeOrderTypeForDb, normalizedOrderType } = require('../lib/orderFields');
 const { paymobReady, postPaymobJson, buildBillingData, paymobIntention, paymobCharge, paymobIntentionReady, paymobCapture, paymobSuccess } = require('../lib/paymobGateway');
-const { finalisePaymobOrder, syncLeadDealValue } = require('../lib/paymobFinalise');
+const { finalisePaymobOrder, linkPaymobOrder, resolvePaymobMerchantOrder, syncLeadDealValue } = require('../lib/paymobFinalise');
 const { adContextFromRequest } = require('../lib/metaCapi');
+const { scalarFields } = require('../lib/inputFields');
 
 function gatewayUnavailable(res, reason = 'gateway_disabled') {
   return res.status(503).json({
@@ -101,7 +103,7 @@ router.get('/api/public/payment-availability', publicLimiter, async (req, res) =
 });
 
 
-router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
+router.post('/api/payments/paymob-init', paymobLimiter, scalarFields('orderId', 'currency', 'itemTitle', 'customerName', 'customerEmail', 'customerPhone'), async (req, res) => {
   try {
     const config = await getPaymentGatewaySettings(req.tenantId);
     if (!paymobReady(config)) return gatewayUnavailable(res, 'paymob_not_configured');
@@ -147,6 +149,7 @@ router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
         paymob, amountCents, currency, orderId,
         itemTitle, billing: buildBillingData(req.body || {}),
       });
+      await linkPaymobOrder({ tenantId: req.tenantId, orderId, paymobOrderId: intention.paymobOrderId });
 
       // Unified Checkout is Paymob's own hosted page: it offers every method the
       // intention was created with, rather than the single one an iframe is
@@ -184,6 +187,7 @@ router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
       items: itemTitle ? [{ name: String(itemTitle).slice(0, 80), amount_cents: amountCents, quantity: 1 }] : [],
     });
     if (!order.id) throw new Error('Paymob order id missing');
+    await linkPaymobOrder({ tenantId: req.tenantId, orderId, paymobOrderId: order.id });
 
     const paymentKey = await postPaymobJson('https://accept.paymob.com/api/acceptance/payment_keys', {
       auth_token: auth.token,
@@ -222,7 +226,7 @@ router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
 // about to be created for. StandalonePayment.tsx calls this immediately before
 // /api/payments/paymob-init, so the gateway check below is deliberate: without
 // it, a disabled gateway would leave behind a pending order nobody can ever pay.
-router.post('/api/orders/reserve', publicLimiter, async (req, res) => {
+router.post('/api/orders/reserve', publicLimiter, scalarFields('orderId', 'type', 'itemId', 'itemTitle', 'amount', 'currency', 'paymentMethod', 'customerEmail', 'customerName', 'customerPhone', 'subscriberEmail', 'isInstallment', 'installmentLimit', 'branch'), async (req, res) => {
   let conn;
   try {
     const config = await getPaymentGatewaySettings(req.tenantId);
@@ -347,8 +351,11 @@ router.post('/api/paymob/verify', paymobLimiter, async (req, res) => {
     if (!verified) return res.status(400).json({ ok: false, verified: false, paid: false, error: 'Invalid Paymob signature' });
     if (!paymobSuccess(params)) return res.json({ ok: true, verified: true, paid: false });
 
-    const merchantOrderId = paymobMerchantOrderId(params);
-    if (!merchantOrderId) return res.status(400).json({ ok: false, verified: true, paid: false, error: 'Missing merchant order id' });
+    if (!paymobMerchantOrderId(params)) return res.status(400).json({ ok: false, verified: true, paid: false, error: 'Missing merchant order id' });
+    const merchantOrderId = await resolvePaymobMerchantOrder({
+      merchantOrderId: paymobMerchantOrderId(params), signedOrderId: paymobSignedOrderId(params), tenantId: req.tenantId,
+    });
+    if (!merchantOrderId) return res.json({ ok: true, verified: true, paid: false, refused: 'order_mismatch' });
     const result = await finalisePaymobOrder(merchantOrderId, paymobTransactionId(params), paymobCapture(params), req.tenantId);
     // `found` only means the order exists. An order whose capture did not match
     // was deliberately NOT credited, and reporting it as paid would tell the
@@ -375,7 +382,9 @@ router.post('/api/webhooks/paymob', paymobLimiter, async (req, res) => {
     const params = req.body?.obj ? { ...req.body.obj, hmac: req.query.hmac || req.body.hmac } : (req.body || {});
     if (!verifyPaymobHmac(params, hmacSecret)) return res.status(200).json({ ok: false, reason: 'invalid_signature' });
     if (paymobSuccess(params)) {
-      const merchantOrderId = paymobMerchantOrderId(params);
+      const merchantOrderId = await resolvePaymobMerchantOrder({
+        merchantOrderId: paymobMerchantOrderId(params), signedOrderId: paymobSignedOrderId(params), tenantId: req.tenantId,
+      });
       if (merchantOrderId) await finalisePaymobOrder(merchantOrderId, paymobTransactionId(params), paymobCapture(params), req.tenantId);
     }
     res.status(200).json({ ok: true });

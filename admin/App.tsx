@@ -53,7 +53,9 @@ const StaffRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           const r: unknown = await mysqlClient.getStaffSelf();
           if (!cancelled) setAllowed(r !== null && r !== undefined);
           return;
-        } catch {
+        } catch (error) {
+          // A definite «not staff» (403) is the answer, not a hiccup to retry.
+          if (error instanceof Error && error.message === 'Not a staff member') { if (!cancelled) setAllowed(false); return; }
           // The list may have loaded by now.
           if (staffMembers.some(s => s.email.toLowerCase() === (authUser.email || '').toLowerCase())) { if (!cancelled) setAllowed(true); return; }
           if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 700 * (attempt + 1)));

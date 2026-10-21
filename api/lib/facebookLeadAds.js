@@ -39,7 +39,7 @@ async function getFbLeadConfig(tenantId) {
 
 async function fetchFbLeadDetails(leadgenId, pageAccessToken) {
   const url = `https://graph.facebook.com/v19.0/${leadgenId}?access_token=${pageAccessToken}`;
-  const resp = await fetch(url);
+  const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
   if (!resp.ok) throw new Error(`FB Graph API ${resp.status}: ${await resp.text()}`);
   return resp.json();
 }

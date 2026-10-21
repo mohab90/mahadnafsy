@@ -1,25 +1,36 @@
 'use strict';
 
-function registerProcessLifecycle({ logger, pool }) {
+// `proc` and `exit` are the real process unless a test passes stand-ins.
+function registerProcessLifecycle({ logger, pool, proc = process, exit = code => process.exit(code) }) {
   let sigtermCount = 0;
   let sigtermFirst = 0;
   let isShuttingDown = false;
   let httpServer = null;
 
-  process.on('uncaughtException', (error) => {
-    if (error.code === 'EADDRINUSE') {
+  // An uncaught exception leaves the process in an unknown state (a half-run
+  // handler, a lock or transaction never released), so carrying on — which this
+  // used to do — served requests from a broken process indefinitely. Drain what
+  // can be drained and exit non-zero; systemd (Restart=on-failure) starts a
+  // clean one.
+  proc.on('uncaughtException', (error) => {
+    if (error?.code === 'EADDRINUSE') {
       const port = error.port || process.env.PORT || 3001;
       logger.warn(`[EADDRINUSE] Port ${port} is busy — another instance running, exiting quietly (supervisor handles restart)`);
-      setTimeout(() => process.exit(1), 500);
+      setTimeout(() => exit(1), 500);
       return;
     }
-    logger.error('[uncaughtException]', error.message, error.stack);
+    logger.error('[uncaughtException]', error?.message, error?.stack);
     try {
       require('./errorMonitor').captureException(error, { kind: 'uncaughtException' });
     } catch { /* optional monitor */ }
+    shutdown('uncaughtException', 1);
   });
 
-  process.on('unhandledRejection', (reason) => {
+  // A rejected promise nobody awaited is logged, not fatal. Many fire-and-forget
+  // calls here (`void notify(...)`, audit writes) can reject on a transient
+  // network or DB error without leaving shared state broken, and restarting the
+  // whole API for each would turn one failed WhatsApp send into an outage.
+  proc.on('unhandledRejection', (reason) => {
     logger.error('[unhandledRejection]', reason);
     try {
       const error = reason instanceof Error ? reason : new Error(String(reason));
@@ -41,11 +52,11 @@ function registerProcessLifecycle({ logger, pool }) {
    * The double-signal escape hatch is kept, inverted: a second SIGTERM while a
    * shutdown is already draining exits immediately instead of waiting.
    */
-  const shutdown = (signal) => {
+  function shutdown(signal, exitCode = 0) {
     const memory = process.memoryUsage();
     if (isShuttingDown) {
       logger.info(`[${signal}] second signal during drain — exiting now`);
-      process.exit(0);
+      exit(exitCode);
       return;
     }
     isShuttingDown = true;
@@ -54,32 +65,32 @@ function registerProcessLifecycle({ logger, pool }) {
     logger.info(`[${signal}] received — memRss=${Math.round(memory.rss / 1048576)}MB — draining`);
 
     if (!httpServer) {
-      pool.end().catch(() => {}).finally(() => process.exit(0));
-      setTimeout(() => process.exit(0), 3000);
+      pool.end().catch(() => {}).finally(() => exit(exitCode));
+      setTimeout(() => exit(exitCode), 3000).unref();
       return;
     }
     // Stop accepting new connections, let in-flight requests finish.
     httpServer.close(() => {
       pool.end().catch(() => {}).finally(() => {
         logger.info(`[${signal}] graceful shutdown complete`);
-        process.exit(0);
+        exit(exitCode);
       });
     });
     // Well inside systemd's 90s TimeoutStopSec, so the restart is quick even if
     // a long-poll or a slow query is still holding a socket open.
     setTimeout(() => {
       logger.info(`[${signal}] force exit after 10s drain timeout`);
-      process.exit(0);
+      exit(exitCode);
     }, 10000).unref();
-  };
+  }
 
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGINT', () => shutdown('SIGINT'));
+  proc.on('SIGTERM', () => shutdown('SIGTERM'));
+  proc.on('SIGINT', () => shutdown('SIGINT'));
 
   setInterval(() => {
     const memory = process.memoryUsage();
     logger.info(`[memory] rss=${Math.round(memory.rss / 1048576)}MB heap=${Math.round(memory.heapUsed / 1048576)}MB/${Math.round(memory.heapTotal / 1048576)}MB ext=${Math.round(memory.external / 1048576)}MB`);
-  }, 10 * 60 * 1000);
+  }, 10 * 60 * 1000).unref();
 
   return {
     setHttpServer(server) {

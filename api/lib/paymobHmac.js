@@ -58,6 +58,14 @@ function paymobMerchantOrderId(params) {
   ));
 }
 
+// Paymob's own order id, exactly as the HMAC above covered it. The
+// merchant_order_id that names our order is not among the signed fields, so it
+// is only believed through the link recorded when the checkout was opened
+// (lib/paymobFinalise.js, resolvePaymobMerchantOrder).
+function paymobSignedOrderId(params) {
+  return normalizePaymobValue(getDeepParam(params, 'order'));
+}
+
 function paymobTransactionId(params) {
   return normalizePaymobValue(params.id || getDeepParam(params, 'obj.id') || params.transaction_id);
 }
@@ -67,5 +75,6 @@ module.exports = {
   buildPaymobHmacPayload,
   verifyPaymobHmac,
   paymobMerchantOrderId,
+  paymobSignedOrderId,
   paymobTransactionId,
 };

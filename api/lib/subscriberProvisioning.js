@@ -138,7 +138,7 @@ async function ensureSubscriberForOrder(conn, {
   }
 
   const newId = uuidv4();
-  const clientCode = await getNextClientCode(conn);
+  const clientCode = await getNextClientCode(conn, tenantId);
   const branch = lead?.branch || fallbackBranch;
   const branchId = lead?.branch_id || fallbackBranchId || null;
   const insert = (phoneValue, note) => conn.query(

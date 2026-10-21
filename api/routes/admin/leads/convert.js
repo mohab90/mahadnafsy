@@ -200,7 +200,7 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
     const subId = uuidv4();
     let clientCode = lead.client_code || null;
     if (!clientCode) {
-      try { clientCode = await getNextClientCode(conn); } catch (_) {}
+      try { clientCode = await getNextClientCode(conn, tenantId); } catch (_) {}
     }
 
     // 4b. Create user account so the subscriber can log in.

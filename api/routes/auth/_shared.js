@@ -28,7 +28,7 @@ const {
   ADMIN_EMAILS, ADMIN_UIDS, isInstituteOwner, requireAuth, requireAdmin, requireSuperAdmin,
   requireAdminOrOnlineManager, requireAdminOrStaff, requirePermission, invalidateIdentity,
 } = require('../../middleware/auth');
-const { registerLimiter, loginLimiter, otpLimiter, forgotPasswordLimiter, bulkOperationLimiter } = require('../../middleware/rateLimits');
+const { registerLimiter, loginLimiter, resetPasswordLimiter, otpLimiter, resetOtpLimiter, forgotPasswordLimiter, bulkOperationLimiter } = require('../../middleware/rateLimits');
 const { isString, isEmail, validateBody } = require('../../middleware/validate');
 const { postPaymentJournal, logPaymentAudit } = require('../../lib/finance');
 const { assertWritable } = require('../../lib/periodLock');
@@ -96,7 +96,9 @@ module.exports = {
   invalidateIdentity,
   registerLimiter,
   loginLimiter,
+  resetPasswordLimiter,
   otpLimiter,
+  resetOtpLimiter,
   forgotPasswordLimiter,
   bulkOperationLimiter,
   isString,

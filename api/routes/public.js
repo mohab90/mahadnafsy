@@ -30,6 +30,7 @@ const joinApplication = require('../lib/joinApplication');
 const { effectiveCertificate, missingForCertificate } = require('../lib/certificateEnglish');
 const { verifyCertificate } = require('../lib/certificateVerification');
 const { SYSTEM_SEARCH_PERMISSIONS, searchSystem } = require('../lib/systemSearch');
+const { scalarFields } = require('../lib/inputFields');
 
 // The contact form's subjects that are sales' to answer (client/pages/Contact.tsx).
 const SALES_SUBJECTS = new Map([['courses', 'استفسار عن الدبلومات والبرامج'], ['payment', 'استفسار عن الدفع والأسعار']]);
@@ -340,6 +341,9 @@ router.post('/api/courses/:id/rate', requireAuth, async (req, res) => {
     const { rating, comment } = req.body;
     const ratingNum = parseInt(rating, 10);
     if (!ratingNum || ratingNum < 1 || ratingNum > 5) return res.status(400).json({ error: 'rating must be 1–5' });
+    if (comment != null && typeof comment !== 'string') return res.status(400).json({ error: 'التعليق لازم يكون نص.' });
+    const [[course]] = await pool.query('SELECT id FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1', [courseId, req.tenantId]);
+    if (!course) return res.status(404).json({ error: 'Course not found' });
     const sub = await resolveSubscriberRow(req, ['id']);
     if (!sub) return res.status(403).json({ error: 'يجب أن تكون مشتركاً للتقييم' });
     const [[enroll]] = await pool.query("SELECT id FROM enrollments WHERE subscriber_id=? AND course_id=? AND tenant_id=? AND status='active' LIMIT 1", [sub.id, courseId, req.tenantId]);
@@ -348,7 +352,7 @@ router.post('/api/courses/:id/rate', requireAuth, async (req, res) => {
       `INSERT INTO course_ratings (id, course_id, subscriber_id, rating, comment, tenant_id, created_at)
        VALUES (UUID(),?,?,?,?,?,NOW())
        ON DUPLICATE KEY UPDATE rating=VALUES(rating), comment=VALUES(comment), created_at=NOW()`,
-      [courseId, sub.id, ratingNum, comment || null, req.tenantId]
+      [courseId, sub.id, ratingNum, comment ? comment.slice(0, 2000) : null, req.tenantId]
     );
     const [[agg]] = await pool.query('SELECT AVG(rating) AS avg, COUNT(*) AS cnt FROM course_ratings WHERE course_id=? AND tenant_id=?', [courseId, req.tenantId]);
     res.json({ ok: true, avg: parseFloat((+agg.avg || 0).toFixed(1)), count: agg.cnt });
@@ -359,6 +363,10 @@ router.post('/api/courses/:id/rate', requireAuth, async (req, res) => {
 router.get('/api/courses/:id/ratings', publicLimiter, optionalAuth, async (req, res) => {
   try {
     const courseId = req.params.id;
+    // A course that is not this institute's has no ratings to show — a 404,
+    // not «0 from 0».
+    const [[course]] = await pool.query('SELECT id FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1', [courseId, req.tenantId]);
+    if (!course) return res.status(404).json({ error: 'Course not found' });
     const [[agg]] = await pool.query('SELECT AVG(rating) AS avg, COUNT(*) AS cnt FROM course_ratings WHERE course_id=? AND tenant_id=?', [courseId, req.tenantId]);
     let myRating = null;
     if (req.user?.uid) {
@@ -871,7 +879,7 @@ router.get('/api/live-streams', requireAuth, async (req, res) => {
 });
 
 // POST /api/contact  (نموذج التواصل)
-router.post('/api/contact', contactLimiter, async (req, res) => {
+router.post('/api/contact', contactLimiter, scalarFields('name', 'email', 'phone', 'subject', 'message'), async (req, res) => {
   try {
     const { name, email, phone, subject, message } = req.body;
     const verr = validate(req.body, { name: 'required|120', phone: 'required|40', message: 'required|2000', email: 'optional|160', subject: 'optional|200' });
@@ -898,7 +906,7 @@ router.post('/api/contact', contactLimiter, async (req, res) => {
 });
 
 // POST /api/join-us  (طلب انضمام)
-router.post('/api/join-us', contactLimiter, async (req, res) => {
+router.post('/api/join-us', contactLimiter, scalarFields('name', 'email', 'phone', 'specialty', 'experience', 'type', 'linkedin', 'message', 'jobId', 'branch', 'education', 'experienceYears', 'programsOther'), async (req, res) => {
   try {
     const { name, email, phone, specialty, experience, type, linkedin, message, jobId,
       branch, education, experiencePlaces, experienceYears, form } = req.body;

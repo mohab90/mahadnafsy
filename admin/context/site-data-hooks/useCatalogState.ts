@@ -45,8 +45,11 @@ export function useCatalogState(
 
   const persist = async (request: Promise<unknown>, field: string, name?: string) => {
     try { await request; return true; }
-    catch {
-      window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field, name } }));
+    catch (error) {
+      // The server explains a refused save (a taken slug, a negative price), so
+      // pass its words on instead of blaming the connection.
+      const reason = error instanceof Error ? error.message : '';
+      window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field, name, reason } }));
       return false;
     }
   };

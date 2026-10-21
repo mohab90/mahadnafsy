@@ -103,7 +103,7 @@ async function createClient(conn, { tenantId, staff, kind, branch: chosenBranch,
          (id, tenant_id, client_code, name, email, phone, branch, branch_id, is_active, notes,
           assigned_cs_id, assigned_cs_name, crm_json, source, created_at)
        VALUES (?,?,?,?,?,?,?,?,1,?,?,?,?,?,COALESCE(?, NOW()))`,
-      [id, tenantId, await getNextClientCode(conn), (cell(row._name) || phone || 'بدون اسم').slice(0, 255), email || null,
+      [id, tenantId, await getNextClientCode(conn, tenantId), (cell(row._name) || phone || 'بدون اسم').slice(0, 255), email || null,
         toIdentity(phone) || null, branch, branchId, notes, staff?.id || null, staff?.name || null, JSON.stringify(crm),
         String(source).slice(0, 100), sheetDate(row._date)]);
     if (courseId) {

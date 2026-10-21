@@ -97,7 +97,9 @@ Environment=AUDIT_SECRET_SOURCE=platform-secret
 Environment=AUDIT_SECRET_PROVIDER=systemd-credentials
 Environment=AUDIT_SECRET_REFERENCE=systemd-cred:mahad/audit@2026-08-03
 Environment=AUDIT_SECRET_ROTATED_AT=2026-08-03
-Restart=on-failure
+# always, not on-failure: the memory guard (lib/productionRuntimeGuard.js) restarts
+# the API with a SIGTERM drain that exits 0, which on-failure left stopped.
+Restart=always
 RestartSec=5s
 TimeoutStartSec=60s
 TimeoutStopSec=30s
