@@ -13,6 +13,12 @@ const { branchIdForBranch, normalizeBranch } = require('./branches');
 const { logLeadEvent } = require('./crm');
 const { getNextSalesRep } = require('./leadAssignment');
 const { phoneIdentityClause } = require('./leadMatching');
+const { completeForBranch, toIdentity } = require('./phoneNumber');
+
+// The one form clients are kept in (lib/phoneNumber.js toIdentity), so the desk
+// and the conversion find this lead by the client's number; as typed only when
+// it has no digits to keep.
+const storedPhone = (phone, branch) => toIdentity(completeForBranch(phone, branch)).slice(0, 30) || String(phone).trim().slice(0, 30);
 
 /** Returns { id, existing }, or { busy: true } when the same number is being filed right now. */
 async function capturePublicLead(input, db = pool) {
@@ -67,7 +73,7 @@ async function fileLead({ tenantId, name, phone, notes, source, branch }, db) {
     await conn.execute(
       `INSERT INTO leads (id, tenant_id, client_code, name, phone, notes, status, interest_level, source, lead_type, branch, branch_id, assigned_sales_id, assigned_sales_name, created_at, hidden)
        VALUES (?, ?, ?, ?, ?, ?, 'new', 'medium', ?, 'general', ?, ?, ?, ?, NOW(), 0)`,
-      [id, tenantId, code, String(name).trim().slice(0, 120), String(phone).trim().slice(0, 30), note, origin,
+      [id, tenantId, code, String(name).trim().slice(0, 120), storedPhone(phone, normalizedBranch), note, origin,
         normalizedBranch, branchIdForBranch(normalizedBranch), rep?.id || null, rep?.name || null]
     );
     await logLeadEvent(id, 'created', 'Public lead captured', { source: origin, assignedSalesId: rep?.id || null }, tenantId, conn);

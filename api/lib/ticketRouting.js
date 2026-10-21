@@ -19,6 +19,11 @@
  * hop is written to ticket_events (see logTicketEvent) so the journey is auditable.
  */
 const { uuidv4 } = require('./id');
+const { cairoToday } = require('./dates');
+const { hasPermission } = require('../constants/permissions');
+
+// Permissions counted in hours (lib/hrPolicy.js): the employee is at work that day.
+const HOURLY_LEAVE_TYPES = Object.freeze(['LATE_PERMIT', 'EARLY_LEAVE', 'PERMISSION']);
 
 // Every inbound problem type, its Arabic label, target department + default priority.
 const CATEGORY_META = Object.freeze({
@@ -80,6 +85,26 @@ function computeSlaDue(priority, from = new Date()) {
 }
 
 /**
+ * SET terms that put a reopened ticket back on the clock, for an UPDATE whose
+ * `status` assignment comes AFTER them (MySQL reads the old status here).
+ * `when` is a literal SQL condition, no placeholders.
+ *
+ * A ticket a client wrote on again went back to «open» still carrying its old
+ * resolved_at and first response: the reports counted it resolved, the SLA
+ * sweep (which looks for no first response) never saw it, and it waited with no
+ * deadline. Reopened, it is a new wait: answered and resolved again from now.
+ */
+function reopenTicketSql(when = "status IN ('resolved','closed')") {
+  const hours = Object.entries(SLA_HOURS)
+    .map(([priority, h]) => `WHEN '${priority}' THEN ${Number(h)}`).join(' ');
+  return `resolved_at=IF(${when}, NULL, resolved_at),
+          first_response_at=IF(${when}, NULL, first_response_at),
+          sla_due_at=IF(${when}, NOW() + INTERVAL (CASE LOWER(priority) ${hours} ELSE ${SLA_HOURS.medium} END) HOUR, sla_due_at),
+          sla_breach_notified_at=IF(${when}, NULL, sla_breach_notified_at),
+          sla_breached=IF(${when}, 0, sla_breached)`;
+}
+
+/**
  * Pick the least-loaded active agent for a department (fewest currently-open
  * tickets). Returns { id, name } or null (→ leave in the dept queue, unassigned).
  *
@@ -96,16 +121,22 @@ function computeSlaDue(priority, from = new Date()) {
  * the fourth is the SLA sweep, where it releases immediately under autocommit
  * and the escalation it performs is idempotent regardless.
  */
-async function pickAssignee(pool, tenantId, department) {
+async function pickAssignee(pool, tenantId, department, { today = cairoToday() } = {}) {
   const roles = DEPARTMENT_ROLES[department];
   if (!roles || !roles.length) return null;
   const placeholders = roles.map(() => '?').join(',');
+  // Nobody on an approved day off (an hours-long إذن is still a working day):
+  // an urgent ticket went to an agent on leave and sat unanswered past its SLA.
+  // Only someone who can open the ticket: every ticket screen asks for
+  // manage_inbox, which the HR role does not hold — an HR enquiry routed to the
+  // HR employee reached somebody who could not read it. With nobody left, the
+  // manager the department falls back to (or its queue) takes it.
   const [rows] = await pool.query(
     // In turn: whoever was handed a ticket longest ago (never first), the open
     // load breaking a tie. By load alone, one agent holding old open tickets
     // received nothing: «متوزعش المشاكل علي حازم ووليد فقط — فريق خدمه العملاء
     // ال3» (10 Oct 2026).
-    `SELECT s.id, s.name,
+    `SELECT s.id, s.name, s.role, s.permissions_json, s.tenant_id,
             (SELECT MAX(t.created_at) FROM support_tickets t
                WHERE t.tenant_id=s.tenant_id AND t.assigned_to=s.id AND t.deleted_at IS NULL) AS last_at,
             (SELECT COUNT(*) FROM support_tickets t
@@ -114,12 +145,16 @@ async function pickAssignee(pool, tenantId, department) {
        FROM staff s
       WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL
         AND LOWER(TRIM(s.role)) IN (${placeholders})
+        AND NOT EXISTS (SELECT 1 FROM leaves lv
+                         WHERE lv.tenant_id=s.tenant_id AND lv.staff_id=s.id AND lv.status='APPROVED'
+                           AND lv.type NOT IN (${HOURLY_LEAVE_TYPES.map(() => '?').join(',')})
+                           AND lv.start_date<=? AND lv.end_date>=?)
       ORDER BY last_at IS NOT NULL, last_at ASC, load_count ASC, s.name ASC
-      LIMIT 1
       FOR UPDATE`,
-    [tenantId, ...roles.map(role => role.toLowerCase())]
+    [tenantId, ...roles.map(role => role.toLowerCase()), ...HOURLY_LEAVE_TYPES, today, today]
   );
-  return rows.length ? { id: rows[0].id, name: rows[0].name } : null;
+  const pick = rows.find(row => hasPermission(row, 'manage_inbox'));
+  return pick ? { id: pick.id, name: pick.name } : null;
 }
 
 /**
@@ -139,5 +174,5 @@ async function logTicketEvent(pool, { tenantId = 'tenant-default', ticketId, typ
 module.exports = {
   CATEGORY_META, DEPARTMENT_ROLES, DEPARTMENT_LABEL, SLA_HOURS,
   resolveDepartment, defaultPriority, slaHoursFor, computeSlaDue,
-  pickAssignee, logTicketEvent,
+  pickAssignee, logTicketEvent, reopenTicketSql,
 };

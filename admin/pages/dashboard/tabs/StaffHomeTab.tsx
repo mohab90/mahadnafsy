@@ -115,6 +115,9 @@ export default function StaffHomeTab({ staff, notify, onNavigate, hideHeader = f
         ? Math.round(Number(hrSnapshot?.kpi?.leads_converted || 0) / Number(hrSnapshot?.kpi?.leads_assigned || 1) * 100)
         : convRate,
       overdueFollowups: summary?.overdue ?? [], todayFollowups: summary?.today ?? [], newThisMonth: summary?.newThisMonth ?? 0,
+      // Counted by the server (api/lib/leadFollowUps.js); the lists above are its first 30 rows.
+      overdueCount: summary?.overdueCount ?? summary?.overdue.length ?? 0,
+      todayCount: summary?.todayCount ?? summary?.today.length ?? 0,
       callsThisMonth: summary?.callsThisMonth ?? 0, revenueThisMonth, last7, recentActivity: summary?.recent ?? [],
       urgentLeads: summary?.urgent ?? [], commission, commissionRate,
     };
@@ -291,7 +294,7 @@ export default function StaffHomeTab({ staff, notify, onNavigate, hideHeader = f
           <div className="relative mt-4 bg-red-500/30 border border-red-300/40 rounded-xl px-4 py-2.5 flex items-center gap-3">
             <AlertCircle size={16} className="text-red-200 flex-shrink-0" />
             <p className="text-sm text-white">
-              <span className="font-bold">{stats.overdueFollowups.length}</span> متابعة متأخرة — تحتاج إجراء فوري
+              <span className="font-bold">{stats.overdueCount}</span> متابعة متأخرة — تحتاج إجراء فوري
             </p>
             <button
               onClick={() => onNavigate('leads')}
@@ -310,7 +313,7 @@ export default function StaffHomeTab({ staff, notify, onNavigate, hideHeader = f
         <div className="flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
           <AlertCircle size={16} className="shrink-0 text-red-500" />
           <p className="text-sm text-red-800">
-            <span className="font-bold">{stats.overdueFollowups.length}</span> متابعة متأخرة — تحتاج إجراء فوري
+            <span className="font-bold">{stats.overdueCount}</span> متابعة متأخرة — تحتاج إجراء فوري
           </p>
           <button
             onClick={() => onNavigate('leads')}
@@ -334,8 +337,8 @@ export default function StaffHomeTab({ staff, notify, onNavigate, hideHeader = f
             convRate: stats.convRate,
             callsThisMonth: stats.callsThisMonth,
             revenueThisMonth: stats.revenueThisMonth,
-            overdueCount: stats.overdueFollowups.length,
-            todayFollowupCount: stats.todayFollowups.length,
+            overdueCount: stats.overdueCount,
+            todayFollowupCount: stats.todayCount,
             last7: stats.last7,
             monthlyTarget: (staff as StaffMember & { monthlyTarget?: number }).monthlyTarget,
             monthlyTargetType: (staff as StaffMember & { monthlyTargetType?: 'egp' | 'clients' | 'bookings' }).monthlyTargetType,
@@ -384,7 +387,7 @@ export default function StaffHomeTab({ staff, notify, onNavigate, hideHeader = f
             />
           )}
           <KpiCard
-            title="متابعات اليوم" value={stats.todayFollowups.length}
+            title="متابعات اليوم" value={stats.todayCount}
             icon={Bell} bg="bg-rose-50" text="text-rose-600" border="border-rose-200"
           />
         </div>
@@ -419,7 +422,7 @@ export default function StaffHomeTab({ staff, notify, onNavigate, hideHeader = f
                   <Bell size={15} className="text-rose-500" />
                   متابعات اليوم
                   <span className="bg-rose-100 text-rose-600 text-xs font-bold px-2 py-0.5 rounded-full">
-                    {stats.todayFollowups.length}
+                    {stats.todayCount}
                   </span>
                 </h4>
                 <button onClick={() => onNavigate('leads')} className="text-xs text-indigo-600 hover:underline flex items-center gap-1">

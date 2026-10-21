@@ -34,6 +34,8 @@ const {
   crypto,
   completeForBranch,
 } = require('./_shared');
+const { toIdentity } = require('../../../lib/phoneNumber');
+const { clientHoldingPhone } = require('../../../lib/phoneDuplicates');
 
 const router = Router();
 
@@ -48,7 +50,8 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
   // routes already guard against with the same GET_LOCK pattern. Falls back
   // to the request's own id for updates, where the FOR UPDATE row lock below
   // is the real guard and this is just a lightweight serialization aid.
-  const rawPhone = String(l.phone || '').replace(/[^\d+\-\s()]/g, '').trim();
+  // By identity, so «+20 101…» and «0101…» saved together wait for each other.
+  const rawPhone = toIdentity(l.phone);
   const lockKey = `admin-lead:${crypto.createHash('sha256').update(`${tenantId}:${rawPhone || l.id || ''}`).digest('hex').slice(0, 40)}`;
   let conn;
   let lockAcquired = false;
@@ -89,8 +92,11 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
     // Sanitize at system boundary
     const safeName   = sanitize(name,   300);
     const safeEmail  = (email  || '').toLowerCase().trim().substring(0, 255);
-    // A Saudi lead's 05… gets its 966 (lib/phoneNumber.js completeForBranch).
-    const safePhone  = ((String(completeForBranch(phone, crmData.branch) || '')).replace(/[^\d+\-\s()]/g, '').trim().substring(0, 30)) || null;
+    // A Saudi lead's 05… gets its 966 (lib/phoneNumber.js completeForBranch), and
+    // the number is kept in the one form clients are kept in (toIdentity): typed
+    // «+20 101 234 5678», it never matched the client stored as 1012345678, so an
+    // existing client came back as a new lead and «تحويل» then refused the number.
+    const safePhone  = (toIdentity(completeForBranch(phone, crmData.branch)).substring(0, 30)) || null;
     const safeNotes  = sanitize(notes,  2000);
     // leads.source is NOT NULL: a lead added without one stood as «حقل مطلوب فاضي»
     // with no word on which field.
@@ -101,10 +107,9 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
     const isNew = !existing;
     // Only check for duplicate phone when CREATING a new lead (not updating)
     if (isNew && safePhone) {
-      // Check against subscribers first (phone already enrolled)
-      const [[existSub]] = await conn.query(
-        'SELECT id, name, client_code FROM subscribers WHERE tenant_id=? AND phone=? LIMIT 1', [tenantId, safePhone]
-      );
+      // Check against subscribers first (phone already enrolled), by every
+      // spelling of the number and as either of the client's two numbers.
+      const existSub = await clientHoldingPhone(conn, { tenantId, phones: [safePhone] });
       if (existSub) {
         await conn.rollback();
         return res.status(409).json({
@@ -129,7 +134,7 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
     // A changed number is checked too. Only a NEW lead was, so editing a phone to
     // one another lead holds ran into the unique key and answered with a generic
     // «فيه سجل بنفس البيانات» that did not say whose number it was.
-    if (!isNew && safePhone && String(existing.phone || '') !== safePhone) {
+    if (!isNew && safePhone && toIdentity(existing.phone) !== toIdentity(safePhone)) {
       const holder = await findLeadByIdentity({
         tenantId, phone: safePhone, excludeId: id, db: conn, forUpdate: true,
       });
@@ -272,6 +277,10 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
       const followUpGiven = Object.prototype.hasOwnProperty.call(crmData, 'nextFollowUpDate');
       const followUpDay = followUpGiven && /^\d{4}-\d{2}-\d{2}/.test(String(crmData.nextFollowUpDate || ''))
         ? String(crmData.nextFollowUpDate).slice(0, 10) : null;
+      // The same number in another spelling stays as stored: rewriting it could
+      // run into a duplicate lead that holds the new spelling (those are merged
+      // from the duplicates screen, not by an edit).
+      const keptPhone = safePhone && toIdentity(existing.phone) === toIdentity(safePhone) ? existing.phone : safePhone;
       const [updated] = await conn.query(
         `UPDATE leads SET name=?, email=?, phone=?, source=?, notes=?, client_code=COALESCE(client_code,?),
            assigned_sales_id=IF(?,NULL,COALESCE(?,assigned_sales_id)),
@@ -282,7 +291,7 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
            interested_course_ids_json=COALESCE(?,interested_course_ids_json), hidden=COALESCE(?,hidden),
            next_follow_up_date=IF(?, ?, next_follow_up_date)
          WHERE id=? AND tenant_id=?`,
-        [safeName||'', safeEmail||null, safePhone, safeSource||null, safeNotes||null, code,
+        [safeName||'', safeEmail||null, keptPhone, safeSource||null, safeNotes||null, code,
          clearSales ? 1 : 0, salesId, clearSales ? 1 : 0, salesName,
          clearCs && staffRole !== 'collection' ? 1 : 0, csId, clearCs && staffRole !== 'collection' ? 1 : 0, csName,
          JSON.stringify(crmToStore), branchVal, branchId, leadClientTypeVal, courseIdsJson,

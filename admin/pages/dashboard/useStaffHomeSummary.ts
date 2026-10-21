@@ -22,6 +22,9 @@ export type StaffHomeSummary = {
   last7: { day: string; calls: number; converted: number }[];
   overdue: LeadItem[];
   today: LeadItem[];
+  /** The true counts (api/lib/leadFollowUps.js); the two lists above stop at 30 rows. */
+  overdueCount?: number;
+  todayCount?: number;
   recent: LeadItem[];
   urgent: LeadItem[];
   clients: number;

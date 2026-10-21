@@ -9,6 +9,7 @@ import { useCrmData } from '../../../context/siteDataSlices';
 import { useCrmInsights } from './leads/useCrmInsights';
 import type { LeadItem, LeadStatus } from '../../../types';
 import { toDialable } from '../../../lib/whatsappLink';
+import { isOpenLeadStatus } from '../../../../shared/leadStatuses';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -55,7 +56,14 @@ const FollowupRemindersTab: React.FC<Props> = () => {
   // idleDays is irrelevant here: it only bounds the redistribution list, which
   // this screen does not read. 14 is the endpoint's own default.
   const insights = useCrmInsights(14);
-  const source = insights?.reminders ?? leads;
+  // Open and not archived, as every screen counts a follow-up
+  // (api/lib/leadFollowUps.js, shared/leadStatuses.ts). The four statuses this
+  // screen listed itself missed wrong_number, closed and the rest, and the
+  // bucket counts above the list were taken before even those were dropped.
+  const source = useMemo(
+    () => (insights?.reminders ?? leads).filter(l => !l.hidden && isOpenLeadStatus(l.status)),
+    [insights, leads],
+  );
   const [filterSales, setFilterSales] = useState<string>('all');
   const [showBucket, setShowBucket] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'date' | 'name'>('date');
@@ -68,7 +76,6 @@ const FollowupRemindersTab: React.FC<Props> = () => {
   const reminders = useMemo(() => {
     return source
       .filter(l => {
-        if (l.status === 'converted' || l.status === 'lost' || l.status === 'not_interested' || l.status === 'not_interested_hidden') return false;
         if (!bucket(l)) return false;
         if (filterSales !== 'all' && l.assignedSalesId !== filterSales) return false;
         if (showBucket !== 'all' && bucket(l) !== showBucket) return false;

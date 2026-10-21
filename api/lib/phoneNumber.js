@@ -113,6 +113,28 @@ function identitySpellings(input) {
   return [...out];
 }
 
+/**
+ * identitySpellings, plus the Saudi spelling a local 5XXXXXXXX number may have
+ * been stored under — for "is this number already in the CRM?", never for
+ * sign-in or account adoption.
+ *
+ * identitySpellings('966501234567') finds 0501234567, but identitySpellings
+ * ('0501234567') does not find 966501234567, so a Saudi client stored with
+ * their code was a stranger to the same number typed locally, and the desk
+ * filed them twice. The reverse is left out of identitySpellings itself on
+ * purpose: 050… is also a Mansoura landline, and a code request for one must
+ * not adopt a Saudi client's account. Flagging a possible duplicate is safe.
+ */
+function matchingSpellings(input) {
+  const out = new Set(identitySpellings(input));
+  const identity = toIdentity(input);
+  if (out.size && SA_MOBILE_NATIONAL.test(identity)) {
+    out.add(`966${identity}`);
+    out.add(`00966${identity}`);
+  }
+  return [...out];
+}
+
 // A Saudi mobile as Saudis write it: 05XXXXXXXX, or 5XXXXXXXX without the
 // zero. It carries no country code, so it could not be dialled, and the payment
 // route refused every booking for a Saudi client written that way (9 leads and
@@ -200,4 +222,5 @@ module.exports = {
   isDialable,
   isPlausible,
   identitySpellings,
+  matchingSpellings,
 };

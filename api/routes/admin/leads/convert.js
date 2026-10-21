@@ -33,7 +33,7 @@ const {
 } = require('./_shared');
 
 const { toIdentity } = require('../../../lib/phoneNumber');
-const { clientHoldingPhone, phoneInUse } = require('../../../lib/phoneDuplicates');
+const { clientHoldingPhone, phoneInUse, spellingsOf } = require('../../../lib/phoneDuplicates');
 
 const router = Router();
 
@@ -129,14 +129,26 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
     //
     // The empty-string defaults below are why the blank arms matter: a lead
     // with no email would otherwise match any subscriber whose email is blank.
+    //
+    // The number is compared by identity, as either of the client's numbers: the
+    // lead held «+20 101…» and the client 1012345678, so this missed, the check
+    // below then answered «الرقم مستخدم», and the lead could never be closed. The
+    // client holding the number is this same person unless both carry an email
+    // and the two differ — then it is somebody else on a shared (family) number,
+    // and the refusal below names them.
+    const leadSpellings = spellingsOf(lead.phone);
     const [[existingSub]] = await conn.query(
       `SELECT id FROM subscribers
        WHERE tenant_id=? AND deleted_at IS NULL
          AND (lead_id=?
               OR (?<>'' AND LOWER(TRIM(email))=LOWER(?))
-              OR (?<>'' AND phone=?))
+              OR (${leadSpellings.length ? '(phone IN (?) OR phone2 IN (?))' : '0'}
+                  AND (?='' OR email IS NULL OR TRIM(email)='' OR LOWER(TRIM(email))=LOWER(?))))
+       ORDER BY lead_id<=>? DESC
        LIMIT 1 FOR UPDATE`,
-      [tenantId, leadId, lead.email || '', lead.email || '', lead.phone || '', lead.phone || '']
+      [tenantId, leadId, lead.email || '', lead.email || '',
+        ...(leadSpellings.length ? [leadSpellings, leadSpellings] : []),
+        String(lead.email || '').trim(), String(lead.email || '').trim(), leadId]
     );
     if (existingSub) {
       await conn.query(

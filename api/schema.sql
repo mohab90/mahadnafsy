@@ -6214,3 +6214,14 @@ CREATE TABLE `backfill_263_dokki_owners` (
   `reception_name` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`tenant_id`,`subscriber_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- backfill_305_lead_phones: migration 305 — lead numbers moved to the identity form, as they were typed, for the rollback.
+CREATE TABLE `backfill_305_lead_phones` (
+  `tenant_id` varchar(64) NOT NULL,
+  `lead_id` varchar(100) NOT NULL,
+  `old_phone` varchar(64) NOT NULL,
+  `new_phone` varchar(32) NOT NULL,
+  `applied` tinyint(1) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`tenant_id`,`lead_id`),
+  KEY `idx_backfill_305_target` (`tenant_id`,`new_phone`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

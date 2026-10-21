@@ -26,6 +26,7 @@ const { capturePublicLead } = require('../lib/publicLead');
 const { uuidv4 } = require('../lib/id');
 const { isRealPhone } = require('../lib/phoneNumber');
 const { createRoutedTicket } = require('./support');
+const { reopenTicketSql } = require('../lib/ticketRouting');
 
 const router = express.Router();
 const TOPICS = new Set(['course', 'support']);
@@ -240,7 +241,7 @@ async function handOff(req, context, topic, message, reply, handoffId) {
       if (ticketId) {
         await conn.query('INSERT INTO ticket_replies (id, tenant_id, ticket_id, author_type, author_name, body) VALUES (?,?,?,?,?,?)',
           [uuidv4(), req.tenantId, ticketId, 'CLIENT', name, message]);
-        await conn.query("UPDATE support_tickets SET status=IF(status IN ('resolved','closed'),'open',status), updated_at=NOW() WHERE id=? AND tenant_id=?",
+        await conn.query(`UPDATE support_tickets SET ${reopenTicketSql()}, status=IF(status IN ('resolved','closed'),'open',status), updated_at=NOW() WHERE id=? AND tenant_id=?`,
           [ticketId, req.tenantId]);
       }
     }

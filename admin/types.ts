@@ -1335,6 +1335,8 @@ export interface StaffLeadPerformance {
     leads: number;
     converted: number;
     contacted: number;
+    /** Open leads of this rep due today, as every screen counts them (api/lib/leadFollowUps.js). */
+    followUpsToday?: number;
     /** Lead count per lowercased status, so a caller can derive lost, active or
      *  anything else without the response growing a field for each. */
     byStatus: Record<string, number>;

@@ -30,7 +30,7 @@ const { branchForId } = require('../lib/branches');
 const WEBSITE_CHANNELS = ['web', 'web_contact', 'user_dashboard', 'ai_assistant'];
 const {
   CATEGORY_META, DEPARTMENT_LABEL, DEPARTMENT_ROLES, resolveDepartment, defaultPriority,
-  computeSlaDue, pickAssignee, logTicketEvent,
+  computeSlaDue, pickAssignee, logTicketEvent, reopenTicketSql,
 } = require('../lib/ticketRouting');
 
 const CLOSED_STATUSES = ['resolved', 'closed'];
@@ -787,8 +787,10 @@ router.put('/api/admin/tickets/:id/status', requireAuth, requireAdminOrStaff, re
       await conn.rollback(); conn.release(); conn = null;
       return res.status(409).json({ error: `Invalid status transition: ${prev.status} -> ${status}` });
     }
+    // Back from resolved or closed: a new wait, on the clock again (reopenTicketSql).
+    const reopening = CLOSED_STATUSES.includes(String(prev.status || '').toLowerCase()) && !CLOSED_STATUSES.includes(status);
     await conn.query(
-      `UPDATE support_tickets SET status=?, closed_reason=?,
+      `UPDATE support_tickets SET ${reopening ? `${reopenTicketSql('TRUE')}, ` : ''}status=?, closed_reason=?,
                resolved_at = IF(? IN ('resolved','closed'), COALESCE(resolved_at, NOW()), resolved_at),
                updated_at = NOW() WHERE id=? AND tenant_id=?`,
       [status, closedReason || null, status, req.params.id, req.tenantId]);
@@ -949,7 +951,7 @@ router.post('/api/public/enquiry/:token/reply', publicLimiter, async (req, res) 
     // A customer writing again reopens a resolved ticket — otherwise their
     // follow-up sits under a closed heading nobody is working.
     await conn.query(
-      `UPDATE support_tickets SET status=IF(status IN ('resolved','closed'),'open',status), updated_at=NOW()
+      `UPDATE support_tickets SET ${reopenTicketSql()}, status=IF(status IN ('resolved','closed'),'open',status), updated_at=NOW()
         WHERE id=? AND tenant_id=?`, [ticketId, req.tenantId]);
     await logTicketEvent(conn, {
       tenantId: req.tenantId, ticketId, type: 'replied',
@@ -1380,7 +1382,7 @@ router.post('/api/me/tickets/:id/reply', requireAuth, async (req, res) => {
     const authorName = t.subscriber_name || req.user.name || 'العميل';
     await conn.query('INSERT INTO ticket_replies (id, tenant_id, ticket_id, author_type, author_name, body) VALUES (?,?,?,?,?,?)',
       [replyId, req.tenantId, req.params.id, 'CLIENT', authorName, body]);
-    await conn.query("UPDATE support_tickets SET status=IF(status IN ('resolved','closed'),'open',status), updated_at=NOW() WHERE id=? AND tenant_id=?", [req.params.id, req.tenantId]);
+    await conn.query(`UPDATE support_tickets SET ${reopenTicketSql()}, status=IF(status IN ('resolved','closed'),'open',status), updated_at=NOW() WHERE id=? AND tenant_id=?`, [req.params.id, req.tenantId]);
     await logTicketEvent(conn, { tenantId: req.tenantId, ticketId: req.params.id, type: 'replied', actorName: t.subscriber_name || 'العميل', detail: String(body).slice(0, 200) });
     await conn.commit(); conn.release(); conn = null;
     markConversationOpen(pool, req.tenantId, req.params.id).catch(() => {});
