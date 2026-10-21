@@ -354,7 +354,7 @@ scp "${SSH_OPTS[@]}" \
   "artifacts/releases/$RELEASE-api.tgz" "artifacts/releases/$RELEASE-api.tgz.sha256" \
   "artifacts/releases/$RELEASE-admin.tgz" "artifacts/releases/$RELEASE-admin.tgz.sha256" \
   "artifacts/releases/$RELEASE-client.tgz" "artifacts/releases/$RELEASE-client.tgz.sha256" \
-  "deploy-release.sh" "deploy/mahad-db-backup.sh" "deploy/cron/mahad-restore-rehearsal" \
+  "deploy-release.sh" "deploy/mahad-db-backup.sh" "deploy/cron/mahad-restore-rehearsal" "deploy/cron/mahad-db-backup" \
   "$TARGET:$STAGING/"
 ssh "${SSH_OPTS[@]}" "$TARGET" "cd '$STAGING' && sha256sum --check --status \
   '$RELEASE-api.tgz.sha256' '$RELEASE-admin.tgz.sha256' '$RELEASE-client.tgz.sha256'" \

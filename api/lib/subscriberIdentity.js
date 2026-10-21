@@ -88,11 +88,15 @@ async function resolveSubscriberRow(req, columns = ['id'], db = pool) {
   // would be a wildcard across every subscriber stored with a blank email.
   let found = null;
   if (email) {
+    // Never a client already linked to another account: the email is not
+    // verified at sign-up, so matching it alone handed one person's client
+    // record to whoever registered with their address.
     const [[byEmail]] = await db.query(
       `SELECT ${select} FROM subscribers s
         WHERE s.tenant_id=? AND LOWER(TRIM(s.email))=? AND s.deleted_at IS NULL
+          AND (s.firebase_uid IS NULL OR s.firebase_uid = '' OR s.firebase_uid = ?)
         ORDER BY s.created_at DESC LIMIT 1`,
-      [tenantId, email]
+      [tenantId, email, uid]
     );
     found = byEmail || null;
   }

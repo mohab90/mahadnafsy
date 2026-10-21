@@ -362,7 +362,7 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
               pp.amount, pp.currency, pp.payment_method, pp.proof_image, pp.note, pp.status,
               pp.branch_id, pp.payment_intent_id, pp.payment_attempt_id, pp.second_review_required,
               pp.first_reviewer_id, pp.first_review_note, pp.first_reviewed_at, pp.review_due_at, pp.risk_level,
-              o.item_id, o.item_title, o.notes AS order_notes,
+              o.item_id, o.item_title, o.notes AS order_notes, o.amount AS order_amount, o.currency AS order_currency,
               o.customer_name, o.customer_email, o.customer_phone, o.status AS order_status,
                s.lead_id, s.branch, s.assigned_sales_id
          FROM payment_proofs pp
@@ -379,6 +379,20 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
     }
     if (proof.status !== 'PENDING') { await conn.rollback(); transactionStarted = false; return res.status(409).json({ error: 'Already reviewed' }); }
     if (!isPendingOrder(proof.order_status)) { await conn.rollback(); transactionStarted = false; return res.status(409).json({ error: 'Order is not pending' }); }
+    // The receipt pays the order as it stood when it was uploaded. An order
+    // whose amount or currency has changed since (the customer went back to
+    // checkout and switched instalment → cash) is no longer what this receipt
+    // paid: approving it booked the new terms — full access for a first
+    // instalment. The accountant rejects it and the customer uploads against
+    // the order they now hold.
+    if (action === 'approve' && (Math.abs(Number(proof.order_amount) - Number(proof.amount)) > 0.009
+      || String(proof.order_currency || 'EGP') !== String(proof.currency || 'EGP'))) {
+      await conn.rollback(); transactionStarted = false;
+      return res.status(409).json({
+        error: `الطلب اتغيّر بعد رفع الإيصال (الإيصال ${proof.amount} ${proof.currency || 'EGP'} — الطلب دلوقتي ${proof.order_amount} ${proof.order_currency || 'EGP'}). ارفض الإيصال واطلب من العميل يرفعه على طلبه الحالي.`,
+        code: 'ORDER_CHANGED_SINCE_PROOF',
+      });
+    }
 
     const actorId = req.staffRecord?.id || req.user?.uid || req.user?.email || 'system';
     const reviewStep = paymentProofReviewStep({

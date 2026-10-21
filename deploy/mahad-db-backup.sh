@@ -10,7 +10,10 @@
 # an empty one.
 #
 # It also ran weekly (Sunday 03:00), which on a business taking payments every
-# day means losing up to seven days of orders, payments and enrolments.
+# day means losing up to seven days of orders, payments and enrolments. Then
+# nightly — still up to a day of payments lost if the server died before 03:00.
+# It now runs every hour (deploy/cron/mahad-db-backup, installed by
+# deploy-release.sh), each run shipped off-site, so at most an hour is at risk.
 set -u
 set -o pipefail
 
@@ -60,6 +63,12 @@ log "backup ok: $OUT ($(du -h "$OUT" | cut -f1), ${TABLES} tables)"
 # off-site step because that step can now end the run, and a month of failed
 # uploads must not also fill the disk with dumps nobody prunes.
 find "$DIR" -name "${DB}_*.sql.gz" -mtime "+${KEEP_DAYS}" -delete
+# The hourly runs (deploy/cron/mahad-db-backup) are kept for the last
+# HOURLY_KEEP_HOURS; after that only the 03:xx dump of each day stays, so the
+# disk holds 48 hourly copies plus one a day rather than 24 a day for 21 days.
+HOURLY_KEEP_HOURS="${MAHAD_BACKUP_HOURLY_KEEP_HOURS:-48}"
+find "$DIR" -name "${DB}_*.sql.gz" ! -name "${DB}_????????_03????.sql.gz" \
+  -mmin "+$((HOURLY_KEEP_HOURS * 60))" -delete
 
 # ── Off-site copy ────────────────────────────────────────────────────────────
 #

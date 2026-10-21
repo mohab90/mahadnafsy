@@ -46,9 +46,12 @@ async function findSubscriberForIdentity(tenantId, user, db = pool, lock = false
     if (linked) return linked;
   }
   if (email) {
+    // Not a client linked to a different account (see lib/subscriberIdentity.js):
+    // an unverified sign-up email must not export someone else's data.
     const [[byEmail]] = await db.query(
-      `SELECT * FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND email=? LIMIT 1${suffix}`,
-      [tenantId, email]
+      `SELECT * FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND email=?
+          AND (firebase_uid IS NULL OR firebase_uid = '' OR firebase_uid = ?) LIMIT 1${suffix}`,
+      [tenantId, email, uid]
     );
     if (byEmail) return byEmail;
   }

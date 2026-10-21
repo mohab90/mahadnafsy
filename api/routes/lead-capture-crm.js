@@ -41,14 +41,40 @@ function scopedTenantId(req) {
   return req.tenantId || resolveTenantId(req) || DEFAULT_TENANT_ID;
 }
 
+// What a public form may say about itself. Everything else in the body was
+// spread into the lead's crm_json, so an anonymous visitor who knew a client's
+// number could write «stage: paid», «isPaid: true» or a new assignee onto them.
+const text = (value, max) => (typeof value === 'string' || typeof value === 'number' ? String(value).trim().slice(0, max) : '');
+function publicCrmFields(item) {
+  const ids = (list) => (Array.isArray(list) ? list.filter(v => typeof v === 'string' && v.length <= 80).slice(0, 10) : []);
+  const out = {};
+  const interested = ids(item.interestedCourseIds);
+  if (interested.length) out.interestedCourseIds = interested;
+  const enrolled = text(item.enrolledCourseId, 80);
+  if (enrolled) out.enrolledCourseId = enrolled;
+  const leadType = text(item.leadType, 20);
+  if (['course', 'bundle', 'consultation', 'general'].includes(leadType)) out.leadType = leadType;
+  // /enroll: the programmes picked and how the visitor prefers to pay.
+  if (Array.isArray(item.selectedItems)) {
+    const picked = item.selectedItems.slice(0, 10)
+      .map(row => ({ id: text(row?.id, 80), type: text(row?.type, 20), title: text(row?.title, 160) }))
+      .filter(row => row.id && ['course', 'bundle'].includes(row.type));
+    if (picked.length) out.selectedItems = picked;
+  }
+  const payType = text(item.preferredPaymentType, 20);
+  if (['cash', 'installment'].includes(payType)) out.preferredPaymentType = payType;
+  return out;
+}
+
 router.post('/api/registrations', publicLimiter, async (req, res) => {
   let conn;
   let transactionStarted = false;
   let registrationLock = null;
+  let created = null;
   try {
     const item = req.body || {};
-    const name = String(item.name || '').trim().slice(0, 120);
-    const phone = String(item.phone || '').trim().slice(0, 30);
+    const name = text(item.name, 120);
+    const phone = text(item.phone, 30);
     if (!name || !phone) return res.status(400).json({ error: 'name and phone required' });
     const tenantId = scopedTenantId(req);
     const clientContext = await resolveClientContext(req);
@@ -83,7 +109,11 @@ router.post('/api/registrations', publicLimiter, async (req, res) => {
     }
     let code = existing?.client_code || null;
     if (!code) code = await getNextClientCode(conn);
-    const { id: _id, email, source, status, notes, branch: pickedBranch, createdAt, created_at, ...crmData } = item;
+    const email = text(item.email, 160).toLowerCase() || null;
+    const source = text(item.source, 50) || null;
+    const notes = text(item.notes, 1000) || null;
+    const pickedBranch = text(item.branch, 30);
+    const crmData = publicCrmFields(item);
     // The branch the visitor actually chose, when they chose a real one.
     //
     // Every public form on the site offers «فرع الدقي» and «فرع التجمع» in a
@@ -115,10 +145,13 @@ router.post('/api/registrations', publicLimiter, async (req, res) => {
     }
     let previousCrm = {};
     try { previousCrm = existing?.crm_json ? JSON.parse(existing.crm_json) : {}; } catch (_) {}
+    if (Array.isArray(previousCrm.interestedCourseIds) && crmData.interestedCourseIds) {
+      crmData.interestedCourseIds = [...new Set([...previousCrm.interestedCourseIds, ...crmData.interestedCourseIds])].slice(0, 30);
+    }
     const crmPayload = {
       ...previousCrm,
       ...crmData,
-      branch: branchVal,
+      branch: existing ? (previousCrm.branch || branchVal) : branchVal,
       clientCode: code,
       assignedSalesId: salesId,
       assignedSalesName: salesName,
@@ -129,19 +162,26 @@ router.post('/api/registrations', publicLimiter, async (req, res) => {
           assigned_sales_id, assigned_sales_name, crm_json, hidden, created_at)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,NOW())
        ON DUPLICATE KEY UPDATE
-         name=VALUES(name), email=COALESCE(VALUES(email),email), phone=VALUES(phone),
-         source=COALESCE(VALUES(source),source), notes=COALESCE(VALUES(notes),notes),
+         -- A public form submitted again by the same number adds to the lead; it
+         -- never renames it or replaces the email the desk has (anyone can type
+         -- someone else's number). The new submission goes in as a note.
+         name=COALESCE(NULLIF(name,''),VALUES(name)), email=COALESCE(NULLIF(email,''),VALUES(email)),
+         source=COALESCE(source,VALUES(source)),
+         notes=CASE WHEN VALUES(notes) IS NULL THEN notes
+                    WHEN notes IS NULL OR notes='' THEN VALUES(notes)
+                    ELSE CONCAT(notes, '\n', VALUES(notes)) END,
          crm_json=VALUES(crm_json), client_code=COALESCE(client_code,VALUES(client_code)),
          assigned_sales_id=COALESCE(assigned_sales_id,VALUES(assigned_sales_id)),
          assigned_sales_name=COALESCE(assigned_sales_name,VALUES(assigned_sales_name)),
          branch=COALESCE(NULLIF(branch,''),VALUES(branch)), branch_id=COALESCE(branch_id,VALUES(branch_id))`,
-      [id, tenantId, code, name, email || null, phone, source || 'تسجيل اهتمام',
-       'new', notes || null, branchVal, branchIdForBranch(branchVal), salesId, salesName, JSON.stringify(crmPayload)]
+      [id, tenantId, code, name, email, phone, source || 'تسجيل اهتمام',
+       'new', existing ? [`[نموذج الموقع] ${name}${email ? ` · ${email}` : ''}`, notes].filter(Boolean).join(' — ').slice(0, 1000) : notes,
+       branchVal, branchIdForBranch(branchVal), salesId, salesName, JSON.stringify(crmPayload)]
     );
     await logLeadEvent(id, existing ? 'updated' : 'created', existing ? 'Public registration refreshed' : 'Public registration captured', { source: source || 'registration', assignedSalesId: salesId }, tenantId, conn);
     await conn.commit();
     transactionStarted = false;
-    if (!existing) await require('../lib/lifecycle').trigger('lead_created', { name, email, phone, tenantId });
+    if (!existing) created = { name, email, phone, tenantId };
     // The ad's Lead, under the id the page fires its own with (lib/metaCapi.js).
     void metaCapi.trackLead(req, { name, email, phone, leadId: id, contentName: source || 'تسجيل اهتمام' });
     res.json({ ok: true, id, clientCode: code });
@@ -152,11 +192,20 @@ router.post('/api/registrations', publicLimiter, async (req, res) => {
     if (registrationLock && conn) await conn.query('SELECT RELEASE_LOCK(?)', [registrationLock]).catch(() => {});
     if (conn) conn.release();
   }
+  // After the connection is back: queuing the welcome needs one of its own
+  // (see lib/publicLead.js — holding ours while asking for another locked the
+  // pool under a burst of forms).
+  if (created) await require('../lib/lifecycle').trigger('lead_created', created);
 });
 
 router.post('/api/leads-public', publicLimiter, async (req, res) => {
   try {
-    const { name, phone, notes, source, branch } = req.body;
+    const body = req.body || {};
+    const name = text(body.name, 120);
+    const phone = text(body.phone, 30);
+    const notes = text(body.notes, 500);
+    const source = text(body.source, 50);
+    const branch = text(body.branch, 30);
     if (!name || !phone) return res.status(400).json({ error: 'name and phone required' });
     // Same customer submitting again (chatbot re-visit, double-click) must not create a
     // second lead row — match the number and append the note instead.
@@ -620,11 +669,20 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
     if (!paymentLink && (normalizedEmail || subscriber?.id)) {
       const ownerSql = normalizedEmail ? 'customer_email=?' : 'subscriber_id=?';
       const ownerParam = normalizedEmail || subscriber.id;
+      // Never an order the customer has already started paying: one with a
+      // receipt waiting for the accountant, or a card charge opened at Paymob.
+      // Rewriting its amount and plan (instalment → cash) under them meant the
+      // accountant approved a 2,325 receipt against an 8,500 cash order — full
+      // access, nothing owed — and a card charge fixed at the old figure was
+      // booked as the new one. Those keep their terms; this checkout gets its own.
       [[pendingOrder]] = await conn.query(
-        `SELECT id FROM orders
-         WHERE tenant_id=? AND ${ownerSql} AND type=? AND item_id=? AND status='pending'
-           AND created_at>=DATE_SUB(NOW(), INTERVAL 24 HOUR)
-         ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
+        `SELECT o.id FROM orders o
+         WHERE o.tenant_id=? AND o.${ownerSql} AND o.type=? AND o.item_id=? AND o.status='pending'
+           AND o.created_at>=DATE_SUB(NOW(), INTERVAL 24 HOUR)
+           AND o.charge_amount IS NULL
+           AND NOT EXISTS (SELECT 1 FROM payment_proofs pp
+                            WHERE pp.order_id=o.id AND pp.tenant_id=o.tenant_id AND pp.status IN ('PENDING','APPROVED'))
+         ORDER BY o.created_at DESC LIMIT 1 FOR UPDATE`,
         [tenantId, ownerParam, normalizedType.toUpperCase(), itemId || normalizedType]
       );
     }

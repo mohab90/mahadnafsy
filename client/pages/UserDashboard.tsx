@@ -75,14 +75,25 @@ const UserDashboard: React.FC = () => {
   const onlinePayEnabled = usePaymentAvailability();
   const navigate = useNavigate();
 
+  // This customer's own record: by the id the server resolved, else by email.
+  // `s.email.toLowerCase()` threw for a client who signed up by WhatsApp and
+  // has no email — the whole page went to the error screen when their record
+  // loaded.
+  const findMine = () => {
+    if (mySubscriberId) {
+      const byId = subscribers.find(s => s.id === mySubscriberId);
+      if (byId) return byId;
+    }
+    const email = (authUser?.email || '').toLowerCase().trim();
+    return email ? subscribers.find(s => (s.email || '').toLowerCase().trim() === email) : undefined;
+  };
+
   // ── Direct staff check (for non-admin staff whose staffMembers won't be loaded) ──
   const [isStaffMember, setIsStaffMember] = useState<boolean | null>(null);
   const staffCheckDoneRef = useRef(false);
   useEffect(() => {
     if (!remoteReady || staffCheckDoneRef.current) return;
-    const subscriber = subscribers.find(
-      s => s.email.toLowerCase().trim() === (authUser?.email || '').toLowerCase().trim()
-    );
+    const subscriber = findMine();
     if (subscriber) { setIsStaffMember(false); staffCheckDoneRef.current = true; return; }
     if (!authUser?.uid) { setIsStaffMember(false); staffCheckDoneRef.current = true; return; }
     staffCheckDoneRef.current = true;
@@ -141,17 +152,19 @@ const UserDashboard: React.FC = () => {
   useEffect(() => {
     if (!authUser?.uid) return;
     // only for non-admin subscribers
-    const sub = subscribers.find(s => s.email.toLowerCase().trim() === (authUser.email || '').toLowerCase().trim());
+    const sub = findMine();
     if (!sub) return;
     mysqlClient.getMyReferralCode().then(r => {
       setReferralCode(r.code);
       setReferralStats({ uses: r.uses, earnings: r.earnings });
     }).catch(() => {});
-    // One referral-code fetch per signed-in user. subscribers is read only to
-    // confirm this account is a subscriber rather than staff; depending on it
-    // would re-request the code on every subscriber-list refresh.
+    // One referral-code fetch per signed-in customer, once their record is
+    // known. Keyed on the uid alone it ran before the record had loaded on a
+    // direct visit to /my-account, found nothing, and never ran again — the
+    // referral tab stayed empty. subscribers itself is not a dependency: every
+    // list refresh would re-request the code.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUser?.uid]);
+  }, [authUser?.uid, mySubscriberId]);
 
   /* certificate modal — certCode/completedAt come from the real course_completions
      row (LMS-03), never a client-side "all lectures watched" guess */
@@ -227,9 +240,7 @@ const UserDashboard: React.FC = () => {
 
   // Keep nameEn in sync when subscriber loads
   useEffect(() => {
-    const sub = subscribers.find(s =>
-      s.email.toLowerCase().trim() === (authUser?.email || '').toLowerCase().trim()
-    );
+    const sub = findMine();
     if (sub?.nameEn) setNewNameEn(sub.nameEn);
   // Deliberately keyed on subscribers alone: this seeds the English-name field
   // when the subscriber record arrives. authUser is only read to find the row,

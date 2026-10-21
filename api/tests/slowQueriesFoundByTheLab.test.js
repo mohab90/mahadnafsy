@@ -55,7 +55,9 @@ test('the lookups a client makes for their own data are indexed and split, not O
   assert.ok(!/LOWER\(TRIM\(o\.customer_email\)\)/.test(route), 'a function around the column reads every order');
   const privacy = read('api/lib/privacyService.js');
   const find = privacy.slice(privacy.indexOf('async function findSubscriberForIdentity'), privacy.indexOf('async function buildSubscriberExport'));
-  assert.ok(find.includes('AND firebase_uid=? LIMIT 1') && find.includes('AND email=? LIMIT 1'));
+  // The email lookup stays on the bare indexed column; it only also refuses a
+  // client already linked to another account (an unverified sign-up email).
+  assert.ok(find.includes('AND firebase_uid=? LIMIT 1') && /AND email=\?\s+AND \(firebase_uid IS NULL/.test(find));
   assert.ok(!/LOWER\(TRIM\(email\)\)/.test(find), 'uid OR a wrapped email used neither index');
 });
 

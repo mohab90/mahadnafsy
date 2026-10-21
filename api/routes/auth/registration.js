@@ -26,6 +26,8 @@ const {
   isPlausibleNumber,
 } = require('./_shared');
 
+const { toIdentity } = require('../../lib/phoneNumber');
+
 const router = Router();
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -41,6 +43,10 @@ const router = Router();
 // 27 of 32 signups in two days ended here (29–30 Sep 2026): the number already
 // had an account — a client from the sheets, or someone signing up twice. «رقم
 // الهاتف مستخدم بالفعل» told them that and nothing else; this says how to get in.
+// Two spellings of one number: 01012345678 and +201012345678, or 0501234567 and 966501234567.
+const phoneKey = (value) => toIdentity(value).replace(/^966(?=5\d{8}$)/, '');
+const samePhone = (a, b) => Boolean(phoneKey(a)) && phoneKey(a) === phoneKey(b);
+
 const PHONE_TAKEN_MESSAGE = 'الرقم ده عليه حساب عندنا بالفعل. ادخل من «الدخول برقم الواتساب» وهيوصلك كود على نفس الرقم، ومن غير كلمة مرور.';
 
 const validateSignup = validateBody({
@@ -83,6 +89,22 @@ async function signup(req, res) {
       }
       const [existing] = await conn.execute('SELECT id FROM users WHERE tenant_id=? AND email = ?', [tenantId, normalizedEmail]);
       if (existing.length > 0) return res.status(409).json({ error: 'Email already registered' });
+      // A client's email is not a key anyone can claim. The email is not
+      // verified here, and the account is matched to its client by email
+      // (lib/subscriberIdentity.js) — so signing up with a client's address and
+      // one's own number opened that client's paid lectures, payments and data
+      // export, and sent their password-reset code to the newcomer's WhatsApp.
+      // The client themself signs up with the number on their file.
+      const [[client]] = await conn.execute(
+        'SELECT phone FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? AND deleted_at IS NULL LIMIT 1',
+        [tenantId, normalizedEmail]
+      );
+      if (client && !samePhone(client.phone, phone)) {
+        return res.status(409).json({
+          error: 'البريد ده مسجّل لعميل عندنا برقم تاني. ادخل برقم الواتساب المسجّل عندنا، أو كلّم خدمة العملاء.',
+          code: 'EMAIL_BELONGS_TO_CLIENT',
+        });
+      }
     }
     // Phone is the required identity now, so a number already claimed by
     // another account must reject the signup rather than silently proceeding

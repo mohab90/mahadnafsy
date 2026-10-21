@@ -242,6 +242,17 @@ router.post('/api/orders/reserve', publicLimiter, async (req, res) => {
     if (!['course', 'bundle', 'standalone_payment', 'standalone'].includes(kind)) {
       return res.status(400).json({ error: 'نوع الطلب ده بيتحجز من صفحته', code: 'ORDER_TYPE_NOT_RESERVABLE' });
     }
+    // An amount is a positive figure in a currency the site prices in. A
+    // standalone order of -500 was stored as it came, and an unknown currency
+    // reached the INSERT and failed there with a 500.
+    const figure = Number(amount);
+    if (!Number.isFinite(figure) || figure <= 0 || figure > 1000000) {
+      return res.status(400).json({ error: 'المبلغ غير صحيح', code: 'INVALID_AMOUNT' });
+    }
+    const orderCurrency = String(currency || 'EGP').trim().toUpperCase();
+    if (!['EGP', 'SAR', 'USD'].includes(orderCurrency)) {
+      return res.status(400).json({ error: 'العملة غير مدعومة', code: 'INVALID_CURRENCY' });
+    }
 
     // The price comes from the catalogue, not from the caller. This endpoint is
     // public — guests check out — and the amount used to be written straight
@@ -256,9 +267,18 @@ router.post('/api/orders/reserve', publicLimiter, async (req, res) => {
     const catalogPrice = await resolveCatalogPrice(pool, {
       type: orderTypeForPrice,
       itemId,
-      currency: currency || 'EGP',
+      currency: orderCurrency,
       tenantId: req.tenantId || DEFAULT_TENANT_ID,
     });
+    // A course or path with no price in this currency is not for sale in it.
+    // Taking that as «no check» let a course with no SAR or USD price be
+    // ordered for 1 SAR — and a paid order grants the course.
+    if (catalogPrice === null && (kind === 'course' || kind === 'bundle')) {
+      return res.status(409).json({
+        error: 'السعر غير متاح بالعملة دي — حدّث الصفحة أو تواصل معنا',
+        code: 'PRICE_UNAVAILABLE',
+      });
+    }
     if (catalogPrice !== null && !priceMatches(amount, catalogPrice)) {
       logger.warn('[orders/reserve] price mismatch', {
         orderId, itemId, submitted: Number(amount), expected: catalogPrice,
@@ -301,7 +321,7 @@ router.post('/api/orders/reserve', publicLimiter, async (req, res) => {
          notes      = IF(status='paid', notes,      VALUES(notes)),
          branch_id  = IF(status='paid', branch_id,  VALUES(branch_id)),
          status     = IF(status='paid', status,     'pending')`,
-      [orderId, itemId||'', itemTitle||'', orderType, amount, currency||'EGP',
+      [orderId, itemId||'', itemTitle||'', orderType, figure, orderCurrency,
        paymentMethod||'', customerName||'', customerEmail||'', customerPhone||'', extra, req.tenantId || DEFAULT_TENANT_ID, orderBranchId]
     );
     await conn.commit();

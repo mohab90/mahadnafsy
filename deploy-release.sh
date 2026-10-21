@@ -183,6 +183,14 @@ prune_archives() {
              "/staging/$rel-api.tgz.sha256" "/staging/$rel-admin.tgz.sha256" "/staging/$rel-client.tgz.sha256"
   done
   echo "  /staging now holds $(du -sh /staging 2>/dev/null | cut -f1)"
+  # The production sites' old assets are pruned after the production half
+  # (below); the staging sites never were, and kept every release's chunks.
+  for site in /var/www/staging.mahadnafsy.com /var/www/admin-staging.mahadnafsy.com; do
+    [ -d "$site/assets" ] || continue
+    before=$(du -sm "$site/assets" 2>/dev/null | cut -f1)
+    find "$site/assets" -type f -mtime +7 -delete 2>/dev/null
+    echo "  $site/assets: ${before}MB → $(du -sm "$site/assets" 2>/dev/null | cut -f1)MB"
+  done
 }
 
 if [ "$TARGET" != production ]; then
@@ -257,6 +265,14 @@ if [ -s /staging/mahad-db-backup.sh ] && bash -n /staging/mahad-db-backup.sh; th
   [ -f /usr/local/bin/mahad-db-backup.sh ] && cp -p /usr/local/bin/mahad-db-backup.sh /usr/local/bin/mahad-db-backup.sh.prev
   install -m 0755 /staging/mahad-db-backup.sh /usr/local/bin/mahad-db-backup.sh
   echo "  installed /usr/local/bin/mahad-db-backup.sh"
+fi
+if [ -s /staging/mahad-db-backup ] && [ -d /etc/cron.d ]; then
+  install -m 0644 /staging/mahad-db-backup /etc/cron.d/mahad-db-backup
+  echo "  installed /etc/cron.d/mahad-db-backup (hourly verified backup, shipped off-site)"
+  # A schedule made by hand before this one would now run the dump twice.
+  if crontab -l 2>/dev/null | grep -q 'mahad-db-backup'; then
+    echo "  NOTE: root's own crontab also runs mahad-db-backup — remove that line (crontab -e); /etc/cron.d/mahad-db-backup replaces it"
+  fi
 fi
 if [ -s /staging/mahad-restore-rehearsal ] && [ -d /etc/cron.d ]; then
   install -m 0644 /staging/mahad-restore-rehearsal /etc/cron.d/mahad-restore-rehearsal
