@@ -244,7 +244,7 @@ export function CollectionSettingsModal({ staffMembers, subscribers, notify, onC
               <label className="text-sm font-bold text-gray-700">الداتا تنزل في
                 <select value={kind} onChange={e => setKind(e.target.value as 'old_local' | 'old_intl')} className={`${field} mt-1 block`}>
                   <option value="old_local">🏠 محلي قديم</option>
-                  <option value="old_intl">🌐 دولي قديم</option>
+                  <option value="old_intl">🇸🇦 سعودي قديم</option>
                 </select>
               </label>
             </div>

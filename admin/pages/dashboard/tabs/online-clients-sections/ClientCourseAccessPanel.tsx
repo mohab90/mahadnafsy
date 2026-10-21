@@ -9,7 +9,7 @@ import { CAIRO_TIME_ZONE, cairoDateOnly } from '../../../../../shared/cairoDate'
 import { useSiteData } from '../../../../context/SiteDataContext';
 import { hasPermission, type PermissionKey, type RoleKey } from '../../../../constants/permissions';
 import type { SubscriberItem } from '../../../../types';
-import { isOnlineClient } from '../onlineClientsUtils';
+import { clientCurrency, isOnlineClient } from '../onlineClientsUtils';
 import { AddRefundModal } from '../financial/AddRefundModal';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -41,6 +41,8 @@ type CourseAccess = {
 };
 
 /** «للمديرين» — the same roles api/lib/clientCourseActions.js admits. */
+const CURRENCY_NAMES: Record<string, string> = { EGP: 'جنيه', SAR: 'ريال', USD: 'دولار' };
+
 const MANAGER_ROLES = new Set(['admin', 'manager', 'online_manager', 'daqqi_manager', 'tagamoa_manager', 'sales_collection_manager']);
 
 const fmt = (value: string | null) =>
@@ -84,6 +86,9 @@ export const ClientCourseAccessPanel: React.FC<{ subscriber: SubscriberItem; not
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [refundItem, setRefundItem] = useState<CourseAccess | null>(null);
   const [transfer, setTransfer] = useState<{ head: CourseAccess; to: string; price: string; reason: string } | null>(null);
+  const [currencyTo, setCurrencyTo] = useState('');
+  const [convertNumbers, setConvertNumbers] = useState(true);
+  const [currencyBusy, setCurrencyBusy] = useState(false);
   const base = `/api/admin/subscribers/${encodeURIComponent(subscriberId)}`;
 
   // «عميل الدقي ليه بيظهرله تفاصيل الكورسات … اصلا هو مش اونلاين»: a client in
@@ -167,6 +172,39 @@ export const ClientCourseAccessPanel: React.FC<{ subscriber: SubscriberItem; not
   // client record, not from this panel.
   const refreshClient = () => { if (!onChanged) void reloadSubscribers(); };
 
+  // «اقدر اغير العمله بتاعت العميل مع تغيير الارقام»: the server says what would change first (dryRun), the person
+  // confirms, then it moves the client to that market and converts the price and the money paid before the system.
+  const changeCurrency = async () => {
+    if (!currencyTo) return;
+    setCurrencyBusy(true);
+    try {
+      const body = { currency: currencyTo, convert: convertNumbers };
+      const preview = await api(`${base}/currency`, 'POST', { ...body, dryRun: true }) as {
+        changes: { title: string; price: { was: number; now: number }; priorPaid: { was: number; now: number } }[]; rate: number | null;
+      };
+      const lines = preview.changes.filter(change => change.price.was || change.priorPaid.was).map(change =>
+        `• ${change.title}: السعر ${num(change.price.was)} ← ${num(change.price.now)}`
+        + (change.priorPaid.was ? `، مدفوع قبل السيستم ${num(change.priorPaid.was)} ← ${num(change.priorPaid.now)}` : ''));
+      const sure = await confirmDialog({
+        title: `تغيير عملة العميل إلى ${CURRENCY_NAMES[currencyTo]}`,
+        message: preview.rate
+          ? [`الأرقام هتتحول بسعر صرف ${preview.rate.toFixed(4)}:`, ...(lines.length ? lines : ['مفيش أسعار متسجلة للعميل.']),
+            '', 'المتبقي بيتحسب لوحده من الأرقام الجديدة.'].join('\n')
+          : 'العملة هتتغير والأرقام هتفضل زي ما هي من غير تحويل.',
+        confirmLabel: 'غيّر العملة',
+      });
+      if (!sure) return;
+      await api(`${base}/currency`, 'POST', body);
+      notify('success', `اتغيرت عملة العميل إلى ${CURRENCY_NAMES[currencyTo]}`);
+      setCurrencyTo('');
+      await load();
+      onChanged?.();
+      refreshClient();
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر تغيير العملة');
+    } finally { setCurrencyBusy(false); }
+  };
+
   const submitTransfer = async () => {
     if (!transfer?.to) return;
     const { head, to, price, reason } = transfer;
@@ -176,6 +214,27 @@ export const ClientCourseAccessPanel: React.FC<{ subscriber: SubscriberItem; not
     setTransfer(null);
     refreshClient();
   };
+
+  const currentCurrency = clientCurrency(subscriber);
+  const currencyBar = !inBranch && role !== 'collection' ? (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs" dir="rtl">
+      <span className="font-bold text-gray-700">عملة العميل: <span className="text-indigo-700">{CURRENCY_NAMES[currentCurrency]}</span></span>
+      <select value={currencyTo} onChange={event => setCurrencyTo(event.target.value)} className="border border-gray-200 rounded-lg px-2 py-1 text-xs">
+        <option value="">غيّر إلى...</option>
+        {Object.entries(CURRENCY_NAMES).filter(([code]) => code !== currentCurrency).map(([code, name]) => (
+          <option key={code} value={code}>{name}</option>
+        ))}
+      </select>
+      <label className="flex items-center gap-1 text-gray-600">
+        <input type="checkbox" checked={convertNumbers} onChange={event => setConvertNumbers(event.target.checked)} />
+        حوّل السعر والمدفوع بسعر الصرف
+      </label>
+      <button disabled={!currencyTo || currencyBusy} onClick={() => void changeCurrency()}
+        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition disabled:opacity-40 bg-indigo-600 text-white hover:bg-indigo-700">
+        {currencyBusy ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />} غيّر العملة
+      </button>
+    </div>
+  ) : null;
 
   if (loading) {
     return (
@@ -187,8 +246,11 @@ export const ClientCourseAccessPanel: React.FC<{ subscriber: SubscriberItem; not
 
   if (!rows.length) {
     return (
-      <div className="text-center py-10 text-gray-400 text-sm border border-dashed border-gray-200 rounded-2xl" dir="rtl">
-        العميل ده مش مشترك في أي كورس
+      <div className="space-y-3" dir="rtl">
+        {currencyBar}
+        <div className="text-center py-10 text-gray-400 text-sm border border-dashed border-gray-200 rounded-2xl">
+          العميل ده مش مشترك في أي كورس
+        </div>
       </div>
     );
   }
@@ -204,6 +266,8 @@ export const ClientCourseAccessPanel: React.FC<{ subscriber: SubscriberItem; not
         <CalendarClock size={16} className="text-indigo-600" />
         كورسات العميل — السعر والمدفوع والصلاحية
       </div>
+
+      {currencyBar}
 
       {refundItem && (
         <AddRefundModal subscriber={subscriber} item={refundItem.item} itemTitle={refundItem.itemTitle} notify={notify}

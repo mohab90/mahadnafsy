@@ -44,6 +44,7 @@ const ACTS = [
   [/^subscribers\/[^/]+\/course-access\//, () => 'تعديل صلاحية كورس لعميل'],
   [/^subscribers\/[^/]+\/course-access/, () => 'قفل أو فتح كورس لعميل'],
   [/^subscribers\/[^/]+\/item-money/, () => 'تعديل سعر ومدفوع كورس لعميل'],
+  [/^subscribers\/[^/]+\/currency/, () => 'تغيير عملة عميل'],
   [/^subscribers\/[^/]+\/communications/, () => 'تسجيل تواصل مع عميل'],
   [/^subscribers(\/[^/]+)?$/, m => ({ POST: 'حفظ بيانات عميل', PUT: 'تعديل بيانات عميل', PATCH: 'تعديل بيانات عميل', DELETE: 'أرشفة عميل' }[m])],
   [/^bulk-assign-collection/, () => 'توزيع عملاء على التحصيل'],

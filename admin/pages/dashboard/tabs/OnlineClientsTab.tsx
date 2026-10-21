@@ -682,7 +682,7 @@ export default function OnlineClientsTab({
                     notify={notify}
                   />
                   {/* Table (hidden when old_data tab is active) */}
-                  {/* ── Distribution panel for محلي قديم / دولي قديم ── */}
+                  {/* ── Distribution panel for محلي قديم / سعودي قديم ── */}
                   {((collOnlineViewTab === 'old_local' || collOnlineViewTab === 'old_intl') || (collOnlineViewTab === 'old_data' && isDaqqiClientsTab)) && (isAdmin || isDaqqiManager) && (!paged || isDaqqiClientsTab) && (
                     <div className="mb-4 bg-gradient-to-l from-indigo-50 to-violet-50 border border-indigo-200 rounded-2xl p-4 space-y-3">
                       <div className="flex items-center gap-2">
