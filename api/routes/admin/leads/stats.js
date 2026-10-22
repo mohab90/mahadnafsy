@@ -50,7 +50,7 @@ router.get('/api/admin/leads/stats', requireAuth, requireAdminOrStaff, requirePe
       // Six independent reads of the same scoped set, issued together: they
       // took 3.3 s one after another at 500k leads and take the slowest one's
       // time side by side.
-      const [[rows], [ownerRows], [commRows], [sourceRows], [trendRows], [[todayRow]], [holderRows]] = await Promise.all([
+      const [[rows], [ownerRows], [commRows], [sourceRows], [trendRows], [[todayRow]], [holderRows], [[bandRow]]] = await Promise.all([
         pool.query(
           `SELECT l.status AS status, COUNT(*) AS cnt,
                   SUM(CASE WHEN l.assigned_sales_id IS NULL OR l.assigned_sales_id = '' THEN 1 ELSE 0 END) AS unassigned_cnt,
@@ -107,6 +107,16 @@ router.get('/api/admin/leads/stats', requireAuth, requireAdminOrStaff, requirePe
             WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
               AND UPPER(st.role) = 'COLLECTION' AND st.is_active = 1 AND st.deleted_at IS NULL
             GROUP BY st.id, st.name ORDER BY st.name`,
+          params,
+        ),
+        // The open leads by score band, for «توزيع السكور» on the performance page — counted in the browser over the
+        // page of leads it held. leads.score is the formula's own value (lib/leadScoreRefresh.js).
+        pool.query(
+          `SELECT SUM(COALESCE(l.score, 0) >= 70) AS high,
+                  SUM(COALESCE(l.score, 0) >= 40 AND COALESCE(l.score, 0) < 70) AS mid,
+                  SUM(COALESCE(l.score, 0) < 40) AS low
+             FROM leads l
+            WHERE l.tenant_id = ? AND ${FOLLOW_UP_OPEN}${scopeClause}`,
           params,
         ),
       ]);
@@ -221,6 +231,7 @@ router.get('/api/admin/leads/stats', requireAuth, requireAdminOrStaff, requirePe
         totalCommunications,
         createdToday: Number(todayRow?.cnt || 0),
         collectionHolders: holderRows.map(row => ({ id: row.id, name: row.name, count: Number(row.cnt) })),
+        scoreBands: { high: Number(bandRow?.high || 0), mid: Number(bandRow?.mid || 0), low: Number(bandRow?.low || 0) },
       };
     });
     res.json(payload);

@@ -34,7 +34,6 @@ interface LeadActionsParams {
   fetchSalesData?: () => void | Promise<void>;
   setActiveDashboardTab?: (tab: TabKey) => void;
   salesReps: StaffMember[];
-  leads: LeadItem[];
   /** Every lead under the filters on screen, read from the server a page at a time. */
   fetchVisibleLeads: () => Promise<LeadItem[]>;
   bundles: Bundle[];
@@ -74,7 +73,7 @@ export function useLeadActions(params: LeadActionsParams) {
     notify, updateLead, addLead, reloadLeads, reloadSubscribers,
     bulkRedistributeLeads,
     recordSubscriberPayment, fetchSalesData, setActiveDashboardTab,
-    salesReps, leads, fetchVisibleLeads, bundles,
+    salesReps, fetchVisibleLeads, bundles,
     courses, branchLabelMap, currentStaff, isAdmin, isSalesOnly,
     statusDebounceRef, leadPayRow, setLeadPayRow, setLeadPayDraft,
     convertLeadModal, setConvertLeadModal, setSelectedId,
@@ -116,13 +115,14 @@ export function useLeadActions(params: LeadActionsParams) {
     }
   };
 
+  // The server finds the leads with no branch itself and says how many it fixed; the check that ran first here
+  // looked only at the leads the browser held.
   const handleMigrateBranches = async () => {
-    const missing = leads.filter(lead => !lead.hidden && !lead.branch);
-    if (!missing.length) return notify('info', 'جميع العملاء لديهم فرع مُعيَّن بالفعل');
     setMigratingBranches(true);
     try {
       const result = await mysqlAdmin.migrateLeadBranches();
       if (result.updated) await reloadLeads();
+      if (!result.updated && !result.unresolved) return notify('info', 'جميع العملاء لديهم فرع مُعيَّن بالفعل');
       notify(
         result.updated ? 'success' : 'info',
         result.updated

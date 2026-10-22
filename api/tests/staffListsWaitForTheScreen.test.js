@@ -35,14 +35,14 @@ test('the screens that page from the server are named, and an employee\'s panel 
     for (const tab of ['staff_home', 'staff_settings', 'my_hr', 'leads', 'online_clients', 'orders', 'daqqi_schedule', 'daqqi_clients']) assert.equal(pages(tab), true, tab);
     // The screens that read the context's lists keep their reload after a write.
     for (const tab of ['client', 'refund_requests', 'financial']) assert.equal(pages(tab), false, tab);
-    assert.equal(paged('online_clients', true, false), true);
-    assert.equal(paged('online_clients', false, true), true, 'the online manager');
-    assert.equal(paged('online_clients', false, false), false, 'the administration keeps the whole list');
-    assert.equal(paged('daqqi_clients', false, false), true, '«عملاء الدقي» pages from the server for the administration too');
+    // Both client screens page from the server for every account — the administration's online screen held the
+    // whole client table with its payments (6.3 MB on the lab) until 21 Oct 2026.
+    assert.equal(paged('online_clients'), true);
+    assert.equal(paged('daqqi_clients'), true, '«عملاء الدقي» pages from the server for the administration too');
     assert.deepEqual([...skips('daqqi_clients')], []);
-    assert.equal(paged('leads', true, false), false);
+    assert.equal(paged('leads'), false);
     assert.deepEqual([...skips('orders')], ['orders', 'subscribers']);
-    assert.deepEqual([...skips('online_clients')], ['subscribers']);
+    assert.deepEqual([...skips('online_clients')], [], 'no screen of it asks for the clients');
     assert.deepEqual([...skips('financial')], []);
   }
   // What is left of the hook is the Dokki rounds, the team and the content.

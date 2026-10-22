@@ -38,8 +38,8 @@ test('the pipeline is four calm cards across, in order, not a column per status'
   assert.ok(leads.includes("useServerLeadTable(subTab === 'table' || subTab === 'pipeline'"));
   assert.ok(leads.includes('<LeadCardsGrid'));
   assert.ok(!fs.existsSync(path.join(__dirname, '..', '..', tabs, 'leads', 'LeadPipelineBoard.tsx')), 'the per-status board is gone');
-  // The panel opens for a lead that is not among the 500 held in memory, and the contact log is a dialog.
-  assert.ok(leads.includes('const openLead = activeLead ?? (selectedId && pickedLead?.id === selectedId ? pickedLead : null)'));
+  // The panel opens the lead the card or row was drawn from (no leads are held in memory), and the contact log is a dialog.
+  assert.ok(leads.includes('const openLead = selectedId && pickedLead?.id === selectedId ? pickedLead : null'));
   assert.ok(read(`${tabs}/leads/QuickLogContactPanel.tsx`).includes('<Modal open onClose={() => setShowAddComm(false)}'));
 });
 

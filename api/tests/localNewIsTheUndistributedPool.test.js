@@ -80,11 +80,11 @@ test('the server reads the reasons in the same order the screen does', () => {
 
 test('the badge, the counter and the one list all read that predicate', () => {
   const tab = read('admin/pages/dashboard/tabs/LeadsTab.tsx');
-  assert.match(tab, /const unassignedLeads = useMemo\(\(\) => leads\.filter\(lead => isLocalNewLead\(lead\) && poolReasonOf\(lead\) === 'waiting'\), \[leads\]\);/);
   // The badge and the counter are the server's count of that same pool
   // (api/lib/leadPoolFilter.js, checked against this predicate by
-  // leadPoolParity.integration.test.js); what is loaded is only the fallback.
-  assert.match(tab, /const unassignedCount = poolView === 'localNew' && leadPool\.breakdown \? leadPool\.breakdown\.waiting : \(serverLocalNewCount \?\? unassignedLeads\.length\);/);
+  // leadPoolParity.integration.test.js). The screen holds no leads, so there is
+  // no browser-side count to fall back on — zero until the server answers.
+  assert.match(tab, /const unassignedCount = poolView === 'localNew' && leadPool\.breakdown \? leadPool\.breakdown\.waiting : \(serverLocalNewCount \?\? 0\);/);
   // The badge on every other tab is the waiting count too.
   assert.match(read('admin/pages/dashboard/tabs/leads/useLeadPool.ts'), /view=localNew&reason=waiting&countOnly=1/);
   assert.match(tab, /unassignedCount=\{unassignedCount\}/);

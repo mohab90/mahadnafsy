@@ -13,7 +13,6 @@ export type ReminderLead = LeadItem & {
 };
 
 interface UseLeadRemindersDataArgs {
-  leads: LeadItem[];
   reminderStaffFilter: string;
   snoozeIds: Set<string>;
   /** After «بكرة» or «تم»: the lists are asked for again. */
@@ -31,9 +30,9 @@ interface UseLeadRemindersDataArgs {
  * and the panel renders 2 of them: this screen was pulling the whole table down
  * the wire to show two names.
  *
- * The array path stays as the fallback for before the request resolves and for
- * if it fails. Both paths apply the same three conditions, so whichever one runs
- * the panel shows the same leads.
+ * Until the request answers the lists are empty (the page says it is refreshing): the
+ * fallback that filtered the leads held in the browser counted only the page of them
+ * the screen had loaded, and the screen holds none now.
  */
 
 /**
@@ -43,7 +42,6 @@ interface UseLeadRemindersDataArgs {
 const UNTOUCHED_LIMIT = 50;
 
 export function useLeadRemindersData({
-  leads,
   reminderStaffFilter,
   snoozeIds,
   onChanged,
@@ -56,7 +54,7 @@ export function useLeadRemindersData({
   const data = useMemo(() => {
     // The server already applied hidden/status/window; re-applying them to its
     // rows costs nothing and keeps one definition of a reminder in this file.
-    const source = insights?.reminders ?? leads;
+    const source = insights?.reminders ?? [];
     const remindersAll: ReminderLead[] = source.filter(lead =>
       !lead.hidden && lead.nextFollowUpDate && isOpenLeadStatus(lead.status)
     ).map(lead => ({
@@ -88,16 +86,9 @@ export function useLeadRemindersData({
     // Oldest first, because the lead that has waited longest is the one going
     // cold. Capped, because a list of eleven thousand is the thing the rep is
     // already ignoring; a day's work is what belongs on a day's screen.
-    // The server queues both when it can (crm-insights); the array is the
-    // fallback, and only ever as complete as what is loaded.
-    const untouched: ReminderLead[] = (insights?.untouched ?? leads
-      .filter(lead =>
-        !lead.hidden
-        && lead.status === 'new'
-        && !lead.nextFollowUpDate
-        && !(lead.communications || []).length)
-      .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')))
-      .slice(0, UNTOUCHED_LIMIT))
+    // The server queues it (crm-insights), oldest first, capped at a day's work.
+    const untouched: ReminderLead[] = (insights?.untouched ?? [])
+      .slice(0, UNTOUCHED_LIMIT)
       .map(lead => ({ ...lead, daysOverdue: 0, isToday: false, isUpcoming: false }));
 
 
@@ -112,7 +103,7 @@ export function useLeadRemindersData({
     // almost nobody does. Those that carry a date lead, oldest first; the rest
     // follow by age, so a promise made three weeks ago cannot hide behind one
     // made this morning.
-    const promised: ReminderLead[] = (insights?.promised ?? leads)
+    const promised: ReminderLead[] = (insights?.promised ?? [])
       .filter(lead => !lead.hidden && lead.status === 'interested_booking')
       .map(lead => ({
         ...lead,
@@ -139,7 +130,7 @@ export function useLeadRemindersData({
       todayFiltered: filterByStaff(today).filter(lead => !snoozeIds.has(lead.id)),
       upcomingFiltered: filterByStaff(upcoming).filter(lead => !snoozeIds.has(lead.id)),
     };
-  }, [insights, leads, next7, reminderStaffFilter, snoozeIds, todayStr]);
+  }, [insights, next7, reminderStaffFilter, snoozeIds, todayStr]);
 
   // Each its own small request. Both re-sent the whole lead, and the date only
   // ever reached crm_json, so a lead pushed to tomorrow or marked done was back

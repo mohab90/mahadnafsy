@@ -114,9 +114,11 @@ test('the clients screen reads the context\'s rounds and clients, not the copies
   assert.match(own, /setStaffScopedRounds\?\.\(parsedRounds\);/);
   const growth = read('admin/pages/dashboard/DashboardGrowthOpsTabs.tsx');
   assert.doesNotMatch(growth, /roundsOverride=\{isNonAdminStaff/);
-  // The clients are the context's too: the desk keeps no copy of its own that changes on the next poll.
+  // The clients are the server's page, asked again after every write (useStaffClientsPage listens for
+  // CRM_CHANGED_EVENT): the desk keeps no copy of its own that changes on the next poll, and no list at all.
   const clients = read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx');
-  assert.match(clients, /const masterList = paged \? \[\] : subscribers;/);
+  assert.match(clients, /const masterList: SubscriberItem\[\] = \[\];/);
+  assert.match(clients, /useStaffClientsPage\(\{ enabled: paged,/);
   assert.doesNotMatch(clients, /salesOwnSubscribers/);
 });
 

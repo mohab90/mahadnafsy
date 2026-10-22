@@ -112,7 +112,10 @@ test('a screen nobody has read through gets every list, as it had before', () =>
   assert.deepEqual([...listsForTab('no_such_screen')], [...SITE_LISTS]);
   assert.deepEqual([...listsForTab('overview')], []);
   // Read through since: the heaviest screens open on their own lists.
-  assert.deepEqual([...listsForTab('online_clients')].sort(), ['daqqiRounds', 'subscribers']);
+  // The client screens and the CRM page from the server for every account, the administration included: neither
+  // asks for the clients or the leads any more (staffListTabs.ts, LeadsTab.tsx).
+  assert.deepEqual([...listsForTab('online_clients')].sort(), ['daqqiRounds']);
+  assert.deepEqual([...listsForTab('leads')], []);
   assert.deepEqual([...listsForTab('team_inbox')], []);
   for (const tab of Object.keys(tabSiteLists)) {
     for (const list of tabSiteLists[tab]) assert.ok(SITE_LISTS.includes(list), `${tab}: no list called ${list}`);

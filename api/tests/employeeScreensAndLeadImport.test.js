@@ -125,15 +125,12 @@ test('the «محلي جديد» tab shows each kind as a chip, waiting first', (
   assert.match(tab, /useLeadPool\(poolView, poolView === 'localNew' \? poolReason : null\)/);
 });
 
-test('while the full leads table is still arriving the pools say so, against the server total', () => {
+test('the leads screen holds no table, so it waits for none and counts no partial one', () => {
+  // The pools said «جاري تحميل كل الليدز… N من M» while the whole table arrived. The screen holds no lead list now:
+  // every pool is the server's (GET /admin/leads/pool), so there is no partial array to warn about.
   const tab = read('admin/pages/dashboard/tabs/LeadsTab.tsx');
-  assert.match(tab, /leads\.length < leadStats\.total && fullLeadsState !== 'ready'/);
-  // loadFullCrmData settles both tables, so it can never report a failure; the
-  // leads pull itself is what the banner follows.
-  assert.match(tab, /loadFullLeads\(\)\.then\(/);
-  // The trigger itself stays exactly as leadsTableHoldsTheTableItShows pins it.
-  assert.match(tab, /if \(fullLeadArraySubTabs\.has\(subTab\)\) void loadFullCrmData\(\);/);
-  assert.match(tab, /setFullLeadsAttempt\(count => count \+ 1\)/);
+  assert.doesNotMatch(tab, /loadFullLeads|loadFullCrmData|fullLeadsState|fullLeadArraySubTabs/);
+  assert.match(tab, /useLeadPool\(poolView, poolView === 'localNew' \? poolReason : null\)/);
 });
 
 test('a read-only script reports the same buckets from the database', () => {

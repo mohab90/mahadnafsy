@@ -574,8 +574,12 @@ export const mysqlAdmin = {
   // used to add up the 500 newest orders in the browser.
   getOverviewRevenue:      (): Promise<{ totalEgp: number; monthEgp: number; todayEgp: number; payments: number; asOf: string }> =>
     apiFetch(`/admin/overview/revenue`, {}, A),
-  getLeadStats:            (): Promise<{ total: number; byStatus: Record<string, number>; assigned: number; unassigned: number; totalDealValue: number; byOwner: Record<string, { total: number; converted: number; avgScore: number; comms: Record<string, number> }>; bySource: Record<string, number>; byMonth: Record<string, { total: number; converted: number }>; avgScore: number; totalCommunications: number; createdToday: number; collectionHolders?: Array<{ id: string; name: string; count: number }> }> =>
+  getLeadStats:            (): Promise<{ total: number; byStatus: Record<string, number>; assigned: number; unassigned: number; totalDealValue: number; byOwner: Record<string, { total: number; converted: number; avgScore: number; comms: Record<string, number> }>; bySource: Record<string, number>; byMonth: Record<string, { total: number; converted: number }>; avgScore: number; totalCommunications: number; createdToday: number; collectionHolders?: Array<{ id: string; name: string; count: number }>; scoreBands?: { high: number; mid: number; low: number } }> =>
     apiFetch(`/admin/leads/stats`, {}, A),
+  // Each rep's clients' collected payments in a month, in EGP — what «أداء المبيعات» used to sum out of the clients
+  // it had loaded with their payments.
+  getRepRevenue:           (month: string): Promise<{ month: string; byStaff: Record<string, number> }> =>
+    apiFetch(`/admin/leads/rep-revenue?month=${encodeURIComponent(month)}`, {}, A),
   // The header bell's count: open leads followed up today or overdue, in the
   // caller's own scope — instead of the 500 newest leads to count them from.
   getDueFollowups:         (): Promise<{ due: number; overdue: number; today: number }> =>

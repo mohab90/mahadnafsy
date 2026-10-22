@@ -679,7 +679,7 @@ const Dashboard: React.FC = () => {
   // -- Client DB base data: raw mapping + dedup (expensive, only changes when data changes) -
 
   // -- Client DB filtered+sorted list (only recomputes when filter state changes) -
-  const clientsArePaged = staffClientsArePaged(activeTab, isNonAdminStaff, isOnlineManager);
+  const clientsArePaged = staffClientsArePaged(activeTab);
   useEffect(() => {
     if (fullCrmDataTabs.has(activeTab)) void loadFullCrmData();
     else if (fullLeadTabs.has(activeTab)) void loadFullLeads();
@@ -954,7 +954,6 @@ const Dashboard: React.FC = () => {
                   onlineClientsProps={{
                     canDeleteSubscriber: hasPermission('delete_subscribers'),
                     activeTab,
-                    subscribers,
                     courses,
                     bundles,
                     staffMembers,

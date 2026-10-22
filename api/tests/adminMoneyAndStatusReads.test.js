@@ -72,7 +72,9 @@ test('a refunded payment is never counted as money collected', () => {
   // money through clientItems (lib/agreedPrice.ts) instead of summing rows.
   // 12 since 18 Oct 2026: the collection, online-manager and reception overviews and the online manager's accounts
   // desk are added up by the server (api/lib/staffOverview.js, GET /api/staff/payments?tabs=1) over collected money only.
-  assert.ok(paymentSums >= 12, `expected the admin's payment sums, found ${paymentSums}`);
+  // 11 since 21 Oct 2026: a rep's month revenue on «أداء المبيعات» is the server's (GET /api/admin/leads/rep-revenue),
+  // over collected money only.
+  assert.ok(paymentSums >= 11, `expected the admin's payment sums, found ${paymentSums}`);
   assert.deepEqual(unguarded, [],
     'these sum payments without asking whether the money was collected: ' + unguarded.join(', '));
 
