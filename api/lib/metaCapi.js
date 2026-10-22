@@ -1,4 +1,8 @@
 'use strict';
+
+// Dropped in every API process at once, not only the one that took the save.
+const { shared } = require('./cacheBus');
+
 /**
  * Meta's Conversions API: the same Lead and Purchase the browser pixel sends,
  * sent again from here so an ad blocker, Safari's tracking prevention or a tab
@@ -200,9 +204,9 @@ async function loadConfig(tenantId = DEFAULT_TENANT_ID) {
 }
 
 /** A saved change takes effect now rather than after the cache's minute. */
-function invalidateConfig(tenantId = DEFAULT_TENANT_ID) {
+const invalidateConfig = shared('meta-capi-config', function invalidateConfigHere(tenantId = DEFAULT_TENANT_ID) {
   configCache.delete(tenantId);
-}
+});
 
 /**
  * The settings screen's view: what is saved, what is in effect and where each

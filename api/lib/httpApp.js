@@ -9,7 +9,7 @@ const helmet = require('helmet');
 const logger = require('./logger');
 const errorMonitor = require('./errorMonitor');
 const perfMonitor = require('./performanceMonitor');
-const { cacheInvalidate } = require('./db');
+const { cacheInvalidateLocal } = require('./db');
 const { uuidv4 } = require('./id');
 const { publishRealtimeEvent } = require('./realtime');
 const { registerRoutes } = require('./registerRoutes');
@@ -208,7 +208,7 @@ function timeRequests(req, res, next) {
 // form — so the first one drops them, and the next read counts again.
 function dropFiguresAfterWrites(req, res, next) {
   if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
-    res.on('finish', () => { if (res.statusCode < 400) cacheInvalidate('figures:'); });
+    res.on('finish', () => { if (res.statusCode < 400) cacheInvalidateLocal('figures:'); });
   }
   next();
 }

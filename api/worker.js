@@ -29,6 +29,9 @@ if (!process.env.DB_USER || !process.env.DB_PASSWORD || !process.env.DB_NAME) {
 
 registerProcessLifecycle({ logger, pool });
 startProductionRuntimeGuard({ logger });
+// A job that changes a setting or the catalogue drops the web processes'
+// copies too, and theirs reach here (lib/cacheBus.js).
+require('./lib/cacheBus').startCacheBus();
 
 // No migrations here: the release job (or the web process outside production)
 // owns the schema, and two processes migrating at once is what it must never do.

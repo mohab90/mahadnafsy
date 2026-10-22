@@ -1,4 +1,8 @@
 'use strict';
+
+// Dropped in every API process at once, not only the one that took the save.
+const { shared } = require('./cacheBus');
+
 // ── Email helpers (config-driven) ─────────────────────────────────────────────
 // Sender address, SMTP credentials, AND the message template are all editable
 // from Admin → Settings → البريد (stored in site_config key 'email_config'),
@@ -63,10 +67,10 @@ async function getEmailConfig(tenantId = DEFAULT_TENANT) {
   return value;
 }
 
-function invalidateEmailConfig(tenantId) {
+const invalidateEmailConfig = shared('email-config', function invalidateEmailConfigHere(tenantId) {
   if (tenantId) configCache.delete(String(tenantId));
   else configCache.clear();
-}
+});
 
 // A transactional relay (Brevo) signs and authenticates the sender itself: it refuses an address its owner has
 // not verified in the relay. The sender-domain rule in routes/config.js compares the address with the SMTP

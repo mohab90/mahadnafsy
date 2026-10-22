@@ -36,6 +36,8 @@ if (!process.env.DB_USER || !process.env.DB_PASSWORD || !process.env.DB_NAME) {
 
 const processLifecycle = registerProcessLifecycle({ logger, pool });
 startProductionRuntimeGuard({ logger });
+// Caches dropped in step with the other processes, if any (lib/cacheBus.js).
+require('./lib/cacheBus').startCacheBus();
 
 // Numbered migrations are the only schema authority. Runtime DDL is never
 // registered by the HTTP process, including when legacy environment flags exist.
@@ -76,8 +78,7 @@ migrationReady.then(migrationResult => {
     // MAHAD_ROLE=web leaves the jobs to worker.js (lib/processRole.js).
     if (role === 'all') {
       startBackgroundScheduler({ pool, logger, port: PORT });
-      // The timers beside the routes, once per deployment (lib/routeJobs.js).
-      require('./lib/routeJobs').startRouteJobs({ logger });
+      require('./lib/routeJobs').startRouteJobs({ logger }); // once per deployment
       // After the migrations, not beside them: its whole-table checks held the
       // tables a migration's CREATE INDEX was waiting for.
       require('./lib/reconcileJob').startReconcileMonitor(pool);

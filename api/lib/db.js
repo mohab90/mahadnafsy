@@ -211,7 +211,9 @@ function cached(key, ttlMs, fn) {
   _pendingCache.set(key, promise);
   return promise;
 }
-function cacheInvalidate(...prefixes) {
+// This process only. «figures:» (lib/httpApp.js) is dropped on every write and
+// lives fifteen seconds; sharing it would be one insert per request for nothing.
+function cacheInvalidateLocal(...prefixes) {
   if (prefixes.length === 0) { _cache.clear(); _pendingCache.clear(); return; }
   for (const k of _cache.keys()) {
     if (prefixes.some(p => k.startsWith(p))) _cache.delete(k);
@@ -219,6 +221,19 @@ function cacheInvalidate(...prefixes) {
   for (const k of _pendingCache.keys()) {
     if (prefixes.some(p => k.startsWith(p))) _pendingCache.delete(k);
   }
+}
+
+// A catalogue, price, branch or site-content save drops these in every API
+// process (lib/cacheBus.js), not only the one that took it. No prefixes: all.
+const cacheBus = require('./cacheBus');
+cacheBus.bus.on('db-cache', arg => {
+  let prefixes = [];
+  try { prefixes = arg ? JSON.parse(arg) : []; } catch (_) { prefixes = []; }
+  cacheInvalidateLocal(...(Array.isArray(prefixes) ? prefixes.map(String) : []));
+});
+function cacheInvalidate(...prefixes) {
+  cacheInvalidateLocal(...prefixes);
+  cacheBus.bus.publish('db-cache', prefixes.length ? JSON.stringify(prefixes) : null).catch(() => {});
 }
 
 // ── Concurrency guard ─────────────────────────────────────────────────────────
@@ -318,4 +333,4 @@ async function getStaffIdByEmail(email, tenantId) {
 }
 
 module.exports = {
-  clockContract, pool, cached, cacheInvalidate, dbQuery, dbExecute, getStaffIdByEmail, requireDb, isDbDown };
+  clockContract, pool, cached, cacheInvalidate, cacheInvalidateLocal, dbQuery, dbExecute, getStaffIdByEmail, requireDb, isDbDown };

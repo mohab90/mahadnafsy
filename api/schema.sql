@@ -6250,3 +6250,34 @@ CREATE TABLE `backfill_305_lead_phones` (
   PRIMARY KEY (`tenant_id`,`lead_id`),
   KEY `idx_backfill_305_target` (`tenant_id`,`new_phone`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- rate_limit_counters: migration 330 — rate-limit counters shared by every API process (lib/mysqlRateLimitStore.js).
+CREATE TABLE `rate_limit_counters` (
+  `bucket` char(64) NOT NULL,
+  `hits` int(10) unsigned NOT NULL DEFAULT 0,
+  `expires_at` datetime NOT NULL,
+  PRIMARY KEY (`bucket`),
+  KEY `idx_rate_limit_expiry` (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=ascii COLLATE=ascii_bin;
+
+-- cache_invalidations: migration 331 — a cache dropped in one API process, dropped in the others (lib/cacheBus.js).
+CREATE TABLE `cache_invalidations` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `channel` varchar(64) NOT NULL,
+  `arg` varchar(255) DEFAULT NULL,
+  `origin` varchar(80) NOT NULL,
+  `created_at` datetime(3) NOT NULL DEFAULT current_timestamp(3),
+  PRIMARY KEY (`id`),
+  KEY `idx_cache_invalidations_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- online_presence: migration 332 — who is online, across API processes (lib/onlineUsers.js).
+CREATE TABLE `online_presence` (
+  `tenant_id` varchar(64) NOT NULL,
+  `uid` varchar(100) NOT NULL,
+  `name` varchar(100) DEFAULT NULL,
+  `email` varchar(320) DEFAULT NULL,
+  `last_seen` datetime(3) NOT NULL,
+  PRIMARY KEY (`tenant_id`,`uid`),
+  KEY `idx_online_presence_seen` (`tenant_id`,`last_seen`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
