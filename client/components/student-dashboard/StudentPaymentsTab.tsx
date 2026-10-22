@@ -1,4 +1,4 @@
-import { Camera, Calendar, CheckCircle, CreditCard, DollarSign, Loader2, Plus } from 'lucide-react';
+import { Camera, CheckCircle, CreditCard, DollarSign, Loader2, Plus } from 'lucide-react';
 import type React from 'react';
 import { useEffect } from 'react';
 
@@ -6,7 +6,7 @@ import type { Course, ItemBalance, PaymentProof, SubscriberItem } from '../../ty
 import { moneySuffix, type InstallmentModalState } from '../../lib/itemBalance';
 import { customerPaymentMethodLabel, paymentMethodLabel } from '../../../shared/paymentMethods';
 import { useManualPaymentMethods } from '../../lib/usePaymentAvailability';
-import { cairoDateOnly } from '../../../shared/cairoDate';
+import { StudentInstallmentsPanel } from './StudentInstallmentsPanel';
 
 type ProofCurrency = 'EGP' | 'SAR' | 'USD';
 // The five choices this screen offered were hardcoded here, /checkout hardcoded
@@ -208,75 +208,9 @@ export function StudentPaymentsTab({
         </div>
       )}
 
-      {(subscriber?.installmentPlans ?? []).length > 0 && (
-        <div>
-          <p className="mb-3 flex items-center gap-2 text-sm font-extrabold text-gray-700">
-            <Calendar size={15} className="text-amber-500" /> خطط الأقساط
-          </p>
-          <div className="space-y-4">
-            {subscriber!.installmentPlans!.map(plan => {
-              const paidTotal = plan.entries.reduce((sum, entry) => sum + (entry.paidAt ? (entry.paidAmount ?? entry.amount) : 0), 0);
-              const remaining = plan.totalAmount - paidTotal;
-              // Decides whether an instalment reads as متأخر. On the UTC
-              // day, one that fell due yesterday in Cairo still showed as
-              // not yet due until 02:00 the next morning.
-              const todayStr = cairoDateOnly();
-
-              return (
-                <div key={plan.id} className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
-                  <div className="flex items-center justify-between border-b border-gray-50 bg-amber-50/50 px-4 py-3">
-                    <div>
-                      <p className="text-sm font-bold text-gray-800">{plan.courseTitle || 'قسط عام'}</p>
-                      <p className="text-xs text-gray-500">الإجمالي: {plan.totalAmount.toLocaleString('ar-EG-u-nu-latn')} {moneySuffix(plan.currency)}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs text-gray-500">مدفوع: <span className="font-bold text-emerald-700">{paidTotal.toLocaleString('ar-EG-u-nu-latn')}</span></p>
-                      <p className="text-xs text-gray-500">متبقي: <span className={`font-bold ${remaining > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{remaining > 0 ? `${remaining.toLocaleString('ar-EG-u-nu-latn')} ${moneySuffix(plan.currency)}` : 'مكتمل'}</span></p>
-                    </div>
-                  </div>
-                  <div className="divide-y divide-gray-50">
-                    {plan.entries.map(entry => {
-                      const isOverdue = !entry.paidAt && entry.dueDate < todayStr;
-                      const daysLeft = !entry.paidAt && entry.dueDate >= todayStr
-                        ? Math.ceil((new Date(entry.dueDate).getTime() - Date.now()) / 86400000)
-                        : null;
-                      const daysOverdue = isOverdue
-                        ? Math.floor((Date.now() - new Date(entry.dueDate).getTime()) / 86400000)
-                        : 0;
-
-                      return (
-                        <div key={entry.id} className={`flex items-center justify-between px-4 py-3 text-sm ${isOverdue ? 'bg-red-50/60' : entry.paidAt ? 'bg-emerald-50/30' : ''}`}>
-                          <div className="flex items-center gap-3">
-                            <div className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold ${entry.paidAt ? 'bg-emerald-100 text-emerald-700' : isOverdue ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
-                              {entry.paidAt ? '✓' : isOverdue ? '!' : '◷'}
-                            </div>
-                            <div>
-                              <p className="font-bold text-gray-800">{entry.amount.toLocaleString('ar-EG-u-nu-latn')} {moneySuffix(plan.currency)}</p>
-                              <p className="text-xs text-gray-500">موعد الاستحقاق: {entry.dueDate}</p>
-                              {entry.note && <p className="text-xs text-gray-400">{entry.note}</p>}
-                            </div>
-                          </div>
-                          <div className="flex-shrink-0 text-right">
-                            {entry.paidAt ? (
-                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-600">مدفوع</span>
-                            ) : isOverdue ? (
-                              <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-600">متأخر {daysOverdue} يوم</span>
-                            ) : daysLeft !== null && daysLeft <= 7 ? (
-                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-700">خلال {daysLeft} يوم</span>
-                            ) : (
-                              <span className="text-xs text-gray-400">مستقبلي</span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {/* Each instalment with its own «ادفع القسط» — by card or by receipt,
+          for the amount the plan says (GET /api/me/installments). */}
+      <StudentInstallmentsPanel customer={{ name: subscriber?.name, email: subscriber?.email, phone: subscriber?.phone }} />
 
       <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
         <table className="w-full min-w-[560px] whitespace-nowrap text-sm">

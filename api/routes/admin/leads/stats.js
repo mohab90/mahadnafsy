@@ -278,7 +278,7 @@ router.get('/api/admin/leads/followups-panel', requireAuth, requireAdminOrStaff,
     const base = `FROM leads l WHERE l.tenant_id = ?${accessScope.sql} AND ${open}`;
     const p = [req.tenantId, ...accessScope.params];
     const undated = `${FOLLOW_UP_DATE} IS NULL AND l.status IN ('new','contacted','interested')`;
-    const columns = `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.status, l.lead_type, l.branch,
+    const columns = `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.utm_source, l.utm_medium, l.utm_campaign, l.fbclid, l.gclid, l.status, l.lead_type, l.branch,
               l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
               l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
               l.assigned_cs_id, COALESCE(cs.name, l.assigned_cs_name) AS assigned_cs_name,

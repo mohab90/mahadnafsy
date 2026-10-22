@@ -601,9 +601,15 @@ const Enrollment: React.FC = () => {
                       <label className={label}>كلمة المرور *</label>
                       <input
                         required value={password} onChange={e => setPassword(e.target.value)}
-                        placeholder="6 أحرف على الأقل" type="password" autoComplete="new-password"
+                        placeholder="8 أحرف على الأقل" type="password" autoComplete="new-password" minLength={8}
+                        aria-describedby="enroll-password-rule"
                         className={field}
                       />
+                      {/* The rule said «6» while the server and the button wanted 8: the
+                          button stayed off with nothing saying why. Said before submit now. */}
+                      <p id="enroll-password-rule" className={`mt-1 text-xs font-bold ${password.length >= 8 ? 'text-green-700' : 'text-muted'}`}>
+                        {password.length >= 8 ? 'كلمة المرور تمام ✓' : `كلمة المرور لازم تكون 8 حروف أو أرقام على الأقل${password ? ` — فاضل ${8 - password.length}` : ''}`}
+                      </p>
                     </div>
                   </div>
                 )}

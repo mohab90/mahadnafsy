@@ -125,6 +125,7 @@ function LeadCardView({ lead, score, onSelect, onStatusChange, onBook, onContact
           <UserRound size={11} className="shrink-0 text-gray-300" />
           <span className="truncate">{[lead.assignedSalesName || 'غير معيّن', branchLabel, lead.source, dateLabel].filter(Boolean).join(' · ')}</span>
         </p>
+        {lead.adSource && <p className="truncate text-indigo-500" title={`جاي من إعلان: ${lead.adSource}`}>إعلان: {lead.adSource}</p>}
         {courseTitle && <p className="truncate text-gray-400" title={courseTitle}>🎓 {courseTitle}</p>}
         {lastLine && <p className="flex items-center gap-1 truncate text-gray-400" title={lastLine}><Clock size={10} className="shrink-0" /> <span className="truncate">{lastLine}</span></p>}
         {lead.nextFollowUpDate && (

@@ -144,6 +144,31 @@ const UserDashboard: React.FC = () => {
 
   /* video player */
   const [playerCourseId, setPlayerCourseId] = useState<string | null>(null);
+  // ?play=<courseId>: straight into the course's player. /success sends a card
+  // buyer here once the order reads paid — they used to land on the payments
+  // list and had to find the course themselves. The grant can reach this page a
+  // moment after the order, so the record is fetched once more when the course
+  // is not in it yet.
+  const playRequested = useRef(dashSearchParams.get('play'));
+  const playRefreshed = useRef(false);
+  useEffect(() => {
+    const courseId = playRequested.current;
+    if (!courseId) return;
+    const mine = findMine();
+    if (!mine) return;
+    setActiveTab('learning');
+    setLearningSection('courses');
+    if (mine.enrolledCourseIds.includes(courseId)) {
+      setPlayerCourseId(courseId);
+      playRequested.current = null;
+    } else if (!playRefreshed.current) {
+      playRefreshed.current = true;
+      refreshMySubscriber();
+    }
+    // findMine and refreshMySubscriber are rebuilt every render; the record
+    // arriving (subscribers, mySubscriberId) is what this waits on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subscribers, mySubscriberId]);
 
   /* referral */
   const [referralCode, setReferralCode] = useState<string | null>(null);

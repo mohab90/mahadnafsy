@@ -23,6 +23,7 @@ const { getTenantSetting } = require('./tenantSettings');
 const { consultationSettings, settleConsultationForOrder } = require('./consultationRequests');
 const { normalizePaymentBranch, normalizedOrderType, appendTenantScope } = require('./orderFields');
 const { orderPlan, planAccess } = require('./orderPlan');
+const { planEntryOf, settlePlanEntry, grantPlanEntryAccess, planEntryNote } = require('./planEntryPayment');
 const { paymobCharge, chargeStillMatches } = require('./paymobGateway');
 const { trackPurchase } = require('./metaCapi');
 
@@ -148,10 +149,15 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
   const extra = (() => { try { return JSON.parse(order.notes || '{}'); } catch { return {}; } })();
 
   const payId = `paymob-${merchantOrderId}`;
-  const payCourseId = orderType === 'course' ? (order.item_id || null) : null;
-  const payBundleId = orderType === 'bundle' ? (order.item_id || null) : null;
+  let payCourseId = orderType === 'course' ? (order.item_id || null) : null;
+  let payBundleId = orderType === 'bundle' ? (order.item_id || null) : null;
   // An instalment pays towards its plan, not its own amount (lib/orderPlan.js).
   const plan = orderPlan(extra, order.amount);
+  // One scheduled entry of an installment plan, paid from the client's dashboard
+  // (lib/planEntryPayment.js): it marks that entry paid and opens what the plan
+  // now covers — never the whole course for a 2nd instalment.
+  const planEntry = planEntryOf(extra);
+  let settledEntry = null;
 
   // ── Atomic transaction: ensure subscriber + mark order paid + enroll + record payment ──
   const conn = await pool.getConnection();
@@ -195,8 +201,17 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
       "UPDATE orders SET status='paid', transaction_id=?, subscriber_id=COALESCE(subscriber_id,?), paid_at=COALESCE(paid_at,NOW()) WHERE id=? AND tenant_id=?",
       [transactionId, sub?.id || null, merchantOrderId, tenantId]);
 
+    if (planEntry) {
+      settledEntry = await settlePlanEntry(conn, {
+        tenantId, planId: planEntry.planId, index: planEntry.index, subscriberId: sub.id,
+        paymentId: payId, amount: order.amount, currency: order.currency || 'EGP', paidDay,
+      });
+      payCourseId = settledEntry.plan.course_id || null;
+      payBundleId = settledEntry.plan.bundle_id || null;
+    }
+
     // 2. Auto-enroll subscriber for course or bundle payments
-    if ((orderType === 'course' || orderType === 'bundle') && sub) {
+    if (!planEntry && (orderType === 'course' || orderType === 'bundle') && sub) {
       // SECURITY: always fetch bundle courses from DB — never trust client-supplied bundleCourseIds
       let courseIds;
       if (orderType === 'bundle') {
@@ -276,7 +291,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
       `INSERT INTO payments
          (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method,
           transaction_id, is_installment, course_expected, branch, branch_id, tenant_id, note, source, date, status, created_at)
-       VALUES (?,?,?,?,?,?,'COURSE','online_paymob',?,?,?,?,?,?,?,'paymob',?,'paid',NOW())`,
+       VALUES (?,?,?,?,?,?,?,'online_paymob',?,?,?,?,?,?,?,'paymob',?,'paid',NOW())`,
       [
         payId,
         sub?.id || null,
@@ -284,21 +299,31 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
         payBundleId,
         order.amount,
         order.currency || 'EGP',
+        settledEntry ? settledEntry.payType : 'COURSE',
         transactionId || null,
-        plan.installment ? 1 : 0,
-        plan.expected,  // course_expected: the plan's total for an instalment, else the order's amount
+        plan.installment || settledEntry ? 1 : 0,
+        // course_expected: the agreed price for a plan entry, the plan's total for
+        // a first instalment, else the order's amount
+        settledEntry ? settledEntry.courseExpected : plan.expected,
         paymentBranch,
         branchIdForBranch(paymentBranch),
         tenantId,
-        `دفع إلكتروني Paymob — طلب ${merchantOrderId}${transactionId ? ' | معاملة ' + transactionId : ''}`,
+        `${settledEntry ? planEntryNote(settledEntry, planEntry.index) + ' — ' : ''}دفع إلكتروني Paymob — طلب ${merchantOrderId}${transactionId ? ' | معاملة ' + transactionId : ''}`,
         paidDay,
       ]
     );
+    if (settledEntry) {
+      await grantPlanEntryAccess(conn, {
+        tenantId, settled: settledEntry, subscriberId: sub.id, paymentId: payId,
+        amount: order.amount, currency: order.currency || 'EGP',
+        source: 'paymob_order', actor: order.customer_email || 'paymob',
+      });
+    }
     const journalId = await postPaymentJournal({
       paymentId: payId,
       amount: order.amount,
       currency: order.currency || 'EGP',
-      payType: 'COURSE',
+      payType: settledEntry ? settledEntry.payType : 'COURSE',
       date: paidDay,
       actor: 'paymob',
       tenantId,

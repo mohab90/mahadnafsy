@@ -9,6 +9,11 @@ import { setCanonical } from '../lib/useSeo';
 type PayStatus = 'idle' | 'reserving' | 'redirecting';
 
 const emailLooksValid = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+type PayCurrency = 'EGP' | 'SAR' | 'USD';
+const CURRENCY_LABEL: Record<PayCurrency, string> = { EGP: 'ج.م', SAR: 'ر.س', USD: '$' };
+const CURRENCY_NAME: Record<PayCurrency, string> = { EGP: 'بالجنيه المصري', SAR: 'بالريال السعودي', USD: 'بالدولار' };
+const asCurrency = (value: string | null | undefined): PayCurrency | null =>
+  value === 'EGP' || value === 'SAR' || value === 'USD' ? value : null;
 const cleanPhone = (value: string) => value.replace(/[^\d+]/g, '').slice(0, 20);
 
 const StandalonePayment: React.FC = () => {
@@ -28,13 +33,23 @@ const StandalonePayment: React.FC = () => {
   // before they fill five fields, and is given the number to call instead of a
   // dead button — the same thing every other payment surface does.
   const onlinePayEnabled = usePaymentAvailability();
-  const { content } = useSiteData();
+  const { content, currency: visitorCurrency } = useSiteData();
   const whatsapp = instituteWhatsApp(content);
+  // The currency the link names (?currency=SAR), else the visitor's own. The
+  // page charged pounds only, so a client in Riyadh was asked for «1500 ج.م» on
+  // a figure the desk had agreed in riyals. The order is reserved in the
+  // currency shown; the gateway charges its EGP equivalent at the day's rate
+  // (api/lib/paymobGateway.js paymobCharge).
+  const linkCurrency = asCurrency(String(searchParams.get('currency') || '').toUpperCase());
+  const [currency, setCurrency] = useState<PayCurrency>(linkCurrency || asCurrency(visitorCurrency) || 'EGP');
 
   const numericAmount = Number(amount);
+  // The email is a receipt address, not an identity: with a phone to reach the
+  // client by, it may be left empty — but when one is typed it has to be one.
+  const emailOk = email.trim() ? emailLooksValid(email) : cleanPhone(phone).length >= 8;
   const canPay = useMemo(
-    () => numericAmount > 0 && purpose.trim().length >= 3 && name.trim().length >= 2 && emailLooksValid(email) && cleanPhone(phone).length >= 8,
-    [numericAmount, purpose, name, email, phone],
+    () => numericAmount > 0 && purpose.trim().length >= 3 && name.trim().length >= 2 && emailOk && cleanPhone(phone).length >= 8,
+    [numericAmount, purpose, name, emailOk, phone],
   );
 
   useEffect(() => {
@@ -46,7 +61,7 @@ const StandalonePayment: React.FC = () => {
   const handlePay = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!canPay) {
-      setError('راجع البيانات: المبلغ، سبب الدفع، الاسم، البريد، ورقم الهاتف مطلوبة بشكل صحيح.');
+      setError('راجع البيانات: المبلغ، سبب الدفع، الاسم ورقم الهاتف مطلوبين — والبريد لو كتبته يكون صحيح.');
       return;
     }
 
@@ -57,7 +72,7 @@ const StandalonePayment: React.FC = () => {
       itemId: 'standalone',
       itemTitle: purpose.trim(),
       amount: numericAmount,
-      currency: 'EGP',
+      currency,
       paymentMethod: 'paymob',
       customerName: name.trim(),
       customerEmail: email.trim(),
@@ -117,7 +132,7 @@ const StandalonePayment: React.FC = () => {
             </p>
             {whatsapp && (
               <a
-                href={`https://wa.me/${whatsapp}?text=${encodeURIComponent(`مرحباً، أريد سداد ${purpose.trim() || 'مبلغ'}${numericAmount > 0 ? ` بمبلغ ${numericAmount} ج.م` : ''}`)}`}
+                href={`https://wa.me/${whatsapp}?text=${encodeURIComponent(`مرحباً، أريد سداد ${purpose.trim() || 'مبلغ'}${numericAmount > 0 ? ` بمبلغ ${numericAmount} ${CURRENCY_LABEL[currency]}` : ''}`)}`}
                 target="_blank" rel="noreferrer"
                 className="mt-3 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl border-[1.5px] border-ink/15 bg-white text-sm font-extrabold text-ink transition hover:border-ink/40"
               >
@@ -137,7 +152,17 @@ const StandalonePayment: React.FC = () => {
 
         <form onSubmit={handlePay} className="space-y-4">
           <div>
-            <label className={labelClass}>المبلغ بالجنيه المصري</label>
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <label className={`${labelClass} mb-0`}>المبلغ {CURRENCY_NAME[currency]}</label>
+              {!linkCurrency && (
+                <select value={currency} onChange={(event) => setCurrency(event.target.value as PayCurrency)} aria-label="العملة"
+                  className="rounded-lg border border-line-strong bg-paper px-2 py-1 text-xs font-bold text-ink">
+                  <option value="EGP">جنيه مصري</option>
+                  <option value="SAR">ريال سعودي</option>
+                  <option value="USD">دولار</option>
+                </select>
+              )}
+            </div>
             <input
               type="number"
               min="1"
@@ -172,7 +197,7 @@ const StandalonePayment: React.FC = () => {
           </div>
 
           <div>
-            <label className={labelClass}>البريد الإلكتروني</label>
+            <label className={labelClass}>البريد الإلكتروني <span className="font-normal text-muted-soft">(اختياري لو كتبت رقم الهاتف)</span></label>
             <input
               type="email"
               value={email}
@@ -198,8 +223,11 @@ const StandalonePayment: React.FC = () => {
           {numericAmount > 0 && (
             <div className="flex items-end justify-between gap-3 rounded-[22px] bg-ink p-5 text-white">
               <span className="text-sm font-bold text-white/70">المبلغ</span>
-              <span className="text-[30px] font-black leading-none tabular-nums text-gold-pale">{numericAmount} <span className="text-base text-white/80">ج.م</span></span>
+              <span className="text-[30px] font-black leading-none tabular-nums text-gold-pale">{numericAmount} <span className="text-base text-white/80">{CURRENCY_LABEL[currency]}</span></span>
             </div>
+          )}
+          {currency !== 'EGP' && numericAmount > 0 && (
+            <p className="text-xs leading-relaxed text-muted">بوابة الدفع بتخصم ما يعادله بالجنيه المصري بسعر اليوم.</p>
           )}
 
           <button

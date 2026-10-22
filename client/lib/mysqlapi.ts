@@ -3,6 +3,7 @@
 // ══════════════════════════════════════════════════════════════
 
 import { AuthUser, type CommunityEventItem } from '../types';
+import { visitAttribution } from './attribution';
 import { leadHeaders } from './tracking';
 
 // Relative by default — always targets whatever origin actually served the page
@@ -352,8 +353,9 @@ export const mysqlClient = {
 export const mysqlForms = {
   submitContact: (data: AR) => apiFetch<{ ok: boolean; id: string }>('/contact', { method: 'POST', body: JSON.stringify(data), headers: leadHeaders() }),
   submitJoinUs: (data: AR) => apiFetch<{ ok: boolean; id: string }>('/join-us', { method: 'POST', body: JSON.stringify(data) }),
-  submitRegistration: (data: AR) => apiFetch<{ ok: boolean; id: string; clientCode: string }>('/registrations', { method: 'POST', body: JSON.stringify(data), headers: leadHeaders() }),
-  submitLead: (data: AR) => apiFetch<{ ok: boolean; id?: string }>('/leads-public', { method: 'POST', body: JSON.stringify(data), headers: leadHeaders() }),
+  // Each carries the visit's ad parameters (lib/attribution.ts), kept on the lead.
+  submitRegistration: (data: AR) => apiFetch<{ ok: boolean; id: string; clientCode: string }>('/registrations', { method: 'POST', body: JSON.stringify({ ...data, attribution: visitAttribution() }), headers: leadHeaders() }),
+  submitLead: (data: AR) => apiFetch<{ ok: boolean; id?: string }>('/leads-public', { method: 'POST', body: JSON.stringify({ ...data, attribution: visitAttribution() }), headers: leadHeaders() }),
 };
 
 // ── Paymob payment helpers (gateway suspended — manual payment flow) ─────────
@@ -377,7 +379,7 @@ export const mysqlAuth = {
       pendingToken?: string;
     }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   register: (data: { email: string; password: string; name?: string; phone?: string; country?: string; interest?: string; ref?: string }) =>
-    apiFetch<{ ok: boolean; user: AuthUser }>('/user/signup', { method: 'POST', body: JSON.stringify(data) }, true),
+    apiFetch<{ ok: boolean; user: AuthUser }>('/user/signup', { method: 'POST', body: JSON.stringify({ ...data, attribution: visitAttribution() }) }, true),
   me: () => apiFetch<AuthUser>('/auth/me', {}, true),
   updateProfile: (name?: string, nameEn?: string) =>
     apiFetch<{ ok: boolean }>('/auth/update-profile', { method: 'PUT', body: JSON.stringify({ name, nameEn }) }, true),

@@ -12,6 +12,15 @@ import { amountDueNow, enrollmentRates, installmentTotal, percentLabel, type Pay
 import { useSeo } from '../lib/useSeo';
 import { effectivePrice, usePriceList } from '../lib/usePrices';
 import { rememberCheckoutOrder, trackInitiateCheckout } from '../lib/tracking';
+import { visitAttribution } from '../lib/attribution';
+import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
+
+// «قبل الخميس 3:00 م» from the review deadline the server set; a day's wait when it gave none.
+function reviewDueLabel(iso: string): string {
+  const at = iso ? new Date(iso) : null;
+  if (!at || Number.isNaN(at.getTime())) return 'خلال 24 ساعة';
+  return `قبل ${at.toLocaleString('ar-EG-u-nu-latn', { weekday: 'long', hour: 'numeric', minute: '2-digit', timeZone: CAIRO_TIME_ZONE })}`;
+}
 
 const Checkout: React.FC = () => {
   useSeo({ title: 'إتمام الاشتراك | معهد الدراسات النفسية', path: '/checkout' });
@@ -82,6 +91,8 @@ const Checkout: React.FC = () => {
   const [proofMethod, setProofMethod] = useState('');
   const [proofSubmitting, setProofSubmitting] = useState(false);
   const [proofDone, setProofDone] = useState(false);
+  // When the accounts' review of the receipt is due (POST /api/me/payment-proof).
+  const [reviewDueAt, setReviewDueAt] = useState('');
   const [proofError, setProofError] = useState('');
 
   // Auto-fill name & email from logged-in user
@@ -135,7 +146,10 @@ const Checkout: React.FC = () => {
   } else if (type === 'consultation') {
       if (subtype === 'express') {
           itemTitle = 'جلسة استشارة سريعة (Express)';
-          itemPrice = expressPrice(content, currency);
+          // Less a discount aimed at consultations (api/lib/effectivePrice.js).
+          const effective = effectivePrice(priceList, 'consultation', 'express', currency, expressPrice(content, currency));
+          itemPrice = effective.price;
+          itemBase = effective.base;
           itemImage = content['consultation.expressImage'] || '';
           itemFound = true;
       } else {
@@ -143,7 +157,9 @@ const Checkout: React.FC = () => {
           const therapist = therapists.find(t => t.id === therapistId);
           if (therapist) {
             itemTitle = `جلسة علاج نفسي مع ${therapist.name}`;
-                        itemPrice = getTherapistSessionPrice(therapist, currency);
+            const effective = effectivePrice(priceList, 'consultation', therapist.id, currency, getTherapistSessionPrice(therapist, currency));
+            itemPrice = effective.price;
+            itemBase = effective.base;
             itemImage = therapist.image;
             itemFound = true;
           }
@@ -174,10 +190,12 @@ const Checkout: React.FC = () => {
   // The price before the pay mode: the code's when one was accepted, else the running one.
   const listPrice = promo && discountable ? promo.price : itemPrice;
   const basePrice = Math.max(itemBase, itemPrice);
-  const displayAmount = discountable ? amountDueNow(listPrice, payMode, rates) : itemPrice;
+  // A session has no cash or instalment rate: the server charges its price as it
+  // stands (less a consultation discount), so the page shows that, not a cash rate.
+  const displayAmount = discountable ? (type === 'consultation' ? listPrice : amountDueNow(listPrice, payMode, rates)) : itemPrice;
   const finalAmount = serverAmount ?? displayAmount;
-  const planTotal = serverPlanTotal ?? (discountable && payMode === 'installment' ? installmentTotal(listPrice, rates) : null);
-  const promoAllowed = discountable && (type === 'course' || type === 'bundle') && !orderId;
+  const planTotal = serverPlanTotal ?? (discountable && type !== 'consultation' && payMode === 'installment' ? installmentTotal(listPrice, rates) : null);
+  const promoAllowed = discountable && (type === 'course' || type === 'bundle' || type === 'consultation') && !orderId;
 
   const applyPromo = async () => {
     const code = promoInput.trim().toUpperCase();
@@ -187,7 +205,11 @@ const Checkout: React.FC = () => {
     try {
       const res = await fetch('/api/public/price-quote', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemType: type, itemId: id, payMode, promoCode: code, currency }),
+        body: JSON.stringify({
+          itemType: type, itemId: type === 'consultation' ? searchParams.get('therapistId') || '' : id,
+          ...(type === 'consultation' ? { subtype: subtype || 'regular' } : {}),
+          payMode, promoCode: code, currency,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'تعذر التحقق من الكود');
@@ -297,6 +319,7 @@ const Checkout: React.FC = () => {
           amount: itemPrice, currency,
           payMode: searchParams.get('payMode') === 'installment' ? 'installment' : 'cash',
           ...(promo ? { promoCode: promo.code } : {}),
+          attribution: visitAttribution(),
           ...(type === 'consultation' ? {
             therapistId: searchParams.get('therapistId') || '',
             sessionDate: searchParams.get('date') || '',
@@ -389,6 +412,7 @@ const Checkout: React.FC = () => {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'تعذّر إرسال الإيصال');
+      setReviewDueAt(typeof data.review_due_at === 'string' ? data.review_due_at : '');
       setProofDone(true);
     } catch (e) { setProofError(e instanceof Error ? e.message : 'تعذّر إرسال الإيصال'); }
     finally { setProofSubmitting(false); }
@@ -484,7 +508,10 @@ const Checkout: React.FC = () => {
                         <Check size={32} className="text-green-600" />
                       </div>
                       <h3 className="mb-2 text-xl font-black text-ink">تم استلام إيصالك ✅</h3>
-                      <p className="mb-6 text-sm leading-relaxed text-muted-body">هنراجع الإيصال ونفعّل وصولك للكورس خلال وقت قصير — وهيوصلك تأكيد على بريدك وواتساب.</p>
+                      <p className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-sm font-extrabold text-amber-700 ring-1 ring-amber-200">قيد المراجعة</p>
+                      <p className="mb-6 text-sm leading-relaxed text-muted-body">
+                        هنراجع الإيصال ونفعّل وصولك {reviewDueLabel(reviewDueAt)} — وهيوصلك تأكيد على واتساب، وتقدر تتابع حالته من «حسابي».
+                      </p>
                       <Link to="/my-account" className={primaryBtn}>الذهاب لحسابي</Link>
                     </div>
                     ) : (

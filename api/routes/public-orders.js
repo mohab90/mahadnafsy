@@ -26,6 +26,7 @@ const { paymobReady, postPaymobJson, buildBillingData, paymobIntention, paymobCh
 const { finalisePaymobOrder, linkPaymobOrder, resolvePaymobMerchantOrder, syncLeadDealValue } = require('../lib/paymobFinalise');
 const { adContextFromRequest } = require('../lib/metaCapi');
 const { scalarFields } = require('../lib/inputFields');
+const { attributionFromRequest, attributionValues } = require('../lib/visitAttribution');
 
 function gatewayUnavailable(res, reason = 'gateway_disabled') {
   return res.status(503).json({
@@ -332,15 +333,16 @@ router.post('/api/orders/reserve', publicLimiter, scalarFields('orderId', 'type'
 
     await conn.query(
       `INSERT INTO orders (id, item_id, item_title, type, status, amount, currency,
-         payment_method, customer_name, customer_email, customer_phone, notes, coupon_code, tenant_id, branch_id, created_at)
-       VALUES (?,?,?,?,'pending',?,?,?,?,?,?,?,?,?,?,NOW())
+         payment_method, customer_name, customer_email, customer_phone, notes, coupon_code, tenant_id, branch_id,
+         utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, gclid, created_at)
+       VALUES (?,?,?,?,'pending',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())
        ON DUPLICATE KEY UPDATE
          notes      = IF(status='paid', notes,      VALUES(notes)),
          branch_id  = IF(status='paid', branch_id,  VALUES(branch_id)),
          status     = IF(status='paid', status,     'pending')`,
       [orderId, itemId||'', itemTitle||'', orderType, figure, orderCurrency,
        paymentMethod||'', customerName||'', customerEmail||'', customerPhone||'', extra, quote?.discount?.code || null,
-       req.tenantId || DEFAULT_TENANT_ID, orderBranchId]
+       req.tenantId || DEFAULT_TENANT_ID, orderBranchId, ...attributionValues(attributionFromRequest(req))]
     );
     await conn.commit();
     res.json({ ok: true });
