@@ -9,7 +9,7 @@
 // business API: WhatsApp can restrict a number that behaves like a bulk
 // sender, so sends here are paced and capped per rep (WA_WEB_DAILY_LIMIT).
 //
-// One process holds every live connection. A phone allows one session per
+// One process holds every live connection (MAHAD_WA_WEB, below). A phone allows one session per
 // linked device, and two API processes (a release overlapping the old one)
 // would each open it and keep knocking the other off. The process that holds
 // the database lock 'mahad:wa-web' owns the sessions; another one answers
@@ -102,9 +102,45 @@ async function claimOwnership() {
   }
 }
 
+/**
+ * Which process may hold the sessions (MAHAD_WA_WEB):
+ *   unset — 'auto': whichever process takes the lock (one API process, as it
+ *           has always run);
+ *   1     — 'on': this instance holds them;
+ *   0     — 'off': never here. With two or more web instances behind nginx
+ *           (deploy/MULTI_INSTANCE.md) exactly one has 1 and nginx sends
+ *           /api/staff/whatsapp-web/ to it; the others say so instead of
+ *           answering «busy, try in a minute» forever.
+ */
+function waWebMode(env = process.env) {
+  const value = String(env.MAHAD_WA_WEB ?? '').trim().toLowerCase();
+  if (['1', 'true', 'on'].includes(value)) return 'on';
+  if (['0', 'false', 'off'].includes(value)) return 'off';
+  return 'auto';
+}
+
+/**
+ * In front of every /api/staff/whatsapp-web route (lib/httpApp.js). On an
+ * instance that never holds the sessions a request here reached the wrong
+ * process — nginx is not pinning it — and the answer says exactly that.
+ */
+function instanceGuard(req, res, next) {
+  if (waWebMode() !== 'off') return next();
+  res.setHeader('Retry-After', '5');
+  return res.status(503).json({
+    error: 'الواتساب المربوط شغال على نسخة تانية من السيستم والطلب وصل للنسخة دي بالغلط — بلّغ المسؤول عن السيرفر (توجيه nginx لـ /api/staff/whatsapp-web)',
+    code: 'WA_WEB_OTHER_INSTANCE',
+    instance: process.env.MAHAD_INSTANCE || null,
+  });
+}
+
 /** Start owning the sessions when possible, and reconnect the linked ones. */
 function startWhatsappWeb() {
   if (process.env.WA_WEB_DISABLED === '1' || ownerTimer) return;
+  if (waWebMode() === 'off') {
+    baseLogger.info('[wa-web] MAHAD_WA_WEB=0: the WhatsApp sessions are held by another instance');
+    return;
+  }
   const attempt = async () => {
     if (ownerConn) {
       // Kept busy so the server's idle timeout never closes it and the lock with it.
@@ -382,5 +418,5 @@ const _testing = {
 };
 
 module.exports = {
-  WaWebError, startWhatsappWeb, connect, getState, logout, sendText, sentToday, isOwner, DAILY_LIMIT, _testing,
+  WaWebError, waWebMode, instanceGuard, startWhatsappWeb, connect, getState, logout, sendText, sentToday, isOwner, DAILY_LIMIT, _testing,
 };

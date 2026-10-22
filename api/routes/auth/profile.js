@@ -41,8 +41,10 @@ router.put('/api/auth/update-profile', requireAuth, async (req, res) => {
                 )
               END
         WHERE tenant_id=?
-          AND (firebase_uid=? OR LOWER(TRIM(email))=LOWER(TRIM(?)))`,
-      [safeName, safeName, safeNameEn, safeNameEn, req.tenantId, req.user.uid, identityEmail]
+          AND (firebase_uid=? OR (?<>'' AND LOWER(TRIM(email))=LOWER(TRIM(?))))`,
+      // An account with no (proven) email matches by its link alone: an empty
+      // address compared to the column matched every client stored without one.
+      [safeName, safeName, safeNameEn, safeNameEn, req.tenantId, req.user.uid, identityEmail, identityEmail]
     );
     if (safeNameEn && !subscriberUpdate.affectedRows) {
       await conn.rollback();

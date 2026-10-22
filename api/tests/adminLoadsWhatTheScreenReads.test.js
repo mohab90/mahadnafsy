@@ -507,8 +507,10 @@ test('the follow-up bell counts on the server, not out of the 500 newest leads',
   const route = codeOnly(read('api/routes/admin/leads/stats.js'));
   const handler = route.slice(route.indexOf("'/api/admin/leads/followups-due'"));
   assert.ok(handler.includes("requirePermission('view_leads')"));
-  // The same scope as the leads list, and the same «open» and follow-up date as the browser.
+  // The same scope as the leads list, and the same «open» and follow-up date as every screen
+  // (lib/leadFollowUps.js: the terminal statuses, the column else crm_json's date).
   assert.ok(handler.includes("leadScope(req, 'l')"));
-  assert.ok(handler.includes('TERMINAL_LIST'));
-  assert.ok(handler.includes('NEXT_FOLLOWUP'));
+  assert.ok(handler.includes('dueBy(today)'));
+  const definition = codeOnly(read('api/lib/leadFollowUps.js'));
+  assert.ok(definition.includes('TERMINAL_SQL') && definition.includes('NEXT_FOLLOWUP') && definition.includes('l.hidden = 0'));
 });

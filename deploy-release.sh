@@ -15,6 +15,29 @@
 #
 # Each half migrates its own database before switching its code, checks the
 # API reports the newest migration the release ships, and rolls back by itself.
+#
+# The API is built beside the running one, not over it (21 Oct 2026). The
+# release used to be extracted over <apidir> and `npm ci` then wiped its
+# node_modules while that process was still serving, so every deploy answered
+# 502s (and half-loaded modules) for as long as the install took. Now:
+#   1. <apidir>.next = a copy of <apidir> (without uploads and node_modules,
+#      so files the server keeps there survive as before) + the release
+#      extracted over it + the same .env; its dependencies are installed there
+#      while the old process keeps answering;
+#   2. migrations run from <apidir>.next — a failure deletes it and the
+#      running code was never touched, so nothing needs restarting;
+#   3. two renames swap the folders (<apidir> -> <apidir>.prev,
+#      <apidir>.next -> <apidir>), uploads move across, one restart — or,
+#      with extra web instances enabled on the server, a rolling restart that
+#      keeps one answering throughout (deploy/MULTI_INSTANCE.md).
+# The path systemd starts from never changes, so the units on the server
+# (WorkingDirectory=/var/www/...) need nothing. <apidir>.prev is kept after a
+# good deploy for an instant manual rollback (until the next deploy):
+#   mv <apidir>/uploads <apidir>.prev/ && mv <apidir> <apidir>.bad \
+#     && mv <apidir>.prev <apidir> && systemctl restart <service>
+# A rollback never un-migrates the database: migrations are additive, so the
+# previous code runs on the newer schema; the backup release-all.sh takes just
+# before each half is the way back from a migration itself.
 set -uo pipefail
 # The release to deploy. Passing one as $1 wins; the value here is only the
 # fallback. It used to be this line alone, which meant the script accepted an
@@ -83,13 +106,17 @@ deploy() { # <label> <apidir> <admindir> <clientdir> <service> <port>
   grep -q '^VIDEO_UPLOAD_DIR=' "$apidir/.env" 2>/dev/null \
     || echo "  note: VIDEO_UPLOAD_DIR is not set - uploaded videos live inside $apidir/uploads"
 
-  local envcopy
-  envcopy=$(mktemp) || { echo "  FAILED - cannot create a temp file; nothing changed"; return 1; }
-  cp "$apidir/.env" "$envcopy"
-  rm -rf "$apidir.prev"; mkdir -p "$apidir.prev"
-  tar -C "$apidir" --exclude=./uploads -cf - . | tar -C "$apidir.prev" -xpf -
-  tar -xzf "/staging/$R-api.tgz" --strip-components=1 -C "$apidir"
-  cp "$envcopy" "$apidir/.env"; rm -f "$envcopy"
+  # The new release is assembled in its own folder; see the header. The
+  # previous deploy's kept folder goes first, so the disk never holds more
+  # than two installed releases — the same as when <apidir>.prev was a copy.
+  local next="$apidir.next"
+  rm -rf "$apidir.prev" "$next"; mkdir -p "$next"
+  if ! { tar -C "$apidir" --exclude=./uploads --exclude=./node_modules -cf - . | tar -C "$next" -xpf -; } \
+     || ! tar -xzf "/staging/$R-api.tgz" --strip-components=1 -C "$next"; then
+    echo "  FAILED - cannot assemble the new release in $next (disk full?); nothing changed"
+    rm -rf "$next"; return 1
+  fi
+  cp -p "$apidir/.env" "$next/.env"
 
   # Stamp the build into its own environment.
   #
@@ -101,11 +128,17 @@ deploy() { # <label> <apidir> <admindir> <clientdir> <service> <port>
   #
   # Rewritten rather than appended, because .env is carried across deploys and
   # appending would stack one line per release.
-  sed -i '/^APP_RELEASE=/d' "$apidir/.env"
-  echo "APP_RELEASE=$R" >> "$apidir/.env"
+  sed -i '/^APP_RELEASE=/d' "$next/.env"
+  echo "APP_RELEASE=$R" >> "$next/.env"
 
-  ( cd "$apidir" && npm ci --omit=dev --no-audit --no-fund >/dev/null 2>&1 \
-      || npm install --omit=dev --no-audit --no-fund >/dev/null 2>&1 )
+  # Installed into the new folder only: the running process keeps its own
+  # node_modules until the swap. A failed install now stops here instead of
+  # restarting onto half a dependency tree.
+  if ! ( cd "$next" && { npm ci --omit=dev --no-audit --no-fund >/dev/null 2>&1 \
+      || npm install --omit=dev --no-audit --no-fund >/dev/null 2>&1; } ); then
+    echo "  FAILED - npm could not install the release's dependencies; nothing changed"
+    rm -rf "$next"; return 1
+  fi
 
   # The schema first, then the code — on staging's database, then production's.
   #
@@ -116,30 +149,65 @@ deploy() { # <label> <apidir> <admindir> <clientdir> <service> <port>
   # is still the one answering, and a failure stops this deploy before the
   # service, the admin or the site is switched.
   local want
-  want=$(shipped_migration "$apidir")
+  want=$(shipped_migration "$next")
   echo "  migrating the $label database (release ships up to ${want:-none})"
-  if ! ( cd "$apidir" && { echo "--- $(date -Iseconds) $label $R"; npm run -s migrate; } >> "$MIGRATION_LOG" 2>&1 ); then
+  if ! ( cd "$next" && { echo "--- $(date -Iseconds) $label $R"; npm run -s migrate; } >> "$MIGRATION_LOG" 2>&1 ); then
     echo "  MIGRATION FAILED - the $label code, admin and site were not switched"
     tail -n 12 "$MIGRATION_LOG" | sed 's/^/    /'
-    rollback_api "$apidir" "$svc" "$port"
+    # The old process never stopped and its folder was never touched.
+    rm -rf "$next"
     return 1
   fi
   tail -n 1 "$MIGRATION_LOG" | sed 's/^/    /'
 
-  tar -xzf "/staging/$R-admin.tgz"  -C "$admindir"
-  tar -xzf "/staging/$R-client.tgz" -C "$clientdir"
+  # --touch: every file of the release is dated now, not when it was built.
+  # Asset names are content hashes, so an unchanged chunk keeps its name from
+  # release to release; the -mtime pruning below must see it as current. With
+  # the archive's dates, a release built (or held on staging) over a week
+  # before production would have had its own live chunks pruned.
+  tar -xzf "/staging/$R-admin.tgz" --touch -C "$admindir"
+  tar -xzf "/staging/$R-client.tgz" --touch -C "$clientdir"
   echo -n "  admin entry: "; grep -oE 'index-[A-Za-z0-9_-]+\.js' "$admindir/index.html" | head -1
 
-  systemctl restart "$svc"
-  sleep 9
-  if ok "$port"; then
+  # The swap: two renames on one filesystem, then the single restart. The old
+  # process keeps its open files across the rename until it is restarted.
+  # Git does not ship uploads/, so the release has none to merge; this only
+  # guards against an archive that someday does.
+  if [ -d "$next/uploads" ]; then
+    mkdir -p "$apidir/uploads"
+    cp -an "$next/uploads/." "$apidir/uploads/" 2>/dev/null
+    rm -rf "$next/uploads"
+  fi
+  if ! mv "$apidir" "$apidir.prev"; then
+    echo "  FAILED - cannot move $apidir aside; the running code is unchanged"
+    rm -rf "$next"; restore_static "$label" "$admindir" "$clientdir"; return 1
+  fi
+  if ! mv "$next" "$apidir"; then
+    echo "  FAILED - cannot move the new release into place; putting the old one back"
+    mv "$apidir.prev" "$apidir"; rm -rf "$next"; restore_static "$label" "$admindir" "$clientdir"; return 1
+  fi
+  { [ -e "$apidir.prev/uploads" ] || [ -L "$apidir.prev/uploads" ]; } && mv "$apidir.prev/uploads" "$apidir/uploads"
+  # One unit: the single restart, exactly as before. Extra web instances
+  # enabled on the server (deploy/MULTI_INSTANCE.md): one at a time, each
+  # answering before the next goes down, so nginx always has one to send to.
+  local instances healthy=0
+  instances=$(web_instances "$svc")
+  if [ -z "$instances" ]; then
+    systemctl restart "$svc"
+    restart_worker "$svc"
+    sleep 9
+    ok "$port" && healthy=1
+  else
+    rolling_restart "$svc" "$port" $instances && healthy=1
+  fi
+  if [ "$healthy" = 1 ]; then
     local got
     got=$(applied_migration "$port")
     if [ -n "$want" ] && [ "$got" != "$want" ]; then
       echo "  FAILED - the database reports migration '${got:-none}', the release ships '$want'"
     else
       echo "  OK - $(h "$port")"
-      rm -rf "$apidir.prev"
+      echo "  previous release kept at $apidir.prev (removed by the next deploy)"
       return 0
     fi
   else
@@ -148,17 +216,94 @@ deploy() { # <label> <apidir> <admindir> <clientdir> <service> <port>
   echo "  rolling back"
   journalctl -u "$svc" -n 15 --no-pager | tail -10
   rollback_api "$apidir" "$svc" "$port"
-  tar -xzf "/staging/rb-$label-admin-$TS.tgz"  -C "$admindir"
-  tar -xzf "/staging/rb-$label-client-$TS.tgz" -C "$clientdir"
+  restore_static "$label" "$admindir" "$clientdir"
   return 1
+}
+
+# Extra web instances of <service>: deploy/systemd/<service>@.service, one per
+# port (mahad-api@3011 listens on 3011), enabled by hand as
+# deploy/MULTI_INSTANCE.md says. None enabled — the default — means the single
+# unit and the single restart above.
+web_instances() { # <service>
+  systemctl list-units --all --plain --no-legend --type=service "$1@*.service" 2>/dev/null \
+    | awk '{print $1}' | grep -E "^$1@[0-9]+\.service$" | sed 's/\.service$//' \
+    | while read -r unit; do
+        systemctl is-enabled --quiet "$unit" 2>/dev/null && echo "$unit"
+      done
+  return 0
+}
+
+# Up to about a minute for an instance to answer /api/health with "ok". While
+# it drains and restarts, nginx sends its requests to the others
+# (proxy_next_upstream, deploy/nginx/mahad-api-multi.conf.example).
+wait_healthy() { # <port>
+  local i
+  for i in $(seq 1 45); do
+    ok "$1" && return 0
+    sleep 1
+  done
+  return 1
+}
+
+# The rolling restart, after the folder swap. Every instance runs from the same
+# folder, so from the swap until each one restarts, an old process serves with
+# the new release on disk under it: what it already loaded is the old code, but
+# a module it requires lazily for the first time — and any file it reads — now
+# comes from the new release. That window is kept to the restarts themselves
+# (each instance is restarted as soon as the one before answers, a few seconds
+# apiece) and is written up in deploy/MULTI_INSTANCE.md. A rollback moves the
+# old folder back, which makes an instance not yet restarted whole again.
+rolling_restart() { # <service> <port> <instance units...>
+  local svc=$1 port=$2 unit p
+  shift 2
+  echo "  rolling restart: $svc (:$port), then $*"
+  systemctl restart "$svc"
+  if ! wait_healthy "$port"; then
+    echo "  $svc did not answer on :$port"
+    return 1
+  fi
+  for unit in "$@"; do
+    p=${unit##*@}
+    systemctl restart "$unit"
+    if ! wait_healthy "$p"; then
+      echo "  $unit did not answer on :$p"
+      return 1
+    fi
+    echo "  $unit answers on :$p"
+  done
+  restart_worker "$svc"
+  return 0
+}
+
+# The optional background-jobs process (api/worker.js) runs from the same
+# folder, so it follows every switch. Only when someone enabled its unit
+# (deploy/systemd/<service>-worker.service); otherwise there is none.
+restart_worker() { # <service>
+  if systemctl is-enabled --quiet "$1-worker" 2>/dev/null; then
+    systemctl restart "$1-worker" && echo "  restarted $1-worker"
+  fi
+  return 0
+}
+
+restore_static() { # <label> <admindir> <clientdir>
+  tar -xzf "/staging/rb-$1-admin-$TS.tgz" --touch -C "$2"
+  tar -xzf "/staging/rb-$1-client-$TS.tgz" --touch -C "$3"
 }
 
 rollback_api() { # <apidir> <service> <port>
   local apidir=$1 svc=$2 port=$3
-  # Whatever was uploaded meanwhile moves back with the old code.
-  [ -d "$apidir/uploads" ] && mv "$apidir/uploads" "$apidir.prev/uploads"
+  # Whatever was uploaded meanwhile moves back with the old code. The database
+  # stays migrated (see the header).
+  { [ -e "$apidir/uploads" ] || [ -L "$apidir/uploads" ]; } && mv "$apidir/uploads" "$apidir.prev/uploads"
   rm -rf "$apidir"; mv "$apidir.prev" "$apidir"
-  systemctl restart "$svc"; sleep 9
+  local instances
+  instances=$(web_instances "$svc")
+  if [ -z "$instances" ]; then
+    systemctl restart "$svc"; restart_worker "$svc"; sleep 9
+  else
+    # Every instance back onto the old release, still one at a time.
+    rolling_restart "$svc" "$port" $instances || echo "  an instance did not come back - see systemctl status $svc@*"
+  fi
   echo "  restored - $(h "$port")"
 }
 
@@ -183,6 +328,14 @@ prune_archives() {
              "/staging/$rel-api.tgz.sha256" "/staging/$rel-admin.tgz.sha256" "/staging/$rel-client.tgz.sha256"
   done
   echo "  /staging now holds $(du -sh /staging 2>/dev/null | cut -f1)"
+  # The production sites' old assets are pruned after the production half
+  # (below); the staging sites never were, and kept every release's chunks.
+  for site in /var/www/staging.mahadnafsy.com /var/www/admin-staging.mahadnafsy.com; do
+    [ -d "$site/assets" ] || continue
+    before=$(du -sm "$site/assets" 2>/dev/null | cut -f1)
+    find "$site/assets" -type f -mtime +7 -delete 2>/dev/null
+    echo "  $site/assets: ${before}MB → $(du -sm "$site/assets" 2>/dev/null | cut -f1)MB"
+  done
 }
 
 if [ "$TARGET" != production ]; then
@@ -232,12 +385,17 @@ echo "=== final ==="
 echo -n "  service : "; systemctl is-active mahad-api
 echo -n "  health  : "; h 3001; echo
 echo -n "  restarts: "; systemctl show mahad-api -p NRestarts --value
+for unit in $(web_instances mahad-api); do
+  echo -n "  $unit: "; systemctl is-active "$unit"
+done
 echo
 echo
 echo "=== prune old assets ==="
 # Each release writes new hashed files and leaves the previous ones behind.
 # Seven days is well past any cached index.html still asking for an older
-# chunk, and comfortably past the window a rollback would need.
+# chunk, and comfortably past the window a rollback would need. Files the
+# current release still uses were re-dated when it was extracted (--touch
+# above), so a chunk whose content never changed is never pruned.
 for web in /var/www/mahadnafsy.com/assets /var/www/admin.mahadnafsy.com/assets; do
   [ -d "$web" ] || continue
   before=$(find "$web" -type f | wc -l)
@@ -258,8 +416,42 @@ if [ -s /staging/mahad-db-backup.sh ] && bash -n /staging/mahad-db-backup.sh; th
   install -m 0755 /staging/mahad-db-backup.sh /usr/local/bin/mahad-db-backup.sh
   echo "  installed /usr/local/bin/mahad-db-backup.sh"
 fi
+if [ -s /staging/mahad-db-backup ] && [ -d /etc/cron.d ]; then
+  install -m 0644 /staging/mahad-db-backup /etc/cron.d/mahad-db-backup
+  echo "  installed /etc/cron.d/mahad-db-backup (hourly verified backup, shipped off-site)"
+  # A schedule made by hand before this one would now run the dump twice.
+  if crontab -l 2>/dev/null | grep -q 'mahad-db-backup'; then
+    echo "  NOTE: root's own crontab also runs mahad-db-backup — remove that line (crontab -e); /etc/cron.d/mahad-db-backup replaces it"
+  fi
+fi
 if [ -s /staging/mahad-restore-rehearsal ] && [ -d /etc/cron.d ]; then
   install -m 0644 /staging/mahad-restore-rehearsal /etc/cron.d/mahad-restore-rehearsal
   echo "  installed /etc/cron.d/mahad-restore-rehearsal (weekly restore rehearsal)"
+fi
+# Off-site copies (deploy/OFFSITE_BACKUPS.md). Installed everywhere and idle
+# until /etc/mahad/offsite.env exists, so a server without a bucket is
+# unchanged. Binary logging needs a MariaDB restart, so it is never switched on
+# here — only reported, every deploy, until someone does.
+if [ -s /staging/mahad-offsite.sh ] && bash -n /staging/mahad-offsite.sh; then
+  install -m 0755 /staging/mahad-offsite.sh /usr/local/bin/mahad-offsite
+  echo "  installed /usr/local/bin/mahad-offsite"
+  if [ -s /staging/mahad-offsite ] && [ -d /etc/cron.d ]; then
+    install -m 0644 /staging/mahad-offsite /etc/cron.d/mahad-offsite
+    echo "  installed /etc/cron.d/mahad-offsite (binlogs every 15 min, uploads nightly, retention, monthly rehearsal)"
+  fi
+  if [ -s /staging/60-mahad-binlog.cnf ]; then
+    mkdir -p /usr/local/share/mahad
+    install -m 0644 /staging/60-mahad-binlog.cnf /usr/local/share/mahad/60-mahad-binlog.cnf
+  fi
+  if [ -f /etc/mahad/offsite.env ]; then
+    echo "  off-site copies: ON - last dump upload: $(/usr/local/bin/mahad-offsite status 2>/dev/null | sed -n 's/^push-dump *: //p')"
+  else
+    echo "  NOTE: off-site copies are OFF - /etc/mahad/offsite.env does not exist (deploy/OFFSITE_BACKUPS.md)"
+  fi
+  if [ "$(timeout 10 mysql -u root -N -B -e 'SELECT @@log_bin' 2>/dev/null)" != "1" ]; then
+    echo "  NOTE: MariaDB binary logs are OFF - a restore can only go back to the last hourly dump, not to a minute."
+    echo "        Switching on needs one MariaDB restart: deploy/OFFSITE_BACKUPS.md, or the steps at the top of"
+    echo "        /usr/local/share/mahad/60-mahad-binlog.cnf"
+  fi
 fi
 echo "DONE - release $R live on staging and production."

@@ -7,7 +7,7 @@ const { pool } = require('../lib/db');
 const { branchIdForBranch, defaultDigitalBranch } = require('../lib/branches');
 const { listBranches } = require('../lib/branchesRepo');
 const { buildBranchCandidates, inferBranchFromLead } = require('../lib/branchInference');
-const { getNextClientCode } = require('../lib/mappers');
+const { getNextClientCode, lockClientCodeCounter, raiseClientCodeCounter, setClientCodeCounter } = require('../lib/mappers');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { ADMIN_EMAILS, requireAuth, requireAdmin } = require('../middleware/auth');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
@@ -174,14 +174,14 @@ router.post('/api/admin/fix-auto-subscribers', requireAuth, requireAdmin, requir
     );
     const maxV = Math.max(subMax.mx || 0, leadMax.mx || 0);
     const syncNext = maxV >= 10000 ? maxV + 1 : 10001;
-    await conn.query('UPDATE client_code_counter SET next_value = ? WHERE id = 1 AND next_value < ?', [syncNext, syncNext]);
+    await raiseClientCodeCounter(conn, tenantId, syncNext);
 
     const [noCodes] = await conn.query(
       `SELECT id FROM subscribers WHERE tenant_id=? AND (client_code IS NULL OR client_code NOT REGEXP '^C[0-9]+$') ORDER BY created_at ASC`,
       [tenantId]
     );
     for (const row of noCodes) {
-      const code = await getNextClientCode(conn);
+      const code = await getNextClientCode(conn, tenantId);
       await conn.query('UPDATE subscribers SET client_code = ? WHERE id = ? AND tenant_id=?', [code, row.id, tenantId]);
       coded++;
     }
@@ -240,10 +240,7 @@ router.post('/api/admin/bulk-assign-client-codes', requireAuth, requireAdmin, bu
     );
     const maxVal = Math.max(subMax.mx || 0, leadMax.mx || 0);
     const syncNext = maxVal >= 10000 ? maxVal + 1 : 10001;
-    await conn.query(
-      'UPDATE client_code_counter SET next_value = ? WHERE id = 1 AND next_value < ?',
-      [syncNext, syncNext]
-    );
+    await raiseClientCodeCounter(conn, tenantId, syncNext);
 
     // Find rows without valid codes
     const [badSubs] = await conn.query(
@@ -264,9 +261,7 @@ router.post('/api/admin/bulk-assign-client-codes', requireAuth, requireAdmin, bu
     }
 
     // Lock and get enough codes from the counter
-    await conn.query('SELECT next_value FROM client_code_counter WHERE id=1 FOR UPDATE');
-    const [[cRow]] = await conn.query('SELECT next_value FROM client_code_counter WHERE id=1');
-    let nextVal = cRow.next_value;
+    let nextVal = await lockClientCodeCounter(conn, tenantId);
 
     // Assign to subscribers
     for (const row of badSubs) {
@@ -279,7 +274,7 @@ router.post('/api/admin/bulk-assign-client-codes', requireAuth, requireAdmin, bu
       await conn.query('UPDATE leads SET client_code=? WHERE id=? AND tenant_id=? AND (client_code IS NULL OR client_code NOT REGEXP ?)', [code, row.id, tenantId, '^C[0-9]+$']);
     }
     // Update counter
-    await conn.query('UPDATE client_code_counter SET next_value=? WHERE id=1', [nextVal]);
+    await setClientCodeCounter(conn, tenantId, nextVal);
 
     await conn.commit();
     res.json({ ok: true, assigned: totalNeeded, nextCounter: nextVal });
@@ -306,16 +301,14 @@ router.post('/api/admin/fix-all-codes', requireAuth, requireAdmin, requireDelete
         SELECT MAX(CAST(SUBSTRING(client_code,2) AS UNSIGNED)) AS n FROM subscribers WHERE tenant_id=? AND client_code REGEXP '^C[0-9]+$'
       ) t
     `, [tenantId, tenantId]);
-    await conn.query('UPDATE client_code_counter SET next_value = ? WHERE id = 1 AND next_value <= ?', [maxRow.mx + 1, maxRow.mx]);
+    await raiseClientCodeCounter(conn, tenantId, Number(maxRow.mx) + 1);
 
     // 2. Assign codes to leads without valid codes
     const [badLeads] = await conn.query(`SELECT id FROM leads WHERE tenant_id=? AND (client_code IS NULL OR client_code NOT REGEXP '^C[0-9]+$')`, [tenantId]);
     // 3. Assign codes to subscribers without valid codes
     const [badSubs] = await conn.query(`SELECT id FROM subscribers WHERE tenant_id=? AND (client_code IS NULL OR client_code NOT REGEXP '^C[0-9]+$')`, [tenantId]);
 
-    await conn.query('SELECT next_value FROM client_code_counter WHERE id=1 FOR UPDATE');
-    const [[cRow]] = await conn.query('SELECT next_value FROM client_code_counter WHERE id=1');
-    let nextVal = cRow.next_value;
+    let nextVal = await lockClientCodeCounter(conn, tenantId);
 
     for (const row of badLeads) {
       await conn.query('UPDATE leads SET client_code=? WHERE id=? AND tenant_id=?', [`C${nextVal++}`, row.id, tenantId]);
@@ -323,7 +316,7 @@ router.post('/api/admin/fix-all-codes', requireAuth, requireAdmin, requireDelete
     for (const row of badSubs) {
       await conn.query('UPDATE subscribers SET client_code=? WHERE id=? AND tenant_id=?', [`C${nextVal++}`, row.id, tenantId]);
     }
-    await conn.query('UPDATE client_code_counter SET next_value=? WHERE id=1', [nextVal]);
+    await setClientCodeCounter(conn, tenantId, nextVal);
 
     // 4. Merge duplicate leads by phone (keep newest, hide older)
     const [dupPhoneLeads] = await conn.query(`
@@ -363,14 +356,12 @@ router.post('/api/admin/fix-all-codes', requireAuth, requireAdmin, requireDelete
     `, [tenantId]);
     let dupCodesFixed = 0;
     if (crossDups.length > 0) {
-      await conn.query('SELECT next_value FROM client_code_counter WHERE id=1 FOR UPDATE');
-      const [[cRow2]] = await conn.query('SELECT next_value FROM client_code_counter WHERE id=1');
-      let nv = cRow2.next_value;
+      let nv = await lockClientCodeCounter(conn, tenantId);
       for (const row of crossDups) {
         await conn.query('UPDATE subscribers SET client_code=? WHERE id=? AND tenant_id=?', [`C${nv++}`, row.id, tenantId]);
         dupCodesFixed++;
       }
-      await conn.query('UPDATE client_code_counter SET next_value=? WHERE id=1', [nv]);
+      await setClientCodeCounter(conn, tenantId, nv);
     }
 
     await conn.commit();

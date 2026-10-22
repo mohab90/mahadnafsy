@@ -3,6 +3,7 @@
 const rateLimit = require('express-rate-limit');
 const { distributedRateLimitStore } = require('../lib/rateLimitStore');
 const { pendingTokenIdentity } = require('../lib/pendingTokenIdentity');
+const { isKnownLogin } = require('../lib/knownLogin');
 
 const ipKeyGenerator = rateLimit.ipKeyGenerator || (ip => ip || 'unknown');
 const safe = value => String(value || 'anonymous').toLowerCase().replace(/[^a-z0-9@._:/-]/g, '').slice(0, 160) || 'anonymous';
@@ -19,10 +20,13 @@ const actor = req => safe(
   || pendingTokenIdentity(req.body?.pendingToken) || 'anonymous'
 );
 const ip = req => safe(ipKeyGenerator(req.ip));
+// 'ip': one network. 'user': one account from one network. 'account': one
+// account from every network — what stops guessing spread over many addresses.
 const keyBy = mode => req => {
   const parts = [tenant(req)];
-  if (mode === 'user') parts.push(actor(req));
-  parts.push(ip(req), normalizedAction(req));
+  if (mode === 'user' || mode === 'account') parts.push(actor(req));
+  if (mode !== 'account') parts.push(ip(req));
+  parts.push(normalizedAction(req));
   return parts.join(':');
 };
 const tooMany = message => (_req, res) => res.status(429).json({ error: message, code: 'RATE_LIMITED' });
@@ -62,16 +66,42 @@ const adminLimiter = limiter('privileged', {
   // and the status poll was counted like any other call.
   skip: req => String(req.originalUrl || '').split('?')[0] === '/api/admin/server-status',
 });
+// Wrong passwords from strangers lock out strangers. A browser that signed in
+// to this account before (lib/knownLogin.js) is not counted with them — fifteen
+// wrong guesses from a shared office or mobile network used to refuse the
+// owner's right password for fifteen minutes — and has a bucket of its own.
+// The account-wide bucket (every network) is what slows guessing spread over
+// many addresses; it never blocks the owner's known browser either.
+const knownLogin = req => isKnownLogin(req);
 const loginLimiter = [
   limiter('login-ip', {
     windowMs: 15 * minute, max: 50,
-    skipSuccessfulRequests: true,
+    skipSuccessfulRequests: true, skip: knownLogin,
     message: 'محاولات دخول كثيرة من الشبكة، انتظر 15 دقيقة',
   }),
   limiter('login-account', {
     windowMs: 15 * minute, max: 15, mode: 'user',
-    skipSuccessfulRequests: true,
+    skipSuccessfulRequests: true, skip: knownLogin,
     message: 'محاولات كثيرة للحساب، انتظر 15 دقيقة وحاول مرة أخرى',
+  }),
+  limiter('login-account-any-ip', {
+    windowMs: hour, max: 60, mode: 'account',
+    skipSuccessfulRequests: true, skip: knownLogin,
+    message: 'محاولات كثيرة للحساب، انتظر ساعة أو ادخل من جهاز دخلت منه قبل كده',
+  }),
+  limiter('login-known-device', {
+    windowMs: 15 * minute, max: 30, mode: 'account',
+    skipSuccessfulRequests: true, skip: req => !knownLogin(req),
+    message: 'محاولات كثيرة للحساب، انتظر 15 دقيقة وحاول مرة أخرى',
+  }),
+];
+// Setting a new password with a reset token carries no account name, so it
+// keeps the network buckets only (an account-wide one would be one shared
+// anonymous bucket for the whole tenant).
+const resetPasswordLimiter = [
+  limiter('reset-password-ip', {
+    windowMs: 15 * minute, max: 50, skipSuccessfulRequests: true,
+    message: 'محاولات كثيرة من الشبكة، انتظر 15 دقيقة',
   }),
 ];
 const otpLimiter = [
@@ -82,12 +112,25 @@ const otpLimiter = [
     windowMs: 10 * minute, max: 10, mode: 'user', message: 'محاولات OTP كثيرة للحساب، انتظر 10 دقائق',
   }),
 ];
+// Checking a password-reset code: also counted per account across every
+// network, so new addresses do not buy new guesses (each code also burns
+// after five wrong tries — routes/auth/passwordReset.js).
+const resetOtpLimiter = [
+  ...otpLimiter,
+  limiter('reset-otp-account-any-ip', {
+    windowMs: hour, max: 20, mode: 'account', skipSuccessfulRequests: true,
+    message: 'محاولات كثيرة لرمز الاسترجاع على الحساب، انتظر ساعة واطلب رمز جديد',
+  }),
+];
 const forgotPasswordLimiter = [
   limiter('forgot-password-ip', {
     windowMs: hour, max: 20, message: 'محاولات استعادة كثيرة من الشبكة، انتظر ساعة',
   }),
   limiter('forgot-password-account', {
     windowMs: hour, max: 8, mode: 'user', message: 'محاولات استعادة كثيرة للحساب، انتظر ساعة',
+  }),
+  limiter('forgot-password-account-any-ip', {
+    windowMs: hour, max: 15, mode: 'account', message: 'محاولات استعادة كثيرة للحساب، انتظر ساعة',
   }),
 ];
 const registerLimiter = limiter('register', {
@@ -136,7 +179,9 @@ const aiLimiter = limiter('student-ai', {
 module.exports = {
   adminLimiter,
   loginLimiter,
+  resetPasswordLimiter,
   otpLimiter,
+  resetOtpLimiter,
   forgotPasswordLimiter,
   registerLimiter,
   paymobLimiter,

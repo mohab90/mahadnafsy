@@ -6,7 +6,7 @@
   "scripts": {
     "smoke": "node tools/mahad-api-smoke.mjs",
     "smoke:db": "API_PORT=3001 node tools/mahad-api-smoke.mjs",
-    "lint:api": "npx --yes eslint@8.57.0 --no-eslintrc -c api/.eslintrc.cjs api/routes/ api/lib/ api/middleware/ api/server.js",
+    "lint:api": "npx --yes eslint@8.57.0 --no-eslintrc -c api/.eslintrc.cjs api/routes/ api/lib/ api/middleware/ api/server.js api/worker.js",
     "syntax:api": "node tools/check-api-syntax.mjs",
     "lint:admin": "npm --prefix admin run lint && npm --prefix admin run typecheck",
     "lint:client": "npm --prefix client run lint && npm --prefix client run typecheck",

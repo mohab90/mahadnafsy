@@ -168,7 +168,9 @@ test('the widget asks first, and the inbox holds only the site\'s problems', () 
   // The administration's default is the support queue, plus what was escalated
   // to it (8 Oct 2026), plus whatever a client wrote on the site (10 Oct 2026:
   // «اي تواصل من العملاء من السايت بيسمع في الصفحه دي»); «كل الأقسام» is a choice.
-  assert.match(inbox, /else if \(!department && unscoped\) where\.push\(`\(t\.department IN \('support','management'\) OR t\.escalated_at IS NOT NULL OR t\.channel IN \(\$\{WEBSITE_CHANNELS/);
+  // And each branch's own queue (lib/ticketBranchQueue.js), since 22 Oct 2026.
+  assert.match(inbox, /const queues = \['support', 'management', \.\.\.Object\.keys\(DEPARTMENT_BRANCH\)\];/);
+  assert.match(inbox, /where\.push\(`\(t\.department IN \(\$\{queues\.map\(\(\) => '\?'\)\.join\(','\)\}\) OR t\.escalated_at IS NOT NULL OR t\.channel IN \(\$\{WEBSITE_CHANNELS/);
   assert.match(support, /const WEBSITE_CHANNELS = \['web', 'web_contact', 'user_dashboard', 'ai_assistant'\];/);
   // Every un-triaged contact message, not the «technical» ones only.
   assert.match(inbox, /WHERE tenant_id = \? AND converted_ticket_id IS NULL\s+AND LOWER/);

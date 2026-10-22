@@ -10,7 +10,17 @@ import { cdnImg } from '../lib/img';
 import { instituteWhatsApp } from '../lib/whatsappLink';
 import { amountDueNow, enrollmentRates, installmentTotal, percentLabel, type PayMode } from '../../shared/enrollmentPricing';
 import { useSeo } from '../lib/useSeo';
+import { effectivePrice, usePriceList } from '../lib/usePrices';
 import { rememberCheckoutOrder, trackInitiateCheckout } from '../lib/tracking';
+import { visitAttribution } from '../lib/attribution';
+import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
+
+// «قبل الخميس 3:00 م» from the review deadline the server set; a day's wait when it gave none.
+function reviewDueLabel(iso: string): string {
+  const at = iso ? new Date(iso) : null;
+  if (!at || Number.isNaN(at.getTime())) return 'خلال 24 ساعة';
+  return `قبل ${at.toLocaleString('ar-EG-u-nu-latn', { weekday: 'long', hour: 'numeric', minute: '2-digit', timeZone: CAIRO_TIME_ZONE })}`;
+}
 
 const Checkout: React.FC = () => {
   useSeo({ title: 'إتمام الاشتراك | معهد الدراسات النفسية', path: '/checkout' });
@@ -18,6 +28,7 @@ const Checkout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { courses, bundles, therapists, content, currency, authUser, subscribers, mySubscriberId } = useSiteData();
+  const priceList = usePriceList();
   const paymentLinkToken = searchParams.get('paymentToken') || searchParams.get('token');
   const [paymentLink, setPaymentLink] = useState<{
     item_type: string; item_id: string; amount: number; currency: 'EGP' | 'SAR' | 'USD';
@@ -68,11 +79,20 @@ const Checkout: React.FC = () => {
   // instalment plan rather than silently charging a number nobody explained.
   const [, setServerPayMode] = useState<'cash' | 'installment'>('cash');
   const [serverPlanTotal, setServerPlanTotal] = useState<number | null>(null);
+  // A promo code — the pop-up's, a coupon from التسويق ← الخصومات — checked and
+  // priced by the server (POST /api/public/price-quote); checkout-intent applies
+  // it again by the same rule, so what is shown here is what is charged.
+  const [promoInput, setPromoInput] = useState(() => (searchParams.get('promo') || '').toUpperCase());
+  const [promo, setPromo] = useState<{ code: string; price: number; label: string } | null>(null);
+  const [promoMsg, setPromoMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [promoLoading, setPromoLoading] = useState(false);
   // Self-service receipt upload (after order is placed)
   const [proofImage, setProofImage] = useState('');
   const [proofMethod, setProofMethod] = useState('');
   const [proofSubmitting, setProofSubmitting] = useState(false);
   const [proofDone, setProofDone] = useState(false);
+  // When the accounts' review of the receipt is due (POST /api/me/payment-proof).
+  const [reviewDueAt, setReviewDueAt] = useState('');
   const [proofError, setProofError] = useState('');
 
   // Auto-fill name & email from logged-in user
@@ -97,6 +117,8 @@ const Checkout: React.FC = () => {
   // Determine Item details
   let itemTitle = '';
   let itemPrice = 0;
+  // The catalogue price, before the discount running on the item (itemPrice is after it).
+  let itemBase = 0;
   let itemImage = '';
   let itemFound = false;
 
@@ -104,7 +126,10 @@ const Checkout: React.FC = () => {
       const course = courses.find(c => c.id === id);
       if (course) {
           itemTitle = course.title;
-          itemPrice = course.price?.[currency] ?? 0;
+          // The price checkout charges, discount included (lib/usePrices).
+          const effective = effectivePrice(priceList, 'course', course.id, currency, course.price?.[currency] ?? 0);
+          itemPrice = effective.price;
+          itemBase = effective.base;
           itemImage = course.thumbnail;
           itemFound = true;
       }
@@ -112,14 +137,19 @@ const Checkout: React.FC = () => {
       const bundle = bundles.find(b => b.id === id);
       if (bundle) {
           itemTitle = bundle.title;
-          itemPrice = bundle.price?.[currency] ?? 0;
+          const effective = effectivePrice(priceList, 'bundle', bundle.id, currency, bundle.price?.[currency] ?? 0);
+          itemPrice = effective.price;
+          itemBase = effective.base;
           itemImage = bundle.courses[0]?.thumbnail ?? '';
           itemFound = true;
       }
   } else if (type === 'consultation') {
       if (subtype === 'express') {
           itemTitle = 'جلسة استشارة سريعة (Express)';
-          itemPrice = expressPrice(content, currency);
+          // Less a discount aimed at consultations (api/lib/effectivePrice.js).
+          const effective = effectivePrice(priceList, 'consultation', 'express', currency, expressPrice(content, currency));
+          itemPrice = effective.price;
+          itemBase = effective.base;
           itemImage = content['consultation.expressImage'] || '';
           itemFound = true;
       } else {
@@ -127,7 +157,9 @@ const Checkout: React.FC = () => {
           const therapist = therapists.find(t => t.id === therapistId);
           if (therapist) {
             itemTitle = `جلسة علاج نفسي مع ${therapist.name}`;
-                        itemPrice = getTherapistSessionPrice(therapist, currency);
+            const effective = effectivePrice(priceList, 'consultation', therapist.id, currency, getTherapistSessionPrice(therapist, currency));
+            itemPrice = effective.price;
+            itemBase = effective.base;
             itemImage = therapist.image;
             itemFound = true;
           }
@@ -139,6 +171,7 @@ const Checkout: React.FC = () => {
   }
   if (paymentLink) {
     itemPrice = Number(paymentLink.amount) || 0;
+    itemBase = 0;
     itemTitle = paymentLink.item?.title_ar || paymentLink.item?.title || paymentLink.description || itemTitle;
     itemFound = Boolean(paymentLink.item) && itemPrice > 0;
   }
@@ -154,9 +187,47 @@ const Checkout: React.FC = () => {
   // thrown away. It had not; the page simply never applied the discount.
   const discountable = itemPrice > 0 && !paymentLink && type !== 'certificate';
   const rates = enrollmentRates(content);
-  const displayAmount = discountable ? amountDueNow(itemPrice, payMode, rates) : itemPrice;
+  // The price before the pay mode: the code's when one was accepted, else the running one.
+  const listPrice = promo && discountable ? promo.price : itemPrice;
+  const basePrice = Math.max(itemBase, itemPrice);
+  // A session has no cash or instalment rate: the server charges its price as it
+  // stands (less a consultation discount), so the page shows that, not a cash rate.
+  const displayAmount = discountable ? (type === 'consultation' ? listPrice : amountDueNow(listPrice, payMode, rates)) : itemPrice;
   const finalAmount = serverAmount ?? displayAmount;
-  const planTotal = serverPlanTotal ?? (discountable && payMode === 'installment' ? installmentTotal(itemPrice, rates) : null);
+  const planTotal = serverPlanTotal ?? (discountable && type !== 'consultation' && payMode === 'installment' ? installmentTotal(listPrice, rates) : null);
+  const promoAllowed = discountable && (type === 'course' || type === 'bundle' || type === 'consultation') && !orderId;
+
+  const applyPromo = async () => {
+    const code = promoInput.trim().toUpperCase();
+    if (!code || !promoAllowed) return;
+    setPromoLoading(true);
+    setPromoMsg(null);
+    try {
+      const res = await fetch('/api/public/price-quote', {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          itemType: type, itemId: type === 'consultation' ? searchParams.get('therapistId') || '' : id,
+          ...(type === 'consultation' ? { subtype: subtype || 'regular' } : {}),
+          payMode, promoCode: code, currency,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'تعذر التحقق من الكود');
+      if (data.discount?.code) {
+        setPromo({ code: data.discount.code, price: Number(data.price) || itemPrice, label: data.discount.label || '' });
+        setPromoMsg({ ok: true, text: `تم تطبيق الكود ${data.discount.code}` });
+      } else {
+        setPromo(null);
+        setPromoMsg({ ok: data.promoError?.code === 'PROMO_NOT_BETTER', text: data.promoError?.message || 'الكود غير صالح أو منتهي الصلاحية' });
+      }
+    } catch (err) {
+      setPromo(null);
+      setPromoMsg({ ok: false, text: err instanceof Error ? err.message : 'تعذر التحقق من الكود' });
+    } finally {
+      setPromoLoading(false);
+    }
+  };
+  const clearPromo = () => { setPromo(null); setPromoMsg(null); setPromoInput(''); };
   const whatsapp = instituteWhatsApp(content);
 
   // InitiateCheckout once the page shows something payable to someone who can
@@ -247,6 +318,8 @@ const Checkout: React.FC = () => {
           customerPhone: customerPhone.trim(),
           amount: itemPrice, currency,
           payMode: searchParams.get('payMode') === 'installment' ? 'installment' : 'cash',
+          ...(promo ? { promoCode: promo.code } : {}),
+          attribution: visitAttribution(),
           ...(type === 'consultation' ? {
             therapistId: searchParams.get('therapistId') || '',
             sessionDate: searchParams.get('date') || '',
@@ -339,6 +412,7 @@ const Checkout: React.FC = () => {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'تعذّر إرسال الإيصال');
+      setReviewDueAt(typeof data.review_due_at === 'string' ? data.review_due_at : '');
       setProofDone(true);
     } catch (e) { setProofError(e instanceof Error ? e.message : 'تعذّر إرسال الإيصال'); }
     finally { setProofSubmitting(false); }
@@ -434,7 +508,10 @@ const Checkout: React.FC = () => {
                         <Check size={32} className="text-green-600" />
                       </div>
                       <h3 className="mb-2 text-xl font-black text-ink">تم استلام إيصالك ✅</h3>
-                      <p className="mb-6 text-sm leading-relaxed text-muted-body">هنراجع الإيصال ونفعّل وصولك للكورس خلال وقت قصير — وهيوصلك تأكيد على بريدك وواتساب.</p>
+                      <p className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-sm font-extrabold text-amber-700 ring-1 ring-amber-200">قيد المراجعة</p>
+                      <p className="mb-6 text-sm leading-relaxed text-muted-body">
+                        هنراجع الإيصال ونفعّل وصولك {reviewDueLabel(reviewDueAt)} — وهيوصلك تأكيد على واتساب، وتقدر تتابع حالته من «حسابي».
+                      </p>
                       <Link to="/my-account" className={primaryBtn}>الذهاب لحسابي</Link>
                     </div>
                     ) : (
@@ -640,7 +717,7 @@ const Checkout: React.FC = () => {
                         }
                         <div className="min-w-0">
                             <h3 className="line-clamp-2 text-[15px] font-black leading-snug text-ink">{itemTitle}</h3>
-                            <p className="mt-1 font-extrabold tabular-nums text-primary-700">{itemPrice} {currencySymbol}</p>
+                            <p className="mt-1 font-extrabold tabular-nums text-primary-700">{listPrice} {currencySymbol}</p>
                         </div>
                     </div>
 
@@ -650,19 +727,25 @@ const Checkout: React.FC = () => {
                         deposit, and only one of those leaves a balance owing. */}
                         <div className="flex justify-between gap-3">
                             <span>السعر الأساسي</span>
-                            <span className="tabular-nums text-ink">{itemPrice} {currencySymbol}</span>
+                            <span className="tabular-nums text-ink">{discountable ? basePrice : itemPrice} {currencySymbol}</span>
                         </div>
-                        {discountable && payMode === 'cash' && itemPrice > finalAmount && (
+                        {discountable && basePrice > listPrice && (
+                          <div className="flex justify-between gap-3 font-bold text-green-700">
+                            <span>{promo ? `كود الخصم ${promo.code}` : 'خصم العرض'}</span>
+                            <span className="tabular-nums">− {basePrice - listPrice} {currencySymbol}</span>
+                          </div>
+                        )}
+                        {discountable && payMode === 'cash' && listPrice > finalAmount && (
                           <div className="flex justify-between gap-3 font-bold text-green-700">
                             <span>خصم الدفع الكامل ({percentLabel(rates.cash)}%)</span>
-                            <span className="tabular-nums">− {itemPrice - finalAmount} {currencySymbol}</span>
+                            <span className="tabular-nums">− {listPrice - finalAmount} {currencySymbol}</span>
                           </div>
                         )}
                         {discountable && payMode === 'installment' && planTotal && (
                           <>
                             <div className="flex justify-between gap-3 font-bold text-green-700">
                               <span>خصم التقسيط ({percentLabel(rates.install)}%)</span>
-                              <span className="tabular-nums">− {itemPrice - planTotal} {currencySymbol}</span>
+                              <span className="tabular-nums">− {listPrice - planTotal} {currencySymbol}</span>
                             </div>
                             <div className="flex justify-between gap-3 font-extrabold text-ink">
                               <span>إجمالي الكورس بعد الخصم</span>
@@ -675,6 +758,28 @@ const Checkout: React.FC = () => {
                           </>
                         )}
                     </div>
+
+                    {promoAllowed && (
+                      <div className="mb-4">
+                        <label htmlFor="promo-code" className="mb-1 block text-[13px] font-bold text-muted-strong">عندك كود خصم؟</label>
+                        <div className="flex gap-2">
+                          <input id="promo-code" value={promoInput} dir="ltr"
+                            onChange={e => { setPromoInput(e.target.value.toUpperCase()); if (promo) { setPromo(null); setPromoMsg(null); } }}
+                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void applyPromo(); } }}
+                            placeholder="CODE" maxLength={50}
+                            className="min-h-[46px] min-w-0 flex-1 rounded-xl border border-line-strong bg-paper px-3 font-mono text-[15px] uppercase text-ink outline-none focus:border-primary-600 focus:bg-white" />
+                          {promo ? (
+                            <button type="button" onClick={clearPromo} className="min-h-[46px] flex-none rounded-xl px-4 text-sm font-extrabold text-muted ring-1 ring-line hover:bg-paper">إلغاء</button>
+                          ) : (
+                            <button type="button" onClick={() => void applyPromo()} disabled={!promoInput.trim() || promoLoading}
+                              className="min-h-[46px] flex-none rounded-xl bg-ink px-4 text-sm font-extrabold text-white disabled:opacity-50">
+                              {promoLoading ? <Loader2 size={16} className="animate-spin" /> : 'تطبيق'}
+                            </button>
+                          )}
+                        </div>
+                        {promoMsg && <p role="status" className={`mt-1.5 text-xs font-bold ${promoMsg.ok ? 'text-green-700' : 'text-red-600'}`}>{promoMsg.text}</p>}
+                      </div>
+                    )}
 
                     <div className="flex items-end justify-between gap-3 rounded-[22px] bg-ink p-5 text-white">
                         <span className="text-sm font-bold text-white/70">{payMode === 'installment' ? 'المقدم المطلوب الآن' : 'صافي الدفع'}</span>

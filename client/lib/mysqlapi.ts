@@ -3,6 +3,7 @@
 // ══════════════════════════════════════════════════════════════
 
 import { AuthUser, type CommunityEventItem } from '../types';
+import { visitAttribution } from './attribution';
 import { leadHeaders } from './tracking';
 
 // Relative by default — always targets whatever origin actually served the page
@@ -352,8 +353,9 @@ export const mysqlClient = {
 export const mysqlForms = {
   submitContact: (data: AR) => apiFetch<{ ok: boolean; id: string }>('/contact', { method: 'POST', body: JSON.stringify(data), headers: leadHeaders() }),
   submitJoinUs: (data: AR) => apiFetch<{ ok: boolean; id: string }>('/join-us', { method: 'POST', body: JSON.stringify(data) }),
-  submitRegistration: (data: AR) => apiFetch<{ ok: boolean; id: string; clientCode: string }>('/registrations', { method: 'POST', body: JSON.stringify(data), headers: leadHeaders() }),
-  submitLead: (data: AR) => apiFetch<{ ok: boolean; id?: string }>('/leads-public', { method: 'POST', body: JSON.stringify(data), headers: leadHeaders() }),
+  // Each carries the visit's ad parameters (lib/attribution.ts), kept on the lead.
+  submitRegistration: (data: AR) => apiFetch<{ ok: boolean; id: string; clientCode: string }>('/registrations', { method: 'POST', body: JSON.stringify({ ...data, attribution: visitAttribution() }), headers: leadHeaders() }),
+  submitLead: (data: AR) => apiFetch<{ ok: boolean; id?: string }>('/leads-public', { method: 'POST', body: JSON.stringify({ ...data, attribution: visitAttribution() }), headers: leadHeaders() }),
 };
 
 // ── Paymob payment helpers (gateway suspended — manual payment flow) ─────────
@@ -377,8 +379,14 @@ export const mysqlAuth = {
       pendingToken?: string;
     }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   register: (data: { email: string; password: string; name?: string; phone?: string; country?: string; interest?: string; ref?: string }) =>
-    apiFetch<{ ok: boolean; user: AuthUser }>('/user/signup', { method: 'POST', body: JSON.stringify(data) }, true),
+    apiFetch<{ ok: boolean; user: AuthUser }>('/user/signup', { method: 'POST', body: JSON.stringify({ ...data, attribution: visitAttribution() }) }, true),
   me: () => apiFetch<AuthUser>('/auth/me', {}, true),
+  // The email given at sign-up is proven by the link or the six-digit code in
+  // the email sent then (api/lib/emailVerification.js).
+  verifyEmailCode: (code: string) =>
+    apiFetch<{ ok: boolean }>('/auth/email/verify', { method: 'POST', body: JSON.stringify({ code }) }, true),
+  resendEmailVerification: () =>
+    apiFetch<{ ok: boolean; sent?: boolean; alreadyVerified?: boolean }>('/auth/email/resend', { method: 'POST', body: JSON.stringify({}) }, true),
   updateProfile: (name?: string, nameEn?: string) =>
     apiFetch<{ ok: boolean }>('/auth/update-profile', { method: 'PUT', body: JSON.stringify({ name, nameEn }) }, true),
   updatePassword: (currentPassword: string, newPassword: string) =>
@@ -401,11 +409,11 @@ export const mysqlAuth = {
    * returning customer can never be renamed by a stale form value.
    * `created` says which of the two just happened.
    */
-  verifyWaOtp: (phone: string, code: string, name?: string) =>
+  verifyWaOtp: (phone: string, code: string, name?: string, ref?: string) =>
     apiFetch<{
       ok: boolean; created: boolean;
       user: { uid: string; email: string; displayName: string; phone: string };
-    }>('/auth/whatsapp/verify-otp', { method: 'POST', body: JSON.stringify({ phone, code, name }) }),
+    }>('/auth/whatsapp/verify-otp', { method: 'POST', body: JSON.stringify({ phone, code, name, ...(ref ? { ref } : {}) }) }),
   verify2fa: (pendingToken: string, token: string) =>
     apiFetch<{ ok: boolean }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, token }) }),
   // The phone is gone: one of the ten one-time codes stands in, and is burned.

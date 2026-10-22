@@ -27,7 +27,7 @@
  * answer — the callers all treat null as "leave it unlinked".
  */
 
-const { identitySpellings } = require('./phoneNumber');
+const { matchingSpellings } = require('./phoneNumber');
 
 const DEFAULT_TENANT_ID = process.env.DEFAULT_TENANT_ID || 'tenant-default';
 
@@ -35,10 +35,10 @@ const DEFAULT_TENANT_ID = process.env.DEFAULT_TENANT_ID || 'tenant-default';
  * @param {{query: Function}} db  pool or an open connection (so callers inside a
  *   transaction stay inside it)
  * @param {{tenantId?: string, phone?: string, email?: string}} contact
- * @returns {Promise<{id: string, status: string}|null>}
+ * @returns {Promise<{id: string, status: string}|null>} (with hidden and assigned_sales_id under includeHidden)
  */
-async function findLeadByContact(db, { tenantId, phone, email } = {}) {
-  const spellings = identitySpellings(phone);
+async function findLeadByContact(db, { tenantId, phone, email, includeHidden = false } = {}) {
+  const spellings = matchingSpellings(phone);
   const cleanEmail = String(email || '').trim();
 
   const match = [];
@@ -61,10 +61,13 @@ async function findLeadByContact(db, { tenantId, phone, email } = {}) {
     ? "(tenant_id = ? OR tenant_id IS NULL OR tenant_id = '')"
     : 'tenant_id = ?';
 
+  // includeHidden: an archived lead is still this person. A Facebook lead
+  // archived months ago who filled a new form became a second lead, handed to
+  // another rep (16.9k leads are archived). A merged copy is never the answer.
   const [[row]] = await db.query(
-    `SELECT id, status FROM leads
-      WHERE ${tenantClause} AND (${match.join(' OR ')}) AND hidden=0
-      ORDER BY created_at DESC LIMIT 1`,
+    `SELECT id, status${includeHidden ? ', hidden, assigned_sales_id' : ''} FROM leads
+      WHERE ${tenantClause} AND (${match.join(' OR ')})${includeHidden ? ' AND merged_into_lead_id IS NULL' : ' AND hidden=0'}
+      ORDER BY ${includeHidden ? 'hidden ASC, ' : ''}created_at DESC LIMIT 1`,
     [effectiveTenantId, ...params]
   );
   return row || null;
@@ -88,7 +91,7 @@ async function findLeadByContact(db, { tenantId, phone, email } = {}) {
  * @returns {{sql: string, params: string[]}|null}
  */
 function phoneIdentityClause(phone, column = 'phone') {
-  const spellings = identitySpellings(phone);
+  const spellings = matchingSpellings(phone);
   if (!spellings.length) return null;
   return {
     sql: `REGEXP_REPLACE(${column},'[^0-9]','') IN (${spellings.map(() => '?').join(',')})`,

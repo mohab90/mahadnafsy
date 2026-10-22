@@ -1,9 +1,11 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, BookOpen, Flame, Users } from 'lucide-react';
+import { ArrowLeft, BookOpen, Flame, Star, Users } from 'lucide-react';
 import { Course, Currency } from '../types';
 import { cdnImg, cdnSrcSet } from '../lib/img';
 import { discountPercent, formatPrice, isDiscounted } from '../../shared/priceFormat';
+import { effectivePrice, usePriceList, wasPrice } from '../lib/usePrices';
+import { useCourseRating } from '../lib/useCourseRatings';
 
 interface CourseCardProps {
   course: Course;
@@ -19,10 +21,15 @@ interface CourseCardProps {
  * took it, its price against the old one, and a button straight to booking.
  */
 const CourseCard: React.FC<CourseCardProps> = ({ course, currency, topSeller, className = '' }) => {
-  const price = course.price?.[currency] ?? 0;
-  const was = course.originalPrice?.[currency] ?? 0;
+  // The price checkout charges, discount included — the card showed the bare
+  // catalogue price while the course page showed the discounted one.
+  const effective = effectivePrice(usePriceList(), 'course', course.id, currency, course.price?.[currency] ?? 0);
+  const price = effective.price;
+  const was = wasPrice(effective, course.originalPrice?.[currency] ?? 0);
   const off = price > 0 && isDiscounted(was, price) ? discountPercent(was, price) : 0;
   const students = Math.max(0, Number(course.students) || 0);
+  // From the course's own students only — nothing shown until one has rated it.
+  const rating = useCourseRating(course.id);
   const blurb = (course.shortDescription || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
   const href = `/c/${course.slug || course.id}`;
 
@@ -39,6 +46,13 @@ const CourseCard: React.FC<CourseCardProps> = ({ course, currency, topSeller, cl
       </Link>
       <div className="flex flex-1 flex-col p-5">
         <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] font-bold text-muted">
+          {rating && (
+            <span className="inline-flex items-center gap-1" title="تقييمات من متدربين مشتركين في الكورس">
+              <Star size={14} className="fill-gold text-gold" />
+              <span className="text-ink">{rating.avg.toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 1 })}</span>
+              <span>({rating.count.toLocaleString('ar-EG-u-nu-latn')} تقييم موثّق)</span>
+            </span>
+          )}
           {students > 0 && <span className="inline-flex items-center gap-1"><Users size={14} className="text-primary-700" />{students.toLocaleString('ar-EG-u-nu-latn')} متدرب</span>}
           {course.duration && <span className="inline-flex items-center gap-1"><BookOpen size={14} className="text-primary-700" />{course.duration}</span>}
           <span className="rounded-full bg-paper px-2.5 py-0.5 text-[12px] text-muted-strong ring-1 ring-line">{course.type === 'Mix' ? 'مسجل + لايف' : course.type === 'Live' ? 'بث مباشر' : 'مسجل'}</span>

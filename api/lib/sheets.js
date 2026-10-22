@@ -357,7 +357,7 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT, options = {}) 
               if (rep) { salesId = rep.id; salesName = rep.name; }
             }
             let code = null;
-            try { const conn2 = await pool.getConnection(); try { code = await getNextClientCode(conn2); } finally { conn2.release(); } } catch(_){}
+            try { const conn2 = await pool.getConnection(); try { code = await getNextClientCode(conn2, tenantId); } finally { conn2.release(); } } catch(_){}
             const crmJson = JSON.stringify({
               assignedSalesId: salesId, assignedSalesName: salesName, interestedCourseIds: courseId ? [courseId] : [], rawBranch: rawBranch || null,
               sheetKey: sheetKeyOf(sheet.sheetId, gid), sheetName: sheet.name || null,

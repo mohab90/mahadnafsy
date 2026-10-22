@@ -211,7 +211,9 @@ function cached(key, ttlMs, fn) {
   _pendingCache.set(key, promise);
   return promise;
 }
-function cacheInvalidate(...prefixes) {
+// This process only. «figures:» (lib/httpApp.js) is dropped on every write and
+// lives fifteen seconds; sharing it would be one insert per request for nothing.
+function cacheInvalidateLocal(...prefixes) {
   if (prefixes.length === 0) { _cache.clear(); _pendingCache.clear(); return; }
   for (const k of _cache.keys()) {
     if (prefixes.some(p => k.startsWith(p))) _cache.delete(k);
@@ -219,6 +221,19 @@ function cacheInvalidate(...prefixes) {
   for (const k of _pendingCache.keys()) {
     if (prefixes.some(p => k.startsWith(p))) _pendingCache.delete(k);
   }
+}
+
+// A catalogue, price, branch or site-content save drops these in every API
+// process (lib/cacheBus.js), not only the one that took it. No prefixes: all.
+const cacheBus = require('./cacheBus');
+cacheBus.bus.on('db-cache', arg => {
+  let prefixes = [];
+  try { prefixes = arg ? JSON.parse(arg) : []; } catch (_) { prefixes = []; }
+  cacheInvalidateLocal(...(Array.isArray(prefixes) ? prefixes.map(String) : []));
+});
+function cacheInvalidate(...prefixes) {
+  cacheInvalidateLocal(...prefixes);
+  cacheBus.bus.publish('db-cache', prefixes.length ? JSON.stringify(prefixes) : null).catch(() => {});
 }
 
 // ── Concurrency guard ─────────────────────────────────────────────────────────
@@ -239,18 +254,36 @@ function releaseDb() {
   else { _dbActive--; }
 }
 const _origGetConn = pool.getConnection.bind(pool);
+function poolSaturated() {
+  const core = pool.pool;
+  if (!core?._allConnections || !core._freeConnections) return true;
+  return core._freeConnections.length === 0 && core._allConnections.length >= core.config.connectionLimit;
+}
 const CONN_TIMEOUT_MS = 4000;
 pool.getConnection = async () => {
   if (isDbDown()) throw Object.assign(new Error('Database unavailable'), { code: 'ECONNREFUSED' });
-  await acquireDb();
+  // The wait for a turn is inside the timeout too. It used to come first and
+  // had no limit, so a request queued behind a busy pool waited for good.
   let timer;
+  let gotTurn = false;
+  let waiter = null;
+  const turn = new Promise(resolve => {
+    if (_dbActive < DB_MAX_CONCURRENT) { _dbActive++; gotTurn = true; return resolve(); }
+    waiter = () => { gotTurn = true; resolve(); };
+    _dbQueue.push(waiter);
+  });
   // A connection that arrives after the timeout is handed back, not kept: the
   // race used to leave it checked out for good, one pool slot per timeout.
-  const pending = _origGetConn();
+  let pending = null;
   try {
     const conn = await Promise.race([
-      pending,
-      new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error('DB getConnection timeout'), { code: 'ETIMEDOUT' })), CONN_TIMEOUT_MS); }),
+      turn.then(() => { pending = _origGetConn(); return pending; }),
+      new Promise((_, reject) => {
+        // Busy only while still queued for a turn or with every pool connection
+        // checked out; a turn with a free slot that still waits is the database
+        // not answering, and is marked down below.
+        timer = setTimeout(() => reject(Object.assign(new Error('DB getConnection timeout'), { code: 'ETIMEDOUT', poolBusy: !gotTurn || poolSaturated() })), CONN_TIMEOUT_MS);
+      }),
     ]);
     clearTimeout(timer);
     _markDbUp();
@@ -271,9 +304,20 @@ pool.getConnection = async () => {
     return conn;
   } catch (err) {
     clearTimeout(timer);
-    pending.then(late => late.release(), () => {});
-    releaseDb();
-    if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT') _markDbDown();
+    if (gotTurn) {
+      if (pending) pending.then(late => late.release(), () => {});
+      releaseDb();
+    } else if (waiter) {
+      // Still queued: leave the queue, and take the turn back if it was handed
+      // over in the same tick.
+      const at = _dbQueue.indexOf(waiter);
+      if (at >= 0) _dbQueue.splice(at, 1);
+      turn.then(() => releaseDb());
+    }
+    // Only a database that refuses connections is «down». A busy pool is not:
+    // marking it down answered 503 to every request for five seconds, so one
+    // slow report took the whole site with it.
+    if (err.code === 'ECONNREFUSED' || (err.code === 'ETIMEDOUT' && !err.poolBusy)) _markDbDown();
     throw err;
   }
 };
@@ -289,4 +333,4 @@ async function getStaffIdByEmail(email, tenantId) {
 }
 
 module.exports = {
-  clockContract, pool, cached, cacheInvalidate, dbQuery, dbExecute, getStaffIdByEmail, requireDb, isDbDown };
+  clockContract, pool, cached, cacheInvalidate, cacheInvalidateLocal, dbQuery, dbExecute, getStaffIdByEmail, requireDb, isDbDown };

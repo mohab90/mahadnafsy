@@ -5,6 +5,7 @@
 # a full disk stops MariaDB, which stops everything.
 /var/www/mahad-api/watchdog.log
 /var/log/mahad-db-backup.log
+/var/log/mahad-offsite.log
 {
     weekly
     rotate 8

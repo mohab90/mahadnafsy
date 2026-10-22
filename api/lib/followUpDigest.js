@@ -11,9 +11,9 @@
 // managers get one for the team: who is behind, and what has no owner.
 //
 // A client is due when the latest communication logged for them set a next contact on or before
-// today; a lead when its next follow-up date has come and it is not closed.
+// today; a lead when its next follow-up date has come and it is not closed (lib/leadFollowUps.js).
 
-const { TERMINAL_SQL } = require('./leadStatuses');
+const { FOLLOW_UP_DATE, dueBy } = require('./leadFollowUps');
 const { sqlCairoToday, cairoToday } = require('./dates');
 const { uuidv4 } = require('./id');
 const logger = require('./logger');
@@ -39,14 +39,15 @@ async function collectDue(db, tenantId) {
         AND c.next_follow_up IS NOT NULL AND c.next_follow_up < ${dayEnd}
         AND c.date = (SELECT MAX(c2.date) FROM communications c2 WHERE c2.subscriber_id = s.id AND c2.tenant_id = s.tenant_id)
       LIMIT 5000`, [tenantId]);
+  // Leads as every screen counts them (lib/leadFollowUps.js): the date in crm_json counts too.
+  const leadsDue = dueBy(cairoToday());
   const [leads] = await db.query(
-    `SELECT l.id, l.name, l.next_follow_up_date AS due,
+    `SELECT l.id, l.name, ${FOLLOW_UP_DATE} AS due,
             COALESCE(NULLIF(l.assigned_sales_id,''), NULLIF(l.assigned_cs_id,'')) AS owner_id,
             COALESCE(NULLIF(l.assigned_sales_name,''), NULLIF(l.assigned_cs_name,'')) AS owner_name
        FROM leads l
-      WHERE l.tenant_id = ? AND l.hidden = 0 AND l.next_follow_up_date IS NOT NULL
-        AND l.next_follow_up_date < ${dayEnd} AND l.status NOT IN ${TERMINAL_SQL}
-      LIMIT 5000`, [tenantId]);
+      WHERE l.tenant_id = ?${leadsDue.sql}
+      LIMIT 5000`, [tenantId, ...leadsDue.params]);
   // A problem the team promised to come back to: due on the date set when it was last contacted.
   const [tickets] = await db.query(
     `SELECT t.id, t.subject AS name, t.next_contact_at AS due, t.assigned_to AS owner_id, s.name AS owner_name

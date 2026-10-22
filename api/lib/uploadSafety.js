@@ -74,13 +74,26 @@ function inspectProofImageDataUrl(dataUrl, maxBytes = 4 * 1024 * 1024) {
   return { declaredMime: declared, size: buffer.length };
 }
 
-function resolveTenantMediaPath(url, tenantId) {
+function tenantMediaFilename(url, tenantId) {
   const tenant = safeTenantSegment(tenantId);
   const prefix = `/uploads/videos/${tenant}/`;
   if (!String(url || '').startsWith(prefix)) return null;
   let filename;
   try { filename = decodeURIComponent(String(url).slice(prefix.length)); } catch { return null; }
   if (!/^media-[a-f0-9-]{36}\.(mp4|mov|webm|ogv|mpeg|mp3|wav|ogg)$/i.test(filename)) return null;
+  return { tenant, filename };
+}
+
+/** The bucket key of a lecture file (lib/objectStorage.js), under the same rules as its path. */
+function tenantMediaKey(url, tenantId) {
+  const parsed = tenantMediaFilename(url, tenantId);
+  return parsed ? `videos/${parsed.tenant}/${parsed.filename}` : null;
+}
+
+function resolveTenantMediaPath(url, tenantId) {
+  const parsed = tenantMediaFilename(url, tenantId);
+  if (!parsed) return null;
+  const { tenant, filename } = parsed;
   const tenantRoot = path.resolve(VIDEO_ROOT, tenant);
   const absolute = path.resolve(tenantRoot, filename);
   return absolute.startsWith(`${tenantRoot}${path.sep}`) ? absolute : null;
@@ -137,4 +150,5 @@ module.exports = {
   resolveTenantMediaPath,
   safeTenantSegment,
   streamTenantMedia,
+  tenantMediaKey,
 };

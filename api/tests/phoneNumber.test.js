@@ -5,7 +5,7 @@
 // and, most importantly, that they are NOT the same value.
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { toIdentity, toDialable, toDisplay, isDialable, isPlausible, identitySpellings } = require('../lib/phoneNumber');
+const { toIdentity, toDialable, toDisplay, isDialable, isPlausible, identitySpellings, matchingSpellings } = require('../lib/phoneNumber');
 
 const SPELLINGS = [
   '01012345678',        // local — how customers actually type it
@@ -141,4 +141,16 @@ test('identitySpellings returns nothing for junk', () => {
   assert.deepEqual(identitySpellings(''), []);
   assert.deepEqual(identitySpellings('abc'), []);
   assert.deepEqual(identitySpellings(null), []);
+});
+
+test('a Saudi number matches both ways for duplicates, but sign-in keeps the strict set', () => {
+  // Stored with its code, typed locally — and the other way round.
+  assert.ok(matchingSpellings('0501234567').includes('966501234567'));
+  assert.ok(matchingSpellings('966501234567').includes('0501234567'));
+  // identitySpellings is what sign-in adopts an account by: a local 05… (also a
+  // Mansoura landline) must not reach a Saudi client's account there.
+  assert.ok(!identitySpellings('0501234567').includes('966501234567'));
+  // Egyptian numbers are untouched, and junk still matches nothing.
+  assert.deepEqual(matchingSpellings('+20 101 234 5678'), identitySpellings('+20 101 234 5678'));
+  assert.deepEqual(matchingSpellings('123'), []);
 });

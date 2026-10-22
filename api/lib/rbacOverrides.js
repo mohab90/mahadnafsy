@@ -32,6 +32,10 @@ async function loadRoleOverrides(tenantId = DEFAULT_TENANT) {
   }
 }
 
+// A saved role change (routes/config.js) reloads at once in every API process,
+// not only the one that took the save; the others used to wait for their minute.
+const reloadRoleOverrides = require('./cacheBus').shared('rbac-overrides', tenantId => loadRoleOverrides(tenantId || DEFAULT_TENANT));
+
 /** Load once now, then refresh every `intervalMs` (default 60s). */
 function startRbacRefresh(intervalMs = 60 * 1000) {
   const refresh = async () => {
@@ -46,4 +50,4 @@ function startRbacRefresh(intervalMs = 60 * 1000) {
   return _timer;
 }
 
-module.exports = { loadRoleOverrides, startRbacRefresh };
+module.exports = { loadRoleOverrides, reloadRoleOverrides, startRbacRefresh };

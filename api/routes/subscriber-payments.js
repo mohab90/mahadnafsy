@@ -687,7 +687,7 @@ async function recordSubscriberPayment(req, res) {
         : await pickCollectionOfficer(conn, paymentTenantId, {
           market: subscriberMarket({ latestCurrency: paymentCurrency, branch: subRow.branch }), branch: subRow.branch,
         });
-      const clientCode = await getNextClientCode(conn);
+      const clientCode = await getNextClientCode(conn, paymentTenantId);
       subRow.assigned_cs_id = rep?.id || null;
       subRow.assigned_cs_name = rep?.name || null;
       subRow.client_code = clientCode;
@@ -777,7 +777,7 @@ async function recordSubscriberPayment(req, res) {
           });
           if (rep) { csId = rep.id; csName = rep.name; }
         }
-        const clientCode = lockedLead.client_code || await getNextClientCode(conn);
+        const clientCode = lockedLead.client_code || await getNextClientCode(conn, paymentTenantId);
         // NULL, not ''. subscribers carries UNIQUE (tenant_id, email), and one
         // row already holds the empty string — so every booking for somebody
         // without an email after that one was refused with «الدفعة دي متسجلة

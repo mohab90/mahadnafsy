@@ -11,12 +11,11 @@ const {
   requirePermission,
   sqlCairoDayStartUtc,
   cairoToday,
-  TERMINAL_LIST,
   communicationsByLead,
   mapLeadRow,
   logger,
 } = require('./_shared');
-const { NEXT_FOLLOWUP } = require('../../../lib/leadTableFilter');
+const { FOLLOW_UP_DATE, FOLLOW_UP_OPEN, dueBy } = require('../../../lib/leadFollowUps');
 const { cached } = require('../../../lib/db');
 const { sqlCairoWall, sqlCairoDayEndUtc } = require('../../../lib/dates');
 
@@ -243,15 +242,15 @@ router.get('/api/admin/leads/followups-due', requireAuth, requireAdminOrStaff, r
     const accessScope = leadScope(req, 'l');
     if (accessScope.none) return res.json({ due: 0, overdue: 0, today: 0 });
     const today = cairoToday();
+    // Today's and the overdue, as every screen counts them (lib/leadFollowUps.js).
+    const due = dueBy(today);
     // The header bell, on every page: held like the counters above (15 s, dropped by the next write).
     const payload = await cached(`figures:followups-due:${req.tenantId}:${today}:${accessScope.sql}:${JSON.stringify(accessScope.params)}`, 15 * 1000, async () => {
       const [[row]] = await pool.query(
-        `SELECT SUM(${NEXT_FOLLOWUP} < ?) AS overdue, SUM(${NEXT_FOLLOWUP} = ?) AS today
+        `SELECT SUM(${FOLLOW_UP_DATE} < ?) AS overdue, SUM(${FOLLOW_UP_DATE} = ?) AS today
            FROM leads l
-          WHERE l.tenant_id = ? AND l.hidden = 0${accessScope.sql}
-            AND COALESCE(l.status, '') NOT IN (${TERMINAL_LIST.map(() => '?').join(',')})
-            AND ${NEXT_FOLLOWUP} <= ?`,
-        [today, today, req.tenantId, ...accessScope.params, ...TERMINAL_LIST, today],
+          WHERE l.tenant_id = ?${accessScope.sql}${due.sql}`,
+        [today, today, req.tenantId, ...accessScope.params, ...due.params],
       );
       const overdue = Number(row?.overdue || 0);
       const dueToday = Number(row?.today || 0);
@@ -274,11 +273,12 @@ router.get('/api/admin/leads/followups-panel', requireAuth, requireAdminOrStaff,
     const accessScope = leadScope(req, 'l');
     if (accessScope.none) return res.json(empty);
     const today = cairoToday();
-    const open = `l.status NOT IN (${TERMINAL_LIST.map(() => '?').join(',')})`;
-    const base = `FROM leads l WHERE l.tenant_id = ? AND l.hidden = 0${accessScope.sql} AND ${open}`;
-    const p = [req.tenantId, ...accessScope.params, ...TERMINAL_LIST];
-    const undated = `${NEXT_FOLLOWUP} IS NULL AND l.status IN ('new','contacted','interested')`;
-    const columns = `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.status, l.lead_type, l.branch,
+    // Open as every screen counts it (lib/leadFollowUps.js).
+    const open = FOLLOW_UP_OPEN;
+    const base = `FROM leads l WHERE l.tenant_id = ?${accessScope.sql} AND ${open}`;
+    const p = [req.tenantId, ...accessScope.params];
+    const undated = `${FOLLOW_UP_DATE} IS NULL AND l.status IN ('new','contacted','interested')`;
+    const columns = `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.utm_source, l.utm_medium, l.utm_campaign, l.fbclid, l.gclid, l.status, l.lead_type, l.branch,
               l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
               l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
               l.assigned_cs_id, COALESCE(cs.name, l.assigned_cs_name) AS assigned_cs_name,
@@ -287,13 +287,13 @@ router.get('/api/admin/leads/followups-panel', requireAuth, requireAdminOrStaff,
          FROM leads l
          LEFT JOIN staff ss ON ss.id = l.assigned_sales_id AND ss.tenant_id = l.tenant_id
          LEFT JOIN staff cs ON cs.id = l.assigned_cs_id AND cs.tenant_id = l.tenant_id
-        WHERE l.tenant_id = ? AND l.hidden = 0${accessScope.sql} AND ${open}`;
+        WHERE l.tenant_id = ?${accessScope.sql} AND ${open}`;
     const [[[counts]], [overdue], [dueToday], [noDate]] = await Promise.all([
       pool.query(
-        `SELECT COUNT(*) AS open_total, COALESCE(SUM(${NEXT_FOLLOWUP} < ?), 0) AS overdue, COALESCE(SUM(${NEXT_FOLLOWUP} = ?), 0) AS today,
+        `SELECT COUNT(*) AS open_total, COALESCE(SUM(${FOLLOW_UP_DATE} < ?), 0) AS overdue, COALESCE(SUM(${FOLLOW_UP_DATE} = ?), 0) AS today,
                 COALESCE(SUM(${undated}), 0) AS no_followup ${base}`, [today, today, ...p]),
-      pool.query(`${columns} AND ${NEXT_FOLLOWUP} < ? ORDER BY ${NEXT_FOLLOWUP} ASC, l.id ASC LIMIT ${PANEL_ROWS}`, [...p, today]),
-      pool.query(`${columns} AND ${NEXT_FOLLOWUP} = ? ORDER BY l.name ASC, l.id ASC LIMIT ${PANEL_ROWS}`, [...p, today]),
+      pool.query(`${columns} AND ${FOLLOW_UP_DATE} < ? ORDER BY ${FOLLOW_UP_DATE} ASC, l.id ASC LIMIT ${PANEL_ROWS}`, [...p, today]),
+      pool.query(`${columns} AND ${FOLLOW_UP_DATE} = ? ORDER BY l.name ASC, l.id ASC LIMIT ${PANEL_ROWS}`, [...p, today]),
       pool.query(`${columns} AND ${undated} ORDER BY l.created_at DESC, l.id DESC LIMIT ${PANEL_ROWS}`, p),
     ]);
     // The cards act on a lead from the row alone; the communications are not drawn here.

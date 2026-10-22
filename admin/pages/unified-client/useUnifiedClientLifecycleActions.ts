@@ -13,7 +13,7 @@ interface Params {
   setIsSaving: (saving: boolean) => void;
   setLeadDraft: Dispatch<SetStateAction<LeadItem>>;
   updateLead: (lead: LeadItem) => Promise<boolean>;
-  reloadLeads: () => Promise<unknown>;
+  reloadLeads: (opts?: { only?: string[] }) => Promise<unknown>;
   reloadSubscribers: () => Promise<unknown>;
   /** «بيانات الشهادة»: whether this viewer may open it, and how it tells them what happened. */
   certificateData?: { allowed: boolean; notify: (type: 'success' | 'error' | 'info', text: string) => void };
@@ -59,7 +59,7 @@ export function useUnifiedClientLifecycleActions(params: Params) {
         courseId: convertCourseId,
         accessMode: convertAccessMode,
       });
-      await Promise.all([reloadLeads(), reloadSubscribers()]);
+      await Promise.all([reloadLeads({ only: [lead.id] }), reloadSubscribers()]);
       setShowConvertModal(false);
     } catch (error) {
       persistenceError('leadConversion', error);

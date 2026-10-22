@@ -68,6 +68,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     tryMe();
   }, []);
 
+  // A staff session lasts 12 hours (api/lib/token.js). While someone is
+  // actually using the panel it is renewed every half hour, so a long shift is
+  // never cut off mid-task; a panel left open and untouched still runs out.
+  useEffect(() => {
+    if (!authUser) return undefined;
+    let activeSinceRefresh = false;
+    const markActive = () => { activeSinceRefresh = true; };
+    const events = ['pointerdown', 'keydown'] as const;
+    events.forEach((name) => window.addEventListener(name, markActive, { passive: true }));
+    const id = window.setInterval(() => {
+      // A background tab waits: the activity is still owed a refresh once it is shown.
+      if (document.hidden || !activeSinceRefresh) return;
+      activeSinceRefresh = false;
+      mysqlAdmin.refreshToken().catch(() => {/* the next request answers 401 if the session is gone */});
+    }, 30 * 60 * 1000);
+    return () => {
+      window.clearInterval(id);
+      events.forEach((name) => window.removeEventListener(name, markActive));
+    };
+  }, [authUser]);
+
   const logout = () => {
     mysqlAuth.logout();
     setAuthUser(null);

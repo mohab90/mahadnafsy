@@ -450,11 +450,51 @@ function mapSubscriber(r) {
   };
 }
 
-// Atomic sequential client code — uses client_code_counter table
-async function getNextClientCode(conn) {
-  await conn.query('UPDATE client_code_counter SET next_value = next_value + 1 WHERE id = 1');
-  const [[row]] = await conn.query('SELECT next_value FROM client_code_counter WHERE id = 1');
+// Sequential client code, counted per institute (migration 311). Row id=1 is
+// the counter every institute shared before; it is only read now, as the
+// starting point of an institute that already has codes, so none is reused.
+async function ensureClientCodeCounter(conn, tenantId) {
+  // This institute's first code since the split. One with clients already
+  // continues above the shared counter; a new one starts at 10001.
+  const [[existing]] = await conn.query(
+    `SELECT EXISTS(SELECT 1 FROM subscribers WHERE tenant_id=? AND client_code IS NOT NULL)
+         OR EXISTS(SELECT 1 FROM leads WHERE tenant_id=? AND client_code IS NOT NULL) AS has_codes`,
+    [tenantId, tenantId]
+  );
+  await conn.query(
+    `INSERT IGNORE INTO client_code_counter (tenant_id, next_value)
+     SELECT ?, IF(?, GREATEST(10001, COALESCE(MAX(next_value), 10001)), 10001) FROM client_code_counter WHERE id = 1`,
+    [tenantId, Number(existing?.has_codes) ? 1 : 0]
+  );
+}
+
+async function getNextClientCode(conn, tenantId) {
+  if (!tenantId) throw new Error('getNextClientCode needs the tenant: codes are counted per institute');
+  const [bumped] = await conn.query('UPDATE client_code_counter SET next_value = next_value + 1 WHERE tenant_id = ?', [tenantId]);
+  if (bumped && bumped.affectedRows === 0) {
+    await ensureClientCodeCounter(conn, tenantId);
+    await conn.query('UPDATE client_code_counter SET next_value = next_value + 1 WHERE tenant_id = ?', [tenantId]);
+  }
+  const [[row]] = await conn.query('SELECT next_value FROM client_code_counter WHERE tenant_id = ?', [tenantId]);
   return `C${row.next_value - 1}`;
+}
+
+/** The institute's next unused code number, its counter row locked until the caller commits. */
+async function lockClientCodeCounter(conn, tenantId) {
+  await ensureClientCodeCounter(conn, tenantId);
+  const [[row]] = await conn.query('SELECT next_value FROM client_code_counter WHERE tenant_id = ? FOR UPDATE', [tenantId]);
+  return Number(row?.next_value) || 10001;
+}
+
+/** Sets the counter to `value` — after a caller handed out codes from lockClientCodeCounter. */
+async function setClientCodeCounter(conn, tenantId, value) {
+  await conn.query('UPDATE client_code_counter SET next_value = ? WHERE tenant_id = ?', [value, tenantId]);
+}
+
+/** Moves the counter up to `atLeast` (above the highest code in use); never down. */
+async function raiseClientCodeCounter(conn, tenantId, atLeast) {
+  await ensureClientCodeCounter(conn, tenantId);
+  await conn.query('UPDATE client_code_counter SET next_value = ? WHERE tenant_id = ? AND next_value < ?', [atLeast, tenantId, atLeast]);
 }
 
 // includeAnswers=false strips correctIndex (and explanation, which can imply it)
@@ -527,4 +567,4 @@ function mapLiveStream(row) {
   };
 }
 
-module.exports = { toNumbers, loadCourseMaterials, saveCourseMaterials, COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber, getNextClientCode, mapQuiz, LIVE_STREAM_COLS, mapLiveStream };
+module.exports = { toNumbers, loadCourseMaterials, saveCourseMaterials, COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber, getNextClientCode, lockClientCodeCounter, setClientCodeCounter, raiseClientCodeCounter, mapQuiz, LIVE_STREAM_COLS, mapLiveStream };

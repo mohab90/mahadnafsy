@@ -4,13 +4,12 @@ import type HlsType from 'hls.js';
 import { mysqlClient } from '../lib/mysqlapi';
 import { useSiteData } from '../context/SiteDataContext';
 import { useEscapeKey } from '../../shared/ui/useEscapeKey';
-import { CAIRO_TIME_ZONE } from '../../shared/cairoDate';
 // The key this once read, VITE_VIDEO_KEY, is defined nowhere — no client .env
 // sets it — so the key was the empty string, the guard returned the still-coded
 // "enc:…" text as the video source, and every one of the 2,174 lectures failed
 // to play in the student dashboard while the public course page, which had the
 // literal, worked. Both now read the same one.
-import { HOSTED_FRAME_ALLOW, isFramedLectureUrl, isHlsLectureUrl, isYouTubeLecture, lectureEmbedUrl, revealVideoUrl } from '../lib/lectureVideo';
+import { HOSTED_FRAME_ALLOW, LECTURE_ACCESS_CHECK_FAILED, isFramedLectureUrl, isHlsLectureUrl, isYouTubeLecture, lectureAccessRefusal, lectureEmbedUrl, revealVideoUrl } from '../lib/lectureVideo';
 import { VideoSurface } from './VideoSurface';
 
 /* ─── HLS-capable video player ───────────────────────────────────────────── */
@@ -245,12 +244,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
       .then(r => {
         if (cancelled) return;
         if (r.accessible && r.video_url) settle(r.video_url);
-        else if (r.reason === 'drip_locked') {
-          const when = r.unlocks_at ? new Date(r.unlocks_at).toLocaleDateString('ar-EG-u-nu-latn', { timeZone: CAIRO_TIME_ZONE }) : '';
-          settle('', `المحاضرة هتفتح في موعدها${when ? ` يوم ${when}` : ''}`);
-        } else settle('', 'المحاضرة غير متاحة ضمن صلاحية اشتراكك الحالية');
+        else settle('', lectureAccessRefusal(r));
       })
-      .catch(() => { if (!cancelled) settle('', 'تعذر التحقق من صلاحية المحاضرة؛ حاول مرة أخرى'); });
+      .catch(() => { if (!cancelled) settle('', LECTURE_ACCESS_CHECK_FAILED); });
     return () => { cancelled = true; };
     // Keyed on the three fields of `selected` that decide the answer, not the
     // object: it is re-derived from the lecture list on every render, so

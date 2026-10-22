@@ -12,11 +12,12 @@ const { isBranch, normalizeBranch } = require('../constants/branches');
 const { logFinancialAudit } = require('../lib/finance');
 const { resolveFinancialScope } = require('../lib/financialScope');
 const { boundBranch } = require('../lib/physicalBranches');
+const { scalarFields } = require('../lib/inputFields');
 
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Public: register to waitlist
-router.post('/api/waitlist', publicLimiter, async (req, res) => {
+router.post('/api/waitlist', publicLimiter, scalarFields('name', 'phone', 'email', 'courseId', 'courseName', 'notes', 'branch'), async (req, res) => {
   try {
     const { name, phone, email, courseId, courseName, notes, branch } = req.body || {};
     if (!name || !phone) return res.status(400).json({ error: 'الاسم والهاتف مطلوبان' });

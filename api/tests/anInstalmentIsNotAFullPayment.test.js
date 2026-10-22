@@ -78,7 +78,9 @@ test('the checkout writes the plan, and the card and receipt paths read it too',
   const fs = require('fs');
   const path = require('path');
   const read = rel => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
-  assert.match(read('routes/lead-capture-crm.js'), /payMode: normalizedPayMode,\s+planTotal: normalizedPayMode === 'installment' && basePrice \? installmentTotal\(basePrice, rates\) : null/);
+  // The plan's total comes from the same quote as the amount (lib/effectivePrice.js quoteItem).
+  assert.match(read('routes/lead-capture-crm.js'), /payMode: normalizedPayMode,\s+planTotal: quote\?\.planTotal \|\| null/);
+  assert.match(read('lib/effectivePrice.js'), /planTotal: mode === 'installment' \? installmentTotal\(priced\.price, rates\) : null/);
   for (const file of ['lib/paymobFinalise.js', 'routes/payment-proofs.js']) {
     const source = read(file);
     assert.match(source, /orderPlan\(/, file);

@@ -21,6 +21,7 @@ const { branchIdForBranch } = require('./branches');
 const { grantCourseSelections } = require('./entitlements');
 const { recordPaymentCompensation } = require('./paymentCompensation');
 const { orderPlan, planAccess } = require('./orderPlan');
+const { cairoToday } = require('./dates');
 
 async function confirmOrderPayment({ order, transfer, linkedTransferId, tenantId, staffId, staffName, actorEmail }, conn) {
   const orderType = String(order.type || '').toLowerCase();
@@ -45,23 +46,26 @@ async function confirmOrderPayment({ order, transfer, linkedTransferId, tenantId
   const payId = `manual-${uuidv4()}`;
   // An instalment pays towards its plan, not its own amount (lib/orderPlan.js).
   const plan = orderPlan(order.notes, order.amount);
+  // The Cairo day it was confirmed, as a day (the desk's shape for payments.date): NOW()
+  // is UTC, so a 01:30 confirmation on the 1st was filed in the month before.
+  const paidDay = cairoToday();
   await conn.query(
     `INSERT INTO payments
        (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method,
         transaction_id, is_installment, course_expected, note, date, status, staff_id, staff_name,
         source, item_title, branch, branch_id, tenant_id, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW(),'paid',?,?,?,?,?,?,?,NOW())`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'paid',?,?,?,?,?,?,?,NOW())`,
     [payId, sub?.id || null, orderType === 'course' ? order.item_id : null, orderType === 'bundle' ? order.item_id : null,
      order.amount, order.currency || 'EGP', orderType.toUpperCase() || 'OTHER', paymentMethod,
      transfer?.transaction_id || order.transaction_id || payId, plan.installment ? 1 : 0, plan.expected,
      `تأكيد يدوي من لوحة الطلبات${transfer ? ' — مربوط بتحويل ' + transfer.id : ''}`,
-     staffId || null, staffName || actor,
+     paidDay, staffId || null, staffName || actor,
      'manual_admin_confirm', order.item_title, sub?.branch || 'ONLINE_EGYPT', sub?.branch_id || branchIdForBranch(sub?.branch || 'ONLINE_EGYPT'),
      tenantId]
   );
   const journalId = await postPaymentJournal({
     paymentId: payId, amount: order.amount, currency: order.currency || 'EGP',
-    payType: orderType.toUpperCase() || 'OTHER', actor, tenantId,
+    payType: orderType.toUpperCase() || 'OTHER', date: paidDay, actor, tenantId,
     branch: sub?.branch || 'ONLINE_EGYPT',
     branchId: sub?.branch_id || branchIdForBranch(sub?.branch || 'ONLINE_EGYPT'),
   }, conn);

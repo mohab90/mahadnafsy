@@ -200,6 +200,9 @@ CREATE TABLE `activity_logs_archive` (
   `label` text NOT NULL,
   `actor` varchar(255) DEFAULT NULL,
   `at` datetime NOT NULL DEFAULT current_timestamp(),
+  `actor_name` varchar(255) DEFAULT NULL,
+  `department` varchar(80) DEFAULT NULL,
+  `details` text DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_logs_at` (`at`),
   KEY `idx_logs_entity` (`entity`,`entity_id`),
@@ -808,9 +811,11 @@ CREATE TABLE `classroom_bookings` (
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `client_code_counter` (
-  `id` int(11) NOT NULL DEFAULT 1,
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `tenant_id` varchar(64) DEFAULT NULL,
   `next_value` int(11) DEFAULT 10001,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_client_code_counter_tenant` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1080,7 +1085,8 @@ CREATE TABLE `connector_events` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_connector_external_event` (`tenant_id`,`provider`,`external_event_id`),
   KEY `idx_connector_event_due` (`status`,`next_attempt_at`),
-  KEY `idx_connector_event_health` (`tenant_id`,`provider`,`status`,`received_at`)
+  KEY `idx_connector_event_health` (`tenant_id`,`provider`,`status`,`received_at`),
+  KEY `idx_connector_event_prune` (`status`,`received_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2082,6 +2088,29 @@ CREATE TABLE `email_sequences` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `email_verifications`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `email_verifications` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `user_id` varchar(100) NOT NULL,
+  `email` varchar(255) NOT NULL,
+  `token_hash` char(64) NOT NULL,
+  `code_hash` char(64) NOT NULL,
+  `attempts` int(11) NOT NULL DEFAULT 0,
+  `expires_at` datetime NOT NULL,
+  `used_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_email_verifications_token` (`token_hash`),
+  KEY `idx_email_verifications_user` (`tenant_id`,`user_id`,`used_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `employee_bonuses`
 --
 
@@ -3063,7 +3092,8 @@ CREATE TABLE `job_queue` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_job_queue_dedupe` (`tenant_id`,`job_type`,`dedupe_key`),
   KEY `idx_job_claim` (`status`,`run_at`),
-  KEY `idx_job_stale` (`status`,`locked_at`)
+  KEY `idx_job_stale` (`status`,`locked_at`),
+  KEY `idx_job_queue_prune` (`status`,`done_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -3312,6 +3342,8 @@ CREATE TABLE `leads` (
   `forecast_updated_at` datetime DEFAULT NULL,
   `utm_content` varchar(200) DEFAULT NULL,
   `utm_term` varchar(200) DEFAULT NULL,
+  `fbclid` varchar(255) DEFAULT NULL,
+  `gclid` varchar(255) DEFAULT NULL,
   `referral_url` text DEFAULT NULL,
   `client_type` varchar(50) DEFAULT NULL,
   `is_unsubscribed` tinyint(1) NOT NULL DEFAULT 0,
@@ -3671,6 +3703,7 @@ CREATE TABLE `message_outbox` (
   `ref_type` varchar(80) DEFAULT NULL,
   `ref_id` varchar(100) DEFAULT NULL,
   `channel_id` varchar(36) DEFAULT NULL COMMENT 'messaging_channels.id this was sent from — NULL means the tenant default',
+  `payload_pruned_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_message_outbox_tenant_dedupe` (`tenant_id`,`dedupe_key`),
   UNIQUE KEY `uq_outbox_provider_message` (`provider`,`provider_message_id`),
@@ -3678,7 +3711,8 @@ CREATE TABLE `message_outbox` (
   KEY `idx_message_outbox_tenant_due` (`tenant_id`,`status`,`next_attempt_at`),
   KEY `idx_message_outbox_ref` (`tenant_id`,`ref_type`,`ref_id`),
   KEY `idx_outbox_delivery_status` (`tenant_id`,`channel`,`delivery_status`,`provider_status_at`),
-  KEY `idx_outbox_channel_id` (`tenant_id`,`channel_id`,`status`)
+  KEY `idx_outbox_channel_id` (`tenant_id`,`channel_id`,`status`),
+  KEY `idx_outbox_prune` (`status`,`payload_pruned_at`,`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -3878,6 +3912,13 @@ CREATE TABLE `orders` (
   `updated_at` datetime DEFAULT NULL,
   `staff_id` varchar(36) DEFAULT NULL,
   `staff_name` varchar(255) DEFAULT NULL,
+  `utm_source` varchar(200) DEFAULT NULL,
+  `utm_medium` varchar(200) DEFAULT NULL,
+  `utm_campaign` varchar(200) DEFAULT NULL,
+  `utm_content` varchar(200) DEFAULT NULL,
+  `utm_term` varchar(200) DEFAULT NULL,
+  `fbclid` varchar(255) DEFAULT NULL,
+  `gclid` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uniq_orders_linked_transfer` (`linked_transfer_id`),
   KEY `idx_orders_status` (`status`),
@@ -4165,6 +4206,22 @@ CREATE TABLE `payments` (
   CONSTRAINT `fk_payments_certificate_request` FOREIGN KEY (`certificate_request_id`) REFERENCES `certificate_requests` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_payments_course` FOREIGN KEY (`course_id`) REFERENCES `courses` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_payments_subscriber` FOREIGN KEY (`subscriber_id`) REFERENCES `subscribers` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `paymob_order_links`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `paymob_order_links` (
+  `tenant_id` varchar(64) NOT NULL,
+  `paymob_order_id` varchar(64) NOT NULL,
+  `order_id` varchar(36) NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`tenant_id`,`paymob_order_id`),
+  KEY `idx_paymob_order_links_order` (`tenant_id`,`order_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -5183,6 +5240,33 @@ CREATE TABLE `staff_resignations` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `storage_objects`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `storage_objects` (
+  `object_key` varchar(255) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL,
+  `kind` enum('video','image','proof') NOT NULL,
+  `location` enum('local','both','remote') NOT NULL DEFAULT 'local',
+  `size_bytes` bigint(20) unsigned DEFAULT NULL,
+  `sha256` char(64) DEFAULT NULL,
+  `content_type` varchar(100) DEFAULT NULL,
+  `pending_offload` tinyint(1) NOT NULL DEFAULT 0,
+  `claimed_until` datetime DEFAULT NULL,
+  `copied_at` datetime DEFAULT NULL,
+  `local_deleted_at` datetime DEFAULT NULL,
+  `last_error` varchar(500) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`object_key`),
+  KEY `idx_storage_objects_pending` (`pending_offload`,`location`),
+  KEY `idx_storage_objects_tenant` (`tenant_id`,`kind`,`location`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `subscriber_subscriptions`
 --
 
@@ -5838,6 +5922,27 @@ CREATE TABLE `user_mfa_recovery_codes` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `user_sessions`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `user_sessions` (
+  `tenant_id` varchar(64) NOT NULL,
+  `session_id` varchar(36) NOT NULL,
+  `user_id` varchar(100) NOT NULL,
+  `session_version` int(10) unsigned NOT NULL,
+  `ip_hint` varchar(64) DEFAULT NULL,
+  `user_agent` varchar(255) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `last_seen_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `revoked_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`tenant_id`,`session_id`),
+  KEY `idx_user_sessions_user` (`tenant_id`,`user_id`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `users`
 --
 
@@ -5870,6 +5975,9 @@ CREATE TABLE `users` (
   `sharing_lock_count` int(11) NOT NULL DEFAULT 0 COMMENT 'How many times this account has been auto-locked for sharing',
   `phone` varchar(32) DEFAULT NULL COMMENT 'Normalised WhatsApp number (digits only, no leading zeros)',
   `phone_verified_at` datetime DEFAULT NULL,
+  `mfa_grace_started_at` datetime DEFAULT NULL,
+  `email_unverified` tinyint(1) NOT NULL DEFAULT 0,
+  `email_verified_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_users_tenant_email` (`tenant_id`,`email`(191)),
   UNIQUE KEY `uq_users_tenant_active_session` (`tenant_id`,`active_session_id`),
@@ -6213,4 +6321,46 @@ CREATE TABLE `backfill_263_dokki_owners` (
   `reception_id` varchar(36) NOT NULL,
   `reception_name` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`tenant_id`,`subscriber_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- backfill_305_lead_phones: migration 305 — lead numbers moved to the identity form, as they were typed, for the rollback.
+CREATE TABLE `backfill_305_lead_phones` (
+  `tenant_id` varchar(64) NOT NULL,
+  `lead_id` varchar(100) NOT NULL,
+  `old_phone` varchar(64) NOT NULL,
+  `new_phone` varchar(32) NOT NULL,
+  `applied` tinyint(1) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`tenant_id`,`lead_id`),
+  KEY `idx_backfill_305_target` (`tenant_id`,`new_phone`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- rate_limit_counters: migration 330 — rate-limit counters shared by every API process (lib/mysqlRateLimitStore.js).
+CREATE TABLE `rate_limit_counters` (
+  `bucket` char(64) NOT NULL,
+  `hits` int(10) unsigned NOT NULL DEFAULT 0,
+  `expires_at` datetime NOT NULL,
+  PRIMARY KEY (`bucket`),
+  KEY `idx_rate_limit_expiry` (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=ascii COLLATE=ascii_bin;
+
+-- cache_invalidations: migration 331 — a cache dropped in one API process, dropped in the others (lib/cacheBus.js).
+CREATE TABLE `cache_invalidations` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `channel` varchar(64) NOT NULL,
+  `arg` varchar(255) DEFAULT NULL,
+  `origin` varchar(80) NOT NULL,
+  `created_at` datetime(3) NOT NULL DEFAULT current_timestamp(3),
+  PRIMARY KEY (`id`),
+  KEY `idx_cache_invalidations_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- online_presence: migration 332 — who is online, across API processes (lib/onlineUsers.js).
+CREATE TABLE `online_presence` (
+  `tenant_id` varchar(64) NOT NULL,
+  `uid` varchar(100) NOT NULL,
+  `name` varchar(100) DEFAULT NULL,
+  `email` varchar(320) DEFAULT NULL,
+  `last_seen` datetime(3) NOT NULL,
+  PRIMARY KEY (`tenant_id`,`uid`),
+  KEY `idx_online_presence_seen` (`tenant_id`,`last_seen`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -55,7 +55,7 @@ router.post('/api/auth/whatsapp/verify-otp', otpLimiter, async (req, res) => {
     // name. For a returning customer it is ignored, so a stale value in a
     // client-side form can never rename someone.
     const { userId, phone, created } = await verifyLoginCode({
-      tenantId, phone: req.body?.phone, code: req.body?.code, name: req.body?.name,
+      tenantId, phone: req.body?.phone, code: req.body?.code, name: req.body?.name, ref: req.body?.ref,
     });
 
     // is_staff the same way the password path reads it: without it every

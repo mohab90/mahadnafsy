@@ -10,10 +10,30 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../lib/db');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
-const { bulkOperationLimiter } = require('../middleware/rateLimits');
+const { bulkOperationLimiter, publicLimiter } = require('../middleware/rateLimits');
 const { verifyAuditRows } = require('../lib/auditTrail');
 const errorMonitor = require('../lib/errorMonitor');
 const { sqlCairoDayStartUtc } = require('../lib/dates');
+
+// POST /api/security/csp-report — where browsers report what the site's
+// Content-Security-Policy-Report-Only header (deploy/nginx/mahad-security-headers.conf)
+// would have blocked. Logged, nothing stored: it is how the policy is checked
+// against what the pages really load before it is ever enforced. Browsers send
+// it as application/csp-report (report-uri) or application/reports+json
+// (Reporting API), which the app's JSON parser leaves alone.
+const cspReportBody = express.json({ type: ['application/csp-report', 'application/reports+json', 'application/json'], limit: '16kb' });
+router.post('/api/security/csp-report', publicLimiter, cspReportBody, (req, res) => {
+  const body = req.body || {};
+  const reports = Array.isArray(body) ? body.map(item => item?.body || {}) : [body['csp-report'] || body.body || body];
+  for (const report of reports.slice(0, 5)) {
+    logger.warn('[csp] would block (report-only)', {
+      directive: String(report['violated-directive'] || report.effectiveDirective || '').slice(0, 80),
+      blocked: String(report['blocked-uri'] || report.blockedURL || '').slice(0, 200),
+      page: String(report['document-uri'] || report.documentURL || '').split('?')[0].slice(0, 200),
+    });
+  }
+  res.status(204).end();
+});
 
 async function safeCount(sql, params = []) {
   try { const [[r]] = await pool.query(sql, params); return Number(r.n); }

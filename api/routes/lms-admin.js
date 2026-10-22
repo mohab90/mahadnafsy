@@ -117,7 +117,7 @@ router.post('/api/admin/lectures', requireAuth, requireAdminOrStaff, requirePerm
     // own 5-minute caches, so a lecture that was added, renamed, reordered,
     // published or unpublished stayed invisible to customers for up to five
     // minutes after the panel had already said "تم الحفظ".
-    cacheInvalidate('courses', 'lectures', 'chapters');
+    cacheInvalidate('courses', 'lectures', 'chapters', 'public-prices');
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -155,7 +155,7 @@ router.post('/api/admin/chapters', requireAuth, requireAdminOrStaff, requirePerm
        ON DUPLICATE KEY UPDATE title=VALUES(title), sort_order=VALUES(sort_order)`,
       [id, courseId, title, Number(sortOrder)]
     );
-    cacheInvalidate('courses', 'lectures', 'chapters');
+    cacheInvalidate('courses', 'lectures', 'chapters', 'public-prices');
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

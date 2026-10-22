@@ -264,6 +264,8 @@ export type NewLeadDraft = Partial<LeadItem> & { name: string };
 
 export interface LeadItem {
   id: string;
+  /** The ad visit that brought them: «facebook · cpc · campaign» (api/lib/visitAttribution.js). */
+  adSource?: string;
   clientCode?: string;   // Stable unified client URL code, e.g. "CLT-A1B2C3"
   name: string;
   email: string;
@@ -1335,6 +1337,8 @@ export interface StaffLeadPerformance {
     leads: number;
     converted: number;
     contacted: number;
+    /** Open leads of this rep due today, as every screen counts them (api/lib/leadFollowUps.js). */
+    followUpsToday?: number;
     /** Lead count per lowercased status, so a caller can derive lost, active or
      *  anything else without the response growing a field for each. */
     byStatus: Record<string, number>;

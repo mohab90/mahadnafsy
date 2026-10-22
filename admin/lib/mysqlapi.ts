@@ -564,6 +564,10 @@ export const mysqlAdmin = {
     fetchAllPages(offset => `/admin/subscribers?limit=${pageSize}&offset=${offset}`, pageSize, maxRows),
   listAllLeads:            (pageSize = 5000, maxRows = 50000): Promise<AR[]> =>
     fetchAllPages(offset => `/admin/leads?limit=${pageSize}&offset=${offset}`, pageSize, maxRows),
+  // A few leads by id, in the list's own shape — what a payment or a single
+  // edit changed — instead of downloading the whole table again.
+  listLeadsByIds:          (ids: string[]): Promise<AR[]> =>
+    apiFetch(`/admin/leads?limit=100&ids=${ids.slice(0, 100).map(encodeURIComponent).join(',')}`, {}, A),
   // Server-side pipeline/KPI aggregates — the whole leads table summarised in one
   // query, so the CRM shows correct counts without loading every row.
   // Revenue from the books (payments.amount_egp, refunds netted) — the overview
@@ -1309,6 +1313,24 @@ export const mysqlPaymob = {
 };
 
 // ── Custom Auth ───────────────────────────────────────────────────────────────
+export interface MfaRequirement {
+  required: boolean;
+  enrolled: boolean;
+  verified: boolean;
+  graceEndsAt: string | null;
+  blocked: boolean;
+  graceDays: number | null;
+}
+
+export interface ActiveSession {
+  id: string;
+  current: boolean;
+  createdAt: string;
+  lastSeenAt: string;
+  ipHint: string | null;
+  device: string | null;
+}
+
 export const mysqlAuth = {
   login: (email: string, password: string) =>
     apiFetch<{
@@ -1344,6 +1366,15 @@ export const mysqlAuth = {
     apiFetch<{ ok: boolean; recoveryCodesLeft?: number | null }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, recoveryCode }) }),
   get2faStatus: () =>
     apiFetch<{ enabled: boolean; recoveryCodesLeft?: number | null }>('/auth/2fa/status'),
+  // Whether the tenant's policy requires 2FA of this account and, until it
+  // enrols, when its grace period ends (components/MfaEnrolmentGate.tsx).
+  get2faRequirement: () =>
+    apiFetch<MfaRequirement>('/auth/2fa/requirement'),
+  // Where this account is signed in, and signing the other devices out.
+  listSessions: () =>
+    apiFetch<{ sessions: ActiveSession[] }>('/auth/sessions'),
+  logoutOtherSessions: () =>
+    apiFetch<{ ok: boolean; signedOut: number }>('/auth/sessions/logout-others', { method: 'POST', body: JSON.stringify({}) }),
   setup2fa: () =>
     apiFetch<{ secret: string; qrDataUrl: string; otpAuthUrl: string }>('/auth/2fa/setup', { method: 'POST' }),
   // recoveryCodes come back once, here, and are never shown again.

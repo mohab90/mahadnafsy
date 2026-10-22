@@ -55,7 +55,9 @@ test('the lookups a client makes for their own data are indexed and split, not O
   assert.ok(!/LOWER\(TRIM\(o\.customer_email\)\)/.test(route), 'a function around the column reads every order');
   const privacy = read('api/lib/privacyService.js');
   const find = privacy.slice(privacy.indexOf('async function findSubscriberForIdentity'), privacy.indexOf('async function buildSubscriberExport'));
-  assert.ok(find.includes('AND firebase_uid=? LIMIT 1') && find.includes('AND email=? LIMIT 1'));
+  // The email lookup stays on the bare indexed column; it only also refuses a
+  // client already linked to another account (an unverified sign-up email).
+  assert.ok(find.includes('AND firebase_uid=? LIMIT 1') && /AND email=\?\s+AND \(firebase_uid IS NULL/.test(find));
   assert.ok(!/LOWER\(TRIM\(email\)\)/.test(find), 'uid OR a wrapped email used neither index');
 });
 
@@ -96,7 +98,7 @@ test('the panel counters are held for 15 s and dropped by the first successful w
   assert.ok(stats.includes('cached(`figures:followups-due:'), 'the header bell, on every page, is held too');
   assert.ok(read('api/routes/analytics/dashboard.js').includes('cached(`figures:revenue:'), 'the first figure of the landing screen is held too');
   const app = read('api/lib/httpApp.js');
-  assert.ok(app.includes("cacheInvalidate('figures:')"));
+  assert.ok(app.includes("cacheInvalidateLocal('figures:')"), 'this process only: fifteen seconds is not worth an insert per write');
   assert.ok(app.includes('res.statusCode < 400'), 'a failed write changed nothing');
   assert.ok(app.includes("req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS'"));
   assert.ok(/app\.use\(timeRequests\);\n\s*app\.use\(dropFiguresAfterWrites\);/.test(app), 'registered before any route can answer');

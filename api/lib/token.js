@@ -26,7 +26,11 @@ if (JWT_SECRET.length < 32 || WEAK_SECRETS.includes(JWT_SECRET.toLowerCase())) {
 }
 const JWT_EXPIRY = process.env.JWT_EXPIRY || '7d';
 const JWT_MAX_AGE_SECONDS = Math.max(300, Number(process.env.JWT_MAX_AGE_SECONDS) || 7 * 24 * 60 * 60);
-const AUTH_COOKIE = `HttpOnly; Path=/; Max-Age=${JWT_MAX_AGE_SECONDS}; SameSite=None; Secure`;
+// Staff sessions are a shift, not a week: a staff token opens every client's
+// data and money, so a stolen one is worth a working day at most. The panel
+// refreshes it while someone is using it (admin/context/AuthContext.tsx), so
+// nobody is signed out mid-shift. Customers keep the long session.
+const STAFF_JWT_EXPIRY = process.env.STAFF_JWT_EXPIRY || '12h';
 
 function signAccessToken({ uid, email, tenantId, sessionVersion, sessionId, mfaVerified = false, isStaff = false }) {
   // email is not the identity anchor — uid is (every downstream auth check
@@ -48,24 +52,31 @@ function signAccessToken({ uid, email, tenantId, sessionVersion, sessionId, mfaV
     JWT_SECRET,
     // Named rather than left to the library's default, so the verify side has
     // something to pin to.
-    { algorithm: 'HS256', expiresIn: JWT_EXPIRY }
+    { algorithm: 'HS256', expiresIn: isStaff === true ? STAFF_JWT_EXPIRY : JWT_EXPIRY }
   );
+}
+
+// The cookie lives exactly as long as the token in it (a staff token is
+// shorter than a customer's).
+function cookieMaxAgeSeconds(token) {
+  const exp = Number(jwt.decode(token)?.exp);
+  if (!Number.isFinite(exp)) return JWT_MAX_AGE_SECONDS;
+  return Math.max(60, Math.min(JWT_MAX_AGE_SECONDS, Math.floor(exp - Date.now() / 1000)));
 }
 
 // Carries no secret — just when the session runs out, so the UI can warn before
 // it does. The token itself stays httpOnly and unreadable; once it stopped being
 // echoed into the body there was nothing left for the client to time against,
 // and the "session about to expire" banner silently stopped appearing at all.
-const EXPIRY_COOKIE = `Path=/; Max-Age=${JWT_MAX_AGE_SECONDS}; SameSite=None; Secure`;
-
 function setAuthCookie(res, token) {
-  const expiresAt = Date.now() + JWT_MAX_AGE_SECONDS * 1000;
+  const maxAge = cookieMaxAgeSeconds(token);
+  const expiresAt = Date.now() + maxAge * 1000;
   // Keep what the sign-in already set (the device cookie, lib/customerDevices.js).
   const earlier = [].concat(res.getHeader('Set-Cookie') || []).filter(cookie => !/^auth(Token|ExpiresAt)=/.test(cookie));
   res.setHeader('Set-Cookie', [
     ...earlier,
-    `authToken=${token}; ${AUTH_COOKIE}`,
-    `authExpiresAt=${expiresAt}; ${EXPIRY_COOKIE}`,
+    `authToken=${token}; HttpOnly; Path=/; Max-Age=${maxAge}; SameSite=None; Secure`,
+    `authExpiresAt=${expiresAt}; Path=/; Max-Age=${maxAge}; SameSite=None; Secure`,
   ]);
 }
 
@@ -83,8 +94,17 @@ function tokenExpiryMs(payload, fallbackMs = JWT_MAX_AGE_SECONDS * 1000) {
 // Hybrid: in-memory Map for fast O(1) lookups + MySQL for persistence across restarts.
 const tokenBlacklist = new Map(); // jti => expiry ms
 
+// Revoked in every API process: a token signed out (or rotated by a refresh)
+// on one instance used to stay good on the other until it expired.
+const { bus } = require('./cacheBus');
+bus.on('token-revoked', arg => {
+  const [jti, exp] = String(arg || '').split('|');
+  if (jti && Number(exp) > Date.now()) tokenBlacklist.set(jti, Number(exp));
+});
+
 async function revokeToken(jti, expMs) {
   tokenBlacklist.set(jti, expMs);
+  bus.publish('token-revoked', `${jti}|${Number(expMs) || Date.now() + JWT_MAX_AGE_SECONDS * 1000}`).catch(() => {});
   try {
     const expiresAt = new Date(expMs).toISOString().slice(0, 19).replace('T', ' ');
     await pool.query(
@@ -120,7 +140,7 @@ async function loadBlacklistFromDB() {
 }
 
 module.exports = {
-  JWT_SECRET, JWT_EXPIRY, JWT_MAX_AGE_SECONDS, tokenBlacklist,
+  JWT_SECRET, JWT_EXPIRY, STAFF_JWT_EXPIRY, JWT_MAX_AGE_SECONDS, tokenBlacklist,
   signAccessToken, setAuthCookie, clearAuthCookie, tokenExpiryMs,
   revokeToken, loadBlacklistFromDB,
 };

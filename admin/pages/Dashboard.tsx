@@ -307,10 +307,12 @@ const Dashboard: React.FC = () => {
     notifRows, setNotifRows,
     notifUnread, setNotifUnread,
     notifOpen, setNotifOpen,
-    notifRef,
+    notifRef, notifError, refreshNotifs,
   } = useNotificationsBell(Boolean(authUser));
 
-  const [onlineUsers] = useState<{ uid: string; email?: string; displayName?: string; lastActiveAt: string }[]>([]);
+  // «عملاء متصلون الآن»: fed by the customers' heartbeat (/api/me/heartbeat). It
+  // was declared and never filled, so the panel always said nobody was online.
+  const [onlineUsers, setOnlineUsers] = useState<{ uid: string; email?: string; displayName?: string; lastActiveAt: string }[]>([]);
   const [kpiModal, setKpiModal] = useState<{ title: string; rows: { label: string; sub?: string }[] } | null>(null);
   // -------------------------------------------------------------------------
   useEffect(() => {
@@ -389,6 +391,12 @@ const Dashboard: React.FC = () => {
   // address opens it, not the institute's HR they are refused.
   const branchHrOnly = ['daqqi_manager', 'tagamoa_manager'].includes(String(currentStaff?.role || '').toLowerCase());
   const activeTab = (branchHrOnly && ['hr', 'hr_analytics'].includes(activeScreen) ? 'branch_hr' : activeScreen) as TabKey;
+  useVisibleInterval(() => {
+    mysqlAdmin.getOnlineUsers().then(rows => {
+      setOnlineUsers((rows as { uid: string; name?: string; email?: string; lastActiveAt: string }[])
+        .map(u => ({ uid: u.uid, email: u.email, displayName: u.name, lastActiveAt: u.lastActiveAt })));
+    }).catch(() => { /* presence store down: the panel keeps its last answer */ });
+  }, 60000, isAdmin && activeTab === 'overview');
 
 
   const {
@@ -825,6 +833,8 @@ const Dashboard: React.FC = () => {
           setNotifRows={setNotifRows}
           notifUnread={notifUnread}
           setNotifUnread={setNotifUnread}
+          notifError={notifError}
+          refreshNotifs={refreshNotifs}
           pendingProofsCount={pendingProofsCount}
           inboxUnreadCount={inboxUnreadCount}
           currentStaff={currentStaff}

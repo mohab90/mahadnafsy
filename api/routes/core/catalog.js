@@ -24,6 +24,7 @@ const { ADMIN_EMAILS, ADMIN_UIDS, requireAuth, requireAdmin, requireSuperAdmin, 
 const { paymobLimiter, whatsappSendLimiter, publicLimiter, contactLimiter } = require('../../middleware/rateLimits');
 const { safeDateOnly } = require('../../lib/dates');
 const { isString, validateBody } = require('../../middleware/validate');
+const { textValue, numberValue, sendFieldError } = require('../../lib/inputFields');
 const { getNextSalesRep } = require('../../lib/leadAssignment');
 const { branchIdForBranch } = require('../../lib/branches');
 const { normalizeQuizDefinition } = require('../../lib/quizValidation');
@@ -211,11 +212,11 @@ router.delete('/api/admin/subscribers/:id/devices', requireAuth, requireAdminOrS
 });
 
 router.delete('/api/admin/lectures/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_lectures'), async (req, res) => {
-  try { await pool.query('DELETE cl FROM course_lectures cl JOIN courses c ON c.id=cl.course_id WHERE cl.id=? AND c.tenant_id=?', [req.params.id, req.tenantId]); cacheInvalidate('courses', 'lectures', 'chapters'); res.json({ ok: true }); }
+  try { await pool.query('DELETE cl FROM course_lectures cl JOIN courses c ON c.id=cl.course_id WHERE cl.id=? AND c.tenant_id=?', [req.params.id, req.tenantId]); cacheInvalidate('courses', 'lectures', 'chapters', 'public-prices'); res.json({ ok: true }); }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/chapters/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_lectures'), async (req, res) => {
-  try { await pool.query('DELETE ch FROM course_chapters ch JOIN courses c ON c.id=ch.course_id WHERE ch.id=? AND c.tenant_id=?', [req.params.id, req.tenantId]); cacheInvalidate('courses', 'lectures', 'chapters'); res.json({ ok: true }); }
+  try { await pool.query('DELETE ch FROM course_chapters ch JOIN courses c ON c.id=ch.course_id WHERE ch.id=? AND c.tenant_id=?', [req.params.id, req.tenantId]); cacheInvalidate('courses', 'lectures', 'chapters', 'public-prices'); res.json({ ok: true }); }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 // GET /api/admin/therapists — all therapists (including inactive) with slots
@@ -283,20 +284,24 @@ router.get('/api/admin/bundles', requireAuth, requireAdminOrStaff, requirePermis
 
 router.post('/api/admin/bundles', requireAuth, requireAdminOrStaff, requirePermission('manage_bundles'), async (req, res) => {
   try {
-    const b = req.body;
-    const id = b.id || uuidv4();
+    const b = req.body || {};
+    const id = textValue(b.id, { field: 'id', label: 'المعرف', max: 36 }) || uuidv4();
+    const title        = textValue(b.title, { field: 'title', label: 'عنوان المسار', max: 500, required: true });
+    const slug         = textValue(b.slug, { field: 'slug', label: 'رابط المسار (slug)', max: 255 }) || null;
     const titleEn      = b.title_en      ?? b.titleEn      ?? null;
     const shortDesc    = b.short_description ?? b.shortDescription ?? '';
     const videoUrl     = b.video_url     ?? b.videoUrl     ?? null;
-    const priceEGP     = b.price_egp     ?? b.price?.EGP   ?? 0;
-    const priceSAR     = b.price_sar     ?? b.price?.SAR   ?? 0;
-    const priceUSD     = b.price_usd     ?? b.price?.USD   ?? 0;
-    const origEGP      = b.orig_price_egp  ?? b.originalPrice?.EGP ?? 0;
-    const origSAR      = b.orig_price_sar  ?? b.originalPrice?.SAR ?? 0;
-    const origUSD      = b.orig_price_usd  ?? b.originalPrice?.USD ?? 0;
+    // Same rule as a course's price (routes/admin/catalog.js): no negatives, no text.
+    const money = (value, field, label) => numberValue(value, { field, label, min: 0, max: 1e9, fallback: 0 });
+    const priceEGP     = money(b.price_egp      ?? b.price?.EGP,         'price_egp', 'السعر بالجنيه');
+    const priceSAR     = money(b.price_sar      ?? b.price?.SAR,         'price_sar', 'السعر بالريال');
+    const priceUSD     = money(b.price_usd      ?? b.price?.USD,         'price_usd', 'السعر بالدولار');
+    const origEGP      = money(b.orig_price_egp ?? b.originalPrice?.EGP, 'orig_price_egp', 'السعر قبل الخصم بالجنيه');
+    const origSAR      = money(b.orig_price_sar ?? b.originalPrice?.SAR, 'orig_price_sar', 'السعر قبل الخصم بالريال');
+    const origUSD      = money(b.orig_price_usd ?? b.originalPrice?.USD, 'orig_price_usd', 'السعر قبل الخصم بالدولار');
     const detailsJson  = b.details_content_json ?? (b.detailsContent != null ? JSON.stringify(b.detailsContent) : null);
     const isPublished  = b.is_published != null ? (b.is_published ? 1 : 0) : (b.isPublished != null ? (b.isPublished ? 1 : 0) : 0);
-    const sortOrder    = b.sort_order    ?? b.sortOrder    ?? 0;
+    const sortOrder    = numberValue(b.sort_order ?? b.sortOrder, { field: 'sort_order', label: 'الترتيب', min: -1e6, max: 1e6, integer: true, fallback: 0 });
     const courseIds    = b.course_ids    ?? b.courseIds    ?? null;
     const seoText      = (value, max) => (value == null || String(value).trim() === '' ? null : String(value).trim().slice(0, max));
     const seoTitle     = seoText(b.seo_title, 255);
@@ -308,8 +313,8 @@ router.post('/api/admin/bundles', requireAuth, requireAdminOrStaff, requirePermi
     }
     // The slug is unique per tenant: another track's slug here would make the
     // upsert below land on that track's row instead of this one.
-    if (b.slug) {
-      const [[taken]] = await pool.query('SELECT id FROM bundles WHERE tenant_id=? AND slug=? AND id<>? LIMIT 1', [req.tenantId, b.slug, id]);
+    if (slug) {
+      const [[taken]] = await pool.query('SELECT id FROM bundles WHERE tenant_id=? AND slug=? AND id<>? LIMIT 1', [req.tenantId, slug, id]);
       if (taken) return res.status(409).json({ error: 'رابط المسار (slug) مستخدم لمسار تاني — اختار رابط مختلف.', code: 'SLUG_TAKEN' });
     }
     await pool.query(
@@ -325,7 +330,7 @@ router.post('/api/admin/bundles', requireAuth, requireAdminOrStaff, requirePermi
          orig_price_egp=VALUES(orig_price_egp), orig_price_sar=VALUES(orig_price_sar), orig_price_usd=VALUES(orig_price_usd),
          details_content_json=VALUES(details_content_json), is_published=VALUES(is_published),
          sort_order=VALUES(sort_order), updated_at=CURRENT_TIMESTAMP`,
-      [id, req.tenantId, b.title||'', titleEn, b.slug||null, shortDesc, b.description||'',
+      [id, req.tenantId, title, titleEn, slug, shortDesc, b.description||'',
        b.thumbnail||'', videoUrl,
        priceEGP, priceSAR, priceUSD, origEGP, origSAR, origUSD,
        detailsJson, isPublished, sortOrder, seoTitle, seoDesc, seoKeywords]
@@ -342,16 +347,19 @@ router.post('/api/admin/bundles', requireAuth, requireAdminOrStaff, requirePermi
         );
       }
     }
-    cacheInvalidate('bundles');
+    cacheInvalidate('bundles', 'public-prices');
     res.json({ ok: true, id });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    if (sendFieldError(res, e)) return;
+    logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
+  }
 });
 router.delete('/api/admin/bundles/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_bundles'), async (req, res) => {
   try {
     const [r] = await pool.query('DELETE FROM bundles WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
     if (!r.affectedRows) return res.status(404).json({ error: 'Bundle not found' });
     await pool.query('DELETE FROM bundle_courses WHERE tenant_id=? AND bundle_id = ?', [req.tenantId, req.params.id]);
-    cacheInvalidate('bundles');
+    cacheInvalidate('bundles', 'public-prices');
     res.json({ ok: true });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -563,7 +571,7 @@ router.post('/api/admin/consultations', requireAuth, requireAdminOrStaff, requir
       ) : [[null]];
       if (!knownSubscriber && !knownLead) {
         leadId = uuidv4();
-        const clientCode = await getNextClientCode(conn);
+        const clientCode = await getNextClientCode(conn, req.tenantId);
         const rep = await getNextSalesRep(req.tenantId, conn, {
           branch: 'OTHER', lead: { source: 'consultation', courseIds: [] },
         });

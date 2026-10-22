@@ -6,7 +6,7 @@ const path = require('node:path');
 const { ROLE_PERMS } = require('../constants/permissions');
 const {
   resolveDepartment, defaultPriority, slaHoursFor, computeSlaDue, pickAssignee, CATEGORY_META,
-  DEPARTMENT_ROLES,
+  DEPARTMENT_ROLES, reopenTicketSql,
 } = require('../lib/ticketRouting');
 
 test('every category routes to a department that has staff roles behind it', () => {
@@ -47,7 +47,7 @@ test('least-loaded assignment is tenant isolated and counts only active tenant t
   const db = {
     query: async (sql, params) => {
       captured = { sql, params };
-      return [[{ id: 'staff-a', name: 'Agent A' }]];
+      return [[{ id: 'staff-a', name: 'Agent A', role: 'support' }]];
     },
   };
   const assignee = await pickAssignee(db, 'tenant-a', 'support');
@@ -55,6 +55,44 @@ test('least-loaded assignment is tenant isolated and counts only active tenant t
   assert.match(captured.sql, /t\.tenant_id=s\.tenant_id/);
   assert.match(captured.sql, /s\.tenant_id=\?/);
   assert.equal(captured.params[0], 'tenant-a');
+});
+
+test('nobody on an approved day off is handed a ticket; an hours-long permission still works', async () => {
+  let captured;
+  const db = { query: async (sql, params) => { captured = { sql, params }; return [[]]; } };
+  await pickAssignee(db, 'tenant-a', 'support', { today: '2026-10-21' });
+  assert.match(captured.sql, /NOT EXISTS \(SELECT 1 FROM leaves lv[\s\S]*lv\.status='APPROVED'[\s\S]*lv\.start_date<=\? AND lv\.end_date>=\?/);
+  assert.deepEqual(captured.params.slice(-5), ['LATE_PERMIT', 'EARLY_LEAVE', 'PERMISSION', '2026-10-21', '2026-10-21']);
+});
+
+test('an HR enquiry skips an HR employee who cannot open tickets and falls to the manager', async () => {
+  // In turn the HR employee is first; the HR role does not hold manage_inbox,
+  // which every ticket screen asks for.
+  const db = { query: async () => [[
+    { id: 'hr-1', name: 'HR', role: 'hr', permissions_json: null, tenant_id: 't' },
+    { id: 'mgr-1', name: 'Manager', role: 'manager', permissions_json: null, tenant_id: 't' },
+  ]] };
+  assert.deepEqual(await pickAssignee(db, 't', 'hr'), { id: 'mgr-1', name: 'Manager' });
+  // One whose grid was given manage_inbox takes it.
+  const granted = { query: async () => [[
+    { id: 'hr-1', name: 'HR', role: 'hr', permissions_json: JSON.stringify(['manage_inbox', 'view_hr']), tenant_id: 't' },
+    { id: 'mgr-1', name: 'Manager', role: 'manager', permissions_json: null, tenant_id: 't' },
+  ]] };
+  assert.equal((await pickAssignee(granted, 't', 'hr')).id, 'hr-1');
+});
+
+test('a reopened ticket is a new wait: resolved and answered cleared, the SLA restarted', () => {
+  const sql = reopenTicketSql();
+  for (const column of ['resolved_at', 'first_response_at', 'sla_breach_notified_at']) {
+    assert.match(sql, new RegExp(`${column}=IF\\(status IN \\('resolved','closed'\\), NULL, ${column}\\)`));
+  }
+  assert.match(sql, /sla_due_at=IF\(status IN \('resolved','closed'\), NOW\(\) \+ INTERVAL \(CASE LOWER\(priority\) WHEN 'urgent' THEN 2 WHEN 'high' THEN 4/);
+  const route = fs.readFileSync(path.join(__dirname, '..', 'routes', 'support.js'), 'utf8');
+  // Every place a ticket goes back to open puts it on the clock first.
+  const reopens = route.match(/status=IF\(status IN \('resolved','closed'\),'open',status\)/g) || [];
+  const clocked = route.match(/\$\{reopenTicketSql\(\)\}, status=IF\(status IN \('resolved','closed'\),'open',status\)/g) || [];
+  assert.ok(reopens.length >= 2 && reopens.length === clocked.length);
+  assert.match(route, /reopening \? `\$\{reopenTicketSql\('TRUE'\)\}, ` : ''/);
 });
 
 test('support ticket details, replies and linked finance records are tenant scoped', () => {

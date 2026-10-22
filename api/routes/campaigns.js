@@ -13,8 +13,9 @@ const outbox = require('../lib/outbox');
 const { createUnsubscribeToken, verifyUnsubscribeToken, setMarketingConsent, filterSuppressed, destinationHash } = require('../lib/marketingConsent');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requireAnyPermission, requirePermission, requirePermissionOrOwnRows } = require('../middleware/auth');
 const { publicLimiter } = require('../middleware/rateLimits');
-const { assertSafeWebhookUrl } = require('../lib/webhookSecurity');
+const { assertSafeWebhookUrl, postWebhook } = require('../lib/webhookSecurity');
 const { canDelete } = require('../lib/deleteRights');
+const { scalarFields } = require('../lib/inputFields');
 const WEBHOOK_EVENTS = new Set([
   'new_lead', 'lead_converted', 'new_subscriber', 'new_payment', 'new_order',
   'refund_requested', 'new_consultation', 'new_contact', 'new_join_us',
@@ -378,16 +379,13 @@ router.post('/api/admin/webhooks/:id/test', requireAuth, requireAdmin, requirePe
        FROM webhooks WHERE id=? AND tenant_id=? LIMIT 1`, [req.params.id, req.tenantId]
     );
     if (!wh) return res.status(404).json({ error: 'Not found' });
-    const safeUrl = await assertSafeWebhookUrl(wh.url);
+    await assertSafeWebhookUrl(wh.url);
     const payload = { event: 'test', timestamp: new Date().toISOString(), data: { message: 'Test webhook from Mahad' } };
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 8000);
-    const resp = await fetch(safeUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(wh.secret ? { 'X-Webhook-Secret': wh.secret } : {}) },
-      body: JSON.stringify(payload),
-      signal: ctrl.signal,
-    }).finally(() => clearTimeout(t));
+    // postWebhook re-checks the address at connect time and never follows a redirect.
+    const resp = await postWebhook(wh.url, {
+      headers: wh.secret ? { 'X-Webhook-Secret': wh.secret } : {},
+      body: payload,
+    });
     await pool.query('UPDATE webhooks SET last_triggered_at=NOW(),last_status=? WHERE id=? AND tenant_id=?', [resp.status, wh.id, req.tenantId]);
     res.json({ ok: true, status: resp.status });
   } catch (e) {
@@ -402,18 +400,13 @@ async function triggerWebhooks(tenantId, event, data) {
     if (!tenantId) return;
     const [hooks] = await pool.query("SELECT id,url,secret,events FROM webhooks WHERE tenant_id=? AND is_active=1 AND JSON_CONTAINS(events, ?, '$') LIMIT 100", [tenantId, JSON.stringify(event)]);
     for (const wh of hooks) {
-      const safeUrl = await assertSafeWebhookUrl(wh.url);
+      await assertSafeWebhookUrl(wh.url);
       const payload = { event, timestamp: new Date().toISOString(), data };
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 8000);
-      fetch(safeUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(wh.secret ? { 'X-Webhook-Secret': wh.secret } : {}) },
-        body: JSON.stringify(payload),
-        signal: ctrl.signal,
+      postWebhook(wh.url, {
+        headers: wh.secret ? { 'X-Webhook-Secret': wh.secret } : {},
+        body: payload,
       }).then(r => pool.query('UPDATE webhooks SET last_triggered_at=NOW(),last_status=? WHERE id=? AND tenant_id=?', [r.status, wh.id, tenantId]))
-        .catch(() => pool.query('UPDATE webhooks SET last_triggered_at=NOW(),last_status=0 WHERE id=? AND tenant_id=?', [wh.id, tenantId]))
-        .finally(() => clearTimeout(t));
+        .catch(() => pool.query('UPDATE webhooks SET last_triggered_at=NOW(),last_status=0 WHERE id=? AND tenant_id=?', [wh.id, tenantId]));
     }
   } catch (_) { /* non-fatal */ }
 }
@@ -485,7 +478,7 @@ router.get('/api/admin/nps', requireAuth, requireAdminOrStaff, requireAnyPermiss
 });
 
 // Client: submit NPS response (via link from email)
-router.post('/api/nps/respond', publicLimiter, async (req, res) => {
+router.post('/api/nps/respond', publicLimiter, scalarFields('id', 'score', 'comment', 'token'), async (req, res) => {
   try {
     const { id, score, comment } = req.body;
     if (!id || score === undefined) return res.status(400).json({ error: 'id and score required' });

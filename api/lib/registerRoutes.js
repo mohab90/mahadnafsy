@@ -37,6 +37,7 @@ const routeModules = [
   ['/', '../routes/dokkiReports'],
   ['/', '../routes/dokki-operations'],
   ['/', '../routes/public-orders'],
+  ['/', '../routes/public-pricing'],
   ['/', '../routes/catalog-pricing'],
   ['/', '../routes/imageProxy'],
   ['/', '../routes/media'],
@@ -92,6 +93,7 @@ const routeModules = [
   ['/', '../routes/branding-assets'],
   ['/', '../routes/seo-pages'],
   ['/', '../routes/me-next-step'],
+  ['/', '../routes/me-payments'],
   ['/', '../routes/tenant-domains'],
 ];
 

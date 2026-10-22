@@ -32,6 +32,9 @@ const { assertWritable } = require('./periodLock');
 const { normalizeBranch, branchIdForBranch } = require('./branches');
 const { dateOnlyInTimeZone } = require('./dates');
 const { clawBackPaidCommission, rejectRetentionBonus, revokeAccessWithoutOtherGrant } = require('./refunds');
+const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('./paymentEntitlementAccess');
+const { grantCourseEntitlement } = require('./entitlements');
+const { agreedPrice } = require('./agreedPrice');
 
 const CORRECTING_ROLES = new Set(['admin', 'manager']);
 
@@ -40,6 +43,61 @@ function canCorrectPayments(req) {
 }
 
 const refuse = (statusCode, message, code) => Object.assign(new Error(message), { statusCode, code });
+
+// Grants the payments made, so a correction may take them back down. An admin's own
+// grant (any other source) is a decision, and is left as it is.
+const RECOMPUTABLE_SOURCES = new Set([
+  'manual_payment', 'payment_proof', 'manual_order_payment', 'payment_status_review', 'paymob', 'payment_correction',
+]);
+
+/**
+ * The access the item's remaining paid payments open, once one is voided.
+ *
+ * A correction from 5,000 to 500 records the 500 first and then voids the
+ * 5,000; the 500 was measured with the 5,000 still counted (5,500 of 5,000,
+ * full), and voiding took nothing back while another payment remained —
+ * entitlements never lower a payment-driven grant (lib/entitlements.js). The
+ * same held for a voided instalment. Recomputed here, under its own source so
+ * that guard does not hold the old access in place.
+ */
+async function recomputeItemAccess(conn, { tenantId, pay, actor }) {
+  if (!pay.subscriber_id || (!pay.course_id && !pay.bundle_id)) return;
+  const courseId = pay.course_id || null;
+  const bundleId = pay.bundle_id || null;
+  const [[latest]] = await conn.query(
+    `SELECT id, amount, currency, course_expected FROM payments
+      WHERE tenant_id=? AND subscriber_id=? AND deleted_at IS NULL AND status IN ('paid','confirmed') AND amount > 0
+        AND course_id <=> ? AND bundle_id <=> ?
+      ORDER BY date DESC, created_at DESC LIMIT 1`,
+    [tenantId, pay.subscriber_id, courseId, bundleId]);
+  if (!latest) return; // nothing left: revokeAccessWithoutOtherGrant has closed it
+  const expected = Number(latest.course_expected) > 0
+    ? Number(latest.course_expected)
+    : await agreedPrice(conn, { tenantId, subscriberId: pay.subscriber_id, courseId, bundleId, currency: latest.currency });
+  // No price to measure against: leave the access as it was granted.
+  if (!(Number(expected) > 0)) return;
+  const resolved = await resolvePaymentAccess({
+    db: conn, tenantId, subscriberId: pay.subscriber_id, courseId, bundleId,
+    currentPaymentId: latest.id, currentAmount: latest.amount, currency: latest.currency,
+    expectedAmount: expected, lenient: true,
+  });
+  let courseIds = courseId && !bundleId ? [courseId] : [];
+  if (bundleId) {
+    const [rows] = await conn.query('SELECT course_id FROM bundle_courses WHERE tenant_id=? AND bundle_id=?', [tenantId, bundleId]);
+    courseIds = rows.map(row => row.course_id);
+  }
+  for (const id of [...new Set(courseIds)]) {
+    const [[enrolment]] = await conn.query(
+      `SELECT status, entitlement_source, branch_id FROM enrollments
+        WHERE tenant_id=? AND subscriber_id=? AND course_id=? LIMIT 1`, [tenantId, pay.subscriber_id, id]);
+    if (!enrolment || enrolment.status !== 'active' || !RECOMPUTABLE_SOURCES.has(String(enrolment.entitlement_source || ''))) continue;
+    await grantCourseEntitlement({
+      tenantId, subscriberId: pay.subscriber_id, courseId: id, bundleId,
+      accessType: accessModeOf(resolved), paidRatio: paidRatioOf(resolved), lectureLimit: null,
+      branchId: enrolment.branch_id || null, source: 'payment_correction', actor,
+    }, conn);
+  }
+}
 
 /** Void one payment inside the caller's transaction. */
 async function voidPayment(conn, { tenantId, paymentId, actor, reason }) {
@@ -98,6 +156,8 @@ async function voidPayment(conn, { tenantId, paymentId, actor, reason }) {
   if (wasPaid) {
     // After the row is archived, so it no longer counts as the course's grant.
     await revokeAccessWithoutOtherGrant(conn, { tenantId, pay, actor });
+    // And when other payments are left, the access is what they pay for.
+    await recomputeItemAccess(conn, { tenantId, pay, actor });
     const itemId = pay.bundle_id || pay.course_id;
     if (itemId) {
       const [[other]] = await conn.query(
