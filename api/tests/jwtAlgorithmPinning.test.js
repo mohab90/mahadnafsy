@@ -7,56 +7,100 @@
 // pair is introduced for anything: a token signed HS256 using that public key
 // as its secret verifies as though it were RS256. Naming HS256 costs nothing
 // and does not depend on a library default staying put.
-const fs = require('node:fs');
-const path = require('node:path');
+//
+// Every place that verifies a token is driven here with a token signed by the
+// real secret under another algorithm, and must refuse it — the session
+// middleware, the body-limit check, the tenant resolver, the 2FA pending
+// token, the password-reset token. None of these reach the database before the
+// signature is checked, so no database is needed.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const jwt = require('jsonwebtoken');
 
-const ROOT = path.join(__dirname, '..');
-const FILES = [
-  'middleware/auth.js',
-  'middleware/tenantContext.js',
-  'lib/pendingTokenIdentity.js',
-  'routes/auth.js',
-];
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'unit-test-jwt-secret-0123456789abcdef0123';
+const SECRET = process.env.JWT_SECRET;
+const auth = require('../middleware/auth');
+const { extractSignedTenant } = require('../middleware/tenantContext');
+const { pendingTokenIdentity } = require('../lib/pendingTokenIdentity');
+const { signAccessToken } = require('../lib/token');
+const authRouter = require('../routes/auth');
 
-test('every jwt.verify names the algorithm it accepts', () => {
-  const unpinned = [];
-  for (const rel of FILES) {
-    const source = fs.readFileSync(path.join(ROOT, rel), 'utf8');
-    for (const line of source.split('\n')) {
-      if (!line.includes('jwt.verify(')) continue;
-      if (/algorithms|JWT_VERIFY_OPTIONS/.test(line)) continue;
-      unpinned.push(`${rel}: ${line.trim().slice(0, 80)}`);
-    }
+const claims = { uid: 'u-1', email: 'a@example.test', tid: 'tenant-x', sv: 1, sid: 's-1', jti: 'j-1' };
+const hs512 = payload => jwt.sign(payload, SECRET, { algorithm: 'HS512' });
+const unsigned = payload => `${Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url')}.`
+  + `${Buffer.from(JSON.stringify(payload)).toString('base64url')}.`;
+
+function res() {
+  return {
+    statusCode: 200, body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(payload) { this.body = payload; return this; },
+  };
+}
+const reqWith = (token, extra = {}) => ({
+  headers: { cookie: token ? `authToken=${encodeURIComponent(token)}` : '' }, body: {}, tenantId: 'tenant-x', ip: '127.0.0.1',
+  socket: { remoteAddress: '127.0.0.1' }, get: () => undefined, ...extra,
+});
+const handlerOf = (path) => authRouter.stack.find(l => l.route?.path === path && l.route.methods.post).route.stack.at(-1).handle;
+
+test('the signer names HS256', () => {
+  const token = signAccessToken({ uid: 'u-1', email: 'a@example.test', tenantId: 'tenant-x', sessionVersion: 1, sessionId: 's-1' });
+  assert.equal(jwt.decode(token, { complete: true }).header.alg, 'HS256');
+});
+
+test('the session middleware refuses a token under another algorithm, or none', async () => {
+  for (const token of [hs512(claims), unsigned(claims)]) {
+    const out = res();
+    let passed = false;
+    await auth.requireAuth(reqWith(token), out, () => { passed = true; });
+    assert.equal(passed, false);
+    assert.equal(out.statusCode, 401);
+    assert.equal(out.body.error, 'Invalid token');
   }
-  assert.deepEqual(unpinned, [], 'these accept whatever the token header claims');
 });
 
-test('the signer names the algorithm too', () => {
-  const source = fs.readFileSync(path.join(ROOT, 'lib/token.js'), 'utf8');
-  assert.match(source, /algorithm: 'HS256'/,
-    'leaving it to the default means the verify side has nothing to pin to');
+test('optional auth treats such a token as no token at all', async () => {
+  const req = reqWith(hs512(claims));
+  let passed = false;
+  await auth.optionalAuth(req, res(), () => { passed = true; });
+  assert.equal(passed, true);
+  assert.equal(req.user, undefined);
 });
 
-test('a token signed with a different algorithm is refused', () => {
-  // The property itself, not the source: this is what the option buys.
-  const secret = 'x'.repeat(32);
-  const good = jwt.sign({ uid: 'u1' }, secret, { algorithm: 'HS256' });
-  assert.equal(jwt.verify(good, secret, { algorithms: ['HS256'] }).uid, 'u1');
-
-  const wrong = jwt.sign({ uid: 'u1' }, secret, { algorithm: 'HS512' });
-  assert.throws(
-    () => jwt.verify(wrong, secret, { algorithms: ['HS256'] }),
-    /invalid algorithm/i,
-    'a token the pin does not name must not verify',
-  );
+test('the larger body limit is only for a token signed HS256', () => {
+  assert.equal(auth.hasSignedToken(reqWith(hs512(claims))), false);
+  assert.equal(auth.hasSignedToken(reqWith(unsigned(claims))), false);
+  assert.equal(auth.hasSignedToken(reqWith(jwt.sign(claims, SECRET, { algorithm: 'HS256' }))), true);
 });
 
-test('an unsigned token is refused', () => {
-  const secret = 'x'.repeat(32);
-  const none = `${Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url')}.`
-    + `${Buffer.from(JSON.stringify({ uid: 'u1' })).toString('base64url')}.`;
-  assert.throws(() => jwt.verify(none, secret, { algorithms: ['HS256'] }));
+test('the tenant resolver takes no tenant from a token under another algorithm', () => {
+  assert.equal(extractSignedTenant(reqWith(hs512(claims))), null);
+  assert.equal(extractSignedTenant(reqWith(jwt.sign(claims, SECRET, { algorithm: 'HS256' }))), 'tenant-x');
+});
+
+test('a 2FA pending token is honoured only when signed HS256', async () => {
+  const pending = { ...claims, purpose: 'totp_pending' };
+  assert.equal(pendingTokenIdentity(hs512(pending)), null);
+  assert.equal(pendingTokenIdentity(jwt.sign(pending, SECRET, { algorithm: 'HS256' })), 'u-1');
+  const out = res();
+  await handlerOf('/api/auth/2fa/verify')(reqWith('', { body: { pendingToken: hs512(pending), token: '123456' } }), out);
+  assert.equal(out.statusCode, 401);
+  // Refused as an expired token — not let through to the address check behind it.
+  assert.equal(out.body.code, undefined);
+  assert.match(out.body.error, /انتهت صلاحيته/);
+});
+
+test('a password-reset token under another algorithm sets no password', async () => {
+  // Its purpose is wrong too: read at all, it would be refused as «رمز غير صالح»;
+  // refused at the signature, it never gets that far.
+  const out = res();
+  await handlerOf('/api/auth/reset-password')(
+    reqWith('', { body: { resetToken: hs512({ ...claims, purpose: 'not-reset' }), newPassword: 'a-long-new-password' } }), out);
+  assert.equal(out.statusCode, 400);
+  assert.equal(out.body.error, 'انتهت صلاحية الرمز');
+});
+
+test('jsonwebtoken itself refuses a mismatched algorithm under the pin', () => {
+  const wrong = jwt.sign({ uid: 'u1' }, SECRET, { algorithm: 'HS512' });
+  assert.throws(() => jwt.verify(wrong, SECRET, { algorithms: ['HS256'] }), /invalid algorithm/i);
 });
