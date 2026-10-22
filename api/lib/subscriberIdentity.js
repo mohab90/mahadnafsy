@@ -78,10 +78,14 @@ async function resolveSubscriberRow(req, columns = ['id'], db = pool) {
   // The token is not a trustworthy source for the phone (it carries only uid and
   // email), so read the account's own identity columns.
   const [[account]] = await db.query(
-    'SELECT email, phone FROM users WHERE id=? AND tenant_id=? LIMIT 1',
+    'SELECT email, phone, email_unverified FROM users WHERE id=? AND tenant_id=? LIMIT 1',
     [uid, tenantId]
   );
-  const email = String(account?.email || req.user?.email || '').trim().toLowerCase();
+  // An address given at sign-up and not proven yet matches nobody
+  // (lib/emailVerification.js): typing a client's email must not make you them.
+  const email = Number(account?.email_unverified) === 1
+    ? ''
+    : String(account?.email || req.user?.email || '').trim().toLowerCase();
   const variants = phoneVariants(account?.phone);
 
   // 2. Email — skipped entirely when empty, because `LOWER(TRIM(email))=''`
