@@ -15,6 +15,7 @@ const { financeRouteSource } = require('./_authRouteSource');
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -252,7 +253,7 @@ test('a booking can name the round and the client is seated when it is recorded'
   // A collection officer's new client waits for the manager — and so does the seat.
   assert.match(route, /\.\.\.\(daqqiRoundId \? \{ daqqiRoundId \} : \{\}\) \};/);
 
-  const modal = read('admin/components/PaymentModal.tsx');
+  const modal = paymentModalSource();
   assert.match(modal, /daqqiRoundId\?: string;/);
   // The booking's branch is the branch price chosen (an online client booked at
   // the Dokki price is housed too), and the rounds come from the booking list

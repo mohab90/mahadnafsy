@@ -5,6 +5,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -169,11 +170,11 @@ test('in pounds a resident non-Egyptian is priced from their own list, not the E
   const route = read('api/routes/certificates.js');
   assert.match(route, /basePriceForCurrency\(pricing, row\.type, row\.currency \|\| 'EGP', row\.nationality\)/);
   assert.match(read('api/lib/certificatePayments.js'), /SELECT name, nationality FROM subscribers/);
-  assert.match(read('admin/components/PaymentModal.tsx'), /nationality === 'non_egyptian_egypt'\) return Number\(tiers\.residentEGP\)/);
+  assert.match(paymentModalSource(), /nationality === 'non_egyptian_egypt'\) return Number\(tiers\.residentEGP\)/);
 });
 
 test('the operation number, sender and number never block a booking; the new clients are rows of the payments table', () => {
-  const modal = read('admin/components/PaymentModal.tsx');
+  const modal = paymentModalSource();
   assert.doesNotMatch(modal, /transferNeedsDetails|transferProblem/);
   const finance = read('admin/pages/dashboard/DashboardFinanceTabs.tsx');
   assert.doesNotMatch(finance, /<CollectionBookingsReview/, 'no block above the payments table');

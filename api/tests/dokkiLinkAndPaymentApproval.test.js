@@ -19,6 +19,7 @@
 const { ordersScreenSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -148,7 +149,7 @@ test('after a payment the rounds are read back, not patched in the browser', () 
 });
 
 test('the payment dialog sees a course held by money, a price, a prior payment or the round', () => {
-  const modal = read('admin/components/PaymentModal.tsx');
+  const modal = paymentModalSource();
   assert.match(modal, /heldItemIds\?: string\[\];/);
   assert.match(modal, /const enrolledIds: string\[\] = \[\.\.\.new Set\(\[\.\.\.\(subject\.enrolledCourseIds \|\| \[\]\), \.\.\.heldByMoney\]\)\];/);
   assert.match(modal, /\(Number\(subject\.priorPaid\?\.\[cid\]\) \|\| 0\) \+ payHistory\.filter/);

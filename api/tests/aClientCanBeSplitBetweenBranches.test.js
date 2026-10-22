@@ -5,6 +5,7 @@
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -27,5 +28,5 @@ test('the table lists a split client in both branches, each with its own courses
   assert.match(tab, /itemShowsIn\(client, item, hereTest\)/);
   assert.match(read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx'), /itemVisible\(row, item\.item\)/);
   assert.match(read('admin/pages/dashboard/tabs/OnlineClientConvertModal.tsx'), /تحويل كورس معيّن لفرع تاني \(جزئي\)/);
-  assert.match(read('admin/components/PaymentModal.tsx'), /subject\.coursePlacements\?\.\[d\.courseId\]/, 'a payment for a placed course is that branch\'s');
+  assert.match(paymentModalSource(), /subject\.coursePlacements\?\.\[d\.courseId\]/, 'a payment for a placed course is that branch\'s');
 });

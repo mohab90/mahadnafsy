@@ -10,6 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { paymentModalSource } = require('./_adminSplitSource');
 
 const ROOT = path.join(__dirname, '..', '..');
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -97,10 +98,10 @@ test('a refunded payment is never counted as money collected', () => {
   // PaymentModal counted refunded payments as money already collected. That is
   // every payment screen in the admin except this one desk, which had its own
   // copy of the modal and did guard. Filtered once, where the list is read.
-  const paymentModal = codeOnly(read('admin/components/PaymentModal.tsx'));
+  const paymentModal = codeOnly(paymentModalSource());
   assert.ok(paymentModal.includes('(subject.paymentHistory || []).filter(isCollected)'),
     'the payment screen counts refunds as money the customer already paid');
-  assert.ok(paymentModal.includes("import { isCollected } from '../lib/money'"),
+  assert.ok(paymentModal.includes("import { isCollected } from '../../lib/money'"),
     'it must use the one predicate, not a second spelling of it');
 });
 

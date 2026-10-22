@@ -32,7 +32,7 @@ const codeOnly = source => source
   .map(line => (/^\s*(\/\/|\*)/.test(line) ? '' : line.split('//')[0]))
   .join('\n');
 const RECEIPTS = [
-  ['components/PaymentModal.tsx', 'payModalPrintReceipt'],
+  ['components/payment-modal/PrintReceiptModal.tsx', 'payModalPrintReceipt'],
 ];
 
 test('no print rule hides the receipt by hiding body\'s children', () => {

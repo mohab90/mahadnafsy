@@ -7,6 +7,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 const read = rel => fs.readFileSync(path.join(__dirname, '../..', rel), 'utf8');
@@ -80,7 +81,7 @@ test('a certificate, a carnet or a book is its own payment, never an instalment'
 });
 
 test('the dialog offers the courses the client lacks and flags them as new bookings', () => {
-  const modal = read('admin/components/PaymentModal.tsx');
+  const modal = paymentModalSource();
   assert.match(modal, /<optgroup label="🆕 حجز كورس جديد">/);
   assert.match(modal, /newBooking: d\.bookingType === 'installment' && !!e\.target\.value && !heldCids\.has\(e\.target\.value\)/);
 });

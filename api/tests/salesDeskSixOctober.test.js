@@ -23,6 +23,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('fs');
 const path = require('path');
 
@@ -281,7 +282,7 @@ test('a carnet or a book is never a course instalment, and books beside its cour
   const newClient = read('admin/lib/createClientWithPayment.ts');
   assert.match(newClient, /if \(paymentType === 'course' && !draft\.courseId\) throw new Error/);
   assert.match(newClient, /await mysqlAdmin\.saveSubscriberPayment\(result\.subscriberId, \{/);
-  assert.match(read('admin/components/PaymentModal.tsx'), /\(d\.paymentType !== 'course' \|\| !!d\.courseId\)/);
+  assert.match(paymentModalSource(), /\(d\.paymentType !== 'course' \|\| !!d\.courseId\)/);
 });
 
 test('a Saudi client\'s local number is completed with 966, and only a Saudi client\'s', () => {

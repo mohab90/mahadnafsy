@@ -4,6 +4,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 const read = rel => fs.readFileSync(path.join(__dirname, '../..', rel), 'utf8');
@@ -105,7 +106,7 @@ test('carnets and books are priced beside the certificates, picked by name, and 
   assert.equal(items.carnets.length, 1, 'an unnamed row is dropped');
   assert.equal(module.exports.priceIn(items.carnets[0], 'SAR'), 60);
   assert.equal(module.exports.priceIn(items.books[0], 'USD'), 0);
-  assert.match(read('admin/components/PaymentModal.tsx'), /set\(\{ itemTitle: item\.label, \.\.\.\(price > 0 \? \{ amount: String\(price\) \} : \{\}\) \}\)/);
+  assert.match(paymentModalSource(), /set\(\{ itemTitle: item\.label, \.\.\.\(price > 0 \? \{ amount: String\(price\) \} : \{\}\) \}\)/);
   for (const file of ['admin/pages/dashboard/dashboardPaymentHandlers.ts', 'admin/pages/unified-client/useUnifiedClientPayments.ts']) {
     assert.match(read(file), /itemTitle: (subPayDraft|draft|leadPayDraft)\.itemTitle \|\| undefined/, file);
   }

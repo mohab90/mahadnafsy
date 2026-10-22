@@ -6,6 +6,7 @@
 //   «لما بحدد سعر معين للكورس مش بيتثبت بعد كدا للعميل».
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -42,7 +43,7 @@ test('a single-course payment records the price agreed, not the catalogue', () =
 });
 
 test('the payment dialog opens at the price this client agreed', () => {
-  const modal = read('admin/components/PaymentModal.tsx');
+  const modal = paymentModalSource();
   // The one rule every screen uses (admin/lib/agreedPrice.ts).
   assert.match(modal, /const _agreedPx = d\.courseId \? agreedPriceFor\(subject, d\.courseId, 0, d\.currency\) : 0;/);
   assert.match(read('admin/lib/agreedPrice.ts'), /subscriber\.customPrices\?\.\[item\]/);

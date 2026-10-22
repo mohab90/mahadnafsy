@@ -491,7 +491,7 @@ test('a page outside the tabs asks for every list it reads', () => {
     assert.deepEqual(missing, [], `${rel} reads ${missing.join(', ')} but never asks for it, so it sees an empty list`);
   }
   // The premise: there are readers to check.
-  for (const rel of ['admin/pages/StaffProfile.tsx', 'admin/pages/ClientProfile.tsx', 'admin/pages/UnifiedClientPage.tsx', 'admin/components/PaymentModal.tsx']) {
+  for (const rel of ['admin/pages/StaffProfile.tsx', 'admin/pages/ClientProfile.tsx', 'admin/pages/UnifiedClientPage.tsx', 'admin/components/payment-modal/usePaymentModalModel.tsx']) {
     assert.ok(readers.includes(rel), `${rel} no longer reads a list — update this test`);
   }
 });

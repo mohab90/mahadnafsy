@@ -8,6 +8,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 const { resolvePermissions, hasPermission } = require('../constants/permissions');
@@ -51,7 +52,7 @@ test('the booking says it carries its own price only when one was typed', () => 
 });
 
 test('the dialog offers it to whoever holds the permission, and the percentages as a list', () => {
-  const modal = read('admin/components/PaymentModal.tsx');
+  const modal = paymentModalSource();
   assert.match(modal, /const canSetPrice = isAdmin \|\| hasPermission\(/);
   assert.match(modal, /'set_client_price'\);/);
   assert.match(modal, /\{canSetPrice && \(<>/);

@@ -10,6 +10,7 @@
 const { authRouteSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 const { itemBalances, resolveAgreed } = require('../lib/agreedPrice');
@@ -64,7 +65,7 @@ test('every screen reads that rule', () => {
     /const items = useMemo\(\(\) => clientItems\(subscriber, courses, bundles, defaultCurrency\)/);
   assert.match(read('admin/pages/dashboard/tabs/InstallmentPlansTab.tsx'), /clientItems\(sub, courses, bundles, plan\.currency\)/);
   assert.match(admin, /paidFor\(subscriber, item, currency\) \+ \(Number\(subscriber\.priorPaid\?\.\[item\]\) \|\| 0\)/);
-  const modal = read('admin/components/PaymentModal.tsx');
+  const modal = paymentModalSource();
   // The instalment list and «كل المتبقي» used the catalogue.
   assert.match(modal, /const px = agreedPriceFor\(subject, cid, isBnd/);
   assert.match(modal, /const bal = _effPx > 0 \? Math\.max\(0, _effPx - alreadyPaid\) : 0;/);
@@ -75,7 +76,7 @@ test('every screen reads that rule', () => {
 });
 
 test('the dialog hands the handler the price it shows; an instalment only a price the desk changed', () => {
-  const modal = read('admin/components/PaymentModal.tsx');
+  const modal = paymentModalSource();
   assert.match(modal, /customExpected: d\.bookingType === 'installment'\s+\? \(changedPrice \? shownPrice : ''\)/);
   const handler = read('admin/pages/dashboard/dashboardPaymentHandlers.ts');
   assert.match(handler, /\? \(_singleCustom > 0 \? _singleCustom : undefined\)/);
