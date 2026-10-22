@@ -7,6 +7,7 @@
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { dashboardSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -69,7 +70,7 @@ test('the SaaS setup is hidden unless the build turns it on', () => {
 });
 
 test('the hub pages open from a link, and the page editors draw inside صفحات الموقع', () => {
-  const dashboard = read('admin/pages/Dashboard.tsx');
+  const dashboard = dashboardSource();
   assert.match(dashboard, /const page = CONTENT_HUB_TABS\.find\(t => t\.key === tab\)/);
   assert.match(dashboard, /urlTab === 'content_hub' && urlParam/);
   assert.match(dashboard, /activeTab === 'content_hub' && contentHubSubTab\.startsWith\('page_'\)/);

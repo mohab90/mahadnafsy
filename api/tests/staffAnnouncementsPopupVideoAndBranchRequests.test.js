@@ -5,7 +5,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { paymentModalSource } = require('./_adminSplitSource');
+const { dashboardSource, paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -103,7 +103,7 @@ test('the administration writes it, the employee reads and closes it, and it is 
   assert.match(read('api/lib/registerRoutes.js'), /staff-announcements/);
   assert.match(read('api/migrations/299_v26_staff_announcements.sql'), /CREATE TABLE IF NOT EXISTS staff_announcement_seen/);
   assert.match(read('api/schema.sql'), /CREATE TABLE `staff_announcements`/);
-  assert.match(read('admin/pages/Dashboard.tsx'), /<StaffAnnouncementPopup \/>/);
+  assert.match(dashboardSource(), /<StaffAnnouncementPopup \/>/);
   assert.match(read('admin/pages/dashboard/dashboardShared.tsx'), /staff_announcements: 'manage_staff'/);
   assert.match(read('admin/pages/dashboard/GeneralDashboardTabs.tsx'), /key: 'staff_announcements', Component: StaffAnnouncementsTab/);
   assert.match(read('admin/pages/dashboard/navigation.tsx'), /key: 'staff_announcements', label: 'رسالة للموظفين'/);

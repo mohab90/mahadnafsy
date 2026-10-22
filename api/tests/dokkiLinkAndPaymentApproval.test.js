@@ -19,7 +19,7 @@
 const { ordersScreenSource } = require('./_authRouteSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { paymentModalSource } = require('./_adminSplitSource');
+const { dashboardSource, paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -107,7 +107,7 @@ test('the review list names the course or track and the branch', () => {
 // ── Dokki: one set of rounds, one fresh set of clients ──────────────────────
 
 test('the clients screen reads the context\'s rounds and clients, not the copies that only change on the next poll', () => {
-  const dashboard = read('admin/pages/Dashboard.tsx');
+  const dashboard = dashboardSource();
   assert.match(dashboard, /salesOwnDaqqiRounds: siteDaqqiRounds,/);
   assert.doesNotMatch(dashboard, /salesOwnDaqqiRounds: salesOwnDaqqiRounds \?\? \[\],/);
   assert.match(dashboard, /setStaffScopedRounds: bulkSetDaqqiRounds,/);

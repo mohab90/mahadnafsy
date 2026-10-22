@@ -7,7 +7,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { paymentModalSource } = require('./_adminSplitSource');
+const { dashboardSource, paymentModalSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 const read = rel => fs.readFileSync(path.join(__dirname, '../..', rel), 'utf8');
@@ -55,7 +55,7 @@ test('the payment hooks send the reason under the key the toast reads, and the d
     assert.match(read(file), /reason: arabicReason\(error\)/, file);
   }
   assert.match(paymentModalSource(), /setSubmitError\(arabicReason\(error, /);
-  assert.match(read('admin/pages/Dashboard.tsx'), /arabicReason\(String\(detail\.reason\), ''\)/);
+  assert.match(dashboardSource(), /arabicReason\(String\(detail\.reason\), ''\)/);
 });
 
 test('the booking route no longer answers a rep in English', () => {

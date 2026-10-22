@@ -15,6 +15,7 @@
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { dashboardSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -149,7 +150,7 @@ test('the Dokki manager is shown the applications and interviews screens', () =>
   assert.match(shared, /interviews: {9}\['view_hr', 'branch_hr'\]/);
   assert.match(shared, /lecturer_applications: \['view_join_us', 'branch_hr'\]/);
   // The redirect of a branch manager's HR to branch_hr leaves these two alone.
-  const dashboard = read('admin/pages/Dashboard.tsx');
+  const dashboard = dashboardSource();
   assert.match(dashboard, /branchHrOnly && \['hr', 'hr_analytics'\]\.includes\(activeScreen\) \? 'branch_hr' : activeScreen/);
   // And the admin's own permission check opens them for the role.
   const { hasPermission } = require('../constants/permissions');

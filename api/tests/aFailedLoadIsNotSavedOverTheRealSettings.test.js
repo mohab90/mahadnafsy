@@ -8,6 +8,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { dashboardSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -50,7 +51,7 @@ test('the notifications bell says when it has stopped updating', () => {
 });
 
 test('«عملاء متصلون الآن» is fed from the presence endpoint', () => {
-  const dashboard = read('admin/pages/Dashboard.tsx');
+  const dashboard = dashboardSource();
   assert.match(dashboard, /const \[onlineUsers, setOnlineUsers\] = useState/);
   assert.match(dashboard, /mysqlAdmin\.getOnlineUsers\(\)/);
   assert.ok(dashboard.indexOf('const activeTab = ') < dashboard.indexOf('mysqlAdmin.getOnlineUsers()'), 'read after activeTab exists');

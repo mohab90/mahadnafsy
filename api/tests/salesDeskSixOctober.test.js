@@ -23,7 +23,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { paymentModalSource } = require('./_adminSplitSource');
+const { dashboardSource, paymentModalSource } = require('./_adminSplitSource');
 const fs = require('fs');
 const path = require('path');
 
@@ -432,7 +432,7 @@ test('every rep has the inbox and «واتسابي», collection «واتساب�
   assert.match(read('api/routes/team-inbox.js'), /const guard = \[requireAuth, requireAdminOrStaff, requireChannel\('inbox'\)\];/);
   assert.match(read('api/routes/whatsapp-web.js'), /const guard = \[requireAuth, requireAdminOrStaff, requireChannel\('whatsapp'\)\];/);
   assert.match(read('admin/constants/permissions.ts'), /export function canUseChannel\(/);
-  assert.match(read('admin/pages/Dashboard.tsx'), /canOpenTab=\{canOpenChannelTab\}/);
+  assert.match(dashboardSource(), /canOpenTab=\{canOpenChannelTab\}/);
   const nav = read('admin/pages/dashboard/DashboardNavigation.tsx');
   const collectionNav = nav.slice(nav.indexOf('Collection horizontal nav'), nav.indexOf('Reception Daqqi horizontal nav'));
   assert.doesNotMatch(collectionNav, /key: 'team_inbox'/);

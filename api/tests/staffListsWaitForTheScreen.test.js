@@ -10,6 +10,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { dashboardSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -49,7 +50,7 @@ test('the screens that page from the server are named, and an employee\'s panel 
   const hook = read('admin/pages/dashboard/useStaffOwnData.ts');
   assert.doesNotMatch(hook, /streamSubscribers|listStaffLeads|salesOwn(Leads|Subscribers)|wantsLists/);
   assert.match(hook, /listAllDaqqiRounds/);
-  const dashboard = read('admin/pages/Dashboard.tsx');
+  const dashboard = dashboardSource();
   assert.doesNotMatch(dashboard, /salesOwn(Leads|Subscribers|Orders)|setStaffScoped(Subscribers|Leads)|staffScreenReadsLists|wantsStaffLists/);
   assert.match(dashboard, /setStaffListsWanted\(!isNonAdminStaff \|\| !staffScreenPagesFromServer\(activeTab\)\);/,
     'a write on a screen that pages from the server reloads no list');
@@ -59,7 +60,7 @@ test('the bell counts on the server for every employee, so it needs no list', ()
   const badges = read('admin/pages/dashboard/useDashboardBadges.ts');
   assert.match(badges, /const staffNotifBadge = !currentStaff \? 0 : \(dueFollowups \?\? 0\);/);
   assert.doesNotMatch(badges, /salesOwnLeads/);
-  const dashboard = read('admin/pages/Dashboard.tsx');
+  const dashboard = dashboardSource();
   assert.match(dashboard, /const countsOwnFollowups = !!currentStaff && masterHasPermission\(/, 'for a role that may see leads: HR is refused the count');
 });
 
@@ -79,12 +80,12 @@ test('the pages that wait for the lists read none of them', () => {
     assert.doesNotMatch(read(rel), /salesOwn(Leads|Subscribers)|useCrmData|SubscriberItem/, rel);
   }
   assert.match(read('admin/pages/dashboard/useOnlineManagerSummary.ts'), /\/staff\/online-manager-summary/);
-  assert.match(read('admin/pages/Dashboard.tsx'), /<DashboardOnlineManagerPanels[^>]*summary=\{onlineManagerSummary\}/);
+  assert.match(dashboardSource(), /<DashboardOnlineManagerPanels[^>]*summary=\{onlineManagerSummary\}/);
   assert.match(read('admin/pages/dashboard/tabs/StaffHomeTab.tsx'), /useStaffHomeSummary\(staff\)/);
   assert.match(read('admin/pages/dashboard/my-profile/MyPerformanceSection.tsx'), /\/staff\/payments\?summary=1&limit=1/);
   const finance = read('admin/pages/dashboard/DashboardFinanceTabs.tsx');
   assert.doesNotMatch(finance, /<StaffPaymentsTab[^>]*salesOwnSubscribers/);
-  assert.doesNotMatch(read('admin/pages/Dashboard.tsx'), /<MyProfilePage[^>]*(leads|subscribers)=/);
+  assert.doesNotMatch(dashboardSource(), /<MyProfilePage[^>]*(leads|subscribers)=/);
 });
 
 test('«مدفوعاتي» asks the database for the period, the status, «mine» and the search, a page at a time', () => {

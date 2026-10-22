@@ -121,7 +121,7 @@ test('the personal tabs are open to every staff member, and only those', () => {
   const container = fs.readFileSync(path.join(API, '..', 'admin', 'pages', 'dashboard', 'DashboardTabContainer.tsx'), 'utf8');
   assert.match(container, /requiredPermission === null\s*\?\s*true/);
   assert.match(container, /requiredPermission !== undefined && hasPermission\(requiredPermission\)/);
-  const dashboard = fs.readFileSync(path.join(API, '..', 'admin', 'pages', 'Dashboard.tsx'), 'utf8');
+  const dashboard = require('./_adminSplitSource').dashboardSource();
   assert.match(dashboard, /if \(required === null\) return true;/);
 });
 

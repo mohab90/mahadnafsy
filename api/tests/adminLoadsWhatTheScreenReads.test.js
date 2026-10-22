@@ -15,6 +15,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { dashboardSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -148,7 +149,7 @@ test('the sign-in loads none of the on-demand lists, and every one has a loader'
 });
 
 test('the dashboard asks for the lists of the tab on screen', () => {
-  const dashboard = codeOnly(read('admin/pages/Dashboard.tsx'));
+  const dashboard = codeOnly(dashboardSource());
   assert.ok(dashboard.includes('void ensureSiteLists(skipped.length ? listsForTab(activeTab).filter(list => !skipped.includes(list)) : listsForTab(activeTab));'),
     'a screen of an employee that pages from the server asks for every list but the ones the administration screen reads');
   assert.ok(dashboard.includes('void ensureSiteLists(overlayLists);'), 'the popups drawn over every screen ask too');
@@ -330,7 +331,7 @@ function dashboardStatements(body) {
 
 /** name → the lists it carries, for every name in Dashboard's body. */
 function dashboardTaint() {
-  const source = codeOnly(read('admin/pages/Dashboard.tsx'));
+  const source = codeOnly(dashboardSource());
   const body = source.slice(source.indexOf('const Dashboard: React.FC'));
   const taint = new Map();
   const context = body.match(/const\s*\{([^{}]*)\}\s*=\s*useSiteData\(\)/);
@@ -500,7 +501,7 @@ test('a page outside the tabs asks for every list it reads', () => {
 // comes from GET /admin/leads/followups-due, in the session's own scope, and
 // the panel no longer loads the leads for it.
 test('the follow-up bell counts on the server, not out of the 500 newest leads', () => {
-  const dashboard = codeOnly(read('admin/pages/Dashboard.tsx'));
+  const dashboard = codeOnly(dashboardSource());
   const overlay = dashboard.slice(dashboard.indexOf('const overlayLists'), dashboard.indexOf('void ensureSiteLists(overlayLists)'));
   assert.ok(!/currentStaff\s*&&\s*!usesStaffScopedData\s*\?\s*\['leads'/.test(overlay), 'the bell loads the leads again');
   assert.ok(dashboard.includes('mysqlAdmin.getDueFollowups()'));

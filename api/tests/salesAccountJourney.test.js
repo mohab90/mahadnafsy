@@ -7,6 +7,7 @@ const { leadsRouteSource } = require('./_authRouteSource');
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { dashboardSource } = require('./_adminSplitSource');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -86,7 +87,7 @@ test('a rep can register the payment they just closed', () => {
 test('«ملفي» is one page for every account, and the old addresses still land on it', () => {
   const tabs = codeOnly(read('admin/pages/dashboard/my-profile/profileTabs.ts'));
   const page = codeOnly(read('admin/pages/dashboard/my-profile/MyProfilePage.tsx'));
-  const dashboard = codeOnly(read('admin/pages/Dashboard.tsx'));
+  const dashboard = codeOnly(dashboardSource());
 
   // «خلي الملف الشخصي والملف الوظيفي صفحه واحدة ... وبداخلها تابات مختلفه»:
   // both keys open the one page, and my_hr opens it on the job file.
