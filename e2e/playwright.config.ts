@@ -44,6 +44,16 @@ export default defineConfig({
     ...(httpCredentials ? { httpCredentials } : {}),
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    {
+      name: 'chromium',
+      use: {
+        ...devices['Desktop Chrome'],
+        // A Chromium already on the machine (PLAYWRIGHT_CHROMIUM_EXECUTABLE),
+        // where the browser Playwright would download cannot be fetched.
+        ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
+          ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } }
+          : {}),
+      },
+    },
   ],
 });
