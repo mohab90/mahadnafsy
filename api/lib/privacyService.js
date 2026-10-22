@@ -32,7 +32,8 @@ async function getPrivacyPolicy(tenantId, db = pool) {
 
 async function findSubscriberForIdentity(tenantId, user, db = pool, lock = false) {
   const uid = String(user?.uid || '').trim();
-  const email = String(user?.email || '').trim().toLowerCase();
+  // middleware/auth.js already leaves an unproven sign-up email out of req.user; said again here.
+  const email = user?.email_unverified ? '' : String(user?.email || '').trim().toLowerCase();
   if (!uid && !email) return null;
   // Two indexed lookups, the linked account first. One query with «uid OR email» (the email trimmed and
   // lower-cased in SQL) could use neither index, so every call from a signed-in client — their tickets, their

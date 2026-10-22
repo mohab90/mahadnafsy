@@ -73,10 +73,13 @@ router.post('/api/auth/login', loginLimiter, requireDb,
     conn = await pool.getConnection();
     const [rows] = identifierIsEmail
       ? await conn.execute(
-          `SELECT u.id, u.email, u.name, u.password_hash, u.session_version, u.totp_enabled,
+          `SELECT u.id, u.email, u.name, u.password_hash, u.session_version, u.totp_enabled, u.email_unverified,
                   EXISTS(SELECT 1 FROM staff s WHERE s.tenant_id=u.tenant_id AND s.is_active=1
                           AND s.email<>'' AND LOWER(TRIM(s.email))=LOWER(TRIM(u.email))) AS is_staff
-           FROM users u WHERE u.tenant_id=? AND u.email = ? AND u.is_active = 1`,
+           FROM users u WHERE u.tenant_id=? AND u.email = ? AND u.is_active = 1
+            -- An address typed at sign-up and not yet proven is no way in
+            -- (lib/emailVerification.js); the number it signed up with is.
+            AND u.email_unverified = 0`,
           [req.tenantId, email])
       // Every spelling the number can be stored as, not the one this normaliser
       // happens to produce. `u.phone = ?` compared against toIdentity() only
@@ -93,7 +96,7 @@ router.post('/api/auth/login', loginLimiter, requireDb,
         const spellings = identitySpellings(rawIdentifier);
         if (!spellings.length) return [[]];
         return conn.execute(
-          `SELECT u.id, u.email, u.name, u.password_hash, u.session_version, u.totp_enabled,
+          `SELECT u.id, u.email, u.name, u.password_hash, u.session_version, u.totp_enabled, u.email_unverified,
                   EXISTS(SELECT 1 FROM staff s WHERE s.tenant_id=u.tenant_id AND s.is_active=1
                           AND s.email<>'' AND LOWER(TRIM(s.email))=LOWER(TRIM(u.email))) AS is_staff
            FROM users u
@@ -205,11 +208,15 @@ router.post('/api/auth/login', loginLimiter, requireDb,
       // Decides concurrent-device allowance only — it grants no permission.
       isStaff: isOperator,
     });
-    // Link subscriber record to this user account (best-effort)
-    pool.query(
-      `UPDATE subscribers SET firebase_uid = ? WHERE tenant_id=? AND LOWER(TRIM(email)) = ? AND firebase_uid IS NULL LIMIT 1`,
-      [user.id, req.tenantId, user.email]
-    ).catch(() => {});
+    // Link subscriber record to this user account (best-effort) — by a proven
+    // address only: a phone sign-in of an account whose email is still a claim
+    // must not take the client record that holds that email.
+    if (user.email && Number(user.email_unverified) !== 1) {
+      pool.query(
+        `UPDATE subscribers SET firebase_uid = ? WHERE tenant_id=? AND LOWER(TRIM(email)) = ? AND firebase_uid IS NULL LIMIT 1`,
+        [user.id, req.tenantId, user.email]
+      ).catch(() => {});
+    }
     // Track login count and last login. Columns are owned by migrations, not the login path.
     pool.query(
       `UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login = NOW() WHERE id = ? AND tenant_id=?`,
@@ -267,7 +274,7 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
   let conn;
   try {
     conn = await pool.getConnection();
-    const [rows] = await conn.execute('SELECT id, email, name, phone FROM users WHERE id = ? AND tenant_id=?', [req.user.uid, req.tenantId]);
+    const [rows] = await conn.execute('SELECT id, email, name, phone, email_unverified FROM users WHERE id = ? AND tenant_id=?', [req.user.uid, req.tenantId]);
     if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
     const u = rows[0];
     let isAdmin = isInstituteOwner({ email: u.email, uid: u.id, tenantId: req.tenantId });
@@ -277,7 +284,7 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
       // kept a list of its own that added daqqi_manager and online_manager, so
       // the panel showed those two every section and skipped their permission
       // checks while the server refused them the data behind it.
-      const [[staff]] = u.email ? await conn.execute(
+      const [[staff]] = u.email && Number(u.email_unverified) !== 1 ? await conn.execute(
         `SELECT role, permissions_json FROM staff WHERE tenant_id=? AND LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1`,
         [req.tenantId, u.email.toLowerCase().trim()]
       ) : [[null]];
@@ -306,7 +313,9 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
     // so case never mattered, and stored emails are trimmed (migration 207; the write paths trim).
     let phone = '';
     try {
-      const em = (u.email || '').toLowerCase().trim();
+      // Not by an address still waiting to be proven: that would show a
+      // stranger the phone number of whoever the address belongs to.
+      const em = Number(u.email_unverified) === 1 ? '' : (u.email || '').toLowerCase().trim();
       if (em) {
         const [[subRow]] = await conn.execute(
           "SELECT phone FROM subscribers WHERE tenant_id=? AND email=? AND phone IS NOT NULL AND phone<>'' LIMIT 1", [req.tenantId, em]
@@ -333,7 +342,8 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
         canManageDeleteRights = await deleteRights.isDeleteOwner(req);
       } catch (error) { logger.warn('[auth/me] delete rights unavailable', { error: error.message }); }
     }
-    res.json({ uid: u.id, email: u.email, displayName: u.name || '', phone, isAdmin,
+    res.json({ uid: u.id, email: u.email, emailVerified: Boolean(u.email) && Number(u.email_unverified) !== 1,
+      displayName: u.name || '', phone, isAdmin,
       permissions: isAdmin ? '*' : staffPermissions, canDelete, canManageDeleteRights });
   } catch (err) {
     logger.error('[auth/me]', err);

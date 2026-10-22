@@ -93,16 +93,13 @@ export default defineConfig(({ mode }) => {
             return 'vendor';
           },
           assetFileNames: 'assets/[name]-[hash][extname]',
-          chunkFileNames: (chunkInfo) => {
-            const d = new Date();
-            const v = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
-            return `assets/${chunkInfo.name}-[hash]-${v}.js`;
-          },
-          entryFileNames: (chunkInfo) => {
-            const d = new Date();
-            const v = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
-            return `assets/${chunkInfo.name}-[hash]-${v}.js`;
-          },
+          // Named by content alone. A build timestamp used to be appended to every
+          // chunk, so each deploy renamed every file — unchanged React, icons and
+          // charts included — and every visitor downloaded the whole app again.
+          // index.html is never cached (nginx: no-store), so a changed chunk is still
+          // picked up at once; an unchanged one keeps its name and stays cached.
+          chunkFileNames: 'assets/[name]-[hash].js',
+          entryFileNames: 'assets/[name]-[hash].js',
         },
       },
     },

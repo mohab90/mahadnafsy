@@ -128,9 +128,11 @@ test('only the codes are tagged otp — nothing else rides the exemption', () =>
   // lib/otpProvider.js was on this list for sendOtp, which nothing called; it
   // is gone. The rule is unchanged — otp is the exemption, and only a code
   // may carry it.
-  assert.deepEqual(otpBearing.sort(), ['lib/whatsappOtp.js', 'routes/auth/passwordReset.js'],
+  // lib/emailVerification.js sends the link and code that prove a sign-up's
+  // email — a code like the other two, and one a customer waits for.
+  assert.deepEqual(otpBearing.sort(), ['lib/emailVerification.js', 'lib/whatsappOtp.js', 'routes/auth/passwordReset.js'],
     'otp is the one category that sends while everything else is stopped; '
-    + 'only the sign-in code and the password-reset code may carry it');
+    + 'only the sign-in code, the password-reset code and the email-verification code may carry it');
 });
 
 test('the welcome message the desk switched off is actually gated now', () => {

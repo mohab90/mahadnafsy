@@ -56,7 +56,16 @@ function csrfOriginGuard() {
   return (req, res, next) => {
     if (SAFE.has(req.method)) return next();
     const origin = req.headers.origin;
-    if (!origin || !/(?:^|;\s*)authToken=/.test(req.headers.cookie || '')) return next();
+    const hasSession = /(?:^|;\s*)authToken=/.test(req.headers.cookie || '');
+    // No Origin on a write is rare from a browser, but it happens (some
+    // privacy extensions and older engines strip it). Sec-Fetch-Site cannot be
+    // set by a page and still says where the request came from: a cross-site
+    // write carrying the session is refused on that alone.
+    if (!origin && hasSession && String(req.headers['sec-fetch-site'] || '').toLowerCase() === 'cross-site'
+        && String(process.env.CSRF_ORIGIN_ENFORCE || '').toLowerCase() !== 'false') {
+      return res.status(403).json({ error: 'Origin not allowed', code: 'ORIGIN_NOT_ALLOWED' });
+    }
+    if (!origin || !hasSession) return next();
     if (isAllowed(origin)) return next();
     try {
       const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();

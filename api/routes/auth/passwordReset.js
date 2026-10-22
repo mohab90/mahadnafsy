@@ -61,7 +61,10 @@ async function issueResetCode(req, rawIdentifier) {
 
   if (identifierIsEmail) {
     // 1. Check users table (primary auth table — registered via website)
-    const [[existingUser]] = await pool.query('SELECT id, name, email, phone FROM users WHERE tenant_id=? AND email = ? AND is_active = 1 LIMIT 1', [req.tenantId, safeEmail]);
+    // Only a proven address finds an account (lib/emailVerification.js): a
+    // reset by an email somebody typed at sign-up and never confirmed would
+    // hand that account to whoever owns the inbox, or the other way round.
+    const [[existingUser]] = await pool.query('SELECT id, name, email, phone, email_unverified FROM users WHERE tenant_id=? AND email = ? AND is_active = 1 AND email_unverified = 0 LIMIT 1', [req.tenantId, safeEmail]);
     if (existingUser) {
       user = existingUser;
     } else {
@@ -77,7 +80,7 @@ async function issueResetCode(req, rawIdentifier) {
           [newUserId, req.tenantId, safeEmail, tempHash, sub.name || safeEmail.split('@')[0], 'user']
         );
         // Fetch back the inserted (or pre-existing race-condition) record
-        const [[createdUser]] = await pool.query('SELECT id, name, email, phone FROM users WHERE tenant_id=? AND email = ? LIMIT 1', [req.tenantId, safeEmail]);
+        const [[createdUser]] = await pool.query('SELECT id, name, email, phone, email_unverified FROM users WHERE tenant_id=? AND email = ? AND email_unverified = 0 LIMIT 1', [req.tenantId, safeEmail]);
         if (createdUser) {
           user = createdUser;
           logger.info('[forgot-password] auto-created users record for subscriber:', safeEmail);
@@ -85,7 +88,7 @@ async function issueResetCode(req, rawIdentifier) {
       }
     }
   } else {
-    const [[existingUser]] = await pool.query('SELECT id, name, email, phone FROM users WHERE tenant_id=? AND phone = ? AND is_active = 1 LIMIT 1', [req.tenantId, phoneIdentity]);
+    const [[existingUser]] = await pool.query('SELECT id, name, email, phone, email_unverified FROM users WHERE tenant_id=? AND phone = ? AND is_active = 1 LIMIT 1', [req.tenantId, phoneIdentity]);
     if (existingUser) {
       user = existingUser;
     } else {
@@ -113,7 +116,7 @@ async function issueResetCode(req, rawIdentifier) {
             phoneIdentity, tempHash, sub.name || '', 'user']
         );
         const [[createdUser]] = await pool.query(
-          'SELECT id, name, email, phone FROM users WHERE tenant_id=? AND phone = ? LIMIT 1',
+          'SELECT id, name, email, phone, email_unverified FROM users WHERE tenant_id=? AND phone = ? LIMIT 1',
           [req.tenantId, phoneIdentity]
         );
         if (createdUser) {
@@ -192,7 +195,8 @@ async function issueResetCode(req, rawIdentifier) {
   // producing the same generic "email delivery failed" error a real bounce
   // would — misleading for an account that never had an email to try. Fail
   // with the true reason instead of a fabricated SMTP one.
-  if (!user.email) {
+  // An unproven address is not a channel for the code either.
+  if (!user.email || Number(user.email_unverified) === 1) {
     await pool.query(
       `UPDATE otp_codes SET used=1, delivery_status='failed', delivery_error_code=? WHERE id=? AND tenant_id=?`,
       ['NO_CHANNEL_AVAILABLE', otpId, req.tenantId]
@@ -242,7 +246,7 @@ router.post('/api/auth/verify-otp', resetOtpLimiter, async (req, res) => {
   if (isEmail(rawIdentifier)) {
     const safeEmail = rawIdentifier.toLowerCase().trim();
     const [[byEmail]] = await pool.query(
-      'SELECT id, email FROM users WHERE tenant_id=? AND email=? AND is_active=1 LIMIT 1',
+      'SELECT id, email FROM users WHERE tenant_id=? AND email=? AND is_active=1 AND email_unverified=0 LIMIT 1',
       [req.tenantId, safeEmail]
     );
     account = byEmail || { id: null, email: safeEmail };

@@ -43,6 +43,17 @@ const { trackPurchase } = require('./metaCapi');
 // volume is low; correctness here is worth one connection.
 const _paymobProcessingOrders = new Set();
 
+// What the payment row and its journal entry say was bought — the same
+// vocabulary as a transfer the desk approves (routes/payment-proofs.js). Every
+// card payment used to be booked as COURSE: a consultation paid online was
+// course revenue (4100, not 4200), counted towards course balances, booking
+// bonuses and commissions, and missing from the consultations' figures.
+const PAYMOB_PAYMENT_TYPES = new Set(['COURSE', 'BUNDLE', 'CONSULTATION', 'CERTIFICATE']);
+function paymobPaymentType(orderType) {
+  const key = String(orderType || '').trim().toUpperCase();
+  return PAYMOB_PAYMENT_TYPES.has(key) ? key : 'OTHER';
+}
+
 /**
  * @param {string} tenantId  the institute whose Paymob secret verified the
  *   callback. Only its own orders are credited: the order is looked up by id,
@@ -149,6 +160,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
   const extra = (() => { try { return JSON.parse(order.notes || '{}'); } catch { return {}; } })();
 
   const payId = `paymob-${merchantOrderId}`;
+  const paymentType = paymobPaymentType(order.type);
   let payCourseId = orderType === 'course' ? (order.item_id || null) : null;
   let payBundleId = orderType === 'bundle' ? (order.item_id || null) : null;
   // An instalment pays towards its plan, not its own amount (lib/orderPlan.js).
@@ -299,7 +311,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
         payBundleId,
         order.amount,
         order.currency || 'EGP',
-        settledEntry ? settledEntry.payType : 'COURSE',
+        settledEntry ? settledEntry.payType : paymentType,
         transactionId || null,
         plan.installment || settledEntry ? 1 : 0,
         // course_expected: the agreed price for a plan entry, the plan's total for
@@ -323,7 +335,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId, capture
       paymentId: payId,
       amount: order.amount,
       currency: order.currency || 'EGP',
-      payType: settledEntry ? settledEntry.payType : 'COURSE',
+      payType: settledEntry ? settledEntry.payType : paymentType,
       date: paidDay,
       actor: 'paymob',
       tenantId,
@@ -569,4 +581,4 @@ async function resolvePaymobMerchantOrder({ merchantOrderId, signedOrderId, tena
   return merchantOrderId;
 }
 
-module.exports = { finalisePaymobOrder, linkPaymobOrder, resolvePaymobMerchantOrder, syncLeadDealValue };
+module.exports = { finalisePaymobOrder, linkPaymobOrder, paymobPaymentType, resolvePaymobMerchantOrder, syncLeadDealValue };

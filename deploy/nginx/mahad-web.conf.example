@@ -54,6 +54,9 @@ server {
         proxy_read_timeout 5s;
         proxy_intercept_errors on;
         error_page 404 429 500 502 503 504 = @release_files;
+        # HSTS, framing, sniffing, referrer and the report-only CSP
+        # (mahad-security-headers.conf). /api/ keeps the API's own headers.
+        include snippets/mahad-security-headers.conf;
     }
 
     location = /sitemap.xml {
@@ -66,11 +69,15 @@ server {
         proxy_read_timeout 5s;
         proxy_intercept_errors on;
         error_page 404 429 500 502 503 504 = @release_files;
+        # HSTS, framing, sniffing, referrer and the report-only CSP
+        # (mahad-security-headers.conf). /api/ keeps the API's own headers.
+        include snippets/mahad-security-headers.conf;
     }
 
     location @release_files {
         try_files $uri $uri/ /index.html;
         add_header Cache-Control "no-store" always;
+        include snippets/mahad-security-headers.conf;
     }
 
     # The logo and the share image on the institute's own domain. Until
@@ -79,6 +86,7 @@ server {
     location /brand/ {
         try_files $uri @brand_fallback;
         add_header Cache-Control "public, max-age=86400" always;
+        include snippets/mahad-security-headers.conf;
     }
 
     location @brand_fallback {
@@ -88,11 +96,13 @@ server {
     location /assets/ {
         try_files $uri =404;
         add_header Cache-Control "public, max-age=31536000, immutable" always;
+        include snippets/mahad-security-headers.conf;
     }
 
     location / {
         try_files $uri $uri/ /index.html;
         add_header Cache-Control "no-store" always;
+        include snippets/mahad-security-headers.conf;
     }
 }
 
@@ -134,10 +144,12 @@ server {
     location /assets/ {
         try_files $uri =404;
         add_header Cache-Control "public, max-age=31536000, immutable" always;
+        include snippets/mahad-security-headers.conf;
     }
 
     location / {
         try_files $uri $uri/ /index.html;
         add_header Cache-Control "no-store" always;
+        include snippets/mahad-security-headers.conf;
     }
 }

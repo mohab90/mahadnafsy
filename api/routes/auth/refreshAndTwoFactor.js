@@ -33,6 +33,7 @@ const {
   sealTotpSecret,
 } = require('../../lib/twoFactor');
 const { writeAuditEvent } = require('../../lib/auditTrail');
+const { accountRequiresMfa, mfaStatusFor } = require('../../lib/mfaPolicy');
 
 const router = Router();
 
@@ -76,6 +77,9 @@ router.post('/api/auth/refresh', requireAuth, async (req, res) => {
       isStaff: req.user.is_staff === true,
     });
     setAuthCookie(res, token);
+    // The account's list of sign-ins shows when each device was last in use.
+    pool.query('UPDATE user_sessions SET last_seen_at=NOW() WHERE tenant_id=? AND session_id=?', [req.tenantId, req.user.session_id])
+      .catch(() => {});
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'Refresh failed' });
@@ -99,6 +103,29 @@ router.get('/api/auth/2fa/status', requireAuth, async (req, res) => {
     const left = enabled ? await recoveryCodesLeft(pool, { tenantId: req.tenantId, userId: req.user.uid }).catch(() => null) : null;
     res.json({ enabled, recoveryCodesLeft: left });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// GET /api/auth/2fa/requirement — does the tenant's policy require 2FA of this
+// account, and if it is not enrolled, until when it may go on without. The
+// panel asks this straight after sign-in: a privileged account without 2FA is
+// shown the enrolment screen with a countdown during its grace period, and
+// that screen alone once the period is over (the server refuses its staff
+// routes by then — middleware/auth.js enforceMfa).
+router.get('/api/auth/2fa/requirement', requireAuth, async (req, res) => {
+  try {
+    const policy = await getMfaPolicy(req.tenantId);
+    const email = String(req.user.email || '').toLowerCase().trim();
+    const [[staff]] = email ? await pool.query(
+      'SELECT role, permissions_json FROM staff WHERE tenant_id=? AND LOWER(TRIM(email))=? AND is_active=1 LIMIT 1',
+      [req.tenantId, email]
+    ) : [[null]];
+    const isOwner = isInstituteOwner({ email: req.user.email, uid: req.user.uid, tenantId: req.tenantId });
+    const required = accountRequiresMfa(policy, { isOwner, staff: staff || null });
+    res.json(await mfaStatusFor({ policy, user: req.user, tenantId: req.tenantId, required }));
+  } catch (e) {
+    logger.error('[2fa/requirement]', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // POST /api/auth/2fa/setup — generate TOTP secret + QR code for current staff

@@ -29,6 +29,7 @@ ARG APP
 # nginx:alpine renders /etc/nginx/templates/*.template through envsubst on
 # startup, which is how one image serves either app.
 COPY deploy/docker/nginx-spa.conf.template /etc/nginx/templates/default.conf.template
+COPY deploy/nginx/mahad-security-headers.conf /etc/nginx/snippets/mahad-security-headers.conf
 COPY --from=build /repo/${APP}/dist /usr/share/nginx/html
 
 EXPOSE 80
